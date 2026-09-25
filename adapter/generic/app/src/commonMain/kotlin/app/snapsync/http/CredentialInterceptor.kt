@@ -49,7 +49,7 @@ fun HttpClient.withCredentialInterceptor(
         val sent = token()?.also { request.headers.append("Authorization", "Bearer $it") }
         // Declared on EVERY request through this client, including the ungated `/attest/*` bootstrap:
         // an obsolete build that can still mint a token would otherwise discover it is obsolete only on
-        // its next call, which is a worse first contact (capability `min-app-version`). Attaching it
+        // its next call, which is a worse first contact (capability `app-update-required`). Attaching it
         // here rather than per call site is the point — a seam added later inherits it for free.
         request.headers.append(APP_VERSION_HEADER, appVersion())
         val start = TimeSource.Monotonic.markNow()
@@ -68,7 +68,7 @@ fun HttpClient.withCredentialInterceptor(
             ) {
                 onRejected(sent)
             }
-            // A 426 means the BACKEND refuses this build as too old (capability `min-app-version`), and
+            // A 426 means the BACKEND refuses this build as too old (capability `app-update-required`), and
             // it is noticed here for the same reason the 401 above is: every metadata seam passes
             // through this one interceptor, so no seam can forget to report it, and a seam added later
             // is covered for free. A served response clears it, which is what heals the screen after an
@@ -101,7 +101,7 @@ fun HttpClient.withCredentialInterceptor(
 /**
  * The same interceptor, reporting the backend's verdicts to the one object the core exposes for them
  * ([BackendVerdicts]) — the form every composition root uses, so none can wire two of the three and forget the
- * third (spec `module-architecture`, "One shared composition").
+ * third (`docs/architecture.md`, "One shared composition").
  *
  * [verdicts] is read per response, never captured: a root builds this client while it is still composing the core
  * whose verdicts it reports, exactly as [token] is read per request.

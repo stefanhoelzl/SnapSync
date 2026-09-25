@@ -63,7 +63,7 @@ enum class Rearm {
 
 /**
  * The wakes that request the tail, each with the part of it it needs and its re-arm policy (capability
- * `ios-url-session-upload`, "The tail runner reimplements the OS scheduler"; decision record
+ * `background-upload`, "The tail runner reimplements the OS scheduler"; decision record
  * `changes/own-work-per-wake`, D1 and D2). Every trigger's own work has already run, outside the runner, before it
  * requests.
  */
@@ -110,9 +110,9 @@ enum class TailTrigger(val scope: TailScope, val rearm: Rearm) {
  * An import is a photo-library transaction, and a transaction can stall and never report — the claim it holds keeps
  * any other drain off that photo, so nothing is lost by not waiting, but a tail that waited would hold every later
  * request hostage behind it (they join the running tail), which is exactly what "a stalled import blocks no other
- * work" rules out (capability `photo-download`). So the unit awaits each import through [awaitUnlessInterrupted]: it
+ * work" rules out (capability `receiving-photos`). So the unit awaits each import through [awaitUnlessInterrupted]: it
  * completes normally, or the wait gives way — leaving the import claimed and running — when Apple's stop arrives
- * (capability `ios-app-shell`, "Expiry stops work cooperatively at the next boundary") or when another request joins
+ * (capability `sync-status`, "Expiry stops work cooperatively at the next boundary") or when another request joins
  * the tail. No clock is involved: the tail stops waiting only because something else is due.
  */
 class TailSignal internal constructor(
@@ -155,8 +155,8 @@ data class TailOutcome(val result: CycleResult, val cut: Boolean)
 
 /**
  * The app process's **opportunistic tail**: one process-wide, single-flight runner of the work every OS wake leaves
- * after its own (capability `ios-app-shell`, "Each OS wake does its own work, then hands the rest to one
- * opportunistic tail"; `ios-url-session-upload`, "The tail runner reimplements the OS scheduler"; decision record
+ * after its own (capability `sync-status`, "Each OS wake does its own work, then hands the rest to one
+ * opportunistic tail"; `background-upload`, "The tail runner reimplements the OS scheduler"; decision record
  * `changes/own-work-per-wake`). It is the successor of the retired `BackgroundUploadPump`, and carries over every one of its
  * rules.
  *
@@ -211,7 +211,7 @@ class TailRunner(
     private val scheduler: BackgroundScheduler,
     /**
      * What a stop left behind, beyond the units it kept from running — for the operating-system expiry line
-     * (capability `diagnostic-logging`, "Operating-system expiry is logged"): at least the staged downloads not yet
+     * (capability `privacy-security`, "Operating-system expiry is logged"): at least the staged downloads not yet
      * imported. A read of the core's own stores; best-effort, and never consulted unless a stop cut a tail.
      */
     private val leftover: suspend () -> String,
@@ -362,7 +362,7 @@ class TailRunner(
     }
 
     /**
-     * The second half of the operating-system expiry line (capability `diagnostic-logging`): whether the unit that was
+     * The second half of the operating-system expiry line (capability `privacy-security`): whether the unit that was
      * running when the stop came completed or was abandoned, and what the stop left for a later wake.
      */
     private suspend fun logStopped(run: Run) {

@@ -5,7 +5,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * **`:ui:screens` takes no `suspend` seam** (capability `module-architecture`, presentation zone; decision record
+ * **`:ui:screens` takes no `suspend` seam** (`docs/architecture.md`, presentation zone; decision record
  * `harden-seam-bug-classes`, G5).
  *
  * A composable that is handed a `suspend` function calls it from a `LaunchedEffect` — on the main thread, and outside

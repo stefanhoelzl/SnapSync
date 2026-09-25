@@ -19,7 +19,7 @@ enum class ExtensionEntriesState {
 
 /**
  * What a clause reads to see [ExtensionEntries.process]'s outcome beyond its result — a snapshot of the system the
- * binding built, never a record of calls (capability `port-contracts`).
+ * binding built, never a record of calls (`docs/architecture.md`).
  */
 interface ExtensionEntriesObservations {
     /** How many uploads have been handed to the transfer mechanism. */
@@ -30,12 +30,12 @@ interface ExtensionEntriesObservations {
 class ExtensionEntriesSubject(val entries: ExtensionEntries, val observe: ExtensionEntriesObservations)
 
 /**
- * What the upload extension's inbound port promises (capability `port-contracts` — this list IS the specification
- * of the port's obligations; spec `module-architecture`, "OS entry points cross an inbound port").
+ * What the upload extension's inbound port promises (`docs/architecture.md` — this list IS the specification
+ * of the port's obligations; `docs/architecture.md`, "OS entry points cross an inbound port").
  *
  * [ExtensionEntries.process] answers the operating system with how the cycle ended, and the extension shell turns
  * that into the platform's result — so a cycle that did work must say "call me again" while it waits on transfers,
- * and one with nothing to do must let the system rest (capability `ios-photokit-upload`).
+ * and one with nothing to do must let the system rest (capability `background-upload`).
  *
  * [ExtensionEntries.onTerminate] has **no clause**, deliberately: it records a line and changes nothing a clause
  * could observe, and a clause that asserted the line would be the call transcript this mechanism refuses.

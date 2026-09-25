@@ -22,8 +22,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * The shared cycle's two **tail units** (capability `ios-app-shell`, "Each OS wake does its own work, then hands the
- * rest to one opportunistic tail"; `ios-url-session-upload`, "The producer tops up from the ledger, not from the walk's
+ * The shared cycle's two **tail units** (capability `sync-status`, "Each OS wake does its own work, then hands the
+ * rest to one opportunistic tail"; `background-upload`, "The producer tops up from the ledger, not from the walk's
  * output"; decision record `changes/own-work-per-wake`, D1, D2, D6): the top-up ② creates from the ledger and never
  * walks; the walk ③ records and publishes and never creates; a stop abandons a walk before it writes anything, and
  * ends a top-up between two creations. The whole-cycle behaviour both share is `UploadCycleTest`'s.

@@ -2,7 +2,7 @@ package app.snapsync.contracts
 
 /**
  * What an adapter asked the operating system during one run of a contract on one host, and what it was
- * answered (capability `port-contracts`, "A recording is one committed plain-text file per contract and
+ * answered (`docs/architecture.md`, "A recording is one committed plain-text file per contract and
  * host"). Input to a clause on replay — never an expectation.
  *
  * Text form, at `test/contracts/recordings/<Contract>@<HOST>.rec`, or `<Contract>@<HOST>.<GRANT>.rec` for a
@@ -108,7 +108,7 @@ class Recorder(from: Recording? = null) {
 }
 
 /**
- * Answers one clause's calls from its recorded block, EXACTLY and IN ORDER (capability `port-contracts`,
+ * Answers one clause's calls from its recorded block, EXACTLY and IN ORDER (`docs/architecture.md`,
  * "Replay matches exactly, in order, over deterministic clauses"). Any other call — a different request,
  * a reordering, or a call past the end — is a [Divergence]: the recording must be retaken.
  */

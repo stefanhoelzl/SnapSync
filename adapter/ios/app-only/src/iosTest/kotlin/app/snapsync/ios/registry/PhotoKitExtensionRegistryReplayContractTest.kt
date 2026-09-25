@@ -18,7 +18,7 @@ import app.snapsync.ports.UploadExtensionRegistry
 import kotlin.test.Test
 
 /**
- * The device's extension registration, REPLAYED (capability `port-contracts`): the CURRENT
+ * The device's extension registration, REPLAYED (`docs/architecture.md`): the CURRENT
  * [PhotoKitExtensionRegistry] runs against what iOS answered when the two recordings were taken — one under a full
  * photo grant, one under a partial grant — and the current clauses judge.
  *

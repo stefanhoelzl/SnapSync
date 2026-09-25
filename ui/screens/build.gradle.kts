@@ -5,7 +5,7 @@ plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.compose)
-    // Coverage measurement (capability `coverage-bounds`). Applied here rather than in a
+    // Coverage measurement (`docs/architecture.md`). Applied here rather than in a
     // `subprojects {}` block so the instrumented set is readable per module.
     alias(libs.plugins.kover)
 }
@@ -50,7 +50,7 @@ kotlin {
     }
 }
 
-// ---- Coverage bounds (capability `coverage-bounds`) ---------------------------------------------
+// ---- Coverage bounds (`docs/architecture.md`) ---------------------------------------------
 //
 // A FLOOR on this module's coverage, seeded at what the tree measured when the gate landed, and
 // permitted to move in one direction only: UP. The destination is full coverage, and these numbers
@@ -59,7 +59,7 @@ kotlin {
 // RAISING a bound is ordinary work - do it in the change that makes it true. LOWERING one requires a
 // stated forcing proof in that change's description, naming what makes the loss of coverage
 // unavoidable. Nothing checks this: it is a ratchet carried by this paragraph and by review, and it
-// is deliberately NOT a proof. `complexity-budgets` carries the same contract at the opposite
+// is deliberately NOT a proof. `docs/architecture.md` carries the same contract at the opposite
 // polarity - a ceiling that may only fall.
 //
 // TWO RULES, because they fail on different things. The aggregate catches a broad slide that leaves

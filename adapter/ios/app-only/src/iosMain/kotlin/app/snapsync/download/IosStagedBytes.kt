@@ -10,26 +10,26 @@ import platform.Foundation.NSFileManager
 
 /**
  * The iOS [StagedBytes]: names the App-Group staging directory downloaded bytes land in, and deletes
- * the files of settled rows (capability `download-store`).
+ * the files of settled rows (capability `receiving-photos`).
  *
  * `app-only` by linkage — the extension never downloads, so it must stay unable to link this.
  *
  * [stagingRoot] resolves the shared App-Group container, the same one the ledger, the download store
  * and the config file live in. It was an inline lambda in the composition root
  * (`AppPorts.downloadStagingRoot: () -> String`) — a platform container lookup handed to the core past
- * the port boundary (spec `module-architecture`, "Ports are the I/O boundary named for the need"),
+ * the port boundary (`docs/architecture.md`, "Ports are the I/O boundary named for the need"),
  * beside the port that already owned those very files' lifetimes. Two halves of one concern with only
  * one of them declared: nothing structural stopped the two from naming different directories, which
  * would leave every staged photo permanently unreleasable.
  *
  * A missing container is an **error, not an empty answer**: without it there is nowhere durable to
  * stage, and inventing a path would put every downloaded photo somewhere the release side cannot find
- * (spec `module-architecture`, "Absence is never silent"). Resolved at first download, never at
+ * (`docs/architecture.md`, "Absence is never silent"). Resolved at first download, never at
  * composition, so a locked background launch is not forced into it.
  *
  * **Neither member hops.** `stagingRoot` has nothing to hop for — a container-URL lookup is a path
  * resolve, not I/O. `release` does block, one synchronous unlink per path, but where blocking work runs
- * is the composition's decision rather than this seam's (spec `module-architecture`, law "Dispatcher
+ * is the composition's decision rather than this seam's (`docs/architecture.md`, law "Dispatcher
  * lanes are fixed by the composition"), so it is off main either way; on that **serial** lane a hop
  * could only buy throughput, and no call site has any to gain. The two settle paths and the
  * leave/switch prune hold `DownloadController`'s mutex across the call, so what a released lane would
@@ -46,12 +46,12 @@ class IosStagedBytes(
     /**
      * Resolves the App-Group container, or `null` when this process has none. A provider rather than a
      * value so [stagingRoot] stays lazy (see the class doc); the no-argument constructor binds the shared
-     * container, so the shell names nothing. A test supplies a directory it owns (capability `port-contracts`).
+     * container, so the shell names nothing. A test supplies a directory it owns (`docs/architecture.md`).
      */
     private val container: () -> String?,
 ) : StagedBytes {
 
-    /** Production: the shared App-Group container (a secondary constructor, not a default — capability `module-architecture`). */
+    /** Production: the shared App-Group container (a secondary constructor, not a default — `docs/architecture.md`). */
     constructor() : this({
         NSFileManager.defaultManager.containerURLForSecurityApplicationGroupIdentifier(LEDGER_APP_GROUP)?.path
     })

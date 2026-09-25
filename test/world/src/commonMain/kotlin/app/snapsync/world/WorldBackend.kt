@@ -3,7 +3,7 @@ package app.snapsync.world
 import io.ktor.client.HttpClient
 
 /**
- * What a backend-neutral read or lever answers (capability `harness-world-model`, "The world's backend is one
+ * What a backend-neutral read or lever answers (`docs/testing.md`, "The world's backend is one
  * seam with two implementations"): a value, or a stated reason this backend cannot honour it.
  *
  * There is deliberately no third shape. An operation a backend cannot honour answering an empty set, a `null`,
@@ -28,7 +28,7 @@ fun <T> Answer<T>.orFail(): T = when (this) {
 }
 
 /**
- * The world's backend: ONE seam, two implementations (capability `harness-world-model`).
+ * The world's backend: ONE seam, two implementations (`docs/testing.md`).
  *
  * - [MiniEdgeBackend] — the in-memory [BackendStore] served by the `MockEngine` mini-edge. The default, and the
  *   only one on every target the world declares.

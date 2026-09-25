@@ -4,7 +4,7 @@ import app.snapsync.feature.membership.toJoinLoad
 import app.snapsync.model.UserQueries
 
 /**
- * The user-query bundle (spec `module-architecture`, "Queries cross a lane-gated door"): the reads the status
+ * The user-query bundle (`docs/architecture.md`, "Queries cross a lane-gated door"): the reads the status
  * container invokes, each awaited on the composition lane — so a store, photo-library or network read never runs
  * on the thread that asked, which for the shareable count used to be a composable effect on the main thread.
  *

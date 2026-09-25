@@ -17,7 +17,7 @@ import app.snapsync.ports.StagedResource
 import app.snapsync.model.AssetPresence
 
 /**
- * The operator-driven download **execution edge** (capability `harness-world-model`): a fake
+ * The operator-driven download **execution edge** (`docs/testing.md`): a fake
  * [DownloadTransport] the world composes the **real** [app.snapsync.feature.download.QueuedPhotoDownloadJobs] over.
  *
  * Faking here rather than at `PhotoDownloadJobs` is the point. The layer above is the orchestration — the
@@ -109,7 +109,7 @@ class FakePhotoLibraryImporter(
     recordCreatedLocalId: (AssetRef, String) -> Boolean,
     /** The mirror, invoked when a change is reported as failed *after* the marker was written. */
     clearCreatedLocalId: (AssetRef, String) -> Unit,
-    /** The success mirror: the completion settles the row itself (capability `download-store`). */
+    /** The success mirror: the completion settles the row itself (capability `receiving-photos`). */
     confirmCreatedLocalId: (AssetRef, String) -> Unit,
 ) : PhotoLibraryImporter {
 
@@ -179,7 +179,7 @@ class FakePhotoLibraryImporter(
 
     /**
      * How many times ONE ref may be imported before this importer raises (capability
-     * `harness-world-model`).
+     * `docs/testing.md`).
      *
      * An unbounded re-selection of one ref is a live-lock, and a live-lock in a test is a HANG — which
      * names no defect and proves nothing. The cap converts it into an assertion failure that names the
@@ -250,7 +250,7 @@ class FakePhotoLibraryImporter(
 
 /**
  * The world's [ImportedAssetPresence]: the rigging around the honest `:adapter:generic:fake`
- * [inMemoryLibraryPresence] over the world's own gallery (capability `harness-world-model`). An import that
+ * [inMemoryLibraryPresence] over the world's own gallery (`docs/testing.md`). An import that
  * landed is visible here for the same reason it is visible to upload discovery, so a test cannot assert
  * against a presence answer the rest of the world disagrees with.
  *

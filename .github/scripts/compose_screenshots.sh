@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Composite the committed raw captures (`screenshots/`) into App Store listing images.
 #
-# The raws are the SINGLE SOURCE OF TRUTH (capability `ios-appstore-metadata`); this script is the App
+# The raws are the SINGLE SOURCE OF TRUTH (`docs/deployment.md`); this script is the App
 # Store's rendering of them, and the backend's `deno task shots` is the landing page's. Compositing here —
 # rather than baking frames in the capture workflow — is what lets a headline change re-render on ubuntu in
 # seconds instead of costing a 10-20 minute macOS run.

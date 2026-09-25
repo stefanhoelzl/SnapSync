@@ -16,7 +16,7 @@ enum class AlbumManagerState {
 }
 
 /**
- * What every [AlbumManager] promises (capability `port-contracts` — this list IS the specification of the
+ * What every [AlbumManager] promises (`docs/architecture.md` — this list IS the specification of the
  * port's obligations).
  *
  * Album titles derive from the clause id, so no clause meets another's album in a shared library. The

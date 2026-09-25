@@ -16,7 +16,7 @@ interface PhotoAccessRequester {
 
     /**
      * Presents the platform's surface for revising a **partial** grant's hand-picked selection
-     * (capability `limited-photo-access`) — on iOS, PhotoKit's limited-library picker.
+     * (capability `photo-access`) — on iOS, PhotoKit's limited-library picker.
      *
      * It belongs on this port and not on one of its own because it is the same need as [openSettings]:
      * both hand the user back to the system to widen what this app may see, and both are answered only
@@ -27,7 +27,7 @@ interface PhotoAccessRequester {
      *
      * This was `AppPorts.presentPhotoPicker: () -> Unit`, a function-typed field the shell filled with a
      * top-level UIKit presenter — a platform touch handed to the core past the port boundary (spec
-     * `module-architecture`, "Ports are the I/O boundary named for the need"), and defaulted inert, so a
+     * `docs/architecture.md`, "Ports are the I/O boundary named for the need"), and defaulted inert, so a
      * composition that simply forgot to wire it was indistinguishable from one that had.
      *
      * Fire-and-forget, like the rest of this port: the resulting selection arrives via

@@ -183,7 +183,7 @@ fun main() {
     }
 
     // Some affordances are deliberately NOT clicks. The bug-report gesture is a double-tap on the
-    // app-name label with no click semantics at all (capability `diagnostic-logging`: it must not read
+    // app-name label with no click semantics at all (capability `privacy-security`: it must not read
     // as a control, so `performClick` cannot reach it) — without this route the only hidden affordance
     // in the app would be the one thing an agent cannot drive.
     route("/doubletap") { q ->

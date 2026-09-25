@@ -11,7 +11,7 @@ import kotlin.test.assertTrue
 
 /**
  * The enter/exit wrapper every platform invocation, app entry point and background trigger goes
- * through (capability `diagnostic-logging`, D3). Two of its properties are load-bearing and neither is
+ * through (capability `privacy-security`, D3). Two of its properties are load-bearing and neither is
  * visible from a call site.
  *
  * **A throw is logged at Warn whatever [Severity] the call site chose, and re-thrown unchanged.** The

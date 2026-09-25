@@ -3,7 +3,7 @@ package app.snapsync.ports
 import app.snapsync.model.PlatformEntry
 
 /**
- * The app process's **inbound** port: what the operating system tells the app (spec `module-architecture`, "OS
+ * The app process's **inbound** port: what the operating system tells the app (`docs/architecture.md`, "OS
  * entry points cross an inbound port").
  *
  * Every other port here is outbound — the core calls it and an adapter answers. This one runs the other way: the
@@ -57,11 +57,11 @@ interface PlatformEntries {
      * [onBackgroundTask] — is out of time (a `BGTask`'s expiration handler, on iOS).
      *
      * This is the one place the operating system's own "time is up" for a background task reaches the core
-     * (capability `ios-app-shell`, "Time is up is learned only from the operating system"). The core answers it by
+     * (capability `sync-status`, "Time is up is learned only from the operating system"). The core answers it by
      * stopping that task's work and releasing the completion it holds for it; the shell forwards it and does
      * nothing else — above all, it does **not** complete the task itself, because the completion handed to
      * [onBackgroundTask] is the only path to completing it and a second, racing completion from the shell is what
-     * this member replaces (spec `module-architecture`, "OS entry points cross an inbound port").
+     * this member replaces (`docs/architecture.md`, "OS entry points cross an inbound port").
      *
      * It returns at once: the operating system expects its expiration handler back promptly, so the stop is
      * requested and the completion released here, without waiting for the unit in flight — which runs on until the
@@ -93,7 +93,7 @@ interface ExtensionEntries {
      * The operating system's `notifyTermination`: the end of an invocation, NOT a kill. Measured on an SE2 (iOS
      * 26.6, 2026-09-23): it arrives about 55 ms after every normal return of [process], and never before the kill
      * that ends a call running past its ~60 s budget — that kill sends nothing at all (capability
-     * `ios-photokit-upload`, "How the operating system invokes the extension is recorded as measured").
+     * `background-upload`, "How the operating system invokes the extension is recorded as measured").
      */
     @PlatformEntry
     fun onTerminate()

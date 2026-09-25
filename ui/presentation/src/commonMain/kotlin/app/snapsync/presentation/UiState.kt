@@ -9,7 +9,7 @@ import app.snapsync.model.PermissionStatus
 import kotlinx.serialization.Serializable
 
 /**
- * **Everything the screen shows** (capability `sync-status-screen`): the [layer] it is on, and the
+ * **Everything the screen shows** (capability `sync-status`): the [layer] it is on, and the
  * [overlays] drawn over it.
  *
  * The rule this type exists to make true is *what the screen SHOWS is `UiState`; how it DRAWS is local.*
@@ -36,17 +36,17 @@ data class UiState(
  * here rather than on a layer because the diagnostic sheet's gesture is on the app-name label, which
  * **every** layer renders: a flag on `Joined` alone could not express it.
  *
- * What is TYPED into a sheet stays in the sheet (capability `sync-status-screen`, the stated IME
+ * What is TYPED into a sheet stays in the sheet (capability `sync-status`, the stated IME
  * exception): the presence and the seed are state, the characters since it opened are not.
  */
 @Serializable
 data class Overlays(
     /** The destructive leave confirmation. */
     val confirmingLeave: Boolean = false,
-    /** The rename dialog, opened by the pen beside the heading (capability `event-rename`). */
+    /** The rename dialog, opened by the pen beside the heading (capability `manage-membership`). */
     val renaming: Boolean = false,
     /**
-     * The diagnostic-dump sheet (capability `diagnostic-logging`), opened by a double-tap on the
+     * The diagnostic-dump sheet (capability `privacy-security`), opened by a double-tap on the
      * app-name label. Reachable from every layer, which is why this bundle is not layer-scoped.
      */
     val reportingBug: Boolean = false,
@@ -75,7 +75,7 @@ internal fun Overlays.maskedFor(layer: Layer): Overlays =
 @Serializable
 sealed interface Layer {
     /**
-     * The backend refuses this build as too old (capability `min-app-version`), and nothing else the
+     * The backend refuses this build as too old (capability `app-update-required`), and nothing else the
      * app can show is true.
      *
      * The TOP rung of the reduction, above config-absent, because it is not a mood of some other screen
@@ -91,7 +91,7 @@ sealed interface Layer {
         /**
          * The oldest version the backend serves, when it named one. `null` when the refusal carried no
          * version — the screen then states that an update is needed without naming one, which is true,
-         * rather than showing a number nobody sent (`module-architecture`, "Absence is never silent").
+         * rather than showing a number nobody sent (`docs/architecture.md`, "Absence is never silent").
          */
         val minimumVersion: String? = null,
         /**
@@ -106,7 +106,7 @@ sealed interface Layer {
     ) : Layer
 
     /**
-     * The create-event landing layer (event-creation-ui), shown while no event is connected
+     * The create-event landing layer (create-event), shown while no event is connected
      * (`config == null`) and no create is in flight. Carries an optional pre-formatted inline
      * [error] — the last create failure's copy (sticky until the next attempt) or a transient
      * invalid-link message. Config-absent outranks everything, so this is the top reduction rung.
@@ -156,13 +156,13 @@ sealed interface Layer {
         /**
          * The persisted membership — **non-null**, because the reduction reaches this state only when
          * config is present. A nullable one would state a combination the reduction makes unreachable and
-         * force the screen to re-check it (capability `sync-status-screen`). Every joined surface reads
+         * force the screen to re-check it (capability `sync-status`). Every joined surface reads
          * the event's name, id and settings from here; there is no second event-name value beside it.
          */
         val membership: EventConfig,
         /**
          * The invite link, derived **once** here from [membership]'s `eventId` (capability
-         * `event-invite-qr`), so the rendered QR and the shared link cannot disagree. Carried rather than
+         * `manage-membership`), so the rendered QR and the shared link cannot disagree. Carried rather than
          * re-derived at each render site: the derivation depends on a build-time link origin, so carrying
          * it is what makes a transported state render the origin the device actually shows.
          */
@@ -170,47 +170,47 @@ sealed interface Layer {
         val health: SyncHealth,
         val pendingSwitch: PendingSwitch? = null,
         /** The joined layer offers "Choose more photos" — true exactly under a partial grant
-         *  (capability `limited-photo-access`): a resting affordance, never an attention state. */
+         *  (capability `photo-access`): a resting affordance, never an attention state. */
         val canChoosePhotos: Boolean = false,
-        /** The event's declared end has passed (`now > endsAt`, capability `sync-status-screen`): the
+        /** The event's declared end has passed (`now > endsAt`, capability `sync-status`): the
          *  status line shows an "Event ended" marker prefixing the regular [health]. Informational only —
          *  sync continues during the backend grace window; joining is closed server-side. `false` when the
          *  membership has no stored `endsAt` (a legacy config before its reconcile backfill). */
         val ended: Boolean = false,
         /**
-         * The rename lifecycle (capability `event-rename`) for the heading's dialog. A field, never a
+         * The rename lifecycle (capability `manage-membership`) for the heading's dialog. A field, never a
          * family and never a health rung: a rename changes one string and one dialog's state, so it adds
          * neither a layer nor a precedence step to the reduction.
          */
         val renameState: RenameState = RenameState.Idle,
         /**
-         * Which body the joined layer is showing (capability `reconfigure-membership`). A selection
+         * Which body the joined layer is showing (capability `manage-membership`). A selection
          * WITHIN the joined layer rather than a `UiState` family of its own: the joined layer's health,
          * pending switch and membership all still apply while the settings surface is up — a sibling
          * family would have to duplicate them to model a surface that is still, in every other respect,
          * the joined layer. It is not an overlay either: it replaces the body rather than covering it.
          *
          * Opening and closing it remains client-side navigation touching no port
-         * (`reconfigure-membership` D4's reason), because the intent that changes this reduces and
+         * (`manage-membership` D4's reason), because the intent that changes this reduces and
          * nothing more.
          */
         val surface: JoinedSurface = JoinedSurface.Status,
         /**
          * A transient, self-clearing notice over the joined layer — today only the rejected-event-link
-         * message (capability `event-link`).
+         * message (capability `join-event`).
          *
          * It exists because the gate raises that error from ANY layer: `onOpenUrl` decodes every
          * delivered link, and a member who scans a bad QR while already joined was told nothing at all —
          * the message was set, and the joined layer had nowhere to render it. "Nothing happened" and
          * "that code wasn't valid" are different answers, and the member could only see the first
-         * (spec `module-architecture`, "Absence is never silent").
+         * (`docs/architecture.md`, "Absence is never silent").
          */
         val notice: String? = null,
     ) : Layer
 }
 
 /**
- * The rename dialog's condition, as the screen renders it (capability `event-rename`).
+ * The rename dialog's condition, as the screen renders it (capability `manage-membership`).
  *
  * The reduction's own vocabulary, not the feature's: `RenameStatus.Failed` carries a REASON, and turning
  * a reason into words is a presentation job — the same one `CreationStatus.Failed` gets, whose copy is
@@ -244,7 +244,7 @@ sealed interface JoinedSurface {
     data object Status : JoinedSurface
 
     /**
-     * The in-place settings surface (capability `reconfigure-membership`), pre-filled from the
+     * The in-place settings surface (capability `manage-membership`), pre-filled from the
      * membership and carrying the member's uncommitted edits until Save or Cancel.
      */
     @Serializable
@@ -278,17 +278,17 @@ data class PendingSwitch(val eventId: String, val phase: JoinPhase)
  *
  * [startsAt] is the event's **start date** — already a canonical UTC `…Z` string (`HttpEventDirectory`
  * normalizes it and fails the load rather than invent one). It is both the range row's lower **default**
- * and its **floor** (capability `photo-selection-policy`): the row cannot be empty and the confirm cannot
+ * and its **floor** (capability `photo-sharing`): the row cannot be empty and the confirm cannot
  * join below it, so joining at whole-library scope is unrepresentable. It also decides the range
  * selector's shape — when it is in the **future**, the "Now" preset would clamp to this same instant, so
  * it is offered disabled rather than as a button that visibly does nothing.
  *
  * [endsAt] is the event's **end date** — the range row's upper **default** and its **ceiling**
- * (capability `photo-selection-policy`), and the seed for the "Event end" preset.
+ * (capability `photo-sharing`), and the seed for the "Event end" preset.
  *
- * [deletesAt] is the event's **retention deadline** (capability `event-limits`) — **server-derived** and
+ * [deletesAt] is the event's **retention deadline** (capability `event-lifetime`) — **server-derived** and
  * carried verbatim. The gate states it before the confirm, and the commit persists it as the offline
- * witness of the self-leave (capability `leave-event`). It is never computed on the device: a
+ * witness of the self-leave (capability `manage-membership`). It is never computed on the device: a
  * client-side copy of the retention constant would promise a date the backend will not honour, silently.
  */
 @Serializable
@@ -372,7 +372,7 @@ fun joinPhase(step: JoinPhase.Detailed.Step, details: EventDetails): JoinPhase =
 /**
  * The joined-layer one-line health, the sole thing the status line renders. There is no standalone
  * "not syncing" state — the only reason contribution cannot run is missing permission ([NeedsAccess]),
- * the sole attention state (spec: sync-status-screen).
+ * the sole attention state (spec: sync-status).
  */
 @Serializable
 sealed interface SyncHealth {
@@ -386,7 +386,7 @@ sealed interface SyncHealth {
 
     /**
      * The event has not begun: the membership's `startsAt` is still in the future (capability
-     * `sync-status-screen`). Carries the start instant so the screen can say *when* — a bare "not started
+     * `sync-status`). Carries the start instant so the screen can say *when* — a bare "not started
      * yet" invites exactly the question it fails to answer.
      *
      * It ranks **below** [NeedsAccess] and **above** the snapshot-derived values. Permission outranks it
@@ -394,7 +394,7 @@ sealed interface SyncHealth {
      * begins or they will miss the start; burying it behind a clock line would ambush them with a
      * permission prompt at the very moment the party starts. Everything below is outranked because, before
      * the start, nothing of the member's **can** be syncing — the cutoff floor guarantees it (capability
-     * `photo-selection-policy`), so a snapshot-derived line would say nothing true this does not say better.
+     * `photo-sharing`), so a snapshot-derived line would say nothing true this does not say better.
      *
      * Unlike every other health, this one depends on **wall-clock time** rather than the ledger, so no
      * snapshot emission retires it — `StatusContainerHost` runs a foreground tick for that.
@@ -404,7 +404,7 @@ sealed interface SyncHealth {
 
     /**
      * Uploads are blocked: this device holds no valid attestation token, and the attempt to obtain one
-     * **failed** (capability `device-attestation`).
+     * **failed** (capability `privacy-security`).
      *
      * **A user should essentially never see this**, and that is by construction rather than by hope. The
      * app renews at every wake — and *opening the app is a wake*, so the very act of looking at this screen
@@ -433,7 +433,7 @@ sealed interface SyncHealth {
 
     /**
      * Work remaining in at least one direction. Each arrow is shown by completeness and pulses by live
-     * activity (spec: sync-status-screen): [upload] from `synced < total` (shown) × `pending > 0` (pulse),
+     * activity (spec: sync-status): [upload] from `synced < total` (shown) × `pending > 0` (pulse),
      * [download] from `downloaded < total` (shown) × `inFlight > 0` (pulse).
      */
     @Serializable

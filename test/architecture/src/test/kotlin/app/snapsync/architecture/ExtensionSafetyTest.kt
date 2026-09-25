@@ -7,7 +7,7 @@ import kotlin.test.fail
 
 /**
  * **Extension-linked Kotlin references only permitted platform frameworks** (capability
- * `architecture-guards`; decision record: `establish-target-architecture`).
+ * `docs/architecture.md`; decision record: `establish-target-architecture`).
  *
  * Forcing proof this gate exists at all: **Kotlin/Native does not model `NS_EXTENSION_UNAVAILABLE`**
  * — cinterop ignores ObjC availability attributes, so `platform.UIKit.UIApplication.sharedApplication`

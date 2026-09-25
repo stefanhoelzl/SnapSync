@@ -21,7 +21,7 @@ class FakeAlbumManager(library: StateFlow<List<RawAsset>>) : AlbumManager {
     /**
      * Pre-existing albums the *user's other apps* made — title → the normalized assetIds inside them. The
      * honest fake reads this cell; [placeIn] is how the harness and the integration tests forge "this photo
-     * arrived via WhatsApp" without PhotoKit (capability `photo-selection-policy`).
+     * arrived via WhatsApp" without PhotoKit (capability `photo-sharing`).
      */
     private val userAlbums = MutableStateFlow<Map<String, Set<String>>>(emptyMap())
     private val honest: AlbumManager = inMemoryAlbumManager(library, userAlbums)

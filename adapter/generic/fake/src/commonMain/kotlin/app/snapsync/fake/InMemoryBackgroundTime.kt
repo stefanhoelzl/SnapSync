@@ -28,7 +28,7 @@ class HeldBackgroundTime internal constructor(val label: String, private val onE
  * their expiration handlers, which is all `UIApplication` keeps for them. [begin] adds an entry and [end] removes
  * that entry exactly once, so a world or a test observes what the process holds by reading the cell, and plays the
  * operating system by calling an entry's [HeldBackgroundTime.expire] — the lever lives with whoever owns the cell,
- * never on this double (capability `port-contracts`, `BackgroundTimeContract`).
+ * never on this double (`docs/architecture.md`, `BackgroundTimeContract`).
  */
 internal class InMemoryBackgroundTime(private val held: MutableStateFlow<List<HeldBackgroundTime>>) : BackgroundTime {
     override fun begin(label: String, onExpiry: () -> Unit): BackgroundTimeHold {

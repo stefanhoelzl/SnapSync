@@ -3,7 +3,7 @@ import { assert, assertEquals } from "@std/assert";
 import { createApp, type FetchLike } from "../src/app.ts";
 import { readConfig } from "../src/config.ts";
 
-// The landing page (capability `marketing-site`, built by the `site/` Astro module) is served by PROXYING
+// The landing page (capability `web-site`, built by the `site/` Astro module) is served by PROXYING
 // the storage `site/` prefix (capability `web-site`). These tests exercise the PROXY mechanics — routing,
 // streaming, cache policy, and the faithful 404/502 outcome — against an injected fake storage, so they
 // stay offline (no network). The page's CONTENT (Privacy/Terms, screenshots, self-containment) is now the

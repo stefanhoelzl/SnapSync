@@ -5,7 +5,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * **ObjC boundaries contain every throw** (capability `module-architecture`, law "ObjC boundaries contain every
+ * **ObjC boundaries contain every throw** (`docs/architecture.md`, law "ObjC boundaries contain every
  * throw"; decision record `harden-seam-bug-classes`, D9).
  *
  * Two directions, one gate:

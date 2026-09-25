@@ -12,7 +12,7 @@ import app.snapsync.ports.LedgerStore
 import app.snapsync.ports.PhotoAccessStatusSource
 
 /**
- * Assemble one operator-initiated diagnostic dump (capability `diagnostic-logging`).
+ * Assemble one operator-initiated diagnostic dump (capability `privacy-security`).
  *
  * **Reads only.** Nothing here writes a ledger row, a download row, or a config; the whole feature is
  * a projection of state the app already holds, taken at the moment the operator confirms.
@@ -33,7 +33,7 @@ class CollectDiagnosticDump(
     /**
      * The upload facts at the moment of the dump — whether the extension is registrable, and the app uploader's
      * admission — as labelled strings the composition derives from answers it already computes (capability
-     * `diagnostic-logging`). Both uploaders may be active at once, so there is no single tier to name
+     * `privacy-security`). Both uploaders may be active at once, so there is no single tier to name
      * (decision record `changes/both-uploaders-active`).
      */
     private val uploadFacts: () -> Map<String, String>,

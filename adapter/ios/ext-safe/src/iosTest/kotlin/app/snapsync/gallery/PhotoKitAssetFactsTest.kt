@@ -10,7 +10,7 @@ import platform.Photos.PHAssetMediaSubtypePhotoScreenshot
 import platform.Photos.PHAssetMediaSubtypeVideoScreenRecording
 
 /**
- * The PhotoKit → neutral-facts interpretation (capability `gallery-status`).
+ * The PhotoKit → neutral-facts interpretation (capability `sync-status`).
  *
  * This runs on the **simulator**, not the JVM, and that is the whole point: it asserts the pinned
  * constants against the real SDK symbols. The equivalent `commonTest` would compare one copy of a

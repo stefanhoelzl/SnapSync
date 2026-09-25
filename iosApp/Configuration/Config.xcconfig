@@ -1,7 +1,7 @@
 // Shared build configuration consumed by iosApp.xcodeproj.
 //
 // EVERY VALUE THAT VARIES now lives in the GENERATED fragment included below, rendered from the resolved
-// deployment by `scripts/resolve-deployment.py` (capability `deployment-configuration`):
+// deployment by `scripts/resolve-deployment.py` (`docs/deployment.md`):
 //
 //   APP_NAME  BUNDLE_ID  TEAM_ID          — Apple identity
 //   ASSOCIATED_DOMAIN                      — the device-facing domain, one value shared with the app's
@@ -18,7 +18,7 @@
 // The one exception is a value WE do not read. `assetsd` validates the background-upload registration
 // insert against `BackgroundUploadURLBase` in a bundle's OWN `Info.plist`, and can see no resource we
 // bundle; without it `setUploadJobExtensionEnabled(true)` fails with a bare `PHPhotosErrorDomain -1` and
-// nothing uploads on that tier (measured on device 2026-08-28; capability `ios-photokit-upload`). An
+// nothing uploads on that tier (measured on device 2026-08-28; capability `background-upload`). An
 // `Info.plist` substitution can only read a build setting, and a build setting cannot hold a URL — hence
 // `UPLOAD_SCHEME` and `UPLOAD_HOST` below: a scheme enum and a bare host, neither able to contain `//`,
 // which the two `Info.plist`s compose into `$(UPLOAD_SCHEME)://$(UPLOAD_HOST)/api/v1` where `//` is data.
@@ -88,7 +88,7 @@
 // MARKETING_VERSION back into project.pbxproj, shadowing this value again.
 MARKETING_VERSION = 0.4
 
-// Entitlements (path relative to SRCROOT = iosApp/): keychain-sharing (event-link), the App
+// Entitlements (path relative to SRCROOT = iosApp/): keychain-sharing (join-event), the App
 // Group group.app.snapsync (the background-upload extension's shared ledger container), and the
 // associated domain for the event link (from the fragment above). Keychain groups need no portal
 // registration; the App Group and Associated Domains DO — each must be registered in the Developer

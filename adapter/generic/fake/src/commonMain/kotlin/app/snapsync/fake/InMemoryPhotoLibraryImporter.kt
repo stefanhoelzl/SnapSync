@@ -13,7 +13,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
  * How the in-memory photo library answers one import's change: the stand-in for `performChanges`, whose
- * change block, commit and completion are three separate platform events (capability `photo-download`).
+ * change block, commit and completion are three separate platform events (capability `receiving-photos`).
  *
  * It is the library's behaviour, so it is a constructor collaborator of the honest importer rather than a
  * lever on it. The default is the ordinary answer: the change runs, it lands, and the completion reports
@@ -73,7 +73,7 @@ internal class InMemoryPhotoLibraryImporter(
         val suffix = if (attempt == 1) "" else "-$attempt"
         val createdLocalId = normalizeAssetId("imported-${ref.sourceDeviceId}-${ref.sourceAssetId}$suffix")
         // `false` means the row was pruned out from under this import, so the asset about to be created would
-        // have no suppression handle at all (capability `download-store`). The real adapter logs an error; an
+        // have no suppression handle at all (capability `receiving-photos`). The real adapter logs an error; an
         // in-memory library raises, because a test that reaches this has hit the defect the prune's
         // `protecting` set exists to prevent.
         check(recordCreatedLocalId(ref, createdLocalId)) {

@@ -47,7 +47,7 @@ class MembershipRefreshTest {
 
     // A NON-legacy membership: it already carries the event window, so a details refresh only touches the
     // name (backfill is a no-op). This keeps the name-convergence assertions isolated from the backfill.
-    // The name is a STALE one, never empty: a membership always carries a name (capability `event-link`),
+    // The name is a STALE one, never empty: a membership always carries a name (capability `join-event`),
     // so convergence is what this fixture exercises.
     private val joined = EventConfig(
         eventId = "E",
@@ -88,7 +88,7 @@ class MembershipRefreshTest {
         val config = FakeConfig(joined)
         refresh(config).refresh("E", found("Anna's Birthday"))
         // The WHOLE config is saved with only `name` replaced — the cutoff (and every other
-        // membership field) rides along untouched (capability `photo-selection-policy`).
+        // membership field) rides along untouched (capability `photo-sharing`).
         assertEquals(joined.copy(name = "Anna's Birthday"), config.saved)
     }
 
@@ -125,7 +125,7 @@ class MembershipRefreshTest {
 
     @Test
     fun `a legacy config missing the window is backfilled from the fetched details`() = runTest {
-        // capability `upload-state-reconciliation`: endsAt/maxPhotoDate/deletesAt all absent (joined
+        // capability `photo-sharing`: endsAt/maxPhotoDate/deletesAt all absent (joined
         // before the window and the deadline existed) → filled from the fetched details, in the SAME save
         // as any name refresh.
         val legacy = EventConfig(eventId = "E", name = "Anna's Birthday", minPhotoDate = CUTOFF, startsAt = STARTS, maxPhotoDate = CEILING)
@@ -160,7 +160,7 @@ class MembershipRefreshTest {
         assertNull(config.saved) // name unchanged AND endsAt already present → nothing to write
     }
 
-    // ── The two-witness absence verdict (capability `leave-event`) ───────────────────────────────────
+    // ── The two-witness absence verdict (capability `manage-membership`) ───────────────────────────────────
     //
     // ABSENT is the ONE destructive answer, and reaching it needs a definitive `NotFound` AND the
     // membership's own persisted deadline to have passed. One witness is OFFLINE, so no backend fault can

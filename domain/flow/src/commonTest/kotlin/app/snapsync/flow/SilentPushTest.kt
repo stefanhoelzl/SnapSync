@@ -6,7 +6,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * The silent-push flow: the push's own work — the download arm — and nothing else (capability `push-registration`,
+ * The silent-push flow: the push's own work — the download arm — and nothing else (capability `receiving-photos`,
  * "Silent-push receive seam"). The upload arm is not a receiver any more: its work is the tail's, which the inbound
  * port's implementation requests after this flow returns, for the active event only. [SilentPush.run] takes the raw
  * `userInfo` (the field extraction is the tested `model/` codec).

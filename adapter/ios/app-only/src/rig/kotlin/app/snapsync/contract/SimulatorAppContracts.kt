@@ -86,13 +86,13 @@ import platform.Photos.PHAssetResourceTypePhoto
 import platform.Photos.PHPhotoLibrary
 
 /**
- * The simulator app's live bindings of the photo-library contracts (capability `port-contracts`), and the
+ * The simulator app's live bindings of the photo-library contracts (`docs/architecture.md`), and the
  * registry the `ios-contracts` job runs on every push — which also runs the hand-off contracts, whose bindings
  * live in `HandoffContracts.kt` and need no photo grant.
  *
  * This is where PhotoKit runs under a real full grant: the app bundle is the only simulator process
  * `applesimutils` can grant photo access to. Every binding declares the `GRANTED` states only, and every entry
- * refuses its whole run in any other process or grant (capability `port-contracts`, "An authorization the process
+ * refuses its whole run in any other process or grant (`docs/architecture.md`, "An authorization the process
  * cannot give itself is a precondition of the run"). The no-grant states run on the simulator's test executable
  * instead.
  *

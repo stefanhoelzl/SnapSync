@@ -34,7 +34,7 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * The all-real journeys (capability `testing-architecture`, "All-real journeys are the contracts' safety net"): the
+ * The all-real journeys (`docs/testing.md`, "All-real journeys are the contracts' safety net"): the
  * rig build of the iOS app on ONE simulator — member A — and the real backend served locally, driven through the
  * same typed client every integration test speaks. The second member is played by this test itself, over the
  * backend's public HTTP surface only, with real JPEG bytes ([Member]): to the backend it is a device, to A a foreign

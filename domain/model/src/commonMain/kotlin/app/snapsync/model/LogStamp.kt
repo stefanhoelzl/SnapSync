@@ -2,7 +2,7 @@ package app.snapsync.model
 
 /**
  * The device-log line stamp for [epochMillis]: `yyyy-MM-dd HH:mm:ss.SSS +0000`, in UTC (capability
- * `diagnostic-logging`, "Log timestamps carry millisecond resolution").
+ * `privacy-security`, "Log timestamps carry millisecond resolution").
  *
  * This is the EXACT text the iOS file writer used to build from `NSDate.description` (a fixed
  * `yyyy-MM-dd HH:mm:ss +0000`, UTC, seconds only) with the milliseconds spliced in ahead of the zone —

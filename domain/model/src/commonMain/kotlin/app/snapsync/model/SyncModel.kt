@@ -1,7 +1,7 @@
 package app.snapsync.model
 
 /**
- * The unit the sync domain transports (spec: sync-engine). Constructed by the platform, never by
+ * The unit the sync domain transports (spec: background-upload). Constructed by the platform, never by
  * the engine — the sync domain knows only resources; assets live in a later layer above it.
  *
  * [filename] is pure identity: a plain string whose layout belongs to the caller (the future
@@ -31,7 +31,7 @@ class Resource(
 )
 
 /**
- * What the platform observed (spec: sync-engine). The platform drives: it reports observations at
+ * What the platform observed (spec: background-upload). The platform drives: it reports observations at
  * its own pace and acts on the [SyncDecision]s the engine answers with. Events are observations,
  * never bookkeeping — reports may arrive more than once (at-least-once delivery is structural:
  * the platform cannot commit its actions and its reports atomically), and the engine's ledger
@@ -70,7 +70,7 @@ sealed interface UploadError {
 
 /**
  * A complete, executable upload: PUT the resource's bytes to [url] with exactly [headers] — the one unit of
- * platform work (spec: sync-engine), carried by the [SyncDecision.Work] arms. Minted by an
+ * platform work (spec: background-upload), carried by the [SyncDecision.Work] arms. Minted by an
  * [UploadRequestProvider]. Carries its [resource] whole so a failed upload can round-trip through
  * [SyncEvent.UploadFailed] and be re-minted without any engine state.
  *

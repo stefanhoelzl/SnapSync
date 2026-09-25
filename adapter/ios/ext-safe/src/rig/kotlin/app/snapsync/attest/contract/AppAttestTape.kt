@@ -17,14 +17,14 @@ import platform.Foundation.NSLocalizedDescriptionKey
 import platform.Foundation.create
 
 /*
- * App Attest's operating-system boundary as TEXT (capability `port-contracts`, "Hosts CI cannot reach are
+ * App Attest's operating-system boundary as TEXT (`docs/architecture.md`, "Hosts CI cannot reach are
  * recorded at the operating-system boundary and replayed on every build").
  *
  * Compiled into this module's `iosMain` only under `-Psnapsync.rig=true` (where the device records), and into
  * `iosTest` otherwise (where CI replays) — one file, so the recorder and the replayer cannot spell a call
  * differently.
  *
- * WHAT IS MASKED, AND WHY (capability `port-contracts`, "Replay matches exactly, in order, over deterministic
+ * WHAT IS MASKED, AND WHY (`docs/architecture.md`, "Replay matches exactly, in order, over deterministic
  * clauses"). Recordings are committed to a public repository, so App Attest's credential material never enters
  * one: an attestation carries Apple's certificate chain and a receipt for this device's key, and an assertion is
  * a signature by it. Both are recorded as [MASKED]. A `keyId` the service minted is masked too, in the answer

@@ -1,7 +1,7 @@
 import kotlinx.kover.gradle.plugin.dsl.CoverageUnit
 import kotlinx.kover.gradle.plugin.dsl.GroupingEntityType
 
-// `:adapter:generic:app` (spec `module-architecture`): platform-free technology implementations of the
+// `:adapter:generic:app` (`docs/architecture.md`): platform-free technology implementations of the
 // `:domain` ports — the Ktor HTTP clients and the SQLDelight stores. Named for the technology,
 // placed by linkage: generic code links everywhere (JVM harness, app, extension), so this module
 // carries no platform source set. The `generic` prefix is the platform axis (a pure path grouping,
@@ -15,12 +15,12 @@ plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.sqldelight)
-    // Coverage measurement (capability `coverage-bounds`). Applied here rather than in a
+    // Coverage measurement (`docs/architecture.md`). Applied here rather than in a
     // `subprojects {}` block so the instrumented set is readable per module.
     alias(libs.plugins.kover)
 }
 
-// Coverage (capability `coverage-bounds`). The SQLDelight-GENERATED sources are excluded: nobody
+// Coverage (`docs/architecture.md`). The SQLDelight-GENERATED sources are excluded: nobody
 // writes or reviews them, so bounding them ratchets a code generator's output rather than this
 // module's tests. Effect is small and honest either way - the module measures 76.4% with them and
 // 77.5% without.
@@ -50,7 +50,7 @@ kotlin {
             implementation(libs.sqldelight.runtime)
             implementation(libs.kotlinx.serialization.json)
             // Kermit for the stores' own diagnostics (the backfill sweep's positive on-device
-            // evidence — sync-ledger). :domain keeps kermit `implementation`, so it is not inherited.
+            // evidence — photo-sharing). :domain keeps kermit `implementation`, so it is not inherited.
             implementation(libs.kermit)
             // TimeZone appears in SystemTimeZone's override of the `TimeZoneSource` port (step 9).
             implementation(libs.kotlinx.datetime)
@@ -60,7 +60,7 @@ kotlin {
             implementation(libs.coroutines.test)
             implementation(libs.ktor.client.mock)
         }
-        // The SQLDelight stores' contract bindings (capability `port-contracts`). The contracts live in
+        // The SQLDelight stores' contract bindings (`docs/architecture.md`). The contracts live in
         // `:test:contracts`' commonMain. Per-target source sets rather than `iosTest` because each target
         // brings its own SQLDelight driver (JDBC on the JVM, native on the simulator).
         val jvmTest by getting {
@@ -91,10 +91,10 @@ tasks.withType<org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeSimu
     }
 }
 
-// ---- The live edge (capability `port-contracts`; the backend contracts' `Live` bindings) --------------
+// ---- The live edge (`docs/architecture.md`; the backend contracts' `Live` bindings) --------------
 //
 // `jvmTest` launches the REAL backend (`api/src/dev/serve.ts --ephemeral`) through `LiveEdge`, so `deno` on
-// PATH is a prerequisite of `./gradlew build` (capability `testing-architecture`, "The canonical check and its
+// PATH is a prerequisite of `./gradlew build` (`docs/testing.md`, "The canonical check and its
 // Kotlin/Native half"). Two things here keep that honest:
 //
 //  - the `local` deployment is RESOLVED first (`:test:edge`'s task): `serve.ts` imports the generated
@@ -116,7 +116,7 @@ tasks.named<Test>("jvmTest") {
 // blocks may not share srcDirs). Generated packages are unchanged from their pre-migration homes —
 // they are not runtime identity (the pinned db *filenames* are).
 //
-// ---- The schema snapshots (capability `sync-ledger`) --------------------------------------------
+// ---- The schema snapshots (capability `photo-sharing`) --------------------------------------------
 //
 // `schemaOutputDirectory` is what makes `verifyCommonMain<Db>Migration` MEAN anything. That task is
 // registered either way and runs inside `./gradlew build` either way — but it verifies by applying
@@ -156,7 +156,7 @@ sqldelight {
     }
 }
 
-// ---- Coverage bounds (capability `coverage-bounds`) ---------------------------------------------
+// ---- Coverage bounds (`docs/architecture.md`) ---------------------------------------------
 //
 // A FLOOR on this module's coverage, seeded at what the tree measured when the gate landed, and
 // permitted to move in one direction only: UP. The destination is full coverage, and these numbers
@@ -165,7 +165,7 @@ sqldelight {
 // RAISING a bound is ordinary work - do it in the change that makes it true. LOWERING one requires a
 // stated forcing proof in that change's description, naming what makes the loss of coverage
 // unavoidable. Nothing checks this: it is a ratchet carried by this paragraph and by review, and it
-// is deliberately NOT a proof. `complexity-budgets` carries the same contract at the opposite
+// is deliberately NOT a proof. `docs/architecture.md` carries the same contract at the opposite
 // polarity - a ceiling that may only fall.
 //
 // TWO RULES, because they fail on different things. The aggregate catches a broad slide that leaves
@@ -179,7 +179,7 @@ sqldelight {
 // Bounds are whole percentages (`minValue` is an `Int`), so each concedes up to 1% of its scope.
 //
 // THE PACKAGE FLOOR NOW GATES. It was seeded at 0 because four production classes carried no test
-// at all - `HttpAttestClient` (the client behind capability `device-attestation`, 500 instructions),
+// at all - `HttpAttestClient` (the client behind capability `privacy-security`, 500 instructions),
 // `HttpEnrollment`, `HttpDeviceFilesSource` and `SystemTime`. All four are covered now, so the floor
 // rose 0 -> 75 in one step and the rule guards every package in the module. 75 is `app.snapsync.join`,
 // and what is left there is generated: the decode-only DTOs' synthetic constructors, which no test can

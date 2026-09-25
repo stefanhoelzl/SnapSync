@@ -18,7 +18,7 @@ import platform.Foundation.NSFileManager
 import kotlin.test.Test
 
 /**
- * The App-Group staged bytes, live (capability `port-contracts`). Readable states get a fresh container
+ * The App-Group staged bytes, live (`docs/architecture.md`). Readable states get a fresh container
  * directory; [StagedBytesState.UNAVAILABLE] is the adapter's DEFAULT container, which this unentitled
  * executable's App-Group lookup answers with `nil`.
  */

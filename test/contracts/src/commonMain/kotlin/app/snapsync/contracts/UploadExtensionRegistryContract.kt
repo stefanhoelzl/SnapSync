@@ -25,7 +25,7 @@ enum class UploadExtensionRegistryState {
 }
 
 /**
- * What every [UploadExtensionRegistry] promises (capability `port-contracts` — this list IS the specification
+ * What every [UploadExtensionRegistry] promises (`docs/architecture.md` — this list IS the specification
  * of the port's obligations): a write reports what the platform did, classified by `registrationOutcome`, and a
  * successful write is what the OS then reads back.
  *

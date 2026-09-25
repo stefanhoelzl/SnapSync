@@ -35,7 +35,7 @@ import platform.darwin.dispatch_get_main_queue
 import platform.darwin.dispatch_sync
 
 /*
- * The hand-off ports' contract bindings on iOS (capability `port-contracts`): `LinkOpenerContract` recorded on a
+ * The hand-off ports' contract bindings on iOS (`docs/architecture.md`): `LinkOpenerContract` recorded on a
  * device and replayed on every CI build, both hand-off contracts run live in the simulator app.
  *
  * Compiled into this module's `iosMain` only under `-Psnapsync.rig=true`, and into `iosTest` otherwise — one
@@ -96,7 +96,7 @@ fun appDeviceContracts(refusal: () -> String? = { null }): List<InAppContract> =
 
 /**
  * Runs the registration contract under the grant this process holds — the grant is a precondition of the run,
- * not something a binding can enter (capability `port-contracts`, "An authorization the process cannot give
+ * not something a binding can enter (`docs/architecture.md`, "An authorization the process cannot give
  * itself is a precondition of the run") — so a person switches it in Settings between the two recordings.
  */
 private fun recordRegistry(refusal: () -> String?): String = when (val grant = currentPhotoPermission()) {

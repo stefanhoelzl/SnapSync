@@ -66,7 +66,7 @@ class SyncEngineTest {
 
         engine.handle(SyncEvent.UploadStarted(upload.request))
         // REQUESTED is the one write that carries the destination: it is the moment an upload for this
-        // row exists at the platform, so it is when the address becomes true (capability `sync-ledger`).
+        // row exists at the platform, so it is when the address becomes true (capability `photo-sharing`).
         assertEquals(
             resource.toLedgerRow(
                 LedgerState.REQUESTED,

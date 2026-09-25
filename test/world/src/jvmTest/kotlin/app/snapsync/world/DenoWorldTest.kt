@@ -8,11 +8,11 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /**
- * The world over the REAL backend (capability `harness-world-model`): bytes, joins and unions reach the Deno
+ * The world over the REAL backend (`docs/testing.md`): bytes, joins and unions reach the Deno
  * `api/`, and what only the mini-edge models is refused rather than faked.
  *
  * JVM-only because the backend runs as a local process, which a Kotlin/Native test executable cannot launch
- * (capability `testing-architecture`, "Every test runs on every target its module declares" — the genuine
+ * (`docs/testing.md`, "Every test runs on every target its module declares" — the genuine
  * forgo). Nothing is lost on the simulator: the world code under test is `commonMain`, and its mini-edge half
  * runs there in `NeutralBackendWorldTest`.
  */

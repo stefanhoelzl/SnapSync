@@ -13,7 +13,7 @@ import kotlin.test.assertTrue
 
 /**
  * [PushTailGuard] — the upload arm's active-event guard, now deciding whether a push's wake joins the tail (capability
- * `push-registration`, "Silent-push receive seam"). The limited-grant read discipline and the direction gate are not
+ * `receiving-photos`, "Silent-push receive seam"). The limited-grant read discipline and the direction gate are not
  * this guard's: they are the tail's units' own, and tested there.
  */
 class PushTailGuardTest {

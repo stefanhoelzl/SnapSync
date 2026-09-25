@@ -14,7 +14,7 @@ import platform.Foundation.NSUUID
  * files, as `$(AppIdentifierPrefix)app.snapsync.shared`).
  *
  * Named explicitly rather than left to the platform's default, and pinned as a runtime-identity
- * literal (capability `architecture-guards`) because it is part of the item's identity: re-valuing it
+ * literal (`docs/architecture.md`) because it is part of the item's identity: re-valuing it
  * strands every device in the field exactly as re-valuing the service or account would, and it does so
  * **silently** — the item is simply written to a different real group, where every read still
  * succeeds and merely returns a different item.
@@ -52,7 +52,7 @@ enum class DeviceIdentityRole {
 }
 
 /**
- * The stable per-install device identity (capability `device-identity`): persists the device id as a
+ * The stable per-install device identity (capability `photo-sharing`): persists the device id as a
  * single Keychain generic-password item (encrypted at rest, survives app updates, process death,
  * **and reinstall**). [deviceId] is a UUID minted **once** and persisted. It is the
  * `/files/devices/<deviceId>/` byte-store partition and the per-event device-manifest key
@@ -62,7 +62,7 @@ enum class DeviceIdentityRole {
  * lambda.
  *
  * All Keychain access goes through this module — the only one permitted to touch `SecItem*`
- * (capability `architecture-guards`) — which is what buys the properties this logic used to get wrong:
+ * (`docs/architecture.md`) — which is what buys the properties this logic used to get wrong:
  *
  * - **Background-readable.** The item is stored `kSecAttrAccessibleAfterFirstUnlock`, so the id
  *   resolves during a background wake on a **locked** device. Under the old iOS default
@@ -117,7 +117,7 @@ class KeychainDeviceIdentity(
     /**
      * The production identity: the compilation target's stores and a random UUID. A secondary constructor
      * rather than defaults on the primary one, so no constructor parameter carries a function-typed default
-     * (law "Function-typed parameters have no defaults in production", capability `module-architecture`).
+     * (law "Function-typed parameters have no defaults in production", `docs/architecture.md`).
      */
     constructor(role: DeviceIdentityRole) :
         this(role, deviceIdPrimaryStore(), deviceIdLegacyStore(), { NSUUID().UUIDString() })
@@ -156,7 +156,7 @@ class KeychainDeviceIdentity(
     companion object {
         /**
          * The one construction site of the device-id item, so the pinned (service, account) pair
-         * stays single-sited (capability `architecture-guards`) even though the identity is now read
+         * stays single-sited (`docs/architecture.md`) even though the identity is now read
          * through two views of it — the addressed one and the unscoped legacy one. [accessGroup]
          * `null` means "search wherever this process is entitled to look".
          *

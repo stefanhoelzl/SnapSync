@@ -41,7 +41,7 @@ import kotlinx.coroutines.CoroutineScope
  * The app's uploader — the app-process analogue of `UploadExtensionRoot`, driving the shared `:domain`
  * `feature/upload` `UploadCycle` over a background `URLSession` instead of the PhotoKit OS-job queue. Assembled
  * lazily by [SnapSyncRoot] on every OS: its units are the composed core's tail units ② and ③, and its cycle's entry
- * gate withholds when the app may not create (capability `upload-lifecycle`). On iOS ≥26.1 under a full grant it runs
+ * gate withholds when the app may not create (capability `background-upload`). On iOS ≥26.1 under a full grant it runs
  * **beside** the extension, both writing the one App-Group ledger — every write a guarded single transaction, and an
  * overlap a duplicate upload of the same object, never a loss (decision record `changes/both-uploaders-active`).
  *
@@ -64,16 +64,16 @@ class UrlSessionUploadController(
     private val log: Logger,
     // The shared Darwin HTTP client — used for the in-cycle device-manifest PUT and the event-notify POST.
     private val httpClient: HttpClient,
-    // The device token (capability `device-attestation`), read PER REQUEST so a background renewal is
+    // The device token (capability `privacy-security`), read PER REQUEST so a background renewal is
     // picked up on the next retry. This tier uploads from the APP process, which is also the process that
     // can attest — so unlike the extension, it is never stuck with a token it cannot refresh.
     private val token: suspend () -> String?,
     private val freshToken: suspend () -> String?,
-    // Echo-suppression (capability `photo-download`): the `assetId`s of foreign assets this device
+    // Echo-suppression (capability `receiving-photos`): the `assetId`s of foreign assets this device
     // downloaded + imported. Read once per cycle so an imported foreign asset is never re-uploaded (the
     // echo) — essential now that this tier writes the device manifest and so appears in the union.
     private val suppression: SuppressionSource,
-    // Denylisted-album membership (capability `photo-selection-policy`) — the SAME port the PhotoKit tier
+    // Denylisted-album membership (capability `photo-sharing`) — the SAME port the PhotoKit tier
     // gets. Both tiers funnel through the shared UploadCycle, so the policy must be supplied on both or the
     // 18–26.0 tier would happily upload the WhatsApp album the ≥26.1 tier refuses. Takes the cutoff, which
     // scopes the album member fetch.
@@ -97,7 +97,7 @@ class UrlSessionUploadController(
         const val HEARTBEAT_TASK_IDENTIFIER = "app.snapsync.upload.heartbeat"
     }
 
-    // The app process's discovery binding: the walk behind the walk memo (capability `sync-ledger`, "An unchanged
+    // The app process's discovery binding: the walk behind the walk memo (capability `photo-sharing`, "An unchanged
     // library is answered from the walk memo"). The extension binds its walk bare — it never holds a memo.
     private val discovery = appUploadDiscovery(
         walk = IosDiscovery(log, PhotoKitCandidateSource()),
@@ -124,16 +124,16 @@ class UrlSessionUploadController(
     )
 
     /**
-     * The cycle — assembled by the SHARED composition `uploadCore` (spec `module-architecture`, "One
+     * The cycle — assembled by the SHARED composition `uploadCore` (`docs/architecture.md`, "One
      * shared composition"): this controller supplies only its ports and platform reads; the
-     * entry-gate translation, the device-manifest producer (capability `device-manifest` — on this tier the APP is
+     * entry-gate translation, the device-manifest producer (capability `photo-sharing` — on this tier the APP is
      * its sole writer, and without the PUT this tier's uploads would never appear in the event union), and the engine
      * wiring are the same code the ≥26.1 extension and the world harness run.
      *
      * The entry gate reads the **three-state** `ConfigReader`, never `configSource.config` — that
      * port's own KDoc says it *"cannot express unreadable"*, and this tier once read it anyway: a
      * failed Keychain read arrived as `null`, which this tier treated as a leave of a device that never
-     * left (capability `event-link`).
+     * left (capability `join-event`).
      *
      * Long-lived (one per process, like this controller): each unit re-reads the membership, so a join, leave, or
      * switch takes effect on the next unit.
@@ -159,7 +159,7 @@ class UrlSessionUploadController(
                 manifestStore = IosDeviceManifestStore(),
                 manifestPublisher = HttpManifestPublisher(httpClient, host),
                 suppression = suppression,
-                // Denylisted-album membership (capability `photo-selection-policy`), scoped by the
+                // Denylisted-album membership (capability `photo-sharing`), scoped by the
                 // cutoff — the SAME wrapper the own-device status total gets (admit-on-doubt).
                 albumManager = albumManager,
                 albumLookupFailure = AlbumLookupFailure.AdmitOnDoubt,
@@ -171,7 +171,7 @@ class UrlSessionUploadController(
         )
     }
 
-    // ---- the AppUploadMechanism seam (capability `ios-url-session-upload`) ----
+    // ---- the AppUploadMechanism seam (capability `background-upload`) ----
     // Which unit runs when, and how a stop reaches it, are the core's tail runner's. This class supplies only this
     // tier's MECHANISM.
 
@@ -204,10 +204,10 @@ class UrlSessionUploadController(
 class AppGraphReads(
     // Current photo access — the grant read the cycle's entry gate records.
     val photoAccess: PhotoAccessStatusSource,
-    // What upload discovery may read (capability `limited-photo-access`): the walk-vs-snapshot decision. A
+    // What upload discovery may read (capability `photo-access`): the walk-vs-snapshot decision. A
     // composition that forgot it would walk the library under a partial grant, where the selection IS the scope.
     val selectionScope: () -> SelectionScope,
-    // Whether this engine's cycle may create now (capability `upload-lifecycle`): any usable grant, unless the rig
+    // Whether this engine's cycle may create now (capability `background-upload`): any usable grant, unless the rig
     // switched the app off. Every unit reaches this engine; its entry gate withholds otherwise.
     val admission: () -> UploadAdmission,
 )

@@ -21,7 +21,7 @@ private const val POSIX_ENOENT: Long = 2L
  * the cycle uploads nothing and the screen returns to the setup gate, where a re-scan would reload the
  * ledger — with no error raised anywhere.
  * So **widening the whitelist below is a change to the leave decision**, not an error-handling
- * tidy-up: it is a behaviour change to `event-link` / `upload-state-reconciliation` and belongs in a
+ * tidy-up: it is a behaviour change to `join-event` / `photo-sharing` and belongs in a
  * spec delta.
  *
  * Grounded on Apple's data-protection contract: reading a **protected** file before first unlock
@@ -37,11 +37,11 @@ private const val POSIX_ENOENT: Long = 2L
  * measured 2026-09-23) reads as unreadable. The locked-since-boot read itself — 257 over `EPERM`, per
  * Apple's data-protection contract — is reachable by no host a test can run on (the simulator implements
  * no data protection, and the rig drives only an unlocked app), so it is not a contract clause: this
- * paragraph is where that belief lives, with its evidence (capability `port-contracts`).
+ * paragraph is where that belief lives, with its evidence (`docs/architecture.md`).
  *
  * **Why it lives here and not in `model/`.** Its inputs are an `NSError` domain and code — a
  * platform encoding, not a platform-independent fact — so translating them is an adapter's job
- * (spec `module-architecture`). It sat in `model/` to be exercised on both targets, but a JVM run
+ * (`docs/architecture.md`). It sat in `model/` to be exercised on both targets, but a JVM run
  * could only assert integer literals against themselves; here the test can name
  * `NSFileReadNoSuchFileError` and fail if Apple ever moves it.
  *

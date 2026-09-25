@@ -13,7 +13,7 @@ import kotlin.test.assertTrue
  *
  * `destinationPath` is the field this change added, and the reason the enumeration is worth writing out
  * rather than trusting: it is the one the OS-driven tier matches a returned upload job against
- * (capability `sync-ledger`).
+ * (capability `photo-sharing`).
  */
 class LedgerEntryEqualityTest {
 

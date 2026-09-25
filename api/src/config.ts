@@ -1,4 +1,4 @@
-// Runtime configuration, resolved from the DEPLOYMENT (capability `deployment-configuration`) and shipped
+// Runtime configuration, resolved from the DEPLOYMENT (`docs/deployment.md`) and shipped
 // in the same artifact as the code that reads it. Only genuine SECRETS come from the Edge Script
 // environment, and the deployment names the variable — never the value.
 //
@@ -20,7 +20,7 @@
 // DEPLOYMENT WINS: the environment is never consulted for a non-secret.
 //
 // Do NOT "fix" this by giving CI the account API key. That trades a config bug for a blast radius over
-// every user's photos and our DNS. See openspec/specs/backend-deployment.
+// every user's photos and our DNS. See docs/deployment.md.
 //
 // The per-value rationale that used to live here now lives in the resolver's KEY INVENTORY
 // (`scripts/resolve-deployment.py`), because these values are read by four toolchains and a comment in
@@ -67,12 +67,12 @@ export type Config = {
   /** APNs push topic — the `apns-topic` header. DERIVED from the bundle id. */
   apnsTopic: string;
   /**
-   * Signs and verifies the device bearer token (capability `device-attestation`). A SECRET: read from the
+   * Signs and verifies the device bearer token (capability `privacy-security`). A SECRET: read from the
    * environment, never in source.
    */
   attestTokenKey: string;
   /**
-   * libSQL/HTTP URL of this deployment's relational store (capability `database`). A SECRET in the same
+   * libSQL/HTTP URL of this deployment's relational store (`docs/architecture.md`). A SECRET in the same
    * sense the storage `AccessKey` is: it addresses a live store holding real events, and EACH DEPLOYMENT
    * ADDRESSES ITS OWN — a dev run that wrote or deleted rows in the production store would corrupt live
    * events, and unlike the storage zone there is no per-object blast radius to fall back on.
@@ -90,14 +90,14 @@ export type Config = {
    */
   attestAppId: string;
   /**
-   * The event link's domain — the host this script serves the AASA for (capability `event-link`). The
+   * The event link's domain — the host this script serves the AASA for (capability `join-event`). The
    * SAME resolved value the app's `LINK_ORIGIN`, the `applinks:` entitlement and the compile-time upload
    * host are generated from, so agreement is constructed rather than asserted.
    */
   linkDomain: string;
   /** Where `GET /join` redirects someone who opened an event link without the app. */
   appStoreUrl: string;
-  /** Maximum devices ever enrolled per event (capability `event-limits`). */
+  /** Maximum devices ever enrolled per event (capability `event-lifetime`). */
   eventCapacity: number;
   /** Largest permitted `endsAt - startsAt`, in seconds; also the absent-`endsAt` fallback. */
   eventWindowMaxSeconds: number;
@@ -105,7 +105,7 @@ export type Config = {
   eventLifetimeSeconds: number;
   /**
    * Whether this bundle serves a MAINTENANCE WINDOW: every route under `/api/` answers `503` while the
-   * root routes keep serving (capability `backend-deployment`).
+   * root routes keep serving (`docs/deployment.md`).
    *
    * Deployment-resolved and therefore BAKED, like every other non-secret — and here that is forced
    * rather than merely consistent. CI holds only the script-scoped deploy key and cannot write the Edge
@@ -117,7 +117,7 @@ export type Config = {
    */
   maintenance: boolean;
   /**
-   * The oldest app marketing version `/api/v2` will serve (capability `min-app-version`). Requests below
+   * The oldest app marketing version `/api/v2` will serve (capability `app-update-required`). Requests below
    * it are refused `426` with this value in the body, so a client can name the version to install.
    *
    * IN SOURCE, and deliberately not in the generated deployment or the store: raising it disables every
@@ -129,7 +129,7 @@ export type Config = {
 };
 
 /**
- * The oldest app marketing version `/api/v2` serves (capability `min-app-version`).
+ * The oldest app marketing version `/api/v2` serves (capability `app-update-required`).
  *
  * `0.4` is the first version whose client speaks v2 — the byte destination, the split join, the manifest
  * sub-resource and the identity-terms listing all move together, so a build below it cannot be served
@@ -250,7 +250,7 @@ export function readConfig(env: Record<string, string | undefined>): Config {
   const apnsPrivateKey = secret(d.apnsPrivateKey, env, missing, false);
   const attestTokenKey = secret(d.attestTokenKey, env, missing);
   // Validated with every other secret, so a deployment that cannot reach its store fails to BOOT rather
-  // than serving requests whose relational writes silently go nowhere (capability `backend-deployment`).
+  // than serving requests whose relational writes silently go nowhere (`docs/deployment.md`).
   const databaseUrl = secret(d.databaseUrl, env, missing);
   const databaseToken = secret(d.databaseToken, env, missing);
 
@@ -269,7 +269,7 @@ export function readConfig(env: Record<string, string | undefined>): Config {
 }
 
 /**
- * Build a Config for the nightly sweep (capability `scheduled-cleanup`), which runs OUTSIDE the Edge
+ * Build a Config for the nightly sweep (capability `event-lifetime`), which runs OUTSIDE the Edge
  * Script and holds exactly ONE secret — the storage `AccessKey`, to read and delete storage.
  *
  * The sweep makes NO request to the Edge Script, so it needs no credential authorizing one: it no longer
@@ -291,7 +291,7 @@ export function readSweepConfig(env: Record<string, string | undefined>): Config
     apnsPrivateKey: "", // unused by the sweep (the edge holds the real APNs key)
     attestTokenKey: "", // unused by the sweep (the edge holds the real token-signing key)
     // The sweep DOES hold these: it marks from the database and deletes from storage, and its deletion
-    // decision runs against the primary inside an interactive transaction (capability `database`).
+    // decision runs against the primary inside an interactive transaction (`docs/architecture.md`).
     databaseUrl,
     databaseToken,
   };
@@ -299,10 +299,10 @@ export function readSweepConfig(env: Record<string, string | undefined>): Config
 
 /**
  * Build a Config for DATABASE-ONLY tooling — the schema migration deploy.yml's `api` job runs before it
- * publishes (capability `database`).
+ * publishes (`docs/architecture.md`).
  *
  * It exists because `readSweepConfig` demands EVERY secret, storage access key included, and the deploy
- * workflow deliberately holds none: `backend-deployment` requires that key to be an Edge Script
+ * workflow deliberately holds none: `docs/deployment.md` requires that key to be an Edge Script
  * environment value and not a CI secret, because bunny issues no scoped keys and that one also owns the
  * zone holding every user's photos. Resolving the sweep's config there therefore fails at startup on a
  * credential the step must never have — which is exactly what it did, blocking a deploy on a key it was

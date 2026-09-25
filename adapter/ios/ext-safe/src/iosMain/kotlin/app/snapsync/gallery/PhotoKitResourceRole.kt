@@ -22,7 +22,7 @@ import platform.Photos.PHAssetResourceTypeVideo
  * `when` over the bare integers `1L, 2L, 3L, 9L`, where it was invisible to every gate — an ABI
  * decoder written in primitives is indistinguishable from arithmetic — and where a second platform's
  * resource-type integers would have collided with Apple's rather than failing. Naming the constants
- * here makes the table check itself against the SDK (spec `module-architecture`).
+ * here makes the table check itself against the SDK (`docs/architecture.md`).
  */
 fun photoKitResourceRole(resourceType: PHAssetResourceType): ResourceRole? = when (resourceType) {
     PHAssetResourceTypePhoto,

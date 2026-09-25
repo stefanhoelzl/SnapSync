@@ -2,12 +2,12 @@ package app.snapsync.model
 
 /**
  * The assets a membership's [policy] **admits** among a set of ledger [rows] (capability
- * `photo-selection-policy`) — the one derivation both consumers of the ledger take: the device-manifest
+ * `photo-sharing`) — the one derivation both consumers of the ledger take: the device-manifest
  * projection ([projectDeviceManifest]), which declares what this device provides, and the upload cycle's
  * enqueue, which decides whose bytes leave.
  *
  * **A ledger row is not the admitted set.** It records that the policy admitted its asset *when the row
- * was written*, and a membership's policy changes under it (capability `reconfigure-membership`): a
+ * was written*, and a membership's policy changes under it (capability `manage-membership`): a
  * member who raises their cutoff leaves rows behind that the current policy excludes. Reading rows and
  * acting on them without asking is what the policy's *no consumer SHALL treat an upstream-filtered
  * structure as the admitted set* forbids — and it shipped once, as an uploader that kept sending the

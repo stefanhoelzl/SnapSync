@@ -36,8 +36,8 @@ interface SelectionPlatform<F : Any, C : Any> {
 }
 
 /**
- * The ordering core of the partial-grant [PhotoSelectionChangeSource] (capability `limited-photo-access`; law
- * "State reached from OS callbacks is confined", capability `module-architecture`; decision record
+ * The ordering core of the partial-grant [PhotoSelectionChangeSource] (capability `photo-access`; law
+ * "State reached from OS callbacks is confined", `docs/architecture.md`; decision record
  * `harden-seam-bug-classes`, D12).
  *
  * Observes only while the grant is [PermissionStatus.LIMITED]: a baseline snapshot when observation begins, and one

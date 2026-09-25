@@ -7,7 +7,7 @@ import app.snapsync.feature.membership.MembershipRefresh
 import app.snapsync.feature.status.StatusCountsPoller
 
 /**
- * The **foreground** OS-callback trigger flow (spec `module-architecture`, "Rules in features, order
+ * The **foreground** OS-callback trigger flow (`docs/architecture.md`, "Rules in features, order
  * in flows"; capability `sync-status` liveness). The scene returned to the foreground: re-read the
  * persisted membership (below), renew a stale attestation token, start the foreground status poll,
  * then — each on its own launch, so a slow one never blocks the others — settle in-flight uploads whose
@@ -67,7 +67,7 @@ class Foreground(
     /** Re-read the persisted membership into the config StateFlow — the port touch, injected. */
     private val reloadConfig: suspend () -> Unit,
     /** Settle the `REQUESTED` rows whose bytes the backend's per-device listing already stores (capability
-     *  `upload-state-reconciliation`) — the listing fetch and the guarded write. The upload side's only own work. */
+     *  `photo-sharing`) — the listing fetch and the guarded write. The upload side's only own work. */
     private val settleStored: suspend () -> Unit,
     /** Re-read the own-device total + ledger counts + the foreign-download line. */
     private val refreshStatus: suspend () -> Unit,
@@ -85,7 +85,7 @@ class Foreground(
         // Membership first: every reader below (reconcile, the title refresh) acts on the StateFlow this
         // repairs.
         reloadConfig()
-        // Wake point (capability `device-attestation`): renew the token if stale. Also covers launch.
+        // Wake point (capability `privacy-security`): renew the token if stale. Also covers launch.
         // BEFORE the network-bearing work below, not after it: this used to be a fire-and-forget launch
         // fired alongside them, so a refresh and the fetches it exists to authorize raced, and a fetch
         // could go out carrying the very token being replaced. `refresh()` short-circuits on a
@@ -99,16 +99,16 @@ class Foreground(
         // lines: `coroutineScope` children escape this trigger's synchronous span exactly as the
         // former `scope.launch` bodies did. A child that THROWS cancels none of its siblings.
         fanOut("Foreground") {
-            // Not behind anything (capability `upload-state-reconciliation`, "Foreground settles in-flight rows
+            // Not behind anything (capability `photo-sharing`, "Foreground settles in-flight rows
             // the backend already stores"): bytes can land long before the OS acknowledges their job, and this
             // exists to correct the status the member is looking at now. Its one write is the guarded terminal
             // write the platform's callbacks already make beside a running tail, so it needs no ordering with it.
             child("settleStored") { settleStored() }
             child("refreshStatus") { refreshStatus() }
-            // Foreground discovery (capability `photo-download`): pick up foreign photos, plan and enqueue. It
+            // Foreground discovery (capability `receiving-photos`): pick up foreign photos, plan and enqueue. It
             // imports nothing — the staged imports are the tail's first unit, requested after this flow returns.
             child("reconcile") { activeEventId()?.let { downloadController.reconcile(it) } }
-            // The staged-byte backlog reclaim (capability `download-store`): free the files of assets
+            // The staged-byte backlog reclaim (capability `receiving-photos`): free the files of assets
             // whose import is confirmed but whose resource rows predate per-asset release, so a received
             // photo is not stored twice — as a library asset and as a staged file — forever.
             //

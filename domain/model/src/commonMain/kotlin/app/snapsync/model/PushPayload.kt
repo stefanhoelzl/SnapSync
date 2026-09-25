@@ -1,8 +1,8 @@
 package app.snapsync.model
 
 /**
- * The silent-push payload's event id (capability `push-registration`). The Swift shell forwards the
- * OS-delivered `userInfo` dictionary **whole** (the transcriber law, spec `module-architecture`
+ * The silent-push payload's event id (capability `receiving-photos`). The Swift shell forwards the
+ * OS-delivered `userInfo` dictionary **whole** (the transcriber law, `docs/architecture.md`
  * "Shells are wiring only" — migration step 12; the field extraction used to be a `guard` in Swift,
  * where nothing could test it); this codec is the one place that knows the payload's shape.
  *
@@ -10,7 +10,7 @@ package app.snapsync.model
  * completion is still released (a malformed push must never strand the handler).
  *
  * Absence: null means "this push names no event". The collapse is deliberate and **safe for
- * every cause it absorbs** (spec `module-architecture`,
+ * every cause it absorbs** (`docs/architecture.md`,
  * "Absence is never silent"): an absent `eventId` key and a present-but-not-a-`String` one are both
  * "this push names no event", and both lead to the identical outcome — no fan-out, handler released.
  * There is no third cause hiding here: the payload is an already-materialised dictionary, so reading

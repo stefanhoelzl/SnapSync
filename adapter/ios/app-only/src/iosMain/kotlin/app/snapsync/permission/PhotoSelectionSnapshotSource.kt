@@ -18,17 +18,23 @@ import platform.Photos.PHFetchOptions
 import platform.Photos.PHFetchResult
 
 /**
- * The iOS [PhotoSelectionChangeSource] (capability `limited-photo-access`): observes the photo
+ * The iOS [PhotoSelectionChangeSource] (capability `photo-access`): observes the photo
  * library **only while permission is [PermissionStatus.LIMITED]** and emits the full current
  * selection as resources — once when observation begins (the cold-launch baseline read; opening the
  * app is the user action that makes it in-flow) and after each change ([PhotoSelectionObserver] fires
  * for the in-app picker, Settings-side edits, and iCloud sync alike).
  *
- * Every read here is **in-flow** (capability `limited-photo-access`): the baseline is one scope query per
+ * Every read here is **in-flow** (capability `photo-access`): the baseline is one scope query per
  * observation start, and each change reads the **pushed** `fetchResultAfterChanges` (never a fresh
  * scope query). Change details are consumed as whole snapshots, not itemized deltas — bulk changes
  * arrive non-incremental (measured), so the reliable path is reload-and-let-the-ledger-dedup, which
  * is exactly the port's emission contract.
+ *
+ * What the limited-access prompt does around these reads is measured per release, never a rule (SE2, with the
+ * suppression key in both bundles): reads of an unchanged library and the app's own creations raised none on
+ * iOS 26.5.2 and 26.6.2; a camera photo OUTSIDE the selection leaked a queued prompt on 26.5/26.5.2 and none on
+ * 26.6.2 (11 reads, 4 launch-and-kill cycles, n = 1). No clause can observe a system alert. See
+ * changes/archive/2026-09-21-correct-limited-access-alert-rule.
  *
  * The per-asset resource mapping is delegated to the shared enumerator seam
  * ([PhotoLibrary.resources] — the ext-safe `PhotoLibraryResourceEnumerator` in production), bounded

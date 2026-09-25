@@ -13,7 +13,7 @@ import kotlin.test.Test
 
 /**
  * The simulator target's registration substitute held to the same clauses the device's recording is
- * (capability `port-contracts`): the double every simulator scenario registers through is licensed by the
+ * (`docs/architecture.md`): the double every simulator scenario registers through is licensed by the
  * contract its real implementation passes on a device, or this fails naming the clause it answers differently.
  *
  * Each clause gets a fresh [SimulatorRecord] in its state — never the process-wide one the rig's levers reach.

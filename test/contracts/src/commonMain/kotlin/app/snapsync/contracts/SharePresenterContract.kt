@@ -11,7 +11,7 @@ enum class SharePresenterState {
 }
 
 /**
- * What every [SharePresenter] promises (capability `port-contracts` — this list IS the specification of
+ * What every [SharePresenter] promises (`docs/architecture.md` — this list IS the specification of
  * the port's obligations).
  *
  * One clause, because one state is reachable. The adapter's other answer — no key window, so nothing to

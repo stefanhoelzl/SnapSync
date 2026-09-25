@@ -23,7 +23,7 @@ import platform.Photos.PHAsset
  * full-enumeration library walk ([discover]) and the id-scoped resolve of ledger keys ([resourcesFor]).
  * Each composition root binds one instance as its cycle's discovery; no
  * transport holds it, because only the *job lifecycle* (create/fetch/retry/acknowledge) differs between the
- * tiers. The app's root binds it behind the walk memo (`appUploadDiscovery`, capability `sync-ledger`), which
+ * tiers. The app's root binds it behind the walk memo (`appUploadDiscovery`, capability `photo-sharing`), which
  * answers an unchanged library without calling [discover]; the extension binds it bare and walks every time.
  *
  * Both reads are wrapped in the same `platform.discoverResources` / `platform.resourcesFor` invocation lines
@@ -40,7 +40,7 @@ class IosDiscovery(
     private val source: PhotoKitCandidateSource,
     /**
      * The process's photo grant, read at each walk. A walk is **authoritative for deletion only under a full
-     * grant** (capability `port-contracts`, `UploadDiscoveryContract`): without one PhotoKit returns an empty
+     * grant** (`docs/architecture.md`, `UploadDiscoveryContract`): without one PhotoKit returns an empty
      * fetch, and under a partial one only the selection. Neither is evidence that anything left the library,
      * and the cycle deletes the in-window rows of every asset an authoritative walk did not return.
      *
@@ -50,24 +50,24 @@ class IosDiscovery(
     private val grant: () -> PermissionStatus,
 ) : UploadDiscovery {
 
-    /** Production: the process's own photo grant (a secondary constructor, not a default — capability `module-architecture`). */
+    /** Production: the process's own photo grant (a secondary constructor, not a default — `docs/architecture.md`). */
     constructor(log: Logger, source: PhotoKitCandidateSource) : this(log, source, ::currentPhotoPermission)
     /**
      * Every in-scope candidate asset — a **full enumeration**, narrowed by [policy] at the fetch. There is no
-     * change-token cursor (capability `ios-photokit-upload`, "In-extension discovery by full enumeration"):
+     * change-token cursor (capability `background-upload`, "In-extension discovery by full enumeration"):
      * each walk reports what IS, so the cycle recomputes presence every time rather than remembering absence.
      * Identical for both upload tiers.
      *
      * The answer is **authoritative for deletion** ([Discovery.fullEnumeration]) only when the library was
      * read. `PhotoKitCandidateSource` always reports a readable library — it is the raw walk, and whether a
-     * read is permitted at all is decided above it (capability `gallery-status`) — so the other branch is
+     * read is permitted at all is decided above it (capability `sync-status`) — so the other branch is
      * unreachable today, and it still states the right answer rather than a convenient one: no candidates
      * and NOT authoritative, so an un-enumerated cycle costs an idle pass, never a photo's rows.
      *
      * **The whole body hops to [photoKitReadLane], and that hop buys CONCURRENCY, not safety.**
      * Keeping this off the main thread is no longer this seam's job: the app's composition scope is a
      * dedicated non-UI lane, so every adapter is off-main whether it hops or not (spec
-     * `module-architecture`, law "Dispatcher lanes are fixed by the composition"). What the hop still
+     * `docs/architecture.md`, law "Dispatcher lanes are fixed by the composition"). What the hop still
      * buys is that this walk does not occupy that **serial** lane while it runs, so other app-scope work
      * proceeds alongside it. A lane pinned at USER_INITIATED rather than `Dispatchers.Default`, because
      * the calling thread's QoS propagates over every XPC below: a `Default` worker in a background wake
@@ -91,7 +91,7 @@ class IosDiscovery(
      * leak the thread.
      */
     override suspend fun discover(policy: SelectionPolicy): Discovery {
-        // Both QoS classes on the one line (capability `diagnostic-logging`): the caller's, and the lane's the
+        // Both QoS classes on the one line (capability `privacy-security`): the caller's, and the lane's the
         // PhotoKit calls were actually issued at — the class that propagates into `assetsd` (see [photoKitReadLane]).
         var readQos = "?"
         return log.invocation(
@@ -113,11 +113,14 @@ class IosDiscovery(
 
     /**
      * Resolve ledger [keys] to uploadable resources, **by identifier** — the id-scoped read that lets a
-     * producer enqueue from the ledger instead of from a walk (capability `sync-ledger`).
+     * producer enqueue from the ledger instead of from a walk (capability `photo-sharing`).
      *
      * A `fetchAssetsWithLocalIdentifiers` + [PhotoKitCandidateSource.candidatesFrom] pair, pointed at a key
      * set. The cost is one fetch plus the per-asset resource read for exactly the assets asked for; the walk it
-     * replaces is one round-trip per asset in the whole in-scope library.
+     * replaces is one round-trip per asset in the whole in-scope library. Measured (rig probe, SE2, iOS 26.6,
+     * 2026-09-22): ~4.5 ms per request plus ~3.45 ms per photo; a full walk measured 6.1–7.2 s for 224 candidates
+     * on an iPhone11,2 / iOS 18.7.9 and 145 ms for 1084 on an idle iPhone12,8 / iOS 26.6. No clause bounds either.
+     * See changes/archive/2026-09-22-selection-is-the-walk.
      *
      * Partial by contract: a key whose asset has left the library simply does not come back. The filter
      * at the end is what makes that true — an asset resolves to all of its resources, and only the keys

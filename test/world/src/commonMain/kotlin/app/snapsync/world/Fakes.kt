@@ -45,7 +45,7 @@ class MutablePhotoAccessStatusSource(
 
 /**
  * The world's gallery: the operator rigging around the honest `:adapter:generic:fake` [inMemoryCandidateSource]
- * (spec `architecture-guards`, "The fake-honesty gate": the fake exposes only its port; the settable
+ * (`docs/architecture.md`, "The fake-honesty gate": the fake exposes only its port; the settable
  * state cell and the unscoped [current] read live HERE, in the world wrapper). [source] is what the
  * compositions consume; [set]/[current] are what the operator (and [FakePhotoLibraryImporter]) drive.
  */
@@ -68,7 +68,7 @@ class WorldGallery {
      *
      * The lever THROWS rather than answering `NotReadable`, and the distinction is the point: a platform
      * walk that fails is a failure, caught by whoever owns the count, while `NotReadable` is a
-     * successful read with no answer to give (capability `gallery-status`). Modelling the failure as an
+     * successful read with no answer to give (capability `sync-status`). Modelling the failure as an
      * absence here would collapse the two states the world exists to keep apart.
      */
     val source: CandidateSource = object : CandidateSource {
@@ -128,7 +128,7 @@ class RecordingDownloadStore(private val inner: DownloadStore) : DownloadStore b
 
 /**
  * The world's app-driven [AppUploadMechanism]: its units are inert, because **the operator is the engine** — nothing
- * uploads on its own in the world (spec `full-stack-harness`), and a cycle happens only when the operator invokes it.
+ * uploads on its own in the world (`docs/testing.md`), and a cycle happens only when the operator invokes it.
  * The composed tail runner still drives these units from every wake the world's OS entries deliver, so what is counted
  * here is what the runner asked of the uploader: a test reads which units a wake reached, in the real order.
  *

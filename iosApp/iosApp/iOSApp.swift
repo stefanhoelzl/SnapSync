@@ -3,7 +3,7 @@ import SnapSyncKit
 import UIKit
 import BackgroundTasks
 
-// The app delegate is a PURE TRANSCRIBER (spec `module-architecture`, "Shells are wiring only";
+// The app delegate is a PURE TRANSCRIBER (`docs/architecture.md`, "Shells are wiring only";
 // migration step 12): every OS callback forwards its raw, ObjC-visible input WHOLE to Kotlin, which
 // holds every decision in tested code. No `if`/`guard`/`switch` lives in this file — the pin table in
 // SwiftShellGuardTest holds that at zero. The hooks:
@@ -12,7 +12,7 @@ import BackgroundTasks
 //      registration before launch finishes; the identifier MUST be in Info.plist
 //      BGTaskSchedulerPermittedIdentifiers), and calls SnapSyncRoot.onLaunch, which asks for an APNs
 //      token (at every cold start, and again at every foreground entry from its didBecomeActive observer —
-//      capability `push-registration`) and installs the Kotlin-side NSNotificationCenter lifecycle observers
+//      capability `receiving-photos`) and installs the Kotlin-side NSNotificationCenter lifecycle observers
 //      (didBecomeActive/willResignActive — the scenePhase `if` that used to live in the App body is
 //      a decision, so it moved to Kotlin with the OS notifications as its input).
 //   2. `handleEventsForBackgroundURLSession` — the OS relaunches the app to finish background photo
@@ -20,14 +20,14 @@ import BackgroundTasks
 //      in the core's tail, under the app's own background time.
 //   3. remote notifications — the OS-delivered APNs token is forwarded as hex (an encoding, not a
 //      decision); an incoming silent push forwards its `userInfo` dictionary WHOLE — the `eventId`
-//      extraction is Kotlin's tested payload codec (capability `push-registration`).
+//      extraction is Kotlin's tested payload codec (capability `receiving-photos`).
 final class AppDelegate: NSObject, UIApplicationDelegate {
     // The app-driven upload heartbeat — the one background task: the grant of time whose work is the core's tail
     // (import staged downloads, top up the background URLSession queue, walk for new captures). The registration
     // forwards the OS's own `task.identifier`, never its literal: Kotlin routes it, so a copied block cannot hand one
     // task to another's handler. The OS's "time is up" is FORWARDED, never answered here: Kotlin holds the task's
     // completion and is the only one that completes it — at once, stopping the tail as it does (capability
-    // `ios-app-shell`).
+    // `sync-status`).
     func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
@@ -49,7 +49,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     }
 
     // Route scene callbacks to SnapSyncSceneDelegate — the ONLY way this app can receive an event link
-    // (capability `event-link`). A SwiftUI `WindowGroup` IS a scene, so per Apple ("Supporting universal
+    // (capability `join-event`). A SwiftUI `WindowGroup` IS a scene, so per Apple ("Supporting universal
     // links in your app") the system delivers the link's NSUserActivity to the SCENE delegate, and in a
     // SwiftUI app only `didFinishLaunchingWithOptions` and `applicationWillTerminate` are called on THIS
     // delegate — so an `application(_:continue:restorationHandler:)` here would never fire. It was tried
@@ -107,7 +107,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     }
 }
 
-// THE event-link entry point (capability `event-link`). iOS delivers a Universal Link as an
+// THE event-link entry point (capability `join-event`). iOS delivers a Universal Link as an
 // NSUserActivity of type NSUserActivityTypeBrowsingWeb, and because a SwiftUI `WindowGroup` IS a scene,
 // it arrives HERE — at the scene delegate — and nowhere else. Apple, "Supporting universal links in
 // your app": *if your app has opted into Scenes, and your app is not running, the system delivers the
@@ -176,7 +176,7 @@ final class SnapSyncSceneDelegate: NSObject, UIWindowSceneDelegate {
     // nothing at all — and "the delegate is installed and iOS handed it nothing" was byte-identical
     // to "the delegate was never installed". SwiftShellGuardTest's forwarding rule cannot catch
     // that: the call is lexically present, it merely never runs. SNAPSYNC-25 is what that
-    // ambiguity costs (spec `module-architecture`, "Absence is never silent").
+    // ambiguity costs (`docs/architecture.md`, "Absence is never silent").
     func scene(
         _ scene: UIScene,
         willConnectTo session: UISceneSession,
@@ -277,7 +277,7 @@ struct iOSApp: App {
                 // banner alike), and this modifier fired for only 2 of 4 deliveries on 26.6 (build 687).
                 // The union delivered in every configuration tested, so both are declared and the
                 // duplicates they produce are absorbed by the gate, which acts on a repeated link once
-                // (capability `event-link`). That is why "delivery exactly once" is no longer a property
+                // (capability `join-event`). That is why "delivery exactly once" is no longer a property
                 // we hope the hooks have.
                 //
                 // Reported independently with our exact signature — SwiftUI + custom scene delegate,

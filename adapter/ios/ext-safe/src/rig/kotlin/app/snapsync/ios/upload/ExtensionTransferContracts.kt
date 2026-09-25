@@ -51,7 +51,7 @@ import platform.Photos.PHAssetResource
 import platform.Photos.PHFetchOptions
 
 /*
- * `BackgroundTransferContract`'s PhotoKit bindings (capability `port-contracts`): the real `IosPhotoKitUploadPlatform`
+ * `BackgroundTransferContract`'s PhotoKit bindings (`docs/architecture.md`): the real `IosPhotoKitUploadPlatform`
  * recorded INSIDE the upload extension on a device — the process production calls the job API from — and replayed on
  * every CI build on the simulator's test executable.
  *

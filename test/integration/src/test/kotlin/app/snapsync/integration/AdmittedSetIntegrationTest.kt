@@ -9,7 +9,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * **One admitted set, over the real stack** (capability `photo-selection-policy`).
+ * **One admitted set, over the real stack** (capability `photo-sharing`).
  *
  * The unit tests assert the property over one policy value. This asserts it over the composed core the device
  * shells actually run — the same `snapSyncApp`/`uploadCore`, the real `UploadCycle`, the real status source, the

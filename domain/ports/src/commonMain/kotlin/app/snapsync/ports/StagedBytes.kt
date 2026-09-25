@@ -1,7 +1,7 @@
 package app.snapsync.ports
 
 /**
- * Releases the downloaded bytes staged for a foreign asset (capability `download-store`).
+ * Releases the downloaded bytes staged for a foreign asset (capability `receiving-photos`).
  *
  * Nothing released them before this port existed, so every photo a device received was stored twice —
  * once as the library asset, once as its staged file — permanently, in a location the OS never reclaims.
@@ -30,7 +30,7 @@ interface StagedBytes {
      *
      * This was `AppPorts.downloadStagingRoot: () -> String`, a function-typed field the shell filled with
      * an inline App-Group container lookup — a platform read handed straight to the core past the port
-     * boundary (spec `module-architecture`, "Ports are the I/O boundary named for the need"). Its type
+     * boundary (`docs/architecture.md`, "Ports are the I/O boundary named for the need"). Its type
      * said nothing: `() -> String` is exactly the type of `deviceId`, which returns a value the
      * composition already holds. Only a port makes the difference legible.
      *
@@ -59,7 +59,7 @@ interface StagedBytes {
      * decides where staging lives, what may be reclaimed from it, and what is still in it, so the three
      * can never disagree about a directory.
      *
-     * Why the adjudicator needs it (capability `photo-download`): the photo library answers about
+     * Why the adjudicator needs it (capability `receiving-photos`): the photo library answers about
      * **committed** state, so it answers *absent* about an asset whose creating transaction is still
      * open — and a commit outlives the process that opened it. The staged bytes are the second,
      * independent oracle. The library takes a resource's file when it ingests it, which it does only as
@@ -82,7 +82,7 @@ interface StagedBytes {
          * [stagingRoot] **throws** rather than answering, and that asymmetry is the point: "release
          * nothing" is a safe no-op, but "stage into a directory nobody chose" is not — it would write
          * every downloaded photo somewhere the release side does not know about, silently and
-         * permanently (spec `module-architecture`, "Absence is never silent"). Unreachable in practice:
+         * permanently (`docs/architecture.md`, "Absence is never silent"). Unreachable in practice:
          * `AppPorts.stagedBytes` is a required input precisely so no composition that downloads can
          * arrive here.
          */

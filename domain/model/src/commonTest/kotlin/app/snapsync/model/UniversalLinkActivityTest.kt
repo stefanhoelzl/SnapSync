@@ -5,13 +5,13 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 
 /**
- * The event-link filter over a delivered activity (capability `event-link`; migration step 12). The
+ * The event-link filter over a delivered activity (capability `join-event`; migration step 12). The
  * Swift shell forwards every delivered activity whole; only a web-link activity with a URL is an
  * event-link candidate, and the URL passes through **verbatim** — the fragment carries the whole
  * payload, so any trimming here would empty every invite.
  *
  * Since `absence-is-never-silent` the filter answers with a **named outcome** rather than `String?`
- * (spec `module-architecture`, "Absence is never silent"): the two non-forwarding cases were the
+ * (`docs/architecture.md`, "Absence is never silent"): the two non-forwarding cases were the
  * silence that made Bugsink `SNAPSYNC-3` undiagnosable, so each is asserted here by name — a
  * regression to a nullable answer cannot compile against these tests.
  *

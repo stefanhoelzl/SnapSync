@@ -13,7 +13,7 @@ const val HANDOFF_ANSWER_MILLIS: Long = 10_000
  * A clause body runs inside `runTest`, whose virtual clock skips an idle wait at once — so a plain
  * `withTimeout` there would expire before a platform callback on the main queue could possibly arrive.
  * Moving off the test scheduler makes the bound a real one, and [WaitExpired] makes its expiry read
- * `NotWithin` rather than `Failed` (capability `port-contracts`, "Outcomes are explicit and none is silent").
+ * `NotWithin` rather than `Failed` (`docs/architecture.md`, "Outcomes are explicit and none is silent").
  */
 suspend fun <T> withinRealTime(millis: Long, block: suspend () -> T): T =
     withContext(Dispatchers.Default) { withTimeoutOrNull(millis) { block() } } ?: throw WaitExpired(millis)

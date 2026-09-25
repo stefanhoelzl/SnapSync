@@ -9,7 +9,7 @@
 // literal and local rather than sharing them with `v2.test.ts`. Only machinery is shared (see
 // `support/harness.ts`). Duplication between the version files is intentional.
 //
-// The whole API is gated on a device token (capability `device-attestation`), so every request in this
+// The whole API is gated on a device token (capability `privacy-security`), so every request in this
 // file needs one; `createApp` from the harness pins the clock and attaches one. The GATE ITSELF is tested
 // against the real, unwrapped app in attest.test.ts (an unauthenticated request must be refused). Both
 // halves are needed: this file proves the gate does not break the routes; that one proves it is there.
@@ -52,7 +52,7 @@ const DEVLIST_PATH = `/api/v1/files/devices/${D}`;
 const MANIFEST_PATH = `/api/v1/events/${E}/devices/${D}`;
 const UNION_PATH = `/api/v1/events/${E}/files`;
 
-/** One v1 manifest body — the wire format (capability `device-manifest`). */
+/** One v1 manifest body — the wire format (capability `photo-sharing`). */
 function manifest(
   assets: { assetId: string; creationDate: string; resources: Record<string, unknown>[] }[],
 ) {
@@ -246,7 +246,7 @@ Deno.test("manifest publish → enrolls the device and records its assets, 201",
 });
 
 Deno.test("manifest publish → ignores a manifest version entirely: no compare, no write", async () => {
-  // The manifest version orders v2 only (capability `api-endpoints`); v1 is frozen. A v1 body carrying
+  // The manifest version orders v2 only (`docs/architecture.md`); v1 is frozen. A v1 body carrying
   // a `version` is handled exactly as one without, an older one is not refused, and the column is never
   // written.
   const db = await storeWithEvent();
@@ -403,7 +403,7 @@ Deno.test("manifest publish → non-UUID event or device → 400", async () => {
   db.close();
 });
 
-// ── Capacity (capability `event-limits`) ───────────────────────────────────────────────────────────
+// ── Capacity (capability `event-lifetime`) ───────────────────────────────────────────────────────────
 
 Deno.test("capacity → a NEW device at capacity → 409, nothing written", async () => {
   const db = await storeWithEvent({ capacity: 1 });
@@ -451,7 +451,7 @@ Deno.test("capacity → leaving frees NO slot, and a rejoin reuses the departed 
 
 Deno.test("capacity → concurrent first enrollments do NOT overshoot", async () => {
   // The old read-then-write gate admitted every racer; the conditional statement admits exactly the
-  // remaining capacity. This is the property that let `event-limits`' accepted-overshoot caveat be
+  // remaining capacity. This is the property that let `event-lifetime`' accepted-overshoot caveat be
   // retired rather than carried forward.
   const db = await storeWithEvent({ capacity: 3 });
   const app = createApp({ config: CONFIG, db, fetch: recorder().fetchImpl });
@@ -678,7 +678,7 @@ Deno.test("GET /events/:id → 404 when the event does not exist, 400 on a non-U
 });
 
 Deno.test("GET /events/:id → a store failure is 502, never 404", async () => {
-  // The distinction is load-bearing outside this file: `leave-event`'s two-witness teardown acts on a
+  // The distinction is load-bearing outside this file: `manage-membership`'s two-witness teardown acts on a
   // 404, so a transient fault reported as absence would tear a live membership down.
   const broken: Db = {
     execute: () => Promise.reject(new Error("store down")),

@@ -7,7 +7,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertSame
 
 /**
- * One OS-driven `process()` invocation (`runProcessCycle`, capability `ios-photokit-upload`) never
+ * One OS-driven `process()` invocation (`runProcessCycle`, capability `background-upload`) never
  * throws: the extension root hands its result across the ObjC boundary, where an escaping throwable
  * aborts the process instead of failing the cycle. Every throw degrades to `FAILED`, reported through
  * the hook for where it happened; the requeue rule itself is `RequeueWhilePendingTest`'s.

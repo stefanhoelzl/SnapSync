@@ -18,14 +18,14 @@ const val LEDGER_APP_GROUP: String = "group.app.snapsync"
 /**
  * The App-Group `NSUserDefaults` key the retired join marker lived under. Nothing reads or writes it: the
  * upload cycle no longer detects membership changes, because a join loads the ledger itself (capability
- * `upload-state-reconciliation`). It survives only as the target of [removeOrphanedJoinMarker], and stays a
- * pinned runtime identity (capability `architecture-guards`) because a drifted literal would make that
+ * `photo-sharing`). It survives only as the target of [removeOrphanedJoinMarker], and stays a
+ * pinned runtime identity (`docs/architecture.md`) because a drifted literal would make that
  * removal a silent no-op.
  */
 private const val RETIRED_JOIN_MARKER_KEY: String = "rejoin.joinedEventId"
 
 /**
- * Remove the retired join marker's orphaned key from the App-Group defaults (capability `ios-app-shell`).
+ * Remove the retired join marker's orphaned key from the App-Group defaults (capability `sync-status`).
  * Called on every app process start; `removeObjectForKey` on an absent key is a no-op, so this keeps no
  * record of having run.
  *
@@ -55,7 +55,7 @@ private const val LEDGER_DB_NAME: String = "ledger.db"
  *
  * **[basePath] is a parameter, defaulting to the shared container.** Deciding *where* the container
  * lives is the composition's business, not this adapter's — the same category as deciding which
- * thread it runs on (spec `module-architecture`, law "Dispatcher lanes are fixed by the
+ * thread it runs on (`docs/architecture.md`, law "Dispatcher lanes are fixed by the
  * composition"). Both shells omit it and get the App Group, unchanged. What it buys is that the
  * plumbing below — the driver's `extendedConfig.basePath`, which is the one thing here that could
  * silently open a database somewhere else entirely — becomes reachable from a test, since a

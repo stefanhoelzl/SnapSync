@@ -12,8 +12,8 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 /**
- * The one HTTP client every device request goes through (capabilities `device-attestation`,
- * `diagnostic-logging`).
+ * The one HTTP client every device request goes through (capabilities `privacy-security`,
+ * `privacy-security`).
  *
  * Attaching the credential *here* rather than at each call site is the whole design: create, event
  * fetch, join/manifest, union, device config, leave, notify and the extension's reconcile listing all

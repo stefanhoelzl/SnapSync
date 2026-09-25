@@ -1,7 +1,7 @@
 package app.snapsync.contracts
 
 /**
- * How one clause ended against one binding (capability `port-contracts`, "Outcomes are explicit and none
+ * How one clause ended against one binding (`docs/architecture.md`, "Outcomes are explicit and none
  * is silent"). Every clause ends in exactly one of these.
  */
 sealed interface Outcome {

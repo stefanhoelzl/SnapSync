@@ -11,7 +11,7 @@ import kotlin.test.assertTrue
 
 /**
  * The control protocol's JVM host, driven the way any caller drives either host: through [RigClient] and nothing
- * else (capability `testing-architecture`, "One control protocol, served by two hosts").
+ * else (`docs/testing.md`, "One control protocol, served by two hosts").
  *
  * What this proves is the PROTOCOL's fidelity to the application — the routes, the compiler-generated state
  * encoding, the vocabulary's advertisement and refusals, the lanes entry points run on, the client — over both of
@@ -33,7 +33,7 @@ class JvmHostProtocolTest {
 
     /**
      * The host a test drives is the phone's: its status host observes the version refusal, which the JVM host once
-     * left out when it assembled its own (capability `module-architecture`, "One shared composition").
+     * left out when it assembled its own (`docs/architecture.md`, "One shared composition").
      */
     @Test
     fun a_refused_build_reaches_the_update_required_screen() = onHost { client ->

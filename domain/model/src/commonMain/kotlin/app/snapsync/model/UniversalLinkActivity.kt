@@ -3,11 +3,11 @@ package app.snapsync.model
 // The platform constant this filter used to compare against (`NSUserActivityTypeBrowsingWeb`) now
 // lives with the platform, in `:adapter:ios:app-only`'s `WebLinkActivity.kt`. The adapter answers the
 // platform-independent question — "was this delivery a web link?" — and the filter below decides what
-// that means, which is the split the port law asks for (spec `module-architecture`). The filter
-// itself is unchanged and still the tested `model/` codec's, as `architecture-guards` requires.
+// that means, which is the split the port law asks for (`docs/architecture.md`). The filter
+// itself is unchanged and still the tested `model/` codec's, as `docs/architecture.md` requires.
 
 /**
- * What became of a delivered `NSUserActivity` (capability `event-link`; spec `module-architecture`,
+ * What became of a delivered `NSUserActivity` (capability `join-event`; `docs/architecture.md`,
  * "Absence is never silent").
  *
  * This used to be `String?`, and that is the defect this type exists to remove: a **three**-state
@@ -51,7 +51,7 @@ sealed interface EventLinkDelivery {
 
 /**
  * The **enter-line parameters** for a delivered activity: what the platform handed us, recorded
- * before the filter tests any of it (spec `diagnostic-logging`). It lives here rather than at the
+ * before the filter tests any of it (spec `privacy-security`). It lives here rather than at the
  * entry point because the shell may hold no decision at all — even an elvis is one under the
  * complexity gate — and because these strings are part of the diagnostic contract, so they are
  * tested.
@@ -67,7 +67,7 @@ fun userActivityParams(activityType: String?, url: String?): String {
 }
 
 /**
- * The event-link filter over a delivered activity (capability `event-link`; migration step 12). The
+ * The event-link filter over a delivered activity (capability `join-event`; migration step 12). The
  * shell forwards the platform's answer to "is this a web link?" together with the raw
  * `activityType` and `webpageURL?.absoluteString`, and this decides — the browsing-web test used to
  * be a Swift `guard`, untestable by project rule.

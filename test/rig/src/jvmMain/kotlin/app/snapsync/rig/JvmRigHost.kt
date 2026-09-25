@@ -23,7 +23,7 @@ import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * The control channel's **JVM host** (capability `testing-architecture`, "One control protocol, served by two
+ * The control channel's **JVM host** (`docs/testing.md`, "One control protocol, served by two
  * hosts"): the unchanged [RigServer], over a [World] whose `core` is the real `AppCore` from the same
  * `snapSyncApp` the iOS shell calls.
  *
@@ -33,13 +33,13 @@ import kotlin.time.Duration.Companion.seconds
  * implementations the `/os` verbs invoke, and this host's classification of the shared vocabulary.
  *
  * The world is composed on a **serial, non-UI** lane, the structure the device shell uses and the full-stack
- * harness mirrors (capability `full-stack-harness`, "The harness composes the live core on the shipped lane
+ * harness mirrors (`docs/testing.md`, "The harness composes the live core on the shipped lane
  * structure"); the app root's entry points are invoked on that lane, as Swift invokes them on main.
  */
 class JvmRigHost private constructor(
     /**
      * The world behind the channel. `internal`, so this host's public surface names no world type: a protocol
-     * client reaches the world only through the protocol (capability `module-architecture`).
+     * client reaches the world only through the protocol (`docs/architecture.md`).
      */
     internal val world: World,
     /** The loopback port the server actually bound. */

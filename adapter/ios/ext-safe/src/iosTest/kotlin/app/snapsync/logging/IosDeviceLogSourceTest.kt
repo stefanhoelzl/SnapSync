@@ -13,7 +13,7 @@ import kotlin.test.assertTrue
 
 /**
  * The device log's read side — what a diagnostic dump actually sends (capability
- * `diagnostic-logging`).
+ * `privacy-security`).
  *
  * Two things here are silent when wrong, and both are asserted below. **Which file is which**: the
  * app's log and the extension's log are two different processes' accounts of the same minutes, and a

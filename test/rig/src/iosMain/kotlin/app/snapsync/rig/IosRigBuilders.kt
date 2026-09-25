@@ -53,7 +53,7 @@ fun deviceCommands(
     /** The app's OWN process-metric handler, so a synthetic report drives the path the OS drives. */
     handleReport: (ProcessMetricReport) -> Unit,
 ): Map<String, RigCommand> = uploadJobDeviceCommands() + mapOf(
-    // The development switch per uploader (capability `upload-lifecycle`). Reports the switch AND the
+    // The development switch per uploader (capability `background-upload`). Reports the switch AND the
     // registration fact it produces, because the extension is never registrable below 26.1 or without a full
     // grant, whatever the switch says.
     "uploaders" to uploadersCommand(
@@ -101,7 +101,7 @@ fun deviceCommands(
         }
     },
     // Drive a synthetic process-metric report through the app's OWN handler (capability
-    // `crash-reporting`). Real reports arrive on the OS's cadence — roughly daily, and only after a
+    // `privacy-security`). Real reports arrive on the OS's cadence — roughly daily, and only after a
     // period has closed — so without this the only way to exercise the three channels is to wait a
     // day. The report is an open key/value bag by design, so a synthetic one needs no MetricKit types
     // and this route stays honest: it feeds the same rule and the same channels the OS feeds.
@@ -181,7 +181,7 @@ private fun quoted(value: String?): String = value?.let { "\"${it.replace("\"", 
 
 /**
  * The precondition a contract run that rewrites the extension registration needs: **no membership**
- * (capability `port-contracts`). Re-registering wipes every in-flight upload job, and an automatic leave would
+ * (`docs/architecture.md`). Re-registering wipes every in-flight upload job, and an automatic leave would
  * destroy a real membership on a shared phone, so the run is refused while the screen shows one, naming the
  * reset the operator runs deliberately. `null` means proceed.
  */

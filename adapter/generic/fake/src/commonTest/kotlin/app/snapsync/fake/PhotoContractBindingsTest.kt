@@ -46,7 +46,7 @@ import kotlin.test.Test
 
 /**
  * The honest photo-library fakes, held to the contracts the PhotoKit adapters satisfy (capability
- * `port-contracts`). Where production composes a grant-aware layer over the library read, so do these
+ * `docs/architecture.md`). Where production composes a grant-aware layer over the library read, so do these
  * bindings, over the in-memory library instead of PhotoKit.
  */
 class PhotoContractBindingsTest {

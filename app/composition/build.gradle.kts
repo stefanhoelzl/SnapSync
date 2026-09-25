@@ -2,7 +2,7 @@ plugins {
     alias(libs.plugins.kotlin.multiplatform)
 }
 
-// The SHARED HOST COMPOSITION (spec `module-architecture`, "One shared composition"): `snapSyncHost` composes
+// The SHARED HOST COMPOSITION (`docs/architecture.md`, "One shared composition"): `snapSyncHost` composes
 // the core (`snapSyncApp`) AND the status host over it, with the host-assembly subscriptions. Every root that
 // runs the live app calls it — the iOS shell, and the world (so the control channel's JVM host, the inbound-port
 // contract fixtures and every test driving them) — so the host a test drives is the host the phone runs.

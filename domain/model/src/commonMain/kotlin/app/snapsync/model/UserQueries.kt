@@ -1,7 +1,7 @@
 package app.snapsync.model
 
 /**
- * The **user-query bundle** (spec `module-architecture`, "Queries cross a lane-gated door"): every read the
+ * The **user-query bundle** (`docs/architecture.md`, "Queries cross a lane-gated door"): every read the
  * status container invokes as a function rather than observes as a state flow.
  *
  * Seated beside [UserCommands] for the same reason — `model/` is the zone both `compose/` (which builds and
@@ -16,7 +16,7 @@ package app.snapsync.model
  * - [loadJoinDetails] — the join gate's details read (capability `join-event`): `GET /events/:id` mapped to
  *   a block / retry / ready outcome.
  * - [shareableCount] — how many of the member's own photos the range `[cutoff, until]` would share
- *   (capability `join-share-count`), or `null` when the grant permits no count. Purely local.
+ *   (capability `join-event`), or `null` when the grant permits no count. Purely local.
  */
 class UserQueries(
     val loadJoinDetails: suspend (eventId: String) -> JoinLoad,

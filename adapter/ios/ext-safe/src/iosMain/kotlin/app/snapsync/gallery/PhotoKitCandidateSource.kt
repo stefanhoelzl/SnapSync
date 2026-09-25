@@ -24,7 +24,7 @@ import platform.Photos.PHFetchResult
 import platform.UniformTypeIdentifiers.UTType
 
 /**
- * The PhotoKit-backed [CandidateSource] (capability `gallery-status`): the one seam through which the photo
+ * The PhotoKit-backed [CandidateSource] (capability `sync-status`): the one seam through which the photo
  * library is read for admission.
  *
  * It receives the membership's [SelectionPolicy] and translates the rules it can express into a
@@ -36,7 +36,7 @@ import platform.UniformTypeIdentifiers.UTType
  * read from plain in-memory `PHAsset` properties, and defers `PHAssetResource.assetResourcesForAsset` — a
  * *synchronous XPC* round-trip into `photolibraryd`'s `Photos.sqlite`, ~110 ms per asset on an SE2 — until
  * a consumer asks for that asset's resources. Because every selection rule decides on facts alone
- * (capability `photo-selection-policy`), a count pays nothing and an upload pays only for assets already
+ * (capability `photo-sharing`), a count pays nothing and an upload pays only for assets already
  * admitted. The seam this replaced read every fetched asset's resources up front and then discarded the
  * excluded ones.
  *
@@ -44,10 +44,10 @@ import platform.UniformTypeIdentifiers.UTType
  * `localIdentifier` at read time would be a second round-trip for something already in hand; holding the
  * object keeps the deferred read off the fetch path entirely. (Not an alert argument: no probe has seen a
  * read of an unchanged library raise iOS's limited-access prompt, which the app suppresses anyway —
- * capability `limited-photo-access`.)
+ * capability `photo-access`.)
  *
  * **Every read hops to [photoKitReadLane], for concurrency rather than for safety.** Off-main is the
- * composition's job now — the app scope is a dedicated non-UI lane (spec `module-architecture`, law
+ * composition's job now — the app scope is a dedicated non-UI lane (`docs/architecture.md`, law
  * "Dispatcher lanes are fixed by the composition") — so what this hop buys is that a resource read does
  * not hold that **serial** lane while it waits on `assetsd`. Its own pinned lane rather than
  * `Dispatchers.Default` because the calling thread's QoS propagates over the XPC into `assetsd`: a
@@ -57,7 +57,7 @@ import platform.UniformTypeIdentifiers.UTType
  * Blocking on main would still trip the 10 s scene-update watchdog (`0x8BADF00D`) — that is simply no
  * longer reachable from here.
  *
- * Held to `CandidateSourceContract` (capability `port-contracts`) through the grant-aware composition production
+ * Held to `CandidateSourceContract` (`docs/architecture.md`) through the grant-aware composition production
  * calls: on the simulator's test executable without a grant, and in the simulator app under a full one. The rule
  * translation is pinned by [PhotoKitCandidateSourceTest], and the pure mapping it feeds is unit-tested in
  * `commonTest`.
@@ -67,7 +67,7 @@ class PhotoKitCandidateSource(private val log: Logger = Logger.withTag("gallery"
 
     /**
      * Resource reads issued since the last walk — the number this whole seam exists to lower
-     * (capability `diagnostic-logging`).
+     * (capability `privacy-security`).
      *
      * Without it the saving is invisible on a device: a walk that reads every fetched asset's resources
      * and one that reads only the admitted ones differ in *nothing observable* except elapsed time, which
@@ -99,7 +99,7 @@ class PhotoKitCandidateSource(private val log: Logger = Logger.withTag("gallery"
      * Two callers need this, and both for the same reason: they already hold a `PHFetchResult` and must
      * not issue another fetch to reach its assets. The ledger-key resolve fetches by identifier (which
      * takes no predicate), and the `LIMITED` selection observer holds the baseline/change result
-     * whose re-fetch would repeat a read already paid for (capability `limited-photo-access`, whose read
+     * whose re-fetch would repeat a read already paid for (capability `photo-access`, whose read
      * discipline is about reading the right source under a partial grant — not about alert suppression).
      */
     fun candidatesFrom(assets: PHFetchResult): List<Candidate> {
@@ -145,7 +145,8 @@ private class PhotoKitCandidate(
                 role = photoKitResourceRole(resource.type),
                 // Apple's UTI→MIME table stays iOS-only; commonMain must not reimplement it — and
                 // the resolved MIME is now the ONLY content type reported, so the UTI never reaches
-                // `Resource.contentType` or the wire.
+                // `Resource.contentType` or the wire. Measured at the origin (SE2, iOS 26.6): objects typed
+                // with the raw UTI were stored as `public.jpeg`, which no HTTP client interprets.
                 mimeContentType = UTType.typeWithIdentifier(resource.uniformTypeIdentifier)?.preferredMIMEType
                     ?: "application/octet-stream",
                 originalFilename = resource.originalFilename,
@@ -165,14 +166,14 @@ private class PhotoKitCandidate(
  * until someone states whether PhotoKit can express it. Before this, the predicate hardcoded a mask and a
  * cutoff, so a new rule simply never narrowed and nobody found out.
  *
- * Narrowing is an **optimization only** (capability `photo-selection-policy`): the caller's in-memory
+ * Narrowing is an **optimization only** (capability `photo-sharing`): the caller's in-memory
  * admission runs over whatever comes back, so this may return a superset of the admitted set but never a
  * subset. Where the predicate could disagree with the authoritative decision at a boundary it is
  * **widened**, never narrowed.
  *
  * **What this returns is also the walk's presence set**, and a clause here is therefore not free even when
  * it agrees with the admission. The upload cycle deletes the in-window ledger rows of every asset an
- * authoritative walk did not return (capability `sync-ledger`, "Deletion is a presence diff over an
+ * authoritative walk did not return (capability `photo-sharing`, "Deletion is a presence diff over an
  * authoritative walk"), judging "in-window" by the rows' own admission, which knows only capture dates and
  * id sets. So a new clause that excludes an asset still in the library — a subtype, a flag — makes the rows
  * such an asset **already** holds look departed, and they are deleted. The two subtype clauses below are
@@ -243,7 +244,7 @@ internal fun predicateFor(policy: SelectionPolicy): NSPredicate? {
  *
  * A bare `NSISO8601DateFormatter` uses `.withInternetDateTime`, which does not accept a `.sss` fraction and
  * returns `nil` for `2026-07-09T19:24:17.182Z`. Bounds are supposed to be second precision (capability
- * `photo-selection-policy`) and the join gate normalizes them — but one persisted by an older build carries
+ * `photo-sharing`) and the join gate normalizes them — but one persisted by an older build carries
  * the backend's raw `toISOString()` milliseconds. Losing the predicate there would silently restore the
  * whole-library fetch that trips the watchdog, so parse both shapes rather than trust the invariant.
  */

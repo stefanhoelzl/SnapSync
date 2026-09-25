@@ -1,6 +1,6 @@
 # Tier `buildscripts` — every `*.gradle.kts` in the build
 #
-# A CEILING on complexity for this scope (capability `complexity-budgets`). Every number below is a
+# A CEILING on complexity for this scope (`docs/architecture.md`). Every number below is a
 # ceiling that MAY ONLY FALL. Lowering one is ordinary work — do it in the change that makes it true.
 # RAISING one requires a stated forcing proof in that change's description, naming what the platform,
 # the language, or the shape of the problem makes unavoidable. There is no check that enforces this:

@@ -5,7 +5,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 /**
- * The `426` body codec (capability `min-app-version`).
+ * The `426` body codec (capability `app-update-required`).
  *
  * Every failure to read the body collapses to `null`, and the tests below are the enumeration of what
  * "every" means — because the collapse is only safe while each cause really does share the one

@@ -139,7 +139,7 @@ class InterruptedImportIntegrationTest {
 
     /**
      * The whole change, end to end: a transaction held OPEN while a full trigger cycle runs against it
-     * (capability `photo-download`).
+     * (capability `receiving-photos`).
      *
      * This is the state the field defect was adjudicated in — the library answering *absent* about an
      * asset whose change block has committed nothing yet. Every trigger must complete without waiting on
@@ -186,7 +186,7 @@ class InterruptedImportIntegrationTest {
 
     /**
      * THE ORDERING GUARANTEE, asserted directly because nothing enforces it at compile time (capability
-     * `photo-download`): adjudication is no longer any trigger's business, so the only thing that settles a
+     * `receiving-photos`): adjudication is no longer any trigger's business, so the only thing that settles a
      * row a dead process left behind is the composition's own startup sweep. If a future edit drops that
      * call, every interrupted import stalls forever and no other test notices — the rows simply sit there,
      * correct and unimported.
@@ -214,7 +214,7 @@ class InterruptedImportIntegrationTest {
 
     /**
      * D3's SECOND ordering requirement, and the one whose failure would be systematic rather than racy
-     * (capability `photo-download`).
+     * (capability `receiving-photos`).
      *
      * Under a partial grant the presence source answers from the held selection snapshot, which is `null`
      * until the observer's first emission. A sweep that ran before it would answer *unknown* for every

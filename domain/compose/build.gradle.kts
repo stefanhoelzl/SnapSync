@@ -15,7 +15,7 @@ tasks.withType<KotlinNativeSimulatorTest>().configureEach {
     }
 }
 
-// The core'"'"'s `compose` zone (spec `module-architecture`, "The module set withholds; packages organize").
+// The core'"'"'s `compose` zone (`docs/architecture.md`, "The module set withholds; packages organize").
 // The shared composition: the one wiring graph every live-core binary and the world harness call.
 //
 // Zone edges are declared with `implementation()`, never `api()`: a zone must not leak to a downstream
@@ -33,7 +33,7 @@ kotlin {
             implementation(project(":domain:ports"))
             implementation(project(":domain:feature"))
             implementation(project(":domain:flow"))
-            // The per-zone library allowlist (spec `module-architecture`, "Core purity is closed by
+            // The per-zone library allowlist (`docs/architecture.md`, "Core purity is closed by
             // default"): coroutines (StateFlow/Flow port shapes), serialization + datetime (the
             // config/manifest vocabulary and cutoff codecs), kermit (the engine's diagnostics).
             api(libs.coroutines.core)

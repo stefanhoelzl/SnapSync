@@ -4,7 +4,7 @@ import app.snapsync.model.RegistrationOutcome
 
 /**
  * **The OS's record of whether this app's background-upload extension is registered** (capability
- * `ios-photokit-upload`).
+ * `background-upload`).
  *
  * Named for the need, not the technology: what a caller wants is to change and to read the system's
  * registration for this app, and the iOS binding of that need happens to be

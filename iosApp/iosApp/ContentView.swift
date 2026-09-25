@@ -11,7 +11,7 @@ struct ComposeView: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
 }
 
-// A Compose scene is composed ONLY once the app has been active (capability `ios-app-shell`).
+// A Compose scene is composed ONLY once the app has been active (capability `sync-status`).
 //
 // iOS connects UI scenes in the BACKGROUND, so a process woken by a silent push or a BGTask builds this
 // view too. Without the gate below it stands up a full Compose runtime and Metal renderer in a process

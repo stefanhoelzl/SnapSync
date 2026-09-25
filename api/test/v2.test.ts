@@ -65,7 +65,7 @@ async function joinAndPublish(
   return await app.request(MANIFEST_PATH, { method: "PUT", body: manifest(assets) });
 }
 
-// ── The version gate (capability `min-app-version`) ────────────────────────────────────────────────
+// ── The version gate (capability `app-update-required`) ────────────────────────────────────────────────
 
 Deno.test("version gate → a request with no version header is refused 426 with the minimum", async () => {
   const db = await store();
@@ -364,7 +364,7 @@ Deno.test("manifest → does not reactivate a departed membership", async () => 
   db.close();
 });
 
-// ── The manifest version orders publishes (capability `api-endpoints`) ─────────────────────────────
+// ── The manifest version orders publishes (`docs/architecture.md`) ─────────────────────────────
 
 /** A manifest body carrying a manifest version; `version: undefined` leaves the field out. */
 const versioned = (
@@ -586,7 +586,7 @@ Deno.test("union → a resource declared but never uploaded does not silently sh
 // ── The fan-out ────────────────────────────────────────────────────────────────────────────────────
 //
 // The trigger is "the union GAINED an asset", not "a device wrote something" (capability
-// `upload-completion-notify`). Under a manifest that declares INTENT most publishes name assets whose
+// `receiving-photos`). Under a manifest that declares INTENT most publishes name assets whose
 // bytes have not arrived, so the byte route carries the announcement and the manifest route fires only
 // for the widening case. These tests read the recorder's APNs calls, because a fan-out that stopped
 // happening is invisible in a status code — the reason the previous version of the first test below

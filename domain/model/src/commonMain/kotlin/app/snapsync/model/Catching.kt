@@ -4,7 +4,7 @@ import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * [runCatching] that never catches cancellation (law "Catch sites keep cancellation", capability
- * `module-architecture`).
+ * `docs/architecture.md`).
  *
  * `runCatching` catches every `Throwable`, and a cancelled coroutine signals by throwing
  * [CancellationException]. Wrapped around a suspend call, it turns "my caller gave up" into an ordinary failure

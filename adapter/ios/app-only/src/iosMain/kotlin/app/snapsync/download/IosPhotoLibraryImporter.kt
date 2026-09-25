@@ -27,7 +27,7 @@ import platform.Photos.PHPhotoLibrary
 import kotlin.coroutines.resume
 
 /**
- * The iOS [PhotoLibraryImporter] (capability `photo-download`): rebuilds one foreign asset from its
+ * The iOS [PhotoLibraryImporter] (capability `receiving-photos`): rebuilds one foreign asset from its
  * staged resources via a single `PHAssetCreationRequest` (all resources added before the one
  * `performChanges` commit — there is no API to append to an existing asset), landing in the camera
  * roll. Role→`PHAssetResourceType`: `live`→`pairedVideo`; `primary`→`photo`/`video`/`audio` by
@@ -51,7 +51,7 @@ import kotlin.coroutines.resume
 class IosPhotoLibraryImporter(
     /**
      * Writes the created-asset marker, and reports whether it landed on a row (capability
-     * `download-store`). `false` means the row was pruned out from under this import, so the asset this
+     * `receiving-photos`). `false` means the row was pruned out from under this import, so the asset this
      * block is creating will have no suppression handle at all — logged as an error below, because it is
      * the only evidence the prune's protection failed.
      */
@@ -64,7 +64,7 @@ class IosPhotoLibraryImporter(
     private val clearCreatedLocalId: (AssetRef, String) -> Unit,
     /**
      * The **success** mirror: settle the row against the marker it already holds, from the completion
-     * itself (capability `download-store`). Written here rather than left to the caller because a
+     * itself (capability `receiving-photos`). Written here rather than left to the caller because a
      * completion that arrives after its requester is gone still records the import.
      */
     private val confirmCreatedLocalId: (AssetRef, String) -> Unit,
@@ -91,14 +91,14 @@ class IosPhotoLibraryImporter(
         // The class `performChanges` is called at — read here, on the caller's thread, for the block's trace.
         val callerQos = qosLabel()
         // NOTHING BOUNDS THIS WAIT, and that is the decision, not an omission (capability
-        // `photo-download`).
+        // `receiving-photos`).
         //
         // The bound that used to sit here existed to protect `DownloadController`'s mutex: the import ran
         // under it, and the SNAPSYNC-6 field hang held it from 09:03:37 until the process died. The import
         // no longer runs under that lock, so there is nothing left for a per-import clock to protect — and
         // the wake it would otherwise bound is bounded already by the operating system's own expiry signal,
         // which ends the wake's background time at once and deliberately lets this work run on (capability
-        // `ios-app-shell`).
+        // `sync-status`).
         //
         // Keeping a clock here would restate the mistake this capability already names: the process is
         // suspended for arbitrary spans between a change block and its completion (measured 116 s and
@@ -108,7 +108,7 @@ class IosPhotoLibraryImporter(
         //
         // An import that never reports therefore never returns. Its ref stays claimed for the life of the
         // process, so no *absent* answer about it is ever acted on and no second asset is created; the
-        // enter/exit trace around the caller is what makes it visible (capability `diagnostic-logging`).
+        // enter/exit trace around the caller is what makes it visible (capability `privacy-security`).
         return suspendCancellableCoroutine { cont ->
             PHPhotoLibrary.sharedPhotoLibrary().performChanges(
                 {
@@ -179,7 +179,7 @@ private fun consumedResources(error: NSError?): Boolean {
         created: CreatedAsset,
         callerQos: String,
     ) {
-        // Traced INSIDE the block, not before the call (capability `diagnostic-logging`).
+        // Traced INSIDE the block, not before the call (capability `privacy-security`).
         // The two say different things: the call returning proves only that we asked, while
         // this line proves `photolibraryd` actually began the transaction. That difference
         // decides whether an import we stop waiting for can still land — i.e. whether it
@@ -201,7 +201,7 @@ private fun consumedResources(error: NSError?): Boolean {
             // (`importFilename`), which is where its fallback is unit-tested.
             val options = PHAssetResourceCreationOptions().apply {
                 originalFilename = filename
-                // MOVE, not copy (capability `photo-download`). Two things follow, and both are
+                // MOVE, not copy (capability `receiving-photos`). Two things follow, and both are
                 // load-bearing rather than incidental:
                 //
                 //  - an importing asset stops holding its bytes TWICE. Under copy it does so
@@ -240,7 +240,7 @@ private fun consumedResources(error: NSError?): Boolean {
             created.localId = id
             // `false` means the row was DELETED between this import being selected and this
             // block running — the failure the prune's `protecting` set exists to prevent
-            // (capability `download-store`). The asset about to be created then has no
+            // (capability `receiving-photos`). The asset about to be created then has no
             // suppression handle at all, so this device uploads a downloaded photo back into
             // someone else's event days later. Logged at Error so it reaches Bugsink: this
             // line is the ONLY evidence the protection failed, and without it the failure is
@@ -278,7 +278,7 @@ private fun consumedResources(error: NSError?): Boolean {
         created: CreatedAsset,
     ): ImportResult {
         // The commit's own verdict, logged before it is interpreted (capability
-        // `diagnostic-logging`): a failed commit and a missing placeholder both reduce to
+        // `privacy-security`): a failed commit and a missing placeholder both reduce to
         // one `Failed`, and only this line tells them apart after the fact.
         val id = created.localId
         log.i { "import: commit for ${ref.sourceAssetId} success=$success created=$id error=${error?.localizedDescription}" }
@@ -293,7 +293,7 @@ private fun consumedResources(error: NSError?): Boolean {
         // between us and SNAPSYNC-9; this ordering means it is a second line, not the only one.
         return if (success && id != null) {
             // The row is settled by the party that LEARNED the outcome, before anyone is
-            // resumed (capability `download-store`). This block is an ObjC block untied to
+            // resumed (capability `receiving-photos`). This block is an ObjC block untied to
             // the awaiting coroutine, so it still runs when the wait was abandoned minutes
             // ago — which is what makes an abandoned import settle itself instead of waiting
             // for a later pass to ask the library what this callback already knew.
@@ -304,7 +304,7 @@ private fun consumedResources(error: NSError?): Boolean {
             // created identifier, which is what that line carried besides the date.
             ImportResult.Imported(id)
         } else {
-            // THE MIRROR of the in-block write (capability `download-store`). The library has
+            // THE MIRROR of the in-block write (capability `receiving-photos`). The library has
             // stated that this change failed, so the marker points at an asset that does not
             // exist — clear it, or the row is skipped as "already created" on every future
             // pass and the photo never arrives.

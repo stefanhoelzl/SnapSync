@@ -8,7 +8,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * **The client's ungated-path predicate is the backend's closed list** (capability `device-attestation`, "Only a
+ * **The client's ungated-path predicate is the backend's closed list** (capability `privacy-security`, "Only a
  * rejected credential is invalidated, and only that one"; decision record `harden-seam-bug-classes`, D10).
  *
  * The credential interceptor reads a `401` as a rejected token only from a route the token gate guards

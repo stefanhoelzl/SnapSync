@@ -8,7 +8,7 @@ package app.snapsync.ports
  * `SyncState`, which classifies the **upload** side, where `failed ≡ 0` because uploads really are retried
  * forever. It was over-read into this enum. Here a failure genuinely is tellable: the photo library takes a
  * resource's file at ingest, so a rejection of the file's CONTENT leaves no bytes to retry from, and every
- * later trigger would spend a library transaction rediscovering that (capability `photo-download`).
+ * later trigger would spend a library transaction rediscovering that (capability `receiving-photos`).
  *
  * A row in this state carries **no** `createdLocalId`: no asset was created, so it is not a suppression
  * handle, and it is prunable like any other handle-free row.
@@ -28,12 +28,12 @@ enum class DownloadState {
 }
 
 /**
- * The download projection's counts, read together (capability `download-store`).
+ * The download projection's counts, read together (capability `receiving-photos`).
  *
  * A value type rather than three reads, so the projection cannot publish a torn composite of its own counts —
  * the `sync-status` group requires each of its members to be internally consistent.
  *
- * [stillArriving] excludes `UNIMPORTABLE` rows deliberately (capability `photo-download`, design D8): counting
+ * [stillArriving] excludes `UNIMPORTABLE` rows deliberately (capability `receiving-photos`, design D8): counting
  * work that can never finish pegs the download line below completion forever, in a state the member can neither
  * act on nor dismiss. That loss reaches the operator through the crash-reporting sink instead of the screen.
  */
@@ -82,7 +82,7 @@ data class ImportableAsset(val ref: AssetRef, val creationDate: String)
 /**
  * A row whose import was never confirmed: an asset **was** created for [ref] — [createdLocalId] is its
  * identifier — but the confirmation never arrived. The import path adjudicates these against the photo
- * library rather than importing them again (capability `photo-download`).
+ * library rather than importing them again (capability `receiving-photos`).
  */
 data class UnconfirmedImport(val ref: AssetRef, val createdLocalId: String)
 
@@ -97,7 +97,7 @@ interface SuppressionSource {
 }
 
 /**
- * The app-written download store (capability `download-store`). Records foreign assets selected for
+ * The app-written download store (capability `receiving-photos`). Records foreign assets selected for
  * download, their per-resource staging, and the import outcome (`createdLocalId`). Idempotency and
  * cross-event dedup are by [AssetRef]; terminal (`IMPORTED`) rows are permanent.
  */
@@ -112,7 +112,7 @@ interface DownloadStore : SuppressionSource {
 
     /**
      * The members of [refs] that are **settled** — [isSettled] answered for a whole union in **one read**
-     * (capability `download-store`). A ref with no row, or a non-terminal row, is absent from the answer.
+     * (capability `receiving-photos`). A ref with no row, or a non-terminal row, is absent from the answer.
      *
      * Exists because a reconcile asks this for every foreign asset of the union, and asking it one ref at
      * a time is one store round-trip per asset, repeated on every trigger while a backlog exists.
@@ -122,7 +122,7 @@ interface DownloadStore : SuppressionSource {
 
     /**
      * The created local identifier of each of [refs] whose row is [DownloadState.IMPORTED] (capability
-     * `download-store`). A ref with no row, a non-terminal row — including an **unconfirmed** one that
+     * `receiving-photos`). A ref with no row, a non-terminal row — including an **unconfirmed** one that
      * carries a marker, whose asset has not been adjudicated yet — or an [DownloadState.UNIMPORTABLE] row is
      * absent from the answer.
      *
@@ -138,7 +138,7 @@ interface DownloadStore : SuppressionSource {
     suspend fun plan(ref: AssetRef, creationDate: String, resources: List<PlannedResource>)
 
     /**
-     * [plan] every one of [assets], in **one transaction** (capability `download-store`): each asset and its
+     * [plan] every one of [assets], in **one transaction** (capability `receiving-photos`): each asset and its
      * resources are recorded exactly as [plan] records them — idempotent, never downgrading a terminal row,
      * refreshing only unstaged urls — and no reader can observe an asset without its resources.
      *
@@ -184,7 +184,7 @@ interface DownloadStore : SuppressionSource {
     /**
      * Record ONLY the created local identifier, leaving the row non-terminal — the marker written from
      * **inside** the platform's change block, before the created asset is observable, so the upload echo
-     * is closed even if the confirmation never arrives (capability `download-store`).
+     * is closed even if the confirmation never arrives (capability `receiving-photos`).
      *
      * **Not `suspend`, alone on this interface**, and not by preference: iOS's `performChanges` change
      * block cannot call a suspending function, and this write has to happen inside it or the asset is
@@ -222,7 +222,7 @@ interface DownloadStore : SuppressionSource {
      * A marker is cleared for exactly one reason: the library said its change failed, or said the asset
      * it names does not exist. Never because time passed, because nothing is awaiting the transaction any
      * longer, or because a lookup answered *absent* while that transaction was still open — it may still
-     * commit, and clearing the marker is what orphans the created asset (capability `photo-download`).
+     * commit, and clearing the marker is what orphans the created asset (capability `receiving-photos`).
      *
      * **Guarded on [createdLocalId] AND on the row still being non-terminal**, and the guard is in the
      * store's write rather than in a caller's preceding `if`, because two writers reach this with no shared
@@ -240,7 +240,7 @@ interface DownloadStore : SuppressionSource {
 
     /**
      * The **success** mirror of [recordCreatedLocalId]: settle the row against the marker it already
-     * holds, from the platform's completion callback itself (capability `download-store`).
+     * holds, from the platform's completion callback itself (capability `receiving-photos`).
      *
      * Written here rather than left to the caller because the completion is the party that LEARNS the
      * outcome, and it runs whether or not anything is still awaiting the transaction. An import whose
@@ -264,7 +264,7 @@ interface DownloadStore : SuppressionSource {
     fun confirmCreatedLocalId(ref: AssetRef, createdLocalId: String): Boolean
 
     /**
-     * Settle a row as permanently unimportable, reporting whether it applied (capability `photo-download`).
+     * Settle a row as permanently unimportable, reporting whether it applied (capability `receiving-photos`).
      *
      * Called when the library rejected a resource's content and consumed its staged file, so no bytes
      * remain to retry from and no asset was created. Guarded on the row still being non-terminal, because
@@ -278,7 +278,7 @@ interface DownloadStore : SuppressionSource {
     suspend fun settleUnimportable(ref: AssetRef): Boolean
 
     /**
-     * The download projection's counts, in **one round-trip** (capability `download-store`).
+     * The download projection's counts, in **one round-trip** (capability `receiving-photos`).
      *
      * One read rather than three, for the same reason the upload ledger's `aggregates()` is one: these counts
      * are published together as a single projection, and the status group requires each of its members to be
@@ -314,7 +314,7 @@ interface DownloadStore : SuppressionSource {
      */
     suspend fun pruneNonTerminal(protecting: Set<AssetRef>): List<String>
 
-    // --- staged-byte lifetime (capability `download-store`) ------------------------------------------
+    // --- staged-byte lifetime (capability `receiving-photos`) ------------------------------------------
     //
     // The store records WHERE an asset's bytes are; releasing them is the download side's job. These
     // reads exist so it can, and each is scoped to rows whose bytes are provably no longer needed.

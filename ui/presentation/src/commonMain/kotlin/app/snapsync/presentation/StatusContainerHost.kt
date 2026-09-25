@@ -71,12 +71,12 @@ class StatusContainerHost(
     // ([commands], [queries]) and what it EMITS ([StatusDiagnostics]) stay separate.
     sources: StatusSources,
     private val scope: CoroutineScope,
-    // Supplies "now" as a cutoff string and converts a local pick (capability `photo-selection-policy`).
+    // Supplies "now" as a cutoff string and converts a local pick (capability `photo-sharing`).
     // Injected — with NO default (migration step 9): a default would have to read the system clock
     // here, which is exactly the through-ports law violation this parameter repays. Production wires
     // the `Clock`/`TimeZoneSource` ports; tests pass a fixed instant and zone.
     private val cutoffFormatter: CutoffFormatter,
-    // The user-tap **command bundle** (spec `module-architecture`, "Commands cross one door"):
+    // The user-tap **command bundle** (`docs/architecture.md`, "Commands cross one door"):
     // leave / create / commitJoin / share / requestAccess / openSettings — `model/` vocabulary whose
     // live instance is built only in `compose/` (`AppCore.userCommands`) — this container fires
     // commands solely through it and never references a feature command (or `ports/`, or `flow/`)
@@ -87,7 +87,7 @@ class StatusContainerHost(
     // `commitJoin` command, inside `JoinEvent` — this container passes the chosen value through raw,
     // so no entry path can reach a provision without the floor by forgetting to clamp here.
     private val commands: UserCommands,
-    // The user-query bundle (spec `module-architecture`, "Queries cross a lane-gated door"): the join gate's
+    // The user-query bundle (`docs/architecture.md`, "Queries cross a lane-gated door"): the join gate's
     // details read and the shareable count. Reads this container INVOKES and reduces on, built and
     // lane-decorated in `compose/` beside the commands — so neither runs a port read on the thread that
     // asked, which for the count used to be a composable effect on the main thread.
@@ -124,7 +124,7 @@ class StatusContainerHost(
     // What is drawn OVER the current layer (see [Overlays]). Presentation-owned like the transient error:
     // opening a confirmation touches no port and calls no command, so these are container-local intents
     // that reduce and nothing more. They are state rather than screen-local `remember`s because the
-    // screen SHOWS them (capability `sync-status-screen`).
+    // screen SHOWS them (capability `sync-status`).
     private val overlaysState = MutableStateFlow(Overlays())
 
     // The member's uncommitted choices. ONE cell, because the two surfaces that ask for them are mutually
@@ -133,7 +133,7 @@ class StatusContainerHost(
     private val formState = MutableStateFlow(RangeForm())
 
     // Whether the joined layer is showing its settings surface. A flag rather than a `UiState` family, for
-    // the reason `reconfigure-membership` D4 gives: opening is client-side navigation that touches no port.
+    // the reason `manage-membership` D4 gives: opening is client-side navigation that touches no port.
     // OWNED by the membership it was opened in (see [Owned]): a switch, a leave or a fresh join cannot carry
     // it into the next membership, whichever exit path ran (B7).
     private val reconfiguringState = MutableStateFlow(Owned<SettingsSurface>(null, SettingsSurface.Closed))
@@ -143,7 +143,7 @@ class StatusContainerHost(
     private val renameOwner = MutableStateFlow<String?>(null)
     private val ownedRename = combine(renameOwner, renameFlow) { owner, status -> Owned(owner, status) }
 
-    // The shareable count for whichever surface is showing a range (capability `join-share-count`). Computed
+    // The shareable count for whichever surface is showing a range (capability `join-event`). Computed
     // HERE, over the query bundle, and reduced into the range — the screen renders it and asks nothing. It
     // starts Unavailable (no row) rather than Counting: a count is only "being computed" once one has been
     // asked for, which `countInto` states itself.
@@ -184,7 +184,7 @@ class StatusContainerHost(
 
     /**
      * "Now", re-emitted every minute **only** while the joined event has not begun (capability
-     * `sync-status-screen`).
+     * `sync-status`).
      *
      * `SyncHealth.NotStarted` is the one health that depends on **wall-clock time** rather than the
      * ledger, so no snapshot emission would ever retire it — without this, the clock line would sit there
@@ -243,7 +243,7 @@ class StatusContainerHost(
                 updateLayerFor(versionRefusal.value, appStoreUrl),
                 ::resolveRange,
             ).let { layer -> UiState(layer, overlaysState.value.maskedFor(layer)) },
-            // The container SURVIVES a throwing intent (spec `sync-status-screen`) — and this handler is the
+            // The container SURVIVES a throwing intent (spec `sync-status`) — and this handler is the
             // whole of what makes it so. It is not a logging convenience: Orbit runs each intent as
             // `runCatchingCancellable { … }.exceptionOrNull()?.let { settings.exceptionHandler?.handleException(…) ?: throw it }`,
             // so with NO handler configured it RE-THROWS, which cancels `RealContainer.intentJob` — a plain
@@ -321,7 +321,7 @@ class StatusContainerHost(
                         } catch (e: CancellationException) {
                             throw e
                         } catch (e: Exception) {
-                            // A failed read is no count, not a crash: the row is omitted (capability `join-share-count`).
+                            // A failed read is no count, not a crash: the row is omitted (capability `join-event`).
                             log("shareable count failed: ${e.message}")
                             ShareCount.Unavailable
                         }
@@ -334,13 +334,13 @@ class StatusContainerHost(
 
 
     /**
-     * Flash the transient invalid-link error (capability `event-link`): a link arrived that the decoder
+     * Flash the transient invalid-link error (capability `join-event`): a link arrived that the decoder
      * rejected, so the create layer shows a self-clearing message on its ONE inline error line without
      * touching persisted state.
      *
      * The value is an INPUT to the reduction — it reaches the screen inside `Layer.CreateEvent.error`,
      * coalesced with a sticky create failure — but the set-then-clear choreography lives HERE, in
-     * presentation (spec `module-architecture`, "Commands cross one door": multi-step interactions are
+     * presentation (`docs/architecture.md`, "Commands cross one door": multi-step interactions are
      * presentation-owned, and interaction state dies with the UI). It replaced a one-shot side-effect
      * channel at the migration finale, whose single consumer was the untested iOS shell.
      *
@@ -357,7 +357,7 @@ class StatusContainerHost(
     }
 
     /**
-     * Create a new event with [name], starting at [startsAt] (event-creation-ui). Delegates to the
+     * Create a new event with [name], starting at [startsAt] (create-event). Delegates to the
      * injected [EventCreator] (fire-and-forget): it mints the event and, on success, provisions it
      * through the same path a scanned QR uses (config goes present, the reduction leaves the create
      * layer). Permission is not consulted here — a missing grant surfaces afterward via
@@ -378,7 +378,7 @@ class StatusContainerHost(
         }
 
     /**
-     * The three photo-access taps (capability `permission-gate`, `limited-photo-access`), grouped —
+     * The three photo-access taps (capability `photo-access`, `photo-access`), grouped —
      * they are one question the screen asks in three forms, and the screen's own `AccessActions` bundle
      * already mirrors this grouping.
      */
@@ -388,7 +388,7 @@ class StatusContainerHost(
         fun onRequestPermission() = intent { commands.requestAccess() }
 
         /**
-         * The joined layer's "Choose more photos" tap (capability `limited-photo-access`) — presents the
+         * The joined layer's "Choose more photos" tap (capability `photo-access`) — presents the
          * platform's limited-library picker; the selection outcome arrives via the selection seam.
          */
         fun onChoosePhotos() = intent { commands.choosePhotos() }
@@ -421,7 +421,7 @@ class StatusContainerHost(
     fun onShareInvite() = intent { (state.layer as? Layer.Joined)?.let { commands.share(it.inviteUrl) } }
 
     /**
-     * Open the App Store page from the update-required screen (capability `min-app-version`).
+     * Open the App Store page from the update-required screen (capability `app-update-required`).
      *
      * The URL is read from the CURRENT state rather than taken from the caller, exactly as
      * [onShareInvite] reads the invite URL: the screen's contract is that a build carrying no store URL
@@ -436,7 +436,7 @@ class StatusContainerHost(
      * Opening and closing what is drawn over — or instead of — the current layer.
      *
      * Grouped for the same reason [form] is: these are one question ("what is on screen"), and each of
-     * them reduces and nothing more. That is the property `reconfigure-membership` D4 asked for — a
+     * them reduces and nothing more. That is the property `manage-membership` D4 asked for — a
      * pure navigation act must not cross a flow command — and it still holds now that the answer is
      * state rather than a screen-held flag.
      */
@@ -478,7 +478,7 @@ class StatusContainerHost(
     }
 
     /**
-     * Rename the joined event (capability `event-rename`), confirmed on the heading's rename dialog.
+     * Rename the joined event (capability `manage-membership`), confirmed on the heading's rename dialog.
      * Delegates to the injected [UserCommands.rename] with [eventId] — the event the dialog was opened
      * for — so a switch that landed mid-edit makes the use-case a no-op rather than renaming a different
      * event. Fire-and-forget; the outcome arrives via [renameStatus] and the new name via the config
@@ -493,7 +493,7 @@ class StatusContainerHost(
     fun onRenameStatusConsumed() = intent { commands.resetRename() }
 
     /**
-     * Send the diagnostic dump (capability `diagnostic-logging`) with the operator's account of the
+     * Send the diagnostic dump (capability `privacy-security`) with the operator's account of the
      * problem — already trimmed and length-bounded by the sheet that collected it — and an opaque label
      * for the surface it was sent from (the screen, which only the screen itself can name). `null` when this
      * build carries no reporting channel — the screen then wires no gesture, so the affordance does not
@@ -504,7 +504,7 @@ class StatusContainerHost(
         commands.sendDiagnostics?.let { send -> { note, screen -> intent { send(note, screen) } } }
 
     /**
-     * Apply a reconfigure of the joined membership (capability `reconfigure-membership`), confirmed on
+     * Apply a reconfigure of the joined membership (capability `manage-membership`), confirmed on
      * the settings surface's Save. Delegates to the injected [UserCommands.reconfigure] with [eventId] —
      * the event the surface was opened for — so a switch that landed mid-edit makes the use-case a no-op
      * rather than overwriting a different membership. The clamp to the `startsAt` floor is applied on the
@@ -523,13 +523,13 @@ class StatusContainerHost(
             config.eventId, range.direction, range.chosenFrom, range.chosenUntil, form.saveToAlbum,
         )
         // A save that did not land reopens the surface with the member's edits still in hand (the form was never
-        // reset) and says so — closing it would read as saved (capability `reconfigure-membership`).
+        // reset) and says so — closing it would read as saved (capability `manage-membership`).
         if (outcome == ReconfigureOutcome.SaveFailed) reconfiguringState.value = Owned(config.eventId, SettingsSurface.SaveFailed)
     }
 
 
     /**
-     * The member's edits to the capture-range form (capability `photo-selection-policy`), grouped.
+     * The member's edits to the capture-range form (capability `photo-sharing`), grouped.
      *
      * Each reduces and nothing more: a preset tap touches no port, dispatches no command, and is
      * discarded by Cancel. They are intents rather than screen state because the screen SHOWS them —
@@ -596,7 +596,7 @@ class StatusContainerHost(
 
     /**
      * A delivery of a link this gate is already acting on, or has already acted on — **recorded, then
-     * ignored** (capability `event-link`).
+     * ignored** (capability `join-event`).
      *
      * The platform delivers the same link more than once, and that is measured rather than defensive:
      * build 687 received one URL twice on an iOS 18.7.9 cold launch (~130 ms apart, the scene delegate's
@@ -664,7 +664,7 @@ class StatusContainerHost(
     }
 
     /**
-     * Run [run] as an intent unless [command] is already in flight (capability `sync-status-screen`, "A
+     * Run [run] as an intent unless [command] is already in flight (capability `sync-status`, "A
      * non-idempotent command is in flight before it first suspends"; decision record `harden-seam-bug-classes`,
      * D13). The claim is taken HERE, synchronously in the tapping thread, before any intent is launched — two taps
      * before the screen recomposes launch one command, not two — and released when the intent's body returns.
@@ -689,7 +689,7 @@ class StatusContainerHost(
      * auto-requests).
      *
      * Requests permission and advances to the confirm phase in one action. It does **not** await the
-     * outcome: `request()` returns nothing and cannot suspend (capability `permission-gate`) — the grant
+     * outcome: `request()` returns nothing and cannot suspend (capability `photo-access`) — the grant
      * arrives only via `PhotoAccessStatusSource` — so the phase advances immediately and the system dialog
      * lands modally over the confirm surface, with the cutoff row already behind it. A no-op on any other
      * phase.
@@ -717,7 +717,7 @@ class StatusContainerHost(
     fun onCancelSwitch() = intent { pending.set(null) }
 
     /**
-     * A create just minted [eventId] (capability `event-creation-ui`): route it into the **same**
+     * A create just minted [eventId] (capability `create-event`): route it into the **same**
      * pending-join gate a scanned QR uses — non-auto-confirmed — so the creator loads the event, picks a
      * capture-date cutoff, and confirms like any joiner. The `POST /events` already minted the event, so
      * the gate holds a real `eventId` and performs a real details load; provision happens on confirm.
@@ -738,7 +738,7 @@ class StatusContainerHost(
 
     /**
      * The event's `createdAt` **normalized** into a cutoff, falling back to **now** (capability
-     * `photo-selection-policy`). A membership always carries a cutoff, so a missing or unparseable
+     * `photo-sharing`). A membership always carries a cutoff, so a missing or unparseable
      * `createdAt` — a malformed event marker — must not leave the join surface with an empty cutoff row
      * and an enabled confirm, which would join at whole-library scope and upload the whole camera roll to
      * the event.
@@ -852,7 +852,7 @@ class StatusContainerHost(
         val (name, startsAt, endsAt, deletesAt) = detailed.event
         pending.set(p.copy(phase = JoinPhase.Detailed(detailed.event, JoinPhase.Detailed.Step.Committing)))
         // A membership BEGINS here, so its surface state starts here — in one place every new membership passes
-        // through, a rejoin of the same event included (capability `sync-status-screen`). A collector watching the
+        // through, a rejoin of the same event included (capability `sync-status`). A collector watching the
         // config could miss that: it is a StateFlow, and a leave and a rejoin of one event can conflate into A → A.
         reconfiguringState.value = Owned(null, SettingsSurface.Closed)
         if (renameFlow.value is RenameStatus.Succeeded || renameFlow.value is RenameStatus.Failed) commands.resetRename()
@@ -922,7 +922,7 @@ class StatusContainerHost(
         val current = config.value
         if (current != null && current.eventId != eventId) commands.leave()
         // The auto-fired confirm uses the event's `startsAt` as the cutoff, unless the event link supplied
-        // an explicit dev/test one (capability `photo-selection-policy`). Never an absent cutoff — the headless
+        // an explicit dev/test one (capability `photo-sharing`). Never an absent cutoff — the headless
         // path has no surface to notice one.
         //
         // An explicit cutoff is passed through RAW and clamped on the far side of `commitJoin`, inside
@@ -946,7 +946,7 @@ class StatusContainerHost(
         // the link's explicit `saveToAlbum` already exercises album placement without a tap.
         val saveToAlbum = explicitSaveToAlbum ?: false
         // As in `commit`: a membership begins here, so its surface state starts here — in one place every new membership passes
-        // through, a rejoin of the same event included (capability `sync-status-screen`). A collector watching the
+        // through, a rejoin of the same event included (capability `sync-status`). A collector watching the
         // config could miss that: it is a StateFlow, and a leave and a rejoin of one event can conflate into A → A.
         reconfiguringState.value = Owned(null, SettingsSurface.Closed)
         if (renameFlow.value is RenameStatus.Succeeded || renameFlow.value is RenameStatus.Failed) commands.resetRename()
@@ -964,7 +964,7 @@ class StatusContainerHost(
 }
 
 /**
- * How often the not-started clock line re-checks the wall clock (capability `sync-status-screen`). One
+ * How often the not-started clock line re-checks the wall clock (capability `sync-status`). One
  * minute: the line names a start time to the minute, so a finer tick would buy nothing visible, and
  * nothing of the member's can upload before the start regardless.
  */
@@ -986,11 +986,11 @@ private fun JoinPhase.name(): String? = details?.name
 // the extension and status is read from the completeness listing.
 /**
  * The refusal and the remedy, joined into the layer that states both — or `null` while this build is
- * being served (capability `min-app-version`).
+ * being served (capability `app-update-required`).
  *
  * Joined HERE rather than inside [reduceFrom] because the reduction's job is to RANK layers, while these
  * two inputs meet nowhere else: the refusal is observed and the store URL is a build constant. It also
- * keeps [reduceFrom] under the tier's parameter ceiling, which may only fall (`complexity-budgets`) — a
+ * keeps [reduceFrom] under the tier's parameter ceiling, which may only fall (`docs/architecture.md`) — a
  * budget respected by grouping what belongs together rather than by raising a number.
  */
 private fun updateLayerFor(refusal: AppVersionGate.Refusal?, appStoreUrl: String?): Layer.UpdateRequired? =
@@ -1044,7 +1044,7 @@ private fun reduceFrom(
     nowCutoff: CaptureDate,
     attested: Boolean,
     ownedRename: Owned<RenameStatus>,
-    // The transient invalid-link error (capability `event-link`). It is an INPUT to the reduction, not a
+    // The transient invalid-link error (capability `join-event`). It is an INPUT to the reduction, not a
     // value beside it: the create screen renders ONE banner, so the create state carries one error value
     // and this is one of its two causes.
     transient: String?,
@@ -1052,7 +1052,7 @@ private fun reduceFrom(
     // resolve them: the window comes off the loaded phase (join gate) or the membership (reconfigure).
     form: RangeForm,
     ownedSettings: Owned<SettingsSurface>,
-    // The backend's refusal of this build (capability `min-app-version`), already carrying its remedy,
+    // The backend's refusal of this build (capability `app-update-required`), already carrying its remedy,
     // or null while this build is served. Arrives composed — see `updateLayerFor`.
     updateRequired: Layer.UpdateRequired?,
     resolveAgainst: (RangeForm, EventStart, EventEnd?, CaptureCeiling?, DeletesAt?) -> ResolvedRange,
@@ -1071,7 +1071,7 @@ private fun reduceFrom(
         // outranks NotStarted because it is the only ACTIONABLE state, and the member must resolve it
         // BEFORE the event begins or they miss the start; hiding it behind the clock line would ambush
         // them with a permission prompt at the very moment the party starts. LIMITED is NOT here: a
-        // partial grant is a working state (capability `limited-photo-access`) — it falls through to
+        // partial grant is a working state (capability `photo-access`) — it falls through to
         // the snapshot-derived health exactly like GRANTED.
         !permission.grantsPhotoAccess -> SyncHealth.NeedsAccess(permission)
         // The event has not begun. Outranks every snapshot-derived value because nothing of this member's
@@ -1101,7 +1101,7 @@ private fun reduceFrom(
     // A pending join for a DIFFERENT event while joined is a switch confirmation over the joined screen.
     val pendingSwitch = pending?.let { PendingSwitch(it.eventId, it.phase) }
     // The event's declared end has passed: an "Event ended" marker prefixing the health line (capability
-    // `sync-status-screen`). Informational only — the health above is unchanged and sync continues in the
+    // `sync-status`). Informational only — the health above is unchanged and sync continues in the
     // backend grace window. `null` endsAt (a legacy config before its reconcile backfill) shows no marker.
     // Canonical fixed-width UTC on both sides ⇒ lexicographic IS chronological.
     val ended = config.endsAt?.let { it.at < nowCutoff } ?: false
@@ -1131,12 +1131,12 @@ private fun joinedLayer(
 ): Layer.Joined {
     return Layer.Joined(
         membership = config,
-        // Derived HERE and nowhere else (capability `event-invite-qr`, decision D3's surviving half):
+        // Derived HERE and nowhere else (capability `manage-membership`, decision D3's surviving half):
         // one derivation feeds both the rendered QR and the share action, so they cannot drift.
         inviteUrl = config.inviteUrl(),
         health = health,
         pendingSwitch = pendingSwitch,
-        // The resting affordance, not an attention state (capability `limited-photo-access`): a
+        // The resting affordance, not an attention state (capability `photo-access`): a
         // partial grant's joined layer always offers the picker, whatever the health.
         canChoosePhotos = permission == PermissionStatus.LIMITED,
         ended = ended,
@@ -1165,14 +1165,14 @@ private fun joinedLayer(
 //
 // It used to. An opted-out arm was masked here, and `InSync` collapsed over the "enabled" directions. That
 // is no longer needed, because an opted-out direction now contributes no work and so has a zero total: the
-// upload total is 0 for a non-contributing membership (capability `photo-selection-policy`), and the
-// download total is 0 for a membership that never reconciles (capability `photo-download`, whose total is
+// upload total is 0 for a non-contributing membership (capability `photo-sharing`), and the
+// download total is 0 for a membership that never reconciles (capability `receiving-photos`, whose total is
 // populated only by that reconcile). The arrows agree with the direction because the counts already do.
 //
 // The mask is not merely redundant now — it was actively harmful, and removing it is the point. A
 // force-hidden arrow can only ever conceal a MISMATCH between the direction contract and what the system is
 // actually doing. Concealing that mismatch is exactly how a download-only membership uploaded its member's
-// camera roll for a full release cycle while this screen read "In sync" (capability `upload-lifecycle`): the
+// camera roll for a full release cycle while this screen read "In sync" (capability `background-upload`): the
 // one surface that would have shown them an upload they never asked for was the surface that hid it. If the
 // counts are right, the arrow is already right; if they are wrong, an arrow the member never asked for is
 // the only signal anyone gets. The display must not assert a contract the system is not keeping.
@@ -1201,12 +1201,12 @@ private fun RenameStatus.toRenameState(): RenameState = when (this) {
 }
 
 /**
- * The rename dialog's failure copy (capability `event-rename`). Two reasons, because the port reports two:
+ * The rename dialog's failure copy (capability `manage-membership`). Two reasons, because the port reports two:
  * the backend rejected the name, or everything else.
  *
  * There is deliberately no "this event no longer exists" copy for the `404` that also arrives as
  * [RenameFailureReason.SERVER]. A `404` here is a single witness that the event is gone, and the
- * self-leave needs two (capability `leave-event`); giving it copy would give it a meaning, and a meaning
+ * self-leave needs two (capability `manage-membership`); giving it copy would give it a meaning, and a meaning
  * invites acting on it. The standing foreground refresh reaches that verdict on its own terms.
  */
 private fun RenameFailureReason.message(): String = when (this) {
@@ -1223,7 +1223,7 @@ private fun CreationFailureReason.message(): String = when (this) {
 }
 
 /**
- * The range the showing surface resolves and would count (capability `join-share-count`), or `null` when no
+ * The range the showing surface resolves and would count (capability `join-event`), or `null` when no
  * surface shows the count row — which renders only while sharing is on, so no photo-library read is made for
  * a row nobody sees.
  */
@@ -1240,7 +1240,7 @@ internal enum class SettingsSurface { Closed, Open, SaveFailed }
 private enum class Guarded { Create, Rename, SwitchLeave }
 
 /**
- * Surface state that belongs to one membership (capability `sync-status-screen`, "Membership-scoped surface state
+ * Surface state that belongs to one membership (capability `sync-status`, "Membership-scoped surface state
  * belongs to the membership"; decision record `harden-seam-bug-classes`, D13): written with the event it was
  * opened for, and read back only while that event is the joined one. A change of membership therefore closes it
  * by construction — no exit path (leave, switch, self-leave, config clear) has to remember to (B7).

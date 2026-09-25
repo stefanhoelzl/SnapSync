@@ -15,7 +15,7 @@ import kotlin.test.Test
 
 /**
  * App Attest and the attestation store, LIVE in the simulator's Kotlin/Native test executable (capability
- * `port-contracts`), each built with its production defaults.
+ * `docs/architecture.md`), each built with its production defaults.
  *
  * This host presents exactly one state of each: `DCAppAttestService.isSupported` is false on a simulator, and
  * `securityd` refuses the unentitled executable every `SecItem*` call with `-25291`. Both are the states a

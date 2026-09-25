@@ -35,13 +35,13 @@ private val WINDOW_START = LocalDateTime.parse("2026-07-20T18:00")
 private val WINDOW_END = LocalDateTime.parse("2026-07-25T18:00")
 
 /**
- * The forge factory behind the forge binary (capability `ios-app-shell`). Each recognized state
+ * The forge factory behind the forge binary (capability `sync-status`). Each recognized state
  * must reduce — through the REAL [StatusContainerHost], from forged sources only — to the intended
  * frame, with no backend, attestation token, or photo-library access (the factory constructs neither,
  * so a passing test proves their absence). An unrecognized name must be rejected so the shell can fall
  * back to the live stack.
  *
- * WHY THIS IS ASSERTED AT ALL, given the captures have no automated check (`ios-appstore-metadata`): what
+ * WHY THIS IS ASSERTED AT ALL, given the captures have no automated check (`docs/deployment.md`): what
  * is checked here is not the picture but the property the picture rests on — that a preset forges the
  * container's INPUTS and lets the real reduction produce the frame. A preset that fabricated a frame
  * directly would still screenshot beautifully, and would be depicting a state the app cannot be in.
@@ -118,7 +118,7 @@ class ForgeStatusHostTest {
         assertEquals(EVENT_NAME, layer.membership.name)
         assertEquals(EVENT_ID, layer.membership.eventId)
         assertEquals(encodeEventUrl(EventLinkPayload(EVENT_ID)), layer.inviteUrl)
-        // A granted grant offers no "Choose more photos" affordance (capability `limited-photo-access`).
+        // A granted grant offers no "Choose more photos" affordance (capability `photo-access`).
         assertFalse(layer.canChoosePhotos)
         // Nothing is drawn over a marketing capture.
         assertEquals(Overlays(), host.container.stateFlow.value.overlays)

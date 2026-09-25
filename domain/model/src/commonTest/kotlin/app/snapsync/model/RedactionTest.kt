@@ -99,7 +99,7 @@ class RedactionTest {
         redactUuids("gallery: enumerated 12 resource(s) (3 origin-excluded) → N=9"),
     )
 
-    // The exemption marker (capability `diagnostic-logging`): an event declares itself exempt, and
+    // The exemption marker (capability `privacy-security`): an event declares itself exempt, and
     // the scrubbing step consults this predicate. Pinned here because the failure is silent at every
     // other layer — a dump whose marker went missing arrives redacted, with no failing request.
 

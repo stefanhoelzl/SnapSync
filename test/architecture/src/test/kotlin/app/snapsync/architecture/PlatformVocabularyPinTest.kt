@@ -8,7 +8,7 @@ import kotlin.test.assertTrue
 import kotlin.test.fail
 
 /**
- * **The platform-vocabulary pin** (capability `architecture-guards`).
+ * **The platform-vocabulary pin** (`docs/architecture.md`).
  *
  * For every Apple enumeration an adapter decodes with a **fallback arm**, this pins the complete set of
  * constants that enumeration declares, with their values, and fails on any delta.
@@ -55,13 +55,13 @@ class PlatformVocabularyPinTest {
 
     /**
      * The pinned inventory — the contract of record. Adding, removing or re-valuing an entry is a spec
-     * change to `architecture-guards`' "The platform-vocabulary pin" requirement, deliberately.
+     * change to `docs/architecture.md`' "The platform-vocabulary pin" requirement, deliberately.
      *
      * Each entry is an enumeration some adapter decodes with a fallback arm, so a case Apple adds would
      * otherwise be silently absorbed.
      */
     private val pinned = listOf(
-        // Decoded by `photoKitJobState` (:adapter:ios:ext-safe, capability `ios-photokit-upload`).
+        // Decoded by `photoKitJobState` (:adapter:ios:ext-safe, capability `background-upload`).
         // Consequence of an untaught case: the terminal-job drain adjudicates it as a retry-spent
         // failure — safe (idempotent PUT, at-least-once) but wrong.
         PinnedEnum(
@@ -76,7 +76,7 @@ class PlatformVocabularyPinTest {
                 "PHAssetResourceUploadJobStateCancelled" to 5L,
             ),
         ),
-        // Decoded by `photoKitResourceRole` (:adapter:ios:ext-safe, capability `gallery-status`).
+        // Decoded by `photoKitResourceRole` (:adapter:ios:ext-safe, capability `sync-status`).
         // Consequence of an untaught case is worse than above: the fallback DROPS the resource, so an
         // untaught original resource type is a photo that never uploads, with no error anywhere.
         PinnedEnum(
@@ -128,7 +128,7 @@ class PlatformVocabularyPinTest {
         }
         assertTrue(
             deltas.isEmpty(),
-            "platform-vocabulary pin (capability `architecture-guards`):\n\n" + deltas.joinToString("\n"),
+            "platform-vocabulary pin (`docs/architecture.md`):\n\n" + deltas.joinToString("\n"),
         )
     }
 
@@ -157,7 +157,7 @@ class PlatformVocabularyPinTest {
                 "this pin exists to prevent, so teach the decoder before updating the list.",
         )
         appendLine(
-            "Updating the pinned inventory is a spec change to `architecture-guards`' " +
+            "Updating the pinned inventory is a spec change to `docs/architecture.md`' " +
                 "\"The platform-vocabulary pin\" requirement — do it deliberately, not to make this green.",
         )
     }

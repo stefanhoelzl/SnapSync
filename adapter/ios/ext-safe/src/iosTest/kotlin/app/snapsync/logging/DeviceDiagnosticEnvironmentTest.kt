@@ -5,7 +5,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * The state section of a diagnostic dump (capability `diagnostic-logging`).
+ * The state section of a diagnostic dump (capability `privacy-security`).
  *
  * Every field here is context an operator reads a crash *against*, and a field that quietly reports
  * the wrong thing is worse than one that is missing — it sends the reader to a build, an OS or a

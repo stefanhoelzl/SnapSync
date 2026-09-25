@@ -1,5 +1,5 @@
-// The version prefix split and the marketing-version comparison (capabilities `backend-deployment`,
-// `min-app-version`). Both are pure, so they are tested here directly; the GATE that uses them is tested
+// The version prefix split and the marketing-version comparison (capabilities `docs/deployment.md`,
+// `app-update-required`). Both are pure, so they are tested here directly; the GATE that uses them is tested
 // over HTTP in `v2.test.ts`.
 
 import { assertEquals } from "@std/assert";

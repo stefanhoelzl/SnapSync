@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * The current-APNs-token source (capability `push-registration`). The token is **OS-push-delivered**,
+ * The current-APNs-token source (capability `receiving-photos`). The token is **OS-push-delivered**,
  * not pulled: the iOS app-shell wiring calls [deliver] from the AppDelegate's
  * `didRegisterForRemoteNotificationsWithDeviceToken`; tests call [deliver] directly (it is its own
  * settable fake — one implementation suffices). [env] is the build's APNs environment, injected at

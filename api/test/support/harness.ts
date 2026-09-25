@@ -113,7 +113,7 @@ export function createApp(deps: Omit<Deps, "now">) {
 /** The real app with NOTHING attached — for the routes that must be reachable without a token. */
 export { createRealApp };
 
-/** Give a device the attestation row every device-scoped write now requires (capability `database`). */
+/** Give a device the attestation row every device-scoped write now requires (`docs/architecture.md`). */
 export { enrolDevice } from "./db.ts";
 
 export async function rows(db: Db, sql: string, args: unknown[] = []) {

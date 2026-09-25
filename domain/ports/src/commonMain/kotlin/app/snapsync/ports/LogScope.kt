@@ -5,7 +5,7 @@ import co.touchlab.kermit.Severity
 import kotlin.time.TimeSource
 
 /**
- * The ambient "what triggered this" seam (capability `diagnostic-logging`): the set/clear boundary
+ * The ambient "what triggered this" seam (capability `privacy-security`): the set/clear boundary
  * that lets the device-log writers prefix every line with `[<entryPoint>]` so downstream
  * engine/HTTP/download lines trace back to the entry point that drove them.
  *
@@ -42,7 +42,7 @@ interface LogScope {
 /**
  * Wrap a platform invocation / app entry point / background trigger so it logs enter + exit with
  * its parameters, its result, and its elapsed duration, and sets the ambient [LogScope] for the
- * duration so downstream lines trace back to it (capability `diagnostic-logging`, D3).
+ * duration so downstream lines trace back to it (capability `privacy-security`, D3).
  *
  * - `→ <name>(<params>)` on entry, `← <name> = <result> (<ms>ms)` on success, and a warn
  *   `✗ <name> threw (<ms>ms)` on throw (the throwable is re-thrown unchanged).
@@ -52,7 +52,7 @@ interface LogScope {
  *   fires once per platform event. Entry points that fire once per ITEM — a per-asset library-change
  *   callback, a per-task transfer callback — pass `Debug`: at `Info` a single large import would
  *   flush the crash reporter's bounded breadcrumb window and roll the size-capped device log before
- *   anyone read it (capability `crash-reporting`). A throw is always `Warn`, whatever [severity] is:
+ *   anyone read it (capability `privacy-security`). A throw is always `Warn`, whatever [severity] is:
  *   it is never the routine case.
  * - Not marked `suspend`: it is `inline`, so [block] is inlined into the caller and may suspend when
  *   the call site is a coroutine, while non-suspend entry points use the very same function.
@@ -102,7 +102,7 @@ inline fun Logger.logAt(severity: Severity, message: () -> String) = when (sever
 /**
  * Run [block] as a **best-effort** step: a failure is logged at `Warn` with [name] and swallowed, so the caller
  * carries on; cancellation is rethrown, never logged as a failure (law "Catch sites keep cancellation", capability
- * `module-architecture`). Returns whether the step completed.
+ * `docs/architecture.md`). Returns whether the step completed.
  *
  * For a step whose failure must STOP the sequence, do not use this: a required step lets its failure propagate
  * (law "A multi-step use case declares which steps are required").

@@ -76,7 +76,7 @@ class GalleryReader(
         val mark = TimeSource.Monotonic.markNow()
         // This route asks the app's OWN seam, so it reports what the app would see — including "there is
         // nothing to report". Answering that with an empty asset list would tell an operator the library
-        // is empty when the truth is that nobody could look (capability `gallery-status`).
+        // is empty when the truth is that nobody could look (capability `sync-status`).
         val found = when (val read = candidates.candidates(policy)) {
             is CandidateRead.Readable -> read.candidates
             CandidateRead.NotReadable ->
@@ -86,7 +86,7 @@ class GalleryReader(
         val assets = found.map { candidate ->
             val facts = candidate.facts
             // Admission comes from the POLICY — the single decision (capability
-            // `photo-selection-policy`). This used to re-run the rule list itself and call the result
+            // `photo-sharing`). This used to re-run the rule list itself and call the result
             // `admitted`, which is a second implementation of the one thing the policy exists to decide.
             // The rule scan below now only NAMES the reason, and never decides.
             val admitted = policy.admits(facts)

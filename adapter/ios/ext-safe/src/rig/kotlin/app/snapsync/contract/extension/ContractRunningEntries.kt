@@ -22,7 +22,7 @@ import platform.Foundation.stringWithContentsOfFile
 import platform.Foundation.writeToFile
 
 /*
- * A port-contract run inside the upload extension (capability `port-contracts`, "The device run is reached
+ * A port-contract run inside the upload extension (`docs/architecture.md`, "The device run is reached
  * through the rig and contained at compile time"). The rig cannot reach the extension, and the extension lives
  * only as long as the operating system's `process()` call, so the run is requested and answered through the
  * App Group both processes share:

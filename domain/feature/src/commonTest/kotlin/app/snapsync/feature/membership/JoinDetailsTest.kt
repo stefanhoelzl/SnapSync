@@ -19,7 +19,7 @@ import kotlin.test.assertEquals
  * membership on a bad signal, and the member would find themselves silently ejected from the event.
  *
  * This mapping lives in `feature/membership` rather than the app shell precisely because it IS a decision
- * (`module-architecture`, "Shells are wiring only"), which is what makes it testable at all — but until
+ * (`docs/architecture.md`, "Shells are wiring only"), which is what makes it testable at all — but until
  * now nothing tested it, in a mapping reached from three composition roots.
  */
 class JoinDetailsTest {

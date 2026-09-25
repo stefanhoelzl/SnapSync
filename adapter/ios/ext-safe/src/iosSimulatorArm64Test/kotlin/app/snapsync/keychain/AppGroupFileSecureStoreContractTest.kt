@@ -14,7 +14,7 @@ import app.snapsync.testsupport.writeTextFile
 import kotlin.test.Test
 
 /**
- * The simulator target's file-backed [SecureStore], live (capability `port-contracts`). The directory is
+ * The simulator target's file-backed [SecureStore], live (`docs/architecture.md`). The directory is
  * injected, so a clause gets a fresh one: present for the readable states, absent — the unavailable
  * container — for [SecureStoreState.INACCESSIBLE].
  *

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Resolve a deployment and emit every rendering (capability `deployment-configuration`).
+"""Resolve a deployment and emit every rendering (`docs/deployment.md`).
 
 WHY THIS EXISTS. A deployment fact — the device-facing domain, the storage zone, the Apple team and
 bundle ids — is read by FOUR toolchains: Deno (`api/`), Gradle (`domain/`), Xcode (`iosApp/`) and
@@ -61,7 +61,7 @@ METADATA = "metadata"  # build/metadata/** — the App Store listing
 SITE = "site"  # site/src/deployment.json
 
 DEVICE_API_PREFIX = "/api/v2"
-"""The version prefix every device request is addressed under (capability `api-endpoints`).
+"""The version prefix every device request is addressed under (`docs/architecture.md`).
 
 Named because it appears in TWO places that must agree and cannot check each other: the `uploadBase`
 this script renders into `Deployment.plist`, and the `BackgroundUploadURLBase` literal authored into
@@ -160,7 +160,7 @@ INVENTORY = [
     Key("appStoreUrl", [JSON, SITE, PLIST], doc="""
         The app's App Store page. Read by THREE consumers, which is why it is one value: `GET /join`
         redirects an app-less visitor here, the site's download button links here, and the device shows
-        it when the backend refuses the build as too old (capability `min-app-version`) — a state whose
+        it when the backend refuses the build as too old (capability `app-update-required`) — a state whose
         only remedy is this link.
 
         ⚠️ **The country segment is load-bearing while availability is limited.** Measured 2026-08-28:
@@ -238,7 +238,7 @@ INVENTORY = [
         two weeks.
     """),
     Key("databaseUrl", [JSON], required="kind==bunny", env_ref=True, doc="""
-        libSQL/HTTP URL of this deployment's relational store (capability `database`). An environment
+        libSQL/HTTP URL of this deployment's relational store (`docs/architecture.md`). An environment
         reference, like every credential: it addresses a live store holding real events. EACH DEPLOYMENT
         ADDRESSES ITS OWN — a dev run that wrote or deleted rows in the production store would corrupt
         live events, and unlike the storage zone there is no per-object blast radius to fall back on.
@@ -259,7 +259,7 @@ INVENTORY = [
         Whether this bundle serves a MAINTENANCE WINDOW: every route under `/api/` answers 503, while the
         root routes (the site, the AASA, the health route) keep serving. Set for exactly one publish in a
         migrating deploy, so no request meets a bundle whose schema assumptions do not match the store it
-        reaches (capability `backend-deployment`).
+        reaches (`docs/deployment.md`).
 
         BUILD scope, like `sha`, and for the same forced reason: CI holds only the script-scoped deploy
         key and CANNOT write the Edge Script's environment (writing one needs the full-access account key,
@@ -283,7 +283,7 @@ INVENTORY = [
         disagreement unrepresentable. It also gates the DSN: absence is the off-switch.
 
         `apnsEnv` is reported by the app in `devices/<id>/config.json`, so the backend picks the right
-        APNs host per token (capability `push-registration`); it is kept in lockstep with the
+        APNs host per token (capability `receiving-photos`); it is kept in lockstep with the
         `aps-environment` entitlement by being derived from this same value rather than stated twice.
 
         This key is environment-sourced and names a RAW rendering, which the rule above forbids for a
@@ -303,7 +303,7 @@ INVENTORY = [
 
         Read by the `CrashReporting` adapter in BOTH processes, each from its own bundle, alongside
         `sentryEnvironment`. Absent in every dev/sideload build; only a CI Release archive resolves it
-        (capability `ios-testflight-delivery`). It cannot be injected on an `xcodebuild` line any more —
+        (`docs/deployment.md`). It cannot be injected on an `xcodebuild` line any more —
         a build-setting override cannot substitute into a generated resource — so an on-device build
         that reports is a `workflow_dispatch` of `ios.yml`, not a sideload.
     """),
@@ -524,7 +524,7 @@ def render_xcconfig(flat: dict) -> str:
 
     `UPLOAD_SCHEME`/`UPLOAD_HOST` are how that survives a value which DOES contain `//`. Both bundles'
     `Info.plist` must carry `BackgroundUploadURLBase` — `assetsd` reads it there to validate the
-    background-upload registration, and can see no resource we bundle (capability `ios-photokit-upload`)
+    background-upload registration, and can see no resource we bundle (capability `background-upload`)
     — but an `Info.plist` substitution reads a build setting, and a build setting cannot hold a URL. So
     the URL is COMPOSED AT ITS DESTINATION, `$(UPLOAD_SCHEME)://$(UPLOAD_HOST)/api/v2`, out of two parts
     neither of which can contain `//`: a scheme this function chooses, and a bare host from authored
@@ -551,7 +551,7 @@ def render_xcconfig(flat: dict) -> str:
 
 
 def render_plist(flat: dict) -> str:
-    """The values BOTH iOS processes read from their own bundle (capability `deployment-configuration`).
+    """The values BOTH iOS processes read from their own bundle (`docs/deployment.md`).
 
     Keyed by the inventory's own names, so this artifact is a direct projection of the inventory as the
     JSON and site renderings already are — the `SCREAMING_SNAKE` names it replaces were xcconfig build

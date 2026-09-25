@@ -97,7 +97,7 @@ class CreatedUploadJob(
  * (measured on an SE2, iOS 26.6: acknowledging a failed-once job removes it from the retry set too).
  *
  * The process-wide [SimulatorUploadJobs] is the one the app composes and the rig's caller plays the OS through; a
- * contract binding constructs a fresh one per clause (capability `port-contracts`).
+ * contract binding constructs a fresh one per clause (`docs/architecture.md`).
  *
  * ## Every accessor is guarded, and that is not defensive
  *
@@ -272,7 +272,7 @@ internal class SimulatorUploadJobQueue(
     /**
      * The live resource the real OS would have handed back on the job object, fetched by identifier.
      *
-     * A stand-in for a job field, not discovery (capability `ios-photokit-upload`: a substituted queue MAY fetch it
+     * A stand-in for a job field, not discovery (capability `background-upload`: a substituted queue MAY fetch it
      * by identifier, and SHALL NOT route it through `UploadDiscovery`). `null` when the asset has left the library.
      */
     private fun resourceForKey(key: String): PHAssetResource? {

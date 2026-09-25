@@ -8,7 +8,7 @@ import kotlin.test.assertNull
 
 /**
  * The OS-driven tier's pending→re-invocation rule (`requeueWhilePending`, capability
- * `ios-photokit-upload`) — drained from the untested extension root at the migration finale: a
+ * `background-upload`) — drained from the untested extension root at the migration finale: a
  * drained cycle with in-flight rows answers `PROCESSING` so the OS re-invokes and their
  * completions are recorded promptly; everything else passes through untouched, without even
  * reading the ledger.

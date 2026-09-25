@@ -22,7 +22,7 @@ import kotlin.test.assertTrue
  * a legacy item; only the entitled app on a device can. That path is now covered anyway: the app runs
  * `SecureStoreContract` on a device over the rig, recording every `SecItem*` call and iOS's answer, and
  * `IosKeychainReplayContractTest` replays the recording against this adapter on every build (capability
- * `port-contracts`). This was discovered the hard way — the first version of this file assumed a working
+ * `docs/architecture.md`). This was discovered the hard way — the first version of this file assumed a working
  * Keychain and failed 9 of its 19 assertions.
  *
  * What remains is not nothing. It is, in fact, **the bug itself**: an inaccessible Keychain is exactly
@@ -42,7 +42,7 @@ class IosKeychainTest {
     private val keychain = IosKeychain(service = "app.snapsync.test.keychain", account = "testitem")
 
     /**
-     * The half of capability `architecture-guards`'s argument that containment cannot supply: Konsist
+     * The half of `docs/architecture.md`'s argument that containment cannot supply: Konsist
      * proves all Keychain code lives in this module; this proves this module always writes items a
      * locked device can read. [IosKeychain.writtenAttributes] is the single source that both `write` and
      * `migrateProtection` build their dictionaries from, so it cannot drift from what is applied.
@@ -127,7 +127,7 @@ class IosKeychainTest {
 
     /**
      * An unscoped item reports `null` rather than dropping the entry. The distinction is the whole
-     * subject of the unscoped-seat inventory (capability `architecture-guards`): "search wherever
+     * subject of the unscoped-seat inventory (`docs/architecture.md`): "search wherever
      * this process is entitled to look" is a real, inventoried choice, and a map that simply omitted
      * it would read identically to one that had never been asked.
      */

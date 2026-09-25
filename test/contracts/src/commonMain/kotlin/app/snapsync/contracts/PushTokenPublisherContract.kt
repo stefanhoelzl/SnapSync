@@ -15,7 +15,7 @@ enum class PushTokenPublisherState {
 }
 
 /**
- * What publishing this device's push token promises (capability `port-contracts` — the port's specification).
+ * What publishing this device's push token promises (`docs/architecture.md` — the port's specification).
  *
  * No clause reads the published token back: the edge exposes no read of a device's config, and a setup that
  * reached around its public surface would contract a stand-in rather than the edge. What the app depends on

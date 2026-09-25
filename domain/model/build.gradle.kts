@@ -5,11 +5,11 @@ import org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeSimulatorTes
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.kotlin.serialization)
-    // Coverage measurement (capability `coverage-bounds`). Applied here rather than in a
+    // Coverage measurement (`docs/architecture.md`). Applied here rather than in a
     // `subprojects {}` block so the instrumented set is readable per module.
     alias(libs.plugins.kover)
 }
-// Coverage (capability `coverage-bounds`). The report is filtered to this module's OWN classes.
+// Coverage (`docs/architecture.md`). The report is filtered to this module's OWN classes.
 // The crediting edge that lets `:adapter:generic:fake`'s feature tests count toward this module is
 // declared in the ROOT build file, not here: `ModuleSetTest` asserts this file names no module at
 // all, because that absence is the precondition for the platform-free compile error.
@@ -33,7 +33,7 @@ tasks.withType<KotlinNativeSimulatorTest>().configureEach {
     }
 }
 
-// The core'"'"'s `model` zone (spec `module-architecture`, "The module set withholds; packages organize").
+// The core'"'"'s `model` zone (`docs/architecture.md`, "The module set withholds; packages organize").
 // The vocabulary, pure codecs and domain services. References nothing project-internal.
 //
 // Zone edges are declared with `implementation()`, never `api()`: a zone must not leak to a downstream
@@ -41,7 +41,7 @@ tasks.withType<KotlinNativeSimulatorTest>().configureEach {
 // NO iosMain source directory, ever — the targets exist so iosMain elsewhere can compile against this.
 
 // The event link's origin, generated from the RESOLVED DEPLOYMENT (capability
-// `deployment-configuration`) so the app, the backend, the xcconfig and the site all derive it from one
+// `docs/deployment.md`) so the app, the backend, the xcconfig and the site all derive it from one
 // declared value rather than each holding a copy. `snapsync.deployment` names WHICH deployment; the
 // resolver renders it to `build/deployment.properties`, which Gradle reads natively.
 //
@@ -73,7 +73,7 @@ val linkDomain: String = requireNotNull(resolvedDeployment["domain"]) {
 //   * the UPLOAD BASE is an ordinary network request, governed by ATS — which exempts the loopback IP
 //     literal, which is the only reason a simulator can reach `deno task dev:local` over plain HTTP.
 //   * LINK_ORIGIN is a UNIVERSAL LINK origin. `applinks:` and the AASA are HTTPS-only by Apple's
-//     contract (capability `event-link`: "the HTTPS Universal Link"); iOS will not claim an `http://`
+//     contract (capability `join-event`: "the HTTPS Universal Link"); iOS will not claim an `http://`
 //     link at all, so deriving a scheme here would generate a constant that cannot work.
 // A local deployment therefore gets an https LINK_ORIGIN it never exercises — correct and inert — rather
 // than an http one that would look consistent and mean nothing.
@@ -92,7 +92,7 @@ val generateLinkOrigin by tasks.registering {
             package app.snapsync.model
 
             /**
-             * The event link's canonical origin (capability `event-link`). Both halves of the codec are
+             * The event link's canonical origin (capability `join-event`). Both halves of the codec are
              * anchored here: [encodeEventUrl] emits it and [decodeEventUrl] matches it, so producer and
              * consumer cannot drift.
              */
@@ -111,7 +111,7 @@ kotlin {
     sourceSets {
         commonMain.configure { kotlin.srcDir(generateLinkOrigin) }
         commonMain.dependencies {
-            // The per-zone library allowlist (spec `module-architecture`, "Core purity is closed by
+            // The per-zone library allowlist (`docs/architecture.md`, "Core purity is closed by
             // default"): coroutines (StateFlow/Flow port shapes), serialization + datetime (the
             // config/manifest vocabulary and cutoff codecs), kermit (the engine's diagnostics).
             api(libs.coroutines.core)
@@ -126,7 +126,7 @@ kotlin {
     }
 }
 
-// ---- Coverage bounds (capability `coverage-bounds`) ---------------------------------------------
+// ---- Coverage bounds (`docs/architecture.md`) ---------------------------------------------
 //
 // A FLOOR on this module's coverage, seeded at what the tree measured when the gate landed, and
 // permitted to move in one direction only: UP. The destination is full coverage, and these numbers
@@ -135,7 +135,7 @@ kotlin {
 // RAISING a bound is ordinary work - do it in the change that makes it true. LOWERING one requires a
 // stated forcing proof in that change's description, naming what makes the loss of coverage
 // unavoidable. Nothing checks this: it is a ratchet carried by this paragraph and by review, and it
-// is deliberately NOT a proof. `complexity-budgets` carries the same contract at the opposite
+// is deliberately NOT a proof. `docs/architecture.md` carries the same contract at the opposite
 // polarity - a ceiling that may only fall.
 //
 // TWO RULES, because they fail on different things. The aggregate catches a broad slide that leaves
@@ -152,7 +152,7 @@ kotlin {
 // `:domain package floor` measured eleven packages inside a single `:domain` module; the zone split
 // turned each of those zones into a module with an aggregate of its own, which is the same check
 // expressed by the module graph instead of by a grouping rule. `:domain:compose` is the one zone with
-// no bound at all - a composition root is outside the measurable set (capability `coverage-bounds`),
+// no bound at all - a composition root is outside the measurable set (`docs/architecture.md`),
 // and leaving the module uninstrumented states that better than the package exclude that used to.
 //
 // What remains uncovered is largely NOT a testing gap: data-class `equals`/`hashCode`/`toString` and

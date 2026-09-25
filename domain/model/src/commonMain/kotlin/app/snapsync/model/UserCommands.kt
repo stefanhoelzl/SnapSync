@@ -1,7 +1,7 @@
 package app.snapsync.model
 
 /**
- * The **user-tap command bundle** (spec `module-architecture`, "Commands cross one door"): the
+ * The **user-tap command bundle** (`docs/architecture.md`, "Commands cross one door"): the
  * commands the status screen can fire, so every user tap crosses the same door the OS-callback
  * triggers do. Seated in `model/` (migration step 9): the bundle is pure vocabulary — a record of
  * command callables with inert defaults — and `model/` is the one zone both `compose/` (which
@@ -17,38 +17,38 @@ package app.snapsync.model
  * reduces on, so it is a query, not a command.
  *
  * No field has a default (law "Function-typed parameters have no defaults in production", capability
- * `module-architecture`): a host that builds this bundle states every command, so one it forgets does not
+ * `docs/architecture.md`): a host that builds this bundle states every command, so one it forgets does not
  * compile. They all used to default to inert, and a host that rebuilt the bundle by hand shipped a
  * "Choose more photos" button that did nothing.
  *
  * - [leave] — leave the configured event: cancel in-flight downloads, stop the producer, clear the
- *   config, notify the backend (capability `leave-event`).
+ *   config, notify the backend (capability `manage-membership`).
  * - [create] — mint a new event with a name and canonical UTC date **range** (`startsAt`, `endsAt`), then
- *   route it into the join gate (capability `event-creation-ui`). Fire-and-forget; outcomes arrive via
+ *   route it into the join gate (capability `create-event`). Fire-and-forget; outcomes arrive via
  *   `CreationStatusSource`.
  * - [commitJoin] — join (a bodyless membership write, no manifest) then provision the membership's
  *   capture-date **range** (`minPhotoDate`..`maxPhotoDate`, each clamped to the event window
  *   `startsAt`..`endsAt`), answering a [JoinCommit]: committed (incl. the already-joined no-op), at
  *   capacity, or failed (capability `join-event`).
  * - [share] — hand the invite URL to the platform share surface (fire-and-forget, `UiState` unaffected).
- * - [requestAccess] — raise the system photo-access dialog (capability `permission-gate`): returns
+ * - [requestAccess] — raise the system photo-access dialog (capability `photo-access`): returns
  *   nothing and cannot suspend — the grant arrives only via the permission read-model.
  * - [openLink] — hand a URL to the platform to open outside the app. Its ONE caller is the
- *   update-required screen's App Store button (capability `min-app-version`), whose remedy is by
+ *   update-required screen's App Store button (capability `app-update-required`), whose remedy is by
  *   definition not in this app. The URL is passed in rather than known here, because the screen's
  *   contract is that a build carrying no store URL renders no button — a command that knew the URL
  *   could not express that.
  * - [openSettings] — open the app's system Settings page (the `DENIED` affordance). Distinct from
  *   [reconfigure], which edits this *membership's* settings, not the iOS system settings page.
  * - [choosePhotos] — present the platform's limited-library picker (capability
- *   `limited-photo-access`): the joined layer's "Choose more photos" affordance under a partial
+ *   `photo-access`): the joined layer's "Choose more photos" affordance under a partial
  *   grant. Fire-and-forget; the resulting selection change arrives via the selection-change seam.
  * - [reconfigure] — change the joined membership's participation settings in place (direction, cutoff,
- *   album opt-in) without leaving (capability `reconfigure-membership`). [eventId] is the event the
+ *   album opt-in) without leaving (capability `manage-membership`). [eventId] is the event the
  *   settings surface was opened for; the use-case no-ops if the current membership no longer matches.
  *   Awaited: it answers a [ReconfigureOutcome], so a save that did not land is told to the member rather than
  *   closing the surface as if it had; the change itself lands via the config read-model.
- * - [rename] — rename the joined event for **every** member (capability `event-rename`). [eventId] is
+ * - [rename] — rename the joined event for **every** member (capability `manage-membership`). [eventId] is
  *   the event the heading affordance was opened for; the use-case no-ops if the current membership no
  *   longer matches. Fire-and-forget; the outcome arrives via `RenameStatusSource`, and the new name
  *   lands via the config read-model. Unlike [reconfigure], which changes only this device's settings,
@@ -57,7 +57,7 @@ package app.snapsync.model
  *   terminal value. Needed because `RenameStatus` carries a success value where `CreationStatus`
  *   deliberately does not: a rename changes no layer, so nothing else would clear it.
  * - [sendDiagnostics] — send this device's diagnostic dump to the operator's reporting channel
- *   (capability `diagnostic-logging`), fired by the hidden double-tap once the operator has written
+ *   (capability `privacy-security`), fired by the hidden double-tap once the operator has written
  *   what went wrong. `note` is that description, already trimmed and length-bounded by the sheet — it
  *   titles the report, so two reports about different problems arrive as different issues. `screen` is
  *   an opaque label for the surface it was sent from, supplied by the UI (the domain enumerates no

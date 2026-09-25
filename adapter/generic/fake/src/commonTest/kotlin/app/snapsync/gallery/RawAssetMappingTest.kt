@@ -45,7 +45,7 @@ private suspend fun InMemoryCandidateSource.resourcesFor(cutoff: String) =
 
 /**
  * The candidates of a read this fake always answers: it reads a cell, so it is always `Readable`
- * (capability `gallery-status`). Asserting that here keeps every case below about the MAPPING rather
+ * (capability `sync-status`). Asserting that here keeps every case below about the MAPPING rather
  * than about a branch none of them exercises.
  */
 private suspend fun InMemoryCandidateSource.readCandidates(policy: SelectionPolicy): List<Candidate> =
@@ -84,7 +84,7 @@ class RawAssetMappingTest {
         assertEquals("ABC_L0_001-primary.heic", primary.filename)
         // The resolved MIME, not a platform type identifier: `contentType` is what the upload
         // provider sends as the `Content-Type` header, and it used to carry a UTI while the correct
-        // MIME sat unused in metadata (spec `gallery-status`).
+        // MIME sat unused in metadata (spec `sync-status`).
         assertEquals("image/heic", primary.contentType)
         assertEquals(primary.metadata[RESOURCE_META_MIME], primary.contentType, "one content type, not two")
         assertEquals("2026-07-01T00:00:00Z", primary.metadata[RESOURCE_META_CREATION_DATE])
@@ -179,7 +179,7 @@ class RawAssetMappingTest {
 
     @Test
     fun the_bounded_walk_excludes_assets_captured_before_the_bound() = runTest {
-        // There is no unbounded walk (capability `photo-selection-policy`): the whole-library enumeration cost
+        // There is no unbounded walk (capability `photo-sharing`): the whole-library enumeration cost
         // one synchronous PhotoKit round-trip per asset, and a membership always has a cutoff to scope it.
         val source = InMemoryCandidateSource(
             listOf(

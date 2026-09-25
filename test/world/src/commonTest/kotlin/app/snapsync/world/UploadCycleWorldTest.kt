@@ -68,7 +68,7 @@ class UploadCycleWorldTest {
         w.runUploadCycle()
 
         // The asset leaves, but the walk that follows cannot read the library: an empty answer that is not
-        // authoritative is no evidence (capability `sync-ledger`), so it must cost an idle pass, not a row.
+        // authoritative is no evidence (capability `photo-sharing`), so it must cost an idle pass, not a row.
         w.removeAsset("A")
         w.discovery.makeWalkUnreadable()
         w.runUploadCycle()
@@ -121,7 +121,7 @@ class UploadCycleWorldTest {
         w.platform.completeJob("A-primary.jpg")
         w.runUploadCycle()
 
-        // No removal signal is needed any more (capability `sync-ledger`, "Deletion is a presence diff over an
+        // No removal signal is needed any more (capability `photo-sharing`, "Deletion is a presence diff over an
         // authoritative walk"): a full enumeration that no longer returns an in-window asset IS the evidence.
         // Under the change feed this deletion was lost for the event's remaining life once the token expired.
         w.removeAsset("A")

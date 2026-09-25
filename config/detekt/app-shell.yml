@@ -1,4 +1,4 @@
-# The app shell holds no decisions (capability `architecture-guards`).
+# The app shell holds no decisions (`docs/architecture.md`).
 #
 # ONE rule. `:app:*` is wiring — it constructs adapters, bundles them as ports, and forwards OS
 # callbacks. Constructing is not a decision; branching, ordering, and error-mapping are, and they belong

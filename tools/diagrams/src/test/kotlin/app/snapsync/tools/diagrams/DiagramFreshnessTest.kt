@@ -7,7 +7,7 @@ import kotlin.test.assertTrue
 import kotlin.test.fail
 
 /**
- * The diagram freshness gate (capability `architecture-diagrams`): regenerate in-process and
+ * The diagram freshness gate (`docs/architecture.md`): regenerate in-process and
  * compare against the committed files, so `./gradlew build` — the canonical check — fails on a
  * structural change that skipped `./gradlew architectureDiagrams`. Deliberately NOT `git diff`
  * (fails open on untracked files, lives outside the build, assumes a clean tree) and deliberately

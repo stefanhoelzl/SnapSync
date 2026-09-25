@@ -10,7 +10,7 @@ import app.snapsync.ports.invocation
 import co.touchlab.kermit.Logger
 
 /**
- * What the membership transitions do to the app's uploader (capability `upload-lifecycle`, "Membership transitions
+ * What the membership transitions do to the app's uploader (capability `background-upload`, "Membership transitions
  * reconcile the upload mechanisms in one tested place") — the three verbs, and nothing a wake triggers.
  *
  * | verb | what it does |
@@ -39,7 +39,7 @@ interface AppUploadEngine {
 }
 
 /**
- * The upload arm: **what each membership transition does** to the two uploaders (capability `upload-lifecycle`,
+ * The upload arm: **what each membership transition does** to the two uploaders (capability `background-upload`,
  * "Membership transitions reconcile the upload mechanisms in one tested place").
  *
  * It holds **no state**. Every decision is derived afresh from whether a membership exists, the registration fact
@@ -92,7 +92,7 @@ class UploadTransitions(
 
     /**
      * A reconfigure, in any direction. The registration is not touched — it spans the membership — and the app
-     * engine is kicked; the selection policy decides whether anything uploads (capability `reconfigure-membership`).
+     * engine is kicked; the selection policy decides whether anything uploads (capability `manage-membership`).
      */
     suspend fun onReconfigure() = log.invocation(logScope, "uploads.onReconfigure") {
         if (joined()) armIfUsable()
@@ -117,7 +117,7 @@ class UploadTransitions(
 
     /**
      * A leave, or a switch leaving the previous membership: the one transition that stops in-flight work. The
-     * caller clears the upload ledger and the configured event afterwards (capability `leave-event`).
+     * caller clears the upload ledger and the configured event afterwards (capability `manage-membership`).
      */
     suspend fun onLeave() = log.invocation(logScope, "uploads.onLeave") {
         registration?.deregister()

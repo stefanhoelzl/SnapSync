@@ -21,7 +21,7 @@ import io.ktor.http.isSuccess
 import java.util.UUID
 
 /**
- * The journeys' second member (capability `testing-architecture`, "All-real journeys are the contracts' safety net"):
+ * The journeys' second member (`docs/testing.md`, "All-real journeys are the contracts' safety net"):
  * a device the backend cannot tell from a real one, played over the backend's public HTTP surface ONLY.
  *
  * It joins, uploads and publishes exactly as a device's uploader addresses those routes, with real JPEG bytes, so

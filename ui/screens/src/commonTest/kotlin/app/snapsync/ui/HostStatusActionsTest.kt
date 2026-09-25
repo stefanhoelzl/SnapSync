@@ -89,7 +89,7 @@ private fun linkTo(eventId: String) = encodeEventUrl(EventLinkPayload(eventId))
 
 /**
  * The status screen's ONE tap → intent table, [statusActions], clicked through the real screen over a real
- * container (spec `sync-status-screen`, "The screen's callback bundle is built in one place").
+ * container (spec `sync-status`, "The screen's callback bundle is built in one place").
  *
  * The other screen suites hand `StatusScreen` a forged `UiState` and a spy bundle, and the container suites fire
  * intents directly — so between them, nothing ever ran the table that joins the two. That table was written out by
@@ -208,7 +208,7 @@ class HostStatusActionsTest {
     private val UiState.joined get() = layer as? Layer.Joined
     private val UiState.joining get() = layer as? Layer.JoiningEvent
 
-    // ---- the update-required store button (capability `min-app-version`) — the binding that had drifted ----
+    // ---- the update-required store button (capability `app-update-required`) — the binding that had drifted ----
 
     @Test
     fun `the store button opens the store link through the container`() =
@@ -280,7 +280,7 @@ class HostStatusActionsTest {
             awaitFired(rig, "reconfigure:$JOINED_ID")
         }
 
-    // ---- the access prompts (capabilities `permission-gate`, `limited-photo-access`) ----
+    // ---- the access prompts (capabilities `photo-access`, `photo-access`) ----
 
     @Test
     fun `a never-asked grant's prompt requests access`() =
@@ -421,7 +421,7 @@ class HostStatusActionsTest {
             awaitState(rig) { it.joining?.eventId == OTHER_ID }
         }
 
-    // ---- the hidden bug report (capability `diagnostic-logging`) ----
+    // ---- the hidden bug report (capability `privacy-security`) ----
 
     @Test
     fun `the double-tap opens the report sheet — Cancel closes it — and Send sends`() =

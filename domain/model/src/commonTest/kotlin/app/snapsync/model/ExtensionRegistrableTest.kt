@@ -5,7 +5,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/** The registration fact over every input cell (capability `upload-lifecycle`). */
+/** The registration fact over every input cell (capability `background-upload`). */
 class ExtensionRegistrableTest {
 
     private val pins: List<UploaderPin?> = listOf(

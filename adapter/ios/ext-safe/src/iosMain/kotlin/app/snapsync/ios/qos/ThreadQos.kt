@@ -19,7 +19,7 @@ import platform.posix.qos_class_self
 import kotlin.coroutines.EmptyCoroutineContext
 
 /**
- * The QoS class of the **calling thread**, as a short label for a log line (capability `diagnostic-logging`):
+ * The QoS class of the **calling thread**, as a short label for a log line (capability `privacy-security`):
  * `UX` user-interactive · `UI` user-initiated · `DEF` default · `UT` utility · `BG` background · `UNSPEC`
  * unspecified; anything else prints its raw value.
  *
@@ -74,7 +74,7 @@ fun newUserInitiatedLane(name: String, log: Logger = Logger.withTag("qos")): Cor
  * USER_INITIATED — in whichever process links it (the app, and the upload extension, whose own scope runs on
  * `Dispatchers.Default` threads of the class the OS launched it at).
  *
- * The hop's meaning is unchanged (spec `module-architecture`, "Dispatcher lanes are fixed by the composition"):
+ * The hop's meaning is unchanged (`docs/architecture.md`, "Dispatcher lanes are fixed by the composition"):
  * **throughput**, so a synchronous `assetsd` round-trip does not hold the serial composition lane. What moved is
  * only which thread takes it — its own, at a known QoS, instead of a `Dispatchers.Default` worker at an
  * inherited one. One thread, deliberately: each caller's reads are sequential already, so what one thread costs

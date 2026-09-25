@@ -15,7 +15,7 @@ import app.snapsync.model.LedgerState;
 -- nothing read them (decision record `changes/shrink-the-ledger-row`). The key is the bare, event-independent
 -- resource filename.
 --
--- The four manifest columns carry the DEVICE MANIFEST's presentation detail (capability `sync-ledger`),
+-- The four manifest columns carry the DEVICE MANIFEST's presentation detail (capability `photo-sharing`),
 -- so the manifest is a projection of this table's COMPLETED rows rather than a parallel accumulator
 -- that tracked the same deletion-aware asset set with different columns. `DEFAULT ''` must match
 -- 5.sqm exactly (the verify task compares migrated vs created schemas); `''` is the "not yet
@@ -47,7 +47,7 @@ CREATE INDEX ledgerRow_assetId ON ledgerRow(assetId);
 -- therefore TWO obligations, not one. The verify task now catches a missed second one.
 CREATE INDEX ledgerRow_destinationPath ON ledgerRow(destinationPath);
 
--- THE MANIFEST VERSION (capability `sync-ledger`, "The manifest version orders the device's manifest
+-- THE MANIFEST VERSION (capability `photo-sharing`, "The manifest version orders the device's manifest
 -- snapshots"). One counter, one row, that advances on every change that could alter the device manifest's
 -- projection. Each publish carries the value its cycle read FIRST, and the backend refuses a strictly older
 -- one — which is what stops the app's and the upload extension's publishes, crossing in the network, from
@@ -110,7 +110,7 @@ SELECT key, assetId, state, creationDate, role, contentType, originalFilename, d
 FROM ledgerRow
 WHERE key = :key;
 
--- The record write (capability `sync-ledger`, "Record operations"): upsert one complete row, EXCEPT over a
+-- The record write (capability `photo-sharing`, "Record operations"): upsert one complete row, EXCEPT over a
 -- row whose state is done. There is no unconditional per-row upsert any more — this is the only one.
 --
 -- The guard lives in the statement because a read-then-write is not atomic against a second writer, and a
@@ -144,7 +144,7 @@ VALUES (
     :key, :assetId, :state, :creationDate, :role, :contentType, :originalFilename, :destinationPath
 );
 
--- Resolve a row from the destination its upload was addressed to (capability `ios-photokit-upload`).
+-- Resolve a row from the destination its upload was addressed to (capability `background-upload`).
 -- A NULL column never matches, which is correct: such a row predates the write and is recovered by the
 -- tier's fallback instead.
 selectByDestinationPath:
@@ -165,7 +165,7 @@ SET creationDate = :creationDate,
 WHERE key = :key AND creationDate = '';
 
 -- The rows the device manifest projects from — what this device INTENDS to provide to the event
--- (capability `device-manifest`). Deliberately NOT state-scoped: what a member will contribute does not
+-- (capability `photo-sharing`). Deliberately NOT state-scoped: what a member will contribute does not
 -- depend on how far its bytes have got, and a state predicate here is what let the manifest and the
 -- backend's declaration model disagree.
 --
@@ -174,7 +174,7 @@ WHERE key = :key AND creationDate = '';
 -- capture-date bounds, including the exclusion of a bare row, whose empty `creationDate` sorts before
 -- every real cutoff (`SelectionRule.CaptureAfter` — "the one place a missing fact excludes rather than
 -- admits"). A `creationDate != ''` predicate here would be a second copy of that rule, which is the
--- drift `photo-selection-policy` exists to make unrepresentable.
+-- drift `photo-sharing` exists to make unrepresentable.
 --
 -- `state` is still selected because the mapper reads it rather than asserting it.
 selectManifestRows:
@@ -184,7 +184,7 @@ FROM ledgerRow;
 deleteAll:
 DELETE FROM ledgerRow;
 
--- Delete exactly the named rows, by primary key (capability `sync-ledger`). KEY-scoped on purpose: every
+-- Delete exactly the named rows, by primary key (capability `photo-sharing`). KEY-scoped on purpose: every
 -- caller holds evidence about individual rows, and the resources of one asset hold per-key states, so an
 -- asset-scoped delete would reach rows its caller never judged. The caller chunks the IN list below the
 -- driver's bind-variable limit.
@@ -213,7 +213,7 @@ SELECT
     COUNT(CASE WHEN notDone = 0 THEN 1 END) AS completed
 FROM perAsset;
 
--- Per photo, whether every row is done (capability `sync-ledger`, "Per-asset progress read"): the same
+-- Per photo, whether every row is done (capability `photo-sharing`, "Per-asset progress read"): the same
 -- per-asset collapse `aggregates` performs, un-counted, in one query. Status intersects it with the admitted
 -- set it counts `N` over; the ledger interprets nothing about admission.
 assetProgress:
@@ -223,7 +223,7 @@ FROM ledgerRow
 GROUP BY assetId;
 
 -- Flip ONE row's state, but only while it is still REQUESTED — the guarded terminal write
--- (capability `sync-ledger`). Two writers reach this row holding no shared lock: a platform callback on
+-- (capability `photo-sharing`). Two writers reach this row holding no shared lock: a platform callback on
 -- the platform's own queue, and the upload cycle on the composition lane. A read-then-write pair is not
 -- atomic against the one that does not take the lock, so the guard lives in the statement.
 --
@@ -239,11 +239,11 @@ WHERE key = :key AND state = 'REQUESTED';
 -- transaction — the same mechanism `DownloadStore.sq` uses for its three callback writes, and for the
 -- same reason: "did this take effect?" is a real question here. A `markTerminal` that matches nothing
 -- means the row moved on (already terminal, or pruned), which is a different fact from "recorded" and
--- may not be silent (`module-architecture`, "Absence is never silent").
+-- may not be silent (`docs/architecture.md`, "Absence is never silent").
 changedRows:
 SELECT changes();
 
--- The rows that need an upload job — the upload cycle's source of work (capability `sync-ledger`).
+-- The rows that need an upload job — the upload cycle's source of work (capability `photo-sharing`).
 --
 -- `:needsJobStates` is bound from Kotlin's `LedgerState.needsJob` rather than written as a literal here,
 -- for the same reason `:doneStates` is: a state added without classifying it would otherwise land
@@ -252,7 +252,7 @@ SELECT changes();
 --
 -- Ordered by key, and deliberately UNLIMITED. The cycle bounds what it RESOLVES, not what it reads: a row
 -- needing a job records that the policy admitted its asset when the row was written, not that the
--- membership's current policy admits it (capability `photo-selection-policy`). A LIMIT here would starve —
+-- membership's current policy admits it (capability `photo-sharing`). A LIMIT here would starve —
 -- excluded rows sorting ahead of admitted ones would fill the slice on every cycle, and the admitted work
 -- further down would never be reached. This is a local indexed scan; the platform round-trip and the
 -- staged temp file the bound exists to protect follow the admitted rows, in the caller.

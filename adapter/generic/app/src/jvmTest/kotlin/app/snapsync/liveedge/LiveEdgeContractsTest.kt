@@ -49,11 +49,11 @@ import app.snapsync.push.HttpPushTokenPublisher
 import kotlin.test.Test
 
 /**
- * The backend port contracts against the REAL backend (capability `port-contracts`): the production `Http*`
+ * The backend port contracts against the REAL backend (`docs/architecture.md`): the production `Http*`
  * clients and interceptor over a socket to `api/`, served locally by [LiveEdge]. These are the bindings that
  * make every backend clause covered; the mini-edge's bindings in `:test:world` are the `Fake`s held to them.
  *
- * JVM only, and the coverage that forgoes is stated here (capability `testing-architecture`, "Every test runs
+ * JVM only, and the coverage that forgoes is stated here (`docs/testing.md`, "Every test runs
  * on every target its module declares"): a Kotlin/Native test executable under `simctl` cannot launch the
  * backend as a process. Nothing is lost by it: the clients are `commonMain` code, identical on every target, and
  * their Kotlin/Native compilation is covered by this module's `commonTest`. What differs on a device is the Ktor

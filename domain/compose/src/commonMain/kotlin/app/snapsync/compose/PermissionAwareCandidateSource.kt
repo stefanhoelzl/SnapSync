@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.StateFlow
 
 /**
  * The one [CandidateSource] the app's consumers hold: it decides **where candidates come from** by the
- * current photo-access grant, so no consumer has to (capability `limited-photo-access`, *"the mode
+ * current photo-access grant, so no consumer has to (capability `photo-access`, *"the mode
  * difference is one source impl, not a branch in the policy or its consumers"*).
  *
  * That principle was already true of the policy and false of the consumers. The status total had two
@@ -24,7 +24,7 @@ import kotlinx.coroutines.flow.StateFlow
  *   keeping every library *fetch* in-flow: a deferred read would have to re-fetch by local identifier at
  *   upload time, and holding the resources means no later library read is needed at all. (Not an alert
  *   argument: no probe has seen reads of an unchanged library raise iOS's limited-access prompt, which
- *   the app suppresses anyway — `limited-photo-access`. The reason that stands is that under a partial
+ *   the app suppresses anyway — `photo-access`. The reason that stands is that under a partial
  *   grant the selection *is* the scope, and this is fewer round-trips.)
  *   `candidatesFromResources` is therefore the honest adapter here — the resources genuinely are in hand.
  * - **`DENIED` / `NOT_DETERMINED`** → [CandidateRead.NotReadable]. Nothing is readable, which is a

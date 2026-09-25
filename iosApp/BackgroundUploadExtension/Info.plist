@@ -32,7 +32,7 @@
 	     and EMPTY userInfo, and disable with 3201 — after which the OS launches this extension never
 	     and nothing uploads on this tier, with one Error line to show for it. Xcode 26.6's own
 	     Background Resource Upload template declares the option Required. Capability
-	     `ios-photokit-upload`; ⏰ re-measure at the next iOS major.
+	     `background-upload`; ⏰ re-measure at the next iOS major.
 
 	     COMPOSED, not carried: an Info.plist substitution can only read a build setting, and `//`
 	     opens a comment anywhere on an xcconfig line with no escape (which truncated the Sentry DSN to
@@ -41,7 +41,7 @@
 	     generated into Deployment.xcconfig by scripts/resolve-deployment.py; ios.yml asserts the value
 	     built from them equals this bundle's Deployment.plist `uploadBase`.
 
-	     The OTHER deployment values stay out of this file (capability deployment-configuration) — see
+	     The OTHER deployment values stay out of this file (`docs/deployment.md`) — see
 	     the app's Info.plist for why. This process reads its OWN bundle, so the generated
 	     Deployment.plist is copied into the .appex as well as the .app; a copy that reached only one
 	     of them is a reachable state, and the one ios.yml asserts against both. -->
@@ -52,7 +52,7 @@
 	     with an extension registration surviving from a full grant, the OS launches this extension, and
 	     its PhotoLibraryServicesCore evaluates the automatic "Select More Photos / Keep Current Selection"
 	     prompt at launch — before any of our code runs — while the app process, which carries the key,
-	     never does. One such launch put the prompt on screen. Capability `limited-photo-access`. -->
+	     never does. One such launch put the prompt on screen. Capability `photo-access`. -->
 	<key>PHPhotoLibraryPreventAutomaticLimitedAccessAlert</key>
 	<true/>
 	<key>EXAppExtensionAttributes</key>

@@ -158,7 +158,7 @@ class StatusScreenTest {
 
     // ---- the not-started clock line ----
 
-    // ---- the update-required screen (capability `min-app-version`) ----
+    // ---- the update-required screen (capability `app-update-required`) ----
 
     @Test
     fun `the update screen names the minimum and offers the store`() = runComposeUiTest {
@@ -412,7 +412,7 @@ class StatusScreenTest {
         onNodeWithText("Synchronization ongoing…").assertDoesNotExist()
     }
 
-    // ---- reduce motion (capability `design-system`) ----
+    // ---- reduce motion (`docs/architecture.md`) ----
 
     /**
      * The requirement is an **absence** — "SHALL respect reduced-motion preferences" — so the test asserts
@@ -499,7 +499,7 @@ class StatusScreenTest {
         assertEquals(1, settingsOpens)
     }
 
-    // ---- joined layer: partial-grant resting affordances (capability `limited-photo-access`) ----
+    // ---- joined layer: partial-grant resting affordances (capability `photo-access`) ----
 
     @Test
     fun `limited grant shows both affordances in order — in every health`() = runComposeUiTest {
@@ -675,7 +675,7 @@ class StatusScreenTest {
         assertEquals(1, shares)
     }
 
-    // ---- the rename affordance + dialog (capability `event-rename`) ----
+    // ---- the rename affordance + dialog (capability `manage-membership`) ----
 
     @Test
     fun `joined with a membership shows the rename pen beside the heading`() = runComposeUiTest {
@@ -819,7 +819,7 @@ class StatusScreenTest {
     @Test
     fun `a server failure shows the generic copy — a swept event gets no special message`() = runComposeUiTest {
         // Deliberate: a 404 is ONE witness that the event is gone, and surfacing it would invite a future
-        // change to act on it (capability `leave-event`).
+        // change to act on it (capability `manage-membership`).
         setContent {
             TestStatusScreen(
                 renaming(RenameState.Failed("Couldn't rename the event. Check your connection and try again.")),
@@ -875,7 +875,7 @@ class StatusScreenTest {
         assertEquals(1, dismissed, "cancelling asks for the sheet to close")
     }
 
-    // ---- the settings action + reconfigure surface (capability `reconfigure-membership`) ----
+    // ---- the settings action + reconfigure surface (capability `manage-membership`) ----
 
     @Test
     fun `joined with a membership shows the settings action next to share and leave`() = runComposeUiTest {
@@ -1062,7 +1062,7 @@ class StatusScreenTest {
         assertEquals(0, saved, "Cancel commits nothing")
     }
 
-    // ---- joined layer: the "Event ended" marker (capability `sync-status-screen`) ----
+    // ---- joined layer: the "Event ended" marker (capability `sync-status`) ----
 
     @Test
     fun `an ended event marks the health line on its own line`() = runComposeUiTest {

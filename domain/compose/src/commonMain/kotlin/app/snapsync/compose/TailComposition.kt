@@ -21,7 +21,7 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
 /**
  * The app process's **opportunistic tail** as composed, and everything that reaches it without an OS handler of its
- * own (capability `ios-app-shell`, "Each OS wake does its own work, then hands the rest to one opportunistic tail";
+ * own (capability `sync-status`, "Each OS wake does its own work, then hands the rest to one opportunistic tail";
  * decision record `changes/own-work-per-wake`, D1, D2 and D11).
  *
  * One [runner] per process, over the three units: ① the download arm's staged-import drain, ② and ③ the app
@@ -56,7 +56,7 @@ class AppTail internal constructor(
     val runner: TailRunner by lazy {
         TailRunner(
             // Each import runs as its own job the drain awaits — unless the tail's time is up or another request is
-            // due, when the wait gives way and the import runs on, claimed (capability `photo-download`, "A stalled
+            // due, when the wait gives way and the import runs on, claimed (capability `receiving-photos`, "A stalled
             // import blocks no other work"). An import that throws surfaces at the await that sees it — held as a
             // `Result`, so a throw nobody awaits any more cannot fail the composition scope it runs in.
             importStaged = { signal ->
@@ -67,7 +67,7 @@ class AppTail internal constructor(
             },
             topUp = { stop -> mechanism.topUp(stop) },
             walkAndPublish = { stop -> mechanism.walkAndPublish(stop) },
-            // Exactly a full grant: under a partial one the tail reads no library (capability `limited-photo-access`).
+            // Exactly a full grant: under a partial one the tail reads no library (capability `photo-access`).
             walkPermitted = { ports.photoAccess.permission.value == PermissionStatus.GRANTED },
             mayCreate = mayCreate,
             foregrounded = { foreground.load() },
@@ -97,8 +97,8 @@ class AppTail internal constructor(
     }
 
     /**
-     * The seam the membership transitions drive (capability `upload-lifecycle`): an arm requests the tail — detached,
-     * because a transition runs inside a flow or a tap, and a flow never awaits the tail (spec `module-architecture`,
+     * The seam the membership transitions drive (capability `background-upload`): an arm requests the tail — detached,
+     * because a transition runs inside a flow or a tap, and a flow never awaits the tail (`docs/architecture.md`,
      * "A trigger flow never outlives its own run"); a disarm cancels the heartbeat; a leave cancels the transfers.
      */
     val appEngine: AppUploadEngine = object : AppUploadEngine {
@@ -110,7 +110,7 @@ class AppTail internal constructor(
     /**
      * The upload session's OS completion handlers (`handleEventsForBackgroundURLSession`), held from the handover to
      * the session's drain report — the relaunch's own work, recording the terminals, is done by then — and released
-     * on the main lane UIKit requires (capability `ios-app-shell`).
+     * on the main lane UIKit requires (capability `sync-status`).
      */
     val uploadCompletions: OsCompletions =
         OsCompletions("url-session.onBackgroundSessionEvents", ports.uiLane, ports.log)
@@ -126,7 +126,7 @@ class AppTail internal constructor(
     }
 
     /**
-     * A selection change under a partial grant (capability `limited-photo-access`): its **own work** is the
+     * A selection change under a partial grant (capability `photo-access`): its **own work** is the
      * snapshot-fed discovery → manifest publish — the uploader's walk unit, whose discovery binding is the selection
      * snapshot there — then the tail (① import, ② top-up from the snapshot; never ③ under a partial grant).
      */

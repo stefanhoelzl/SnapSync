@@ -4,7 +4,7 @@ import kotlinx.serialization.Serializable
 
 /**
  * The two ends of a member's capture-date **range**, as PRESETS rather than instants (capability
- * `photo-selection-policy`).
+ * `photo-sharing`).
  *
  * They live in `model/` for the same reason [Arrow] does: they are the one vocabulary the presentation
  * reduction and the design-system skin BOTH name. The reduction resolves a preset against the event
@@ -33,7 +33,7 @@ enum class FromChoice {
 }
 
 /**
- * The upper bound of the same range (capability `photo-selection-policy`); see [FromChoice] for why this
+ * The upper bound of the same range (capability `photo-sharing`); see [FromChoice] for why this
  * lives in `model/`.
  */
 @Serializable

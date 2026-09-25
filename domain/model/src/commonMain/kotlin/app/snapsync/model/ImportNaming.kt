@@ -2,7 +2,7 @@ package app.snapsync.model
 
 /**
  * The **human filename** an imported foreign photo carries in the receiving device's library
- * (capability `photo-download`): the name the capturing device gave it, falling back to the storage
+ * (capability `receiving-photos`): the name the capturing device gave it, falling back to the storage
  * [resourceKey] when that name is unknown.
  *
  * It exists because the platform picks a name whether or not we do. `PHAssetCreationRequest`'s
@@ -18,7 +18,7 @@ package app.snapsync.model
  *
  * [originalFilename] is `""` when the uploader's manifest row was never enriched (a row predating the
  * 5.sqm migration, or one the join-time load seeded from a stored-file listing, which carries no
- * capture detail — see `sync-ledger`). That is the one case with no human name to use, and the key is
+ * capture detail — see `photo-sharing`). That is the one case with no human name to use, and the key is
  * the honest answer: it is what the bytes are actually called, and it is what the receiving device
  * displayed before this rule existed. Never produce an empty name — an unnamed resource is worse than
  * an ugly one.
@@ -26,7 +26,7 @@ package app.snapsync.model
  * Collisions are deliberately not resolved here. Two devices both offering `IMG_0001.HEIC` is ordinary,
  * and the photo library keys assets by `localIdentifier`, not by name — the duplicate names are as
  * harmless there as they are in any camera roll. (The web download zip, which *does* need distinct
- * names, de-duplicates at its own edge; capability `web-event-download`.)
+ * names, de-duplicates at its own edge; capability `event-site`.)
  */
 fun importFilename(originalFilename: String, resourceKey: String): String =
     originalFilename.ifEmpty { resourceKey }

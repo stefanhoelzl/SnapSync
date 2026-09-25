@@ -4,7 +4,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * The destination-path extractor the ledger records an upload under (capability `sync-ledger`).
+ * The destination-path extractor the ledger records an upload under (capability `photo-sharing`).
  *
  * It exists so a returned `PHAssetResourceUploadJob` can be matched back to the row that created it
  * without a platform URL type. The path and NOT the query, because the query is the capture filename —

@@ -13,7 +13,7 @@ import { type Db, insertEvent, publishStatements } from "../../src/db.ts";
 import { replay } from "../../src/dev/replay.ts";
 import { DEAD_TOKEN, enrolDevice, LIVE_TOKEN } from "../support/db.ts";
 
-// The sweep (capability `scheduled-cleanup`) MARKS FROM THE DATABASE and DELETES FROM STORAGE. These
+// The sweep (capability `event-lifetime`) MARKS FROM THE DATABASE and DELETES FROM STORAGE. These
 // tests therefore drive two doubles: a real in-process SQLite for the relational half (so cascades and
 // the queries behave as SQL, not as our idea of SQL) and an in-memory object-store fake for the byte
 // half. NOW is pinned. The sweep holds only the storage AccessKey and the store's credentials — it makes
@@ -36,7 +36,7 @@ const LIFETIME = 30 * 24 * 60 * 60;
 // Staleness is decided by the DERIVED delete-by, `max(createdAt, startsAt) + lifetimeSeconds`. With
 // `createdAt` pinned at 2026-06-01, a `startsAt` of 2026-06-10 lands the deadline on 2026-07-10 (before
 // NOW → STALE) and one of 2026-07-01 lands it on 2026-07-31 (after NOW → LIVE). `endsAt` participates in
-// staleness NOT AT ALL: it bounds only which captures may be uploaded (capability `event-limits`).
+// staleness NOT AT ALL: it bounds only which captures may be uploaded (capability `event-lifetime`).
 const STALE_STARTS = "2026-06-10T00:00:00Z";
 const LIVE_STARTS = "2026-07-01T00:00:00Z";
 
@@ -470,7 +470,7 @@ Deno.test("a POPULATED store still collects an orphaned device's bytes", async (
 
 Deno.test("site/ prefix is never touched by the sweep", async () => {
   // The storage zone is a co-tenant: the public `site/` prefix lives beside private user data
-  // (capability `backend-deployment`). The sweep enumerates `files/devices/` and nothing else.
+  // (`docs/deployment.md`). The sweep enumerates `files/devices/` and nothing else.
   const d = await db();
   await enrolDevice(d, ORPHAN, DEAD_TOKEN);
   const store = fake({

@@ -37,7 +37,7 @@ private const val RENEW_WHEN_REMAINING_SECONDS: Long = 7 * 24 * 60 * 60
 fun tokenExpirySeconds(token: String): Long? = token.split(".").getOrNull(1)?.toLongOrNull()
 
 /**
- * The device-attestation use case (capability `device-attestation`): obtain and keep alive the bearer
+ * The device-attestation use case (capability `privacy-security`): obtain and keep alive the bearer
  * token every backend call carries.
  *
  * **Only the app process runs this.** App Attest is unavailable in the upload extension
@@ -84,7 +84,7 @@ class DeviceAttestation(
      *
      * Anything that had to be *sent* with the old credential and was refused must be re-sent — most
      * importantly the APNs registration, which the app publishes only when its (token, env, deviceId) differs
-     * from the last registration the backend accepted (capability `push-registration`). A `PUT` refused here
+     * from the last registration the backend accepted (capability `receiving-photos`). A `PUT` refused here
      * (a fresh install races attestation, or the token is rejected) leaves that record unwritten, so the next
      * app entry would re-send it — but a device that receives no silent pushes gets few entries, and none of the
      * wake-driven renewals this capability depends on. So the registration re-publishes on every emission,
@@ -104,7 +104,7 @@ class DeviceAttestation(
     /**
      * [token] read from the store of record, never the in-memory copy — for a request re-minted after a failure,
      * which is exactly when the upload extension may have cleared, or this process's copy may predate, the token
-     * in the shared item (capability `edge-upload-provider`, "A retry picks up a refreshed token").
+     * in the shared item (capability `background-upload`, "A retry picks up a refreshed token").
      */
     fun freshToken(): String? {
         store.reread()
@@ -197,7 +197,7 @@ class DeviceAttestation(
 
     /**
      * Whether this device holds a usable attestation token — the one fact the status screen surfaces
-     * (`SyncHealth.Unattested`, capability `sync-status-screen`).
+     * (`SyncHealth.Unattested`, capability `sync-status`).
      *
      * A **derived cache of the last refresh**, never authority: authority is the token itself, in the
      * `AttestStore` behind the port (law "State and authority"). Kill the process and this is rebuilt

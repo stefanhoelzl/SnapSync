@@ -1,5 +1,5 @@
 // The `Db` port over Deno's built-in `node:sqlite` — the implementation the TESTS and the local rig run
-// against (capability `database`). Dev infrastructure: `main.ts` never imports `src/dev/`, and
+// against (`docs/architecture.md`). Dev infrastructure: `main.ts` never imports `src/dev/`, and
 // `deno bundle` roots the deployed bundle at `main.ts`, so none of this can ship.
 //
 // WHY A REAL SQLITE RATHER THAN A FAKE. Every invariant this change moves into the database — the

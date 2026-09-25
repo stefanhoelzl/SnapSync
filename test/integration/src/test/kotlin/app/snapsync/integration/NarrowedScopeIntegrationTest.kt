@@ -5,7 +5,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * **A narrowing takes effect on the bytes, not only on the manifest** (capability `photo-selection-policy`), over
+ * **A narrowing takes effect on the bytes, not only on the manifest** (capability `photo-sharing`), over
  * the real stack: the composed core, the real `UploadCycle`, the real `ReconfigureEvent` behind `/user/reconfigure`,
  * with only PhotoKit faked.
  *

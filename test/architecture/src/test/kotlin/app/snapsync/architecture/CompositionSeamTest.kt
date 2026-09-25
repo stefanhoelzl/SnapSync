@@ -7,7 +7,7 @@ import kotlin.test.assertTrue
 
 /**
  * **Every function-typed field of the composition bundles is pinned, with its reason** (capability
- * `architecture-guards`, requirement "The composition seam gate"; law: `module-architecture`, "Ports
+ * `docs/architecture.md`, requirement "The composition seam gate"; law: `docs/architecture.md`, "Ports
  * are the I/O boundary named for the need"). Decision record: `changes/…/enforce-port-boundary`
  * (D1, D5, D9).
  *
@@ -77,7 +77,7 @@ class CompositionSeamTest {
      *  - **a re-entry into this same core** through a shell surface that decides nothing (law "Shells
      *    are wiring only").
      *
-     * The admissible reasons are the law's (`module-architecture`, "Ports are the I/O boundary named for the
+     * The admissible reasons are the law's (`docs/architecture.md`, "Ports are the I/O boundary named for the
      * need"): a callback INTO the core's own machinery. A reason claiming a seam "returns a value the
      * composition already holds" is not accepted for a value obtained by a platform read, however cached.
      */
@@ -112,7 +112,7 @@ class CompositionSeamTest {
         ),
         "UploadPorts" to mapOf(
             "selectionScope" to
-                "what discovery may read right now (capability `limited-photo-access`), derived by the " +
+                "what discovery may read right now (capability `photo-access`), derived by the " +
                 "app composition from current permission plus the in-memory snapshot — a call and not a " +
                 "value because the answer changes between cycles. Pure core read",
             "token" to
@@ -123,7 +123,7 @@ class CompositionSeamTest {
                 "the same bearer as `token`, through the same AttestStore port / DeviceAttestation, but after " +
                 "dropping the core's in-memory copy (CachedAttestStore.reread) — what a retry's request " +
                 "carries, since the other process may have renewed the token that copy still holds " +
-                "(capability `edge-upload-provider`, \"A retry picks up a refreshed token\")",
+                "(capability `background-upload`, \"A retry picks up a refreshed token\")",
         ),
         // DELIBERATELY EMPTY, and that is the entry rather than an omission. A cohesive sub-bundle of
         // AppPorts, holding PORT-typed fields and no lambda at all — so there is nothing here to judge, and
@@ -177,7 +177,7 @@ class CompositionSeamTest {
             "AppPorts.newDownloadTransport breaks",
         "QueuedPhotoDownloadJobs.onStaged" to
             "records a staged resource in the sibling DownloadController, then requests the tail's import on this " +
-            "core's own runner — resolving both when INVOKED, so a download-only relaunch reaches them (capability `photo-download`)",
+            "core's own runner — resolving both when INVOKED, so a download-only relaunch reaches them (capability `receiving-photos`)",
         "JoinEvent.provision" to
             "runs the provision the composition owns (the Provision flow under its entry label, then the album " +
             "gather start) — core machinery the join use-case may not name",
@@ -186,7 +186,7 @@ class CompositionSeamTest {
             "uploaders' own adapters",
         "LeaveEvent.clearLedger" to
             "the ledger reset family, invoked from compose/ where ledger writes are confined (capability " +
-            "`sync-ledger`: which code may perform which write); the store is the LedgerStore port",
+            "`photo-sharing`: which code may perform which write); the store is the LedgerStore port",
         "LeaveEvent.notifyLeave" to
             "compose/'s best-effort wrapper over the LeaveNotifier PORT, which logs a failed Result rather " +
             "than failing the leave — the port is where the network crossing is declared",
@@ -208,7 +208,7 @@ class CompositionSeamTest {
         "ReconfigureEvent.cancelDownloads" to "the sibling DownloadController.onLeaveOrSwitch() — feature-blindness",
         "ReconfigureEvent.bumpManifestVersion" to
             "the ledger's manifest-version bump, invoked from compose/ where ledger writes are confined " +
-            "(capability `sync-ledger`); the store is the LedgerStore port",
+            "(capability `photo-sharing`); the store is the LedgerStore port",
         "ResetDeviceState.resetDownloads" to "the sibling DownloadController.onDurableStateReset() — feature-blindness",
         "ReadingLedgerCountsSource.read" to
             "a read-only LedgerStore.assetProgress() mapped to LedgerCounts in compose/, so ledger types never " +

@@ -44,17 +44,17 @@ Deno.test("readConfig: the secrets → Config, with every non-secret from the re
     attestTokenTtlSeconds: D.attestTokenTtlSeconds,
     // Derived from the team + bundle ids, so the gate's app id and the push topic cannot drift apart.
     attestAppId: `${D.teamId}.${D.bundleId}`,
-    // The event link's domain (capability `event-link`). The app's entitlement and LINK_ORIGIN are
+    // The event link's domain (capability `join-event`). The app's entitlement and LINK_ORIGIN are
     // GENERATED from this same value now, so agreement is constructed rather than asserted.
     linkDomain: D.domain,
     appStoreUrl: D.appStoreUrl,
-    // The event limits (capability `event-limits`) — the MINT-TIME source only; enforcement reads the
+    // The event limits (capability `event-lifetime`) — the MINT-TIME source only; enforcement reads the
     // fields POST /events stamps onto each marker, so these values never reach an existing event.
     eventCapacity: D.eventCapacity,
     eventWindowMaxSeconds: D.eventWindowMaxSeconds,
     eventLifetimeSeconds: D.eventLifetimeSeconds,
     // Deployment-resolved like every other non-secret, and OFF unless a deploy deliberately
-    // publishes the maintenance bundle (capability `backend-deployment`).
+    // publishes the maintenance bundle (`docs/deployment.md`).
     maintenance: false,
     minAppVersion: "0.4",
   });
@@ -76,16 +76,16 @@ Deno.test("readConfig: missing token signing key → throws naming it (the gate 
 Deno.test("readConfig: a retired admin key in the environment is simply unread", () => {
   // Removing a required secret is safe in either deploy order — a value no longer read cannot fail
   // validation — so an Edge Script still carrying ADMIN_NOTIFY_KEY boots and serves, authorizing nothing
-  // with it (capability `backend-deployment`).
+  // with it (`docs/deployment.md`).
   const c = readConfig({ ...SECRETS, ADMIN_NOTIFY_KEY: "left-over" });
   assertEquals(Object.hasOwn(c, "adminKey"), false);
 });
 
 Deno.test("readSweepConfig: the storage key AND the store's credentials, and nothing else", () => {
-  // The nightly sweep (capability `scheduled-cleanup`) makes no request to the Edge Script, so it holds
+  // The nightly sweep (capability `event-lifetime`) makes no request to the Edge Script, so it holds
   // no credential authorizing one. It DOES hold the relational store's: it marks from the database and
   // deletes from storage, and its deletion decision runs against the primary inside an interactive
-  // transaction (capability `database`).
+  // transaction (`docs/architecture.md`).
   const c = readSweepConfig({
     BUNNY_STORAGE_ACCESS_KEY: "k",
     BUNNY_DATABASE_URL: "libsql://example.invalid",

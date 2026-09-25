@@ -8,7 +8,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * A process the OS relaunches **only** to deliver download-session events (capability `photo-download`, "A
+ * A process the OS relaunches **only** to deliver download-session events (capability `receiving-photos`, "A
  * staged resource reaches the controller on every entry point").
  *
  * That process builds the download jobs and nothing else: the shell's relaunch entry point adopts the

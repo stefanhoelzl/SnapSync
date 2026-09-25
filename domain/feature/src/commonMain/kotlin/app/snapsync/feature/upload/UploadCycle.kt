@@ -38,7 +38,7 @@ private val NEVER_STOP: () -> Boolean = { false }
  * [UploadDiscovery] ports, so a fake platform + a real engine exercise the whole flow on the simulator
  * without touching PhotoKit.
  *
- * Every walk is a **full enumeration**; there is no persisted cursor (capability `ios-photokit-upload`,
+ * Every walk is a **full enumeration**; there is no persisted cursor (capability `background-upload`,
  * "In-extension discovery by full enumeration"). Write-after-act: the engine records `REQUESTED` only on
  * [SyncEvent.UploadStarted], reported *after* a job is created/retried — so an in-flight `REQUESTED` always
  * implies a real job, and a cap-truncated cycle leaves its remainder `DISCOVERED` for the next cycle's work
@@ -47,12 +47,12 @@ private val NEVER_STOP: () -> Boolean = { false }
  * Deleted-asset pruning keeps the ledger honest about what still exists on device (and stops a row left
  * non-`COMPLETED` by an asset deleted mid-upload from pinning `pending > 0` forever): an authoritative walk
  * deletes the in-window rows of assets it did not return, and a key that no longer resolves loses its row
- * (capability `sync-ledger`, "Deletion is a presence diff over an authoritative walk"). The upload tier's
+ * (capability `photo-sharing`, "Deletion is a presence diff over an authoritative walk"). The upload tier's
  * process is the single writer — the extension on iOS ≥26.1, the app on iOS 18–26.0 — so this preserves
  * the invariant. No S3 object is ever deleted.
  */
 class UploadCycle(
-    // THE ENTRY GATE (capability `upload-lifecycle`): the three-state membership read, in the shared
+    // THE ENTRY GATE (capability `background-upload`): the three-state membership read, in the shared
     // vocabulary. Called once per `run()` — this cycle is long-lived, so a join, leave, or switch takes
     // effect on the next cycle without a relaunch.
     //
@@ -76,7 +76,7 @@ class UploadCycle(
     // There is no re-join reconciliation here. The cycle used to detect a membership change nobody
     // announced (a persisted join marker compared on every run) and re-seed the ledger from the device
     // listing. Every change of membership is now an explicit app action, and the join loads the ledger
-    // itself (capability `upload-state-reconciliation`, "A join loads the ledger from the per-device
+    // itself (capability `photo-sharing`, "A join loads the ledger from the per-device
     // listing"), so this cycle reads the ledger it is given and never fetches the listing.
     // Best-effort hook fired once per fully-drained cycle with that cycle's discovery — the device
     // manifest is built from THIS (no second PhotoKit enumeration). `runCatching`ed HERE, so a failed
@@ -87,12 +87,12 @@ class UploadCycle(
     // upload, and nobody can see them. That is the invisible failure, and `{}` states it silently.
     // Answers whether it PUBLISHED — `false` when the projection was unchanged since the last successful
     // write, so nothing was PUT. That answer is the notify's whole trigger (capability
-    // `upload-completion-notify`), which is why it is a Boolean rather than Unit: "the union now lists
+    // `receiving-photos`), which is why it is a Boolean rather than Unit: "the union now lists
     // something new" is a fact only the producer's skip-if-unchanged record knows.
     private val onDiscovery: suspend (eventId: String, policy: SelectionPolicy, manifestVersion: Long) -> Boolean,
     // The echo-suppression and denylisted-album readers used to be injected HERE, so the cycle could
     // complete a config-derived policy. They moved to the one derivation in the shared composition
-    // (capability `photo-selection-policy`), which the membership's policy supplier closes over — so this
+    // (capability `photo-sharing`), which the membership's policy supplier closes over — so this
     // cycle no longer reads either port, and cannot get the completion wrong or skip it.
     //
     // What made them required with **no default** still holds at their new home, and for the same reason:
@@ -111,7 +111,7 @@ class UploadCycle(
      * Serialises this cycle's units — a whole [run], a [topUp], a [walkAndPublish]. The decide-here-act-there split
      * below is licensed by there being one writer at a time, and in the app process two entries reach the units: the
      * tail runner, and a selection change's own work, which runs outside that runner by design (capability
-     * `ios-app-shell`). So the exclusion is the cycle's own rather than a caller's convention.
+     * `sync-status`). So the exclusion is the cycle's own rather than a caller's convention.
      */
     private val units = Mutex()
 
@@ -129,7 +129,7 @@ class UploadCycle(
      * the publication decision. That is not tidiness: five publications used to be reachable only by
      * falling through to the end of this function, so either early return withheld all five — and on a
      * device whose outstanding work exceeds the platform's job limit, one of those two returns is taken on
-     * every cycle, forever, with no error and no log line (capability `upload-lifecycle`).
+     * every cycle, forever, with no error and no log line (capability `background-upload`).
      */
     suspend fun run(): CycleResult = units.withLock {
         val settled = settle()
@@ -139,7 +139,7 @@ class UploadCycle(
     }
 
     /**
-     * The tail's **top-up** (②; capability `ios-url-session-upload`, "The producer tops up from the ledger, not from the
+     * The tail's **top-up** (②; capability `background-upload`, "The producer tops up from the ledger, not from the
      * walk's output"): the entry gate and the platform settle — re-creating retry-spent failures — then job creation
      * from the ledger's rows that need one, until the platform refuses or [stopRequested] answers `true` between two
      * creations (the creation in flight completes). No library walk and no publish: a freed slot changes nothing the
@@ -167,12 +167,12 @@ class UploadCycle(
      * publish. It creates **no** job: the rows it recorded are the next top-up's work, and [WalkOutcome.Walked]'s
      * `addedRows` tells the tail to run that top-up at once (decision record `changes/own-work-per-wake`, D1).
      *
-     * **Atomic under a stop** (capability `ios-app-shell`, "The discovery walk is atomic under a stop"): a stop that
+     * **Atomic under a stop** (capability `sync-status`, "The discovery walk is atomic under a stop"): a stop that
      * arrives while the walk enumerates abandons it after its decide stage, which writes nothing — so nothing it saw
      * is recorded, nothing it missed is retracted, and no manifest is published from it.
      *
      * Also the **own work of a selection change** under a partial grant, where the discovery binding resolves from
-     * the selection snapshot and the walk reads no library (capability `limited-photo-access`).
+     * the selection snapshot and the walk reads no library (capability `photo-access`).
      */
     suspend fun walkAndPublish(stopRequested: () -> Boolean): WalkOutcome = units.withLock {
         walked = emptyMap()
@@ -184,7 +184,7 @@ class UploadCycle(
         val outcome = decided.update(enqueue = null)
         val added = outcome.addedRows()
         // Handed to the top-up this walk makes the tail run next, so a row it just read is created from the handle in
-        // hand rather than resolved again (capability `ios-url-session-upload`). Only when that top-up follows.
+        // hand rather than resolved again (capability `background-upload`). Only when that top-up follows.
         if (added && decided is Decided.Planned) walked = decided.plan.liveResources.associateBy { it.filename }
         WalkOutcome.Walked(outcome.publish(), addedRows = added)
     }
@@ -198,7 +198,7 @@ class UploadCycle(
      * It is not a read stage: settling the platform's returned jobs writes the ledger.
      */
     private suspend fun settle(): Settled {
-        // THE ENTRY GATE (capability `upload-lifecycle`) — before the direction gate, the walk,
+        // THE ENTRY GATE (capability `background-upload`) — before the direction gate, the walk,
         // and every hook. Five outcomes, and the difference between two of them is the difference between
         // a settled join and a false leave.
         val gate = readGate()
@@ -218,7 +218,7 @@ class UploadCycle(
                 // Definitively not joined: no item, an item that cannot decode, a missing baked host, or a
                 // leave. Reaching here means the config really IS absent, never merely unread — and it is
                 // still not this cycle's to clear anything: the leave that got us here cleared the ledger
-                // itself (capability `leave-event`).
+                // itself (capability `manage-membership`).
                 log.i { "skipping cycle — no joined event / host" }
                 return Settled.Short(CycleOutcome.NotJoined)
             }
@@ -236,16 +236,16 @@ class UploadCycle(
             is CycleGate.Run -> gate.config to gate.membership
         }
 
-        // ONE derivation, invoked once per cycle (capability `photo-selection-policy`). The membership
+        // ONE derivation, invoked once per cycle (capability `photo-sharing`). The membership
         // carries a supplier rather than a built policy because the derivation reads two ports, and the
         // entry-gate translation that produced the membership must stay port-pure (capability
-        // `upload-lifecycle`). The supplier is closed over in the shared composition, where the config and
+        // `background-upload`). The supplier is closed over in the shared composition, where the config and
         // both readers are in scope; a non-contributing membership still invokes neither reader.
         val policy = membership.policy()
         val eventId = config.eventId
         val engine = engineFor(config)
 
-        // THE DIRECTION GATE (capability `upload-lifecycle`) — ahead of the walk and job creation: a
+        // THE DIRECTION GATE (capability `background-upload`) — ahead of the walk and job creation: a
         // non-contributor must not enumerate its library to discover it contributes nothing (the walk costs
         // ~110 ms of PhotoKit XPC per asset).
         //
@@ -264,7 +264,7 @@ class UploadCycle(
         // direction gate, because it creates jobs.
         for (job in platform.fetchRetryJobs()) {
             // A job whose row the walk removed is not retried: the photo left the library or the selection
-            // (capability `upload-lifecycle`). A transport hands over only jobs whose row exists and answers
+            // (capability `background-upload`). A transport hands over only jobs whose row exists and answers
             // the rest itself, so skipping one here leaves nothing un-acknowledged.
             if (isGone(job)) continue
             val retry = adjudicateFailure(engine, job) ?: continue
@@ -303,11 +303,11 @@ class UploadCycle(
         is Settled.Proceeding -> {
             // Phase 3 — walk the library: a full enumeration, every cycle. The capture range came in with the
             // contribution and is passed down, so the walk is scoped at the platform fetch rather than walked
-            // whole and filtered afterwards (capability `photo-selection-policy`).
+            // whole and filtered afterwards (capability `photo-sharing`).
             val discovery = library.discover(ready.policy)
             log.i { "discovered ${discovery.candidates.size} candidate asset(s)" }
 
-            // THE ADMISSION (capability `photo-selection-policy`): one policy, applied once, deciding the
+            // THE ADMISSION (capability `photo-sharing`): one policy, applied once, deciding the
             // whole admitted set — the capture-date RANGE (both bounds), the origin exclusions, the echo
             // suppression, and the album denylist together. Every consumer of this cycle reads the set
             // below; none re-states a rule, which is what makes the drift that produced the ceiling bug
@@ -320,7 +320,7 @@ class UploadCycle(
             // assets it kept.
             val admitted = EventPhotoSet(ready.policy) { discovery.candidates }.assets()
 
-            // …and of those, only for the assets the ledger does not fully know (capability `sync-ledger`, "A
+            // …and of those, only for the assets the ledger does not fully know (capability `photo-sharing`, "A
             // walk re-reads only the assets the ledger does not fully know"). Every walk is a full enumeration,
             // so without this each cycle would repeat one synchronous platform round-trip per photo already
             // recorded — the member's whole in-window library, every cycle. An uploaded resource is immutable
@@ -357,7 +357,7 @@ class UploadCycle(
                         departedKeys(rows, presentAssetIds, ready.policy)
                     } else {
                         // A library the platform could not read is no evidence that anything left it
-                        // (capability `sync-ledger`). A read selection snapshot IS authoritative — under a
+                        // (capability `photo-sharing`). A read selection snapshot IS authoritative — under a
                         // partial grant the selection is the gallery — and an unread one never gets here.
                         emptyList()
                     },
@@ -367,7 +367,7 @@ class UploadCycle(
     }
 
     /**
-     * The rows an **authoritative** walk shows are gone (capability `sync-ledger`, "Deletion is a presence
+     * The rows an **authoritative** walk shows are gone (capability `photo-sharing`, "Deletion is a presence
      * diff over an authoritative walk"): every row whose asset is inside the policy's window and that the walk
      * did not return, whatever its state.
      *
@@ -410,7 +410,7 @@ class UploadCycle(
         is Decided.Planned -> {
             val engine = ready.engine
 
-            // The walk's own deletion (capability `sync-ledger`): the in-window rows of assets an authoritative
+            // The walk's own deletion (capability `photo-sharing`): the in-window rows of assets an authoritative
             // walk did not return. Before anything is recorded, and long before `publish` projects the
             // manifest, so a departed photo is never listed by the cycle that saw it leave.
             if (plan.departedKeys.isNotEmpty()) {
@@ -425,7 +425,7 @@ class UploadCycle(
             placeHealed(ready, plan.healing)
 
             // RECORD what the walk found; do not act on it. Every admitted resource the engine judges to
-            // be new work gets a `DISCOVERED` row (capability `sync-ledger`), and every already-recorded
+            // be new work gets a `DISCOVERED` row (capability `photo-sharing`), and every already-recorded
             // one still resting bare gets its manifest detail filled.
             //
             // This loop creates no upload job. While it did, it stopped at the platform's job limit — so the
@@ -441,7 +441,7 @@ class UploadCycle(
                 } else {
                     alreadyUploaded++
                     // Enrich a row that predates the manifest detail, or that the join-time load took from a
-                    // filename listing (capability `sync-ledger`). The engine writes nothing on an
+                    // filename listing (capability `photo-sharing`). The engine writes nothing on an
                     // already-uploaded resource, so without this sweep a seeded row would never learn its
                     // capture date — and the device manifest, projected from the ledger, would silently
                     // drop this member's photos out of the event union after every join.
@@ -489,7 +489,7 @@ class UploadCycle(
     private class Enqueued(val created: Int, val truncated: Boolean)
 
     /**
-     * Create upload jobs from **the ledger**, not from the walk (capability `sync-ledger`).
+     * Create upload jobs from **the ledger**, not from the walk (capability `photo-sharing`).
      *
      * The rows needing a job are the `DISCOVERED` ones — seen and never attempted, or attempted and returned
      * there by a failure — so the remainder a truncated cycle left behind and
@@ -503,7 +503,7 @@ class UploadCycle(
      * — a Live Photo's already-uploaded primary beside its unresolvable paired video — are not this pass's
      * evidence, and a re-selected or restored photo is simply discovered again.
      *
-     * **The rows are admitted first** (capability `photo-selection-policy`). A row is an upstream-filtered
+     * **The rows are admitted first** (capability `photo-sharing`). A row is an upstream-filtered
      * structure: it records that the policy admitted its asset *when the row was written*, and a
      * membership's policy changes under it — so a member who raises their cutoff leaves rows behind that
      * the current policy excludes, and uploading them would send the photos they just chose not to share.
@@ -533,7 +533,7 @@ class UploadCycle(
             return Enqueued(created = 0, truncated = false)
         }
 
-        // Then create until the PLATFORM refuses (capability `ios-url-session-upload`, "The producer tops up from
+        // Then create until the PLATFORM refuses (capability `background-upload`, "The producer tops up from
         // the ledger"), one row at a time: resolve it, create its job, and stop at the first refusal before the
         // next resolve. Both transports refuse honestly, and the refusal is what reports truncation. Measured
         // resolve cost ~4.5 ms per request + ~3.45 ms per photo, and only under a full grant (a partial grant
@@ -541,7 +541,7 @@ class UploadCycle(
         // saved a few hundred ms per hundred photos, which did not pay for the chunk. Decision record: `changes/selection-is-the-walk` (D5).
         var created = 0
         for (row in eligible) {
-            // The operating system's time is up (capability `ios-app-shell`, "Expiry stops work cooperatively at the
+            // The operating system's time is up (capability `sync-status`, "Expiry stops work cooperatively at the
             // next boundary"): the creation in flight has completed, and no further one starts. The rows not reached
             // still need a job, so the pass reports truncated.
             if (stopRequested()) return Enqueued(created, truncated = true)
@@ -635,7 +635,7 @@ class UploadCycle(
     /**
      * Write what the event can see: the enumeration audit line, the device manifest, and the completion
      * notify. Decided over the outcome, exhaustively, so a new outcome cannot inherit a publication
-     * policy nobody chose for it (capability `upload-lifecycle`).
+     * policy nobody chose for it (capability `background-upload`).
      *
      * The ONLY producer of a [CycleResult] — which is what makes "a path that returns without
      * publishing" unwritable rather than merely discouraged.
@@ -665,7 +665,7 @@ class UploadCycle(
             // zero manifest writes, the union unchanged for two hours while the app was open and working.
             //
             // Nothing about the manifest needs a drained pass. It is a projection of the ledger's settled
-            // rows (capability `device-manifest`) — every row this cycle recorded is already durable, and
+            // rows (capability `photo-sharing`) — every row this cycle recorded is already durable, and
             // the declined branch below has always written one without any walk at all.
             is CycleOutcome.Truncated -> {
                 logEnumeration(audit)
@@ -681,7 +681,7 @@ class UploadCycle(
     }
 
     /**
-     * The per-cycle enumeration summary (capability `diagnostic-logging`): accountable for the whole
+     * The per-cycle enumeration summary (capability `privacy-security`): accountable for the whole
      * enumeration without a line per already-uploaded asset (the engine's per-asset skip stays silent).
      *
      * Emitted whether or not every resource it accounts for got a job, and a cycle that stopped creating
@@ -711,7 +711,7 @@ class UploadCycle(
         val departedKeys: List<String>,
     )
 
-    /** The enumeration audit's operands (capability `diagnostic-logging`). */
+    /** The enumeration audit's operands (capability `privacy-security`). */
     private class Enumeration(
         val seen: Int,
         val skipped: Int,
@@ -725,7 +725,7 @@ class UploadCycle(
     private class Ready(
         val eventId: String,
         val policy: SelectionPolicy,
-        /** The manifest version the gate read first; the publish carries it (capability `device-manifest`). */
+        /** The manifest version the gate read first; the publish carries it (capability `photo-sharing`). */
         val manifestVersion: Long,
         val engine: SyncEngine,
         val saveToAlbum: Boolean,
@@ -765,7 +765,7 @@ class UploadCycle(
          * Definitively not joined. `SKIPPED`, not `COMPLETED`: with no membership there is nothing to wake for,
          * and the tail runner re-arms the heartbeat on anything but `SKIPPED` — so an unjoined device whose triggers
          * now reach the app engine would carry a self-re-submitting `BGProcessingTask` for no event. The join
-         * is what arms it (capability `upload-lifecycle`, "No membership, no arm").
+         * is what arms it (capability `background-upload`, "No membership, no arm").
          */
         data object NotJoined : CycleOutcome {
             override val result get() = CycleResult.SKIPPED
@@ -841,7 +841,7 @@ class UploadCycle(
 
     /**
      * Publish the device manifest for [eventId] under [policy], carrying the [manifestVersion] the gate read
-     * first (capability `device-manifest`).
+     * first (capability `photo-sharing`).
      */
     private suspend fun writeDeviceManifest(
         eventId: String,
@@ -850,8 +850,8 @@ class UploadCycle(
     ): Boolean {
         // Best-effort: a failed publish is logged and never fails the cycle; the next cycle republishes.
         //
-        // NOT bounded by a timeout of ours, on either tier (capabilities `ios-app-shell`, "Time is up is
-        // learned only from the operating system", and `ios-photokit-upload`; decision record
+        // NOT bounded by a timeout of ours, on either tier (capabilities `sync-status`, "Time is up is
+        // learned only from the operating system", and `background-upload`; decision record
         // `changes/own-work-per-wake`, D3/D8). It used to be (a 12 s `deviceManifestTimeoutMs`), justified by
         // a "~3-minute OS runtime cap" (error 50001) on the extension that measurement has replaced. Measured
         // (SE2, iOS 26.6): the extension's only end is assetsd's own 60.0 s timer from the `process()` call's
@@ -860,7 +860,7 @@ class UploadCycle(
         // clock of ours. What still bounds the publish is the per-request HTTP timeout on each request it
         // makes: a property of one request, not a deadline on the work.
         //
-        // The answer is what gates the notify (capability `upload-completion-notify`): `false` covers
+        // The answer is what gates the notify (capability `receiving-photos`): `false` covers
         // "the projection was unchanged, so nothing was PUT" and "the write failed" alike, and both mean
         // the same thing to a recipient — the union does not list anything it did not list before, so
         // waking anyone would be a wasted background launch.
@@ -892,7 +892,7 @@ class UploadCycle(
      * are replacements for failures the platform already tried.
      */
     /**
-     * The **narrow** settle of a withheld cycle (capability `upload-lifecycle`, "Settling with the platform is
+     * The **narrow** settle of a withheld cycle (capability `background-upload`, "Settling with the platform is
      * owed regardless of the cycle's other outcomes"): record and acknowledge every terminal job the platform
      * presented — the drain does both — and adjudicate the retry-spent failures it hands back, returning their
      * rows to `DISCOVERED`. Unlike [recreateRetrySpent] it creates no job — not even a retry's replacement — because
@@ -908,7 +908,7 @@ class UploadCycle(
 
     /**
      * Whether [job]'s row is gone — deleted by an authoritative walk because its photo left the library or,
-     * under a partial grant, the selection, possibly while the job was in flight (capability `upload-lifecycle`,
+     * under a partial grant, the selection, possibly while the job was in flight (capability `background-upload`,
      * "A presented job whose row is gone is answered and nothing more"). Such a job is answered and nothing
      * more: no engine event, no retry, no re-creation.
      *

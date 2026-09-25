@@ -233,7 +233,7 @@ class AlbumWorldTest {
 
         w.leave()
         // Something the join's gather will place: a photo received in E2, whose import row is permanent
-        // across a leave (capability `download-store`) and which E2's union still lists.
+        // across a leave (capability `receiving-photos`) and which E2's union still lists.
         w.provision("E2", saveToAlbum = false)
         w.receive("DEV-PEER", "E2", "FQ")
         w.leave()

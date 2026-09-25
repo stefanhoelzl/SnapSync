@@ -122,7 +122,7 @@ internal fun DateTimePickerDialog(
 }
 
 /**
- * The **dual-handle range** variant of the one-dialog picker (capability `design-system`): the same
+ * The **dual-handle range** variant of the one-dialog picker (`docs/architecture.md`): the same
  * hand-drawn single-month calendar, but the user taps a **start day** then an **end day** to select an
  * inclusive `[from, until]` span, with **two** time-wheel pairs — a **From time** and an **Until time** —
  * beneath it. One confirmation commits the whole span.

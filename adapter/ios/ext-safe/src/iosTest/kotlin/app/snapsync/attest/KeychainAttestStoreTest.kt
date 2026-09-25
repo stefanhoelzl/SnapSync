@@ -13,7 +13,7 @@ import kotlin.test.assertTrue
 
 /**
  * The attestation store's two items and the one asymmetry between them (capability
- * `device-attestation`).
+ * `privacy-security`).
  *
  * The store is four one-line delegations, which is exactly why it is worth pinning: the lines are
  * interchangeable-looking and the consequences are not. `clearToken` must drop the **token** and keep

@@ -27,7 +27,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.newSingleThreadContext
 
 /**
- * The **full-stack world harness** (`:app:desktop:run`, capability `full-stack-harness`): the real
+ * The **full-stack world harness** (`:app:desktop:run`, `docs/testing.md`): the real
  * `StatusScreen` in a phone frame on the left — its counts **emerge** from the world's real
  * `LedgerBackedSyncStatusSource`, never forged — and a **world inspector** on the right that drives
  * `:test:world`'s control surface through a single [WorldInspectorController]. The operator plays the
@@ -65,7 +65,7 @@ const val WORLD_HEIGHT: Int = 950
 @OptIn(DelicateCoroutinesApi::class)
 @Composable
 fun WorldHarnessRoot() {
-    // NOT `rememberCoroutineScope()` (spec `full-stack-harness`, "The harness composes the live core on
+    // NOT `rememberCoroutineScope()` (`docs/testing.md`, "The harness composes the live core on
     // the shipped lane structure"). That scope is bound to the AWT event thread, which would compose the
     // real core on the UI thread — the one shape the dispatcher-lane law forbids, and one no mechanical
     // gate can see here because a UI-bound scope names no main-thread dispatcher. A serial, non-UI lane

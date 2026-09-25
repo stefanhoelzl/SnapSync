@@ -15,7 +15,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * The **rule → `PHFetchOptions` translation** (capability `photo-selection-policy`).
+ * The **rule → `PHFetchOptions` translation** (capability `photo-sharing`).
  *
  * Runs on the simulator rather than the JVM because the predicate is built with real `NSPredicate`; the
  * SDK-pinned subtype constants it inlines are asserted against PhotoKit in `PhotoKitAssetFactsTest`.

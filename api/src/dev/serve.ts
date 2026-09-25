@@ -25,7 +25,7 @@
 //     REAL attestation flow runs for real against the rig.
 //
 //     THE FALLBACK ALSO FILLS AN ABSENT ENROLMENT, and must. A `devices` row is created only by
-//     `POST /attest/token` (capability `device-attestation`: a row exists iff the device has attested),
+//     `POST /attest/token` (capability `privacy-security`: a row exists iff the device has attested),
 //     and `PUT /api/v1/devices/<id>` — the push registration — now UPDATEs that row and answers 401 when
 //     there is none. On a SIMULATOR that is unrecoverable rather than a first-launch round-trip: App
 //     Attest does not exist there (`DCAppAttestService.isSupported` is false), so the app never attests,
@@ -58,7 +58,7 @@ function parseOptions(args: string[]): Options {
   }
   if (options.ephemeral) {
     // EPHEMERAL MODE is the rig as a TEST launches it (the backend port contracts' live binding, capability
-    // `port-contracts`): the port defaults to `0` so parallel test JVMs never collide, and the tunnel is
+    // `docs/architecture.md`): the port defaults to `0` so parallel test JVMs never collide, and the tunnel is
     // refused because a test must never be reachable from outside loopback.
     //
     // Its launcher grants exactly `--allow-net=127.0.0.1 --allow-read=<api/>,<store> --allow-write=<store>`
@@ -103,7 +103,7 @@ const publicScheme = new URL(origin).protocol.replace(":", "");
 
 const config = devConfig(publicHost, publicScheme);
 const storage = fsFetch(config, options.store);
-// The rig's relational store (capability `database`): a real SQLite file beside the object store, so a
+// The rig's relational store (`docs/architecture.md`): a real SQLite file beside the object store, so a
 // local run exercises the same statements the deployed store runs — cascades, the conditional capacity
 // insert, the atomic publish — with no credential and no network. It lives INSIDE the store directory so
 // `rm -rf` clears both halves at once: clearing one and not the other is the state where the rig looks

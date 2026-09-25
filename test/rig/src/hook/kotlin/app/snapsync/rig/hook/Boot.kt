@@ -65,7 +65,7 @@ import platform.Foundation.NSUserActivityTypeBrowsingWeb
  *
  * ## Nothing is forced here, including `SnapSyncRoot` itself
  * `SnapSyncRoot.app` and `.host` are passed as **thunks**. Both are `by lazy`, and touching `host` installs
- * the permission-grant subscriptions, which `ios-app-shell` forbids on a cold background wake. This file
+ * the permission-grant subscriptions, which `sync-status` forbids on a cold background wake. This file
  * captures lambdas and binds a socket; the graph is forced by the first request that needs it, which forces
  * exactly what a real entry point would.
  */
@@ -180,7 +180,7 @@ private fun writeTextFile(path: String?, text: String) {
 
 /**
  * WIRED entry points. No deadline is reported beside a receipted trigger: no clock of the app's own releases a
- * handler (capability `ios-app-shell`), so the measured hold is the only number there is.
+ * handler (capability `sync-status`), so the measured hold is the only number there is.
  */
 private fun triggers(): Map<String, RigTrigger> = mapOf(
     // ── The platform hands these no completion handler: it does not wait, so neither do we ──────────

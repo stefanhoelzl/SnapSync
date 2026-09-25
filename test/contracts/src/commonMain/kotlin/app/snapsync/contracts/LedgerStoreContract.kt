@@ -26,8 +26,8 @@ import kotlinx.coroutines.test.runCurrent
 enum class LedgerStoreState { EMPTY }
 
 /**
- * The storage-seam contract every [LedgerStore] must satisfy (capability `sync-ledger`; mechanism:
- * `port-contracts`). Each implementation is bound once per host it runs on; the same clauses run unchanged
+ * The storage-seam contract every [LedgerStore] must satisfy (capability `photo-sharing`; mechanism:
+ * `docs/architecture.md`). Each implementation is bound once per host it runs on; the same clauses run unchanged
  * against each.
  *
  * Its guarded-write and presence clauses live in [recordGuardClauses] and its manifest-version clauses in
@@ -259,7 +259,7 @@ object LedgerStoreContract : Contract<LedgerStoreState, LedgerStore>("LedgerStor
             writer.recordFailed(res("failed.heic", "F"))
             // A row the join-time load seeded from a stored-file listing: COMPLETED, but no capture date.
             // The read no longer excludes it — the membership's policy does, because an empty capture date
-            // sorts before every real cutoff (capability `photo-selection-policy`).
+            // sorts before every real cutoff (capability `photo-sharing`).
             backend.recordUnlessSettled(LedgerEntry("seeded.heic", "C", LedgerState.COMPLETED))
 
             assertEquals(
@@ -371,7 +371,7 @@ object LedgerStoreContract : Contract<LedgerStoreState, LedgerStore>("LedgerStor
             }
 
             // Ordered so a caller's slice is deterministic rather than whatever the storage returned — and
-            // UNBOUNDED, which is the half that matters (capability `sync-ledger`). The cycle bounds what it
+            // UNBOUNDED, which is the half that matters (capability `photo-sharing`). The cycle bounds what it
             // RESOLVES, after admitting these rows against the membership's current policy; a bound applied
             // here instead would let excluded rows sorting ahead of admitted ones fill the slice on every
             // cycle, and the admitted work further down would never be reached.
@@ -402,7 +402,7 @@ object LedgerStoreContract : Contract<LedgerStoreState, LedgerStore>("LedgerStor
         }
     }
 
-    // ── The per-asset progress read (capability `sync-ledger`, "Per-asset progress read") ────────────
+    // ── The per-asset progress read (capability `photo-sharing`, "Per-asset progress read") ────────────
 
 
 
@@ -416,7 +416,7 @@ object LedgerStoreContract : Contract<LedgerStoreState, LedgerStore>("LedgerStor
 
 
 
-    // ── manifest detail (capability `sync-ledger`) ────────────────────────────────────────────────
+    // ── manifest detail (capability `photo-sharing`) ────────────────────────────────────────────────
 
 
 
@@ -430,5 +430,5 @@ object LedgerStoreContract : Contract<LedgerStoreState, LedgerStore>("LedgerStor
 
 
 
-    // --- the work-source read (capability `sync-ledger`) --------------------------------------------
+    // --- the work-source read (capability `photo-sharing`) --------------------------------------------
 }

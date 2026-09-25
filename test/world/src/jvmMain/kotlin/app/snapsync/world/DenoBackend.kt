@@ -6,7 +6,7 @@ import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.engine.cio.CIO
 
 /**
- * The real backend (capability `harness-world-model`, "The world's backend is one seam with two
+ * The real backend (`docs/testing.md`, "The world's backend is one seam with two
  * implementations"): the Deno `api/` served by `:test:edge`'s [LiveEdge] — the production `createApp` over an
  * ephemeral filesystem store, loopback-only, one process per JVM.
  *

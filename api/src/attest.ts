@@ -1,4 +1,4 @@
-// Device attestation (capability `device-attestation`): App Attest verification, the stateless
+// Device attestation (capability `privacy-security`): App Attest verification, the stateless
 // challenge, and the device bearer token.
 //
 // The shape of this module is dictated by three things measured on a real device, not assumed:

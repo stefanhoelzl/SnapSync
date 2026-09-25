@@ -86,8 +86,8 @@ class ClauseHost(
 }
 
 /**
- * What every [DownloadTransport] promises its owner (capability `port-contracts` — this list IS the specification;
- * capability `photo-download` states why each matters). The integrity judgement is the owner's; what is contracted
+ * What every [DownloadTransport] promises its owner (`docs/architecture.md` — this list IS the specification;
+ * capability `receiving-photos` states why each matters). The integrity judgement is the owner's; what is contracted
  * is that the transport reports the facts truthfully and stages only what the owner accepted, where it said.
  */
 object DownloadTransportContract : Contract<DownloadTransportState, DownloadUnderTest>("DownloadTransport") {

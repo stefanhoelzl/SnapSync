@@ -6,7 +6,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 /**
- * App Attest where it is **not** available (capability `device-attestation`).
+ * App Attest where it is **not** available (capability `privacy-security`).
  *
  * The successful ceremony is out of reach here and always will be: `DCAppAttestService.isSupported`
  * is false on a simulator, and the real attestation is anchored to a Secure Enclave key a simulator

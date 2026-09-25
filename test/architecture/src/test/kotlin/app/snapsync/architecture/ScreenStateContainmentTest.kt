@@ -7,7 +7,7 @@ import kotlin.test.assertTrue
 import kotlin.test.fail
 
 /**
- * **What the screen SHOWS is `UiState`; how it DRAWS is local** (capability `sync-status-screen`).
+ * **What the screen SHOWS is `UiState`; how it DRAWS is local** (capability `sync-status`).
  *
  * The screens module may not hold state that decides what is on screen. A value the screen renders is a
  * value the reduction carries, so no host can supply the state and silently omit something rendered —
@@ -33,7 +33,7 @@ import kotlin.test.fail
  * (`harden-seam-bug-classes`): the container computes it over the lane-decorated query bundle and the row
  * renders it, so the screen holds nothing for it.
  *
- * Text typed into a sheet is the stated IME exception (`sync-status-screen`) and lives in
+ * Text typed into a sheet is the stated IME exception (`sync-status`) and lives in
  * `:ui:components`, which this gate does not scan: a design-system control may own how it draws itself.
  */
 class ScreenStateContainmentTest {

@@ -6,7 +6,7 @@ import kotlin.test.assertTrue
 
 /**
  * [changesManifestProjection] — the in-memory stores' copy of the SQLite triggers' rule for when the manifest
- * version advances (capability `sync-ledger`). Every projected field must count, and the two unprojected ones
+ * version advances (capability `photo-sharing`). Every projected field must count, and the two unprojected ones
  * must not: a field missed here makes a fake advance less often than the device, and a green suite hides it.
  */
 class ManifestProjectionChangeTest {

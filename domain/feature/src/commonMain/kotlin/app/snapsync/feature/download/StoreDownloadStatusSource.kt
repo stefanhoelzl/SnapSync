@@ -21,7 +21,7 @@ class StoreDownloadStatusSource(private val store: DownloadStore) : DownloadStat
 
     /**
      * ONE read, so the published projection cannot be a torn composite of counts taken at three different
-     * instants (capability `download-store`).
+     * instants (capability `receiving-photos`).
      *
      * **Keep-last-good on failure**, matching `ReadingLedgerCountsSource` — the group's other member — rather
      * than throwing (capability `sync-status`, "The cheap local status reads are one bounded group"). Two

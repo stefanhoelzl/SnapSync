@@ -1,4 +1,4 @@
-// The post-deploy BOOT PROBE (capability `backend-deployment`). Runs OUT of the Edge Script — a Deno
+// The post-deploy BOOT PROBE (`docs/deployment.md`). Runs OUT of the Edge Script — a Deno
 // program deploy.yml's `api` job invokes after `POST /publish`, exactly as `nightly-cleanup.yml` invokes the
 // sweep beside it.
 //
@@ -21,7 +21,7 @@
 // WHAT IT CANNOT SEE AT ALL: the other ~118 points of presence. This polls ONE hostname, which resolves to
 // ONE PoP, and no propagation contract is published (the vendor's own statements range from seconds to
 // minutes). So a green probe before a migration means "very likely every PoP is serving the maintenance
-// bundle", never "certainly". That residual is stated in `backend-deployment` rather than implied here.
+// bundle", never "certainly". That residual is stated in `docs/deployment.md` rather than implied here.
 //
 // WHY THERE IS NO ROLLBACK. Bunny does support re-publishing a previous release — but MEASURED (run
 // 32748912239), the script-scoped deploy key returns 401 on both `GET /compute/script/<id>/releases` and
@@ -114,12 +114,12 @@ export function classify(
   if (sha === UNSTAMPED) return "unstamped";
 
   // This IS the commit we deployed — but a migrating deploy publishes that commit TWICE, so identity is
-  // no longer enough. Ask which of the two is answering (capability `backend-deployment`).
+  // no longer enough. Ask which of the two is answering (`docs/deployment.md`).
   //
   // The store and the zone need no cell here any more: the health route reaches both itself and answers a
   // non-success status when either is unreachable, which lands in `server-error` above. That collapse is
   // safe because only ONE condition remains and it is retryable — the terminal one (foreign keys off) was
-  // removed with the assertion behind it (capability `database`).
+  // removed with the assertion behind it (`docs/architecture.md`).
   let field: unknown;
   try {
     field = (JSON.parse(body) as { maintenance?: unknown }).maintenance;

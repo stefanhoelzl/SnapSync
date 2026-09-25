@@ -22,7 +22,7 @@ enum class EventJoinState {
 }
 
 /**
- * What joining promises (capability `port-contracts` — this list IS the port's specification). Joining is the
+ * What joining promises (`docs/architecture.md` — this list IS the port's specification). Joining is the
  * ONLY route that decides membership and capacity, and it is gated, so it is also where a dead credential is
  * first refused and credential recovery starts.
  */

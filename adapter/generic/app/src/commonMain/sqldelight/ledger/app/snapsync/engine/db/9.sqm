@@ -1,4 +1,4 @@
--- v9 -> v10: create the `destinationPath` index the chain never created (capability `sync-ledger`).
+-- v9 -> v10: create the `destinationPath` index the chain never created (capability `photo-sharing`).
 --
 -- A REPAIR, not a new object. `Ledger.sq` has carried `CREATE INDEX ledgerRow_destinationPath` since the
 -- destination column landed, but `7.sqm` added that column with `ALTER TABLE ... ADD COLUMN`, which creates
@@ -13,7 +13,7 @@
 -- thing the check actually verifies — which is why the snapshot is generated BEFORE this file exists.
 --
 -- NOT COSMETIC. The OS-driven upload tier resolves every returned `PHAssetResourceUploadJob` to its row by
--- matching the job's destination path against this column (`ios-photokit-upload`), in a process the OS
+-- matching the job's destination path against this column (`background-upload`), in a process the OS
 -- invokes with a DEADLINE. Without the index that lookup is a full table scan per returned job — on exactly
 -- the devices that have been joined longest, which are the ones with the most rows to scan.
 --

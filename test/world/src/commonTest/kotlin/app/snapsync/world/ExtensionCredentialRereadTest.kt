@@ -5,7 +5,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * The extension's in-memory device token is re-read at every OS invocation (capability `device-attestation`).
+ * The extension's in-memory device token is re-read at every OS invocation (capability `privacy-security`).
  *
  * The app renews into the Keychain item both processes share, and the extension's copy cannot see that; the
  * re-read at each `process()` is what bounds the copy's staleness to one invocation. Asserted over the real

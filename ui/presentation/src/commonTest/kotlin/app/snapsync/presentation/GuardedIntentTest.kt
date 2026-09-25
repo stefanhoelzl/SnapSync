@@ -50,7 +50,7 @@ private class IdleSync : SyncStatusSource {
 }
 
 /**
- * **Non-idempotent commands are in flight before they first suspend** (capability `sync-status-screen`; decision
+ * **Non-idempotent commands are in flight before they first suspend** (capability `sync-status`; decision
  * record `harden-seam-bug-classes`, D13): a second tap while the first is running fires nothing, a result lands only
  * on the surface that started it, and a stale terminal result never outlives its surface.
  *

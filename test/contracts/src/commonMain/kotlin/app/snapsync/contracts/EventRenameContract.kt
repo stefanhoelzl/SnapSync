@@ -14,7 +14,7 @@ enum class EventRenameState {
     NO_SUCH_EVENT,
 }
 
-/** What renaming an event promises (capability `port-contracts` — this list IS the port's specification). */
+/** What renaming an event promises (`docs/architecture.md` — this list IS the port's specification). */
 object EventRenameContract : Contract<EventRenameState, EdgeSubject<EventRename>>("EventRename") {
 
     suspend fun seed(state: EventRenameState, clauseId: String, setup: EdgeSetup): Seeded = when (state) {

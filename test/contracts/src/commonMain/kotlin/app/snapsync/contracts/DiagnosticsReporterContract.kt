@@ -46,7 +46,7 @@ class DeliveredEvent(
 )
 
 /**
- * What a clause reads beyond the port (capability `port-contracts`: "an outcome that leaves the process"): whether
+ * What a clause reads beyond the port (`docs/architecture.md`: "an outcome that leaves the process"): whether
  * the channel is running, and what has been delivered. Outcomes only — never which reporting call ran.
  */
 interface DiagnosticsObservation {
@@ -65,8 +65,8 @@ interface DiagnosticsObservation {
 class DiagnosticsReporterSubject(val reporter: DiagnosticsReporter, val observe: DiagnosticsObservation)
 
 /**
- * What reporting a process's diagnostics off-device promises (capability `port-contracts` — this list IS the
- * specification of the port's obligations; capability `crash-reporting` carries why each exists).
+ * What reporting a process's diagnostics off-device promises (`docs/architecture.md` — this list IS the
+ * specification of the port's obligations; capability `privacy-security` carries why each exists).
  *
  * - An unconfigured build is inert on every member: nothing starts, nothing is sent — even through
  *   [DiagnosticsReporter.describeProcess], whose guarantee to start the channel does not override that rule.

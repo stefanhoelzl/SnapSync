@@ -44,7 +44,7 @@ import app.snapsync.ui.components.SecondaryButton
 
 /**
  * The full-screen "Join event" surface (capability `join-event`): the event summary is the hero, with
- * the participation-direction row, the capture-date cutoff row (capability `photo-selection-policy`), and the
+ * the participation-direction row, the capture-date cutoff row (capability `photo-sharing`), and the
  * save-to-album opt-in (capability `event-album`), with Join / Cancel pinned to the bottom. Further future
  * options slot in as more rows in this same column. Renders each [JoinPhase]: loading details,
  * ready-to-join, blocked (invalid invite), a retryable load/commit failure.
@@ -147,7 +147,7 @@ private fun LoadingPhase() = PhaseScaffold(
  * `join-event`). It names the event it is inviting you to (the hero) and states the consent facts as a
  * scannable card, top-anchored beneath it: share-first (the automatic sharing is the half that deserves
  * informed consent, so it leads), then that full access is genuinely needed for BOTH halves, then that
- * limited ("pick which photos") is a first-class choice (capability `limited-photo-access`, not a
+ * limited ("pick which photos") is a first-class choice (capability `photo-access`, not a
  * degraded one), then the cutoff.
  *
  * "I understand" is the ONLY path from the join gate to the system dialog (CTA-only priming). Cancel is

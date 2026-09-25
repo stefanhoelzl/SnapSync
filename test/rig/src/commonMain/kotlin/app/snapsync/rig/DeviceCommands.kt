@@ -5,14 +5,14 @@ import app.snapsync.rig.gallery.SeedKind
 import app.snapsync.rig.gallery.SeedOutcome
 
 // The `/device` write commands BOTH hosts honour, with one request and response shape (capability
-// `testing-architecture`, "One control protocol, served by two hosts"). Each host supplies only the act; the
+// `docs/testing.md`, "One control protocol, served by two hosts"). Each host supplies only the act; the
 // parsing, the refusals and the rendering are here, so the two cannot drift into two dialects of one verb.
 
 /** `POST /device/reset` — void durable sync state through the app's own reset, and answer the counts AFTER it. */
 fun resetCommand(core: () -> AppCore): RigCommand = RigCommand { _, _ ->
     core().resetDeviceState.reset()
     // The counts AFTER the reset, so "it cleared" is verifiable rather than asserted. An in-flight
-    // upload cycle can still write rows behind this read — stated in `device-state-reset` rather than
+    // upload cycle can still write rows behind this read — stated in `docs/testing.md` rather than
     // prevented, and visible right here when it happens.
     core().ledgerCounts.refresh()
     val counts = core().ledgerCounts.counts.value

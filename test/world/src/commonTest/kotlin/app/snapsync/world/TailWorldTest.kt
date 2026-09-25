@@ -15,7 +15,7 @@ import kotlin.test.assertFalse
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * Each OS wake's own work, then the one tail, over the REAL composition and the world (capability `ios-app-shell`,
+ * Each OS wake's own work, then the one tail, over the REAL composition and the world (capability `sync-status`,
  * "Each OS wake does its own work, then hands the rest to one opportunistic tail"; decision record
  * `changes/own-work-per-wake`). The inbound port's contract (`PlatformEntriesContract`) pins the release points and
  * the expiry; this pins what the tail runs for each wake that the contract's observations cannot distinguish: the

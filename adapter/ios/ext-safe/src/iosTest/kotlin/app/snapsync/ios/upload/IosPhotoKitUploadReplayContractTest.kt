@@ -15,7 +15,7 @@ import app.snapsync.keychain.contract.RECORDINGS
 import kotlin.test.Test
 
 /**
- * The upload extension's PhotoKit job queue, REPLAYED (capability `port-contracts`): the CURRENT
+ * The upload extension's PhotoKit job queue, REPLAYED (`docs/architecture.md`): the CURRENT
  * [IosPhotoKitUploadPlatform] runs against what iOS answered — and what the upload receiver said landed — when
  * `test/contracts/recordings/BackgroundTransfer@IOS_DEVICE_PHOTOKIT_EXT.rec` was recorded inside the extension on a
  * device, and the current clauses judge.

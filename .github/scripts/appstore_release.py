@@ -168,7 +168,7 @@ def _attached_build_id(s: requests.Session, version_id: str) -> str | None:
 
 
 def _validate_store_version(version: str) -> str:
-    """The derived store version must be two-part `X.Y` (capability ios-appstore-release)."""
+    """The derived store version must be two-part `X.Y` (`docs/deployment.md`)."""
     if not re.fullmatch(r"\d+\.\d+", version):
         raise SystemExit(
             f"::error::build's marketing version '{version}' is not two-part X.Y — refusing to release "

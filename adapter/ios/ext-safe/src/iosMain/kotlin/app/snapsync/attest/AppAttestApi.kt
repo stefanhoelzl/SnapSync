@@ -6,7 +6,7 @@ import platform.Foundation.NSError
 
 /**
  * **The operating-system boundary of [IosAttestKey]**: the four `DCAppAttestService` calls it makes, and
- * nothing else (capability `port-contracts`, "Hosts CI cannot reach are recorded at the operating-system
+ * nothing else (`docs/architecture.md`, "Hosts CI cannot reach are recorded at the operating-system
  * boundary and replayed on every build").
  *
  * It exists so the adapter can be run against a *recording* of what App Attest answered on a device, where

@@ -14,7 +14,7 @@ enum class DownloadStoreState { EMPTY }
 
 /**
  * Shared contract for every [DownloadStore] impl — bound on the in-memory fake (JVM + simulator) and the
- * SQLDelight store (JVM over a JDBC driver, simulator over the native driver); mechanism: `port-contracts`.
+ * SQLDelight store (JVM over a JDBC driver, simulator over the native driver); mechanism: `docs/architecture.md`.
  * Exercises the download→stage→import lifecycle, the suppression projection, idempotency, and leave/switch
  * pruning.
  */
@@ -56,7 +56,7 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadStore>("Down
         }
 
         /**
-         * The projection's counts come from ONE read (capability `download-store`).
+         * The projection's counts come from ONE read (capability `receiving-photos`).
          *
          * A store could satisfy every count's individual semantics above and still publish a torn composite by
          * answering them from three different instants — which is what this asserts against. It cannot catch an
@@ -132,7 +132,7 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadStore>("Down
         }
 
         /**
-         * The unconfirmed row — the state the duplicate-import defect lives in (capability `download-store`).
+         * The unconfirmed row — the state the duplicate-import defect lives in (capability `receiving-photos`).
          * The marker is written inside the platform's change block and the confirmation never arrives, so an
          * asset exists that the row does not know about. Every property below is what stops that asset being
          * imported a second time and then uploaded back into the event.
@@ -167,7 +167,7 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadStore>("Down
         }
 
         /**
-         * The guard on the FAILURE mirror, and the harm it prevents (capability `download-store`).
+         * The guard on the FAILURE mirror, and the harm it prevents (capability `receiving-photos`).
          *
          * A row settled as *present* by adjudication is terminal while its transaction may still be open. If
          * that transaction then reports failure, an unguarded clear strips the marker off a terminal row — and
@@ -207,7 +207,7 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadStore>("Down
         }
 
         /**
-         * The marker write's report, and why `false` is an emergency (capability `download-store`).
+         * The marker write's report, and why `false` is an emergency (capability `receiving-photos`).
          *
          * Matching no row means the row was deleted between this import being selected and its change block
          * running — the failure the prune's `protecting` set exists to prevent. The asset the block goes on to
@@ -253,7 +253,7 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadStore>("Down
         }
 
         /**
-         * The completion's own confirming write (capability `download-store`). The callback that learns the
+         * The completion's own confirming write (capability `receiving-photos`). The callback that learns the
          * outcome settles the row, so an import whose wait was abandoned needs no later library lookup to
          * discover what the completion already knew.
          */
@@ -308,7 +308,7 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadStore>("Down
         }
 
         /**
-         * The prune frees exactly what it stranded (capability `download-store`). Read and delete are one
+         * The prune frees exactly what it stranded (capability `receiving-photos`). Read and delete are one
          * operation, so the paths returned describe the rows this call actually dropped — not the rows that
          * looked prunable at some earlier instant.
          */
@@ -326,7 +326,7 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadStore>("Down
         }
 
         /**
-         * The `protecting` set, and the state that makes it necessary (capability `download-store`).
+         * The `protecting` set, and the state that makes it necessary (capability `receiving-photos`).
          *
          * An import is claimed BEFORE its change block runs, so its row is non-terminal and carries no marker —
          * indistinguishable, by state alone, from ordinary prunable work. Dropping it makes the change block's
@@ -365,7 +365,7 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadStore>("Down
 
         /**
          * A row settled as permanently unimportable leaves every read that could offer it work again
-         * (capability `download-store`). Both implementations must agree, because the SQL expresses "terminal"
+         * (capability `receiving-photos`). Both implementations must agree, because the SQL expresses "terminal"
          * as a `NOT IN` list and the fake expresses it as an enum property — two spellings of one notion, and a
          * predicate missed on either side puts the row back into the retry loop this state exists to end.
          */
@@ -555,5 +555,5 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadStore>("Down
 
 
 
-    // --- imported local identifiers by ref (capability `download-store`; read by the event album's gather) ---
+    // --- imported local identifiers by ref (capability `receiving-photos`; read by the event album's gather) ---
 }

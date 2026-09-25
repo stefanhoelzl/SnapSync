@@ -5,9 +5,9 @@ import kotlin.test.assertTrue
 import kotlin.test.fail
 
 /**
- * Shared scanning for the five zone gates (capability `architecture-guards`, requirement "The zone
+ * Shared scanning for the five zone gates (`docs/architecture.md`, requirement "The zone
  * gates exist before their zones, pending and self-arming"; decision record:
- * `pin-runtime-identity-and-zone-gates`). Law semantics: `module-architecture` "Zones inside the
+ * `pin-runtime-identity-and-zone-gates`). Law semantics: `docs/architecture.md` "Zones inside the
  * core" / "Commands cross one door".
  *
  * SELF-ARMING (the `FakeHonestyTest` pattern): each gate's zone does not exist yet — it is created
@@ -40,7 +40,7 @@ internal object ZoneGates {
      *
      * The zone edges themselves are no longer text-gated: each zone is a Gradle module declaring only
      * the zone dependency its law permits, so a forbidden reference does not resolve (spec
-     * `module-architecture`). What remains here serves the two properties the module graph cannot
+     * `docs/architecture.md`). What remains here serves the two properties the module graph cannot
      * express — feature mutual blindness, and a flow's inability to outlive its run.
      */
     fun zoneFiles(root: File, zone: String): List<File>? {

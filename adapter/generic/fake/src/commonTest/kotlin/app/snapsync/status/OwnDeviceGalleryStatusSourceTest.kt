@@ -22,14 +22,14 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlinx.coroutines.test.runTest
 
-/** Every membership carries a cutoff (capability `photo-selection-policy`); there is no whole-library total. */
+/** Every membership carries a cutoff (capability `photo-sharing`); there is no whole-library total. */
 private val CUTOFF = captureCutoff("2026-07-06T00:00:00Z")
 
 /**
  * The admitting policy every test here drives, bounded below by [CUTOFF] and unbounded above.
  *
  * A `suspend fun` rather than a `val`: the one derivation reads two ports (capability
- * `photo-selection-policy`). The two exclusion sets are parameters because they used to be injected into
+ * `photo-sharing`). The two exclusion sets are parameters because they used to be injected into
  * this status source and applied by it — the source now receives a finished policy and applies nothing.
  */
 private suspend fun admitting(
@@ -79,13 +79,13 @@ class OwnDeviceGalleryStatusSourceTest {
         }
     }
 
-    // ---- The direction gate, for the total (capability `photo-selection-policy`) ----------------------
+    // ---- The direction gate, for the total (capability `photo-sharing`) ----------------------
     // N must count "the same set the upload cycle admits" — the invariant this class states about itself.
     // The cutoff and origin exclusions were honoured on both sides; the participation direction on neither.
     // Unlike the download arm's total (which flows THROUGH its gate and is zero for free), N is a parallel
     // computation no upload gate feeds — so the short-circuit has to be right here or not at all.
 
-    // ---- Not counted is not zero (capability `gallery-status`) --------------------------------------
+    // ---- Not counted is not zero (capability `sync-status`) --------------------------------------
 
     @Test
     fun `a source that has never been refreshed reports not counted`() = runTest {
@@ -202,7 +202,7 @@ class OwnDeviceGalleryStatusSourceTest {
 
         // Counted, THEN unreadable: the count stands. One rule covers this and the thrown walk above —
         // never publish a count we did not compute, never withdraw one we did. A refusal must not be
-        // more destructive than a failure, which `gallery-status` already requires to leave the previous
+        // more destructive than a failure, which `sync-status` already requires to leave the previous
         // value in place.
         readable = true
         source.refresh(admitting())
@@ -251,7 +251,7 @@ class OwnDeviceGalleryStatusSourceTest {
         assertEquals(emptySet<String>(), source.admitted.value, "a member who shares nothing has nothing to count")
         // The load-bearing half, and where it now lives. Counting 0 by walking 4000 assets would be ~7
         // minutes of PhotoKit XPC to learn what the direction already said — so the deny-everything rule
-        // is translated into a fetch predicate matching NO asset (capability `gallery-status`), and the
+        // is translated into a fetch predicate matching NO asset (capability `sync-status`), and the
         // cost is removed at the fetch rather than by this source refusing to start one. Exactly one
         // fetch is issued, per refresh rather than per asset; this fake does not translate rules, so its
         // list comes back and is refused by `admits`.
@@ -276,7 +276,7 @@ class OwnDeviceGalleryStatusSourceTest {
     }
 
     /** Dated in scope by default: an asset with no `creationDate` is out of scope under any cutoff. */
-    // ---- the selection snapshot serves the total (capability `limited-photo-access`) ----
+    // ---- the selection snapshot serves the total (capability `photo-access`) ----
     // There is no `refreshFrom` any more: the permission-aware source supplies the snapshot under LIMITED,
     // so the total has ONE entry point regardless of grant. A second one restated the mode difference the
     // source owns, and it is that restatement — not the reading — that lets two paths drift apart.
@@ -307,7 +307,7 @@ class OwnDeviceGalleryStatusSourceTest {
     private fun undatedResource(filename: String, assetId: String) =
         Resource(filename, assetId, "image/jpeg", emptyMap(), Unit)
 
-    /** A resource carrying the origin facts (capability `photo-selection-policy`). */
+    /** A resource carrying the origin facts (capability `photo-sharing`). */
     private fun originResource(
         filename: String,
         assetId: String,
@@ -407,7 +407,7 @@ class OwnDeviceGalleryStatusSourceTest {
     @Test
     fun `pre-cutoff assets are excluded from the total so progress can reach 100 percent`() = runTest {
         // OLD precedes the cutoff → never uploads → must not inflate N (else the screen shows "pending"
-        // forever). NEW is at/after the cutoff → counted (capability photo-selection-policy).
+        // forever). NEW is at/after the cutoff → counted (capability `photo-sharing`).
         val enumerator = ResourceCandidates(
             listOf(
                 datedResource("OLD-primary.jpg", "OLD", "2026-07-01T00:00:00Z"),

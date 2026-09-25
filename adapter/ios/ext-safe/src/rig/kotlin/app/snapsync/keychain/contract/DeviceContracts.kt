@@ -31,7 +31,7 @@ import platform.Foundation.NSISO8601DateFormatter
 
 /**
  * The real [app.snapsync.keychain.IosKeychain] in the entitled app, recording every `SecItem*` call and
- * iOS's answer (capability `port-contracts`). Recorded on a device, over the rig; replayed on every CI
+ * iOS's answer (`docs/architecture.md`). Recorded on a device, over the rig; replayed on every CI
  * build by `IosKeychainReplayContractTest`, which reuses [keychainInState] so both make the same calls.
  */
 internal class DeviceKeychainBinding(private val recorder: Recorder) : Binding<SecureStoreState, SecureStore> {
@@ -86,7 +86,7 @@ internal class DeviceAttestStoreBinding(private val recorder: Recorder) : Bindin
 }
 
 /**
- * The contracts the rig can run on a device, by name — `POST /contract/<name>` (capability `port-contracts`,
+ * The contracts the rig can run on a device, by name — `POST /contract/<name>` (`docs/architecture.md`,
  * "The device run is reached through the rig and contained at compile time").
  *
  * Each answers with the recording to commit verbatim at `test/contracts/recordings/<name>@IOS_DEVICE_APP.rec`:

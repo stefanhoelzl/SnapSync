@@ -55,7 +55,7 @@ class IosAlbumManager(
     }
 
     /**
-     * Decision-free membership lookup (capability `photo-selection-policy`). Walks the device's **user**
+     * Decision-free membership lookup (capability `photo-sharing`). Walks the device's **user**
      * albums once, keeps those whose title is in [titles], and fetches each one's members bounded by [since].
      *
      * Cost is O(albums) — the album list is small and the per-album member fetch is a single call. It is
@@ -64,6 +64,12 @@ class IosAlbumManager(
      *
      * Smart albums are not consulted: their titles are system-localized, so matching one by title is
      * meaningless. (Screenshots are excluded by *subtype*, upstream, and never reach this seam.)
+     *
+     * Measured: under a partial (`.limited`) grant this walk returns **no** albums, empty and without an error,
+     * even when a selected asset is a member of one (SE2, a real WhatsApp album) — the denylist is inert there.
+     * Measured too: fetching an asset collection under `NOT_DETERMINED` raises iOS's permission dialog
+     * (simulator, iOS 26.4, `tccd` logs `AUTHREQ_PROMPTING`), so a caller must not reach this before a grant.
+     * No contract clause asserts either. See changes/archive/2026-07-20-accept-limited-photo-access.
      *
      * An unparseable [since] drops the member-fetch bound rather than fetching nothing — under-returning here
      * would silently *admit* a denylisted photo, which is the safe direction, but fetching nothing at all
@@ -106,6 +112,11 @@ class IosAlbumManager(
     // Second precision first, then with a fraction — through the shared formatters (see [Iso8601]).
     private fun parseSince(since: String): NSDate? = Iso8601.parseTolerant(since)
 
+    /**
+     * Measured: adding an asset that is already in the collection is a no-op (simulator, iOS 26.5), which is
+     * what lets a repeated gather re-add without placing anything twice; no contract clause asserts it yet.
+     * See changes/archive/2026-09-21-album-gathers-retroactively.
+     */
     override suspend fun add(albumLocalId: String, rawLocalIds: List<String>) {
         if (rawLocalIds.isEmpty()) return
         val collection = PHAssetCollection

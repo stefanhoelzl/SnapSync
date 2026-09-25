@@ -51,8 +51,8 @@ import kotlin.test.Test
 import kotlinx.coroutines.runBlocking
 
 /**
- * The mini-edge held to the backend port contracts, as their `Fake` (capability `port-contracts`; capability
- * `harness-world-model`, "Backend object store with faithful read-models"). The client under contract is the
+ * The mini-edge held to the backend port contracts, as their `Fake` (`docs/architecture.md`; capability
+ * `docs/testing.md`, "Backend object store with faithful read-models"). The client under contract is the
  * production `Http*` client and interceptor, exactly as in `:adapter:generic:app`'s live bindings; only the edge
  * behind it differs. A clause the real edge passes and this one fails is a mini-edge defect, fixed in the
  * mini-edge — never by declaring its state unreachable here.

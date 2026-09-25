@@ -7,7 +7,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /**
- * The backend-neutral surface over the mini-edge (capability `harness-world-model`, "Neutral inspection and
+ * The backend-neutral surface over the mini-edge (`docs/testing.md`, "Neutral inspection and
  * minted event ids beside the mini-edge-only surface"): the same calls a test makes over the real backend,
  * answered by the mini-edge through its own HTTP routes — and agreeing with the store they read.
  */

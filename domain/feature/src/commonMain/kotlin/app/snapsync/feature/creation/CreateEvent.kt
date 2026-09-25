@@ -13,12 +13,12 @@ import co.touchlab.kermit.Logger
  * - on [CreateOutcome.Created], hands the returned `eventId` to [onMinted] (the composition root routes
  *   it into the pending-join gate, non-auto-confirmed — the creator loads the event, picks a
  *   capture-date **range**, and confirms like any joiner) and returns the status to [CreationStatus.Idle]
- *   (the pending join now drives the reduction — see `event-creation-ui` / `photo-selection-policy`);
+ *   (the pending join now drives the reduction — see `create-event` / `photo-sharing`);
  * - on failure, sets [CreationStatus.Failed] with the matching reason and opens no gate.
  *
  * Because create and scan converge on that one gate, the creator is bound by the **same window** as every
  * other member: the range they just declared is the floor and ceiling on their own capture-date range too
- * (capability `photo-selection-policy`). That is not a special case here — it simply falls out, and this
+ * (capability `photo-sharing`). That is not a special case here — it simply falls out, and this
  * use-case does no clamping of its own.
  *
  * It never inspects `PermissionStatus`: a missing grant surfaces afterward via the existing
@@ -39,7 +39,7 @@ class CreateEvent(
     // fixed by the composition"), which is what lets the tap's `Logger.invocation` span the real work
     // instead of timing the hand-off — `← tap.create (1ms)` against a multi-second mint.
     override suspend fun create(name: String, startsAt: String, endsAt: String) {
-        // One create at a time (capability `sync-status-screen`, "A non-idempotent command is in flight before it
+        // One create at a time (capability `sync-status`, "A non-idempotent command is in flight before it
         // first suspends"): a second tap that reached the lane while the first mint is out would mint a second
         // event. Checked and set before the first suspension, so on the serial lane nothing can come between.
         if (status.creationStatus.value == CreationStatus.InFlight) {

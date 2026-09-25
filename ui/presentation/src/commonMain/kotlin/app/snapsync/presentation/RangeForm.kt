@@ -12,7 +12,7 @@ import kotlinx.serialization.Serializable
 
 /**
  * A member's **uncommitted choices** on a decision surface — the join gate and the in-place reconfigure
- * ask for the same seven (capability `photo-selection-policy`, `join-event`, `reconfigure-membership`).
+ * ask for the same seven (capability `photo-sharing`, `join-event`, `manage-membership`).
  *
  * These used to be seven `mutableStateOf`s held by each screen, declared twice with different seeds. That
  * gave them Compose's lifetime rather than the surface's, which is the wrong one: the join gate advances
@@ -46,7 +46,7 @@ data class RangeForm(
  * surface renders.
  *
  * Wall-clock values rather than formatted strings — the design system owns how a date reads (capability
- * `design-system`), and the reduction owns what the date IS. The reduction applies the device's zone when
+ * `docs/architecture.md`), and the reduction owns what the date IS. The reduction applies the device's zone when
  * producing these, so a consumer rendering a transported state shows the device's own wall clock.
  */
 @Serializable
@@ -64,14 +64,14 @@ data class ResolvedRange(
     /** "Now" is offered only while the present is inside the event window. */
     val nowAvailable: Boolean,
     /**
-     * How many of the member's own photos the chosen range would share (capability `join-share-count`).
+     * How many of the member's own photos the chosen range would share (capability `join-event`).
      * Computed by the container over the user-query bundle — never by the screen — and carried here so the
      * row renders reduced state. Unavailable and zero mean different things: `Ready(0)` says the chosen
      * range admits none of their photos.
      */
     val shareCount: ShareCount = ShareCount.Counting,
     /**
-     * The event's retention deadline in wall-clock terms (capability `event-limits`), or `null` when the
+     * The event's retention deadline in wall-clock terms (capability `event-lifetime`), or `null` when the
      * surface has no event to state one for. Converted here for the same reason the bounds are: the
      * reduction holds the zone, and the design system formats what it is given.
      */
@@ -164,7 +164,7 @@ internal fun nowWithinWindow(now: CaptureDate, startsAt: CaptureDate?, endsAt: C
  *
  * Lossy by construction: the presets are not persisted, only the resulting instants, so
  * `minPhotoDate == startsAt` seeds **Event start** and anything above it seeds **Custom** — the original
- * "Now" pick is unrecoverable (`reconfigure-membership` decision "cutoff pre-fill reconstruction"). The
+ * "Now" pick is unrecoverable (`manage-membership` decision "cutoff pre-fill reconstruction"). The
  * same reading applies at the ceiling, where a legacy config carrying no event end counts as at-the-ceiling.
  */
 internal fun reconfigureForm(membership: EventConfig, toLocal: (CaptureDate) -> LocalDateTime?): RangeForm {
@@ -190,7 +190,7 @@ internal fun reconfigureForm(membership: EventConfig, toLocal: (CaptureDate) -> 
  */
 internal const val NO_CEILING_YEARS = 100
 
-/** The live shareable count (capability `join-share-count`), as the row renders it. */
+/** The live shareable count (capability `join-event`), as the row renders it. */
 @Serializable
 sealed interface ShareCount {
     /** Being (re)computed — the row shows `counting…`. */

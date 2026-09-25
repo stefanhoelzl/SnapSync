@@ -11,7 +11,7 @@ enum class BackgroundSchedulerState {
 
 /**
  * The scheduler as a clause receives it: the port, which declares no reads, and [pendingWakes] — an observation
- * handle over the system's own queue (capability `port-contracts`): how many wake requests the operating system
+ * handle over the system's own queue (`docs/architecture.md`): how many wake requests the operating system
  * holds for the scheduler's identifier. The state reached, never a record of which call reached it.
  */
 class ScheduledWakes(
@@ -20,7 +20,7 @@ class ScheduledWakes(
 )
 
 /**
- * What every [BackgroundScheduler] promises the upload pump (capability `port-contracts` — this list IS the
+ * What every [BackgroundScheduler] promises the upload pump (`docs/architecture.md` — this list IS the
  * specification). The pump re-arms after every cycle that leaves work, and on every heartbeat; a scheduler that
  * stacked a request per call would flood the system's queue, and one that cancelled nothing would keep waking a
  * device that left its event.

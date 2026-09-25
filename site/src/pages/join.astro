@@ -1,5 +1,5 @@
 ---
-// The no-app download page (capabilities event-link, web-event-download), served at /join. Built by the
+// The no-app download page (capabilities join-event, event-site), served at /join. Built by the
 // site/ module and served by proxying the constant site/join/index.html from storage (capability
 // web-site). It is BYTE-IDENTICAL for every event link: the backend never sees the payload (it rides in
 // the URL fragment). All per-event work happens in the client island below — read the eventId from the
@@ -128,7 +128,7 @@ import AppStoreButton from "../components/AppStoreButton.astro";
       $("status").textContent = t;
     };
 
-    // fragment decode: the same wire contract as capability `event-link` (#v=3&d=<base64url(json)>)
+    // fragment decode: the same wire contract as capability `join-event` (#v=3&d=<base64url(json)>)
     function decodeFragment(): string | null {
       const frag = location.hash.startsWith("#") ? location.hash.slice(1) : location.hash;
       if (!frag) return null;

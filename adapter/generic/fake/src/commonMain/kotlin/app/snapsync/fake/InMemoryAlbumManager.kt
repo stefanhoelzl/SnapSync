@@ -19,7 +19,7 @@ import kotlinx.coroutines.flow.StateFlow
  *
  * [userAlbums] is the albums other apps made: title → the normalized asset ids inside them. It is the caller's
  * own cell, which is how the world forges "this photo arrived via WhatsApp" without PhotoKit (capability
- * `photo-selection-policy`). Albums this fake creates get deterministic ids (`album-<n>`).
+ * `photo-sharing`). Albums this fake creates get deterministic ids (`album-<n>`).
  *
  * State arrives by constructor, per the fake-honesty rule. Levers and inspection belong in `:test:world`
  * wrappers.

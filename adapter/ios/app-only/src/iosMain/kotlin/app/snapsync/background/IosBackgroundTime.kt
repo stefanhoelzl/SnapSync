@@ -39,11 +39,11 @@ internal object SystemBackgroundTimeApi : BackgroundTimeApi {
 
 /**
  * The iOS [BackgroundTime]: `UIApplication.beginBackgroundTask(withName:expirationHandler:)` /
- * `endBackgroundTask(_:)` (spec `module-architecture`, "Background time is an outbound port named for the need";
+ * `endBackgroundTask(_:)` (`docs/architecture.md`, "Background time is an outbound port named for the need";
  * decision record `changes/own-work-per-wake`, D3 and D5).
  *
  * **App-only.** `UIApplication` is unavailable to app extensions, and the upload extension has no such signal to
- * offer anyway (capability `ios-photokit-upload`), so this lives in `:adapter:ios:app-only` and the extension's
+ * offer anyway (capability `background-upload`), so this lives in `:adapter:ios:app-only` and the extension's
  * composition binds nothing for the port.
  *
  * **The expiration handler only requests the stop.** Apple calls it *"shortly before the app's remaining background

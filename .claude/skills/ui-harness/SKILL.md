@@ -15,11 +15,11 @@ description: >-
 
 Two desktop harnesses exist, both in `:app:desktop`:
 
-- **Forge harness** (`./gradlew :app:desktop:runForge`, capability `desktop-test-harness`) — the real
+- **Forge harness** (`./gradlew :app:desktop:runForge`, `docs/testing.md`) — the real
   `:ui:screens` status screen in a phone-sized frame, plus a **control panel** that **forges any
   display state**: permission presets, sync-state presets, the engine console. Review every UI state
   with no device.
-- **Full-stack world harness** (`./gradlew :app:desktop:run`, capability `full-stack-harness`) — the
+- **Full-stack world harness** (`./gradlew :app:desktop:run`, `docs/testing.md`) — the
   same real status screen, but its counts **emerge** from the real `LedgerBackedSyncStatusSource`
   composed by `snapSyncApp` over `:test:world` (never forged), plus a right-pane **world inspector**
   driving the real stack: presets, **Invoke extension**, the gallery/backend, the upload-job queue and

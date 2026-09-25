@@ -19,7 +19,7 @@ import platform.Foundation.CFBridgingRelease
 import platform.Foundation.CFBridgingRetain
 
 /*
- * The Keychain's operating-system boundary as TEXT (capability `port-contracts`, "Hosts CI cannot reach are
+ * The Keychain's operating-system boundary as TEXT (`docs/architecture.md`, "Hosts CI cannot reach are
  * recorded at the operating-system boundary and replayed on every build").
  *
  * Compiled into this module's `iosMain` only under `-Psnapsync.rig=true` (where the device records), and

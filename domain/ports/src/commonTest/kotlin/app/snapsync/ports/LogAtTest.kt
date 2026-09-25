@@ -13,7 +13,7 @@ import kotlin.test.assertEquals
  *
  * Every arm is asserted because a mis-routed one is **invisible**, not merely untidy: crash reporting
  * turns `Error`/`Assert` lines into Bugsink events and everything below them into breadcrumbs
- * (capability `crash-reporting`). An `Error` that fell through to `w` would still appear in the device
+ * (capability `privacy-security`). An `Error` that fell through to `w` would still appear in the device
  * log, look entirely normal there, and never raise an event — so the failure it reports reaches nobody.
  * The reverse is as bad in the other direction: a `Verbose` line routed to `e` mints an event per call.
  *

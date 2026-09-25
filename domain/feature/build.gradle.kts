@@ -6,7 +6,7 @@ import org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeSimulatorTes
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.kotlin.serialization)
-    // Coverage measurement (capability `coverage-bounds`). Applied here rather than in a
+    // Coverage measurement (`docs/architecture.md`). Applied here rather than in a
     // `subprojects {}` block so the instrumented set is readable per module.
     alias(libs.plugins.kover)
 }
@@ -20,7 +20,7 @@ tasks.withType<KotlinNativeSimulatorTest>().configureEach {
     }
 }
 
-// The core'"'"'s `feature` zone (spec `module-architecture`, "The module set withholds; packages organize").
+// The core'"'"'s `feature` zone (`docs/architecture.md`, "The module set withholds; packages organize").
 // The rules. Features are mutually blind; they coordinate via one-writer durable state behind shared ports.
 //
 // Zone edges are declared with `implementation()`, never `api()`: a zone must not leak to a downstream
@@ -36,7 +36,7 @@ kotlin {
         commonMain.dependencies {
             implementation(project(":domain:model"))
             implementation(project(":domain:ports"))
-            // The per-zone library allowlist (spec `module-architecture`, "Core purity is closed by
+            // The per-zone library allowlist (`docs/architecture.md`, "Core purity is closed by
             // default"): coroutines (StateFlow/Flow port shapes), serialization + datetime (the
             // config/manifest vocabulary and cutoff codecs), kermit (the engine's diagnostics).
             api(libs.coroutines.core)
@@ -51,7 +51,7 @@ kotlin {
     }
 }
 
-// Coverage (capability `coverage-bounds`). The report is filtered to this module's OWN classes, so a
+// Coverage (`docs/architecture.md`). The report is filtered to this module's OWN classes, so a
 // zone is measured on what it contains rather than on its neighbours' test suites. The crediting edge
 // that lets `:adapter:generic:fake`'s tests count toward this module is declared in the ROOT build
 // file, not here: `ModuleSetTest` asserts a `:domain:*` build file names no module at all, because
@@ -66,9 +66,9 @@ kover {
     }
 }
 
-// Coverage bounds (capability `coverage-bounds`). Each number below is a FLOOR that may only RISE:
+// Coverage bounds (`docs/architecture.md`). Each number below is a FLOOR that may only RISE:
 // lowering one is a regression and needs a stated forcing proof in the PR. Nothing enforces that — it
-// is a ratchet carried by this contract, exactly as `complexity-budgets` carries its ceilings at the
+// is a ratchet carried by this contract, exactly as `docs/architecture.md` carries its ceilings at the
 // opposite polarity.
 //
 // Seeded from MEASUREMENT, never chosen: the number is what this module measured on the commit that
@@ -92,7 +92,7 @@ kover {
 // the generated decode path is unreachable without widening production visibility for a test — which
 // would be a worse trade than this number. The honest alternatives were both worse: excluding the two
 // classes hides a real gap behind a mechanism this module does not otherwise use, and rewriting the
-// encoding to `buildJsonObject` is a change to `push-registration`'s wire path made by a change about
+// encoding to `buildJsonObject` is a change to `receiving-photos`'s wire path made by a change about
 // the device API.
 //
 // ⚠️ The cost is real and belongs on the record: this weakens the guard for all nine packages, not just

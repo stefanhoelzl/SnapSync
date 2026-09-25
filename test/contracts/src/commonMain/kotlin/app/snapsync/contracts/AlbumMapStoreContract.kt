@@ -17,7 +17,7 @@ enum class AlbumMapStoreState {
 }
 
 /**
- * What the `eventId → albumLocalId` map promises (capability `port-contracts`; the port's KDoc carries why).
+ * What the `eventId → albumLocalId` map promises (`docs/architecture.md`; the port's KDoc carries why).
  * It is a self-healing cache: `null` covers "never created" and "unreadable" alike, and costs one redundant
  * lookup — so a corrupt map reads as empty and is overwritten, never raised. A write for one event must
  * keep every other event's album.

@@ -1,10 +1,10 @@
-// `:adapter:ios:ext-safe` (spec `module-architecture`): every iOS adapter the background-upload
+// `:adapter:ios:ext-safe` (`docs/architecture.md`): every iOS adapter the background-upload
 // EXTENSION process links — placed by linkage, so the extension binary's contents are decided by
 // this module boundary rather than by luck. The extension-safety text gate
 // (`:test:architecture` ExtensionSafetyTest) forbids `platform.UIKit`/`platform.BackgroundTasks`
 // anywhere under this module, because Kotlin/Native does not model `NS_EXTENSION_UNAVAILABLE`.
 // This is also the Keychain containment module — the ONLY module that may touch `SecItem*`
-// (capability `architecture-guards`; KeychainContainmentTest).
+// (`docs/architecture.md`; KeychainContainmentTest).
 
 import java.net.URI
 
@@ -12,7 +12,7 @@ plugins {
     alias(libs.plugins.kotlin.multiplatform)
 }
 
-// Sentry test-link provisioning (capability `crash-reporting`): the sentry-kmp klib references the
+// Sentry test-link provisioning (capability `privacy-security`): the sentry-kmp klib references the
 // sentry-cocoa framework, which is provided by SPM at Xcode link time for the shipped frameworks —
 // but this module's own SIMULATOR TEST EXECUTABLE is linked by Gradle, so a framework must exist
 // for that link. It must be the DYNAMIC variant: the static archive's Swift objects force-load
@@ -48,11 +48,11 @@ val provisionSentryCocoa by tasks.registering {
     }
 }
 
-// ---- Port contracts (capability `port-contracts`) ---------------------------------------------------
+// ---- Port contracts (`docs/architecture.md`) ---------------------------------------------------
 //
 // `src/rig/kotlin` holds the Keychain's recording/replaying seams and the entitled-device binding. Under
 // `-Psnapsync.rig=true` it compiles into `iosMain` — the device app records through it — together with
-// `:test:contracts`, and a build without the property contains neither (`module-architecture`, "A
+// `:test:contracts`, and a build without the property contains neither (`docs/architecture.md`, "A
 // build-time-only module is contained by compilation"). Otherwise it compiles into `iosTest`, where CI
 // replays through it — so the recorder and the replayer are one file, and the device path is compile-checked
 // on every build.
@@ -130,7 +130,7 @@ kotlin {
             implementation(libs.ktor.client.darwin)
             implementation(libs.kotlinx.serialization.json)
             implementation(libs.kermit)
-            // Crash reporting (capability `crash-reporting`): the SDK dep lives here because both
+            // Crash reporting (capability `privacy-security`): the SDK dep lives here because both
             // processes link this module. sentry-cocoa itself is provided at EXECUTABLE link time —
             // by SPM in iosApp.xcodeproj for the app/appex (the exported frameworks are static, so
             // Gradle's libtool "link" needs no Sentry symbols), and by the provisioning below for
@@ -146,10 +146,10 @@ kotlin {
             // the SDK and nothing else).
             implementation(libs.ktor.client.mock)
             // The Keychain and App-Group store bindings of `SecureStoreContract` (capability
-            // `port-contracts`). Bound here because the seam and `AppGroupFileSecureStore` are `internal`.
+            // `docs/architecture.md`). Bound here because the seam and `AppGroupFileSecureStore` are `internal`.
             implementation(project(":test:contracts"))
             // The photo-library contracts bind the grant-aware composition production calls over the
-            // PhotoKit adapters (capability `port-contracts`, "A live binding binds the composition
+            // PhotoKit adapters (`docs/architecture.md`, "A live binding binds the composition
             // production calls").
             implementation(project(":domain:compose"))
         }

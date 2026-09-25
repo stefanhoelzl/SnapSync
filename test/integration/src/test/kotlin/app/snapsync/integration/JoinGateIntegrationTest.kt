@@ -34,7 +34,7 @@ class JoinGateIntegrationTest {
         // A LEGACY event — registered with no `startsAt`, as every marker written before start dates
         // existed. The mini-edge synthesizes one from `createdAt`, which (faithfully to the real backend's
         // `toISOString()`) carries MILLISECONDS. The loaded phase must therefore show a SECOND-PRECISION
-        // value (the `photo-selection-policy` format invariant the iOS fetch predicate depends on), and
+        // value (the `photo-sharing` format invariant the iOS fetch predicate depends on), and
         // confirming must persist precisely what the surface displayed.
         val event = deviceJson("backend/legacy-event", "name" to "Anna's Wedding").getValue("event").jsonPrimitive.content
 
@@ -175,7 +175,7 @@ class JoinGateIntegrationTest {
 
     @Test
     fun the_same_link_delivered_twice_enrolls_once() = rigTest {
-        // The platform delivers one opened link MORE THAN ONCE (capability `event-link`): measured on
+        // The platform delivers one opened link MORE THAN ONCE (capability `join-event`): measured on
         // build 687, the scene delegate's connection and SwiftUI's `.onOpenURL` both fired for the same
         // URL — ~130 ms apart on an iOS 18.7.9 cold launch, and 8 ms apart on iOS 26.6 while running.
         // Both hooks stay live because neither is reliable on every OS, so "exactly once" is enforced by
@@ -285,7 +285,7 @@ class JoinGateIntegrationTest {
         )
     }
 
-    // ── The membership self-leave (capability `leave-event`) ────────────────────────────────────────
+    // ── The membership self-leave (capability `manage-membership`) ────────────────────────────────────────
     //
     // The one path that destroys user state without a tap. It runs over the REAL composition — the same
     // `Foreground` flow and `MembershipRefresh` rule the iOS shell wires — so these prove the WIRING, not

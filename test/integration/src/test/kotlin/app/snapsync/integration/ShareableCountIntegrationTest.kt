@@ -7,9 +7,9 @@ import kotlin.test.assertEquals
 import kotlin.test.fail
 
 /**
- * The join-time **shareable-count preview** over the **real** stack (capability `join-share-count`): the count the
+ * The join-time **shareable-count preview** over the **real** stack (capability `join-event`): the count the
  * join surface shows must equal the set the real `UploadCycle` uploads for the same cutoff — the one-universe
- * requirement (capability `photo-selection-policy`). Same `snapSyncApp` core the device shells call; only PhotoKit
+ * requirement (capability `photo-sharing`). Same `snapSyncApp` core the device shells call; only PhotoKit
  * is faked. The preview is read where a member reads it: on the open join gate, before the commit.
  */
 class ShareableCountIntegrationTest {

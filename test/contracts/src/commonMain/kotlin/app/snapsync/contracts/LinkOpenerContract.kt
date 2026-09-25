@@ -15,7 +15,7 @@ enum class LinkOpenerState {
 }
 
 /**
- * What every [LinkOpener] promises (capability `port-contracts` — this list IS the specification of the
+ * What every [LinkOpener] promises (`docs/architecture.md` — this list IS the specification of the
  * port's obligations): it answers what the platform did with the URL, and never claims a hand-off that
  * did not happen.
  *

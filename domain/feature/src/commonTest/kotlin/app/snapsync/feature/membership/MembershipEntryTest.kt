@@ -9,7 +9,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlinx.coroutines.test.runTest
 
-/** Entering a new membership (capabilities `join-event`, `upload-state-reconciliation`): the order is the rule. */
+/** Entering a new membership (capabilities `join-event`, `photo-sharing`): the order is the rule. */
 class MembershipEntryTest {
 
     private val cfg = EventConfig(

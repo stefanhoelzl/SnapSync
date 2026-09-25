@@ -14,8 +14,8 @@ import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
 /**
- * One wake's hold on the process's **background time** (capability `ios-app-shell`, "OS completion handlers are
- * released only after their work completes"; spec `module-architecture`, "Background time is an outbound port named
+ * One wake's hold on the process's **background time** (capability `sync-status`, "OS completion handlers are
+ * released only after their work completes"; `docs/architecture.md`, "Background time is an outbound port named
  * for the need"; decision record `changes/own-work-per-wake`, D3 and D5).
  *
  * Begun **no later than the OS handler is handed over** — before the wake's own work starts — and held across that
@@ -96,7 +96,7 @@ internal class Wake(
 
 /**
  * The operating system's "time is up" signal for each background task the core is running, keyed by the identifier
- * it delivered (capability `ios-app-shell`, "Background tasks are forwarded by the identifier the OS delivered").
+ * it delivered (capability `sync-status`, "Background tasks are forwarded by the identifier the OS delivered").
  *
  * A task's expiry action is opened when it is routed and closed when its work ends; [expire] runs the one open for an
  * identifier. The expiry arrives on a thread the core does not choose (the operating system calls the expiration

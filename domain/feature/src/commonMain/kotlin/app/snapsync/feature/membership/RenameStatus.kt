@@ -5,7 +5,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * The rename-event lifecycle (capability `event-rename`), kept as its own tiny seam like the create and
+ * The rename-event lifecycle (capability `manage-membership`), kept as its own tiny seam like the create and
  * join twins so the presentation reduction folds it in without depending on the rename orchestration
  * (which pulls ktor). It has four shapes:
  * - [Idle]: no rename in flight (the resting state; also where the screen resets it to).
@@ -37,7 +37,7 @@ sealed interface RenameStatus {
  * Why a rename attempt failed, so the dialog shows the right copy.
  *
  * There is deliberately **no** reason for a missing event, even though the backend `404`s one: a `404` is
- * a *single* witness that the event is gone, and the self-leave (capability `leave-event`) requires two
+ * a *single* witness that the event is gone, and the self-leave (capability `manage-membership`) requires two
  * independent witnesses — one of them offline — precisely so no backend fault can destroy every
  * membership at once. Giving it copy would give it a meaning, and a meaning invites a future change to
  * act on it. It arrives here as [SERVER] like any other non-`400`; see `RenameOutcome.Transient`.

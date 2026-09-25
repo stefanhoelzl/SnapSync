@@ -1,5 +1,5 @@
 # The shared baseline every complexity tier layers beneath its own config (capability
-# `complexity-budgets`). Loaded first; a tier's own file overrides it.
+# `docs/architecture.md`). Loaded first; a tier's own file overrides it.
 #
 # THIS FILE CARRIES READINGS, NEVER CEILINGS. The two look alike in YAML and are not the same thing:
 #

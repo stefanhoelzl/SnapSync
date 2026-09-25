@@ -3,7 +3,7 @@ package app.snapsync.ports
 import app.snapsync.model.AssetPresence
 
 /**
- * Asks the photo library whether assets this device created still exist (capability `photo-download`).
+ * Asks the photo library whether assets this device created still exist (capability `receiving-photos`).
  *
  * The need, not the technology: an import that recorded its created asset but never recorded a
  * confirmation must be adjudicated before anything creates a second one. On iOS the answer comes from a

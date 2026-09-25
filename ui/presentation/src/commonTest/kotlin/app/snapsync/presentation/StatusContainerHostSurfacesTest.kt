@@ -77,8 +77,8 @@ private class Spy {
 
 /**
  * The **overlay and settings surfaces** of the status container — the rename dialog, the leave
- * confirmation, the diagnostic sheet, and the reconfigure form (capabilities `event-rename`,
- * `leave-event`, `diagnostic-logging`, `reconfigure-membership`).
+ * confirmation, the diagnostic sheet, and the reconfigure form (capabilities `manage-membership`,
+ * `manage-membership`, `privacy-security`, `manage-membership`).
  *
  * `StatusContainerHostTest` covers the join gate, permissions, direction and sync health exhaustively;
  * this whole family was reached by nothing. Each command here "reduces and nothing more" — which is
@@ -163,7 +163,7 @@ class StatusContainerHostSurfacesTest {
         }
     }
 
-    // ---- membership-scoped surface state (capability `sync-status-screen`) ---------------------------------
+    // ---- membership-scoped surface state (capability `sync-status`) ---------------------------------
 
     private fun UiState.onSettings() = (layer as? Layer.Joined)?.surface is JoinedSurface.Reconfigure
 
@@ -206,7 +206,7 @@ class StatusContainerHostSurfacesTest {
         }
     }
 
-    // ---- the shareable count (capability `join-share-count`) ------------------------------------------
+    // ---- the shareable count (capability `join-event`) ------------------------------------------
 
     private fun UiState.reconfigureCount(): ShareCount? =
         ((layer as? Layer.Joined)?.surface as? JoinedSurface.Reconfigure)?.range?.shareCount

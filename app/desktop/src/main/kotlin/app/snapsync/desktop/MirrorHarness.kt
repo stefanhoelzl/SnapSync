@@ -47,7 +47,7 @@ import kotlinx.datetime.toInstant
 import kotlin.time.Clock
 
 /**
- * The **mirror** (capability `full-stack-harness`, "The harness can mirror a remote host"): `:app:desktop:run
+ * The **mirror** (`docs/testing.md`, "The harness can mirror a remote host"): `:app:desktop:run
  * -Psnapsync.attach=<url>` attaches to a control-channel host — the JVM host, a simulator app, a phone — as a
  * typed-client client, instead of composing a world.
  *

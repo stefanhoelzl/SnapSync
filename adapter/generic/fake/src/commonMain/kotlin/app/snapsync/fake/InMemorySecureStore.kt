@@ -7,7 +7,7 @@ import app.snapsync.ports.StoredProtection
 
 /**
  * The honest [SecureStore]: one addressed value in memory, held to the same contract as the Keychain and
- * the App-Group file store (capability `port-contracts`, `SecureStoreContract`).
+ * the App-Group file store (`docs/architecture.md`, `SecureStoreContract`).
  *
  * [unavailable] is the "I could not look" store — what a device not unlocked since boot presents. It is
  * fixed at construction: a real store cannot be switched between the two on command either, and a

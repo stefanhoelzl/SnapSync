@@ -59,7 +59,7 @@ sealed interface AppSyncStatus {
     data class Syncing(val upload: Arrow, val download: Arrow) : AppSyncStatus
 
     /**
-     * The event has not begun (capability `sync-status-screen`). [startsAt] is the event's start as a
+     * The event has not begun (capability `sync-status`). [startsAt] is the event's start as a
      * plain local wall-clock value — the component owns the copy and the date formatting, as it already
      * does for "In sync".
      *
@@ -110,7 +110,7 @@ private const val STATIC_ALPHA = 0.38f
  */
 @Composable
 fun AppStatusLine(status: AppSyncStatus, ended: Boolean = false, onAttentionClick: () -> Unit = {}) {
-    // The event's declared end has passed (capability `sync-status-screen`): an informational "Event ended"
+    // The event's declared end has passed (capability `sync-status`): an informational "Event ended"
     // marker sits on its OWN line ABOVE the regular status. Purely a marker: it changes no arrow, count,
     // or health value, and sync continues.
     //

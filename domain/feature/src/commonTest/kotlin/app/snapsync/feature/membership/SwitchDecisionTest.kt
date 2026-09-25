@@ -4,7 +4,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * The provision-time switch rule (`switchDecision`, capabilities `event-link` / `join-event`) —
+ * The provision-time switch rule (`switchDecision`, capabilities `join-event` / `join-event`) —
  * drained from the Provision flow's guard at the migration finale: only provisioning a *different*
  * event while joined is a switch (and fires the best-effort backend leave of the previous one); a
  * provision while unjoined is a join; a re-provision of the joined event is neither.

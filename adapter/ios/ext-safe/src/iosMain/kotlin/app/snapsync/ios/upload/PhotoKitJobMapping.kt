@@ -25,7 +25,7 @@ import platform.Photos.PHPhotosErrorLimitExceeded
  *
  * These live here, in the adapter, rather than in `:domain` — deliberately. A platform's magic values,
  * ABI integers and error-domain tables SHALL NOT appear in `model/`/`ports/`/`feature/` "even where the
- * platform-free zones are the cheaper place to unit-test them" (spec `module-architecture`, "Ports are
+ * platform-free zones are the cheaper place to unit-test them" (`docs/architecture.md`, "Ports are
  * the I/O boundary named for the need"), and this project has already made and reversed that mistake
  * once: see `PhotoKitResourceRoleTest`'s KDoc on a table of Apple's ABI that had been asserted in
  * `commonTest` as bare integers against bare integers. The tests beside this file name the SDK's own
@@ -88,7 +88,7 @@ sealed interface FetchedJob {
  * Classify one fetched system upload job.
  *
  * The destination is the only field reliably present for every job state, since `resource` is nil once a
- * job has succeeded (capability `ios-photokit-upload`, "Completion and retry adjudication"). What it
+ * job has succeeded (capability `background-upload`, "Completion and retry adjudication"). What it
  * yields is the destination's **path**, which the ledger recorded at creation.
  *
  * Deciding the shape here rather than at the call site is what makes it testable: a job object cannot be
@@ -112,7 +112,7 @@ fun classifyFetchedJob(destinationPath: String?, state: PhotoKitJobState, error:
 }
 
 /**
- * Whose row a presented job with a destination belongs to (capability `ios-photokit-upload`, "Completion and
+ * Whose row a presented job with a destination belongs to (capability `background-upload`, "Completion and
  * retry adjudication").
  */
 sealed interface JobRow {
@@ -266,7 +266,7 @@ internal fun NSURLRequest?.contentTypeHeader(): String? {
  *
  * `PHPhotosErrorLimitExceeded` is the system's in-flight job cap — the cycle defers the remainder and
  * asks to be re-invoked. Any other error means the job was **not** created, so the caller must not
- * record a `REQUESTED` row for a job that does not exist (capability `ios-photokit-upload`,
+ * record a `REQUESTED` row for a job that does not exist (capability `background-upload`,
  * "Cap-aware creation and tri-state processing result").
  */
 fun createResultFor(errorCode: Long?): CreateResult = when (errorCode) {
@@ -307,7 +307,7 @@ suspend fun <J> retryJobMatching(
  *
  * `NSURL.URLWithString` is no guard: since iOS 17 it percent-encodes where it used to answer `nil`, so an empty
  * string parses (found by phase 8b on the URLSession adapter, iOS 26.5). A destination that is not a URL is not a
- * job (capability `port-contracts`, `BackgroundTransferContract`'s `CREATE_BAD_DESTINATION`).
+ * job (`docs/architecture.md`, `BackgroundTransferContract`'s `CREATE_BAD_DESTINATION`).
  */
 fun isUploadDestination(url: String): Boolean {
     val scheme = url.substringBefore("://", missingDelimiterValue = "").lowercase()

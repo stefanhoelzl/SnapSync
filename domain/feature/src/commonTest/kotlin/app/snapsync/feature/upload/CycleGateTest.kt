@@ -14,7 +14,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 
 /**
- * The skip-or-leave-or-run gate (capability `event-link`, *An unreadable config is not an absent
+ * The skip-or-leave-or-run gate (capability `join-event`, *An unreadable config is not an absent
  * config*). [CycleGate.NotJoined] reads the device as not joined — so the difference between
  * "unreadable" and "absent" is the difference between a settled join and a false leave on every
  * locked wake.
@@ -29,7 +29,7 @@ class CycleGateTest {
     private val eventId = "event-1"
     private val cutoff = captureCutoff("2026-07-01T00:00:00Z")
     // The membership carries a SUPPLIER, not a built policy: the one derivation reads two ports and this
-    // gate's translation must stay port-pure (capability `upload-lifecycle`). These fixtures never invoke
+    // gate's translation must stay port-pure (capability `background-upload`). These fixtures never invoke
     // it — the gate decides without consulting the policy, which is the point.
     private val admitting: suspend () -> SelectionPolicy = {
         SelectionPolicy(
@@ -173,7 +173,7 @@ class CycleGateTest {
         )
     }
 
-    // ---- admission (capability `upload-lifecycle`, "The upload cycle owns its entry decision") ----------
+    // ---- admission (capability `background-upload`, "The upload cycle owns its entry decision") ----------
 
     @Test
     fun `a process that may not create is Withheld and carries the config the narrow settle needs`() {

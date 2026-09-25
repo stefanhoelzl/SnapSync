@@ -37,7 +37,7 @@ class ImporterFixtureTest {
     /**
      * The marker writes are REQUIRED collaborators now, so every construction here supplies them — which
      * is the point of removing their defaults: a fixture that silently records no marker looks exactly
-     * like a working one while every pass creates another asset (capability `harness-world-model`).
+     * like a working one while every pass creates another asset (`docs/testing.md`).
      */
     private fun importer(gallery: WorldGallery = WorldGallery()) = FakePhotoLibraryImporter(
         gallery = gallery,

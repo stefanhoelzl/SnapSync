@@ -10,7 +10,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * Seam ↔ UI-state integration for the in-place reconfigure (capability `reconfigure-membership`), driven through the
+ * Seam ↔ UI-state integration for the in-place reconfigure (capability `manage-membership`), driven through the
  * control protocol's `/user/reconfigure` over the real core — asserting **`UiState` AND observable outcomes**:
  * enabling share uploads, album-on gathers what is already held, and turning receive off cancels in-flight downloads.
  */
@@ -40,7 +40,7 @@ class ReconfigureIntegrationTest {
 
     @Test
     fun turning_the_album_on_gathers_already_synced_photos_and_places_new_ones() = rigTest {
-        // Every membership carries a name (capability `event-link`); it titles the album.
+        // Every membership carries a name (capability `join-event`); it titles the album.
         createAndJoin("saveToAlbum" to "false", name = "Anna's Birthday")
         addPhoto("A")
 

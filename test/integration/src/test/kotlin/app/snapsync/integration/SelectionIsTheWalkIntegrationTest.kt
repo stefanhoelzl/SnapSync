@@ -6,7 +6,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * Under a partial grant the selection is the walk (capability `limited-photo-access`; decision record
+ * Under a partial grant the selection is the walk (capability `photo-access`; decision record
  * `changes/selection-is-the-walk`), over the REAL composed core, driven through the control protocol.
  *
  * The first test replays the downgrade measured on an SE2 (iOS 26.6, 2026-09-22): four uploads in flight under a

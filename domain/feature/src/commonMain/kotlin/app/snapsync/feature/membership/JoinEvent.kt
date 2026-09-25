@@ -24,7 +24,7 @@ import app.snapsync.model.clampToFloor
  *   (protects a real asset manifest from the empty-manifest clobber; see the join-event spec).
  * - [EventFull]: the event already holds its maximum number of devices — a refusal the USER can act on,
  *   kept apart from [EnrollFailed] because the two have different remedies and a screen must be able to
- *   say which (`module-architecture`, "Absence is never silent"). Nothing is persisted either way.
+ *   say which (`docs/architecture.md`, "Absence is never silent"). Nothing is persisted either way.
  * - [EnrollFailed]: the join request failed or the event is gone — nothing persisted, no producer enabled.
  */
 enum class JoinOutcome { Committed, AlreadyJoined, EventFull, EnrollFailed }
@@ -63,7 +63,7 @@ class JoinEvent(
     /**
      * Confirm the join for [eventId] with the loaded [name] (required, non-null — the gate only
      * provisions from a loaded phase that carries a name), the event's [startsAt] start date, this
-     * device's chosen capture-date [minPhotoDate] cutoff (capability `photo-selection-policy`; always present
+     * device's chosen capture-date [minPhotoDate] cutoff (capability `photo-sharing`; always present
      * — a membership without a cutoff would upload the whole library), its chosen participation
      * [direction] (capability `join-event`), and whether it opted into an event album ([saveToAlbum],
      * capability `event-album`): enroll (register-only empty manifest) — for **every** direction, so a
@@ -73,10 +73,10 @@ class JoinEvent(
      * reconcile only when [Direction.includesDownload] (the latter gated inside the download controller).
      * Re-confirming the already-joined event is a [JoinOutcome.AlreadyJoined] no-op that skips enrollment
      * entirely — re-*scanning* never rewrites config. Changing the cutoff, direction, or album opt-in of a
-     * joined membership is done **in place** by `ReconfigureEvent` (capability `reconfigure-membership`),
+     * joined membership is done **in place** by `ReconfigureEvent` (capability `manage-membership`),
      * not by leaving and re-joining; only [startsAt] (the floor) stays immutable for the membership's life.
      *
-     * **The floor is applied here** (capability `photo-selection-policy`): the persisted cutoff is
+     * **The floor is applied here** (capability `photo-sharing`): the persisted cutoff is
      * `max(chosen, startsAt)`, never the raw [minPhotoDate]. Doing it in the use-case rather than in the
      * UI is what makes it total — **every** entry path funnels through this one call (the interactive
      * confirm, the switch confirm, the retry, and the `autoJoin` path carrying an event-link-supplied
@@ -115,7 +115,7 @@ class JoinEvent(
                 endsAt = endsAt,
                 maxPhotoDate = clampToCeiling(chosen = maxPhotoDate, endsAt = endsAt),
                 // Persisted verbatim from the loaded details, never computed here: it is the OFFLINE
-                // witness of the self-leave (capability `leave-event`), and a client-derived one would
+                // witness of the self-leave (capability `manage-membership`), and a client-derived one would
                 // decide whether this membership is later destroyed.
                 deletesAt = deletesAt,
                 direction = direction,

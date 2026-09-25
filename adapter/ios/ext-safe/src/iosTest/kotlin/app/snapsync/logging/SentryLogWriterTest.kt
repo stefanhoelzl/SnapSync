@@ -13,7 +13,7 @@ import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * The capture seam between Kermit and Sentry (capability `crash-reporting`).
+ * The capture seam between Kermit and Sentry (capability `privacy-security`).
  *
  * Two claims are asserted here against the **real SDK**, both of which fail silently in production if
  * they break — the send still succeeds, and the operator's instance simply shows something other than

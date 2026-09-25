@@ -6,8 +6,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * **Manifest publishes are ordered by the ledger's manifest version** (capabilities `device-manifest`,
- * `api-endpoints`, `sync-ledger`), over the real stack: the composed `uploadCore`, the real
+ * **Manifest publishes are ordered by the ledger's manifest version** (capabilities `photo-sharing`,
+ * `docs/architecture.md`, `photo-sharing`), over the real stack: the composed `uploadCore`, the real
  * `DeviceManifestProducer` and `HttpManifestPublisher`, and the mini-edge modelling the real route's ordering.
  *
  * The crossed-pair races this ordering closes (an older publish landing last is refused; an equal version is

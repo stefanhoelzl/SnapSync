@@ -1,8 +1,8 @@
 -- v6 -> v7: record that an asset has LEFT the library instead of deleting its rows (capability
--- `sync-ledger`).
+-- `photo-sharing`).
 --
 -- A ledger row states that a resource's bytes are on the backend. Nothing on the device can make that
--- false: no local action deletes an uploaded object (`scheduled-cleanup` owns the only deletion, and it
+-- false: no local action deletes an uploaded object (`event-lifetime` owns the only deletion, and it
 -- deletes whole events). So a row is true for the event's whole life, and "the asset is gone from this
 -- library" is a SECOND, separate fact — which this column carries.
 --

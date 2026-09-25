@@ -30,7 +30,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
-// ---- The backend contracts' shared vocabulary (capability `port-contracts`) --------------------------------
+// ---- The backend contracts' shared vocabulary (`docs/architecture.md`) --------------------------------
 //
 // Every backend port is implemented by the SAME production `Http*` client in every binding; what differs is
 // the edge behind it — the real `api/` served locally (`Live`), or a stand-in (`Fake`). The clauses are about
@@ -60,7 +60,7 @@ class ClientIdentity(val appVersion: String, val token: String?) {
 
 /**
  * What the edge told the app about its credential and its build — outcomes that reach the app ONLY through the
- * HTTP interceptor's callbacks, never through a port's result (capability `port-contracts`, "Clauses are
+ * HTTP interceptor's callbacks, never through a port's result (`docs/architecture.md`, "Clauses are
  * conditioned on states that bindings enter at construction"). It reports the state the app now holds, not
  * which callback ran.
  */

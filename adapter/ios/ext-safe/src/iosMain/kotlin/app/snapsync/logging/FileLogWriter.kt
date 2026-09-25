@@ -27,7 +27,7 @@ import platform.posix.write
  * device-log channel that sidesteps os_log's `<private>` redaction entirely (the `NSLog`-based
  * [PublicNSLogWriter] is redacted on current iOS). Test-path only.
  *
- * Consolidated here (capability `diagnostic-logging`, D1): the app and the upload extension are
+ * Consolidated here (capability `privacy-security`, D1): the app and the upload extension are
  * separate processes, and one writer serves both. It takes its *destination* rather than resolving
  * one, because the two processes no longer write to the same place — the app to its own
  * `Documents/debug.log`, the extension to `ext-debug.log` in the shared App Group so the app can read

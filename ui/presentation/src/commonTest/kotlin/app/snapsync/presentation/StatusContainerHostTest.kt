@@ -68,7 +68,7 @@ private const val EVENT_ID = "11111111-1111-4111-8111-111111111111"
 /** Real-time budget for the liveness pin's awaits — generous, because it waits on real dispatchers. */
 private val LIVENESS_TIMEOUT = 10.seconds
 
-/** A membership always carries a cutoff (capability `photo-selection-policy`); no join can pass `null`. */
+/** A membership always carries a cutoff (capability `photo-sharing`); no join can pass `null`. */
 private val CUTOFF = captureCutoff("2026-07-06T14:32:11Z")
 private val CEILING = captureCeiling("2026-07-13T14:32:11Z")
 // Config seam + store as one fake: save writes the cell, which is exactly how the real Keychain
@@ -81,7 +81,7 @@ private val SAMPLE_CONFIG = EventConfig(
 )
 
 // Joined-state helpers keep the assertions readable. Since the joined state carries its membership and
-// the invite URL derived from it (capability `sync-status-screen`), an EXPECTED state has to carry them
+// the invite URL derived from it (capability `sync-status`), an EXPECTED state has to carry them
 // too — so these default to the same config the fake config source holds, and derive the URL the same
 // way the reduction does.
 private fun joined(
@@ -128,7 +128,7 @@ private fun assertJoining(state: UiState, eventId: String, phase: JoinPhase) {
  * Choose a participation, then confirm — what the surface does.
  *
  * The commit carries nothing now: it commits what the reduction resolved from the form (capability
- * `sync-status-screen`), so a test that wants a particular direction or album opt-in has to make that
+ * `sync-status`), so a test that wants a particular direction or album opt-in has to make that
  * choice rather than hand the container a pre-resolved answer. The RANGE is left at its defaults, which
  * resolve to the full event window — the value these tests were passing explicitly.
  */
@@ -230,7 +230,7 @@ private val NOW_CUTOFF = CaptureDate("2026-07-09T12:00:00Z")
  */
 private val ENDS_AT = eventEnd("2026-07-13T14:32:11Z")
 
-/** The event's server-derived retention deadline (capability `event-limits`), carried on every details
+/** The event's server-derived retention deadline (capability `event-lifetime`), carried on every details
  *  load; the gate states it before confirm. */
 private val DELETES_AT = deletesAt("2026-08-05T14:32:11Z")
 
@@ -304,7 +304,7 @@ private fun TestScope.firstJoinGate(
 
 class StatusContainerHostTest {
 
-    // ── the not-started clock line (capability `sync-status-screen`) ──────────────────────────────
+    // ── the not-started clock line (capability `sync-status`) ──────────────────────────────
 
     /** An event that has not begun: its start is after the fixed NOW_CUTOFF (2026-07-09T12:00:00Z). */
     private val futureStart = eventStart("2026-07-09T18:00:00Z")
@@ -453,8 +453,8 @@ class StatusContainerHostTest {
     // Four tests used to live here asserting the direction mask: they fed a download-only membership
     // `total = 5` (a gallery of un-uploaded photos) and checked the arrow was force-hidden over the top.
     // That input is now UNREACHABLE — a non-contributing membership's N is 0 (capability
-    // `photo-selection-policy`), and an upload-only membership never reconciles, so its download total is 0
-    // (capability `photo-download`). They tested a mechanism that no longer exists against a state the system
+    // `photo-sharing`), and an upload-only membership never reconciles, so its download total is 0
+    // (capability `receiving-photos`). They tested a mechanism that no longer exists against a state the system
     // can no longer produce.
     //
     // The contract they protected is not lost; it is proved across the three layers that actually own it:
@@ -490,13 +490,13 @@ class StatusContainerHostTest {
     }
 
     /**
-     * **The smoke detector** (capability `sync-status-screen`).
+     * **The smoke detector** (capability `sync-status`).
      *
      * If a non-contributing membership ever reports upload work, the arrow SHOWS. There is no mask left to
      * swallow it. This is the single most important assertion in this file, and it is the one the old mask
      * made impossible: for a full release cycle a download-only member's camera roll uploaded to a stranger's
      * event while this screen read a serene "In sync", because the one surface that could have told them was
-     * the surface hiding it (capability `upload-lifecycle`).
+     * the surface hiding it (capability `background-upload`).
      *
      * If the counts are right this state never occurs. If they are wrong, an arrow the member never asked for
      * is the only signal anyone gets — so the display must never assert a contract the system is not keeping.
@@ -742,7 +742,7 @@ class StatusContainerHostTest {
 
     @Test
     fun `a limited grant reduces from the snapshot and never to NeedsAccess`() = runTest {
-        // A partial grant is a working state (capability `limited-photo-access`): the selection defines
+        // A partial grant is a working state (capability `photo-access`): the selection defines
         // the scope, so the settled snapshot reads In sync — not the permission-attention line — and the
         // joined layer carries the choose-more-photos resting affordance.
         val source = FakeSyncStatusSource(snapshot(completed = 34, total = 34))
@@ -829,7 +829,7 @@ class StatusContainerHostTest {
     @Test
     fun `a second-precision event createdAt survives normalization unchanged`() = runTest {
         // A `createdAt` already at second precision round-trips through normalization unchanged
-        // (capability `photo-selection-policy`).
+        // (capability `photo-sharing`).
         host(
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = FakeConfig(null),
@@ -864,7 +864,7 @@ class StatusContainerHostTest {
     @Test
     fun `autoJoin with no explicit cutoff commits with the event start`() = runTest {
         // The headless dev launch has no surface on which an empty cutoff row could be noticed, so the
-        // default matters most here (capability `photo-selection-policy`).
+        // default matters most here (capability `photo-sharing`).
         val configFake = FakeConfig(null)
         var committedCutoff: CaptureCutoff? = null
         host(
@@ -1050,7 +1050,7 @@ class StatusContainerHostTest {
     }
 
     /**
-     * The platform delivers the same link TWICE (capability `event-link`): measured on build 687, once on
+     * The platform delivers the same link TWICE (capability `join-event`): measured on build 687, once on
      * an iOS 18.7.9 cold launch ~130 ms apart and again on iOS 26.6 both while running (8 ms) and cold
      * (105 ms), because the scene delegate and SwiftUI's `.onOpenURL` are both live and neither is
      * reliable alone. "Exactly once" is therefore enforced here, not assumed of the hooks.
@@ -1303,7 +1303,7 @@ class StatusContainerHostTest {
 
     @Test
     fun `autoJoin logs the details-load abort - the headless negative oracle`() = runTest {
-        // The documented on-device oracle (CLAUDE.md, spec `ios-app-shell`): a headless
+        // The documented on-device oracle (CLAUDE.md, spec `sync-status`): a headless
         // `SNAPSYNC_EVENT_LINK` launch against a missing/invented event id must leave a
         // `debug.log` line naming the id and the outcome — the run's ONLY abort signal.
         val logged = Channel<String>(Channel.UNLIMITED)
@@ -1531,7 +1531,7 @@ class StatusContainerHostTest {
         )
         // The invite URL has no home outside the joined state now, so "no event" IS "no invite URL":
         // there is no state that could carry one, rather than a state carrying a null (capability
-        // `event-invite-qr`).
+        // `manage-membership`).
         assertTrue(host.container.stateFlow.value.layer !is Layer.Joined)
     }
 
@@ -1949,7 +1949,7 @@ class StatusContainerHostJoinGateTest {
         }
     }
 
-    // ── container liveness (spec `sync-status-screen`) ───────────────────────────────────────────
+    // ── container liveness (spec `sync-status`) ───────────────────────────────────────────
 
     /**
      * The pin behind "A failing command never disables the status container", and the reason the

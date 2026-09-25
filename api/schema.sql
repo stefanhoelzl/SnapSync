@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════════════════════════════════
--- THE SCHEMA, AS THE MIGRATIONS BUILD IT (capability `database`) — GENERATED, DO NOT EDIT.
+-- THE SCHEMA, AS THE MIGRATIONS BUILD IT (`docs/architecture.md`) — GENERATED, DO NOT EDIT.
 --
 -- Regenerate with:  deno task schema
 -- CI fails when this file is not what replaying `api/migrations/*.sql` produces.

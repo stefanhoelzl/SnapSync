@@ -10,7 +10,7 @@ name: deploy
 #   * api                      — publishes the api bundle to bunny Edge Scripting (only when `changes` says so)
 #   * site                     — mirror-deploys the Astro site to the storage `site/` prefix (every push)
 #   * appstore-metadata-apply  — applies the committed listing text to the editable App Store version
-#                                (every push: the file wins over console edits, capability ios-appstore-metadata)
+#                                (every push: the file wins over console edits, `docs/deployment.md`)
 #
 # ⚠️ NO JOB IN THIS FILE MAY EVER BE A REQUIRED STATUS CHECK. This workflow never runs on a pull request, so
 # its contexts are never posted there, and GitHub treats a required check that is never posted as
@@ -91,7 +91,7 @@ jobs:
         run: python3 scripts/resolve-deployment.py prod
 
       # The api path set: everything that decides what ships inside the bundle. `deployments/**` and the
-      # resolver decide the bundle's configuration (capability `deployment-configuration`), and this file
+      # resolver decide the bundle's configuration (`docs/deployment.md`), and this file
       # decides how it ships. NOT here: `screenshots/**` and `site/**` (the `site` job ships them), and
       # `scripts/resolve_deployment_test.py` (a test cannot alter the bundle; build.yml's required
       # `resolver-test` runs it).
@@ -186,7 +186,7 @@ jobs:
   # cannot write the Edge Script's environment, so which code is published is the only lever it has. The
   # maintenance and real bundles are the same commit resolved from two deployments that differ in one key,
   # which is why `/health` reports the window state and both probes assert it — the sha cannot tell them
-  # apart. Capability `backend-deployment`; decision record
+  # apart. Capability `docs/deployment.md`; decision record
   # `openspec/changes/archive/2026-08-27-add-deploy-maintenance-mode/design.md`.
   #
   # ── THE STORE'S SHAPE IS ASSERTED, ON BOTH BRANCHES ──────────────────────────────────────────────────
@@ -248,7 +248,7 @@ jobs:
 
       # ── The runner that applies them ─────────────────────────────────────────────────────────────
       #
-      # The migration runner is the platform's (capability `database`). It authenticates with `--url` and
+      # The migration runner is the platform's (`docs/architecture.md`). It authenticates with `--url` and
       # `--token` — the two database secrets this job already holds — so adopting it needs NO bunny
       # account key and does not widen what a compromised deploy path can reach.
       #
@@ -292,7 +292,7 @@ jobs:
 
       # ── The store already matches, or this deploy stops here ─────────────────────────────────────
       #
-      # THE FREE HALF of the shape assertion (capability `backend-deployment`). With nothing pending the
+      # THE FREE HALF of the shape assertion (`docs/deployment.md`). With nothing pending the
       # deployed store is ALREADY expected to equal what the migrations build, so asserting it costs
       # nothing and fails before anything is published and before any window can open.
       #
@@ -389,7 +389,7 @@ jobs:
       #
       # ⚠️ ONE OBSERVATION, ~119 POINTS OF PRESENCE. This polls one hostname, which resolves to one PoP,
       # and no propagation contract is published. Green here means "very likely every PoP is serving the
-      # maintenance bundle", never "certainly" — the residual is stated in `backend-deployment` rather
+      # maintenance bundle", never "certainly" — the residual is stated in `docs/deployment.md` rather
       # than papered over with a settle wait that would read as a guarantee it is not.
       - name: Probe that the window is open
         if: steps.live.outputs.sha != ''
@@ -408,9 +408,9 @@ jobs:
       # ⚠️ ATOMIC PER MIGRATION, NOT PER RUN. A run applying several migrations in which a later one fails
       # leaves the store at an intermediate version that NO bundle is written against — including the one
       # the rollback restores. That is roll-forward only, repaired by hand, and stated rather than implied
-      # (capability `backend-deployment`). The bound that keeps it rare: ship one migration per deploy.
+      # (`docs/deployment.md`). The bound that keeps it rare: ship one migration per deploy.
       #
-      # WHY CI HOLDS THESE AND NOT THE STORAGE KEY. `backend-deployment` requires that
+      # WHY CI HOLDS THESE AND NOT THE STORAGE KEY. `docs/deployment.md` requires that
       # BUNNY_STORAGE_ACCESS_KEY be an Edge Script environment value and NOT a deploy-workflow secret,
       # because bunny issues no scoped keys and that one also owns the zone holding every user's photos.
       # The database credentials are a third category, admitted deliberately: CI — not the endpoint — is
@@ -676,7 +676,7 @@ jobs:
       - uses: actions/checkout@v7.0.1
       # The listing's domain-derived URLs (marketing, support, privacy policy) are RENDERED from the
       # resolved deployment, so the store can never advertise a host the app and backend have moved off
-      # (capability `deployment-configuration`). The committed files stay hand-written copy carrying a
+      # (`docs/deployment.md`). The committed files stay hand-written copy carrying a
       # `{{domain}}` placeholder; renderings are generated, never committed.
       - name: Resolve the deployment
         run: python3 scripts/resolve-deployment.py prod

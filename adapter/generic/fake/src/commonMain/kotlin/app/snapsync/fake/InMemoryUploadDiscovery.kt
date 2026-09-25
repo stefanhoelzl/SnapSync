@@ -12,7 +12,7 @@ import app.snapsync.ports.UploadDiscovery
 import kotlinx.coroutines.flow.StateFlow
 
 /**
- * The honest in-memory [UploadDiscovery] (capability `port-contracts`): the upload cycle's two library reads
+ * The honest in-memory [UploadDiscovery] (`docs/architecture.md`): the upload cycle's two library reads
  * over an in-memory library, held to `UploadDiscoveryContract` exactly as `IosDiscovery` is.
  *
  * Every walk ([discover]) is a **full enumeration** through [source], as on a device. There is no change
@@ -22,7 +22,7 @@ import kotlinx.coroutines.flow.StateFlow
  * [library] is the unscoped contents, standing in for "fetch these assets by identifier". It is a cell
  * rather than the [source] beside it because that seam takes a policy and a fetch by identifier has none.
  * The admission over ledger rows belongs to the CYCLE, which applies it before it asks (capability
- * `photo-selection-policy`). A fake that admitted here as well would hide whether the cycle ever did.
+ * `photo-sharing`). A fake that admitted here as well would hide whether the cycle ever did.
  *
  * State arrives by constructor, per the fake-honesty rule. Levers and inspection belong in `:test:world`
  * wrappers.

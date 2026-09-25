@@ -13,7 +13,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 
 /**
- * The file-backed three-state read (capability `event-link`; migration step 11a made the App-Group
+ * The file-backed three-state read (capability `join-event`; migration step 11a made the App-Group
  * file the storage of record): the pure `configReadViaFile` algorithm the iOS adapter runs — the
  * file and **nothing else**. The read-only legacy-Keychain fallback that used to sit behind a
  * missing file was the whole installed base's update path under the migration's ship-at-once

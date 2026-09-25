@@ -2,7 +2,7 @@ package app.snapsync.contracts
 
 /**
  * Where a binding runs, as far as it changes which states an implementation can reach
- * (capability `port-contracts`, "Hosts are a closed set of what changes reachable states").
+ * (`docs/architecture.md`, "Hosts are a closed set of what changes reachable states").
  *
  * Identity is platform x process kind x entitlements — the attributes known statically, so the
  * contract-coverage gate can read them from source. Operating-system version, device model, toolchain
@@ -28,7 +28,7 @@ enum class Host {
      * The rig build of the app bundle on a simulator, ad-hoc signed with the App Group only. Its bundle
      * identifier is what lets `applesimutils` grant it photo access, which no test executable can hold, so it
      * is where PhotoKit runs under a real full grant. It is run live on every push by the `ios-contracts`
-     * job (capability `port-contracts`, "In-app hosts CI can reach are run live over the rig"). Its Keychain
+     * job (`docs/architecture.md`, "In-app hosts CI can reach are run live over the rig"). Its Keychain
      * answers `-34018` to an explicit-group query, so it reaches none of `IOS_DEVICE_APP`'s Keychain states.
      */
     IOS_SIM_APP,

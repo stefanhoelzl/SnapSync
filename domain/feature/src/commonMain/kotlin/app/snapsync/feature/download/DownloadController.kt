@@ -22,7 +22,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /**
- * The device-side download/import orchestrator (capability `photo-download`). Reads the event-wide
+ * The device-side download/import orchestrator (capability `receiving-photos`). Reads the event-wide
  * union, selects **foreign** assets (`deviceId != myDeviceId`) not already imported, records them in
  * the [store], enqueues their resource downloads, and imports any asset whose resources are all staged.
  * It owns no transport or PhotoKit detail — those are the [jobs] and [importer] seams — so it is
@@ -34,11 +34,11 @@ class DownloadController(
     private val jobs: PhotoDownloadJobs,
     private val importer: PhotoLibraryImporter,
     // Adjudicates a row whose asset was created but whose import was never confirmed (capability
-    // `photo-download`). Required, with no default: a permissive stand-in would answer "absent" for
+    // `receiving-photos`). Required, with no default: a permissive stand-in would answer "absent" for
     // assets that exist, clear their markers, and re-import them — which is the defect this guard is
     // here to prevent, reintroduced by the thing meant to prevent it.
     private val presence: ImportedAssetPresence,
-    // Releases the staged bytes of settled rows (capability `download-store`). Defaulted to a no-op
+    // Releases the staged bytes of settled rows (capability `receiving-photos`). Defaulted to a no-op
     // because failing to free disk is harmless, unlike every other port here — and a composition with no
     // staging of its own genuinely has nothing to release.
     private val stagedBytes: StagedBytes = StagedBytes.None,
@@ -95,7 +95,7 @@ class DownloadController(
      *    created — a live transaction, not an expired wait).
      *  - **the prune's `protecting`** — a claimed ref's row carries no marker yet, so no state-based
      *    predicate can tell it from ordinary prunable work; dropping it makes the change block's marker
-     *    write land on nothing (capability `download-store`).
+     *    write land on nothing (capability `receiving-photos`).
      *
      * **The reader that is NOT here is the point.** A superseded design
      * (`parked/settle-imports-by-transaction`) used one registry for these AND for wake quiescence — "is
@@ -103,7 +103,7 @@ class DownloadController(
      * been launched but not yet claimed was invisible to it, and a wake could report itself finished with
      * imports pending. That question is not about any ref, so no superset argument covers it. It is
      * answered elsewhere and already: the tail AWAITS its drain, and the wake holds its background time until then
-     * (capability `ios-app-shell`). This field is private so that answer cannot be sought here.
+     * (capability `sync-status`). This field is private so that answer cannot be sought here.
      *
      * **No clock, anywhere.** A claim ends because the library reported, or because the process did. The
      * process is suspended for arbitrary spans between a change block and its completion (measured 116 s
@@ -131,7 +131,7 @@ class DownloadController(
      * Discover + plan + enqueue, idempotently. Safe to call on join and on every foreground: already-imported and
      * already-planned assets are no-ops, and only not-yet-staged resources enqueue.
      *
-     * **It imports nothing** (capability `photo-download`, "A failed union fetch still drains the staged imports"):
+     * **It imports nothing** (capability `receiving-photos`, "A failed union fetch still drains the staged imports"):
      * the import drain is the process tail's first unit ([importReady]), which every caller's wake requests after
      * its own work — whatever the union answered. A reconcile that drained would be a second import path beside the
      * tail's, running concurrently with it at foreground, which the single-flight tail exists to rule out (decision
@@ -189,7 +189,7 @@ class DownloadController(
      * A resource's bytes finished downloading and were moved to durable staging (called by the
      * background-`URLSession` delegate, possibly while backgrounded / on relaunch). Records it staged — and that is
      * all: staging is a download wake's own work, and the import it makes possible is the tail's first unit, which
-     * the composition requests once the staging is recorded (capability `photo-download`, "Import without foreground;
+     * the composition requests once the staging is recorded (capability `receiving-photos`, "Import without foreground;
      * staged by the wake, imported by the tail").
      */
     suspend fun onResourceStaged(ref: AssetRef, resourceKey: String, stagedPath: String) =
@@ -201,7 +201,7 @@ class DownloadController(
      * Import every asset whose resources are all staged and that is not yet imported — the process tail's unit ①,
      * and the only import drain any wake runs.
      *
-     * [stopRequested] is the operating system's "time is up", forwarded (capability `ios-app-shell`, "Expiry stops
+     * [stopRequested] is the operating system's "time is up", forwarded (capability `sync-status`, "Expiry stops
      * work cooperatively at the next boundary"): checked before each import is claimed, so the import in flight runs
      * to its report and no further one starts. Claim semantics are unchanged by a stop — an import that never reports
      * keeps its claim — and every import left unstarted is a safe retry off its staged bytes.
@@ -235,7 +235,7 @@ class DownloadController(
     }
 
     /**
-     * The per-process recovery sweep (capability `photo-download`): settle the rows this process
+     * The per-process recovery sweep (capability `receiving-photos`): settle the rows this process
      * **inherited** — an asset was created for them and the confirmation never arrived, because the
      * process that opened the transaction died.
      *
@@ -262,7 +262,7 @@ class DownloadController(
      * background thread instead.
      *
      * **Staleness between the phases is NOT harmless**, and each verdict is therefore applied through a
-     * store write GUARDED on the marker it was computed for (capability `download-store`). A row can settle
+     * store write GUARDED on the marker it was computed for (capability `receiving-photos`). A row can settle
      * between the lookup and the write — the completion callback runs on the platform's queue and takes no
      * lock — and applying either verdict to a row that has moved on overwrites a live suppression handle:
      * the asset stays in the library with nothing recording that it must not be uploaded.
@@ -445,7 +445,7 @@ class DownloadController(
     /**
      * Phase 2 of the drain, **outside [mutex]**: the photo-library call and the writes that record it.
      *
-     * Traced with [invocation] because nothing bounds this call any more (capability `diagnostic-logging`):
+     * Traced with [invocation] because nothing bounds this call any more (capability `privacy-security`):
      * an import that entered and never exited is visible only as an entry line with no matching exit, and
      * that line is the sole evidence a library stalled.
      *
@@ -481,19 +481,19 @@ class DownloadController(
                         store.markImported(ref, result.createdLocalId)
                         log.i { "imported foreign asset ${ref.sourceAssetId} as ${result.createdLocalId}" }
                         // AFTER the confirming write, never before: a crash between them must leave extra
-                        // bytes, not a row pointing at bytes that are gone (capability `download-store`).
+                        // bytes, not a row pointing at bytes that are gone (capability `receiving-photos`).
                         releaseStagedBytes(ref)
                     }
                     is ImportResult.Failed ->
                         // Two failures, two outcomes, and the library's own behaviour is what tells them
-                        // apart (capability `photo-download`). It takes a resource's file at INGEST, before
+                        // apart (capability `receiving-photos`). It takes a resource's file at INGEST, before
                         // validating the content — so a content rejection leaves no bytes, and a staged
                         // resource is never re-downloaded. Retrying that imports from files that no longer
                         // exist, on every trigger, for the life of the install.
                         if (result.consumedResources) {
                             if (store.settleUnimportable(ref)) {
                                 // ERROR, not WARN, and that severity is the decision (capability
-                                // `crash-reporting`): this photo will never arrive, and it is otherwise
+                                // `privacy-security`): this photo will never arrive, and it is otherwise
                                 // absent from the member's library with no error surface and absent from the
                                 // log except as a repetition of the failure that caused it. "Failed, will
                                 // retry" and "will never arrive" are different answers.
@@ -525,7 +525,7 @@ class DownloadController(
      */
     /**
      * Settle [row] against the marker it **already holds**, never against a fresh one — the single action
-     * both evidence-bearing adjudication branches take (capability `photo-download`).
+     * both evidence-bearing adjudication branches take (capability `receiving-photos`).
      *
      * `present` and `absent-with-consumed-bytes` differ in what proved a creation was submitted, not in
      * what follows from it, so they share this rather than each reimplementing it. Returns whether the
@@ -558,7 +558,7 @@ class DownloadController(
 
     /**
      * Reclaim the staged bytes of assets whose import is confirmed but whose files are still on disk —
-     * everything installs accumulated before bytes were ever released (capability `download-store`).
+     * everything installs accumulated before bytes were ever released (capability `receiving-photos`).
      *
      * **Self-extinguishing**: releasing also drops the resource rows that made the work findable, so a
      * second run finds nothing. No flag, no migration, no run-once bookkeeping.
@@ -596,7 +596,7 @@ class DownloadController(
     }
 
     /**
-     * The download half of a durable-state reset (capability `ios-app-shell`, `POST /device/reset`).
+     * The download half of a durable-state reset (capability `sync-status`, `POST /device/reset`).
      *
      * It lives HERE, not in the reset feature, because it must hold [mutex]: a ref is claimed under that
      * lock, so anything deciding what a prune may delete has to exclude new claims, not merely read a

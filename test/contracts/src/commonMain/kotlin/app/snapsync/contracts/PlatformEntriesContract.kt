@@ -28,7 +28,7 @@ enum class PlatformEntriesState {
 }
 
 /**
- * What a clause reads to see an entry's **outcome** in the app behind the port (capability `port-contracts`: an
+ * What a clause reads to see an entry's **outcome** in the app behind the port (`docs/architecture.md`: an
  * inbound port declares no reads, so a binding supplies these over the system it built). Every read is a snapshot of
  * that system's state — never a record of which collaborator the implementation called, because a call transcript
  * restates the wiring and is passed by anything that mirrors it.
@@ -103,13 +103,13 @@ class EntryIdentifiers(
 class PlatformEntriesSubject(val entries: PlatformEntries, val observe: PlatformEntriesObservations)
 
 /**
- * What the app process's inbound port promises (capability `port-contracts` — this list IS the specification of
- * the port's obligations; spec `module-architecture`, "OS entry points cross an inbound port").
+ * What the app process's inbound port promises (`docs/architecture.md` — this list IS the specification of
+ * the port's obligations; `docs/architecture.md`, "OS entry points cross an inbound port").
  *
  * Each clause fires one operating-system entry and asserts what happened in the app behind it. That is what makes
  * a crossed wire visible: an entry routed to the wrong flow produces the wrong outcome, whichever names the code
  * used. An entry that takes a completion is held to **"released exactly once, after the wake's own work, and before
- * the tail"** — the completion is part of the port's own signature (capability `ios-app-shell`, "OS completion
+ * the tail"** — the completion is part of the port's own signature (capability `sync-status`, "OS completion
  * handlers are released only after their work completes"; decision record `changes/own-work-per-wake`) — and, where
  * the operating system's expiry arrives, to **"released at once, the tail stopped, the background time ended"**.
  *

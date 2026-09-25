@@ -13,7 +13,7 @@ import app.snapsync.testsupport.removeDirectory
 import kotlin.test.Test
 
 /**
- * The App-Group manifest record, live (capability `port-contracts`). Readable states get a fresh container
+ * The App-Group manifest record, live (`docs/architecture.md`). Readable states get a fresh container
  * directory, seeded through the adapter's own write so the layout is the adapter's, not this test's.
  * [DeviceManifestStoreState.UNAVAILABLE] is the DEFAULT container, which this unentitled executable's
  * App-Group lookup answers with `nil` — the degraded, never-raising cache the port promises.

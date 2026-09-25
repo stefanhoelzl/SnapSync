@@ -27,11 +27,11 @@ private const val EVENT_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 private const val EVENT_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
 private const val DEVICE = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
 
-/** Every membership carries a cutoff (capability `photo-selection-policy`); there is no "no cutoff" join. */
+/** Every membership carries a cutoff (capability `photo-sharing`); there is no "no cutoff" join. */
 private val CUTOFF = captureCutoff("2026-07-06T14:32:11Z")
 
 /**
- * The event's start date — the FLOOR under every membership's cutoff (capability `photo-selection-policy`).
+ * The event's start date — the FLOOR under every membership's cutoff (capability `photo-sharing`).
  * Deliberately earlier than [CUTOFF], so the clamp is a no-op for the tests that predate it and they go
  * on asserting exactly what they always did. The clamp's own behavior is pinned separately, below.
  */
@@ -39,7 +39,7 @@ private val STARTS_AT = eventStart("2026-07-01T09:00:00Z")
 
 /**
  * The event's end date — the CEILING over every membership's upper capture-date bound (capability
- * `photo-selection-policy`). After [STARTS_AT], so the window is well-formed; the ceiling clamp
+ * `photo-sharing`). After [STARTS_AT], so the window is well-formed; the ceiling clamp
  * (`min(chosen, endsAt)`) is exercised separately where it matters.
  */
 private val ENDS_AT = eventEnd("2026-07-08T09:00:00Z")
@@ -47,7 +47,7 @@ private val ENDS_AT = eventEnd("2026-07-08T09:00:00Z")
 /** The same instant as [ENDS_AT], in its OTHER role: a membership's capture-date ceiling. */
 private val CEILING = captureCeiling("2026-07-08T09:00:00Z")
 
-/** The event's server-derived retention deadline (capability `event-limits`), carried on every details
+/** The event's server-derived retention deadline (capability `event-lifetime`), carried on every details
  *  load and persisted onto the membership as the self-leave's offline witness. */
 private val DELETES_AT = deletesAt("2026-07-31T09:00:00Z")
 
@@ -203,7 +203,7 @@ fun `a full event is reported apart from a failure`() = runTest {
         }
     }
 
-    // ── the event-start floor (capability `photo-selection-policy`) ────────────────────────────────────
+    // ── the event-start floor (capability `photo-sharing`) ────────────────────────────────────
 
     @Test
     fun `a cutoff below the event start is clamped up to it`() = runTest {

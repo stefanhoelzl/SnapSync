@@ -24,7 +24,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * The partial-grant selection source's ORDERING (capability `limited-photo-access`; decision record
+ * The partial-grant selection source's ORDERING (capability `photo-access`; decision record
  * `harden-seam-bug-classes`, D12; `own-work-per-wake`, D14): snapshots leave in the order their reads happened, a
  * change during the baseline is applied to it rather than dropped, and no read — baseline or change — whose
  * observation ended while it was read emits anything.

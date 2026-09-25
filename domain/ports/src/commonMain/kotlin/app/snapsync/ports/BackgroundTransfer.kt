@@ -27,7 +27,7 @@ interface BackgroundTransfer {
      * still available, so the cycle can re-create them in this same cycle.
      *
      * A terminal fact never crosses this seam. The platform tells exactly one party that an upload ended,
-     * and that party records it where it survives the process (`sync-ledger`'s guarded `markTerminal`);
+     * and that party records it where it survives the process (`photo-sharing`'s guarded `markTerminal`);
      * handing the fact up for a later cycle to collect is what made a completed upload re-upload after
      * process death. So a succeeded job is recorded `COMPLETED` and acknowledged in place, and nothing
      * about it reaches the cycle.
@@ -97,7 +97,7 @@ enum class CycleResult {
     /**
      * The cycle **declined**: this membership contributes nothing (`Contribution.None` — its participation
      * direction excludes upload), there is no membership at all, this process's engine is not the resolved
-     * mechanism, or this process holds no full photo grant (capability `upload-lifecycle`). No walk and no job.
+     * mechanism, or this process holds no full photo grant (capability `background-upload`). No walk and no job.
      *
      * Distinct from [COMPLETED] because the re-arm answer differs: a drained cycle may deserve another wake,
      * a declined one never does — whatever makes it eligible again is a transition, and the transition arms.
@@ -107,7 +107,7 @@ enum class CycleResult {
 
 /**
  * The iOS 26.1 `PHBackgroundResourceUploadProcessingResult` raw value for this cycle result
- * (capability `ios-photokit-upload`; settled forcing proof ① of migration step 12). The system type
+ * (capability `background-upload`; settled forcing proof ① of migration step 12). The system type
  * is **Swift-only** — declared in the SDK's swiftinterface with no ObjC header — so its
  * *construction* cannot leave the Swift shell; but it is `RawRepresentable` over `Int`, so the
  * **decision** lives here: an exhaustive, compiler-checked mapping the shell forwards verbatim via
@@ -126,7 +126,7 @@ fun CycleResult.processingResultRawValue(): Int = when (this) {
 }
 
 /**
- * The OS-driven tier's pending→re-invocation rule (capability `ios-photokit-upload`; drained from
+ * The OS-driven tier's pending→re-invocation rule (capability `background-upload`; drained from
  * the untested extension root at the migration finale): the OS invokes the extension lazily (on
  * library changes), not when an upload quietly finishes — so a drained cycle that returns
  * [CycleResult.COMPLETED] leaves already-succeeded jobs un-acknowledged until the next change.
@@ -152,7 +152,7 @@ suspend fun CycleResult.requeueWhilePending(
 
 /**
  * One OS-driven `process()` invocation — [run] the cycle, then [requeueWhilePending] — as a function
- * that **never throws** (capability `ios-photokit-upload`). The extension root forwards its result
+ * that **never throws** (capability `background-upload`). The extension root forwards its result
  * across the ObjC boundary, where a Kotlin throwable is not a failed cycle but a Kotlin/Native
  * `abort()` of the whole extension process: no result reaches the OS and nothing is reported.
  *

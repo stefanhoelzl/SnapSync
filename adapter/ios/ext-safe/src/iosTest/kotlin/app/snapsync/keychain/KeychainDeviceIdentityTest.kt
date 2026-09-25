@@ -14,7 +14,7 @@ private const val LOCKED = "OSStatus -25308" // errSecInteractionNotAllowed, as 
 
 /**
  * The device identity, on the two axes that have actually failed in the field (capability
- * `device-identity`).
+ * `photo-sharing`).
  *
  * **Why this is worth a file of its own.** The device id is written **once**, at mint, and never
  * rewritten — the Keychain item survives app uninstall, so nothing in a device's remaining lifetime

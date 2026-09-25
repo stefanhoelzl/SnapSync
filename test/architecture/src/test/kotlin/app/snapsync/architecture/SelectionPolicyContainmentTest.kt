@@ -5,13 +5,13 @@ import kotlin.test.Test
 import kotlin.test.assertTrue
 
 /**
- * **The capture-date bounds are compared in exactly one place** (capability `architecture-guards`; law:
- * `photo-selection-policy`).
+ * **The capture-date bounds are compared in exactly one place** (`docs/architecture.md`; law:
+ * `photo-sharing`).
  *
  * This guard exists because of a shipped bug, and it is aimed precisely at how that bug happened rather
  * than at how it looked.
  *
- * `photo-selection-policy` has always said "one policy, applied at one place". Four consumers needed the
+ * `photo-sharing` has always said "one policy, applied at one place". Four consumers needed the
  * answer — the byte upload, the device manifest, the own-device status total `N`, and the join-time
  * shareable-count preview — and each assembled the rules by hand. When `add-event-date-range` added the
  * capture-date **ceiling**, it reached the byte filter and the preview and missed the other two. Nothing
@@ -72,7 +72,7 @@ class SelectionPolicyContainmentTest {
                     "${file.name}:${i + 1} compares a capture date outside `$admissionSite` — a consumer " +
                         "takes the admitted set, it does not re-apply a bound. This is the exact shape that " +
                         "dropped the ceiling at the device manifest and at `N` (capability " +
-                        "`photo-selection-policy`)."
+                        "`photo-sharing`)."
                 }
             }
         ZoneGates.assertNoViolations("selection-policy-containment", violations)

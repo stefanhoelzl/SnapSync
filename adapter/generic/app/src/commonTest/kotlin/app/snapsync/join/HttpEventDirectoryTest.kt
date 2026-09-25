@@ -163,7 +163,7 @@ class HttpEventDirectoryTest {
 
     @Test
     fun `a 200 without a deletesAt yields Failed rather than an invented deadline`() = runTest {
-        // `deletesAt` is one of the TWO witnesses the self-leave requires (capability `leave-event`). A
+        // `deletesAt` is one of the TWO witnesses the self-leave requires (capability `manage-membership`). A
         // client that defaulted a missing one would be deciding, on its own authority, whether a
         // membership gets destroyed — and this config is the only record of the join. Failing loudly and
         // offering Retry is the only safe reading.

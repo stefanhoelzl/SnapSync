@@ -7,8 +7,8 @@ import kotlin.test.assertTrue
 import kotlin.test.fail
 
 /**
- * **Every scene the shell hands out is recorded** (capability `architecture-guards`; capability
- * `ios-app-shell`).
+ * **Every scene the shell hands out is recorded** (`docs/architecture.md`; capability
+ * `sync-status`).
  *
  * `SnapSyncRoot.onSceneActive()` answers the SwiftUI host's rebuild signal from `sceneGeneration` — a
  * monotonic count advanced each time a scene is handed out. It is advanced in exactly one place,

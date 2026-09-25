@@ -24,7 +24,7 @@ import io.ktor.http.isSuccess
 import app.snapsync.model.runCatchingCancellable
 
 /**
- * An operator-driven, **inspectable** [BackgroundTransfer] (capability `harness-world-model`): the
+ * An operator-driven, **inspectable** [BackgroundTransfer] (`docs/testing.md`): the
  * world's stand-in for the iOS `IosBackgroundTransfer`. It models the OS upload-job lifecycle as a
  * queue an operator drives between cycles:
  *
@@ -33,7 +33,7 @@ import app.snapsync.model.runCatchingCancellable
  * - [completeJob] performs the job's own request — a real `PUT` to the URL, with the headers, the engine
  *   minted — over [network], the network an OS transfer crosses. A `2xx` moves the job to the terminal
  *   bucket, so the next `drainTerminals` records it `COMPLETED`; anything else fails it exactly as [failJob]
- *   would, with the status the backend answered (capability `harness-world-model`). There is no
+ *   would, with the status the backend answered (`docs/testing.md`). There is no
  *   store-direct deposit: a completed object is one the chosen backend itself accepted.
  * - [failJob] moves a job to the retry bucket carrying a chosen [UploadError], driving the real engine
  *   retry chain. A first failure surfaces via `fetchRetryJobs` (the system's single free retry); a
@@ -207,7 +207,7 @@ class FakeUploadDiscovery(
 
     /**
      * Resolve ledger keys through the honest fake, **observably**: [resolvedKeys] is how a test asserts that
-     * a cycle enqueued from the ledger rather than from the discovery feed (capability `sync-ledger`).
+     * a cycle enqueued from the ledger rather than from the discovery feed (capability `photo-sharing`).
      */
     override suspend fun resourcesFor(keys: Set<String>): List<Resource> {
         resolvedKeys += keys
@@ -222,7 +222,7 @@ class FakeUploadDiscovery(
         if (unreadable) {
             unreadable = false
             // What a device answers for a library it could not read: nothing, and NOT authoritative — so the
-            // cycle deletes nothing on the strength of an empty answer (capability `sync-ledger`).
+            // cycle deletes nothing on the strength of an empty answer (capability `photo-sharing`).
             return Discovery(candidates = emptyList(), fullEnumeration = false)
         }
         return honest.discover(policy)
@@ -232,7 +232,7 @@ class FakeUploadDiscovery(
 
     /**
      * Make the next walk unreadable: no candidates, and not authoritative — the case the cycle's deletion gate
-     * exists for (capability `harness-world-model`).
+     * exists for (`docs/testing.md`).
      */
     fun makeWalkUnreadable() {
         unreadable = true

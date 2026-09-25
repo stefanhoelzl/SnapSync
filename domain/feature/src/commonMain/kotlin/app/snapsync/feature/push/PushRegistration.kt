@@ -14,7 +14,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 
 /**
- * Registers the device's APNs token with the backend (capability `push-registration`, "Registration timing —
+ * Registers the device's APNs token with the backend (capability `receiving-photos`, "Registration timing —
  * launch, join, and rotation"). It publishes through the [publisher] port, whose adapter owns the address and the
  * body. **No event id** (the token is device-scoped, event-independent). A failed publish is absorbed (logged), so
  * registration never blocks join/upload/download.

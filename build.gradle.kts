@@ -1,7 +1,7 @@
 import org.gradle.api.artifacts.ProjectDependency
 
 buildscript {
-    // REQUIRED for `buildHealth` (capability `architecture-guards`). dependency-analysis 3.17.0 pins
+    // REQUIRED for `buildHealth` (`docs/architecture.md`). dependency-analysis 3.17.0 pins
     // `kotlin-metadata-jvm` at a version whose reader rejects Kotlin 2.4 metadata outright:
     //
     //     Provided Metadata instance has version 2.4.0, while maximum supported version is 2.3.0.
@@ -26,7 +26,7 @@ buildscript {
 plugins {
     // `base` gives the ROOT project the lifecycle tasks (`check`, `build`) that `detektAppShell`
     // gates through — `./gradlew build` includes the root `check`, so the shell gate runs in the
-    // canonical build (capability `architecture-guards`, "The shell gates").
+    // canonical build (`docs/architecture.md`, "The shell gates").
     base
     alias(libs.plugins.kotlin.multiplatform) apply false
     alias(libs.plugins.kotlin.jvm) apply false
@@ -36,13 +36,13 @@ plugins {
     alias(libs.plugins.sqldelight) apply false
     alias(libs.plugins.detekt)
     alias(libs.plugins.dependency.analysis)
-    // Applied per module rather than here (capability `coverage-bounds`): the set of instrumented
+    // Applied per module rather than here (`docs/architecture.md`): the set of instrumented
     // modules is part of the contract, so it is readable in each module's own build file and a new
     // module is never silently instrumented.
     alias(libs.plugins.kover) apply false
 }
 
-// `./gradlew buildHealth` — declared-but-unused module dependencies (capability `architecture-guards`).
+// `./gradlew buildHealth` — declared-but-unused module dependencies (`docs/architecture.md`).
 //
 // Gradle prevents *using* a dependency that is not declared; nothing prevents *declaring* one that is
 // not used, and that gap is not academic here: `:domain:status` declared `:capability:membership` and
@@ -59,7 +59,7 @@ subprojects {
     apply(plugin = "com.autonomousapps.dependency-analysis")
 }
 
-// ---- Coverage crediting edges (capability `coverage-bounds`) ----------------------------------
+// ---- Coverage crediting edges (`docs/architecture.md`) ----------------------------------
 //
 // `:domain` may not name another module in its OWN build file: `ModuleSetTest` asserts
 // domain/build.gradle.kts contains no module path at all, because that absence is the precondition
@@ -68,7 +68,7 @@ subprojects {
 // design, and its worth is that it is absolute. So the edge is declared here rather than loosening
 // it.
 //
-// Without the edge `:domain` measures 56% instead of 91%: `testing-architecture` ("Fake-driven
+// Without the edge `:domain` measures 56% instead of 91%: `docs/testing.md` ("Fake-driven
 // feature tests live in the fake module") places its feature tests in a module `:domain` cannot
 // depend on, since the reverse edge would be a project cycle.
 //
@@ -104,10 +104,10 @@ dependencyAnalysis {
     }
 }
 
-// The iOS shell roots, NAMED rather than derived from `:app:*` (capability `architecture-guards`,
+// The iOS shell roots, NAMED rather than derived from `:app:*` (`docs/architecture.md`,
 // "The shell gates"). `:app:desktop` is an `:app:*` module this gate has never scanned and must not:
 // it hosts two harness applications and is test equipment, measured as `harness` under capability
-// `complexity-budgets`. Listing the shells is what makes that distinction visible; a `:app:*` glob
+// `docs/architecture.md`. Listing the shells is what makes that distinction visible; a `:app:*` glob
 // would either drag the harness in or need an exemption naming it anyway.
 val appShellSources = files(
     "app/ios/src",
@@ -124,7 +124,7 @@ val appShellSources = files(
     // same definition, and listed for the same reason as the forge above — added with the module.
     "app/composition/src",
     // Compiled INTO `:app:ios` under `-Psnapsync.rig=true`, so it is shell source for gate purposes
-    // even though it lives in `:test:rig`'s tree (capability `architecture-guards`, "Source contributed
+    // even though it lives in `:test:rig`'s tree (`docs/architecture.md`, "Source contributed
     // into a shell's source set is shell source for the gates"). Listed rather than exempted: the gates
     // select by PATH, so an unlisted contributed directory would make the shells' decision-free
     // guarantee true only of the part someone remembered — and a rule a reader must remember is the
@@ -141,13 +141,13 @@ val appShellSources = files(
 // success and mean nothing.
 //
 // Disabled, so that every detekt task in this build is one somebody registered on purpose. There are
-// now nine: `detektAppShell` (the shell PROOF, capability `architecture-guards`) and the eight tier
-// tasks below (the complexity BUDGETS, capability `complexity-budgets`). The distinction matters more
+// now nine: `detektAppShell` (the shell PROOF, `docs/architecture.md`) and the eight tier
+// tasks below (the complexity BUDGETS, `docs/architecture.md`). The distinction matters more
 // than the count — see the tier block's header.
 tasks.named("detekt") { enabled = false }
 
 tasks.register<io.gitlab.arturbosch.detekt.Detekt>("detektAppShell") {
-    description = "Counts decisions in the iOS app shells (capability `architecture-guards`)."
+    description = "Counts decisions in the iOS app shells (`docs/architecture.md`)."
     group = "verification"
     setSource(appShellSources)
     // Production only. A test may branch as much as it likes — the rule is about wiring, not about
@@ -175,7 +175,7 @@ tasks.register<io.gitlab.arturbosch.detekt.Detekt>("detektAppShell") {
 
 tasks.named("check") { dependsOn("detektAppShell") }
 
-// ---- Complexity budgets (capability `complexity-budgets`) --------------------------------------
+// ---- Complexity budgets (`docs/architecture.md`) --------------------------------------
 //
 // A CEILING on complexity for every Kotlin source in the repository, expressed per scope, seeded at
 // what the tree measured, and permitted to move in one direction only: down.
@@ -277,14 +277,14 @@ fun registerDetektTier(
     configure: io.gitlab.arturbosch.detekt.Detekt.() -> Unit = {},
 ) {
     tasks.register<io.gitlab.arturbosch.detekt.Detekt>(name) {
-        description = "Complexity ceiling for the `$configFile` scope (capability `complexity-budgets`)."
+        description = "Complexity ceiling for the `$configFile` scope (`docs/architecture.md`)."
         group = "verification"
         setSource(files(sources))
         exclude("**/build/**")
         // The shared baseline first, then this tier's own file overriding it (detekt layers configs in
         // order). The tier file is OPTIONAL: its absence means the scope sits at the baseline, which is
         // what makes the set of files under `config/detekt/` the list of scopes still carrying debt
-        // (capability `complexity-budgets`). `DetektTierCoverageTest` asserts every file present belongs
+        // (`docs/architecture.md`). `DetektTierCoverageTest` asserts every file present belongs
         // to a tier — the reverse of what it asserted while every tier was required to have one.
         val tierConfig = file("config/detekt/$configFile.yml")
         config.setFrom(files("config/detekt/_base.yml") + if (tierConfig.exists()) files(tierConfig) else files())
@@ -304,7 +304,7 @@ fun registerDetektTier(
         doFirst {
             check(!source.isEmpty) {
                 "detekt tier `$name` scanned ZERO files — its scope resolved empty, so it would have " +
-                    "passed while inspecting nothing (capability `complexity-budgets`, " +
+                    "passed while inspecting nothing (`docs/architecture.md`, " +
                     "\"Coverage is derived, never remembered\")."
             }
         }
@@ -336,7 +336,7 @@ registerDetektTier("detektHarnessTier", "harness", tierSrcDirs("harness")) {
 }
 
 // The two zones whose decision-free law is written but was never enforced (capability
-// `module-architecture`: "flows coordinate, never decide"; "One shared composition"). Path sub-scopes
+// `docs/architecture.md`: "flows coordinate, never decide"; "One shared composition"). Path sub-scopes
 // of `:domain`, carved out of `core`.
 registerDetektTier("detektFlowTier", "flow", tierSrcDirs("core")) {
     include("**/app/snapsync/flow/**")
@@ -361,7 +361,7 @@ registerDetektTier(
     listOf(project.buildFile, file("settings.gradle.kts")) + subprojects.map { it.buildFile },
 )
 
-// ---- Derived architecture diagrams (capability `architecture-diagrams`) ------------------------
+// ---- Derived architecture diagrams (`docs/architecture.md`) ------------------------
 //
 // `./gradlew architectureDiagrams` regenerates everything under `architecture/`. The module graph
 // is the one diagram that needs the live Gradle project model, so it is generated HERE; every
@@ -413,9 +413,9 @@ val architectureModulesDiagram = tasks.register("architectureModulesDiagram") {
         val edges = mutableSetOf<Pair<String, String>>()
         real.forEach { p ->
             // Report-aggregation configurations are NOT architectural dependencies (capability
-            // `architecture-diagrams`, "The module graph counts architectural dependencies only").
+            // `docs/architecture.md`, "The module graph counts architectural dependencies only").
             // Kover's `kover` configuration merges another module's coverage DATA; it puts nothing on
-            // a classpath. Left in, the coverage crediting edges required by `coverage-bounds` render
+            // a classpath. Left in, the coverage crediting edges required by `docs/architecture.md` render
             // as `:domain -> :adapter:generic:fake` and `:ui:components -> :ui:screens` — every one
             // pointing the opposite way to the real dependency, in the diagram that IS the record.
             p.configurations.filter { !it.name.startsWith("kover") }.forEach { c ->
@@ -440,6 +440,6 @@ val architectureModulesDiagram = tasks.register("architectureModulesDiagram") {
 }
 
 tasks.register("architectureDiagrams") {
-    description = "Regenerate every derived diagram under architecture/ (spec `architecture-diagrams`)."
+    description = "Regenerate every derived diagram under architecture/ (`docs/architecture.md`)."
     dependsOn(architectureModulesDiagram, ":tools:diagrams:generate")
 }

@@ -19,7 +19,7 @@ interface Props {
   description?: string;
   ogUrl?: string;
 }
-// The canonical origin comes from the RESOLVED DEPLOYMENT (capability `deployment-configuration`), the
+// The canonical origin comes from the RESOLVED DEPLOYMENT (`docs/deployment.md`), the
 // same value the backend serves its AASA for and the app bakes as its upload host — so the site cannot
 // advertise a host the rest of the system has moved off. It used to be a literal here, and in join.astro,
 // and neither was checked by anything. The rendering is generated, never committed: run

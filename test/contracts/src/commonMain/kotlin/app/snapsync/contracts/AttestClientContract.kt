@@ -13,7 +13,7 @@ enum class AttestClientState {
 }
 
 /**
- * What the attestation client promises that a real host can check (capability `port-contracts` — this list IS
+ * What the attestation client promises that a real host can check (`docs/architecture.md` — this list IS
  * the port's specification): the challenge, and every **refusal** — a forged attestation, a challenge the edge
  * never issued, a renewal for a device that never attested.
  *

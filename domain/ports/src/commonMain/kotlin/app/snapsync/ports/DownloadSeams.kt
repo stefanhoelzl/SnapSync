@@ -2,7 +2,7 @@ package app.snapsync.ports
 
 
 /**
- * Submits background byte transfers for foreign resources (capability `photo-download`). On iOS this
+ * Submits background byte transfers for foreign resources (capability `receiving-photos`). On iOS this
  * is a background `URLSession` (discretionary/Wi-Fi); completions are delivered out of band to
  * [DownloadController.onResourceStaged] after the impl moves each finished file to durable App-Group
  * staging. A failed transfer leaves the resource pending (no terminal failure) for a later retry.
@@ -25,7 +25,7 @@ sealed interface ImportResult {
      *
      * This is an OBSERVED outcome — the library reported the change failed — and it is the only kind of
      * failure this seam reports. There is deliberately no "we stopped waiting" case: nothing bounds an
-     * import in time any more (capability `photo-download`), because a wall-clock bound expires against
+     * import in time any more (capability `receiving-photos`), because a wall-clock bound expires against
      * transactions that are alive, and the wake it would otherwise protect is bounded by the operating system's
      * expiry instead. An import that never reports never returns, and stays claimed for the life of the process.
      *
@@ -46,7 +46,7 @@ sealed interface ImportResult {
 
 /**
  * Imports one foreign asset's staged resources as a single new library asset (capability
- * `photo-download`). On iOS: one `PHAssetCreationRequest` adding every resource (`live`→`.pairedVideo`,
+ * `receiving-photos`). On iOS: one `PHAssetCreationRequest` adding every resource (`live`→`.pairedVideo`,
  * `primary`→`.photo`/`.video`/`.audio` by `contentType`) into the camera roll. The impl MUST record
  * the created local id into the download store **inside** the `performChanges` change block (before the
  * asset is observable) to close the upload echo; it returns that same id so the controller can mark the

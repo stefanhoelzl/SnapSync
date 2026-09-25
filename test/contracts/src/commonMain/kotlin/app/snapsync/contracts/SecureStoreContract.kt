@@ -30,7 +30,7 @@ enum class SecureStoreState {
 }
 
 /**
- * What every [SecureStore] promises (capability `port-contracts` — this list IS the specification of the
+ * What every [SecureStore] promises (`docs/architecture.md` — this list IS the specification of the
  * port's obligations). The three-state read is the point of the seam: "I could not look" is never "there
  * is nothing there", because conflating the two minted a second identity on a locked device and aborted
  * the process (build 297).

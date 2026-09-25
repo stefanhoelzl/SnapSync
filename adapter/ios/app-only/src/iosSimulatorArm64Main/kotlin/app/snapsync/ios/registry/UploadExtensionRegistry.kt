@@ -33,7 +33,7 @@ object SimulatorExtensionRecord : SimulatorRecord()
 /**
  * One registration record, as [SimulatorExtensionRegistry] holds it. The process-wide [SimulatorExtensionRecord]
  * is the one the app composes and the rig's levers reach; a contract binding constructs a fresh one per clause,
- * in the state the clause needs, so no clause inherits another's record (capability `port-contracts`, "Clauses
+ * in the state the clause needs, so no clause inherits another's record (`docs/architecture.md`, "Clauses
  * are conditioned on states that bindings enter at construction").
  */
 open class SimulatorRecord(registered: Boolean = false) {

@@ -7,7 +7,7 @@ import io.ktor.client.engine.darwin.Darwin
 import io.ktor.client.plugins.HttpTimeout
 
 /**
- * The per-request ceiling every call through this client carries (capability `ios-app-shell`).
+ * The per-request ceiling every call through this client carries (capability `sync-status`).
  *
  * Without one, the request is bounded only by `NSURLSession`'s defaults — and on a background wake that
  * is not a bound at all. The session runs **in-process**, so a suspended app services no socket; its
@@ -38,7 +38,7 @@ private const val REQUEST_TIMEOUT_MILLIS = 5_000L
  * the one-line request log. It is applied here rather than defined here so the world harness and the
  * tests exercise the same function over a `MockEngine` instead of a copy of it.
  *
- * **[token] authenticates every request made through this client** (capability `device-attestation`).
+ * **[token] authenticates every request made through this client** (capability `privacy-security`).
  * Attaching it here rather than at each call site is the point: create, event fetch, join/manifest,
  * union, device config, leave, notify, and the extension's reconcile listing ALL flow through this one
  * factory, so none of them can be forgotten — and a future caller inherits the header for free.
@@ -62,7 +62,7 @@ fun darwinHttpClient(
 
 /**
  * The same client, reporting the backend's verdicts to the one object the core exposes for them — the form the app
- * root uses (spec `module-architecture`, "One shared composition"). [verdicts] is read per response, so the root
+ * root uses (`docs/architecture.md`, "One shared composition"). [verdicts] is read per response, so the root
  * may build this client while it is still composing that core.
  */
 fun darwinHttpClient(

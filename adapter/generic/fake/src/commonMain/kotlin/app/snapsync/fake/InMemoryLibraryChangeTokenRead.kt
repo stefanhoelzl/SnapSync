@@ -6,7 +6,7 @@ import app.snapsync.ports.LibraryChangeTokenRead
 import kotlinx.coroutines.flow.StateFlow
 
 /**
- * The honest in-memory [LibraryChangeTokenRead] (capability `port-contracts`), held to `LibraryChangeTokenContract`
+ * The honest in-memory [LibraryChangeTokenRead] (`docs/architecture.md`), held to `LibraryChangeTokenContract`
  * exactly as the PhotoKit read is.
  *
  * A token is the library **value** it was read at: every change to the caller's [library] cell replaces that value,

@@ -10,7 +10,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /**
- * The **simulator target's** device-id store (capability `device-identity`; decision record
+ * The **simulator target's** device-id store (capability `photo-sharing`; decision record
  * `changes/add-simulator-rig-host` D6).
  *
  * This suite lives in `iosSimulatorArm64Test` rather than the shared `iosTest`, because the store it

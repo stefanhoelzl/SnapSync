@@ -36,7 +36,7 @@ interface AlbumManager {
      * The **normalized** asset ids (`'/'→'_'`, as the ledger and upload keys carry them) of every asset that
      * belongs to a **user album** whose title matches one of [titles], captured at or after [since].
      *
-     * **Decision-free** (capability `photo-selection-policy`): the titles to look for are a *parameter*. The
+     * **Decision-free** (capability `photo-sharing`): the titles to look for are a *parameter*. The
      * policy — which titles are denied — lives in `commonMain` ([DENYLISTED_ALBUM_TITLES]), never in this
      * untestable platform shell, per the same rule that keeps album *placement* decisions out of it.
      *

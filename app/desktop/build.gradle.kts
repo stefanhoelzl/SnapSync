@@ -13,10 +13,10 @@ kotlin {
 //    from injected seams → render the real `StatusScreen` inside the frame).
 //  - **Full-stack world harness** — `:app:desktop:run` (`app.snapsync.desktop.FullStackHarnessKt`):
 //    the REAL app graph composed by `snapSyncApp` over `:test:world`'s fakes behind the phone frame,
-//    driven by a right-pane world inspector (capability `full-stack-harness`).
+//    driven by a right-pane world inspector (`docs/testing.md`).
 //  - **Forge harness** — `:app:desktop:runForge` (`app.snapsync.desktop.MainKt`): the same phone
 //    frame over forge cells + a control panel that forges any UI state (capability
-//    `desktop-test-harness`). Registered as a plain JavaExec below because the Compose Desktop
+//    `docs/testing.md`). Registered as a plain JavaExec below because the Compose Desktop
 //    plugin models exactly one `application {}` main class per module.
 dependencies {
     implementation(libs.ktor.client.core)
@@ -66,7 +66,7 @@ compose.desktop {
         // Skiko loads native libs via a restricted method; future JDKs block it by default.
         jvmArgs += "--enable-native-access=ALL-UNNAMED"
         jvmArgs += "-Dsun.java2d.uiScale=$uiScale"
-        // The mirror (capability `full-stack-harness`, "The harness can mirror a remote host"):
+        // The mirror (`docs/testing.md`, "The harness can mirror a remote host"):
         // `./gradlew :app:desktop:run -Psnapsync.attach=http://127.0.0.1:<port>` attaches to a control-channel host.
         (project.findProperty("snapsync.attach") as String?)?.let { jvmArgs += "-Dsnapsync.attach=$it" }
     }

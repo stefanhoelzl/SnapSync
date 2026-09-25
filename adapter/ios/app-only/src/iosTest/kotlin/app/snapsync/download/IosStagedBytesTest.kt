@@ -11,7 +11,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * The staging area's release side (capability `download-store`).
+ * The staging area's release side (capability `receiving-photos`).
  *
  * `release` is the only thing that ever reclaims a downloaded photo's bytes. Every settle path, the
  * leave/switch prune, `ResetDeviceState`'s teardown and the backlog reclaim all end here, so a
@@ -93,11 +93,11 @@ class IosStagedBytesTest {
     }
 
     /**
-     * The presence read (capability `download-store`), which the adjudicator uses as its second oracle:
+     * The presence read (capability `receiving-photos`), which the adjudicator uses as its second oracle:
      * the photo library takes a resource's file when it ingests it, and it ingests only as part of
      * creating an asset — so a missing staged file is positive evidence that a creation was submitted,
      * at the one moment the library's own *absent* answer cannot be acted on (capability
-     * `photo-download`).
+     * `receiving-photos`).
      *
      * Measured on device-shaped hosts: after a SIGKILL mid-commit the staged file is gone at relaunch,
      * and gone *before* the asset becomes visible

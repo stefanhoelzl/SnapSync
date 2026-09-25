@@ -2,12 +2,12 @@ package app.snapsync.ports
 
 /**
  * The app process's **background time**: "keep this process running while I finish, and tell me when time is up"
- * (spec `module-architecture`, "Background time is an outbound port named for the need"; decision record
+ * (`docs/architecture.md`, "Background time is an outbound port named for the need"; decision record
  * `changes/own-work-per-wake`, D3 and D5).
  *
  * A silent push and a background-transfer wake carry no expiry signal of their own, so the core takes a hold here no
  * later than it is handed such a wake's completion, and the operating system's signal — [begin]'s `onExpiry` — is
- * the only notion of "time is up" the app acts on (capability `ios-app-shell`, "Time is up is learned only from the
+ * the only notion of "time is up" the app acts on (capability `sync-status`, "Time is up is learned only from the
  * operating system"). That is why the surface carries **no duration, no remaining-time read and no estimate**: an
  * estimate is not a signal, and a number here would invite a deadline of the app's own, which is what cut import
  * batches short in the field (iPhone XS, iOS 18.7.9: a self-chosen 20 s release, then suspension ≤ 0.4 s later).
@@ -16,7 +16,7 @@ package app.snapsync.ports
  * core may take one for each wake without accounting between them.
  *
  * App process only. The upload extension has no such signal to offer — measured, its only end is a hard kill
- * (capability `ios-photokit-upload`) — so this port is not bound in, linked into or faked for its composition.
+ * (capability `background-upload`) — so this port is not bound in, linked into or faked for its composition.
  */
 interface BackgroundTime {
 
@@ -31,7 +31,7 @@ interface BackgroundTime {
      *
      * An expiry does **not** end the hold by itself: the caller ends it with [BackgroundTimeHold.end] — at once,
      * from inside [onExpiry], after requesting the stop, and without waiting for the unit in flight (capability
-     * `ios-app-shell`, "Expiry stops work cooperatively at the next boundary"). A hold that is never ended is, per
+     * `sync-status`, "Expiry stops work cooperatively at the next boundary"). A hold that is never ended is, per
      * Apple, a termination.
      */
     fun begin(label: String, onExpiry: () -> Unit): BackgroundTimeHold

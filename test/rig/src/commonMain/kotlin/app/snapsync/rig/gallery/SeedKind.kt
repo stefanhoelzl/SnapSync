@@ -18,7 +18,7 @@ enum class SeedKind {
 
     /**
      * `n` assets dated **an hour ahead**, alternating **above** and **below** the 3 MP image floor — the
-     * selection-policy probe (capability `photo-selection-policy`).
+     * selection-policy probe (capability `photo-sharing`).
      *
      * It exists because neither an empty library nor a bulk seed can exercise the policy on a real device:
      *

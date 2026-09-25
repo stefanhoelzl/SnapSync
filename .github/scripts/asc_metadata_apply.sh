@@ -15,7 +15,7 @@ ASC="${ASC:-${RUNNER_TEMP:-/tmp}/asc}"
 APP="${ASC_APP_ID:?ASC_APP_ID is required}"
 # The RENDERED listing, not the committed one. The committed files are hand-written copy carrying a
 # `{{domain}}` placeholder for the three URL fields derived from the device-facing domain; the resolver
-# substitutes it (capability `deployment-configuration`) so the store listing cannot advertise a host the
+# substitutes it (`docs/deployment.md`) so the store listing cannot advertise a host the
 # rest of the system has moved off. Everything else in those files is copy and is never templated, so
 # editing App Store text still needs no generator. Renderings are generated, never committed.
 DIR="${METADATA_DIR:-build/metadata}"
@@ -39,7 +39,7 @@ fi
 echo "Editable App Store version: $version"
 
 # The committed listing is VERSION-INDEPENDENT (version/current) — store versions auto-advance
-# with every release (capability ios-appstore-release derives them from builds), so a version-named
+# with every release (`docs/deployment.md` derives them from builds), so a version-named
 # directory goes stale the moment the editable version changes; that failure shipped (run
 # 29789667939, 1.0 vs 0.1). The tool still wants the version-named layout, so materialize it in a
 # scratch root holding ONLY app-info + the resolved version — nothing else for the push to read.

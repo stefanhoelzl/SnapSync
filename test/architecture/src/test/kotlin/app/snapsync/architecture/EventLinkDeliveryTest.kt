@@ -6,7 +6,7 @@ import kotlin.test.assertTrue
 import kotlin.test.fail
 
 /**
- * **The Swift shell keeps the event link's delivery seam** (capability `architecture-guards`).
+ * **The Swift shell keeps the event link's delivery seam** (`docs/architecture.md`).
  *
  * The first guard over Swift, and it exists because of what happened without one. On 2026-07-16 the
  * app shipped receiving event links via SwiftUI's `.onOpenURL` **as its only hook**, and that hook was
@@ -118,7 +118,7 @@ class EventLinkDeliveryTest {
     }
 
     /**
-     * The cold half records the connection even when it carries NOTHING (spec `architecture-guards`,
+     * The cold half records the connection even when it carries NOTHING (`docs/architecture.md`,
      * "The Swift shell keeps the event link's delivery seam"; law "Absence is never silent").
      *
      * The forwarding rule below cannot express this: it asks whether a Kotlin call is *present* in the
@@ -149,8 +149,8 @@ class EventLinkDeliveryTest {
     }
 
     /**
-     * **SwiftUI's delivery path** (spec `architecture-guards`, "The Swift shell keeps the event link's
-     * delivery seam"; spec `ios-app-shell`).
+     * **SwiftUI's delivery path** (`docs/architecture.md`, "The Swift shell keeps the event link's
+     * delivery seam"; spec `sync-status`).
      *
      * `.onOpenURL` on the `WindowGroup` is what carries a link opened while the app is ALREADY RUNNING
      * on iOS 18.7.9, where the scene delegate's continuation never arrives however the link was opened

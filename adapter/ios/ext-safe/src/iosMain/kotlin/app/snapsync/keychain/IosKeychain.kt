@@ -66,7 +66,7 @@ val ACCESSIBLE_AFTER_FIRST_UNLOCK: String =
 
 /**
  * The one and only Keychain implementation in the repo — the iOS binding of the platform-free
- * [SecureStore] port (capability `architecture-guards` forbids `SecItem*` outside this module, so
+ * [SecureStore] port (`docs/architecture.md` forbids `SecItem*` outside this module, so
  * that "every Keychain item is background-readable" is provable rather than merely intended).
  *
  * **This class owns both platform encodings the port refuses to carry.** An `OSStatus` becomes an
@@ -170,7 +170,7 @@ class IosKeychain internal constructor(
      * `securityd` refuses it Keychain access outright (`errSecNotAvailable`, -25291).
      *
      * That makes this the *only* mechanical proof that every item is written background-readable — the
-     * half of capability `architecture-guards`'s two-part argument that containment alone cannot supply.
+     * half of `docs/architecture.md`'s two-part argument that containment alone cannot supply.
      */
     internal fun writtenAttributes(): Map<String, String> =
         mapOf(KEY_ACCESSIBLE to ACCESSIBLE_AFTER_FIRST_UNLOCK)
@@ -187,7 +187,7 @@ class IosKeychain internal constructor(
      *
      * `null` under `"agrp"` is meaningful and is not the same as a missing entry: it is the unscoped
      * search — "wherever this process is entitled to look" — which is a legitimate but *inventoried*
-     * choice (capability `architecture-guards`).
+     * choice (`docs/architecture.md`).
      */
     internal fun itemAddress(): Map<String, String?> = mapOf(
         KEY_SERVICE to service,

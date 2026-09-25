@@ -10,7 +10,7 @@ interface DownloadTask {
 
 /**
  * What a finished transfer turned out to be — the facts [DownloadTransportHost.accepts] judges it on
- * (capability `photo-download`). Data only: the platform edge reads these off its response object, and
+ * (capability `receiving-photos`). Data only: the platform edge reads these off its response object, and
  * nothing platform-shaped crosses the seam.
  *
  * @param statusCode the HTTP status, or `null` if the response carried none (should be unreachable —
@@ -38,7 +38,7 @@ interface DownloadTransportHost {
      * May [description]'s bytes be staged, given how the transfer turned out? Asked **before** the bytes
      * are moved, because staging is what makes them the store's truth: a rejected body that reached
      * staging would be imported, fail, and be retried forever against the same file — the download is
-     * never re-run once a resource is recorded as staged (capability `photo-download`).
+     * never re-run once a resource is recorded as staged (capability `receiving-photos`).
      *
      * The judgement lives on this side of the seam so it is covered by `commonTest`; the transport only
      * reports the facts. Answering `false` leaves the transfer's bytes untouched, so the resource stays
@@ -72,7 +72,7 @@ interface DownloadTransportHost {
 }
 
 /**
- * The byte-transfer edge of the download client (capability `photo-download`) — on iOS a background
+ * The byte-transfer edge of the download client (capability `receiving-photos`) — on iOS a background
  * `URLSession`, in tests a fake.
  *
  * **This seam deliberately offers no way to invalidate or destroy the underlying session.** Invalidation

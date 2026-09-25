@@ -11,7 +11,7 @@ plugins {
 // ~15 `Shell` members whose job was to make every OS entry point inert, and a branch in the shell's one
 // mode switch. All of that SHIPPED, inert at runtime rather than absent, and it could not be gated away:
 // `SnapSyncRoot.kt` named `ForgeShell` directly, so removing the source would leave the shell naming a
-// type that no longer existed (spec `module-architecture`, "A build-time-only module is contained by
+// type that no longer existed (`docs/architecture.md`, "A build-time-only module is contained by
 // compilation" — the clause about a surface reached through the shell's own switch).
 //
 // Here, inertness is not performed. This binary does not link `:app:ios` at all, so it has no

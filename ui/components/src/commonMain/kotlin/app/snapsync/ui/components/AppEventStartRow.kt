@@ -25,7 +25,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
 /**
- * The event's **date range** on the create screen (capability `event-creation-ui`): the chosen
+ * The event's **date range** on the create screen (capability `create-event`): the chosen
  * `[from, until]` window as a readable label plus a live humanized duration hint, with an edit affordance
  * beside it that opens the design system's **dual-handle** date+time picker, and one consequence note
  * beneath. It supersedes the earlier single start-date section — an event now declares a whole window, not
@@ -38,7 +38,7 @@ import androidx.compose.runtime.setValue
  * signature.
  *
  * The range is **required** — an event always has a start and an end, so there is no unset state. The caller
- * owns the default (`[now, now + 1 day]`, frozen at first composition — see `event-creation-ui`); the
+ * owns the default (`[now, now + 1 day]`, frozen at first composition — see `create-event`); the
  * picker imposes **no** window (only `start < end`, which the create screen guards), so a host can set a
  * range arbitrarily far in the past or the future.
  *
@@ -128,7 +128,7 @@ fun appDateTimeLabel(value: LocalDateTime): String = formatStart(value)
  *
  * Public for the same reason as [appDateTimeLabel], and separate from it because some statements are
  * about a day rather than an instant: the join gate's retention line ("Shared photos are deleted on …",
- * capability `event-limits`) would read as false precision with a minute attached.
+ * capability `event-lifetime`) would read as false precision with a minute attached.
  */
 fun appDateLabel(value: LocalDateTime): String =
     "${value.day} ${monthAbbrev(value.month.ordinal)} ${value.year}"

@@ -1,4 +1,4 @@
-# The architecture workflow (capability `architecture-guards` + `architecture-diagrams`).
+# The architecture workflow (`docs/architecture.md` + `docs/architecture.md`).
 #
 # ONE job since the module-architecture migration completed: the migration-era `verify` beacon —
 # red by design while any burn-down count was nonzero — measured zero at the finale and was

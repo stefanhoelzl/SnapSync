@@ -47,7 +47,7 @@ internal fun stagingPath(root: String, ref: AssetRef, resourceKey: String): Stri
     "$root/${ref.sourceDeviceId.replace('/', '_')}/${resourceKey.replace('/', '_')}"
 
 /**
- * Whether a finished transfer's bytes may be staged (capability `photo-download`).
+ * Whether a finished transfer's bytes may be staged (capability `receiving-photos`).
  *
  * A background `URLSession` reports an HTTP error as a *successful transfer of an error body*: the
  * finish callback fires with the `502` document in hand and the completion error is `nil`. So this is the
@@ -80,7 +80,7 @@ internal fun isFetchableUrl(url: String): Boolean {
 }
 
 /**
- * The iOS [PhotoDownloadJobs] (capability `photo-download`), platform-free: a pending queue drained
+ * The iOS [PhotoDownloadJobs] (capability `receiving-photos`), platform-free: a pending queue drained
  * through a bounded in-flight window into a [DownloadTransport] (on iOS a background `URLSession`, in
  * tests a fake). Each finished transfer is staged durably and reported via `onStaged`; the window refills
  * as transfers complete.
@@ -96,7 +96,7 @@ class QueuedPhotoDownloadJobs(
     private val newTransport: (DownloadTransportHost) -> DownloadTransport,
     /**
      * Deliver a staged resource. Required, and bound at construction (law "Callbacks are bound at
-     * construction", capability `module-architecture`): this used to be a nullable `var` the composition
+     * construction", `docs/architecture.md`): this used to be a nullable `var` the composition
      * assigned while building the download controller, so a process the OS relaunched only to deliver
      * download-session events — which builds the jobs and nothing else — dropped every staged resource
      * without a line in the log. The composition's binding resolves the controller when it is invoked.
@@ -106,7 +106,7 @@ class QueuedPhotoDownloadJobs(
      * import that follows is not this callback's — it is the process tail's first unit.
      */
     private val onStaged: suspend (AssetRef, resourceKey: String, stagedPath: String) -> Unit,
-    // Where this session's OS completion handler is released (capability `ios-app-shell`). UIKit owns
+    // Where this session's OS completion handler is released (capability `sync-status`). UIKit owns
     // that handler and requires the main thread; the drain that triggers the release arrives on a
     // session-owned queue, so the lane is the only thing putting it where it belongs. The default is
     // reached ONLY by direct construction in unit tests: both compositions pass one — the app its main
@@ -118,10 +118,10 @@ class QueuedPhotoDownloadJobs(
 ) : PhotoDownloadJobs {
 
     /**
-     * The OS completion handlers of this session's background-events wakes (capability `ios-app-shell`), held across
+     * The OS completion handlers of this session's background-events wakes (capability `sync-status`), held across
      * the wake's own work — **staging** the delivered files — and released at the session's drain report once that
      * staging is recorded; never held for the photo-library imports, which are the process tail's first unit
-     * (capability `photo-download`, "The download session's OS handler is released after staging"; decision record
+     * (capability `receiving-photos`, "The download session's OS handler is released after staging"; decision record
      * `changes/own-work-per-wake`, D5). No deadline of the app's own bounds the hold: a drain report that never comes
      * ends in the operating system's expiry, which the wake's owner forwards to the [OsCompletions.Handover] it was
      * handed by [adoptBackgroundEvents].
@@ -140,11 +140,11 @@ class QueuedPhotoDownloadJobs(
 
     /**
      * The stagings started by [DownloadTransportHost.onStaged] since the last drain. Held so the OS's background-events
-     * handler is released *after* they are recorded (capability `photo-download`) — the session reports its own
+     * handler is released *after* they are recorded (capability `receiving-photos`) — the session reports its own
      * events drained, which says nothing about the store writes they caused.
      *
      * A thread-safe cell, not a plain list (law "State reached from OS callbacks is confined", capability
-     * `module-architecture`): [DownloadTransportHost.onStaged] registers from the transport's delegate queue while
+     * `docs/architecture.md`): [DownloadTransportHost.onStaged] registers from the transport's delegate queue while
      * [awaitOutstandingStagings] takes the list from a coroutine, and a plain list shared between them could drop a
      * registration — releasing the OS handler before a staging it announced — or throw mid-iteration.
      */
@@ -175,7 +175,7 @@ class QueuedPhotoDownloadJobs(
     private val host = object : DownloadTransportHost {
         override fun accepts(description: String, outcome: TransferOutcome): Boolean {
             val staged = outcome.mayBeStaged()
-            // Logged for EVERY finished transfer, not only rejections (capability `diagnostic-logging`).
+            // Logged for EVERY finished transfer, not only rejections (capability `privacy-security`).
             // The accept path is the one that matters most in the field: `expectedBytes = -1` here means the
             // server sent no `Content-Length`, so the length check is inert and this transfer is admitted on
             // status alone. If that is what bunny's S3 GETs actually look like, then admitting an unknown
@@ -235,7 +235,7 @@ class QueuedPhotoDownloadJobs(
 
         /**
          * The session has delivered every event it had. That is not yet the wake's own work done: each delivery
-         * started a staging, and recording those is what the OS handler reports on (capability `photo-download`).
+         * started a staging, and recording those is what the OS handler reports on (capability `receiving-photos`).
          * So join them first, then release every handler outstanding — never waiting for the imports, which are
          * the tail's.
          *
@@ -250,7 +250,7 @@ class QueuedPhotoDownloadJobs(
     /**
      * Await every staging started since the last drain. Public because two callers need it and neither may reach
      * the list: the background-events handler above (so the OS handler is released after the stagings, capability
-     * `photo-download`), and the world harness's `stageAllDownloads`, whose operator drives the world synchronously
+     * `receiving-photos`), and the world harness's `stageAllDownloads`, whose operator drives the world synchronously
      * and would otherwise race every download assertion.
      */
     suspend fun awaitOutstandingStagings() {
@@ -304,7 +304,7 @@ class QueuedPhotoDownloadJobs(
             val tag = queued.keys.firstOrNull() ?: break
             val next = queued.remove(tag) ?: break
             if (!isFetchableUrl(next.resource.url)) {
-                // Pending, not failed: a later reconcile re-presigns the url (`photo-download`), and a
+                // Pending, not failed: a later reconcile re-presigns the url (`receiving-photos`), and a
                 // permanently-bad one is skipped again rather than aborting the process.
                 log.w { "skipping unfetchable download url for ${next.resource.resourceKey}" }
                 continue

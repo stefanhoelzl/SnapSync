@@ -27,7 +27,7 @@ enum class ManifestPublisherState {
 }
 
 /**
- * What publishing a device's manifest promises (capability `port-contracts` — this list IS the port's
+ * What publishing a device's manifest promises (`docs/architecture.md` — this list IS the port's
  * specification). The manifest is contribution only: it never enrolls, so a non-member's publish is refused.
  */
 object ManifestPublisherContract : Contract<ManifestPublisherState, EdgeSubject<ManifestPublisher>>("ManifestPublisher") {
@@ -71,7 +71,7 @@ object ManifestPublisherContract : Contract<ManifestPublisherState, EdgeSubject<
             assertFalse(s.port.publish(s.seeded.eventId, s.seeded.deviceId, manifest(s.seeded.deviceId)))
         }
 
-        // Two processes' publishes can cross in the network (capability `device-manifest`, "A publish carries the
+        // Two processes' publishes can cross in the network (capability `photo-sharing`, "A publish carries the
         // manifest version"): the one landing LAST may be the older snapshot. It is answered as a success — a
         // snapshot at least as new is already there — and changes nothing the union serves.
         clause("AN_OLDER_PUBLISH_LANDING_LAST_CHANGES_NOTHING", ManifestPublisherState.MEMBER_WITH_TWO_UPLOADED_ASSETS) { s ->

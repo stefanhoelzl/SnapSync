@@ -9,7 +9,7 @@ import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * The staged-byte backlog reclaim, driven through the **trigger** rather than through the method
- * (capability `download-store`, requirement "Staged bytes are released only once their row is settled").
+ * (capability `receiving-photos`, requirement "Staged bytes are released only once their row is settled").
  *
  * `DownloadController.releaseSettledBytes()` was built, spec'd, and pinned at the store layer by
  * `DownloadStoreContract` — and never called from anywhere. Every one of those checks stayed green while

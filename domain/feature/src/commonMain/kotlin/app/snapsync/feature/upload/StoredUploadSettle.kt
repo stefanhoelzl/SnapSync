@@ -17,7 +17,7 @@ import kotlin.coroutines.cancellation.CancellationException
 private const val LISTING_TIMEOUT_MS = 15_000L
 
 /**
- * The foreground settle (capability `upload-state-reconciliation`, "Foreground settles in-flight rows the backend
+ * The foreground settle (capability `photo-sharing`, "Foreground settles in-flight rows the backend
  * already stores"): ask the backend which resources it stores for this device, and record `COMPLETED` for every
  * `REQUESTED` row whose key it lists.
  *

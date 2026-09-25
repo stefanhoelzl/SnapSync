@@ -12,7 +12,7 @@ import kotlin.test.Test
 
 /**
  * The inert hand-off every off-device composition stands on — the world and both desktop harnesses —
- * held to the contract the iOS adapter satisfies (capability `port-contracts`).
+ * held to the contract the iOS adapter satisfies (`docs/architecture.md`).
  *
  * [LinkOpener.None] has no platform, so it reaches only the state in which nothing is opened. Its twin,
  * `SharePresenter.None`, has no binding: the share contract's one state needs a surface to present over,

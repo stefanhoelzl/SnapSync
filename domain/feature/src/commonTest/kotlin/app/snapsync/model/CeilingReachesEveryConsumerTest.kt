@@ -8,7 +8,7 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 
 /**
- * **The regression fixture the old suite could not express** (capability `photo-selection-policy`).
+ * **The regression fixture the old suite could not express** (capability `photo-sharing`).
  *
  * `add-event-date-range` added the capture-date **ceiling** to the byte filter and the join preview and
  * missed the device-manifest projection and the status total `N`. Every existing test passed, because
@@ -35,7 +35,7 @@ class CeilingReachesEveryConsumerTest {
      * The membership under test: a **closed** capture window, exactly as a late joiner's would be.
      *
      * A `suspend fun` rather than a `val` because the one derivation reads two ports
-     * (capability `photo-selection-policy`).
+     * (capability `photo-sharing`).
      */
     private suspend fun policyOf(ceiling: CaptureCeiling? = this.ceiling): SelectionPolicy = SelectionPolicy(
         selectionRulesFor(

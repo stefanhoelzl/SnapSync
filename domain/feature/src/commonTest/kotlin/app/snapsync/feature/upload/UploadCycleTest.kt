@@ -56,7 +56,7 @@ class UploadCycleTest {
 
     /**
      * A permissive test cutoff, and a capture date after it. Every membership carries a cutoff (capability
-     * `photo-selection-policy`), so a cycle cannot be built without one; these keep the non-cutoff tests
+     * `photo-sharing`), so a cycle cannot be built without one; these keep the non-cutoff tests
      * exercising what they mean to.
      */
     private companion object {
@@ -65,7 +65,7 @@ class UploadCycleTest {
         /**
          * An admitting policy carrying the two port-read exclusions. They used to be injected into the
          * cycle and applied by it; the one derivation now folds them into the rule list, so a fixture
-         * states them here (capability `photo-selection-policy`).
+         * states them here (capability `photo-sharing`).
          */
         suspend fun admittingWith(
             cutoff: String = TEST_CUTOFF,
@@ -185,7 +185,7 @@ class UploadCycleTest {
         }
     }
 
-    // Dated by default: every membership carries a cutoff (capability `photo-selection-policy`), and an asset
+    // Dated by default: every membership carries a cutoff (capability `photo-sharing`), and an asset
     // with no `creationDate` sorts before any cutoff, so an undated resource is always out of scope.
     private fun resource(name: String, assetId: String = name) =
         Resource(
@@ -212,7 +212,7 @@ class UploadCycleTest {
      * The one place a cycle is built for these tests, so each test states only what it is about.
      *
      * The defaults live HERE, once and visibly, rather than on `UploadCycle`'s own parameters — that is the
-     * distinction the required-ports rule draws (capability `upload-lifecycle`). A default on the class
+     * distinction the required-ports rule draws (capability `background-upload`). A default on the class
      * lets a *composition root* inherit an unstated policy, which is how the app-driven tier once shipped
      * without the direction gate and nearly shipped without an album denylist. A default in a test
      * helper is an answer stated once, in the file that reads it.
@@ -264,7 +264,7 @@ class UploadCycleTest {
         platform: FakePlatform,
     ): UploadCycle = cycle(backend, platform)
 
-    // ---- The entry gate (capability `upload-lifecycle`) -----------------------------------------------
+    // ---- The entry gate (capability `background-upload`) -----------------------------------------------
     // The three-state membership read, decided HERE rather than in each composition root. A root reaches
     // this decision only for the tiers its author enumerated: the OS-invoked tier gated on `cycleGate`, and
     // the app-driven tier read a two-state `StateFlow` that cannot express "unreadable" — so a failed
@@ -272,7 +272,7 @@ class UploadCycleTest {
 
     @Test
     fun the_publish_carries_the_manifest_version_the_gate_read() = runTest {
-        // The gate reads the version FIRST (capability `upload-lifecycle`); the cycle must hand that same value
+        // The gate reads the version FIRST (capability `background-upload`); the cycle must hand that same value
         // to the publish rather than read a fresher one later, or a change its projection missed could carry
         // a version no higher than its own.
         val seen = mutableListOf<Long>()
@@ -307,7 +307,7 @@ class UploadCycleTest {
         assertNull(platform.discoverPolicyArg, "the library is not walked")
     }
 
-    // ---- Admission (capability `upload-lifecycle`, "The upload cycle owns its entry decision") -------------
+    // ---- Admission (capability `background-upload`, "The upload cycle owns its entry decision") -------------
 
     // ---- Two uploaders over one ledger (decision record `changes/both-uploaders-active`, D2) ---------------
 
@@ -375,7 +375,7 @@ class UploadCycleTest {
     @Test
     fun a_definitively_absent_membership_touches_the_ledger_not_at_all_and_uploads_nothing() = runTest {
         // Not joined is not this cycle's to clean up: the leave that got here cleared the ledger itself
-        // (capability `leave-event`). A row the cycle deleted here would be a row a later join never loads.
+        // (capability `manage-membership`). A row the cycle deleted here would be a row a later join never loads.
         val backend = InMemoryLedgerStore()
         backend.completed(resource("kept-primary.heic", "kept"))
         val platform = FakePlatform(discovered = listOf(resource("A-primary.heic")))
@@ -417,7 +417,7 @@ class UploadCycleTest {
         assertEquals(1, platform.created.size, "left: the SAME cycle instance creates nothing more")
     }
 
-    // ---- The direction gate (capability `upload-lifecycle`) -------------------------------------------
+    // ---- The direction gate (capability `background-upload`) -------------------------------------------
     // It sits at the CHOKE POINT — this function, which every trigger on every tier funnels through — and
     // NOT at the arm's invoker. An invoker-gate is only as sound as its enumeration of invokers, and a new
     // tier invalidates that enumeration silently: D3 of `2026-07-07-add-join-direction-mode` reasoned "the
@@ -451,7 +451,7 @@ class UploadCycleTest {
         assertEquals(CycleResult.SKIPPED, result, "declined, and distinguishable from a drained cycle")
         assertTrue(platform.created.isEmpty(), "no upload job for a membership that contributes nothing")
         // The manifest IS written, and is empty — the honest statement of "I share nothing" (capability
-        // `device-manifest`). Withholding it would leave a stale manifest advertising photos the member
+        // `photo-sharing`). Withholding it would leave a stale manifest advertising photos the member
         // has stopped sharing. The projection is empty because the policy admits nothing, so the manifest
         // still cannot offer bytes that were never uploaded.
         assertTrue("discovery" in order, "an empty device manifest is published")
@@ -470,9 +470,9 @@ class UploadCycleTest {
         decliningCycle(InMemoryLedgerStore(), platform, order).run()
 
         // What the gate withholds is NEW WORK — the walk and job creation. It does not withhold the
-        // statement of what this membership shares (the manifest, capability `device-manifest`). The terminal-job
+        // statement of what this membership shares (the manifest, capability `photo-sharing`). The terminal-job
         // settlement is deliberately not in `order`: acknowledging a job the OS already presented is not
-        // new work, and a declined cycle owes it (capability `upload-lifecycle`).
+        // new work, and a declined cycle owes it (capability `background-upload`).
         assertEquals(listOf("discovery"), order, "the manifest is still published")
         assertNull(platform.discoverPolicyArg, "the library is still never enumerated — that is the cost")
     }
@@ -481,7 +481,7 @@ class UploadCycleTest {
      * A download-only skip is the designed outcome of a setting the member chose — not a fault.
      *
      * This is the contract the inverted gate broke: because `None` carried no capture floor, every
-     * download-only cycle took a "malformed policy" branch and logged at `Error`, and `crash-reporting`
+     * download-only cycle took a "malformed policy" branch and logged at `Error`, and `privacy-security`
      * turns `Error` into an event. One wrong severity became four Bugsink issues and an event on every
      * foreground and every completed upload task, for as long as the membership stayed download-only.
      * Both branches returned `SKIPPED` having touched nothing, which is exactly why the two tests above
@@ -515,7 +515,7 @@ class UploadCycleTest {
     }
 
     /**
-     * The gate bounds new work, not settlement (capability `upload-lifecycle`).
+     * The gate bounds new work, not settlement (capability `background-upload`).
      *
      * Acknowledging a job the OS already presented creates nothing, writes no manifest, enumerates
      * nothing and issues no network call — so a declined cycle still owes it. Measured on iOS 26.6: a
@@ -552,7 +552,7 @@ class UploadCycleTest {
 
     @Test
     fun a_cycle_never_fetches_the_listing_or_resets_the_ledger() = runTest {
-        // The cycle holds no re-join reconciliation (capability `upload-state-reconciliation`): the join
+        // The cycle holds no re-join reconciliation (capability `photo-sharing`): the join
         // loads the ledger, and a cycle reads what it is given. A row it did not judge survives it.
         val backend = InMemoryLedgerStore()
         backend.completed(resource("stored-primary.heic", "stored"))
@@ -607,7 +607,7 @@ class UploadCycleTest {
         // FOREIGN is an asset this device downloaded + imported (in the suppression set). A stale
         // COMPLETED row stands in for a pre-suppression echo: it must never be re-uploaded, and must not
         // be listed to the event. It is no longer PRUNED to achieve that — the echo suppression is an
-        // id set supplied per cycle, so the projection re-applies it (capability `device-manifest`), and
+        // id set supplied per cycle, so the projection re-applies it (capability `photo-sharing`), and
         // the row stays where it belongs: a true record that those bytes are on the backend.
         val backend = InMemoryLedgerStore()
         backend.completed(resource("FOREIGN-primary.heic", "FOREIGN"))
@@ -890,7 +890,7 @@ class UploadCycleTest {
         assertEquals(CycleResult.PROCESSING, result)
         assertEquals(listOf("a", "b"), platform.created.map { it.filename })
         // Every fact the walk produced is durable before any job is created: the un-created remainder holds a
-        // DISCOVERED row, so the platform's job limit loses nothing (capability `ios-photokit-upload`).
+        // DISCOVERED row, so the platform's job limit loses nothing (capability `background-upload`).
         assertEquals(LedgerState.DISCOVERED, backend.get("c")?.state, "the remainder is remembered")
         assertEquals(LedgerState.REQUESTED, backend.get("a")?.state, "what got a job is in flight")
     }
@@ -1014,7 +1014,7 @@ class UploadCycleTest {
         assertTrue(platform.created.isEmpty())
     }
 
-    // ---- Deletion is a presence diff over an authoritative walk (capability `sync-ledger`) ----------------
+    // ---- Deletion is a presence diff over an authoritative walk (capability `photo-sharing`) ----------------
     // The walk is bounded by the policy's capture range and the ledger is device-global, so "not returned"
     // means gone only inside that window and only when the walk is authoritative — the library read under a
     // full grant, or a read selection under a partial one — whatever the row's state.
@@ -1102,7 +1102,7 @@ class UploadCycleTest {
         assertNull(backend.get("gone-video.mov"), "and creates none")
     }
 
-    // ---- A presented job whose row is gone is answered and nothing more (capability `upload-lifecycle`) ----
+    // ---- A presented job whose row is gone is answered and nothing more (capability `background-upload`) ----
 
     @Test
     fun a_withheld_settle_records_nothing_for_a_deleted_row() = runTest {
@@ -1152,7 +1152,7 @@ class UploadCycleTest {
         assertEquals(LedgerState.REQUESTED, backend.get("here-primary.heic")?.state)
     }
 
-    // ---- Under a partial grant the selection is the walk (capability `limited-photo-access`) ---------------
+    // ---- Under a partial grant the selection is the walk (capability `photo-access`) ---------------
 
     @Test
     fun a_read_selection_deletes_the_rows_of_a_de_selected_photo_whatever_their_state() = runTest {
@@ -1229,7 +1229,7 @@ class UploadCycleTest {
         assertEquals(LedgerState.DISCOVERED, backend.get("b-photo.jpg")?.state)
     }
 
-    // ---- A walk re-reads only the assets the ledger does not fully know (capability `sync-ledger`) --------
+    // ---- A walk re-reads only the assets the ledger does not fully know (capability `photo-sharing`) --------
 
     @Test
     fun a_fully_known_asset_is_not_re_read() = runTest {
@@ -1298,7 +1298,7 @@ class UploadCycleTest {
         assertEquals(LedgerState.DISCOVERED, backend.get("a")?.state)
     }
 
-    // ── The publish (capabilities `device-manifest`, `upload-completion-notify`) ─────────────────────
+    // ── The publish (capabilities `photo-sharing`, `receiving-photos`) ─────────────────────
 
     /**
      * Build a cycle whose manifest hook records that it fired, and runs [atPublish] at that moment — so a
@@ -1403,7 +1403,7 @@ class UploadCycleTest {
     @Test
     fun a_slow_publish_is_not_cut_short_by_a_timeout_of_the_cycle() = runTest {
         // The cycle used to bound the publish with a self-chosen 12 s timeout on both tiers; it holds no clock
-        // of its own now (capabilities `ios-app-shell` / `ios-photokit-upload`; `changes/own-work-per-wake`,
+        // of its own now (capabilities `sync-status` / `background-upload`; `changes/own-work-per-wake`,
         // D3/D8) — only the per-request HTTP timeout, which lives in the client, bounds a request.
         val backend = InMemoryLedgerStore()
         backend.inFlight("a-primary.jpg", assetId = "a")
@@ -1451,7 +1451,7 @@ class UploadCycleTest {
         assertEquals(listOf("manifest"), order)
     }
 
-    // ── Capture-date cutoff (capability `photo-selection-policy`) ──────────────────────────────────────────
+    // ── Capture-date cutoff (capability `photo-sharing`) ──────────────────────────────────────────
 
     private fun datedResource(name: String, creationDate: String, assetId: String = name) =
         Resource(
@@ -1498,14 +1498,14 @@ class UploadCycleTest {
     @Test
     fun the_cutoff_is_passed_to_the_platform_as_a_walk_bound() = runTest {
         // The cutoff scopes the platform's own fetch, so a full enumeration does not walk the whole
-        // library (capability `photo-selection-policy`). The cycle's filter below stays authoritative.
+        // library (capability `photo-sharing`). The cycle's filter below stays authoritative.
         val backend = InMemoryLedgerStore()
         val platform = FakePlatform(discovered = emptyList())
 
         cycleWithCutoff(backend, platform, "2026-07-06T14:32:11Z").run()
 
         // The POLICY reaches the platform, not a bound flattened out of it — which is what lets the
-        // fetch predicate be derived by translating the rules (capability `photo-selection-policy`).
+        // fetch predicate be derived by translating the rules (capability `photo-sharing`).
         assertEquals(
             SelectionRule.CaptureAfter(captureCutoff("2026-07-06T14:32:11Z")),
             platform.discoverPolicyArg?.rules?.filterIsInstance<SelectionRule.CaptureAfter>()?.single(),
@@ -1538,7 +1538,7 @@ class UploadCycleTest {
         assertTrue(platform.created.isEmpty(), "an asset with no creationDate is out of scope under a cutoff")
     }
 
-    // ── Origin exclusions (capability `photo-selection-policy`) ────────────────────────────────────────
+    // ── Origin exclusions (capability `photo-sharing`) ────────────────────────────────────────
     // The cutoff bounds WHEN a photo was taken; these bound WHAT it is. Note the existing tests above are
     // unaffected: `resource()` carries no origin facts, and absent facts ADMIT (admit-on-doubt).
 
@@ -1578,7 +1578,7 @@ class UploadCycleTest {
     /**
      * A cycle whose POLICY carries the album exclusion, and a manifest hook recording what the manifest
      * actually saw. The exclusion used to be an injected port on the cycle; it is a rule in the policy now
-     * (capability `photo-selection-policy`), which is why this is `suspend` — the one derivation reads it.
+     * (capability `photo-sharing`), which is why this is `suspend` — the one derivation reads it.
      */
     private suspend fun originCycle(
         backend: InMemoryLedgerStore,
@@ -1588,12 +1588,12 @@ class UploadCycleTest {
     ): UploadCycle = cycle(
         backend, platform,
         // The manifest is now a PROJECTION of the ledger's COMPLETED rows (capability
-        // `device-manifest`), so what it "sees" is read from the ledger at hook time rather than
+        // `photo-sharing`), so what it "sees" is read from the ledger at hook time rather than
         // handed over. These fixtures record COMPLETED rows for the admitted set first, so the
         // projection has something to list — see `completing`.
         // The REAL projection, not the raw rows. These used to agree only because `retainAssets` pruned
         // every row the policy stopped admitting; with the ledger no longer policy-pruned they differ, and
-        // what other members see is the projection (capability `device-manifest`).
+        // what other members see is the projection (capability `photo-sharing`).
         onDiscovery = { _, policy, _ ->
             manifestSaw += projectDeviceManifest("D", backend.manifestRows(), policy)
                 .assets.map { it.assetId }
@@ -1698,7 +1698,7 @@ class UploadCycleTest {
         // id-set exclusions (echo, denylisted album — both supplied per cycle), and cannot re-apply the
         // origin rules, which were decided at upload time.
         //
-        // Consequence, accepted deliberately (capability `sync-ledger`): a row whose asset an origin rule
+        // Consequence, accepted deliberately (capability `photo-sharing`): a row whose asset an origin rule
         // would NOW reject keeps its listing. Reaching that state needs a row written before that rule
         // existed, and every origin rule predates any event that can still be live (≤30-day lifetime).
         // It also lands on the harmless side of this capability's asymmetry — a stray visible photo, not
@@ -1761,7 +1761,7 @@ class UploadCycleTest {
         // the ADMITTED set, which swept a previously-uploaded screenshot — but the same sweep discarded
         // rows for photos that were merely outside the current capture window, and those rows are what
         // suppress re-upload. Narrowing therefore became irreversible, and a download-only membership would
-        // have lost the event's rows entirely (capability `sync-ledger`).
+        // have lost the event's rows entirely (capability `photo-sharing`).
         //
         // What is lost is only the sweep. Reaching this state needs a row written before the screenshot
         // rule existed, and that rule predates any event that can still be live.
@@ -1851,7 +1851,7 @@ class UploadCycleTest {
         )
     }
 
-    // ---- A non-contributor's manifest (capability `device-manifest`) --------------------------------
+    // ---- A non-contributor's manifest (capability `photo-sharing`) --------------------------------
     // The manifest is a FULL-STATE document: a declined cycle publishes the honest statement of what the
     // membership shares, which is nothing.
 
@@ -1880,7 +1880,7 @@ class UploadCycleTest {
 
     @Test
     fun narrowing_then_widening_re_lists_without_re_uploading() = runTest {
-        // The round trip the whole change is for (capabilities `reconfigure-membership`, `sync-ledger`).
+        // The round trip the whole change is for (capabilities `manage-membership`, `photo-sharing`).
         // A member shares a photo, raises their cutoff past it, then lowers it back. The listing must go
         // and come back, and the bytes must not move twice.
         val backend = InMemoryLedgerStore()

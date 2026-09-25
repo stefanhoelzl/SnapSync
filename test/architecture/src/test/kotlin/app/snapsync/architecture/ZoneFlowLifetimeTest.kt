@@ -4,8 +4,8 @@ import kotlin.test.Test
 import kotlin.test.assertTrue
 
 /**
- * **A trigger flow never outlives its own run** (capability `architecture-guards`; law:
- * `module-architecture`). A flow coordinates the work an OS callback caused, and its caller is a shell
+ * **A trigger flow never outlives its own run** (`docs/architecture.md`; law:
+ * `docs/architecture.md`). A flow coordinates the work an OS callback caused, and its caller is a shell
  * that reports completion back to the operating system. A flow that detaches work returns before that
  * work starts, so the shell's report is a false statement about work it never observed — and iOS is
  * entitled to suspend the process on the strength of it. Measured in SNAPSYNC-6: `← onSilentPush (18ms)`
@@ -24,7 +24,7 @@ import kotlin.test.assertTrue
  *
  * The transcriber is the third enforcement — `coroutineScope { launch { … } }` is in the closed flow
  * grammar and an escaping `scope.launch` is not, so a detaching flow also fails diagram generation
- * (capability `architecture-diagrams`).
+ * (`docs/architecture.md`).
  *
  * A third rule sits beside the two doors: a flow's concurrent children are ISOLATED — one that throws cancels
  * none of its siblings. A bare `coroutineScope { launch … }` does not isolate (the foreground pump's throw

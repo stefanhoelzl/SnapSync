@@ -2,7 +2,7 @@ package app.snapsync.ports
 
 /**
  * Whether the photo library has changed since an earlier moment — the one question the app process's walk memo
- * asks before it answers a walk without enumerating the library (capability `sync-ledger`, "An unchanged library
+ * asks before it answers a walk without enumerating the library (capability `photo-sharing`, "An unchanged library
  * is answered from the walk memo").
  *
  * Named for that need rather than for the platform object behind it: on iOS a token is

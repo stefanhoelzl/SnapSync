@@ -26,7 +26,7 @@ import kotlin.test.Test
 
 /**
  * The attestation doubles and the protected-storage double, held to the contracts their real implementations
- * satisfy (capability `port-contracts`). Each double is built at its DEFAULTS for the state, never with a knob
+ * satisfy (`docs/architecture.md`). Each double is built at its DEFAULTS for the state, never with a knob
  * turned to make a clause pass: a double the contract catches lying is fixed in the double.
  */
 class AttestContractBindingsTest {

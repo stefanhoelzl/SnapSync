@@ -5,7 +5,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 /**
- * The executable half of the transport-binding pin (capability `architecture-guards`, "The simulator
+ * The executable half of the transport-binding pin (`docs/architecture.md`, "The simulator
  * transport binding is asserted where it can be executed").
  *
  * `:test:architecture`'s `TransferSessionBindingTest` reads the two actuals as **source text**, because the

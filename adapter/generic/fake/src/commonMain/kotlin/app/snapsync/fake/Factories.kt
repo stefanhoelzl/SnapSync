@@ -31,7 +31,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
  * **The honest doubles' only public surface: a factory per port, returning the PORT type**
- * (capability `architecture-guards`; law `module-architecture` "The module set withholds").
+ * (`docs/architecture.md`; law `docs/architecture.md` "The module set withholds").
  *
  * The implementations behind these functions are `internal`. `internal` is module-scoped, so
  * `:test:world` — a different module — cannot name them, cannot widen them, and cannot reach a

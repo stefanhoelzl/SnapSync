@@ -14,7 +14,7 @@ enum class ImportedAssetPresenceState {
 }
 
 /**
- * What every [ImportedAssetPresence] promises (capability `port-contracts` — this list IS the specification of
+ * What every [ImportedAssetPresence] promises (`docs/architecture.md` — this list IS the specification of
  * the port's obligations).
  *
  * `ABSENT` is an instruction: the download controller clears an unconfirmed import's marker on it, and a second

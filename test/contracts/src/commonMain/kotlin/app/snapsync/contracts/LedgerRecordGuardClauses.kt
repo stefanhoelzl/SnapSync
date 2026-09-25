@@ -25,7 +25,7 @@ import kotlinx.coroutines.test.runCurrent
 internal const val CREATION_DATE = "2026-06-27T10:00:00Z"
 
 /**
- * The guarded and pruning writes of the storage seam (capability `sync-ledger`): a record never overwrites a
+ * The guarded and pruning writes of the storage seam (capability `photo-sharing`): a record never overwrites a
  * settled row, and `deleteKeys` deletes exactly the rows it names. Part of [LedgerStoreContract]'s clause
  * list — a split for size only — so every [LedgerStore] binding runs these once. The helpers below are shared
  * with the other two parts.
@@ -196,4 +196,4 @@ internal fun res(key: String = "cloud-1-ios.photo.heic", assetId: String = key) 
     data = Unit,
 )
 
-// ── the record guard (capability `sync-ledger`, "Record operations") ──────────────────────────
+// ── the record guard (capability `photo-sharing`, "Record operations") ──────────────────────────

@@ -15,7 +15,7 @@ import platform.Photos.PHAssetResource
 
 /*
  * The upload-job seam and the fixture reads, recorded inside the upload extension and replayed on every CI build
- * (capability `port-contracts`). One file, so the recorder and the replayer cannot spell a call differently.
+ * (`docs/architecture.md`). One file, so the recorder and the replayer cannot spell a call differently.
  *
  * Every input a clause's poll reads is here — the job API's answers and what the upload receiver says landed — so a
  * replay answers each poll in recorded order and stops where the device stopped.

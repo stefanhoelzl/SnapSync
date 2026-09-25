@@ -21,7 +21,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 
 /**
- * The world side of the inbound-port contracts' bindings (capability `port-contracts`): enter a named state over a
+ * The world side of the inbound-port contracts' bindings (`docs/architecture.md`): enter a named state over a
  * fresh [World], and adapt that world to the contract's observation handle. The bindings themselves live in the
  * platform test source sets, because a binding states its host as a literal; both call this, so the JVM and the
  * simulator enter every state the same way.

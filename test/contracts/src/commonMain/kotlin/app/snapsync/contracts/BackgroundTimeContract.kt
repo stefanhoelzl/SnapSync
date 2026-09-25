@@ -10,8 +10,8 @@ enum class BackgroundTimeState {
 }
 
 /**
- * What the app's background time promises the core (capability `port-contracts` — this list IS the specification;
- * spec `module-architecture`, "Background time is an outbound port named for the need").
+ * What the app's background time promises the core (`docs/architecture.md` — this list IS the specification;
+ * `docs/architecture.md`, "Background time is an outbound port named for the need").
  *
  * **What is contracted, and what cannot be.** Every clause here runs on the one state a real host presents to a
  * binding: a running app whose time is not up (the simulator app, in the foreground the rig drives). There, the
@@ -22,7 +22,7 @@ enum class BackgroundTimeState {
  * Deliberately **no expiry clause**: no host lets a binding enter "time is up". The operating system fires a
  * background task's expiration handler only after the app has been in the background for as long as it allows,
  * which takes the process under test away from the rig that drives it, and no API lets a process expire its own
- * time. A clause only the in-memory double could reach may not exist (`port-contracts`, "Every clause runs against
+ * time. A clause only the in-memory double could reach may not exist (`docs/architecture.md`, "Every clause runs against
  * a real implementation on some host"), so the expiry behaviour — the handler invoked once and returning at once,
  * the hold NOT ended by the expiry, a refusal reported as an immediate expiry — lives in `IosBackgroundTime`'s
  * documentation and its own tests over its operating-system seam, and the core's reaction to an expiry is tested

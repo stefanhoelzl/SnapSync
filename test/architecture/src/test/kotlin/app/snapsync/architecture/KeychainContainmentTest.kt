@@ -4,7 +4,7 @@ import kotlin.test.Test
 import kotlin.test.assertTrue as kotlinAssertTrue
 
 /**
- * **All Keychain access lives in `:adapter:ios:ext-safe`** (capability `architecture-guards`).
+ * **All Keychain access lives in `:adapter:ios:ext-safe`** (`docs/architecture.md`).
  *
  * This is one half of a two-part proof. Containment (here) says every `SecItem*` call is in one module;
  * that module's own tests say every query it builds carries `kSecAttrAccessibleAfterFirstUnlock`.

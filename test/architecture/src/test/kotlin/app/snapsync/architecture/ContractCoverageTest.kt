@@ -7,7 +7,7 @@ import kotlin.test.fail
 
 /**
  * **Every port-contract clause runs against a real implementation on some host** (capability
- * `architecture-guards`, "The contract-coverage gate"; the rule itself: `port-contracts`, "Every clause runs
+ * `docs/architecture.md`, "The contract-coverage gate"; the rule itself: `docs/architecture.md`, "Every clause runs
  * against a real implementation on some host").
  *
  * A clause only the honest fake ever runs looks verified while nothing has compared it with reality. So the

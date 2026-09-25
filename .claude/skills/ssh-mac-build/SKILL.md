@@ -131,8 +131,7 @@ The upload host is **compile-time** (PhotoKit forces it), so this needs a rebuil
 `Deployment.plist` is copied into **both** bundles, so one re-resolve covers the app and the extension.
 
 🚫 **`BACKGROUND_UPLOAD_URL_BASE=` on the xcodebuild line does nothing.** It has not worked since the
-device-facing values moved out of the xcconfig into that bundled resource (capability
-`deployment-configuration`) — an `xcodebuild` build setting cannot substitute into a resource file. The
+device-facing values moved out of the xcconfig into that bundled resource (`docs/deployment.md`) — an `xcodebuild` build setting cannot substitute into a resource file. The
 override is **accepted and ignored**, and the build silently bakes the *production* host instead. Do not
 reach for it.
 
@@ -179,7 +178,7 @@ channel) in **both** directions or nothing uploads, silently — load `local-bac
 `ios.yml` carries a `workflow_dispatch`: it archives Release and delivers the branch to internal
 TestFlight, which is the route to a phone with no cable. It does not replace this loop — it produces no
 IPA you can sideload, and a TestFlight build carries no control channel — but it is the way to get a
-DSN-carrying build onto a device (capability `ios-ci`).
+DSN-carrying build onto a device (`docs/deployment.md`).
 
 ## Provisioning profiles
 

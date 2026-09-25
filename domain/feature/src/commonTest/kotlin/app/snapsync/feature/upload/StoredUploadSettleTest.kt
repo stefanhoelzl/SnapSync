@@ -18,7 +18,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 
 /**
- * The foreground settle (capability `upload-state-reconciliation`, "Foreground settles in-flight rows the backend
+ * The foreground settle (capability `photo-sharing`, "Foreground settles in-flight rows the backend
  * already stores"): a `REQUESTED` row whose bytes the per-device listing names becomes `COMPLETED`, through the
  * guarded terminal write, and nothing else changes — whatever the listing says or fails to say.
  */

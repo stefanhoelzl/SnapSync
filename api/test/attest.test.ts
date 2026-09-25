@@ -13,7 +13,7 @@ import {
 import { type Config, readConfig } from "../src/config.ts";
 import { ATTESTATION_SAMPLE } from "./fixtures/attestation-sample.ts";
 
-// The gate (capability `device-attestation`). app.test.ts wraps `createApp` so every request carries a
+// The gate (capability `privacy-security`). app.test.ts wraps `createApp` so every request carries a
 // token — it proves the gate does not BREAK the routes. This file uses the app RAW, and proves the gate
 // is actually there: that an unauthenticated caller gets nothing, reveals nothing, and writes nothing.
 
@@ -204,11 +204,11 @@ Deno.test("challenge: ours is valid inside its window, invalid outside it, and f
 // ── The gate ──────────────────────────────────────────────────────────────────────────────────────
 
 // The GATED routes. `GET /events/<id>` and `GET /events/<id>/files` are NOT here: they were moved off the
-// gate (capability `web-event-download`) so the no-app download page can read them un-attested — see the
+// gate (capability `event-site`) so the no-app download page can read them un-attested — see the
 // "served without a token" tests below. Every WRITE, and the per-device raw listing, stays gated.
 const GATED: [string, RequestInit][] = [
   ["/api/v1/events", { method: "POST", body: JSON.stringify({ name: "x" }) }],
-  // The rename (capability `event-rename`) lands on the SAME path shape as the ungated marker read, so
+  // The rename (capability `manage-membership`) lands on the SAME path shape as the ungated marker read, so
   // it is the closest call in this list: only the `publicRead` method check separates them. Pinned here
   // so relaxing that check can never silently open a write.
   [`/api/v1/events/${E}`, { method: "PATCH", body: JSON.stringify({ name: "x" }) }],
@@ -235,7 +235,7 @@ Deno.test("gate: EVERY route refuses an unauthenticated request, and touches no 
 
 Deno.test("gate: EVERY route accepts a valid token", async () => {
   // The config route additionally requires an ATTESTATION RECORD, and answers 401 without one
-  // (capability `device-attestation`). That is a route-level refusal, not the gate's — enrol the device
+  // (capability `privacy-security`). That is a route-level refusal, not the gate's — enrol the device
   // so this test keeps asserting what it is about: that a valid token is never rejected by the GATE.
   // In a store of its OWN: enrolling into the shared one would leak into the "never attested" tests below
   // and make them pass for the wrong reason.
@@ -264,7 +264,7 @@ Deno.test("gate: an expired token is refused like no token at all", async () => 
 });
 
 Deno.test("gate: the event marker and union reads are served WITHOUT a token", async () => {
-  // Capability `web-event-download`: these two reads are authorized by eventId-possession alone, so the
+  // Capability `event-site`: these two reads are authorized by eventId-possession alone, so the
   // no-app download page (a browser with no attestation) can fetch them. A missing event is a 404, not a
   // 401 — existence-probing by a tokenless caller is the accepted, eyes-open consequence of opening them.
   const { app: a } = app(); // no marker → the event does not exist
@@ -276,7 +276,7 @@ Deno.test("gate: the maintenance window is answered BEFORE this gate", async () 
   // Ordering, pinned where the closed list lives — because this gate's contract is "every route needs a
   // token except these", and a 503 that pre-empts it is a second thing that answers before a handler.
   // It is not an addition to the ungated set: `/api/*` stays gated, it simply stops earlier while a
-  // deploy window is open (capability `backend-deployment`).
+  // deploy window is open (`docs/deployment.md`).
   const { calls, fetchImpl } = recorder();
   const open = createApp({
     config: { ...CONFIG, maintenance: true },
@@ -310,7 +310,7 @@ Deno.test("gate: the maintenance window is answered BEFORE this gate", async () 
 
 Deno.test("gate: /health is served WITHOUT a token, and only at the root", async () => {
   // The ungated set is a CLOSED LIST, so its members are pinned in BOTH directions. `/health` is the
-  // deploy probe's target (capability `backend-deployment`): a probe cannot hold a device token, and
+  // deploy probe's target (`docs/deployment.md`): a probe cannot hold a device token, and
   // requiring one would make the probe prove attestation rather than boot.
   const { app: a } = app();
   const res = await a.request("/health");
@@ -347,7 +347,7 @@ Deno.test("gate: opening the reads opens no WRITE — mutating /events/<id>/… 
   assertEquals((await a.request(`/api/v1/events/${E}`, { method: "POST" })).status, 401);
   assertEquals((await a.request(`/api/v1/events/${E}/files`, { method: "POST" })).status, 401);
   // …and so is the rename, which is a real handler on exactly the ungated read's path (capability
-  // `event-rename`). Reading an event un-attested must never imply renaming it.
+  // `manage-membership`). Reading an event un-attested must never imply renaming it.
   assertEquals(
     (await a.request(`/api/v1/events/${E}`, {
       method: "PATCH",
@@ -360,11 +360,11 @@ Deno.test("gate: opening the reads opens no WRITE — mutating /events/<id>/… 
   assertEquals((await a.request(`/api/v1/files/devices/${D}`)).status, 401);
 });
 
-// ── The retired notify admin key (capabilities `event-notify-endpoint`, `backend-deployment`) ─────────
+// ── The retired notify admin key (capabilities `event-notify-endpoint`, `docs/deployment.md`) ─────────
 //
 // A valid device token is now the ONLY credential this backend accepts. The former ADMIN_NOTIFY_KEY
 // existed solely so the out-of-edge sweep could announce an expiring event before deleting it; that
-// announcement is gone (capability `scheduled-cleanup`), so the credential was retired rather than left
+// announcement is gone (capability `event-lifetime`), so the credential was retired rather than left
 // standing as an authorization path with no caller. These pin that it authorizes NOTHING.
 
 Deno.test("gate: notify with no device token is refused 401, reading nothing", async () => {
@@ -417,7 +417,7 @@ Deno.test("gate: OPTIONS is answered without a token (the pull zone may answer i
 Deno.test("gate: the marketing page at / is served without a token", async () => {
   const { calls, app: a } = app({ "site/index.html": "<!doctype html>hi" });
   const res = await a.request("/");
-  assertEquals(res.status, 200); // NOT 401 — `marketing-site` is on the closed ungated list
+  assertEquals(res.status, 200); // NOT 401 — `web-site` is on the closed ungated list
   // It is admitted without a token and served by proxying the PUBLIC `site/` prefix (capability
   // `web-site`) — exactly one storage GET, of the public page, never the gated user data.
   assertEquals(calls.length, 1);
@@ -440,7 +440,7 @@ Deno.test("gate: the event link's AASA is served without a token", async () => {
   const { calls, app: a } = app();
   const res = await a.request("/.well-known/apple-app-site-association");
   // NOT 401 — Apple's CDN and the device fetch this with no Authorization header and cannot be made to
-  // send one, so gating it would silently defeat EVERY event link (capability `event-link`).
+  // send one, so gating it would silently defeat EVERY event link (capability `join-event`).
   assertEquals(res.status, 200);
   assertEquals(calls.length, 0); // and serving it reads no storage
 });
@@ -478,7 +478,7 @@ Deno.test("gate: a gated GET is never cacheable (the pull zone does not vary on 
   assertEquals(res.headers.get("Cache-Control"), "no-store, no-cache, max-age=0");
 });
 
-// ── The versioned prefix (capability `backend-deployment`) ──────────────────────────────────────────
+// ── The versioned prefix (`docs/deployment.md`) ──────────────────────────────────────────
 //
 // Device-API routes are served under `/api/v1` — the shape every gate test above already exercises. The
 // gate normalizes the `/api/vN` prefix before its closed-list checks, so the one ungated set that IS a
@@ -521,7 +521,7 @@ Deno.test("attest: a stale challenge mints no token and stores no key", async ()
   assertEquals(calls.length, 0);
 });
 
-/** `/api/v2` sits behind the version gate, so every v2 request names a version it serves (capability `min-app-version`). */
+/** `/api/v2` sits behind the version gate, so every v2 request names a version it serves (capability `app-update-required`). */
 const V2 = { "x-snapsync-app-version": "99.0" };
 
 Deno.test("attest: under v2 a stale challenge is 409, never the 401 that means 'drop your token'", async () => {
@@ -638,7 +638,7 @@ Deno.test("config: a device with no attestation on file is refused, and nothing 
 Deno.test("leave: the departing device's record + attestation are RETAINED (no leave-time GC)", async () => {
   // Leaving is non-destructive: it marks the membership `departed` and returns 200, touching neither the
   // device's push registration nor its attestation — one row now holds both. A fully-orphaned device is collected only by the nightly sweep
-  // (capability `scheduled-cleanup`), never by leave — which is what lets a device rejoin, or join a
+  // (capability `event-lifetime`), never by leave — which is what lets a device rejoin, or join a
   // different event, without re-attesting.
   const db = await emptyStore();
   const E2 = "7a3f9c21-0000-4000-8000-0000000000ee";

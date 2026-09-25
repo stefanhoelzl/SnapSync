@@ -9,11 +9,11 @@ plugins {
     // which is what lets the rig hold no tests. A rig-side DTO was the alternative and was rejected
     // for exactly that reason.
     alias(libs.plugins.kotlin.serialization)
-    // Coverage measurement (capability `coverage-bounds`). Applied here rather than in a
+    // Coverage measurement (`docs/architecture.md`). Applied here rather than in a
     // `subprojects {}` block so the instrumented set is readable per module.
     alias(libs.plugins.kover)
 }
-// Coverage (capability `coverage-bounds`). `:ui:screens`' tests drive the container host
+// Coverage (`docs/architecture.md`). `:ui:screens`' tests drive the container host
 // that lives here.
 //
 // The report is filtered back to this module's OWN classes. The crediting edge itself is
@@ -48,7 +48,7 @@ kotlin {
             commonMain { kotlin.srcDir("src/forge/kotlin") }
             // Gated WITH its source, not left behind. `ForgeStatusHostTest` asserts the presets drive the
             // real reduction to the frames they claim — which is the property the App Store listing rests
-            // on (`ios-appstore-metadata`), so it must run wherever the presets compile.
+            // on (`docs/deployment.md`), so it must run wherever the presets compile.
             commonTest { kotlin.srcDir("src/forgeTest/kotlin") }
         }
         commonMain.dependencies {
@@ -59,7 +59,7 @@ kotlin {
             // The create-event seams (CreationStatusSource/EventCreator) folded into the reduction and
             // the container's constructor — so they surface in this module's API.
             api(libs.orbit.core)
-            // Capability `photo-selection-policy`: LocalDateTime appears in CutoffFormatter's signature (used
+            // Capability `photo-sharing`: LocalDateTime appears in CutoffFormatter's signature (used
             // by the join screen in :ui:screens), so it is part of this module's API.
             api(libs.kotlinx.datetime)
             // `@Serializable` on `UiState` (see the plugin note above). `:domain` keeps its own
@@ -74,7 +74,7 @@ kotlin {
     }
 }
 
-// ---- Coverage bounds (capability `coverage-bounds`) ---------------------------------------------
+// ---- Coverage bounds (`docs/architecture.md`) ---------------------------------------------
 //
 // A FLOOR on this module's coverage, seeded at what the tree measured when the gate landed, and
 // permitted to move in one direction only: UP. The destination is full coverage, and these numbers
@@ -83,7 +83,7 @@ kotlin {
 // RAISING a bound is ordinary work - do it in the change that makes it true. LOWERING one requires a
 // stated forcing proof in that change's description, naming what makes the loss of coverage
 // unavoidable. Nothing checks this: it is a ratchet carried by this paragraph and by review, and it
-// is deliberately NOT a proof. `complexity-budgets` carries the same contract at the opposite
+// is deliberately NOT a proof. `docs/architecture.md` carries the same contract at the opposite
 // polarity - a ceiling that may only fall.
 //
 // TWO RULES, because they fail on different things. The aggregate catches a broad slide that leaves

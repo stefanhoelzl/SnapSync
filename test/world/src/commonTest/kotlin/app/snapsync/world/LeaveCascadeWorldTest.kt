@@ -10,7 +10,7 @@ import kotlin.test.assertTrue
  * The event-leave behavior over the world's real mini-edge (`DELETE /events/<id>/devices/<id>`):
  * RENAME-ONLY (capability `event-leave-endpoint`). Leaving marks the device departed and nothing else —
  * no last-member reap, no byte/config GC; the event survives until it expires and the nightly sweep
- * (capability `scheduled-cleanup`) reclaims it. Asserts api/world outcomes on the [BackendStore] the
+ * (capability `event-lifetime`) reclaims it. Asserts api/world outcomes on the [BackendStore] the
  * real seam drives.
  */
 class LeaveCascadeWorldTest {
@@ -94,7 +94,7 @@ class LeaveCascadeWorldTest {
         assertTrue(w.store.isDeparted(e, w.ownDeviceId)) // departed, but manifest + bytes persist
 
         // Re-scan the same event → re-join: reconcile seeds the already-stored bytes COMPLETED, so the
-        // next cycle uploads NOTHING (the bytes are already in storage; see `upload-state-reconciliation`).
+        // next cycle uploads NOTHING (the bytes are already in storage; see `photo-sharing`).
         // The backend's fresh-manifest-supersedes-.left.json path is covered by the backend unit tests.
         w.provision(e)
         val createdBefore = w.platform.created.size

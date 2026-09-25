@@ -7,7 +7,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * The cycle's **entry gate** over the real stack (capability `upload-lifecycle`, and `event-link`'s
+ * The cycle's **entry gate** over the real stack (capability `background-upload`, and `join-event`'s
  * *An unreadable config is not an absent config*): the real `UploadCycle`, ledger and mini-edge, driven through the
  * control protocol, with only the membership read forced (`membership/unreadable`).
  *

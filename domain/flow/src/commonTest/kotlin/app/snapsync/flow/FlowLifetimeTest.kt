@@ -10,7 +10,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * **A trigger flow never outlives its own run** (law: `module-architecture`), from the behaviour side.
+ * **A trigger flow never outlives its own run** (law: `docs/architecture.md`), from the behaviour side.
  *
  * The zone gate pins the *shape* — no `CoroutineScope`, no non-suspend `Unit` lambda — and the flow
  * transcriber pins the *grammar*. Neither can see whether `run()` actually waits, which is the property

@@ -9,7 +9,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * The in-memory token copy (capability `device-attestation`): what it saves, and — the part that matters —
+ * The in-memory token copy (capability `privacy-security`): what it saves, and — the part that matters —
  * that it never serves a token this process has replaced, and that a write by the OTHER process is seen at
  * every re-read. The contract clauses themselves (read-back, clear keeps the keyId) are run against the
  * cached composition in `AttestContractBindingsTest`.

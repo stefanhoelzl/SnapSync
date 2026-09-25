@@ -1,4 +1,4 @@
-// The DEPLOYED store's driver (capability `database`): the `Db` port over bunny Database's libSQL HTTP
+// The DEPLOYED store's driver (`docs/architecture.md`): the `Db` port over bunny Database's libSQL HTTP
 // API. Imported ONLY by `main.ts`, so it is the sole module that speaks to a remote database.
 //
 // The `/web` entry point is deliberate: it is the fetch-based build, with no Node filesystem or socket
@@ -15,9 +15,14 @@ import type { Db, Row, Statement } from "./db.ts";
 /**
  * Build the deployed `Db`. Constructing the client performs no I/O, so a bad URL surfaces on the first
  * statement — which the boot probe issues before the deploy is called green (capability
- * `backend-deployment`).
+ * `docs/deployment.md`).
  */
 export function libsqlDb(url: string, authToken: string): Db {
+  // No `PRAGMA foreign_keys = ON` here, unlike `dev/db-sqlite.ts`: measured on the deployed
+  // store, it defaults to `1` (unlike stock SQLite), rejects violations bare and inside a batch,
+  // and persists across requests. Nothing asserts it (the health probe deliberately does not);
+  // re-measure if the store is re-provisioned. See openspec/changes/archive/
+  // 2026-08-25-record-uploads-in-database (PROBE-FINDINGS.md §4.1).
   const client = createClient({ url, authToken });
 
   // libSQL's `Transaction` carries the same `execute`/`batch` surface as the client, so one adapter

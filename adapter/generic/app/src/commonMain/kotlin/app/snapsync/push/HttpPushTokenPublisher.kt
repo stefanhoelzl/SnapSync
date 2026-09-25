@@ -31,7 +31,7 @@ internal fun deviceConfigJson(token: ApnsPushToken): String =
  * <host>/devices/<deviceId>` with `{ pushToken: { kind: "apns", token, env } }`. String/JSON-building only —
  * no crypto, and **no event id** (the token is device-scoped, event-independent).
  *
- * [deviceId] is a **supplier**, as every other backend client takes it (capability `device-identity`): a
+ * [deviceId] is a **supplier**, as every other backend client takes it (capability `photo-sharing`): a
  * value resolved at construction could not be retried on a host whose secure store could not yet serve it.
  */
 class HttpPushTokenPublisher(

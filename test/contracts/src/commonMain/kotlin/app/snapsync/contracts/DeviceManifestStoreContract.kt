@@ -17,7 +17,7 @@ enum class DeviceManifestStoreState {
 }
 
 /**
- * What the last-uploaded manifest record promises (capability `port-contracts`; the port's own KDoc
+ * What the last-uploaded manifest record promises (`docs/architecture.md`; the port's own KDoc
  * carries why). It is a skip-if-unchanged **cache**: `null` means "rewrite the manifest", which costs one
  * idempotent PUT, so an unreachable store degrades to `null` and to writes that go nowhere — it never
  * raises into the upload cycle. The dangerous direction is a STALE non-null, which suppressed the rewrite

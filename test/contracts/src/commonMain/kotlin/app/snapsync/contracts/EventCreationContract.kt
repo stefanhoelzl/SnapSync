@@ -13,7 +13,7 @@ enum class EventCreationState {
 }
 
 /**
- * What creating an event promises (capability `port-contracts` — this list IS the specification of the port's
+ * What creating an event promises (`docs/architecture.md` — this list IS the specification of the port's
  * obligations). The client reads EVERY `400` as `InvalidName`, so each refusal clause asserts that the edge
  * refuses, spelt the only way the port can say it.
  */

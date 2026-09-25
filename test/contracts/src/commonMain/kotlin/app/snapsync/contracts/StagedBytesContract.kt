@@ -19,7 +19,7 @@ enum class StagedBytesState {
 }
 
 /**
- * What staged downloaded bytes promise (capability `port-contracts`; the port's KDoc carries why).
+ * What staged downloaded bytes promise (`docs/architecture.md`; the port's KDoc carries why).
  *
  * The obligations are the ones a lost photo would turn on: an unavailable root **refuses** rather than
  * naming a directory the release side cannot find; release is idempotent and tolerates missing files; and

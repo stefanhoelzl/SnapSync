@@ -11,7 +11,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * The capture-range resolution rules, tested **directly** (capability `photo-selection-policy`).
+ * The capture-range resolution rules, tested **directly** (capability `photo-sharing`).
  *
  * They live beside the reduction that calls them: the resolution decides what a join or a reconfigure
  * would COMMIT, which is a presentation concern, not a rendering one.
@@ -172,7 +172,7 @@ class RangeResolutionTest {
         val form = RangeForm()
         val counted = form.resolve(windowStart, windowEnd, nowInside, true, ::stubCutoff, shareCount = ShareCount.Ready(0))
         val absent = form.resolve(windowStart, windowEnd, nowInside, true, ::stubCutoff, shareCount = ShareCount.Unavailable)
-        // Absent and zero are different answers and stay distinguishable (capability `join-share-count`).
+        // Absent and zero are different answers and stay distinguishable (capability `join-event`).
         assertEquals(ShareCount.Ready(0), counted.shareCount)
         assertEquals(ShareCount.Unavailable, absent.shareCount)
     }

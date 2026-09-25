@@ -5,8 +5,8 @@ import kotlin.test.Test
 import kotlin.test.assertTrue
 
 /**
- * **A selection policy is built by its one derivation, nowhere else** (capability `architecture-guards`;
- * law: `photo-selection-policy`).
+ * **A selection policy is built by its one derivation, nowhere else** (`docs/architecture.md`;
+ * law: `photo-sharing`).
  *
  * `SelectionPolicy` is a conjunction of rules that asserts nothing about its contents — the capture floor
  * included. That is deliberate: the invariant *a contributing membership always carries a capture floor*
@@ -69,7 +69,7 @@ class SelectionPolicyConstructionTest {
                         "policy is built by `selectionRulesFor`, which is what guarantees a contributing " +
                         "membership carries its capture floor — a hand-assembled rule list can omit it, " +
                         "and a floorless policy is an unbounded library walk (capability " +
-                        "`photo-selection-policy`)."
+                        "`photo-sharing`)."
                 }
             }
         ZoneGates.assertNoViolations("selection-policy-construction", violations)

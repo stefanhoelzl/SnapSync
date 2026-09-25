@@ -18,11 +18,11 @@ import kotlinx.coroutines.withTimeoutOrNull
 private const val LISTING_TIMEOUT_MS = 15_000L
 
 /**
- * The join-time load (capability `upload-state-reconciliation`, "A join loads the ledger from the per-device
+ * The join-time load (capability `photo-sharing`, "A join loads the ledger from the per-device
  * listing"): at a provision into a **new** membership — a first join or a switch, never a re-provision of
  * the joined event — make the upload ledger this membership's share set.
  *
- * The ledger is the current membership's share set (capability `sync-ledger`), so a new membership starts
+ * The ledger is the current membership's share set (capability `photo-sharing`), so a new membership starts
  * with **nothing from before it**. On a confirmed listing the ledger becomes exactly the device's stored
  * resources, one bare `COMPLETED` row each, in one atomic `resetTo` — so nothing the backend already holds
  * is uploaded again, whichever event it was stored for. On a failed or timed-out listing it becomes empty.

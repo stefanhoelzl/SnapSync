@@ -10,7 +10,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * The device manifest's App-Group persistence (capability `device-manifest`).
+ * The device manifest's App-Group persistence (capability `photo-sharing`).
  *
  * This file used to describe itself as untestable, and that was true only while it resolved the
  * container itself: a Kotlin/Native test binary has no `application-groups` entitlement, so the

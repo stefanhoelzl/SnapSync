@@ -11,7 +11,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /**
- * The app-driven tier's outcome decisions (capability `ios-url-session-upload`) — the symmetric
+ * The app-driven tier's outcome decisions (capability `background-upload`) — the symmetric
  * counterpart of `PhotoKitJobMappingTest`.
  *
  * The `taskDescription = null` case below is the same kind of guard the PhotoKit tests carry: it is a

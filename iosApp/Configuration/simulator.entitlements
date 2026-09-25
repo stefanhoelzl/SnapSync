@@ -15,7 +15,7 @@
      delegate (SBMainWorkspace)") — measured in the UNPREFIXED form, in the correctly PREFIXED
      `E9Z8BADH58.app.snapsync.shared` form, on an ad-hoc signature, AND when signed with the real
      "Apple Development" identity with the full repo entitlements expanded. That is why the device id
-     resolves through a per-target `SecureStore` binding (capability `device-identity`; the
+     resolves through a per-target `SecureStore` binding (capability `photo-sharing`; the
      iosSimulatorArm64 actual is an App-Group file store) rather than through the shared Keychain group
      here. `RuntimeIdentityTest` asserts this key stays absent, so "add the missing entitlement" cannot
      be applied as a fix to the mystery it would cause.

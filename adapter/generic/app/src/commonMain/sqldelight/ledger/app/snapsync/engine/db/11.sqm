@@ -1,4 +1,4 @@
--- v11 -> v12: the manifest version (capability `sync-ledger`, "The manifest version orders the device's
+-- v11 -> v12: the manifest version (capability `photo-sharing`, "The manifest version orders the device's
 -- manifest snapshots"; decision record `changes/manifest-versions`).
 --
 -- ROW-PRESERVING: one new table and three triggers, and not one `ledgerRow` row is read or written, so an

@@ -5,7 +5,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * **State reached from OS callbacks is confined** (capability `module-architecture`; decision record
+ * **State reached from OS callbacks is confined** (`docs/architecture.md`; decision record
  * `harden-seam-bug-classes`, D12).
  *
  * A class that receives OS callbacks is reached from threads it does not choose — a URLSession delegate queue, a

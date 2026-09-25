@@ -34,11 +34,11 @@ import app.snapsync.ui.components.StatusIndicator
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
-// Event creation (capability `event-creation-ui`): the name/date form, its in-flight state, and the
+// Event creation (capability `create-event`): the name/date form, its in-flight state, and the
 // rename failure vocabulary the heading dialog reports.
 
 /**
- * The create-event landing layer (event-creation-ui) — the app's front door for a HOST, brought to the
+ * The create-event landing layer (create-event) — the app's front door for a HOST, brought to the
  * same design language as the join gate. It reads as an invitation being *authored*: the compact host
  * header (the real app mark + "HOST AN EVENT" eyebrow + title + one warm line) leads, then the one
  * question the surface asks — what is it called — with the name field answering it, then the event's
@@ -115,10 +115,10 @@ internal fun CreateEventScreen(
                 from = from,
                 until = until,
                 rangeLabel = { f, u -> appRangeLabel(f, u) },
-                // The live humanized duration hint (capability `event-creation-ui`), e.g. "Event lasts 5 days".
+                // The live humanized duration hint (capability `create-event`), e.g. "Event lasts 5 days".
                 durationLabel = { f, u -> "Event lasts ${cutoff.humanizedDuration(f, u)}" },
                 // The truthfulness line: this window is the event's capture-date bound
-                // (capability `photo-selection-policy`) — stated once, where it is set.
+                // (capability `photo-sharing`) — stated once, where it is set.
                 note = "Only photos taken during this window are shared — the range every guest starts from.",
                 onRangeChange = { f, u -> from = f; until = u },
             )
@@ -143,7 +143,7 @@ internal fun CreateEventScreen(
 }
 
 /**
- * The in-flight create state (event-creation-ui): the SAME host header as the form, held in the SAME
+ * The in-flight create state (create-event): the SAME host header as the form, held in the SAME
  * top-anchored place, with a calm centered spinner where the form was. Keeping the header put is what
  * makes this read as the form *settling* rather than a new screen — no layout jump.
  */
@@ -167,7 +167,7 @@ internal fun CreatingEventScreen() {
 
 
 /**
- * The backend refuses this build as too old (capability `min-app-version`).
+ * The backend refuses this build as too old (capability `app-update-required`).
  *
  * The one screen in the app whose remedy is **outside** it, and it is built to say exactly that and
  * nothing else. There is no retry, because retrying is what the app has already been doing and every

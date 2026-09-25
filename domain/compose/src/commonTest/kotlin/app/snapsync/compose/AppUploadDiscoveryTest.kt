@@ -17,7 +17,7 @@ import kotlinx.coroutines.test.runTest
 
 /**
  * The app process's discovery binding (decision record `changes/own-work-per-wake`, D9) serves an unchanged
- * library from the walk memo: the external-change device check (task 7.4) is recorded in the `sync-ledger` spec.
+ * library from the walk memo: the external-change device check (task 7.4) is recorded in the `photo-sharing` spec.
  * Switching [APP_WALK_MEMO_USE] back to SHADOW fails this test on purpose — that revert should be deliberate.
  */
 class AppUploadDiscoveryTest {

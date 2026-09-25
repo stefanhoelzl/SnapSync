@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.StateFlow
 
 /**
  * The one [ImportedAssetPresence] the app's consumers hold: it decides **which source may answer** by the
- * current photo-access grant, so the download feature never has to (capability `photo-download`; the
+ * current photo-access grant, so the download feature never has to (capability `receiving-photos`; the
  * same shape, and the same reason, as [PermissionAwareCandidateSource]).
  *
  * The distinction that matters is not *can we look* but **is a miss trustworthy**. Only a view of the
@@ -20,7 +20,7 @@ import kotlinx.coroutines.flow.StateFlow
  * - **`LIMITED`** → the held [selection] snapshot. A hit is [AssetPresence.PRESENT]; a miss is
  *   [AssetPresence.UNKNOWN], **never** `ABSENT`, because app-created assets join the selection at
  *   creation time only, so one created under a full grant is real but invisible after a downgrade
- *   (measured, capability `limited-photo-access`). Answering from the snapshot also costs no library
+ *   (measured, capability `photo-access`). Answering from the snapshot also costs no library
  *   read — the app already holds it, and it sees exactly what a fetch would see under this grant.
  * - **`DENIED` / `NOT_DETERMINED`** → [AssetPresence.UNKNOWN]. A query returns nothing for assets that
  *   exist, and imports cannot succeed anyway, so there is nothing to gain by guessing. A row simply

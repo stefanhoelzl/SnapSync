@@ -23,7 +23,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * The upload transitions stop in-flight work only at a leave (capability `architecture-guards`, "The upload
+ * The upload transitions stop in-flight work only at a leave (`docs/architecture.md`, "The upload
  * transitions stop in-flight work only at a leave"; decision record `changes/both-uploaders-active`, D11).
  *
  * **Re-pointed, not retired.** This guard used to assert that no reachable state admitted two ledger writers.

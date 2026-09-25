@@ -5,7 +5,7 @@ import kotlin.test.Test
 import kotlin.test.assertTrue
 
 /**
- * **No PhotoKit media ABI in `:domain`** (capability `architecture-guards`; law: `gallery-status`,
+ * **No PhotoKit media ABI in `:domain`** (`docs/architecture.md`; law: `sync-status`,
  * *The domain reads neutral asset facts*).
  *
  * `:domain` is platform-free by module, but "platform-free" is enforced by the *dependency* graph, and a
@@ -50,7 +50,7 @@ class PhotoKitAbiContainmentTest {
                     "${file.name}:${i + 1} names `$hit` — the PhotoKit media model is interpreted in " +
                         "`:adapter:ios:ext-safe` (`PhotoKitAssetFacts.kt`), where its constants are pinned " +
                         "against the SDK and tested on the simulator. `:domain` decides on neutral " +
-                        "`AssetFacts` (capability `gallery-status`)."
+                        "`AssetFacts` (capability `sync-status`)."
                 }
             }
             .toList()

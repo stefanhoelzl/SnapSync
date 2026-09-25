@@ -20,7 +20,7 @@ import kotlinx.coroutines.CancellationException
  * `0 of N`"* — and the scenario *The cheap reads precede the enumeration* is the assertion.
  *
  * **A rule in a feature, not order in a flow, and that is the sanctioned reading of the law rather than
- * an exception to it.** `module-architecture`'s "Rules in features, order in flows" offers both remedies
+ * an exception to it.** `docs/architecture.md`'s "Rules in features, order in flows" offers both remedies
  * for a sequence found outside a flow: restore the branch to the flow, *"or the rule is named and kept
  * in the feature as a rule."* This is the second, because there are **three** callers and only two are
  * flows — `Foreground` and `Provision` coordinate it, and `ReconfigureEvent` is a `feature/membership`
@@ -43,12 +43,12 @@ class StatusRefresh(
     private val ledgerCounts: LedgerCountsSource,
     /** The own-device upload total `N`. */
     private val gallery: OwnDeviceGalleryStatusSource,
-    /** The foreign-download line (capability `photo-download`) — a SIBLING feature, so a lambda. */
+    /** The foreign-download line (capability `receiving-photos`) — a SIBLING feature, so a lambda. */
     private val refreshDownloadLine: suspend () -> Unit,
     /** The joined membership, or `null` when unjoined. */
     private val configSource: ConfigSource,
     /**
-     * What this membership contributes (capability `photo-selection-policy`) — the ONE derivation, run
+     * What this membership contributes (capability `photo-sharing`) — the ONE derivation, run
      * where the config and both port readers are in scope. Injected because deriving it costs two port
      * reads (echo suppression, the denylisted-album lookup) and this zone may not make them.
      */
@@ -87,12 +87,12 @@ class StatusRefresh(
         // admitted set can be stated at all — and a gate here would restate the second half. It used to,
         // and restated it wrongly: `grantsPhotoAccess` is true under LIMITED, so it admitted the one case
         // that actually reaches members — a partial grant whose selection snapshot has not landed,
-        // counted as a zero and settling the screen at "In sync" (capability `gallery-status`).
+        // counted as a zero and settling the screen at "In sync" (capability `sync-status`).
         val derived = runCatchingCancellable { policyFor(config) }
         derived.exceptionOrNull()?.let { failure ->
             // Cancellation is not a failed read. `runCatching` catches it like anything else, and
             // swallowing it would break structured concurrency AND post an Error-severity line — which
-            // reaches the crash reporter on production builds (capability `crash-reporting`) — for an
+            // reaches the crash reporter on production builds (capability `privacy-security`) — for an
             // ordinary teardown. [OwnDeviceGalleryStatusSource] and [StatusCountsPoller] separate the two
             // for the same reason; this call site did not, which is the last place in this sequence that
             // still conflated them.

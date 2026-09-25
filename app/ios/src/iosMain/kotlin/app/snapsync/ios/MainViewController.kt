@@ -23,11 +23,11 @@ import platform.UIKit.systemBackgroundColor
  * (presentation-owned choreography — the set-then-clear decision left this untested shell at the
  * migration finale, step-12 D6). `StatusScreen` wraps itself in `AppTheme`.
  *
- * The host is [SnapSyncRoot.renderHost] — **always** the live stack (capability `ios-app-shell`).
+ * The host is [SnapSyncRoot.renderHost] — **always** the live stack (capability `sync-status`).
  * Forged frames for a marketing screenshot are rendered by a separate binary that does not link this
  * module at all, so there is no forge path here to take.
  *
- * **A scene is composed only while the app is active** (capability `ios-app-shell`). iOS connects UI
+ * **A scene is composed only while the app is active** (capability `sync-status`). iOS connects UI
  * scenes in `UISceneActivationState.background`, so a process woken by a silent push or a `BGTask` would
  * otherwise stand up a Compose runtime and Metal renderer it cannot draw with, hold it across the window
  * in which iOS reclaims GPU resources, and then present it — the shape behind two production reports of a
@@ -68,7 +68,7 @@ private fun sceneFor(mode: SceneMode): UIViewController = when (mode) {
  * has been detached — and a reporter cannot tell them apart, nor can whoever reads their dump; on a
  * dark-appearance device it also flashes white on the way to a `#0C0E12` app. `systemBackgroundColor` is
  * ONE symbol and UIKit resolves light/dark itself, so this stays wiring: the shell branches on nothing
- * (`module-architecture`, "Shells are wiring only"). It is not the app's own background colour, which
+ * (`docs/architecture.md`, "Shells are wiring only"). It is not the app's own background colour, which
  * would need a `userInterfaceStyle` read — a decision, and one this module may not hold.
  *
  * ⚠️ This does **not** make the three whites distinguishable in every appearance: in light mode the
@@ -120,7 +120,7 @@ private fun composeScene(): UIViewController =
         val host = SnapSyncRoot.renderHost
         val state by host.container.stateFlow.collectAsState()
 
-        // The platform's reduce-motion preference (capability `design-system`). Compose Multiplatform has no
+        // The platform's reduce-motion preference (`docs/architecture.md`). Compose Multiplatform has no
         // cross-platform accessor for it, so the composition root supplies it — this is the only place that
         // knows. Read on each composition rather than `remember`ed: it is a cheap property read, and caching it
         // for the process would ignore a user who turns it on while the app is open.
@@ -130,7 +130,7 @@ private fun composeScene(): UIViewController =
                 // The root's one system-bound formatter (migration step 9: the screen's default died with
                 // the through-ports repayment; forge and live share this same instance).
                 cutoff = SnapSyncRoot.cutoffFormatter,
-                // The one tap → intent table (spec `sync-status-screen`); this shell binds no tap itself.
+                // The one tap → intent table (spec `sync-status`); this shell binds no tap itself.
                 actions = statusActions(host),
             )
         }

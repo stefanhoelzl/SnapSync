@@ -28,6 +28,10 @@ final class BackgroundUploadExtension: PHBackgroundResourceUploadExtension {
 
     required init() {}
 
+    // How the OS calls this, measured (SE2, iOS 26.6, 2026-09-23) and asserted by no clause: enabling the
+    // registration brings a call in ~1 s and a new photo in ~3 s; a job finishing brings none. Jobs created here
+    // upload only AFTER this returns — a `PROCESSING` return after creating brings the next call in ~1 s, one
+    // that created nothing brings it 5 min later. See changes/archive/2026-09-23-contract-upload-job-tier.
     func process() -> PHBackgroundResourceUploadProcessingResult {
         PHBackgroundResourceUploadProcessingResult(
             rawValue: Int(UploadExtensionRoot.shared.processRawValue())
@@ -39,6 +43,9 @@ final class BackgroundUploadExtension: PHBackgroundResourceUploadExtension {
     // a shell function that forwards nothing is invisible by construction, because this shell is
     // wiring-only and untested by project rule and os_log redacts an interpolated NSLog wholesale.
     // Left silent, a terminated cycle read as a `→ process` with no `← process` and no reason.
+    // Measured (SE2, iOS 26.6, 2026-09-23): this arrives ~55 ms after every NORMAL return of process(), while a
+    // call past its ~60 s budget is killed WITHOUT it — so it never announces a kill. After a killed call the OS
+    // backs off ~6 then ~11 min. See changes/archive/2026-09-23-contract-upload-job-tier.
     func notifyTermination() {
         UploadExtensionRoot.shared.onTerminate()
     }

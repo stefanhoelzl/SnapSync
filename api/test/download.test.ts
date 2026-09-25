@@ -3,7 +3,7 @@ import { assert, assertEquals } from "@std/assert";
 import { createApp, type FetchLike } from "../src/app.ts";
 import { readConfig } from "../src/config.ts";
 
-// The no-app download page (capability `web-event-download`, built by the `site/` Astro module) is served
+// The no-app download page (capability `event-site`, built by the `site/` Astro module) is served
 // by PROXYING the constant `site/join/index.html` object from storage (capability `web-site`). These tests
 // exercise the PROXY mechanics — that `/join` reads the same constant object for every request (no
 // per-event state), serves it `no-cache`, and yields a faithful 404/502 — against an injected fake

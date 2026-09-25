@@ -7,10 +7,10 @@ import kotlin.test.fail
 
 /**
  * **The OS upload-job subsystem is bound by compilation target, and the SIMULATOR actual is the one that
- * kills the process if it is wrong** (capability `architecture-guards`, "The upload-job subsystem binding
+ * kills the process if it is wrong** (`docs/architecture.md`, "The upload-job subsystem binding
  * gate").
  *
- * Two seams, bound the same way for the same measured reason (`ios-photokit-upload`, "The upload-job
+ * Two seams, bound the same way for the same measured reason (`background-upload`, "The upload-job
  * subsystem binding is fixed by the compilation target"):
  *
  * - `uploadJobQueue` in `:adapter:ios:ext-safe` — fetch, create, retry, acknowledge;
@@ -30,7 +30,7 @@ import kotlin.test.fail
  *
  * **What this does NOT establish:** that the PhotoKit subsystem accepts a registration on a device, or
  * refuses one on a simulator. Those are platform facts with their own forcing proofs and expiry triggers in
- * `ios-photokit-upload`; a text gate that claimed them would be asserting what it cannot observe.
+ * `background-upload`; a text gate that claimed them would be asserting what it cannot observe.
  */
 class UploadJobSubsystemBindingTest {
 
@@ -91,7 +91,7 @@ class UploadJobSubsystemBindingTest {
         assertTrue(
             file.isFile,
             "the $sourceSet actual for the ${seam.need} is missing (${seam.path.format(sourceSet)}). " +
-                "Deleting an actual is not a way past this gate — see `architecture-guards`, " +
+                "Deleting an actual is not a way past this gate — see `docs/architecture.md`, " +
                 "\"The upload-job subsystem binding gate\".",
         )
         return codeOf(file.readText())
@@ -150,7 +150,7 @@ class UploadJobSubsystemBindingTest {
     /**
      * The seams are only meaningful while each is genuinely two-valued. A third iOS target, or a rename that
      * left this list pointing at nothing, must fail here rather than let a binding escape the pin
-     * (`architecture-guards`, "Gates fail closed on novelty").
+     * (`docs/architecture.md`, "Gates fail closed on novelty").
      */
     @Test
     fun `every pinned seam has both actuals`() {

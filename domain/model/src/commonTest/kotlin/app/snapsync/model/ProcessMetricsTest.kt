@@ -6,11 +6,11 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * The process-metric rule (capability `crash-reporting`).
+ * The process-metric rule (capability `privacy-security`).
  *
  * Everything that DECIDES lives here, so everything that decides is tested here. The adapter that
  * feeds this is thin transcription and the dispatch that consumes it is a conditional-free loop —
- * neither is unit-tested, deliberately (spec `module-architecture`: the wiring graph is smoke-tested
+ * neither is unit-tested, deliberately (`docs/architecture.md`: the wiring graph is smoke-tested
  * end to end, not unit-tested), which is exactly why the rule had to hold every decision.
  *
  * Field shapes below are taken from a **real payload measured on device** (SE2, iOS 26.6,
@@ -257,7 +257,7 @@ class ProcessMetricsCallStackTest {
 }
 
 /**
- * The report line carries every field (capability `diagnostic-logging`).
+ * The report line carries every field (capability `privacy-security`).
  *
  * Pinned because the code and the spec disagreed silently: the delta said the line carries the
  * report's fields, the implementation logged only how many there were, and nothing caught it —

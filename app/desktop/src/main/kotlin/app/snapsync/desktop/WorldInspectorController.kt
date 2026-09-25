@@ -102,7 +102,7 @@ class WorldInspectorController(private val scope: CoroutineScope) {
         override val creationStatus get() = world.creationStatus.creationStatus
     }
 
-    /** The world's REAL rename status (capability `event-rename`) — never forged here. */
+    /** The world's REAL rename status (capability `manage-membership`) — never forged here. */
     val renameStatusSource: RenameStatusSource = object : RenameStatusSource {
         override val renameStatus get() = world.renameStatus.renameStatus
     }
@@ -123,7 +123,7 @@ class WorldInspectorController(private val scope: CoroutineScope) {
     }
     val leave: suspend () -> Unit = { world.leave(); afterMutation() }
 
-    // The real in-place reconfigure edge (capability `reconfigure-membership`): drives the world's REAL
+    // The real in-place reconfigure edge (capability `manage-membership`): drives the world's REAL
     // `userCommands.reconfigure`, then recomputes the inspector snapshot so the changed direction/cutoff/
     // album is reflected.
     val reconfigure: suspend (String, Direction, CaptureCutoff, CaptureCeiling, Boolean) -> ReconfigureOutcome =
@@ -132,7 +132,7 @@ class WorldInspectorController(private val scope: CoroutineScope) {
                 .also { afterMutation() }
         }
 
-    // The real bug-report edge (capability `diagnostic-logging`): the world's REAL
+    // The real bug-report edge (capability `privacy-security`): the world's REAL
     // `userCommands.sendDiagnostics`, so the sheet assembles a genuine dump over world state and the
     // world's reporter records it. Non-null here because the world composes a reporter that reports
     // itself configured — the same `isConfigured` gate a device build runs through, answered the other
@@ -154,7 +154,7 @@ class WorldInspectorController(private val scope: CoroutineScope) {
         }
 
     /**
-     * The command bundle the status pane fires (spec `module-architecture`, "Commands cross one door"): the
+     * The command bundle the status pane fires (`docs/architecture.md`, "Commands cross one door"): the
      * world's REAL commands where the harness drives the real stack, decorated so the inspector refreshes,
      * and harness stand-ins only where a platform surface does not exist off device. Every field stated —
      * the pane used to rebuild this from loose defaulted edges and dropped "Choose more photos".
@@ -252,7 +252,7 @@ class WorldInspectorController(private val scope: CoroutineScope) {
      *  which is how the `NotFound` ↔ `Failed` distinction would drift out of the harness. */
     suspend fun loadJoinDetails(eventId: String): JoinLoad = joinEvent.loadDetails(eventId).toJoinLoad()
 
-    /** The join-time shareable-count preview over the world gallery (capability `join-share-count`). */
+    /** The join-time shareable-count preview over the world gallery (capability `join-event`). */
     suspend fun loadShareableCount(cutoff: CaptureCutoff, until: CaptureCeiling?): Int? =
         world.core.loadShareableCount(cutoff, until)
 
@@ -314,7 +314,7 @@ class WorldInspectorController(private val scope: CoroutineScope) {
 
     fun removeAsset(assetId: String) = launchMutation { world.removeAsset(assetId) }
 
-    // ---- selection policy (capability `photo-selection-policy`) -----------------------------------
+    // ---- selection policy (capability `photo-sharing`) -----------------------------------
     // Each button adds an asset the policy EXCLUDES, so the operator can watch it land in the gallery and
     // then *not* upload and *not* enter the union — and can see that N does not inflate, which is the part
     // a unit test cannot show at a glance.
@@ -371,7 +371,7 @@ class WorldInspectorController(private val scope: CoroutineScope) {
     /**
      * Failure lever: the operator plays a bad network. Every in-flight transfer finishes with a `502` and
      * an error body — which `URLSession` reports as a *successful* transfer, so this is what the shipped
-     * bug looked like (capability `photo-download`). The bytes are rejected, nothing stages, and the
+     * bug looked like (capability `receiving-photos`). The bytes are rejected, nothing stages, and the
      * downloads stay pending: staging them would have made the error body the store's truth forever.
      */
     fun stageAllDownloadsAs502() = launchMutation {
@@ -388,7 +388,7 @@ class WorldInspectorController(private val scope: CoroutineScope) {
     fun setBackendOffline(offline: Boolean) = launchMutation { world.backendOffline = offline }
 
     /**
-     * Force the membership to read as **unreadable** (capability `upload-lifecycle`) — the state a real
+     * Force the membership to read as **unreadable** (capability `background-upload`) — the state a real
      * device is in before its first unlock after a boot.
      *
      * It is a lever here because it is otherwise unreachable by a reviewer: the config cell can express
@@ -480,12 +480,12 @@ class WorldInspectorController(private val scope: CoroutineScope) {
 
     private suspend fun snapshotNow(): InspectorSnapshot {
         val suppressed = world.downloadStore.suppressedLocalIds()
-        // What the selection policy would exclude (capability `photo-selection-policy`) — computed with the
+        // What the selection policy would exclude (capability `photo-sharing`) — computed with the
         // REAL policy over the REAL enumeration, so the row badge cannot drift from what the cycle does.
         // Without this the levers are mute: an operator would add a screenshot, watch it sit in the gallery,
         // and have no way to tell "correctly excluded" from "silently broken".
         val cutoff = world.configSource.config.value?.minPhotoDate ?: captureCutoff(World.DEFAULT_CUTOFF)
-        // One derivation (capability `photo-selection-policy`) — the same one the cycle uses. The echo set
+        // One derivation (capability `photo-sharing`) — the same one the cycle uses. The echo set
         // is deliberately empty here because the badge below reports echo separately; the album lookup is
         // real, so an operator can watch the denylist actually bite.
         val policy = world.configSource.config.value

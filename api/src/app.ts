@@ -1,9 +1,9 @@
-// Hono app for the backend: the whole device API in one place (capabilities `api-endpoints` for the route
-// shapes, `database` for what each one reads and writes, `device-attestation` for the gate, plus
-// `event-limits`, `event-rename`, `leave-event`, `apns-push-sender`, `web-site` and `event-link`, over the
-// shared `backend-deployment`).
+// Hono app for the backend: the whole device API in one place (capabilities `docs/architecture.md` for the route
+// shapes, `database` for what each one reads and writes, `privacy-security` for the gate, plus
+// `event-lifetime`, `manage-membership`, `manage-membership`, `receiving-photos`, `web-site` and `join-event`, over the
+// shared `docs/deployment.md`).
 //
-// VERSIONED PREFIX (capability `backend-deployment`): every device-API route below is served under the
+// VERSIONED PREFIX (`docs/deployment.md`): every device-API route below is served under the
 // prefix `/api/v1` — the paths are written that way here, and that is the one shape they answer at. The
 // web/link routes (`/`, `/join`, the AASA) stay at the ROOT only, never under `/api/v1`. The routing is
 // version-parametric: a future `/api/v2` is one more mount in `createApp`.
@@ -13,13 +13,13 @@
 // THE DATABASE HOLDS THE FACTS; STORAGE HOLDS THE BYTES. An event exists iff its `events` row exists; a
 // membership is a row with a state, not a pair of objects whose timestamps are compared; the union is one
 // join. This module therefore reaches storage for exactly one thing — the photo bytes — and everything
-// else is a statement in `db.ts` (capability `database`).
+// else is a statement in `db.ts` (`docs/architecture.md`).
 //
 // A `devices` ROW EXISTS IFF THAT DEVICE HAS ATTESTED. That is forced by the gate rather than chosen:
 // every route but `/attest/*` needs a token, and a token needs an attestation, so no device can reach any
 // other device-scoped write first. It is why the push registration UPDATEs and never inserts.
 //
-// ── THE GATE (capability `device-attestation`) ────────────────────────────────────────────────────
+// ── THE GATE (capability `privacy-security`) ────────────────────────────────────────────────────
 //
 // EVERY ROUTE REQUIRES A DEVICE TOKEN — obtainable only by completing App Attest, so the API is callable
 // by a genuine, unmodified SnapSync on a genuine Apple device and by nothing else. The exceptions are a
@@ -56,17 +56,17 @@
 //   POST /api/v1/events
 //     → mints an event: INSERTs the `events` row, stamping `capacity` and the `lifetimeSeconds` DURATION
 //       and validating the creator's `endsAt` against the configured window maximum (capability
-//       `event-limits`); returns {eventId,name,createdAt,startsAt,endsAt,capacity,deletesAt}.
+//       `event-lifetime`); returns {eventId,name,createdAt,startsAt,endsAt,capacity,deletesAt}.
 //   GET /api/v1/events/:eventId
 //     → the event row with the DERIVED `deletesAt`; 404 when absent. Never deletes on touch, even past
 //       the deadline. UNGATED (GET/HEAD only).
 //   PATCH /api/v1/events/:eventId
-//     → renames (capability `event-rename`): the ONLY write to an existing event row, and it sets `name`
+//     → renames (capability `manage-membership`): the ONLY write to an existing event row, and it sets `name`
 //       ALONE — every other column is write-once, which is why the statement is spelled out in `db.ts`
 //       rather than composed. No ownership check (there is no owner); the token gate is the whole
 //       authorization.
 //   PUT /api/v1/devices/:deviceId
-//     → the push registration (capability `push-registration`): UPDATEs the device's push columns and
+//     → the push registration (capability `receiving-photos`): UPDATEs the device's push columns and
 //       NEVER inserts. 401 when it affects no row — the token verified, but we hold no attestation for
 //       this device. The shipped client recovers unaided: the 401 drops its token, it attests (which
 //       creates the row), and re-sends the registration when the new credential arrives. A 201 here would
@@ -87,19 +87,19 @@
 //   GET /api/v1/files/devices/:deviceId
 //     → the device's uploaded resources, from ONE query — no storage LIST. Each entry is
 //       `{ filename, url }`, where `filename` is the STORED OBJECT KEY (what the rejoin reconciler matches
-//       its ledger against, capability `upload-state-reconciliation`) and `url` is a presigned S3 GET.
+//       its ledger against, capability `photo-sharing`) and `url` is a presigned S3 GET.
 //       `Cache-Control: no-store, no-cache, max-age=0` (time-limited urls; see NO_CACHE — the pull zone
 //       honors `no-cache`, not `no-store`).
 //   PUT /api/v1/events/:eventId/devices/:deviceId
 //     → publishes the device manifest. GATED on existence AND on CAPACITY by ONE conditional statement
-//       (capability `event-limits`): a device never enrolled is refused 409 once `capacity` distinct ids
+//       (capability `event-lifetime`): a device never enrolled is refused 409 once `capacity` distinct ids
 //       have ever enrolled — leaving frees no slot, a rejoin reuses its own — and a zero-row outcome is
 //       disambiguated into 409-vs-404 by a follow-up read rather than collapsed. Capacity is the ONLY
 //       refusal; enrollment is never closed by time, however long after `endsAt` it arrives. The write is
 //       ONE ATOMIC BATCH: membership → active, the membership's assets REPLACED with exactly what the body
 //       lists (an omitted asset is removed), each named resource upserted with `uploaded` MONOTONE.
 //   DELETE /api/v1/events/:eventId/devices/:deviceId
-//     → LEAVE (capability `leave-event`): marks the membership `departed`. GATED on the event row
+//     → LEAVE (capability `manage-membership`): marks the membership `departed`. GATED on the event row
 //       (404/502), idempotent, and NON-DESTRUCTIVE — the assets are RETAINED, so the union keeps serving
 //       what the device shared. No reap here and no leave-time GC. When this was the last active member
 //       the event becomes EMPTY and the nightly sweep reclaims it on its next run.
@@ -112,11 +112,11 @@
 //       (GET/HEAD only). Identity-blind: own-vs-foreign skip is the client's concern.
 //       `Cache-Control: no-store, no-cache, max-age=0`.
 //   GET /health
-//     → the post-deploy boot probe (capability `deployment-configuration`): this bundle's stamped SHA and
+//     → the post-deploy boot probe (`docs/deployment.md`): this bundle's stamped SHA and
 //       the store's foreign-key posture, reported SEPARATELY so a misprovisioned store is distinguishable
 //       from one that is merely still starting.
 //
-// ── EVENT LIFECYCLE (capability `event-limits`) ───────────────────────────────────────────────────
+// ── EVENT LIFECYCLE (capability `event-lifetime`) ───────────────────────────────────────────────────
 //
 // Every event-scoped route resolves its event through ONE gate (`gateEvent`), and the lifecycle is
 // BINARY — the event exists, or the sweep has deleted it. `endsAt` is NOT a lifecycle input: it bounds
@@ -124,12 +124,12 @@
 // NEVER CLOSED BY TIME — a guest who scans days late still holds in-window captures that belong in the
 // event).
 //
-// The nightly sweep (capability `scheduled-cleanup`, run out-of-edge from GitHub Actions) is the ONLY
+// The nightly sweep (capability `event-lifetime`, run out-of-edge from GitHub Actions) is the ONLY
 // deleter. It reclaims an event past its derived delete-by (`max(createdAt, startsAt) + lifetimeSeconds`
 // — the guarantee) or EMPTY (ever joined, no active member left — opportunistic, since a leave whose
 // DELETE never landed keeps a membership active). No route reaps on touch, even past the deadline: that
 // is what makes a 404 a REAL deletion, and therefore safe as one of the two witnesses the client's
-// self-leave requires (capability `leave-event`).
+// self-leave requires (capability `manage-membership`).
 //
 // The token check ALWAYS runs before the existence gate, so an unauthenticated caller cannot tell an
 // existing event from a missing one — except on the two routes the closed list deliberately opens, where
@@ -173,10 +173,10 @@ import {
   verifyToken,
 } from "./attest.ts";
 // Storage primitives — now ONLY the byte store. The attestation record was the last non-byte object this
-// script touched, and it is a row now (capability `database`): storage holds bytes, the database holds
+// script touched, and it is a row now (`docs/architecture.md`): storage holds bytes, the database holds
 // facts.
 import { byteKey, type FetchLike, storageReachable } from "./storage.ts";
-// The relational store (capability `database`) — the authority for events, memberships, assets,
+// The relational store (`docs/architecture.md`) — the authority for events, memberships, assets,
 // resources and device records, shared with the nightly sweep.
 import {
   type Db,
@@ -210,7 +210,7 @@ import { deleteByMs } from "./lifecycle.ts";
 // Re-exported so existing importers (tests, callers) keep their `from "./app.ts"` imports working.
 export type { FetchLike } from "./storage.ts";
 
-// The browser-facing pages (capabilities `marketing-site` at `/` and `web-event-download` at `/join`) are
+// The browser-facing pages (capabilities `web-site` at `/` and `event-site` at `/join`) are
 // no longer embedded here — they are built by the `site/` Astro module and served by proxying the storage
 // `site/` prefix (capability `web-site`, see `serveSiteObject` + the `/`, `/join`, and `/_astro/*` routes
 // below). The `shots` pipeline that inlined the landing screenshots is gone with them.
@@ -224,7 +224,7 @@ export type Deps = {
   /** Validated storage config (built at startup via readConfig). */
   config: Config;
   /**
-   * The relational store (capability `database`). Injected like {@link fetch}: production passes the
+   * The relational store (`docs/architecture.md`). Injected like {@link fetch}: production passes the
    * libSQL driver built in `main.ts`, tests pass an in-process `node:sqlite` one. The port is narrow
    * enough that both are the same few methods, and neither can be mistaken for the other at a call site.
    */
@@ -236,7 +236,7 @@ export type Deps = {
   now?: () => number;
   /**
    * The commit this bundle was built from, served by `GET /health` so the post-deploy probe can tell THIS
-   * bundle from the previous one still being served (capability `backend-deployment`).
+   * bundle from the previous one still being served (`docs/deployment.md`).
    *
    * A DEPENDENCY, not configuration — which is why it sits here beside {@link now} rather than on
    * `Config`: it varies per build, not per deployment, and a test must be able to pin it. Reading it as a
@@ -251,7 +251,7 @@ export type Deps = {
 // `size` USED TO BE HERE and is gone. It had no reader: the iOS `UnionResource` model omits it,
 // `HttpDeviceFilesSource` documents it as an ignored unknown key, and the web zip page reads only
 // `role`/`url`/`filename`/`key`. Dropping it is what makes the byte route's database write safe to LOSE
-// (capability `api-endpoints`): `size` was the one field sourced from storage rather than the manifest,
+// (`docs/architecture.md`): `size` was the one field sourced from storage rather than the manifest,
 // so carrying it would have forced a column only that best-effort write could fill — and one lost write
 // would then leave a NULL, make this closed shape unemittable, and silently drop the asset.
 type FileEntry = {
@@ -277,7 +277,7 @@ type UnionAsset = {
 
 /**
  * Validate a device manifest body into the entries the publish records (wire format: capability
- * `device-manifest`). Returns `null` when the body is not a manifest — a `400`, never a partial publish.
+ * `photo-sharing`). Returns `null` when the body is not a manifest — a `400`, never a partial publish.
  *
  * Unknown fields are IGNORED rather than rejected: the manifest is written by a shipped app, and a
  * backend that refused a field a future client adds would break every device the moment that client
@@ -318,7 +318,7 @@ function parseManifestAssets(body: { assets?: unknown }): ManifestAssetEntry[] |
 }
 
 /**
- * Read a v2 manifest body's optional `version` (capability `api-endpoints`, "The v2 manifest publish is
+ * Read a v2 manifest body's optional `version` (`docs/architecture.md`, "The v2 manifest publish is
  * ordered by its version"): the number, `null` when the field is absent (a build that predates it), or
  * `undefined` when it is present but not a non-negative safe integer — a `400`. Safe-integer rather than
  * any number because the comparison is exact: a value past 2^53 would already have been rounded by the
@@ -340,7 +340,7 @@ const PRESIGN_EXPIRY_SECONDS = 604800;
 // and a cached listing serves stale, expiring presigned URLs.
 const NO_CACHE = "no-store, no-cache, max-age=0";
 
-// What a maintenance `503` suggests waiting (capability `backend-deployment`). HTTP pairs `Retry-After`
+// What a maintenance `503` suggests waiting (`docs/deployment.md`). HTTP pairs `Retry-After`
 // with `503`, which is the status it defines for scheduled maintenance (RFC 9110 §15.6.4).
 //
 // IT IS A POLL INTERVAL, NOT AN ESTIMATE OF THE WINDOW, and that distinction is what makes the number
@@ -445,7 +445,7 @@ async function serveSiteObject(
 
 /**
  * Mint an AWS SigV4 **presigned S3 GET URL** for a stored object (the download-URL authority for
- * `api-endpoints`): `<s3Scheme>://<s3Host>/<zone>/<key>?X-Amz-…&X-Amz-Signature=…` — `https` in
+ * `docs/architecture.md`): `<s3Scheme>://<s3Host>/<zone>/<key>?X-Amz-…&X-Amz-Signature=…` — `https` in
  * every deployed configuration; only the local dev rig moves it, so it can serve loopback HTTP that a
  * device can actually fetch. Path-style, each
  * key segment percent-encoded (deviceId is a UUID → identity), `X-Amz-Expires` 7 days. The zone name is
@@ -471,7 +471,7 @@ async function presignDownloadUrl(
  * The device's registered push token, or `null` when it has none. Used by the notify fan-out, which is
  * **best-effort** — a member without a registered token is simply skipped, so this NEVER throws.
  *
- * There is no parsing left to do: the columns ARE the shape (capability `database`), so a malformed
+ * There is no parsing left to do: the columns ARE the shape (`docs/architecture.md`), so a malformed
  * registration cannot reach here — it is refused at the write, by the route that made it.
  */
 async function readPushToken(db: Db, deviceId: string): Promise<PushToken | null> {
@@ -489,7 +489,7 @@ async function readPushToken(db: Db, deviceId: string): Promise<PushToken | null
 export function createApp(
   { fetch: fetchImpl, config, db, now = Date.now, buildSha = BUILD_SHA }: Deps,
 ): Hono {
-  // The S3 signer used ONLY to presign download URLs (capability `api-endpoints`). Access Key ID =
+  // The S3 signer used ONLY to presign download URLs (`docs/architecture.md`). Access Key ID =
   // the zone name, secret = the storage-zone `AccessKey`; pure Web-Crypto, no network. Uploads/reads/
   // listings stay on the native API and are not signed with this.
   const aws = new AwsClient({
@@ -499,29 +499,29 @@ export function createApp(
     service: "s3",
   });
 
-  // The APNs provider sender (capability `apns-push-sender`), memoizing its ES256 provider JWT across
+  // The APNs provider sender (capability `receiving-photos`), memoizing its ES256 provider JWT across
   // sends. Used by the notify fan-out and the expiry reap's member notification. No production caller
   // is wired to notify yet (the trigger is a deferred use case).
   const apns = createApnsSender(config, fetchImpl);
 
-  // ── THE EVENT-LIMITS GATE (capability `event-limits`) ───────────────────────────────────────────
+  // ── THE EVENT-LIMITS GATE (capability `event-lifetime`) ───────────────────────────────────────────
   //
   // Every event-scoped route resolves its event through `gateEvent` below: one row read. The lifecycle
   // is BINARY — an event exists, or the sweep has deleted it. `endsAt` is NOT
   // consulted: it bounds only which captures may be UPLOADED, and closes nothing. In particular JOINING
   // IS NEVER CLOSED BY TIME, because a guest who scans days late still holds in-window captures that
   // belong in the event. There is no on-touch reap: deleting is the nightly sweep's alone
-  // (capability `scheduled-cleanup`), including for an event already past its derived delete-by.
+  // (capability `event-lifetime`), including for an event already past its derived delete-by.
 
   /**
-   * Resolve an event for a route: ONE row read (capability `database`). An event exists exactly when its
+   * Resolve an event for a route: ONE row read (`docs/architecture.md`). An event exists exactly when its
    * row does, so `absent` now means precisely "never created, or the sweep deleted it" — the INCOMPLETE
    * case the marker era had to carry is unstateable, because `startsAt`, `endsAt`, `capacity` and
    * `lifetimeSeconds` are `NOT NULL` columns.
    *
    * THROWS on a store failure, so the route surfaces 502 and never mistakes a transient fault for
    * absence. That distinction is load-bearing beyond this file: a `404` here is a SEALED deletion, and
-   * `leave-event`'s two-witness teardown acts on it.
+   * `manage-membership`'s two-witness teardown acts on it.
    */
   async function gateEvent(
     eventId: string,
@@ -531,7 +531,7 @@ export function createApp(
   }
 
   /**
-   * The WIRE shape of an event (capabilities `api-endpoints`, `event-limits`): the row's public
+   * The WIRE shape of an event (capabilities `docs/architecture.md`, `event-lifetime`): the row's public
    * fields with the stamped `lifetimeSeconds` replaced by the DERIVED `deletesAt`, in the canonical
    * cutoff shape.
    *
@@ -545,7 +545,7 @@ export function createApp(
     return { ...wire, deletesAt: canonicalFromMs(deleteByMs(event)) };
   }
 
-  // Per-device byte WRITE route (capability `api-endpoints`). Mounted under
+  // Per-device byte WRITE route (`docs/architecture.md`). Mounted under
   // `/files/devices/:deviceId/:filename`, so the handlers read `deviceId`/`filename` from the mount.
   // (Downloads are no longer proxied here — the listing hands out a presigned S3 GET URL the device
   // fetches directly from bunny's S3 endpoint.)
@@ -587,20 +587,20 @@ export function createApp(
       console.error(`upload: bunny returned ${upstream.status} for ${byteKey(deviceId, filename)}`);
       return c.text("upstream rejected", 502);
     }
-    // Bunny confirmed the stored object. Record the upload (capability `database`) — BEST-EFFORT: this
+    // Bunny confirmed the stored object. Record the upload (`docs/architecture.md`) — BEST-EFFORT: this
     // route's success is "the bytes landed", and failing it because a bookkeeping row did not land would
     // turn a successful upload into a retried one.
     //
     // The collapse is safe because the record is REPAIRED, not lost. The device manifest publish is a
     // full-state document listing only uploaded resources, it upserts each resource's `uploaded` as true
     // when the entry does not say otherwise, and it fires in the SAME cycle that produced these bytes.
-    // That repair in turn rests on `device-manifest`'s rule that an unchanged manifest may be skipped
+    // That repair in turn rests on `photo-sharing`'s rule that an unchanged manifest may be skipped
     // only when the LAST WRITE SUCCEEDED — without that word a doubly-failed write would strand
     // `uploaded` at 0 while the device believed it had published, and the photo would be invisible to
     // every other member with no error anywhere. Do not edit one of those two rules alone.
     try {
       // `resources` is keyed by IDENTITY now, and this URL carries only the object NAME — so v1 recovers
-      // the identity by parsing it (capability `database`; the parse is v1-only and is deleted with v1).
+      // the identity by parsing it (`docs/architecture.md`; the parse is v1-only and is deleted with v1).
       // A name that is not the client's key shape has no identity to be filed under: the route refuses it
       // rather than inventing one. Every key in the deployed store parses, so this narrowing affects
       // inputs no shipped client produces.
@@ -635,7 +635,7 @@ export function createApp(
 
   const app = new Hono();
 
-  // ── THE MAINTENANCE GATE (capability `backend-deployment`) ──────────────────────────────────────
+  // ── THE MAINTENANCE GATE (`docs/deployment.md`) ──────────────────────────────────────
   //
   // While this bundle carries the maintenance flag, every route under `/api/` answers `503` and touches
   // neither storage nor the database. It exists to close the one interval the deploy pipeline could not:
@@ -675,9 +675,9 @@ export function createApp(
       return await Promise.resolve(c.text("maintenance", 503));
     });
   }
-  // ── THE VERSION GATE (capability `min-app-version`) ─────────────────────────────────────────────
+  // ── THE VERSION GATE (capability `app-update-required`) ─────────────────────────────────────────────
   //
-  // Registered BEFORE the token gate, and that ordering is deliberate — it inverts `api-endpoints`'
+  // Registered BEFORE the token gate, and that ordering is deliberate — it inverts `docs/architecture.md`'
   // "on a gated route the token check comes first" for three reasons:
   //
   //   * it reads NOTHING upstream — no storage, no database, no Apple call — so it cannot grow the bill
@@ -710,7 +710,7 @@ export function createApp(
     return c.json({ error: "app too old", minAppVersion: config.minAppVersion }, 426);
   });
 
-  // ── THE GATE (capability `device-attestation`) ──────────────────────────────────────────────────
+  // ── THE GATE (capability `privacy-security`) ──────────────────────────────────────────────────
   //
   // Every route requires a device token, obtainable ONLY by completing App Attest — so the API is
   // callable by a genuine, unmodified SnapSync on a genuine Apple device, and by nothing else. What this
@@ -735,7 +735,7 @@ export function createApp(
   //     fallback the iOS uploader depends on.
   app.use("*", async (c, next) => {
     const method = c.req.method;
-    // Device-API routes are served under a versioned prefix (`/api/v1`, capability `backend-deployment`),
+    // Device-API routes are served under a versioned prefix (`/api/v1`, `docs/deployment.md`),
     // and Hono does NOT strip the mount prefix from the path accessors — so normalize a leading `/api/vN`
     // away HERE, once, before the closed-list checks below, which are written in un-prefixed terms. This is
     // deliberately version-agnostic: a further `/api/vN` mount is gated identically with no change here.
@@ -745,8 +745,8 @@ export function createApp(
     // other.
     const { path } = splitVersion(new URL(c.req.url).pathname);
     // Ungated (closed list): OPTIONS, the `/attest/*` token issuers, the public marketing page at
-    // EXACTLY `/` (capability `marketing-site`), and the event link's two public routes (capability
-    // `event-link`) — the AASA, which Apple's CDN and the device fetch with no Authorization header and
+    // EXACTLY `/` (capability `web-site`), and the event link's two public routes (capability
+    // `join-event`) — the AASA, which Apple's CDN and the device fetch with no Authorization header and
     // cannot be made to send one, and `/join`, whose entire audience is people who have no app and so no
     // attestation. These three (`/`, `/join`, the AASA) are exact-path and GET/HEAD-only — never a prefix,
     // never a mutating method — and read no storage, so serving them unauthenticated grows neither the bill
@@ -759,14 +759,14 @@ export function createApp(
     // this gate guards, so serving them unauthenticated is safe. GET/HEAD only.
     // `/health` is the third reason a path is ungated, and a different one from the two above: it is
     // OPERATIONAL. It exists so the deploy workflow can tell a booted script serving THIS bundle from a
-    // corpse or a previous deployment (capability `backend-deployment`), and it is the cheapest route in
+    // corpse or a previous deployment (`docs/deployment.md`), and it is the cheapest route in
     // the backend — no storage read, no crypto, one constant string. Serving it unauthenticated
     // discloses only the commit of a PUBLIC repository, and costs strictly less than `/join` or the two
     // public event reads below, which are already ungated and uncacheable and do touch storage.
     const publicGet = path === "/" || path === "/join" || path === "/health" ||
       path === "/.well-known/apple-app-site-association" ||
       path.startsWith("/_astro/");
-    // The two event READS the no-app download page fetches (capability `web-event-download`): the event
+    // The two event READS the no-app download page fetches (capability `event-site`): the event
     // metadata `/events/<id>` and the photo union `/events/<id>/files`. These are authorized by
     // eventId-possession alone — the eventId IS the read capability — so a browser that holds no attestation
     // can fetch them. This narrows the gate's READ posture (attestation never proved who may read whose
@@ -774,7 +774,7 @@ export function createApp(
     // is GET/HEAD-only and shape-anchored to exactly these two paths, so every mutating `/events/<id>/…`
     // method (device manifest, leave, notify), `POST /events`, and — landing on the SAME path shape as
     // the read below, which makes it the closest call here — `PATCH /events/<id>` (the rename, capability
-    // `event-rename`) all stay gated. The method check is the ONLY thing separating the rename from the
+    // `manage-membership`) all stay gated. The method check is the ONLY thing separating the rename from the
     // ungated read; `attest.test.ts` pins both directions. Decision record:
     // `changes/web-event-download`. This is an accepted, eyes-open widening: a leaked eventId becomes a
     // perpetual read grant (no per-event opt-in, no rate limit).
@@ -795,7 +795,7 @@ export function createApp(
     // A valid device token is the ONLY credential this backend accepts. There is no admin key, master
     // key, or route-scoped bypass: the former notify-only ADMIN_NOTIFY_KEY existed solely so the
     // out-of-edge sweep could announce an expiring event before deleting it, and that announcement is
-    // gone (capability `scheduled-cleanup`) — so the credential is retired rather than left standing as
+    // gone (capability `event-lifetime`) — so the credential is retired rather than left standing as
     // an authorization path with no caller.
     if (!token || !await verifyToken(config, token, now())) {
       return c.text("unattested", 401);
@@ -803,7 +803,7 @@ export function createApp(
     return await next();
   });
 
-  // The public marketing/landing page (capability `marketing-site`, built by `web-site`): served by
+  // The public marketing/landing page (capability `web-site`, built by `web-site`): served by
   // proxying `site/index.html` from storage. The HTML entry point is `no-cache` — the always-fresh shell —
   // so a deploy is picked up immediately; it references immutable, content-hashed `/_astro/*` assets. The
   // gate above admits `/` (GET/HEAD).
@@ -822,7 +822,7 @@ export function createApp(
     return serveSiteObject(fetchImpl, config, tail, c.req.method, SITE_ASSET_CACHE);
   });
 
-  // The Apple App Site Association document (capability `event-link`): what makes the event link a
+  // The Apple App Site Association document (capability `join-event`): what makes the event link a
   // Universal Link instead of a web page. Apple's CDN and the device fetch it unauthenticated, so the
   // gate above admits it; it MUST be served as application/json with NO redirect.
   //
@@ -845,7 +845,7 @@ export function createApp(
     return c.req.method === "HEAD" ? c.body(null) : c.body(aasa);
   });
 
-  // The no-app download page (capabilities `event-link`, `web-event-download`, built by `web-site`): the
+  // The no-app download page (capabilities `join-event`, `event-site`, built by `web-site`): the
   // path a browser requests when an event link is opened on a device with no app to claim it. Served by
   // proxying the CONSTANT `site/join/index.html` object from storage — byte-identical for every link, and
   // `no-cache` (the always-fresh shell). GET returns the page; HEAD returns the headers with no body.
@@ -860,7 +860,7 @@ export function createApp(
     (c) => serveSiteObject(fetchImpl, config, "join/index.html", c.req.method, SITE_HTML_CACHE),
   );
 
-  // The BOOT PROBE's target (capability `backend-deployment`). Answers with the commit this bundle was
+  // The BOOT PROBE's target (`docs/deployment.md`). Answers with the commit this bundle was
   // built from, so deploy.yml's `api` job can tell the deploy it just made from the one that was already live —
   // `POST /code` + `POST /publish` succeed whether or not the bundle can boot, and a bare `200` cannot
   // distinguish a new deployment from an old corpse still being served.
@@ -898,7 +898,7 @@ export function createApp(
   //
   // AN UNREACHABLE DEPENDENCY IS A BARE NON-SUCCESS, not a `200` describing itself. The route used to
   // report the store's state in the body so the probe could split a TERMINAL cause (foreign keys off) from
-  // a RETRYABLE one (unreachable); with the foreign-key assertion gone (capability `database` — the
+  // a RETRYABLE one (unreachable); with the foreign-key assertion gone (`docs/architecture.md` — the
   // measurement is now trusted, and what would falsify it is recorded there) the only condition left is
   // unreachability, which is retryable, and a non-success status already carries that. The cost, accepted:
   // a red probe says `server-error` rather than naming which dependency was unreachable — so the causes
@@ -926,7 +926,7 @@ export function createApp(
     return c.req.method === "HEAD" ? c.body(null) : c.body(body);
   });
 
-  // ── THE DEVICE API (capability `backend-deployment`) ────────────────────────────────────────────
+  // ── THE DEVICE API (`docs/deployment.md`) ────────────────────────────────────────────
   //
   // Every device-API route below is registered on this ONE sub-app, mounted under `/api/v1` at the end of
   // `createApp`. Keeping the sub-app is what makes the routing version-parametric by construction: a future
@@ -949,7 +949,7 @@ export function createApp(
     return c.json({ challenge: await mintChallenge(config, now()) });
   });
 
-  // The two token ISSUERS, built once per version (capability `device-attestation`). The only difference is how
+  // The two token ISSUERS, built once per version (capability `privacy-security`). The only difference is how
   // a stale challenge is refused: v1, which is frozen, keeps its `401`; v2 answers `409 stale challenge`,
   // because `401` means "your credential is rejected" and a stale challenge rejects no credential — it is what
   // let a client read a renewal's expired challenge as a revoked token. One implementation, parameterised on
@@ -1082,7 +1082,7 @@ export function createApp(
     return issuers;
   };
 
-  // Create an event (capabilities `api-endpoints`, `event-limits`). GATED by the device token above (an
+  // Create an event (capabilities `docs/architecture.md`, `event-lifetime`). GATED by the device token above (an
   // ungated create let a stranger mint unbounded events). Beyond that gate it stays a
   // possession-is-capability model. Validates the name, mints a server-side UUID, and INSERTs the row.
   // Faithful outcome: 201 only after the store confirms the write; any failure → 502.
@@ -1101,7 +1101,7 @@ export function createApp(
     if (startsAt === null) {
       return c.text("invalid startsAt", 400); // missing/empty/non-canonical/not a real instant
     }
-    // `endsAt` is CREATOR-SUPPLIED at mint (capability `event-limits`) and bounds ONLY which captures may
+    // `endsAt` is CREATOR-SUPPLIED at mint (capability `event-lifetime`) and bounds ONLY which captures may
     // be uploaded — it is not a lifetime. When the body carries one it is validated (canonical instant,
     // strictly after `startsAt`, and no longer than the configured WINDOW MAXIMUM) and stamped; when
     // ABSENT it falls back to `startsAt + windowMax`, so old clients that send only `startsAt` keep
@@ -1140,7 +1140,7 @@ export function createApp(
     return c.json(publicEvent(event), 201);
   });
 
-  // Event metadata / existence (capability `api-endpoints`). Returns the event — always carrying
+  // Event metadata / existence (`docs/architecture.md`). Returns the event — always carrying
   // `startsAt`, `endsAt`, `capacity`, and the derived `deletesAt`, because those are `NOT NULL` columns
   // — or 404 when the event was never created or the sweep deleted it; a read failure → 502. This is the
   // canonical existence check the device-manifest write gate relies on. There is no third answer: the
@@ -1149,7 +1149,7 @@ export function createApp(
   // An event past its WINDOW (`endsAt`) serves normally — the window closes nothing. An event past its
   // derived `deletesAt` ALSO serves normally until the nightly sweep removes it: no route deletes on
   // touch. The 404 a client acts on is therefore always a real deletion, which is what makes it safe as
-  // one of the two witnesses the client's self-leave requires (capability `leave-event`).
+  // one of the two witnesses the client's self-leave requires (capability `manage-membership`).
   deviceApi.get("/events/:eventId", async (c) => {
     const eventId = c.req.param("eventId");
     if (!validateUUID(eventId)) {
@@ -1165,9 +1165,9 @@ export function createApp(
     }
   });
 
-  // Rename an event (capability `event-rename`). The ONLY route that writes an existing event row, and
+  // Rename an event (capability `manage-membership`). The ONLY route that writes an existing event row, and
   // it writes exactly ONE column. `name` is the single exception to the row's write-once rule
-  // (capability `event-limits`) because it touches neither threat that rule names: a name cannot
+  // (capability `event-lifetime`) because it touches neither threat that rule names: a name cannot
   // retroactively widen a joiner's capture scope and cannot extend an event's limits. It is cosmetic to
   // the upload gate, cosmetic to the extension, and load-bearing for display alone.
   //
@@ -1176,7 +1176,7 @@ export function createApp(
   // and listing every photo in it, so a rename is strictly weaker than what a holder already has.
   //
   // ⚠️ Every other field is written back VERBATIM — never restamped, never recomputed. That is what
-  // makes a race with the nightly sweep (capability `scheduled-cleanup`) self-defusing: a rename that
+  // makes a race with the nightly sweep (capability `event-lifetime`) self-defusing: a rename that
   // re-creates a row the sweep has just deleted re-creates it carrying its ORIGINAL `createdAt`,
   // `startsAt`, and `lifetimeSeconds`, so its derived delete-by is still in the past and the next sweep
   // reaps it again. Restamping any of those would resurrect the event for a fresh lifetime.
@@ -1227,8 +1227,8 @@ export function createApp(
     return c.json(publicEvent({ ...current, name }));
   });
 
-  // Write a device's per-event manifest (capabilities `api-endpoints`, `device-manifest`).
-  // GATED on event existence AND capacity (capability `event-limits`) by ONE conditional statement: it
+  // Write a device's per-event manifest (capabilities `docs/architecture.md`, `photo-sharing`).
+  // GATED on event existence AND capacity (capability `event-lifetime`) by ONE conditional statement: it
   // admits the device when the event exists AND (it already holds a membership — a rejoin reuses its own
   // slot — OR the event has fewer than `capacity` memberships of ANY state, because leaving frees none).
   // The count and the insert are evaluated together, so concurrent first enrollments cannot overshoot.
@@ -1265,7 +1265,7 @@ export function createApp(
     if (assets === null) return c.text("invalid manifest", 400);
 
     // Enrollment IS the capacity gate, evaluated and applied in ONE conditional statement so concurrent
-    // first enrollments cannot overshoot (capability `event-limits`). Its zero-row outcome is resolved to
+    // first enrollments cannot overshoot (capability `event-lifetime`). Its zero-row outcome is resolved to
     // `full` or `no-such-event` inside `enroll`, never collapsed into one status.
     let outcome;
     try {
@@ -1289,11 +1289,11 @@ export function createApp(
     return c.body(null, 201);
   });
 
-  // Leave an event (capability `leave-event`). A STATE CHANGE, and non-destructive: mark the membership
+  // Leave an event (capability `manage-membership`). A STATE CHANGE, and non-destructive: mark the membership
   // `departed`. GATED on the event row (absent → 404; read failure → 502). The membership's assets are
   // RETAINED, so the union still serves what the device shared, and the route returns 200 REGARDLESS of
   // remaining membership — the event survives until it expires and is deleted by the nightly sweep
-  // (capability `scheduled-cleanup`), which also collects the bytes. No last-member reap, no leave-time
+  // (capability `event-lifetime`), which also collects the bytes. No last-member reap, no leave-time
   // garbage collection. Idempotent: a repeated leave, or one naming a membership that never existed,
   // changes nothing and is not an error, so a retried DELETE re-runs
   // harmlessly. Any transport failure → 502.
@@ -1305,7 +1305,7 @@ export function createApp(
     }
 
     try {
-      // The lifecycle gate (capability `event-limits`): an absent event 404s, which the client already
+      // The lifecycle gate (capability `event-lifetime`): an absent event 404s, which the client already
       // treats as "nothing to leave". A leave DURING grace proceeds: members may still
       // depart an over-but-not-yet-swept event.
       const gate = await gateEvent(eventId);
@@ -1329,15 +1329,15 @@ export function createApp(
     }
   });
 
-  // Event-wide UNION read (capability `api-endpoints`). UNGATED by the token — the no-app download page
+  // Event-wide UNION read (`docs/architecture.md`). UNGATED by the token — the no-app download page
   // fetches it from a browser that holds no attestation, so eventId-possession IS the read capability
-  // (`device-attestation`'s closed list, entry 8) — but still gated on event EXISTENCE: absent → 404,
+  // (`privacy-security`'s closed list, entry 8) — but still gated on event EXISTENCE: absent → 404,
   // read failure → 502.
   //
   // ONE QUERY, no fan-out: the event's assets joined to their resources across ACTIVE and DEPARTED
   // memberships, so a member who has left keeps contributing what it already shared. An asset naming a
   // resource with no recorded upload is dropped — the PRIMARY completeness mechanism (capability
-  // `api-endpoints`), since a manifest DECLARES what its device will provide rather than what it has
+  // `docs/architecture.md`), since a manifest DECLARES what its device will provide rather than what it has
   // already uploaded. Each kept asset is flattened into one array, tagged with its
   // owning deviceId (the endpoint is identity-blind — own-vs-foreign skip is the client's concern). The
   // published manifest is already the event's date-filtered projection, so its asset list is trusted
@@ -1348,7 +1348,7 @@ export function createApp(
       return c.text("invalid event", 400);
     }
 
-    // Gate on the event row (capability `database`): absent → 404; a store failure → 502. An event past
+    // Gate on the event row (`docs/architecture.md`): absent → 404; a store failure → 502. An event past
     // its window still serves its union — the window closes nothing.
     try {
       const gate = await gateEvent(eventId);
@@ -1405,13 +1405,13 @@ export function createApp(
     }
   });
 
-  // List a device's stored resources (capability `api-endpoints`). Served from the backend's own record
+  // List a device's stored resources (`docs/architecture.md`). Served from the backend's own record
   // of what it accepted — one query — rather than by enumerating storage. Each entry is
   // `{ filename, url }` where `url` is a presigned S3 GET the device fetches directly.
   //
   // Reading the RECORD rather than the byte store is the correct direction for this route's main
   // consumer: the rejoin reconcile seeds `COMPLETED` rows from it (capability
-  // `upload-state-reconciliation`), and seeding from bytes the backend cannot vouch for would suppress
+  // `photo-sharing`), and seeding from bytes the backend cannot vouch for would suppress
   // an upload that never happened.
   v1Only.get("/files/devices/:deviceId", async (c) => {
     const deviceId = c.req.param("deviceId");
@@ -1434,9 +1434,9 @@ export function createApp(
     }
   });
 
-  // Write a device's config document (capability `api-endpoints`). Gated by DEVICE-ID possession alone
+  // Write a device's config document (`docs/architecture.md`). Gated by DEVICE-ID possession alone
   // (no event) — the same capability model as the byte upload. The document is recorded against the
-  // device (capability `database`); last-write-wins, and it is not a resource, so it never appears in the
+  // device (`docs/architecture.md`); last-write-wins, and it is not a resource, so it never appears in the
   // per-device listing or the union.
   deviceApi.put("/devices/:deviceId", async (c) => {
     const deviceId = c.req.param("deviceId");
@@ -1462,7 +1462,7 @@ export function createApp(
       return c.text("invalid body", 400);
     }
     // An UPDATE, never an insert: a `devices` row exists only where the device has attested, and this
-    // route cannot attest on its behalf (capability `device-attestation`).
+    // route cannot attest on its behalf (capability `privacy-security`).
     try {
       const { rowsAffected } = await putDeviceRecord(
         db,
@@ -1487,14 +1487,14 @@ export function createApp(
     return c.body(null, 201);
   });
 
-  // Notify an event's members (capabilities `api-endpoints`, `apns-push-sender`). GATED on the event row
+  // Notify an event's members (capabilities `docs/architecture.md`, `receiving-photos`). GATED on the event row
   // (absent → 404, read failure → 502). Enumerate the ACTIVE members with one query — departed members
   // are skipped, which is what makes leaving stop the pushes without stopping the union; a read failure
   // → 502 (nothing enumerable). Then BEST-EFFORT: read each member's registered push token (no row, or
   // no registration → skipped) and send a silent (content-available) push carrying the route's `eventId`
   // in its payload to the rest. Per-member read/send failures never fail the request
   // — always a bare 202 once the gate passed and members were enumerated. Server-chosen payload
-  // (the path event id), all members, no exclusion; the uploader fires this via `upload-completion-notify`.
+  // (the path event id), all members, no exclusion; the uploader fires this via `receiving-photos`.
   v1Only.post("/events/:eventId/notify", async (c) => {
     const eventId = c.req.param("eventId");
     if (!validateUUID(eventId)) {
@@ -1502,7 +1502,7 @@ export function createApp(
     }
 
     try {
-      // The lifecycle gate (capability `event-limits`): an expired event reaps here and 404s; an
+      // The lifecycle gate (capability `event-lifetime`): an expired event reaps here and 404s; an
       // event in grace still notifies — members keep full sync until expiry.
       const gate = await gateEvent(eventId);
       if (gate.kind === "absent") return c.text("event not found", 404);
@@ -1645,7 +1645,7 @@ export function createApp(
       return c.text("upstream error", 502);
     }
     // AFTER the commit, and best-effort: this asset is now servable, so the event's other members are
-    // woken to come and fetch it (capability `upload-completion-notify`). The manifest publish cannot
+    // woken to come and fetch it (capability `receiving-photos`). The manifest publish cannot
     // announce this — a declaration and its later completion project identical manifest fields, so the
     // publish does not change when the bytes land. A byte that completed nothing wakes nobody.
     for (const eventId of completed) await notifyMembers(eventId, deviceId);

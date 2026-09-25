@@ -2,7 +2,7 @@ package app.snapsync.model
 
 /**
  * What a library read for admission produced: the candidates, or the statement that there are none to
- * be had (capability `gallery-status`; law `module-architecture`, "Absence is never silent").
+ * be had (capability `sync-status`; law `docs/architecture.md`, "Absence is never silent").
  *
  * ## Why this is not a list
  *
@@ -50,7 +50,7 @@ sealed interface CandidateRead {
      * - **`DENIED`** — the member withheld access.
      * - **`NOT_DETERMINED`** — the grant is unresolved.
      * - **`LIMITED` with no selection snapshot yet** — under a partial grant the hand-picked selection
-     *   *is* the scope (capability `limited-photo-access`), and until the cold-launch baseline or the
+     *   *is* the scope (capability `photo-access`), and until the cold-launch baseline or the
      *   first observer emission has been consumed the app holds no selection and may not go looking.
      *   This is the only one of the three reachable on a shipped device in ordinary use, and it is the
      *   one a cause-shaped name would have missed.

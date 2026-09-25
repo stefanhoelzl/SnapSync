@@ -3,7 +3,7 @@ package app.snapsync.rig
 import kotlinx.serialization.Serializable
 
 /**
- * The control protocol's **closed vocabulary** (capability `testing-architecture`, "One control protocol, served by
+ * The control protocol's **closed vocabulary** (`docs/testing.md`, "One control protocol, served by
  * two hosts"): every `/device` verb, `/os` entry point and the contract verb either host may serve, as the route
  * without its leading slash. `/user` is not listed: both hosts invoke the one shared table, so it cannot differ.
  *
@@ -38,7 +38,7 @@ object RigVocabulary {
     )
 
     /**
-     * The world's operator levers (capability `full-stack-harness`'s inspector set) — what only a host whose
+     * The world's operator levers (`docs/testing.md`'s inspector set) — what only a host whose
      * backend, OS and other members are simulated can pull. Named for what they do, not for the world, so a test
      * that pulls one does not name its host; the app host refuses them.
      */
@@ -58,7 +58,7 @@ object RigVocabulary {
         "device/foreign-device",
         "device/status/refresh",
         // The integration surface's observable reads of the world's simulated systems (capability
-        // `testing-architecture`, "The seam-to-UI-state integration surface") — what the backend, the crash
+        // `docs/testing.md`, "The seam-to-UI-state integration surface") — what the backend, the crash
         // reporter and the push service recorded.
         "device/backend/union",
         "device/backend/manifest",

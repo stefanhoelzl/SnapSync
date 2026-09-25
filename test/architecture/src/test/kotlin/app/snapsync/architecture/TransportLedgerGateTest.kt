@@ -4,8 +4,8 @@ import kotlin.test.Test
 import kotlin.test.assertTrue
 
 /**
- * **No transport adapter holds the ledger store** (capability `architecture-guards`, "The transport-ledger
- * gate"; law: `sync-ledger`, "Reader and writer capability split").
+ * **No transport adapter holds the ledger store** (`docs/architecture.md`, "The transport-ledger
+ * gate"; law: `photo-sharing`, "Reader and writer capability split").
  *
  * A transport — an implementation of `BackgroundTransfer`, or the target-bound `uploadJobQueue` factory that
  * picks one — is handed the narrow `TransferRecord`: the one guarded terminal write and the one destination
@@ -55,7 +55,7 @@ class TransportLedgerGateTest {
             "these transport adapters reference LedgerStore:\n  ${offenders.joinToString("\n  ")}\n" +
                 "A transport receives a TransferRecord — the guarded terminal write and the destination read — " +
                 "and nothing wider. " +
-                "See `sync-ledger`, \"Reader and writer capability split\".",
+                "See `photo-sharing`, \"Reader and writer capability split\".",
         )
     }
 

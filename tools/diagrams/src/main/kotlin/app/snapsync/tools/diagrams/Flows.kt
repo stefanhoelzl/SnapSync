@@ -1,15 +1,15 @@
 package app.snapsync.tools.diagrams
 
 /**
- * The flow transcriber (capability `architecture-diagrams`): one sequence diagram per flow in
+ * The flow transcriber (`docs/architecture.md`): one sequence diagram per flow in
  * `:domain`'s `flow/` zone, transcribed from the flow bodies themselves. The trigger inventory is
  * DERIVED — the `flow/` directory listing, one file per trigger — never hand-enumerated (spec
- * `module-architecture`, "Commands cross one door").
+ * `docs/architecture.md`, "Commands cross one door").
  *
  * **The generation failure is a hard gate** (armed at the migration finale): a construct outside
  * the closed grammar throws, which fails `:tools:diagrams:generate` (the CI `diagrams` job) AND the
  * in-process freshness test under `./gradlew build` — an untranscribable flow is a law violation,
- * not a rendering problem. The closed grammar (spec `architecture-diagrams`):
+ * not a rendering problem. The closed grammar (`docs/architecture.md`):
  *
  *  - straight-line calls — features, and the `compose/`-built effect lambdas ("effects" below);
  *  - an AWAITED fan-out `coroutineScope { launch { … } … }` (the concurrent form), whose branch
@@ -40,7 +40,7 @@ fun flowsMarkdown(sources: List<KtSource>): Map<String, String> {
     }
     check(flows.isNotEmpty()) {
         "flow transcriber scanned nothing under $FLOW_DIR — the flow/ zone moved; a gate that " +
-            "scans nothing must fail, not pass (capability architecture-guards)"
+            "scans nothing must fail, not pass (`docs/architecture.md`)"
     }
     return flows.associate { src ->
         val name = src.relPath.substringAfterLast('/').removeSuffix(".kt")
@@ -72,7 +72,7 @@ private fun violation(src: KtSource, offset: Int, kind: String, snippet: String)
     throw GrammarViolation(
         "flow transcriber: ${src.relPath}:${src.lineOf(offset)} — $kind outside the closed " +
             "grammar: `${snippet.take(120)}`. An untranscribable flow is a law violation (specs " +
-            "`architecture-diagrams` / `module-architecture`): use a straight-line feature call, " +
+            "`docs/architecture.md` / `docs/architecture.md`): use a straight-line feature call, " +
             "an awaited coroutineScope fan-out, a `when` over a feature-returned sealed result, the single " +
             "leading guard clause, a best-effort wrap, or a receiver-list fan-out — or sink the " +
             "rule into a feature.",
@@ -340,7 +340,7 @@ private fun renderFlow(src: KtSource, name: String): String {
     sb.append("\n")
     sb.append("Transcribed against the closed flow grammar; a construct outside it FAILS generation\n")
     sb.append("(the hard gate, armed at the migration finale — an untranscribable flow is a law\n")
-    sb.append("violation, spec `architecture-diagrams`). Bare calls target the flow's injected\n")
+    sb.append("violation, `docs/architecture.md`). Bare calls target the flow's injected\n")
     sb.append("`compose/`-built effect lambdas, rendered as `effects`; `log.*` lines are diagnostics\n")
     sb.append("and omitted. Async arrows are concurrent branches, awaited by the enclosing flow.\n")
     val helperNames = functions(src).map { it.name }.toSet()

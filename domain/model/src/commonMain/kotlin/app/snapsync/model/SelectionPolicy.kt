@@ -1,7 +1,7 @@
 package app.snapsync.model
 
 /**
- * The **selection policy** (capability `photo-selection-policy`): what a membership contributes, as ONE
+ * The **selection policy** (capability `photo-sharing`): what a membership contributes, as ONE
  * value with ONE `admits` decision.
  *
  * The policy answers a single question — *may this asset enter the event?* — and it has three kinds of
@@ -25,7 +25,7 @@ package app.snapsync.model
  *
  * ## Every rule decides on facts alone
  *
- * No rule may need an asset's *resources* to decide (capability `photo-selection-policy`). That is what
+ * No rule may need an asset's *resources* to decide (capability `photo-sharing`). That is what
  * makes the admitted set **one** set rather than a family of approximations: a rule requiring a ~110 ms
  * per-asset resource read forces each consumer to choose between paying for it — pointless for a count —
  * and admitting on doubt, so the same policy yields different answers at different consumers.
@@ -57,7 +57,7 @@ package app.snapsync.model
  * `model/` — the only zone every consumer can see (feature/upload and feature/status are mutually blind).
  * Platform-free, decided entirely on neutral [AssetFacts], and exercised in `commonTest` on JVM **and**
  * the simulator. The platform may narrow what a walk *returns* by pattern-matching [SelectionRule]s
- * (capability `photo-selection-policy`, *Selection filter*), but that is an optimization which can
+ * (capability `photo-sharing`, *Selection filter*), but that is an optimization which can
  * neither widen nor narrow the admitted set — [admits] stays authoritative.
  *
  * ## One value, one derivation
@@ -139,7 +139,7 @@ class SelectionPolicy(val rules: List<SelectionRule>) {
  * would read `0`, and the screen would read "In sync" while nothing happened.
  *
  * [ceiling] is nullable only for a membership persisted before the capture-date range existed and not yet
- * reconciled (capability `upload-state-reconciliation`); `null` means unbounded above, the admit-on-doubt
+ * reconciled (capability `photo-sharing`); `null` means unbounded above, the admit-on-doubt
  * direction. It becomes required once every device has reconciled.
  */
 suspend fun selectionRulesFor(
@@ -223,7 +223,7 @@ fun noContribution(): SelectionPolicy = SelectionPolicy(listOf(SelectionRule.Den
 
 /**
  * One rule of the [SelectionPolicy]. Sealed so the platform can pattern-match the set and translate the
- * rules it can express into a native fetch predicate (capability `photo-selection-policy`, *Selection
+ * rules it can express into a native fetch predicate (capability `photo-sharing`, *Selection
  * filter*) — a domain rule, translated per platform, never a platform hint leaking into `model/`.
  *
  * Each rule is a pure predicate over neutral [AssetFacts]. There is deliberately **no** `ExcludeEdited`
@@ -253,7 +253,7 @@ sealed interface SelectionRule {
      * conjunction is false whatever else is in the list, and a consumer asks [SelectionPolicy.admits]
      * exactly as it would for any other rule.
      *
-     * The platform translator MUST express it as a query matching no asset (capability `gallery-status`).
+     * The platform translator MUST express it as a query matching no asset (capability `sync-status`).
      * That is a liveness property, not a correctness one — [admits] returns false regardless — but without
      * it a non-contributing membership pays a whole-library walk on every cold start to reach the empty
      * set its own configuration already stated.
@@ -308,7 +308,7 @@ sealed interface SelectionRule {
     }
 
     /**
-     * Echo suppression (capability `photo-download`): assets this device **downloaded and imported** from
+     * Echo suppression (capability `receiving-photos`): assets this device **downloaded and imported** from
      * other contributors. They live in the library, so a walk finds them, but re-uploading one sends a
      * foreign photo back into the event and pegs `N` above what will ever complete.
      */
@@ -317,7 +317,7 @@ sealed interface SelectionRule {
     }
 
     /**
-     * The album denylist (capability `photo-selection-policy`): assets sitting in an album a
+     * The album denylist (capability `photo-sharing`): assets sitting in an album a
      * messaging/social app made. Album membership is the one origin fact that is **not** on the asset —
      * it needs a platform lookup — so the resolved id set is supplied to the policy rather than looked up
      * by it. The titles stay in `model/` ([DENYLISTED_ALBUM_TITLES]); cost is O(albums), not O(assets).

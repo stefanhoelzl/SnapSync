@@ -26,7 +26,7 @@ import platform.posix.read
  *
  * **It hops nowhere, and that is deliberate.** The `open`/`lseek`/`read` sequence below blocks, but
  * where blocking work runs is the composition's decision rather than this seam's (spec
- * `module-architecture`, law "Dispatcher lanes are fixed by the composition"): the app's core scope is
+ * `docs/architecture.md`, law "Dispatcher lanes are fixed by the composition"): the app's core scope is
  * a dedicated non-UI lane, so this is off main whether it hops or not. The only thing a hop could
  * still buy on that **serial** lane is throughput, and there is none here to buy. `CollectDiagnosticDump`
  * reads the two tails one after the other and data-dependently — the app's share of the budget is
@@ -34,7 +34,7 @@ import platform.posix.read
  * sheet is waiting on, and each read is a few hundred KB from a local file. Nothing runs alongside
  * them that releasing the lane would let proceed.
  *
- * An earlier revision hopped to `Dispatchers.Default` and cited `module-architecture` for it, under a
+ * An earlier revision hopped to `Dispatchers.Default` and cited `docs/architecture.md` for it, under a
  * rule ("sync-I/O port impls own their dispatcher hop") that same spec had already withdrawn — so a
  * reader who followed the citation arrived at a document contradicting the comment.
  */

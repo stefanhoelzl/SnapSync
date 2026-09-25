@@ -101,7 +101,7 @@ internal suspend fun readState(core: AppCore, host: StatusContainerHost, hooks: 
     val counts = core.ledgerCounts.counts.value
     val progress = core.downloadStatus.progress.value
     // The membership, the invite URL and the inline create error all live INSIDE the UI state now
-    // (capability `sync-status-screen`), so the rig reports exactly what the screen is rendering rather
+    // (capability `sync-status`), so the rig reports exactly what the screen is rendering rather
     // than a parallel set of read-models that could disagree with it.
     val ui = host.container.stateFlow.value
     // `ui.layer`, never `ui`: the state wraps its layer, and a cast of the WRAPPER to a layer type is always null —

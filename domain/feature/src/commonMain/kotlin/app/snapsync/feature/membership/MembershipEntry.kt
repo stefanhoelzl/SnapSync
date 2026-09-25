@@ -3,7 +3,7 @@ package app.snapsync.feature.membership
 import app.snapsync.model.EventConfig
 
 /**
- * Entering a **new** membership (capabilities `join-event`, `upload-state-reconciliation`, `upload-lifecycle`):
+ * Entering a **new** membership (capabilities `join-event`, `photo-sharing`, `background-upload`):
  * what a first join or a switch does, in order. A re-provision of the joined event is not an entry and never
  * reaches here ([SwitchDecision.Stay]) — which is how a re-scan of the joined event does nothing to uploads.
  *
@@ -18,7 +18,7 @@ import app.snapsync.model.EventConfig
  *    extension never reads the previous membership's config over the new ledger.
  *
  * The order is the whole of this class, which is why it is a class rather than lambdas in the flow: the flow
- * grammar allows one call per branch of the transition (spec `architecture-diagrams`), and the ordering is a
+ * grammar allows one call per branch of the transition (`docs/architecture.md`), and the ordering is a
  * rule worth a test of its own. Decision record: `changes/both-uploaders-active` (D5).
  */
 class MembershipEntry(

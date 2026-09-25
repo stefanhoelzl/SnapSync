@@ -11,7 +11,7 @@ import kotlinx.coroutines.launch
 
 /**
  * What the core's [PlatformEntries] needs from the process it runs in and cannot name itself (spec
- * `module-architecture`, "OS entry points cross an inbound port").
+ * `docs/architecture.md`, "OS entry points cross an inbound port").
  *
  * The hooks call back **into** this process — the presentation container, the root's lazily assembled host, the
  * push-token source the root holds — never out of it, so they are coordination rather than I/O and function types
@@ -22,14 +22,14 @@ import kotlinx.coroutines.launch
  * platform constant enters `:domain`.
  */
 class EntryHooks(
-    /** Record that the app became active — the root's scene rule reads it (capability `ios-app-shell`). */
+    /** Record that the app became active — the root's scene rule reads it (capability `sync-status`). */
     val markActive: () -> Unit,
     /** The container's link intent: decodes, and opens the join gate or flashes the invalid-link error. */
     val openUrl: (url: String) -> Unit,
     /**
      * Touch the root's lazily assembled host, so its collectors run before a foreground entry's work lands. Foreground
      * only: a background wake assembles no host, so a cold background start installs no permission-grant subscription
-     * (capability `ios-app-shell`, "iOS live composition root").
+     * (capability `sync-status`, "iOS live composition root").
      */
     val assembleHost: () -> Unit,
     /** Hand a push token to the source the registration collector observes. */
@@ -41,7 +41,7 @@ class EntryHooks(
 )
 
 /**
- * The core's implementation of the app process's inbound port (spec `module-architecture`, "OS entry points cross
+ * The core's implementation of the app process's inbound port (`docs/architecture.md`, "OS entry points cross
  * an inbound port"). The composition root implements [PlatformEntries] by delegating to this, so the forwarding from
  * each operating-system callback is written by the compiler.
  *
@@ -53,7 +53,7 @@ fun platformEntries(core: () -> AppCore, hooks: EntryHooks): PlatformEntries = A
 
 /**
  * The core's implementation of the app process's inbound port: **each wake does its own work, then hands the rest to
- * the one opportunistic tail** (capability `ios-app-shell`; decision record `changes/own-work-per-wake`, D1, D3, D5).
+ * the one opportunistic tail** (capability `sync-status`; decision record `changes/own-work-per-wake`, D1, D3, D5).
  *
  * | wake | own work, after the prelude | handler released | then |
  * |---|---|---|---|
@@ -70,7 +70,7 @@ fun platformEntries(core: () -> AppCore, hooks: EntryHooks): PlatformEntries = A
  * expiry ([onBackgroundTaskTimeUp]) stops the tail and completes the task at once. No clock of the app's own bounds
  * anything here.
  *
- * **The tail is requested here, after a flow returns — never from inside one** (spec `module-architecture`, "A
+ * **The tail is requested here, after a flow returns — never from inside one** (`docs/architecture.md`, "A
  * trigger flow never outlives its own run"). Nothing here decides upload behaviour: the tail's units decide at the
  * upload cycle's own entry gate. The two comparisons below route by the identifier the operating system delivered;
  * they choose a handler, not whether work happens. `PlatformEntriesContract` specifies all of it, bound over the
@@ -147,7 +147,7 @@ internal class AppEntries(
                     }
                 }
                 // Only for the active event, read from the membership the flow just re-read: a push for another
-                // event, a left one, none, or an unreadable membership wakes no tail (capability `push-registration`).
+                // event, a left one, none, or an unreadable membership wakes no tail (capability `receiving-photos`).
                 val joinsTail = pushEventId(payload)?.let(app.pushTailGuard::joinsTail) == true
                 if (joinsTail) wake.thenTail(TailTrigger.SILENT_PUSH) else wake.end()
             }
@@ -170,7 +170,7 @@ internal class AppEntries(
     override fun onBackgroundTaskTimeUp(identifier: String) =
         log.invocation(ports.logScope, "onBackgroundTaskTimeUp", params = "identifier=$identifier") {
             // Answered here and nowhere else: the shell forwards the OS's expiration handler and completes nothing
-            // (capability `ios-app-shell`, "Background tasks are forwarded by the identifier the OS delivered").
+            // (capability `sync-status`, "Background tasks are forwarded by the identifier the OS delivered").
             if (!taskExpiries.expire(identifier)) {
                 log.w { "time is up for background task '$identifier', which the core is not running — ignored" }
             }
@@ -190,7 +190,7 @@ internal class AppEntries(
             }
             wake.guard(handover)
             scope.launch {
-                // The protected-storage state for this wake (capability `ios-app-shell`), recorded one dispatch
+                // The protected-storage state for this wake (capability `sync-status`), recorded one dispatch
                 // later: the read may have to hop threads, and the routing above must not wait for it.
                 log.i { "onBackgroundTransfers(channel=$channel): protectedData=${ports.protectedStorage.readable()}" }
                 app.prelude()

@@ -27,7 +27,7 @@ kotlin {
     // provisioning back from `:adapter:ios:app-only`, which needs it for exactly that reason.
 
     // The inbound port the root delegates to comes from ONE of two directories (capability
-    // `module-architecture`, "A build-time-only module is contained by compilation, not by a runtime check").
+    // `docs/architecture.md`, "A build-time-only module is contained by compilation, not by a runtime check").
     // Without `-Psnapsync.rig=true`: `src/entries`, the core's port unchanged. With it: `:test:rig`'s
     // `src/ext-hook`, the same symbol wrapped so a port-contract run requested through the App Group takes the
     // place of a cycle. Exactly one is on the compile path, so a production extension carries no route to a
@@ -54,7 +54,7 @@ kotlin {
             // platform-free technology impls (:adapter:generic:app — the SQLDelight stores + Ktor clients).
             implementation(project(":adapter:generic:app"))
             implementation(project(":adapter:ios:ext-safe"))
-            // The event-notify sender (capability `upload-completion-notify`): a bodyless POST to
+            // The event-notify sender (capability `receiving-photos`): a bodyless POST to
             // Ktor core for the synchronous in-cycle device.json PUT (the Darwin client comes from
             // :adapter:ios:ext-safe); the byte uploads are the OS's job, not Ktor's.
             implementation(libs.ktor.client.core)

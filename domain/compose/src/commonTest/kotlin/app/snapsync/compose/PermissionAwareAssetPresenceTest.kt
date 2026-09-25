@@ -13,7 +13,7 @@ import kotlinx.coroutines.test.runTest
 
 /**
  * The grant decides **which source may answer**, and only a source that sees the whole library may say
- * [AssetPresence.ABSENT] (capability `photo-download`; capability `limited-photo-access`).
+ * [AssetPresence.ABSENT] (capability `receiving-photos`; capability `photo-access`).
  *
  * The distinction under test is not *can we look* but **is a miss trustworthy**. A miss reported as
  * absence clears a live marker, imports a second copy, and orphans the first — the defect the download
@@ -75,7 +75,7 @@ class PermissionAwareAssetPresenceTest {
     fun `a miss under LIMITED is UNKNOWN and never ABSENT`() = runTest {
         // THE LOAD-BEARING ASSERTION. An app-created asset joins the platform selection at creation time
         // only, so one created under a full grant is real but invisible after a downgrade (measured,
-        // capability `limited-photo-access`). Reading that miss as ABSENT clears a live marker and
+        // capability `photo-access`). Reading that miss as ABSENT clears a live marker and
         // re-imports a photo the device already holds.
         val (_, source) = source(PermissionStatus.LIMITED, snapshot = snapshotOf("S1"))
         assertEquals(mapOf("MISSING" to AssetPresence.UNKNOWN), source.presence(setOf("MISSING")))

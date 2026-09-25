@@ -4,7 +4,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
- * One resource entry inside a [DeviceManifestAsset] (capability `device-manifest`): a generic [role],
+ * One resource entry inside a [DeviceManifestAsset] (capability `photo-sharing`): a generic [role],
  * the resource's MIME [contentType], its [key] (the storage object name `<assetId>-<role>.<ext>` — its
  * `files/<deviceId>/` storage key minus that prefix, byte-identical to what the producer uploads under,
  * see [uploadKey]; the fetch handle), and the human [filename] as captured. These field names are shared
@@ -19,7 +19,7 @@ class ManifestResource(
 )
 
 /**
- * One asset entry inside a [DeviceManifest] (capability `device-manifest`): the device-local
+ * One asset entry inside a [DeviceManifest] (capability `photo-sharing`): the device-local
  * [assetId], its [creationDate] (ISO-8601 capture timestamp), and a non-empty [resources] set of
  * generic, originals-only [ManifestResource]s. Carries no `version` (the document is mutable and
  * rewritten each cycle, not a write-once contract).
@@ -32,7 +32,7 @@ class DeviceManifestAsset(
 )
 
 /**
- * The per-event device manifest (capability `device-manifest`): one object per (event, device) at
+ * The per-event device manifest (capability `photo-sharing`): one object per (event, device) at
  * `/events/<eventId>/devices/<deviceId>.json`, carrying the stable [deviceId] and the device's
  * [assets] for that event. It **replaces** the per-asset manifest objects — one document instead of N
  * — and is a **mutable, full-state snapshot** rewritten each cycle (no read-modify-write, last-write
@@ -45,7 +45,7 @@ class DeviceManifest(
     val deviceId: String,
     val assets: List<DeviceManifestAsset>,
     /**
-     * The ledger's **manifest version** this snapshot was projected under (capability `device-manifest`, "A
+     * The ledger's **manifest version** this snapshot was projected under (capability `photo-sharing`, "A
      * publish carries the manifest version"): the backend stores a publish only when it is not older than the
      * one it holds, so two processes' publishes crossing in the network can never leave it a snapshot behind.
      *
@@ -72,18 +72,18 @@ fun deviceManifestFromJson(text: String): DeviceManifest =
 
 /**
  * Project the upload ledger's [rows] into a single event's [DeviceManifest], keeping exactly the assets
- * the membership's [policy] **admits** (capability `photo-selection-policy`).
+ * the membership's [policy] **admits** (capability `photo-sharing`).
  *
  * **The manifest declares INTENT, not completion.** It lists what this device will provide to the event —
  * every non-absent row the policy admits, whatever its upload state. The backend records the roles each
  * asset declares and serves it only once every one of them has a resource, so a declared-but-unlanded
  * resource keeps its asset hidden rather than leaking it: that comparison is what lets the backend tell
- * "this photo is coming" from "this photo does not exist" (capability `api-endpoints`).
+ * "this photo is coming" from "this photo does not exist" (`docs/architecture.md`).
  *
  * Listing only completed rows is what this replaced, and it had a defect of its own. A recipient plans
  * downloads per ASSET, so a Live Photo whose `primary` and `live` completed in different cycles was
  * offered mid-upload as a complete one-resource asset — and a recipient reconciling in that window
- * imported it as a still, marked it settled, and never took the video (capability `photo-download`).
+ * imported it as a still, marked it settled, and never took the video (capability `receiving-photos`).
  *
  * It applies the *one* admission rather than a date comparison of its own — [admittedAssetIds], shared
  * verbatim with the upload cycle's enqueue, so what this device declares and what its bytes do cannot
@@ -102,7 +102,7 @@ suspend fun projectDeviceManifest(
     policy: SelectionPolicy,
 ): DeviceManifest {
     // No row filter of its own: a departed asset's rows are deleted by the walk that shows it gone
-    // (capability `sync-ledger`), so every row here is one this device still holds. Admission is the policy's.
+    // (capability `photo-sharing`), so every row here is one this device still holds. Admission is the policy's.
     val admitted = admittedAssetIds(rows, policy)
 
     val assets = rows.groupBy { it.assetId }.filterKeys { it in admitted }.map { (assetId, group) ->

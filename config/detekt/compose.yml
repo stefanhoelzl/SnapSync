@@ -1,6 +1,6 @@
 # Tier `compose` — the shared compositions (`:domain` `compose/`)
 #
-# A CEILING on complexity for this scope (capability `complexity-budgets`). Every number below is a
+# A CEILING on complexity for this scope (`docs/architecture.md`). Every number below is a
 # ceiling that MAY ONLY FALL. Lowering one is ordinary work — do it in the change that makes it true.
 # RAISING one requires a stated forcing proof in that change's description, naming what the platform,
 # the language, or the shape of the problem makes unavoidable. There is no check that enforces this:
@@ -64,7 +64,7 @@
 #
 # RAISED 390 -> 400 by `device-speaks-v2`, which is a ceiling going the wrong way and therefore owes a
 # forcing proof. Here it is. The 390 search left `AppCore` measuring 389 — ONE line of slack — and the
-# `min-app-version` capability needs exactly TWO lines in this class: `val versionGate: AppVersionGate`,
+# `app-update-required` capability needs exactly TWO lines in this class: `val versionGate: AppVersionGate`,
 # which is the same shape as the `creationStatus`/`renameStatus` read-models beside it, and one
 # `openLink` binding in the block where every user command is bound. Neither is reducible: a read-model
 # the shell must reach has to be constructed where the graph is, and a command has to be bound with the

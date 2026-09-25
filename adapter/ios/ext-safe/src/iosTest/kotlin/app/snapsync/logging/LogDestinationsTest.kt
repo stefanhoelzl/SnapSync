@@ -7,7 +7,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
- * Where each process puts its log (capability `diagnostic-logging`).
+ * Where each process puts its log (capability `privacy-security`).
  *
  * A test binary is an unusually honest place to assert this: it has no `application-groups`
  * entitlement, so `appGroupDirectory()` answers `null` — which is exactly the condition the

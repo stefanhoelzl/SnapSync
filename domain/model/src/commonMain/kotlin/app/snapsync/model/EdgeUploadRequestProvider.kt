@@ -41,7 +41,7 @@ package app.snapsync.model
  * manifest), so re-joining or switching events re-uploads nothing already stored.
  *
  * [host]/[deviceId] are plain strings, injected by the consuming composition root (host baked at compile
- * time, deviceId from the shared Keychain via the `device-identity` seam). The provider makes no platform
+ * time, deviceId from the shared Keychain via the `photo-sharing` seam). The provider makes no platform
  * call.
  */
 class EdgeUploadRequestProvider(
@@ -55,7 +55,7 @@ class EdgeUploadRequestProvider(
     private val freshToken: suspend () -> String?,
     /**
      * The calling build's marketing version, declared on every v2 request (capability
-     * `min-app-version`).
+     * `app-update-required`).
      *
      * Required HERE and not only on the shared HTTP client because **the OS performs this request**: it
      * is handed to the platform's background-upload subsystem and issued later, outside any client this

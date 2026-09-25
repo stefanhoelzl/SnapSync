@@ -24,7 +24,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertIs
 
 /**
- * The PhotoKit upload-job vocabulary mappings (capability `ios-photokit-upload`).
+ * The PhotoKit upload-job vocabulary mappings (capability `background-upload`).
  *
  * Every assertion names the SDK's **own constants** rather than the integers behind them — the lesson
  * `PhotoKitResourceRoleTest` records: a table over Apple's ABI asserted as bare integers against bare

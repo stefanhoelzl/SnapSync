@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Render an App Store version's release notes from the labelled pull requests in a commit range.
 
-Capability `changelog-labels`. The unit is the PULL REQUEST, never the commit: `/ship` labels every
+Capability `docs/deployment.md`. The unit is the PULL REQUEST, never the commit: `/ship` labels every
 PR `enhancement` / `bug` / `internal`, so the label already answers the only question the store text
 cares about — does a user of the app experience this? — which a `feat:`/`fix:` prefix does not
 encode. (Measured on `v0.1..`build 542: 66 commits, 38 of them prefixed `feat:`/`fix:`, of which the

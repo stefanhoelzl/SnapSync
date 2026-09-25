@@ -115,12 +115,12 @@ import kotlinx.coroutines.withContext
 
 /**
  * The ports (and shell-supplied inputs) the app-graph composition consumes (spec
- * `module-architecture`, "One shared composition"). The shell constructs its platform adapters and
+ * `docs/architecture.md`, "One shared composition"). The shell constructs its platform adapters and
  * supplies them here; [snapSyncApp] composes the feature graph.
  *
  * Some inputs are deliberately **lambdas built by the shell**: the coordination hooks ([provision],
  * [onEventMinted]) bridge into the shell's entry surfaces; [appDrivenUpload] and [extensionRegistration]
- * are the uploaders this OS can carry — both run, each deciding at its own entry gate (`upload-lifecycle`,
+ * are the uploaders this OS can carry — both run, each deciding at its own entry gate (`background-upload`,
  * "Both uploaders may run; an overlap is a duplicate, never a loss"). The denylisted-album read is
  * built here from [albumManager] with the app tier's admit-on-doubt answer, for both the own-device
  * status total and the app's cycle, so the two consumers of the policy can never diverge.
@@ -140,7 +140,7 @@ class AppPorts(
      *  off-device, so a composition with no platform to reach writes nothing about either. */
     val handoff: PlatformHandoff = PlatformHandoff(),
     /**
-     * The **main lane** (spec `module-architecture`, law "Dispatcher lanes are fixed by the
+     * The **main lane** (`docs/architecture.md`, law "Dispatcher lanes are fixed by the
      * composition"): the dispatcher platform-UI commands run on — `share`, `requestAccess`,
      * `openSettings`, `choosePhotos`, which present system UI and must not leave the main thread.
      *
@@ -152,7 +152,7 @@ class AppPorts(
      */
     val uiLane: CoroutineContext,
     /** The permission-aware gallery read seam. ONE instance serves both the status total and the
-     *  join-time shareable-count preview (capability `join-share-count`), so the two cannot disagree. */
+     *  join-time shareable-count preview (capability `join-event`), so the two cannot disagree. */
     val candidateSource: CandidateSource,
     /** What this process knows about its own uploads — the ledger, the backend's listing of it, and the
      *  join marker tying the two to an event. Read-only in this graph: see [UploadRecordPorts]. */
@@ -161,7 +161,7 @@ class AppPorts(
     val importer: PhotoLibraryImporter,
     /**
      * Whether an asset this device created still exists — the **full-access** source only (capability
-     * `photo-download`). Composition wraps it in [PermissionAwareAssetPresence] below, which is what
+     * `receiving-photos`). Composition wraps it in [PermissionAwareAssetPresence] below, which is what
      * decides whether a miss may be reported as absence at all; a partial or revoked grant answers from
      * the held selection instead and never reaches this. Defaults to unanswerable so a composition that
      * cannot look never claims an asset is gone — the one wrong answer that re-creates the defect.
@@ -169,7 +169,7 @@ class AppPorts(
     val assetPresence: ImportedAssetPresence = ImportedAssetPresence.Unanswerable,
     /**
      * Where downloaded bytes are staged, and who releases them once their row settles (capability
-     * `download-store`).
+     * `receiving-photos`).
      *
      * **Required, no longer defaulted.** It used to default to [StagedBytes.None] on the reasoning that
      * failing to free disk is the one harmless failure among these ports — true of releasing, and false
@@ -192,7 +192,7 @@ class AppPorts(
     val manifestStore: DeviceManifestStore,
     val eventCreation: EventCreation,
     /**
-     * The event-rename seam (capability `event-rename`). **Required, not defaulted**: an inert default
+     * The event-rename seam (capability `manage-membership`). **Required, not defaulted**: an inert default
      * would leave the status screen's rename affordance visible and silently doing nothing — the one
      * outcome [UserCommands.sendDiagnostics]'s contract forbids, and the reason that command is nullable
      * rather than inert. A root that cannot rename must fail to compile, not ship a dead pen.
@@ -206,7 +206,7 @@ class AppPorts(
     val deviceIdentity: DeviceIdentity,
     /** Wall-clock now, through the port that has always existed for it (`ports/Time.kt`). This was a
      *  `() -> Long` lambda the shell filled with an inline `NSDate()` call — a platform read supplied
-     *  to the core past a seam built for exactly this (spec `module-architecture`). Two clocks were
+     *  to the core past a seam built for exactly this (`docs/architecture.md`). Two clocks were
      *  therefore live in one composition: this one for the domain, `SystemClock` for the UI
      *  formatter, and a test could pin one and leave the other running. */
     val clock: Clock,
@@ -221,15 +221,15 @@ class AppPorts(
     val timeZone: TimeZoneSource,
     /**
      * This build's App Store page, or `null` when it carries none — the one remedy the update-required
-     * screen offers (capability `min-app-version`). **Required**: a root that omitted it would show the
+     * screen offers (capability `app-update-required`). **Required**: a root that omitted it would show the
      * refusal with no way out, and a default would make that omission silent.
      */
     val appStoreUrl: String?,
     /** The **app-driven** uploader's mechanism — always composed, on every OS version; a thunk so it resolves
      *  lazily. Its two units are the process tail's ② and ③, and its cycle's entry gate withholds when this
-     *  process may not create (`upload-lifecycle`). */
+     *  process may not create (`background-upload`). */
     val appDrivenUpload: () -> AppUploadMechanism,
-    /** The process's background time (spec `module-architecture`, "Background time is an outbound port named for
+    /** The process's background time (`docs/architecture.md`, "Background time is an outbound port named for
      *  the need"): what a push or a transfer wake holds across its own work and its tail, and the only "time is up"
      *  those wakes get. Required: a composition without it would hold nothing, and no expiry would ever stop a
      *  tail. */
@@ -247,7 +247,7 @@ class AppPorts(
     val uploaderPin: () -> UploaderPin?,
     val albumManager: AlbumManager,
     val albumMapStore: AlbumMapStore,
-    /** Tells the shared event this device is leaving (capability `leave-event`). This was
+    /** Tells the shared event this device is leaving (capability `manage-membership`). This was
      *  `notifyLeave: suspend (eventId) -> Unit`, a lambda the shell built by closing over the adapter
      *  AND this device's id — a backend call reaching out of the process behind a type indistinguishable
      *  from in-core coordination. The id now lives where it is a constant: in the adapter (see
@@ -255,16 +255,16 @@ class AppPorts(
      *  builds from this port — they may not name a port at all (law "flow/ never references ports/"). */
     val leaveNotifier: LeaveNotifier,
     val onEventMinted: suspend (eventId: String) -> Unit,
-    /** The push registration's ports (capability `push-registration`) — see [PushPorts]. */
+    /** The push registration's ports (capability `receiving-photos`) — see [PushPorts]. */
     val push: PushPorts,
-    /** Crash/error reporting (capability `crash-reporting`). Required — a tier that forgot it would
+    /** Crash/error reporting (capability `privacy-security`). Required — a tier that forgot it would
      *  fail invisibly, exactly like the reconcile this bundle also refuses to default. */
     val diagnosticsReporter: DiagnosticsReporter,
     /** Whether protected storage is readable right now — recorded by the background entry points, deciding
-     *  nothing (capability `ios-app-shell`). Required, like the reporter: an entry that logged no answer would
+     *  nothing (capability `sync-status`). Required, like the reporter: an entry that logged no answer would
      *  look, in a device log, exactly like one that ran on an unlocked device. */
     val protectedStorage: ProtectedStorage,
-    /** The device logs a diagnostic dump reads back (capability `diagnostic-logging`). The default
+    /** The device logs a diagnostic dump reads back (capability `privacy-security`). The default
      *  reads nothing: off-device compositions (world, harnesses) have no device logs, and a dump
      *  assembled there is honestly empty rather than fabricated. */
     val deviceLogSource: DeviceLogSource = DeviceLogSource.None,
@@ -280,13 +280,13 @@ class AppPorts(
      *  this process's StateFlow). A port: on iOS it is an App-Group file read. */
     val configRefresh: ConfigRefresh,
 
-    /** Selection snapshots under a partial grant (capability `limited-photo-access`); the inert default
+    /** Selection snapshots under a partial grant (capability `photo-access`); the inert default
      *  serves every composition that never sees one (world by default, desktop harnesses). */
     val selectionChanges: PhotoSelectionChangeSource = PhotoSelectionChangeSource.None,
 
     val log: Logger,
     /** The ambient-context seam the tier-neutral features drive so their device-log lines carry the
-     *  triggering entry point's `[<name>]` prefix (capability `diagnostic-logging`). The app shell
+     *  triggering entry point's `[<name>]` prefix (capability `privacy-security`). The app shell
      *  injects `IosLogScope`; world / tests default to `LogScope.NoOp`. */
     val logScope: LogScope = LogScope.NoOp,
 )
@@ -309,7 +309,7 @@ class AppCore internal constructor(
     }
 
     /**
-     * Whether the backend is refusing this build as too old (capability `min-app-version`). NOT lazy:
+     * Whether the backend is refusing this build as too old (capability `app-update-required`). NOT lazy:
      * its writer is the shell's HTTP interceptor, built before this graph is touched, and a lazy cell
      * would be created by its first reader — possibly after the refusal it exists to record.
      */
@@ -323,7 +323,7 @@ class AppCore internal constructor(
     val backendVerdicts: app.snapsync.ports.BackendVerdicts = backendVerdictsOf()
 
     /**
-     * Device attestation (capability `device-attestation`) — the bearer token EVERY backend call
+     * Device attestation (capability `privacy-security`) — the bearer token EVERY backend call
      * carries. Composed here; only the app process can attest (`DCAppAttestService.isSupported` is
      * false in an app extension — measured), and the extension reads the token this writes.
      */
@@ -346,12 +346,12 @@ class AppCore internal constructor(
 
     // The own-device upload TOTAL N (capability `sync-status`): gallery enumeration minus downloaded
     // foreign photos, scoped by the membership's cutoff and the origin exclusions
-    // (capability `photo-selection-policy`) — the SAME album lookup the upload cycle gets, because the
+    // (capability `photo-sharing`) — the SAME album lookup the upload cycle gets, because the
     // two enumerate independently and a rule applied to one and not the other would peg the joined
     // screen below 100% forever.
     /**
      * The one read seam the app's consumers hold — the grant decides the backing, not the consumer
-     * (capability `limited-photo-access`). Built here because choosing between ports by a third port's
+     * (capability `photo-access`). Built here because choosing between ports by a third port's
      * state is composition.
      *
      * Public for the same reason [gallery] is: the dev/test control channel's gallery read asks THIS seam
@@ -370,7 +370,7 @@ class AppCore internal constructor(
     /**
      * The one presence source the download guard holds: full access queries the library, a partial grant
      * answers from the snapshot and never says "absent", no grant answers unknown (capability
-     * `photo-download`). Built here for the same reason as [candidates] — choosing a source by the
+     * `receiving-photos`). Built here for the same reason as [candidates] — choosing a source by the
      * grant is composition, and both halves are available here.
      */
     private val assetPresence: ImportedAssetPresence by lazy {
@@ -383,11 +383,11 @@ class AppCore internal constructor(
 
     val gallery: OwnDeviceGalleryStatusSource by lazy {
         // The two exclusion readers moved to the one derivation below — this source now receives a
-        // finished policy (capability `photo-selection-policy`).
+        // finished policy (capability `photo-sharing`).
         OwnDeviceGalleryStatusSource(candidates)
     }
 
-    // The join-time shareable-count preview (capability `join-share-count`): the SAME policy the cycle and
+    // The join-time shareable-count preview (capability `join-event`): the SAME policy the cycle and
     // `gallery` (N) apply, over the same permission-aware source — so the preview and the total cannot
     // disagree about where candidates come from. No usable grant → null → the surface omits the row.
     private val shareableCountSource: ShareableCountSource by lazy {
@@ -402,7 +402,7 @@ class AppCore internal constructor(
 
     /**
      * The join surface's live "how many photos from your gallery will be shared" query (capability
-     * `join-share-count`): for a candidate [cutoff] with sharing on, the count of own photos the policy
+     * `join-event`): for a candidate [cutoff] with sharing on, the count of own photos the policy
      * admits, or `null` when the grant permits no count. Purely local — no backend LIST.
      */
     suspend fun loadShareableCount(cutoff: CaptureCutoff, until: CaptureCeiling?): Int? =
@@ -416,7 +416,7 @@ class AppCore internal constructor(
         LedgerBackedSyncStatusSource(ledgerCounts, ports.photoAccess, gallery, scope)
     }
 
-    // Download progress for the joined-layer "downloaded X of Y" line (capability `photo-download`).
+    // Download progress for the joined-layer "downloaded X of Y" line (capability `receiving-photos`).
     val downloadStatusSource: StoreDownloadStatusSource by lazy {
         StoreDownloadStatusSource(ports.downloadStore)
     }
@@ -426,7 +426,7 @@ class AppCore internal constructor(
     // lifecycle live in the tested feature; the transport is the shell's adapter thunk.
     val downloadJobs: QueuedPhotoDownloadJobs by lazy {
         // The staging root is read from the port that also releases those bytes, at first use rather
-        // than at composition — on iOS it is an App-Group container lookup (capability `download-store`).
+        // than at composition — on iOS it is an App-Group container lookup (capability `receiving-photos`).
         QueuedPhotoDownloadJobs(
             scope = scope,
             stagingRoot = ports.stagedBytes.stagingRoot(),
@@ -435,7 +435,7 @@ class AppCore internal constructor(
             // by a compose-built lambda whose body is one call (law "Commands cross one door"). It reads the
             // `downloadController` lazy when INVOKED, not here: the jobs are built on paths that build
             // nothing else — a background-`URLSession` relaunch touches only `downloadJobs` — and the
-            // callback must reach the controller on those paths too (capability `photo-download`, "A staged
+            // callback must reach the controller on those paths too (capability `receiving-photos`, "A staged
             // resource reaches the controller on every entry point"). No launch here: the jobs own it, so
             // they can join the imports before the session's OS handler is released.
             // Staging is recorded here and the import is the tail's: requested detached — a staging holds no OS
@@ -445,7 +445,7 @@ class AppCore internal constructor(
                 tail.requestDetached(TailTrigger.DOWNLOAD_STAGED)
             },
             // UIKit owns this session's completion handler and requires the main thread for it
-            // (capability `ios-app-shell`); the harness binds its own lane.
+            // (capability `sync-status`); the harness binds its own lane.
             uiLane = ports.uiLane,
             logScope = ports.logScope,
         )
@@ -461,13 +461,13 @@ class AppCore internal constructor(
             presence = assetPresence,
             stagedBytes = ports.stagedBytes,
             myDeviceId = ports.deviceIdentity.deviceId(),
-            // Three-valued, no fallback (capability `photo-download`): no membership → `null` → no arm.
+            // Three-valued, no fallback (capability `receiving-photos`): no membership → `null` → no arm.
             downloadEnabled = { ports.configSource.config.value?.direction?.includesDownload },
             logScope = ports.logScope,
         )
     }
 
-    // The silent-push receiver for the download arm (capability `photo-download`); its active-event
+    // The silent-push receiver for the download arm (capability `receiving-photos`); its active-event
     // guard is the feature's rule. The app shell fans this out with the upload arm's receiver until
     // the fan-out re-homes (step 8).
     val downloadPushReceiver: DownloadPushReceiver by lazy {
@@ -489,7 +489,7 @@ class AppCore internal constructor(
     val albumGather: AlbumGather by lazy { albumGather(ports, albumCoordinator, scope, ::selectionPolicyForMembership) }
 
     /**
-     * Whether the upload extension may be registered now (capability `upload-lifecycle`, "Whether the extension
+     * Whether the upload extension may be registered now (capability `background-upload`, "Whether the extension
      * may be registered is one pure fact") — read fresh wherever it is needed, never held: it is a function of
      * the runtime grant, so a captured answer would be stale exactly when it mattered.
      */
@@ -503,7 +503,7 @@ class AppCore internal constructor(
 
     /**
      * Whether the app's uploader may create now — the app process's admission, which its entry gate consumes
-     * (capability `upload-lifecycle`, "The upload cycle owns its entry decision").
+     * (capability `background-upload`, "The upload cycle owns its entry decision").
      */
     val appUploadAdmission: () -> UploadAdmission = {
         // The scope, not the raw cell: an unread partial-grant selection withholds (`appAdmission`), and it is
@@ -512,10 +512,10 @@ class AppCore internal constructor(
     }
 
     /** [appUploadAdmission] as a Boolean — what the app pump's completion re-pump reads (capability
-     *  `ios-url-session-upload`, "The delegate records the terminal fact before it returns"). */
+     *  `background-upload`, "The delegate records the terminal fact before it returns"). */
     val appMayCreate: () -> Boolean = { appUploadAdmission() == UploadAdmission.Admit }
 
-    // The upload arm (capability `upload-lifecycle`): what each membership transition does to the two
+    // The upload arm (capability `background-upload`): what each membership transition does to the two
     // uploaders. Stateless — every decision is derived from the registration fact, the grant and whether a
     // membership exists, at the moment of the transition; the root defaults nothing.
     val uploadTransitions: UploadTransitions by lazy {
@@ -532,14 +532,14 @@ class AppCore internal constructor(
 
     /**
      * The backend-leave effect the leave use-case and the switch path both fire (capability
-     * `leave-event`) — the [LeaveNotifier] port wrapped as the `suspend (eventId) -> Unit` its two
+     * `manage-membership`) — the [LeaveNotifier] port wrapped as the `suspend (eventId) -> Unit` its two
      * consumers take. Built here because `flow/Provision` may not name a port at all (law "flow/ never
      * references ports/"), and `LeaveEvent` takes the same shape so the two paths cannot diverge.
      *
      * The port's failed [Result] is **logged, not propagated**: leaving is best-effort by contract and
      * the local teardown has already completed by the time this runs, so there is nothing to roll back.
      * Logging it is what keeps the accepted abandon-leak (a backend membership left in place) from being
-     * silent — the drop used to be invisible at every layer (spec `module-architecture`, "Absence is
+     * silent — the drop used to be invisible at every layer (`docs/architecture.md`, "Absence is
      * never silent").
      */
     private val notifyLeave: suspend (eventId: String) -> Unit = { eventId ->
@@ -553,7 +553,7 @@ class AppCore internal constructor(
     }
 
     // The leave use-case: stop the producer, clear the upload ledger (the ledger is the current
-    // membership's share set — capability `sync-ledger`), clear the config (which flips the screen off the
+    // membership's share set — capability `photo-sharing`), clear the config (which flips the screen off the
     // joined layer), then notify the backend fire-and-forget. The download store is not touched.
     val leaveEvent: LeaveEvent by lazy {
         LeaveEvent(
@@ -566,11 +566,11 @@ class AppCore internal constructor(
         )
     }
 
-    // The join-time load (capability `upload-state-reconciliation`), built in `shareSetLoadFor`. Public for
+    // The join-time load (capability `photo-sharing`), built in `shareSetLoadFor`. Public for
     // the world harness, whose operator provision runs this instance rather than a copy.
     val shareSetLoad: ShareSetLoad by lazy { shareSetLoadFor(ports) }
 
-    // The in-place reconfigure use-case (capability `reconfigure-membership`): rewrite the joined
+    // The in-place reconfigure use-case (capability `manage-membership`): rewrite the joined
     // membership's participation fields (direction/cutoff/album) whole, then re-drive the provision-side
     // effects. Upload ARMS on enable but drains on disable (no stop); download reconciles on enable and
     // cancels in-flight on disable — the deliberate arm asymmetry lives in the tested use-case.
@@ -619,7 +619,7 @@ class AppCore internal constructor(
     // destructive — "offline", "parse failure", and "the event is gone" arrived as one indistinguishable
     // `null`. That blindness is now replaced by something strictly stronger rather than merely removed:
     // the rule requires a definitive `NotFound` AND the membership's own persisted deadline before it
-    // will tear anything down (capability `leave-event`).
+    // will tear anything down (capability `manage-membership`).
     private val fetchEventDetails: suspend (eventId: String) -> JoinLoad = { eventId ->
         ports.directory.fetch(eventId).toJoinLoad()
     }
@@ -628,10 +628,10 @@ class AppCore internal constructor(
     val creationStatus: MutableCreationStatusSource = MutableCreationStatusSource()
 
     /** The rename status the use-case drives and the container reads (same instance, capability
-     *  `event-rename`) — the create twin, but carrying a success value the screen must clear. */
+     *  `manage-membership`) — the create twin, but carrying a success value the screen must clear. */
     val renameStatus: MutableRenameStatusSource = MutableRenameStatusSource()
 
-    // The rename use-case (capability `event-rename`): rewrite the shared event's name on the backend,
+    // The rename use-case (capability `manage-membership`): rewrite the shared event's name on the backend,
     // then fold the ECHOED name into this membership's config. The fifth writer of that config, seated
     // in `feature/membership` beside the reconfigure for exactly that reason.
     val renameEvent: RenameEvent by lazy {
@@ -644,7 +644,7 @@ class AppCore internal constructor(
     }
 
     // The create-event use-case: mint via the backend, then route the minted event into the SAME
-    // join gate a scanned QR takes (capability `photo-selection-policy`).
+    // join gate a scanned QR takes (capability `photo-sharing`).
     val eventCreator: EventCreator by lazy {
         CreateEvent(
             client = ports.eventCreation,
@@ -654,12 +654,12 @@ class AppCore internal constructor(
     }
 
     /**
-     * Voids this device's durable sync state (capability `device-state-reset`) so a build pointed at a
+     * Voids this device's durable sync state (`docs/testing.md`) so a build pointed at a
      * different backend starts from nothing. Emptying the ledger is enough to make the next cycle upload
      * everything in scope: every walk is a full enumeration, so there is no cursor to invalidate.
      *
      * Public because the dev/test control channel drives it directly. It has no user path by design —
-     * `leave-event` deliberately keeps the ledger, and this is the one operation for which that reasoning
+     * `manage-membership` deliberately keeps the ledger, and this is the one operation for which that reasoning
      * stops holding — so there is no command-bundle entry to reach it through.
      */
     val resetDeviceState: ResetDeviceState by lazy {
@@ -678,7 +678,7 @@ class AppCore internal constructor(
         )
     }
 
-    // ---- Selection-driven reads under a partial grant (capability `limited-photo-access`) -----------
+    // ---- Selection-driven reads under a partial grant (capability `photo-access`) -----------
     // The latest selection snapshot (set only by the selection subscription below). The walk-vs-snapshot
     // decision is DERIVED per read from current permission + this cell, so it has exactly one owner and
     // no stored mode can go stale across a permission flip. `null` is "not read yet", which is NOT an empty
@@ -704,7 +704,7 @@ class AppCore internal constructor(
     // → nothing to count; a download-only membership counts 0 too — the source's decision from the
     // Contribution, not a branch here (the roots pass facts, never branches).
     /**
-     * The one derivation, for this composition's status readers (capability `photo-selection-policy`).
+     * The one derivation, for this composition's status readers (capability `photo-sharing`).
      *
      * Both `N` and the join preview must admit exactly what the upload cycle admits, so all three reach
      * the policy the same way — through `selectionPolicyFor`, with the same two port readers. The cycle
@@ -730,7 +730,7 @@ class AppCore internal constructor(
      * identical in every other respect, but resolving to `DenyAll` before either exclusion reader is
      * called — produced none.
      *
-     * That matters because the consumers stopped gating on the grant (capability `gallery-status`): the
+     * That matters because the consumers stopped gating on the grant (capability `sync-status`): the
      * policy must now be derived **before** the read seam can answer that it has nothing to say, and
      * `selectionRulesFor` reads its exclusion sets eagerly. Without this the status refresh would raise
      * an unrequested system dialog on every foreground of a joined device whose grant is undetermined —
@@ -739,7 +739,7 @@ class AppCore internal constructor(
      *
      * The empty set is the **honest** answer rather than a fallback: the denylist is a subtraction and
      * the policy admits on doubt, so "no denylisted assets" is what an unreadable album structure means
-     * anyway — which is why `limited-photo-access` records the denylist as inert under a partial grant.
+     * anyway — which is why `photo-access` records the denylist as inert under a partial grant.
      *
      * The grant gate itself lives in [denylistedAlbumMembers], shared with the upload cycle, and asks only
      * under a FULL grant: under `LIMITED` the album structure is unreadable, so the lookup could only ever
@@ -783,7 +783,7 @@ class AppCore internal constructor(
      */
     suspend fun refreshStatusSources() = statusRefresh.run()
 
-    // ── The OS-callback trigger flows (spec `module-architecture`, "Rules in features, order in
+    // ── The OS-callback trigger flows (`docs/architecture.md`, "Rules in features, order in
     // flows"; migration step 8). Each is built here — features referenced directly, port/platform
     // touches injected from [ports] — and the shell entry points delegate to them. ────────────────
 
@@ -828,7 +828,7 @@ class AppCore internal constructor(
     }
 
     /**
-     * Whether a push's wake joins the tail — the upload arm's active-event guard (capability `push-registration`).
+     * Whether a push's wake joins the tail — the upload arm's active-event guard (capability `receiving-photos`).
      * The limited-grant read discipline is the tail's own (its walk runs only under a full grant).
      */
     val pushTailGuard: PushTailGuard by lazy { PushTailGuard(ports.configSource, ports.log) }
@@ -862,20 +862,20 @@ class AppCore internal constructor(
             refreshStatus = { refreshStatusSources() },
             // Usable access (`grantsPhotoAccess`): this gate feeds only ensureAlbum's granted
             // parameter, and album creation works under a LIMITED grant (measured — capability
-            // `limited-photo-access`).
+            // `photo-access`).
             hasUsableAccess = { ports.photoAccess.permission.value.grantsPhotoAccess },
             registerPush = { pushRegistration.reRegister(ports) },
         )
     }
 
-    // ── The user-tap command bundle (spec `module-architecture`, "Commands cross one door"): built and
+    // ── The user-tap command bundle (`docs/architecture.md`, "Commands cross one door"): built and
     // decorated only here in `compose/`, injected into `StatusContainerHost` by constructor — so
     // presentation never references a feature command directly. Each command's body is the exact
     // coordination the shell's individual lambdas used to carry (migration step 8 C3). ────────────────
 
     /**
-     * Wrap a user tap as a **platform entry point** (spec `diagnostic-logging`; spec
-     * `module-architecture`, "Absence is never silent"). `compose/` is where this must live: it is
+     * Wrap a user tap as a **platform entry point** (spec `privacy-security`; spec
+     * `docs/architecture.md`, "Absence is never silent"). `compose/` is where this must live: it is
      * where the door law already says command instances are decorated, and it is the only place that
      * *can* — `:ui:presentation` may not reference `ports/`, so it cannot reach a `LogScope`.
      *
@@ -888,7 +888,7 @@ class AppCore internal constructor(
 
     /**
      * The **composition lane** this graph's scope runs on, taken from the scope itself rather than
-     * named, so the two can never disagree (spec `module-architecture`, law "Dispatcher lanes are
+     * named, so the two can never disagree (`docs/architecture.md`, law "Dispatcher lanes are
      * fixed by the composition").
      *
      * Commands need it explicitly because the composition scope does NOT govern them: the
@@ -909,7 +909,7 @@ class AppCore internal constructor(
      * Unreachable today: every composition supplies one — the iOS shell's dedicated composition lane, the
      * full-stack harness's `newSingleThreadContext`, `runBlocking`'s event loop under the world runners,
      * `runTest`'s scheduler. The failure this converts is therefore the NEXT composition's, caught at
-     * assembly rather than as a main-thread stall nobody attributes (`module-architecture`, "Absence is
+     * assembly rather than as a main-thread stall nobody attributes (`docs/architecture.md`, "Absence is
      * never silent"; "Dispatcher lanes are fixed by the composition").
      */
     private val coreLane: CoroutineContext =
@@ -1003,14 +1003,14 @@ class AppCore internal constructor(
                     tapLog.recordingRefusal("tap.share", ports.handoff.share.share(url))
                 }
             },
-            // Leaving the app for the store page (capability `min-app-version`) — UI lane and
+            // Leaving the app for the store page (capability `app-update-required`) — UI lane and
             // instrumented, like every other platform-surface command.
             openLink = { url ->
                 onUiLane("tap.openLink", result = { h: Handoff -> "$h" }) {
                     tapLog.recordingRefusal("tap.openLink", ports.handoff.links.open(url))
                 }
             },
-            // The permission user-taps (capability `permission-gate`), bound to the requester port here
+            // The permission user-taps (capability `photo-access`), bound to the requester port here
             // so presentation never names it (migration step 9). `requestAccess` returns nothing and
             // cannot suspend — the grant arrives only via the permission read-model StateFlow.
             requestAccess = { onUiLane("tap.requestAccess") { ports.photoAccessRequester.request() } },
@@ -1018,7 +1018,7 @@ class AppCore internal constructor(
             // The picker presentation is platform surface; the selection outcome arrives only via
             // the selection-change seam (fire-and-forget, like every command here).
             choosePhotos = { onUiLane("tap.choosePhotos") { ports.photoAccessRequester.choosePhotos() } },
-            // In-place membership reconfigure (capability `reconfigure-membership`): edit direction/
+            // In-place membership reconfigure (capability `manage-membership`): edit direction/
             // cutoff/album without leaving. Distinct from `openSettings` (the iOS system settings page).
             reconfigure = { eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum ->
                 awaitingOnCoreLane(
@@ -1029,7 +1029,7 @@ class AppCore internal constructor(
                     reconfigureEvent.reconfigure(eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum)
                 }
             },
-            // Rename the joined event (capability `event-rename`): unlike `reconfigure`, which edits only
+            // Rename the joined event (capability `manage-membership`): unlike `reconfigure`, which edits only
             // this device's settings, this rewrites the SHARED event — every member picks the new name up
             // on their next foreground refresh. Fire-and-forget; the outcome rides `renameStatus`.
             rename = { eventId, name ->
@@ -1042,7 +1042,7 @@ class AppCore internal constructor(
             // the rename lifecycle, and an unattributed state change is the thing this trail exists to
             // eliminate.
             resetRename = { awaitingOnCoreLane<Unit>("tap.resetRename") { renameEvent.reset() } },
-            // The hidden diagnostic dump (capability `diagnostic-logging`), fired once the operator has
+            // The hidden diagnostic dump (capability `privacy-security`), fired once the operator has
             // written what went wrong. NULL on a build with no reporting configuration, so the screen
             // wires no gesture and no sheet can open — a build that can send nothing must not offer an
             // affordance suggesting it can. This is the ONE place that decision is made.
@@ -1062,7 +1062,7 @@ class AppCore internal constructor(
     }
 
     /**
-     * The diagnostic dump assembly (capability `diagnostic-logging`) — reads only, and only what this
+     * The diagnostic dump assembly (capability `privacy-security`) — reads only, and only what this
      * graph already holds. Composed lazily like everything else here, so an unconfigured build (which
      * never fires the command) never builds it.
      */
@@ -1085,9 +1085,9 @@ class AppCore internal constructor(
 
     /**
      * Install the **port-state-transition subscriptions** on the permission StateFlow (spec
-     * `module-architecture`, "Commands cross one door": installed in `compose/`; the transition
+     * `docs/architecture.md`, "Commands cross one door": installed in `compose/`; the transition
      * semantics — the upload permission-change transition, sole-creator album ensure — are feature rules),
-     * and run the upload **launch reconcile** (capability `upload-lifecycle`, "Launch reconciles by
+     * and run the upload **launch reconcile** (capability `background-upload`, "Launch reconciles by
      * comparison; only a join forces the repair").
      *
      * The launch reconcile is explicit and the upload subscription skips the StateFlow's replayed value. It
@@ -1112,7 +1112,7 @@ class AppCore internal constructor(
         }
         scope.launch {
             // One selection-change emission → ONE read serving both consumers (capability
-            // `limited-photo-access`, "One discovery serves both the status total and the enqueue"):
+            // `photo-access`, "One discovery serves both the status total and the enqueue"):
             // the cell feeds the cycle's discovery AND backs the permission-aware candidate source, so
             // `refresh` recounts N over the very same snapshot — no second library read on this path, and
             // no snapshot-specific entry point for the total to drift through.
@@ -1126,7 +1126,7 @@ class AppCore internal constructor(
         // The event album's grant subscription: ensure the album, then let the gather judge the emission.
         scope.launchAlbumGrantSubscription(ports, albumCoordinator, albumGather)
         scope.launch {
-            // THE ONE ADJUDICATION CALL SITE (capability `photo-download`). Once per process, here, and
+            // THE ONE ADJUDICATION CALL SITE (capability `receiving-photos`). Once per process, here, and
             // nowhere else — not in `reconcile`, not in `importReady`, not in `onResourceStaged`. Only a
             // process that DIED can leave a row no running import will settle, so a running process asking
             // again about rows it opened itself buys nothing and costs a synchronous XPC round-trip each
@@ -1152,9 +1152,9 @@ class AppCore internal constructor(
 
     /**
      * Start registering the device's APNs token, and keep the registration alive across a credential
-     * change (capability `push-registration`). Installed on **every cold start** — a foreground launch and a
+     * change (capability `receiving-photos`). Installed on **every cold start** — a foreground launch and a
      * background wake alike (a silent push, a background-`URLSession` relaunch, the upload heartbeat) — by the
-     * shared host composition as it composes the graph (capability `ios-app-shell`, "Push registration is started
+     * shared host composition as it composes the graph (capability `sync-status`, "Push registration is started
      * by the shared composition"). Unlike [installPermissionSubscriptions], which a cold background wake must not
      * install, this one is needed there: a rotated APNs token or a renewed credential learned in a background wake
      * is published from that wake, never deferred to the next foreground. It is cheap there because the
@@ -1194,13 +1194,13 @@ class AppCore internal constructor(
     @OptIn(ExperimentalAtomicApi::class)
     private val pushRegistrationInstalled = AtomicBoolean(false)
 
-    /** The device's push registration (capability `push-registration`) — see [pushRegistrationFor]. */
+    /** The device's push registration (capability `receiving-photos`) — see [pushRegistrationFor]. */
     val pushRegistration: PushRegistration by lazy { pushRegistrationFor(ports) }
 
 }
 
 /**
- * The ONE app-graph composition (spec `module-architecture`, "One shared composition"): the app
+ * The ONE app-graph composition (`docs/architecture.md`, "One shared composition"): the app
  * shell calls this — and, at migration step 10, the world harness does too — so a wiring difference
  * between binaries is impossible rather than undetected. Manual DI (decision D6 of
  * `establish-target-architecture`): plain constructors, no framework.
@@ -1213,8 +1213,8 @@ fun snapSyncApp(
 /**
  * Records a hand-off to the platform ([PlatformHandoff]) that did not happen. Nothing acts on a [Handoff], but a
  * refusal is logged at `Error`, because the user then tapped and nothing happened — on the update-required screen,
- * to the only remedy the screen offers (spec `module-architecture`, "Absence is never silent"). `Error` is what
- * reaches the operator from a production build (capability `crash-reporting`).
+ * to the only remedy the screen offers (`docs/architecture.md`, "Absence is never silent"). `Error` is what
+ * reaches the operator from a production build (capability `privacy-security`).
  */
 private fun Logger.recordingRefusal(name: String, handoff: Handoff): Handoff = handoff.also {
     if (it is Handoff.Refused) e { "$name: nothing was handed off — ${it.reason}" }

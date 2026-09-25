@@ -5,7 +5,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 
 /**
- * The **id form** the two set-matching selection rules depend on (capability `photo-selection-policy`).
+ * The **id form** the two set-matching selection rules depend on (capability `photo-sharing`).
  *
  * This is the one invariant that made *both* id-matching rules silently inert on device.
  * [SelectionRule.NotEcho] matches the download importer's stored `createdLocalId` and
