@@ -69,11 +69,14 @@ grep -q '^snapsync.rig=true' "$HOME/.gradle/gradle.properties" 2>/dev/null \
 APPLESIMUTILS_TAP_COMMIT=8f636f84541e08e850f455d7cffdfbd7ba305d3f   # applesimutils 0.9.12 (2025-06-18)
 if ! command -v applesimutils >/dev/null; then
     export HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_CLEANUP=1
-    brew tap wix/brew >/dev/null || fail "could not tap wix/brew"
-    git -C "$(brew --repo wix/brew)" checkout -q "$APPLESIMUTILS_TAP_COMMIT" || fail "could not pin wix/brew"
-    # The tap also carries casks we never install, and Homebrew loads them anyway: its detox-instruments
-    # cask uses a deprecated `depends_on macos:` form, which surfaced as a warning annotation on every run.
-    rm -rf "$(brew --repo wix/brew)/Casks"
+    # Cloned into the taps directory rather than `brew tap`ped: the tap also carries casks we never install,
+    # and `brew tap` reads them all — its detox-instruments cask uses a deprecated `depends_on macos:` form,
+    # which surfaced as a warning annotation on every run. Dropping `Casks/` before brew first looks keeps
+    # the tap to the one formula we use.
+    TAP_DIR="$(brew --repository)/Library/Taps/wix/homebrew-brew"
+    [ -d "$TAP_DIR" ] || git clone -q https://github.com/wix/homebrew-brew "$TAP_DIR" || fail "could not clone wix/brew"
+    git -C "$TAP_DIR" checkout -q "$APPLESIMUTILS_TAP_COMMIT" || fail "could not pin wix/brew"
+    rm -rf "$TAP_DIR/Casks"
     brew install wix/brew/applesimutils >/dev/null || fail "could not install applesimutils"
 fi
 
