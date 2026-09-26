@@ -24,7 +24,7 @@ package app.snapsync.model
  * Rows are grouped per asset first: several resources of one photo share an `assetId` and stand or fall
  * together, or a Live Photo's paired video outlives its excluded primary as an orphan.
  */
-suspend fun admittedAssetIds(rows: Collection<LedgerEntry>, policy: SelectionPolicy): Set<String> {
+suspend fun admittedAssetIds(rows: Collection<LedgerEntry>, policy: SelectionPolicy): Set<AssetId> {
     val facts = rows.groupBy { it.assetId }.map { (assetId, group) ->
         AssetFacts(assetId = assetId, creationDate = CaptureDate(group.first().creationDate))
     }

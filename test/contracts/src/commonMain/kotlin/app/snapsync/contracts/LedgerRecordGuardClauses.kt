@@ -2,6 +2,7 @@
 
 package app.snapsync.contracts
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.toLedgerRow
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.Resource
@@ -177,7 +178,7 @@ internal fun entry(
     state: LedgerState = LedgerState.REQUESTED,
     destinationPath: String? = null,
 ) = LedgerEntry(
-    key, assetId, state,
+    key, AssetId(assetId), state,
     creationDate = CREATION_DATE,
     role = ResourceRole.PRIMARY,
     contentType = "image/heic",
@@ -188,7 +189,7 @@ internal fun entry(
 /** The resource whose recording produces [entry] — the writer takes resources now, not bare keys. */
 internal fun res(key: String = "cloud-1-ios.photo.heic", assetId: String = key) = Resource(
     filename = key,
-    assetId = assetId,
+    assetId = AssetId(assetId),
     contentType = "public.heic",
     metadata = mapOf(
         RESOURCE_META_CREATION_DATE to CREATION_DATE,

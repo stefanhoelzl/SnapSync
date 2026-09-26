@@ -2,7 +2,9 @@ package app.snapsync.world
 
 import app.snapsync.http.isGatedRequest
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.ResourceRole
+import app.snapsync.model.isCanonicalAssetId
 import app.snapsync.model.uploadKey
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
@@ -286,10 +288,15 @@ private fun MockRequestHandleScope.v2Upload(
 ): HttpResponseData? {
     if (method != HttpMethod.Put || segments.size != 5 || segments[0] != "files" || segments[1] != "devices") return null
     val role = ResourceRole.entries.firstOrNull { it.wire == segments[4] }
-        ?: return respond("invalid role", HttpStatusCode.BadRequest)
-    if (filename.isNullOrEmpty()) return respond("missing filename", HttpStatusCode.BadRequest)
+    val refusal = when {
+        role == null -> "invalid role"
+        !isCanonicalAssetId(segments[3]) -> "invalid asset"
+        filename.isNullOrEmpty() -> "missing filename"
+        else -> null
+    }
+    if (refusal != null || role == null || filename == null) return respond(refusal.orEmpty(), HttpStatusCode.BadRequest)
     if (store.offline) return respond("offline", HttpStatusCode.BadGateway)
-    store.deposit(segments[2], uploadKey(segments[3], role, filename))
+    store.deposit(segments[2], uploadKey(AssetId(segments[3]), role, filename))
     return respond("", HttpStatusCode.Created)
 }
 

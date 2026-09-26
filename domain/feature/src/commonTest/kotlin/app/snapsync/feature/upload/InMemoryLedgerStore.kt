@@ -1,5 +1,6 @@
 package app.snapsync.feature.upload
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.LedgerAggregates
 import app.snapsync.model.needsJob
 import app.snapsync.model.isDone
@@ -88,7 +89,7 @@ class InMemoryLedgerStore : LedgerStore {
     }
 
 
-    override suspend fun assetProgress(): Map<String, Boolean> =
+    override suspend fun assetProgress(): Map<AssetId, Boolean> =
         entries.values.groupBy { it.assetId }.mapValues { (_, group) -> group.all { it.state.isDone } }
     override suspend fun pendingResources(): List<PendingResource> =
         entries.values.filter { !it.state.isDone }

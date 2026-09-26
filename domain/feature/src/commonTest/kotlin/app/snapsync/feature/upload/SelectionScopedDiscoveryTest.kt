@@ -1,5 +1,6 @@
 package app.snapsync.feature.upload
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.selectionRulesFor
@@ -39,7 +40,7 @@ class SelectionScopedDiscoveryTest {
     }
 
     private fun resource(name: String) =
-        Resource(filename = name, assetId = name, contentType = "image/jpeg", metadata = emptyMap(), data = Unit)
+        Resource(filename = name, assetId = AssetId(name), contentType = "image/jpeg", metadata = emptyMap(), data = Unit)
 
     @Test
     fun unrestricted_delegates_to_the_platform_walk() = runTest {

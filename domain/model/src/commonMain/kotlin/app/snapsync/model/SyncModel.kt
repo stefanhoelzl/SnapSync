@@ -11,8 +11,7 @@ package app.snapsync.model
  * [metadata] is opaque to the engine; the provider turns it into upload headers.
  *
  * [assetId] is the opaque identity of the asset this resource belongs to (several resources of one
- * photo share it). Like [filename] it is pure identity whose layout belongs to the caller (iOS: the
- * asset's `localIdentifier`, normalized; tests/console: any string). The engine carries it through
+ * photo share it), in its canonical form — the platform adapter minted it. The engine carries it through
  * to the ledger but never interprets it — it plays no part in the decision.
  *
  * [data] is the opaque platform payload backing this resource (iOS: `PHAssetResource`; tests:
@@ -24,7 +23,7 @@ package app.snapsync.model
  */
 class Resource(
     val filename: String,
-    val assetId: String,
+    val assetId: AssetId,
     val contentType: String,
     val metadata: Map<String, String>,
     val data: Any,

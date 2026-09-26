@@ -1,6 +1,7 @@
 package app.snapsync.feature.status
 
 import app.snapsync.model.AssetFacts
+import app.snapsync.model.AssetId
 import app.snapsync.model.Candidate
 import app.snapsync.model.CandidateRead
 import app.snapsync.model.CaptureDate
@@ -29,7 +30,7 @@ private fun asset(
     width: Long = 4032,
     height: Long = 3024,
 ) = AssetFacts(
-    assetId = id,
+    assetId = AssetId(id),
     creationDate = CaptureDate(creationDate),
     isScreenshot = isScreenshot,
     pixelArea = width * height,
@@ -67,8 +68,8 @@ private object UnreadableSource : CandidateSource {
 
 private fun countSource(
     source: CandidateSource,
-    suppressed: Set<String> = emptySet(),
-    albumExcluded: Set<String> = emptySet(),
+    suppressed: Set<AssetId> = emptySet(),
+    albumExcluded: Set<AssetId> = emptySet(),
 ) = ShareableCountSource(
     source = source,
     suppressedLocalIds = { suppressed },
@@ -118,8 +119,8 @@ class ShareableCountTest {
     fun `denylisted-album and suppressed assets are subtracted`() = runTest {
         val n = countSource(
             FactsSource(listOf(asset("CAM"), asset("WA"), asset("DL"))),
-            suppressed = setOf("DL"),
-            albumExcluded = setOf("WA"),
+            suppressed = setOf(AssetId("DL")),
+            albumExcluded = setOf(AssetId("WA")),
         ).countFor()
         assertEquals(1, n, "a downloaded echo (DL) and a denylisted-album member (WA) do not count")
     }

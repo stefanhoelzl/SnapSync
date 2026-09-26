@@ -1,5 +1,6 @@
 package app.snapsync.contracts
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.ResourceRole
 import app.snapsync.ports.Backend
 
@@ -53,17 +54,17 @@ enum class BackendState {
 object BackendContract : Contract<BackendState, EdgeSubject<Backend>>("Backend") {
 
     /** The two assets [BackendState.MEMBER_WITH_TWO_UPLOADED_ASSETS] holds bytes for. */
-    val FIRST = SeededAsset("asset-first", listOf(ResourceRole.PRIMARY))
-    val SECOND = SeededAsset("asset-second", listOf(ResourceRole.PRIMARY))
+    val FIRST = SeededAsset(AssetId("asset-first"), listOf(ResourceRole.PRIMARY))
+    val SECOND = SeededAsset(AssetId("asset-second"), listOf(ResourceRole.PRIMARY))
 
     /** The asset [BackendState.UNION_COMPLETE_ASSET] publishes, every resource uploaded. */
-    val COMPLETE = SeededAsset("complete-1", listOf(ResourceRole.PRIMARY))
+    val COMPLETE = SeededAsset(AssetId("complete-1"), listOf(ResourceRole.PRIMARY))
 
     /** The asset [BackendState.UNION_INCOMPLETE_ASSET] publishes, only its primary uploaded. */
-    val INCOMPLETE = SeededAsset("incomplete-1", listOf(ResourceRole.PRIMARY, ResourceRole.LIVE))
+    val INCOMPLETE = SeededAsset(AssetId("incomplete-1"), listOf(ResourceRole.PRIMARY, ResourceRole.LIVE))
 
     /** The resource [BackendState.DEVICE_UPLOADED] holds. */
-    val STORED = SeededAsset("stored-1", listOf(ResourceRole.PRIMARY))
+    val STORED = SeededAsset(AssetId("stored-1"), listOf(ResourceRole.PRIMARY))
 
     /** Enters [state] on the backend [setup] drives. Bindings call exactly this. */
     suspend fun seed(state: BackendState, clauseId: String, setup: BackendSetup): Seeded = when (state) {

@@ -1,5 +1,6 @@
 package app.snapsync.services.ledger
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.LedgerAggregates
 import app.snapsync.ports.LedgerStore
 import app.snapsync.model.LedgerEntry
@@ -13,6 +14,7 @@ import app.snapsync.model.TerminalOutcome
 import app.cash.sqldelight.EnumColumnAdapter
 import app.cash.sqldelight.db.SqlDriver
 import app.snapsync.ports.Databases
+import app.snapsync.services.databases.AssetIdColumnAdapter
 import app.snapsync.services.databases.openOwned
 import app.snapsync.services.ledger.db.LedgerDatabase
 import app.snapsync.services.ledger.db.LedgerRow
@@ -57,7 +59,7 @@ class LedgerService(
     @Suppress("LongParameterList")
     private fun toEntry(
         key: String,
-        assetId: String,
+        assetId: AssetId,
         state: LedgerState,
         creationDate: String,
         role: String,
@@ -144,7 +146,7 @@ class LedgerService(
             LedgerAggregates(pending.toInt(), completed.toInt())
         }.executeAsOne()
 
-    override suspend fun assetProgress(): Map<String, Boolean> =
+    override suspend fun assetProgress(): Map<AssetId, Boolean> =
         queries.assetProgress(DONE_STATES) { assetId, notDone -> assetId to ((notDone ?: 0L) == 0L) }
             .executeAsList()
             .toMap()
@@ -233,6 +235,7 @@ private const val KEY_CHUNK = 500
 internal fun LedgerDatabase(driver: SqlDriver): LedgerDatabase = LedgerDatabase(
     driver,
     LedgerRow.Adapter(
+        assetIdAdapter = AssetIdColumnAdapter,
         stateAdapter = EnumColumnAdapter(),
     ),
 )

@@ -21,6 +21,7 @@ import app.snapsync.contracts.SeededLibrary
 import app.snapsync.contracts.StagedImport
 import app.snapsync.contracts.currentHost
 import app.snapsync.contracts.verify
+import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.RawAsset
@@ -44,7 +45,7 @@ class PhotoContractBindingsTest {
         return MutableStateFlow(
             (1..SEED_COUNT).map { n ->
                 RawAsset(
-                    assetId = "contract-$clauseId-$n",
+                    assetId = AssetId("contract-$clauseId-$n"),
                     creationDate = date,
                     rawResources = listOf(RawResource(ResourceRole.PRIMARY, "image/jpeg", "IMG_000$n.JPG", Unit)),
                 )
@@ -70,7 +71,7 @@ class PhotoContractBindingsTest {
                 else -> MutableStateFlow(emptyList())
             }
             val gallery = inMemoryGallery(library, access(state != GalleryReaderState.NO_GRANT))
-            return Entered.Ready(SeededLibrary(gallery, library.value.map { it.assetId }))
+            return Entered.Ready(SeededLibrary(gallery, library.value.mapTo(linkedSetOf()) { it.assetId }))
         }
     }
 
@@ -100,7 +101,7 @@ class PhotoContractBindingsTest {
             val markers = mutableMapOf<AssetRef, MarkerState>()
             val importer = inMemoryGallery(library).apply { listen(markerHandlers(markers)) }
             val observed = object : ImportedLibrary {
-                override suspend fun captureDate(id: String): String? =
+                override suspend fun captureDate(id: AssetId): String? =
                     library.value.firstOrNull { it.facts.assetId == id }?.creationDate
 
                 override fun marker(ref: AssetRef): MarkerState = markers[ref] ?: MarkerState.NONE
@@ -140,7 +141,7 @@ class PhotoContractBindingsTest {
         override fun create(state: GalleryState, clauseId: String): Entered<GalleryChange> {
             val library = seededLibrary(GalleryContract.name, clauseId)
             val added = RawAsset(
-                assetId = "contract-$clauseId-change",
+                assetId = AssetId("contract-$clauseId-change"),
                 creationDate = PhotoLibrary.window(GalleryContract.name, clauseId).seedDate,
                 rawResources = listOf(RawResource(ResourceRole.PRIMARY, "image/jpeg", "IMG_0009.JPG", Unit)),
             )

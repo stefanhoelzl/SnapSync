@@ -2,6 +2,7 @@
 
 package app.snapsync.status
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
 
@@ -24,7 +25,7 @@ class LedgerBackedSyncStatusSourceTest {
     private val ledgerCounts = MutableLedgerCountsSource()
     private val permission = FakePermissionSource(GalleryAccess.GRANTED)
     // The honest fake exposes only the port; the test owns the cell it reads (fake-honesty gate).
-    private val galleryCell = MutableStateFlow<Set<String>?>(emptySet())
+    private val galleryCell = MutableStateFlow<Set<AssetId>?>(emptySet())
     private val gallery = InMemoryGalleryStatusSource(galleryCell)
 
     private fun ready(
@@ -35,14 +36,14 @@ class LedgerBackedSyncStatusSourceTest {
     ) = SyncStatus.Ready(SyncProgress(pending, completed, total, failed = 0, active, estimatedRemaining = null))
 
     /** `n` distinct asset ids `<prefix>1..<prefix>n` — the admitted set, or a slice of the ledger's. */
-    private fun ids(prefix: String, n: Int): Set<String> = (1..n).mapTo(mutableSetOf()) { "$prefix$it" }
+    private fun ids(prefix: String, n: Int): Set<AssetId> = (1..n).mapTo(mutableSetOf()) { AssetId("$prefix$it") }
 
     private fun source(scope: kotlinx.coroutines.CoroutineScope) =
         LedgerBackedSyncStatusSource(ledgerCounts, permission, gallery, scope)
 
     @Test
     fun `initial value is Loading before the first read`() = runTest {
-        ledgerCounts.set(done = setOf("a1"), pending = emptySet())
+        ledgerCounts.set(done = setOf(AssetId("a1")), pending = emptySet())
         galleryCell.value = ids("a", 3)
 
         val source = source(backgroundScope)
@@ -71,7 +72,7 @@ class LedgerBackedSyncStatusSourceTest {
 
     @Test
     fun `an unread gallery total alone holds the source at Loading`() = runTest {
-        ledgerCounts.set(done = setOf("a1"), pending = emptySet()) // read
+        ledgerCounts.set(done = setOf(AssetId("a1")), pending = emptySet()) // read
         galleryCell.value = null // not counted
 
         val source = source(backgroundScope)
@@ -109,7 +110,7 @@ class LedgerBackedSyncStatusSourceTest {
 
     @Test
     fun `once Ready the source never regresses to Loading`() = runTest {
-        ledgerCounts.set(done = setOf("a1"), pending = emptySet())
+        ledgerCounts.set(done = setOf(AssetId("a1")), pending = emptySet())
         galleryCell.value = ids("a", 2)
         val source = source(backgroundScope)
         runCurrent()
@@ -127,7 +128,7 @@ class LedgerBackedSyncStatusSourceTest {
     fun `first Ready reflects completed and pending clamped to remaining`() = runTest {
         // Every remaining admitted photo in flight, plus 1000 not-done rows the membership does not admit:
         // completed 2 of 5 → remaining 3, and only the admitted 3 count as pending.
-        ledgerCounts.set(done = setOf("a1", "a2"), pending = setOf("a3", "a4", "a5") + ids("x", 1000))
+        ledgerCounts.set(done = setOf(AssetId("a1"), AssetId("a2")), pending = setOf(AssetId("a3"), AssetId("a4"), AssetId("a5")) + ids("x", 1000))
         galleryCell.value = ids("a", 5)
 
         val source = source(backgroundScope)
@@ -139,7 +140,7 @@ class LedgerBackedSyncStatusSourceTest {
     @Test
     fun `pending is the in-flight count when below remaining`() = runTest {
         // synced 2, remaining 5, only 2 in flight
-        ledgerCounts.set(done = setOf("a1", "a2"), pending = setOf("a3", "a4"))
+        ledgerCounts.set(done = setOf(AssetId("a1"), AssetId("a2")), pending = setOf(AssetId("a3"), AssetId("a4")))
         galleryCell.value = ids("a", 7)
         val source = source(backgroundScope)
         runCurrent()
@@ -152,7 +153,7 @@ class LedgerBackedSyncStatusSourceTest {
     fun `pending is clamped to remaining when a deleted-but-unpruned photo over-counts`() = runTest {
         // synced 5, remaining 2, ledger reports 3 in flight — one of them a photo deleted from the
         // library (no longer admitted) whose row was not yet pruned
-        ledgerCounts.set(done = ids("a", 5), pending = setOf("a6", "a7", "deleted"))
+        ledgerCounts.set(done = ids("a", 5), pending = setOf(AssetId("a6"), AssetId("a7"), AssetId("deleted")))
         galleryCell.value = ids("a", 7)
         val source = source(backgroundScope)
         runCurrent()
@@ -163,13 +164,13 @@ class LedgerBackedSyncStatusSourceTest {
 
     @Test
     fun `an in-flight change re-mints pending`() = runTest {
-        ledgerCounts.set(done = setOf("a1"), pending = setOf("a2", "a3", "a4"))
+        ledgerCounts.set(done = setOf(AssetId("a1")), pending = setOf(AssetId("a2"), AssetId("a3"), AssetId("a4")))
         galleryCell.value = ids("a", 6)
         val source = source(backgroundScope)
         runCurrent()
         assertEquals(ready(pending = 3, completed = 1, total = 6), source.status.value)
 
-        ledgerCounts.set(done = setOf("a1"), pending = setOf("a2"))
+        ledgerCounts.set(done = setOf(AssetId("a1")), pending = setOf(AssetId("a2")))
         runCurrent()
 
         assertEquals(ready(pending = 1, completed = 1, total = 6), source.status.value)
@@ -183,7 +184,7 @@ class LedgerBackedSyncStatusSourceTest {
         runCurrent()
         assertEquals(ready(pending = 4, total = 4), source.status.value)
 
-        ledgerCounts.set(done = setOf("a1"), pending = ids("a", 4) - "a1")
+        ledgerCounts.set(done = setOf(AssetId("a1")), pending = ids("a", 4) - AssetId("a1"))
         runCurrent()
 
         assertEquals(ready(pending = 3, completed = 1, total = 4), source.status.value)
@@ -194,8 +195,8 @@ class LedgerBackedSyncStatusSourceTest {
         // The gallery total can momentarily lag the ledger: rows done for photos the admitted set does not
         // (yet, or any more) hold. Counting over the admitted set keeps completed <= total structurally, so
         // completed meets the total and nothing reads as pending.
-        ledgerCounts.set(done = setOf("a1", "a2", "a3"), pending = ids("x", 1000))
-        galleryCell.value = setOf("a1")
+        ledgerCounts.set(done = setOf(AssetId("a1"), AssetId("a2"), AssetId("a3")), pending = ids("x", 1000))
+        galleryCell.value = setOf(AssetId("a1"))
         val source = source(backgroundScope)
         runCurrent()
 
@@ -204,7 +205,7 @@ class LedgerBackedSyncStatusSourceTest {
 
     @Test
     fun `a gallery change re-mints with the recomputed remaining`() = runTest {
-        ledgerCounts.set(done = setOf("a1"), pending = ids("a", 9) - "a1")
+        ledgerCounts.set(done = setOf(AssetId("a1")), pending = ids("a", 9) - AssetId("a1"))
         galleryCell.value = ids("a", 4)
         val source = source(backgroundScope)
         runCurrent()
@@ -218,7 +219,7 @@ class LedgerBackedSyncStatusSourceTest {
 
     @Test
     fun `a permission flip re-mints with unchanged counts`() = runTest {
-        ledgerCounts.set(done = setOf("a1"), pending = ids("a", 4) - "a1")
+        ledgerCounts.set(done = setOf(AssetId("a1")), pending = ids("a", 4) - AssetId("a1"))
         galleryCell.value = ids("a", 4)
         val source = source(backgroundScope)
         runCurrent()
@@ -232,7 +233,7 @@ class LedgerBackedSyncStatusSourceTest {
     @Test
     fun `a limited grant is active`() = runTest {
         // Usable access (capability `photo-access`): a partial grant is syncing, not blocked.
-        ledgerCounts.set(done = setOf("a1"), pending = ids("a", 4) - "a1")
+        ledgerCounts.set(done = setOf(AssetId("a1")), pending = ids("a", 4) - AssetId("a1"))
         galleryCell.value = ids("a", 4)
         val source = source(backgroundScope)
         runCurrent()
@@ -245,8 +246,8 @@ class LedgerBackedSyncStatusSourceTest {
 
     @Test
     fun `the source never estimates and never gives up`() = runTest {
-        ledgerCounts.set(done = emptySet(), pending = setOf("a1"))
-        galleryCell.value = setOf("a1")
+        ledgerCounts.set(done = emptySet(), pending = setOf(AssetId("a1")))
+        galleryCell.value = setOf(AssetId("a1"))
         val source = source(backgroundScope)
         runCurrent()
 
@@ -265,8 +266,8 @@ class LedgerBackedSyncStatusSourceTest {
         // for everything this device ever stored, so a whole-ledger count read 1,402 completed against a
         // total of 3 — `synced >= total` — and settled "In sync" while `z` was still uploading.
         val historical = ids("old", 1_400)
-        ledgerCounts.set(done = setOf("x", "y") + historical, pending = setOf("z"))
-        galleryCell.value = setOf("x", "y", "z")
+        ledgerCounts.set(done = setOf(AssetId("x"), AssetId("y")) + historical, pending = setOf(AssetId("z")))
+        galleryCell.value = setOf(AssetId("x"), AssetId("y"), AssetId("z"))
 
         val source = source(backgroundScope)
         runCurrent()
@@ -280,13 +281,13 @@ class LedgerBackedSyncStatusSourceTest {
     fun `a bare done row for an admitted photo counts as completed as soon as the set is counted`() = runTest {
         // A listing-loaded row: COMPLETED, no job history, nothing else known about it. Before the gallery
         // has counted, nothing is minted; the moment the admitted set arrives holding it, it is completed.
-        ledgerCounts.set(done = setOf("loaded"), pending = emptySet())
+        ledgerCounts.set(done = setOf(AssetId("loaded")), pending = emptySet())
         galleryCell.value = null
         val source = source(backgroundScope)
         runCurrent()
         assertEquals(SyncStatus.Loading, source.status.value)
 
-        galleryCell.value = setOf("loaded")
+        galleryCell.value = setOf(AssetId("loaded"))
         runCurrent()
 
         assertEquals(ready(pending = 0, completed = 1, total = 1), source.status.value)
@@ -296,8 +297,8 @@ class LedgerBackedSyncStatusSourceTest {
     fun `an admitted photo with no ledger row is neither completed nor pending`() = runTest {
         // Undiscovered: admitted by the policy, but no job created yet. It stays in the remainder —
         // counted in the total, not done, and not claimed as in flight.
-        ledgerCounts.set(done = setOf("a1"), pending = setOf("a2"))
-        galleryCell.value = setOf("a1", "a2", "undiscovered")
+        ledgerCounts.set(done = setOf(AssetId("a1")), pending = setOf(AssetId("a2")))
+        galleryCell.value = setOf(AssetId("a1"), AssetId("a2"), AssetId("undiscovered"))
 
         val source = source(backgroundScope)
         runCurrent()

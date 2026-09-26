@@ -1,5 +1,6 @@
 package app.snapsync.contracts
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.ChangeOutcome
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.UploadCreateOutcome
@@ -79,7 +80,7 @@ object UploadContract : Contract<UploadState, UploadUnderTest>("Upload") {
 
     /** The ledger key a clause uploads under (`<assetId>-<role>.<ext>`), distinct per clause and per [n]. */
     fun key(clauseId: String, n: Int = 1): String =
-        uploadKey("contract-${clauseId.lowercase()}-$n", ResourceRole.PRIMARY, "IMG_0001.JPG")
+        uploadKey(AssetId("contract-${clauseId.lowercase()}-$n"), ResourceRole.PRIMARY, "IMG_0001.JPG")
 
     /** The route a clause's transfer [n] goes to. */
     fun path(clauseId: String, answer: FixtureAnswer, n: Int = 1): String =

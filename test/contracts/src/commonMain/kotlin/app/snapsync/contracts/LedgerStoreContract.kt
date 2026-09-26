@@ -2,6 +2,7 @@
 
 package app.snapsync.contracts
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.toLedgerRow
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.Resource
@@ -112,7 +113,7 @@ object LedgerStoreContract : Contract<LedgerStoreState, LedgerStore>("LedgerStor
             backend.recordUnlessSettled(entry(key = "B-photo.jpg", assetId = "B", state = LedgerState.COMPLETED))
             backend.recordUnlessSettled(entry(key = "B-edit.jpg", assetId = "B", state = LedgerState.DISCOVERED))
 
-            assertEquals(mapOf("A" to true, "B" to false), backend.assetProgress())
+            assertEquals(mapOf(AssetId("A") to true, AssetId("B") to false), backend.assetProgress())
         }
 
         clause("assetProgress on an empty ledger answers nothing", LedgerStoreState.EMPTY) { backend ->
@@ -134,7 +135,7 @@ object LedgerStoreContract : Contract<LedgerStoreState, LedgerStore>("LedgerStor
             LedgerWriter(backend).recordRequested(res("a.heic", "A"), destinationPath = "/a.heic")
             backend.markTerminal("a.heic", TerminalOutcome.COMPLETED)
 
-            assertEquals(mapOf("A" to true), backend.assetProgress())
+            assertEquals(mapOf(AssetId("A") to true), backend.assetProgress())
         }
 
         clause("pendingResources returns only non-COMPLETED rows paired with their asset", LedgerStoreState.EMPTY) { backend ->
@@ -144,7 +145,7 @@ object LedgerStoreContract : Contract<LedgerStoreState, LedgerStore>("LedgerStor
             backend.recordUnlessSettled(entry(key = "B-edit.jpg", assetId = "B", state = LedgerState.DISCOVERED))
 
             assertEquals(
-                setOf(PendingResource("B", "B-photo.jpg"), PendingResource("B", "B-edit.jpg")),
+                setOf(PendingResource(AssetId("B"), "B-photo.jpg"), PendingResource(AssetId("B"), "B-edit.jpg")),
                 backend.pendingResources().toSet(),
             )
         }
@@ -221,7 +222,7 @@ object LedgerStoreContract : Contract<LedgerStoreState, LedgerStore>("LedgerStor
             writer.recordFailed(res("k", "A"))
 
             val entry = writer.entry("k")!!
-            assertEquals("A", entry.assetId)
+            assertEquals(AssetId("A"), entry.assetId)
             assertEquals(LedgerState.DISCOVERED, entry.state)
         }
 
@@ -244,7 +245,7 @@ object LedgerStoreContract : Contract<LedgerStoreState, LedgerStore>("LedgerStor
             val writer = LedgerWriter(backend)
             writer.recordRequested(res())
 
-            val bare = Resource("cloud-1-ios.photo.heic", "cloud-1", "image/heic", emptyMap(), Unit)
+            val bare = Resource("cloud-1-ios.photo.heic", AssetId("cloud-1"), "image/heic", emptyMap(), Unit)
             writer.recordFailed(bare)
 
             val row = backend.get("cloud-1-ios.photo.heic")!!
@@ -262,7 +263,7 @@ object LedgerStoreContract : Contract<LedgerStoreState, LedgerStore>("LedgerStor
             // A row the join-time load seeded from a stored-file listing: COMPLETED, but no capture date.
             // The read no longer excludes it — the membership's policy does, because an empty capture date
             // sorts before every real cutoff (capability `photo-sharing`).
-            backend.recordUnlessSettled(LedgerEntry("seeded.heic", "C", LedgerState.COMPLETED))
+            backend.recordUnlessSettled(LedgerEntry("seeded.heic", AssetId("C"), LedgerState.COMPLETED))
 
             assertEquals(
                 listOf("done.heic", "failed.heic", "found.heic", "inflight.heic", "seeded.heic"),
@@ -280,7 +281,7 @@ object LedgerStoreContract : Contract<LedgerStoreState, LedgerStore>("LedgerStor
             assertEquals(LedgerState.COMPLETED, row.state)
             // Every other column is the statement's business to preserve, not the caller's: the party that
             // records a terminal outcome is a platform callback holding nothing but the key.
-            assertEquals("A", row.assetId)
+            assertEquals(AssetId("A"), row.assetId)
             assertEquals("/a.heic", row.destinationPath)
             assertEquals(CREATION_DATE, row.creationDate, "the manifest detail survives the transition")
         }
@@ -336,7 +337,7 @@ object LedgerStoreContract : Contract<LedgerStoreState, LedgerStore>("LedgerStor
         }
 
         clause("the backfill fills a bare row and leaves an enriched one alone", LedgerStoreState.EMPTY) { backend ->
-            backend.recordUnlessSettled(LedgerEntry("seeded.heic", "C", LedgerState.COMPLETED, destinationPath = "/s"))
+            backend.recordUnlessSettled(LedgerEntry("seeded.heic", AssetId("C"), LedgerState.COMPLETED, destinationPath = "/s"))
 
             backend.backfillManifestDetail(res("seeded.heic", "C").toLedgerRow(LedgerState.DISCOVERED))
             val filled = backend.get("seeded.heic")!!
@@ -346,7 +347,7 @@ object LedgerStoreContract : Contract<LedgerStoreState, LedgerStore>("LedgerStor
 
             // Idempotent: a second sweep with a DIFFERENT value must not overwrite what is already there.
             val other = Resource(
-                "seeded.heic", "C", "image/heic",
+                "seeded.heic", AssetId("C"), "image/heic",
                 mapOf(RESOURCE_META_CREATION_DATE to "2099-01-01T00:00:00Z"), Unit,
             )
             backend.backfillManifestDetail(other.toLedgerRow(LedgerState.COMPLETED))
@@ -388,7 +389,7 @@ object LedgerStoreContract : Contract<LedgerStoreState, LedgerStore>("LedgerStor
 
             // Counted as outstanding everywhere...
             assertEquals(LedgerAggregates(pending = 1, completed = 0), backend.aggregates())
-            assertEquals(listOf(PendingResource("A", "a.heic")), backend.pendingResources())
+            assertEquals(listOf(PendingResource(AssetId("A"), "a.heic")), backend.pendingResources())
             // ...and it IS declared: the manifest states what this device will provide, and the backend
             // keeps the asset out of the union until every declared role has a resource.
             assertEquals(listOf("a.heic"), backend.manifestRows().map { it.key })

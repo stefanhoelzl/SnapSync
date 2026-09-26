@@ -1,5 +1,6 @@
 package app.snapsync.contracts
 
+import app.snapsync.model.AssetId
 import kotlinx.serialization.json.jsonArray
 
 import io.ktor.client.request.get
@@ -104,7 +105,7 @@ interface BackendSetup {
     suspend fun publish(eventId: String, deviceId: String, assets: List<SeededAsset>)
 
     /** The asset ids the event's union serves — a read of the public surface, as a member makes it. */
-    suspend fun unionAssetIds(eventId: String): Set<String>
+    suspend fun unionAssetIds(eventId: String): Set<AssetId>
 
     /** One resource's bytes landing, as the app's uploader addresses them. */
     suspend fun upload(deviceId: String, asset: SeededAsset, role: ResourceRole)
@@ -170,10 +171,10 @@ class EdgeSetup(private val client: HttpClient, base: String) : BackendSetup {
     }
 
     /** The asset ids the event's union serves — a read of the backend's public surface, as a member makes it. */
-    override suspend fun unionAssetIds(eventId: String): Set<String> {
+    override suspend fun unionAssetIds(eventId: String): Set<AssetId> {
         val response = checked("read the union", client.get("$base/events/$eventId/files") { served() })
         return json.parseToJsonElement(response.bodyAsText()).jsonArray
-            .mapTo(mutableSetOf()) { it.jsonObject.getValue("assetId").jsonPrimitive.content }
+            .mapTo(mutableSetOf()) { AssetId(it.jsonObject.getValue("assetId").jsonPrimitive.content) }
     }
 
     /** Uploads one resource's bytes, as the app's uploader addresses them. */
@@ -201,7 +202,7 @@ class EdgeSetup(private val client: HttpClient, base: String) : BackendSetup {
 }
 
 /** An asset a binding seeds: one capture declaring [roles], each uploaded under [filename]. */
-class SeededAsset(val assetId: String, val roles: List<ResourceRole>, val filename: String = "IMG_0001.JPG") {
+class SeededAsset(val assetId: AssetId, val roles: List<ResourceRole>, val filename: String = "IMG_0001.JPG") {
     val creationDate = "2030-01-02T12:00:00Z"
 
     fun key(role: ResourceRole) = uploadKey(assetId, role, filename)

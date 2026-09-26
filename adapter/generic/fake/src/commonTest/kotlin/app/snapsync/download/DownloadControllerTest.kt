@@ -1,6 +1,7 @@
 package app.snapsync.download
 
 import app.snapsync.feature.download.DownloadController
+import app.snapsync.model.AssetId
 import app.snapsync.services.backend.EventUnionSource
 import app.snapsync.ports.ImportedAssetPresence
 import app.snapsync.model.ImportResult
@@ -41,7 +42,7 @@ class DownloadControllerTest {
 
     private fun asset(device: String, id: String) = UnionAsset(
         deviceId = device,
-        assetId = id,
+        assetId = AssetId(id),
         creationDate = "2026-06-30T10:00:00Z",
         resources = listOf(
             UnionResource("$id-primary.heic", "https://e/$id/primary", "primary", "image/heic", "IMG.HEIC"),
@@ -116,14 +117,14 @@ class DownloadControllerTest {
                 "imported ${ref.sourceAssetId} $forThisRef times (cap $attemptCap) — the drain is " +
                     "live-locking on one ref instead of offering it once per pass"
             }
-            markerStore?.recordCreatedLocalId(ref, "LOCAL-${ref.sourceAssetId}_L0_001")
-            if (ref.sourceAssetId in hangFor) {
+            markerStore?.recordCreatedLocalId(ref, AssetId("LOCAL-${ref.sourceAssetId}_L0_001"))
+            if (ref.sourceAssetId.value in hangFor) {
                 hanging.complete(ref)
                 never.await() // no deadline anywhere: this is what a stalled library looks like
             }
             if (failNext) return ImportResult.Failed("forced", consumedResources = failConsumingResources)
             imported += ref
-            return ImportResult.Imported("LOCAL-${ref.sourceAssetId}_L0_001")
+            return ImportResult.Imported(AssetId("LOCAL-${ref.sourceAssetId}_L0_001"))
         }
     }
 
@@ -137,7 +138,7 @@ class DownloadControllerTest {
         var calls = 0
             private set
 
-        override suspend fun presence(localIds: Set<String>): Map<String, AssetPresence> {
+        override suspend fun presence(localIds: Set<AssetId>): Map<AssetId, AssetPresence> {
             calls++
             return delegate.presence(localIds)
         }
@@ -226,14 +227,14 @@ class DownloadControllerTest {
     @Test
     fun a_settled_asset_is_left_out_of_the_plan_batch() = runTest {
         val store = PlanCountingStore()
-        val settled = AssetRef("DEVICE-A", "DONE")
+        val settled = AssetRef("DEVICE-A", AssetId("DONE"))
         store.inner.plan(settled, "2026-06-30T10:00:00Z", listOf(PlannedResource("DONE-primary.heic", "u", "primary", "image/heic", "D.HEIC")))
-        store.inner.markImported(settled, "LOCAL-DONE")
+        store.inner.markImported(settled, AssetId("LOCAL-DONE"))
         val jobs = RecordingJobs()
 
         controller(FakeUnion(listOf(asset("DEVICE-A", "DONE"), asset("DEVICE-A", "NEW"))), store = store, jobs = jobs).reconcile("event")
 
-        assertEquals(listOf(AssetRef("DEVICE-A", "NEW")), store.batches.single().map { it.ref })
+        assertEquals(listOf(AssetRef("DEVICE-A", AssetId("NEW"))), store.batches.single().map { it.ref })
         assertTrue(jobs.enqueued.none { it.ref == settled }, "a settled asset is never re-downloaded")
     }
 
@@ -251,7 +252,7 @@ class DownloadControllerTest {
         val store = InMemoryDownloadStore()
         val importer = FakeImporter()
         val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, importer = importer)
-        val ref = AssetRef("DEVICE-A", "Q")
+        val ref = AssetRef("DEVICE-A", AssetId("Q"))
 
         c.reconcile("event")
         assertFalse(store.isSettled(ref)) // nothing staged yet
@@ -263,7 +264,7 @@ class DownloadControllerTest {
 
         assertEquals(listOf(ref), importer.imported)
         assertTrue(store.isSettled(ref))
-        assertEquals(setOf("LOCAL-Q_L0_001"), store.suppressedLocalIds()) // suppression handle recorded
+        assertEquals(setOf(AssetId("LOCAL-Q_L0_001")), store.suppressedLocalIds()) // suppression handle recorded
         assertEquals(1, store.counts().imported)
     }
 
@@ -272,7 +273,7 @@ class DownloadControllerTest {
         val store = InMemoryDownloadStore()
         val importer = FakeImporter().also { it.failNext = true }
         val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, importer = importer)
-        val ref = AssetRef("DEVICE-A", "Q")
+        val ref = AssetRef("DEVICE-A", AssetId("Q"))
 
         c.reconcile("event")
         c.onResourceStaged(ref, "Q-primary.heic", "/p")
@@ -350,7 +351,7 @@ class DownloadControllerTest {
         val jobs = RecordingJobs()
         val importer = FakeImporter()
         val union = FakeUnion(listOf(asset("DEVICE-A", "Q")))
-        val ref = AssetRef("DEVICE-A", "Q")
+        val ref = AssetRef("DEVICE-A", AssetId("Q"))
 
         // A good wake plans the asset and stages one of its two resources — not yet importable.
         val c = controller(union, store = store, jobs = jobs, importer = importer)
@@ -392,7 +393,7 @@ class DownloadControllerTest {
         val c = controller(union, store = store, importer = importer)
         c.reconcile("event")
         for (id in listOf("AAA", "BBB", "CCC")) {
-            val ref = AssetRef("DEVICE-A", id)
+            val ref = AssetRef("DEVICE-A", AssetId(id))
             store.markStaged(ref, "$id-primary.heic", "/stage/$id/p")
             store.markStaged(ref, "$id-live.mov", "/stage/$id/l")
         }
@@ -407,10 +408,10 @@ class DownloadControllerTest {
             ?: fail("a second trigger queued behind the stalled import instead of skipping it")
 
         assertEquals(
-            setOf("BBB", "CCC"), importer.imported.mapTo(mutableSetOf()) { it.sourceAssetId },
+            setOf(AssetId("BBB"), AssetId("CCC")), importer.imported.mapTo(mutableSetOf()) { it.sourceAssetId },
             "every other ref imported while AAA's transaction stayed open",
         )
-        assertFalse(store.isSettled(AssetRef("DEVICE-A", "AAA")), "and AAA is still not imported")
+        assertFalse(store.isSettled(AssetRef("DEVICE-A", AssetId("AAA"))), "and AAA is still not imported")
         stalled.cancel()
     }
 
@@ -431,8 +432,8 @@ class DownloadControllerTest {
         val store = InMemoryDownloadStore()
         val jobs = RecordingJobs()
         val importer = FakeImporter().also { it.hangFor += "Q" }
-        val ref = AssetRef("DEVICE-A", "Q")
-        val other = AssetRef("DEVICE-B", "R")
+        val ref = AssetRef("DEVICE-A", AssetId("Q"))
+        val other = AssetRef("DEVICE-B", AssetId("R"))
         val c = controller(
             FakeUnion(listOf(asset("DEVICE-A", "Q"), asset("DEVICE-B", "R"))),
             store = store, jobs = jobs, importer = importer,
@@ -464,7 +465,7 @@ class DownloadControllerTest {
     @Test
     fun a_hung_import_leaves_the_asset_importable() = runTest {
         val store = InMemoryDownloadStore()
-        val ref = AssetRef("DEVICE-A", "Q")
+        val ref = AssetRef("DEVICE-A", AssetId("Q"))
         val importer = FakeImporter().also { it.hangFor += "Q" }
         val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, importer = importer)
         c.reconcile("event")
@@ -494,8 +495,8 @@ class DownloadControllerTest {
         )
         c.reconcile("event")
         for (id in listOf("Q", "R")) {
-            store.markStaged(AssetRef("DEVICE-A", id), "$id-primary.heic", "/p/$id")
-            store.markStaged(AssetRef("DEVICE-A", id), "$id-live.mov", "/l/$id")
+            store.markStaged(AssetRef("DEVICE-A", AssetId(id)), "$id-primary.heic", "/p/$id")
+            store.markStaged(AssetRef("DEVICE-A", AssetId(id)), "$id-live.mov", "/l/$id")
         }
         assertEquals(2, store.importableAssets().size, "the reconcile imported nothing itself")
 
@@ -520,8 +521,8 @@ class DownloadControllerTest {
         )
         c.reconcile("event")
         for (id in listOf("Q", "R")) {
-            store.markStaged(AssetRef("DEVICE-A", id), "$id-primary.heic", "/p/$id")
-            store.markStaged(AssetRef("DEVICE-A", id), "$id-live.mov", "/l/$id")
+            store.markStaged(AssetRef("DEVICE-A", AssetId(id)), "$id-primary.heic", "/p/$id")
+            store.markStaged(AssetRef("DEVICE-A", AssetId(id)), "$id-live.mov", "/l/$id")
         }
 
         // Every wait is given up at once; the import itself runs on, claimed.
@@ -529,9 +530,9 @@ class DownloadControllerTest {
         importer.hanging.await()
         yield()
 
-        assertEquals(listOf(AssetRef("DEVICE-A", "R")), importer.imported, "the drain moved past the hung import")
+        assertEquals(listOf(AssetRef("DEVICE-A", AssetId("R"))), importer.imported, "the drain moved past the hung import")
         c.importReady()
-        assertEquals(1, importer.attempted.count { it.sourceAssetId == "Q" }, "the hung import stays claimed")
+        assertEquals(1, importer.attempted.count { it.sourceAssetId == AssetId("Q") }, "the hung import stays claimed")
     }
 
     /** A reconcile plans and enqueues only; the drain is the tail's (capability `receiving-photos`). */
@@ -539,7 +540,7 @@ class DownloadControllerTest {
     fun a_reconcile_imports_nothing_even_when_assets_are_staged() = runTest {
         val store = InMemoryDownloadStore()
         val importer = FakeImporter()
-        val ref = AssetRef("DEVICE-A", "Q")
+        val ref = AssetRef("DEVICE-A", AssetId("Q"))
         val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, importer = importer)
         c.reconcile("event")
         store.markStaged(ref, "Q-primary.heic", "/p")
@@ -577,7 +578,7 @@ class DownloadControllerTest {
     @Test
     fun an_absent_verdict_never_clears_a_marker_while_the_import_is_claimed() = runTest {
         val store = InMemoryDownloadStore()
-        val ref = AssetRef("DEVICE-A", "Q")
+        val ref = AssetRef("DEVICE-A", AssetId("Q"))
         val importer = FakeImporter().also { it.hangFor += "Q" }
         // The library sees nothing: the transaction has not committed yet.
         val c = controller(
@@ -592,12 +593,12 @@ class DownloadControllerTest {
         importer.hanging.await()
         // The change block ran and wrote its marker; the commit has not landed. On device this write comes
         // from inside `performChanges`, which is why it is not the importer fake's business here.
-        store.recordCreatedLocalId(ref, "LOCAL-Q_L0_001")
+        store.recordCreatedLocalId(ref, AssetId("LOCAL-Q_L0_001"))
 
         c.sweepInterruptedImports() // a second trigger adjudicates the unconfirmed row
 
         assertEquals(
-            setOf("LOCAL-Q_L0_001"), store.suppressedLocalIds(),
+            setOf(AssetId("LOCAL-Q_L0_001")), store.suppressedLocalIds(),
             "the marker of a live transaction survives — clearing it is what re-uploads the photo",
         )
         stalled.cancel()
@@ -608,7 +609,7 @@ class DownloadControllerTest {
     fun an_absent_verdict_clears_the_marker_once_the_import_is_no_longer_claimed() = runTest {
         val store = InMemoryDownloadStore()
         val importer = FakeImporter()
-        val ref = AssetRef("DEVICE-A", "Q")
+        val ref = AssetRef("DEVICE-A", AssetId("Q"))
         val c = controller(
             FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, importer = importer,
             presence = InMemoryAssetPresence(present = MutableStateFlow(emptySet())),
@@ -622,12 +623,12 @@ class DownloadControllerTest {
         store.markStaged(ref, "Q-primary.heic", "/p")
         store.markStaged(ref, "Q-live.mov", "/l")
         // A marker left by a PREVIOUS process: nothing is claimed here, so absence is trustworthy.
-        store.recordCreatedLocalId(ref, "PREVIOUS-PROCESS")
+        store.recordCreatedLocalId(ref, AssetId("PREVIOUS-PROCESS"))
 
         c.sweepInterruptedImports()
 
         assertTrue(
-            "PREVIOUS-PROCESS" !in store.suppressedLocalIds(),
+            AssetId("PREVIOUS-PROCESS") !in store.suppressedLocalIds(),
             "nothing may still commit, so absence is trustworthy and the row goes back to importable",
         )
         assertEquals(1, importer.imported.size, "and the drain imports it, so the photo still arrives")
@@ -642,9 +643,9 @@ class DownloadControllerTest {
     @Test
     fun a_present_verdict_settles_the_row_and_releases_the_claim() = runTest {
         val store = InMemoryDownloadStore()
-        val ref = AssetRef("DEVICE-A", "Q")
+        val ref = AssetRef("DEVICE-A", AssetId("Q"))
         val importer = FakeImporter().also { it.hangFor += "Q" }
-        val present = MutableStateFlow(emptySet<String>())
+        val present = MutableStateFlow(emptySet<AssetId>())
         val c = controller(
             FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, importer = importer,
             presence = InMemoryAssetPresence(present = present),
@@ -655,14 +656,14 @@ class DownloadControllerTest {
 
         val stalled = launch { c.importReady() }
         importer.hanging.await()
-        store.recordCreatedLocalId(ref, "LOCAL-Q_L0_001")
+        store.recordCreatedLocalId(ref, AssetId("LOCAL-Q_L0_001"))
         // The commit DID land; only the callback was lost. The library can see it.
-        present.value = setOf("LOCAL-Q_L0_001")
+        present.value = setOf(AssetId("LOCAL-Q_L0_001"))
 
         c.sweepInterruptedImports()
 
         assertTrue(store.isSettled(ref), "the row is settled against the marker it already held")
-        assertEquals(setOf("LOCAL-Q_L0_001"), store.suppressedLocalIds())
+        assertEquals(setOf(AssetId("LOCAL-Q_L0_001")), store.suppressedLocalIds())
         // The claim is released, so a leave's prune is no longer told to protect this ref — the
         // observable consequence of the release, since the set itself is private.
         c.onLeaveOrSwitch()
@@ -681,7 +682,7 @@ class DownloadControllerTest {
     fun two_concurrent_triggers_import_one_asset_once() = runTest {
         val store = InMemoryDownloadStore()
         val importer = FakeImporter().also { it.hangFor += "Q" }
-        val ref = AssetRef("DEVICE-A", "Q")
+        val ref = AssetRef("DEVICE-A", AssetId("Q"))
         val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, importer = importer)
         c.reconcile("event")
         store.markStaged(ref, "Q-primary.heic", "/p")
@@ -710,7 +711,7 @@ class DownloadControllerTest {
     fun a_permanently_failing_asset_is_attempted_once_per_drain() = runTest {
         val store = InMemoryDownloadStore()
         val importer = FakeImporter().also { it.failNext = true } // stays armed: never cleared below
-        val ref = AssetRef("DEVICE-A", "Q")
+        val ref = AssetRef("DEVICE-A", AssetId("Q"))
         val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, importer = importer)
         c.reconcile("event")
         store.markStaged(ref, "Q-primary.heic", "/p")
@@ -734,7 +735,7 @@ class DownloadControllerTest {
     fun a_leave_during_a_claimed_import_spares_its_row() = runTest {
         val store = InMemoryDownloadStore()
         val importer = FakeImporter().also { it.hangFor += "Q" }
-        val ref = AssetRef("DEVICE-A", "Q")
+        val ref = AssetRef("DEVICE-A", AssetId("Q"))
         val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, importer = importer)
         c.reconcile("event")
         store.markStaged(ref, "Q-primary.heic", "/p")
@@ -747,10 +748,10 @@ class DownloadControllerTest {
 
         // The change block runs after the leave — the whole point of protecting the row.
         assertTrue(
-            store.recordCreatedLocalId(ref, "LOCAL-Q_L0_001"),
+            store.recordCreatedLocalId(ref, AssetId("LOCAL-Q_L0_001")),
             "the marker write must land on a row that still exists",
         )
-        assertEquals(setOf("LOCAL-Q_L0_001"), store.suppressedLocalIds())
+        assertEquals(setOf(AssetId("LOCAL-Q_L0_001")), store.suppressedLocalIds())
         stalled.cancel()
     }
 
@@ -762,15 +763,15 @@ class DownloadControllerTest {
     @Test
     fun a_present_verdict_that_went_stale_is_discarded() = runTest {
         val store = InMemoryDownloadStore()
-        val ref = AssetRef("DEVICE-A", "Q")
+        val ref = AssetRef("DEVICE-A", AssetId("Q"))
         // The row moves on DURING the lookup — which is when it really happens: the presence call blocks
         // (it is a synchronous platform round-trip, which is why it runs outside the lock), and the
         // platform's completion callback settles the row from another thread while it does. Modelled by
         // making the lookup itself the thing that moves the row, so the interleaving is deterministic.
         val lookupMovesTheRowOn = object : ImportedAssetPresence {
-            override suspend fun presence(localIds: Set<String>): Map<String, AssetPresence> {
-                store.clearCreatedLocalId(ref, "FIRST")
-                store.recordCreatedLocalId(ref, "SECOND")
+            override suspend fun presence(localIds: Set<AssetId>): Map<AssetId, AssetPresence> {
+                store.clearCreatedLocalId(ref, AssetId("FIRST"))
+                store.recordCreatedLocalId(ref, AssetId("SECOND"))
                 return localIds.associateWith { AssetPresence.PRESENT }
             }
         }
@@ -778,12 +779,12 @@ class DownloadControllerTest {
             FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, presence = lookupMovesTheRowOn,
         )
         c.reconcile("event")
-        store.recordCreatedLocalId(ref, "FIRST") // the verdict below is computed for THIS marker
+        store.recordCreatedLocalId(ref, AssetId("FIRST")) // the verdict below is computed for THIS marker
 
         c.sweepInterruptedImports()
 
         assertEquals(
-            setOf("SECOND"), store.suppressedLocalIds(),
+            setOf(AssetId("SECOND")), store.suppressedLocalIds(),
             "the stale verdict did not overwrite the marker the row now holds",
         )
         assertFalse(store.isSettled(ref), "and it did not settle a row it no longer describes")
@@ -801,12 +802,12 @@ class DownloadControllerTest {
     @Test
     fun an_absent_verdict_does_not_clear_a_marker_the_completion_settled_meanwhile() = runTest {
         val store = InMemoryDownloadStore()
-        val ref = AssetRef("DEVICE-A", "Q")
+        val ref = AssetRef("DEVICE-A", AssetId("Q"))
         // The completion lands DURING the lookup — the real interleaving, made deterministic by hanging it
         // off the lookup itself (which on device is a blocking platform round-trip).
         val completionLandsDuringLookup = object : ImportedAssetPresence {
-            override suspend fun presence(localIds: Set<String>): Map<String, AssetPresence> {
-                store.confirmCreatedLocalId(ref, "LOCAL-Q_L0_001") // the row settles
+            override suspend fun presence(localIds: Set<AssetId>): Map<AssetId, AssetPresence> {
+                store.confirmCreatedLocalId(ref, AssetId("LOCAL-Q_L0_001")) // the row settles
                 return localIds.associateWith { AssetPresence.ABSENT }
             }
         }
@@ -815,12 +816,12 @@ class DownloadControllerTest {
             presence = completionLandsDuringLookup,
         )
         c.reconcile("event")
-        store.recordCreatedLocalId(ref, "LOCAL-Q_L0_001")
+        store.recordCreatedLocalId(ref, AssetId("LOCAL-Q_L0_001"))
 
         c.sweepInterruptedImports()
 
         assertEquals(
-            setOf("LOCAL-Q_L0_001"), store.suppressedLocalIds(),
+            setOf(AssetId("LOCAL-Q_L0_001")), store.suppressedLocalIds(),
             "the settled row keeps its marker — clearing it leaves the asset permanently unsuppressed",
         )
         assertTrue(store.isSettled(ref), "and the row stays settled")
@@ -833,19 +834,19 @@ class DownloadControllerTest {
     @Test
     fun an_unknown_verdict_changes_nothing() = runTest {
         val store = InMemoryDownloadStore()
-        val ref = AssetRef("DEVICE-A", "Q")
+        val ref = AssetRef("DEVICE-A", AssetId("Q"))
         val c = controller(
             FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store,
             // Unreadable: the grant cannot answer, which is NOT the same as answering "absent".
             presence = InMemoryAssetPresence(readable = MutableStateFlow(false)),
         )
         c.reconcile("event")
-        store.recordCreatedLocalId(ref, "LOCAL-Q_L0_001")
+        store.recordCreatedLocalId(ref, AssetId("LOCAL-Q_L0_001"))
 
         c.sweepInterruptedImports()
 
         assertEquals(
-            setOf("LOCAL-Q_L0_001"), store.suppressedLocalIds(),
+            setOf(AssetId("LOCAL-Q_L0_001")), store.suppressedLocalIds(),
             "a miss under an unreadable grant is not absence",
         )
         assertFalse(store.isSettled(ref), "and nothing was settled on an answer we did not get")
@@ -858,18 +859,18 @@ class DownloadControllerTest {
     @Test
     fun a_verdict_missing_from_the_lookup_is_read_as_unknown_not_absent() = runTest {
         val store = InMemoryDownloadStore()
-        val ref = AssetRef("DEVICE-A", "Q")
+        val ref = AssetRef("DEVICE-A", AssetId("Q"))
         val silent = object : ImportedAssetPresence {
-            override suspend fun presence(localIds: Set<String>): Map<String, AssetPresence> = emptyMap()
+            override suspend fun presence(localIds: Set<AssetId>): Map<AssetId, AssetPresence> = emptyMap()
         }
         val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, presence = silent)
         c.reconcile("event")
-        store.recordCreatedLocalId(ref, "LOCAL-Q_L0_001")
+        store.recordCreatedLocalId(ref, AssetId("LOCAL-Q_L0_001"))
 
         c.sweepInterruptedImports()
 
         assertEquals(
-            setOf("LOCAL-Q_L0_001"), store.suppressedLocalIds(),
+            setOf(AssetId("LOCAL-Q_L0_001")), store.suppressedLocalIds(),
             "no entry is not an absent entry",
         )
     }
@@ -893,7 +894,7 @@ class DownloadControllerTest {
     fun a_surviving_commit_still_in_flight_at_relaunch_settles_rather_than_clearing() = runTest {
         val store = InMemoryDownloadStore()
         val importer = FakeImporter()
-        val ref = AssetRef("DEVICE-A", "Q")
+        val ref = AssetRef("DEVICE-A", AssetId("Q"))
         // A previous process: the change block ran, the library INGESTED the staged files (so they are
         // gone from disk), the marker was recorded, and the process died mid-commit.
         val c = controller(
@@ -904,13 +905,13 @@ class DownloadControllerTest {
         c.reconcile("event")
         store.markStaged(ref, "Q-primary.heic", "/p")
         store.markStaged(ref, "Q-live.mov", "/l")
-        store.recordCreatedLocalId(ref, "FIRST-COPY")
+        store.recordCreatedLocalId(ref, AssetId("FIRST-COPY"))
 
         c.sweepInterruptedImports() // the relaunched process adjudicates
 
         assertEquals(0, importer.imported.size, "no second asset was created")
         assertTrue(
-            "FIRST-COPY" in store.suppressedLocalIds(),
+            AssetId("FIRST-COPY") in store.suppressedLocalIds(),
             "the surviving commit's asset keeps its suppression handle",
         )
         assertTrue(store.isSettled(ref), "and the row is settled against the marker it already held")
@@ -924,7 +925,7 @@ class DownloadControllerTest {
     fun one_consumed_resource_of_several_settles_the_row() = runTest {
         val store = InMemoryDownloadStore()
         val importer = FakeImporter()
-        val ref = AssetRef("DEVICE-A", "Q")
+        val ref = AssetRef("DEVICE-A", AssetId("Q"))
         val c = controller(
             FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, importer = importer,
             presence = InMemoryAssetPresence(present = MutableStateFlow(emptySet())),
@@ -933,12 +934,12 @@ class DownloadControllerTest {
         c.reconcile("event")
         store.markStaged(ref, "Q-primary.heic", "/p")
         store.markStaged(ref, "Q-live.mov", "/l")
-        store.recordCreatedLocalId(ref, "FIRST-COPY")
+        store.recordCreatedLocalId(ref, AssetId("FIRST-COPY"))
 
         c.sweepInterruptedImports()
 
         assertEquals(0, importer.imported.size, "no second asset was created")
-        assertTrue("FIRST-COPY" in store.suppressedLocalIds(), "the handle survives on partial evidence")
+        assertTrue(AssetId("FIRST-COPY") in store.suppressedLocalIds(), "the handle survives on partial evidence")
     }
 
     /**
@@ -950,7 +951,7 @@ class DownloadControllerTest {
     fun absent_with_no_staged_resources_changes_nothing() = runTest {
         val store = InMemoryDownloadStore()
         val importer = FakeImporter()
-        val ref = AssetRef("DEVICE-A", "Q")
+        val ref = AssetRef("DEVICE-A", AssetId("Q"))
         val c = controller(
             FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, importer = importer,
             presence = InMemoryAssetPresence(present = MutableStateFlow(emptySet())),
@@ -958,12 +959,12 @@ class DownloadControllerTest {
         )
         c.reconcile("event")
         store.dropResources(ref) // no staged resources remain to reason from
-        store.recordCreatedLocalId(ref, "FIRST-COPY")
+        store.recordCreatedLocalId(ref, AssetId("FIRST-COPY"))
 
         c.sweepInterruptedImports()
 
         assertEquals(0, importer.imported.size, "nothing was imported")
-        assertTrue("FIRST-COPY" in store.suppressedLocalIds(), "and nothing was cleared")
+        assertTrue(AssetId("FIRST-COPY") in store.suppressedLocalIds(), "and nothing was cleared")
         assertFalse(store.isSettled(ref), "the row is left unconfirmed rather than settled")
     }
 
@@ -985,8 +986,8 @@ class DownloadControllerTest {
         // unconfirmed AND claimed, which is a burst's steady state, and exactly the row every staged
         // resource used to ask about.
         val importer = FakeImporter().apply { markerStore = store; hangFor += "Q" }
-        val q = AssetRef("DEVICE-A", "Q")
-        val r = AssetRef("DEVICE-A", "R")
+        val q = AssetRef("DEVICE-A", AssetId("Q"))
+        val r = AssetRef("DEVICE-A", AssetId("R"))
         val c = controller(
             FakeUnion(listOf(asset("DEVICE-A", "Q"), asset("DEVICE-A", "R"))),
             store = store, importer = importer, presence = presence,
@@ -1021,7 +1022,7 @@ class DownloadControllerTest {
     fun the_sweep_asks_once_and_only_about_what_it_inherited() = runTest {
         val presence = CountingPresence()
         val store = InMemoryDownloadStore()
-        val ref = AssetRef("DEVICE-A", "Q")
+        val ref = AssetRef("DEVICE-A", AssetId("Q"))
         val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, presence = presence)
 
         c.sweepInterruptedImports()
@@ -1030,7 +1031,7 @@ class DownloadControllerTest {
         c.reconcile("event")
         store.markStaged(ref, "Q-primary.heic", "/p")
         store.markStaged(ref, "Q-live.mov", "/l")
-        store.recordCreatedLocalId(ref, "LOCAL-Q_L0_001") // what a dead process left behind
+        store.recordCreatedLocalId(ref, AssetId("LOCAL-Q_L0_001")) // what a dead process left behind
         c.sweepInterruptedImports()
         assertEquals(1, presence.calls, "one inherited row → exactly one batched lookup")
     }
@@ -1044,7 +1045,7 @@ class DownloadControllerTest {
     fun an_import_whose_bytes_the_library_consumed_settles_instead_of_retrying() = runTest {
         val store = InMemoryDownloadStore()
         val importer = FakeImporter().apply { failNext = true; failConsumingResources = true }
-        val ref = AssetRef("DEVICE-A", "Q")
+        val ref = AssetRef("DEVICE-A", AssetId("Q"))
         val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, importer = importer)
 
         c.reconcile("event")
@@ -1067,7 +1068,7 @@ class DownloadControllerTest {
     fun an_import_rejected_before_ingest_keeps_its_bytes_and_is_retried() = runTest {
         val store = InMemoryDownloadStore()
         val importer = FakeImporter().apply { failNext = true; failConsumingResources = false }
-        val ref = AssetRef("DEVICE-A", "Q")
+        val ref = AssetRef("DEVICE-A", AssetId("Q"))
         val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, importer = importer)
 
         c.reconcile("event")
@@ -1092,7 +1093,7 @@ class DownloadControllerTest {
     fun a_settled_unimportable_asset_leaves_the_download_total() = runTest {
         val store = InMemoryDownloadStore()
         val importer = FakeImporter().apply { failNext = true; failConsumingResources = true }
-        val ref = AssetRef("DEVICE-A", "Q")
+        val ref = AssetRef("DEVICE-A", AssetId("Q"))
         val c = controller(
             FakeUnion(listOf(asset("DEVICE-A", "Q"), asset("DEVICE-A", "R"))),
             store = store, importer = importer,
@@ -1138,8 +1139,8 @@ class DownloadControllerTest {
     fun reset_spares_a_claimed_import_while_pruning_the_rest() = runTest {
         val store = InMemoryDownloadStore()
         val importer = FakeImporter().also { it.hangFor += "Q" }
-        val claimed = AssetRef("DEVICE-A", "Q")
-        val unclaimed = AssetRef("DEVICE-B", "R")
+        val claimed = AssetRef("DEVICE-A", AssetId("Q"))
+        val unclaimed = AssetRef("DEVICE-B", AssetId("R"))
         val c = controller(
             FakeUnion(listOf(asset("DEVICE-A", "Q"), asset("DEVICE-B", "R"))),
             store = store, importer = importer,
@@ -1203,12 +1204,12 @@ class DownloadControllerTest {
         // the library and once in staging — forever.
         val store = InMemoryDownloadStore()
         val staged = RecordingStagedBytes(mutableSetOf("/p", "/l"))
-        val ref = AssetRef("DEVICE-A", "Q")
+        val ref = AssetRef("DEVICE-A", AssetId("Q"))
         val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, stagedBytes = staged)
         c.reconcile("event")
         store.markStaged(ref, "Q-primary.heic", "/p")
         store.markStaged(ref, "Q-live.mov", "/l")
-        store.markImported(ref, "LOCAL-Q")
+        store.markImported(ref, AssetId("LOCAL-Q"))
 
         c.releaseSettledBytes()
         assertTrue(staged.remaining.isEmpty(), "the settled asset's staged files were left on disk")
@@ -1249,12 +1250,12 @@ class DownloadControllerTest {
             }
         }
         val failing = RecordingStagedBytes(failWith = { error("disk is busy") })
-        val ref = AssetRef("DEVICE-A", "Q")
+        val ref = AssetRef("DEVICE-A", AssetId("Q"))
         val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, stagedBytes = failing)
         c.reconcile("event")
         store.markStaged(ref, "Q-primary.heic", "/p")
         store.markStaged(ref, "Q-live.mov", "/l")
-        store.markImported(ref, "LOCAL-Q")
+        store.markImported(ref, AssetId("LOCAL-Q"))
 
         c.releaseSettledBytes() // must not throw
 

@@ -2,6 +2,7 @@ package app.snapsync.contracts
 
 import app.snapsync.model.AlbumRecord
 import app.snapsync.model.AssetFacts
+import app.snapsync.model.AssetId
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.GalleryRead
 import app.snapsync.model.RawAsset
@@ -189,7 +190,7 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
         }
     }
 
-    private fun GalleryReader.assetIdsOf(read: GalleryRead.Read<*>): Set<String> =
+    private fun GalleryReader.assetIdsOf(read: GalleryRead.Read<*>): Set<AssetId> =
         (read.value as List<*>).mapTo(mutableSetOf()) { (it as AssetFacts).assetId }
 
     private fun captureCutoffOf(iso: String) = captureCutoff(iso)

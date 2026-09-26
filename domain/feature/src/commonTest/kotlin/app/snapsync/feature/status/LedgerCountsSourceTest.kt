@@ -1,5 +1,6 @@
 package app.snapsync.feature.status
 
+import app.snapsync.model.AssetId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -11,21 +12,21 @@ class LedgerCountsSourceTest {
 
     @Test
     fun refresh_publishes_the_read_counts() = runTest {
-        var next = LedgerCounts(done = setOf("d1", "d2", "d3", "d4"), pending = setOf("p1", "p2", "p3"))
+        var next = LedgerCounts(done = setOf(AssetId("d1"), AssetId("d2"), AssetId("d3"), AssetId("d4")), pending = setOf(AssetId("p1"), AssetId("p2"), AssetId("p3")))
         val source = ReadingLedgerCountsSource { next }
         assertEquals(LedgerCounts.UNREAD, source.counts.value) // seeded UN-READ before any refresh
         source.refresh()
-        assertEquals(LedgerCounts(done = setOf("d1", "d2", "d3", "d4"), pending = setOf("p1", "p2", "p3")), source.counts.value)
-        next = LedgerCounts(done = setOf("d1", "d2", "d3", "d4", "d5", "d6"), pending = emptySet())
+        assertEquals(LedgerCounts(done = setOf(AssetId("d1"), AssetId("d2"), AssetId("d3"), AssetId("d4")), pending = setOf(AssetId("p1"), AssetId("p2"), AssetId("p3"))), source.counts.value)
+        next = LedgerCounts(done = setOf(AssetId("d1"), AssetId("d2"), AssetId("d3"), AssetId("d4"), AssetId("d5"), AssetId("d6")), pending = emptySet())
         source.refresh()
-        assertEquals(LedgerCounts(done = setOf("d1", "d2", "d3", "d4", "d5", "d6"), pending = emptySet()), source.counts.value)
+        assertEquals(LedgerCounts(done = setOf(AssetId("d1"), AssetId("d2"), AssetId("d3"), AssetId("d4"), AssetId("d5"), AssetId("d6")), pending = emptySet()), source.counts.value)
     }
 
     @Test
     fun of_splits_asset_progress_into_disjoint_done_and_pending_sets() {
-        val counts = LedgerCounts.of(mapOf("a" to true, "b" to false, "c" to true))
-        assertEquals(setOf("a", "c"), counts.done)
-        assertEquals(setOf("b"), counts.pending)
+        val counts = LedgerCounts.of(mapOf(AssetId("a") to true, AssetId("b") to false, AssetId("c") to true))
+        assertEquals(setOf(AssetId("a"), AssetId("c")), counts.done)
+        assertEquals(setOf(AssetId("b")), counts.pending)
         assertTrue(counts.read)
         assertEquals(LedgerCounts.ZERO, LedgerCounts.of(emptyMap()))
     }
@@ -53,13 +54,13 @@ class LedgerCountsSourceTest {
     fun a_failed_read_after_a_good_value_retains_the_last_good() = runTest {
         var fail = false
         val source = ReadingLedgerCountsSource {
-            if (fail) error("gone") else LedgerCounts(done = setOf("d1", "d2", "d3", "d4", "d5"), pending = setOf("p1", "p2"))
+            if (fail) error("gone") else LedgerCounts(done = setOf(AssetId("d1"), AssetId("d2"), AssetId("d3"), AssetId("d4"), AssetId("d5")), pending = setOf(AssetId("p1"), AssetId("p2")))
         }
         source.refresh()
-        assertEquals(LedgerCounts(done = setOf("d1", "d2", "d3", "d4", "d5"), pending = setOf("p1", "p2")), source.counts.value)
+        assertEquals(LedgerCounts(done = setOf(AssetId("d1"), AssetId("d2"), AssetId("d3"), AssetId("d4"), AssetId("d5")), pending = setOf(AssetId("p1"), AssetId("p2"))), source.counts.value)
         fail = true
         source.refresh()
         // A transient read error must NOT drop the done set to empty and flip the screen out of "In sync".
-        assertEquals(LedgerCounts(done = setOf("d1", "d2", "d3", "d4", "d5"), pending = setOf("p1", "p2")), source.counts.value)
+        assertEquals(LedgerCounts(done = setOf(AssetId("d1"), AssetId("d2"), AssetId("d3"), AssetId("d4"), AssetId("d5")), pending = setOf(AssetId("p1"), AssetId("p2"))), source.counts.value)
     }
 }

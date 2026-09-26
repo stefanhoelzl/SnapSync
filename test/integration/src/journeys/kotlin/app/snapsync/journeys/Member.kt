@@ -6,7 +6,7 @@ import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.ManifestResource
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.encodeToJson
-import app.snapsync.model.normalizeAssetId
+import app.snapsync.model.AssetId
 import app.snapsync.model.uploadKey
 import io.ktor.client.HttpClient
 import io.ktor.client.request.HttpRequestBuilder
@@ -41,10 +41,10 @@ class Member(private val http: HttpClient, backend: String) {
     }
 
     /** Uploads [count] real photos captured at [creationDate] and publishes them; answers their asset ids. */
-    suspend fun share(eventId: String, count: Int, creationDate: String): Set<String> {
+    suspend fun share(eventId: String, count: Int, creationDate: String): Set<AssetId> {
         val assets = List(count) {
-            // An iOS local identifier, normalized as the app's uploader normalizes one (the path takes no `/`).
-            val assetId = normalizeAssetId("${UUID.randomUUID().toString().uppercase()}/L0/001")
+            // The canonical id an iOS device mints for a PhotoKit local identifier.
+            val assetId = AssetId("${UUID.randomUUID().toString().uppercase()}_L0_001")
             DeviceManifestAsset(assetId, creationDate, listOf(primary(assetId)))
         }
         assets.forEach { upload(it.assetId) }
@@ -60,7 +60,7 @@ class Member(private val http: HttpClient, backend: String) {
         return assets.mapTo(mutableSetOf()) { it.assetId }
     }
 
-    private suspend fun upload(assetId: String) {
+    private suspend fun upload(assetId: AssetId) {
         checked(
             "upload $assetId",
             http.put("$backend/files/devices/$deviceId/$assetId/${ResourceRole.PRIMARY.wire}?filename=$FILENAME") {
@@ -71,7 +71,7 @@ class Member(private val http: HttpClient, backend: String) {
         )
     }
 
-    private fun primary(assetId: String) = ManifestResource(
+    private fun primary(assetId: AssetId) = ManifestResource(
         role = ResourceRole.PRIMARY,
         contentType = "image/jpeg",
         key = uploadKey(assetId, ResourceRole.PRIMARY, FILENAME),

@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.assetIdFromUploadKey
 import app.snapsync.model.Layer
 import app.snapsync.model.ShareCount
@@ -73,7 +74,7 @@ class AdmittedSetIntegrationTest {
         refresh()
         awaitHealth { it is SyncHealth.Syncing }
         cycle()
-        assertEquals(setOf("IN", "AFTER"), jobs().live.mapTo(mutableSetOf(), ::assetIdFromUploadKey))
+        assertEquals(setOf(AssetId("IN"), AssetId("AFTER")), jobs().live.mapTo(mutableSetOf(), ::assetIdFromUploadKey))
         completeJobs()
         cycle()
         assertEquals(setOf("IN", "AFTER"), manifest(event)?.keys)

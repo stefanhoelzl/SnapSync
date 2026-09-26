@@ -1,5 +1,6 @@
 package app.snapsync.feature.status
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.EventPhotoSet
@@ -72,10 +73,10 @@ class OwnDeviceGalleryStatusSource(
     // membership that genuinely contributes nothing, and the status projection settles to "In sync" the
     // moment the synced count reaches the total — so a seeded `0` renders a checkmark on a device that
     // has counted nothing (capability `sync-status`; reported as `SNAPSYNC-14` / `SNAPSYNC-16`).
-    private val _admitted = MutableStateFlow<Set<String>?>(null)
+    private val _admitted = MutableStateFlow<Set<AssetId>?>(null)
 
     /** The upload total `N`: the count of this device's OWN admitted assets, or `null` if not counted. */
-    override val admitted: StateFlow<Set<String>?> = _admitted.asStateFlow()
+    override val admitted: StateFlow<Set<AssetId>?> = _admitted.asStateFlow()
 
     /**
      * Re-read within [configPolicy] (what the joined membership contributes) and recompute `N`.

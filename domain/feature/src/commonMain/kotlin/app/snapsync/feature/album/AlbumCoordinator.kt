@@ -1,5 +1,6 @@
 package app.snapsync.feature.album
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.AlbumManager
 import app.snapsync.ports.AlbumMapStore
@@ -76,7 +77,7 @@ class AlbumCoordinator(
      * it), the add is **skipped** (never created here) — the app's [ensureAlbum] on the permission grant
      * guarantees the album exists before sync in practice. A failure to add is logged, never thrown.
      */
-    suspend fun place(eventId: String, assetIds: List<String>) {
+    suspend fun place(eventId: String, assetIds: List<AssetId>) {
         if (assetIds.isEmpty()) return
         val albumId = store.get(eventId)
         if (albumId == null) {

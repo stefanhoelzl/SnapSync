@@ -1,5 +1,6 @@
 package app.snapsync.services.downloads
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.DownloadCounts
 import app.snapsync.model.DownloadState
@@ -15,9 +16,11 @@ import app.cash.sqldelight.EnumColumnAdapter
 import app.cash.sqldelight.db.SqlDriver
 import app.snapsync.model.SuppressionReadiness
 import app.snapsync.ports.Databases
+import app.snapsync.services.databases.AssetIdColumnAdapter
 import app.snapsync.services.databases.openOwned
 import app.snapsync.services.downloads.db.DownloadAsset
 import app.snapsync.services.downloads.db.DownloadDatabase
+import app.snapsync.services.downloads.db.DownloadResource
 
 /** The download store's database file — runtime identity (`docs/architecture.md`, section 9). */
 const val DOWNLOADS_DB_NAME: String = "downloads.db"
@@ -40,13 +43,13 @@ class DownloadService(databases: Databases) : DownloadStore {
      */
     override suspend fun readiness(): SuppressionReadiness = SuppressionReadiness.Ready
 
-    override suspend fun suppressedLocalIds(): Set<String> =
+    override suspend fun suppressedLocalIds(): Set<AssetId> =
         q.suppressedLocalIds().executeAsList().mapNotNull { it }.toSet()
 
     // Reads every imported row and filters here: the table holds only the unions of the events this device
     // has joined, and binding a list of key PAIRS is awkward in SQLDelight. The port is stated by ref, so an
     // index-driven query can replace this without touching a caller.
-    override suspend fun importedLocalIds(refs: Collection<AssetRef>): Map<AssetRef, String> {
+    override suspend fun importedLocalIds(refs: Collection<AssetRef>): Map<AssetRef, AssetId> {
         if (refs.isEmpty()) return emptyMap()
         val wanted = refs.toSet()
         return q.selectImportedLocalIds { device, asset, localId -> AssetRef(device, asset) to localId }
@@ -127,7 +130,7 @@ class DownloadService(databases: Databases) : DownloadStore {
             StagedResource(key, role, contentType, original, staged ?: "")
         }.executeAsList().filter { it.stagedPath.isNotEmpty() }
 
-    override suspend fun markImported(ref: AssetRef, createdLocalId: String) {
+    override suspend fun markImported(ref: AssetRef, createdLocalId: AssetId) {
         q.markImported(createdLocalId, ref.sourceDeviceId, ref.sourceAssetId)
     }
 
@@ -139,12 +142,12 @@ class DownloadService(databases: Databases) : DownloadStore {
      * `false` means the row was pruned out from under this import — see the port's KDoc for why that is
      * an emergency rather than a miss.
      */
-    override fun recordCreatedLocalId(ref: AssetRef, createdLocalId: String): Boolean = applied {
+    override fun recordCreatedLocalId(ref: AssetRef, createdLocalId: AssetId): Boolean = applied {
         q.recordCreatedLocalId(createdLocalId, ref.sourceDeviceId, ref.sourceAssetId)
     }
 
     /** The mirror of [recordCreatedLocalId], for a change the library reported as failed. */
-    override fun clearCreatedLocalId(ref: AssetRef, createdLocalId: String): Boolean = applied {
+    override fun clearCreatedLocalId(ref: AssetRef, createdLocalId: AssetId): Boolean = applied {
         q.clearCreatedLocalId(ref.sourceDeviceId, ref.sourceAssetId, createdLocalId)
     }
 
@@ -152,7 +155,7 @@ class DownloadService(databases: Databases) : DownloadStore {
      * The success mirror. The marker guard is in the SQL, so a completion whose marker has moved on
      * updates no row rather than settling one it no longer describes.
      */
-    override fun confirmCreatedLocalId(ref: AssetRef, createdLocalId: String): Boolean = applied {
+    override fun confirmCreatedLocalId(ref: AssetRef, createdLocalId: AssetId): Boolean = applied {
         q.confirmCreatedLocalId(ref.sourceDeviceId, ref.sourceAssetId, createdLocalId)
     }
 
@@ -235,5 +238,10 @@ class DownloadService(databases: Databases) : DownloadStore {
 /** Construct the generated database with the [DownloadState] enum adapter wired (the single site that knows the encoding). */
 internal fun DownloadDatabase(driver: SqlDriver): DownloadDatabase = DownloadDatabase(
     driver,
-    DownloadAsset.Adapter(stateAdapter = EnumColumnAdapter()),
+    DownloadAsset.Adapter(
+        sourceAssetIdAdapter = AssetIdColumnAdapter,
+        stateAdapter = EnumColumnAdapter(),
+        createdLocalIdAdapter = AssetIdColumnAdapter,
+    ),
+    DownloadResource.Adapter(sourceAssetIdAdapter = AssetIdColumnAdapter),
 )

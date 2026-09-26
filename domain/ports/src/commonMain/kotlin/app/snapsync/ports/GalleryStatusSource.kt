@@ -1,5 +1,6 @@
 package app.snapsync.ports
 
+import app.snapsync.model.AssetId
 import kotlinx.coroutines.flow.StateFlow
 
 /**
@@ -25,12 +26,12 @@ import kotlinx.coroutines.flow.StateFlow
  * exactly as it always has.
  *
  * The set is scoped by the membership's selection policy (capability `photo-sharing`); there
- * is no whole-library count. It carries normalized `assetId`s and nothing else — no per-asset state —
+ * is no whole-library count. It carries canonical [app.snapsync.model.AssetId]s and nothing else — no per-asset state —
  * and it is ONE value, so the total and the set it is counted over can never come from different
  * refreshes. Status counts the ledger's per-photo done-ness over exactly this set (capability
  * `sync-status`), which is what keeps historical uploads from masking pending in-window photos.
  */
 interface GalleryStatusSource {
     /** The admitted own-asset set whose size is the upload total `N`, or `null` when none was counted. */
-    val admitted: StateFlow<Set<String>?>
+    val admitted: StateFlow<Set<AssetId>?>
 }

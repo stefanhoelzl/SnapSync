@@ -26,7 +26,7 @@ class NarrowingRetractionTest {
 
     private fun completedRow(id: String, capturedAt: String) = LedgerEntry(
         key = "$id-primary.jpg",
-        assetId = id,
+        assetId = AssetId(id),
         state = LedgerState.COMPLETED,
         creationDate = capturedAt,
         role = ResourceRole.PRIMARY,
@@ -42,7 +42,7 @@ class NarrowingRetractionTest {
         val uploaded = completedRow("A", capturedAt = "2026-06-01T10:00:00Z")
 
         val before = projectDeviceManifest("D", listOf(uploaded), policyWithFloor("2026-01-01T00:00:00Z"))
-        assertEquals(listOf("A"), before.assets.map { it.assetId }, "shared under the original floor")
+        assertEquals(listOf(AssetId("A")), before.assets.map { it.assetId }, "shared under the original floor")
 
         val after = projectDeviceManifest("D", listOf(uploaded), policyWithFloor("2026-07-01T00:00:00Z"))
 
@@ -79,7 +79,7 @@ class NarrowingRetractionTest {
         val widened = projectDeviceManifest("D", listOf(uploaded), policyWithFloor("2026-01-01T00:00:00Z"))
 
         assertEquals(
-            listOf("A"), widened.assets.map { it.assetId },
+            listOf(AssetId("A")), widened.assets.map { it.assetId },
             "the ledger row survived the narrowing, so widening re-lists it with no re-upload",
         )
     }

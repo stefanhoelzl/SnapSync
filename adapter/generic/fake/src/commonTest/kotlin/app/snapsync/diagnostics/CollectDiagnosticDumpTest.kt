@@ -4,6 +4,7 @@ import app.snapsync.fake.InMemoryDeviceLogSource
 import app.snapsync.fake.InMemoryDownloadStore
 import app.snapsync.fake.InMemoryLedgerStore
 import app.snapsync.feature.diagnostics.CollectDiagnosticDump
+import app.snapsync.model.AssetId
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureDate
 import app.snapsync.model.CaptureCutoff
@@ -172,8 +173,8 @@ class CollectDiagnosticDumpTest {
     @Test
     fun `the ledger section is five labelled counts and no rows`() = runTest {
         val ledger = InMemoryLedgerStore()
-        ledger.recordUnlessSettled(LedgerEntry("a.jpg", "asset-1", LedgerState.COMPLETED))
-        ledger.recordUnlessSettled(LedgerEntry("b.jpg", "asset-2", LedgerState.REQUESTED))
+        ledger.recordUnlessSettled(LedgerEntry("a.jpg", AssetId("asset-1"), LedgerState.COMPLETED))
+        ledger.recordUnlessSettled(LedgerEntry("b.jpg", AssetId("asset-2"), LedgerState.REQUESTED))
 
         val dump = collector(ledger = ledger).collect(NOTE, SCREEN)
 

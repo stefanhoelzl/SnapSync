@@ -1,3 +1,4 @@
+import app.snapsync.model.AssetId;
 import app.snapsync.model.LedgerState;
 
 -- THE "MUST MATCH <n>.sqm EXACTLY" NOTES BELOW ARE NOW ENFORCED, and were not always. They cite
@@ -23,7 +24,7 @@ import app.snapsync.model.LedgerState;
 -- `backfillManifestDetail`.
 CREATE TABLE ledgerRow (
     key TEXT NOT NULL PRIMARY KEY,
-    assetId TEXT NOT NULL,
+    assetId TEXT AS AssetId NOT NULL,
     state TEXT AS LedgerState NOT NULL,
     creationDate TEXT NOT NULL DEFAULT '',
     role TEXT NOT NULL DEFAULT '',

@@ -1,5 +1,6 @@
 package app.snapsync.contracts
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.CreateEventRequest
 import app.snapsync.model.DeviceFile
 import app.snapsync.model.DeviceManifest
@@ -44,7 +45,7 @@ class PortSetup(
         checked("publish manifest", backend.publishManifest(null, eventId, deviceId, DeviceManifest(deviceId, assets.map { it.manifestEntry() })))
     }
 
-    override suspend fun unionAssetIds(eventId: String): Set<String> =
+    override suspend fun unionAssetIds(eventId: String): Set<AssetId> =
         checked("read the union", backend.eventFiles(eventId)).mapTo(mutableSetOf()) { it.assetId }
 
     override suspend fun upload(deviceId: String, asset: SeededAsset, role: ResourceRole) {

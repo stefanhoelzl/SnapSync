@@ -1,5 +1,6 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.encodeToJson
@@ -37,7 +38,7 @@ private suspend fun policyFrom(cutoff: String): SelectionPolicy =
 class DeviceManifestProducerTest {
 
     private fun asset(id: String, date: String = "2026-06-27T10:00:00Z") = DeviceManifestAsset(
-        assetId = id,
+        assetId = AssetId(id),
         creationDate = date,
         resources = listOf(
             ManifestResource(ResourceRole.PRIMARY, "image/jpeg", "$id-primary.jpg", "IMG_$id.JPG"),
@@ -56,7 +57,7 @@ class DeviceManifestProducerTest {
         role: ResourceRole = ResourceRole.PRIMARY,
     ) = LedgerEntry(
         key = "$id-${role.wire}.jpg",
-        assetId = id,
+        assetId = AssetId(id),
         state = state,
         creationDate = date,
         role = role,
@@ -100,21 +101,21 @@ class DeviceManifestProducerTest {
     fun projection_keeps_every_asset_at_or_after_the_start_date_sorted() = runTest {
         val m = projectDeviceManifest("dev", listOf(row("B"), row("A")), policy = policyFrom("0001-01-01T00:00:00Z"))
         assertEquals("dev", m.deviceId)
-        assertEquals(listOf("A", "B"), m.assets.map { it.assetId }) // sorted, all kept
+        assertEquals(listOf(AssetId("A"), AssetId("B")), m.assets.map { it.assetId }) // sorted, all kept
     }
 
     @Test
     fun projection_excludes_assets_before_the_start_date() = runTest {
         val rows = listOf(row("old", "2025-01-01T00:00:00Z"), row("new", "2026-06-27T10:00:00Z"))
         val m = projectDeviceManifest("dev", rows, policy = policyFrom("2026-01-01T00:00:00Z"))
-        assertEquals(listOf("new"), m.assets.map { it.assetId })
+        assertEquals(listOf(AssetId("new")), m.assets.map { it.assetId })
     }
 
     @Test
     fun device_manifest_json_round_trips() {
         val m = DeviceManifest("dev", listOf(asset("A")))
         assertEquals("dev", deviceManifestFromJson(m.encodeToJson()).deviceId)
-        assertEquals("A", deviceManifestFromJson(m.encodeToJson()).assets.single().assetId)
+        assertEquals(AssetId("A"), deviceManifestFromJson(m.encodeToJson()).assets.single().assetId)
     }
 
     @Test
@@ -152,7 +153,7 @@ class DeviceManifestProducerTest {
         val rows = LedgerState.entries.map { row("A${it.name}", state = it) }
         val m = projectDeviceManifest("dev", rows, policyFrom("0001-01-01T00:00:00Z"))
         assertEquals(
-            LedgerState.entries.map { "A${it.name}" }.sorted(),
+            LedgerState.entries.map { AssetId("A${it.name}") }.sorted(),
             m.assets.map { it.assetId }.sorted(),
         )
     }
@@ -195,9 +196,9 @@ class DeviceManifestProducerTest {
         // full enumeration backfills it. It is excluded by the POLICY, not by a predicate in the
         // projection or its storage read: an empty capture date sorts before every real cutoff
         // (`SelectionRule.CaptureAfter`), so the one admission decides this like every other.
-        val bare = LedgerEntry("Z-primary.jpg", "Z", LedgerState.COMPLETED)
+        val bare = LedgerEntry("Z-primary.jpg", AssetId("Z"), LedgerState.COMPLETED)
         val m = projectDeviceManifest("dev", listOf(row("A"), bare), policyFrom("0001-01-01T00:00:00Z"))
-        assertEquals(listOf("A"), m.assets.map { it.assetId })
+        assertEquals(listOf(AssetId("A")), m.assets.map { it.assetId })
     }
 
     @Test

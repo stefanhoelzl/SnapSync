@@ -1,6 +1,7 @@
 package app.snapsync.gallery
 
 import app.snapsync.fake.inMemoryGallery
+import app.snapsync.model.AssetId
 import app.snapsync.ports.CandidateSource
 import app.snapsync.services.gallery.GalleryCandidateSource
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -70,9 +71,9 @@ class RawAssetMappingTest {
     ) = RawResource(role = role, mimeContentType = mime, originalFilename = name, handle = handle)
 
     @Test
-    fun maps_originals_only_with_role_keys_normalization_and_metadata() {
+    fun maps_originals_only_with_role_keys_and_metadata() {
         val asset = RawAsset(
-            assetId = "ABC/L0/001", // raw localIdentifier with '/'
+            assetId = AssetId("ABC_L0_001"), // the canonical id the adapter minted
             creationDate = "2026-07-01T00:00:00Z",
             rawResources = listOf(
                 raw(ResourceRole.PRIMARY, mime = "image/heic", name = "IMG_0001.HEIC"), // photo -> primary
@@ -86,7 +87,7 @@ class RawAssetMappingTest {
 
         assertEquals(2, resources.size, "only the two originals survive the role filter")
         val primary = resources.first { it.filename.endsWith("-primary.heic") }
-        assertEquals("ABC_L0_001", primary.assetId, "assetId normalized '/'->'_'")
+        assertEquals(AssetId("ABC_L0_001"), primary.assetId, "the asset id is carried through untouched")
         assertEquals("ABC_L0_001-primary.heic", primary.filename)
         // The resolved MIME, not a platform type identifier: `contentType` is what the upload
         // provider sends as the `Content-Type` header, and it used to carry a UTI while the correct
@@ -104,14 +105,14 @@ class RawAssetMappingTest {
     @Test
     fun origin_facts_survive_the_mapping_onto_every_resource_of_the_asset() {
         val asset = RawAsset(
-            assetId = "ABC/L0/001",
+            assetId = AssetId("ABC_L0_001"),
             creationDate = "2026-07-01T00:00:00Z",
             rawResources = listOf(
                 raw(ResourceRole.PRIMARY, mime = "image/heic", name = "IMG_0001.HEIC"),
                 raw(ResourceRole.LIVE, mime = "video/quicktime", name = "IMG_0001.MOV"),
             ),
             facts = AssetFacts(
-                assetId = "ABC/L0/001",
+                assetId = AssetId("ABC_L0_001"),
                 creationDate = CaptureDate("2026-07-01T00:00:00Z"),
                 isScreenshot = true,
                 isEdited = true,
@@ -139,11 +140,11 @@ class RawAssetMappingTest {
         // — the authoritative filter lives downstream in the upload cycle, and putting it here instead would
         // hide it from the upload cycle's tests (`:domain` feature/upload) and from the status total.
         val screenshot = RawAsset(
-            assetId = "S1",
+            assetId = AssetId("S1"),
             creationDate = "2026-07-01T00:00:00Z",
             rawResources = listOf(raw(ResourceRole.PRIMARY, mime = "image/png", name = "IMG_0002.PNG")),
             facts = AssetFacts(
-                assetId = "S1",
+                assetId = AssetId("S1"),
                 creationDate = CaptureDate("2026-07-01T00:00:00Z"),
                 isScreenshot = true,
                 pixelArea = 750L * 1334L,
@@ -160,23 +161,23 @@ class RawAssetMappingTest {
     @Test
     fun opaque_handle_rides_into_resource_data_uninterpreted() {
         val marker = Any()
-        val resources = resourcesFrom(listOf(RawAsset("A", "", listOf(raw(ResourceRole.PRIMARY, handle = marker)))))
+        val resources = resourcesFrom(listOf(RawAsset(AssetId("A"), "", listOf(raw(ResourceRole.PRIMARY, handle = marker)))))
         assertEquals(marker, resources.single().data, "the PHAssetResource handle crosses uninterpreted")
     }
 
     @Test
-    fun mapped_filename_round_trips_to_the_normalized_assetid() {
+    fun mapped_filename_round_trips_to_the_assetid() {
         // The discovery->key->parse identity echo-suppression + reconstruct rely on (change 1's parser).
-        val resources = resourcesFrom(listOf(RawAsset("ABC/L0/001", "", listOf(raw(ResourceRole.PRIMARY, name = "x.JPG")))))
-        assertEquals("ABC_L0_001", assetIdFromUploadKey(resources.single().filename))
+        val resources = resourcesFrom(listOf(RawAsset(AssetId("ABC_L0_001"), "", listOf(raw(ResourceRole.PRIMARY, name = "x.JPG")))))
+        assertEquals(AssetId("ABC_L0_001"), assetIdFromUploadKey(resources.single().filename))
     }
 
     @Test
     fun the_source_composes_walk_then_map_per_candidate() = runTest {
         val source = librarySource(
             listOf(
-                RawAsset("A", IN_SCOPE, listOf(raw(ResourceRole.PRIMARY, name = "a.JPG"))),
-                RawAsset("B", IN_SCOPE, listOf(raw(ResourceRole.PRIMARY, name = "b.JPG"))),
+                RawAsset(AssetId("A"), IN_SCOPE, listOf(raw(ResourceRole.PRIMARY, name = "a.JPG"))),
+                RawAsset(AssetId("B"), IN_SCOPE, listOf(raw(ResourceRole.PRIMARY, name = "b.JPG"))),
             ),
         )
 
@@ -189,8 +190,8 @@ class RawAssetMappingTest {
         // one synchronous PhotoKit round-trip per asset, and a membership always has a cutoff to scope it.
         val source = librarySource(
             listOf(
-                RawAsset("OLD", "2000-01-01T00:00:00Z", listOf(raw(ResourceRole.PRIMARY, name = "old.JPG"))),
-                RawAsset("NEW", IN_SCOPE, listOf(raw(ResourceRole.PRIMARY, name = "new.JPG"))),
+                RawAsset(AssetId("OLD"), "2000-01-01T00:00:00Z", listOf(raw(ResourceRole.PRIMARY, name = "old.JPG"))),
+                RawAsset(AssetId("NEW"), IN_SCOPE, listOf(raw(ResourceRole.PRIMARY, name = "new.JPG"))),
             ),
         )
 
@@ -203,20 +204,20 @@ class RawAssetMappingTest {
         // (role filter, upload key, id normalization) runs per candidate when its resources are asked for.
         val source = librarySource(
             listOf(
-                RawAsset("OLD", "2000-01-01T00:00:00Z", listOf(raw(ResourceRole.PRIMARY, name = "old.JPG"))),
-                RawAsset("NEW", IN_SCOPE, listOf(raw(ResourceRole.PRIMARY, name = "new.JPG"))),
+                RawAsset(AssetId("OLD"), "2000-01-01T00:00:00Z", listOf(raw(ResourceRole.PRIMARY, name = "old.JPG"))),
+                RawAsset(AssetId("NEW"), IN_SCOPE, listOf(raw(ResourceRole.PRIMARY, name = "new.JPG"))),
             ),
         )
 
         val candidates = source.readCandidates(admitting(CUTOFF))
-        assertEquals(listOf("NEW"), candidates.map { it.facts.assetId }, "the walk is bounded by the floor")
+        assertEquals(listOf(AssetId("NEW")), candidates.map { it.facts.assetId }, "the walk is bounded by the floor")
         assertEquals(listOf("NEW-primary.jpg"), candidates.single().resources().map { it.filename })
     }
 
     @Test
     fun an_undated_asset_is_before_every_bound() = runTest {
         // An empty `creationDate` sorts before any non-empty cutoff, so an undated asset is never in scope.
-        val source = librarySource(listOf(RawAsset("U", "", listOf(raw(ResourceRole.PRIMARY, name = "u.JPG")))))
+        val source = librarySource(listOf(RawAsset(AssetId("U"), "", listOf(raw(ResourceRole.PRIMARY, name = "u.JPG")))))
 
         assertEquals(emptyList(), source.resourcesFor(CUTOFF))
     }

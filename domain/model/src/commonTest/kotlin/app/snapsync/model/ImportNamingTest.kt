@@ -35,7 +35,7 @@ class ImportNamingTest {
         // The reported symptom, stated as an assertion: given a name, nothing of the key's internal
         // shape — the assetId, the `-primary`/`-live` role token — reaches the photo library.
         for (role in ResourceRole.entries) {
-            val key = uploadKey("03C741F2-4FFA-4792-B2E3-076266091091_L0_001", role, "IMG_4471.HEIC")
+            val key = uploadKey(AssetId("03C741F2-4FFA-4792-B2E3-076266091091_L0_001"), role, "IMG_4471.HEIC")
             assertTrue(key.contains("-${role.wire}"), "the key under test must carry the role token")
             assertEquals("IMG_4471.HEIC", importFilename("IMG_4471.HEIC", key))
         }
@@ -45,8 +45,8 @@ class ImportNamingTest {
     fun each_resource_of_a_live_photo_keeps_its_own_name() {
         // Both resources of one asset are added in a single creation request; the still and the paired
         // video must not collapse onto one name.
-        val still = importFilename("IMG_4471.HEIC", uploadKey("A", ResourceRole.PRIMARY, "IMG_4471.HEIC"))
-        val paired = importFilename("IMG_4471.MOV", uploadKey("A", ResourceRole.LIVE, "IMG_4471.MOV"))
+        val still = importFilename("IMG_4471.HEIC", uploadKey(AssetId("A"), ResourceRole.PRIMARY, "IMG_4471.HEIC"))
+        val paired = importFilename("IMG_4471.MOV", uploadKey(AssetId("A"), ResourceRole.LIVE, "IMG_4471.MOV"))
         assertEquals("IMG_4471.HEIC", still)
         assertEquals("IMG_4471.MOV", paired)
     }

@@ -1,5 +1,6 @@
 package app.snapsync.flow
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.SelectionCalibration
 import app.snapsync.fake.InMemoryAlbumMapStore
@@ -225,8 +226,8 @@ class ProvisionTest {
             return "album-for-$name"
         }
         override suspend fun exists(albumLocalId: String): Boolean = true
-        override suspend fun add(albumLocalId: String, assetIds: List<String>) = Unit
-        override suspend fun assetIdsInAlbums(calibration: SelectionCalibration, since: CaptureCutoff): Set<String> = emptySet()
+        override suspend fun add(albumLocalId: String, assetIds: List<AssetId>) = Unit
+        override suspend fun assetIdsInAlbums(calibration: SelectionCalibration, since: CaptureCutoff): Set<AssetId> = emptySet()
     }
 
     private object NoopJobs : PhotoDownloadJobs {

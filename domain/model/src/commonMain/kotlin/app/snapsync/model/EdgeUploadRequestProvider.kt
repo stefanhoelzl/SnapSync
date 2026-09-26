@@ -85,7 +85,7 @@ class EdgeUploadRequestProvider(
         val captureName = resource.metadata[RESOURCE_META_ORIGINAL_FILENAME]
             ?.takeIf { it.isNotBlank() } ?: resource.filename
         val url = "$base/files/devices/$deviceId/" +
-            "${encodeFilenameSegment(assetId)}/${encodeFilenameSegment(role)}" +
+            "${encodeFilenameSegment(assetId.value)}/${encodeFilenameSegment(role)}" +
             "?filename=${encodeFilenameSegment(captureName)}"
         val headers = buildMap {
             put("Content-Type", contentTypeOf(resource))

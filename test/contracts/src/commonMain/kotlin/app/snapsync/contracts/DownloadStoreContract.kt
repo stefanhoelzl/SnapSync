@@ -1,5 +1,6 @@
 package app.snapsync.contracts
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.ports.DownloadStore
 import app.snapsync.model.PlannedAsset
@@ -85,7 +86,7 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadStore>("Down
 
             s.markStaged(ref, "ASSET-Q-primary.heic", "/stage/p")
             s.markStaged(ref, "ASSET-Q-live.mov", "/stage/l")
-            s.markImported(ref, "LOCAL-1")
+            s.markImported(ref, AssetId("LOCAL-1"))
 
             val settled = s.counts()
             assertEquals(1, settled.imported)
@@ -97,10 +98,10 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadStore>("Down
             s.plan(ref, "2026-06-30T10:00:00Z", resources())
             s.markStaged(ref, "ASSET-Q-primary.heic", "/stage/primary.heic")
             s.markStaged(ref, "ASSET-Q-live.mov", "/stage/live.mov")
-            s.markImported(ref, "LOCAL-NEW/L0/001")
+            s.markImported(ref, AssetId("LOCAL-NEW_L0_001"))
 
             assertTrue(s.isSettled(ref))
-            assertEquals(setOf("LOCAL-NEW/L0/001"), s.suppressedLocalIds())
+            assertEquals(setOf(AssetId("LOCAL-NEW_L0_001")), s.suppressedLocalIds())
             assertEquals(1, s.counts().imported)
             assertTrue(s.importableAssets().isEmpty()) // imported, no longer importable
             assertTrue(s.pendingDownloads().isEmpty()) // imported asset's resources are not re-queued
@@ -135,7 +136,7 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadStore>("Down
             s.plan(ref, "2026-06-30T10:00:00Z", resources())
             s.markStaged(ref, "ASSET-Q-primary.heic", "/p")
             s.markStaged(ref, "ASSET-Q-live.mov", "/l")
-            s.markImported(ref, "LOCAL-NEW")
+            s.markImported(ref, AssetId("LOCAL-NEW"))
             s.plan(ref, "2026-06-30T10:00:00Z", resources()) // a later union read re-offers it
             assertTrue(s.isSettled(ref))
             assertEquals(1, s.counts().imported)
@@ -153,24 +154,24 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadStore>("Down
             s.markStaged(ref, "ASSET-Q-live.mov", "/stage/live.mov")
             assertEquals(listOf(ref), s.importableAssets().map { it.ref }) // ordinary work, before the marker
 
-            s.recordCreatedLocalId(ref, "LOCAL-CREATED")
+            s.recordCreatedLocalId(ref, AssetId("LOCAL-CREATED"))
 
             // Out of the ordinary import queue: importing it again is the duplicate.
             assertTrue(s.importableAssets().isEmpty(), "a row carrying a marker is not ordinary import work")
             // ...and into the adjudication queue instead.
-            assertEquals(listOf(ref to "LOCAL-CREATED"), s.unconfirmedImports().map { it.ref to it.createdLocalId })
+            assertEquals(listOf(ref to AssetId("LOCAL-CREATED")), s.unconfirmedImports().map { it.ref to it.createdLocalId })
             // Suppressed from the moment the marker exists — the asset is observable before it is confirmed.
-            assertEquals(setOf("LOCAL-CREATED"), s.suppressedLocalIds())
+            assertEquals(setOf(AssetId("LOCAL-CREATED")), s.suppressedLocalIds())
             assertFalse(s.isSettled(ref), "still unconfirmed")
 
             // The marker is the only record that this asset must not be uploaded: a prune must not take it.
             assertTrue(s.pruneNonTerminal(protecting = emptySet()).isEmpty(), "it strands no files either")
-            assertEquals(setOf("LOCAL-CREATED"), s.suppressedLocalIds(), "the marker survives a prune")
+            assertEquals(setOf(AssetId("LOCAL-CREATED")), s.suppressedLocalIds(), "the marker survives a prune")
             assertEquals(listOf(ref), s.unconfirmedImports().map { it.ref }, "and so does the row")
             assertEquals(2, s.stagedResources(ref).size, "and its staged bytes stay reachable for the retry")
 
             // Cleared (the library says the asset never existed) → ordinary work again.
-            assertTrue(s.clearCreatedLocalId(ref, "LOCAL-CREATED"), "the clear names the marker the row holds")
+            assertTrue(s.clearCreatedLocalId(ref, AssetId("LOCAL-CREATED")), "the clear names the marker the row holds")
             assertTrue(s.unconfirmedImports().isEmpty())
             assertEquals(listOf(ref), s.importableAssets().map { it.ref })
             assertTrue(s.suppressedLocalIds().isEmpty())
@@ -186,16 +187,16 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadStore>("Down
          */
         clause("a late clear cannot strip a settled rows marker", DownloadStoreState.EMPTY) { s ->
             s.plan(ref, "2026-06-30T10:00:00Z", resources())
-            s.recordCreatedLocalId(ref, "LOCAL-CREATED")
-            s.confirmCreatedLocalId(ref, "LOCAL-CREATED") // adjudication (or the completion) settles it
+            s.recordCreatedLocalId(ref, AssetId("LOCAL-CREATED"))
+            s.confirmCreatedLocalId(ref, AssetId("LOCAL-CREATED")) // adjudication (or the completion) settles it
 
             assertFalse(
-                s.clearCreatedLocalId(ref, "LOCAL-CREATED"),
+                s.clearCreatedLocalId(ref, AssetId("LOCAL-CREATED")),
                 "a clear against a settled row applies to nothing",
             )
             assertTrue(s.isSettled(ref), "the row is still terminal")
             assertEquals(
-                setOf("LOCAL-CREATED"),
+                setOf(AssetId("LOCAL-CREATED")),
                 s.suppressedLocalIds(),
                 "and its asset is still suppressed — stripping this handle is unrecoverable",
             )
@@ -204,13 +205,13 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadStore>("Down
         /** The other half of the same guard: a clear naming a marker the row has moved on from. */
         clause("a clear naming a stale marker leaves the current one intact", DownloadStoreState.EMPTY) { s ->
             s.plan(ref, "2026-06-30T10:00:00Z", resources())
-            s.recordCreatedLocalId(ref, "FIRST")
-            s.clearCreatedLocalId(ref, "FIRST")
-            s.recordCreatedLocalId(ref, "SECOND")
+            s.recordCreatedLocalId(ref, AssetId("FIRST"))
+            s.clearCreatedLocalId(ref, AssetId("FIRST"))
+            s.recordCreatedLocalId(ref, AssetId("SECOND"))
 
-            assertFalse(s.clearCreatedLocalId(ref, "FIRST"), "the abandoned transaction's clear applies to nothing")
+            assertFalse(s.clearCreatedLocalId(ref, AssetId("FIRST")), "the abandoned transaction's clear applies to nothing")
             assertEquals(
-                listOf(ref to "SECOND"),
+                listOf(ref to AssetId("SECOND")),
                 s.unconfirmedImports().map { it.ref to it.createdLocalId },
                 "the marker the row now holds is intact",
             )
@@ -226,12 +227,12 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadStore>("Down
         clause("a marker write onto a row that is gone reports it", DownloadStoreState.EMPTY) { s ->
 
             assertFalse(
-                s.recordCreatedLocalId(AssetRef("DEVICE-Z", "NEVER-PLANNED"), "LOCAL-CREATED"),
+                s.recordCreatedLocalId(AssetRef("DEVICE-Z", AssetId("NEVER-PLANNED")), AssetId("LOCAL-CREATED")),
                 "no row, so the marker landed on nothing",
             )
 
             s.plan(ref, "2026-06-30T10:00:00Z", resources())
-            assertTrue(s.recordCreatedLocalId(ref, "LOCAL-CREATED"), "an ordinary write reports that it landed")
+            assertTrue(s.recordCreatedLocalId(ref, AssetId("LOCAL-CREATED")), "an ordinary write reports that it landed")
         }
 
         /** Staged bytes are released only once a row is settled — releasing earlier loses the photo. */
@@ -241,14 +242,14 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadStore>("Down
             s.markStaged(ref, "ASSET-Q-live.mov", "/stage/live.mov")
 
             // Unconfirmed: neither releasable as confirmed, nor as prunable — the retry needs these bytes.
-            s.recordCreatedLocalId(ref, "LOCAL-CREATED")
+            s.recordCreatedLocalId(ref, AssetId("LOCAL-CREATED"))
             assertTrue(s.stagedPathsOfImportedAssets().isEmpty())
             assertTrue(
                 s.pruneNonTerminal(protecting = emptySet()).isEmpty(),
                 "a marker-carrying row is never prunable, so its bytes are never stranded",
             )
 
-            s.markImported(ref, "LOCAL-CREATED")
+            s.markImported(ref, AssetId("LOCAL-CREATED"))
             assertEquals(
                 setOf("/stage/primary.heic", "/stage/live.mov"),
                 s.stagedPathsOfImportedAssets().toSet(),
@@ -259,7 +260,7 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadStore>("Down
             s.dropResources(ref)
             assertTrue(s.stagedPathsOfImportedAssets().isEmpty(), "a second pass finds nothing")
             assertTrue(s.isSettled(ref), "while the row and its marker remain")
-            assertEquals(setOf("LOCAL-CREATED"), s.suppressedLocalIds())
+            assertEquals(setOf(AssetId("LOCAL-CREATED")), s.suppressedLocalIds())
         }
 
         /**
@@ -269,12 +270,12 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadStore>("Down
          */
         clause("a completion settles its row against the marker it holds", DownloadStoreState.EMPTY) { s ->
             s.plan(ref, "2026-06-30T10:00:00Z", resources())
-            s.recordCreatedLocalId(ref, "LOCAL-CREATED")
+            s.recordCreatedLocalId(ref, AssetId("LOCAL-CREATED"))
 
-            s.confirmCreatedLocalId(ref, "LOCAL-CREATED")
+            s.confirmCreatedLocalId(ref, AssetId("LOCAL-CREATED"))
 
             assertTrue(s.isSettled(ref), "settled by the party that learned the outcome")
-            assertEquals(setOf("LOCAL-CREATED"), s.suppressedLocalIds(), "against the marker it already held")
+            assertEquals(setOf(AssetId("LOCAL-CREATED")), s.suppressedLocalIds(), "against the marker it already held")
             assertTrue(s.unconfirmedImports().isEmpty(), "and it no longer awaits adjudication")
         }
 
@@ -285,34 +286,34 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadStore>("Down
          */
         clause("a late completion cannot settle a row whose marker moved on", DownloadStoreState.EMPTY) { s ->
             s.plan(ref, "2026-06-30T10:00:00Z", resources())
-            s.recordCreatedLocalId(ref, "FIRST")
-            s.clearCreatedLocalId(ref, "FIRST")
-            s.recordCreatedLocalId(ref, "SECOND")
+            s.recordCreatedLocalId(ref, AssetId("FIRST"))
+            s.clearCreatedLocalId(ref, AssetId("FIRST"))
+            s.recordCreatedLocalId(ref, AssetId("SECOND"))
 
             assertFalse(
-                s.confirmCreatedLocalId(ref, "FIRST"), // the abandoned transaction reports at last
+                s.confirmCreatedLocalId(ref, AssetId("FIRST")), // the abandoned transaction reports at last
                 "and it reports that it applied to nothing — the caller gates a byte release on this",
             )
 
             assertFalse(s.isSettled(ref), "the stale completion settled nothing")
             assertEquals(
-                listOf(ref to "SECOND"),
+                listOf(ref to AssetId("SECOND")),
                 s.unconfirmedImports().map { it.ref to it.createdLocalId },
                 "and the marker the row now holds is intact",
             )
         }
 
         clause("prune drops non terminal keeps imported", DownloadStoreState.EMPTY) { s ->
-            val imported = AssetRef("DEVICE-A", "DONE")
+            val imported = AssetRef("DEVICE-A", AssetId("DONE"))
             s.plan(imported, "2026-01-01T00:00:00Z", listOf(PlannedResource("DONE-primary.heic", "u", "primary", "image/heic", "D.HEIC")))
             s.markStaged(imported, "DONE-primary.heic", "/d")
-            s.markImported(imported, "LOCAL-DONE")
+            s.markImported(imported, AssetId("LOCAL-DONE"))
             s.plan(ref, "2026-06-30T10:00:00Z", resources()) // a fresh, non-terminal asset
 
             s.pruneNonTerminal(protecting = emptySet())
 
             assertTrue(s.isSettled(imported)) // terminal row preserved (delete-proof, cross-event dedup)
-            assertEquals(setOf("LOCAL-DONE"), s.suppressedLocalIds())
+            assertEquals(setOf(AssetId("LOCAL-DONE")), s.suppressedLocalIds())
             assertFalse(s.isSettled(ref))
             assertTrue(s.pendingDownloads().isEmpty()) // the non-terminal asset's resources were dropped
         }
@@ -353,13 +354,13 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadStore>("Down
             assertTrue(stranded.isEmpty(), "a protected row's files are not stranded")
             assertEquals(2, s.stagedResources(ref).size, "and its bytes are still there for the import to read")
             // The whole point: the change block that runs next still finds a row to write its marker onto.
-            assertTrue(s.recordCreatedLocalId(ref, "LOCAL-CREATED"), "the marker write lands on a row that exists")
-            assertEquals(setOf("LOCAL-CREATED"), s.suppressedLocalIds())
+            assertTrue(s.recordCreatedLocalId(ref, AssetId("LOCAL-CREATED")), "the marker write lands on a row that exists")
+            assertEquals(setOf(AssetId("LOCAL-CREATED")), s.suppressedLocalIds())
         }
 
         /** An unprotected sibling is still dropped in the same call — protection is per-ref, not a global off. */
         clause("prune protects only the refs it was given", DownloadStoreState.EMPTY) { s ->
-            val other = AssetRef("DEVICE-B", "ASSET-R")
+            val other = AssetRef("DEVICE-B", AssetId("ASSET-R"))
             s.plan(ref, "2026-06-30T10:00:00Z", resources())
             s.markStaged(ref, "ASSET-Q-primary.heic", "/stage/primary.heic")
             s.markStaged(ref, "ASSET-Q-live.mov", "/stage/live.mov")
@@ -402,10 +403,10 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadStore>("Down
             s.plan(ref, "2026-06-30T10:00:00Z", resources())
             s.markStaged(ref, "ASSET-Q-primary.heic", "/stage/p")
             s.markStaged(ref, "ASSET-Q-live.mov", "/stage/l")
-            s.markImported(ref, "LOCAL-1")
+            s.markImported(ref, AssetId("LOCAL-1"))
 
             assertFalse(s.settleUnimportable(ref), "an imported row is terminal — this must match nothing")
-            assertEquals(setOf("LOCAL-1"), s.suppressedLocalIds(), "and its handle is untouched")
+            assertEquals(setOf(AssetId("LOCAL-1")), s.suppressedLocalIds(), "and its handle is untouched")
             assertEquals(1, s.counts().imported)
         }
 
@@ -414,17 +415,17 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadStore>("Down
             s.plan(ref, "2026-06-30T10:00:00Z", resources())
             s.markStaged(ref, "ASSET-Q-primary.heic", "/stage/p")
             s.markStaged(ref, "ASSET-Q-live.mov", "/stage/l")
-            s.recordCreatedLocalId(ref, "LOCAL-1")
+            s.recordCreatedLocalId(ref, AssetId("LOCAL-1"))
 
             assertFalse(s.settleUnimportable(ref), "an asset WAS created for this ref — it is not unimportable")
             assertEquals(1, s.unconfirmedImports().size, "it stays adjudicable")
-            assertEquals(setOf("LOCAL-1"), s.suppressedLocalIds(), "and stays suppressed")
+            assertEquals(setOf(AssetId("LOCAL-1")), s.suppressedLocalIds(), "and stays suppressed")
         }
 
         clause("imported local ids answers an imported ref", DownloadStoreState.EMPTY) { s ->
             s.plan(ref, "2026-06-30T10:00:00Z", resources())
-            s.markImported(ref, "LOCAL-1")
-            assertEquals(mapOf(ref to "LOCAL-1"), s.importedLocalIds(listOf(ref)))
+            s.markImported(ref, AssetId("LOCAL-1"))
+            assertEquals(mapOf(ref to AssetId("LOCAL-1")), s.importedLocalIds(listOf(ref)))
         }
 
         clause("imported local ids omits a pending ref", DownloadStoreState.EMPTY) { s ->
@@ -434,7 +435,7 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadStore>("Down
 
         clause("imported local ids omits an unconfirmed ref", DownloadStoreState.EMPTY) { s ->
             s.plan(ref, "2026-06-30T10:00:00Z", resources())
-            s.recordCreatedLocalId(ref, "LOCAL-CREATED")
+            s.recordCreatedLocalId(ref, AssetId("LOCAL-CREATED"))
             assertTrue(
                 s.importedLocalIds(listOf(ref)).isEmpty(),
                 "a marker without a confirmed import is not yet known to name an asset",
@@ -444,33 +445,33 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadStore>("Down
         clause("imported local ids omits unimportable and unknown refs", DownloadStoreState.EMPTY) { s ->
             s.plan(ref, "2026-06-30T10:00:00Z", resources())
             s.settleUnimportable(ref)
-            val unknown = AssetRef("DEVICE-Z", "NEVER-PLANNED")
+            val unknown = AssetRef("DEVICE-Z", AssetId("NEVER-PLANNED"))
             assertTrue(s.importedLocalIds(listOf(ref, unknown)).isEmpty())
         }
 
         clause("imported local ids answers only the asked refs", DownloadStoreState.EMPTY) { s ->
-            val other = AssetRef("DEVICE-B", "ASSET-R")
+            val other = AssetRef("DEVICE-B", AssetId("ASSET-R"))
             s.plan(ref, "2026-06-30T10:00:00Z", resources())
             s.plan(other, "2026-06-30T11:00:00Z", resources())
-            s.markImported(ref, "LOCAL-A")
-            s.markImported(other, "LOCAL-B")
-            assertEquals(mapOf(ref to "LOCAL-A"), s.importedLocalIds(listOf(ref)))
+            s.markImported(ref, AssetId("LOCAL-A"))
+            s.markImported(other, AssetId("LOCAL-B"))
+            assertEquals(mapOf(ref to AssetId("LOCAL-A")), s.importedLocalIds(listOf(ref)))
         }
 
         // --- the batch members a reconcile plans through (one read, one transaction each) ---
 
         clause("settled among answers the asked refs that are imported or unimportable", DownloadStoreState.EMPTY) { s ->
-            val imported = AssetRef("DEVICE-A", "IMPORTED")
-            val unimportable = AssetRef("DEVICE-A", "UNIMPORTABLE")
-            val pending = AssetRef("DEVICE-A", "PENDING")
-            val unconfirmed = AssetRef("DEVICE-A", "UNCONFIRMED")
-            val notAsked = AssetRef("DEVICE-B", "IMPORTED-NOT-ASKED")
-            val unknown = AssetRef("DEVICE-Z", "NEVER-PLANNED")
+            val imported = AssetRef("DEVICE-A", AssetId("IMPORTED"))
+            val unimportable = AssetRef("DEVICE-A", AssetId("UNIMPORTABLE"))
+            val pending = AssetRef("DEVICE-A", AssetId("PENDING"))
+            val unconfirmed = AssetRef("DEVICE-A", AssetId("UNCONFIRMED"))
+            val notAsked = AssetRef("DEVICE-B", AssetId("IMPORTED-NOT-ASKED"))
+            val unknown = AssetRef("DEVICE-Z", AssetId("NEVER-PLANNED"))
             listOf(imported, unimportable, pending, unconfirmed, notAsked).forEach { s.plan(it, "2026-06-30T10:00:00Z", resources()) }
-            s.markImported(imported, "LOCAL-1")
-            s.markImported(notAsked, "LOCAL-2")
+            s.markImported(imported, AssetId("LOCAL-1"))
+            s.markImported(notAsked, AssetId("LOCAL-2"))
             s.settleUnimportable(unimportable)
-            s.recordCreatedLocalId(unconfirmed, "LOCAL-3")
+            s.recordCreatedLocalId(unconfirmed, AssetId("LOCAL-3"))
 
             assertEquals(
                 setOf(imported, unimportable),
@@ -481,7 +482,7 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadStore>("Down
         }
 
         clause("plan all records every asset with its resources", DownloadStoreState.EMPTY) { s ->
-            val other = AssetRef("DEVICE-B", "ASSET-R")
+            val other = AssetRef("DEVICE-B", AssetId("ASSET-R"))
             s.planAll(
                 listOf(
                     PlannedAsset(ref, "2026-06-30T10:00:00Z", resources()),
@@ -503,11 +504,11 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadStore>("Down
         }
 
         clause("plan all re-plans exactly as plan does", DownloadStoreState.EMPTY) { s ->
-            val done = AssetRef("DEVICE-B", "DONE")
+            val done = AssetRef("DEVICE-B", AssetId("DONE"))
             s.plan(ref, "2026-06-30T10:00:00Z", resources())
             s.markStaged(ref, "ASSET-Q-primary.heic", "/stage/primary.heic")
             s.plan(done, "2026-06-30T10:00:00Z", resources())
-            s.markImported(done, "LOCAL-DONE")
+            s.markImported(done, AssetId("LOCAL-DONE"))
 
             val rotated = listOf(
                 PlannedResource("ASSET-Q-primary.heic", "https://e/primary?sig=NEW", "primary", "image/heic", "IMG.HEIC"),
@@ -519,11 +520,11 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadStore>("Down
             assertEquals(listOf(ref to "https://e/live?sig=NEW"), pending.map { it.ref to it.resource.url }, "only the unstaged resource is refreshed")
             assertEquals("/stage/primary.heic", s.stagedResources(ref).single().stagedPath, "a staged resource keeps its staging")
             assertTrue(s.isSettled(done), "and a terminal row is never downgraded")
-            assertEquals(setOf("LOCAL-DONE"), s.suppressedLocalIds())
+            assertEquals(setOf(AssetId("LOCAL-DONE")), s.suppressedLocalIds())
         }
 
         clause("mark all enqueued puts every marked asset in flight", DownloadStoreState.EMPTY) { s ->
-            val other = AssetRef("DEVICE-B", "ASSET-R")
+            val other = AssetRef("DEVICE-B", AssetId("ASSET-R"))
             s.planAll(listOf(PlannedAsset(ref, "2026-06-30T10:00:00Z", resources()), PlannedAsset(other, "2026-06-30T11:00:00Z", resources())))
             assertEquals(0, s.counts().inFlight)
             s.markAllEnqueued(emptyList())
@@ -538,7 +539,7 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadStore>("Down
         }
     }
 
-    private val ref = AssetRef("DEVICE-A", "ASSET-Q")
+    private val ref = AssetRef("DEVICE-A", AssetId("ASSET-Q"))
     private fun resources() = listOf(
         PlannedResource("ASSET-Q-primary.heic", "https://e/primary", "primary", "image/heic", "IMG.HEIC"),
         PlannedResource("ASSET-Q-live.mov", "https://e/live", "live", "video/quicktime", "IMG.MOV"),

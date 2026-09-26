@@ -146,8 +146,8 @@ suspend fun selectionRulesFor(
     includesUpload: Boolean,
     cutoff: CaptureCutoff,
     ceiling: CaptureCeiling?,
-    suppressedAssetIds: suspend () -> Set<String>,
-    albumExcludedAssetIds: suspend (CaptureCutoff) -> Set<String>,
+    suppressedAssetIds: suspend () -> Set<AssetId>,
+    albumExcludedAssetIds: suspend (CaptureCutoff) -> Set<AssetId>,
 ): List<SelectionRule> {
     // The direction, first and cheaply: neither reader is consulted for a non-contributor.
     if (!includesUpload) return listOf(SelectionRule.DenyAll)
@@ -175,8 +175,8 @@ suspend fun selectionRulesFor(
  */
 suspend fun selectionRulesFor(
     config: EventConfig,
-    suppressedAssetIds: suspend () -> Set<String>,
-    albumExcludedAssetIds: suspend (CaptureCutoff) -> Set<String>,
+    suppressedAssetIds: suspend () -> Set<AssetId>,
+    albumExcludedAssetIds: suspend (CaptureCutoff) -> Set<AssetId>,
 ): List<SelectionRule> = selectionRulesFor(
     includesUpload = config.direction.includesUpload,
     cutoff = config.minPhotoDate,
@@ -196,8 +196,8 @@ suspend fun selectionRulesFor(
  */
 suspend fun selectionPolicyFor(
     config: EventConfig,
-    suppressedAssetIds: suspend () -> Set<String>,
-    albumExcludedAssetIds: suspend (CaptureCutoff) -> Set<String>,
+    suppressedAssetIds: suspend () -> Set<AssetId>,
+    albumExcludedAssetIds: suspend (CaptureCutoff) -> Set<AssetId>,
 ): SelectionPolicy =
     SelectionPolicy(selectionRulesFor(config, suppressedAssetIds, albumExcludedAssetIds))
 
@@ -206,8 +206,8 @@ suspend fun selectionPolicyFor(
     includesUpload: Boolean,
     cutoff: CaptureCutoff,
     ceiling: CaptureCeiling?,
-    suppressedAssetIds: suspend () -> Set<String>,
-    albumExcludedAssetIds: suspend (CaptureCutoff) -> Set<String>,
+    suppressedAssetIds: suspend () -> Set<AssetId>,
+    albumExcludedAssetIds: suspend (CaptureCutoff) -> Set<AssetId>,
 ): SelectionPolicy = SelectionPolicy(
     selectionRulesFor(includesUpload, cutoff, ceiling, suppressedAssetIds, albumExcludedAssetIds),
 )
@@ -312,7 +312,7 @@ sealed interface SelectionRule {
      * other contributors. They live in the library, so a walk finds them, but re-uploading one sends a
      * foreign photo back into the event and pegs `N` above what will ever complete.
      */
-    data class NotEcho(val suppressedAssetIds: Set<String>) : SelectionRule {
+    data class NotEcho(val suppressedAssetIds: Set<AssetId>) : SelectionRule {
         override fun admits(facts: AssetFacts): Boolean = facts.assetId !in suppressedAssetIds
     }
 
@@ -322,7 +322,7 @@ sealed interface SelectionRule {
      * it needs a platform lookup — so the resolved id set is supplied to the policy rather than looked up
      * by it. The titles stay in `model/` ([SelectionCalibration.denylistTitles]); cost is O(albums), not O(assets).
      */
-    data class NotInDenylistedAlbum(val excludedAssetIds: Set<String>) : SelectionRule {
+    data class NotInDenylistedAlbum(val excludedAssetIds: Set<AssetId>) : SelectionRule {
         override fun admits(facts: AssetFacts): Boolean = facts.assetId !in excludedAssetIds
     }
 }

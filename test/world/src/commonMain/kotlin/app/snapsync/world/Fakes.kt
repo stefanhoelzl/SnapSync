@@ -82,11 +82,11 @@ class WorldGallery(
     private val state = MutableStateFlow<List<RawAsset>>(emptyList())
 
     /**
-     * Pre-existing albums the *user's other apps* made — title → the normalized assetIds inside them. The honest
+     * Pre-existing albums the *user's other apps* made — title → the assetIds inside them. The honest
      * fake reads this cell; [placeIn] is how the harness and the integration tests forge "this photo arrived via
      * WhatsApp" without PhotoKit (capability `photo-sharing`).
      */
-    private val userAlbums = MutableStateFlow<Map<String, Set<String>>>(emptyMap())
+    private val userAlbums = MutableStateFlow<Map<String, Set<AssetId>>>(emptyMap())
 
     private val honest: Gallery = inMemoryGallery(state, access, userAlbums, answers = imports.answers)
 
@@ -143,20 +143,20 @@ class WorldGallery(
     // ---- the albums -------------------------------------------------------------------------------
 
     val created = mutableListOf<Pair<String, String>>()      // (albumId, name)
-    val added = mutableListOf<Pair<String, List<String>>>()   // (albumId, assetIds)
+    val added = mutableListOf<Pair<String, List<AssetId>>>()   // (albumId, assetIds)
     private val deleted = mutableSetOf<String>()
     private var addsHeld: CompletableDeferred<Unit>? = null
 
     /** Put [assetId] into an album titled [title] — e.g. `placeIn("WhatsApp", "A1")`. */
     fun placeIn(title: String, assetId: String) {
-        userAlbums.value = userAlbums.value + (title to (userAlbums.value[title].orEmpty() + assetId))
+        userAlbums.value = userAlbums.value + (title to (userAlbums.value[title].orEmpty() + AssetId(assetId)))
     }
 
     /** Simulate the user deleting an album (so it no longer resolves and a re-join recreates). */
     fun delete(albumId: String) { deleted.add(albumId) }
 
     /** Every asset id added to [albumId] across all adds, in order. */
-    fun assetsIn(albumId: String): List<String> = added.filter { it.first == albumId }.flatMap { it.second }
+    fun assetsIn(albumId: String): List<AssetId> = added.filter { it.first == albumId }.flatMap { it.second }
 
     /**
      * Operator lever: every add waits until [releaseAdds]. During a join or a reconfigure Save only the event

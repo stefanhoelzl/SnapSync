@@ -1,3 +1,4 @@
+import app.snapsync.model.AssetId;
 import app.snapsync.model.DownloadState;
 
 -- One row per foreign asset this device is downloading / has imported (capability `receiving-photos`).
@@ -7,10 +8,10 @@ import app.snapsync.model.DownloadState;
 -- upload extension reads to avoid re-uploading a downloaded asset. Null until imported.
 CREATE TABLE downloadAsset (
     sourceDeviceId TEXT NOT NULL,
-    sourceAssetId  TEXT NOT NULL,
+    sourceAssetId  TEXT AS AssetId NOT NULL,
     state          TEXT AS DownloadState NOT NULL,
     creationDate   TEXT NOT NULL,
-    createdLocalId TEXT,
+    createdLocalId TEXT AS AssetId,
     PRIMARY KEY (sourceDeviceId, sourceAssetId)
 );
 
@@ -22,7 +23,7 @@ CREATE INDEX downloadAsset_createdLocalId ON downloadAsset(createdLocalId);
 -- every expected resource has a non-null `stagedPath`.
 CREATE TABLE downloadResource (
     sourceDeviceId TEXT NOT NULL,
-    sourceAssetId  TEXT NOT NULL,
+    sourceAssetId  TEXT AS AssetId NOT NULL,
     resourceKey    TEXT NOT NULL,
     url            TEXT NOT NULL,
     role           TEXT NOT NULL,

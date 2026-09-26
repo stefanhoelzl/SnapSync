@@ -1,5 +1,6 @@
 package app.snapsync.fake
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.DownloadCounts
 import app.snapsync.model.DownloadState
@@ -22,7 +23,7 @@ import kotlinx.coroutines.sync.withLock
  */
 internal class InMemoryDownloadStore : DownloadStore {
 
-    private class AssetRow(var state: DownloadState, val creationDate: String, var createdLocalId: String?)
+    private class AssetRow(var state: DownloadState, val creationDate: String, var createdLocalId: AssetId?)
 
     private val lock = Mutex()
     private val assets = LinkedHashMap<AssetRef, AssetRow>()
@@ -35,11 +36,11 @@ internal class InMemoryDownloadStore : DownloadStore {
     /** Always ready: like the app's read-write store, an in-memory one is never at an older schema. */
     override suspend fun readiness(): SuppressionReadiness = SuppressionReadiness.Ready
 
-    override suspend fun suppressedLocalIds(): Set<String> = lock.withLock {
+    override suspend fun suppressedLocalIds(): Set<AssetId> = lock.withLock {
         assets.values.mapNotNull { it.createdLocalId }.toSet()
     }
 
-    override suspend fun importedLocalIds(refs: Collection<AssetRef>): Map<AssetRef, String> = lock.withLock {
+    override suspend fun importedLocalIds(refs: Collection<AssetRef>): Map<AssetRef, AssetId> = lock.withLock {
         refs.mapNotNull { ref ->
             val row = assets[ref] ?: return@mapNotNull null
             val localId = row.createdLocalId
@@ -129,7 +130,7 @@ internal class InMemoryDownloadStore : DownloadStore {
         }
     }
 
-    override suspend fun markImported(ref: AssetRef, createdLocalId: String) = lock.withLock {
+    override suspend fun markImported(ref: AssetRef, createdLocalId: AssetId) = lock.withLock {
         assets[ref]?.let { it.state = DownloadState.IMPORTED; it.createdLocalId = createdLocalId }
         Unit
     }
@@ -140,7 +141,7 @@ internal class InMemoryDownloadStore : DownloadStore {
      * synchronous SQLite write; this is a single field write, and the fake's consumers are tests driving
      * one dispatcher.
      */
-    override fun recordCreatedLocalId(ref: AssetRef, createdLocalId: String): Boolean {
+    override fun recordCreatedLocalId(ref: AssetRef, createdLocalId: AssetId): Boolean {
         val row = assets[ref] ?: return false // the row was pruned out from under this import
         row.createdLocalId = createdLocalId
         return true
@@ -151,7 +152,7 @@ internal class InMemoryDownloadStore : DownloadStore {
      * row still being non-terminal, exactly like the real store's `WHERE` clause: a clear arriving after
      * the row settled strips the suppression handle off an asset that exists, permanently.
      */
-    override fun clearCreatedLocalId(ref: AssetRef, createdLocalId: String): Boolean {
+    override fun clearCreatedLocalId(ref: AssetRef, createdLocalId: AssetId): Boolean {
         val row = assets[ref] ?: return false
         if (row.state.isTerminal || row.createdLocalId != createdLocalId) return false
         row.createdLocalId = null
@@ -162,7 +163,7 @@ internal class InMemoryDownloadStore : DownloadStore {
      * The success mirror, lock-free for the same reason. Guarded on the marker exactly like the real
      * store's `WHERE` clause: a completion arriving after the row's marker moved on settles nothing.
      */
-    override fun confirmCreatedLocalId(ref: AssetRef, createdLocalId: String): Boolean {
+    override fun confirmCreatedLocalId(ref: AssetRef, createdLocalId: AssetId): Boolean {
         val row = assets[ref] ?: return false
         if (row.createdLocalId != createdLocalId) return false
         row.state = DownloadState.IMPORTED

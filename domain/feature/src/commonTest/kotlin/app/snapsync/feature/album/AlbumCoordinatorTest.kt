@@ -1,5 +1,6 @@
 package app.snapsync.feature.album
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.SelectionCalibration
 import app.snapsync.ports.AlbumManager
@@ -15,7 +16,7 @@ private class FakeAlbumManager(
     var existingIds: MutableSet<String> = mutableSetOf(),
 ) : AlbumManager {
     var createCount = 0
-    val added = mutableListOf<Pair<String, List<String>>>()
+    val added = mutableListOf<Pair<String, List<AssetId>>>()
 
     override suspend fun ensureCreated(name: String): String? {
         createCount++
@@ -24,9 +25,9 @@ private class FakeAlbumManager(
 
     override suspend fun exists(albumLocalId: String): Boolean = albumLocalId in existingIds
 
-    override suspend fun assetIdsInAlbums(calibration: SelectionCalibration, since: CaptureCutoff): Set<String> = emptySet()
+    override suspend fun assetIdsInAlbums(calibration: SelectionCalibration, since: CaptureCutoff): Set<AssetId> = emptySet()
 
-    override suspend fun add(albumLocalId: String, assetIds: List<String>) {
+    override suspend fun add(albumLocalId: String, assetIds: List<AssetId>) {
         added.add(albumLocalId to assetIds)
     }
 }
@@ -118,15 +119,15 @@ class AlbumCoordinatorTest {
     fun `place adds to the stored album`() = runTest {
         val manager = FakeAlbumManager(existingIds = mutableSetOf("album-X"))
         val store = InMemoryAlbumMapStore().apply { put(event, "album-X") }
-        AlbumCoordinator(manager, store).place(event, listOf("A/L0/1", "B/L0/1"))
-        assertEquals(listOf("album-X" to listOf("A/L0/1", "B/L0/1")), manager.added)
+        AlbumCoordinator(manager, store).place(event, listOf(AssetId("A_L0_1"), AssetId("B_L0_1")))
+        assertEquals(listOf("album-X" to listOf(AssetId("A_L0_1"), AssetId("B_L0_1"))), manager.added)
     }
 
     @Test
     fun `place skips when no album exists yet`() = runTest {
         val manager = FakeAlbumManager()
         val store = InMemoryAlbumMapStore() // empty
-        AlbumCoordinator(manager, store).place(event, listOf("A/L0/1"))
+        AlbumCoordinator(manager, store).place(event, listOf(AssetId("A_L0_1")))
         assertTrue(manager.added.isEmpty())
     }
 
@@ -143,10 +144,10 @@ class AlbumCoordinatorTest {
         val manager = object : AlbumManager {
             override suspend fun ensureCreated(name: String): String? = "x"
             override suspend fun exists(albumLocalId: String): Boolean = true
-            override suspend fun assetIdsInAlbums(calibration: SelectionCalibration, since: CaptureCutoff): Set<String> = emptySet()
-            override suspend fun add(albumLocalId: String, assetIds: List<String>) = error("boom")
+            override suspend fun assetIdsInAlbums(calibration: SelectionCalibration, since: CaptureCutoff): Set<AssetId> = emptySet()
+            override suspend fun add(albumLocalId: String, assetIds: List<AssetId>) = error("boom")
         }
         val store = InMemoryAlbumMapStore().apply { put(event, "album-X") }
-        AlbumCoordinator(manager, store).place(event, listOf("A/L0/1")) // must not throw
+        AlbumCoordinator(manager, store).place(event, listOf(AssetId("A_L0_1"))) // must not throw
     }
 }

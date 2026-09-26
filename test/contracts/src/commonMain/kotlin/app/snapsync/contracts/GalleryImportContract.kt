@@ -1,5 +1,6 @@
 package app.snapsync.contracts
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.ImportResult
 import app.snapsync.model.ImportRequest
@@ -32,8 +33,8 @@ enum class MarkerState { NONE, RECORDED, CONFIRMED, CLEARED }
  * Outcomes only.
  */
 interface ImportedLibrary {
-    /** The capture date of the asset with normalized [id], as an ISO-8601 instant, or `null` if none exists. */
-    suspend fun captureDate(id: String): String?
+    /** The capture date of the asset with [id], as an ISO-8601 instant, or `null` if none exists. */
+    suspend fun captureDate(id: AssetId): String?
 
     /** Where the marker for [ref] stands, as the registered import handlers recorded it. */
     fun marker(ref: AssetRef): MarkerState
@@ -61,7 +62,7 @@ class StagedImport(
 object GalleryImportContract : Contract<GalleryImportState, StagedImport>("GalleryImport") {
 
     /** The ref a clause imports under. Deterministic, and distinct per clause. */
-    fun ref(clauseId: String) = AssetRef(sourceDeviceId = "contract-device", sourceAssetId = clauseId)
+    fun ref(clauseId: String) = AssetRef(sourceDeviceId = "contract-device", sourceAssetId = AssetId(clauseId))
 
     override val clauses = clauses {
 

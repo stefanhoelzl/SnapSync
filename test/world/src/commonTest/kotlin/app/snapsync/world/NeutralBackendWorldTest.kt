@@ -1,5 +1,6 @@
 package app.snapsync.world
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.CycleResult
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -32,7 +33,7 @@ class NeutralBackendWorldTest {
         val w = World(this)
         val eventId = w.provisionMinted()
         w.addForeignDeviceMinted("F", listOf(World.foreignAsset("X")), eventId)
-        assertTrue(w.neutral.unionOf(eventId).orFail().any { it.deviceId == "F" && it.assetId == "X" })
+        assertTrue(w.neutral.unionOf(eventId).orFail().any { it.deviceId == "F" && it.assetId == AssetId("X") })
     }
 
     @Test

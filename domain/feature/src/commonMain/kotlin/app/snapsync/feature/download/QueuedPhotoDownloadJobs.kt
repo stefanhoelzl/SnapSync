@@ -1,6 +1,8 @@
 package app.snapsync.feature.download
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.ConfinedTo
+import app.snapsync.model.isCanonicalAssetId
 import app.snapsync.ports.Completion
 import app.snapsync.services.wake.OsCompletions
 import app.snapsync.model.StartResult
@@ -37,8 +39,8 @@ internal fun encodeTag(ref: AssetRef, resourceKey: String): String =
 
 internal fun decodeTag(description: String): TaskTag? {
     val parts = description.split(SEP)
-    if (parts.size != 3) return null
-    return TaskTag(AssetRef(parts[0], parts[1]), parts[2])
+    if (parts.size != 3 || !isCanonicalAssetId(parts[1])) return null
+    return TaskTag(AssetRef(parts[0], AssetId(parts[1])), parts[2])
 }
 
 /** Where a resource's bytes land in durable staging, relative to the shared area. `/` is not legal in a path segment. */

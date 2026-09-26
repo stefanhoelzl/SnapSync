@@ -1,5 +1,6 @@
 package app.snapsync.ports
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.AssetPresence
 
 /**
@@ -16,9 +17,9 @@ import app.snapsync.model.AssetPresence
  * row carries a marker, which is the ordinary case. The platform query takes a list anyway, so asking
  * per row would buy nothing and cost a round-trip each.
  *
- * **The identifiers are the store's normalized form** (`/`→`_`, `model/`'s `normalizeAssetId`) — the same
- * form `createdLocalId` and the upload keys use. An implementation that must talk to a platform in raw
- * form converts on the way in and back on the way out; callers never see the raw shape.
+ * **The identifiers are canonical [AssetId]s** — the same form `createdLocalId` and the upload keys use. An
+ * implementation that must talk to a platform in its native form maps on the way in and back on the way
+ * out; callers never see the native shape.
  *
  * ⚠️ **Implementations own their dispatcher hop.** The iOS query is a synchronous XPC round-trip that
  * blocks its thread, and no timeout can abandon it (cancellation is cooperative). It therefore must not
@@ -33,5 +34,5 @@ interface ImportedAssetPresence {
      * missing entry and [AssetPresence.UNKNOWN] mean the same thing to callers, and returning the entry
      * is the honest form.
      */
-    suspend fun presence(localIds: Set<String>): Map<String, AssetPresence>
+    suspend fun presence(localIds: Set<AssetId>): Map<AssetId, AssetPresence>
 }

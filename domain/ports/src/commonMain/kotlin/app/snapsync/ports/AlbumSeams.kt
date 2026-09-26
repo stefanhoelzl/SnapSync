@@ -1,5 +1,6 @@
 package app.snapsync.ports
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.SelectionCalibration
 
@@ -31,7 +32,7 @@ interface AlbumManager {
      * them) to the album [albumLocalId]. Best-effort: a missing asset is skipped, adding an already-present
      * asset is a no-op.
      */
-    suspend fun add(albumLocalId: String, assetIds: List<String>)
+    suspend fun add(albumLocalId: String, assetIds: List<AssetId>)
 
     /**
      * The asset ids of every asset in a **user album** the [calibration] denies, captured at or after [since].
@@ -41,7 +42,7 @@ interface AlbumManager {
      * Cost is proportional to the number of albums, **not** the number of assets; it must never become a
      * per-asset membership test.
      */
-    suspend fun assetIdsInAlbums(calibration: SelectionCalibration, since: CaptureCutoff): Set<String>
+    suspend fun assetIdsInAlbums(calibration: SelectionCalibration, since: CaptureCutoff): Set<AssetId>
 }
 
 /**

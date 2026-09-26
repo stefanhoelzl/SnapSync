@@ -1,5 +1,6 @@
 package app.snapsync.selection
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.Resource
 import kotlinx.coroutines.CompletableDeferred
@@ -70,7 +71,7 @@ class SelectionSnapshotLaneTest {
         }
 
         private fun render(of: List<String>): List<Resource> =
-            of.map { Resource(filename = "$it.heic", assetId = it, contentType = "image/heic", metadata = emptyMap(), data = it) }
+            of.map { Resource(filename = "$it.heic", assetId = AssetId(it), contentType = "image/heic", metadata = emptyMap(), data = it) }
 
         fun change(id: String) = checkNotNull(onChange) { "not observing" }(id)
     }

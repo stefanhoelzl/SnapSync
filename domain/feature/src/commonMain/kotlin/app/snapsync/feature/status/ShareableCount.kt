@@ -1,5 +1,6 @@
 package app.snapsync.feature.status
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.SelectionPolicy
@@ -34,7 +35,7 @@ class ShareableCountSource(
     /** The permission-aware read seam — the SAME one the status total holds, so the two cannot disagree. */
     private val source: CandidateSource,
     /** Downloaded/imported foreign photos, suppressed from this device's contribution (capability `receiving-photos`). */
-    private val suppressedLocalIds: suspend () -> Set<String>,
+    private val suppressedLocalIds: suspend () -> Set<AssetId>,
     /**
      * Denylisted-album members for the candidate cutoff — the SAME lookup the cycle gets.
      *
@@ -46,7 +47,7 @@ class ShareableCountSource(
      * before it is optimized: whether a `PHAssetCollection` fetch under `NOT_DETERMINED` can surface a
      * system prompt is an open device question (decision record: this change's `design.md`).
      */
-    private val albumExcludedAssetIds: suspend (CaptureCutoff) -> Set<String>,
+    private val albumExcludedAssetIds: suspend (CaptureCutoff) -> Set<AssetId>,
 ) {
 
     /**

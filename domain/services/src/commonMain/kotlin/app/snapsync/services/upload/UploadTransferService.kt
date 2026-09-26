@@ -14,6 +14,7 @@ import app.snapsync.model.UploadSource
 import app.snapsync.model.UploadSourceKind
 import app.snapsync.model.UploadTarget
 import app.snapsync.model.WriteOutcome
+import app.snapsync.model.assetIdFromUploadKey
 import app.snapsync.ports.BackgroundTransfer
 import app.snapsync.ports.EntryContext
 import app.snapsync.ports.Files
@@ -120,7 +121,8 @@ class UploadTransferService(
         }
         // A failure's live resource: the job's own where the platform still holds it, otherwise the photo's, if it is
         // still in the library (PhotoKit answers no resource for a retry-spent job — measured SE2, iOS 26.6.2).
-        val live: Resource? = (job.source as? UploadSource.Resource)?.let { Resource(key, "", job.contentType.orEmpty(), emptyMap(), it.handle) }
+        val live: Resource? = (job.source as? UploadSource.Resource)
+            ?.let { Resource(key, assetIdFromUploadKey(key), job.contentType.orEmpty(), emptyMap(), it.handle) }
             ?: if (classified.state == UploadJobState.SUCCEEDED) null else liveResource(key)
         val disposition = terminalDisposition(classified.state, resourceIsLive = live != null)
         if (!record.markTerminal(key, disposition.outcome)) {

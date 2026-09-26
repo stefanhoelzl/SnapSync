@@ -1,5 +1,6 @@
 package app.snapsync.feature.download
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.StartResult
 import app.snapsync.ports.Download
 import app.snapsync.ports.StagedBytes
@@ -125,7 +126,7 @@ class QueuedPhotoDownloadJobsTest {
 
     private fun pending(assetId: String, key: String, url: String = "https://cdn.example/$assetId/$key") =
         PendingDownload(
-            ref = AssetRef("DEVICE-A", assetId),
+            ref = AssetRef("DEVICE-A", AssetId(assetId)),
             resource = PlannedResource(key, url, "primary", "image/heic", "IMG.HEIC"),
         )
 
@@ -417,7 +418,7 @@ class QueuedPhotoDownloadJobsTest {
 
     @Test
     fun description_round_trips_the_asset_ref_and_resource_key() {
-        val ref = AssetRef("DEVICE-A", "ASSET-1")
+        val ref = AssetRef("DEVICE-A", AssetId("ASSET-1"))
         val tag = decodeTag(encodeTag(ref, "a-primary.heic"))
 
         assertNotNull(tag)
@@ -454,7 +455,7 @@ class QueuedPhotoDownloadJobsTest {
         advanceUntilIdle()
 
         assertEquals(
-            listOf(Triple(AssetRef("DEVICE-A", "A"), "a-primary.heic", "root/DEVICE-A/a-primary.heic")),
+            listOf(Triple(AssetRef("DEVICE-A", AssetId("A")), "a-primary.heic", "root/DEVICE-A/a-primary.heic")),
             h.staged,
         )
     }
@@ -479,8 +480,8 @@ class QueuedPhotoDownloadJobsTest {
         h.jobs.adoptBackgroundEvents(bareCompletion { released = true })
 
         // Two transfers land, then the session reports every event delivered.
-        h.transport.finish(encodeTag(AssetRef("DEVICE-A", "A"), "a-primary.heic"))
-        h.transport.finish(encodeTag(AssetRef("DEVICE-A", "B"), "b-primary.heic"))
+        h.transport.finish(encodeTag(AssetRef("DEVICE-A", AssetId("A")), "a-primary.heic"))
+        h.transport.finish(encodeTag(AssetRef("DEVICE-A", AssetId("B")), "b-primary.heic"))
         h.transport.eventsFinished()
         // `runCurrent`, NOT `advanceUntilIdle`: the handler is now bounded, and advancing virtual time
         // freely would jump past that deadline and release it — proving nothing about the imports.
@@ -511,7 +512,7 @@ class QueuedPhotoDownloadJobsTest {
         h.deliver = { _, _, _ -> neverStages.await(); stagingFinished = true }
         val handover = h.jobs.adoptBackgroundEvents(bareCompletion { released = true })
 
-        h.transport.finish(encodeTag(AssetRef("DEVICE-A", "A"), "a-primary.heic"))
+        h.transport.finish(encodeTag(AssetRef("DEVICE-A", AssetId("A")), "a-primary.heic"))
         h.transport.eventsFinished()
         advanceTimeBy(3_600.seconds)
         assertFalse(released, "no clock of ours releases it")
@@ -527,11 +528,11 @@ class QueuedPhotoDownloadJobsTest {
         h.jobs.adoptBackgroundEvents(bareCompletion { }) // relaunched by the OS: nothing was enqueued in THIS process
 
         // The OS hands us a transfer the previous process started.
-        h.transport.finish(encodeTag(AssetRef("DEVICE-A", "A"), "a-primary.heic"))
+        h.transport.finish(encodeTag(AssetRef("DEVICE-A", AssetId("A")), "a-primary.heic"))
         advanceUntilIdle()
 
         assertEquals(
-            listOf(Triple(AssetRef("DEVICE-A", "A"), "a-primary.heic", "root/DEVICE-A/a-primary.heic")),
+            listOf(Triple(AssetRef("DEVICE-A", AssetId("A")), "a-primary.heic", "root/DEVICE-A/a-primary.heic")),
             h.staged,
             "a completion from a previous process must still find its staging path",
         )
@@ -539,7 +540,7 @@ class QueuedPhotoDownloadJobsTest {
 
     @Test
     fun staging_path_sanitizes_slashes_in_the_device_id_and_key() {
-        val path = stagingPath("root", AssetRef("DEV/ICE", "A"), "a/b.heic")
+        val path = stagingPath("root", AssetRef("DEV/ICE", AssetId("A")), "a/b.heic")
         assertEquals("root/DEV_ICE/a_b.heic", path)
     }
 
@@ -593,7 +594,7 @@ class QueuedPhotoDownloadJobsTest {
         advanceUntilIdle()
 
         assertEquals(2, h.transport.sessions, "the port runs on a fresh session after a system invalidation")
-        assertEquals(listOf("A", "B"), h.transport.started.map { decodeTag(it.description)?.ref?.sourceAssetId }, "B starts")
+        assertEquals(listOf(AssetId("A"), AssetId("B")), h.transport.started.map { decodeTag(it.description)?.ref?.sourceAssetId }, "B starts")
     }
 
     /** A staging area rooted at the relative `root`, located under `/abs/` — so a test sees which of the two it got. */

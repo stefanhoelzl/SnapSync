@@ -1,6 +1,6 @@
 package app.snapsync.contracts
 
-import app.snapsync.model.normalizeAssetId
+import app.snapsync.model.AssetId
 
 /**
  * A photo-library port as a binding hands it to a clause: the [port], plus the assets the binding seeded for
@@ -8,22 +8,20 @@ import app.snapsync.model.normalizeAssetId
  * binding reports what it created rather than the contract choosing ids, as `SecureStoreContract.seedValue`
  * does.
  *
- * [rawIds] are the library's own identifiers (a PhotoKit `localIdentifier` still carries `/`); [ids] are the
- * normalized form every port answers in.
+ * [ids] are the canonical ids of what the binding created — minted through the implementation's own platform
+ * mapping, so a clause comparing them with what the port answers checks that mapping end to end.
  */
-class SeededLibrary<T>(val port: T, val rawIds: List<String> = emptyList()) {
-    val ids: Set<String> = rawIds.mapTo(linkedSetOf(), ::normalizeAssetId)
-}
+class SeededLibrary<T>(val port: T, val ids: Set<AssetId> = emptySet())
 
 /** How many assets a `*_SEEDED` state puts in a clause's window. */
 const val SEED_COUNT: Int = 2
 
 /**
- * A normalized asset id no library holds: a well-formed `localIdentifier` with a UUID derived from the clause
+ * A canonical asset id no library holds: a well-formed PhotoKit-shaped id with a UUID derived from the clause
  * id, so it is deterministic and never collides with an asset the library minted.
  */
-fun absentAssetId(clauseId: String): String {
+fun absentAssetId(clauseId: String): AssetId {
     val digits = clauseId.encodeToByteArray().joinToString("") { (it.toInt() and 0xF).toString(16) }
         .padEnd(12, '0').take(12)
-    return "00000000-0000-4000-8000-${digits}_L0_001"
+    return AssetId("00000000-0000-4000-8000-${digits}_L0_001")
 }

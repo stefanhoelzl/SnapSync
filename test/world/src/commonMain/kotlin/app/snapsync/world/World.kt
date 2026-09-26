@@ -1,5 +1,6 @@
 package app.snapsync.world
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.InviteLinkHints
 import app.snapsync.feature.membership.toJoinLoad
 import app.snapsync.model.JoinLoad
@@ -77,7 +78,6 @@ import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.eventStart
 import app.snapsync.model.noContribution
-import app.snapsync.model.normalizeAssetId
 import app.snapsync.model.resourcesFrom
 import app.snapsync.model.selectionPolicyFor
 import app.snapsync.model.uploadKey
@@ -236,7 +236,7 @@ class World(
      * Operator read: the members of the gallery's denylisted albums captured since [cutoff] — through the same
      * album service and calibration the policy derivation uses, so the inspector shows what a cycle would subtract.
      */
-    suspend fun denylistedAlbumMembers(cutoff: CaptureCutoff): Set<String> =
+    suspend fun denylistedAlbumMembers(cutoff: CaptureCutoff): Set<AssetId> =
         GalleryAlbums(gallery).assetIdsInAlbums(SELECTION_CALIBRATION, cutoff)
 
     suspend fun readCandidates(policy: SelectionPolicy): List<Candidate> =
@@ -738,8 +738,8 @@ class World(
      * cycle's scope cell.
      */
     fun changeSelection(vararg assetIds: String) {
-        val wanted = assetIds.toSet()
-        gallery.changeSelection(gallery.current().filter { normalizeAssetId(it.assetId) in wanted })
+        val wanted = assetIds.mapTo(mutableSetOf(), ::AssetId)
+        gallery.changeSelection(gallery.current().filter { it.assetId in wanted })
     }
 
     // ---- device model + operator gallery actions ------------------------------------------------
@@ -764,13 +764,13 @@ class World(
     ) {
         gallery.set(
             gallery.current() + RawAsset(
-                assetId = assetId,
+                assetId = AssetId(assetId),
                 creationDate = creationDate,
                 rawResources = resources,
                 // NEUTRAL facts — the world forges what the platform would have interpreted, never a
                 // PhotoKit bitmask (capability `sync-status`).
                 facts = AssetFacts(
-                    assetId = assetId,
+                    assetId = AssetId(assetId),
                     creationDate = CaptureDate(creationDate),
                     isScreenshot = isScreenshot,
                     isScreenRecording = isScreenRecording,
@@ -848,7 +848,7 @@ class World(
      * the OS completed while the process was gone. Through the backend's public byte route, so on either backend.
      */
     suspend fun landBytesWithoutAck(assetId: String) {
-        val asset = gallery.current().single { normalizeAssetId(it.assetId) == normalizeAssetId(assetId) }
+        val asset = gallery.current().single { it.assetId == AssetId(assetId) }
         asset.rawResources.forEach { raw ->
             // Only a resource with an upload role is ever sent; one without is not part of the asset's upload.
             val role = raw.role ?: return@forEach
@@ -881,7 +881,7 @@ class World(
         )
         downloadStore.markStaged(ref, primaryKey, paths[0])
         downloadStore.markStaged(ref, liveKey, paths[1])
-        downloadStore.markImported(ref, "LOCAL-${ref.sourceAssetId}")
+        downloadStore.markImported(ref, AssetId("LOCAL-${ref.sourceAssetId}"))
         stagedFiles += paths
         return paths.toSet()
     }
@@ -898,7 +898,7 @@ class World(
 
     /** Remove an own asset from the gallery (absent from the next cycle's walk, which deletes its in-window rows). */
     suspend fun removeAsset(assetId: String) {
-        gallery.set(gallery.current().filterNot { it.assetId == assetId })
+        gallery.set(gallery.current().filterNot { it.assetId == AssetId(assetId) })
     }
 
     /**
@@ -1232,9 +1232,9 @@ class World(
             contentType: String = "image/heic",
             creationDate: String = DEFAULT_DATE,
         ): DeviceManifestAsset {
-            val key = uploadKey(assetId, ResourceRole.PRIMARY, filename)
+            val key = uploadKey(AssetId(assetId), ResourceRole.PRIMARY, filename)
             return DeviceManifestAsset(
-                assetId = assetId,
+                assetId = AssetId(assetId),
                 creationDate = creationDate,
                 resources = listOf(ManifestResource(ResourceRole.PRIMARY, contentType, key, filename)),
             )

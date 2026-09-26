@@ -163,7 +163,7 @@ fun candidatesFromResources(resources: List<Resource>): List<Candidate> {
  */
 fun candidatesFromFacts(
     facts: List<AssetFacts>,
-    resourcesFor: suspend (String) -> List<Resource> = { emptyList() },
+    resourcesFor: suspend (AssetId) -> List<Resource> = { emptyList() },
 ): List<Candidate> = facts.map { LazyCandidate(it, resourcesFor) }
 
 private class HeldCandidate(
@@ -175,7 +175,7 @@ private class HeldCandidate(
 
 private class LazyCandidate(
     override val facts: AssetFacts,
-    private val resourcesFor: suspend (String) -> List<Resource>,
+    private val resourcesFor: suspend (AssetId) -> List<Resource>,
 ) : Candidate {
     override suspend fun resources(): List<Resource> = resourcesFor(facts.assetId)
 }
@@ -186,7 +186,7 @@ private class LazyCandidate(
  * resources are then fetched together rather than one request each.
  */
 fun interface ResourceBatch {
-    suspend fun read(assetIds: Set<String>): Map<String, List<Resource>>
+    suspend fun read(assetIds: Set<AssetId>): Map<AssetId, List<Resource>>
 }
 
 /** Candidates over a facts-only read whose resources are reached through [batch] — see [resourcesOf]. */
@@ -200,7 +200,7 @@ fun candidatesFromFacts(facts: List<AssetFacts>, batch: ResourceBatch): List<Can
  */
 suspend fun resourcesOf(candidates: List<Candidate>): List<Resource> {
     val batched = candidates.filterIsInstance<BatchedCandidate>().groupBy { it.batch }
-    val read = mutableMapOf<String, List<Resource>>()
+    val read = mutableMapOf<AssetId, List<Resource>>()
     for ((batch, group) in batched) read += batch.read(group.mapTo(linkedSetOf()) { it.facts.assetId })
     return candidates.flatMap { if (it is BatchedCandidate) read[it.facts.assetId].orEmpty() else it.resources() }
 }

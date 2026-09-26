@@ -26,7 +26,7 @@ class ManifestResource(
  */
 @Serializable
 class DeviceManifestAsset(
-    val assetId: String,
+    val assetId: AssetId,
     val creationDate: String,
     val resources: List<ManifestResource>,
 )

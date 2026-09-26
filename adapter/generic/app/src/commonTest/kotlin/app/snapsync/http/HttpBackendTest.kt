@@ -2,6 +2,7 @@ package app.snapsync.http
 
 import app.snapsync.model.APP_VERSION_HEADER
 import app.snapsync.model.ApnsPushToken
+import app.snapsync.model.AssetId
 import app.snapsync.model.CreateEventRequest
 import app.snapsync.model.DeviceFile
 import app.snapsync.model.DeviceManifest
@@ -218,7 +219,7 @@ class HttpBackendTest {
     fun the_listing_reads_identity_terms_and_ignores_extra_keys() = runTest {
         val listed = backend(body = """[{"assetId":"A","role":"primary","filename":"IMG.JPG","size":4,"url":"x"}]""")
             .deviceFiles("T", "D")
-        assertEquals(Reply.Ok(listOf(DeviceFile("A", ResourceRole.PRIMARY, "IMG.JPG"))), listed)
+        assertEquals(Reply.Ok(listOf(DeviceFile(AssetId("A"), ResourceRole.PRIMARY, "IMG.JPG"))), listed)
         assertEquals("GET /api/v2/files/devices/D", "${sent[0].method} ${sent[0].path}")
     }
 

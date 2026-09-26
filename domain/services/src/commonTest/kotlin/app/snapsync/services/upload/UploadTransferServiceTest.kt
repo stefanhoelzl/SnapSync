@@ -148,7 +148,7 @@ class UploadTransferServiceTest {
     }
 
     private fun row(key: String, state: LedgerState = LedgerState.REQUESTED) =
-        LedgerEntry(key = key, assetId = "A", state = state, destinationPath = destination)
+        LedgerEntry(key = key, assetId = AssetId("A"), state = state, destinationPath = destination)
 
     private fun job(state: UploadJobState, path: String? = destination, source: UploadSource? = null, tag: String? = null) =
         UploadJob(handle = "job", tag = tag, destinationPath = path, contentType = "image/jpeg", state = state, error = null, source = source)
@@ -173,7 +173,7 @@ class UploadTransferServiceTest {
 
     @Test
     fun `a retry-spent failure whose photo lives is recorded FAILED and handed up for re-creation`() = runTest {
-        val live = Resource("A-primary.jpg", "A", "image/jpeg", emptyMap(), "handle")
+        val live = Resource("A-primary.jpg", AssetId("A"), "image/jpeg", emptyMap(), "handle")
         val upload = ScriptedUpload(terminal = listOf(job(UploadJobState.FAILED)))
         val record = Record(mutableMapOf(destination to row("A-primary.jpg")))
         val handedUp = service(upload, record, Resources(mapOf("A-primary.jpg" to live))).drainTerminals()
@@ -200,7 +200,7 @@ class UploadTransferServiceTest {
         val record = Record(mutableMapOf(destination to row("A-primary.jpg")))
         val transfer = service(upload, record)
         val offered = transfer.fetchRetryJobs().single()
-        transfer.retryJob(offered, UploadRequest(url, emptyMap(), Resource("A-primary.jpg", "A", "image/jpeg", emptyMap(), Unit)))
+        transfer.retryJob(offered, UploadRequest(url, emptyMap(), Resource("A-primary.jpg", AssetId("A"), "image/jpeg", emptyMap(), Unit)))
         assertEquals(listOf("retry($destination -> $url)"), upload.calls)
     }
 
@@ -208,8 +208,8 @@ class UploadTransferServiceTest {
     fun `a destination that is not a URL is not a job before any platform sees it`() = runTest {
         val upload = ScriptedUpload()
         val outcome = service(upload).createJob(
-            UploadRequest("", emptyMap(), Resource("A-primary.jpg", "A", "image/jpeg", emptyMap(), Unit)),
-            Resource("A-primary.jpg", "A", "image/jpeg", emptyMap(), Unit),
+            UploadRequest("", emptyMap(), Resource("A-primary.jpg", AssetId("A"), "image/jpeg", emptyMap(), Unit)),
+            Resource("A-primary.jpg", AssetId("A"), "image/jpeg", emptyMap(), Unit),
         )
         assertEquals(UploadCreateOutcome.FAILED, outcome)
         assertTrue(upload.calls.isEmpty())
@@ -217,7 +217,7 @@ class UploadTransferServiceTest {
 
     @Test
     fun `a file uploader is handed the exported file which goes when no job was created`() = runTest {
-        val resource = Resource("A-primary.jpg", "A", "image/jpeg", emptyMap(), "handle")
+        val resource = Resource("A-primary.jpg", AssetId("A"), "image/jpeg", emptyMap(), "handle")
         val upload = ScriptedUpload(accepts = UploadSourceKind.FILE, createAnswer = UploadCreateOutcome.LIMIT_EXCEEDED)
         val library = Library(exportable = setOf("A-primary.jpg"))
         val files = SharedArea()
@@ -230,7 +230,7 @@ class UploadTransferServiceTest {
 
     @Test
     fun `a resource the library can no longer export is not a job`() = runTest {
-        val resource = Resource("A-primary.jpg", "A", "image/jpeg", emptyMap(), "handle")
+        val resource = Resource("A-primary.jpg", AssetId("A"), "image/jpeg", emptyMap(), "handle")
         val upload = ScriptedUpload(accepts = UploadSourceKind.FILE)
         val outcome = service(upload).createJob(UploadRequest(url, emptyMap(), resource), resource)
         assertEquals(UploadCreateOutcome.FAILED, outcome)
@@ -300,7 +300,7 @@ class UploadTransferServiceTest {
         val record = Record(mutableMapOf(destination to row("A-primary.jpg")))
         val transfer = service(upload, record)
         transfer.drainTerminals()
-        transfer.retryJob(transfer.fetchRetryJobs().single(), UploadRequest(url, emptyMap(), Resource("A-primary.jpg", "A", "", emptyMap(), Unit)))
+        transfer.retryJob(transfer.fetchRetryJobs().single(), UploadRequest(url, emptyMap(), Resource("A-primary.jpg", AssetId("A"), "", emptyMap(), Unit)))
         assertEquals(1, upload.calls.count { it.startsWith("retry") })
     }
 
@@ -310,15 +310,15 @@ class UploadTransferServiceTest {
         val record = Record(mutableMapOf(destination to row("A-primary.jpg")))
         val gone = app.snapsync.ports.PlatformUploadJob("A-primary.jpg", "image/jpeg", null, null)
         val transfer = service(upload, record)
-        transfer.retryJob(gone, UploadRequest(url, emptyMap(), Resource("A-primary.jpg", "A", "", emptyMap(), Unit)))
+        transfer.retryJob(gone, UploadRequest(url, emptyMap(), Resource("A-primary.jpg", AssetId("A"), "", emptyMap(), Unit)))
         upload.offered = listOf(job(UploadJobState.FAILED))
-        transfer.retryJob(gone, UploadRequest("", emptyMap(), Resource("A-primary.jpg", "A", "", emptyMap(), Unit)))
+        transfer.retryJob(gone, UploadRequest("", emptyMap(), Resource("A-primary.jpg", AssetId("A"), "", emptyMap(), Unit)))
         assertTrue(upload.calls.none { it.startsWith("retry") })
     }
 
     @Test
     fun `a resource uploader is handed the resource itself`() = runTest {
-        val resource = Resource("A-primary.jpg", "A", "image/jpeg", emptyMap(), "handle")
+        val resource = Resource("A-primary.jpg", AssetId("A"), "image/jpeg", emptyMap(), "handle")
         val upload = ScriptedUpload(createAnswer = UploadCreateOutcome.LIMIT_EXCEEDED)
         val outcome = service(upload).createJob(UploadRequest(url, emptyMap(), resource), resource)
         assertEquals(UploadCreateOutcome.LIMIT_EXCEEDED, outcome)
@@ -327,7 +327,7 @@ class UploadTransferServiceTest {
 
     @Test
     fun `a file uploader with no shared area creates nothing`() = runTest {
-        val resource = Resource("A-primary.jpg", "A", "image/jpeg", emptyMap(), "handle")
+        val resource = Resource("A-primary.jpg", AssetId("A"), "image/jpeg", emptyMap(), "handle")
         val upload = ScriptedUpload(accepts = UploadSourceKind.FILE)
         val transfer = service(upload, library = Library(setOf("A-primary.jpg")), files = SharedArea(reachable = false))
         assertEquals(UploadCreateOutcome.FAILED, transfer.createJob(UploadRequest(url, emptyMap(), resource), resource))

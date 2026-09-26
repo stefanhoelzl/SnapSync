@@ -5,7 +5,7 @@ import app.snapsync.control.done
 import app.snapsync.model.APP_VERSION_HEADER
 import app.snapsync.model.ConfigDecodeResult
 import app.snapsync.model.decodeEventUrl
-import app.snapsync.model.normalizeAssetId
+import app.snapsync.model.AssetId
 import app.snapsync.model.JoinPhase
 import app.snapsync.model.Layer
 import io.ktor.client.HttpClient
@@ -97,7 +97,7 @@ class Journeys {
         a.deviceVerb("gallery/seed", mapOf("n" to "4", "kind" to "policy")).done()
         val cutoff = a.state().ready.minPhotoDate ?: fail("A's membership carries no cutoff")
         val admitted = a.gallery(cutoff = cutoff).policy?.assets.orEmpty()
-            .filter { it.admitted }.mapTo(mutableSetOf()) { normalizeAssetId(it.assetId) }
+            .filter { it.admitted }.mapTo(mutableSetOf()) { AssetId(it.assetId) }
         assertTrue(admitted.size >= 2, "the policy seed admits its above-floor half: $admitted")
 
         a.os("app", "onForeground").done()
@@ -136,11 +136,11 @@ class Journeys {
     }
 
     /** The asset ids the event's union serves — the backend's public surface, read as a member reads it. */
-    private suspend fun unionAssetIds(http: HttpClient, event: String): Set<String> {
+    private suspend fun unionAssetIds(http: HttpClient, event: String): Set<AssetId> {
         val body = http.get("$backend/events/$event/files") { header(APP_VERSION_HEADER, SERVED_VERSION) }.bodyAsText()
         return runCatching {
             Json.parseToJsonElement(body).jsonArray
-                .mapTo(mutableSetOf()) { normalizeAssetId(it.jsonObject.getValue("assetId").jsonPrimitive.content) }
+                .mapTo(mutableSetOf()) { AssetId(it.jsonObject.getValue("assetId").jsonPrimitive.content) }
         }.getOrDefault(emptySet())
     }
 

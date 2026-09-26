@@ -1,5 +1,6 @@
 package app.snapsync.download
 
+import app.snapsync.model.AssetId
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import app.snapsync.model.captureCeiling
@@ -50,7 +51,7 @@ class DownloadPushReceiverTest {
 
     private class NoopImporter : GalleryImport {
         override suspend fun import(request: ImportRequest) =
-            ImportResult.Imported("LOCAL")
+            ImportResult.Imported(AssetId("LOCAL"))
     }
 
     private fun controller(union: RecordingUnion) = DownloadController(

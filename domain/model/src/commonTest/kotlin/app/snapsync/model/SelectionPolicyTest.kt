@@ -25,7 +25,7 @@ class SelectionPolicyTest {
     ) = listOf(
         Resource(
             filename = "$id-primary.heic",
-            assetId = id,
+            assetId = AssetId(id),
             contentType = "public.heic",
             metadata = mapOf(
                 RESOURCE_META_CREATION_DATE to "2026-07-01T00:00:00Z",
@@ -49,7 +49,7 @@ class SelectionPolicyTest {
         val policy = SelectionPolicy(selectionRulesFor(includesUpload = true, cutoff = captureCutoff(""), ceiling = null, suppressedAssetIds = { emptySet() }, albumExcludedAssetIds = { emptySet() }))
         val admitted = EventPhotoSet(policy) { candidatesFromResources(resources) }
             .assets().mapTo(mutableSetOf()) { it.facts.assetId }
-        return resources.mapTo(mutableSetOf()) { it.assetId } - admitted
+        return (resources.mapTo(mutableSetOf()) { it.assetId } - admitted).mapTo(mutableSetOf()) { it.value }
     }
 
     // ── Subtypes ──────────────────────────────────────────────────────────────────────────────────────
@@ -143,7 +143,7 @@ class SelectionPolicyTest {
         val bare = listOf(
             Resource(
                 filename = "A-primary.heic",
-                assetId = "A",
+                assetId = AssetId("A"),
                 contentType = "public.heic",
                 metadata = mapOf(RESOURCE_META_CREATION_DATE to "2026-07-01T00:00:00Z"),
                 data = Unit,
@@ -164,8 +164,8 @@ class SelectionPolicyTest {
             RESOURCE_META_PIXEL_AREA to "12192768",
         )
         val both = listOf(
-            Resource("A-primary.heic", "A", "public.heic", metadata = meta, data = Unit),
-            Resource("A-live.mov", "A", "com.apple.quicktime-movie", metadata = meta, data = Unit),
+            Resource("A-primary.heic", AssetId("A"), "public.heic", metadata = meta, data = Unit),
+            Resource("A-live.mov", AssetId("A"), "com.apple.quicktime-movie", metadata = meta, data = Unit),
         )
         assertEquals(setOf("A"), excluded(both), "the asset is excluded, so both of its resources go")
     }

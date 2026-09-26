@@ -1,5 +1,6 @@
 package app.snapsync.ports
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.LedgerAggregates
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.PendingResource
@@ -74,7 +75,7 @@ interface LedgerStore : TransferRecord {
      * [aggregates] performs, un-counted, in one snapshot-consistent read. Status intersects it with the
      * admitted set the gallery counted for `N`; the ledger interprets nothing about admission.
      */
-    suspend fun assetProgress(): Map<String, Boolean>
+    suspend fun assetProgress(): Map<AssetId, Boolean>
 
     /**
      * The non-settled rows (the backlog) as [PendingResource]s. Returns exactly the rows whose state is

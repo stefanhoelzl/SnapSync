@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.assetIdFromUploadKey
 import app.snapsync.model.SyncHealth
 import kotlin.test.Test
@@ -67,7 +68,7 @@ class SelectionPolicyIntegrationTest {
 
         cycle()
 
-        assertEquals(setOf("CAM", "CLIP"), jobs().live.mapTo(mutableSetOf(), ::assetIdFromUploadKey))
+        assertEquals(setOf(AssetId("CAM"), AssetId("CLIP")), jobs().live.mapTo(mutableSetOf(), ::assetIdFromUploadKey))
         assertEquals(2, jobs().created)
     }
 

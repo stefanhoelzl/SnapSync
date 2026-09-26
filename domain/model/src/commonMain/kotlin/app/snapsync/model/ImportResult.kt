@@ -3,7 +3,7 @@ package app.snapsync.model
 /** Outcome of a per-asset import. */
 sealed interface ImportResult {
     /** The asset was created; [createdLocalId] is its sanitized local identifier (the suppression handle). */
-    data class Imported(val createdLocalId: String) : ImportResult
+    data class Imported(val createdLocalId: AssetId) : ImportResult
 
     /**
      * The import did not complete.

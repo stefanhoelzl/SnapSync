@@ -48,7 +48,7 @@ class FactsOnlyAdmissionTest {
         mime: String = "image/heic",
     ) = Resource(
         filename = "$assetId-primary.heic",
-        assetId = assetId,
+        assetId = AssetId(assetId),
         contentType = "public.heic",
         metadata = mapOf(
             RESOURCE_META_CREATION_DATE to creationDate,
@@ -69,7 +69,7 @@ class FactsOnlyAdmissionTest {
         width: Long = 4032,
         height: Long = 3024,
     ) = AssetFacts(
-        assetId = assetId,
+        assetId = AssetId(assetId),
         creationDate = CaptureDate(creationDate),
         isScreenshot = isScreenshot,
         pixelArea = width * height,
@@ -101,7 +101,7 @@ class FactsOnlyAdmissionTest {
         val fromCheap = EventPhotoSet(policyOf()) { candidatesFromFacts(cheap) }
             .assets().mapTo(mutableSetOf()) { it.facts.assetId }
 
-        assertEquals(setOf("CAM"), fromEager)
+        assertEquals(setOf(AssetId("CAM")), fromEager)
         assertEquals(fromEager, fromCheap, "the cheap path is the exact answer, not an approximation")
     }
 

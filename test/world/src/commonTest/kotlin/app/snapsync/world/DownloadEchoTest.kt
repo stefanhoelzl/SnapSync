@@ -1,7 +1,7 @@
 package app.snapsync.world
 
 import app.snapsync.model.TransferOutcome
-import app.snapsync.model.normalizeAssetId
+import app.snapsync.model.AssetId
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -26,7 +26,7 @@ class DownloadEchoTest {
         w.stageAllDownloads()
         assertTrue(w.importer.imported.isNotEmpty())
 
-        val importedId = normalizeAssetId("imported-DEV-FOREIGN-FQ")
+        val importedId = AssetId("imported-DEV-FOREIGN-FQ")
         assertTrue(w.gallery.current().any { it.assetId == importedId }) // imported into the gallery
         assertTrue(importedId in w.downloadStore.suppressedLocalIds()) // suppression handle recorded
 

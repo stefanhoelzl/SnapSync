@@ -1,5 +1,6 @@
 package app.snapsync.feature.album
 
+import app.snapsync.model.AssetId
 import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.model.grantsPhotoAccess
 import app.snapsync.ports.DeviceIdentity
@@ -128,13 +129,13 @@ class AlbumGather(
         }
     }
 
-    private suspend fun ownSet(cfg: EventConfig): List<String> {
+    private suspend fun ownSet(cfg: EventConfig): List<AssetId> {
         val rows = ledger.manifestRows()
         val admitted = admittedAssetIds(rows, policyFor(cfg))
         return admitted.sorted()
     }
 
-    private suspend fun foreignSet(eventId: String): List<String> {
+    private suspend fun foreignSet(eventId: String): List<AssetId> {
         val assets = union.union(eventId).getOrElse {
             log.w(it) { "gather: union read failed for event=$eventId — gathering own photos only" }
             return emptyList()

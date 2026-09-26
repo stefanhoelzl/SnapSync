@@ -1,6 +1,6 @@
 package app.snapsync.world
 
-import app.snapsync.model.normalizeAssetId
+import app.snapsync.model.AssetId
 
 import kotlin.test.Test
 import kotlin.test.assertFalse
@@ -23,7 +23,7 @@ class LeaveWorldTest {
         w.downloadController.reconcile(eventId)
         w.stageAllDownloads()
 
-        val importedId = normalizeAssetId("imported-DEV-FOREIGN-FQ")
+        val importedId = AssetId("imported-DEV-FOREIGN-FQ")
         assertTrue(importedId in w.downloadStore.suppressedLocalIds()) // imported before leave
 
         w.leave()
@@ -44,7 +44,7 @@ class LeaveWorldTest {
         w.addForeignDevice("DEV-FOREIGN", eventId, listOf(World.foreignAsset("FQ")))
         w.downloadController.reconcile(eventId)
         w.stageAllDownloads()
-        val importedId = normalizeAssetId("imported-DEV-FOREIGN-FQ")
+        val importedId = AssetId("imported-DEV-FOREIGN-FQ")
 
         w.leave()
         w.provision(eventId) // re-join the same event

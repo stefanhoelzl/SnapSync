@@ -1,5 +1,6 @@
 package app.snapsync.feature.upload
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
@@ -114,7 +115,7 @@ class WalkMemoTest {
         val after = memo.discover(policy("2026-01-01T00:00:00Z"))
         val again = memo.discover(policy("2026-01-01T00:00:00Z"))
 
-        assertEquals(listOf("A"), ids(after), "B left the library, and the fresh walk says so")
+        assertEquals(listOf(AssetId("A")), ids(after), "B left the library, and the fresh walk says so")
         assertEquals(2, library.walks, "the changed token walked once, and the replaced entry served the next")
         assertSame(after, again)
     }
@@ -169,7 +170,7 @@ class WalkMemoTest {
         val readable = memo.discover(policy("2026-01-01T00:00:00Z"))
 
         assertEquals(2, library.walks, "an unreadable read is no answer to reuse")
-        assertEquals(listOf("A"), ids(readable))
+        assertEquals(listOf(AssetId("A")), ids(readable))
     }
 
     @Test
@@ -194,7 +195,7 @@ class WalkMemoTest {
         val next = memo.discover(policy("2026-01-01T00:00:00Z"))
 
         assertEquals(2, library.walks, "the entry carries the token read BEFORE the walk, so the next read differs")
-        assertEquals(listOf("A", "B"), ids(next))
+        assertEquals(listOf(AssetId("A"), AssetId("B")), ids(next))
     }
 
     @Test
@@ -256,7 +257,7 @@ class WalkMemoTest {
 
     private companion object {
         fun resource(assetId: String) =
-            Resource(filename = "$assetId-primary.jpg", assetId = assetId, contentType = "image/jpeg", metadata = emptyMap(), data = Unit)
+            Resource(filename = "$assetId-primary.jpg", assetId = AssetId(assetId), contentType = "image/jpeg", metadata = emptyMap(), data = Unit)
 
         suspend fun policy(cutoff: String) = SelectionPolicy(
             selectionRulesFor(

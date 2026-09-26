@@ -1,6 +1,7 @@
 package app.snapsync.world
 
 import app.snapsync.feature.membership.JoinOutcome
+import app.snapsync.model.AssetId
 import app.snapsync.model.Direction
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
@@ -40,7 +41,7 @@ class AlbumWorldTest {
 
         // Both assets landed in the event album (raw ids recovered by the cycle's reversal) before either
         // upload finished.
-        assertEquals(setOf("A", "B"), w.gallery.assetsIn(albumId).toSet())
+        assertEquals(setOf(AssetId("A"), AssetId("B")), w.gallery.assetsIn(albumId).toSet())
 
         w.platform.completeJob("A-primary.jpg")
         w.platform.completeJob("B-primary.jpg")
@@ -85,7 +86,7 @@ class AlbumWorldTest {
     }
 
     /** Import foreign photo [assetId] of [device] under [eventId]; answers its created local identifier. */
-    private suspend fun World.receive(device: String, eventId: String, assetId: String): String {
+    private suspend fun World.receive(device: String, eventId: String, assetId: String): AssetId {
         val before = downloadStore.suppressedLocalIds()
         addForeignDevice(device, eventId, listOf(World.foreignAsset(assetId)))
         downloadController.reconcile(eventId)
@@ -124,7 +125,7 @@ class AlbumWorldTest {
         w.core.albumGather.awaitStarted()
 
         val albumId = w.gallery.created.single().first
-        assertEquals(setOf("A", received), w.gallery.assetsIn(albumId).toSet())
+        assertEquals(setOf(AssetId("A"), received), w.gallery.assetsIn(albumId).toSet())
     }
 
     @Test
@@ -146,7 +147,7 @@ class AlbumWorldTest {
 
         w.runUploadCycle()
 
-        assertEquals(listOf("A"), w.gallery.assetsIn(albumId), "the carried-over photo is in the new album")
+        assertEquals(listOf(AssetId("A")), w.gallery.assetsIn(albumId), "the carried-over photo is in the new album")
         assertEquals(jobsBefore, w.platform.created.size, "and no upload job was created to put it there")
     }
 
@@ -175,12 +176,12 @@ class AlbumWorldTest {
         w.albumOn("E")
         w.core.albumGather.awaitStarted()
 
-        assertEquals(listOf("A"), w.gallery.assetsIn(w.gallery.created.single().first))
+        assertEquals(listOf(AssetId("A")), w.gallery.assetsIn(w.gallery.created.single().first))
     }
 
     private suspend fun World.seedCompletedOwnRow(assetId: String) {
         ledgerBackend.recordUnlessSettled(
-            LedgerEntry("$assetId-primary.jpg", assetId, LedgerState.COMPLETED, creationDate = World.DEFAULT_DATE),
+            LedgerEntry("$assetId-primary.jpg", AssetId(assetId), LedgerState.COMPLETED, creationDate = World.DEFAULT_DATE),
         )
     }
 
@@ -214,7 +215,7 @@ class AlbumWorldTest {
         w.permission.set(GalleryAccess.GRANTED)
         w.settleGrant()
 
-        assertEquals(listOf("A"), w.gallery.assetsIn(w.gallery.created.single().first))
+        assertEquals(listOf(AssetId("A")), w.gallery.assetsIn(w.gallery.created.single().first))
     }
 
     @Test

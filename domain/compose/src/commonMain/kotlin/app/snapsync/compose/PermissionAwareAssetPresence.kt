@@ -1,5 +1,6 @@
 package app.snapsync.compose
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.AssetPresence
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.Resource
@@ -35,7 +36,7 @@ class PermissionAwareAssetPresence(
     private val selection: StateFlow<List<Resource>?>,
 ) : ImportedAssetPresence {
 
-    override suspend fun presence(localIds: Set<String>): Map<String, AssetPresence> =
+    override suspend fun presence(localIds: Set<AssetId>): Map<AssetId, AssetPresence> =
         when (permission.value) {
             GalleryAccess.GRANTED -> library.presence(localIds)
             GalleryAccess.LIMITED -> {

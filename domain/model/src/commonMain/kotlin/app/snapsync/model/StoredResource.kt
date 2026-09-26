@@ -8,4 +8,4 @@ package app.snapsync.model
  * identity, so a caller seeding a ledger row takes that statement instead of recovering it from a string
  * the seam has just composed — the direction that cannot drift.
  */
-data class StoredResource(val key: String, val assetId: String)
+data class StoredResource(val key: String, val assetId: AssetId)

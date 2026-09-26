@@ -1,5 +1,6 @@
 package app.snapsync.engine
 
+import app.snapsync.model.AssetId
 import app.snapsync.ports.LedgerStore
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
@@ -58,8 +59,8 @@ class LedgerServiceTest {
         val thrown = runCatching {
             backend.recordAllUnlessSettled(
                 listOf(
-                    LedgerEntry("X-primary.heic", "X", LedgerState.DISCOVERED),
-                    LedgerEntry("X-live.mov", "X", LedgerState.DISCOVERED),
+                    LedgerEntry("X-primary.heic", AssetId("X"), LedgerState.DISCOVERED),
+                    LedgerEntry("X-live.mov", AssetId("X"), LedgerState.DISCOVERED),
                 ),
             )
         }
@@ -94,8 +95,8 @@ class LedgerServiceTest {
         val backend = LedgerService(opened(driver))
         assertNull(backend.get("old-key")) // 1.sqm is destructive — pre-migration rows are not preserved
         // The assetId column exists and version/updatedAt are gone: a put/get round-trips.
-        backend.recordUnlessSettled(LedgerEntry("k", "A", LedgerState.REQUESTED))
-        assertEquals("A", backend.get("k")?.assetId)
+        backend.recordUnlessSettled(LedgerEntry("k", AssetId("A"), LedgerState.REQUESTED))
+        assertEquals(AssetId("A"), backend.get("k")?.assetId)
     }
 
     @Test
@@ -125,7 +126,7 @@ class LedgerServiceTest {
         // The COMPLETED row survives (so it is not re-uploaded), now without version or updatedAt.
         val survived = LedgerService(opened(driver)).get("A-photo.jpg")
         assertEquals(LedgerState.COMPLETED, survived?.state)
-        assertEquals("A", survived?.assetId)
+        assertEquals(AssetId("A"), survived?.assetId)
     }
 
     @Test
@@ -155,10 +156,10 @@ class LedgerServiceTest {
         val backend = LedgerService(opened(driver))
         val survived = backend.get("A-photo.jpg")
         assertEquals(LedgerState.COMPLETED, survived?.state)
-        assertEquals("A", survived?.assetId)
+        assertEquals(AssetId("A"), survived?.assetId)
         // The generated schema no longer binds updatedAt — a fresh put/get round-trips.
-        backend.recordUnlessSettled(LedgerEntry("B-photo.jpg", "B", LedgerState.REQUESTED))
-        assertEquals("B", backend.get("B-photo.jpg")?.assetId)
+        backend.recordUnlessSettled(LedgerEntry("B-photo.jpg", AssetId("B"), LedgerState.REQUESTED))
+        assertEquals(AssetId("B"), backend.get("B-photo.jpg")?.assetId)
     }
 
     @Test
@@ -188,10 +189,10 @@ class LedgerServiceTest {
         val backend = LedgerService(opened(driver))
         val survived = backend.get("A-photo.jpg")
         assertEquals(LedgerState.COMPLETED, survived?.state)
-        assertEquals("A", survived?.assetId)
+        assertEquals(AssetId("A"), survived?.assetId)
 
         // And a fresh put on the migrated schema round-trips.
-        backend.recordUnlessSettled(LedgerEntry("B-photo.jpg", "B", LedgerState.REQUESTED))
+        backend.recordUnlessSettled(LedgerEntry("B-photo.jpg", AssetId("B"), LedgerState.REQUESTED))
         assertEquals(LedgerState.REQUESTED, backend.get("B-photo.jpg")?.state)
     }
 
@@ -233,11 +234,11 @@ class LedgerServiceTest {
         val backend = LedgerService(opened(driver))
         val survived = backend.get("A-photo.jpg")
         assertEquals(LedgerState.COMPLETED, survived?.state)
-        assertEquals("A", survived?.assetId)
+        assertEquals(AssetId("A"), survived?.assetId)
         assertEquals("2026-07-10T00:00:00Z", survived?.creationDate)
         // And it still projects into the manifest — 6.sqm's `absent` column came and went (10.sqm) without
         // ever hiding a row nobody marked.
-        assertEquals(listOf("A"), backend.manifestRows().map { it.assetId })
+        assertEquals(listOf(AssetId("A")), backend.manifestRows().map { it.assetId })
     }
 
     @Test

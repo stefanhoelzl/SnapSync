@@ -72,10 +72,10 @@ class GalleryServicesTest {
     }
 
     private fun photo(id: String) = RawAsset(
-        assetId = id,
+        assetId = AssetId(id),
         creationDate = "2026-06-01T10:00:00Z",
         rawResources = listOf(RawResource(ResourceRole.PRIMARY, "image/jpeg", "IMG.JPG", Unit)),
-        facts = AssetFacts(id, CaptureDate("2026-06-01T10:00:00Z")),
+        facts = AssetFacts(AssetId(id), CaptureDate("2026-06-01T10:00:00Z")),
     )
 
     private val policy = SelectionPolicy(listOf(SelectionRule.CaptureAfter(captureCutoff("2026-01-01T00:00:00Z"))))
@@ -86,10 +86,10 @@ class GalleryServicesTest {
     fun `candidates are the gallery's facts and the admitted ones' resources come in ONE request`() = runTest {
         val gallery = ScriptedGallery(assets = listOf(photo("A"), photo("B"), photo("C")))
         val read = assertIs<CandidateRead.Readable>(GalleryCandidateSource(gallery).candidates(policy))
-        assertEquals(listOf("A", "B", "C"), read.candidates.map { it.facts.assetId })
+        assertEquals(listOf(AssetId("A"), AssetId("B"), AssetId("C")), read.candidates.map { it.facts.assetId })
         assertEquals(listOf("assets"), gallery.calls, "facts cost no resource read")
 
-        val resources = resourcesOf(read.candidates.filter { it.facts.assetId != "B" })
+        val resources = resourcesOf(read.candidates.filter { it.facts.assetId != AssetId("B") })
 
         assertEquals(listOf("A-primary.jpg", "C-primary.jpg"), resources.map { it.filename })
         assertEquals(listOf("assets", "resources([A, C])"), gallery.calls, "one batch for every admitted asset")
@@ -124,7 +124,7 @@ class GalleryServicesTest {
     fun `only a full grant's walk is authoritative for deletion`() = runTest {
         for (access in GalleryAccess.entries) {
             val walk = GalleryDiscovery(ScriptedGallery(access = access, assets = listOf(photo("A")))).discover(policy)
-            assertEquals(listOf("A"), walk.candidates.map { it.facts.assetId }, "$access")
+            assertEquals(listOf(AssetId("A")), walk.candidates.map { it.facts.assetId }, "$access")
             assertEquals(access == GalleryAccess.GRANTED, walk.fullEnumeration, "$access")
         }
     }
@@ -159,8 +159,8 @@ class GalleryServicesTest {
     fun `a full grant answers present and absent for every id asked`() = runTest {
         val presence = GalleryAssetPresence(ScriptedGallery(assets = listOf(photo("A"))))
         assertEquals(
-            mapOf("A" to AssetPresence.PRESENT, "GONE" to AssetPresence.ABSENT),
-            presence.presence(setOf("A", "GONE")),
+            mapOf(AssetId("A") to AssetPresence.PRESENT, AssetId("GONE") to AssetPresence.ABSENT),
+            presence.presence(setOf(AssetId("A"), AssetId("GONE"))),
         )
     }
 
@@ -169,8 +169,8 @@ class GalleryServicesTest {
         for (access in GalleryAccess.entries - GalleryAccess.GRANTED) {
             val gallery = ScriptedGallery(access = access, assets = listOf(photo("A")))
             assertEquals(
-                mapOf("A" to AssetPresence.UNKNOWN, "GONE" to AssetPresence.UNKNOWN),
-                GalleryAssetPresence(gallery).presence(setOf("A", "GONE")),
+                mapOf(AssetId("A") to AssetPresence.UNKNOWN, AssetId("GONE") to AssetPresence.UNKNOWN),
+                GalleryAssetPresence(gallery).presence(setOf(AssetId("A"), AssetId("GONE"))),
                 "$access: a partial view's miss is not evidence of absence",
             )
             assertTrue(gallery.calls.isEmpty(), "$access")
@@ -180,8 +180,8 @@ class GalleryServicesTest {
     @Test
     fun `an unreadable gallery answers unknown and asking about nothing answers nothing`() = runTest {
         assertEquals(
-            mapOf("A" to AssetPresence.UNKNOWN),
-            GalleryAssetPresence(ScriptedGallery(readable = false)).presence(setOf("A")),
+            mapOf(AssetId("A") to AssetPresence.UNKNOWN),
+            GalleryAssetPresence(ScriptedGallery(readable = false)).presence(setOf(AssetId("A"))),
         )
         val gallery = ScriptedGallery()
         assertEquals(emptyMap(), GalleryAssetPresence(gallery).presence(emptySet()))
@@ -207,10 +207,10 @@ class GalleryServicesTest {
         val albums = GalleryAlbums(gallery)
         albums.add("album-1", emptyList())
         assertTrue(gallery.adds.isEmpty())
-        albums.add("album-1", listOf("A", "B", "A"))
+        albums.add("album-1", listOf(AssetId("A"), AssetId("B"), AssetId("A")))
         gallery.addOutcome = WriteOutcome.Failed("gone")
-        albums.add("album-1", listOf("C")) // a failed add is logged, never thrown
-        assertEquals(listOf("album-1" to setOf("A", "B"), "album-1" to setOf("C")), gallery.adds)
+        albums.add("album-1", listOf(AssetId("C"))) // a failed add is logged, never thrown
+        assertEquals(listOf("album-1" to setOf(AssetId("A"), AssetId("B")), "album-1" to setOf(AssetId("C"))), gallery.adds)
     }
 
     @Test
@@ -221,10 +221,10 @@ class GalleryServicesTest {
                 AlbumRecord("tg", "TELEGRAM"),
                 AlbumRecord("trip", "Signal Hill Hike"),
             ),
-            members = mapOf("wa" to setOf("A"), "tg" to setOf("B"), "trip" to setOf("C")),
+            members = mapOf("wa" to setOf(AssetId("A")), "tg" to setOf(AssetId("B")), "trip" to setOf(AssetId("C"))),
         )
         val denied = GalleryAlbums(gallery).assetIdsInAlbums(SELECTION_CALIBRATION, captureCutoff("2026-01-01T00:00:00Z"))
-        assertEquals(setOf("A", "B"), denied)
+        assertEquals(setOf(AssetId("A"), AssetId("B")), denied)
         assertEquals(listOf("albums", "albumMembers(wa)", "albumMembers(tg)"), gallery.calls, "O(albums), never O(assets)")
     }
 

@@ -47,7 +47,7 @@ data class DownloadCounts(
 )
 
 /** The source identity of a foreign asset: its owning device and that device's assetId. */
-data class AssetRef(val sourceDeviceId: String, val sourceAssetId: String)
+data class AssetRef(val sourceDeviceId: String, val sourceAssetId: AssetId)
 
 /** A resource to download for an asset, as taken from the union listing. */
 data class PlannedResource(
@@ -84,4 +84,4 @@ data class ImportableAsset(val ref: AssetRef, val creationDate: String)
  * identifier — but the confirmation never arrived. The import path adjudicates these against the photo
  * library rather than importing them again (capability `receiving-photos`).
  */
-data class UnconfirmedImport(val ref: AssetRef, val createdLocalId: String)
+data class UnconfirmedImport(val ref: AssetRef, val createdLocalId: AssetId)

@@ -1,5 +1,6 @@
 package app.snapsync.feature.upload
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.UploadCreateOutcome
 import app.snapsync.model.CycleResult
@@ -106,7 +107,7 @@ class UploadCycle(
     // before their upload jobs exist. Runs in whichever process runs the cycle (extension on ≥26.1, app on
     // 18–26.0). Best-effort — invoked under `runCatching`. Fired only when the membership opted in
     // (`saveToAlbum`), which arrives with the gate, so the opt-in check is no longer each root's to remember.
-    private val placeInAlbum: suspend (eventId: String, assetIds: Set<String>) -> Unit,
+    private val placeInAlbum: suspend (eventId: String, assetIds: Set<AssetId>) -> Unit,
     private val log: Logger = Logger.withTag("UploadCycle"),
 ) {
     /**
@@ -399,7 +400,7 @@ class UploadCycle(
     private suspend fun departedKeys(
         // Every row the ledger holds; after the absence sweep none is excluded.
         rows: List<LedgerEntry>,
-        present: Set<String>,
+        present: Set<AssetId>,
         policy: SelectionPolicy,
     ): List<String> {
         val inWindow = admittedAssetIds(rows, policy)
@@ -636,7 +637,7 @@ class UploadCycle(
      * harmless. The set is admitted by the membership's current policy by construction (it is a subset of
      * the walk's admitted set).
      */
-    private suspend fun placeHealed(ready: Ready, assetIds: Set<String>) {
+    private suspend fun placeHealed(ready: Ready, assetIds: Set<AssetId>) {
         if (!ready.saveToAlbum || assetIds.isEmpty()) return
         runCatchingCancellable { placeInAlbum(ready.eventId, assetIds) }
             .onFailure { log.w(it) { "event-album placement of healed rows failed this cycle" } }
@@ -719,7 +720,7 @@ class UploadCycle(
         /** Admitted assets the ledger already fully knows, whose resources the walk therefore did not read. */
         val skipped: Int,
         /** Admitted assets with a bare row this walk dates — placed in the event album before it does. */
-        val healing: Set<String>,
+        val healing: Set<AssetId>,
         /** The rows an authoritative walk shows are gone — empty for a walk that is not authoritative. */
         val departedKeys: List<String>,
     )
