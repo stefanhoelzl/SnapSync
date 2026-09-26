@@ -1,5 +1,6 @@
 package app.snapsync.compose
 
+import app.snapsync.model.ReportDestination
 import app.snapsync.ports.Clock
 import app.snapsync.ports.CrashHandlers
 import app.snapsync.ports.CrashReporter
@@ -72,7 +73,11 @@ class ProcessServices internal constructor(
      * channel re-installs them after pointing Kermit elsewhere for a while.
      */
     val logWriters: List<LogWriter>,
-)
+) {
+    /** Where a bug report goes on this build (capability `privacy-security`): sent where it reports, else kept here. */
+    val reportDestination: ReportDestination
+        get() = if (crash.isConfigured) ReportDestination.DEVELOPER else ReportDestination.THIS_DEVICE
+}
 
 /**
  * Set up what is per-process — **called first by every root**, before it composes anything else, and exactly once.
@@ -87,7 +92,7 @@ class ProcessServices internal constructor(
  *    channel, whose log writer is already installed).
  */
 fun snapSyncProcess(ports: ProcessPorts): ProcessServices {
-    val crash = CrashReporting(ports.crashReporter, ports.dsn, ports.entryContext)
+    val crash = CrashReporting(ports.crashReporter, ports.dsn, ports.entryContext, ports.files)
     ports.crashReporter.listen(CrashHandlers(onEvent = crash::shapeEvent, onBreadcrumb = crash::shapeCrumb))
     val writers = listOfNotNull(SinkLogWriter(ports.logSinks, ports.entryContext), crash.logWriter)
     if (ports.ownsGlobalLogger) Logger.setLogWriters(writers)

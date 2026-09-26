@@ -413,8 +413,10 @@ with the proxy task above).
 - **Sending the logs off-device** (capability `privacy-security`): **double-tap the "SnapSync" label**
   at the top of any screen → a confirm dialog → one diagnostic dump reaches Bugsink (state + counts +
   the tail of BOTH logs, ~700 KB total, sent **verbatim** — ids intact, unlike automatic crash
-  events). It is deliberately invisible: no button, no semantics, and on a build with no baked
-  DSN (every dev/sideload build) **no dialog opens at all**. To exercise it on device, **dispatch the
+  events). It is deliberately invisible: no button, no semantics. On a build with no baked DSN (every
+  dev/sideload/simulator build) the sheet says so and **Save** keeps the report on the phone instead — one
+  file, `diagnostic-report.json` in the app's Documents, replaced by each report and pulled like `debug.log`;
+  nothing is sent. To exercise the SENDING path on device, **dispatch the
   branch** — `gh workflow run ios.yml --ref <branch>` — which builds the release channel and delivers to
   internal TestFlight. ⚠️ Injecting `SENTRY_DSN` on the dev build loop's `xcodebuild` line **no longer works**:
   the DSN rides in the generated `Deployment.plist` bundled as a resource, and a build-setting override

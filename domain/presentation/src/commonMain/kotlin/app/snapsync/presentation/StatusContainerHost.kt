@@ -1,6 +1,7 @@
 package app.snapsync.presentation
 
 import app.snapsync.model.runCatchingCancellable
+import app.snapsync.model.ReportDestination
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.CaptureDate
@@ -115,6 +116,9 @@ class StatusContainerHost(
     // build's root answers `Honoured`. Defaulted to the shipped answer so a host that forgets it is safe
     // rather than exploitable.
     private val inviteLinkHints: InviteLinkHints = InviteLinkHints.Ignored,
+    // Where a bug report goes on this build (capability `privacy-security`) — a constant the composition states,
+    // carried on every `UiState` so the sheet says it. Defaulted to the distributed build's answer.
+    private val reportDestination: ReportDestination = ReportDestination.DEVELOPER,
 ) : ContainerHost<UiState, Nothing> {
 
     // The bundles are unpacked into the names the body already uses. Grouping happens at the boundary,
@@ -263,7 +267,7 @@ class StatusContainerHost(
                 reconfiguringState.value,
                 updateLayerFor(versionRefusal.value, appStoreUrl),
                 ::resolveRange,
-            ).let { layer -> UiState(layer, overlaysState.value.maskedFor(layer)) },
+            ).let { layer -> UiState(layer, overlaysState.value.maskedFor(layer), reportDestination) },
             // The container SURVIVES a throwing intent (spec `sync-status`) — and this handler is the
             // whole of what makes it so. It is not a logging convenience: Orbit runs each intent as
             // `runCatchingCancellable { … }.exceptionOrNull()?.let { settings.exceptionHandler?.handleException(…) ?: throw it }`,
@@ -323,7 +327,7 @@ class StatusContainerHost(
                         values[12] as Owned<SettingsSurface>,
                         updateLayerFor(values[13] as VersionRefusal?, appStoreUrl),
                         ::resolveRange,
-                    ).let { layer -> UiState(layer, (values[10] as Overlays).maskedFor(layer)) }
+                    ).let { layer -> UiState(layer, (values[10] as Overlays).maskedFor(layer), reportDestination) }
                 }
                     .collect { ui -> reduce { ui } }
             }
@@ -517,13 +521,13 @@ class StatusContainerHost(
     /**
      * Send the diagnostic dump (capability `privacy-security`) with the operator's account of the
      * problem — already trimmed and length-bounded by the sheet that collected it — and an opaque label
-     * for the surface it was sent from (the screen, which only the screen itself can name). `null` when this
-     * build carries no reporting channel — the screen then wires no gesture, so the affordance does not
-     * exist rather than existing and doing nothing. Fire-and-forget: `UiState` is unaffected, and no
-     * delivery claim is made (the channel may queue and retransmit).
+     * for the surface it was sent from (the screen, which only the screen itself can name). On a build that
+     * reports nowhere the report is kept on the device instead ([UiState.reportDestination] says which).
+     * Fire-and-forget: `UiState` is unaffected, and no delivery claim is made (the channel may queue and
+     * retransmit).
      */
-    val onSendDiagnostics: ((String, String) -> Unit)? =
-        commands.sendDiagnostics?.let { send -> { note, screen -> intent { send(note, screen) } } }
+    val onSendDiagnostics: (String, String) -> Unit =
+        { note, screen -> intent { commands.sendDiagnostics(note, screen) } }
 
     /**
      * Apply a reconfigure of the joined membership (capability `manage-membership`), confirmed on

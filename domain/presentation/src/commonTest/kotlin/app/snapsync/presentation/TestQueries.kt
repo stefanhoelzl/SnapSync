@@ -44,7 +44,7 @@ internal fun testCommands(
     ) -> app.snapsync.model.ReconfigureOutcome = { _, _, _, _, _ -> app.snapsync.model.ReconfigureOutcome.Saved },
     rename: (eventId: String, name: String) -> Unit = { _, _ -> },
     resetRename: suspend () -> Unit = {},
-    sendDiagnostics: (suspend (note: String, screen: String) -> Unit)? = null,
+    sendDiagnostics: suspend (note: String, screen: String) -> Unit = { _, _ -> },
 ) = app.snapsync.model.UserCommands(
     leave, create, commitJoin, share, requestAccess, openSettings, openLink,
     choosePhotos = {}, // no presentation test is about the picker; its binding is the shells' and compose/'s

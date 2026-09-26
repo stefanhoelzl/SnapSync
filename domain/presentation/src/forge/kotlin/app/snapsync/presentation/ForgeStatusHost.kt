@@ -79,7 +79,8 @@ fun forgeStatusHost(state: String, scope: CoroutineScope, cutoffFormatter: Cutof
             rename = { _, _ -> },
             resetRename = {},
             // No reporting channel in a forge binary, so no gesture (capability `privacy-security`).
-            sendDiagnostics = null,
+            // The forge renders forged state; a report it is asked for goes nowhere.
+            sendDiagnostics = { _, _ -> },
         ),
         diagnostics = StatusDiagnostics(log = {}, onIntentError = {}),
     )

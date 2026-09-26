@@ -11,7 +11,12 @@ import app.snapsync.model.diagnosticDumpEvent
 import app.snapsync.model.loggedCrash
 import app.snapsync.model.scrubbedCrumb
 import app.snapsync.model.scrubbedEvent
+import app.snapsync.model.FileArea
+import app.snapsync.model.FileResult
+import app.snapsync.model.SAVED_DIAGNOSTIC_REPORT_PATH
+import app.snapsync.model.savedDiagnosticReport
 import app.snapsync.ports.CrashReporter
+import app.snapsync.ports.Files
 import app.snapsync.ports.EntryContext
 import co.touchlab.kermit.LogWriter
 import co.touchlab.kermit.Severity
@@ -34,6 +39,8 @@ class CrashReporting(
     private val dsn: String?,
     /** The ambient entry point a log line belongs to, which rides an event as its `entry_point` tag. */
     private val entry: EntryContext,
+    /** The process's files: where a build that reports nowhere keeps the latest report. */
+    private val files: Files,
 ) {
 
     /** Whether this build carries a reporting destination. Constant for the process. */
@@ -83,9 +90,19 @@ class CrashReporting(
      * Transmit one operator-initiated diagnostic dump — verbatim, identifiers included ([diagnosticDumpEvent]
      * declares it exempt from the scrub). Delivery is the channel's business: [DumpResult.Queued] does not mean the
      * dump has left the device.
+     *
+     * A build that reports nowhere keeps it instead (capability `privacy-security`): the same sections, written to
+     * [SAVED_DIAGNOSTIC_REPORT_PATH] in the app's own files, replacing the report saved before it. It never leaves
+     * the phone; a refused write answers [DumpResult.NotSent] with the reason.
      */
     suspend fun sendDump(dump: DiagnosticDump): DumpResult {
-        if (!isConfigured) return DumpResult.NotSent("this build reports nowhere")
+        if (!isConfigured) {
+            val bytes = savedDiagnosticReport(dump).encodeToByteArray()
+            return when (val written = files.write(FileArea.PRIVATE, SAVED_DIAGNOSTIC_REPORT_PATH, bytes)) {
+                is FileResult.Ok -> DumpResult.Saved(SAVED_DIAGNOSTIC_REPORT_PATH)
+                else -> DumpResult.NotSent("the report could not be saved: $written")
+            }
+        }
         start()
         return reporter.sendDump(diagnosticDumpEvent(dump))
     }

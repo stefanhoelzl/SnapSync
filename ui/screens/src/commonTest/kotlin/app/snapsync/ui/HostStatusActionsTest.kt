@@ -150,7 +150,7 @@ class HostStatusActionsTest {
                 reconfigure = { eventId, _, _, _, _ -> record("reconfigure:$eventId"); ReconfigureOutcome.Saved },
                 rename = { eventId, name -> record("rename:$eventId:$name") },
                 resetRename = { record("resetRename") },
-                sendDiagnostics = if (diagnostics) ({ note, _ -> record("sendDiagnostics:$note") }) else null,
+                sendDiagnostics = { note, _ -> record("sendDiagnostics:$note") },
             ),
             queries = UserQueries(loadJoinDetails = { details(it) }, shareableCount = { _, _ -> null }),
             diagnostics = StatusDiagnostics(log = {}, onIntentError = {}),

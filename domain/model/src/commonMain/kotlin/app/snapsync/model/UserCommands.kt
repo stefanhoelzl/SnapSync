@@ -56,17 +56,15 @@ package app.snapsync.model
  * - [resetRename] — clear the rename status latch back to `Idle` once the screen has consumed a
  *   terminal value. Needed because `RenameStatus` carries a success value where `CreationStatus`
  *   deliberately does not: a rename changes no layer, so nothing else would clear it.
- * - [sendDiagnostics] — send this device's diagnostic dump to the operator's reporting channel
- *   (capability `privacy-security`), fired by the hidden double-tap once the operator has written
+ * - [sendDiagnostics] — send this device's diagnostic dump to the operator's reporting channel, or keep it on
+ *   the device on a build that reports nowhere (capability `privacy-security`), fired by the hidden double-tap
+ *   once the operator has written
  *   what went wrong. `note` is that description, already trimmed and length-bounded by the sheet — it
  *   titles the report, so two reports about different problems arrive as different issues. `screen` is
  *   an opaque label for the surface it was sent from, supplied by the UI (the domain enumerates no
  *   screens); it is the only way a screen-local surface, which touches no port, reaches a report.
- *   **Nullable, unlike every other command**: it is `null` on a build whose reporting channel is not
- *   configured (every dev, sideload and simulator build, and every off-device composition), and the
- *   screen must then wire no gesture at all — a build that can send nothing may not offer an
- *   affordance suggesting it can. An inert lambda would not express that: the affordance would exist
- *   and silently do nothing, which is the one outcome the contract forbids.
+ *   Present on every build: where the report goes is [UiState.reportDestination], which the sheet states, so
+ *   the affordance never suggests a destination the build does not have.
  */
 /**
  * What a join commit did (capability `join-event`).
@@ -123,5 +121,5 @@ class UserCommands(
      * previous `Succeeded` still latched.
      */
     val resetRename: suspend () -> Unit,
-    val sendDiagnostics: (suspend (note: String, screen: String) -> Unit)?,
+    val sendDiagnostics: suspend (note: String, screen: String) -> Unit,
 )

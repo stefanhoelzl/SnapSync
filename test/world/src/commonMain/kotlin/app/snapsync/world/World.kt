@@ -176,6 +176,11 @@ class World(
      * [InviteLinkHints.Honoured], as the rig's boot hook does on a device.
      */
     val inviteLinkHints: InviteLinkHints = InviteLinkHints.Ignored,
+    /**
+     * Where this world's build reports (capability `privacy-security`): a distributed build's destination by default,
+     * or `null` for a build that reports nowhere, which keeps a bug report in [privateFiles] instead.
+     */
+    val dsn: String? = WORLD_DSN,
 ) {
 
     // ---- world state + fakes (all public / inspectable) -----------------------------------------
@@ -558,7 +563,7 @@ class World(
         private set
 
     /**
-     * One app process's per-process services, as its root sets them up: a reporting destination (the world plays a
+     * One app process's per-process services, as its root sets them up: the world's [dsn] (by default it plays a
      * distributed build), no process metrics (a JVM has no provider), and no log writers installed — Kermit's writer
      * list is JVM-global, and a world is one of many processes in this JVM, so it does not own the logger.
      */
@@ -570,7 +575,7 @@ class World(
             files = inMemoryFiles(shared = null, private = privateFiles),
             clock = worldClock,
             entryContext = EntryContext.NoOp,
-            dsn = WORLD_DSN,
+            dsn = dsn,
             bootLines = emptyList(),
             ownsGlobalLogger = false,
         ),
