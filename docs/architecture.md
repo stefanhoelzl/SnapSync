@@ -73,7 +73,7 @@ model  <-  ports  <-  services  <-  feature  <-  flow  <-  compose
 |---|---|---|
 | `model/` | vocabulary, pure domain services and codecs, `UserCommands`/`UserQueries` bundle types (and the `EventCreator` command), logging helpers, `UiState`, and **every pure-data type a port carries** | nothing project-internal |
 | `ports/` | every port interface, outbound and inbound (`PlatformEntries`, `ExtensionEntries`), plus port-adjacent logic not yet re-homed (`resolveOrMint`, `runProcessCycle`, the `CycleResult` raw-value mapping, …) | `model/` |
-| `services/` | the shared capabilities built over the thin ports: what a store holds, when it is opened, what a failure means. Today the storage services (`LedgerService`, `DownloadService`, `SuppressionService`) and their SQLDelight databases (the `.sq` files and generated code live here, so the zone's compile boundary covers them). Each still implements its transitional store interface in `ports/` | `model/`, `ports/` |
+| `services/` | the shared capabilities built over the thin ports: what a store holds, when it is opened, what a failure means. Today the storage services (`LedgerService`, `DownloadService`, `SuppressionService`) and their SQLDelight databases (the `.sq` files and generated code live here, so the zone's compile boundary covers them), and the gallery services (`GalleryDiscovery`, `GalleryAssetPresence`, `GalleryCandidateSource`, `GalleryAlbums`). Each still implements its transitional interface in `ports/` | `model/`, `ports/` |
 | `feature/` | business rules, one package per feature, mutually blind. A type consumed outside `feature/` lives in that feature's `readmodel` package (`feature/<feature>/readmodel/`) — the package is the definition of a read-model | `model/`, `ports/`, `services/` |
 | `presentation/` | the UI-state reduction (`StatusContainerHost`, reducing into `model/`'s `UiState`) | `model/`, and `feature/` read-model packages only |
 | `flow/` | the OS-callback trigger flows (`Foreground`, `Background`, `SilentPush`, `Provision`): ordering only | `model/`, `feature/` (never `ports/`) |
@@ -143,6 +143,8 @@ One line each. The authority is the named gate. Gates live in `:test:architectur
 |---|---|
 | Anything touching an external system (time, files, network, platform) goes through a port in `ports/`, named for the **need**, never the technology | **review** (partly the compiler: `ports/` cannot import Ktor, nor any of SQLDelight but its runtime interfaces, which `Databases` carries) |
 | A storage port is one external system and decides nothing (`Databases`: open by name, read-write or read-only; `Files`: read, tail, write, delete, exists, locate within an area; `Preferences`: get, set, remove). What a store holds, when it opens and what a failure means is a service's, in `services/` | **review** |
+| The photo library is one thin port: `GalleryReader` (both processes: assets by policy or id, resources by id, albums, album members, create, add) and `Gallery` (the app: plus the access request, the selection picker, the partial grant's selection observer, the import and the change token). It answers what the platform shows, and `NotReadable` — never an empty answer — when no grant lets the process read. Whether a walk is authoritative for deletion, which grant may say a photo is gone and which albums are denied are the gallery services' (`services/`). Asset ids cross in one form, opaque to the core | `GalleryReaderContract`, `GalleryContract`, `GalleryImportContract` (live on `IOS_SIM_APP`, the no-grant state on `IOS_SIM_KEXE`) + `GalleryServicesTest` |
+| The origin exclusions' tuning — the two resolution floors and the album denylist — is one `SelectionCalibration` value in `model/`, product policy rather than a platform fact: no composition supplies its own, so the app and the extension cannot disagree | **review** |
 | `SecureStore` writes answer a `WriteOutcome`; the identity and attestation services throw where the old throwing store did, so a refused write fails the operation (the device id is unavailable and never used unsaved; a token is not accepted; a keyId is refused). A write may replace by delete-then-add, so after a refused one the old value may be gone | `SecureStoreContract` (`INACCESSIBLE_WRITE_REFUSES`) + `PersistedDeviceIdentityTest`, `AttestStateTest` |
 | Paths are area-relative (`FileArea.SHARED`/`PRIVATE`); only an adapter resolves a platform path, and `locate` is the one exit, for a platform API that must be handed a file. No absolute container path is stored | **review** (the download store's staged paths: `DownloadStoreMigrationTest`) |
 | `Files` answers `NotFound` for a definite absence only: a present file that cannot be read is `Denied`, never absent — a config file read as absent is a false leave | `FilesContract` (`DENIED_IS_NEVER_NOT_FOUND`, live on JVM and `IOS_SIM_KEXE`) |
@@ -154,8 +156,18 @@ One line each. The authority is the named gate. Gates live in `:test:architectur
 | No function-typed `var` (callback slot) in production. Callbacks are bound at construction | `LambdaSeamShapeTest` |
 | No default on a function-typed constructor parameter (except `@Composable`) | `LambdaSeamShapeTest` |
 | Each OS entry surface is one **inbound port** (`PlatformEntries`, `ExtensionEntries`), named for what the OS says, implemented in `compose/`, reached by Kotlin delegation from the root | the inbound-port contracts (`PlatformEntriesContract`/`ExtensionEntriesContract`) + shell gates. Naming is **review** |
+| **Events arrive through `listen`.** An event port extends `Listenable<H>`; its `*Handlers` bundle is built in `compose/` only and registered by the host zone, once per adapter, as the graph is composed — so a background wake's delivery finds it. `listen` only registers: it runs no handler and builds no feature. Every handler is a flow command, a service call or a presentation intent (the table below). A `*Handlers`-typed `var` exists only behind an `override fun listen` | `ListenDoorTest` (both halves, non-vacuous) + `LambdaSeamShapeTest` + `CompositionOpensNoDatabaseTest` |
+| The partial grant's selection observer opens only from host assembly (`Gallery.observeChanges`), so a wake that never builds the screen reads nothing; the latest snapshot is kept for a consumer that attaches late | `SelectionObserverTimingTest` (`:test:world`) + `SelectionSnapshotLaneTest` |
 | A read that can be unknown returns a sealed result with an explicit *unreadable*, never folded into a known answer. Predicates are named for the states they accept | **review** |
 | Absence is never silent: a seam that can answer "nothing" separates *nothing* from *could not tell* wherever the consequences differ, or states why the collapse is safe for every cause | **review** (design discipline) |
+
+**The handler table** — every handler an event port is registered with, and what it is:
+
+| port | handler | is | runs on |
+|---|---|---|---|
+| `Gallery` | `onChanged(SelectionSnapshot)` | hands the snapshot to the core's conflated channel; host assembly's collector recounts `N` and runs the selection's tail (a flow command) | the selection lane |
+| `Gallery` | `onImportPlaceholder(ref, id)` | the download store's guarded marker write (a service call), synchronous — the lane exception: it must land inside the change block, before the asset is observable | the platform's change block |
+| `Gallery` | `onImportSettled(ref, outcome)` | the download store's confirm or clear (a service call), persisted inline — the platform reports it once, even when the requester is gone | the platform's completion |
 
 ### State and authority
 
@@ -854,14 +866,15 @@ model ← ports ← services ← feature ← flow ← compose
 
 **Ports:**
 - Backend: typed, one HTTP client per composition.
-- Gallery and GalleryReader.
+- Gallery and GalleryReader (shipped in 11d; `export` of a resource to a file waits for the transfer ports in 11f).
 - Upload, ExtensionRegistry, Download and Wake.
 - Files, Databases, Preferences, SecureStore and PlatformDeviceId.
 - DeviceIntegrity, CrashReporter, ProcessMetrics, SystemUi, Clock, ProcessInfo, LogSink and EntryContext.
 - PushNotifications, Links, Lifecycle, ExtensionHost, Ui and DevControls.
 
-Event ports extend `Listenable<H> { fun listen(handlers: H) }`. Each composition calls `listen` once per
-adapter. It only registers the handlers: the core and the status host stay lazy. Once-only deliveries are
+Event ports extend `Listenable<H> { fun listen(handlers: H) }` — the `Gallery` since 11d (section 2, "Events arrive
+through `listen`"). Each composition calls `listen` once per adapter. It only registers the handlers: the core and the
+status host stay lazy. Once-only deliveries are
 persisted inline on the delivering thread.
 
 **Rules that land with the phases:**
@@ -871,9 +884,10 @@ persisted inline on the delivering thread.
   rig variant). `rigBoot` goes away (11g).
 - An adapter constructor takes no function-typed parameter. The gate lands in 11g.
 - `ports/` holds interfaces only (11g).
-- `SelectionCalibration` is a value passed in at composition, not a platform branch.
+- `SelectionCalibration` is one product-policy value in `model/` (11d), not supplied per composition: the floors and
+  the denylist mean the same on every platform.
 
 **Phases.** 11a structure (shipped) → 11b storage and `:domain:services` → 11c backend and integrity, 11d gallery
-and 11e process ports, in parallel → 11f transfer → 11g entry surface. 11i (raw asset ids) follows 11c, 11d and
-11f, then comes 11h (the mock mix chosen at launch). Phases 11d–11g are being designed again against §10's wake
-model.
+(shipped) and 11e process ports, in parallel → 11f transfer → 11g entry surface. 11i (raw asset ids) follows 11c,
+11d and 11f, then comes 11h (the mock mix chosen at launch). Phases 11e–11g are being designed again against §10's
+wake model.
