@@ -1,7 +1,7 @@
 package app.snapsync.engine
 
 import app.snapsync.model.AssetId
-import app.snapsync.ports.LedgerStore
+import app.snapsync.services.ledger.LedgerService
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.Entered
@@ -17,7 +17,6 @@ import app.snapsync.model.TerminalOutcome
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import app.snapsync.databases.freshJdbcDatabases
 import app.snapsync.databases.opened
-import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.ledger.db.LedgerDatabase
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -28,7 +27,7 @@ import kotlinx.coroutines.test.runTest
 class LedgerServiceTest {
 
     /** The contract, bound on this host (JVM). Every clause starts from a fresh, empty store. */
-    private val binding = object : Binding<LedgerStoreState, LedgerStore> {
+    private val binding = object : Binding<LedgerStoreState, LedgerService> {
         override val host = Host.JVM
         override val kind = BindingKind.Live
         override val reaches = setOf(LedgerStoreState.EMPTY)
@@ -36,10 +35,10 @@ class LedgerServiceTest {
     }
 
     @Test
-    fun `satisfies the LedgerStore contract`() = verify(LedgerStoreContract, binding)
+    fun `satisfies the LedgerService contract`() = verify(LedgerStoreContract, binding)
 
     /** The service over the real JVM adapter, in a directory of its own: the contract runs through the service. */
-    private fun createBackend(): LedgerStore = LedgerService(freshJdbcDatabases())
+    private fun createBackend(): LedgerService = LedgerService(freshJdbcDatabases())
 
     @Test
     fun `a batch record that fails part-way records nothing from that batch`() = runTest {

@@ -30,12 +30,12 @@ class RelaunchWorldTest {
         w.downloadController.reconcile(event)
         val session = assertNotNull(w.downloadTransport).inFlight().map { it.description }
         assertTrue(session.isNotEmpty(), "precondition: this launch started a download")
-        val rows = w.ledgerBackend.manifestRows()
+        val rows = w.ledger.manifestRows()
 
         w.relaunch()
 
-        assertEquals(event, w.configSource.config.value?.eventId, "the membership (an App-Group file) survives")
-        assertEquals(rows, w.ledgerBackend.manifestRows(), "the ledger (an App-Group database) survives")
+        assertEquals(event, w.config.config.value?.eventId, "the membership (an App-Group file) survives")
+        assertEquals(rows, w.ledger.manifestRows(), "the ledger (an App-Group database) survives")
         assertTrue(w.downloadStore.pendingDownloads().isNotEmpty(), "the download store survives")
         assertTrue(w.gallery.current().any { it.assetId == AssetId("A") }, "the photo library survives")
         assertEquals(GalleryAccess.GRANTED, w.permission.permission.value, "the grant survives")

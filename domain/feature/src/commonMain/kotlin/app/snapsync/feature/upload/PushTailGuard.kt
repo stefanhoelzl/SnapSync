@@ -1,6 +1,6 @@
 package app.snapsync.feature.upload
 
-import app.snapsync.ports.ConfigSource
+import app.snapsync.services.config.ConfigService
 import app.snapsync.model.MembershipRead
 import co.touchlab.kermit.Logger
 
@@ -26,7 +26,7 @@ import co.touchlab.kermit.Logger
  */
 class PushTailGuard(
     /** The membership: the active event id is read fresh at every push. */
-    private val configSource: ConfigSource,
+    private val configSource: ConfigService,
     private val log: Logger = Logger.withTag("PushTailGuard"),
 ) {
     /** `true` when the push for [eventId] names this device's active event, so its wake joins the tail. */

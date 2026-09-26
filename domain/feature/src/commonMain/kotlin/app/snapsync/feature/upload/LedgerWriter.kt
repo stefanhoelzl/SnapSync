@@ -4,20 +4,20 @@ import app.snapsync.model.LedgerEntry
 import app.snapsync.model.Resource
 import app.snapsync.model.toLedgerRow
 import app.snapsync.model.LedgerState
-import app.snapsync.ports.LedgerStore
+import app.snapsync.services.ledger.LedgerService
 import co.touchlab.kermit.Logger
 
 /**
  * The ledger's single writer (one per platform, hosted with the engine), carrying the engine's
  * per-key read ([entry]). Each record operation upserts a complete, self-contained entry through the
- * backend's guarded [LedgerStore.recordUnlessSettled] — which never overwrites a settled row, and whose
+ * backend's guarded [LedgerService.recordUnlessSettled] — which never overwrites a settled row, and whose
  * guard does not depend on any read made here — so duplicate records converge per key on state. The writer
  * keeps no clock; the engine and backends are all clock-free and store verbatim. Only the composition root
  * that owns the engine ever constructs it. Aggregates and change signals are deliberately absent from this
- * per-key face; the extension's own cycle reads them via [LedgerStore] directly.
+ * per-key face; the extension's own cycle reads them via [LedgerService] directly.
  */
 class LedgerWriter(
-    private val backend: LedgerStore,
+    private val backend: LedgerService,
 ) {
 
     private val log = Logger.withTag("LedgerWriter")

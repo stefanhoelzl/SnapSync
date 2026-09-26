@@ -5,7 +5,7 @@ import app.snapsync.model.JoinResult
 import app.snapsync.model.Reply
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.toResult
-import app.snapsync.ports.DeviceIdentity
+import app.snapsync.services.identity.PersistedDeviceIdentity
 
 /**
  * Create or reactivate this device's membership in an event.
@@ -91,7 +91,7 @@ class BackendManifestPublisher(private val backend: AuthenticatedBackend) : Mani
  */
 class BackendLeaveNotifier(
     private val backend: AuthenticatedBackend,
-    private val identity: DeviceIdentity,
+    private val identity: PersistedDeviceIdentity,
 ) : LeaveNotifier {
 
     override suspend fun notifyLeaving(eventId: String): Result<Unit> {

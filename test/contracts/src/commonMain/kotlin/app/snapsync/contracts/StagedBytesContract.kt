@@ -1,12 +1,12 @@
 package app.snapsync.contracts
 
-import app.snapsync.ports.StagedBytes
+import app.snapsync.services.staging.StagingService
 import kotlin.test.assertEquals
 import kotlin.test.assertFails
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/** The states a [StagedBytes] can be found in, as far as a clause cares. Every path a clause names is relative. */
+/** The states a [StagingService] can be found in, as far as a clause cares. Every path a clause names is relative. */
 enum class StagedBytesState {
     /** There is nowhere durable to stage — on iOS, a process without the App-Group container. */
     UNAVAILABLE,
@@ -23,18 +23,18 @@ enum class StagedBytesState {
  *
  * The obligations are the ones a lost photo would turn on: an unavailable area **refuses** to locate a file rather
  * than naming a directory the release side cannot find; release is idempotent and tolerates missing files; and
- * [StagedBytes.allPresent] reports the fact of existence — any missing member answers `false`, an empty
+ * [StagingService.allPresent] reports the fact of existence — any missing member answers `false`, an empty
  * list answers `true`.
  *
- * Paths are built from [StagedBytes.stagingRoot] and the clause id, so a binding seeds the same files the
+ * Paths are built from [StagingService.stagingRoot] and the clause id, so a binding seeds the same files the
  * clause then asks about, whatever root its implementation resolves.
  */
-object StagedBytesContract : Contract<StagedBytesState, StagedBytes>("StagedBytes") {
+object StagedBytesContract : Contract<StagedBytesState, StagingService>("StagingService") {
 
     /** The file names a [StagedBytesState.STAGED] binding creates under the staging root, for [clauseId]. */
     fun stagedNames(clauseId: String) = listOf("$clauseId-a.bin", "$clauseId-b.bin")
 
-    private fun StagedBytes.staged(clauseId: String) = stagedNames(clauseId).map { "${stagingRoot()}/$it" }
+    private fun StagingService.staged(clauseId: String) = stagedNames(clauseId).map { "${stagingRoot()}/$it" }
 
     override val clauses = clauses {
 

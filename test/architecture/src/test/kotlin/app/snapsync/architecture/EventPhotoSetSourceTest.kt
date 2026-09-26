@@ -9,7 +9,7 @@ import kotlin.test.assertTrue
  * law: `sync-status`, `photo-sharing`).
  *
  * `EventPhotoSet` takes `suspend (SelectionPolicy) -> List<Candidate>` rather than the
- * `ports/CandidateSource` itself, because it lives in `model/` — the innermost zone, which references
+ * `services/gallery/CandidateSource` itself, because it lives in `model/` — the innermost zone, which references
  * nothing project-internal outside itself. Features hold the port and bind `source::candidates`.
  *
  * That lambda is the hazard this guard exists for, and it is not hypothetical: the seam previously
@@ -60,7 +60,7 @@ class EventPhotoSetSourceTest {
                     "${file.name}:${i + 1} builds an EventPhotoSet from a lambda rather than a source's " +
                         "`::candidates`. Every nine call sites of this seam once ignored their policy " +
                         "parameter, so the platform never narrowed and two consumers disagreed about the " +
-                        "admitted set. Pass a `ports/CandidateSource` method reference, or add this site " +
+                        "admitted set. Pass a `services/gallery/CandidateSource` method reference, or add this site " +
                         "to the allowlist in this test with the reason its candidates already exist."
                 }
             }
@@ -85,8 +85,8 @@ class EventPhotoSetSourceTest {
     /** The seam itself must still take the policy, or the guard above is checking a shape that is gone. */
     @Test
     fun `the candidate seam still takes the policy`() {
-        val file = File(ZoneGates.domainSrc, "ports/src/commonMain/kotlin/app/snapsync/ports/CandidateSource.kt")
-        assertTrue(file.isFile, "ports/CandidateSource.kt not found — has the read seam moved?")
+        val file = File(ZoneGates.domainSrc, "services/src/commonMain/kotlin/app/snapsync/services/gallery/CandidateSource.kt")
+        assertTrue(file.isFile, "services/gallery/CandidateSource.kt not found — has the read seam moved?")
         assertTrue(
             file.readText().contains("candidates(policy: SelectionPolicy)"),
             "CandidateSource no longer takes a SelectionPolicy — the relay this change removed is back",

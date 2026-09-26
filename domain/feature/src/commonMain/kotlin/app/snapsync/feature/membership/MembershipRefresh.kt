@@ -1,12 +1,9 @@
 package app.snapsync.feature.membership
 
-import app.snapsync.model.instantToCutoff
-import app.snapsync.ports.Clock
 import app.snapsync.model.CaptureDate
 import app.snapsync.model.JoinLoad
 import app.snapsync.model.confirmedGone
-import app.snapsync.ports.ConfigSource
-import app.snapsync.ports.ConfigStore
+import app.snapsync.services.config.ConfigService
 
 /**
  * The membership-refresh **rule** (capability `join-event`): fold a freshly fetched event-details result
@@ -29,10 +26,7 @@ import app.snapsync.ports.ConfigStore
  * (one-writer: join/provision saves it, leave clears it, and this refresh rewrites it whole).
  */
 class MembershipRefresh(
-    private val configSource: ConfigSource,
-    private val store: ConfigStore,
-    /** The composition's one clock — "now" is the OFFLINE witness of the absence verdict. */
-    private val clock: Clock,
+    private val configSource: ConfigService,
     /**
      * The ordinary local teardown (capability `manage-membership`), performed on a confirmed absence.
      *
@@ -81,7 +75,7 @@ class MembershipRefresh(
             JoinLoad.NotFound ->
                 // Witness two: this membership's OWN deadline. Absent it — or before it — the backend is
                 // disbelieved. Both readings mean "I could not tell", never "destroy it".
-                if (confirmedGone(current.deletesAt, instantToCutoff(clock.now()))) {
+                if (configSource.isPastDeletion(current.deletesAt)) {
                     leaveEvent.leave()
                     RefreshOutcome.ABSENT
                 } else {
@@ -108,7 +102,7 @@ class MembershipRefresh(
                 // reached" and the self-leave cannot fire — the safe direction, mirroring the unbounded
                 // ceiling above.
                 if (current.deletesAt == null) next = next.copy(deletesAt = fetched.deletesAt)
-                if (next != current) store.save(next)
+                if (next != current) configSource.save(next)
                 RefreshOutcome.REFRESHED
             }
         }

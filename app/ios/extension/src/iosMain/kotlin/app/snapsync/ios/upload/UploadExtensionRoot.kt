@@ -2,7 +2,7 @@ package app.snapsync.ios.upload
 
 import app.snapsync.compose.NoProcessMetrics
 import app.snapsync.model.runCatchingCancellable
-import app.snapsync.ports.DeviceIdentity
+import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.compose.UploaderProcess
 import app.snapsync.model.SelectionScope
 import app.snapsync.compose.AlbumLookupFailure
@@ -26,23 +26,20 @@ import app.snapsync.keychain.platformSecureStore
 import app.snapsync.model.DeviceIdentityRole
 import app.snapsync.ports.SecureStore
 import app.snapsync.services.identity.AttestState
-import app.snapsync.services.identity.PersistedDeviceIdentity
-import app.snapsync.ports.SuppressionSource
+import app.snapsync.services.downloads.SuppressionSource
 import app.snapsync.databases.IosDatabases
 import app.snapsync.ports.Databases
 import app.snapsync.services.downloads.SuppressionService
-import app.snapsync.ports.AlbumManager
+import app.snapsync.services.gallery.GalleryAlbums
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.PhotoGrantRead
-import app.snapsync.ports.UploadDiscovery
-import app.snapsync.services.gallery.GalleryAlbums
+import app.snapsync.services.gallery.UploadDiscovery
 import app.snapsync.services.gallery.GalleryDiscovery
 import app.snapsync.compose.extensionBackend
 import app.snapsync.http.HttpBackend
 import app.snapsync.ports.Upload
 import app.snapsync.model.CycleResult
 import app.snapsync.feature.upload.UploadCycle
-import app.snapsync.ports.LedgerStore
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.manifest.DeviceManifestService
 import app.snapsync.membership.darwinHttpClient
@@ -146,7 +143,7 @@ object UploadExtensionRoot {
     private val databases: Databases by lazy { IosDatabases() }
 
     // The ledger: shared with the app; either process may open it read-write and migrate it.
-    private val ledgerStore: LedgerStore by lazy { LedgerService(databases) }
+    private val ledgerStore: LedgerService by lazy { LedgerService(databases) }
     // The extension's gallery: reads and album adds only — no access request, no change token, no memo.
     private val gallery: GalleryReader by lazy { IosGalleryReader() }
     private val discovery: UploadDiscovery by lazy { GalleryDiscovery(gallery) }
@@ -168,12 +165,12 @@ object UploadExtensionRoot {
     // extension that runs before the updated app has pauses its cycle instead (`SuppressionService`).
     private val suppression: SuppressionSource by lazy { SuppressionService(databases) }
     private val files: Files get() = process.files
-    private val configSource: ConfigService by lazy { ConfigService(files) }
+    private val configSource: ConfigService by lazy { ConfigService(files, process.clock) }
 
     // Event album (capability `event-album`): the coordinator over the shared leave-surviving map and the
     // gallery's album operations. The extension only ever ADDS completed uploads (the app is the sole creator).
     // Hoisted because the selection policy also reads it (denylisted-album membership).
-    private val albumManager: AlbumManager by lazy { GalleryAlbums(gallery) }
+    private val albumManager: GalleryAlbums by lazy { GalleryAlbums(gallery) }
     private val albumCoordinator: AlbumCoordinator by lazy {
         AlbumCoordinator(albumManager, AlbumMapService(IosPreferences(), secureStore))
     }
@@ -187,7 +184,7 @@ object UploadExtensionRoot {
     // this device two identities: the extension uploaded under one while the app reconciled under the
     // other, so the app re-imported every photo the device itself had uploaded. Absence raises
     // `DeviceIdentityAbsent` and the cycle gate skips, exactly as it does for an unreadable Keychain.
-    private val deviceIdentity: DeviceIdentity by lazy {
+    private val deviceIdentity: PersistedDeviceIdentity by lazy {
         PersistedDeviceIdentity(DeviceIdentityRole.READ_ONLY, secureStore, NoPlatformDeviceId())
     }
 
@@ -257,7 +254,7 @@ object UploadExtensionRoot {
     /**
      * The cycle — assembled by the SHARED composition `uploadCore` (`docs/architecture.md`, "One
      * shared composition"): this root supplies only its ports and platform reads (the Keychain
-     * three-state `ConfigReader`, the identity resolve, the compile-time bundle host, the PhotoKit
+     * three-state `ConfigService` read, the identity resolve, the compile-time bundle host, the PhotoKit
      * platform, the App-Group stores, and the generic HTTP adapters). The entry-gate translation,
      * the reconciler, the device-manifest producer, and the engine wiring live in `uploadCore` —
      * identical for the app-driven tier and the world harness, so this tier cannot carry cycle

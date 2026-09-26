@@ -1,6 +1,6 @@
 package app.snapsync.contracts
 
-import app.snapsync.ports.AlbumMapStore
+import app.snapsync.services.album.AlbumMapService
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
@@ -22,7 +22,7 @@ enum class AlbumMapStoreState {
  * lookup — so a corrupt map reads as empty and is overwritten, never raised. A write for one event must
  * keep every other event's album.
  */
-object AlbumMapStoreContract : Contract<AlbumMapStoreState, AlbumMapStore>("AlbumMapStore") {
+object AlbumMapStoreContract : Contract<AlbumMapStoreState, AlbumMapService>("AlbumMapService") {
 
     /** The event a [AlbumMapStoreState.HOLDING] map holds, for [clauseId]. Bindings seed exactly this. */
     fun seedEvent(clauseId: String) = "event:$clauseId"

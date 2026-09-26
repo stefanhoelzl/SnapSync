@@ -1,10 +1,10 @@
 package app.snapsync.feature.upload
 
-import app.snapsync.ports.DeviceIdentity
+import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.model.TerminalOutcome
 import app.snapsync.services.backend.DeviceFilesSource
 import app.snapsync.services.backend.DeviceListingShapeException
-import app.snapsync.ports.LedgerStore
+import app.snapsync.services.ledger.LedgerService
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.cancellation.CancellationException
@@ -27,7 +27,7 @@ private const val LISTING_TIMEOUT_MS = 15_000L
  * four objects landed within ~30 s while their rows stayed `REQUESTED` and the status read `Syncing` until full
  * access returned. The backend is the one party that knows.
  *
- * **What it may write, and why it needs no lock.** Only through the guarded [LedgerStore.markTerminal], which
+ * **What it may write, and why it needs no lock.** Only through the guarded [LedgerService.markTerminal], which
  * applies only while a row is still `REQUESTED`: a listed `DISCOVERED` row, a settled row, and a row deleted
  * meanwhile are all left exactly as they are, and a later OS acknowledgement finds a settled row and does nothing.
  * That is the same write the platform's callbacks already make beside a running cycle, so this runs as foreground's
@@ -43,9 +43,9 @@ private const val LISTING_TIMEOUT_MS = 15_000L
  */
 class StoredUploadSettle(
     private val files: DeviceFilesSource,
-    private val ledger: LedgerStore,
+    private val ledger: LedgerService,
     /** The device identity; a thunk because it resolves against a protected store on first use. */
-    private val identity: DeviceIdentity,
+    private val identity: PersistedDeviceIdentity,
     private val log: Logger = Logger.withTag("StoredUploadSettle"),
 ) {
     suspend fun settle() {

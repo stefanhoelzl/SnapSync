@@ -1,10 +1,10 @@
 package app.snapsync.contracts
 
-import app.snapsync.ports.DeviceManifestStore
+import app.snapsync.services.manifest.DeviceManifestService
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
-/** The states a [DeviceManifestStore] can be found in, as far as a clause cares. */
+/** The states a [DeviceManifestService] can be found in, as far as a clause cares. */
 enum class DeviceManifestStoreState {
     /** No storage can be reached — on iOS, a process without the App-Group container. */
     UNAVAILABLE,
@@ -23,7 +23,7 @@ enum class DeviceManifestStoreState {
  * raises into the upload cycle. The dangerous direction is a STALE non-null, which suppressed the rewrite
  * forever, so a clear must actually make the next load `null`.
  */
-object DeviceManifestStoreContract : Contract<DeviceManifestStoreState, DeviceManifestStore>("DeviceManifestStore") {
+object DeviceManifestStoreContract : Contract<DeviceManifestStoreState, DeviceManifestService>("DeviceManifestService") {
 
     /** The record a [DeviceManifestStoreState.HOLDING] store holds for [clauseId]. Bindings seed exactly this. */
     fun seedJson(clauseId: String) = """{"seed":"$clauseId"}"""

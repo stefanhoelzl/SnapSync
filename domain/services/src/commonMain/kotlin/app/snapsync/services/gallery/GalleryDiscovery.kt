@@ -7,9 +7,7 @@ import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.assetIdFromUploadKey
 import app.snapsync.model.candidatesFromFacts
 import app.snapsync.model.resourcesFrom
-import app.snapsync.ports.Discovery
 import app.snapsync.ports.GalleryReader
-import app.snapsync.ports.UploadDiscovery
 
 /**
  * The upload cycle's two library reads over the [GalleryReader] (capability `background-upload`): the

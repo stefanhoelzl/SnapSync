@@ -68,11 +68,11 @@ subprojects {
 // design, and its worth is that it is absolute. So the edge is declared here rather than loosening
 // it.
 //
-// Without the edge `:domain` measures 56% instead of 91%: `docs/testing.md` ("Fake-driven
-// feature tests live in the fake module") places its feature tests in a module `:domain` cannot
-// depend on, since the reverse edge would be a project cycle.
+// Without the edges the zones measure a fraction of their coverage: `docs/testing.md` ("Feature tests compose real
+// services over port mocks") places the feature tests that need a port's mock in `:test:feature`, and the flow and
+// mock-driven service tests in `:adapter:generic:fake` — modules a `:domain:*` build file may not name.
 //
-// All three live here rather than in the consuming modules, for two reasons that are really one:
+// They all live here rather than in the consuming modules, for two reasons that are really one:
 // `ModuleSetTest` forbids `:domain` naming any module in its own build file, and `Zones.kt` reads
 // every build script under `adapter/`, `domain/` and `ui/` as TEXT — so a locally declared edge
 // renders in `architecture/zones.md` pointing the wrong way. Centralising them also puts the whole
@@ -92,6 +92,12 @@ listOf(
     ":domain:services" to ":adapter:generic:fake",
     ":domain:services" to ":test:world",
     ":domain:feature" to ":adapter:generic:fake",
+    // `:test:feature` holds the feature tests that compose real services over the ports' mocks (`docs/testing.md`):
+    // they exercise the feature zone first, and the services, the model and the ports it reaches through them.
+    ":domain:feature" to ":test:feature",
+    ":domain:services" to ":test:feature",
+    ":domain:model" to ":test:feature",
+    ":domain:ports" to ":test:feature",
     ":domain:flow" to ":adapter:generic:fake",
     ":ui:components" to ":ui:screens",
     ":domain:presentation" to ":ui:screens",
@@ -266,6 +272,7 @@ val detektTierOf: Map<String, String> = mapOf(
     // Modules with no production source at all.
     ":test:architecture" to "tests",
     ":test:integration" to "tests",
+    ":test:feature" to "tests",
 )
 
 /** The `src` directory of every subproject in a tier, read from the live project model. */

@@ -69,7 +69,6 @@ flowchart LR
   domain_compose --> domain_ports
   domain_compose --> domain_services
   domain_feature --> domain_model
-  domain_feature --> domain_ports
   domain_feature --> domain_services
   domain_flow --> domain_feature
   domain_flow --> domain_model

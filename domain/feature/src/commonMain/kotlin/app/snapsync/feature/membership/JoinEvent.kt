@@ -1,11 +1,11 @@
 package app.snapsync.feature.membership
 
-import app.snapsync.ports.DeviceIdentity
+import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.model.EventLookup
 import app.snapsync.services.backend.EventDirectory
 import app.snapsync.model.JoinResult
 
-import app.snapsync.ports.ConfigSource
+import app.snapsync.services.config.ConfigService
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.DeletesAt
@@ -50,8 +50,8 @@ fun JoinOutcome.toCommit(): JoinCommit = when (this) {
  * (the presentation container), not here, so this stays free of the leave use-case.
  */
 class JoinEvent(
-    private val configSource: ConfigSource,
-    private val identity: DeviceIdentity,
+    private val configSource: ConfigService,
+    private val identity: PersistedDeviceIdentity,
     private val details: EventDirectory,
     private val enroller: DeviceEnroller,
     private val provision: suspend (EventConfig) -> Unit,

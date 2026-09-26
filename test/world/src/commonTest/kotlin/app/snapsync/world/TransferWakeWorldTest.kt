@@ -80,7 +80,7 @@ class TransferWakeWorldTest {
         w.downloadController.reconcile(joined)
         val tags = w.download.inFlight().map { it.description }
         assertTrue(tags.isNotEmpty(), "precondition: the foreign photo is downloading")
-        val completion = OsCompletion { w.downloadStore.stagings.size == tags.size }
+        val completion = OsCompletion { w.downloadsLanded() == tags.size }
         w.download.handBack(completion)
         tags.forEach { w.download.finish(it) }
         w.download.reportEventsDrained()

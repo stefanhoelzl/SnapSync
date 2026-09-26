@@ -3,7 +3,7 @@ package app.snapsync.contracts
 import app.snapsync.model.LedgerState
 import app.snapsync.model.Resource
 import app.snapsync.model.toLedgerRow
-import app.snapsync.ports.LedgerStore
+import app.snapsync.services.ledger.LedgerService
 
 /**
  * Seed a `COMPLETED` row for [resource] — a test's way of saying "these bytes are already stored".
@@ -13,5 +13,5 @@ import app.snapsync.ports.LedgerStore
  * `resetTo` (capability `photo-sharing`). The row is built from the resource the same way the writer builds
  * one, so no call site re-states a row's columns by hand.
  */
-suspend fun LedgerStore.seedCompleted(resource: Resource) =
+suspend fun LedgerService.seedCompleted(resource: Resource) =
     recordUnlessSettled(resource.toLedgerRow(LedgerState.COMPLETED))

@@ -90,7 +90,7 @@ private fun inspectorLevers(world: World): Map<String, RigCommand> = mapOf(
         }
     },
     "downloads/reconcile" to RigCommand { _, _ ->
-        val eventId = world.configSource.config.value?.eventId
+        val eventId = world.config.config.value?.eventId
         if (eventId == null) {
             CommandResult.badRequest("no membership to reconcile downloads for")
         } else {
@@ -113,7 +113,7 @@ private fun inspectorLevers(world: World): Map<String, RigCommand> = mapOf(
     "foreign-device" to RigCommand { params, _ ->
         val device = params["device"]
         val assets = params["assets"]?.split(',')?.filter { it.isNotBlank() }.orEmpty()
-        val event = params["event"] ?: world.configSource.config.value?.eventId
+        val event = params["event"] ?: world.config.config.value?.eventId
         // The capturing device's own file name for every asset — what an import names its photo after.
         val filename = params["filename"]
         if (device == null || assets.isEmpty()) {

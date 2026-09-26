@@ -2,7 +2,6 @@ package app.snapsync.services.logs
 
 import app.snapsync.fake.inMemoryFiles
 import app.snapsync.model.FileArea
-import app.snapsync.ports.DeviceLogSource
 
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -36,9 +35,9 @@ class LogTailServiceTest {
         private.put("debug.log", "\nwritten by the app process\n")
         shared.put("ext-debug.log", "\nwritten by the upload extension\n")
 
-        assertTrue(service().tail(DeviceLogSource.Process.APP, 4096).orEmpty().contains("by the app process"))
+        assertTrue(service().tail(LogTailService.Process.APP, 4096).orEmpty().contains("by the app process"))
         assertTrue(
-            service().tail(DeviceLogSource.Process.EXTENSION, 4096).orEmpty().contains("by the upload extension"),
+            service().tail(LogTailService.Process.EXTENSION, 4096).orEmpty().contains("by the upload extension"),
             "a swapped pair sends the app's log twice — and looks entirely normal",
         )
     }
@@ -48,15 +47,15 @@ class LogTailServiceTest {
         shared.put("debug.log", "\nthe app log misplaced\n")
         private.put("ext-debug.log", "\nthe extension log misplaced\n")
 
-        assertNull(service().tail(DeviceLogSource.Process.APP, 4096))
-        assertNull(service().tail(DeviceLogSource.Process.EXTENSION, 4096))
+        assertNull(service().tail(LogTailService.Process.APP, 4096))
+        assertNull(service().tail(LogTailService.Process.EXTENSION, 4096))
     }
 
     @Test
     fun `a tail reads the END of the file`() = runTest {
         private.put("debug.log", (1..500).joinToString("\n") { "line-$it" })
 
-        val text = service().tail(DeviceLogSource.Process.APP, 200).orEmpty()
+        val text = service().tail(LogTailService.Process.APP, 200).orEmpty()
 
         assertTrue("line-500" in text, "the newest lines are the ones worth sending: $text")
         assertFalse("line-1\n" in text, "the head must not be what a bounded tail returns")
@@ -66,7 +65,7 @@ class LogTailServiceTest {
     fun `a tail never begins mid-line`() = runTest {
         private.put("debug.log", (1..500).joinToString("\n") { "2026-08-08 12:00:00.000 +0000 line-$it" })
 
-        val text = service().tail(DeviceLogSource.Process.APP, 200).orEmpty()
+        val text = service().tail(LogTailService.Process.APP, 200).orEmpty()
 
         assertTrue(
             text.startsWith("2026-08-08 "),
@@ -79,21 +78,21 @@ class LogTailServiceTest {
     fun `a log shorter than the budget comes back complete`() = runTest {
         private.put("debug.log", "alpha\nbeta\ngamma\n")
 
-        assertEquals("alpha\nbeta\ngamma\n", service().tail(DeviceLogSource.Process.APP, 4096))
+        assertEquals("alpha\nbeta\ngamma\n", service().tail(LogTailService.Process.APP, 4096))
     }
 
     @Test
     fun `a cut tail with no newline at all is returned rather than discarded`() = runTest {
         private.put("debug.log", "x".repeat(100) + "one very long line")
 
-        assertEquals("one very long line", service().tail(DeviceLogSource.Process.APP, 18))
+        assertEquals("one very long line", service().tail(LogTailService.Process.APP, 18))
     }
 
     @Test
     fun `everything before the first newline of a cut tail is dropped`() = runTest {
         private.put("debug.log", "a partial\nsecond\nthird")
 
-        assertEquals("second\nthird", service().tail(DeviceLogSource.Process.APP, "rtial\nsecond\nthird".length))
+        assertEquals("second\nthird", service().tail(LogTailService.Process.APP, "rtial\nsecond\nthird".length))
     }
 
     // ---- absence ------------------------------------------------------------------------------
@@ -104,22 +103,22 @@ class LogTailServiceTest {
      */
     @Test
     fun `a missing file reads as null rather than as an empty log`() = runTest {
-        assertNull(service().tail(DeviceLogSource.Process.APP, 4096))
-        assertNull(service().tail(DeviceLogSource.Process.EXTENSION, 4096))
+        assertNull(service().tail(LogTailService.Process.APP, 4096))
+        assertNull(service().tail(LogTailService.Process.EXTENSION, 4096))
     }
 
     @Test
     fun `an empty file reads as null`() = runTest {
         private.put("debug.log", "")
 
-        assertNull(service().tail(DeviceLogSource.Process.APP, 4096))
+        assertNull(service().tail(LogTailService.Process.APP, 4096))
     }
 
     @Test
     fun `a denied log reads as null`() = runTest {
         shared.put("ext-debug.log", "\ncontent\n")
 
-        assertNull(service(denied = setOf(FileArea.SHARED to "ext-debug.log")).tail(DeviceLogSource.Process.EXTENSION, 4096))
+        assertNull(service(denied = setOf(FileArea.SHARED to "ext-debug.log")).tail(LogTailService.Process.EXTENSION, 4096))
     }
 
     @Test
@@ -128,7 +127,7 @@ class LogTailServiceTest {
         val source = LogTailService(inMemoryFiles(shared = null, private = private))
 
         assertNull(
-            source.tail(DeviceLogSource.Process.EXTENSION, 4096),
+            source.tail(LogTailService.Process.EXTENSION, 4096),
             "a process with no reachable log has no tail — it must not borrow the other's",
         )
     }
@@ -137,7 +136,7 @@ class LogTailServiceTest {
     fun `a non-positive budget reads as null`() = runTest {
         private.put("debug.log", "\ncontent\n")
 
-        assertNull(service().tail(DeviceLogSource.Process.APP, 0))
-        assertNull(service().tail(DeviceLogSource.Process.APP, -1))
+        assertNull(service().tail(LogTailService.Process.APP, 0))
+        assertNull(service().tail(LogTailService.Process.APP, -1))
     }
 }

@@ -1,7 +1,7 @@
 package app.snapsync.model
 
 import app.snapsync.feature.status.ShareableCountSource
-import app.snapsync.ports.CandidateSource
+import app.snapsync.services.gallery.CandidateSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue

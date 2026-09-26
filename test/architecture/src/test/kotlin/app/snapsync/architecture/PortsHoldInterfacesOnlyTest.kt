@@ -12,28 +12,12 @@ import kotlin.test.assertTrue
  * sealed interface's own cases) and the `*Handlers` bundles its event ports are registered with — and nothing else,
  * top-level or nested.
  *
- * THE ALLOWLIST IS EXACT, AND SHRINKS. What is left is the port-adjacent code that predates the law, each named with
- * the phase that re-homes it; an entry that no longer matches fails too, so the phase that moves a declaration removes
- * its line here. 11g1 moved the extension's raw-value mapping to `:adapter:ios:ext-safe` and the extension cycle's
- * never-throw wrapper to `compose/`.
+ * There is no allowlist. The port-adjacent code that predated the law left in two phases: 11g1 moved the extension's
+ * raw-value mapping to `:adapter:ios:ext-safe` and the extension cycle's never-throw wrapper to `compose/`; the
+ * feature → ports cut moved the store interfaces' helpers to `services/`, the pure vocabulary to `model/`, and the
+ * inert bindings to `compose/`.
  */
 class PortsHoldInterfacesOnlyTest {
-
-    /** `Declaration` (nested: `Owner.Declaration`) → the phase that re-homes it. */
-    private val remaining = mapOf(
-        "CONFIG_FILE_FOREIGN_STATUS" to FEATURE_CUT,
-        "CONFIG_FILE_UNUSABLE_STATUS" to FEATURE_CUT,
-        "configReadViaFile" to FEATURE_CUT,
-        "configAfterReload" to FEATURE_CUT,
-        "membershipAfterReload" to FEATURE_CUT,
-        "PlatformUploadJob" to FEATURE_CUT,
-        "SecureStoreUnavailable" to FEATURE_CUT,
-        "DeviceIdentityAbsent" to FEATURE_CUT,
-        "PushTokenSource" to FEATURE_CUT,
-        "Discovery" to FEATURE_CUT,
-        "DeviceLogSource.Companion" to FEATURE_CUT,
-        "StagedBytes.Companion" to FEATURE_CUT,
-    )
 
     private val sources by lazy {
         SourceScan.kotlinFiles().filter { it.path.startsWith("/domain/ports/src/commonMain/") }
@@ -61,27 +45,20 @@ class PortsHoldInterfacesOnlyTest {
     }
 
     @Test
-    fun `ports declares interfaces and handler bundles only, beyond what the later phases re-home`() {
+    fun `ports declares interfaces and handler bundles only`() {
         val found = sources.flatMap { src -> declarations(ZoneGates.stripComments(src.text)).map { it to src.path } }
-            .toMap()
-        val added = found.keys - remaining.keys
         assertTrue(
-            added.isEmpty(),
+            found.isEmpty(),
             "`ports/` declares something other than an interface or a `*Handlers` bundle — a decision or helper " +
                 "belongs in `services/` or `model/`, an implementation in an adapter:\n" +
-                added.joinToString("\n") { "  $it — ${found[it]}" },
-        )
-        val gone = remaining.keys - found.keys
-        assertTrue(
-            gone.isEmpty(),
-            "these allowlisted declarations no longer exist in `ports/` — remove them from `remaining` (the list " +
-                "only shrinks):\n" + gone.joinToString("\n") { "  $it" },
+                found.joinToString("\n") { (name, path) -> "  $name — $path" },
         )
     }
 
     @Test
     fun `the scan is real (non-vacuity floor)`() {
-        assertTrue(sources.size >= 40, "scanned only ${sources.size} files in domain/ports — the scope is broken")
+        // Lowered from 40 when the feature → ports cut took the store interfaces out (31 files remain).
+        assertTrue(sources.size >= 25, "scanned only ${sources.size} files in domain/ports — the scope is broken")
         val sample = """
             interface Port {
                 fun a()
@@ -101,8 +78,6 @@ class PortsHoldInterfacesOnlyTest {
     }
 
     private companion object {
-        const val FEATURE_CUT = "the feature → ports cut (after 11i), which re-homes the port-adjacent code"
-
         val TOP_LEVEL = Regex(
             """^(?:public |internal |private )?(?:inline |suspend )*""" +
                 """(data class|enum class|sealed class|abstract class|open class|class|object|fun(?!\s+interface)|val|var|""" +

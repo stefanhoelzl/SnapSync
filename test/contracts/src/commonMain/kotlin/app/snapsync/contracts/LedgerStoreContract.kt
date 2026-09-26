@@ -10,7 +10,7 @@ import app.snapsync.model.RESOURCE_META_ORIGINAL_FILENAME
 import app.snapsync.model.RESOURCE_META_MIME
 import app.snapsync.model.RESOURCE_META_CREATION_DATE
 import app.snapsync.model.LedgerAggregates
-import app.snapsync.ports.LedgerStore
+import app.snapsync.services.ledger.LedgerService
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
 import app.snapsync.feature.upload.LedgerWriter
@@ -29,7 +29,7 @@ import kotlinx.coroutines.test.runCurrent
 enum class LedgerStoreState { EMPTY }
 
 /**
- * The storage-seam contract every [LedgerStore] must satisfy (capability `photo-sharing`; mechanism:
+ * The storage-seam contract every [LedgerService] must satisfy (capability `photo-sharing`; mechanism:
  * `docs/architecture.md`). Each implementation is bound once per host it runs on; the same clauses run unchanged
  * against each.
  *
@@ -37,7 +37,7 @@ enum class LedgerStoreState { EMPTY }
  * [manifestVersionClauses] — a split for size only (the harness tier's `LargeClass` ceiling); the one list
  * below holds all three parts, so every binding runs every clause once.
  */
-object LedgerStoreContract : Contract<LedgerStoreState, LedgerStore>("LedgerStore") {
+object LedgerStoreContract : Contract<LedgerStoreState, LedgerService>("LedgerService") {
 
     override val clauses = clauses {
         recordGuardClauses()

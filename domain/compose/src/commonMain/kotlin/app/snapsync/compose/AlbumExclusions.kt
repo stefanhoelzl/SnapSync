@@ -5,7 +5,7 @@ import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.SELECTION_CALIBRATION
 import app.snapsync.model.GalleryAccess
-import app.snapsync.ports.AlbumManager
+import app.snapsync.services.gallery.GalleryAlbums
 import co.touchlab.kermit.Logger
 
 /**
@@ -21,7 +21,7 @@ enum class AlbumLookupFailure { AdmitOnDoubt, FailCycle }
 
 /**
  * The normalized ids of the photos in a messaging/social app's album since [cutoff] — the policy's album
- * denylist — read through the [AlbumManager] port and answered per [onFailure].
+ * denylist — read through the [GalleryAlbums] port and answered per [onFailure].
  *
  * **Asked only under a full grant**, and this is the ONE place that decides it, for every consumer: the upload
  * cycle on both tiers, the own-device status total, and the join preview. Under any other [grant] the answer is
@@ -40,7 +40,7 @@ enum class AlbumLookupFailure { AdmitOnDoubt, FailCycle }
  * doubt.
  */
 internal suspend fun denylistedAlbumMembers(
-    manager: AlbumManager,
+    manager: GalleryAlbums,
     cutoff: CaptureCutoff,
     grant: GalleryAccess,
     onFailure: AlbumLookupFailure,

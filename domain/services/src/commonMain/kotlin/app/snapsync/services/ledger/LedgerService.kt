@@ -1,8 +1,8 @@
 package app.snapsync.services.ledger
 
+import app.snapsync.services.upload.TransferRecord
 import app.snapsync.model.AssetId
 import app.snapsync.model.LedgerAggregates
-import app.snapsync.ports.LedgerStore
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.DONE_STATES
@@ -26,7 +26,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 const val LEDGER_DB_NAME: String = "ledger.db"
 
 /**
- * The upload ledger (capability `photo-sharing`): [LedgerStore] over the SQLDelight [LedgerDatabase] (schema:
+ * The upload ledger (capability `photo-sharing`): [LedgerService] over the SQLDelight [LedgerDatabase] (schema:
  * `Ledger.sq` — one table, key primary key, an index on `assetId`). [recordUnlessSettled] is one guarded upsert
  * statement, atomic on its own; [aggregates] is one SQL round-trip, so its counts are mutually consistent.
  *
@@ -38,7 +38,7 @@ const val LEDGER_DB_NAME: String = "ledger.db"
  */
 class LedgerService(
     databases: Databases,
-) : LedgerStore {
+) : TransferRecord {
 
     private val queries by lazy { LedgerDatabase(databases.openOwned(LEDGER_DB_NAME, LedgerDatabase.Schema)).ledgerQueries }
 
@@ -47,9 +47,19 @@ class LedgerService(
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
     )
 
-    override val changes: Flow<Unit> = dings
+    val changes: Flow<Unit> = dings
 
-    override suspend fun get(key: String): LedgerEntry? =
+    /**
+     * The row for [key], or null when there is none.
+     *
+     * Absence: null means "no such row", and ONLY that — a backend that cannot read throws rather
+     * than answering empty, so this seam never has to encode "could not tell". That is what lets a
+     * caller treat null as a fact about the ledger instead of a fact about the storage.
+     *
+     * Not on [TransferRecord]: no transport reads a row by key since the v1 last-segment fallback was retired
+     * (decision record `changes/retire-legacy-key-fallback`).
+     */
+    suspend fun get(key: String): LedgerEntry? =
         queries.get(key, ::toEntry).executeAsOneOrNull()
 
     override suspend fun entryForDestination(destinationPath: String): LedgerEntry? =
@@ -80,7 +90,7 @@ class LedgerService(
      * [markTerminal] — the statement carries the done-state guard, and the database says whether it applied.
      * Dings only when it did: a declined write changed no truth.
      */
-    override suspend fun recordUnlessSettled(entry: LedgerEntry): Boolean {
+    suspend fun recordUnlessSettled(entry: LedgerEntry): Boolean {
         val applied = queries.transactionWithResult {
             queries.recordUnlessSettled(
                 entry.key, entry.assetId, entry.state,
@@ -98,7 +108,7 @@ class LedgerService(
      * that transaction. A throw from any statement rolls back the whole batch, so a walk's discoveries are
      * never partly recorded. One ding for the batch, and only if something applied.
      */
-    override suspend fun recordAllUnlessSettled(entries: List<LedgerEntry>): Int {
+    suspend fun recordAllUnlessSettled(entries: List<LedgerEntry>): Int {
         if (entries.isEmpty()) return 0
         val applied = queries.transactionWithResult {
             entries.count { entry ->
@@ -114,7 +124,25 @@ class LedgerService(
         return applied
     }
 
-    override suspend fun manifestRows(): List<LedgerEntry> =
+    /**
+     * The rows the **device manifest** projects from (capability `photo-sharing`): every row,
+     * whatever its upload state.
+     *
+     * Deliberately **not state-scoped**, and deliberately carrying no state adjective in its name. The
+     * manifest declares what this member *intends to provide*, and that does not depend on how far a
+     * resource's bytes have got — so a `DISCOVERED` row and a `COMPLETED` one are equally listed. This
+     * read used to return only settled rows, and the stale word "completed" in its name outlived the
+     * decision behind it: `docs/architecture.md` came to describe a manifest that declares intent while
+     * `photo-sharing` still required the completed projection.
+     *
+     * It filters on nothing: a departed asset's rows — gone from the library, or de-selected under a partial
+     * grant, in flight or not — are deleted by the walk that shows it gone, so every row is one this device
+     * still holds. **Admission is the policy's**, applied by the projection: the
+     * capture-date bounds, and with them the exclusion of a row whose `creationDate` is still bare, whose
+     * empty value sorts before every real cutoff. Restating that here would be a second copy of an
+     * admission rule (capability `photo-sharing`).
+     */
+    suspend fun manifestRows(): List<LedgerEntry> =
         // `state` is read from the row rather than asserted. Nothing is bound: the query is not
         // state-scoped, because the manifest declares intent (capability `photo-sharing`).
         queries.selectManifestRows { key, assetId, state, creationDate, role, contentType, filename ->
@@ -129,7 +157,15 @@ class LedgerService(
             )
         }.executeAsList()
 
-    override suspend fun backfillManifestDetail(entry: LedgerEntry) {
+    /**
+     * Fill the manifest detail of one already-recorded row **without touching its state**,
+     * and only while the row is still bare — so re-running is free and can never clobber a good value.
+     *
+     * The sweep for the two ways a row rests bare: it predates the 5.sqm migration, or the re-join
+     * reconcile seeded it from a stored-file listing (filenames carry no capture date). A writer-family
+     * operation like [deleteKeys]: only the single writer's cycle runs it.
+     */
+    suspend fun backfillManifestDetail(entry: LedgerEntry) {
         // One UPDATE matching the '' sentinel only — a row already enriched is untouched by the
         // WHERE clause, so the sweep is idempotent by construction and cannot clobber a good value.
         queries.backfillManifestDetail(
@@ -141,17 +177,33 @@ class LedgerService(
         )
     }
 
-    override suspend fun aggregates(): LedgerAggregates =
+    /**
+     * The ledger's whole-store truth, counted by photo. It counts EVERY row — the join-time load seeds the
+     * device's stored resources for any event — so it is not the status read: its callers are the
+     * extension's "work remains" check and the diagnostic dump. Status reads [assetProgress].
+     */
+    suspend fun aggregates(): LedgerAggregates =
         queries.aggregates(DONE_STATES) { pending, completed ->
             LedgerAggregates(pending.toInt(), completed.toInt())
         }.executeAsOne()
 
-    override suspend fun assetProgress(): Map<AssetId, Boolean> =
+    /**
+     * Per photo, whether **every** row of that asset is done: `assetId → done`, one entry per asset the ledger
+     * holds a row for (capability `photo-sharing`, "Per-asset progress read"). The same per-asset collapse
+     * [aggregates] performs, un-counted, in one snapshot-consistent read. Status intersects it with the
+     * admitted set the gallery counted for `N`; the ledger interprets nothing about admission.
+     */
+    suspend fun assetProgress(): Map<AssetId, Boolean> =
         queries.assetProgress(DONE_STATES) { assetId, notDone -> assetId to ((notDone ?: 0L) == 0L) }
             .executeAsList()
             .toMap()
 
-    override suspend fun pendingResources(): List<PendingResource> =
+    /**
+     * The non-settled rows (the backlog) as [PendingResource]s. Returns exactly the rows whose state is
+     * not in [app.snapsync.model.DONE_STATES], interpreting nothing else — the backend stays a dumb row
+     * store, and *which* states are settled is decided once, in `model/`, not per query.
+     */
+    suspend fun pendingResources(): List<PendingResource> =
         queries.selectPending(DONE_STATES) { assetId, key -> PendingResource(assetId, key) }.executeAsList()
 
     /**
@@ -172,15 +224,46 @@ class LedgerService(
         return applied
     }
 
-    override suspend fun rowsNeedingJob(): List<LedgerEntry> =
+    /**
+     * The rows that **need an upload job**, in a stable key order — the upload cycle's source of work
+     * (capability `photo-sharing`).
+     *
+     * Returns exactly the rows whose state is in [app.snapsync.model.NEEDS_JOB_STATES], interpreting
+     * nothing else: *which* states need a job is decided once, in `model/`, not per query. That set is
+     * `DISCOVERED` — a key with no live job and no bytes on the backend, whether never attempted or returned
+     * there by a failure.
+     *
+     * **Unbounded, deliberately.** A cycle does bound its work — a first walk on a large library records a
+     * row per outstanding resource, and enqueuing all of them would stage every one to disk — but it
+     * bounds what it **resolves**, never what it reads, because a row needing a job is not yet the
+     * admitted set (capability `photo-sharing`). A bound here would starve: rows come back in a
+     * stable key order, so rows the membership's current policy excludes, sorting ahead of admitted ones,
+     * would fill the slice on every cycle and the admitted work further down would never be reached. The
+     * scan is local and indexed; the platform round-trip the bound protects is the caller's to make.
+     */
+    suspend fun rowsNeedingJob(): List<LedgerEntry> =
         queries.selectNeedingJob(NEEDS_JOB_STATES, ::toEntry).executeAsList()
 
-    override suspend fun clear() {
+    /**
+     * Delete every row — a deliberate reset (the app re-provisioning config), not a sync write.
+     * Dings [changes] so watchers re-read the now-empty truth.
+     */
+    suspend fun clear() {
         queries.deleteAll()
         dings.tryEmit(Unit)
     }
 
-    override suspend fun resetTo(entries: List<LedgerEntry>) {
+    /**
+     * Atomically replace the entire store with [entries] (delete-all then insert-all in one
+     * transaction): either all prior rows go and all [entries] land, or — on failure — the store is
+     * left exactly as it was (no partial baseline is ever observable). Entries are stored verbatim
+     * (the caller supplies `state`; no clock stamping here). Dings [changes]
+     * **once** on success. It applies no precedence — a settled row is replaced like any other. This is a
+     * reset-family op (alongside [clear]) — the app-side
+     * join seed uses it; it is **not** a per-key record, and it is owned by that membership use-case
+     * (capability `photo-sharing`, "Reader and writer capability split").
+     */
+    suspend fun resetTo(entries: List<LedgerEntry>) {
         // One transaction: delete-all then insert each. If any statement throws, SQLDelight rolls
         // back the whole transaction, so the store is left unchanged and the ding below is skipped —
         // a partial baseline is never observable. One ding on success, like clear(). A plain insert: after
@@ -198,7 +281,21 @@ class LedgerService(
         dings.tryEmit(Unit)
     }
 
-    override suspend fun deleteKeys(keys: Collection<String>) {
+    /**
+     * Delete exactly the rows whose key is among [keys], whatever their state, and no other — the one row
+     * deletion a cycle performs (capability `photo-sharing`, "Deletion is a presence diff over an authoritative
+     * walk").
+     *
+     * **Key-scoped, never asset-scoped.** Several resources of one photo share an `assetId` and hold per-key
+     * states, and every caller holds evidence about individual rows: a key that resolved to nothing, or a row
+     * an authoritative walk did not return. An asset-scoped delete driven by a key-grained read reaches rows
+     * the read never selected — a Live Photo's `COMPLETED` primary, deleted because its paired video's key
+     * failed to resolve under a partial grant.
+     *
+     * Writes nothing and dings nothing when none of [keys] has a row. Accepts more keys than one storage
+     * statement binds. A writer-family operation: only the single writer's cycle runs it.
+     */
+    suspend fun deleteKeys(keys: Collection<String>) {
         if (keys.isEmpty()) return
         // One transaction, chunked: an IN list is one bind variable per key, and a walk can name more rows
         // than a driver will bind. Dings only when a row went — a delete that matched nothing changed no truth.
@@ -213,9 +310,14 @@ class LedgerService(
 
     // The counter itself is maintained by `Ledger.sq`'s triggers, inside each write's own transaction; these
     // are its one read and the one explicit advance (capability `photo-sharing`).
-    override suspend fun manifestVersion(): Long = queries.selectManifestVersion().executeAsOne()
+    suspend fun manifestVersion(): Long = queries.selectManifestVersion().executeAsOne()
 
-    override suspend fun bumpManifestVersion() {
+    /**
+     * Advance the manifest version by one, for the one projection input that lives outside this store: the
+     * membership's policy bounds, whose writer (the reconfigure save) calls this **after** its config save has
+     * landed (capability `manage-membership`). Dings nothing: no row changed.
+     */
+    suspend fun bumpManifestVersion() {
         queries.bumpManifestVersion()
     }
 

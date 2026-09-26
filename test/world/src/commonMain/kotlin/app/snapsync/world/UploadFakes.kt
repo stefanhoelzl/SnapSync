@@ -14,10 +14,10 @@ import app.snapsync.model.UploadSourceKind
 import app.snapsync.model.UploadTarget
 import app.snapsync.model.assetIdFromUploadKey
 import app.snapsync.model.destinationPathOf
-import app.snapsync.ports.Discovery
+import app.snapsync.services.gallery.Discovery
 import app.snapsync.ports.Upload
 import app.snapsync.ports.UploadHandlers
-import app.snapsync.ports.UploadDiscovery
+import app.snapsync.services.gallery.UploadDiscovery
 import app.snapsync.ports.GalleryReader
 import app.snapsync.services.gallery.GalleryDiscovery
 import io.ktor.client.HttpClient

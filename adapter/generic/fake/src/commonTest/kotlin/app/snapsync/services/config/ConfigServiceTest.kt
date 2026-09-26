@@ -1,5 +1,11 @@
 package app.snapsync.services.config
 
+import app.snapsync.fake.fixedClock
+import app.snapsync.model.deletesAt
+import app.snapsync.ports.Files
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+import kotlin.time.Instant
 import app.snapsync.fake.inMemoryFiles
 import app.snapsync.model.ConfigRead
 import app.snapsync.contracts.ConfigStoreContract
@@ -8,7 +14,6 @@ import app.snapsync.model.FileResult
 import app.snapsync.model.FileTail
 import app.snapsync.model.MembershipRead
 import app.snapsync.model.encodeConfigFile
-import app.snapsync.ports.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -21,6 +26,17 @@ import kotlinx.coroutines.test.runTest
  * be made is refused rather than half-done.
  */
 class ConfigServiceTest {
+
+    private fun service(files: Files) = ConfigService(files, fixedClock(NOW))
+
+    @Test
+    fun `a membership is past its deletion only once its own deadline has passed`() {
+        val service = service(inMemoryFiles())
+        assertTrue(service.isPastDeletion(deletesAt("2026-06-01T00:00:00Z")), "the deadline is behind the clock")
+        assertFalse(service.isPastDeletion(deletesAt("2026-07-01T00:00:00Z")), "the deadline is ahead of the clock")
+        assertFalse(service.isPastDeletion(null), "a membership without a deadline never reaches it")
+    }
+
 
     private val config = ConfigStoreContract.seedConfig("ConfigServiceTest")
 
@@ -39,22 +55,22 @@ class ConfigServiceTest {
     @Test
     fun `a file that is not UTF-8 is unreadable and never not joined`() {
         val files = inMemoryFiles(shared = mutableMapOf(CONFIG_FILE_NAME to byteArrayOf(0xC3.toByte(), 0x28)))
-        assertIs<ConfigRead.Unavailable>(ConfigService(files).read())
+        assertIs<ConfigRead.Unavailable>(service(files).read())
     }
 
     @Test
     fun `denied and failed reads are unreadable carrying their code`() {
-        val denied = ConfigService(Answering(FileResult.Denied("locked", code = 257))).read()
+        val denied = service(Answering(FileResult.Denied("locked", code = 257))).read()
         assertEquals(257, assertIs<ConfigRead.Unavailable>(denied).status)
-        assertIs<ConfigRead.Unavailable>(ConfigService(Answering(FileResult.Failed("io"))).read())
-        assertIs<ConfigRead.Unavailable>(ConfigService(Answering(FileResult.AreaUnavailable)).read())
+        assertIs<ConfigRead.Unavailable>(service(Answering(FileResult.Failed("io"))).read())
+        assertIs<ConfigRead.Unavailable>(service(Answering(FileResult.AreaUnavailable)).read())
     }
 
     @Test
     fun `a reload that cannot read keeps the last good membership`() {
         val shared = mutableMapOf(CONFIG_FILE_NAME to encodeConfigFile(config).encodeToByteArray())
         val denied = mutableSetOf<Pair<FileArea, String>>()
-        val service = ConfigService(inMemoryFiles(shared = shared, denied = denied))
+        val service = service(inMemoryFiles(shared = shared, denied = denied))
         assertEquals(config, service.config.value)
 
         denied += FileArea.SHARED to CONFIG_FILE_NAME
@@ -66,15 +82,18 @@ class ConfigServiceTest {
 
     @Test
     fun `a save that cannot be written is refused`() = runTest {
-        val service = ConfigService(Answering(FileResult.Denied("locked")))
+        val service = service(Answering(FileResult.Denied("locked")))
         assertFailsWith<IllegalStateException> { service.save(config) }
     }
 
     @Test
     fun `a leave that cannot delete the file is refused and a missing file is already left`() = runTest {
-        assertFailsWith<IllegalStateException> { ConfigService(Answering(FileResult.Failed("io"))).clear() }
-        val absent = ConfigService(inMemoryFiles())
+        assertFailsWith<IllegalStateException> { service(Answering(FileResult.Failed("io"))).clear() }
+        val absent = service(inMemoryFiles())
         absent.clear()
         assertEquals(MembershipRead.NotMember, absent.membership)
     }
 }
+
+/** "Now" for the config service's clock. */
+private val NOW: Instant = Instant.parse("2026-06-15T12:00:00Z")

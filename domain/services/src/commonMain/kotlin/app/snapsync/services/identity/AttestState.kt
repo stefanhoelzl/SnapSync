@@ -12,7 +12,7 @@ import app.snapsync.services.secure.readExisting
  * slots both processes read — the extension must read the token, and the OS invokes it while the device is locked.
  *
  * Reads use `readExisting`, never a mint: there is nothing to generate — a token comes from the backend, a keyId
- * from the Secure Enclave. An unreadable item throws [app.snapsync.ports.SecureStoreUnavailable] rather than read
+ * from the Secure Enclave. An unreadable item throws [app.snapsync.model.SecureStoreUnavailable] rather than read
  * as absent, which would burn a fresh attestation. A refused write throws it too, where the old throwing store
  * did: the attestation then does not accept the token, and a keyId that could not be stored is refused. After a
  * refused write the old value may be gone (a replace is delete-then-add), so the token path re-attests, as before.

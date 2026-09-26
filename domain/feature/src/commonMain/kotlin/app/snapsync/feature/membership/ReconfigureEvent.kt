@@ -7,8 +7,7 @@ import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
 import app.snapsync.model.clampToCeiling
 import app.snapsync.model.clampToFloor
-import app.snapsync.ports.ConfigSource
-import app.snapsync.ports.ConfigStore
+import app.snapsync.services.config.ConfigService
 import co.touchlab.kermit.Logger
 
 /**
@@ -51,8 +50,7 @@ import co.touchlab.kermit.Logger
  * every effect after it runs best-effort: a failing effect is logged and the rest still run.
  */
 class ReconfigureEvent(
-    private val configSource: ConfigSource,
-    private val store: ConfigStore,
+    private val configSource: ConfigService,
     private val refreshStatus: suspend () -> Unit,
     private val armUpload: suspend () -> Unit,
     private val ensureAlbum: suspend (EventConfig) -> Unit,
@@ -104,7 +102,7 @@ class ReconfigureEvent(
         //
         // REQUIRED: every step below acts on `newCfg`, so none may run on settings that never landed (B5).
         val saved = steps.required("save config") {
-            store.save(newCfg)
+            configSource.save(newCfg)
             bumpManifestVersion()
         }
         if (!saved) return ReconfigureOutcome.SaveFailed

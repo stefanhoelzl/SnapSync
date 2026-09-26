@@ -6,7 +6,7 @@ import app.snapsync.world.composeExtension
 import app.snapsync.contracts.EntryDriver
 import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.WakeId
-import app.snapsync.ports.DeviceLogSource
+import app.snapsync.services.logs.LogTailService
 import app.snapsync.world.DenoBackend
 import app.snapsync.world.MiniEdgeBackend
 import app.snapsync.world.World
@@ -173,10 +173,10 @@ class JvmRigHost private constructor(
             )
         }
 
-        private fun worldLog(world: World) = object : DeviceLogSource {
-            override suspend fun tail(process: DeviceLogSource.Process, maxBytes: Int): String? = when (process) {
-                DeviceLogSource.Process.APP -> world.logs.lines.joinToString("\n").takeLast(maxBytes)
-                DeviceLogSource.Process.EXTENSION -> null
+        private fun worldLog(world: World): suspend (LogTailService.Process, Int) -> String? = { process, maxBytes ->
+            when (process) {
+                LogTailService.Process.APP -> world.logs.lines.joinToString("\n").takeLast(maxBytes)
+                LogTailService.Process.EXTENSION -> null
             }
         }
 

@@ -5,7 +5,7 @@ import app.snapsync.model.SecureStoreRead
 import app.snapsync.model.SecureStoreResolution
 import app.snapsync.model.StoredProtection
 import app.snapsync.model.WriteOutcome
-import app.snapsync.ports.SecureStoreUnavailable
+import app.snapsync.model.SecureStoreUnavailable
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith

@@ -10,10 +10,9 @@ import app.snapsync.contracts.verify
 import app.snapsync.model.SecureSlot
 import app.snapsync.model.SecureStoreRead
 import app.snapsync.model.WriteOutcome
-import app.snapsync.ports.AlbumMapStore
+import app.snapsync.services.album.AlbumMapService
 import app.snapsync.ports.SecureStore
 import app.snapsync.preferences.IosPreferences
-import app.snapsync.services.album.AlbumMapService
 import platform.Foundation.NSUserDefaults
 import kotlin.test.Test
 
@@ -32,12 +31,12 @@ import kotlin.test.Test
  */
 class IosAlbumMapStoreContractTest {
 
-    private val binding = object : Binding<AlbumMapStoreState, AlbumMapStore> {
+    private val binding = object : Binding<AlbumMapStoreState, AlbumMapService> {
         override val host = Host.IOS_SIM_KEXE
         override val kind = BindingKind.Live
         override val reaches = setOf(AlbumMapStoreState.EMPTY, AlbumMapStoreState.HOLDING, AlbumMapStoreState.CORRUPT)
 
-        override fun create(state: AlbumMapStoreState, clauseId: String): Entered<AlbumMapStore> {
+        override fun create(state: AlbumMapStoreState, clauseId: String): Entered<AlbumMapService> {
             val suite = "contract.albummap.$clauseId"
             NSUserDefaults(suiteName = suite).removePersistentDomainForName(suite)
             when (state) {
@@ -65,7 +64,7 @@ class IosAlbumMapStoreContractTest {
     }
 
     @Test
-    fun `the App-Group album map satisfies the AlbumMapStore contract`() = verify(AlbumMapStoreContract, binding)
+    fun `the App-Group album map satisfies the AlbumMapService contract`() = verify(AlbumMapStoreContract, binding)
 
     private companion object {
         /** The adapter's own key — a runtime-identity pin, restated here only to corrupt it. */

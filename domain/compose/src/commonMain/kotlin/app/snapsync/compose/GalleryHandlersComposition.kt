@@ -2,7 +2,7 @@ package app.snapsync.compose
 
 import app.snapsync.model.ImportResult
 import app.snapsync.model.SelectionSnapshot
-import app.snapsync.ports.DownloadStore
+import app.snapsync.services.downloads.DownloadService
 import app.snapsync.ports.GalleryHandlers
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.channels.SendChannel
@@ -18,7 +18,7 @@ import kotlinx.coroutines.channels.SendChannel
  *    when the requester is gone.
  */
 internal fun galleryHandlers(
-    downloads: DownloadStore,
+    downloads: DownloadService,
     log: Logger,
     selection: SendChannel<SelectionSnapshot>,
 ): GalleryHandlers = GalleryHandlers(

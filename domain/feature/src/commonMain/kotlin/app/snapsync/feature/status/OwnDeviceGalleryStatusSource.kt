@@ -4,8 +4,7 @@ import app.snapsync.model.AssetId
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.EventPhotoSet
-import app.snapsync.ports.GalleryStatusSource
-import app.snapsync.ports.CandidateSource
+import app.snapsync.services.gallery.CandidateSource
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CancellationException
 import kotlin.time.TimeSource
@@ -67,7 +66,7 @@ class OwnDeviceGalleryStatusSource(
     // silently admits a member's WhatsApp album is exactly what the required-ports rule exists to prevent.
     private val log: Logger = Logger.withTag("gallery"),
     private val timeSource: TimeSource = TimeSource.Monotonic,
-) : GalleryStatusSource {
+) {
 
     // `null` until a count has been taken. NOT `0`: a placeholder zero is indistinguishable from a
     // membership that genuinely contributes nothing, and the status projection settles to "In sync" the
@@ -76,7 +75,7 @@ class OwnDeviceGalleryStatusSource(
     private val _admitted = MutableStateFlow<Set<AssetId>?>(null)
 
     /** The upload total `N`: the count of this device's OWN admitted assets, or `null` if not counted. */
-    override val admitted: StateFlow<Set<AssetId>?> = _admitted.asStateFlow()
+    val admitted: StateFlow<Set<AssetId>?> = _admitted.asStateFlow()
 
     /**
      * Re-read within [configPolicy] (what the joined membership contributes) and recompute `N`.

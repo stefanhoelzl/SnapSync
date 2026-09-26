@@ -28,7 +28,7 @@ class StorageResetWorldTest {
 
         // Uploaded: object stored, ledger COMPLETED, and the event union sees it.
         assertTrue("A-primary.jpg" in w.store.objectsOf(w.ownDeviceId))
-        assertEquals(LedgerState.COMPLETED, w.ledgerBackend.get("A-primary.jpg")?.state)
+        assertEquals(LedgerState.COMPLETED, w.ledger.get("A-primary.jpg")?.state)
         assertEquals(1, w.store.union("E1")?.size)
 
         // Operator wipes storage: the byte partition is gone, but the ledger still says COMPLETED.
@@ -47,7 +47,7 @@ class StorageResetWorldTest {
 
         // Healed: object re-deposited, ledger COMPLETED again, and the new event's union sees it.
         assertTrue("A-primary.jpg" in w.store.objectsOf(w.ownDeviceId))
-        assertEquals(LedgerState.COMPLETED, w.ledgerBackend.get("A-primary.jpg")?.state)
+        assertEquals(LedgerState.COMPLETED, w.ledger.get("A-primary.jpg")?.state)
         assertEquals(1, w.store.union("E2")?.size)
     }
 }

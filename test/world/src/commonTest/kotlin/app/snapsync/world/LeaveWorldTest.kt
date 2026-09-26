@@ -29,8 +29,8 @@ class LeaveWorldTest {
         w.leave()
 
         // The join is cleared, and so is the upload ledger — the current membership's share set...
-        assertNull(w.configSource.config.value)
-        assertTrue(w.ledgerBackend.manifestRows().isEmpty())
+        assertNull(w.config.config.value)
+        assertTrue(w.ledger.manifestRows().isEmpty())
         // ...but the imported photo survives (terminal / delete-proof).
         assertTrue(w.gallery.current().any { it.assetId == importedId })
         assertTrue(importedId in w.downloadStore.suppressedLocalIds())

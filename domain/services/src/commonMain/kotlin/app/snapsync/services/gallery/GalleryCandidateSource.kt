@@ -6,7 +6,6 @@ import app.snapsync.model.ResourceBatch
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.candidatesFromFacts
 import app.snapsync.model.resourcesFrom
-import app.snapsync.ports.CandidateSource
 import app.snapsync.ports.GalleryReader
 
 /**

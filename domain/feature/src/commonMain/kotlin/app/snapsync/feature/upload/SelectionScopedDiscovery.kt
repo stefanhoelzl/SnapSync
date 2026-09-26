@@ -4,8 +4,8 @@ import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.candidatesFromResources
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionScope
-import app.snapsync.ports.Discovery
-import app.snapsync.ports.UploadDiscovery
+import app.snapsync.services.gallery.Discovery
+import app.snapsync.services.gallery.UploadDiscovery
 
 /**
  * The read-discipline gate on upload discovery (capability `photo-access`): under a partial

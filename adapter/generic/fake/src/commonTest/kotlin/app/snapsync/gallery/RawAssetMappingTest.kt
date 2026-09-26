@@ -2,7 +2,7 @@ package app.snapsync.gallery
 
 import app.snapsync.fake.inMemoryGallery
 import app.snapsync.model.AssetId
-import app.snapsync.ports.CandidateSource
+import app.snapsync.services.gallery.CandidateSource
 import app.snapsync.services.gallery.GalleryCandidateSource
 import kotlinx.coroutines.flow.MutableStateFlow
 import app.snapsync.model.AssetFacts

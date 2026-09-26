@@ -4,7 +4,7 @@ import app.snapsync.feature.upload.AppUploadMechanism
 import app.snapsync.feature.upload.UploadCycle
 import app.snapsync.feature.upload.WalkOutcome
 import app.snapsync.model.CycleResult
-import app.snapsync.ports.ConfigReader
+import app.snapsync.services.config.ConfigService
 import app.snapsync.ports.PhotoGrantRead
 import app.snapsync.model.invocation
 import app.snapsync.services.gallery.GalleryAlbums
@@ -19,7 +19,7 @@ import app.snapsync.services.gallery.GalleryDiscovery
  * [appVersion] are constants of the running build.
  */
 class AppUploaderPorts(
-    val config: ConfigReader,
+    val config: ConfigService,
     val grant: PhotoGrantRead,
     val host: String,
     val appVersion: String,

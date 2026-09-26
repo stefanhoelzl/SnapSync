@@ -19,7 +19,7 @@ import app.snapsync.model.GalleryAccess
 import app.snapsync.model.RawAsset
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.AssetRef
-import app.snapsync.ports.DownloadStore
+import app.snapsync.services.downloads.DownloadService
 import app.snapsync.model.PendingDownload
 import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.feature.upload.AppUploadMechanism
@@ -228,43 +228,6 @@ class WorldGallery(
         return honest.import(request)
     }
 }
-
-/**
- * The world's download store: the recording wrapper around the honest `:adapter:generic:fake`
- * [app.snapsync.fake.inMemoryDownloadStore]. [enqueueRequests] records what the real
- * `DownloadController` sent to the OS (it marks each enqueued batch through this port), replacing
- * the pre-step-10 `recordingJobs` interception — the real jobs still do all the work, and the
- * transfer-description codec stays `internal` to `:domain`. Cleared on [pruneNonTerminal] (the
- * leave/switch path), mirroring the old recorder's clear-on-cancelAll timing.
- */
-class RecordingDownloadStore(private val inner: DownloadStore) : DownloadStore by inner {
-
-    /** Inspection: every (asset, resourceKey) the controller enqueued, in order. */
-    val enqueueRequests = mutableListOf<Pair<AssetRef, String>>()
-
-    /** Inspection: every staging the store took, in order — the store write a download wake's handler waits for. */
-    val stagings = mutableListOf<Pair<AssetRef, String>>()
-
-    override suspend fun markStaged(ref: AssetRef, resourceKey: String, stagedPath: String): Boolean =
-        inner.markStaged(ref, resourceKey, stagedPath).also { if (it) stagings += ref to resourceKey }
-
-    override suspend fun markEnqueued(ref: AssetRef, resourceKey: String) {
-        enqueueRequests += ref to resourceKey
-        inner.markEnqueued(ref, resourceKey)
-    }
-
-    // The controller marks a reconcile's whole batch in one call; recorded per resource, in order, as before.
-    override suspend fun markAllEnqueued(downloads: Collection<PendingDownload>) {
-        downloads.forEach { enqueueRequests += it.ref to it.resource.resourceKey }
-        inner.markAllEnqueued(downloads)
-    }
-
-    override suspend fun pruneNonTerminal(protecting: Set<AssetRef>): List<String> {
-        enqueueRequests.clear()
-        return inner.pruneNonTerminal(protecting)
-    }
-}
-
 
 /**
  * The world's app-driven [AppUploadMechanism]: its units are inert, because **the operator is the engine** — nothing

@@ -45,7 +45,6 @@ Roots found:
 | `IosPreferences` | x | x |
 | `IosProcessInfo` | x | |
 | `IosPushNotifications` | x | |
-| `IosPushRegistrationRecord` | x | |
 | `IosSystemUi` | x | |
 | `IosUi` | x | |
 | `IosUrlSessionUploadPlatform` | x | |
@@ -59,6 +58,7 @@ Roots found:
 | `ProcessPorts` | x | x |
 | `PublicNSLogSink` | x | x |
 | `PushPorts` | x | |
+| `PushRegistrationRecord` | x | |
 | `PushTokenSource` | x | |
 | `SceneRecord` | x | |
 | `SentryCrashReporter` | x | x |

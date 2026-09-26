@@ -3,7 +3,7 @@ package app.snapsync.keychain
 import app.snapsync.model.SecureSlot
 import app.snapsync.model.SecureStoreRead
 import app.snapsync.model.WriteOutcome
-import app.snapsync.ports.SecureStoreUnavailable
+import app.snapsync.model.SecureStoreUnavailable
 import app.snapsync.services.secure.readExisting
 import app.snapsync.services.secure.resolveOrMint
 

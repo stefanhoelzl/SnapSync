@@ -15,14 +15,12 @@ import app.snapsync.model.UploadSourceKind
 import app.snapsync.model.UploadTarget
 import app.snapsync.model.WriteOutcome
 import app.snapsync.model.assetIdFromUploadKey
-import app.snapsync.ports.BackgroundTransfer
 import app.snapsync.model.EntryScope
 import app.snapsync.ports.Files
 import app.snapsync.ports.GalleryReader
-import app.snapsync.ports.PlatformUploadJob
-import app.snapsync.ports.TransferRecord
+import app.snapsync.model.PlatformUploadJob
 import app.snapsync.ports.Upload
-import app.snapsync.ports.UploadDiscovery
+import app.snapsync.services.gallery.UploadDiscovery
 import app.snapsync.model.invocation
 import co.touchlab.kermit.Logger
 

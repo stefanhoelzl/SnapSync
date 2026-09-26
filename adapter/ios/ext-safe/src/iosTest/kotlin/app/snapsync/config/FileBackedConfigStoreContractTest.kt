@@ -4,7 +4,6 @@ package app.snapsync.config
 
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
-import app.snapsync.contracts.ConfigPorts
 import app.snapsync.contracts.ConfigStoreContract
 import app.snapsync.contracts.ConfigStoreState
 import app.snapsync.contracts.Entered
@@ -17,7 +16,10 @@ import app.snapsync.testsupport.removeDirectory
 import app.snapsync.testsupport.writeTextFile
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.posix.chmod
+import app.snapsync.ports.Clock
+import kotlinx.datetime.TimeZone
 import kotlin.test.Test
+import kotlin.time.Instant
 
 /**
  * The App-Group config file store, live (`docs/architecture.md`) — the first run of the leave
@@ -30,7 +32,7 @@ import kotlin.test.Test
  */
 class FileBackedConfigStoreContractTest {
 
-    private val binding = object : Binding<ConfigStoreState, ConfigPorts> {
+    private val binding = object : Binding<ConfigStoreState, ConfigService> {
         override val host = Host.IOS_SIM_KEXE
         override val kind = BindingKind.Live
         override val reaches = setOf(
@@ -42,8 +44,8 @@ class FileBackedConfigStoreContractTest {
             ConfigStoreState.FILE_UNREADABLE,
         )
 
-        override fun create(state: ConfigStoreState, clauseId: String): Entered<ConfigPorts> {
-            if (state == ConfigStoreState.INACCESSIBLE) return Entered.Ready(ports(ConfigService(IosFiles())))
+        override fun create(state: ConfigStoreState, clauseId: String): Entered<ConfigService> {
+            if (state == ConfigStoreState.INACCESSIBLE) return Entered.Ready(ConfigService(IosFiles(), CLOCK))
             val dir = newTempDirectory()
             val file = "$dir/$FILE"
             when (state) {
@@ -60,14 +62,12 @@ class FileBackedConfigStoreContractTest {
                 }
                 ConfigStoreState.ABSENT, ConfigStoreState.INACCESSIBLE -> Unit
             }
-            return Entered.Ready(ports(ConfigService(IosFiles(sharedRoot = dir, privateRoot = null)))) {
+            return Entered.Ready(ConfigService(IosFiles(sharedRoot = dir, privateRoot = null), CLOCK)) {
                 chmod(file, OWNER_READ_WRITE)
                 removeDirectory(dir)
             }
         }
     }
-
-    private fun ports(store: ConfigService) = ConfigPorts(source = store, store = store, reader = store)
 
     @Test
     fun `the App-Group config file satisfies the ConfigStore contract`() = verify(ConfigStoreContract, binding)
@@ -75,6 +75,12 @@ class FileBackedConfigStoreContractTest {
     private companion object {
         /** The adapter's own file name — a runtime-identity pin, restated here only to seed it. */
         const val FILE = "eventconfig.json"
+
+        /** No clause reads "now", so any instant serves. */
+        val CLOCK = object : Clock {
+            override fun now() = Instant.fromEpochSeconds(0)
+            override fun timeZone() = TimeZone.UTC
+        }
 
         const val NO_PERMISSIONS: UShort = 0u
         const val OWNER_READ_WRITE: UShort = 0x180u // 0600

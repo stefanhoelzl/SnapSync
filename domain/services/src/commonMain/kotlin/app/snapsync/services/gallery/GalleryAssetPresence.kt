@@ -5,7 +5,6 @@ import app.snapsync.model.AssetPresence
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.GalleryRead
 import app.snapsync.ports.GalleryReader
-import app.snapsync.ports.ImportedAssetPresence
 
 /**
  * Whether assets this device created still exist, asked of the whole library (capability `receiving-photos`).

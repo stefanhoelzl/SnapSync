@@ -8,7 +8,7 @@ import app.snapsync.contracts.CONTRACT_TIMEOUT
 import app.snapsync.contracts.FixtureAnswer
 import app.snapsync.contracts.TransferFixture
 import app.snapsync.contracts.currentHost
-import app.snapsync.ports.DeviceLogSource
+import app.snapsync.services.logs.LogTailService
 import app.snapsync.presentation.StatusContainerHost
 import co.touchlab.kermit.Logger
 import io.ktor.http.HttpStatusCode
@@ -255,7 +255,7 @@ class RigServer(
         respondText(json.encodeToString(RigState.serializer(), readState(core(), host(), hooks)))
 
     /**
-     * `/logs?process=app|extension&bytes=N` — a pass-through to [DeviceLogSource.tail].
+     * `/logs?process=app|extension&bytes=N` — a pass-through to [LogTailService.tail].
      *
      * The port answers `null` for "no such log" and "could not read it" alike, having decided those are
      * identical downstream. They are **not** identical here: an empty `200` would read as "the log is
@@ -270,7 +270,7 @@ class RigServer(
                 "unknown process '$which' — expected one of ${LOG_PROCESSES.keys.joinToString("|")}\n",
                 status = HttpStatusCode.BadRequest,
             )
-        val tail = hooks.deviceLog.tail(process, bytes)
+        val tail = hooks.deviceLog(process, bytes)
             ?: return respondText(
                 "no log for process=$which: it does not exist on this device, or it could not be read\n",
                 status = HttpStatusCode.NotFound,
@@ -504,8 +504,8 @@ class RigServer(
         /** ~200 KB: comfortably more than a single cycle's lines, well under the port's 10 MB roll cap. */
         const val DEFAULT_LOG_BYTES = 200_000
         val LOG_PROCESSES = mapOf(
-            "app" to DeviceLogSource.Process.APP,
-            "extension" to DeviceLogSource.Process.EXTENSION,
+            "app" to LogTailService.Process.APP,
+            "extension" to LogTailService.Process.EXTENSION,
         )
     }
 }

@@ -1,9 +1,9 @@
 package app.snapsync.feature.membership
 
 import app.snapsync.model.runCatchingCancellable
-import app.snapsync.ports.ConfigStore
-import app.snapsync.ports.DownloadStore
-import app.snapsync.ports.LedgerStore
+import app.snapsync.services.config.ConfigService
+import app.snapsync.services.downloads.DownloadService
+import app.snapsync.services.ledger.LedgerService
 import co.touchlab.kermit.Logger
 
 /**
@@ -36,7 +36,7 @@ import co.touchlab.kermit.Logger
  * reset with `SNAPSYNC_LEAVE` is unnecessary rather than complementary — after a reset the device is
  * unjoined, so a leave in the same launch is a no-op instead of a `DELETE` aimed at the wrong backend.
  *
- * Download rows are dropped **non-terminally only** ([DownloadStore.pruneNonTerminal], the same verb
+ * Download rows are dropped **non-terminally only** ([DownloadService.pruneNonTerminal], the same verb
  * leave/switch use). Rows carrying a `createdLocalId` are **retained** — whether or not they reached a
  * terminal state. That marker is what the upload path reads to suppress re-uploading a downloaded asset,
  * so discarding a row that holds one makes the device re-upload the photo it imported: the echo the
@@ -55,9 +55,9 @@ import co.touchlab.kermit.Logger
  * partial reset is strictly better than an aborted one (whatever was cleared cannot mislead).
  */
 class ResetDeviceState(
-    private val config: ConfigStore,
-    private val ledger: LedgerStore,
-    private val downloads: DownloadStore,
+    private val config: ConfigService,
+    private val ledger: LedgerService,
+    private val downloads: DownloadService,
     /**
      * The download half of the reset — the non-terminal prune and the release of the bytes it strands,
      * together.

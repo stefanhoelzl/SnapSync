@@ -1,0 +1,141 @@
+package app.snapsync.services.gallery
+
+import app.snapsync.model.AssetFacts
+import app.snapsync.model.AssetId
+import app.snapsync.model.Candidate
+import app.snapsync.model.CandidateRead
+import app.snapsync.model.CaptureDate
+import app.snapsync.model.GalleryAccess
+import app.snapsync.model.RESOURCE_META_CREATION_DATE
+import app.snapsync.model.Resource
+import app.snapsync.model.SelectionPolicy
+import app.snapsync.model.selectionRulesFor
+import app.snapsync.model.captureCutoff
+import app.snapsync.services.gallery.CandidateSource
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertIs
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.test.runTest
+
+/**
+ * The grant decides **where candidates come from**, and no consumer branches on it
+ * (capability `photo-access`, D10: *"the mode difference is one source impl, not a branch in the
+ * policy() or its consumers"*).
+ *
+ * That principle was already true of the policy() and false of the consumers: the status total had two
+ * entry points (`refresh` / `refreshFrom`) and the join preview a `when (permission)`, so each restated
+ * the distinction — and it is the restatement, not the reading, that lets two paths drift. This pins that
+ * the restatement is gone, and that the `LIMITED` path still never walks.
+ */
+class PermissionAwareCandidateSourceTest {
+
+    private suspend fun policy(): SelectionPolicy = SelectionPolicy(
+        selectionRulesFor(
+            includesUpload = true,
+            cutoff = captureCutoff("2026-01-01T00:00:00Z"),
+            ceiling = null,
+            suppressedAssetIds = { emptySet() },
+            albumExcludedAssetIds = { emptySet() },
+        ),
+    )
+
+    /** Counts walks, because "counted from the snapshot" and "did not look" are different claims. */
+    private class RecordingWalk(private val ids: List<String>) : CandidateSource {
+        var walks = 0
+        override suspend fun candidates(policy: SelectionPolicy): CandidateRead {
+            walks++
+            return CandidateRead.Readable(
+                ids.map { id ->
+                    object : Candidate {
+                        override val facts = AssetFacts(AssetId(id), CaptureDate("2026-06-01T00:00:00Z"))
+                        override suspend fun resources(): List<Resource> = emptyList()
+                    }
+                },
+            )
+        }
+    }
+
+    /** The candidates of a read expected to be readable — the assertion is part of each case's claim. */
+    private suspend fun CandidateSource.readable(policy: SelectionPolicy): List<Candidate> =
+        assertIs<CandidateRead.Readable>(candidates(policy), "expected a readable library").candidates
+
+    private fun snapshotOf(vararg ids: String) = ids.map {
+        Resource(
+            "$it-primary.jpg",
+            AssetId(it),
+            "image/jpeg",
+            mapOf(RESOURCE_META_CREATION_DATE to "2026-06-01T00:00:00Z"),
+            Unit,
+        )
+    }
+
+    private fun source(
+        permission: GalleryAccess,
+        walk: RecordingWalk = RecordingWalk(listOf("W")),
+        snapshot: List<Resource>? = null,
+    ) = walk to PermissionAwareCandidateSource(
+        permission = MutableStateFlow(permission),
+        walk = walk,
+        selection = MutableStateFlow(snapshot),
+    )
+
+    @Test
+    fun `GRANTED walks the library`() = runTest {
+        val (walk, source) = source(GalleryAccess.GRANTED)
+        assertEquals(listOf(AssetId("W")), source.readable(policy()).map { it.facts.assetId })
+        assertEquals(1, walk.walks)
+    }
+
+    @Test
+    fun `LIMITED reads the snapshot and never walks`() = runTest {
+        // The load-bearing half. Under a partial grant the selection IS the membership's scope, so a
+        // source that merely *happened* to return the right ids while also walking would be reading the
+        // wrong universe — it could surface photos the member never chose to share. (Not an alert
+        // argument: reads of an unchanged library raise no limited-access prompt — `photo-access`.)
+        val (walk, source) = source(GalleryAccess.LIMITED, snapshot = snapshotOf("S1", "S2"))
+        assertEquals(listOf(AssetId("S1"), AssetId("S2")), source.readable(policy()).map { it.facts.assetId })
+        assertEquals(0, walk.walks, "no autonomous library read under a partial grant")
+    }
+
+    @Test
+    fun `LIMITED before the first snapshot is NOT READABLE and still never walks`() = runTest {
+        // Between a grant turning partial and the first observer emission there is nothing selected that
+        // we know of, and we may not go looking for it. That is not an empty selection: an empty one is a
+        // counted zero that settles the screen at "In sync", which on a member who HAS photos selected is
+        // a frame the projection can never take back (capability `sync-status`). This case is the whole
+        // reason the seam answers with a sealed type rather than a list.
+        val (walk, source) = source(GalleryAccess.LIMITED, snapshot = null)
+        assertEquals(CandidateRead.NotReadable, source.candidates(policy()))
+        assertEquals(0, walk.walks, "and it still may not go looking")
+    }
+
+    @Test
+    fun `an EMPTY snapshot is readable — a counted zero rather than an absence`() = runTest {
+        // The other half of the pair above, and the reason it cannot simply be `.orEmpty()`: a member who
+        // selected nothing is receive-only, which is a valid resting state, and their screen SHOULD settle.
+        val (walk, source) = source(GalleryAccess.LIMITED, snapshot = emptyList())
+        assertEquals(CandidateRead.Readable(emptyList()), source.candidates(policy()))
+        assertEquals(0, walk.walks)
+    }
+
+    @Test
+    fun `an unusable grant is NOT READABLE and never walks`() = runTest {
+        for (status in listOf(GalleryAccess.DENIED, GalleryAccess.NOT_DETERMINED)) {
+            val (walk, source) = source(status, snapshot = snapshotOf("S"))
+            assertEquals(CandidateRead.NotReadable, source.candidates(policy()), "$status has no answer")
+            assertEquals(0, walk.walks, "$status never walks")
+        }
+    }
+
+    @Test
+    fun `the snapshot's candidates already carry their resources`() = runTest {
+        // The snapshot arrives already read, WITH resources, from the sanctioned read points. Asking a
+        // candidate for them must therefore issue nothing: a deferred read here would have to reach the
+        // assets again later, off-flow — an autonomous library fetch the read discipline forbids
+        // (capability `photo-access`).
+        val (_, source) = source(GalleryAccess.LIMITED, snapshot = snapshotOf("S1"))
+        val resources = source.readable(policy()).single().resources()
+        assertEquals(listOf("S1-primary.jpg"), resources.map { it.filename })
+    }
+}

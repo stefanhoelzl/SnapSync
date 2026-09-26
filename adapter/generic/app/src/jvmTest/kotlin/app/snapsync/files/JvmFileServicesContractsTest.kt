@@ -1,8 +1,11 @@
 package app.snapsync.files
 
+import app.snapsync.contracts.PushRegistrationRecordContract
+import app.snapsync.contracts.PushRegistrationRecordState
+import app.snapsync.services.push.PushRegistrationRecord
+import app.snapsync.time.SystemClock
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
-import app.snapsync.contracts.ConfigPorts
 import app.snapsync.contracts.ConfigStoreContract
 import app.snapsync.contracts.ConfigStoreState
 import app.snapsync.contracts.DeviceLogSourceContract
@@ -19,15 +22,12 @@ import app.snapsync.contracts.verify
 import app.snapsync.model.APP_LOG_FILE_NAME
 import app.snapsync.model.EXTENSION_LOG_FILE_NAME
 import app.snapsync.model.FileArea
-import app.snapsync.ports.DeviceLogSource
-import app.snapsync.ports.DeviceManifestStore
-import app.snapsync.ports.Files
-import app.snapsync.ports.StagedBytes
-import app.snapsync.services.config.CONFIG_FILE_NAME
-import app.snapsync.services.config.ConfigService
 import app.snapsync.services.logs.LogTailService
 import app.snapsync.services.manifest.DeviceManifestService
+import app.snapsync.ports.Files
 import app.snapsync.services.staging.StagingService
+import app.snapsync.services.config.CONFIG_FILE_NAME
+import app.snapsync.services.config.ConfigService
 import java.io.File
 import java.nio.file.Files as Nio
 import kotlin.test.Test
@@ -73,7 +73,7 @@ class JvmFileServicesContractsTest {
         }
     }
 
-    private val config = object : Binding<ConfigStoreState, ConfigPorts> {
+    private val config = object : Binding<ConfigStoreState, ConfigService> {
         override val host = Host.JVM
         override val kind = BindingKind.Live
         override val reaches = setOf(
@@ -84,8 +84,8 @@ class JvmFileServicesContractsTest {
             ConfigStoreState.UNUSABLE,
             ConfigStoreState.FILE_UNREADABLE,
         )
-        override fun create(state: ConfigStoreState, clauseId: String): Entered<ConfigPorts> {
-            if (state == ConfigStoreState.INACCESSIBLE) return Entered.Ready(ports(ConfigService(unavailable())))
+        override fun create(state: ConfigStoreState, clauseId: String): Entered<ConfigService> {
+            if (state == ConfigStoreState.INACCESSIBLE) return Entered.Ready(ConfigService(unavailable(), SystemClock))
             val areas = Areas()
             val file = File(areas.shared, CONFIG_FILE_NAME)
             when (state) {
@@ -98,13 +98,11 @@ class JvmFileServicesContractsTest {
                 }
                 ConfigStoreState.ABSENT, ConfigStoreState.INACCESSIBLE -> Unit
             }
-            return Entered.Ready(ports(ConfigService(areas.files)), areas::dispose)
+            return Entered.Ready(ConfigService(areas.files, SystemClock), areas::dispose)
         }
-
-        private fun ports(service: ConfigService) = ConfigPorts(source = service, store = service, reader = service)
     }
 
-    private val manifest = object : Binding<DeviceManifestStoreState, DeviceManifestStore> {
+    private val manifest = object : Binding<DeviceManifestStoreState, DeviceManifestService> {
         override val host = Host.JVM
         override val kind = BindingKind.Live
         override val reaches = setOf(
@@ -112,7 +110,7 @@ class JvmFileServicesContractsTest {
             DeviceManifestStoreState.EMPTY,
             DeviceManifestStoreState.HOLDING,
         )
-        override fun create(state: DeviceManifestStoreState, clauseId: String): Entered<DeviceManifestStore> {
+        override fun create(state: DeviceManifestStoreState, clauseId: String): Entered<DeviceManifestService> {
             if (state == DeviceManifestStoreState.UNAVAILABLE) return Entered.Ready(DeviceManifestService(unavailable()))
             val areas = Areas()
             val service = DeviceManifestService(areas.files)
@@ -121,11 +119,28 @@ class JvmFileServicesContractsTest {
         }
     }
 
-    private val staging = object : Binding<StagedBytesState, StagedBytes> {
+    private val pushRecord = object : Binding<PushRegistrationRecordState, PushRegistrationRecord> {
+        override val host = Host.JVM
+        override val kind = BindingKind.Live
+        override val reaches = setOf(
+            PushRegistrationRecordState.UNAVAILABLE,
+            PushRegistrationRecordState.EMPTY,
+            PushRegistrationRecordState.HOLDING,
+        )
+        override fun create(state: PushRegistrationRecordState, clauseId: String): Entered<PushRegistrationRecord> {
+            if (state == PushRegistrationRecordState.UNAVAILABLE) return Entered.Ready(PushRegistrationRecord(unavailable()))
+            val areas = Areas()
+            val record = PushRegistrationRecord(areas.files)
+            if (state == PushRegistrationRecordState.HOLDING) record.saveLastRegistered(PushRegistrationRecordContract.seed(clauseId))
+            return Entered.Ready(record, areas::dispose)
+        }
+    }
+
+    private val staging = object : Binding<StagedBytesState, StagingService> {
         override val host = Host.JVM
         override val kind = BindingKind.Live
         override val reaches = setOf(StagedBytesState.UNAVAILABLE, StagedBytesState.EMPTY, StagedBytesState.STAGED)
-        override fun create(state: StagedBytesState, clauseId: String): Entered<StagedBytes> {
+        override fun create(state: StagedBytesState, clauseId: String): Entered<StagingService> {
             if (state == StagedBytesState.UNAVAILABLE) return Entered.Ready(StagingService(unavailable()))
             val areas = Areas()
             val service = StagingService(areas.files)
@@ -138,7 +153,7 @@ class JvmFileServicesContractsTest {
         }
     }
 
-    private val logs = object : Binding<DeviceLogSourceState, DeviceLogSource> {
+    private val logs = object : Binding<DeviceLogSourceState, LogTailService> {
         override val host = Host.JVM
         override val kind = BindingKind.Live
         override val reaches = setOf(
@@ -147,11 +162,11 @@ class JvmFileServicesContractsTest {
             DeviceLogSourceState.HOLDING,
             DeviceLogSourceState.ROLLED_ONLY,
         )
-        override fun create(state: DeviceLogSourceState, clauseId: String): Entered<DeviceLogSource> {
+        override fun create(state: DeviceLogSourceState, clauseId: String): Entered<LogTailService> {
             val areas = Areas()
             val paths = mapOf(
-                DeviceLogSource.Process.APP to File(areas.private, APP_LOG_FILE_NAME),
-                DeviceLogSource.Process.EXTENSION to File(areas.shared, EXTENSION_LOG_FILE_NAME),
+                LogTailService.Process.APP to File(areas.private, APP_LOG_FILE_NAME),
+                LogTailService.Process.EXTENSION to File(areas.shared, EXTENSION_LOG_FILE_NAME),
             )
             paths.forEach { (process, file) ->
                 when (state) {
@@ -173,12 +188,17 @@ class JvmFileServicesContractsTest {
     fun `the config service over it satisfies the ConfigStore contract`() = verify(ConfigStoreContract, config)
 
     @Test
-    fun `the manifest service over it satisfies the DeviceManifestStore contract`() =
+    fun `the manifest service over it satisfies the DeviceManifestService contract`() =
         verify(DeviceManifestStoreContract, manifest)
 
     @Test
-    fun `the staging service over it satisfies the StagedBytes contract`() = verify(StagedBytesContract, staging)
+    fun `the push registration record over it satisfies the PushRegistrationRecord contract`() =
+        verify(PushRegistrationRecordContract, pushRecord)
 
     @Test
-    fun `the log-tail service over it satisfies the DeviceLogSource contract`() = verify(DeviceLogSourceContract, logs)
+    fun `the staging service over it satisfies the StagingService contract`() = verify(StagedBytesContract, staging)
+
+    @Test
+    fun `the log-tail service over it satisfies the LogTailService contract`() = verify(DeviceLogSourceContract, logs)
 }
+

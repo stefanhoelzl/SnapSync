@@ -9,8 +9,7 @@ import app.snapsync.contracts.Host
 import app.snapsync.contracts.verify
 import app.snapsync.files.IosFiles
 import app.snapsync.services.logs.LogTailService
-import app.snapsync.ports.DeviceLogSource
-import app.snapsync.ports.DeviceLogSource.Process
+import app.snapsync.services.logs.LogTailService.Process
 import app.snapsync.testsupport.newTempDirectory
 import app.snapsync.testsupport.removeDirectory
 import app.snapsync.testsupport.writeTextFile
@@ -24,7 +23,7 @@ import kotlin.test.Test
  */
 class IosDeviceLogSourceContractTest {
 
-    private val binding = object : Binding<DeviceLogSourceState, DeviceLogSource> {
+    private val binding = object : Binding<DeviceLogSourceState, LogTailService> {
         override val host = Host.IOS_SIM_KEXE
         override val kind = BindingKind.Live
         override val reaches = setOf(
@@ -34,7 +33,7 @@ class IosDeviceLogSourceContractTest {
             DeviceLogSourceState.ROLLED_ONLY,
         )
 
-        override fun create(state: DeviceLogSourceState, clauseId: String): Entered<DeviceLogSource> {
+        override fun create(state: DeviceLogSourceState, clauseId: String): Entered<LogTailService> {
             // Two directories, as on a device: the app's log in its own private area, the extension's in the shared one.
             val shared = newTempDirectory()
             val private = newTempDirectory()
@@ -56,5 +55,5 @@ class IosDeviceLogSourceContractTest {
     }
 
     @Test
-    fun `the device-log reader satisfies the DeviceLogSource contract`() = verify(DeviceLogSourceContract, binding)
+    fun `the device-log reader satisfies the LogTailService contract`() = verify(DeviceLogSourceContract, binding)
 }

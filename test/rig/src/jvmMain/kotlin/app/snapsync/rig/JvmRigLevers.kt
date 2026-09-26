@@ -4,7 +4,7 @@ import app.snapsync.model.AssetId
 import app.snapsync.model.CrashEvent
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.encodeToJson
-import app.snapsync.ports.DeviceLogSource
+import app.snapsync.services.logs.LogTailService
 import app.snapsync.model.UnionAsset
 import app.snapsync.world.Answer
 import app.snapsync.world.World
@@ -189,8 +189,8 @@ private fun osAndLibraryLevers(world: World, afterRelaunch: () -> Unit): Map<Str
     // Text a process's device log carries — what a diagnostic dump reads back. `process` is app|extension.
     "logs/append" to RigCommand { params, body ->
         val process = when (params["process"] ?: "app") {
-            "app" -> DeviceLogSource.Process.APP
-            "extension" -> DeviceLogSource.Process.EXTENSION
+            "app" -> LogTailService.Process.APP
+            "extension" -> LogTailService.Process.EXTENSION
             else -> return@RigCommand CommandResult.badRequest("process must be app|extension")
         }
         world.appendDeviceLog(process, body ?: params["text"].orEmpty())
@@ -244,7 +244,7 @@ private suspend fun withEvent(
     params: Map<String, String>,
     block: suspend (String) -> CommandResult,
 ): CommandResult {
-    val event = params["event"] ?: world.configSource.config.value?.eventId
+    val event = params["event"] ?: world.config.config.value?.eventId
         ?: return CommandResult.badRequest("no joined event, and no `event` was named")
     return block(event)
 }

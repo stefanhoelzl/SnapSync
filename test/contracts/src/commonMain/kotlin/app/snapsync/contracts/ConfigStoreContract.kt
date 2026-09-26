@@ -6,9 +6,7 @@ import app.snapsync.model.CaptureDate
 import app.snapsync.model.EventConfig
 import app.snapsync.model.encodeConfigFile
 import app.snapsync.model.ConfigRead
-import app.snapsync.ports.ConfigReader
-import app.snapsync.ports.ConfigSource
-import app.snapsync.ports.ConfigStore
+import app.snapsync.services.config.ConfigService
 import kotlin.test.assertEquals
 import kotlin.test.assertFails
 import kotlin.test.assertIs
@@ -40,12 +38,6 @@ enum class ConfigStoreState {
     FILE_UNREADABLE,
 }
 
-/**
- * The three config ports as one subject: one adapter implements all three, and the obligations that matter
- * cross them — a save is visible to both the read and the flow, a clear turns the read into `None` AND the
- * flow into `null` (decision record: `changes/contract-app-group-stores`, D1).
- */
-class ConfigPorts(val source: ConfigSource, val store: ConfigStore, val reader: ConfigReader)
 
 /**
  * What the persisted membership promises (`docs/architecture.md` — this list IS the specification of
@@ -59,7 +51,7 @@ class ConfigPorts(val source: ConfigSource, val store: ConfigStore, val reader: 
  * Not covered, because no host can enter it: a background wake before first unlock, where the file is
  * present and encrypted. That belief lives in `isConfigFileAbsence`'s documentation with its evidence.
  */
-object ConfigStoreContract : Contract<ConfigStoreState, ConfigPorts>("ConfigStore") {
+object ConfigStoreContract : Contract<ConfigStoreState, ConfigService>("ConfigService") {
 
     /** The membership a [ConfigStoreState.JOINED] store holds for [clauseId]. Bindings seed exactly this. */
     fun seedConfig(clauseId: String) = config("seed:$clauseId")
@@ -82,8 +74,8 @@ object ConfigStoreContract : Contract<ConfigStoreState, ConfigPorts>("ConfigStor
 
     private fun written(clauseId: String) = config("written:$clauseId")
 
-    private fun ConfigPorts.assertDefers(why: String) =
-        assertIs<ConfigRead.Unavailable>(reader.read(), "$why: must defer, never read as a leave")
+    private fun ConfigService.assertDefers(why: String) =
+        assertIs<ConfigRead.Unavailable>(read(), "$why: must defer, never read as a leave")
 
     override val clauses = clauses {
 
@@ -92,70 +84,70 @@ object ConfigStoreContract : Contract<ConfigStoreState, ConfigPorts>("ConfigStor
         }
 
         clause("INACCESSIBLE_SAVE_REFUSES", ConfigStoreState.INACCESSIBLE) { ports ->
-            val before = ports.source.config.value
-            assertFails { ports.store.save(written("INACCESSIBLE_SAVE_REFUSES")) }
-            assertEquals(before, ports.source.config.value, "a refused save changes nothing")
+            val before = ports.config.value
+            assertFails { ports.save(written("INACCESSIBLE_SAVE_REFUSES")) }
+            assertEquals(before, ports.config.value, "a refused save changes nothing")
             ports.assertDefers("after a refused save")
         }
 
         clause("INACCESSIBLE_CLEAR_REFUSES", ConfigStoreState.INACCESSIBLE) { ports ->
-            val before = ports.source.config.value
+            val before = ports.config.value
             assertFails("a clear that could not reach its store must fail, or the leave half-completes") {
-                ports.store.clear()
+                ports.clear()
             }
-            assertEquals(before, ports.source.config.value, "a refused clear changes nothing")
+            assertEquals(before, ports.config.value, "a refused clear changes nothing")
             ports.assertDefers("after a refused clear")
         }
 
         clause("ABSENT_READ_IS_NONE", ConfigStoreState.ABSENT) { ports ->
-            assertEquals(ConfigRead.None, ports.reader.read())
-            assertNull(ports.source.config.value)
+            assertEquals(ConfigRead.None, ports.read())
+            assertNull(ports.config.value)
         }
 
         clause("ABSENT_SAVE_THEN_READ", ConfigStoreState.ABSENT) { ports ->
             val config = written("ABSENT_SAVE_THEN_READ")
-            ports.store.save(config)
-            assertEquals(ConfigRead.Joined(config), ports.reader.read())
-            assertEquals(config, ports.source.config.value)
+            ports.save(config)
+            assertEquals(ConfigRead.Joined(config), ports.read())
+            assertEquals(config, ports.config.value)
         }
 
         clause("ABSENT_CLEAR_IS_A_NOOP", ConfigStoreState.ABSENT) { ports ->
-            ports.store.clear()
-            assertEquals(ConfigRead.None, ports.reader.read())
-            assertNull(ports.source.config.value)
+            ports.clear()
+            assertEquals(ConfigRead.None, ports.read())
+            assertNull(ports.config.value)
         }
 
         clause("JOINED_READ_IS_JOINED", ConfigStoreState.JOINED) { ports ->
-            assertEquals(ConfigRead.Joined(seedConfig("JOINED_READ_IS_JOINED")), ports.reader.read())
+            assertEquals(ConfigRead.Joined(seedConfig("JOINED_READ_IS_JOINED")), ports.read())
         }
 
         clause("JOINED_SOURCE_IS_SEEDED_AT_CONSTRUCTION", ConfigStoreState.JOINED) { ports ->
-            assertEquals(seedConfig("JOINED_SOURCE_IS_SEEDED_AT_CONSTRUCTION"), ports.source.config.value)
+            assertEquals(seedConfig("JOINED_SOURCE_IS_SEEDED_AT_CONSTRUCTION"), ports.config.value)
         }
 
         clause("JOINED_CLEAR_THEN_READ_IS_NONE", ConfigStoreState.JOINED) { ports ->
-            ports.store.clear()
-            assertEquals(ConfigRead.None, ports.reader.read(), "a completed leave reads as not joined")
-            assertNull(ports.source.config.value)
+            ports.clear()
+            assertEquals(ConfigRead.None, ports.read(), "a completed leave reads as not joined")
+            assertNull(ports.config.value)
         }
 
         clause("JOINED_SAVE_REPLACES", ConfigStoreState.JOINED) { ports ->
             val config = written("JOINED_SAVE_REPLACES")
-            ports.store.save(config)
-            assertEquals(ConfigRead.Joined(config), ports.reader.read())
-            assertEquals(config, ports.source.config.value)
+            ports.save(config)
+            assertEquals(ConfigRead.Joined(config), ports.read())
+            assertEquals(config, ports.config.value)
         }
 
         clause("JOINED_SAVE_EQUAL_KEEPS_THE_VALUE", ConfigStoreState.JOINED) { ports ->
             val seed = seedConfig("JOINED_SAVE_EQUAL_KEEPS_THE_VALUE")
-            ports.store.save(seed)
-            assertEquals(ConfigRead.Joined(seed), ports.reader.read())
-            assertEquals(seed, ports.source.config.value)
+            ports.save(seed)
+            assertEquals(ConfigRead.Joined(seed), ports.read())
+            assertEquals(seed, ports.config.value)
         }
 
         clause("FOREIGN_READ_IS_UNAVAILABLE", ConfigStoreState.FOREIGN) { ports ->
             ports.assertDefers("a successor's record")
-            assertNull(ports.source.config.value, "the flow cannot show what this build cannot read")
+            assertNull(ports.config.value, "the flow cannot show what this build cannot read")
         }
 
         clause("UNUSABLE_READ_IS_UNAVAILABLE", ConfigStoreState.UNUSABLE) { ports ->

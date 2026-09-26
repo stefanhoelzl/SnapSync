@@ -132,7 +132,7 @@ private fun AppCore.foregroundParams(): String =
  * best-effort — a failed prelude must not rob the wake of its tail, whose units read the membership themselves.
  */
 internal suspend fun AppCore.prelude() {
-    runCatchingCancellable { ports.configRefresh.refresh() }
+    runCatchingCancellable { ports.config.reload() }
         .onFailure { ports.log.w(it) { "prelude: the membership re-read failed" } }
     runCatchingCancellable { attestation.refresh() }
         .onFailure { ports.log.w(it) { "prelude: the attestation refresh failed" } }

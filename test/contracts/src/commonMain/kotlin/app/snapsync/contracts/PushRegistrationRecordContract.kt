@@ -1,6 +1,6 @@
 package app.snapsync.contracts
 
-import app.snapsync.ports.PushRegistrationRecord
+import app.snapsync.services.push.PushRegistrationRecord
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 

@@ -1,35 +1,16 @@
 package app.snapsync.flow
 
 import kotlinx.coroutines.async
-import kotlin.time.Instant
-import app.snapsync.fake.InMemoryAssetPresence
-import app.snapsync.fake.fixedClock
-import app.snapsync.fake.InMemoryDownloadStore
-import app.snapsync.feature.download.DownloadController
 import app.snapsync.feature.membership.LeaveEvent
 import app.snapsync.feature.membership.MembershipRefresh
 import app.snapsync.feature.status.StatusCountsPoller
 import app.snapsync.feature.status.MutableLedgerCountsSource
-import app.snapsync.model.CaptureDate
-import app.snapsync.model.EventConfig
 import app.snapsync.model.JoinLoad
-import app.snapsync.model.AssetRef
-import app.snapsync.ports.ConfigSource
-import app.snapsync.ports.DownloadStore
-import app.snapsync.ports.ConfigStore
 import app.snapsync.services.backend.EventUnionSource
-import app.snapsync.model.ImportResult
-import app.snapsync.model.PendingDownload
-import app.snapsync.ports.PhotoDownloadJobs
-import app.snapsync.model.ImportRequest
-import app.snapsync.ports.GalleryImport
-import app.snapsync.model.StagedResource
 import app.snapsync.model.UnionAsset
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -125,28 +106,14 @@ class ForegroundOrderingTest {
         statusPoller: StatusCountsPoller,
         refreshStatus: suspend () -> Unit,
         settleStoredUploads: suspend () -> Unit = {},
-        onReclaim: () -> Unit = {},
     ): Foreground {
-        val configSource = FakeConfigSource()
-        val configStore = FakeConfigStore()
+        val config = noMembership()
         return Foreground(
-            downloadController = DownloadController(
-                union = EmptyUnion,
-                store = ReclaimSpyStore(onReclaim),
-                jobs = NoopJobs,
-                importer = NoopImporter,
-                presence = InMemoryAssetPresence(),
-                eventAlbum = { null },
-                myDeviceId = "DEV",
-                downloadEnabled = { true },
-            ),
+            downloadController = flowDownloadController(EmptyUnion),
             membershipRefresh = MembershipRefresh(
-                configSource = configSource,
-                store = configStore,
-                clock = fixedClock(Instant.parse("2026-07-09T12:00:00Z")),
+                configSource = config,
                 leaveEvent = LeaveEvent(
-                    config = configStore,
-                    configSource = configSource,
+                    config = config,
                     stopUploads = {},
                     clearLedger = {},
                     notifyLeave = {},
@@ -168,38 +135,5 @@ class ForegroundOrderingTest {
 
     private object EmptyUnion : EventUnionSource {
         override suspend fun union(eventId: String): Result<List<UnionAsset>> = Result.success(emptyList())
-    }
-
-    private object NoopJobs : PhotoDownloadJobs {
-        override suspend fun enqueue(downloads: List<PendingDownload>) = Unit
-        override suspend fun cancelAll() = Unit
-    }
-
-    private object NoopImporter : GalleryImport {
-        override suspend fun import(request: ImportRequest): ImportResult = ImportResult.Failed("the flow ordering test never imports")
-    }
-
-    /**
-     * Wraps the honest [InMemoryDownloadStore] to record the reclaim pass reaching it. A wrapper rather
-     * than a subclass because the fake is final by the honesty gate — its surface is the port contract
-     * plus its constructor, and operator rigging is the caller's business.
-     */
-    private class ReclaimSpyStore(
-        private val onReclaim: () -> Unit,
-        private val inner: InMemoryDownloadStore = InMemoryDownloadStore(),
-    ) : DownloadStore by inner {
-        override suspend fun stagedPathsOfImportedAssets(): List<String> {
-            onReclaim()
-            return inner.stagedPathsOfImportedAssets()
-        }
-    }
-
-    private class FakeConfigSource : ConfigSource {
-        override val config: StateFlow<EventConfig?> = MutableStateFlow(null)
-    }
-
-    private class FakeConfigStore : ConfigStore {
-        override suspend fun save(config: EventConfig) = Unit
-        override suspend fun clear() = Unit
     }
 }

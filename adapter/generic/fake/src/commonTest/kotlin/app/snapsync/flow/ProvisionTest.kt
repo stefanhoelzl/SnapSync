@@ -1,28 +1,26 @@
 package app.snapsync.flow
 
+import app.snapsync.fake.inMemoryGallery
+import app.snapsync.fake.inMemoryPreferences
+import app.snapsync.fake.inMemorySecureStore
+import app.snapsync.model.AlbumId
+import app.snapsync.model.AlbumRecord
+import app.snapsync.model.GalleryRead
+import app.snapsync.model.WriteOutcome
+import app.snapsync.ports.GalleryReader
+import app.snapsync.services.album.AlbumMapService
+import kotlinx.coroutines.flow.MutableStateFlow
 import app.snapsync.model.AssetId
-import app.snapsync.model.CaptureCutoff
-import app.snapsync.model.SelectionCalibration
-import app.snapsync.fake.InMemoryAlbumMapStore
-import app.snapsync.fake.InMemoryAssetPresence
-import app.snapsync.fake.InMemoryDownloadStore
 import app.snapsync.feature.album.AlbumCoordinator
-import app.snapsync.feature.download.DownloadController
 import app.snapsync.model.EventConfig
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
-import app.snapsync.ports.AlbumManager
-import app.snapsync.model.AssetRef
+import app.snapsync.services.gallery.GalleryAlbums
 import app.snapsync.services.backend.EventUnionSource
-import app.snapsync.model.ImportResult
-import app.snapsync.model.PendingDownload
-import app.snapsync.ports.PhotoDownloadJobs
-import app.snapsync.model.ImportRequest
-import app.snapsync.ports.GalleryImport
-import app.snapsync.model.StagedResource
 import app.snapsync.model.UnionAsset
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -128,12 +126,12 @@ class ProvisionTest {
     fun `the album call carries the access fact rather than a caller's guess`() = runTest {
         // Same membership, same opt-in — only the grant differs, and the coordinator's own leading
         // guard is what turns that into "no album". The flow's job is to pass it through honestly.
-        val albums = InMemoryAlbumMapStore()
+        val albums = AlbumMapService(inMemoryPreferences(), inMemorySecureStore())
         provision(order = mutableListOf(), hasUsableAccess = { false }, albumStore = albums, saveToAlbum = true)
             .run(config(eventB, saveToAlbum = true))
         assertNull(albums.get(eventB), "an album was created for a membership with no photo access")
 
-        val granted = InMemoryAlbumMapStore()
+        val granted = AlbumMapService(inMemoryPreferences(), inMemorySecureStore())
         provision(order = mutableListOf(), hasUsableAccess = { true }, albumStore = granted, saveToAlbum = true)
             .run(config(eventB, saveToAlbum = true))
         assertEquals("album-for-Anna's Birthday", granted.get(eventB))
@@ -172,27 +170,18 @@ class ProvisionTest {
 
     // ---- scaffolding ----------------------------------------------------------------------------
 
-    private fun provision(
+    private fun CoroutineScope.provision(
         order: MutableList<String>,
         activeEventId: () -> String? = { null },
         saveConfig: suspend (EventConfig) -> Unit = { order += "save:${it.eventId}" },
         hasUsableAccess: () -> Boolean = { true },
-        albumStore: InMemoryAlbumMapStore = InMemoryAlbumMapStore(),
+        albumStore: AlbumMapService = AlbumMapService(inMemoryPreferences(), inMemorySecureStore()),
         saveToAlbum: Boolean = false,
         registerPush: suspend () -> Unit = { order += "push" },
     ): Provision {
         return Provision(
-            downloadController = DownloadController(
-                union = RecordingUnion(order),
-                store = InMemoryDownloadStore(),
-                jobs = NoopJobs,
-                importer = NoopImporter,
-                presence = InMemoryAssetPresence(),
-                eventAlbum = { null },
-                myDeviceId = "DEV",
-                downloadEnabled = { true },
-            ),
-            albumCoordinator = AlbumCoordinator(RecordingAlbums(order, saveToAlbum), albumStore),
+            downloadController = flowDownloadController(RecordingUnion(order)),
+            albumCoordinator = AlbumCoordinator(GalleryAlbums(RecordingAlbums(order, saveToAlbum)), albumStore),
             activeEventId = activeEventId,
             // The entry's inner order (stop, leave, load, save, start uploads) is `MembershipEntryTest`'s; here it
             // is recorded in that order so the flow's placement of it is visible.
@@ -216,26 +205,20 @@ class ProvisionTest {
         }
     }
 
-    /** Records the album step; only reached when the coordinator's own granted/opt-in guard passes. */
+    /**
+     * The library's album surface at the port, recording the creation; only reached when the coordinator's own
+     * granted/opt-in guard passes.
+     */
     private class RecordingAlbums(
         private val order: MutableList<String>,
         private val recordCreate: Boolean,
-    ) : AlbumManager {
-        override suspend fun ensureCreated(name: String): String? {
+    ) : GalleryReader by inMemoryGallery(MutableStateFlow(emptyList())) {
+        override suspend fun createAlbum(title: String): AlbumId? {
             if (recordCreate) order += "album"
-            return "album-for-$name"
+            return "album-for-$title"
         }
-        override suspend fun exists(albumLocalId: String): Boolean = true
-        override suspend fun add(albumLocalId: String, assetIds: List<AssetId>) = Unit
-        override suspend fun assetIdsInAlbums(calibration: SelectionCalibration, since: CaptureCutoff): Set<AssetId> = emptySet()
-    }
-
-    private object NoopJobs : PhotoDownloadJobs {
-        override suspend fun enqueue(downloads: List<PendingDownload>) = Unit
-        override suspend fun cancelAll() = Unit
-    }
-
-    private object NoopImporter : GalleryImport {
-        override suspend fun import(request: ImportRequest): ImportResult = ImportResult.Failed("the provision test never imports")
+        override suspend fun albumsById(ids: Set<AlbumId>): GalleryRead<List<AlbumRecord>> =
+            GalleryRead.Read(ids.map { AlbumRecord(it, "album") })
+        override suspend fun addToAlbum(album: AlbumId, assets: Set<AssetId>): WriteOutcome = WriteOutcome.Ok
     }
 }

@@ -30,6 +30,7 @@ flowchart LR
   test_contracts[":test:contracts"]
   test_control[":test:control"]
   test_edge[":test:edge"]
+  test_feature[":test:feature"]
   test_harness_driver[":test:harness-driver"]
   test_integration[":test:integration"]
   test_rig[":test:rig"]
@@ -105,7 +106,6 @@ flowchart LR
   domain_compose --> domain_ports
   domain_compose --> domain_services
   domain_feature --> domain_model
-  domain_feature --> domain_ports
   domain_feature --> domain_services
   domain_flow --> domain_feature
   domain_flow --> domain_model
@@ -120,9 +120,11 @@ flowchart LR
   domain_services --> domain_model
   domain_services --> domain_ports
   test_architecture --> adapter_generic_app
+  test_architecture --> adapter_generic_fake
   test_architecture --> domain_feature
   test_architecture --> domain_model
   test_architecture --> domain_ports
+  test_architecture --> domain_services
   test_contracts --> domain_feature
   test_contracts --> domain_model
   test_contracts --> domain_ports
@@ -133,6 +135,11 @@ flowchart LR
   test_control --> test_rig
   test_edge --> adapter_generic_app
   test_edge --> test_contracts
+  test_feature --> adapter_generic_fake
+  test_feature --> domain_feature
+  test_feature --> domain_model
+  test_feature --> domain_ports
+  test_feature --> domain_services
   test_harness_driver --> app_desktop
   test_integration --> domain_feature
   test_integration --> domain_model

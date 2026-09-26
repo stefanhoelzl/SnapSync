@@ -1,7 +1,7 @@
 package app.snapsync.contracts
 
-import app.snapsync.ports.DeviceLogSource
-import app.snapsync.ports.DeviceLogSource.Process
+import app.snapsync.services.logs.LogTailService
+import app.snapsync.services.logs.LogTailService.Process
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
@@ -28,7 +28,7 @@ enum class DeviceLogSourceState {
  * at most `maxBytes`, cut so the first line is whole, from the **current** file only, and `null` — never a
  * partial lie, never an empty string — when there is nothing to read.
  */
-object DeviceLogSourceContract : Contract<DeviceLogSourceState, DeviceLogSource>("DeviceLogSource") {
+object DeviceLogSourceContract : Contract<DeviceLogSourceState, LogTailService>("LogTailService") {
 
     /** Budget comfortably above every seeded log. */
     const val WHOLE_BUDGET = 1_000_000

@@ -74,7 +74,8 @@ class PortsNeverCallPortsTest {
 
     @Test
     fun `the scan is real (non-vacuity floor)`() {
-        assertTrue(ports.size >= 40, "parsed only ${ports.size} port interfaces from domain/ports — the scan is broken")
+        // Lowered from 40 when the feature → ports cut took the store interfaces out (36 remain).
+        assertTrue(ports.size >= 30, "parsed only ${ports.size} port interfaces from domain/ports — the scan is broken")
         assertTrue("Backend" in ports && "DeviceIntegrity" in ports, "the ports this law was written for are in scope")
         assertTrue(adapterSources.size >= 50, "scanned only ${adapterSources.size} adapter files — the scope is broken")
         // A holding in a sample reads as one; a port's own interface declaration does not.

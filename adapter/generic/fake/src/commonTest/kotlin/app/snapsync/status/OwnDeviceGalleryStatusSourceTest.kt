@@ -13,7 +13,7 @@ import app.snapsync.model.SelectionRule
 import app.snapsync.model.captureCutoff
 import app.snapsync.feature.status.OwnDeviceGalleryStatusSource
 import app.snapsync.model.CandidateRead
-import app.snapsync.ports.CandidateSource
+import app.snapsync.services.gallery.CandidateSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import app.snapsync.model.RESOURCE_META_CREATION_DATE

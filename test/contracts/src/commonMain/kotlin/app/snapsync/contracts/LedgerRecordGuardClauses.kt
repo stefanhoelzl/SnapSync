@@ -10,7 +10,7 @@ import app.snapsync.model.RESOURCE_META_ORIGINAL_FILENAME
 import app.snapsync.model.RESOURCE_META_MIME
 import app.snapsync.model.RESOURCE_META_CREATION_DATE
 import app.snapsync.model.LedgerAggregates
-import app.snapsync.ports.LedgerStore
+import app.snapsync.services.ledger.LedgerService
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
 import app.snapsync.feature.upload.LedgerWriter
@@ -30,10 +30,10 @@ internal const val CREATION_DATE = "2026-06-27T10:00:00Z"
 /**
  * The guarded and pruning writes of the storage seam (capability `photo-sharing`): a record never overwrites a
  * settled row, and `deleteKeys` deletes exactly the rows it names. Part of [LedgerStoreContract]'s clause
- * list — a split for size only — so every [LedgerStore] binding runs these once. The helpers below are shared
+ * list — a split for size only — so every [LedgerService] binding runs these once. The helpers below are shared
  * with the other two parts.
  */
-internal fun ClauseList<LedgerStoreState, LedgerStore>.recordGuardClauses() {
+internal fun ClauseList<LedgerStoreState, LedgerService>.recordGuardClauses() {
     clause("a record never overwrites a settled row", LedgerStoreState.EMPTY) { backend ->
         val settled = entry(state = LedgerState.COMPLETED)
         backend.recordUnlessSettled(settled)

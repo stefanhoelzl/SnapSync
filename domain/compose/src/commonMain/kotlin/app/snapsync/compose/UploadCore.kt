@@ -17,22 +17,22 @@ import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.selectionPolicyFor
 import app.snapsync.model.EdgeUploadRequestProvider
-import app.snapsync.ports.AlbumManager
-import app.snapsync.ports.DeviceIdentity
+import app.snapsync.services.gallery.GalleryAlbums
+import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.ports.PhotoGrantRead
 import app.snapsync.feature.upload.extensionAdmission
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.Upload
 import app.snapsync.services.upload.UploadTransferService
-import app.snapsync.ports.UploadDiscovery
+import app.snapsync.services.gallery.UploadDiscovery
 import app.snapsync.model.ConfigRead
-import app.snapsync.ports.ConfigReader
-import app.snapsync.ports.DeviceIdentityAbsent
-import app.snapsync.ports.DeviceManifestStore
+import app.snapsync.services.config.ConfigService
+import app.snapsync.model.DeviceIdentityAbsent
+import app.snapsync.services.manifest.DeviceManifestService
 import app.snapsync.services.backend.ManifestPublisher
-import app.snapsync.ports.SecureStoreUnavailable
-import app.snapsync.ports.LedgerStore
-import app.snapsync.ports.SuppressionSource
+import app.snapsync.model.SecureStoreUnavailable
+import app.snapsync.services.ledger.LedgerService
+import app.snapsync.services.downloads.SuppressionSource
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
 
@@ -65,20 +65,20 @@ sealed interface UploaderProcess {
  */
 class UploadPorts(
     /** The three-state membership read (capability `join-event`). Read fresh once per cycle. */
-    val config: ConfigReader,
+    val config: ConfigService,
     /**
      * The device identity. Its resolve MUST throw [SecureStoreUnavailable] while protected data is
      * unavailable (never mint, never return a placeholder); the implementation caches its first success,
      * so this is one Keychain read per process in practice.
      */
-    val deviceIdentity: DeviceIdentity,
+    val deviceIdentity: PersistedDeviceIdentity,
     /**
      * The build-time upload host — a constant of the running build, so a plain value (law "Ports are the I/O
      * boundary named for the need": a build constant is passed as a value, not a thunk). Blank when the build
      * carries none, which the gate treats as "cannot upload".
      */
     val host: String,
-    val ledger: LedgerStore,
+    val ledger: LedgerService,
     /**
      * This tier's uploader (`docs/architecture.md`, "Background execution"): the PhotoKit upload-job queue in the
      * extension, the background `URLSession` in the app. What its jobs mean for the ledger is the upload service's,
@@ -111,7 +111,7 @@ class UploadPorts(
      * the world opts in per test. Derived by the app composition from current permission + the latest snapshot.
      */
     val selectionScope: () -> SelectionScope,
-    val manifestStore: DeviceManifestStore,
+    val manifestStore: DeviceManifestService,
     /**
      * The device-manifest publisher — a backend service over this process's authenticated backend: the app passes
      * its core's (`AppCore.backend`), the extension the one [extensionBackend] composes.
@@ -120,7 +120,7 @@ class UploadPorts(
     /** Echo-suppression (capability `receiving-photos`): required, no default (`background-upload`). */
     val suppression: SuppressionSource,
     /** The album port the policy's denylisted-album read goes through (capability `photo-sharing`). */
-    val albumManager: AlbumManager,
+    val albumManager: GalleryAlbums,
     /** How this tier answers a failed denylisted-album lookup — see [AlbumLookupFailure]. */
     val albumLookupFailure: AlbumLookupFailure,
     /** Event-album placement (capability `event-album`). */
@@ -225,7 +225,7 @@ fun uploadCore(scope: CoroutineScope, process: ProcessServices, ports: UploadPor
 /**
  * THE ENTRY-GATE TRANSLATION (capability `background-upload`, "The upload cycle owns its entry
  * decision") — one implementation over the ports, where three per-root copies used to live. It is
- * **port-pure**: one fresh [ConfigReader.read] per cycle, the identity probe, the host read, and the
+ * **port-pure**: one fresh [ConfigService.read] per cycle, the identity probe, the host read, and the
  * root's admission answer — and deliberately nothing else.
  *
  * ⚖️ UNIFICATION DECISION (design D1 of `establish-shared-composition` — the one sanctioned
@@ -240,7 +240,7 @@ fun uploadCore(scope: CoroutineScope, process: ProcessServices, ports: UploadPor
  *  - the gate *outcome* is provably unchanged: the controller decided from a second, fresh
  *    `read()` after the reload, identical to reading once;
  *  - the StateFlow's one real staleness case (seeded `null` while locked) is repaired by the
- *    trigger flows' membership re-read (`AppPorts.configRefresh`, migration step 12 — before that,
+ *    trigger flows' membership re-read (`ConfigService.reload`, migration step 12 — before that,
  *    the app shell's `ProtectedDataGate` unlock hook), which every trigger runs before acting.
  */
 private suspend fun readGate(ports: UploadPorts): CycleGate {
