@@ -71,7 +71,6 @@ import app.snapsync.model.UserQueries
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.DeviceIdentity
 import app.snapsync.ports.ConfigRefresh
-import app.snapsync.ports.Clock
 import app.snapsync.ports.AlbumManager
 import app.snapsync.ports.CandidateSource
 import app.snapsync.ports.Gallery
@@ -101,6 +100,11 @@ import app.snapsync.ports.invocation
 import co.touchlab.kermit.Logger
 import app.snapsync.ports.ProcessInfo
 import app.snapsync.ports.Wake
+import app.snapsync.ports.DevControls
+import app.snapsync.ports.PushNotifications
+import app.snapsync.ports.Lifecycle
+import app.snapsync.ports.Links
+import app.snapsync.ports.Ui
 import app.snapsync.ports.Download
 import app.snapsync.ports.Upload
 import kotlin.coroutines.CoroutineContext
@@ -197,14 +201,6 @@ class AppPorts(
      *  unavailable). Read per use, so no composition-time resolve can abort a locked background launch. */
     val deviceIdentity: DeviceIdentity,
     /**
-     * The clock the status screen reads — its "now" preset, the create screen's default and the
-     * not-started health. On a device it is the same system clock as the process's (`ProcessServices.clock`,
-     * which the core reads). It is separate only because the world pins the process clock for the core's
-     * determinism while its screen shows the wall clock; a root states that deviation here, once, rather than
-     * re-making it where it builds a screen. Only its [Clock.now] is read: the zone is the process clock's.
-     */
-    val displayClock: Clock,
-    /**
      * This build's App Store page, or `null` when it carries none — the one remedy the update-required
      * screen offers (capability `app-update-required`). **Required**: a root that omitted it would show the
      * refusal with no way out, and a default would make that omission silent.
@@ -239,9 +235,18 @@ class AppPorts(
      *  fact (a constant of the running OS) rather than read through [extensionRegistry], so asking it is never an
      *  operating-system call. */
     val osSupportsOsDrivenUpload: Boolean = false,
-    /** The runtime inputs only a rig build can set — the per-uploader pin and the invite-link hints. Both are
-     *  inert in a production build (see [RigSwitches]); required, so every root states them. */
-    val rigSwitches: RigSwitches,
+    /** The runtime inputs only a rig build can set — the per-uploader pin, the invite-link hints and the reset. All
+     *  inert in a production build (see [DevControls]); required, so every root states them. */
+    val devControls: DevControls,
+    /** The platform's push service (capability `receiving-photos`): asked for the token at launch and at every
+     *  foreground entry; the host zone registers this core's [pushHandlers] on it as the graph is composed. */
+    val pushNotifications: PushNotifications,
+    /** The app's foreground life — an event port the host zone registers the foreground work on. */
+    val lifecycle: Lifecycle,
+    /** The links the platform opens the app with — an event port the host zone registers the link handler on. */
+    val links: Links,
+    /** The platform's user interface — shown every state the status host reduces, from host assembly on. */
+    val ui: Ui,
     val albumMapStore: AlbumMapStore,
     val onEventMinted: suspend (eventId: String) -> Unit,
     /** The push registration's ports (capability `receiving-photos`) — see [PushPorts]. */
@@ -478,7 +483,7 @@ class AppCore internal constructor(
         extensionRegistrable(
             osSupportsOsDrivenUpload = ports.osSupportsOsDrivenUpload,
             permission = ports.photoAccess.permission.value,
-            pin = ports.rigSwitches.uploaderPin(),
+            pin = ports.devControls.uploaderPin(),
         )
     }
 
@@ -489,7 +494,7 @@ class AppCore internal constructor(
     val appUploadAdmission: () -> UploadAdmission = {
         // The scope, not the raw cell: an unread partial-grant selection withholds (`appAdmission`), and it is
         // the same derivation discovery reads through `selectionScope()`.
-        appAdmission(ports.photoAccess.permission.value, selectionScope(), ports.rigSwitches.uploaderPin())
+        appAdmission(ports.photoAccess.permission.value, selectionScope(), ports.devControls.uploaderPin())
     }
 
     /** [appUploadAdmission] as a Boolean — what the app pump's completion re-pump reads (capability

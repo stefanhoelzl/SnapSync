@@ -13,6 +13,7 @@ flowchart LR
   adapter_generic_fake[":adapter:generic:fake"]
   adapter_ios_app_only[":adapter:ios:app-only"]
   adapter_ios_ext_safe[":adapter:ios:ext-safe"]
+  adapter_ios_ui[":adapter:ios:ui"]
   app_desktop[":app:desktop"]
   app_ios[":app:ios"]
   app_ios_extension[":app:ios:extension"]
@@ -61,6 +62,12 @@ flowchart LR
   adapter_ios_ext_safe --> domain_ports
   adapter_ios_ext_safe --> domain_services
   adapter_ios_ext_safe --> test_contracts
+  adapter_ios_ui --> adapter_ios_ext_safe
+  adapter_ios_ui --> domain_model
+  adapter_ios_ui --> domain_ports
+  adapter_ios_ui --> domain_presentation
+  adapter_ios_ui --> ui_components
+  adapter_ios_ui --> ui_screens
   app_desktop --> adapter_generic_app
   app_desktop --> domain_feature
   app_desktop --> domain_model
@@ -73,6 +80,7 @@ flowchart LR
   app_ios --> adapter_generic_app
   app_ios --> adapter_ios_app_only
   app_ios --> adapter_ios_ext_safe
+  app_ios --> adapter_ios_ui
   app_ios --> domain_compose
   app_ios --> domain_feature
   app_ios --> domain_host

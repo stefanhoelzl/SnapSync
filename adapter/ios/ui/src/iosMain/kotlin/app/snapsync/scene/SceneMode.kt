@@ -1,4 +1,4 @@
-package app.snapsync.model
+package app.snapsync.scene
 
 /**
  * How visible the app is when the shell asks whether to compose a scene (capability `sync-status`).

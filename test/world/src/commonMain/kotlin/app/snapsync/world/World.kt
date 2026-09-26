@@ -11,7 +11,6 @@ import app.snapsync.compose.AlbumLookupFailure
 import app.snapsync.compose.AppCore
 import app.snapsync.compose.AppPorts
 import app.snapsync.compose.PushPorts
-import app.snapsync.compose.RigSwitches
 import app.snapsync.compose.UploadRecordPorts
 import app.snapsync.compose.UploadPorts
 import app.snapsync.host.ComposedApp
@@ -19,6 +18,7 @@ import app.snapsync.host.snapSyncHost
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.model.PlannedResource
 import app.snapsync.time.SystemClock
+import app.snapsync.presentation.CutoffFormatter
 import kotlinx.datetime.TimeZone
 import app.snapsync.compose.uploadCore
 import app.snapsync.fake.inMemoryConfigReader
@@ -327,6 +327,21 @@ class World(
         backgroundTimeHolds.value.forEach { it.expire() }
     }
 
+    /** The app's foreground life — the operator activates and backgrounds the app through it. */
+    val lifecycle: WorldLifecycle = WorldLifecycle()
+
+    /** The links the platform opens the app with — the operator opens one through it. */
+    val links: WorldLinks = WorldLinks()
+
+    /** The platform's push service — the operator delivers tokens and silent pushes through it. */
+    val pushNotifications: WorldPushNotifications = WorldPushNotifications()
+
+    /** The platform's user interface — what the core last showed, and the operator's taps. */
+    val ui: WorldUi = WorldUi()
+
+    /** The build's development controls — see [WorldDevControls]. */
+    val devControls: WorldDevControls = WorldDevControls(inviteLinkHints)
+
     /** The OS-delivered APNs token, as the world's shell delivers it (none until a test delivers one). */
     val pushTokens: PushTokenSource = PushTokenSource("sandbox")
     val manifestStore: DeviceManifestStore = inMemoryDeviceManifestStore()
@@ -568,7 +583,7 @@ class World(
      * The push registration is installed as this is composed, on every launch, as on the phone.
      * Replaced by [relaunch], which is the only thing that replaces it.
      */
-    var composed: ComposedApp = snapSyncHost(appScope, process, appPorts())
+    var composed: ComposedApp = snapSyncHost(appScope, process, appPorts(), cutoffFormatter())
         private set
 
     /**
@@ -631,7 +646,11 @@ class World(
         wake = wake,
         // The world composes an OS without the OS-driven mechanism, and no rig switch: both stated.
         extensionRegistry = inMemoryExtensionRegistry(),
-        rigSwitches = RigSwitches(uploaderPin = { null }, inviteLinkHints = inviteLinkHints),
+        devControls = devControls,
+        pushNotifications = pushNotifications,
+        lifecycle = lifecycle,
+        links = links,
+        ui = ui,
         configStore = configStore,
         photoAccess = permission,
         // The operator plays the OS: nothing uploads on its own. A selection change updates the cell + N and
@@ -654,10 +673,6 @@ class World(
         integrity = integrity,
         attestStore = inMemoryAttestStore(),
         deviceIdentity = { ownDeviceId },
-        // The world's one stated clock deviation: the core's clock is the process's — the operator's pinned
-        // [nowMillis] — while the screen's is the wall clock, so a status screen over the world renders dates a
-        // person would see.
-        displayClock = SystemClock,
         appStoreUrl = WORLD_APP_STORE_URL,
         // The operator IS the engine: nothing auto-runs; a cycle happens when invoked by hand.
         appDrivenUpload = { operatorEngine },
@@ -676,6 +691,13 @@ class World(
     )
 
 
+
+    /**
+     * One launch's cutoff formatter, as a root builds it: the zone read once from the process's clock. The world's one
+     * stated clock deviation: the core's clock is the process's — the operator's pinned [nowMillis] — while the
+     * screen's "now" is the wall clock, so a status screen over the world renders dates a person would see.
+     */
+    private fun cutoffFormatter(): CutoffFormatter = CutoffFormatter(now = SystemClock::now, zone = worldClock.timeZone())
 
     /**
      * **Process death and a cold launch** (`docs/testing.md`, "The world relaunches its app over
@@ -704,7 +726,7 @@ class World(
         cycleOfThisLaunch = null
         uploadPortsOfThisLaunch = null
         process = appProcess()
-        composed = snapSyncHost(appScope, process, appPorts())
+        composed = snapSyncHost(appScope, process, appPorts(), cutoffFormatter())
     }
 
     /** The REAL app graph — the composition's core (never a world-local rebuild). */

@@ -21,11 +21,9 @@ import kotlin.test.fail
  * gate can never pass by scanning nothing (the `appShellSources` list going stale after a module
  * rename is precisely how the flip would have passed vacuously).
  *
- * The pinned site (it carries its forcing proof as a comment at the suppression):
- *  - `MainViewController.kt` ×1 — the one switch on the resolved `SceneMode`, which decides whether a
- *    Compose scene is composed at all (capability `sync-status`). The DECIDING is `resolveScene`, pure
- *    and `commonTest`-covered; the sealed type exists so a third mode fails the compile. Expiry: dies
- *    with the deferral, when CMP-5978 is fixed upstream and the mitigation can be deleted.
+ * No site is pinned. The last one — `MainViewController.kt`'s switch on the resolved `SceneMode` — left the shell
+ * with the entry surface (11g1): the scene rule and its switch are the iOS UI adapter's (`:adapter:ios:ui`'s
+ * `IosUi`), tested beside it, and the shell only forwards SwiftUI's pull to it.
  *
  * This table held **eight** entries until the launch-trigger retirement, and six of them were one thing:
  * dev equipment sitting in a production, wiring-only module, each justified as "inert in production". The
@@ -99,9 +97,7 @@ class KotlinShellGuardTest {
     }
 
     /** file (relative) → pinned `@Suppress("CyclomaticComplexMethod")` count. Exact, both directions. */
-    private val pins: Map<String, Int> = mapOf(
-        "app/ios/src/iosMain/kotlin/app/snapsync/ios/MainViewController.kt" to 1,
-    )
+    private val pins: Map<String, Int> = emptyMap()
 
     private val suppression = Regex("""@Suppress\("CyclomaticComplexMethod"\)""")
 

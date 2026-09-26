@@ -4,7 +4,8 @@ import app.snapsync.model.Direction
 import app.snapsync.model.FromChoice
 import app.snapsync.model.UntilChoice
 import app.snapsync.model.Layer
-import app.snapsync.presentation.StatusContainerHost
+import app.snapsync.model.UiIntent
+import app.snapsync.model.UiState
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
@@ -25,23 +26,30 @@ import kotlin.time.Instant
  * host's own public surface, so a new command failed the build until someone said which of the two it was; it
  * was retired in `74302d2b`, and a new command is now classified by review.
  */
-fun userCommands(host: () -> StatusContainerHost): Map<String, RigUserCommand> = mapOf(
-    "leave" to RigUserCommand { host().onLeaveEvent() },
+/**
+ * The `/user` table: each verb is the [UiIntent]s a member's taps produce, handed to [dispatch] — the platform UI's
+ * `onIntent` handler, through [RigUi] on a device and the world's UI on the JVM host — so the channel reaches the app
+ * exactly as the screen does. [state] is the state the screen shows, read for the one verb that names an event.
+ */
+fun userCommands(dispatch: (UiIntent) -> Unit, state: () -> UiState): Map<String, RigUserCommand> = mapOf(
+    "leave" to RigUserCommand { dispatch(UiIntent.LeaveEvent) },
     "create" to RigUserCommand { params ->
-        host().onCreateEvent(
-            name = params["name"].orEmpty(),
-            startsAt = localDateTime(params["startsAt"]),
-            endsAt = localDateTime(params["endsAt"]),
+        dispatch(
+            UiIntent.CreateEvent(
+                name = params["name"].orEmpty(),
+                startsAt = localDateTime(params["startsAt"]),
+                endsAt = localDateTime(params["endsAt"]),
+            ),
         )
     },
     // The commit carries nothing now: what is committed is what the reduction resolved from the form
     // (capability `sync-status`). So the channel does what a member does — set the choices, then
     // confirm — rather than handing the container a pre-resolved answer it would have to trust.
     "confirmJoin" to RigUserCommand { params ->
-        host().applyRangeChoices(params)
-        host().onConfirmJoin()
+        rangeChoices(params).forEach(dispatch)
+        dispatch(UiIntent.ConfirmJoin)
     },
-    "cancelJoin" to RigUserCommand { host().onCancelJoin() },
+    "cancelJoin" to RigUserCommand { dispatch(UiIntent.CancelJoin) },
     // The membership change this channel could not previously express. Narrowing a scope — raising the
     // cutoff, or turning the share direction off — is what re-projects the device manifest (capability
     // `manage-membership`), so without this the one behaviour that change turns on is undriveable
@@ -49,41 +57,40 @@ fun userCommands(host: () -> StatusContainerHost): Map<String, RigUserCommand> =
     "reconfigure" to RigUserCommand { params ->
         // Open first: opening seeds the form from the persisted membership, exactly as the settings gear
         // does, so an unspecified field keeps the membership's current value rather than a default.
-        host().surfaces.onOpenReconfigure()
-        host().applyRangeChoices(params)
-        host().onReconfigure()
+        dispatch(UiIntent.OpenReconfigure)
+        rangeChoices(params).forEach(dispatch)
+        dispatch(UiIntent.Reconfigure)
     },
     // The form, set without committing: what a member does before they confirm, and what the join gate's
     // shareable-count preview answers (capability `join-event`). `until=eventEnd` and `from=eventStart|now`
     // pick the presets; a `cutoff`/`until` instant picks a custom bound, as `confirmJoin` does.
     "setRange" to RigUserCommand { params ->
-        params["from"]?.let { host().form.onFromPreset(fromPreset(it)) }
+        params["from"]?.let { dispatch(UiIntent.FromPreset(fromPreset(it))) }
         params["until"]?.takeIf { it.equals("eventEnd", ignoreCase = true) }?.let {
-            host().form.onUntilPreset(UntilChoice.EVENT_END)
+            dispatch(UiIntent.UntilPreset(UntilChoice.EVENT_END))
         }
-        host().applyRangeChoices(params.filterNot { (k, v) -> k == "until" && v.equals("eventEnd", ignoreCase = true) })
+        rangeChoices(params.filterNot { (k, v) -> k == "until" && v.equals("eventEnd", ignoreCase = true) })
+            .forEach(dispatch)
     },
     // Rename the joined event (capability `manage-membership`). `event` defaults to the joined one — naming another is
     // how a caller reproduces a rename the dialog opened for an event a switch has since replaced.
     "rename" to RigUserCommand { params ->
-        val event = params["event"] ?: joinedEventId(host())
+        val event = params["event"] ?: joinedEventId(state())
             ?: throw UserCommandRefused("there is no joined event to rename, and no `event` was named")
-        host().onRenameEvent(event, requireNotNull(params["name"]) { "name is required" })
+        dispatch(UiIntent.RenameEvent(event, requireNotNull(params["name"]) { "name is required" }))
     },
-    "renameStatusConsumed" to RigUserCommand { host().onRenameStatusConsumed() },
-    "confirmSwitch" to RigUserCommand { host().onConfirmSwitch() },
-    "retryLoad" to RigUserCommand { host().onRetryLoad() },
-    "retryJoin" to RigUserCommand { host().onRetryJoin() },
+    "renameStatusConsumed" to RigUserCommand { dispatch(UiIntent.RenameStatusConsumed) },
+    "confirmSwitch" to RigUserCommand { dispatch(UiIntent.ConfirmSwitch) },
+    "retryLoad" to RigUserCommand { dispatch(UiIntent.RetryLoad) },
+    "retryJoin" to RigUserCommand { dispatch(UiIntent.RetryJoin) },
     // The dump goes to the build's configured reporter; a build with none (every dev and rig build of the app,
     // which carries no DSN) keeps it on the device, as the sheet does (capability `privacy-security`).
     "sendDiagnostics" to RigUserCommand { params ->
-        host().onSendDiagnostics(params["note"].orEmpty(), params["screen"] ?: "rig")
+        dispatch(UiIntent.SendDiagnostics(params["note"].orEmpty(), params["screen"] ?: "rig"))
     },
 )
 
-/** The joined membership's event id, as the screen shows it. */
-private fun joinedEventId(host: StatusContainerHost): String? =
-    (host.container.stateFlow.value.layer as? Layer.Joined)?.membership?.eventId
+private fun joinedEventId(state: UiState): String? = (state.layer as? Layer.Joined)?.membership?.eventId
 
 private fun fromPreset(raw: String): FromChoice = when {
     raw.equals("eventStart", ignoreCase = true) -> FromChoice.EVENT_START
@@ -91,34 +98,21 @@ private fun fromPreset(raw: String): FromChoice = when {
     else -> throw IllegalArgumentException("from must be eventStart|now, was '$raw' — a custom bound is `cutoff`")
 }
 
-/**
- * Drive the range form from the channel's committed-shaped parameters.
- *
- * The channel speaks in canonical `…Z` instants because that is what a caller can write down; the form
- * speaks in presets plus a picked wall-clock value. The conversion lives HERE, in test-only code, rather
- * than as a rig-shaped intent on the container — production has no caller that needs it.
- */
-private fun StatusContainerHost.applyRangeChoices(params: Map<String, String>) {
+/** The form choices [params] name, as the taps that set them. */
+private fun rangeChoices(params: Map<String, String>): List<UiIntent> = buildList {
     params["direction"]?.let {
         val d = direction(it)
-        form.onShareOn(d.includesUpload)
-        form.onReceiveOn(d.includesDownload)
+        add(UiIntent.ShareOn(d.includesUpload))
+        add(UiIntent.ReceiveOn(d.includesDownload))
     }
-    params["saveToAlbum"]?.let { form.onSaveToAlbum(it.toBoolean()) }
-    params["cutoff"]?.let { form.onFromCustom(toLocalWallClock(it)) }
-    params["until"]?.let { form.onUntilCustom(toLocalWallClock(it)) }
+    params["saveToAlbum"]?.let { add(UiIntent.SaveToAlbum(it.toBoolean())) }
+    params["cutoff"]?.let { add(UiIntent.FromCustom(toLocalWallClock(it))) }
+    params["until"]?.let { add(UiIntent.UntilCustom(toLocalWallClock(it))) }
 }
 
-/** A canonical `…Z` instant as the device's wall clock — the form's own vocabulary. */
 private fun toLocalWallClock(iso: String): LocalDateTime =
     Instant.parse(iso).toLocalDateTime(TimeZone.currentSystemDefault())
 
-/**
- * `/user` members deliberately NOT wired, each with the consequence that makes the omission safe.
- *
- * The guard asserts wired + excluded equals the host's public command surface, exactly — so this list is
- * accounted-for, never curated.
- */
 fun excludedUserCommands(): Map<String, String> = mapOf(
     "onRequestPermission" to
         "raises the system photo-access alert, which needs a tap on the device and cannot be answered " +

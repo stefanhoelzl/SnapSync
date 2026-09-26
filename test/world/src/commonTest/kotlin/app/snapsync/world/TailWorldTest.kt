@@ -1,13 +1,10 @@
 package app.snapsync.world
 
-import app.snapsync.compose.EntryHooks
-import app.snapsync.compose.platformEntries
 import app.snapsync.model.AssetId
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.uploadKey
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.AssetRef
-import app.snapsync.ports.PlatformEntries
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
@@ -18,7 +15,7 @@ import kotlin.time.Duration.Companion.seconds
 /**
  * Each OS wake's own work, then the one tail, over the REAL composition and the world (capability `sync-status`,
  * "Each OS wake does its own work, then hands the rest to one opportunistic tail"; decision record
- * `changes/own-work-per-wake`). The inbound port's contract (`PlatformEntriesContract`) pins the release points and
+ * `changes/own-work-per-wake`). `EntryWorldTest` pins the release points and
  * the expiry; this pins what the tail runs for each wake that the contract's observations cannot distinguish: the
  * limited-grant tail, a completion's top-up, the import a failed union still gets, and that a background wake
  * assembles no host.
@@ -27,26 +24,10 @@ class TailWorldTest {
 
     private val joined = "22222222-2222-4222-8222-222222222222"
 
-    private class Entries(val entries: PlatformEntries, val hostAssembled: () -> Boolean)
-
-    private fun World.entries(): Entries {
-        var assembled = false
-        val entries = platformEntries(
-            core = { core },
-            hooks = EntryHooks(
-                markActive = {},
-                openUrl = {},
-                assembleHost = { assembled = true },
-                deliverPushToken = {},
-            ),
-        )
-        return Entries(entries) { assembled }
-    }
-
     /** Push [eventId] and wait until its handler is released and its hold ended — the tail with it. */
-    private suspend fun World.push(entries: PlatformEntries, eventId: String) {
+    private suspend fun World.push(eventId: String) {
         val released = CompletableDeferred<Unit>()
-        entries.onSilentPush(mapOf<Any?, Any?>("eventId" to eventId)) { released.complete(Unit) }
+        pushNotifications.deliverMessage(mapOf<Any?, Any?>("eventId" to eventId), bareCompletion { released.complete(Unit) })
         withTimeout(10.seconds) {
             released.await()
             while (backgroundTimeHolds.value.isNotEmpty()) kotlinx.coroutines.delay(10)
@@ -57,13 +38,12 @@ class TailWorldTest {
     fun a_push_for_the_active_event_runs_the_full_tail_and_assembles_no_host() = worldTest {
         val w = World(this)
         w.provision(joined)
-        val e = w.entries()
-        w.push(e.entries, joined)
+        w.push(joined)
 
         assertEquals(1, w.operatorEngine.topUps, "② ran")
         assertEquals(1, w.operatorEngine.walks, "and, under a full grant, ③")
         assertEquals(1, w.heartbeatsScheduled, "a push re-arms the heartbeat")
-        assertFalse(e.hostAssembled(), "a background wake assembles no host, so installs no grant subscription")
+        assertFalse(w.hostAssembled(), "a background wake assembles no host, so installs no grant subscription")
     }
 
     @Test
@@ -71,8 +51,7 @@ class TailWorldTest {
         val w = World(this)
         w.provision(joined)
         w.permission.set(GalleryAccess.LIMITED)
-        val e = w.entries()
-        w.push(e.entries, joined)
+        w.push(joined)
 
         assertEquals(1, w.operatorEngine.topUps, "② runs from the selection snapshot")
         assertEquals(0, w.operatorEngine.walks, "③ never runs under a partial grant — no library read follows a push")
@@ -82,8 +61,7 @@ class TailWorldTest {
     fun a_push_for_another_event_runs_no_tail() = worldTest {
         val w = World(this)
         w.provision(joined)
-        val e = w.entries()
-        w.push(e.entries, "33333333-3333-4333-8333-333333333333")
+        w.push("33333333-3333-4333-8333-333333333333")
 
         assertEquals(0, w.operatorEngine.topUps)
         assertEquals(0, w.heartbeatsScheduled)
@@ -103,7 +81,7 @@ class TailWorldTest {
         val before = w.importer.imported.size
 
         w.backendOffline = true // the push's union read fails fast
-        w.push(w.entries().entries, joined)
+        w.push(joined)
 
         assertEquals(before + 1, w.importer.imported.size, "the tail's ① ran whatever the union answered")
     }

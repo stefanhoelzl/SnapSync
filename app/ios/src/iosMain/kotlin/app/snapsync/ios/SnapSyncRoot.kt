@@ -1,15 +1,8 @@
 package app.snapsync.ios
 
-import app.snapsync.model.SceneMode
-import app.snapsync.model.appVisibilityFrom
-import app.snapsync.model.resolveScene
-import app.snapsync.objc.objcBoundary
-import app.snapsync.model.SCENE_GENERATION_INITIAL
-import app.snapsync.model.sceneGenerationAfter
 import app.snapsync.compose.AppCore
 import app.snapsync.compose.AppPorts
 import app.snapsync.compose.PushPorts
-import app.snapsync.compose.RigSwitches
 import app.snapsync.compose.UploadRecordPorts
 import app.snapsync.host.ComposedApp
 import app.snapsync.host.snapSyncHost
@@ -32,6 +25,11 @@ import app.snapsync.ios.registry.extensionRegistry as platformExtensionRegistry
 import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.StatusContainerHost
+import app.snapsync.scene.IosLifecycle
+import app.snapsync.scene.IosUi
+import app.snapsync.scene.SceneRecord
+import app.snapsync.link.IosLinks
+import app.snapsync.push.IosPushNotifications
 import app.snapsync.push.IosPushRegistrationRecord
 import app.snapsync.time.SystemClock
 import app.snapsync.ports.PushTokenSource
@@ -48,28 +46,19 @@ import app.snapsync.preferences.IosPreferences
 import app.snapsync.services.album.AlbumMapService
 import app.snapsync.services.staging.StagingService
 import app.snapsync.systemui.IosSystemUi
-import app.snapsync.ports.PlatformEntries
-import app.snapsync.compose.EntryHooks
-import app.snapsync.compose.platformEntries
 import app.snapsync.protection.IosProcessInfo
 import app.snapsync.databases.IosDatabases
 import app.snapsync.ports.Databases
 import app.snapsync.services.downloads.DownloadService
-import app.snapsync.model.UploaderPin
 import app.snapsync.background.IosBackgroundTime
 import app.snapsync.background.IosWake
-import app.snapsync.model.InviteLinkHints
 import app.snapsync.ports.DeviceIdentity
 import app.snapsync.model.uploadersCarried
 import app.snapsync.ports.LedgerStore
 import app.snapsync.config.bakedUploadBase
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.preferences.removeOrphanedJoinMarker
-import app.snapsync.model.EventLinkDelivery
 import app.snapsync.model.PlatformEntry
-import app.snapsync.link.isWebLinkActivity
-import app.snapsync.model.forwardEventLink
-import app.snapsync.model.userActivityParams
 import app.snapsync.logging.FileLogSink
 import app.snapsync.logging.appLogDestination
 import app.snapsync.services.logs.LogTailService
@@ -99,16 +88,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import app.snapsync.ios.qos.newUserInitiatedLane
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.StateFlow
-import platform.Foundation.NSNotificationCenter
-import platform.Foundation.NSOperationQueue
 import platform.Foundation.NSUserActivity
 import platform.Foundation.NSOperatingSystemVersion
 import platform.Foundation.NSProcessInfo
-import platform.UIKit.UIApplication
-import platform.UIKit.UIApplicationDidBecomeActiveNotification
-import platform.UIKit.UIApplicationWillResignActiveNotification
-import platform.UIKit.registerForRemoteNotifications
 
 /**
  * The iOS composition root (D7): a single app-lifetime singleton that assembles the real live
@@ -140,7 +122,7 @@ import platform.UIKit.registerForRemoteNotifications
  * port's contract. What stays here is what only a root can do — the hooks the core cannot name ([rootEntries]),
  * and the entries that are not the port's (`onLaunch`, the activity filter's doors, the log-only scene callbacks).
  */
-object SnapSyncRoot : PlatformEntries by rootEntries() {
+object SnapSyncRoot {
 
     init {
         // First, before anything logs: a DVT- or Xcode-launched process writes NSLog's stderr copy (and Ktor's stdout)
@@ -244,38 +226,6 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
      */
     internal val osSupportsOsDrivenUpload: Boolean = backgroundUploadSupported()
 
-    /**
-     * Where the rig's per-uploader switch comes from (capability `background-upload`).
-     *
-     * **A shipped build cannot carry one, and that is structural rather than probable.** The only writer
-     * is the control channel's boot hook, whose source is not compiled into a build made without
-     * `-Psnapsync.rig=true` — so in a production binary nothing can assign this and it stays the inert
-     * default forever. What a shipped process uploads with is a function of the device and its grant.
-     *
-     * It is a **source, replaced once at boot**, not a value: the admission and the registration fact read
-     * through it at every use, so the channel can change the pin live without touching this field
-     * again, and without the graph being rebuilt. It is deliberately assignable *before* `app` is forced —
-     * the hook must not force the graph on a cold background wake (`sync-status`).
-     *
-     * This replaced a design where production read a planted file from the App Group. That version could
-     * be handed an override it never established — the container survives an application update, measured
-     * on device — and needed a process-scoping rule to refuse one. Here the hazard cannot arise: the code
-     * that writes this does not exist in the binary that must not honour it.
-     */
-    internal var uploaderPinSource: UploaderPinSource = UploaderPinSource { null }
-
-    /**
-     * Whether the join gate acts on an invite link's dev/test hints — `autoJoin` and its overrides (capability
-     * `join-event`, "Joining happens only on confirmation").
-     *
-     * **A shipped build is always [InviteLinkHints.Ignored], structurally**, exactly as for [uploaderPinSource]:
-     * the only writer is the control channel's boot hook, whose source is not compiled into a build made
-     * without `-Psnapsync.rig=true`. So a crafted QR carrying `autoJoin=true` opens the ordinary join screen on
-     * a production binary; the link cannot authorize its own headless join. Read once, when the graph is
-     * composed; the hook's `@EagerInitialization` assignment runs at image load, before any entry point.
-     */
-    internal var inviteLinkHints: InviteLinkHints = InviteLinkHints.Ignored
-
     // This process's files, by area: the App-Group container and its own Documents. One instance; the file-backed
     // services below are built over it (`docs/architecture.md`).
     private val files: Files get() = process.files
@@ -291,7 +241,6 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
      * The one cutoff formatter every surface shares (capability `photo-sharing`) — the status host's
      * own, built by the shared host composition over the `Clock` port's system adapter.
      */
-    val cutoffFormatter: CutoffFormatter get() = composed.cutoffFormatter
 
     // Event album (capability `event-album`): the shared leave-surviving `eventId → albumLocalId` map the composed
     // coordinator (`app.albumCoordinator`) sits on.
@@ -350,6 +299,7 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
         snapSyncHost(
             scope = scope,
             process = process,
+            cutoffFormatter = cutoffFormatter,
             ports = AppPorts(
                 // The main lane (law "Dispatcher lanes are fixed by the composition"). This shell is
                 // the only place in the app process that may name it: platform UI runs here, and
@@ -391,8 +341,6 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
                 integrity = IosDeviceIntegrity(),
                 attestStore = AttestState(secureStore),
                 deviceIdentity = deviceIdentity,
-                // The screen reads the same clock the core does; only the world separates the two.
-                displayClock = SystemClock,
                 // The update-required screen's one remedy (capability `app-update-required`).
                 appStoreUrl = bakedAppStoreUrl(),
                 // The mechanisms this OS carries. WHICH one runs is resolution's answer, re-evaluated on
@@ -415,14 +363,15 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
                 // `Unsupported` itself (the version check is its own), so the root holds no `if` around it.
                 extensionRegistry = extensionRegistry,
                 osSupportsOsDrivenUpload = osSupportsOsDrivenUpload,
-                // Read through the field at every use, not captured here: the field is the rig's seam, and a
-                // capture would freeze whatever it held when the graph was first forced.
-                rigSwitches = RigSwitches(
-                    uploaderPin = { uploaderPinSource.pinned() },
-                    // The field's value when the graph is first forced — after the rig's eager boot hook, the
-                    // one writer, has run at image load.
-                    inviteLinkHints = inviteLinkHints,
-                ),
+                // The build's development controls, from this build's adapter set: inert on every production
+                // build, the control channel's on a rig build (`platformAdapters()`).
+                devControls = adapters.devControls,
+                // The entry ports: each registered by the host zone as this graph is composed, so a delivery in a
+                // background wake finds its handler. The Swift shell forwards each callback to one of them.
+                pushNotifications = pushNotifications,
+                lifecycle = lifecycle,
+                links = links,
+                ui = adapters.ui,
                 albumMapStore = albumMapStore,
                 // A minted event routes into the host's join gate, so create and a scanned QR take one gate.
                 onEventMinted = { eventId -> host.onEventCreated(eventId) },
@@ -492,159 +441,60 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
     // (`flow/SilentPush`, the tail runner); this root supplies no arm of its own.
 
     /**
-     * The status host, assembled by the shared host composition on first touch: that assembly installs the
-     * permission-grant subscriptions and the push registration (both live in `compose/`) and observes every
-     * read-model the core exposes. A cold background wake that merely touches [app] installs neither.
+     * The status host, assembled by the shared host composition on first touch: a minted event routes into its join
+     * gate, and the control channel reads it. A cold background wake that merely touches [app] assembles none.
      */
-    val host: StatusContainerHost by lazy { composed.host }
+    internal val host: StatusContainerHost get() = composed.host
 
     /**
-     * The host [MainViewController] renders. Built **once per process** (`by lazy`). There is only the
-     * live host: a marketing screenshot is rendered by a separate binary that does not link this module
-     * at all.
+     * The process's ONE cutoff formatter (capability `sync-status`): the device zone read once, here, from the
+     * process's one clock — a formatter whose zone moved under a running screen would render one capture date two
+     * ways. The status host reduces with it and the screen renders with it: the same instance.
      */
-    val renderHost: StatusContainerHost by lazy { host }
-
-    /**
-     * Wrap a platform entry point that lives outside this object — today only
-     * [app.snapsync.ios.MainViewController], the Compose door Swift's `ContentView` calls. The
-     * logger is private (one tag per process), so the wrap is offered rather than the logger
-     * exposed; it decides nothing and adds no branch.
-     */
-    internal fun <T> platformEntry(name: String, params: String = "", block: () -> T): T =
-        log.invocation(name, params = params) { block() }
-
-    /**
-     * Whether this **process** has ever been active — the input `UIApplication` cannot supply, because it
-     * reports the current state only, and "has been active at least once" is precisely what separates a
-     * background-woken process from an ordinary backgrounded one (capability `sync-status`). Written by
-     * [onForeground], which is the `didBecomeActive` observer; never reset, because a scene once composed
-     * is kept.
-     */
-    private var everActive: Boolean = false
-
-    /** Record that the app became active — the core's `onForeground` calls this first, as the entry always has. */
-    internal fun markActive() {
-        everActive = true
+    private val cutoffFormatter: CutoffFormatter by lazy {
+        CutoffFormatter(now = SystemClock::now, zone = process.clock.timeZone())
     }
 
-    /**
-     * The scene generation this process has reached (capability `sync-status`) — the value SwiftUI binds
-     * to `.id(…)`, advanced by the pure, tested [sceneGenerationAfter] each time a scene is handed out.
-     * Monotonic: it rises once, when a placeholder is installed, and never falls back.
-     *
-     * Written by [sceneMode], whose ONLY caller is [app.snapsync.ios.MainViewController]. That is what
-     * makes the count complete: every scene the shell hands out passes through that one function, so there
-     * is no path that installs a scene without advancing this. A second caller would silently invalidate
-     * it, which is why `SceneRecordCompletenessTest` pins the single-caller property.
-     */
-    private var sceneGeneration: Int = SCENE_GENERATION_INITIAL
+    /** What this process knows about its scenes — shared by the UI and the lifecycle adapters, on the main thread. */
+    private val sceneRecord: SceneRecord by lazy { SceneRecord() }
+
+    /** The Compose scene SwiftUI hosts (`:adapter:ios:ui`). */
+    internal val ui: IosUi by lazy { IosUi(sceneRecord, cutoffFormatter, log) }
+
+    /** The app's foreground life: `didBecomeActive` / `willResignActive`, observed once the graph registers. */
+    internal val lifecycle: IosLifecycle by lazy { IosLifecycle(sceneRecord, log) }
+
+    /** Both halves of Universal-Link delivery and SwiftUI's `onOpenURL`. */
+    internal val links: IosLinks by lazy { IosLinks(log) }
+
+    /** APNs: the token request, the token and its failure, and every silent push. */
+    internal val pushNotifications: IosPushNotifications by lazy { IosPushNotifications(log) }
 
     /**
-     * Whether the shell composes a Compose scene right now (capability `sync-status`), resolved by the
-     * pure, tested [resolveScene] from two inputs this object transcribes and does not interpret: the
-     * platform's current application state and [everActive].
-     *
-     * Recording the answer for [onSceneActive] is a plain assignment, not a decision, so the shell still
-     * branches on nothing (`docs/architecture.md`, "Shells are wiring only"). Written as statements rather
-     * than `.also { … }` deliberately: `detektAppShell` holds this module at straight-line complexity and
-     * counts a trailing lambda against it, which is the gate working — the escape hatch is a suppression,
-     * and one is not warranted for a two-line body.
+     * The adapters that differ between a production and a rig build — chosen at BUILD time: `platformAdapters()` is
+     * compiled from this module's `src/prod` or, only under `-Psnapsync.rig=true`, from the control channel's
+     * (`docs/architecture.md`, "A build-time-only module is contained by compilation"). No flag is read here.
      */
-    internal fun sceneMode(): SceneMode {
-        val mode = resolveScene(
-            appVisibilityFrom(UIApplication.sharedApplication.applicationState.value),
-            everActive,
-        )
-        sceneGeneration = sceneGenerationAfter(sceneGeneration, mode)
-        return mode
-    }
+    private val adapters: PlatformAdapters by lazy { platformAdapters(ui) }
 
     /**
-     * The app became active — record it, and answer with the **scene generation** the SwiftUI shell binds
-     * to `.id(…)` (capability `sync-status`).
-     *
-     * The generation counts **placeholders retired**, not activations, and never decreases: it is whatever
-     * the pure, tested [sceneGenerationAfter] has advanced [sceneGeneration] to. A placeholder was
-     * installed ⇒ `1`, retiring it with exactly one rebuild. Nothing handed out yet, or a live scene
-     * installed without a placeholder before it ⇒ `0`. Either way it then STAYS there, so `.id(…)` does not
-     * change again and the platform is never asked to build the scene a third time. Monotonicity is the
-     * point: `.id(…)` reacts to change, so a value that fell back would rebuild exactly as a rising one
-     * does — measured on a simulator when an earlier revision answered from the mode most recently handed
-     * out and dropped `1 → 0` on the first warm foreground.
-     *
-     * **It deliberately does NOT count activations, and may stay `0` for a whole process.** It used to
-     * return a constant `1`, on the reasoning that the value "changes exactly once per process" — true
-     * only if the first scene handed out was the placeholder. When Kotlin's own `didBecomeActive` observer
-     * ([onForeground], installed in [onLaunch]) runs before SwiftUI first evaluates `ContentView.body`,
-     * the first resolution is already [SceneMode.Live] and SwiftUI's `.onReceive` — not yet subscribed —
-     * misses that notification. The process was then left with a live scene against a generation still at
-     * `0`: a rebuild armed but unfired, which the next ordinary foreground fired, rebuilding a scene that
-     * did not need it and blanking the screen (Bugsink SNAPSYNC-15, SNAPSYNC-24). Reading the record
-     * instead makes both orderings correct.
-     *
-     * It is a **value the shell binds**, not a command it obeys: SwiftUI needs something whose change it
-     * can observe, and returning it here keeps the "when does the scene exist" rule in tested Kotlin
-     * rather than in a Swift conditional.
-     *
-     * The generation is logged (capability `privacy-security`). Recording only that this entry point ran
-     * is not enough — what separates a healthy process from one carrying a stale rebuild signal is the
-     * VALUE it answered, and without it that had to be inferred from the absence of a `mode=deferred` line
-     * elsewhere in the log.
-     *
-     * Distinct from [onForeground], which drives the foreground flow. This one only records.
-     */
-    @PlatformEntry
-    fun onSceneActive(): Int = log.invocation("onSceneActive", result = { "generation=$it" }) {
-        everActive = true
-        sceneGeneration
-    }
-
-    /**
-     * Install the UIKit lifecycle observers and realize this object — called by the Swift
-     * `AppDelegate` from `didFinishLaunchingWithOptions` (a plain statement, no decision). The
-     * foreground/background transitions are observed from **Kotlin** via `NSNotificationCenter`
-     * (migration step 12: the SwiftUI `scenePhase` split was a Swift `if`, a decision the
-     * transcriber law forbids): `didBecomeActive` ↔ the scene reaching `.active`,
-     * `willResignActive` ↔ leaving it (including the transient `.inactive` cases — app switcher,
-     * incoming call — which the old split also routed to background). Process-lifetime observers,
-     * never removed; a background launch installs them too and simply never sees `didBecomeActive`.
-     *
-     * It **composes the graph** first, which registers the heartbeat's `BGTask` launch handler (the wake adapter's
-     * `listen`) while Apple still accepts one. It also **asks the OS for the APNs token** — here, at every cold start
-     * in either state, and in the `didBecomeActive` observer, at every foreground entry (capability
-     * `receiving-photos`, "Registration timing — launch, join, and rotation"). Asking is the only way the app learns
-     * a rotated token, and Apple describes it as
-     * cheap; whether the answer is then published is the push feature's comparison against the last registration
-     * the backend accepted, never this shell's. The ask is a plain platform statement, deciding nothing — the token
-     * arrives through the AppDelegate's `didRegisterForRemoteNotificationsWithDeviceToken` → [onPushToken].
+     * Realize this object and **compose the graph** — called by the Swift `AppDelegate` from
+     * `didFinishLaunchingWithOptions` (a plain statement, no decision). Composing registers every entry port's
+     * handlers while Apple still accepts them: the wake adapter's `listen` is the heartbeat's `BGTask` launch-handler
+     * registration, which Apple requires before launch finishes; the lifecycle adapter's installs the
+     * `didBecomeActive` / `willResignActive` observers; and the composition asks the OS for the APNs token, as it does
+     * again at every foreground entry (capability `receiving-photos`, "Registration timing — launch, join, and
+     * rotation"). Composing builds nothing a locked device cannot (every core property is lazy; no database opens).
      */
     @PlatformEntry
     fun onLaunch() = log.invocation("onLaunch") {
-        // Compose the graph NOW, inside `didFinishLaunchingWithOptions`: the host zone's `listen` on the wake adapter is
-        // the `BGTask` launch-handler registration, which Apple requires before launch finishes. Composing builds
-        // nothing a locked device cannot (every core property is lazy; no database opens).
         composed
-        UIApplication.sharedApplication.registerForRemoteNotifications()
-        val center = NSNotificationCenter.defaultCenter
-        center.addObserverForName(
-            name = UIApplicationDidBecomeActiveNotification,
-            `object` = null,
-            queue = NSOperationQueue.mainQueue,
-            usingBlock = {
-                objcBoundary(log, "didBecomeActive") {
-                    onForeground()
-                    UIApplication.sharedApplication.registerForRemoteNotifications()
-                }
-            },
-        )
-        center.addObserverForName(
-            name = UIApplicationWillResignActiveNotification,
-            `object` = null,
-            queue = NSOperationQueue.mainQueue,
-            usingBlock = { objcBoundary(log, "willResignActive") { onBackground() } },
-        )
+        Unit
     }
+
+    /** The app became active, as SwiftUI observes it — the scene generation SwiftUI binds to `.id(…)` ([IosUi]). */
+    @PlatformEntry
+    fun onSceneActive(): Int = ui.onSceneActive()
 
     /**
      * A restored/continued `NSUserActivity` arrived (both halves of Universal-Link delivery —
@@ -654,7 +504,7 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
      * payload; this wiring transcribes the activity's fields and branches on nothing.
      */
     @PlatformEntry
-    fun onLaunchActivity(activity: NSUserActivity) = deliverUserActivity("onLaunchActivity", activity)
+    fun onLaunchActivity(activity: NSUserActivity) = links.deliverUserActivity("onLaunchActivity", activity)
 
     /**
      * A link opened while the app is **already running**, via the scene delegate's `scene(_:continue:)`
@@ -683,7 +533,7 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
      */
     @PlatformEntry
     fun onSceneContinueActivity(activity: NSUserActivity) =
-        deliverUserActivity("onSceneContinueActivity", activity)
+        links.deliverUserActivity("onSceneContinueActivity", activity)
 
     /**
      * The scene connected, carrying [activities] restored/continued `NSUserActivity` values —
@@ -701,7 +551,7 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
      */
     @PlatformEntry
     fun onSceneWillConnect(activities: Int) =
-        log.invocation("onSceneWillConnect", params = "activities=$activities") { }
+        lifecycle.deliverSceneEvent("onSceneWillConnect", params = "activities=$activities")
 
     /**
      * UIKit is about to continue an activity of type [activityType] — offered **before**
@@ -714,7 +564,7 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
      */
     @PlatformEntry
     fun onSceneWillContinueActivity(activityType: String) =
-        log.invocation("onSceneWillContinueActivity", params = "type=$activityType") { }
+        lifecycle.deliverSceneEvent("onSceneWillContinueActivity", params = "type=$activityType")
 
     /**
      * UIKit **attempted** a continuation of [activityType] and could not finish it, with [description]
@@ -732,11 +582,11 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
      */
     @PlatformEntry
     fun onSceneDidFailToContinueActivity(activityType: String, description: String) =
-        log.invocation(
+        lifecycle.deliverSceneEvent(
             "onSceneDidFailToContinueActivity",
             params = "type=$activityType error=$description",
             severity = Severity.Warn,
-        ) { }
+        )
 
     /**
      * The scene is entering the foreground, from its own delegate.
@@ -747,11 +597,11 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
      * question a failed warm delivery leaves open.
      */
     @PlatformEntry
-    fun onSceneWillEnterForeground() = log.invocation("onSceneWillEnterForeground") { }
+    fun onSceneWillEnterForeground() = lifecycle.deliverSceneEvent("onSceneWillEnterForeground")
 
     /** The scene became active, from its own delegate — see [onSceneWillEnterForeground]. */
     @PlatformEntry
-    fun onSceneDidBecomeActive() = log.invocation("onSceneDidBecomeActive") { }
+    fun onSceneDidBecomeActive() = lifecycle.deliverSceneEvent("onSceneDidBecomeActive")
 
     /**
      * The scene was disconnected. Recorded because it changes which half of delivery a later link
@@ -759,7 +609,7 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
      * process never died, and without this line that transition is invisible.
      */
     @PlatformEntry
-    fun onSceneDidDisconnect() = log.invocation("onSceneDidDisconnect") { }
+    fun onSceneDidDisconnect() = lifecycle.deliverSceneEvent("onSceneDidDisconnect")
 
     /**
      * URL contexts were opened on the scene — the **custom-scheme** delivery path (capability
@@ -772,7 +622,7 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
      */
     @PlatformEntry
     fun onSceneOpenUrlContexts(urls: List<String>) =
-        log.invocation("onSceneOpenUrlContexts", params = "urls=${urls.size}") { }
+        lifecycle.deliverSceneEvent("onSceneOpenUrlContexts", params = "urls=${urls.size}")
 
     /**
      * A URL arrived at SwiftUI's `.onOpenURL` on the `WindowGroup` — **SwiftUI's** delivery path, as
@@ -795,41 +645,14 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
      * (105 ms). No contract clause asserts it. See changes/archive/2026-07-16-migrate-to-universal-links.
      */
     @PlatformEntry
-    fun onSwiftUiOpenUrl(url: String) =
-        log.invocation("onSwiftUiOpenUrl", params = "url=$url") { onOpenUrl(url) }
-
-    /**
-     * The instrumented delivery of one `NSUserActivity`, shared by every hook that can receive one
-     * (spec `privacy-security`; `docs/architecture.md`, "Absence is never silent").
-     *
-     * [hook] names the hook the platform actually invoked, so the device log distinguishes them —
-     * that naming is the whole diagnostic value, not decoration. The enter line records the raw
-     * fields **before** the filter tests them, and the exit line names the outcome even when nothing
-     * is forwarded: on Bugsink `SNAPSYNC-3` the silent discard and a link iOS never delivered were
-     * indistinguishable, and that ambiguity was the entire investigation.
-     *
-     * Straight-line by construction: the formatting and the filter-and-dispatch branch are the
-     * tested `model/` codec's, so this wiring decides nothing (the shell gate counts even an elvis).
-     */
-    private fun deliverUserActivity(hook: String, activity: NSUserActivity): EventLinkDelivery {
-        val activityType = activity.activityType
-        val url = activity.webpageURL?.absoluteString
-        return log.invocation(
-            hook,
-            params = userActivityParams(activityType, url),
-            result = { outcome: EventLinkDelivery -> outcome.summary },
-        ) {
-            forwardEventLink(isWebLinkActivity(activityType), activityType, url, ::onOpenUrl)
-        }
-    }
+    fun onSwiftUiOpenUrl(url: String) = links.deliverOpenUrl("onSwiftUiOpenUrl", url)
 
     /**
      * The operating system is handing back finished background transfers for the session [channel] — forwarded whole
      * from the Swift `AppDelegate`'s `handleEventsForBackgroundURLSession`. Routed by the adapter module's
      * [BackgroundSessions] to the session it names, whose handlers (registered as the graph is composed) hold
-     * [completion] across the wake. Not an inbound-port member since phase 11f: a session's events arrive through the
-     * `Upload` and `Download` event ports, and this is the shell's reach to their adapters until the entry surface is
-     * re-cut (11g).
+     * [completion] across the wake. A session's events arrive through the `Upload` and `Download` event ports; this is
+     * the shell's reach to their adapters' shared relaunch dispatcher.
      */
     @PlatformEntry
     fun onBackgroundTransfers(channel: String, completion: () -> Unit) =
@@ -847,10 +670,19 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
      * build with no APNs entitlement and on a device with no network, and the app runs on without it.
      */
     @PlatformEntry
-    fun onPushTokenFailure(description: String) =
-        log.invocation("onPushTokenFailure", params = "error=$description") {
-            log.w { "APNs registration failed — no silent pushes will arrive: $description" }
-        }
+    fun onPushTokenFailure(description: String) = pushNotifications.deliverTokenFailure(description)
+
+    /** APNs issued this device's token — forwarded from the `AppDelegate`, rendered as lowercase hex there. */
+    @PlatformEntry
+    fun onPushToken(hex: String) = pushNotifications.deliverToken(hex)
+
+    /**
+     * A silent push arrived — its `userInfo` forwarded **whole** from the `AppDelegate`, and its fetch handler as
+     * [completion], released once after the push's own work or at once when the process's background time is up.
+     */
+    @PlatformEntry
+    fun onSilentPush(payload: Map<Any?, *>, completion: () -> Unit) =
+        pushNotifications.deliverMessage(payload, completion)
 
     /**
      * Provision an event id — the shared path for both a scanned or typed event link and a freshly created
@@ -956,31 +788,3 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
  * process, and closing its dispatcher is what must not happen.
  */
 private val compositionLane = newUserInitiatedLane(name = "snapsync-composition")
-
-/**
- * The core's implementation of the app's inbound port, with what the root holds and `:domain` cannot name (spec
- * `docs/architecture.md`, "OS entry points cross an inbound port"). [SnapSyncRoot] delegates [PlatformEntries] to
- * this, so no forwarding body stands between an operating-system callback and the core.
- *
- * A top-level function because a delegation expression is evaluated before the object's body: the hooks are lambdas,
- * resolved when the operating system first calls an entry, so nothing here assembles the graph early.
- */
-private fun rootEntries(): PlatformEntries = platformEntries(
-    core = { SnapSyncRoot.app },
-    hooks = EntryHooks(
-        markActive = SnapSyncRoot::markActive,
-        openUrl = { url -> SnapSyncRoot.host.onOpenUrl(url) },
-        assembleHost = { SnapSyncRoot.host },
-        deliverPushToken = { hex -> SnapSyncRoot.pushTokenSource.deliver(hex) },
-    ),
-)
-
-/**
- * Where the rig's per-uploader switch is read from (capability `background-upload`) — a named type rather than
- * a bare function type, so the one late-assigned seam in the root states what it is (law "Callbacks are bound
- * at construction", `docs/architecture.md`: a function-typed slot assigned later is forbidden; this
- * is the shell's documented rig seam, read at every use).
- */
-fun interface UploaderPinSource {
-    fun pinned(): UploaderPin?
-}

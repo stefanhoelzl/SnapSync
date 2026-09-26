@@ -25,9 +25,9 @@ Roots found:
 | `BackgroundSessions` | x | |
 | `CachedAttestStore` | | x |
 | `ConfigService` | x | x |
+| `CutoffFormatter` | x | |
 | `DeviceManifestService` | x | x |
 | `DownloadService` | x | |
-| `EntryHooks` | x | |
 | `FileLogSink` | x | x |
 | `GalleryAlbums` | | x |
 | `GalleryDiscovery` | | x |
@@ -39,10 +39,14 @@ Roots found:
 | `IosFiles` | x | x |
 | `IosGallery` | x | |
 | `IosGalleryReader` | x | x |
+| `IosLifecycle` | x | |
+| `IosLinks` | x | |
 | `IosPreferences` | x | x |
 | `IosProcessInfo` | x | |
+| `IosPushNotifications` | x | |
 | `IosPushRegistrationRecord` | x | |
 | `IosSystemUi` | x | |
+| `IosUi` | x | |
 | `IosUrlSessionUploadPlatform` | x | |
 | `IosWake` | x | |
 | `LedgerService` | x | x |
@@ -55,7 +59,7 @@ Roots found:
 | `PublicNSLogSink` | x | x |
 | `PushPorts` | x | |
 | `PushTokenSource` | x | |
-| `RigSwitches` | x | |
+| `SceneRecord` | x | |
 | `SentryCrashReporter` | x | x |
 | `StagingService` | x | |
 | `SuppressionService` | | x |

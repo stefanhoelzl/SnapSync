@@ -68,10 +68,3 @@ class RelaunchWorldTest {
         assertNull(w.downloadTransport, "no transport until the new app realizes one")
     }
 }
-
-/** An operating-system completion handler with no expiry signal, as a background-session relaunch hands one over. */
-private fun bareCompletion(onComplete: () -> Unit): app.snapsync.ports.Completion =
-    object : app.snapsync.ports.Completion {
-        override fun complete() = onComplete()
-        override fun onExpired(action: () -> Unit) = Unit
-    }

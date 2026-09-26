@@ -132,26 +132,6 @@ class CompositionSeamTest {
      * only through the sibling's own ports.
      */
     private val constructorPins: Map<String, String> = mapOf(
-        "AppEntries.core" to
-            "the composed AppCore, provided rather than held so the root can delegate its inbound port from its own " +
-            "initializer and each entry resolves the graph only when the OS first calls it — the core itself",
-        "EntryHooks.markActive" to
-            "records in the root's own memory that the app became active (SnapSyncRoot.markActive) — read by its " +
-            "scene rule; nothing leaves the process",
-        "EntryHooks.openUrl" to
-            "the status container's link intent (host.onOpenUrl): decodes the link and opens the join gate — " +
-            "presentation's own reduction",
-        "EntryHooks.assembleHost" to
-            "touches the root's lazily assembled host so its collectors run before a FOREGROUND entry's work lands — " +
-            "in-process assembly, no platform read",
-        "EntryHooks.deliverPushToken" to
-            "hands the OS-delivered token to the in-memory PushTokenSource the registration collector observes; the " +
-            "network write is PushRegistration's, over the PushTokenPublisher port",
-        "RigSwitches.uploaderPin" to
-            "reads the rig's per-uploader switch, re-read at every use so it can change without " +
-            "rebuilding the graph. `null` in a production build not by convention but by " +
-            "CONSTRUCTION: the only writer of the root source behind it is the control channel's boot " +
-            "hook, whose source is absent from a build made without the channel's build property",
         "App.admission" to
             "UploaderProcess.App: the app's admission, bound to AppCore.appUploadAdmission() — grant, selection " +
             "scope and rig pin, all in-process state. The extension's variant is a PhotoGrantRead PORT",
@@ -239,9 +219,6 @@ class CompositionSeamTest {
             "deferred construction: a cold background wake builds no more of the graph than it reaches",
         "AppTail.mayCreate" to "this core's own app admission (AppCore.appMayCreate), read fresh at each completion",
         "AppTail.refreshCounts" to "this core's own ledger-counts refresh (AppCore.ledgerCounts.refresh)",
-        "BareCompletion.handler" to
-            "the operating system's own completion block an inbound-port entry was handed, wrapped as a " +
-                "Completion so OsCompletions can hold it — the OS's handler, released once, never a core seam",
         "SelectionScopedDiscovery.selectionScope" to "UploadPorts.selectionScope, forwarded — a pure core read",
         "JoinedMembership.policy" to "the membership's ONE selection-policy derivation, built by the entry gate",
         "UploadCycle.readGate" to "uploadCore's own entry-gate translation over the ports (readGate in UploadCore.kt)",

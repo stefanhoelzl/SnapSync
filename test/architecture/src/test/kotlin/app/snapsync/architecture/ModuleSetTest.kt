@@ -178,7 +178,8 @@ class ModuleSetTest {
             ":domain:model", ":domain:ports", ":domain:services", ":domain:feature", ":domain:flow",
             ":domain:presentation", ":domain:compose", ":domain:host",
             ":ui:screens", ":ui:components",
-            ":adapter:ios:ext-safe", ":adapter:ios:app-only", ":adapter:generic:app", ":adapter:generic:fake",
+            ":adapter:ios:ext-safe", ":adapter:ios:app-only", ":adapter:ios:ui", ":adapter:generic:app",
+            ":adapter:generic:fake",
             ":app:ios", ":app:ios:extension", ":app:desktop",
         )
 

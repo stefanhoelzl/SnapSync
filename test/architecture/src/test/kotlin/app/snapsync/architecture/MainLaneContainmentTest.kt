@@ -65,10 +65,13 @@ class MainLaneContainmentTest {
         // sheet it presented, and UIKit dismissal is main-thread-only like the presentation it undoes.
         "/adapter/ios/app-only/src/rig/kotlin/app/snapsync/contract/HandoffContracts.kt" to
             "dismisses the UIActivityViewController a clause presented",
-        // The app shell: injects the lane into the composition (`AppPorts.uiLane`) and observes UIApplication
-        // lifecycle notifications. The ONE shell in the app process that may name the lane.
-        "/app/ios/src/iosMain/kotlin/app/snapsync/ios/SnapSyncRoot.kt" to
-            "injects AppPorts.uiLane; UIApplication reads and lifecycle observers",
+        // The app shell: injects the lane into the composition (`AppPorts.uiLane`). The ONE shell in the app process
+        // that may name the lane.
+        "/app/ios/src/iosMain/kotlin/app/snapsync/ios/SnapSyncRoot.kt" to "injects AppPorts.uiLane",
+        // The iOS `Lifecycle` adapter: `didBecomeActive` / `willResignActive` are observed on the main queue, where
+        // UIKit posts them and where the scene record they write is confined.
+        "/adapter/ios/ui/src/iosMain/kotlin/app/snapsync/scene/IosLifecycle.kt" to
+            "observes UIApplication's lifecycle notifications on the main queue",
         // The forge binary's entry point. It composes a UI and nothing else — there is no live core in
         // that binary to keep off the main lane, because it does not link `:app:ios`. The lane it names is
         // the scope its forged container runs on, which IS platform UI.

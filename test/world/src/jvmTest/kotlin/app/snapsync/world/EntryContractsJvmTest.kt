@@ -6,9 +6,6 @@ import app.snapsync.contracts.ExtensionEntriesContract
 import app.snapsync.contracts.ExtensionEntriesState
 import app.snapsync.contracts.ExtensionEntriesSubject
 import app.snapsync.contracts.Host
-import app.snapsync.contracts.PlatformEntriesContract
-import app.snapsync.contracts.PlatformEntriesState
-import app.snapsync.contracts.PlatformEntriesSubject
 import app.snapsync.contracts.verify
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
@@ -18,14 +15,6 @@ import kotlin.test.Test
  * (`docs/architecture.md`). `Live`: the implementation under contract is the one the shells delegate to.
  */
 class EntryContractsJvmTest {
-
-    private val platformEntries = object : Binding<PlatformEntriesState, PlatformEntriesSubject> {
-        override val host = Host.JVM
-        override val kind = BindingKind.Live
-        override val reaches = setOf(PlatformEntriesState.UNJOINED, PlatformEntriesState.JOINED_WITH_FOREIGN_PHOTO)
-        override fun create(state: PlatformEntriesState, clauseId: String) =
-            runBlocking { EntryContractFixtures.enter(state) }
-    }
 
     private val extensionEntries = object : Binding<ExtensionEntriesState, ExtensionEntriesSubject> {
         override val host = Host.JVM
@@ -39,8 +28,6 @@ class EntryContractsJvmTest {
             runBlocking { EntryContractFixtures.enter(state) }
     }
 
-    @Test
-    fun `satisfies the PlatformEntries contract`() = verify(PlatformEntriesContract, platformEntries)
 
     @Test
     fun `satisfies the ExtensionEntries contract`() = verify(ExtensionEntriesContract, extensionEntries)

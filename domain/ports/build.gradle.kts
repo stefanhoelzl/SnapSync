@@ -92,8 +92,13 @@ kover {
                     // only by the composition — `ListenDoorTest` pins that — which no module credited here reaches
                     // (their wiring runs in `:test:world`'s transfer-wake tests, credited to services). What stayed
                     // here lost no test. Raise it again as the port-adjacent helpers re-home or gain tests.
+                    // LOWERED 77 -> 74 by the entry surface (11g1), for the same reason as 11f's: the five new entry
+                    // ports' handler bundles (`LifecycleHandlers`, `LinkHandlers`, `PushHandlers`, `UiHandlers`,
+                    // `DevHandlers`) are constructed only by the composition and the host zone — `ListenDoorTest` pins
+                    // that — which no module credited here reaches; their wiring runs in `:test:world`'s
+                    // `EntryWorldTest`. What stayed here lost no test.
                     bound {
-                        minValue = 77
+                        minValue = 74
                         coverageUnits = CoverageUnit.INSTRUCTION
                     }
                     // LOWERED 65 -> 57 by the storage-ports re-cut. Forcing proof: the zone's
