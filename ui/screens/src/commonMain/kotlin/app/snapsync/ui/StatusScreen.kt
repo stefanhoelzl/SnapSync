@@ -58,7 +58,7 @@ fun StatusScreen(
     // (production) or a fixed instant/zone (tests); this screen holds no clock or timezone knowledge.
     cutoff: CutoffFormatter,
     // Everything this screen can ask for, bundled (see [StatusActions]). Required: every host builds it
-    // through the one factory, `statusActions(host)`, so a forgotten action is a compile error.
+    // through the one factory, `statusActions(dispatch)`, so a forgotten action is a compile error.
     actions: StatusActions,
 ) {
     AppTheme {

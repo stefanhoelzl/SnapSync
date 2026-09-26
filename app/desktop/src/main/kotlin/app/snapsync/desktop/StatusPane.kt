@@ -1,5 +1,6 @@
 package app.snapsync.desktop
 
+import app.snapsync.presentation.onIntent
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -83,7 +84,7 @@ fun StatusPane(
             state = state,
             cutoff = cutoffFormatter,
             // The one tap → intent table (spec `sync-status`), exactly as the shipped app binds it.
-            actions = statusActions(host),
+            actions = statusActions(host::onIntent),
         )
         }
     }

@@ -2,6 +2,7 @@
 
 package app.snapsync.ui
 
+import app.snapsync.presentation.onIntent
 import app.snapsync.presentation.StatusDiagnostics
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
@@ -167,7 +168,7 @@ class HostStatusActionsTest {
                 StatusScreen(
                     state = state,
                     cutoff = CutoffFormatter(now = { Instant.parse("2026-07-06T12:00:00Z") }, zone = TimeZone.UTC),
-                    actions = statusActions(rig.host),
+                    actions = statusActions(rig.host::onIntent),
                 )
             }
         }
