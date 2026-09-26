@@ -2,6 +2,7 @@
 
 package app.snapsync.compose
 
+import app.snapsync.ports.EntryContext
 import app.snapsync.feature.download.DownloadController
 import app.snapsync.feature.upload.AppUploadEngine
 import app.snapsync.feature.upload.AppUploadEvents
@@ -35,6 +36,8 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
 class AppTail internal constructor(
     private val scope: CoroutineScope,
     private val ports: AppPorts,
+    /** The process's entry-point seam, which the tail's lines carry. */
+    private val entryContext: EntryContext,
     private val downloads: () -> DownloadController,
     /** The app's admission as a Boolean — whether a completion may request the top-up. */
     private val mayCreate: () -> Boolean,
@@ -75,7 +78,7 @@ class AppTail internal constructor(
             scheduler = heartbeat,
             leftover = { "staged downloads not yet imported: ${ports.downloadStore.importableAssets().size}" },
             log = ports.log,
-            logScope = ports.logScope,
+            entryContext = entryContext,
         )
     }
 
@@ -130,7 +133,7 @@ class AppTail internal constructor(
      * snapshot-fed discovery → manifest publish — the uploader's walk unit, whose discovery binding is the selection
      * snapshot there — then the tail (① import, ② top-up from the snapshot; never ③ under a partial grant).
      */
-    internal suspend fun onSelectionChanged() = ports.log.invocation(ports.logScope, "onSelectionChanged") {
+    internal suspend fun onSelectionChanged() = ports.log.invocation(entryContext, "onSelectionChanged") {
         runCatchingCancellable { mechanism.walkAndPublish { false } }
             .onFailure { ports.log.w(it) { "the selection change's discovery failed; its tail still runs" } }
         runner.request(TailTrigger.SELECTION_CHANGE)

@@ -397,7 +397,7 @@ class CompositionSeamTest {
                 "process? If it reads a platform value, performs a platform effect, or crosses the " +
                 "network, it is an adapter written in the composition root — give it a port type " +
                 "(reach for an existing port first: three of the five seams this gate was armed for " +
-                "joined StagedBytes, PhotoAccessRequester and Clock rather than becoming new ports). " +
+                "joined StagedBytes and Clock rather than becoming new ports). " +
                 "If it genuinely coordinates within the core, pin it in this file WITH ITS REASON.\n" +
                 "  `-` — a pin outlived its field. Delete it in the same commit, so the inventory can " +
                 "never describe code that is not there.\n" +

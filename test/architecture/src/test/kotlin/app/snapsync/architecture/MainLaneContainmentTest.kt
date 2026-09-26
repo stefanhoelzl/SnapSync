@@ -37,23 +37,24 @@ class MainLaneContainmentTest {
      * of whatever failed the gate last.
      */
     private val allowed = mapOf(
-        // Presents the system share sheet over the top view controller; UIKit is main-thread-only.
-        "/adapter/ios/app-only/src/iosMain/kotlin/app/snapsync/share/IosShareSheet.kt" to
-            "presents UIActivityViewController",
-        // Leaves the app for a URL — the update-required screen's store button (capability
-        // `app-update-required`). `UIApplication` is main-thread-only, and the adapter names the lane
-        // itself so it is correct for any caller rather than only the command declared on that lane.
-        "/adapter/ios/app-only/src/iosMain/kotlin/app/snapsync/link/IosLinkOpener.kt" to
+        // The platform's own UI: presents the system share sheet over the top view controller, and opens this
+        // app's Settings page. UIKit is main-thread-only, and the adapter names the lane itself so it is correct
+        // for any caller rather than only the commands declared on that lane.
+        "/adapter/ios/app-only/src/iosMain/kotlin/app/snapsync/systemui/IosSystemUi.kt" to
+            "presents UIActivityViewController + UIApplication.openURL(Settings)",
+        // The seam `IosSystemUi.openUrl` records and replays through: leaves the app for a URL — the
+        // update-required screen's store button (capability `app-update-required`). `UIApplication` is
+        // main-thread-only, and the seam names the lane so a synchronous replay never waits on it.
+        "/adapter/ios/app-only/src/iosMain/kotlin/app/snapsync/link/UrlOpenerApi.kt" to
             "UIApplication.openURL",
-        // Opens the Settings URL, presents the limited-library picker (`choosePhotos`, absorbed from
-        // the former top-level PresentLimitedLibraryPicker.kt), and observes UIApplication
-        // notifications; all three are main-thread-only.
+        // Presents the limited-library picker (`choosePhotos`, absorbed from the former top-level
+        // PresentLimitedLibraryPicker.kt), and observes UIApplication notifications; both main-thread-only.
         "/adapter/ios/app-only/src/iosMain/kotlin/app/snapsync/permission/PhotoLibraryPermission.kt" to
-            "UIApplication.openURL + presentLimitedLibraryPicker + a UIApplication notification observer",
+            "presentLimitedLibraryPicker + a UIApplication notification observer",
         // Reads the main-thread-only `isProtectedDataAvailable` for the background entry points' diagnostics
         // (capability `sync-status`). The read moved here from `SnapSyncRoot` when the shell became a driving
-        // adapter: the core's entries ask the `ProtectedStorage` port, and this adapter names the lane itself.
-        "/adapter/ios/app-only/src/iosMain/kotlin/app/snapsync/protection/IosProtectedStorage.kt" to
+        // adapter: the core's entries ask the `ProcessInfo` port, and this adapter names the lane itself.
+        "/adapter/ios/app-only/src/iosMain/kotlin/app/snapsync/protection/IosProcessInfo.kt" to
             "UIApplication.isProtectedDataAvailable",
         // The hand-off contracts' simulator-app binding (rig-gated): disposing a clause dismisses the share
         // sheet it presented, and UIKit dismissal is main-thread-only like the presentation it undoes.

@@ -1,16 +1,16 @@
 package app.snapsync.logging
 
 /**
- * The ambient "what triggered this" holder, read by the device-log writers ([FileLogWriter] /
- * [PublicNSLogWriter], which sit beside it) to prefix every line with `[<entryPoint>]` so downstream
+ * The ambient "what triggered this" holder, read by the device-log writers ([FileLogSink] /
+ * [PublicNSLogSink], which sit beside it) to prefix every line with `[<entryPoint>]` so downstream
  * engine/HTTP/download lines trace back to the entry point that drove them (capability
- * `privacy-security`). Driven through the `:domain` `LogScope` port (see [IosLogScope]) so the
+ * `privacy-security`). Driven through the `:domain` `EntryContext` port (see [IosEntryContext]) so the
  * process-global mutable lives here in the adapter — where a platform global is legitimate — and not
  * in the core (law "State and authority").
  *
  * It holds **two** claims, and [current] resolves the thread's own before the process-wide one.
  *
- * **Process-wide** ([enter], bound as [IosLogScope]) is the default, and it is deliberately NOT a
+ * **Process-wide** ([enter], bound as [IosEntryContext]) is the default, and it is deliberately NOT a
  * `@ThreadLocal` and NOT a coroutine-context element: the Kermit [co.touchlab.kermit.LogWriter.log]
  * callback is a plain synchronous call with no coroutine context and no knowledge of which thread's
  * work triggered it. A global is the only form the writer can read from any thread, and — being
@@ -23,7 +23,7 @@ package app.snapsync.logging
  * `[didReceiveMetricPayloads]`. A process-wide claim labels every concurrent line that has no entry
  * point of its own. Accepted for a dev-only log — for the entry points that cannot avoid it.
  *
- * **Thread-scoped** ([enterThread], bound as [IosThreadLogScope]) is for the ones that can. A
+ * **Thread-scoped** ([enterThread], bound as [IosThreadEntryContext]) is for the ones that can. A
  * synchronous call occupies its thread, so every line on that thread during the call is its own and
  * no line elsewhere is: the claim is exact by construction. It is only for bodies that do not suspend
  * and launch nothing whose lines should inherit the prefix — such work would log unprefixed, which is

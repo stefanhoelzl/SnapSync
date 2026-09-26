@@ -3,7 +3,6 @@ package app.snapsync.ports
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import app.snapsync.model.JoinResult
 import app.snapsync.model.Handoff
@@ -28,35 +27,12 @@ class JoinSeamsTest {
     }
 
     @Test
-    fun the_platform_handoffs_default_to_inert() = runTest {
+    fun the_inert_system_ui_answers_that_nothing_was_handed_off() = runTest {
         // What every off-device composition (the harnesses, the world) stands on: there is no platform to
-        // hand anything to, and saying so explicitly is what keeps the graph constructible there.
-        val handoff = PlatformHandoff()
-        assertSame(SharePresenter.None, handoff.share)
-        assertSame(LinkOpener.None, handoff.links)
-
-        // Inert means it answers — that nothing was handed off — not that it throws or is absent.
-        assertTrue(handoff.share.share("https://example.invalid/join") is Handoff.Refused)
-        assertTrue(handoff.links.open("https://example.invalid/app") is Handoff.Refused)
-    }
-
-    @Test
-    fun a_supplied_handoff_is_the_one_used() = runTest {
-        val opened = mutableListOf<String>()
-        val shared = mutableListOf<String>()
-        val handoff = PlatformHandoff(
-            share = object : SharePresenter {
-                override suspend fun share(text: String): Handoff = Handoff.Accepted.also { shared += text }
-            },
-            links = object : LinkOpener {
-                override suspend fun open(url: String): Handoff = Handoff.Accepted.also { opened += url }
-            },
-        )
-
-        handoff.share.share("invite")
-        handoff.links.open("store")
-
-        assertEquals(listOf("invite"), shared)
-        assertEquals(listOf("store"), opened)
+        // hand anything to, and saying so explicitly is what keeps the graph constructible there. Inert means it
+        // answers — that nothing was handed off — not that it throws or is absent.
+        assertTrue(SystemUi.None.share("https://example.invalid/join") is Handoff.Refused)
+        assertTrue(SystemUi.None.openUrl("https://example.invalid/app") is Handoff.Refused)
+        SystemUi.None.openSettings()
     }
 }

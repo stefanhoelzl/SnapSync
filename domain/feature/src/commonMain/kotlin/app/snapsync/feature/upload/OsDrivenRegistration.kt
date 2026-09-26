@@ -1,7 +1,7 @@
 package app.snapsync.feature.upload
 
 import app.snapsync.ports.UploadExtensionRegistry
-import app.snapsync.ports.LogScope
+import app.snapsync.ports.EntryContext
 import app.snapsync.ports.invocation
 import co.touchlab.kermit.Logger
 
@@ -41,7 +41,7 @@ interface ExtensionRegistration {
 class OsDrivenRegistration(
     private val registry: UploadExtensionRegistry,
     private val log: Logger = Logger.withTag("OsDrivenRegistration"),
-    private val logScope: LogScope = LogScope.NoOp,
+    private val entryContext: EntryContext = EntryContext.NoOp,
 ) : ExtensionRegistration {
     /**
      * Register the extension — a **disable→enable toggle**, not a bare enable.
@@ -63,7 +63,7 @@ class OsDrivenRegistration(
      * `enableBackgroundUpload()` this producer replaces — resolved to a destructive teardown followed by a
      * no-op.
      */
-    override suspend fun register() = log.invocation(logScope, "photokit.register") {
+    override suspend fun register() = log.invocation(entryContext, "photokit.register") {
         registry.setEnabled(false)
         // The outcome IS the report. There used to be an `Info` line here claiming the extension had been
         // re-registered, logged unconditionally — so a device whose enable had just failed terminally at
@@ -83,7 +83,7 @@ class OsDrivenRegistration(
      * `extension=off` (capability `background-upload`). The disable wipes every in-flight OS job; at a leave the
      * ledger is cleared right after, and on the rig path the wipe is the test's intent.
      */
-    override suspend fun deregister() = log.invocation(logScope, "photokit.deregister") {
+    override suspend fun deregister() = log.invocation(entryContext, "photokit.deregister") {
         registry.setEnabled(false)
         Unit
     }

@@ -4,12 +4,13 @@ import app.snapsync.compose.ProcessPorts
 import app.snapsync.compose.snapSyncProcess
 import app.snapsync.fake.inMemoryCrashReporter
 import app.snapsync.fake.inMemoryFiles
+import app.snapsync.fake.fixedClock
 import app.snapsync.model.CrashEvent
 import app.snapsync.model.DiagnosticDump
 import app.snapsync.model.DumpResult
 import app.snapsync.model.NON_REDACTED_TAG
 import app.snapsync.model.ProcessMetricReport
-import app.snapsync.ports.LogScope
+import app.snapsync.ports.EntryContext
 import app.snapsync.ports.MetricHandlers
 import app.snapsync.ports.ProcessMetrics
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -42,8 +43,19 @@ class ProcessCompositionTest {
         }
     }
 
-    private fun process(dsn: String?, metrics: ProcessMetrics = ProcessMetrics.None) = snapSyncProcess(
-        ProcessPorts(inMemoryCrashReporter(started, dumps), metrics, inMemoryFiles(), LogScope.NoOp, dsn),
+    private fun process(dsn: String?, metrics: ProcessMetrics = ProcessMetrics.None) =
+        snapSyncProcess(ports(inMemoryCrashReporter(started, dumps), metrics, dsn))
+
+    private fun ports(reporter: app.snapsync.ports.CrashReporter, metrics: ProcessMetrics, dsn: String?) = ProcessPorts(
+        crashReporter = reporter,
+        processMetrics = metrics,
+        logSinks = emptyList(),
+        files = inMemoryFiles(),
+        clock = fixedClock(kotlin.time.Instant.fromEpochSeconds(0)),
+        entryContext = EntryContext.NoOp,
+        dsn = dsn,
+        bootLines = emptyList(),
+        ownsGlobalLogger = false,
     )
 
     private fun dump() = DiagnosticDump("stuck on $id", mapOf("screen" to "Joined"), emptyMap(), "app\n", "ext\n")
@@ -53,7 +65,7 @@ class ProcessCompositionTest {
         val process = process(dsn = "https://key@ingest/1")
         assertTrue(started.value, "reporting starts as the process's first act")
         assertTrue(process.crash.isConfigured)
-        assertEquals(1, process.logWriters.size, "the crash channel's log writer, for the root to install")
+        assertEquals(2, process.logWriters.size, "the sinks' writer and the crash channel's")
     }
 
     @Test
@@ -61,7 +73,7 @@ class ProcessCompositionTest {
         val process = process(dsn = null)
         assertFalse(started.value, "no destination, no channel — and no connection ever opened")
         assertFalse(process.crash.isConfigured)
-        assertTrue(process.logWriters.isEmpty(), "a build that reports nowhere never constructs the writer")
+        assertEquals(1, process.logWriters.size, "only the sinks' writer: a build that reports nowhere never constructs the crash one")
         assertIs<DumpResult.NotSent>(process.crash.sendDump(dump()))
         assertTrue(dumps.value.isEmpty())
     }
@@ -105,7 +117,7 @@ class ProcessCompositionTest {
         override suspend fun sendDump(dump: CrashEvent): DumpResult = DumpResult.Queued
     }
 
-    private class Entry(private val name: String?) : LogScope {
+    private class Entry(private val name: String?) : EntryContext {
         override fun enter(name: String) = false
         override fun exit(owned: Boolean) = Unit
         override fun current(): String? = name
@@ -126,7 +138,7 @@ class ProcessCompositionTest {
     @Test
     fun the_registered_handlers_are_the_production_scrub() {
         val reporter = Recording()
-        snapSyncProcess(ProcessPorts(reporter, ProcessMetrics.None, inMemoryFiles(), LogScope.NoOp, "https://key@ingest/1"))
+        snapSyncProcess(ports(reporter, ProcessMetrics.None, "https://key@ingest/1"))
         val handlers = assertNotNull(reporter.handlers, "the process listened to its reporter")
         assertEquals("id ‹uuid›", handlers.onEvent(CrashEvent(message = "id $id"))?.message)
         assertEquals(
@@ -139,7 +151,7 @@ class ProcessCompositionTest {
     fun a_crossing_report_rides_as_the_standing_context_with_its_reasons() {
         val reporter = Recording()
         val process = snapSyncProcess(
-            ProcessPorts(reporter, ProcessMetrics.None, inMemoryFiles(), LogScope.NoOp, "https://key@ingest/1"),
+            ports(reporter, ProcessMetrics.None, "https://key@ingest/1"),
         )
         val crossing = ProcessMetricReport(
             mapOf("applicationExitMetrics.backgroundExitData.cumulativeAppWatchdogExitCount" to "3"),
@@ -152,11 +164,11 @@ class ProcessCompositionTest {
 
     @Test
     fun describing_the_process_starts_a_reporting_channel_itself() {
-        val crash = CrashReporting(inMemoryCrashReporter(started, dumps), "https://key@ingest/1", LogScope.NoOp)
+        val crash = CrashReporting(inMemoryCrashReporter(started, dumps), "https://key@ingest/1", EntryContext.NoOp)
         assertFalse(started.value)
         crash.describeProcess(ProcessMetricReport(emptyMap()))
         assertTrue(started.value, "an account that outran the composition must not reach an unstarted channel")
         assertNotNull(crash.logWriter)
-        assertNull(CrashReporting(inMemoryCrashReporter(), null, LogScope.NoOp).logWriter)
+        assertNull(CrashReporting(inMemoryCrashReporter(), null, EntryContext.NoOp).logWriter)
     }
 }

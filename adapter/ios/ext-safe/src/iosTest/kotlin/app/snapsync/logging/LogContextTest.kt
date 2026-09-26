@@ -67,7 +67,7 @@ class LogContextTest {
     fun `a line written on another thread during a thread-scoped claim carries no prefix`() {
         withTempDirectory { dir ->
             val path = "$dir/debug.log"
-            val writer = FileLogWriter(path)
+            val writer = FileLogSink(path)
             val owned = LogContext.enterThread("didReceiveMetricPayloads")
             try {
                 writer.log(Severity.Info, "process metrics: observing", "processMetrics", null)

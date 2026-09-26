@@ -7,8 +7,8 @@ import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.minutes
 
 /**
- * The production bindings of the `Clock` and `TimeZoneSource` ports. The ports exist so that nothing
- * else in the tree reads the system clock or zone directly — which makes these two objects the single
+ * The production binding of the `Clock` port. The port exists so that nothing else in the tree reads the
+ * system clock or zone directly — which makes this object the single
  * place where "now" and "here" enter the app, and the only place a fixed or stubbed value would be
  * invisible. Everything downstream (the cutoff formatting, the attestation staleness check, the event
  * window clamps) reads a port and is tested against an injected fake, so a production binding that
@@ -31,7 +31,7 @@ class SystemTimeTest {
     }
 
     @Test
-    fun `the production zone source answers the device's current default zone`() {
-        assertEquals(TimeZone.currentSystemDefault(), SystemTimeZone.current())
+    fun `the production clock's zone is the device's current default zone`() {
+        assertEquals(TimeZone.currentSystemDefault(), SystemClock.timeZone())
     }
 }

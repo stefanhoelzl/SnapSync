@@ -129,6 +129,7 @@ edge :test:rig :domain:feature
 edge :test:rig :domain:model
 edge :test:rig :domain:ports
 edge :test:rig :domain:presentation
+edge :test:rig :domain:services
 edge :test:rig :test:contracts
 edge :test:rig :test:world
 edge :test:world :adapter:generic:app

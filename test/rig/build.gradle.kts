@@ -59,6 +59,8 @@ kotlin {
             implementation(project(":domain:model"))
             implementation(project(":domain:ports"))
             implementation(project(":domain:compose"))
+            // The device-log writer the rig re-points at the extension's log for an invoked cycle.
+            implementation(project(":domain:services"))
             implementation(project(":domain:presentation"))
             // `StatusContainerHost` is an Orbit `ContainerHost`; presentation does not export Orbit.
             implementation(libs.orbit.core)

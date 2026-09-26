@@ -33,7 +33,7 @@ class PhotoKitNoGrantContractTest {
         override fun create(state: PhotoAccessState, clauseId: String): Entered<PhotoAccess> {
             if (state != PhotoAccessState.NO_GRANT || !holdsNoGrant()) return Entered.Unreachable(unreachable)
             val adapter = PhotoLibraryPermission()
-            return Entered.Ready(PhotoAccess(adapter, adapter))
+            return Entered.Ready(PhotoAccess(adapter))
         }
     }
 

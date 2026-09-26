@@ -40,9 +40,9 @@ Roots found:
 | `IosGalleryReader` | x | x |
 | `IosLinkOpener` | x | |
 | `IosPreferences` | x | x |
-| `IosProtectedStorage` | x | |
+| `IosProcessInfo` | x | |
 | `IosPushRegistrationRecord` | x | |
-| `IosShareSheet` | x | |
+| `IosSystemUi` | x | |
 | `LedgerService` | x | x |
 | `LogTailService` | x | |
 | `MetricKitProcessMetrics` | x | |
@@ -52,7 +52,7 @@ Roots found:
 | `PhotoLibraryPermission` | x | |
 | `PlatformHandoff` | x | |
 | `ProcessPorts` | x | x |
-| `PublicNSLogWriter` | x | x |
+| `PublicNSLogSink` | x | x |
 | `PushPorts` | x | |
 | `PushTokenSource` | x | |
 | `RigSwitches` | x | |

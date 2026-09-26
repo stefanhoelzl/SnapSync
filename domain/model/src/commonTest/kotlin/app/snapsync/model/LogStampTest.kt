@@ -14,7 +14,7 @@ import kotlin.test.assertEquals
  * century (2100), and the last millisecond of a day, a month and a year rolling into the next.
  *
  * What this cannot pin is Foundation itself — that `NSDate.description` prints exactly this shape.
- * That one check runs on an iOS host, in `FileLogWriterTest`.
+ * That one check runs on an iOS host, in `FileLogSinkTest`.
  */
 class LogStampTest {
 
@@ -62,4 +62,20 @@ class LogStampTest {
         1_735_689_599_999L to "2024-12-31 23:59:59.999 +0000",
         1_735_689_600_000L to "2025-01-01 00:00:00.000 +0000",
     )
+
+    @Test
+    fun a_line_carries_its_entry_point_severity_tag_and_message() {
+        assertEquals(
+            "[onSilentPush] [Warn/download] reconcile failed",
+            logLineBody("onSilentPush", "Warn", "download", "reconcile failed", null),
+        )
+        assertEquals("[Info/gallery] enumerated 3", logLineBody(null, "Info", "gallery", "enumerated 3", null))
+    }
+
+    @Test
+    fun a_throwable_follows_the_message_on_the_same_line() {
+        val line = logLineBody(null, "Error", "engine", "upload failed", IllegalStateException("boom"))
+        kotlin.test.assertTrue(line.startsWith("[Error/engine] upload failed | "), "unexpected line: $line")
+        kotlin.test.assertTrue("boom" in line)
+    }
 }

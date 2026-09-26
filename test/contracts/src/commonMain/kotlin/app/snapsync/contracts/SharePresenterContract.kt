@@ -1,7 +1,7 @@
 package app.snapsync.contracts
 
 import app.snapsync.model.Handoff
-import app.snapsync.ports.SharePresenter
+import app.snapsync.ports.SystemUi
 import kotlin.test.assertEquals
 
 /** Whether the process has a surface to present a share sheet over. */
@@ -11,7 +11,7 @@ enum class SharePresenterState {
 }
 
 /**
- * What every [SharePresenter] promises (`docs/architecture.md` — this list IS the specification of
+ * What [SystemUi.share] promises (`docs/architecture.md` — this list IS the specification of
  * the port's obligations).
  *
  * One clause, because one state is reachable. The adapter's other answer — no key window, so nothing to
@@ -19,7 +19,7 @@ enum class SharePresenterState {
  * the adapter's documentation rather than becoming a clause only a fake could run. What the user does in
  * the sheet is not the port's to report at all.
  */
-object SharePresenterContract : Contract<SharePresenterState, SharePresenter>("SharePresenter") {
+object SharePresenterContract : Contract<SharePresenterState, SystemUi>("SharePresenter") {
 
     const val TEXT = "https://snapsync.stho.net/join#contract"
 

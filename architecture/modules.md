@@ -137,6 +137,7 @@ flowchart LR
   test_rig --> domain_model
   test_rig --> domain_ports
   test_rig --> domain_presentation
+  test_rig --> domain_services
   test_rig --> test_contracts
   test_rig --> test_world
   test_world --> adapter_generic_app

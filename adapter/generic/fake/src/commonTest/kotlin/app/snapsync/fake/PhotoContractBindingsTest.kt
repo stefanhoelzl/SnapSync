@@ -83,8 +83,7 @@ class PhotoContractBindingsTest {
             val cell = MutableStateFlow(
                 if (state == PhotoAccessState.GRANTED) GalleryAccess.GRANTED else GalleryAccess.NOT_DETERMINED,
             )
-            val (status, requester) = inMemoryPhotoAccess(cell)
-            return Entered.Ready(PhotoAccess(status, requester))
+            return Entered.Ready(PhotoAccess(inMemoryPhotoAccess(cell)))
         }
     }
 

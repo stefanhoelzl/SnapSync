@@ -11,7 +11,7 @@ import app.snapsync.ports.ConfigSource
 import app.snapsync.ports.DownloadStore
 import app.snapsync.services.backend.EventUnionSource
 import app.snapsync.ports.LedgerStore
-import app.snapsync.ports.LogScope
+import app.snapsync.ports.EntryContext
 import app.snapsync.ports.invocation
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
@@ -74,7 +74,7 @@ class AlbumGather(
     /** The app-lifetime scope a gather is launched on — the composition lane, never the UI lane: the
      *  platform add blocks its thread for a whole library change. */
     private val scope: CoroutineScope,
-    private val logScope: LogScope,
+    private val entryContext: EntryContext,
     private val batchSize: Int = GATHER_BATCH_SIZE,
     private val log: Logger = Logger.withTag("AlbumGather"),
 ) {
@@ -90,7 +90,7 @@ class AlbumGather(
     /** Start a gather for [eventId], detached. [trigger] names the opt-in act, so the log says why it ran. */
     fun start(trigger: String, eventId: String) {
         val job = scope.launch {
-            log.invocation(logScope, "albumGather", "trigger=$trigger eventId=$eventId") { gather(eventId) }
+            log.invocation(entryContext, "albumGather", "trigger=$trigger eventId=$eventId") { gather(eventId) }
         }
         started.update { it + job }
         job.invokeOnCompletion { started.update { running -> running - job } }

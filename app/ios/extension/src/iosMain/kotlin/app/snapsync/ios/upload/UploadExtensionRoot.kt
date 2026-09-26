@@ -11,7 +11,7 @@ import app.snapsync.compose.UploadPorts
 import app.snapsync.compose.uploadCore
 import app.snapsync.compose.extensionEntries
 import app.snapsync.ports.ExtensionEntries
-import app.snapsync.logging.IosLogScope
+import app.snapsync.logging.IosEntryContext
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.model.PlatformEntry
 import app.snapsync.preferences.IosPreferences
@@ -46,7 +46,7 @@ import app.snapsync.ports.LedgerStore
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.manifest.DeviceManifestService
 import app.snapsync.membership.darwinHttpClient
-import app.snapsync.logging.FileLogWriter
+import app.snapsync.logging.FileLogSink
 import app.snapsync.logging.extensionLogDestination
 import app.snapsync.logging.removeStaleExtensionDocumentsLog
 import app.snapsync.logging.SentryCrashReporter
@@ -55,9 +55,10 @@ import app.snapsync.compose.ProcessPorts
 import app.snapsync.compose.ProcessServices
 import app.snapsync.compose.snapSyncProcess
 import app.snapsync.ports.ProcessMetrics
+import app.snapsync.time.SystemClock
 import app.snapsync.logging.appBuildVersion
 import app.snapsync.logging.appMarketingVersion
-import app.snapsync.logging.PublicNSLogWriter
+import app.snapsync.logging.PublicNSLogSink
 import app.snapsync.logging.neverBlockOnStdio
 import app.snapsync.logging.invocation
 import co.touchlab.kermit.Logger
@@ -91,54 +92,56 @@ object UploadExtensionRoot : ExtensionEntries by extensionRootEntries() {
     init {
         // First, before anything logs: a log line must never park a thread on an undrained stdout/stderr (see the KDoc).
         neverBlockOnStdio()
-        // Route kermit through a public NSLog writer AND a file writer. NSLog turns out to be
-        // redacted as `<private>` on current iOS (dynamic format strings are private), so the file
-        // writer is the reliable channel for reading the extension's logs on device.
-        //
-        // This process writes into the SHARED App Group (`ext-debug.log`) rather than its own
-        // Documents, because the app cannot read another bundle's Documents and the app is what
-        // assembles a diagnostic dump (capability `privacy-security`). The App Group is not
-        // USB-pullable, so `SNAPSYNC_EXPORT_LOGS` copies this file into the app's Documents.
-        val logDestination = extensionLogDestination()
-        Logger.setLogWriters(PublicNSLogWriter(), FileLogWriter(logDestination.path))
-        // The pre-relocation file at the old path would otherwise keep answering pulls with frozen
-        // content forever. Idempotent, and a no-op while the writer is itself falling back there.
-        removeStaleExtensionDocumentsLog(logDestination)
-        // Boot banner (capability `privacy-security`, D5) — the extension is a separate, short-lived
-        // process; name it + the build version so its file is unambiguous. `log` isn't assigned yet.
-        Logger.withTag("UploadExtension").i { "=== extension process start build=${appBuildVersion()} ===" }
-        // Where this run's log is going — including whether it fell back to this bundle's own
-        // Documents, in which case no dump will carry it (the sentence is the adapter's).
-        Logger.withTag("UploadExtension").i { logDestination.bannerLine }
-        // The BAKED backend this build uploads to — the same diagnostic the app emits, and it matters
-        // more here: this process IS the upload path, and pointing a build at a different backend
-        // without a device reset leaves the ledger claiming everything is already COMPLETED, so
-        // the cycle enumerates and enqueues nothing with no error anywhere. Read beside this process's
-        // own `enumeration: N seen, X new, Y already-uploaded`, a changed host names the cause at once.
-        Logger.withTag("UploadExtension").i { "[boot] upload base = ${bakedUploadBase()}" }
     }
 
-    private val log = Logger.withTag("UploadExtension")
+    /**
+     * Where this process's log goes: the SHARED App Group (`ext-debug.log`) rather than its own Documents, because the
+     * app cannot read another bundle's Documents and the app is what assembles a diagnostic dump (capability
+     * `privacy-security`). The App Group is not USB-pullable; the control channel reads it.
+     */
+    private val logDestination = extensionLogDestination()
 
     /**
-     * This process's per-process services (`snapSyncProcess`, every root's first act): its ONE crash reporter,
-     * started here before any other wiring can fail. No process metrics: MetricKit hands reports out roughly daily,
-     * and this process lives for one invocation.
+     * This process's per-process services (`snapSyncProcess`, every root's first act): its log writers and boot
+     * banner, its ONE crash reporter — started here before any other wiring can fail — its files, clock and
+     * entry-point seam. No process metrics: MetricKit hands reports out roughly daily, and this process lives for one
+     * invocation.
      */
     private val process: ProcessServices = snapSyncProcess(
         ProcessPorts(
             crashReporter = SentryCrashReporter(),
             processMetrics = ProcessMetrics.None,
+            // A public NSLog sink AND a file sink: NSLog is redacted as `<private>` on current iOS (dynamic format
+            // strings are private), so the file is the reliable channel for reading the extension's logs on device.
+            logSinks = listOf(PublicNSLogSink(), FileLogSink(logDestination.path)),
             files = IosFiles(),
-            entryContext = IosLogScope,
+            clock = SystemClock,
+            entryContext = IosEntryContext,
             dsn = bakedSentryDsn(),
+            bootLines = listOf(
+                // The extension is a separate, short-lived process; name it + the build version so its file is
+                // unambiguous (capability `privacy-security`, D5).
+                "=== extension process start build=${appBuildVersion()} ===",
+                // Where this run's log is going — including whether it fell back to this bundle's own Documents, in
+                // which case no dump will carry it (the sentence is the adapter's).
+                logDestination.bannerLine,
+                // The BAKED backend this build uploads to — the same diagnostic the app emits, and it matters more
+                // here: this process IS the upload path, and pointing a build at a different backend without a
+                // device reset leaves the ledger claiming everything is already COMPLETED, so the cycle enumerates
+                // and enqueues nothing with no error anywhere.
+                "[boot] upload base = ${bakedUploadBase()}",
+            ),
+            ownsGlobalLogger = true,
         ),
     )
 
     init {
-        // The crash channel's log writer, beside the device-log writers — present only on a build that reports.
-        process.installLogWriters()
+        // The pre-relocation file at the old path would otherwise keep answering pulls with frozen
+        // content forever. Idempotent, and a no-op while the sink is itself falling back there.
+        removeStaleExtensionDocumentsLog(logDestination)
     }
+
+    private val log = Logger.withTag("UploadExtension")
 
     // This process's SQLite databases, in the App-Group container. The services below open them on first use,
     // never at construction: building the composition opens no database (`docs/architecture.md`).
@@ -338,6 +341,6 @@ object UploadExtensionRoot : ExtensionEntries by extensionRootEntries() {
 internal fun productionExtensionEntries(): ExtensionEntries = extensionEntries(
     ports = { UploadExtensionRoot.ports },
     cycle = { UploadExtensionRoot.cycle },
-    logScope = IosLogScope,
+    entryContext = IosEntryContext,
     rereadCredential = { UploadExtensionRoot.attestStore.reread() },
 )

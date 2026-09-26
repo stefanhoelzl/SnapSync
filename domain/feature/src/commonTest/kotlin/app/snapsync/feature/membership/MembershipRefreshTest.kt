@@ -11,12 +11,14 @@ import app.snapsync.model.eventEnd
 import app.snapsync.model.eventStart
 import app.snapsync.model.EventConfig
 import app.snapsync.model.JoinLoad
+import app.snapsync.ports.Clock
 import app.snapsync.ports.ConfigSource
 import app.snapsync.ports.ConfigStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
+import kotlinx.datetime.TimeZone
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -72,7 +74,10 @@ class MembershipRefreshTest {
         MembershipRefresh(
             configSource = config,
             store = config,
-            clock = { Instant.parse(now.iso) },
+            clock = object : Clock {
+                override fun now() = Instant.parse(now.iso)
+                override fun timeZone() = TimeZone.UTC
+            },
             leaveEvent = LeaveEvent(
                 config = config,
                 configSource = config,

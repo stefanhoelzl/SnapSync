@@ -29,8 +29,8 @@ import app.snapsync.contracts.PhotoAccessState
 import app.snapsync.contracts.PhotoLibrary
 import app.snapsync.contracts.GalleryImportContract
 import app.snapsync.contracts.GalleryImportState
-import app.snapsync.contracts.ProtectedStorageContract
-import app.snapsync.contracts.ProtectedStorageState
+import app.snapsync.contracts.ProcessInfoContract
+import app.snapsync.contracts.ProcessInfoState
 import app.snapsync.contracts.SEED_COUNT
 import app.snapsync.contracts.SeededLibrary
 import app.snapsync.contracts.SharePresenterContract
@@ -48,8 +48,8 @@ import app.snapsync.model.denormalizeAssetId
 import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.model.AssetRef
 import app.snapsync.ports.BackgroundTime
-import app.snapsync.ports.ProtectedStorage
-import app.snapsync.protection.IosProtectedStorage
+import app.snapsync.ports.ProcessInfo
+import app.snapsync.protection.IosProcessInfo
 import app.snapsync.model.StagedResource
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
@@ -92,7 +92,7 @@ fun simulatorAppContracts(): List<InAppContract> = listOf(
     simulatorAppContract(GalleryContract, SimAppGalleryBinding(), ::refusal),
     simulatorAppContract(PhotoAccessContract, SimAppPhotoAccessBinding(), ::refusal),
     simulatorAppContract(GalleryImportContract, SimAppImporterBinding(), ::refusal),
-    simulatorAppContract(ProtectedStorageContract, SimAppProtectedStorageBinding(), ::hostRefusal),
+    simulatorAppContract(ProcessInfoContract, SimAppProcessInfoBinding(), ::hostRefusal),
     simulatorAppContract(LinkOpenerContract, SimAppLinkOpenerBinding(), ::hostRefusal),
     simulatorAppContract(SharePresenterContract, SimAppSharePresenterBinding(), ::hostRefusal),
     simulatorAppContract(BackgroundTransferContract, SimAppBackgroundTransferBinding(), ::refusal),
@@ -183,7 +183,7 @@ class SimAppPhotoAccessBinding : Binding<PhotoAccessState, PhotoAccess> {
     override fun create(state: PhotoAccessState, clauseId: String): Entered<PhotoAccess> {
         if (state == PhotoAccessState.NO_GRANT) return Entered.Unreachable(UNREACHABLE_NO_GRANT)
         val adapter = PhotoLibraryPermission()
-        return Entered.Ready(PhotoAccess(adapter, adapter))
+        return Entered.Ready(PhotoAccess(adapter))
     }
 }
 
@@ -247,15 +247,15 @@ class SimAppImporterBinding : Binding<GalleryImportState, StagedImport> {
 /**
  * `UIApplication.isProtectedDataAvailable` in a running app — the one host with a `UIApplication` a CI job
  * reaches (a test executable has none). The app is running and the simulator implements no data protection, so
- * this host presents only `UNLOCKED`; no host presents the locked state at all (`ProtectedStorageContract`).
+ * this host presents only `UNLOCKED`; no host presents the locked state at all (`ProcessInfoContract`).
  */
-class SimAppProtectedStorageBinding : Binding<ProtectedStorageState, ProtectedStorage> {
+class SimAppProcessInfoBinding : Binding<ProcessInfoState, ProcessInfo> {
     override val host = Host.IOS_SIM_APP
     override val kind = BindingKind.Live
-    override val reaches = setOf(ProtectedStorageState.UNLOCKED)
+    override val reaches = setOf(ProcessInfoState.UNLOCKED)
 
-    override fun create(state: ProtectedStorageState, clauseId: String): Entered<ProtectedStorage> =
-        Entered.Ready(IosProtectedStorage())
+    override fun create(state: ProcessInfoState, clauseId: String): Entered<ProcessInfo> =
+        Entered.Ready(IosProcessInfo())
 }
 
 /**

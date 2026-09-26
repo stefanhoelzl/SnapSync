@@ -18,14 +18,12 @@ import app.snapsync.contracts.recordingName
 import app.snapsync.gallery.currentPhotoPermission
 import app.snapsync.contracts.render
 import app.snapsync.contracts.run
-import app.snapsync.link.IosLinkOpener
 import app.snapsync.link.SystemUrlOpenerApi
 import app.snapsync.link.UrlOpenerApi
 import app.snapsync.logging.deviceDiagnosticEnvironment
 import app.snapsync.model.GalleryAccess
-import app.snapsync.ports.LinkOpener
-import app.snapsync.ports.SharePresenter
-import app.snapsync.share.IosShareSheet
+import app.snapsync.ports.SystemUi
+import app.snapsync.systemui.IosSystemUi
 import platform.Foundation.NSDate
 import platform.Foundation.NSISO8601DateFormatter
 import platform.Foundation.NSProcessInfo
@@ -63,17 +61,17 @@ internal const val SIM_APP_UNREACHABLE_CLAIMED =
     "opening a URL another app claims backgrounds the app under test mid-run; this state is recorded on a device"
 
 /**
- * The real [IosLinkOpener] in the app on a device, recording its `openURL` call and iOS's answer. Replayed on
+ * The real [IosSystemUi] in the app on a device, recording its `openURL` call and iOS's answer. Replayed on
  * every CI build by `IosLinkOpenerReplayContractTest`.
  */
-internal class DeviceLinkOpenerBinding(private val recorder: Recorder) : Binding<LinkOpenerState, LinkOpener> {
+internal class DeviceLinkOpenerBinding(private val recorder: Recorder) : Binding<LinkOpenerState, SystemUi> {
     override val host = Host.IOS_DEVICE_APP
     override val kind = BindingKind.Live
     override val reaches = setOf(LinkOpenerState.CLAIMED, LinkOpenerState.UNCLAIMED)
 
-    override fun create(state: LinkOpenerState, clauseId: String): Entered<LinkOpener> {
+    override fun create(state: LinkOpenerState, clauseId: String): Entered<SystemUi> {
         recorder.open(clauseId)
-        return Entered.Ready(IosLinkOpener(RecordingUrlOpenerApi(SystemUrlOpenerApi, recorder)))
+        return Entered.Ready(IosSystemUi(RecordingUrlOpenerApi(SystemUrlOpenerApi, recorder)))
     }
 }
 
@@ -140,29 +138,29 @@ private fun <K : Enum<K>, T> recordAppOnDevice(
     return recorder.recording(header).render()
 }
 
-/** The real [IosLinkOpener] in the simulator app, for the state that leaves the app where it is. */
-class SimAppLinkOpenerBinding : Binding<LinkOpenerState, LinkOpener> {
+/** The real [IosSystemUi] in the simulator app, for the state that leaves the app where it is. */
+class SimAppLinkOpenerBinding : Binding<LinkOpenerState, SystemUi> {
     override val host = Host.IOS_SIM_APP
     override val kind = BindingKind.Live
     override val reaches = setOf(LinkOpenerState.UNCLAIMED)
 
-    override fun create(state: LinkOpenerState, clauseId: String): Entered<LinkOpener> = when (state) {
-        LinkOpenerState.UNCLAIMED -> Entered.Ready(IosLinkOpener())
+    override fun create(state: LinkOpenerState, clauseId: String): Entered<SystemUi> = when (state) {
+        LinkOpenerState.UNCLAIMED -> Entered.Ready(IosSystemUi())
         LinkOpenerState.CLAIMED -> Entered.Unreachable(SIM_APP_UNREACHABLE_CLAIMED)
     }
 }
 
 /**
- * The real [IosShareSheet] in the simulator app, which the rig drives in the foreground. Disposal dismisses the
+ * The real [IosSystemUi] in the simulator app, which the rig drives in the foreground. Disposal dismisses the
  * sheet the clause presented, so the next contract finds the app as it was.
  */
-class SimAppSharePresenterBinding : Binding<SharePresenterState, SharePresenter> {
+class SimAppSharePresenterBinding : Binding<SharePresenterState, SystemUi> {
     override val host = Host.IOS_SIM_APP
     override val kind = BindingKind.Live
     override val reaches = setOf(SharePresenterState.PRESENTABLE)
 
-    override fun create(state: SharePresenterState, clauseId: String): Entered<SharePresenter> =
-        Entered.Ready(IosShareSheet(), dispose = ::dismissPresented)
+    override fun create(state: SharePresenterState, clauseId: String): Entered<SystemUi> =
+        Entered.Ready(IosSystemUi(), dispose = ::dismissPresented)
 }
 
 /** Dismisses whatever the key window's root controller presents. Called off the main queue, by the runner. */

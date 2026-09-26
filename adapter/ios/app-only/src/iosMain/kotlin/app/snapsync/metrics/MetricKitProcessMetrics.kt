@@ -1,6 +1,6 @@
 package app.snapsync.metrics
 
-import app.snapsync.logging.IosThreadLogScope
+import app.snapsync.logging.IosThreadEntryContext
 import app.snapsync.model.PlatformEntry
 import app.snapsync.model.ProcessMetricReport
 import app.snapsync.model.flattenToDottedKeys
@@ -95,7 +95,7 @@ class MetricKitProcessMetrics : ProcessMetrics {
  * The ObjC end of the subscription — an `NSObject` conforming to MetricKit's subscriber protocol, and
  * nothing else.
  *
- * Both callbacks claim the log prefix for **their own thread only** ([IosThreadLogScope]). Handling is
+ * Both callbacks claim the log prefix for **their own thread only** ([IosThreadEntryContext]). Handling is
  * inline and launches nothing, so every line of theirs is on the calling thread; a process-wide claim
  * instead labelled seven concurrent launch lines `[didReceiveMetricPayloads]` (capability
  * `privacy-security`). ⚠️ If a callback ever hands work to another thread, those lines log
@@ -114,7 +114,7 @@ internal class MetricKitSubscriber(
 
     @PlatformEntry
     override fun didReceiveMetricPayloads(payloads: List<*>) = objcBoundary(log, "didReceiveMetricPayloads") {
-        log.invocation(IosThreadLogScope, "didReceiveMetricPayloads", params = "count=${payloads.size}") {
+        log.invocation(IosThreadEntryContext, "didReceiveMetricPayloads", params = "count=${payloads.size}") {
             payloads.forEach { payload ->
                 (payload as? MXMetricPayload)?.let { deliver(it.dictionaryRepresentation()) }
             }
@@ -123,7 +123,7 @@ internal class MetricKitSubscriber(
 
     @PlatformEntry
     override fun didReceiveDiagnosticPayloads(payloads: List<*>) = objcBoundary(log, "didReceiveDiagnosticPayloads") {
-        log.invocation(IosThreadLogScope, "didReceiveDiagnosticPayloads", params = "count=${payloads.size}") {
+        log.invocation(IosThreadEntryContext, "didReceiveDiagnosticPayloads", params = "count=${payloads.size}") {
             payloads.forEach { payload ->
                 (payload as? MXDiagnosticPayload)?.let { deliver(it.dictionaryRepresentation()) }
             }

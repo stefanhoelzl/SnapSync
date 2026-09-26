@@ -10,7 +10,7 @@ import app.snapsync.ports.StagedBytes
 import app.snapsync.model.TransferOutcome
 
 import app.snapsync.model.AssetRef
-import app.snapsync.ports.LogScope
+import app.snapsync.ports.EntryContext
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.PendingDownload
 import app.snapsync.ports.invocation
@@ -121,7 +121,7 @@ class QueuedPhotoDownloadJobs(
     private val uiLane: CoroutineContext = EmptyCoroutineContext,
     private val log: Logger = Logger.withTag("PhotoDownloadJobs"),
     // The ambient entry-point prefix, so every line a background-events wake causes traces back to it.
-    private val logScope: LogScope = LogScope.NoOp,
+    private val entryContext: EntryContext = EntryContext.NoOp,
 ) : PhotoDownloadJobs {
 
     /**
@@ -305,7 +305,7 @@ class QueuedPhotoDownloadJobs(
      * handover, through which the wake's owner learns of the release and forwards the operating system's expiry.
      */
     fun adoptBackgroundEvents(completion: () -> Unit): OsCompletions.Handover =
-        log.invocation(logScope, "download.adoptBackgroundEvents") {
+        log.invocation(entryContext, "download.adoptBackgroundEvents") {
             // Logged (law "Absence is never silent"): without it no diagnostic dump could distinguish a wake whose
             // handler was released from one where it was never called.
             //

@@ -260,15 +260,16 @@ reinstall. To exercise the app's uploader alone on a ≥26.1 device, switch the 
 
 ## Gotchas
 
-- **Device logs:** both composition roots set `Logger.setLogWriters(PublicNSLogWriter(),
-  FileLogWriter(<destination>))` — the writers live in `:adapter:ios:ext-safe` (capability `privacy-security`). The writer takes its **destination**: the app passes `appLogDestination()`
+- **Device logs:** both composition roots hand `snapSyncProcess` the sinks `PublicNSLogSink()` and
+  `FileLogSink(<destination>)` — they live in `:adapter:ios:ext-safe` (capability `privacy-security`) — and it
+  installs the Kermit writers and logs the boot banner. The file sink takes its **destination**: the app passes `appLogDestination()`
   (its own `Documents/debug.log`, pullable as before), the extension `extensionLogDestination()`
   (`ext-debug.log` in the **App Group**, so the app can read it for a diagnostic dump; it falls back
   to its own Documents when the container is unavailable and says so in the boot banner). Verbatim,
-  10 MB roll. The os_log `PublicNSLogWriter` is redacted `<private>` on current iOS. The extension's log
+  10 MB roll. The os_log `PublicNSLogSink` is redacted `<private>` on current iOS. The extension's log
   lives in the App Group, which is not USB-pullable; read it through the control channel
   (`GET /device/logs?process=extension`, load `rig-channel`) — the copy-into-Documents launch trigger that
-  used to serve this is gone, along with every other one. Each root emits a boot banner and wraps
+  used to serve this is gone, along with every other one. Each root hands `snapSyncProcess` its boot banner and wraps
   its entry points with `Logger.invocation`, so every line carries a `[<entryPoint>]` prefix. Keep new
   entry points wrapped, or their downstream lines lose the trigger prefix.
 - **`-lsqlite3`:** required in each target's `OTHER_LDFLAGS` (above) for any target linking SQLDelight's

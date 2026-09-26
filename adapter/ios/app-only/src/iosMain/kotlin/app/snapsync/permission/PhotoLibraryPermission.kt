@@ -4,7 +4,6 @@ import app.snapsync.gallery.currentPhotoPermission
 import app.snapsync.logging.invocation
 import app.snapsync.model.GalleryAccess
 import app.snapsync.objc.objcBoundary
-import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.ports.PhotoAccessStatusSource
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -14,14 +13,12 @@ import kotlin.coroutines.resume
 import platform.Foundation.NSNotification
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSOperationQueue
-import platform.Foundation.NSURL
 import platform.Photos.PHAccessLevelReadWrite
 import platform.Photos.PHPhotoLibrary
 import platform.PhotosUI.presentLimitedLibraryPickerFromViewController
 import platform.UIKit.UIApplication
 import platform.UIKit.UIApplicationDidBecomeActiveNotification
 import platform.UIKit.UIApplicationState
-import platform.UIKit.UIApplicationOpenSettingsURLString
 import platform.darwin.NSObjectProtocol
 import platform.darwin.dispatch_async
 import platform.darwin.dispatch_get_main_queue
@@ -43,7 +40,7 @@ import platform.darwin.dispatch_get_main_queue
  *
  * Requires `NSPhotoLibraryUsageDescription` in the app's Info.plist, or [requestAccess] traps.
  */
-class PhotoLibraryPermission : PhotoAccessStatusSource, PhotoAccessRequester {
+class PhotoLibraryPermission : PhotoAccessStatusSource {
 
     private val state = MutableStateFlow(read())
 
@@ -107,9 +104,8 @@ class PhotoLibraryPermission : PhotoAccessStatusSource, PhotoAccessRequester {
      * passed as `AppPorts.presentPhotoPicker: () -> Unit` — a platform presentation handed to the core
      * behind a type that said nothing, and defaulted inert, so a composition that never wired it looked
      * exactly like one that had (`docs/architecture.md`, "Ports are the I/O boundary named for the
-     * need"). It lives in this adapter because the same object already presents the permission dialog and
-     * the Settings page, and the picker is the third face of that one need; [IosGallery] exposes it as
-     * `widenSelection`.
+     * need"). It lives in this adapter because the same object already presents the permission dialog, and the
+     * picker is the second face of that one need; [IosGallery] exposes it as `widenSelection`.
      *
      * Answers the grant once the picker is presented: PhotoKit reports the resulting selection through the
      * library change observer, never through a completion handler here.
@@ -120,7 +116,7 @@ class PhotoLibraryPermission : PhotoAccessStatusSource, PhotoAccessRequester {
     }
 
     private fun presentPicker() {
-        // Same main-queue hop and presenter walk as `openSettings`/`IosShareSheet`, for the same two
+        // Same main-queue hop and presenter walk as `IosSystemUi.share`, for the same two
         // reasons: UIKit rejects presentation from a covered controller, and presentation asserts the
         // main queue (presenting off-main traps with SIGTRAP) while commands can arrive on any lane.
         dispatch_async(dispatch_get_main_queue()) { objcBoundary(log, "choosePhotos") {
@@ -134,20 +130,6 @@ class PhotoLibraryPermission : PhotoAccessStatusSource, PhotoAccessRequester {
             // why this can only ever be an app-only adapter.
             presenter?.let { PHPhotoLibrary.sharedPhotoLibrary().presentLimitedLibraryPickerFromViewController(it) }
         } }
-    }
-
-    override fun openSettings() {
-        val url = NSURL.URLWithString(UIApplicationOpenSettingsURLString) ?: return
-        // `UIApplication` is main-thread-only and this adapter names the main lane itself rather than
-        // inheriting its caller's — the same shape `IosShareSheet` and `PresentLimitedLibraryPicker`
-        // already use, and the reason platform-UI adapters are the main lane's allowlist (law
-        // "Dispatcher lanes are fixed by the composition"). The command that calls this is on the main
-        // lane too; this makes the adapter correct for any caller rather than only that one.
-        dispatch_async(dispatch_get_main_queue()) {
-            objcBoundary(log, "openSettings") {
-                UIApplication.sharedApplication.openURL(url, options = emptyMap<Any?, Any>(), completionHandler = null)
-            }
-        }
     }
 
     // The one mapping, shared with the extension process (ext-safe `currentPhotoPermission`).

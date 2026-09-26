@@ -23,7 +23,7 @@ import app.snapsync.compose.uploadCore
 import app.snapsync.fake.inMemoryConfigReader
 import app.snapsync.fake.inMemoryConfigSource
 import app.snapsync.fake.inMemoryConfigStore
-import app.snapsync.fake.inMemoryProtectedStorage
+import app.snapsync.fake.inMemoryProcessInfo
 import app.snapsync.fake.inMemoryDeviceIntegrity
 import app.snapsync.fake.inMemoryAttestStore
 import app.snapsync.fake.inMemoryDeviceLogSource
@@ -36,7 +36,7 @@ import app.snapsync.compose.ProcessServices
 import app.snapsync.compose.snapSyncProcess
 import app.snapsync.model.CrashEvent
 import app.snapsync.ports.ProcessMetrics
-import app.snapsync.ports.LogScope
+import app.snapsync.ports.EntryContext
 import app.snapsync.fake.inMemoryDownloadStore
 import app.snapsync.fake.inMemoryLedgerStore
 import app.snapsync.fake.inMemoryStagedBytes
@@ -99,7 +99,6 @@ import app.snapsync.ports.DeviceManifestStore
 import app.snapsync.ports.PushRegistrationRecord
 import app.snapsync.ports.DownloadStore
 import app.snapsync.ports.LedgerStore
-import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.ports.StagedBytes
 import app.snapsync.model.TransferOutcome
 import kotlin.coroutines.ContinuationInterceptor
@@ -482,14 +481,6 @@ class World(
         )
     }
 
-    /**
-     * The world's Settings surface: the honest fake's, over the same cell as [permission]. Asking for access is
-     * the [gallery]'s: asked while undetermined, the user grants; once the grant is determined a request changes
-     * nothing, as on a device. No limited-library picker exists off device; the selection is changed by the
-     * operator lever [changeSelection] instead, which is the same thing the real picker's outcome amounts to.
-     */
-    val requester: PhotoAccessRequester = permission.requester
-
     // Attestation (capability `privacy-security`), OFF unless [attests] says otherwise — see that
     // parameter for why the default is off and what turning it on is for.
     //
@@ -523,6 +514,15 @@ class World(
      * which is the safe default a test must be able to step past deliberately.
      */
     var nowMillis: Long = 0L
+
+    /**
+     * The world's clock: the operator's pinned [nowMillis], read at every call, in UTC — so a rendered capture date
+     * is the same on every machine the world runs on.
+     */
+    private val worldClock: app.snapsync.ports.Clock = object : app.snapsync.ports.Clock {
+        override fun now() = kotlin.time.Instant.fromEpochMilliseconds(nowMillis)
+        override fun timeZone() = TimeZone.UTC
+    }
 
     /**
      * The app-driven uploader the world stands in with — one for the process, as on a device (it owns a
@@ -560,15 +560,19 @@ class World(
     /**
      * One app process's per-process services, as its root sets them up: a reporting destination (the world plays a
      * distributed build), no process metrics (a JVM has no provider), and no log writers installed — Kermit's writer
-     * list is JVM-global, and a world is one of many processes in this JVM.
+     * list is JVM-global, and a world is one of many processes in this JVM, so it does not own the logger.
      */
     private fun appProcess(): ProcessServices = snapSyncProcess(
         ProcessPorts(
             crashReporter = inMemoryCrashReporter(started = diagnosticsStarted, dumps = diagnosticsSent),
             processMetrics = ProcessMetrics.None,
+            logSinks = emptyList(),
             files = inMemoryFiles(shared = null, private = privateFiles),
-            entryContext = LogScope.NoOp,
+            clock = worldClock,
+            entryContext = EntryContext.NoOp,
             dsn = WORLD_DSN,
+            bootLines = emptyList(),
+            ownsGlobalLogger = false,
         ),
     )
 
@@ -580,9 +584,13 @@ class World(
         ProcessPorts(
             crashReporter = inMemoryCrashReporter(),
             processMetrics = ProcessMetrics.None,
+            logSinks = emptyList(),
             files = inMemoryFiles(shared = null, private = null),
-            entryContext = LogScope.NoOp,
+            clock = worldClock,
+            entryContext = EntryContext.NoOp,
             dsn = WORLD_DSN,
+            bootLines = emptyList(),
+            ownsGlobalLogger = false,
         ),
     )
 
@@ -597,7 +605,7 @@ class World(
         // a lane that means "wherever the caller happened to be" is precisely what this law ends.
         uiLane = scope.coroutineContext[ContinuationInterceptor] ?: EmptyCoroutineContext,
         // A device unlocked since boot: the background entry points record this, and nothing decides on it.
-        protectedStorage = inMemoryProtectedStorage(),
+        processInfo = inMemoryProcessInfo(),
         // The device logs a dump reads back (capability `privacy-security`) — empty until an
         // operator seeds them, which is honest: a world has no device writing log files.
         deviceLogSource = inMemoryDeviceLogSource(deviceLogs),
@@ -611,7 +619,6 @@ class World(
         rigSwitches = RigSwitches(uploaderPin = { null }, inviteLinkHints = inviteLinkHints),
         configStore = configStore,
         photoAccess = permission,
-        photoAccessRequester = requester,
         // The operator plays the OS: nothing uploads on its own. A selection change updates the cell + N and
         // reaches the world uploader's inert units (`OperatorUploadEngine`), counted; the operator invokes the
         // cycle by hand, exactly like every other world trigger.
@@ -633,12 +640,10 @@ class World(
         integrity = integrity,
         attestStore = inMemoryAttestStore(),
         deviceIdentity = { ownDeviceId },
-        clock = { kotlin.time.Instant.fromEpochMilliseconds(nowMillis) },
-        // The world's one stated clock deviation: the core's clock is the operator's pinned [nowMillis], the
-        // screen's is the wall clock — so a status screen over the world renders dates a person would see.
+        // The world's one stated clock deviation: the core's clock is the process's — the operator's pinned
+        // [nowMillis] — while the screen's is the wall clock, so a status screen over the world renders dates a
+        // person would see.
         displayClock = SystemClock,
-        // UTC, so a rendered capture date is the same on every machine the world runs on.
-        timeZone = { TimeZone.UTC },
         appStoreUrl = WORLD_APP_STORE_URL,
         // The operator IS the engine: nothing auto-runs; a cycle happens when invoked by hand.
         appDrivenUpload = { operatorEngine },

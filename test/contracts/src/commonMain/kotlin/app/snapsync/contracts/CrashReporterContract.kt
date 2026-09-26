@@ -225,7 +225,10 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
         clause("WIRE_HANDLERS_SHAPE_WHAT_LEAVES", CrashReporterState.ON_THE_WIRE) { s ->
             s.startListening(
                 CrashHandlers(
-                    onEvent = { e -> e.copy(message = e.message?.let { "$it (shaped)" }) },
+                    // Both fields: a captured message's text reaches the handler as the SDK's rendering, `formatted`.
+                    onEvent = { e ->
+                        e.copy(message = e.message?.let { "$it (shaped)" }, formatted = e.formatted?.let { "$it (shaped)" })
+                    },
                     onBreadcrumb = { c -> c.copy(message = c.message?.let { "shaped: $it" }) },
                 ),
             )
@@ -242,7 +245,9 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
 
         clause("WIRE_A_DROPPED_EVENT_LEAVES_NOTHING", CrashReporterState.ON_THE_WIRE) { s ->
             val dropped = "WIRE_A_DROPPED_EVENT_LEAVES_NOTHING drop me"
-            s.startListening(CrashHandlers(onEvent = { e -> e.takeIf { it.message != dropped } }, onBreadcrumb = { it }))
+            s.startListening(
+                CrashHandlers(onEvent = { e -> e.takeIf { (it.formatted ?: it.message) != dropped } }, onBreadcrumb = { it }),
+            )
             s.reporter.capture(CrashEvent(message = dropped))
             assertTrue(
                 s.deliveredBefore(sentinel("WIRE_A_DROPPED_EVENT_LEAVES_NOTHING")).none { it.message == dropped },

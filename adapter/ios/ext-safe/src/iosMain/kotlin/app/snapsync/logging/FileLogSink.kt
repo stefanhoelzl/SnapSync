@@ -2,7 +2,7 @@ package app.snapsync.logging
 
 import app.snapsync.model.utcLogStamp
 import app.snapsync.objc.checkedObjC
-import co.touchlab.kermit.LogWriter
+import app.snapsync.ports.LogSink
 import co.touchlab.kermit.Severity
 import kotlin.time.Clock
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -23,9 +23,9 @@ import platform.posix.stat
 import platform.posix.write
 
 /**
- * A Kermit writer that appends every log line to the file at [path] — the reliable, verbatim
+ * The device-log FILE [LogSink]: appends every line to the file at [path] — the reliable, verbatim
  * device-log channel that sidesteps os_log's `<private>` redaction entirely (the `NSLog`-based
- * [PublicNSLogWriter] is redacted on current iOS). Test-path only.
+ * [PublicNSLogSink] is redacted on current iOS).
  *
  * Consolidated here (capability `privacy-security`, D1): the app and the upload extension are
  * separate processes, and one writer serves both. It takes its *destination* rather than resolving
@@ -34,7 +34,8 @@ import platform.posix.write
  * it for a diagnostic dump (see `LogDestinations.kt`). The writer needs no *process identity*, which
  * is what D1's "parameter-free" was about; it needs a path, and the composition roots choose it.
  *
- * Each line carries the ambient `[LogContext.current]` prefix, and is written as a single atomic
+ * Each line arrives formatted (`model/logLineBody`, entry-point prefix included); this sink puts the stamp
+ * ([utcLogStamp]) in front and writes it as a single atomic
  * `O_APPEND` `write()` (D2 read-side, D7) so concurrent-thread writes never tear a line. The file is
  * bounded by rolling to a `.1` sibling past [maxBytes] (D7).
  *
@@ -58,12 +59,12 @@ import platform.posix.write
  * `write()`, so the atomic-append guarantee does not depend on the lock.
  */
 @OptIn(ExperimentalForeignApi::class)
-class FileLogWriter internal constructor(
+class FileLogSink internal constructor(
     private val path: String?,
     private val maxBytes: Long,
     /** The wall clock, in epoch milliseconds — injected only by tests, to reach the periodic re-check. */
     private val nowMillis: () -> Long,
-) : LogWriter() {
+) : LogSink {
 
     constructor(path: String?, maxBytes: Long = 10L * 1024 * 1024) :
         this(path, maxBytes, { Clock.System.now().toEpochMilliseconds() })
@@ -77,19 +78,10 @@ class FileLogWriter internal constructor(
     private var inode: ULong = 0u
     private var lastCheckMs: Long = 0
 
-    override fun log(severity: Severity, message: String, tag: String, throwable: Throwable?) {
+    override fun write(severity: Severity, tag: String, line: String) {
         val p = path ?: return
         val now = nowMillis()
-        val ctx = LogContext.current
-        val line = buildString {
-            append(utcLogStamp(now))
-            append(' ')
-            if (ctx != null) append('[').append(ctx).append("] ")
-            append('[').append(severity.name).append('/').append(tag).append("] ").append(message)
-            if (throwable != null) append(" | ").append(throwable.stackTraceToString())
-            append('\n')
-        }
-        val bytes = line.encodeToByteArray()
+        val bytes = "${utcLogStamp(now)} $line\n".encodeToByteArray()
         lock.lock()
         try {
             appendLocked(p, bytes, now)

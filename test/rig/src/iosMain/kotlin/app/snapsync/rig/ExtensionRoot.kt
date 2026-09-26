@@ -1,7 +1,9 @@
 package app.snapsync.rig
 
-import app.snapsync.logging.FileLogWriter
-import app.snapsync.logging.PublicNSLogWriter
+import app.snapsync.logging.FileLogSink
+import app.snapsync.logging.IosEntryContext
+import app.snapsync.services.logs.SinkLogWriter
+import app.snapsync.logging.PublicNSLogSink
 import app.snapsync.logging.extensionLogDestination
 import co.touchlab.kermit.Logger
 import kotlin.coroutines.CoroutineContext
@@ -99,7 +101,9 @@ private suspend fun invokeExtensionCycle(
         //
         // Setting them per call makes every invoked cycle land where an extension's cycle lands, which is
         // what makes that log answerable at all on this host.
-        Logger.setLogWriters(PublicNSLogWriter(), FileLogWriter(extensionLogDestination().path))
+        Logger.setLogWriters(
+            SinkLogWriter(listOf(PublicNSLogSink(), FileLogSink(extensionLogDestination().path)), IosEntryContext),
+        )
         process()
     } finally {
         Logger.setLogWriters(saved)
