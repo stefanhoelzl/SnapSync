@@ -1,6 +1,11 @@
 package app.snapsync.feature.upload
 
-import app.snapsync.ports.BackgroundScheduler
+import app.snapsync.model.ScheduleResult
+import app.snapsync.model.WakeId
+import app.snapsync.model.WakeTrigger
+import app.snapsync.ports.Wake
+import app.snapsync.ports.WakeHandlers
+import app.snapsync.services.wake.Heartbeat
 import app.snapsync.model.CycleResult
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
@@ -26,13 +31,20 @@ import kotlin.time.Duration.Companion.seconds
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class) // runCurrent on the test scheduler
 class TailRunnerTest {
 
-    private class Scheduler : BackgroundScheduler {
+    /** Counts the heartbeat wakes the runner's re-arm requests, through the real heartbeat service. */
+    private class Scheduler {
         var scheduled = 0
-        override fun scheduleNext() {
-            scheduled++
-        }
+        val heartbeat = Heartbeat(
+            object : Wake {
+                override fun listen(handlers: WakeHandlers) = Unit
+                override fun schedule(id: WakeId, trigger: WakeTrigger): ScheduleResult {
+                    if (id == WakeId.Heartbeat) scheduled++
+                    return ScheduleResult.Scheduled
+                }
 
-        override fun cancel() = Unit
+                override fun cancel(id: WakeId) = Unit
+            },
+        )
     }
 
     /** The units, recording the order they ran in; each may be parked on a gate or scripted. */
@@ -52,6 +64,9 @@ class TailRunnerTest {
         var fullGrant = true
         var mayCreate = true
         var foreground = false
+
+        /** Whether staged downloads are left for a later import — what the re-arm asks after a declining tail. */
+        var importsLeft = false
         var active = 0
         var maxActive = 0
 
@@ -98,7 +113,8 @@ class TailRunnerTest {
         mayCreate = { units.mayCreate },
         foregrounded = { units.foreground },
         refreshStatus = { units.refreshes++ },
-        scheduler = scheduler,
+        heartbeat = scheduler.heartbeat,
+        importsRemain = { units.importsLeft },
         leftover = { "" },
     )
 
@@ -237,6 +253,50 @@ class TailRunnerTest {
         assertEquals(CycleResult.SKIPPED, heartbeat.await()?.result)
         arm.await()
         assertEquals(0, scheduler.scheduled, "SKIPPED arms nothing, whatever the triggers' own policies")
+    }
+
+    // ---- staged imports left over (declared in phase 11f) ------------------------------------------------
+
+    @Test
+    fun `staged imports left over re-arm a tail whose uploads declined`() = runTest {
+        // A membership that only receives: its upload units decline, and a save iOS cut short is waiting.
+        val units = Units().apply {
+            topUp = { CycleResult.SKIPPED }
+            walk = { WalkOutcome.Walked(CycleResult.SKIPPED, addedRows = false) }
+            importsLeft = true
+        }
+        val scheduler = Scheduler()
+        runner(units, scheduler).request(TailTrigger.SILENT_PUSH)
+        assertEquals(1, scheduler.scheduled, "the imports still waiting are work remaining")
+    }
+
+    @Test
+    fun `staged imports left over re-arm a relaunch whose uploads drained`() = runTest {
+        val units = Units().apply { importsLeft = true }
+        val scheduler = Scheduler()
+        runner(units, scheduler).request(TailTrigger.DOWNLOAD_SESSION_EVENTS)
+        assertEquals(1, scheduler.scheduled, "a relaunch re-arms on remaining work, and imports are work")
+    }
+
+    @Test
+    fun `staged imports left over never re-arm a trigger that never re-arms`() = runTest {
+        val units = Units().apply { importsLeft = true }
+        val scheduler = Scheduler()
+        val tail = runner(units, scheduler)
+        tail.request(TailTrigger.DOWNLOAD_STAGED)
+        tail.request(TailTrigger.UPLOAD_COMPLETED)
+        assertEquals(0, scheduler.scheduled, "the wake or the foreground they arrived in owns the re-arm")
+    }
+
+    @Test
+    fun `a declining tail with nothing left to import arms nothing`() = runTest {
+        val units = Units().apply {
+            topUp = { CycleResult.SKIPPED }
+            walk = { WalkOutcome.Walked(CycleResult.SKIPPED, addedRows = false) }
+        }
+        val scheduler = Scheduler()
+        runner(units, scheduler).request(TailTrigger.HEARTBEAT)
+        assertEquals(0, scheduler.scheduled)
     }
 
     // ---- the stop ---------------------------------------------------------------------------------------
@@ -388,7 +448,8 @@ class TailRunnerTest {
             mayCreate = { true },
             foregrounded = { false },
             refreshStatus = {},
-            scheduler = Scheduler(),
+            heartbeat = Scheduler().heartbeat,
+            importsRemain = { false },
             leftover = { "" },
         )
         val failure = withTimeout(5.seconds) { assertFailsWith<IllegalStateException> { tail.request(TailTrigger.HEARTBEAT) } }
@@ -420,7 +481,8 @@ class TailRunnerTest {
             mayCreate = { true },
             foregrounded = { true },
             refreshStatus = { error("counts unreadable") },
-            scheduler = scheduler,
+            heartbeat = scheduler.heartbeat,
+            importsRemain = { false },
             leftover = { "" },
         )
         val outcome = tail.request(TailTrigger.FOREGROUND)
@@ -509,7 +571,8 @@ class TailRunnerTest {
             mayCreate = { true },
             foregrounded = { false },
             refreshStatus = {},
-            scheduler = Scheduler(),
+            heartbeat = Scheduler().heartbeat,
+            importsRemain = { false },
             leftover = { "staged downloads not yet imported: 2" },
             log = co.touchlab.kermit.Logger(co.touchlab.kermit.loggerConfigInit(recorder), "TailRunnerTest"),
         )
@@ -543,7 +606,8 @@ class TailRunnerTest {
             mayCreate = { true },
             foregrounded = { false },
             refreshStatus = {},
-            scheduler = scheduler,
+            heartbeat = scheduler.heartbeat,
+            importsRemain = { false },
             leftover = { "" },
         )
         return tail to never
@@ -601,7 +665,8 @@ class TailRunnerTest {
             mayCreate = { true },
             foregrounded = { false },
             refreshStatus = {},
-            scheduler = Scheduler(),
+            heartbeat = Scheduler().heartbeat,
+            importsRemain = { false },
             leftover = { error("store unreadable") },
             log = co.touchlab.kermit.Logger(co.touchlab.kermit.loggerConfigInit(recorder), "TailRunnerTest"),
         )

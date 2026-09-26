@@ -1,6 +1,6 @@
 package app.snapsync.contract
 
-import app.snapsync.contracts.BackgroundSchedulerContract
+import app.snapsync.contracts.WakeContract
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.CONTRACT_REFUSED
@@ -88,7 +88,7 @@ fun appDeviceContracts(refusal: () -> String? = { null }): List<InAppContract> =
     InAppContract(LinkOpenerContract.name, Host.IOS_DEVICE_APP) {
         recordAppOnDevice(LinkOpenerContract, null) { DeviceLinkOpenerBinding(it) }
     },
-    InAppContract(BackgroundSchedulerContract.name, Host.IOS_DEVICE_APP) { recordScheduler() },
+    InAppContract(WakeContract.name, Host.IOS_DEVICE_APP) { recordScheduler() },
     InAppContract(UploadExtensionRegistryContract.name, Host.IOS_DEVICE_APP) { recordRegistry(refusal) },
 )
 

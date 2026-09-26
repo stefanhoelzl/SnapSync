@@ -37,7 +37,6 @@ class TailWorldTest {
                 openUrl = {},
                 assembleHost = { assembled = true },
                 deliverPushToken = {},
-                uploadHeartbeatTaskId = "world.upload.heartbeat",
                 uploadTransferChannel = "world.upload.session",
             ),
         )

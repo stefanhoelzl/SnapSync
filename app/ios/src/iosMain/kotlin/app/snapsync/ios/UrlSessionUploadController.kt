@@ -18,10 +18,8 @@ import app.snapsync.ports.Gallery
 import app.snapsync.services.gallery.GalleryAlbums
 import app.snapsync.services.gallery.GalleryDiscovery
 import app.snapsync.gallery.currentPhotoPermission
-import app.snapsync.ios.urlsession.IosBackgroundScheduler
 import app.snapsync.ios.urlsession.IosUrlSessionUploadPlatform
 import app.snapsync.services.backend.ManifestPublisher
-import app.snapsync.ports.BackgroundScheduler
 import app.snapsync.model.CycleResult
 import app.snapsync.feature.upload.UploadCycle
 import app.snapsync.ports.SuppressionSource
@@ -96,7 +94,6 @@ class UrlSessionUploadController(
     private val log: Logger = Logger.withTag("SnapSyncRoot")
     companion object {
         const val SESSION_IDENTIFIER = "app.snapsync.upload.session"
-        const val HEARTBEAT_TASK_IDENTIFIER = "app.snapsync.upload.heartbeat"
     }
 
     // The app process's discovery binding: the walk behind the walk memo (capability `photo-sharing`, "An unchanged
@@ -107,10 +104,6 @@ class UrlSessionUploadController(
         grant = PhotoGrantRead(::currentPhotoPermission),
         log = log,
     )
-
-    /** The `BGProcessingTask` heartbeat the core's tail runner re-arms and a disarm cancels. */
-    override val heartbeat: BackgroundScheduler =
-        IosBackgroundScheduler(log, HEARTBEAT_TASK_IDENTIFIER, requiresNetwork = true)
 
     private val platform = IosUrlSessionUploadPlatform(
         log = log,

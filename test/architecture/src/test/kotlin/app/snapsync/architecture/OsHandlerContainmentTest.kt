@@ -138,7 +138,7 @@ class OsHandlerContainmentTest {
             "var completion: () -> Unit = {}",
         )
         val mustNotMatch = listOf(
-            "private val handler: () -> Unit,", // OsCompletions.Handover's own parameter — immutable, and legal
+            "private val handler: () -> Unit,", // a bare completion's own parameter — immutable, and legal
             "private val onTerminal: () -> Unit,",
             "var onStaged: (suspend (AssetRef, resourceKey: String, stagedPath: String) -> Unit)? = null",
         )
@@ -170,6 +170,6 @@ class OsHandlerContainmentTest {
     }
 
     private companion object {
-        const val OWNER = "/domain/ports/src/commonMain/kotlin/app/snapsync/ports/OsCompletions.kt"
+        const val OWNER = "/domain/services/src/commonMain/kotlin/app/snapsync/services/wake/OsCompletions.kt"
     }
 }

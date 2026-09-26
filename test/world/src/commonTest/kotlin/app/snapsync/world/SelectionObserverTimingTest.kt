@@ -3,6 +3,7 @@ package app.snapsync.world
 import app.snapsync.compose.EntryHooks
 import app.snapsync.compose.platformEntries
 import app.snapsync.model.GalleryAccess
+import app.snapsync.model.WakeId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
@@ -30,7 +31,6 @@ class SelectionObserverTimingTest {
                 openUrl = {},
                 assembleHost = { w.statusHost },
                 deliverPushToken = {},
-                uploadHeartbeatTaskId = "world.upload.heartbeat",
                 uploadTransferChannel = "world.upload.session",
             ),
         )
@@ -40,7 +40,7 @@ class SelectionObserverTimingTest {
             start { released.complete(Unit) }
             withTimeout(5_000) { released.await() }
         }
-        wake { done -> entries.onBackgroundTask("world.upload.heartbeat", done) }
+        wake { done -> w.wake.fire(WakeId.Heartbeat, bareCompletion(done)) }
         wake { done -> entries.onBackgroundTransfers("world.upload.session", done) }
         wake { done -> entries.onSilentPush(mapOf<Any?, Any?>("eventId" to "E"), done) }
         assertFalse(w.gallery.observing, "a wake that never builds the screen opened the selection observer")
@@ -50,3 +50,10 @@ class SelectionObserverTimingTest {
         assertTrue(w.gallery.observing, "host assembly is what opens it")
     }
 }
+
+/** A completion handler with no expiry signal, as the rig and a background-session relaunch hand one over. */
+private fun bareCompletion(onComplete: () -> Unit): app.snapsync.ports.Completion =
+    object : app.snapsync.ports.Completion {
+        override fun complete() = onComplete()
+        override fun onExpired(action: () -> Unit) = Unit
+    }

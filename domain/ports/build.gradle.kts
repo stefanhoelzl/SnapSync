@@ -86,8 +86,11 @@ kover {
             verify {
                 onCheck = true
                 rule(":domain:ports aggregate") {
+                    // LOWERED 83 -> 80 by the transfer re-cut (11f). Forcing proof: `OsCompletions` and its test
+                    // MOVED to `:domain:services` (services/wake), where they are covered and floored at 93; what
+                    // stayed here lost no test. Raise it again as the port-adjacent helpers re-home or gain tests.
                     bound {
-                        minValue = 83
+                        minValue = 80
                         coverageUnits = CoverageUnit.INSTRUCTION
                     }
                     // LOWERED 65 -> 57 by the storage-ports re-cut. Forcing proof: the zone's
@@ -95,8 +98,9 @@ kover {
                     // MOVED to `:domain:services`, where it is covered and bounded at 89. Nothing
                     // here lost a test; the ratio fell because the covered code left. Raise it
                     // again as the remaining port-adjacent helpers re-home or gain tests.
+                    // LOWERED 57 -> 56 by 11f, for the same move: `OsCompletions`' guarded branches left with it.
                     bound {
-                        minValue = 57
+                        minValue = 56
                         coverageUnits = CoverageUnit.BRANCH
                     }
                 }

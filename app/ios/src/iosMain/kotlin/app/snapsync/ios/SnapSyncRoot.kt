@@ -52,6 +52,7 @@ import app.snapsync.feature.upload.ExtensionRegistration
 import app.snapsync.feature.upload.OsDrivenRegistration
 import app.snapsync.model.UploaderPin
 import app.snapsync.background.IosBackgroundTime
+import app.snapsync.background.IosWake
 import app.snapsync.model.InviteLinkHints
 import app.snapsync.ports.DeviceIdentity
 import app.snapsync.model.uploadersCarried
@@ -434,6 +435,9 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
                 // The process's background time (`beginBackgroundTask`): what a push or a transfer wake holds across
                 // its own work and its tail, and the only "time is up" those wakes get (capability `sync-status`).
                 backgroundTime = IosBackgroundTime(log),
+                // The operating system's scheduled wakes (`BGTaskScheduler`): the heartbeat the tail re-arms, and — by
+                // the host zone's `listen`, as this graph is composed from `onLaunch` — its launch handler.
+                wake = wakeAdapter,
                 // The push registration's ports and token source (capability `receiving-photos`): `compose/`
                 // builds the registration, its delivery/credential collector and the on-join re-PUT.
                 push = PushPorts(
@@ -607,15 +611,21 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
      * incoming call — which the old split also routed to background). Process-lifetime observers,
      * never removed; a background launch installs them too and simply never sees `didBecomeActive`.
      *
-     * It also **asks the OS for the APNs token** — here, at every cold start in either state, and in the
-     * `didBecomeActive` observer, at every foreground entry (capability `receiving-photos`, "Registration timing —
-     * launch, join, and rotation"). Asking is the only way the app learns a rotated token, and Apple describes it as
+     * It **composes the graph** first, which registers the heartbeat's `BGTask` launch handler (the wake adapter's
+     * `listen`) while Apple still accepts one. It also **asks the OS for the APNs token** — here, at every cold start
+     * in either state, and in the `didBecomeActive` observer, at every foreground entry (capability
+     * `receiving-photos`, "Registration timing — launch, join, and rotation"). Asking is the only way the app learns
+     * a rotated token, and Apple describes it as
      * cheap; whether the answer is then published is the push feature's comparison against the last registration
      * the backend accepted, never this shell's. The ask is a plain platform statement, deciding nothing — the token
      * arrives through the AppDelegate's `didRegisterForRemoteNotificationsWithDeviceToken` → [onPushToken].
      */
     @PlatformEntry
     fun onLaunch() = log.invocation("onLaunch") {
+        // Compose the graph NOW, inside `didFinishLaunchingWithOptions`: the host zone's `listen` on the wake adapter is
+        // the `BGTask` launch-handler registration, which Apple requires before launch finishes. Composing builds
+        // nothing a locked device cannot (every core property is lazy; no database opens).
+        composed
         UIApplication.sharedApplication.registerForRemoteNotifications()
         val center = NSNotificationCenter.defaultCenter
         center.addObserverForName(
@@ -863,6 +873,13 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
         OsDrivenRegistration(extensionRegistry, log, IosEntryContext)
     }
 
+    /**
+     * The operating system's scheduled wakes — one per process, since its `listen` registers the `BGTask` launch
+     * handler and a second registration raises. `internal` so the control channel can deliver a task it plays the OS
+     * for (`/os onBackgroundTask`) until the entry surface becomes event ports (11g).
+     */
+    internal val wakeAdapter: IosWake by lazy { IosWake(log) }
+
     // The registration port's adapter, chosen by compilation target (capability `background-upload`).
     // Hoisted beside the producer because two readers share it: the producer, which performs the ritual,
     // and the control channel, which reports what the OS answers.
@@ -973,7 +990,6 @@ private fun rootEntries(): PlatformEntries = platformEntries(
         openUrl = { url -> SnapSyncRoot.host.onOpenUrl(url) },
         assembleHost = { SnapSyncRoot.host },
         deliverPushToken = { hex -> SnapSyncRoot.pushTokenSource.deliver(hex) },
-        uploadHeartbeatTaskId = UrlSessionUploadController.HEARTBEAT_TASK_IDENTIFIER,
         uploadTransferChannel = UrlSessionUploadController.SESSION_IDENTIFIER,
     ),
 )

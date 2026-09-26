@@ -38,6 +38,7 @@ class ListenDoorTest {
             setOf(
                 "/domain/compose/src/commonMain/kotlin/app/snapsync/compose/GalleryHandlersComposition.kt",
                 "/domain/compose/src/commonMain/kotlin/app/snapsync/compose/ProcessComposition.kt",
+                "/domain/compose/src/commonMain/kotlin/app/snapsync/compose/WakeEntry.kt",
             ),
             sites,
             "a `*Handlers` bundle built outside `compose/` is a callback wired past the composition's door",

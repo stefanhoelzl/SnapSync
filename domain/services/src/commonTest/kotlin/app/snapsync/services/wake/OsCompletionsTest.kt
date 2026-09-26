@@ -1,5 +1,6 @@
-package app.snapsync.ports
+package app.snapsync.services.wake
 
+import app.snapsync.ports.Completion
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Runnable
@@ -29,7 +30,7 @@ class OsCompletionsTest {
     /** Records which handlers were released, in order, by identity. */
     private class Handlers {
         val released = mutableListOf<String>()
-        fun handler(id: String): () -> Unit = { released += id }
+        fun handler(id: String): Completion = completionOf { released += id }
     }
 
     /** Runs inline but counts its dispatches, so a release can prove it arrived *through* the lane. */
@@ -114,8 +115,8 @@ class OsCompletionsTest {
     @Test
     fun `awaiting the release resumes on either path`() = runTest {
         val completions = OsCompletions("test")
-        val first = completions.adopt { }
-        val second = completions.adopt { }
+        val first = completions.adopt(completionOf { })
+        val second = completions.adopt(completionOf { })
         val a = async { first.awaitRelease() }
         runCurrent()
         assertFalse(a.isCompleted)
@@ -154,9 +155,15 @@ class OsCompletionsTest {
         val lane = CountingLane()
         var dispatchesSeenByHandler = -1
         val completions = OsCompletions("test", releaseLane = lane)
-        completions.adopt { dispatchesSeenByHandler = lane.dispatches }
+        completions.adopt(completionOf { dispatchesSeenByHandler = lane.dispatches })
         completions.releaseAfter { }
         assertEquals(1, lane.dispatches, "the release did not go through the lane")
         assertEquals(1, dispatchesSeenByHandler, "the handler ran outside the lane's dispatch")
     }
+}
+
+/** A [Completion] that runs [onComplete] each time it is completed — the holder's once-only is what is under test. */
+private fun completionOf(onComplete: () -> Unit): Completion = object : Completion {
+    override fun complete() = onComplete()
+    override fun onExpired(action: () -> Unit) = Unit
 }

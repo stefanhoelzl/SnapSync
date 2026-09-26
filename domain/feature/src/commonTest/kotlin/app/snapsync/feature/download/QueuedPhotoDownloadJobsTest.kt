@@ -480,7 +480,7 @@ class QueuedPhotoDownloadJobsTest {
             importsStarted += key
             gate.await() // a slow staging record — the store write the delivery callback makes
         }
-        h.jobs.adoptBackgroundEvents { released = true }
+        h.jobs.adoptBackgroundEvents(bareCompletion { released = true })
 
         // Two transfers land, then the session reports every event delivered.
         h.transport.finish(encodeTag(AssetRef("DEVICE-A", "A"), "a-primary.heic"))
@@ -513,7 +513,7 @@ class QueuedPhotoDownloadJobsTest {
         val neverStages = kotlinx.coroutines.CompletableDeferred<Unit>()
         var stagingFinished = false
         h.deliver = { _, _, _ -> neverStages.await(); stagingFinished = true }
-        val handover = h.jobs.adoptBackgroundEvents { released = true }
+        val handover = h.jobs.adoptBackgroundEvents(bareCompletion { released = true })
 
         h.transport.finish(encodeTag(AssetRef("DEVICE-A", "A"), "a-primary.heic"))
         h.transport.eventsFinished()
@@ -528,7 +528,7 @@ class QueuedPhotoDownloadJobsTest {
     @Test
     fun a_relaunch_completion_for_an_unknown_transfer_is_still_staged() = runTest {
         val h = Harness(this)
-        h.jobs.adoptBackgroundEvents { } // relaunched by the OS: nothing was enqueued in THIS process
+        h.jobs.adoptBackgroundEvents(bareCompletion { }) // relaunched by the OS: nothing was enqueued in THIS process
 
         // The OS hands us a transfer the previous process started.
         h.transport.finish(encodeTag(AssetRef("DEVICE-A", "A"), "a-primary.heic"))
@@ -626,3 +626,10 @@ class QueuedPhotoDownloadJobsTest {
         assertEquals("root/DEVICE-A/a-primary.heic", h.staged.single().third, "no platform path reaches the store")
     }
 }
+
+/** An operating-system completion handler with no expiry signal, as a background-session relaunch hands one over. */
+private fun bareCompletion(onComplete: () -> Unit): app.snapsync.ports.Completion =
+    object : app.snapsync.ports.Completion {
+        override fun complete() = onComplete()
+        override fun onExpired(action: () -> Unit) = Unit
+    }

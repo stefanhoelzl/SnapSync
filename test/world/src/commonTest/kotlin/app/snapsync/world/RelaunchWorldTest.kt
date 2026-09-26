@@ -42,7 +42,7 @@ class RelaunchWorldTest {
         assertTrue(objects is Answer.Available && objects.value.isNotEmpty(), "the backend survives")
 
         // The OS download session survives: the relaunched app's transport receives the dead process's transfers.
-        w.core.downloadJobs.adoptBackgroundEvents {}
+        w.core.downloadJobs.adoptBackgroundEvents(bareCompletion {})
         val adopted = assertNotNull(w.downloadTransport, "the relaunched app realized a transport").inFlight().map { it.description }
         assertEquals(session, adopted, "the relaunched app's transport holds the dead process's transfers")
         session.forEach { assertNotNull(w.downloadTransport).finish(it) }
@@ -67,3 +67,10 @@ class RelaunchWorldTest {
         assertNull(w.downloadTransport, "no transport until the new app realizes one")
     }
 }
+
+/** An operating-system completion handler with no expiry signal, as a background-session relaunch hands one over. */
+private fun bareCompletion(onComplete: () -> Unit): app.snapsync.ports.Completion =
+    object : app.snapsync.ports.Completion {
+        override fun complete() = onComplete()
+        override fun onExpired(action: () -> Unit) = Unit
+    }

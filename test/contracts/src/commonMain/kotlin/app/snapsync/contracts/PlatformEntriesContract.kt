@@ -93,7 +93,6 @@ interface PlatformEntriesObservations {
 
 /** The operating system's identifiers for the entries that route by one. */
 class EntryIdentifiers(
-    val uploadHeartbeatTask: String,
     val uploadTransferChannel: String,
     /** Any transfer channel that is not [uploadTransferChannel] — the downloads'. */
     val downloadTransferChannel: String,
@@ -199,57 +198,6 @@ object PlatformEntriesContract : Contract<PlatformEntriesState, PlatformEntriesS
             finishUnit()
             settle()
             assertEquals(0, observe.appUploaderWalks(), "the unit in flight completed, and no further unit started")
-        }
-
-        clause("HEARTBEAT_TASK_RUNS_THE_TAIL_THEN_COMPLETES", PlatformEntriesState.JOINED_WITH_FOREIGN_PHOTO) {
-            (entries, observe) ->
-            val completion = Completion { observe.appUploaderTopUps() > 0 && observe.appUploaderWalks() > 0 }
-            entries.onBackgroundTask(observe.identifiers.uploadHeartbeatTask, completion::release)
-            completion.assertReleasedOnceAfterTheWork()
-            assertEquals(1, observe.heartbeatsScheduled(), "the heartbeat re-submits itself after its tail")
-        }
-
-        clause("UNKNOWN_TASK_IS_RELEASED_WITHOUT_WORK", PlatformEntriesState.JOINED_WITH_FOREIGN_PHOTO) {
-            (entries, observe) ->
-            val completion = Completion { true }
-            entries.onBackgroundTask("app.example.not-registered", completion::release)
-            completion.assertReleasedOnceAfterTheWork()
-            assertEquals(0, observe.appUploaderTopUps(), "no tail")
-            assertEquals(0, observe.heartbeatsScheduled(), "and nothing re-armed")
-        }
-
-        clause("TIME_UP_COMPLETES_THE_RUNNING_TASK_AT_ONCE", PlatformEntriesState.JOINED_WITH_FOREIGN_PHOTO) {
-            (entries, observe) ->
-            val finishUnit = observe.parkNextUploadUnit()
-            val completion = Completion { observe.appUploaderTopUps() == 1 }
-            entries.onBackgroundTask(observe.identifiers.uploadHeartbeatTask, completion::release)
-            assertTrue(eventually { observe.appUploaderTopUps() == 1 }, "the heartbeat's tail is in flight")
-            entries.onBackgroundTaskTimeUp(observe.identifiers.uploadHeartbeatTask)
-            // Completed while the unit is still in flight, exactly once — the shell completing it in its own expiration
-            // handler and the core completing it again after the work is the double completion this entry replaces.
-            completion.assertReleasedOnce()
-            finishUnit()
-            settle()
-            assertEquals(0, observe.appUploaderWalks(), "no unit starts after the stop")
-            assertTrue(eventually { observe.heartbeatsScheduled() == 1 }, "a tail cut short still re-arms")
-            completion.assertReleasedOnce()
-        }
-
-        clause("TIME_UP_AFTER_THE_TASK_ENDED_RELEASES_NOTHING", PlatformEntriesState.JOINED_WITH_FOREIGN_PHOTO) {
-            (entries, observe) ->
-            val completion = Completion { observe.appUploaderTopUps() > 0 }
-            entries.onBackgroundTask(observe.identifiers.uploadHeartbeatTask, completion::release)
-            completion.assertReleasedOnceAfterTheWork()
-            entries.onBackgroundTaskTimeUp(observe.identifiers.uploadHeartbeatTask)
-            completion.assertReleasedOnce()
-        }
-
-        clause("TIME_UP_FOR_AN_UNKNOWN_TASK_IS_IGNORED", PlatformEntriesState.JOINED_WITH_FOREIGN_PHOTO) {
-            (entries, observe) ->
-            entries.onBackgroundTaskTimeUp("app.example.not-registered")
-            settle()
-            assertEquals(0, observe.appUploaderTopUps(), "an expiry starts no work")
-            assertEquals(0, observe.heartbeatsScheduled(), "and queues nothing")
         }
 
         clause("UPLOAD_TRANSFERS_RELEASE_AT_THE_DRAIN_THEN_RUN_THE_TAIL", PlatformEntriesState.JOINED_WITH_FOREIGN_PHOTO) {

@@ -25,7 +25,13 @@ import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.feature.upload.AppUploadEvents
 import app.snapsync.feature.upload.AppUploadMechanism
 import app.snapsync.feature.upload.WalkOutcome
-import app.snapsync.ports.BackgroundScheduler
+import app.snapsync.fake.inMemoryWake
+import app.snapsync.model.ScheduleResult
+import app.snapsync.model.WakeId
+import app.snapsync.model.WakeTrigger
+import app.snapsync.ports.Completion
+import app.snapsync.ports.Wake
+import app.snapsync.ports.WakeHandlers
 import app.snapsync.model.CycleResult
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -275,9 +281,6 @@ class OperatorUploadEngine(private val events: () -> AppUploadEvents) : AppUploa
     @kotlin.concurrent.Volatile
     var nextUnitGate: CompletableDeferred<Unit>? = null
 
-    /** The heartbeat the tail re-arms — counted, never run (the operator plays the OS). */
-    override val heartbeat: CountingScheduler = CountingScheduler()
-
     override suspend fun topUp(stopRequested: () -> Boolean): CycleResult {
         topUps++
         park()
@@ -305,18 +308,48 @@ class OperatorUploadEngine(private val events: () -> AppUploadEvents) : AppUploa
     }
 }
 
-/** A background task scheduler that only counts: the operator plays the OS, so a scheduled wake never runs itself. */
-class CountingScheduler : BackgroundScheduler {
-    var scheduled: Int = 0
-        private set
-    var cancelled: Int = 0
+/**
+ * The operating system's scheduled wakes as the world plays them (`docs/testing.md`, "Operator levers"): the honest
+ * [inMemoryWake] underneath — the queue a request lands in, iOS-shaped, so only the heartbeat exists — plus the
+ * operator's view: how many heartbeats were requested and cancelled, and the handlers the composition registered, so
+ * the operator can deliver a wake. Nothing fires one on its own. Durable across a relaunch, as the system's queue is;
+ * each relaunch's composition registers its own handlers.
+ */
+class WorldWake(
+    private val pending: MutableStateFlow<Map<WakeId, WakeTrigger>> = MutableStateFlow(emptyMap()),
+) : Wake {
+    private val honest = inMemoryWake(pending, supported = setOf(WakeId.Heartbeat))
+    private var handlers: WakeHandlers? = null
+
+    /** How many heartbeat requests the operating system accepted. */
+    var heartbeatsScheduled: Int = 0
         private set
 
-    override fun scheduleNext() {
-        scheduled++
+    /** How many heartbeat cancels reached the operating system. */
+    var heartbeatsCancelled: Int = 0
+        private set
+
+    /** The requests the operating system holds right now. */
+    val pendingWakes: Map<WakeId, WakeTrigger> get() = pending.value
+
+    override fun listen(handlers: WakeHandlers) {
+        this.handlers = handlers
+        honest.listen(handlers)
     }
 
-    override fun cancel() {
-        cancelled++
+    override fun schedule(id: WakeId, trigger: WakeTrigger): ScheduleResult =
+        honest.schedule(id, trigger).also { answer ->
+            if (id == WakeId.Heartbeat && answer == ScheduleResult.Scheduled) heartbeatsScheduled++
+        }
+
+    override fun cancel(id: WakeId) {
+        if (id == WakeId.Heartbeat) heartbeatsCancelled++
+        honest.cancel(id)
+    }
+
+    /** Operator lever: the operating system wakes the app for [id], handing it [completion]. */
+    fun fire(id: WakeId, completion: Completion) {
+        val registered = checkNotNull(handlers) { "no composition registered for wakes — nothing would receive this one" }
+        registered.onWake(id, completion)
     }
 }

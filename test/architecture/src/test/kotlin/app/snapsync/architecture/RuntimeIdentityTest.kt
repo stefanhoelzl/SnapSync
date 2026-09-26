@@ -78,6 +78,9 @@ private val DOCUMENTED_INVENTORY: Set<String> = setOf(
     "app.snapsync.download.backstop",
 )
 
+/** The wake adapter, whose `listen` registers the `BGTask` launch handlers (phase 11f). */
+private const val WAKE_ADAPTER = "adapter/ios/app-only/src/iosMain/kotlin/app/snapsync/background/IosWake.kt"
+
 /** The app bundle's plist — the one that MUST declare the BGTask listing. */
 private const val APP_PLIST = "iosApp/iosApp/Info.plist"
 
@@ -489,21 +492,26 @@ class RuntimeIdentityTest {
     }
 
     /**
-     * **Every pinned BGTask id is registered by the Swift shell, and the shell registers nothing else.**
-     * Apple requires `BGTaskScheduler.register(forTaskWithIdentifier:)` before launch finishes, and it lives
-     * in the app delegate (which forwards the task to Kotlin by the identifier the OS delivers). A listed id
-     * nothing registers is the same silent operating-system error as a registered id nothing lists.
+     * **Every pinned BGTask id is registered by the wake adapter, and nothing else registers one.** Apple requires
+     * `BGTaskScheduler.register(forTaskWithIdentifier:)` before launch finishes; since phase 11f it is the Kotlin wake
+     * adapter's `listen` ([WAKE_ADAPTER]), which the root reaches by composing its graph from `onLaunch`, and the Swift
+     * shell registers none — a second registration of one identifier raises. A listed id nothing registers is the same
+     * silent operating-system error as a registered id nothing lists.
      */
     @Test
-    fun `every pinned BGTask id is registered in the Swift shell`() {
+    fun `every pinned BGTask id is registered by the wake adapter and the Swift shell registers none`() {
         val swift = iosAppFiles { it.extension == "swift" }
         assertTrue(swift.size >= 2, "found only ${swift.size} Swift shell files — iosApp/ moved and this pin proves nothing")
-        val registered = swift.flatMap { file -> registeredTaskIds(file.readText()) }
+        val inSwift = swift.flatMap { file -> registeredTaskIds(file.readText()) }
+        assertTrue(inSwift.isEmpty(), "the Swift shell registers a BGTask ($inSwift) — the wake adapter's listen does")
+        val adapter = File(repoRoot, WAKE_ADAPTER)
+        assertTrue(adapter.isFile, "$WAKE_ADAPTER moved — re-aim this pin")
+        val registered = kotlinRegisteredTaskIds(adapter.readText())
         assertTrue(
             registered.sorted() == bgTaskIds.sorted(),
-            "the Swift shell must register exactly the pinned BGTask set, once each.\n" +
+            "the wake adapter must register exactly the pinned BGTask set, once each.\n" +
                 "  pinned:     ${bgTaskIds.sorted()}\n" +
-                "  registered: ${registered.sorted()}",
+                "  registered: $registered",
         )
     }
 
@@ -540,6 +548,14 @@ class RuntimeIdentityTest {
             registeredTaskIds(swift) == listOf("app.snapsync.upload.heartbeat"),
             "the Swift registration parser no longer recognises a registration: ${registeredTaskIds(swift)}",
         )
+        val kotlin = """
+            val registered = tasks.register(HEARTBEAT_TASK_IDENTIFIER) { task -> }
+            const val HEARTBEAT_TASK_IDENTIFIER = "app.snapsync.upload.heartbeat"
+        """.trimIndent()
+        assertTrue(
+            kotlinRegisteredTaskIds(kotlin) == listOf("app.snapsync.upload.heartbeat"),
+            "the Kotlin registration parser no longer recognises a registration: ${kotlinRegisteredTaskIds(kotlin)}",
+        )
     }
 
     private fun iosAppFiles(predicate: (File) -> Boolean): List<File> = File(repoRoot, "iosApp").walkTopDown()
@@ -555,6 +571,19 @@ class RuntimeIdentityTest {
             RegexOption.DOT_MATCHES_ALL,
         ).find(text) ?: return null
         return Regex("""<string>\s*([^<]*?)\s*</string>""").findAll(array.groupValues[1]).map { it.groupValues[1] }.toList()
+    }
+
+    /**
+     * The identifiers a Kotlin source registers via `register(NAME)` through its task seam, each resolved to the
+     * `const val NAME = "…"` it names in the same file; a name with no constant there resolves to itself, which no
+     * pinned identifier equals.
+     */
+    private fun kotlinRegisteredTaskIds(kotlin: String): List<String> {
+        val constants = Regex("""const val (\w+) = "([^"]+)"""").findAll(kotlin)
+            .associate { it.groupValues[1] to it.groupValues[2] }
+        return Regex("""\.register\(\s*(\w+)\s*\)""").findAll(kotlin)
+            .map { constants[it.groupValues[1]] ?: it.groupValues[1] }
+            .toList()
     }
 
     /** The identifiers a Swift source registers via `register(forTaskWithIdentifier: "…"`. */

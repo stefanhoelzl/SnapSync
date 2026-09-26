@@ -1,7 +1,8 @@
 @file:OptIn(ExperimentalAtomicApi::class)
 
-package app.snapsync.ports
+package app.snapsync.services.wake
 
+import app.snapsync.ports.Completion
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
@@ -61,8 +62,8 @@ class OsCompletions(
 ) {
     private val outstanding = AtomicReference<List<Handover>>(emptyList())
 
-    /** The operating system handed over [handler]. Held until a [releaseAfter] that begins later, or an expiry. */
-    fun adopt(handler: () -> Unit): Handover = Handover(handler).also { handover -> update { it + handover } }
+    /** The operating system handed over [completion]. Held until a [releaseAfter] that begins later, or an expiry. */
+    fun adopt(completion: Completion): Handover = Handover(completion).also { handover -> update { it + handover } }
 
     /**
      * Run [ownWork], then release every handler handed over before it began — after the work, on every path.
@@ -88,7 +89,7 @@ class OsCompletions(
     }
 
     /** One handler the operating system handed over, and the only way to answer it early. */
-    inner class Handover internal constructor(private val handler: () -> Unit) {
+    inner class Handover internal constructor(private val completion: Completion) {
         private val answered = AtomicBoolean(false)
         private val signal = CompletableDeferred<Unit>()
 
@@ -110,7 +111,7 @@ class OsCompletions(
             if (!answered.compareAndSet(expectedValue = false, newValue = true)) return
             update { held -> held - this }
             try {
-                handler()
+                completion.complete()
             } finally {
                 signal.complete(Unit)
                 // Logged, never silent (capability `privacy-security`): a release on the OS's signal is the only

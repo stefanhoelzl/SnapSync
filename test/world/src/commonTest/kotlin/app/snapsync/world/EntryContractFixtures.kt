@@ -37,7 +37,6 @@ internal object EntryContractFixtures {
 
     /** Stand-ins for the operating system's identifiers; the real ones are the iOS adapters' constants. */
     private val identifiers = EntryIdentifiers(
-        uploadHeartbeatTask = "world.upload.heartbeat",
         uploadTransferChannel = "world.upload.session",
         downloadTransferChannel = "world.download.session",
     )
@@ -64,7 +63,6 @@ internal object EntryContractFixtures {
                 openUrl = { url -> host().onOpenUrl(url) },
                 assembleHost = { host() },
                 deliverPushToken = { tokens += it },
-                uploadHeartbeatTaskId = identifiers.uploadHeartbeatTask,
                 uploadTransferChannel = identifiers.uploadTransferChannel,
             ),
         )

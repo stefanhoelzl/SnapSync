@@ -15,6 +15,7 @@ import app.snapsync.rig.RigHooks
 import app.snapsync.rig.RigServer
 import app.snapsync.ios.upload.UploadExtensionRoot
 import app.snapsync.rig.RigTrigger
+import app.snapsync.rig.rigCompletion
 import app.snapsync.rig.extensionTriggerGroup
 import app.snapsync.rig.TriggerGroup
 import app.snapsync.rig.RigUserCommand
@@ -217,11 +218,12 @@ private fun triggers(): Map<String, RigTrigger> = mapOf(
     "onSilentPush" to RigTrigger.Receipted { arg, done ->
         SnapSyncRoot.onSilentPush(mapOf("eventId" to arg), done)
     },
-    // The BGTask identifier is the argument, exactly as the OS delivers it: `app.snapsync.upload.heartbeat`
-    // runs the app uploader's heartbeat (the tail); any other is answered at once, as unknown.
+    // The BGTask identifier is the argument, exactly as the OS delivers it to the wake adapter's launch handler:
+    // `app.snapsync.upload.heartbeat` runs the app uploader's heartbeat (the tail); any other is answered at once,
+    // as unknown. The adapter routes it — the same call the operating system's launch reaches.
     "onBackgroundTask" to
         RigTrigger.Receipted { arg, done ->
-            SnapSyncRoot.onBackgroundTask(arg.orEmpty(), done)
+            SnapSyncRoot.wakeAdapter.onTaskLaunched(arg.orEmpty(), rigCompletion(done))
         },
     // The transfer channel is the argument: the app uploader's session identifier, or any other for the downloads.
     // The routing itself is the core's and contract-covered; on device this drives the real session adoption.
