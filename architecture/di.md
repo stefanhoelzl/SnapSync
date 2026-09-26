@@ -27,7 +27,7 @@ Roots found:
 | `DeviceManifestService` | x | x |
 | `DownloadService` | x | |
 | `EntryHooks` | x | |
-| `FileLogWriter` | x | x |
+| `FileLogSink` | x | x |
 | `GalleryAlbums` | | x |
 | `GalleryDiscovery` | | x |
 | `HttpBackend` | x | x |
@@ -38,7 +38,6 @@ Roots found:
 | `IosFiles` | x | x |
 | `IosGallery` | x | |
 | `IosGalleryReader` | x | x |
-| `IosLinkOpener` | x | |
 | `IosPreferences` | x | x |
 | `IosProcessInfo` | x | |
 | `IosPushRegistrationRecord` | x | |
@@ -50,7 +49,6 @@ Roots found:
 | `OsDrivenRegistration` | x | |
 | `PersistedDeviceIdentity` | x | x |
 | `PhotoLibraryPermission` | x | |
-| `PlatformHandoff` | x | |
 | `ProcessPorts` | x | x |
 | `PublicNSLogSink` | x | x |
 | `PushPorts` | x | |
