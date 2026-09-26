@@ -174,14 +174,14 @@ git diff test/contracts/recordings/        # review it like code, then commit it
 
 ### Recording INSIDE the upload extension — `?host=IOS_DEVICE_PHOTOKIT_EXT`
 
-The upload-job contract (`BackgroundTransfer`) records in the upload extension, the process production calls
+The upload-job contract (`Upload`) records in the upload extension, the process production calls
 PhotoKit's job API from. The rig cannot reach that process, so the app requests the run through the App Group and
 re-registers the extension, which makes the OS invoke it; the extension runs the contract instead of its upload
 cycle and writes the recording back, and the verb answers it:
 
 ```bash
-curl -s --max-time 120 -X POST "localhost:18099/contract/BackgroundTransfer?host=IOS_DEVICE_PHOTOKIT_EXT" \
-  > test/contracts/recordings/BackgroundTransfer@IOS_DEVICE_PHOTOKIT_EXT.rec
+curl -s --max-time 120 -X POST "localhost:18099/contract/Upload?host=IOS_DEVICE_PHOTOKIT_EXT" \
+  > test/contracts/recordings/Upload@IOS_DEVICE_PHOTOKIT_EXT.rec
 ```
 
 - **The build must be baked to the loopback upload base** — `snapsync.deployment=local` with
@@ -215,10 +215,10 @@ curl -s -X POST localhost:$PORT/contract/AlbumManager     # "# host: IOS_SIM_APP
   simulator when the library's size matters.
 - `SecureStore` and `BackgroundScheduler` are **not** in the simulator's list: they record only on an
   entitled device, and asking for either here answers `409`.
-- **The transfer contracts** (`BackgroundTransfer`, `DownloadTransport`) run both `URLSession` transports
+- **The transfer contracts** (`Upload`, `Download`) run both `URLSession` transports
   against a loopback peer, `scripts/transfer-fixture.py`, whose address the verb takes as `?fixture=`:
   `python3 scripts/transfer-fixture.py --port 8123 --log /tmp/fx.log &` then
-  `curl -s -X POST "localhost:$PORT/contract/DownloadTransport?fixture=http://127.0.0.1:8123"`. Without the
+  `curl -s -X POST "localhost:$PORT/contract/Download?fixture=http://127.0.0.1:8123"`. Without the
   parameter the run is **refused whole** (`409`). The simulator target binds a DEFAULT session, so these
   evidence everything but the background session's lifecycle (see `TransferSessions.kt`).
 
