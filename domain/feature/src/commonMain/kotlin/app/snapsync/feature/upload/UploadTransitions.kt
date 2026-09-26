@@ -5,8 +5,8 @@ import app.snapsync.ports.ConfigSource
 import app.snapsync.model.MembershipRead
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.grantsPhotoAccess
-import app.snapsync.ports.EntryContext
-import app.snapsync.ports.invocation
+import app.snapsync.model.EntryScope
+import app.snapsync.model.invocation
 import co.touchlab.kermit.Logger
 
 /**
@@ -80,7 +80,7 @@ class UploadTransitions(
     /** The app-driven engine, obtained at first use (it owns a process-lifetime background session). */
     private val appEngine: () -> AppUploadEngine,
     private val log: Logger = Logger.withTag("UploadTransitions"),
-    private val entryContext: EntryContext = EntryContext.NoOp,
+    private val entryContext: EntryScope = EntryScope.None,
 ) {
 
     /**

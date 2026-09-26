@@ -23,7 +23,7 @@ import co.touchlab.kermit.Logger
 class ProcessPorts(
     /** The crash-reporting channel — one per process. */
     val crashReporter: CrashReporter,
-    /** The OS's account of this process; [ProcessMetrics.None] where there is no provider. */
+    /** The OS's account of this process; [NoProcessMetrics] where there is no provider. */
     val processMetrics: ProcessMetrics,
     /** Where this process's log lines are written — the device-log file and the platform's log on iOS. */
     val logSinks: List<LogSink>,

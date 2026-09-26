@@ -1,5 +1,7 @@
 package app.snapsync.world
 
+import app.snapsync.compose.NoProcessMetrics
+import app.snapsync.compose.NoEntryContext
 import app.snapsync.model.AssetId
 import app.snapsync.model.InviteLinkHints
 import app.snapsync.feature.membership.toJoinLoad
@@ -594,11 +596,11 @@ class World(
     private fun appProcess(): ProcessServices = snapSyncProcess(
         ProcessPorts(
             crashReporter = inMemoryCrashReporter(started = diagnosticsStarted, dumps = diagnosticsSent),
-            processMetrics = ProcessMetrics.None,
+            processMetrics = NoProcessMetrics,
             logSinks = emptyList(),
             files = inMemoryFiles(shared = null, private = privateFiles),
             clock = worldClock,
-            entryContext = EntryContext.NoOp,
+            entryContext = NoEntryContext,
             dsn = dsn,
             bootLines = emptyList(),
             ownsGlobalLogger = false,
@@ -612,11 +614,11 @@ class World(
     fun extensionProcess(): ProcessServices = snapSyncProcess(
         ProcessPorts(
             crashReporter = inMemoryCrashReporter(),
-            processMetrics = ProcessMetrics.None,
+            processMetrics = NoProcessMetrics,
             logSinks = emptyList(),
             files = inMemoryFiles(shared = null, private = null),
             clock = worldClock,
-            entryContext = EntryContext.NoOp,
+            entryContext = NoEntryContext,
             dsn = WORLD_DSN,
             bootLines = emptyList(),
             ownsGlobalLogger = false,

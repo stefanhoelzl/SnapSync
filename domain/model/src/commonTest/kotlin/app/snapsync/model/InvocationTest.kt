@@ -1,4 +1,4 @@
-package app.snapsync.ports
+package app.snapsync.model
 
 import co.touchlab.kermit.LogWriter
 import co.touchlab.kermit.Logger
@@ -36,7 +36,7 @@ class InvocationTest {
     }
 
     /** Records the ambient-scope handshake; `enter` answers whether THIS call owns the scope. */
-    private class RecordingScope(private val owns: Boolean = true) : EntryContext {
+    private class RecordingScope(private val owns: Boolean = true) : EntryScope {
         val entered = mutableListOf<String>()
         val exited = mutableListOf<Boolean>()
         override fun enter(name: String): Boolean {
@@ -46,7 +46,6 @@ class InvocationTest {
         override fun exit(owned: Boolean) {
             exited += owned
         }
-        override fun current(): String? = entered.lastOrNull()
     }
 
     private fun logger(writer: Capturing) =

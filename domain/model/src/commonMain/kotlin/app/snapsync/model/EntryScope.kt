@@ -1,0 +1,107 @@
+package app.snapsync.model
+
+import co.touchlab.kermit.Logger
+import co.touchlab.kermit.Severity
+import kotlin.time.TimeSource
+
+/**
+ * The half of the ambient "what triggered this" seam that [invocation] drives (capability `privacy-security`): claim
+ * the context on entry, release it on exit. The port `EntryContext` (`ports/`) extends it with the read the log
+ * writers make; everything that only WRAPS work — a feature, a service, an adapter's callback — holds this.
+ *
+ * It lives in `model/` rather than on the port because [invocation] must stay `inline`: its block suspends
+ * wherever the call site is a coroutine, which a virtual (interface) member cannot offer, and an inline top-level
+ * function can only be declared where its receiver's types are visible to every caller — adapters, services and
+ * features alike.
+ */
+interface EntryScope {
+
+    /**
+     * Set [name] as the current context only if none is set (outermost wins). Returns `true` when
+     * THIS call established the context — the caller must pass that back to [exit] so only the
+     * establishing call clears it.
+     */
+    fun enter(name: String): Boolean
+
+    /** Clear the context, but only if [owned] (i.e. this caller established it via [enter]). */
+    fun exit(owned: Boolean)
+
+    /** The no-context scope for world / tests (and any binary without device logging). */
+    object None : EntryScope {
+        override fun enter(name: String): Boolean = false
+        override fun exit(owned: Boolean) {}
+    }
+}
+
+/**
+ * Wrap a platform invocation / app entry point / background trigger so it logs enter + exit with
+ * its parameters, its result, and its elapsed duration, and sets the ambient [EntryScope] for the
+ * duration so downstream lines trace back to it (capability `privacy-security`, D3).
+ *
+ * - `→ <name>(<params>)` on entry, `← <name> = <result> (<ms>ms)` on success, and a warn
+ *   `✗ <name> threw (<ms>ms)` on throw (the throwable is re-thrown unchanged).
+ * - [params] is an already-built short string and [result] a short-string renderer — the CALL SITE
+ *   controls verbosity, so we never blanket-`toString()` a large or expensive object.
+ * - [severity] chooses the enter/exit level. `Info` is the default and is right for anything that
+ *   fires once per platform event. Entry points that fire once per ITEM — a per-asset library-change
+ *   callback, a per-task transfer callback — pass `Debug`: at `Info` a single large import would
+ *   flush the crash reporter's bounded breadcrumb window and roll the size-capped device log before
+ *   anyone read it (capability `privacy-security`). A throw is always `Warn`, whatever [severity] is:
+ *   it is never the routine case.
+ * - Not marked `suspend`: it is `inline`, so [block] is inlined into the caller and may suspend when
+ *   the call site is a coroutine, while non-suspend entry points use the very same function.
+ *
+ * NOTE on async: for fire-and-forget work, wrap the body *inside* `scope.launch { … }`, not the
+ * synchronous launcher — otherwise the context is restored before the async work runs.
+ */
+inline fun <T> Logger.invocation(
+    scope: EntryScope,
+    name: String,
+    params: String = "",
+    severity: Severity = Severity.Info,
+    result: (T) -> String = { "" },
+    block: () -> T,
+): T {
+    val owned = scope.enter(name)
+    val start = TimeSource.Monotonic.markNow()
+    logAt(severity) { "→ $name" + if (params.isEmpty()) "" else "($params)" }
+    try {
+        val value = block()
+        val ms = start.elapsedNow().inWholeMilliseconds
+        val rendered = result(value)
+        logAt(severity) { "← $name" + (if (rendered.isEmpty()) "" else " = $rendered") + " (${ms}ms)" }
+        return value
+    } catch (t: Throwable) {
+        val ms = start.elapsedNow().inWholeMilliseconds
+        w(t) { "✗ $name threw (${ms}ms)" }
+        throw t
+    } finally {
+        scope.exit(owned)
+    }
+}
+
+/**
+ * Emit [message] at [severity] — the level-dispatch [invocation] needs, kept here so an entry point
+ * chooses a level without holding a branch of its own (the `:app:*` complexity gate counts one).
+ */
+inline fun Logger.logAt(severity: Severity, message: () -> String) = when (severity) {
+    Severity.Verbose -> v { message() }
+    Severity.Debug -> d { message() }
+    Severity.Info -> i { message() }
+    Severity.Warn -> w { message() }
+    Severity.Error -> e { message() }
+    Severity.Assert -> a { message() }
+}
+
+/**
+ * Run [block] as a **best-effort** step: a failure is logged at `Warn` with [name] and swallowed, so the caller
+ * carries on; cancellation is rethrown, never logged as a failure (law "Catch sites keep cancellation", capability
+ * `docs/architecture.md`). Returns whether the step completed.
+ *
+ * For a step whose failure must STOP the sequence, do not use this: a required step lets its failure propagate
+ * (law "A multi-step use case declares which steps are required").
+ */
+inline fun Logger.bestEffort(name: String, block: () -> Unit): Boolean =
+    runCatchingCancellable(block)
+        .onFailure { w(it) { "best-effort step failed: $name" } }
+        .isSuccess

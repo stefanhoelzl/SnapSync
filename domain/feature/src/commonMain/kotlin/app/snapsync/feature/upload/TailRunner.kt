@@ -4,8 +4,8 @@ package app.snapsync.feature.upload
 
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.CycleResult
-import app.snapsync.ports.EntryContext
-import app.snapsync.ports.invocation
+import app.snapsync.model.EntryScope
+import app.snapsync.model.invocation
 import app.snapsync.services.wake.Heartbeat
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CompletableDeferred
@@ -227,7 +227,7 @@ class TailRunner(
      */
     private val leftover: suspend () -> String,
     private val log: Logger = Logger.withTag("TailRunner"),
-    private val entryContext: EntryContext = EntryContext.NoOp,
+    private val entryContext: EntryScope = EntryScope.None,
 ) {
     private val mutex = Mutex()
 

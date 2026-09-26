@@ -13,7 +13,7 @@ import app.snapsync.model.GalleryAccess
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.services.wake.Heartbeat
 import app.snapsync.services.wake.OsCompletions
-import app.snapsync.ports.invocation
+import app.snapsync.model.invocation
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch

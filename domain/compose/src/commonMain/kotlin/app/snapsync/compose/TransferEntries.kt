@@ -6,7 +6,7 @@ import app.snapsync.services.gallery.GalleryDiscovery
 import app.snapsync.services.upload.UploadTransferService
 import app.snapsync.ports.DownloadHandlers
 import app.snapsync.ports.UploadHandlers
-import app.snapsync.ports.invocation
+import app.snapsync.model.invocation
 import app.snapsync.services.wake.OsCompletions
 import kotlinx.coroutines.launch
 

@@ -27,18 +27,12 @@ class PortsHoldInterfacesOnlyTest {
         "configAfterReload" to FEATURE_CUT,
         "membershipAfterReload" to FEATURE_CUT,
         "PlatformUploadJob" to FEATURE_CUT,
-        "invocation" to FEATURE_CUT,
-        "logAt" to FEATURE_CUT,
-        "bestEffort" to FEATURE_CUT,
         "SecureStoreUnavailable" to FEATURE_CUT,
         "DeviceIdentityAbsent" to FEATURE_CUT,
         "PushTokenSource" to FEATURE_CUT,
         "Discovery" to FEATURE_CUT,
-        "ProcessMetrics.Companion" to FEATURE_CUT,
         "DeviceLogSource.Companion" to FEATURE_CUT,
-        "EntryContext.NoOp" to FEATURE_CUT,
         "StagedBytes.Companion" to FEATURE_CUT,
-        "SystemUi.Companion" to FEATURE_CUT,
     )
 
     private val sources by lazy {
