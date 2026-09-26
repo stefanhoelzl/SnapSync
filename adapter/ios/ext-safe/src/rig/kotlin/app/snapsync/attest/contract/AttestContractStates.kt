@@ -21,7 +21,7 @@ import app.snapsync.ports.AttestStore
 
 /** Why neither the device binding nor its replay can present UNSUPPORTED. */
 internal const val DEVICE_UNREACHABLE_UNAVAILABLE =
-    "the app process on a device has App Attest (the kexe host covers UNSUPPORTED)"
+    "the app process on a device has App Attest (the kexe host covers UNAVAILABLE)"
 
 /** Why neither the device binding nor its replay can present an unreadable store. */
 internal const val DEVICE_UNREACHABLE_INACCESSIBLE_STORE =
