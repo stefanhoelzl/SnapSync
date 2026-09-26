@@ -9,6 +9,8 @@ import app.snapsync.contracts.GalleryReaderState
 import app.snapsync.contracts.GalleryState
 import app.snapsync.gallery.IosGallery
 import app.snapsync.gallery.IosGalleryReader
+import app.snapsync.gallery.PhotoKitAssetIds
+import app.snapsync.model.AssetId
 import app.snapsync.ports.GalleryReader
 import app.snapsync.background.IosBackgroundTime
 import app.snapsync.contracts.BackgroundTimeContract
@@ -44,7 +46,6 @@ import kotlinx.coroutines.Dispatchers
 import app.snapsync.gallery.currentPhotoPermission
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.ResourceRole
-import app.snapsync.model.denormalizeAssetId
 import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.model.AssetRef
 import app.snapsync.ports.BackgroundTime
@@ -155,7 +156,9 @@ class SimAppGalleryReaderBinding : Binding<GalleryReaderState, SeededLibrary<Gal
             GalleryReaderState.GRANTED_SEEDED -> seedPhotos(PhotoLibrary.window(GalleryReaderContract.name, clauseId).seedDate)
             GalleryReaderState.GRANTED_EMPTY_WINDOW -> emptyList()
         }
-        return Entered.Ready(SeededLibrary(IosGalleryReader(Logger.withTag("contract")), seeded))
+        // Minted through the adapter's own mapping, so the clauses check that mapping end to end.
+        val ids = seeded.mapTo(linkedSetOf()) { checkNotNull(PhotoKitAssetIds.assetIdOf(it)) { "'$it' has no canonical id" } }
+        return Entered.Ready(SeededLibrary(IosGalleryReader(Logger.withTag("contract")), ids))
     }
 }
 
@@ -232,8 +235,8 @@ class SimAppImporterBinding : Binding<GalleryImportState, StagedImport> {
             )
         }
         val library = object : ImportedLibrary {
-            override suspend fun captureDate(id: String): String? {
-                val asset = PHAsset.fetchAssetsWithLocalIdentifiers(listOf(denormalizeAssetId(id)), null)
+            override suspend fun captureDate(id: AssetId): String? {
+                val asset = PHAsset.fetchAssetsWithLocalIdentifiers(listOf(PhotoKitAssetIds.localIdentifierOf(id)), null)
                     .firstObject() as? PHAsset ?: return null
                 return asset.creationDate?.let { NSISO8601DateFormatter().stringFromDate(it) }
             }

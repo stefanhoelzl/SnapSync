@@ -1,5 +1,6 @@
 package app.snapsync.gallery
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.selectionRulesFor
 import app.snapsync.model.CaptureCutoff
@@ -91,8 +92,8 @@ class PhotoKitPredicateTest {
                 admitting(
                     SelectionRule.MinImageArea(3_000_000),
                     SelectionRule.MinVideoArea(1280L * 720L),
-                    SelectionRule.NotEcho(setOf("A")),
-                    SelectionRule.NotInDenylistedAlbum(setOf("B")),
+                    SelectionRule.NotEcho(setOf(AssetId("A"))),
+                    SelectionRule.NotInDenylistedAlbum(setOf(AssetId("B"))),
                     // The floor is mandatory on the variant, so "only unexpressible rules" is reachable
                     // only when the bound itself fails to parse and its clause drops. Same assertion,
                     // same reason — the state is now expressed through the one door that still opens it.
