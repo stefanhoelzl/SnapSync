@@ -24,7 +24,7 @@ internal fun worldDeviceCommands(world: World, afterRelaunch: () -> Unit): Map<S
 
 /** The full-stack world inspector's levers (`docs/testing.md`). */
 private fun inspectorLevers(world: World): Map<String, RigCommand> = mapOf(
-    "reset" to resetCommand { world.core },
+    "reset" to resetCommand(core = { world.core }, reset = { world.devControls.reset() }),
     "gallery/seed" to seedCommand { n, kind -> seedWorld(world, n, kind) },
     "backend/offline" to RigCommand { params, _ -> answered(world.neutral.setOffline(flag(params, "on"))) },
     "jobs" to RigCommand { _, _ ->
@@ -160,11 +160,6 @@ internal fun worldGalleryReader(world: World): suspend (String?, Boolean, Boolea
 
 /** What the JVM host refuses of the shared vocabulary, each with its reason. */
 internal fun jvmRefusals(): Map<String, String> = buildMap {
-    put(
-        "os/app/onPushTokenFailure",
-        "the inbound port has no push-registration-failure entry: on iOS this callback only logs the platform's " +
-            "error, and the world's platform never fails to register",
-    )
     put(
         "device/gallery/wipe",
         "a world's gallery is fresh for every host, so there is nothing to wipe; the wipe's answer is PhotoKit's " +

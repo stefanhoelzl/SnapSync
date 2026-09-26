@@ -5,6 +5,7 @@ module :adapter:generic:app
 module :adapter:generic:fake
 module :adapter:ios:app-only
 module :adapter:ios:ext-safe
+module :adapter:ios:ui
 module :app:desktop
 module :app:ios
 module :app:ios:extension
@@ -53,6 +54,12 @@ edge :adapter:ios:ext-safe :domain:model
 edge :adapter:ios:ext-safe :domain:ports
 edge :adapter:ios:ext-safe :domain:services
 edge :adapter:ios:ext-safe :test:contracts
+edge :adapter:ios:ui :adapter:ios:ext-safe
+edge :adapter:ios:ui :domain:model
+edge :adapter:ios:ui :domain:ports
+edge :adapter:ios:ui :domain:presentation
+edge :adapter:ios:ui :ui:components
+edge :adapter:ios:ui :ui:screens
 edge :app:desktop :adapter:generic:app
 edge :app:desktop :domain:feature
 edge :app:desktop :domain:model
@@ -65,6 +72,7 @@ edge :app:desktop :ui:screens
 edge :app:ios :adapter:generic:app
 edge :app:ios :adapter:ios:app-only
 edge :app:ios :adapter:ios:ext-safe
+edge :app:ios :adapter:ios:ui
 edge :app:ios :domain:compose
 edge :app:ios :domain:feature
 edge :app:ios :domain:host

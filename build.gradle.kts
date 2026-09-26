@@ -242,6 +242,7 @@ val detektTierOf: Map<String, String> = mapOf(
     ":adapter:generic:fake" to "core",
     ":adapter:ios:app-only" to "core",
     ":adapter:ios:ext-safe" to "core",
+    ":adapter:ios:ui" to "core",
     ":domain:presentation" to "core",
 
     // Compose. Its own tier because Compose inflates cyclomatic complexity and function length

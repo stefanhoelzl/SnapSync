@@ -17,7 +17,8 @@ import kotlinx.serialization.Serializable
 object RigVocabulary {
 
     /** The app root's wired entry points — the iOS shell's `SnapSyncRoot` names, which the JVM host maps onto the
-     *  inbound port `PlatformEntries` with the same argument shapes. */
+     *  entry ports (`Lifecycle`, `Links`, `PushNotifications`, `Wake`, the transfer sessions) with the same argument
+     *  shapes. */
     val appEntries: List<String> = listOf(
         "onForeground", "onBackground", "onPushToken", "onPushTokenFailure", "onSceneContinueActivity",
         "onSilentPush", "onBackgroundTask", "onBackgroundTransfers",

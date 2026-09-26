@@ -47,9 +47,9 @@ kotlin {
         // Both together, or neither: the contributed call site and the module it names cannot be
         // half-present. Inside `sourceSets { }` because `iosMain` is created by the hierarchy template
         // and does not exist as a named source set before this block runs.
-        if (rigEnabled) {
-            iosMain { kotlin.srcDir("../../test/rig/src/hook/kotlin") }
-        }
+        // The build's adapter set (`platformAdapters()`): the control channel's under `-Psnapsync.rig=true`, this
+        // module's `src/prod` otherwise — chosen here, at build time, so neither binary carries the other's.
+        iosMain { kotlin.srcDir(if (rigEnabled) "../../test/rig/src/hook/kotlin" else "src/prod/kotlin") }
         iosMain.dependencies {
             if (rigEnabled) implementation(project(":test:rig"))
             // The hook hands the rig the in-app contract registry (`List<InAppContract>`). The rig declares its
@@ -83,6 +83,7 @@ kotlin {
             implementation(project(":domain:services"))
             implementation(project(":adapter:ios:ext-safe"))
             implementation(project(":adapter:ios:app-only"))
+            implementation(project(":adapter:ios:ui"))
             implementation(libs.coroutines.core)
             implementation(libs.kermit)
             implementation(libs.compose.runtime)

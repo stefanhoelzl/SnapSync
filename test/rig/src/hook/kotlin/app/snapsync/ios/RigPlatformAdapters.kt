@@ -1,25 +1,23 @@
 @file:OptIn(ExperimentalStdlibApi::class, ExperimentalForeignApi::class, kotlinx.cinterop.BetaInteropApi::class)
 
-package app.snapsync.rig.hook
+package app.snapsync.ios
 
 import app.snapsync.config.bakedUploadBase
-import app.snapsync.ios.SnapSyncRoot
-import app.snapsync.ios.UploaderPinSource
-import app.snapsync.model.InviteLinkHints
 import app.snapsync.ios.urlsession.transferSessionBinding
 import app.snapsync.files.IosFiles
 import app.snapsync.services.logs.LogTailService
 import app.snapsync.logging.documentsDirectory
-import app.snapsync.rig.RigCommand
 import app.snapsync.rig.RigHooks
 import app.snapsync.rig.RigServer
 import app.snapsync.ios.upload.UploadExtensionRoot
-import app.snapsync.rig.RigTrigger
 import app.snapsync.rig.rigCompletion
+import app.snapsync.rig.RigDevControls
+import app.snapsync.rig.RigUi
+import app.snapsync.rig.appTriggers
+import app.snapsync.contracts.EntryDriver
+import app.snapsync.scene.IosUi
 import app.snapsync.rig.extensionTriggerGroup
 import app.snapsync.rig.TriggerGroup
-import app.snapsync.rig.RigUserCommand
-import app.snapsync.rig.UploaderSwitch
 import app.snapsync.rig.deviceCommands
 import app.snapsync.contract.extension.extensionContractEntries
 import app.snapsync.rig.noMembershipRefusal
@@ -35,7 +33,6 @@ import app.snapsync.rig.userCommands
 import app.snapsync.rig.excludedUserCommands
 import app.snapsync.rig.rigPortFilePath
 import app.snapsync.rig.iosRefusals
-import kotlin.native.EagerInitialization
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.Dispatchers
 import platform.Foundation.NSDate
@@ -49,69 +46,37 @@ import platform.Foundation.NSUserActivity
 import platform.Foundation.NSUserActivityTypeBrowsingWeb
 
 /**
- * The rig's **entire footprint inside `:app:ios`** — and it lives in `:test:rig`'s tree, not the shell's.
+ * A rig build's **adapter set** — the control channel's entire footprint inside `:app:ios`, and it lives in
+ * `:test:rig`'s tree, not the shell's (`docs/testing.md`, "The control channel").
  *
- * `app/ios/build.gradle.kts` adds this directory to `:app:ios`'s `iosMain` source set, and the
- * `:test:rig` dependency, ONLY under `-Psnapsync.rig=true`. Without the property it adds neither, so a
- * production build contains no rig source at all: not a stub, not an inert branch, nothing to read as an
- * exemption. `SnapSyncRoot` itself is untouched apart from two fields widened `private` → `internal`
- * (module-wide, and NOT exported to the ObjC framework header — verified on device).
+ * `app/ios/build.gradle.kts` compiles this directory into `:app:ios`'s `iosMain` — in place of `src/prod`, which
+ * answers the same [platformAdapters] with the production set — and adds the `:test:rig` dependency, ONLY under
+ * `-Psnapsync.rig=true`. A production build contains none of it: not a stub, not an inert branch, not a flag.
  *
- * Being compiled INTO `:app:ios` is what lets this file reach those fields without widening anything to
- * `public`. It also means this directory is listed in the shell gate's scanned roots (`appShellSources`)
- * rather than exempted from them — so this file may hold **no decisions**. Every default, cast, fallback
- * and rendering lives on the far side of [RigHooks] / [rigPort] / the `:test:rig` builders below, in `:test:rig`, where it is
- * ordinary ungated code. Keep it that way: if this file ever needs a branch, failing the build loudly is
- * the correct outcome. (It already caught two: an env-var parse and a fallback, on the first attempt.)
+ * The set differs from production in exactly two adapters: the UI is decorated ([RigUi] — the channel's `/user` verbs
+ * reach the core as the intents a tap produces, through the same handlers) and the development controls are the
+ * channel's ([RigDevControls] — the uploader switch, invite-link hints honoured, the reset). Building it starts the
+ * channel's server. The `/os` verbs deliver through the platform's own adapters ([IosEntryDriver]).
  *
- * ## Why an eager initializer rather than a call in `SnapSyncRoot`
- * So the shell gains no line at all. Measured on device (SE2, iOS 26.6): it fires, binds, and serves.
+ * Being compiled INTO `:app:ios` is what lets this file reach the root's adapters without widening anything to
+ * `public` — and it means this directory is in the shell gate's scanned roots (`appShellSources`), so this file may
+ * hold **no decisions**. Every default, cast, fallback and rendering lives in `:test:rig`, where it is ordinary code.
  *
- * ## Nothing is forced here, including `SnapSyncRoot` itself
- * `SnapSyncRoot.app` and `.host` are passed as **thunks**. Both are `by lazy`, and touching `host` installs
- * the permission-grant subscriptions, which `sync-status` forbids on a cold background wake. This file
- * captures lambdas and binds a socket; the graph is forced by the first request that needs it, which forces
- * exactly what a real entry point would.
+ * ## Nothing is forced here
+ * `SnapSyncRoot.app` and `.host` are passed as **thunks**: this is called while the root composes its graph, so it
+ * captures lambdas and binds a socket, and the first request that needs the graph finds it composed.
  */
-/**
- * The uploader switch's **only** touch on production: point the composition root's switch thunk at the
- * channel's holder, before anything forces the graph.
- *
- * A bare assignment, deliberately — this file is inside the shell gate's scanned roots and may hold no
- * decisions. Everything the switch does (parsing, reporting what it produces) is in `:test:rig`, on the far
- * side of the seam. `SnapSyncRoot.uploaderPinSource` defaults to
- * a source answering `null` and this line is its only assigner anywhere, so a build compiled without
- * `-Psnapsync.rig=true` — which contains none of this file — cannot carry a pin at all.
- */
-// DEPRECATION: `@EagerInitialization` is deprecated with no replacement, and it is the only way this hook
-// runs at all — production holds no call site into the rig, by construction. If Kotlin removes it, the
-// rig needs a new entry, not a quieter warning.
-@EagerInitialization
-@Suppress("unused", "DEPRECATION")
-private val uploaderSwitch: Unit = run {
-    SnapSyncRoot.uploaderPinSource = UploaderPinSource(UploaderSwitch::pinned)
+internal fun platformAdapters(ui: IosUi): PlatformAdapters {
+    val rigUi = RigUi(ui)
+    val controls = RigDevControls()
+    startRig(rigUi, controls)
+    return PlatformAdapters(devControls = controls, ui = rigUi)
 }
 
-/**
- * The invite-link hints' **only** `Honoured` writer anywhere (capability `join-event`): a rig build's join gate
- * acts on `autoJoin` and its overrides, so the channel and the journeys can join headlessly. A bare assignment
- * like [uploaderSwitch]'s, and for the same reason — a build without `-Psnapsync.rig=true` contains none of this
- * file, so its `SnapSyncRoot.inviteLinkHints` stays `Ignored` and no crafted link can join without a tap.
- */
-@EagerInitialization
-@Suppress("unused", "DEPRECATION") // see `uploaderSwitch` above
-private val inviteLinkHints: Unit = run {
-    SnapSyncRoot.inviteLinkHints = InviteLinkHints.Honoured
-}
-
-@EagerInitialization
-@Suppress("unused", "DEPRECATION") // see `uploaderSwitch` above
-private val rigBoot: Unit = startRig()
-
-private fun startRig() = RigServer(
+private fun startRig(rigUi: RigUi, controls: RigDevControls) = RigServer(
     core = { SnapSyncRoot.app },
     host = { SnapSyncRoot.host },
-    hooks = iosHooks(),
+    hooks = iosHooks(rigUi, controls),
     port = rigPort(NSProcessInfo.processInfo.environment["SNAPSYNC_RIG_PORT"]),
 ).start()
 
@@ -125,7 +90,7 @@ private fun startRig() = RigServer(
  * a production build — so it is inert by construction rather than by a runtime check, and the one typed
  * surface every production launch parses stays free of rig configuration.
  */
-private fun iosHooks() = RigHooks(
+private fun iosHooks(rigUi: RigUi, controls: RigDevControls) = RigHooks(
     bootedAt = NSDate().description,
     // Which uploaders this OS carries — a build constant. What each may do now varies with the grant.
     uploadTier = uploadersCarried(SnapSyncRoot.osSupportsOsDrivenUpload),
@@ -141,7 +106,7 @@ private fun iosHooks() = RigHooks(
     // invokes. `app` is `SnapSyncRoot`'s. A second group joins it when the channel reaches a second root.
     triggerGroups = mapOf(
         // Swift calls this root's entry points from the main thread, so the rig does too.
-        "app" to TriggerGroup(lane = Dispatchers.Main, wired = triggers(), excluded = excludedTriggers()),
+        "app" to TriggerGroup(lane = Dispatchers.Main, wired = appTriggers(IosEntryDriver), excluded = excludedTriggers()),
         "photokit-ext" to extensionTriggerGroup(
             // THUNKS, never method references. `UploadExtensionRoot` is an `object` whose `init` calls
             // `Logger.setLogWriters(…)`, and a bound method reference FORCES that object where it is
@@ -161,10 +126,11 @@ private fun iosHooks() = RigHooks(
     // The `/user` maps and the `/device` verbs are built in `:test:rig`, not here. Same reason every
     // default and cast already lives there: this file is compiled INTO `:app:ios` and is scanned by the
     // shell gate, which permits no decisions — and a command map's bodies are full of them.
-    userCommands = userCommands { SnapSyncRoot.host },
+    userCommands = userCommands(dispatch = rigUi::dispatch, state = { SnapSyncRoot.host.container.stateFlow.value }),
     excludedUserCommands = excludedUserCommands(),
     deviceCommands = deviceCommands(
         core = { SnapSyncRoot.app },
+        controls = controls,
         photoAccess = SnapSyncRoot.permission,
         osSupportsOsDrivenUpload = SnapSyncRoot.osSupportsOsDrivenUpload,
         handleReport = SnapSyncRoot.process.processAccount::handle,
@@ -201,37 +167,32 @@ private fun writeTextFile(path: String?, text: String) {
  * WIRED entry points. No deadline is reported beside a receipted trigger: no clock of the app's own releases a
  * handler (capability `sync-status`), so the measured hold is the only number there is.
  */
-private fun triggers(): Map<String, RigTrigger> = mapOf(
-    // ── The platform hands these no completion handler: it does not wait, so neither do we ──────────
-    "onForeground" to RigTrigger.Fire { SnapSyncRoot.onForeground() },
-    "onBackground" to RigTrigger.Fire { SnapSyncRoot.onBackground() },
-    "onPushToken" to RigTrigger.Fire { arg -> SnapSyncRoot.onPushToken(arg.orEmpty()) },
-    "onPushTokenFailure" to RigTrigger.Fire { arg -> SnapSyncRoot.onPushTokenFailure(arg.orEmpty()) },
-    // The WARM universal link — the SNAPSYNC-6 path, otherwise reachable only by scanning a QR by hand.
-    // iOS delivers exactly this object shape to `scene(_:continue:)`.
-    "onSceneContinueActivity" to RigTrigger.Fire { arg ->
-        SnapSyncRoot.onSceneContinueActivity(browsingWebActivity(arg.orEmpty()))
-    },
+/**
+ * The iOS operating system, driven: each `/os` verb delivers through the same adapter method the Swift shell's
+ * callback reaches, on the same (main) lane, so a rig-driven delivery is indistinguishable in `debug.log` from an
+ * OS-driven one.
+ */
+private object IosEntryDriver : EntryDriver {
+    override fun foreground() = SnapSyncRoot.lifecycle.deliverForeground()
 
-    // ── The platform hands these an OS completion handler, held in `OsCompletions`. The rig
-    //    supplies that handler, so it RECEIVES completion on the same channel the OS does. ───────────
-    "onSilentPush" to RigTrigger.Receipted { arg, done ->
-        SnapSyncRoot.onSilentPush(mapOf("eventId" to arg), done)
-    },
-    // The BGTask identifier is the argument, exactly as the OS delivers it to the wake adapter's launch handler:
-    // `app.snapsync.upload.heartbeat` runs the app uploader's heartbeat (the tail); any other is answered at once,
-    // as unknown. The adapter routes it — the same call the operating system's launch reaches.
-    "onBackgroundTask" to
-        RigTrigger.Receipted { arg, done ->
-            SnapSyncRoot.wakeAdapter.onTaskLaunched(arg.orEmpty(), rigCompletion(done))
-        },
-    // The transfer channel is the argument: the app uploader's session identifier, or any other for the downloads.
-    // The routing itself is the core's and contract-covered; on device this drives the real session adoption.
-    "onBackgroundTransfers" to
-        RigTrigger.Receipted { arg, done ->
-            SnapSyncRoot.onBackgroundTransfers(arg.orEmpty(), done)
-        },
-)
+    override fun background() = SnapSyncRoot.lifecycle.deliverBackground()
+
+    override fun pushToken(hex: String) = SnapSyncRoot.pushNotifications.deliverToken(hex)
+
+    override fun pushTokenFailure(description: String) = SnapSyncRoot.pushNotifications.deliverTokenFailure(description)
+
+    override fun silentPush(eventId: String?, done: () -> Unit) =
+        SnapSyncRoot.pushNotifications.deliverMessage(mapOf("eventId" to eventId), done)
+
+    override fun continueLink(url: String) =
+        SnapSyncRoot.links.deliverUserActivity("onSceneContinueActivity", browsingWebActivity(url))
+
+    override fun backgroundTask(identifier: String, done: () -> Unit) =
+        SnapSyncRoot.wakeAdapter.onTaskLaunched(identifier, rigCompletion(done))
+
+    override fun backgroundTransfers(identifier: String, done: () -> Unit) =
+        SnapSyncRoot.onBackgroundTransfers(identifier, done)
+}
 
 /**
  * EXCLUDED entry points of the upload extension's root — **none**, and the empty map is the statement.
@@ -255,8 +216,8 @@ private fun excludedExtensionTriggers(): Map<String, String> = emptyMap()
  */
 private fun excludedTriggers(): Map<String, String> = mapOf(
     "onLaunch" to
-        "registers NSNotificationCenter observers documented as never removed — re-invoking " +
-        "double-registers them and corrupts the process under test. Reset is a relaunch.",
+        "composes the graph, which the app's own launch already did: a second call is a no-op, so there is " +
+        "nothing for the channel to drive. Reset is a relaunch.",
     "onLaunchActivity" to
         "the COLD universal-link delivery, which no in-process call can recreate. Note this is a " +
         "delivery gap, not a join gap: its warm twin onSceneContinueActivity IS wired and reaches the " +

@@ -49,6 +49,7 @@ private val log = Logger.withTag("rig")
  */
 fun deviceCommands(
     core: () -> AppCore,
+    controls: RigDevControls,
     photoAccess: PhotoLibraryPermission,
     osSupportsOsDrivenUpload: Boolean,
     /** The app's OWN process-metric handler, so a synthetic report drives the path the OS drives. */
@@ -58,11 +59,12 @@ fun deviceCommands(
     // registration fact it produces, because the extension is never registrable below 26.1 or without a full
     // grant, whatever the switch says.
     "uploaders" to uploadersCommand(
+        controls = controls,
         osSupportsOsDrivenUpload = { osSupportsOsDrivenUpload },
         permission = { photoAccess.permission.value },
         reconcile = { core().uploadTransitions.onOverrideChanged() },
     ),
-    "reset" to resetCommand(core),
+    "reset" to resetCommand(core = core, reset = controls::reset),
     "gallery/seed" to seedCommand { n, kind -> seedPhotos(log, n, kind) },
     "gallery/wipe" to RigCommand { params, _ ->
         // A VALUE, not presence, and the only command here that refuses on one — because a wipe cannot be

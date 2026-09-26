@@ -25,7 +25,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `CandidateSource` | `:domain:ports` | `:adapter:generic:fake` Blowing, RecordingEnumerator, ResourceCandidates, Switchable; `:domain:compose` PermissionAwareCandidateSource, RecordingWalk; `:domain:feature` FactsSource, OneAsset, UnreadableSource; `:domain:services` GalleryCandidateSource | no |
 | `ChangeOutcome` | `:domain:model` | `:domain:model` Applied, Refused | no |
 | `Clock` | `:domain:ports` | `:adapter:generic:app` SystemClock; `:domain:presentation` MovableClock; `:ui:screens` MovableClock | no |
-| `Completion` | `:domain:ports` | `:adapter:ios:app-only` Released, SessionCompletion, TaskCompletion; `:domain:compose` BareCompletion; `:test:world` OsCompletion | yes |
+| `Completion` | `:domain:ports` | `:adapter:ios:app-only` PushCompletion, Released, SessionCompletion, TaskCompletion; `:test:world` CountingCompletion, OsCompletion | yes |
 | `ConfigDecodeResult` | `:domain:model` | `:domain:model` Failure, Success | no |
 | `ConfigFileDecode` | `:domain:model` | `:domain:model` Foreign, Unusable, Valid | no |
 | `ConfigFileRead` | `:domain:model` | `:domain:model` Content, Failed, Missing | no |
@@ -45,6 +45,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `Databases` | `:domain:ports` | `:adapter:generic:app` JdbcDatabases; `:adapter:ios:ext-safe` IosDatabases; `:domain:services` Failing, Scripted; `:test:world` Counting | yes |
 | `DbOpen` | `:domain:ports` | `:domain:ports` Failed, Missing, OldSchema, Opened | no |
 | `Decided` | `:domain:feature` | `:domain:feature` Planned, Short | no |
+| `DevControls` | `:domain:ports` | `:adapter:generic:app` InertDevControls; `:test:rig` RigDevControls; `:test:world` WorldDevControls | yes |
 | `DeviceEnroller` | `:domain:feature` | `:domain:feature` FakeEnroller, ManifestDeviceEnroller | yes |
 | `DeviceFilesSource` | `:domain:services` | `:domain:feature` FakeFiles; `:domain:services` BackendDeviceFilesSource | yes |
 | `DeviceIdResult` | `:domain:model` | `:domain:model` AbsentNotMintable, Id, Unavailable | no |
@@ -92,6 +93,8 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `LedgerStore` | `:domain:ports` | `:adapter:generic:fake` InMemoryLedgerStore; `:domain:feature` FakeLedgerStore, InMemoryLedgerStore; `:domain:services` LedgerService | yes |
 | `LibraryChangeToken` | `:domain:ports` | `:adapter:generic:fake` Token; `:adapter:ios:app-only` PhotoKitLibraryChangeToken; `:domain:feature` Token | no |
 | `LibraryChangeTokenRead` | `:domain:ports` | — | no |
+| `Lifecycle` | `:domain:ports` | `:adapter:ios:ui` IosLifecycle; `:test:world` WorldLifecycle | yes |
+| `Links` | `:domain:ports` | `:adapter:ios:app-only` IosLinks; `:test:world` WorldLinks | yes |
 | `Listenable` | `:domain:ports` | — | no |
 | `LogSink` | `:domain:ports` | `:adapter:generic:fake` Recording; `:adapter:ios:ext-safe` FileLogSink, PublicNSLogSink | no |
 | `ManifestPublisher` | `:domain:services` | `:domain:feature` FakeUploader; `:domain:services` BackendManifestPublisher | yes |
@@ -100,11 +103,11 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `PhotoDownloadJobs` | `:domain:ports` | `:adapter:generic:fake` NoopJobs, RecordingJobs; `:domain:feature` QueuedPhotoDownloadJobs | no |
 | `PhotoGrantRead` | `:domain:ports` | — | no |
 | `PlatformDeviceId` | `:domain:ports` | `:adapter:generic:app` NoPlatformDeviceId | no |
-| `PlatformEntries` | `:domain:ports` | `:app:ios` SnapSyncRoot; `:domain:compose` AppEntries | no |
 | `PrefRead` | `:domain:model` | `:domain:model` Absent, Unavailable, Value | no |
 | `Preferences` | `:domain:ports` | `:adapter:generic:fake` InMemoryPreferences; `:adapter:ios:ext-safe` IosPreferences | yes |
 | `ProcessInfo` | `:domain:ports` | `:adapter:generic:fake` InMemoryProcessInfo; `:adapter:ios:app-only` IosProcessInfo | yes |
 | `ProcessMetrics` | `:domain:ports` | `:adapter:generic:fake` HeldReports; `:adapter:ios:app-only` MetricKitProcessMetrics | no |
+| `PushNotifications` | `:domain:ports` | `:adapter:ios:app-only` IosPushNotifications; `:test:world` WorldPushNotifications | yes |
 | `PushReceiver` | `:domain:ports` | `:domain:feature` DownloadPushReceiver | no |
 | `PushRegistrationRecord` | `:domain:ports` | `:adapter:generic:fake` InMemoryPushRegistrationRecord; `:adapter:ios:app-only` IosPushRegistrationRecord; `:domain:feature` FakeRecord | yes |
 | `PushTokenPublisher` | `:domain:services` | `:domain:feature` FakePushTokenPublisher; `:domain:services` BackendPushTokenPublisher | yes |
@@ -117,7 +120,6 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `Reply` | `:domain:model` | `:domain:model` Malformed, Ok, Refused, Unreachable; `:test:control` Done, Failed, Refused | yes |
 | `ResetRename` | `:domain:feature` | `:domain:feature` NoOpResetRename, RenameEvent | no |
 | `ResourceBatch` | `:domain:model` | — | no |
-| `SceneMode` | `:domain:model` | `:domain:model` Deferred, Live | no |
 | `ScheduleResult` | `:domain:model` | `:domain:model` Refused, Scheduled, Unsupported | no |
 | `SecureStore` | `:domain:ports` | `:adapter:generic:fake` InMemorySecureStore, Legacy, RecordingSecureStore; `:adapter:ios:ext-safe` AppGroupFileSecureStore, IosSecureStore, NoLegacyMap, Recording, SimulatorSecureStore | yes |
 | `SecureStoreRead` | `:domain:model` | `:domain:model` Absent, Found, Unavailable | no |
@@ -139,6 +141,8 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `SystemUi` | `:domain:ports` | `:adapter:ios:app-only` IosSystemUi | no |
 | `TokenOutcome` | `:domain:model` | `:domain:model` ChallengeStale, Minted, NotAttested, Refused, Unreachable | no |
 | `TransferRecord` | `:domain:ports` | `:domain:services` Record | no |
+| `Ui` | `:domain:ports` | `:adapter:ios:ui` IosUi; `:test:rig` RigUi; `:test:world` WorldUi | yes |
+| `UiIntent` | `:domain:model` | `:domain:model` AcknowledgeAccess, CancelJoin, CancelReconfigure, CancelSwitch, ChoosePhotos, ConfirmJoin, ConfirmLeaveDismiss, ConfirmLeaveOpen, ConfirmSwitch, CreateEvent, FromCustom, FromPreset, LeaveEvent, OpenAppStore, OpenReconfigure, OpenSettings, ReceiveOn, Reconfigure, RenameDismiss, RenameEvent, RenameOpen, RenameStatusConsumed, ReportBugDismiss, ReportBugOpen, RequestPermission, RetryJoin, RetryLoad, SaveToAlbum, SendDiagnostics, ShareInvite, ShareOn, UntilCustom, UntilPreset | no |
 | `Upload` | `:domain:ports` | `:adapter:ios:app-only` IosUrlSessionUploadPlatform; `:adapter:ios:ext-safe` IosPhotoKitUploadPlatform, PlayedOs, SimulatorUploadJobQueue; `:domain:services` ScriptedUpload; `:test:world` FakeUpload, NetworkedUpload, WorldAppUpload | yes |
 | `UploadDiscovery` | `:domain:ports` | `:domain:feature` FakePlatform, Library, RecordingDelegate, SelectionScopedDiscovery, WalkMemo; `:domain:services` GalleryDiscovery, Resources; `:test:world` FakeUploadDiscovery | yes |
 | `UploadError` | `:domain:model` | `:domain:model` Cancelled, Http, Network, Unknown | no |

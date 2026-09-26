@@ -12,6 +12,7 @@ flowchart LR
     adapter_generic_fake[":adapter:generic:fake"]
     adapter_ios_app_only[":adapter:ios:app-only"]
     adapter_ios_ext_safe[":adapter:ios:ext-safe"]
+    adapter_ios_ui[":adapter:ios:ui"]
   end
   subgraph domain
     domain_compose[":domain:compose"]
@@ -56,6 +57,12 @@ flowchart LR
   adapter_ios_ext_safe --> domain_ports
   adapter_ios_ext_safe --> domain_services
   adapter_ios_ext_safe --> test_contracts
+  adapter_ios_ui --> adapter_ios_ext_safe
+  adapter_ios_ui --> domain_model
+  adapter_ios_ui --> domain_ports
+  adapter_ios_ui --> domain_presentation
+  adapter_ios_ui --> ui_components
+  adapter_ios_ui --> ui_screens
   domain_compose --> domain_feature
   domain_compose --> domain_flow
   domain_compose --> domain_model

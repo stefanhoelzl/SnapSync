@@ -9,8 +9,9 @@ import app.snapsync.rig.gallery.SeedOutcome
 // parsing, the refusals and the rendering are here, so the two cannot drift into two dialects of one verb.
 
 /** `POST /device/reset` — void durable sync state through the app's own reset, and answer the counts AFTER it. */
-fun resetCommand(core: () -> AppCore): RigCommand = RigCommand { _, _ ->
-    core().resetDeviceState.reset()
+/** `/device/reset`: [reset] is the build's development controls' reset; the counts after it are read off [core]. */
+fun resetCommand(core: () -> AppCore, reset: suspend () -> Unit): RigCommand = RigCommand { _, _ ->
+    reset()
     // The counts AFTER the reset, so "it cleared" is verifiable rather than asserted. An in-flight
     // upload cycle can still write rows behind this read — stated in `docs/testing.md` rather than
     // prevented, and visible right here when it happens.

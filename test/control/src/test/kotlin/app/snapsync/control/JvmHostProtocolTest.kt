@@ -68,8 +68,6 @@ class JvmHostProtocolTest {
         val advertised = client.device().refused
         val wipe = assertIs<Reply.Refused>(client.deviceVerb("gallery/wipe", mapOf("scope" to "all")))
         assertEquals(advertised.getValue("device/gallery/wipe"), wipe.reason)
-        val failure = assertIs<Reply.Refused>(client.os("app", "onPushTokenFailure", arg = "x"))
-        assertEquals(advertised.getValue("os/app/onPushTokenFailure"), failure.reason)
     }
 
     @Test
