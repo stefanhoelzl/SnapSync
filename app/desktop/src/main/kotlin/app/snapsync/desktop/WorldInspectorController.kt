@@ -31,7 +31,7 @@ import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.feature.membership.toJoinLoad
 import app.snapsync.model.JoinLoad
 import app.snapsync.presentation.StatusContainerHost
-import app.snapsync.model.DENYLISTED_ALBUM_TITLES
+import app.snapsync.model.SELECTION_CALIBRATION
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.SelectionPolicy
@@ -493,7 +493,7 @@ class WorldInspectorController(private val scope: CoroutineScope) {
                     config = config,
                     suppressedAssetIds = { emptySet() },
                     albumExcludedAssetIds = {
-                        world.albumManager.assetIdsInAlbums(DENYLISTED_ALBUM_TITLES, it.at.iso)
+                        world.albumManager.assetIdsInAlbums(SELECTION_CALIBRATION.denylistTitles, it.at.iso)
                     },
                 )
             }

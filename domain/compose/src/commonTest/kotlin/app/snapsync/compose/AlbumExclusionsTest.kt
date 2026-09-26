@@ -1,6 +1,6 @@
 package app.snapsync.compose
 
-import app.snapsync.model.DENYLISTED_ALBUM_TITLES
+import app.snapsync.model.SELECTION_CALIBRATION
 import app.snapsync.model.PermissionStatus
 import app.snapsync.model.captureCutoff
 import app.snapsync.ports.AlbumManager
@@ -49,7 +49,7 @@ class AlbumExclusionsTest {
             val ids = denylistedAlbumMembers(albums, cutoff, PermissionStatus.GRANTED, onFailure, log)
             assertEquals(setOf("wa-1", "wa-2"), ids, "$onFailure")
             assertEquals(1, albums.lookups, "$onFailure")
-            assertEquals(DENYLISTED_ALBUM_TITLES, albums.lastTitles)
+            assertEquals(SELECTION_CALIBRATION.denylistTitles, albums.lastTitles)
         }
     }
 
