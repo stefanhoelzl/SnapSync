@@ -71,10 +71,10 @@ model  <-  ports  <-  services  <-  feature  <-  flow  <-  compose
 
 | zone | holds | may reference |
 |---|---|---|
-| `model/` | vocabulary, pure domain services and codecs, `UserCommands`/`UserQueries` bundle types (and the `EventCreator` command), logging helpers, `UiState`, and **every pure-data type a port carries** | nothing project-internal |
-| `ports/` | every port interface — outbound, and the event ports the platform delivers through (`Listenable`), with their `*Handlers` bundles — plus port-adjacent code not yet re-homed, an exact shrinking list (`PortsHoldInterfacesOnlyTest`) | `model/` |
-| `services/` | the shared capabilities built over the thin ports: what a store holds, when it is opened, what a failure means. Today the storage services (`LedgerService`, `DownloadService`, `SuppressionService`) and their SQLDelight databases (the `.sq` files and generated code live here, so the zone's compile boundary covers them), and the gallery services (`GalleryDiscovery`, `GalleryAssetPresence`, `GalleryCandidateSource`, `GalleryAlbums`), and the process's crash reporting (`CrashReporting`: whether the build reports, the handlers that shape what leaves, the dump; `ProcessAccount`: what a process-metric report does), and the process's log writer (`SinkLogWriter`: one line format, every `LogSink`). Each still implements its transitional interface in `ports/` | `model/`, `ports/` |
-| `feature/` | business rules, one package per feature, mutually blind. A type consumed outside `feature/` lives in that feature's `readmodel` package (`feature/<feature>/readmodel/`) — the package is the definition of a read-model | `model/`, `ports/`, `services/` |
+| `model/` | vocabulary, pure domain services and codecs, `UserCommands`/`UserQueries` bundle types (and the `EventCreator` command), logging helpers (`invocation` over an `EntryScope`, `logAt`, `bestEffort`), `UiState`, and **every pure-data type a port carries** | nothing project-internal |
+| `ports/` | every port interface — outbound, and the event ports the platform delivers through (`Listenable`), with their `*Handlers` bundles — and nothing else (`PortsHoldInterfacesOnlyTest`) | `model/` |
+| `services/` | the shared capabilities built over the thin ports: what a store holds, when it is opened, what a failure means — each a **concrete** class a feature takes as it is, with an interface only where there are several implementations or a decorator. The storage services (`LedgerService`, `DownloadService`, `SuppressionService`, `ConfigService`, `StagingService`, `DeviceManifestService`, `LogTailService`, `AlbumMapService`, `PersistedDeviceIdentity`) and their SQLDelight databases (the `.sq` files and generated code live here, so the zone's compile boundary covers them); the gallery services (`GalleryAccessState` — what the grant means; `GalleryDiscovery`, `WalkMemo`, `GalleryAssetPresence`, `GalleryCandidateSource`, the permission-aware decorators, `GalleryAlbums`, `GalleryImporter`); the transfer services (`UploadTransferService`, `ExtensionRegistration`, `DownloadJobs`); the push record (`PushRegistrationRecord`, `PushTokenSource`); the backend services; and the process's crash reporting (`CrashReporting`, `ProcessAccount`) and log writer (`SinkLogWriter`) | `model/`, `ports/` |
+| `feature/` | business rules, one package per feature, mutually blind. A type consumed outside `feature/` lives in that feature's `readmodel` package (`feature/<feature>/readmodel/`) — the package is the definition of a read-model. **Features see services, never ports**: the compiler holds it, since the zone does not depend on `ports/` | `model/`, `services/` |
 | `presentation/` | the UI-state reduction (`StatusContainerHost`, reducing into `model/`'s `UiState`) | `model/`, and `feature/` read-model packages only |
 | `flow/` | the OS-callback trigger flows (`Foreground`, `Background`, `SilentPush`, `Provision`): ordering only | `model/`, `feature/` (never `ports/`) |
 | `compose/` | the shared composition (`snapSyncProcess`, `snapSyncApp`, `uploadCore`, `snapSyncExtension`), decorators, port-state subscriptions, and every event port's work handlers (`*Handlers`) | every zone but `presentation/` and the host |
@@ -166,7 +166,7 @@ One line each. The authority is the named gate. Gates live in `:test:architectur
 | What the operating system tells a process arrives through **entry ports**, each an event port named for one external system: the app's `Lifecycle` (became active / is leaving it), `Links` (a link delivered, raw), `PushNotifications` (the token, its failure, a silent push with its `Completion`), `Ui` (show a state; a person's `UiIntent`, a live screen) and `DevControls` (the build's switches and reset), and the extension's `ExtensionHost` (an invocation and its end). An adapter hands deliveries over raw and in platform-independent values; what one runs is the composition's handler. Each root keeps one-line forwarders for its Swift callbacks and holds no entry of its own | `EntryWorldTest` + `ExtensionEntryWorldTest` (`:test:world`, the handlers' promises over the real composition) + `ListenDoorTest` + shell gates. Naming is **review** |
 | **Host-first handlers**: only three handlers assemble the status host — `Lifecycle.onForeground` (on the composition lane, before the `Foreground` flow), `Links.onLink` and `Ui.onLive` — each a person reaching the app, and each assembles it before anything else. A push token, a silent push, a scheduled or transfer wake builds no host, so a cold background start installs no permission-grant subscription | `EntryWorldTest`, `TailWorldTest`, `SelectionObserverTimingTest` |
 | An adapter's constructor takes no function. What the platform says arrives through `listen`, what the core asks is a port method; a function on a constructor is a callback wired past both | `AdapterConstructorTest` (every class implementing a port interface in an adapter module's production and rig source sets, the fakes included). Its exemptions are exact: the two adapter-private bridges whose function IS the operating system's completion block |
-| `ports/` holds interfaces only — plain, `fun` and sealed (with a sealed interface's cases) — and the `*Handlers` bundles its event ports are registered with. A decision or helper belongs in `services/` or `model/`, an implementation in an adapter | `PortsHoldInterfacesOnlyTest`. Its allowlist of port-adjacent code that predates the law is exact and only shrinks, owned by the feature → ports cut |
+| `ports/` holds interfaces only — plain, `fun` and sealed (with a sealed interface's cases) — and the `*Handlers` bundles its event ports are registered with. A decision or helper belongs in `services/` or `model/`, an implementation in an adapter, an inert binding (`NoEntryContext`, `NoProcessMetrics`, `NoSystemUi`) in `compose/` | `PortsHoldInterfacesOnlyTest` (no allowlist) |
 | **Events arrive through `listen`.** An event port extends `Listenable<H>`; its `*Handlers` bundle is built in `compose/` — or, for the link and UI handlers, which need the status host, in the host zone — and registered by the host zone, once per adapter, as the graph is composed — except the per-process event ports (`CrashReporter`, `ProcessMetrics`), which `snapSyncProcess` builds and registers, because every root sets them up before any composition, and the extension's `ExtensionHost`, which `snapSyncExtension` registers, because that process has no host zone — so a background wake's delivery finds it. A rig decorator's forwarding `listen` counts as the composition's single one. `listen` only registers: it runs no handler and builds no feature. Every handler is a flow command, a service call or a presentation intent (the table below). A `*Handlers`-typed `var` exists only behind an `override fun listen` | `ListenDoorTest` (both halves, non-vacuous) + `LambdaSeamShapeTest` + `CompositionOpensNoDatabaseTest` |
 | The partial grant's selection observer opens only from host assembly (`Gallery.observeChanges`), so a wake that never builds the screen reads nothing; the latest snapshot is kept for a consumer that attaches late | `SelectionObserverTimingTest` (`:test:world`) + `SelectionSnapshotLaneTest` |
 | A read that can be unknown returns a sealed result with an explicit *unreadable*, never folded into a known answer. Predicates are named for the states they accept | **review** |
@@ -393,13 +393,14 @@ Decision record: `changes/archive/2026-08-27-add-repo-wide-complexity-gates`.
   module carries an `INSTRUCTION` aggregate, a `BRANCH` aggregate, and an `INSTRUCTION` **package
   floor** (the worst package). `LINE` is not bounded, and `BRANCH` has no package floor (too noisy at
   package size).
-- **Unit tests only.** Instrumented: `:domain:*`, `:adapter:generic:app`, `:adapter:generic:fake`,
+- **Unit tests only.** Instrumented: `:domain:*`, `:adapter:generic:app`, `:adapter:generic:fake`, `:test:feature`,
   `:domain:presentation`, `:ui:screens`, `:ui:components`. Bounded: all of those except
-  `:adapter:generic:fake` (its `commonTest` hosts `:domain`'s fake-driven feature tests, and the fakes
-  themselves are test equipment). `:test:world`, `:test:integration`, `:test:contracts` and the other
+  `:adapter:generic:fake` (its `commonTest` hosts the flow tests and the services' mock-driven tests, and the fakes
+  themselves are test equipment) and `:test:feature` (the feature tests that compose real services over the ports'
+  mocks; it holds no class of its own). `:test:world`, `:test:integration`, `:test:contracts` and the other
   test modules contribute nothing, so a thick harness cannot stand in for a thin unit suite.
 - **Crediting edges** (root `build.gradle.kts`) let tests that a placement rule forced elsewhere credit
-  the module they test: the `:domain:*` zones from `:adapter:generic:fake`, and `:ui:components` and
+  the module they test: the `:domain:*` zones from `:adapter:generic:fake` and from `:test:feature`, and `:ui:components` and
   `:domain:presentation` from `:ui:screens`. Always name leaf modules. `:domain` is an empty container, and
   a filter on it measures nothing. Incidental coverage is never credited.
 - `compose/` is **permanently unbounded**. The wiring graph is not unit-tested by law, so the gap
@@ -913,13 +914,8 @@ Every decision lives in `:domain:services` (shared capabilities) or `:domain:fea
 cannot see other features). Ports never call ports, and only services compose them — a gated law since 11c
 (section 2), with an allowlist the later phases empty.
 
-**Target zones.** Every edge between zones is `implementation()` only, pinned by ModuleSetTest:
-
-```
-model ← ports ← services ← feature ← flow ← compose
-                              ▲                  ▲
-                              └── presentation ──┴── host   (host = compose + presentation + ports; never services)
-```
+**Zones.** The target zone graph is the one section 2 draws and `ModuleSetTest` pins: since the feature → ports cut,
+features see services only.
 
 **Ports:**
 - Backend: typed, one HTTP client per composition (11c, shipped — section 2).
@@ -940,14 +936,14 @@ Once-only deliveries are persisted inline on the delivering thread.
 - Pure port data lives in `model/`. This is true since 11a.
 - The entry surface is event ports, a root holds no `if` and no entry of its own, the rig is an adapter set chosen at
   build time, an adapter constructor takes no function, and `ports/` holds interfaces only — all gated since 11g1
-  (section 2). What `ports/` still holds beyond interfaces is an exact, shrinking list.
-- **Features see services, never ports** (the diagram's `ports ← services ← feature`): the feature → ports edge goes,
-  with the store interfaces and helpers features import from `ports/` today re-homed. Its own phase, now that 11i
-  has re-typed the same store surfaces.
+  (section 2); the feature → ports cut emptied the last of `ports/`'s allowlist.
+- Features see services, never ports — a compile boundary since the feature → ports cut (section 2). The store
+  interfaces became their concrete services, and the feature tests that need a port's mock moved to `:test:feature`.
 - `SelectionCalibration` is one product-policy value in `model/` (11d), not supplied per composition: the floors and
   the denylist mean the same on every platform.
 
 **Phases.** 11a structure (shipped) → 11b storage and `:domain:services` (shipped) → 11c backend and integrity
 (shipped), 11d gallery (shipped) and 11e process ports (shipped), in parallel → 11f transfer (shipped) → 11g1 entry
-surface (shipped), with 11i (canonical asset ids, shipped — section 2) beside it → 11g2 (`:test:world` → `:app:jvm`,
-fake → mock, the desktop rewire) and the feature → ports cut, then 11h (the mock mix chosen at launch).
+surface (shipped), with 11i (canonical asset ids, shipped — section 2) beside it → the feature → ports cut (shipped —
+section 2) → 11g2 (`:test:world` → `:app:jvm`, fake → mock, the desktop rewire), then 11h (the mock mix chosen at
+launch).

@@ -85,18 +85,23 @@ Non-`commonTest` source sets that exist today:
 Where a target is genuinely skipped, the build file that declares the source set **says which coverage
 is lost and why**.
 
-### Fake-driven feature tests live in the fake module
+### Feature tests compose real services over port mocks
 
-Feature tests that drive `:domain` through the honest in-memory fakes live in
-**`:adapter:generic:fake`'s `commonTest`**, not in `:domain`. `:adapter:generic:fake` depends on
-`:domain`, so a test edge back would be a dependency cycle, and one module cannot depend on another
-module's test source set. The fakes' own contract bindings live there too, because the fakes are
-`internal` and only their own module's tests can build one in a chosen state.
+Features see services only — `:domain:feature` does not depend on `ports/` — so a feature test that needs a service is
+built the way production builds it: the **real** service over the ports' in-memory mocks from `:adapter:generic:fake`
+(`inMemoryDatabases()`, `inMemoryFiles()`, `inMemoryPreferences()`, `inMemorySecureStore()`, the gallery and access
+mocks). There are no doubles of the services: what a test observes or forces, it observes or forces **at the port** —
+the rows in the in-memory database, the files in an area, a refusal the mock answers on demand
+(`inMemoryDatabases(mapOf(name to DbOpen.OldSchema))`), a `Files` decorator that fails a write.
 
-So `:domain`'s `commonTest` holds only tests over pure functions or hand-written local doubles. **A
-feature's tests may be split across `:domain` and `:adapter:generic:fake`. Look in both.**
-`:adapter:generic:fake`'s `commonTest` is a test host that can see more than any other consumer. That is
-a property of `internal`, not a gate. The fake-honesty gate checks only what the fakes expose in main.
+Those tests live in **`:test:feature`** (JVM and the iOS simulator), the one module that sees feature, services, ports
+and the mocks together; its `support/` package holds the shared setups (`configService`, `TestLedger`, `testIdentity`,
+`RecordingFiles`, …). A feature test that touches no port and no service stays in `:domain:feature`'s own
+`commonTest`, and so does one that needs a feature `internal`. A service's own tests live in `:domain:services`
+(over hand-written port doubles) or, where they need the mocks, in `:adapter:generic:fake`'s `commonTest` — which also
+holds the flow tests and the mocks' own contract bindings, because the mocks are `internal` and only their own module's
+tests can build one in a chosen state. **A feature's tests may be split across `:domain:feature` and `:test:feature`.
+Look in both.**
 
 ### No `:app:*` module has a test source set
 
@@ -194,15 +199,17 @@ Where bindings live: beside their implementations.
   `jvmTest`. The storage services live in `:domain:services`, but their contracts (`LedgerStore`, `DownloadStore`)
   are bound **through** the service over each platform's real `Databases` adapter, beside that adapter: a
   `:domain:*` build file names no module, and the contract is a claim about the service over the real database.
-- The JVM `Files` adapter, and the file-backed services' contracts (config, manifest, staging, log tail) through the
-  services over it: `:adapter:generic:app` `jvmTest` — so every `build` runs them, not only CI's simulator job.
+- The JVM `Files` adapter, and the file-backed services' contracts (config, manifest, push record, staging, log tail)
+  through the services over it: `:adapter:generic:app` `jvmTest` — so every `build` runs them, not only CI's simulator job.
 - The iOS `Databases`, `Files` and `Preferences` adapters, and the storage services through them on Kotlin/Native:
   `:adapter:ios:ext-safe` tests.
 - `PlatformDeviceId` has **no contract**, on purpose: its only implementation answers a constant `null`, and a
   clause must run against a real implementation somewhere (`ContractCoverageTest`). The identity service's test covers
   "`null` ⇒ random" with a stub. The contract lands with the first adapter that answers an id (Android).
 - The storage services' fake-driven tests (their answers to what no contract state enters): `:adapter:generic:fake`
-  `commonTest`, over the storage mocks.
+  `commonTest`, over the storage mocks — where the services' contracts are bound over the mocks too
+  (`StoreContractBindingsTest`, `AppGroupStoreContractBindingsTest`, `ConfigStoreContractBindingTest`), so the mocks
+  every feature test stands on are held to the platform adapters' clauses.
 - The mini-edge and the world's transfer doubles: `:test:world` `commonTest`.
 - Keychain and App-Group stores: `:adapter:ios:ext-safe` tests.
 - Simulator-app PhotoKit and URLSession: `:adapter:ios:app-only` `src/rig`.
@@ -356,12 +363,17 @@ Targets are `jvm()` and `iosSimulatorArm64` only. It never links into a shipped 
   own. It binds **no port to a body that stands in for core machinery**: the provision, the attestation
   refresh and push registration all run for real. A mirror of a composition root drifts silently, and a
   mirror that is *more* correct than production stays green while the defect ships.
-- **Only the edges are doubles:** `BackgroundTransfer`, `DownloadTransport`, the `Gallery`, the storage
-  seams and the HTTP client. The services over them (the gallery's discovery, presence and albums; the stores) are
-  the real ones.
+- **Only the edges are doubles:** the transfer ports (`Upload`, `Download`), the `Gallery`, the storage ports
+  (`Databases` as real in-memory SQLite, `Files`, `Preferences`, `SecureStore`) and the HTTP client. Every service
+  over them — the ledger, the download store, the membership, staging, the manifest and push records, the album map,
+  the device identity, the gallery's discovery, presence and albums — is the real one.
+- **Relaunch keeps exactly the durable state:** the in-memory databases, the shared and private file areas, the user
+  defaults and the Keychain items are world-held cells; a relaunch builds new service instances over them, as a new
+  process does.
 - **Honest fakes live in `:adapter:generic:fake`; levers live in `:test:world`.** A lever (a settable
   cell, a failure switch, an inspection list) goes on a world wrapper that owns the fake's
-  constructor-injected state (`WorldGallery` — its import script is `WorldImports` —, `RecordingDownloadStore`). It is
+  constructor-injected state (`WorldGallery` — its import script is `WorldImports`), or reads the durable state the way
+  an inspector of the device's files would (`downloadsInFlight`, reading the download database). It is
   never a public member of the fake, and the fake-honesty gate enforces that. For a contracted port, the
   world uses the contract-bound fake, wrapped, and never a second levered implementation.
 - **The world's transfer doubles are contract `Fake` bindings** (`TransferContractsTest`). A clause the
@@ -428,7 +440,8 @@ Nothing auto-runs. **The operator plays the OS.**
   backend answers, and it never deposits store-direct), **fail** with a chosen `UploadError` (drives the
   real retry chain), a settable job-limit (`LIMIT_EXCEEDED`), and inspectable pending/retry/ack buckets
   with per-key creation counts.
-- **Downloads:** the real `QueuedPhotoDownloadJobs` over a fake `DownloadTransport`. **Stage** delivers a
+- **Downloads:** the real `DownloadJobs` over the world's `Download` double, which leaves each finished transfer's
+  temporary file in the private area for the real staging service to adopt. **Stage** delivers a
   chosen `TransferOutcome`. An unstaged or rejected transfer just stays pending, because there is no
   terminal download error. A stage action is complete when it returns: it awaits the feature's own tracked
   stagings (`awaitOutstandingStagings`), then requests the import of the **composed** tail runner the way a
