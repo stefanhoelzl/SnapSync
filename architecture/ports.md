@@ -16,7 +16,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `AppUploadMechanism` | `:domain:feature` | `:domain:compose` ComposedAppUploader; `:test:world` OperatorUploadEngine | yes |
 | `AttestStore` | `:domain:ports` | `:adapter:generic:fake` InMemoryAttestStore; `:domain:services` AttestState, CachedAttestStore, Item, SharedItem | yes |
 | `AuthenticatedBackend` | `:domain:services` | `:domain:services` CredentialedBackend | no |
-| `Backend` | `:domain:ports` | `:adapter:generic:app` HttpBackend; `:adapter:generic:fake` FakeClient, InMemoryBackend; `:domain:services` ScriptedBackend; `:test:world` WorldBackendPort | yes |
+| `Backend` | `:domain:ports` | `:adapter:generic:app` HttpBackend; `:adapter:generic:fake` FakeClient, InMemoryBackend; `:domain:services` ScriptedBackend; `:test:architecture` Probe; `:test:world` WorldBackendPort | yes |
 | `BackgroundTime` | `:domain:ports` | `:adapter:generic:fake` InMemoryBackgroundTime; `:adapter:ios:app-only` IosBackgroundTime | yes |
 | `BackgroundTimeHold` | `:domain:ports` | `:adapter:generic:fake` Hold; `:adapter:ios:app-only` Held, Refused | no |
 | `BackgroundTransfer` | `:domain:ports` | `:domain:feature` FakePlatform, Library; `:domain:services` UploadTransferService | yes |

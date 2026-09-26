@@ -48,6 +48,9 @@ class PortsNeverCallPortsTest {
 
     private fun holdings(): Map<String, String> = adapterSources.flatMap { src ->
         KotlinDecls.constructorParams(ZoneGates.stripComments(src.text))
+            // A type written fully qualified into the standard library (`kotlin.time.Clock`) is not the port of the
+            // same simple name.
+            .filter { !it.type.startsWith("kotlin.") }
             .filter { it.type.removeSuffix("?").substringAfterLast('.').substringBefore('<') in ports }
             .map { "${it.owner}.${it.name}" to "${src.path}:${it.line} (${it.type})" }
     }.toMap()

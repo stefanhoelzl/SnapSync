@@ -255,7 +255,10 @@ class FileLogSinkTest {
         withTempDirectory { dir ->
             val path = "$dir/debug.log"
             var now = 1_790_172_309_123L
-            val writer = FileLogSink(path, 10L * 1024 * 1024) { now }
+            val clock = object : kotlin.time.Clock {
+                override fun now() = kotlin.time.Instant.fromEpochMilliseconds(now)
+            }
+            val writer = FileLogSink(path, 10L * 1024 * 1024, clock)
             writer.log(Severity.Info, "before", "t", null)
             removeDirectory(path) // removes a plain file just the same
 

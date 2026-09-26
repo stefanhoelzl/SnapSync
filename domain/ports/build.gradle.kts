@@ -101,8 +101,11 @@ kover {
                     // (`processingResultRawValue`) MOVED to `:adapter:ios:ext-safe` with its test — the platform's
                     // magic values belong to the adapter that answers the platform — and the new
                     // `ExtensionHandlers` bundle is built only by the extension's composition.
+                    // LOWERED 72 -> 68 in the same phase, by the "ports hold interfaces only" law: the extension
+                    // cycle's never-throw wrapper (`runProcessCycle`, `requeueWhilePending`) MOVED to
+                    // `:domain:services` (services/upload) with both of its tests.
                     bound {
-                        minValue = 72
+                        minValue = 68
                         coverageUnits = CoverageUnit.INSTRUCTION
                     }
                     // LOWERED 65 -> 57 by the storage-ports re-cut. Forcing proof: the zone's
@@ -111,10 +114,10 @@ kover {
                     // here lost a test; the ratio fell because the covered code left. Raise it
                     // again as the remaining port-adjacent helpers re-home or gain tests.
                     // LOWERED 57 -> 56 by 11f, for the same move: `OsCompletions`' guarded branches left with it.
-                    // LOWERED 56 -> 52 by 11g1: the raw-value mapping's branches left with it, for
-                    // `:adapter:ios:ext-safe`.
+                    // LOWERED 56 -> 48 by 11g1: the raw-value mapping's branches left for `:adapter:ios:ext-safe`,
+                    // and the extension cycle wrapper's guarded branches for `:domain:services`.
                     bound {
-                        minValue = 52
+                        minValue = 48
                         coverageUnits = CoverageUnit.BRANCH
                     }
                 }

@@ -8,7 +8,7 @@ import app.snapsync.ports.ExtensionHandlers
 import app.snapsync.ports.ExtensionHost
 import app.snapsync.ports.EntryContext
 import app.snapsync.ports.invocation
-import app.snapsync.ports.runProcessCycle
+import app.snapsync.services.upload.runProcessCycle
 import app.snapsync.services.backend.BackendServices
 import app.snapsync.services.backend.CredentialedBackend
 import app.snapsync.services.trust.CachedAttestStore
