@@ -46,6 +46,7 @@ class InvocationTest {
         override fun exit(owned: Boolean) {
             exited += owned
         }
+        override fun current(): String? = entered.lastOrNull()
     }
 
     private fun logger(writer: Capturing) =

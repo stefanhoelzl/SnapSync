@@ -85,7 +85,6 @@ import app.snapsync.ports.AttestStore
 import app.snapsync.ports.ConfigSource
 import app.snapsync.model.DiagnosticEnvironment
 import app.snapsync.ports.DeviceLogSource
-import app.snapsync.ports.DiagnosticsReporter
 import app.snapsync.ports.ConfigStore
 import app.snapsync.ports.DownloadStore
 import app.snapsync.ports.DownloadTransport
@@ -237,9 +236,6 @@ class AppPorts(
     val onEventMinted: suspend (eventId: String) -> Unit,
     /** The push registration's ports (capability `receiving-photos`) — see [PushPorts]. */
     val push: PushPorts,
-    /** Crash/error reporting (capability `privacy-security`). Required — a tier that forgot it would
-     *  fail invisibly, exactly like the reconcile this bundle also refuses to default. */
-    val diagnosticsReporter: DiagnosticsReporter,
     /** Whether protected storage is readable right now — recorded by the background entry points, deciding
      *  nothing (capability `sync-status`). Required, like the reporter: an entry that logged no answer would
      *  look, in a device log, exactly like one that ran on an unlocked device. */
@@ -275,14 +271,10 @@ class AppPorts(
  */
 class AppCore internal constructor(
     internal val scope: CoroutineScope,
+    /** What the process set up before this core existed — its crash reporting already started. */
+    internal val process: ProcessServices,
     internal val ports: AppPorts,
 ) {
-
-    init {
-        // First act, not lazy: the reporter must be live before any other wiring can fail. Reads
-        // only this process's bundle config — safe on a locked background launch.
-        ports.diagnosticsReporter.start()
-    }
 
     /**
      * Whether the backend is refusing this build as too old (capability `app-update-required`). NOT lazy: the
@@ -1039,13 +1031,14 @@ class AppCore internal constructor(
             // written what went wrong. NULL on a build with no reporting configuration, so the screen
             // wires no gesture and no sheet can open — a build that can send nothing must not offer an
             // affordance suggesting it can. This is the ONE place that decision is made.
-            sendDiagnostics = if (ports.diagnosticsReporter.isConfigured) {
+            sendDiagnostics = if (process.crash.isConfigured) {
                 { note, screen ->
                     // Core lane and awaited: the dump reads both device logs (~700 KB) before it sends,
                     // which is exactly the blocking work the main lane must never see, and the sheet
                     // waits on it.
                     awaitingOnCoreLane<Unit>("tap.sendDiagnostics", params = "screen=$screen") {
-                        ports.diagnosticsReporter.send(collectDiagnosticDump.collect(note, screen))
+                        val result = process.crash.sendDump(collectDiagnosticDump.collect(note, screen))
+                        ports.log.i { "diagnostic dump: $result" }
                     }
                 }
             } else {
@@ -1202,8 +1195,9 @@ class AppCore internal constructor(
  */
 fun snapSyncApp(
     scope: CoroutineScope,
+    process: ProcessServices,
     ports: AppPorts,
-): AppCore = AppCore(scope, ports)
+): AppCore = AppCore(scope, process, ports)
 
 /**
  * Records a hand-off to the platform ([PlatformHandoff]) that did not happen. Nothing acts on a [Handoff], but a

@@ -166,7 +166,7 @@ private fun iosHooks() = RigHooks(
         core = { SnapSyncRoot.app },
         photoAccess = SnapSyncRoot.permission,
         osSupportsOsDrivenUpload = SnapSyncRoot.osSupportsOsDrivenUpload,
-        handleReport = SnapSyncRoot.processMetricHandler::handle,
+        handleReport = SnapSyncRoot.process.processAccount::handle,
     ),
     readGallery = galleryReader(core = { SnapSyncRoot.app }),
     osExtensionEnabled = osExtensionEnabled(registry = SnapSyncRoot.osExtensionRegistryThunk),

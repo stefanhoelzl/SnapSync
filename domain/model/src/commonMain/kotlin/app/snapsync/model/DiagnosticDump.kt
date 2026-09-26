@@ -20,7 +20,7 @@ package app.snapsync.model
  * | the SDK's own contexts, current-thread stack and debug images (an allowance, not a cap) | ≤ 100,000 |
  * | **total**, against 1,048,576 | **≈ 952,000** |
  *
- * The `DiagnosticsReporter` contract's worst-case clause sends this event to an ingest that refuses anything over
+ * The `CrashReporter` contract's worst-case clause sends this event to an ingest that refuses anything over
  * the ceiling, so an SDK upgrade that grows its share fails a clause rather than a device. Measured 2026-09-23
  * (sentry-cocoa 8.58.2, simulator): **903,912 B** decoded, with log tails deliberately escape-heavy (~10% rather
  * than the ~1% real log text shows) and every breadcrumb all-escapes.

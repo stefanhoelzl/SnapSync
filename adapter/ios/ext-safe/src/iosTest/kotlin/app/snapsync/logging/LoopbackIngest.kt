@@ -48,7 +48,7 @@ import platform.posix.socklen_tVar
 /**
  * A receiving endpoint for the reporting SDK, inside the test executable (`docs/architecture.md`, "Hosts
  * are a closed set of what changes reachable states": an endpoint stood up only to receive and observe is part
- * of the observation, not a stand-in service). The `DiagnosticsReporter` contract's live binding points the
+ * of the observation, not a stand-in service). The `CrashReporter` contract's live binding points the
  * real adapter at [dsn] and reads [events] to see what actually left the process.
  *
  * Deliberately minimal — one client (the Sentry SDK), one route, loopback only — and hand-written rather than

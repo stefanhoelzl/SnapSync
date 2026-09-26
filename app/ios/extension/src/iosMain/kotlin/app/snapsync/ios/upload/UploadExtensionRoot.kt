@@ -49,7 +49,12 @@ import app.snapsync.membership.darwinHttpClient
 import app.snapsync.logging.FileLogWriter
 import app.snapsync.logging.extensionLogDestination
 import app.snapsync.logging.removeStaleExtensionDocumentsLog
-import app.snapsync.logging.SentryDiagnosticsReporter
+import app.snapsync.logging.SentryCrashReporter
+import app.snapsync.config.bakedSentryDsn
+import app.snapsync.compose.ProcessPorts
+import app.snapsync.compose.ProcessServices
+import app.snapsync.compose.snapSyncProcess
+import app.snapsync.ports.ProcessMetrics
 import app.snapsync.logging.appBuildVersion
 import app.snapsync.logging.appMarketingVersion
 import app.snapsync.logging.PublicNSLogWriter
@@ -115,6 +120,26 @@ object UploadExtensionRoot : ExtensionEntries by extensionRootEntries() {
 
     private val log = Logger.withTag("UploadExtension")
 
+    /**
+     * This process's per-process services (`snapSyncProcess`, every root's first act): its ONE crash reporter,
+     * started here before any other wiring can fail. No process metrics: MetricKit hands reports out roughly daily,
+     * and this process lives for one invocation.
+     */
+    private val process: ProcessServices = snapSyncProcess(
+        ProcessPorts(
+            crashReporter = SentryCrashReporter(),
+            processMetrics = ProcessMetrics.None,
+            files = IosFiles(),
+            entryContext = IosLogScope,
+            dsn = bakedSentryDsn(),
+        ),
+    )
+
+    init {
+        // The crash channel's log writer, beside the device-log writers — present only on a build that reports.
+        process.installLogWriters()
+    }
+
     // This process's SQLite databases, in the App-Group container. The services below open them on first use,
     // never at construction: building the composition opens no database (`docs/architecture.md`).
     private val databases: Databases by lazy { IosDatabases() }
@@ -141,7 +166,7 @@ object UploadExtensionRoot : ExtensionEntries by extensionRootEntries() {
     // never the full DownloadStore surface. It never creates or migrates the store — the app does — so an
     // extension that runs before the updated app has pauses its cycle instead (`SuppressionService`).
     private val suppression: SuppressionSource by lazy { SuppressionService(databases) }
-    private val files: Files by lazy { IosFiles() }
+    private val files: Files get() = process.files
     private val configSource: ConfigService by lazy { ConfigService(files) }
 
     // Event album (capability `event-album`): the coordinator over the shared leave-surviving map and the
@@ -238,13 +263,12 @@ object UploadExtensionRoot : ExtensionEntries by extensionRootEntries() {
      * wiring another tier lacks. Long-lived (one per process): the cycle re-reads the membership
      * per `run()`, so nothing here is per-invocation.
      */
-    internal val cycle: UploadCycle by lazy { uploadCore(scope, ports) }
+    internal val cycle: UploadCycle by lazy { uploadCore(scope, process, ports) }
 
     /** Everything the cycle is built over — held so the inbound port's implementation reads the same ledger and log. */
     internal val ports: UploadPorts by lazy {
             UploadPorts(
                 appVersion = appMarketingVersion(),
-                diagnosticsReporter = SentryDiagnosticsReporter(),
                 // This process's own grant read (capability `background-upload`, "The extension withholds its
                 // cycle without a full grant"): a registration made under a full grant survives a downgrade,
                 // and a cycle here has no selection snapshot to scope to. Measured (SE2, iOS 26.6, 2026-09-21): the

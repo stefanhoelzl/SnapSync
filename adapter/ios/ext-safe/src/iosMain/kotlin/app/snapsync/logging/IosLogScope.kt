@@ -14,6 +14,7 @@ import co.touchlab.kermit.Severity
 object IosLogScope : LogScope {
     override fun enter(name: String): Boolean = LogContext.enter(name)
     override fun exit(owned: Boolean) = LogContext.exit(owned)
+    override fun current(): String? = LogContext.current
 }
 
 /**
@@ -31,6 +32,7 @@ object IosLogScope : LogScope {
 object IosThreadLogScope : LogScope {
     override fun enter(name: String): Boolean = LogContext.enterThread(name)
     override fun exit(owned: Boolean) = LogContext.exitThread(owned)
+    override fun current(): String? = LogContext.current
 }
 
 /**

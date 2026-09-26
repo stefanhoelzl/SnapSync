@@ -2,16 +2,16 @@ package app.snapsync.logging
 
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CrashObservation
+import app.snapsync.contracts.CrashReporterContract
+import app.snapsync.contracts.CrashReporterState
+import app.snapsync.contracts.CrashReporterSubject
 import app.snapsync.contracts.DeliveredEvent
-import app.snapsync.contracts.DiagnosticsObservation
-import app.snapsync.contracts.DiagnosticsReporterContract
-import app.snapsync.contracts.DiagnosticsReporterState
-import app.snapsync.contracts.DiagnosticsReporterSubject
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.WaitExpired
 import app.snapsync.contracts.verify
-import app.snapsync.model.NON_REDACTED_TAG
+import app.snapsync.model.CrashOptions
 import co.touchlab.kermit.Logger
 import io.sentry.kotlin.multiplatform.Sentry
 import kotlin.test.Test
@@ -29,14 +29,12 @@ import platform.Foundation.NSThread
 import platform.Foundation.NSUserDomainMask
 
 /**
- * The Sentry seat of `DiagnosticsReporter`, live on the simulator test executable (`docs/architecture.md`),
- * over the REAL SDK.
+ * The Sentry seat of `CrashReporter`, live on the simulator test executable (`docs/architecture.md`), over the REAL
+ * SDK.
  *
- * - `UNCONFIGURED` is the **production default**: this executable carries no `Deployment.plist`, so the adapter's
- *   own bundle lookup answers "no DSN" — the host's answer, not one this binding passed.
- * - The configured states inject a DSN (the adapter's `internal` constructor) that points the channel at a
- *   [LoopbackIngest] in this process, and read what left the process there. The ingest decides nothing a clause
- *   asserts, so this binding is `Live`. Nothing is ever sent to the operator's instance.
+ * Every state starts the channel against a [LoopbackIngest] in this process, and reads what left the process there.
+ * The ingest decides nothing a clause asserts, so this binding is `Live`. Nothing is ever sent to the operator's
+ * instance.
  *
  * The adapter and the SDK are process-global — the idempotence flag, the SDK hub, Kermit's writer list — and other
  * tests in this executable initialise Sentry too. So every clause gets a fresh instance the only way one exists
@@ -44,46 +42,45 @@ import platform.Foundation.NSUserDomainMask
  * blocks every later one — measured 2026-09-23), the start flag forgotten, and Kermit's writers restored.
  */
 @OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
-class SentryDiagnosticsReporterContractTest {
+class SentryCrashReporterContractTest {
 
-    private val binding = object : Binding<DiagnosticsReporterState, DiagnosticsReporterSubject> {
+    private val binding = object : Binding<CrashReporterState, CrashReporterSubject> {
         override val host = Host.IOS_SIM_KEXE
         override val kind = BindingKind.Live
         override val reaches = setOf(
-            DiagnosticsReporterState.UNCONFIGURED,
-            DiagnosticsReporterState.CONFIGURED,
-            DiagnosticsReporterState.CONFIGURED_ON_THE_WIRE,
+            CrashReporterState.NOT_STARTED,
+            CrashReporterState.STARTED,
+            CrashReporterState.ON_THE_WIRE,
         )
 
-        override fun create(state: DiagnosticsReporterState, clauseId: String): Entered<DiagnosticsReporterSubject> {
+        override fun create(state: CrashReporterState, clauseId: String): Entered<CrashReporterSubject> {
             val writers = Logger.config.logWriterList
             resetChannel()
-            val ingest = if (state == DiagnosticsReporterState.UNCONFIGURED) null else LoopbackIngest()
-            val reporter = if (ingest == null) SentryDiagnosticsReporter() else SentryDiagnosticsReporter(ingest.dsn)
-            val observe = object : DiagnosticsObservation {
+            val ingest = LoopbackIngest()
+            val observe = object : CrashObservation {
                 override fun channelRunning() = Sentry.isEnabled()
 
                 override fun delivered(until: (List<DeliveredEvent>) -> Boolean): List<DeliveredEvent> {
                     val deadline = Clock.System.now() + DELIVERY_DEADLINE
                     while (true) {
-                        val events = ingest?.events().orEmpty().map { it.toDelivered() }
+                        val events = ingest.events().map { it.toDelivered() }
                         if (until(events)) return events
                         if (Clock.System.now() > deadline) throw WaitExpired(DELIVERY_DEADLINE.inWholeMilliseconds)
                         NSThread.sleepForTimeInterval(POLL_SECONDS)
                     }
                 }
             }
-            return Entered.Ready(DiagnosticsReporterSubject(reporter, observe)) {
+            return Entered.Ready(CrashReporterSubject(SentryCrashReporter(), CrashOptions(ingest.dsn), observe)) {
                 resetChannel()
-                ingest?.stop()
+                ingest.stop()
                 Logger.setLogWriters(writers)
             }
         }
     }
 
     @Test
-    fun `the Sentry reporter satisfies the DiagnosticsReporter contract`() =
-        verify(DiagnosticsReporterContract, binding)
+    fun `the Sentry reporter satisfies the CrashReporter contract`() =
+        verify(CrashReporterContract, binding)
 
 
     private fun resetChannel() {
@@ -105,13 +102,25 @@ class SentryDiagnosticsReporterContractTest {
             else -> null
         }.orEmpty().mapNotNull { (it as? JsonObject)?.get("message")?.jsonPrimitive?.content }
         val tags = (this["tags"] as? JsonObject).orEmpty()
+        // The SDK adds contexts of its own (device, os, app) whose values are not all strings; only the all-string
+        // ones are ours to compare.
+        val contexts = (this["contexts"] as? JsonObject).orEmpty().mapNotNull { (name, value) ->
+            val fields = (value as? JsonObject)?.mapValues { (_, v) -> (v as? JsonPrimitive)?.takeIf { it.isString }?.content }
+            fields?.takeIf { f -> f.values.all { it != null } }?.let { f -> name to f.mapValues { it.value!! } }
+        }.toMap()
+        // Tags arrive as an object — the shape the dump clause has read them in since this binding was written.
         return DeliveredEvent(
             message = message,
             breadcrumbs = crumbs,
             installId = (this["user"] as? JsonObject)?.get("id")?.jsonPrimitive?.content,
-            processAccount = ((this["contexts"] as? JsonObject)?.get(PROCESS_METRIC_CONTEXT) as? JsonObject)
-                ?.mapValues { (_, v) -> (v as JsonPrimitive).content },
-            isDump = (tags[NON_REDACTED_TAG] as? JsonPrimitive)?.content == "1",
+            tags = tags.mapNotNull { (k, v) -> (v as? JsonPrimitive)?.content?.let { k to it } }.toMap(),
+            contexts = contexts,
+            // Like breadcrumbs, the protocol allows `{ "values": [...] }` or a bare array.
+            hasException = when (val raw = this["exception"]) {
+                is JsonArray -> raw
+                is JsonObject -> raw["values"] as? JsonArray
+                else -> null
+            }.orEmpty().isNotEmpty(),
         )
     }
 

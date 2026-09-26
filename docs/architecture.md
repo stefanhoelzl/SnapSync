@@ -73,11 +73,11 @@ model  <-  ports  <-  services  <-  feature  <-  flow  <-  compose
 |---|---|---|
 | `model/` | vocabulary, pure domain services and codecs, `UserCommands`/`UserQueries` bundle types (and the `EventCreator` command), logging helpers, `UiState`, and **every pure-data type a port carries** | nothing project-internal |
 | `ports/` | every port interface, outbound and inbound (`PlatformEntries`, `ExtensionEntries`), plus port-adjacent logic not yet re-homed (`resolveOrMint`, `runProcessCycle`, the `CycleResult` raw-value mapping, …) | `model/` |
-| `services/` | the shared capabilities built over the thin ports: what a store holds, when it is opened, what a failure means. Today the storage services (`LedgerService`, `DownloadService`, `SuppressionService`) and their SQLDelight databases (the `.sq` files and generated code live here, so the zone's compile boundary covers them), and the gallery services (`GalleryDiscovery`, `GalleryAssetPresence`, `GalleryCandidateSource`, `GalleryAlbums`). Each still implements its transitional interface in `ports/` | `model/`, `ports/` |
+| `services/` | the shared capabilities built over the thin ports: what a store holds, when it is opened, what a failure means. Today the storage services (`LedgerService`, `DownloadService`, `SuppressionService`) and their SQLDelight databases (the `.sq` files and generated code live here, so the zone's compile boundary covers them), and the gallery services (`GalleryDiscovery`, `GalleryAssetPresence`, `GalleryCandidateSource`, `GalleryAlbums`), and the process's crash reporting (`CrashReporting`: whether the build reports, the handlers that shape what leaves, the dump; `ProcessAccount`: what a process-metric report does). Each still implements its transitional interface in `ports/` | `model/`, `ports/` |
 | `feature/` | business rules, one package per feature, mutually blind. A type consumed outside `feature/` lives in that feature's `readmodel` package (`feature/<feature>/readmodel/`) — the package is the definition of a read-model | `model/`, `ports/`, `services/` |
 | `presentation/` | the UI-state reduction (`StatusContainerHost`, reducing into `model/`'s `UiState`) | `model/`, and `feature/` read-model packages only |
 | `flow/` | the OS-callback trigger flows (`Foreground`, `Background`, `SilentPush`, `Provision`): ordering only | `model/`, `feature/` (never `ports/`) |
-| `compose/` | the shared composition (`snapSyncApp`, `uploadCore`), the inbound-port implementations, decorators, port-state subscriptions | every zone but `presentation/` and the host |
+| `compose/` | the shared composition (`snapSyncProcess`, `snapSyncApp`, `uploadCore`), the inbound-port implementations, decorators, port-state subscriptions, and every event port's `*Handlers` | every zone but `presentation/` and the host |
 | host (`host/`) | the shared host composition, `snapSyncHost`: the core plus the status host over it | `model/`, `ports/`, `compose/`, `presentation/`, and `feature/` read-model packages only |
 
 A **pure-data type** is a data class, an enum class, or a sealed class or interface that references no
@@ -110,10 +110,10 @@ Adapters are named for the technology and hold implementations only. Finer struc
 
 | binary | composition root | calls |
 |---|---|---|
-| iOS app (`SnapSyncKit`) | `:app:ios` `SnapSyncRoot` | `snapSyncHost` from `:domain:host` |
-| iOS upload extension, iOS 26.1 and later (`SnapSyncUploadKit`) | `:app:ios:extension` `UploadExtensionRoot` | `uploadCore` + `extensionEntries` |
+| iOS app (`SnapSyncKit`) | `:app:ios` `SnapSyncRoot` | `snapSyncProcess`, then `snapSyncHost` from `:domain:host` |
+| iOS upload extension, iOS 26.1 and later (`SnapSyncUploadKit`) | `:app:ios:extension` `UploadExtensionRoot` | `snapSyncProcess`, then `uploadCore` + `extensionEntries` |
 | forge (marketing screenshots) | `:app:ios:forge` | forged sources only, no live graph |
-| desktop harnesses, JVM rig host | `:app:desktop`, `:test:rig` over `:test:world` | the same `snapSyncHost` |
+| desktop harnesses, JVM rig host | `:app:desktop`, `:test:rig` over `:test:world` | the same `snapSyncProcess` and `snapSyncHost` (the world installs no log writer: Kermit's list is JVM-global) |
 
 ---
 
@@ -160,7 +160,7 @@ One line each. The authority is the named gate. Gates live in `:test:architectur
 | No function-typed `var` (callback slot) in production. Callbacks are bound at construction | `LambdaSeamShapeTest` |
 | No default on a function-typed constructor parameter (except `@Composable`) | `LambdaSeamShapeTest` |
 | Each OS entry surface is one **inbound port** (`PlatformEntries`, `ExtensionEntries`), named for what the OS says, implemented in `compose/`, reached by Kotlin delegation from the root | the inbound-port contracts (`PlatformEntriesContract`/`ExtensionEntriesContract`) + shell gates. Naming is **review** |
-| **Events arrive through `listen`.** An event port extends `Listenable<H>`; its `*Handlers` bundle is built in `compose/` only and registered by the host zone, once per adapter, as the graph is composed — so a background wake's delivery finds it. `listen` only registers: it runs no handler and builds no feature. Every handler is a flow command, a service call or a presentation intent (the table below). A `*Handlers`-typed `var` exists only behind an `override fun listen` | `ListenDoorTest` (both halves, non-vacuous) + `LambdaSeamShapeTest` + `CompositionOpensNoDatabaseTest` |
+| **Events arrive through `listen`.** An event port extends `Listenable<H>`; its `*Handlers` bundle is built in `compose/` only and registered by the host zone, once per adapter, as the graph is composed — except the per-process event ports (`CrashReporter`, `ProcessMetrics`), which `snapSyncProcess` builds and registers, because every root sets them up before any composition and the extension has no host zone — so a background wake's delivery finds it. `listen` only registers: it runs no handler and builds no feature. Every handler is a flow command, a service call or a presentation intent (the table below). A `*Handlers`-typed `var` exists only behind an `override fun listen` | `ListenDoorTest` (both halves, non-vacuous) + `LambdaSeamShapeTest` + `CompositionOpensNoDatabaseTest` |
 | The partial grant's selection observer opens only from host assembly (`Gallery.observeChanges`), so a wake that never builds the screen reads nothing; the latest snapshot is kept for a consumer that attaches late | `SelectionObserverTimingTest` (`:test:world`) + `SelectionSnapshotLaneTest` |
 | A read that can be unknown returns a sealed result with an explicit *unreadable*, never folded into a known answer. Predicates are named for the states they accept | **review** |
 | Absence is never silent: a seam that can answer "nothing" separates *nothing* from *could not tell* wherever the consequences differ, or states why the collapse is safe for every cause | **review** (design discipline) |
@@ -178,7 +178,7 @@ One line each. The authority is the named gate. Gates live in `:test:architectur
 | law | enforced by |
 |---|---|
 | Authority lives behind ports. After process death every fact is recoverable from a durable store or the external system. This binds adapters too | **review** |
-| A delivery the platform makes **once** is persisted before the entry point returns, citing proof (API contract, vendor doc, or measurement) that it is once-only | **review** |
+| A delivery the platform makes **once** is persisted before the entry point returns, citing proof (API contract, vendor doc, or measurement) that it is once-only. A MetricKit report is handled **inline** on the thread MetricKit delivers on (the lane law's one exception for it): `ProcessAccount` attaches it to the crash channel and logs it before the callback returns | **review** |
 | Each kind of write to a durable port has exactly one owner (a feature use case or a port's guarded write), written as one transaction with the guard in the statement. Two processes running that owner is fine | **review** |
 | No transport adapter holds `LedgerStore` (transports get the narrow `TransferRecord`) | `TransportLedgerGateTest` |
 | Holding an OS completion handler is confined to `ports/OsCompletions` (Kotlin and Swift). Releasing before the wake's own work is not expressible on it | `OsHandlerContainmentTest` (storing) + the type (releasing early) |
@@ -193,7 +193,8 @@ One line each. The authority is the named gate. Gates live in `:test:architectur
 | A flow declares no `CoroutineScope`, and every `Unit`-returning lambda it takes is `suspend` | `ZoneFlowLifetimeTest` |
 | A flow never hands work to the process tail: an OS wake's tail (and whether it has one) is requested by the inbound port's implementation after the flow returns. The one request on a flow's call path is a membership transition's arm, which requests it detached through the uploader seam | **review** |
 | A flow fans out only through the isolating `model/` helper (a failed child is logged, siblings finish, the entry awaits all) | `ZoneFlowLifetimeTest` "flows fan out only through the isolating helper" |
-| Every command crosses `flow/` (user taps, OS callbacks, port-state transitions). Presentation gets the `UserCommands` bundle and never calls a feature command or flow directly | `ReadModelImportsTest` (a feature command lies outside every `readmodel` package) + the compiler (presentation has no `flow/` edge) |
+| Commands cross one door: every command is a flow command, a service call, or a presentation intent — user taps and OS callbacks cross `flow/`, and an event port's handler is exactly one of the three. Presentation gets the `UserCommands` bundle and never calls a feature command or flow directly | `ReadModelImportsTest` (a feature command lies outside every `readmodel` package) + the compiler (presentation has no `flow/` edge) |
+| Only a composition builds an event port's `*Handlers` (`compose/`, or `host/` where the host must exist first) | `HandlerConstructionTest` (with its twin: at least one site seen) |
 | Presentation's only function-typed port-reaching reads are the `UserQueries` bundle | **review** |
 | Every `UserCommands`/`UserQueries` field is built through a lane-declaring decorator, with no default lane | `CommandLaneTest` (and the compiler: decorators take no default) |
 | `:ui:screens` takes no `suspend` function parameter or field | `ScreensTakeNoSuspendSeamTest` |
@@ -203,7 +204,7 @@ One line each. The authority is the named gate. Gates live in `:test:architectur
 
 | law | enforced by |
 |---|---|
-| One shared composition: every binary that assembles the live core calls `snapSyncHost` (app) or `uploadCore` (extension). A root supplies ports only and never builds the status host or installs subscriptions | structural (one function) + **review**. The wiring graph is not unit-tested. It is smoke-tested by the world and the integration surface |
+| One shared composition: every root calls `snapSyncProcess` first — one crash reporter and one process-metrics source per process, crash reporting started before any other wiring — and hands its `ProcessServices` to `snapSyncHost` (app) or `uploadCore` (extension), which require it. A root supplies ports only and never builds the status host or installs subscriptions; it installs the log writers the process services hand it, because Kermit's writer list is a process global | structural (one function) + **review**. The wiring graph is not unit-tested. It is smoke-tested by the world and the integration surface |
 | A platform-mechanism decision (today: may the upload extension be registered, `extensionRegistrable`) is a pure, total, unit-tested function of runtime state, re-evaluated when an input changes. Target-fixed facts are not inputs | the compiler (exhaustive `when`) + `ProducerExclusivityTest` (no cell true below iOS 26.1) |
 | Upload transitions stop in-flight work only at a leave (no deregister or cancel on revoke/reconfigure/launch; no registration write under a partial grant; enable always goes disable→enable) | `ProducerExclusivityTest` |
 | Shells (`:app:ios`, `:app:ios:extension`, `:app:ios:forge`, the host `:domain:host` — a core zone, but wiring every root calls — rig-contributed shell source) hold zero decisions | `detektAppShell` (cyclomatic threshold 2, gating) + `KotlinShellGuardTest` (roots exist, `@Suppress` inventory exact both ways) |
@@ -256,7 +257,7 @@ These pin one feature's structural rule that no type can state:
 | `SelectionPolicyConstructionTest` | a `SelectionPolicy` is built only by its one derivation (which always emits the capture floor) |
 | `EventPhotoSetSourceTest` | production candidates come from the policy-taking read seam |
 | `BackgroundTeardownTest` | no background trigger flow can tear a membership down (only the foreground, on confirmed absence) |
-| `DumpScrubExemptionTest` | only the operator-confirmed diagnostic dump bypasses the UUID scrub |
+| `CrashScrubTest` (`:domain:model`, a unit test since the scrub is pure) | only the operator-confirmed diagnostic dump bypasses the UUID scrub: the dump declares the exemption, and the scrub reads it before redacting anything |
 | `WorldBootsColdTest` | constructing the world forces no `AppCore` member |
 
 ### Disciplines with no gate

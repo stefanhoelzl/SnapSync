@@ -29,7 +29,14 @@ import app.snapsync.fake.inMemoryAttestStore
 import app.snapsync.fake.inMemoryDeviceLogSource
 import app.snapsync.fake.inMemoryDeviceManifestStore
 import app.snapsync.fake.inMemoryPushRegistrationRecord
-import app.snapsync.fake.inMemoryDiagnosticsReporter
+import app.snapsync.fake.inMemoryCrashReporter
+import app.snapsync.fake.inMemoryFiles
+import app.snapsync.compose.ProcessPorts
+import app.snapsync.compose.ProcessServices
+import app.snapsync.compose.snapSyncProcess
+import app.snapsync.model.CrashEvent
+import app.snapsync.ports.ProcessMetrics
+import app.snapsync.ports.LogScope
 import app.snapsync.fake.inMemoryDownloadStore
 import app.snapsync.fake.inMemoryLedgerStore
 import app.snapsync.fake.inMemoryStagedBytes
@@ -54,7 +61,6 @@ import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.CaptureDate
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
-import app.snapsync.model.DiagnosticDump
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
 import app.snapsync.model.EventEnd
@@ -314,11 +320,17 @@ class World(
 
     /** The last push registration the backend accepted — an App-Group file on a device, so durable across [relaunch]. */
     private val pushRegistrationRecord: PushRegistrationRecord = inMemoryPushRegistrationRecord()
-    /** Whether the composition started reporting — the `DiagnosticsReporter.start()` observation. */
+    /** Whether the process started reporting — the `CrashReporter.start` observation. */
     val diagnosticsStarted: MutableStateFlow<Boolean> = MutableStateFlow(false)
 
-    /** Every diagnostic dump the composition transmitted, in order (capability `privacy-security`). */
-    val diagnosticsSent: MutableStateFlow<List<DiagnosticDump>> = MutableStateFlow(emptyList())
+    /** Every diagnostic dump the process transmitted, in order, as it left (capability `privacy-security`). */
+    val diagnosticsSent: MutableStateFlow<List<CrashEvent>> = MutableStateFlow(emptyList())
+
+    /**
+     * The app process's own files (the PRIVATE area) — durable across [relaunch], as a device's are. The App-Group
+     * (SHARED) area the other stores model is not held here.
+     */
+    val privateFiles: MutableMap<String, ByteArray> = mutableMapOf()
 
     /** The device logs a dump reads back. Seed one to give the world a log to carry. */
     val deviceLogs: MutableStateFlow<Map<DeviceLogSource.Process, String>> = MutableStateFlow(emptyMap())
@@ -528,6 +540,13 @@ class World(
     private var appScope: CoroutineScope = CoroutineScope(scope.coroutineContext + appJob)
 
     /**
+     * What this launch's process set up first — its crash reporting started (`snapSyncProcess`, every root's first
+     * act). Replaced by [relaunch], with the process.
+     */
+    var process: ProcessServices = appProcess()
+        private set
+
+    /**
      * The core AND the status host over it, from the shared host composition the iOS shell calls (spec
      * `docs/architecture.md`, "One shared composition"). The host is assembled on first touch of [statusHost], which
      * installs the permission-grant subscriptions, exactly as on the phone; a world whose [statusHost] is never
@@ -535,8 +554,37 @@ class World(
      * The push registration is installed as this is composed, on every launch, as on the phone.
      * Replaced by [relaunch], which is the only thing that replaces it.
      */
-    var composed: ComposedApp = snapSyncHost(appScope, appPorts())
+    var composed: ComposedApp = snapSyncHost(appScope, process, appPorts())
         private set
+
+    /**
+     * One app process's per-process services, as its root sets them up: a reporting destination (the world plays a
+     * distributed build), no process metrics (a JVM has no provider), and no log writers installed — Kermit's writer
+     * list is JVM-global, and a world is one of many processes in this JVM.
+     */
+    private fun appProcess(): ProcessServices = snapSyncProcess(
+        ProcessPorts(
+            crashReporter = inMemoryCrashReporter(started = diagnosticsStarted, dumps = diagnosticsSent),
+            processMetrics = ProcessMetrics.None,
+            files = inMemoryFiles(shared = null, private = privateFiles),
+            entryContext = LogScope.NoOp,
+            dsn = WORLD_DSN,
+        ),
+    )
+
+    /**
+     * The upload extension's per-process services — a separate process, with its own channel and nothing observed:
+     * what the world reads is the app's reporting.
+     */
+    fun extensionProcess(): ProcessServices = snapSyncProcess(
+        ProcessPorts(
+            crashReporter = inMemoryCrashReporter(),
+            processMetrics = ProcessMetrics.None,
+            files = inMemoryFiles(shared = null, private = null),
+            entryContext = LogScope.NoOp,
+            dsn = WORLD_DSN,
+        ),
+    )
 
     /**
      * The ports one launch of the app composes over. A function, not a value, because [relaunch] composes a new
@@ -548,11 +596,6 @@ class World(
         // reach. It takes the SAME lane as the composition scope rather than an unconfined default:
         // a lane that means "wherever the caller happened to be" is precisely what this law ends.
         uiLane = scope.coroutineContext[ContinuationInterceptor] ?: EmptyCoroutineContext,
-        diagnosticsReporter = inMemoryDiagnosticsReporter(
-            started = diagnosticsStarted,
-            sent = diagnosticsSent,
-            isConfigured = true,
-        ),
         // A device unlocked since boot: the background entry points record this, and nothing decides on it.
         protectedStorage = inMemoryProtectedStorage(),
         // The device logs a dump reads back (capability `privacy-security`) — empty until an
@@ -641,7 +684,8 @@ class World(
         downloadTransport = null
         cycleOfThisLaunch = null
         uploadPortsOfThisLaunch = null
-        composed = snapSyncHost(appScope, appPorts())
+        process = appProcess()
+        composed = snapSyncHost(appScope, process, appPorts())
     }
 
     /** The REAL app graph — the composition's core (never a world-local rebuild). */
@@ -1036,7 +1080,7 @@ class World(
      * manifest-producer wiring of its own — a wiring difference from production is impossible.
      */
     val cycle: UploadCycle
-        get() = cycleOfThisLaunch ?: uploadCore(appScope, uploadPorts).also { cycleOfThisLaunch = it }
+        get() = cycleOfThisLaunch ?: uploadCore(appScope, process, uploadPorts).also { cycleOfThisLaunch = it }
     private var cycleOfThisLaunch: UploadCycle? = null
 
     /** What [cycle] is built over — the extension tier's inbound port reads its ledger and log from the same bundle. */
@@ -1046,7 +1090,6 @@ class World(
 
     private fun buildUploadPorts(): UploadPorts =
             UploadPorts(
-                diagnosticsReporter = inMemoryDiagnosticsReporter(),
                 // The world composes the app graph on an OS without the OS-driven mechanism, so its one cycle
                 // takes the app process's admission — the same resolution the device app engine gates on.
                 process = UploaderProcess.App({ core.appUploadAdmission() }, { core.photoPermission.value }),
@@ -1178,3 +1221,6 @@ class World(
         }
     }
 }
+
+/** The reporting destination a world's processes carry: a world plays a distributed build, which reports. */
+private const val WORLD_DSN: String = "in-memory://world"

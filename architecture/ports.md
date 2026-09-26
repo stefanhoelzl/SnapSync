@@ -33,6 +33,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `ConfigRefresh` | `:domain:ports` | `:domain:services` ConfigService | no |
 | `ConfigSource` | `:domain:ports` | `:adapter:generic:fake` FakeConfigSource, InMemoryConfigStore; `:domain:feature` FakeConfig, FakeConfigSource; `:domain:services` ConfigService | yes |
 | `ConfigStore` | `:domain:ports` | `:adapter:generic:fake` FakeConfigStore, InMemoryConfigStore; `:domain:feature` FakeConfig, FakeConfigStore; `:domain:services` ConfigService | yes |
+| `CrashReporter` | `:domain:ports` | `:adapter:generic:fake` InMemoryCrashReporter, Recording; `:adapter:ios:ext-safe` SentryCrashReporter | yes |
 | `CreateOutcome` | `:domain:model` | `:domain:model` Created, InvalidName, InvalidWindow, Transient | no |
 | `CreationStatus` | `:domain:feature` | `:domain:feature` Failed, Idle, InFlight | no |
 | `CreationStatusSource` | `:domain:feature` | `:domain:feature` MutableCreationStatusSource | no |
@@ -50,12 +51,12 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `DeviceIntegrity` | `:domain:ports` | `:adapter:generic:fake` FakeKey, InMemoryDeviceIntegrity; `:adapter:ios:ext-safe` IosDeviceIntegrity | yes |
 | `DeviceLogSource` | `:domain:ports` | `:adapter:generic:fake` InMemoryDeviceLogSource; `:domain:services` LogTailService | yes |
 | `DeviceManifestStore` | `:domain:ports` | `:adapter:generic:fake` InMemoryDeviceManifestStore; `:domain:feature` FakeStore; `:domain:services` DeviceManifestService | yes |
-| `DiagnosticsReporter` | `:domain:ports` | `:adapter:generic:fake` InMemoryDiagnosticsReporter; `:adapter:ios:ext-safe` SentryDiagnosticsReporter | yes |
 | `DownloadStatusSource` | `:domain:feature` | `:domain:feature` InMemoryDownloadStatusSource, StoreDownloadStatusSource | yes |
 | `DownloadStore` | `:domain:ports` | `:adapter:generic:fake` InMemoryDownloadStore, PlanCountingStore, ReclaimSpyStore; `:domain:services` DownloadService; `:test:world` RecordingDownloadStore | yes |
 | `DownloadTask` | `:domain:ports` | `:adapter:ios:app-only` IosDownloadTask | no |
 | `DownloadTransport` | `:domain:ports` | `:adapter:ios:app-only` IosDownloadTransport; `:domain:feature` FakeDownloadTransport; `:test:world` FakeDownloadTransport | yes |
 | `DownloadTransportHost` | `:domain:ports` | `:test:contracts` ClauseHost | yes |
+| `DumpResult` | `:domain:model` | `:domain:model` NotSent, Queued | no |
 | `Enter` | `:domain:feature` | `:domain:feature` Join, LeavePrevious | no |
 | `EventCreation` | `:domain:services` | `:domain:feature` FakeClient; `:domain:services` BackendEventCreation | yes |
 | `EventCreator` | `:domain:model` | `:domain:feature` CreateEvent; `:domain:model` NoOpEventCreator; `:domain:presentation` SpyCreator | no |
@@ -101,7 +102,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `PlatformEntries` | `:domain:ports` | `:app:ios` SnapSyncRoot; `:domain:compose` AppEntries | no |
 | `PrefRead` | `:domain:model` | `:domain:model` Absent, Unavailable, Value | no |
 | `Preferences` | `:domain:ports` | `:adapter:generic:fake` InMemoryPreferences; `:adapter:ios:ext-safe` IosPreferences | yes |
-| `ProcessMetricSource` | `:domain:ports` | `:adapter:ios:app-only` MetricKitProcessMetricSource | no |
+| `ProcessMetrics` | `:domain:ports` | `:adapter:generic:fake` HeldReports; `:adapter:ios:app-only` MetricKitProcessMetrics | no |
 | `ProtectedStorage` | `:domain:ports` | `:adapter:generic:fake` InMemoryProtectedStorage; `:adapter:ios:app-only` IosProtectedStorage | yes |
 | `PushReceiver` | `:domain:ports` | `:domain:feature` DownloadPushReceiver | no |
 | `PushRegistrationRecord` | `:domain:ports` | `:adapter:generic:fake` InMemoryPushRegistrationRecord; `:adapter:ios:app-only` IosPushRegistrationRecord; `:domain:feature` FakeRecord | yes |
