@@ -4,6 +4,14 @@ import app.snapsync.model.AlbumId
 import app.snapsync.model.AlbumRecord
 import app.snapsync.model.AssetFacts
 import app.snapsync.model.AssetId
+import app.snapsync.model.AssetRef
+import app.snapsync.model.ImportRequest
+import app.snapsync.model.ImportResult
+import app.snapsync.model.RawResource
+import app.snapsync.model.ResourceRole
+import app.snapsync.model.StagedResource
+import app.snapsync.model.importFilename
+import app.snapsync.model.normalizeAssetId
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.GalleryRead
@@ -14,6 +22,7 @@ import app.snapsync.model.WriteOutcome
 import app.snapsync.model.grantsPhotoAccess
 import app.snapsync.model.toFacts
 import app.snapsync.ports.Gallery
+import app.snapsync.ports.GalleryHandlers
 import app.snapsync.ports.LibraryChangeToken
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -37,16 +46,50 @@ import kotlinx.coroutines.flow.StateFlow
  *   the other apps' albums `user-album:<title>`.
  * - [requestAccess] applies [answer] **only while the grant is undetermined**, because a platform asks once. The
  *   selection picker has no surface off device and changes nothing.
+ * - **An import is two-phase, exactly like the real adapter**: the placeholder reaches `onImportPlaceholder` inside
+ *   the "change block", before the asset is observable, and the outcome reaches `onImportSettled` before [import]
+ *   returns. [answers] is how the library answers each change (see [LibraryChangeAnswers]). **Every import mints a
+ *   fresh identifier**, as `PHAssetCreationRequest` does, counted before anything can fail, so a repeat import
+ *   never lands on an earlier import's handle; the first keeps the bare form `imported-<device>-<asset>`. An import
+ *   that lands adds its asset to [library].
+ * - There is no selection here, so the observer never emits; a test plays the selection through the handlers it
+ *   registered.
  * - A change token is the library **value** it was read at: every change to [library] replaces that value, so a
  *   token read after it never compares equal to one read before. Identity of the held value is the comparison on
  *   purpose — a content comparison would call a remove-then-restore "unchanged", which the platform does not.
  */
 internal class InMemoryGallery(
-    private val library: StateFlow<List<RawAsset>>,
+    private val library: MutableStateFlow<List<RawAsset>>,
     private val access: MutableStateFlow<GalleryAccess>,
     private val userAlbums: StateFlow<Map<String, Set<AssetId>>>,
     private val answer: GalleryAccess,
+    private val answers: LibraryChangeAnswers,
 ) : Gallery {
+
+    private var handlers: GalleryHandlers? = null
+    private val attempts = mutableMapOf<AssetRef, Int>()
+
+    override fun listen(handlers: GalleryHandlers) {
+        this.handlers = handlers
+    }
+
+    override fun observeChanges(enabled: Boolean) = Unit
+
+    override suspend fun import(request: ImportRequest): ImportResult {
+        val handlers = checkNotNull(handlers) { "an import before listen has nowhere to record its marker" }
+        val ref = request.ref
+        val attempt = attempts.getOrElse(ref) { 0 } + 1
+        attempts[ref] = attempt
+        fun settle(outcome: ImportResult) = outcome.also { handlers.onImportSettled(ref, it) }
+        answers.beforeChange(ref)?.let { return settle(ImportResult.Failed(it)) }
+        val suffix = if (attempt == 1) "" else "-$attempt"
+        val createdLocalId = normalizeAssetId("imported-${ref.sourceDeviceId}-${ref.sourceAssetId}$suffix")
+        handlers.onImportPlaceholder(ref, createdLocalId)
+        answers.beforeCommit(ref)?.let { return settle(ImportResult.Failed(it, placeholder = createdLocalId)) }
+        library.value = library.value + createdAsset(createdLocalId, request.resources, request.creationDate)
+        answers.afterCommit(ref)?.let { return settle(ImportResult.Failed(it, placeholder = createdLocalId)) }
+        return settle(ImportResult.Imported(createdLocalId))
+    }
 
     private class Album(val title: String, val members: MutableSet<AssetId> = mutableSetOf())
 
@@ -114,6 +157,21 @@ internal class InMemoryGallery(
 
     private inline fun <T> readable(read: () -> T): GalleryRead<T> =
         if (access.value.grantsPhotoAccess) GalleryRead.Read(read()) else GalleryRead.NotReadable
+
+    private fun createdAsset(id: String, resources: List<StagedResource>, creationDate: String) = RawAsset(
+        assetId = id,
+        creationDate = creationDate,
+        rawResources = resources.map { staged ->
+            RawResource(
+                role = if (staged.role == ResourceRole.LIVE.wire) ResourceRole.LIVE else ResourceRole.PRIMARY,
+                mimeContentType = staged.contentType,
+                // The SAME naming rule the iOS importer applies (`importFilename`), so an in-memory library
+                // cannot show a human name where a device would show a storage key.
+                originalFilename = importFilename(staged.originalFilename, staged.resourceKey),
+                handle = Unit,
+            )
+        },
+    )
 
     private class Token(private val readAt: List<RawAsset>) : LibraryChangeToken {
         override fun sameLibraryAs(other: LibraryChangeToken): Boolean = other is Token && other.readAt === readAt

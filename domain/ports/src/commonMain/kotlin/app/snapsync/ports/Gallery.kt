@@ -4,11 +4,15 @@ import app.snapsync.model.AlbumId
 import app.snapsync.model.AlbumRecord
 import app.snapsync.model.AssetFacts
 import app.snapsync.model.AssetId
+import app.snapsync.model.AssetRef
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.GalleryRead
+import app.snapsync.model.ImportRequest
+import app.snapsync.model.ImportResult
 import app.snapsync.model.RawAsset
 import app.snapsync.model.SelectionPolicy
+import app.snapsync.model.SelectionSnapshot
 import app.snapsync.model.WriteOutcome
 
 /**
@@ -77,10 +81,57 @@ interface GalleryReader {
 }
 
 /**
- * The app's gallery: the [GalleryReader] plus what only the foreground process may do — ask for access, hand
- * the member the platform's selection picker, and read the library's change token for the walk memo.
+ * What the app's gallery tells the core (`docs/architecture.md`, the handler table). Each runs on the gallery's
+ * delivering thread and must return promptly.
  */
-interface Gallery : GalleryReader, LibraryChangeTokenRead {
+class GalleryHandlers(
+    /**
+     * The whole selection under a partial grant, once when observation begins (the cold-launch baseline) and once
+     * per change — only while [Gallery.observeChanges] is on and the grant is partial. **Conflated**: only the latest
+     * snapshot matters, so a handler hands it on rather than doing the work in place.
+     */
+    val onChanged: (SelectionSnapshot) -> Unit,
+    /**
+     * The asset an import is creating, called INSIDE the platform's change block — before the asset can be
+     * observed — so the marker that keeps it from being uploaded back lands first (capability `receiving-photos`).
+     * The write is synchronous, on the delivering thread. If a change block runs again, the last call wins.
+     */
+    val onImportPlaceholder: (AssetRef, AssetId) -> Unit,
+    /**
+     * An import's outcome, once, from the platform's completion — which runs even when the requester is gone, so
+     * the outcome is persisted here, inline, and never only returned (`docs/architecture.md`, "A delivery the
+     * platform makes once is persisted before the entry point returns").
+     */
+    val onImportSettled: (AssetRef, ImportResult) -> Unit,
+)
+
+/**
+ * Rebuilding one foreign asset in the gallery (capability `receiving-photos`) — the one [Gallery] member the
+ * download feature needs, on its own so the feature names nothing else of the app's gallery.
+ */
+interface GalleryImport {
+    /**
+     * Create one asset from [request]'s staged resources in one platform transaction. The placeholder and the
+     * outcome reach the registered [GalleryHandlers] (`onImportPlaceholder` inside the change, `onImportSettled` on
+     * the completion); this returns the same outcome, only after `onImportSettled` has **returned**. Nothing bounds
+     * the wait: an import the platform never reports never returns (capability `receiving-photos`).
+     */
+    suspend fun import(request: ImportRequest): ImportResult
+}
+
+/**
+ * The app's gallery: the [GalleryReader] plus what only the foreground process may do — ask for access, hand
+ * the member the platform's selection picker, observe a partial grant's selection, import foreign photos, and read
+ * the library's change token for the walk memo. What it observes arrives through [listen].
+ */
+interface Gallery : GalleryReader, LibraryChangeTokenRead, GalleryImport, Listenable<GalleryHandlers> {
+
+    /**
+     * Open ([enabled]) or close the selection observer. Open, it observes **only while the grant is partial** — a
+     * baseline snapshot when observation begins and one per change after — and closes by itself when the grant
+     * moves away. Called only from host assembly, so a background wake that never builds the screen reads nothing.
+     */
+    fun observeChanges(enabled: Boolean)
 
     /**
      * Ask the member for access and answer the grant that results. With no visible screen to ask on it asks

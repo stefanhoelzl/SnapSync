@@ -14,7 +14,8 @@ import app.snapsync.feature.download.DownloadPushReceiver
 import app.snapsync.ports.EventUnionSource
 import app.snapsync.model.ImportResult
 import app.snapsync.ports.PhotoDownloadJobs
-import app.snapsync.ports.PhotoLibraryImporter
+import app.snapsync.model.ImportRequest
+import app.snapsync.ports.GalleryImport
 import app.snapsync.ports.UnionAsset
 
 import app.snapsync.model.AssetRef
@@ -47,8 +48,8 @@ class DownloadPushReceiverTest {
         override suspend fun cancelAll() {}
     }
 
-    private class NoopImporter : PhotoLibraryImporter {
-        override suspend fun import(ref: AssetRef, resources: List<StagedResource>, creationDate: String, album: String?) =
+    private class NoopImporter : GalleryImport {
+        override suspend fun import(request: ImportRequest) =
             ImportResult.Imported("LOCAL")
     }
 

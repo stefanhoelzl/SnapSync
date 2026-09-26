@@ -14,8 +14,8 @@ import app.snapsync.contracts.PhotoAccess
 import app.snapsync.contracts.PhotoAccessContract
 import app.snapsync.contracts.PhotoAccessState
 import app.snapsync.contracts.PhotoLibrary
-import app.snapsync.contracts.PhotoLibraryImporterContract
-import app.snapsync.contracts.PhotoLibraryImporterState
+import app.snapsync.contracts.GalleryImportContract
+import app.snapsync.contracts.GalleryImportState
 import app.snapsync.contracts.SEED_COUNT
 import app.snapsync.contracts.SeededLibrary
 import app.snapsync.contracts.StagedImport
@@ -27,7 +27,9 @@ import app.snapsync.model.RawAsset
 import app.snapsync.model.RawResource
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.StagedResource
+import app.snapsync.ports.GalleryHandlers
 import app.snapsync.ports.GalleryReader
+import app.snapsync.model.ImportResult
 import kotlin.test.Test
 import kotlinx.coroutines.flow.MutableStateFlow
 
@@ -86,23 +88,18 @@ class PhotoContractBindingsTest {
         }
     }
 
-    private val importer = object : Binding<PhotoLibraryImporterState, StagedImport> {
+    private val importer = object : Binding<GalleryImportState, StagedImport> {
         override val host = currentHost
         override val kind = BindingKind.Fake
-        override val reaches = setOf(PhotoLibraryImporterState.GRANTED_VALID_STAGED)
+        override val reaches = setOf(GalleryImportState.GRANTED_VALID_STAGED)
 
-        override fun create(state: PhotoLibraryImporterState, clauseId: String): Entered<StagedImport> {
-            if (state == PhotoLibraryImporterState.GRANTED_INVALID_STAGED) {
+        override fun create(state: GalleryImportState, clauseId: String): Entered<StagedImport> {
+            if (state == GalleryImportState.GRANTED_INVALID_STAGED) {
                 return Entered.Unreachable("an in-memory library holds no bytes, so it cannot find one undecodable")
             }
             val library = MutableStateFlow<List<RawAsset>>(emptyList())
             val markers = mutableMapOf<AssetRef, MarkerState>()
-            val importer = inMemoryPhotoLibraryImporter(
-                library = library,
-                recordCreatedLocalId = { ref, _ -> markers[ref] = MarkerState.RECORDED; true },
-                clearCreatedLocalId = { ref, _ -> markers[ref] = MarkerState.CLEARED },
-                confirmCreatedLocalId = { ref, _ -> markers[ref] = MarkerState.CONFIRMED },
-            )
+            val importer = inMemoryGallery(library).apply { listen(markerHandlers(markers)) }
             val observed = object : ImportedLibrary {
                 override suspend fun captureDate(id: String): String? =
                     library.value.firstOrNull { it.facts.assetId == id }?.creationDate
@@ -123,6 +120,18 @@ class PhotoContractBindingsTest {
             return Entered.Ready(StagedImport(importer, staged, observed))
         }
     }
+
+    /** Import handlers that record where each ref's marker stands — what a clause observes. */
+    private fun markerHandlers(markers: MutableMap<AssetRef, MarkerState>) = GalleryHandlers(
+        onChanged = {},
+        onImportPlaceholder = { ref, _ -> markers[ref] = MarkerState.RECORDED },
+        onImportSettled = { ref, outcome ->
+            when (outcome) {
+                is ImportResult.Imported -> markers[ref] = MarkerState.CONFIRMED
+                is ImportResult.Failed -> if (outcome.placeholder != null) markers[ref] = MarkerState.CLEARED
+            }
+        },
+    )
 
     private val gallery = object : Binding<GalleryState, GalleryChange> {
         override val host = currentHost
@@ -153,6 +162,6 @@ class PhotoContractBindingsTest {
         verify(PhotoAccessContract, photoAccess)
 
     @Test
-    fun `the in-memory importer satisfies the PhotoLibraryImporter contract`() =
-        verify(PhotoLibraryImporterContract, importer)
+    fun `the in-memory gallery satisfies the GalleryImport contract`() =
+        verify(GalleryImportContract, importer)
 }

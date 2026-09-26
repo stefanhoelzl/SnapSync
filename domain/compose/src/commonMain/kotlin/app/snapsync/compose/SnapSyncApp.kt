@@ -49,6 +49,9 @@ import app.snapsync.flow.Provision
 import app.snapsync.flow.SilentPush
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.selectionPolicyFor
+import app.snapsync.model.SelectionSnapshot
+import app.snapsync.model.resourcesFrom
+import kotlinx.coroutines.channels.Channel
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.EventConfig
@@ -69,6 +72,7 @@ import app.snapsync.ports.TimeZoneSource
 import app.snapsync.ports.AlbumManager
 import app.snapsync.ports.CandidateSource
 import app.snapsync.ports.Gallery
+import app.snapsync.ports.GalleryHandlers
 import app.snapsync.ports.ImportedAssetPresence
 import app.snapsync.services.gallery.GalleryAlbums
 import app.snapsync.services.gallery.GalleryAssetPresence
@@ -98,8 +102,6 @@ import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.model.Handoff
 import app.snapsync.ports.PlatformHandoff
 import app.snapsync.ports.StagedBytes
-import app.snapsync.ports.PhotoLibraryImporter
-import app.snapsync.ports.PhotoSelectionChangeSource
 import app.snapsync.ports.invocation
 import co.touchlab.kermit.Logger
 import app.snapsync.ports.ProtectedStorage
@@ -162,7 +164,6 @@ class AppPorts(
      *  join marker tying the two to an event. Read-only in this graph: see [UploadRecordPorts]. */
     val uploadRecord: UploadRecordPorts,
     val downloadStore: DownloadStore,
-    val importer: PhotoLibraryImporter,
     /**
      * Where downloaded bytes are staged, and who releases them once their row settles (capability
      * `receiving-photos`).
@@ -273,10 +274,6 @@ class AppPorts(
      *  flow re-reads before acting — cross-process writes and a pre-first-unlock seed never notify
      *  this process's StateFlow). A port: on iOS it is an App-Group file read. */
     val configRefresh: ConfigRefresh,
-
-    /** Selection snapshots under a partial grant (capability `photo-access`); the inert default
-     *  serves every composition that never sees one (world by default, desktop harnesses). */
-    val selectionChanges: PhotoSelectionChangeSource = PhotoSelectionChangeSource.None,
 
     val log: Logger,
     /** The ambient-context seam the tier-neutral features drive so their device-log lines carry the
@@ -451,7 +448,7 @@ class AppCore internal constructor(
             union = ports.union,
             store = ports.downloadStore,
             jobs = downloadJobs,
-            importer = ports.importer,
+            importer = ports.gallery,
             presence = assetPresence,
             // The import-time album: the membership's opt-in gate is the coordinator's rule (capability
             // `event-album`); this only reads the current membership's facts.
@@ -685,6 +682,14 @@ class AppCore internal constructor(
     // no stored mode can go stale across a permission flip. `null` is "not read yet", which is NOT an empty
     // selection: it derives `SelectionScope.Unread`, and the app's upload admission withholds on it.
     private val latestSelectionSnapshot = MutableStateFlow<List<Resource>?>(null)
+
+    // The gallery's selection snapshots, handed over by its `onChanged` handler. CONFLATED: each is the whole
+    // selection, so an unconsumed older one is superseded — and one that arrives before the collector below runs
+    // is kept for it, never dropped (the baseline a background-launched, later-foregrounded process used to lose).
+    private val selectionChanges = Channel<SelectionSnapshot>(Channel.CONFLATED)
+
+    /** What the gallery tells this core — registered by the host zone's `listen` (see [galleryHandlers]). */
+    val galleryHandlers: GalleryHandlers = galleryHandlers(ports.downloadStore, ports.log, selectionChanges)
 
     /**
      * What upload discovery may read right now (consumed by the tier controllers' `uploadCore` ports).
@@ -1117,13 +1122,15 @@ class AppCore internal constructor(
             // the cell feeds the cycle's discovery AND backs the permission-aware candidate source, so
             // `refresh` recounts N over the very same snapshot — no second library read on this path, and
             // no snapshot-specific entry point for the total to drift through.
-            ports.selectionChanges.snapshots.collect { snapshot ->
-                latestSelectionSnapshot.value = snapshot
+            for (snapshot in selectionChanges) {
+                latestSelectionSnapshot.value = resourcesFrom(snapshot.assets)
                 ports.configSource.config.value?.let { cfg -> gallery.refresh(selectionPolicyForMembership(cfg)) }
                 // Its own work — the snapshot-fed discovery → manifest — then the tail (① and ② from the snapshot).
                 tail.onSelectionChanged()
             }
         }
+        // The selection observer opens here and nowhere else: a wake that never assembles the host reads nothing.
+        ports.gallery.observeChanges(true)
         // The event album's grant subscription: ensure the album, then let the gather judge the emission.
         scope.launchAlbumGrantSubscription(ports, albumCoordinator, albumGather)
         scope.launch {

@@ -2,7 +2,6 @@ package app.snapsync.fake
 
 import app.snapsync.model.DiagnosticDump
 import app.snapsync.model.EventConfig
-import app.snapsync.model.Resource
 import app.snapsync.ports.AlbumMapStore
 import app.snapsync.ports.AttestClient
 import app.snapsync.ports.AttestKey
@@ -16,11 +15,9 @@ import app.snapsync.ports.DiagnosticsReporter
 import app.snapsync.ports.DownloadStore
 import app.snapsync.ports.GalleryStatusSource
 import app.snapsync.ports.LedgerStore
-import app.snapsync.ports.PhotoSelectionChangeSource
 import app.snapsync.ports.ProtectedStorage
 import app.snapsync.ports.PushRegistrationRecord
 import app.snapsync.ports.StagedBytes
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
@@ -93,10 +90,6 @@ fun inMemoryGalleryStatusSource(state: MutableStateFlow<Set<String>?>): GalleryS
 
 fun inMemoryGalleryStatusSource(initial: Set<String>? = null): GalleryStatusSource =
     InMemoryGalleryStatusSource(initial)
-
-fun inMemoryPhotoSelectionChangeSource(
-    cell: MutableSharedFlow<List<Resource>>,
-): PhotoSelectionChangeSource = InMemoryPhotoSelectionChangeSource(cell)
 
 fun inMemoryDeviceLogSource(
     logs: MutableStateFlow<Map<DeviceLogSource.Process, String>>,

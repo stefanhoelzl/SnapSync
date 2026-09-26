@@ -48,7 +48,6 @@ Roots found:
 | `IosGallery` | x | |
 | `IosGalleryReader` | x | x |
 | `IosLinkOpener` | x | |
-| `IosPhotoLibraryImporter` | x | |
 | `IosPreferences` | x | x |
 | `IosProtectedStorage` | x | |
 | `IosPushRegistrationRecord` | x | |
@@ -60,7 +59,6 @@ Roots found:
 | `OsDrivenRegistration` | x | |
 | `PersistedDeviceIdentity` | x | x |
 | `PhotoLibraryPermission` | x | |
-| `PhotoSelectionSnapshotSource` | x | |
 | `PlatformHandoff` | x | |
 | `ProcessMetricHandler` | x | |
 | `PublicNSLogWriter` | x | x |

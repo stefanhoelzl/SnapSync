@@ -3,10 +3,11 @@ package app.snapsync.feature.download
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.EventUnionSource
 import app.snapsync.model.AlbumId
+import app.snapsync.model.ImportRequest
 import app.snapsync.model.ImportResult
 import app.snapsync.ports.PhotoDownloadJobs
 import app.snapsync.ports.ImportedAssetPresence
-import app.snapsync.ports.PhotoLibraryImporter
+import app.snapsync.ports.GalleryImport
 
 import app.snapsync.model.AssetPresence
 import app.snapsync.model.AssetRef
@@ -33,7 +34,7 @@ class DownloadController(
     private val union: EventUnionSource,
     private val store: DownloadStore,
     private val jobs: PhotoDownloadJobs,
-    private val importer: PhotoLibraryImporter,
+    private val importer: GalleryImport,
     // Adjudicates a row whose asset was created but whose import was never confirmed (capability
     // `receiving-photos`). Required, with no default: a permissive stand-in would answer "absent" for
     // assets that exist, clear their markers, and re-import them — which is the defect this guard is
@@ -456,7 +457,7 @@ class DownloadController(
      * an import that entered and never exited is visible only as an entry line with no matching exit, and
      * that line is the sole evidence a library stalled.
      *
-     * The claim is released when the library REPORTS — i.e. when [PhotoLibraryImporter.import] **returns**,
+     * The claim is released when the library REPORTS — i.e. when [GalleryImport.import] **returns**,
      * whether imported or an observed failure. Nothing else releases it, and that is deliberate:
      *
      *  - **returns** → the library reported → release.
@@ -476,7 +477,7 @@ class DownloadController(
         log.invocation(logScope, "import", params = "asset=${claimed.ref.sourceAssetId}") {
             val ref = claimed.ref
             // No try/catch: a throw leaves the ref claimed and propagates. See the KDoc above.
-            val result = importer.import(ref, claimed.resources, claimed.creationDate, eventAlbum())
+            val result = importer.import(ImportRequest(ref, claimed.resources, claimed.creationDate, eventAlbum()))
             mutex.withLock {
                 when (result) {
                     is ImportResult.Imported -> {

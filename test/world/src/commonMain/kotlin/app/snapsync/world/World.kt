@@ -37,7 +37,6 @@ import app.snapsync.fake.inMemoryPushRegistrationRecord
 import app.snapsync.fake.inMemoryDiagnosticsReporter
 import app.snapsync.fake.inMemoryDownloadStore
 import app.snapsync.fake.inMemoryLedgerStore
-import app.snapsync.fake.inMemoryPhotoSelectionChangeSource
 import app.snapsync.fake.inMemoryStagedBytes
 import app.snapsync.fake.inMemoryBackgroundTime
 import app.snapsync.fake.HeldBackgroundTime
@@ -268,16 +267,13 @@ class World(
      */
     private val downloadSession: MutableList<FakeDownloadTransport.Started> = mutableListOf()
 
-    // Wired to the store exactly as the iOS shell wires the real importer: the marker is written from
-    // inside the "change block", before the created asset is observable. Without this the world cannot
-    // reach an unconfirmed row — a marker written, the confirmation never arriving — which is the state
-    // the duplicate-import defect lives in (capability `receiving-photos`).
-    val importer: FakePhotoLibraryImporter = FakePhotoLibraryImporter(
-        gallery = gallery,
-        recordCreatedLocalId = { ref, id -> downloadStore.recordCreatedLocalId(ref, id) },
-        clearCreatedLocalId = { ref, id -> downloadStore.clearCreatedLocalId(ref, id) },
-        confirmCreatedLocalId = { ref, id -> downloadStore.confirmCreatedLocalId(ref, id) },
-    )
+    /**
+     * The import rigging — the operator's script for how the library answers a change, and what was imported. The
+     * marker writes are the composed core's own gallery handlers, exactly as on a device: the marker lands from
+     * inside the "change block", before the created asset is observable. Without that the world could not reach an
+     * unconfirmed row — the state the duplicate-import defect lives in (capability `receiving-photos`).
+     */
+    val importer: WorldImports get() = gallery.imports
     /**
      * The world's "disk" for staged download bytes (capability `receiving-photos`). Real enough to assert
      * the property that matters — bytes SURVIVE a failed, abandoned or unconfirmed import and vanish only
@@ -338,10 +334,6 @@ class World(
     /** The device logs a dump reads back. Seed one to give the world a log to carry. */
     val deviceLogs: MutableStateFlow<Map<DeviceLogSource.Process, String>> = MutableStateFlow(emptyMap())
 
-    // Selection snapshots under a partial grant (capability `photo-access`): the honest fake
-    // over an operator-held cell. Emitting IS the operator lever (see [changeSelection]); replay 0 —
-    // a snapshot is a change notification, not a state the composition may re-collect.
-    private val selectionChangesCell = MutableSharedFlow<List<Resource>>()
     val albumMapStore = app.snapsync.fake.inMemoryAlbumMapStore()
 
     /**
@@ -605,7 +597,6 @@ class World(
         configStore = configStore,
         photoAccess = permission,
         photoAccessRequester = requester,
-        selectionChanges = inMemoryPhotoSelectionChangeSource(selectionChangesCell),
         // The operator plays the OS: nothing uploads on its own. A selection change updates the cell + N and
         // reaches the world uploader's inert units (`OperatorUploadEngine`), counted; the operator invokes the
         // cycle by hand, exactly like every other world trigger.
@@ -620,7 +611,6 @@ class World(
         // Staging root AND release, one port: the world's staged paths are built from the same
         // root the fake reports, exactly as the App-Group container is on device.
         stagedBytes = stagedBytes,
-        importer = importer,
         newDownloadTransport = { transportHost ->
             FakeDownloadTransport(transportHost, stagedFiles, downloadSession).also { downloadTransport = it }
         },
@@ -716,26 +706,15 @@ class World(
     suspend fun refreshStatus() = core.refreshStatusSources()
 
     /**
-     * Operator lever (capability `photo-access`): the user changed the photo selection under a
-     * partial grant to exactly [assetIds]. Mirrors the iOS adapter faithfully: the snapshot is the
-     * selected assets' resources mapped through the SAME enumerator seam
-     * (`PhotoLibrary.resources(ids, "")` — the empty cutoff admits every asset; the policy filters
-     * downstream), emitted whole through the honest fake. Deliver with the scheduler (e.g.
-     * `runCurrent`) before asserting — the collector recounts N and updates the cycle's scope cell.
+     * Operator lever (capability `photo-access`): the user changed the photo selection under a partial grant to
+     * exactly [assetIds] — delivered through the gallery's registered handler, as the real observer delivers one:
+     * the whole selection, with its resources. The observer must be open (host assembly opens it), or this fails
+     * loudly. Deliver with the scheduler (e.g. `runCurrent`) before asserting — the core recounts N and updates the
+     * cycle's scope cell.
      */
-    suspend fun changeSelection(vararg assetIds: String) {
-        // The composition's collector is a host-assembly launch (`installPermissionSubscriptions`);
-        // await its subscription so an emission is never dropped into a not-yet-collected flow. A
-        // world that never installed the host wiring hangs here — deliberately loud, since the lever
-        // would otherwise silently do nothing.
-        selectionChangesCell.subscriptionCount.first { it > 0 }
-        // The sanctioned read the real snapshot source makes: eager, WITH resources (capability
-        // `photo-access` — deferring it would need a re-fetch by identifier later, an autonomous
-        // library fetch the read discipline forbids). Unscoped here because the selection IS the scope.
+    fun changeSelection(vararg assetIds: String) {
         val wanted = assetIds.toSet()
-        selectionChangesCell.emit(
-            gallery.current().filter { normalizeAssetId(it.assetId) in wanted }.flatMap { resourcesFrom(listOf(it)) },
-        )
+        gallery.changeSelection(gallery.current().filter { normalizeAssetId(it.assetId) in wanted })
     }
 
     // ---- device model + operator gallery actions ------------------------------------------------

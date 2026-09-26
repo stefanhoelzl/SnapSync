@@ -73,7 +73,7 @@ object PhotoLibrary {
     val contracts: List<Contract<*, *>> by lazy {
         listOf(
             GalleryReaderContract,
-            PhotoLibraryImporterContract,
+            GalleryImportContract,
             // Its clauses seed the photos they upload.
             BackgroundTransferContract,
             // Its change clause seeds one photo to move the library's token.

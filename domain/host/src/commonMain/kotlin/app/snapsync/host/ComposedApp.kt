@@ -44,6 +44,9 @@ class ComposedApp internal constructor(
  * touch of [ComposedApp.host] — the host-assembly subscriptions and the status host, observing every read-model the
  * core exposes.
  *
+ * The gallery's handlers are registered here too, on composition, for the same reason: an import finishing in a
+ * background wake must find them. Registering starts nothing — the selection observer opens at host assembly.
+ *
  * The push registration is installed HERE, on composition, rather than at host assembly: a process composes its
  * graph on every cold start — the first operating-system entry that reaches the core does it, foreground or
  * background — while it assembles its host only on a foreground launch. A rotated APNs token or a renewed credential
@@ -57,6 +60,9 @@ class ComposedApp internal constructor(
  */
 fun snapSyncHost(scope: CoroutineScope, ports: AppPorts): ComposedApp {
     val core = snapSyncApp(scope, ports)
+    // The event ports' ONE registration each, on composition — a background wake's import needs its handlers as much
+    // as a foreground launch does. `listen` only registers: the selection observer opens at host assembly below.
+    ports.gallery.listen(core.galleryHandlers)
     core.installPushRegistration()
     val formatter = CutoffFormatter(now = ports.displayClock::now, zone = ports.timeZone.current())
     return ComposedApp(core, ports, formatter) {

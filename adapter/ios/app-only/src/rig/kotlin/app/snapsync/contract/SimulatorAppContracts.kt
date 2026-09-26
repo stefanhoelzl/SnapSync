@@ -27,8 +27,8 @@ import app.snapsync.contracts.PhotoAccess
 import app.snapsync.contracts.PhotoAccessContract
 import app.snapsync.contracts.PhotoAccessState
 import app.snapsync.contracts.PhotoLibrary
-import app.snapsync.contracts.PhotoLibraryImporterContract
-import app.snapsync.contracts.PhotoLibraryImporterState
+import app.snapsync.contracts.GalleryImportContract
+import app.snapsync.contracts.GalleryImportState
 import app.snapsync.contracts.ProtectedStorageContract
 import app.snapsync.contracts.ProtectedStorageState
 import app.snapsync.contracts.SEED_COUNT
@@ -37,7 +37,10 @@ import app.snapsync.contracts.SharePresenterContract
 import app.snapsync.contracts.StagedImport
 import app.snapsync.contracts.currentHost
 import app.snapsync.contracts.simulatorAppContract
-import app.snapsync.download.IosPhotoLibraryImporter
+import app.snapsync.model.ImportResult
+import app.snapsync.ports.GalleryHandlers
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import app.snapsync.gallery.currentPhotoPermission
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.ResourceRole
@@ -88,7 +91,7 @@ fun simulatorAppContracts(): List<InAppContract> = listOf(
     simulatorAppContract(GalleryReaderContract, SimAppGalleryReaderBinding(), ::refusal),
     simulatorAppContract(GalleryContract, SimAppGalleryBinding(), ::refusal),
     simulatorAppContract(PhotoAccessContract, SimAppPhotoAccessBinding(), ::refusal),
-    simulatorAppContract(PhotoLibraryImporterContract, SimAppImporterBinding(), ::refusal),
+    simulatorAppContract(GalleryImportContract, SimAppImporterBinding(), ::refusal),
     simulatorAppContract(ProtectedStorageContract, SimAppProtectedStorageBinding(), ::hostRefusal),
     simulatorAppContract(LinkOpenerContract, SimAppLinkOpenerBinding(), ::hostRefusal),
     simulatorAppContract(SharePresenterContract, SimAppSharePresenterBinding(), ::hostRefusal),
@@ -135,6 +138,10 @@ private fun seedPhotos(seedDate: String): List<String> = memScoped {
     created
 }
 
+/** The app's real gallery, as a contract run builds it: its own scope, never the app's. */
+private fun contractGallery(): IosGallery =
+    IosGallery(IosGalleryReader(Logger.withTag("contract")), PhotoLibraryPermission(), CoroutineScope(Dispatchers.Default))
+
 private fun ByteArray.toNSData(): NSData = usePinned { NSData.create(bytes = it.addressOf(0), length = size.toULong()) }
 
 class SimAppGalleryReaderBinding : Binding<GalleryReaderState, SeededLibrary<GalleryReader>> {
@@ -164,8 +171,7 @@ class SimAppGalleryBinding : Binding<GalleryState, GalleryChange> {
 
     override fun create(state: GalleryState, clauseId: String): Entered<GalleryChange> {
         val seedDate = PhotoLibrary.window(GalleryContract.name, clauseId).seedDate
-        val gallery = IosGallery(IosGalleryReader(Logger.withTag("contract")), PhotoLibraryPermission())
-        return Entered.Ready(GalleryChange(gallery) { seedPhotos(seedDate) })
+        return Entered.Ready(GalleryChange(contractGallery()) { seedPhotos(seedDate) })
     }
 }
 
@@ -181,26 +187,34 @@ class SimAppPhotoAccessBinding : Binding<PhotoAccessState, PhotoAccess> {
     }
 }
 
-class SimAppImporterBinding : Binding<PhotoLibraryImporterState, StagedImport> {
+class SimAppImporterBinding : Binding<GalleryImportState, StagedImport> {
     override val host = Host.IOS_SIM_APP
     override val kind = BindingKind.Live
     override val reaches = setOf(
-        PhotoLibraryImporterState.GRANTED_VALID_STAGED,
-        PhotoLibraryImporterState.GRANTED_INVALID_STAGED,
+        GalleryImportState.GRANTED_VALID_STAGED,
+        GalleryImportState.GRANTED_INVALID_STAGED,
     )
 
-    override fun create(state: PhotoLibraryImporterState, clauseId: String): Entered<StagedImport> {
+    override fun create(state: GalleryImportState, clauseId: String): Entered<StagedImport> {
         val bytes = when (state) {
-            PhotoLibraryImporterState.GRANTED_VALID_STAGED -> PhotoLibrary.jpeg
-            PhotoLibraryImporterState.GRANTED_INVALID_STAGED -> PhotoLibrary.notAnImage
+            GalleryImportState.GRANTED_VALID_STAGED -> PhotoLibrary.jpeg
+            GalleryImportState.GRANTED_INVALID_STAGED -> PhotoLibrary.notAnImage
         }
         val markers = mutableMapOf<AssetRef, MarkerState>()
-        val importer = IosPhotoLibraryImporter(
-            recordCreatedLocalId = { ref, _ -> markers[ref] = MarkerState.RECORDED; true },
-            clearCreatedLocalId = { ref, _ -> markers[ref] = MarkerState.CLEARED },
-            confirmCreatedLocalId = { ref, _ -> markers[ref] = MarkerState.CONFIRMED },
-            log = Logger.withTag("contract"),
-        )
+        val importer = contractGallery().apply {
+            listen(
+                GalleryHandlers(
+                    onChanged = {},
+                    onImportPlaceholder = { ref, _ -> markers[ref] = MarkerState.RECORDED },
+                    onImportSettled = { ref, outcome ->
+                        when (outcome) {
+                            is ImportResult.Imported -> markers[ref] = MarkerState.CONFIRMED
+                            is ImportResult.Failed -> if (outcome.placeholder != null) markers[ref] = MarkerState.CLEARED
+                        }
+                    },
+                ),
+            )
+        }
         var staged = 0
         val stage = {
             staged++

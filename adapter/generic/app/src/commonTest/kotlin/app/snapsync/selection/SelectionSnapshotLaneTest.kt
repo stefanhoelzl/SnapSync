@@ -33,7 +33,7 @@ import kotlin.test.assertTrue
 class SelectionSnapshotLaneTest {
 
     /** A selection is a list of ids; a change appends one. The baseline can be held open by a test. */
-    private class FakePlatform(private val initial: List<String>) : SelectionPlatform<List<String>, String> {
+    private class FakePlatform(private val initial: List<String>) : SelectionPlatform<List<String>, String, List<Resource>> {
         var onChange: ((String) -> Unit)? = null
         var stops = 0
         var baselineGate: CompletableDeferred<Unit>? = null
@@ -90,7 +90,7 @@ class SelectionSnapshotLaneTest {
                 scope,
                 Dispatchers.Default.limitedParallelism(1),
                 platform,
-            )
+            ).apply { observe(true) }
             val collecting = scope.launch(UnconfinedTestDispatcher()) { lane.snapshots.collect { seen += it.ids() } }
             withTimeout(5_000) { while (platform.onChange == null || seen.isEmpty()) kotlinx.coroutines.yield() }
 
@@ -112,7 +112,7 @@ class SelectionSnapshotLaneTest {
         val lane = StandardTestDispatcher(testScheduler)
         val scope = CoroutineScope(lane + Job())
         val platform = FakePlatform(listOf("base")).apply { baselineGate = CompletableDeferred() }
-        val source = SelectionSnapshotLane(MutableStateFlow(GalleryAccess.LIMITED), scope, lane, platform)
+        val source = SelectionSnapshotLane(MutableStateFlow(GalleryAccess.LIMITED), scope, lane, platform).apply { observe(true) }
         val latest = MutableStateFlow<List<String>>(emptyList())
         scope.launch(UnconfinedTestDispatcher(testScheduler)) { source.snapshots.collect { latest.value = it.ids() } }
         advanceUntilIdle() // observing, and the baseline read is in progress
@@ -131,7 +131,7 @@ class SelectionSnapshotLaneTest {
         val scope = CoroutineScope(lane + Job())
         val permission = MutableStateFlow(GalleryAccess.LIMITED)
         val platform = FakePlatform(listOf("base")).apply { baselineGate = CompletableDeferred() }
-        val source = SelectionSnapshotLane(permission, scope, lane, platform)
+        val source = SelectionSnapshotLane(permission, scope, lane, platform).apply { observe(true) }
         val emitted = mutableListOf<List<String>>()
         scope.launch(UnconfinedTestDispatcher(testScheduler)) { source.snapshots.collect { emitted += it.ids() } }
         advanceUntilIdle()
@@ -152,7 +152,7 @@ class SelectionSnapshotLaneTest {
         val scope = CoroutineScope(lane + Job())
         val permission = MutableStateFlow(GalleryAccess.LIMITED)
         val platform = FakePlatform(listOf("base"))
-        val source = SelectionSnapshotLane(permission, scope, lane, platform)
+        val source = SelectionSnapshotLane(permission, scope, lane, platform).apply { observe(true) }
         advanceUntilIdle()
         permission.value = GalleryAccess.GRANTED
         advanceUntilIdle()
@@ -171,7 +171,7 @@ class SelectionSnapshotLaneTest {
         val lane = StandardTestDispatcher(testScheduler)
         val scope = CoroutineScope(lane + Job())
         val platform = FakePlatform(listOf("base"))
-        val source = SelectionSnapshotLane(MutableStateFlow(GalleryAccess.LIMITED), scope, lane, platform)
+        val source = SelectionSnapshotLane(MutableStateFlow(GalleryAccess.LIMITED), scope, lane, platform).apply { observe(true) }
         val emitted = mutableListOf<List<String>>()
         scope.launch(UnconfinedTestDispatcher(testScheduler)) { source.snapshots.collect { emitted += it.ids() } }
         advanceUntilIdle() // the baseline is read and emitted
@@ -203,7 +203,7 @@ class SelectionSnapshotLaneTest {
         val scope = CoroutineScope(lane + Job())
         val permission = MutableStateFlow(GalleryAccess.LIMITED)
         val platform = FakePlatform(listOf("base"))
-        val source = SelectionSnapshotLane(permission, scope, lane, platform)
+        val source = SelectionSnapshotLane(permission, scope, lane, platform).apply { observe(true) }
         val emitted = mutableListOf<List<String>>()
         scope.launch(UnconfinedTestDispatcher(testScheduler)) { source.snapshots.collect { emitted += it.ids() } }
         advanceUntilIdle()
@@ -229,7 +229,7 @@ class SelectionSnapshotLaneTest {
         val scope = CoroutineScope(lane + Job())
         val permission = MutableStateFlow(GalleryAccess.LIMITED)
         val platform = FakePlatform(listOf("base"))
-        val source = SelectionSnapshotLane(permission, scope, lane, platform)
+        val source = SelectionSnapshotLane(permission, scope, lane, platform).apply { observe(true) }
         val emitted = mutableListOf<List<String>>()
         scope.launch(UnconfinedTestDispatcher(testScheduler)) { source.snapshots.collect { emitted += it.ids() } }
         advanceUntilIdle()
@@ -254,7 +254,7 @@ class SelectionSnapshotLaneTest {
         val scope = CoroutineScope(lane + Job())
         val permission = MutableStateFlow(GalleryAccess.LIMITED)
         val platform = FakePlatform(listOf("base"))
-        val source = SelectionSnapshotLane(permission, scope, lane, platform)
+        val source = SelectionSnapshotLane(permission, scope, lane, platform).apply { observe(true) }
         val emitted = mutableListOf<List<String>>()
         scope.launch(UnconfinedTestDispatcher(testScheduler)) { source.snapshots.collect { emitted += it.ids() } }
         advanceUntilIdle()
@@ -272,5 +272,26 @@ class SelectionSnapshotLaneTest {
 
     private companion object {
         const val CHANGES = 200
+    }
+
+    @Test
+    fun nothing_is_read_until_observation_is_switched_on_and_switching_it_off_stops_it() = runTest {
+        val lane = StandardTestDispatcher(testScheduler)
+        val scope = CoroutineScope(lane + Job())
+        val platform = FakePlatform(listOf("base"))
+        val source = SelectionSnapshotLane(MutableStateFlow(GalleryAccess.LIMITED), scope, lane, platform)
+        advanceUntilIdle()
+        assertEquals(null, platform.onChange, "a partial grant alone opens no observer")
+        assertTrue(platform.enumerations.isEmpty(), "and reads nothing")
+
+        source.observe(true)
+        advanceUntilIdle()
+        assertEquals(listOf(listOf("base")), platform.enumerations, "switched on: the baseline is read")
+        assertEquals(listOf("base"), source.snapshots.first().ids(), "and replayed to a late subscriber")
+
+        source.observe(false)
+        advanceUntilIdle()
+        assertEquals(1, platform.stops, "switched off: the observer closes")
+        scope.cancel()
     }
 }
