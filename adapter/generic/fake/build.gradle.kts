@@ -31,6 +31,14 @@ kotlin {
             api(libs.coroutines.core)
             // The Clock double answers a zone (`TimeFactories.kt`).
             implementation(libs.kotlinx.datetime)
+            // `inMemoryDatabases()`: real SQLite, in memory — the platform's driver per target, below.
+            api(libs.sqldelight.runtime)
+        }
+        jvmMain.dependencies {
+            implementation(libs.sqldelight.driver.sqlite)
+        }
+        iosSimulatorArm64Main.dependencies {
+            implementation(libs.sqldelight.driver.native)
         }
         // The stay-behind tests that drive `:domain` subjects through these fakes (re-homed from the
         // deleted `:domain:gallery` / `:domain:download-store` / `:capability:attest` modules at

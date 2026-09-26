@@ -31,3 +31,11 @@ fun inMemorySecureStore(
     items: MutableMap<SecureSlot, SecureStoreRead.Found> = mutableMapOf(),
     unavailable: Boolean = false,
 ): SecureStore = InMemorySecureStore(items, unavailable)
+
+/**
+ * Real in-memory SQLite databases (see [InMemoryDatabases]). [refusals] is the operator's cell: while it names a
+ * database, every open of that name answers the refusal given — `Missing`, `OldSchema` or `Failed` — so a caller can
+ * reach the branches a device reaches only by accident.
+ */
+fun inMemoryDatabases(refusals: Map<String, app.snapsync.ports.DbOpen> = emptyMap()): app.snapsync.ports.Databases =
+    InMemoryDatabases(refusals)
