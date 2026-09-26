@@ -3,7 +3,7 @@ package app.snapsync.services.backend
 import app.snapsync.model.ApnsPushToken
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.toResult
-import app.snapsync.ports.DeviceIdentity
+import app.snapsync.services.identity.PersistedDeviceIdentity
 
 /**
  * Where this device's push token is published so the backend can wake it (capability `receiving-photos`). The
@@ -28,7 +28,7 @@ fun interface PushTokenPublisher {
  */
 class BackendPushTokenPublisher(
     private val backend: AuthenticatedBackend,
-    private val identity: DeviceIdentity,
+    private val identity: PersistedDeviceIdentity,
 ) : PushTokenPublisher {
 
     override suspend fun publish(token: ApnsPushToken): Result<Unit> {

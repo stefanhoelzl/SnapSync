@@ -4,7 +4,6 @@ import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.DownloadCounts
 import app.snapsync.model.DownloadState
-import app.snapsync.ports.DownloadStore
 import app.snapsync.model.ImportableAsset
 import app.snapsync.model.PendingDownload
 import app.snapsync.model.PlannedAsset
@@ -26,14 +25,14 @@ import app.snapsync.services.downloads.db.DownloadResource
 const val DOWNLOADS_DB_NAME: String = "downloads.db"
 
 /**
- * The download store (capability `receiving-photos`): [DownloadStore] over the SQLDelight [DownloadDatabase].
+ * The download store (capability `receiving-photos`): [DownloadService] over the SQLDelight [DownloadDatabase].
  * **The app is its one writer and the one process that migrates it**; the upload extension reads only its
  * suppression projection, read-only, through [SuppressionService].
  *
  * Opened on first use through [Databases], never at construction, and a failed open is retried on the next use
  * (see [app.snapsync.services.ledger.LedgerService]).
  */
-class DownloadService(databases: Databases) : DownloadStore {
+class DownloadService(databases: Databases) : SuppressionSource {
 
     private val q by lazy { DownloadDatabase(databases.openOwned(DOWNLOADS_DB_NAME, DownloadDatabase.Schema)).downloadStoreQueries }
 
@@ -49,7 +48,7 @@ class DownloadService(databases: Databases) : DownloadStore {
     // Reads every imported row and filters here: the table holds only the unions of the events this device
     // has joined, and binding a list of key PAIRS is awkward in SQLDelight. The port is stated by ref, so an
     // index-driven query can replace this without touching a caller.
-    override suspend fun importedLocalIds(refs: Collection<AssetRef>): Map<AssetRef, AssetId> {
+    suspend fun importedLocalIds(refs: Collection<AssetRef>): Map<AssetRef, AssetId> {
         if (refs.isEmpty()) return emptyMap()
         val wanted = refs.toSet()
         return q.selectImportedLocalIds { device, asset, localId -> AssetRef(device, asset) to localId }
@@ -58,11 +57,17 @@ class DownloadService(databases: Databases) : DownloadStore {
             .toMap()
     }
 
-    override suspend fun isSettled(ref: AssetRef): Boolean =
+    /**
+     * True if this foreign asset is **settled** — imported, or settled as permanently unimportable — so
+     * discovery neither re-plans nor re-downloads it. Both terminal states answer yes: re-planning an
+     * unimportable ref would recreate the resource rows that settling it dropped, and nothing about it can
+     * succeed.
+     */
+    suspend fun isSettled(ref: AssetRef): Boolean =
         q.isSettled(ref.sourceDeviceId, ref.sourceAssetId).executeAsOne()
 
     // One read of every settled ref, filtered here — the same trade as [importedLocalIds], for the same reason.
-    override suspend fun settledAmong(refs: Collection<AssetRef>): Set<AssetRef> {
+    suspend fun settledAmong(refs: Collection<AssetRef>): Set<AssetRef> {
         if (refs.isEmpty()) return emptySet()
         val wanted = refs.toSet()
         return q.selectSettledRefs { device, asset -> AssetRef(device, asset) }
@@ -70,7 +75,8 @@ class DownloadService(databases: Databases) : DownloadStore {
             .filterTo(mutableSetOf()) { it in wanted }
     }
 
-    override suspend fun plan(ref: AssetRef, creationDate: String, resources: List<PlannedResource>) =
+    /** Record a foreign asset (with its capture [creationDate]) and its expected resources as PENDING (idempotent; never downgrades IMPORTED). */
+    suspend fun plan(ref: AssetRef, creationDate: String, resources: List<PlannedResource>) =
         planAll(listOf(PlannedAsset(ref, creationDate, resources)))
 
     /**
@@ -78,7 +84,7 @@ class DownloadService(databases: Databases) : DownloadStore {
      * transaction per asset paid one each. Per-asset atomicity is a consequence, not a trade: an asset's row
      * and its resources still land together, because the whole batch does.
      */
-    override suspend fun planAll(assets: List<PlannedAsset>) {
+    suspend fun planAll(assets: List<PlannedAsset>) {
         if (assets.isEmpty()) return
         q.transaction {
             assets.forEach { (ref, creationDate, resources) ->
@@ -93,44 +99,61 @@ class DownloadService(databases: Databases) : DownloadStore {
         }
     }
 
-    override suspend fun pendingDownloads(): List<PendingDownload> =
+    /** The not-yet-staged resources across all non-imported assets — the download work queue. */
+    suspend fun pendingDownloads(): List<PendingDownload> =
         q.selectPendingResources { device, asset, key, url, role, contentType, original ->
             PendingDownload(AssetRef(device, asset), PlannedResource(key, url, role, contentType, original))
         }.executeAsList()
 
-    override suspend fun markEnqueued(ref: AssetRef, resourceKey: String) {
+    /** Mark a resource's download as sent to the OS (a background transfer now exists) — the in-flight marker. */
+    suspend fun markEnqueued(ref: AssetRef, resourceKey: String) {
         q.markResourceEnqueued(ref.sourceDeviceId, ref.sourceAssetId, resourceKey)
     }
 
     /** Every mark in ONE transaction: one durable commit for the batch rather than an autocommit per resource. */
-    override suspend fun markAllEnqueued(downloads: Collection<PendingDownload>) {
+    suspend fun markAllEnqueued(downloads: Collection<PendingDownload>) {
         if (downloads.isEmpty()) return
         q.transaction {
             downloads.forEach { q.markResourceEnqueued(it.ref.sourceDeviceId, it.ref.sourceAssetId, it.resource.resourceKey) }
         }
     }
 
-    override suspend fun markStaged(ref: AssetRef, resourceKey: String, stagedPath: String): Boolean =
+    /**
+     * Mark a resource's bytes downloaded and durably staged at [stagedPath]; answers whether a row took it. `false` is
+     * a resource with no row — a transfer a leave's prune outran, or one a relaunched process inherited for an event
+     * it has left — whose staged file nothing references and the caller discards.
+     */
+    suspend fun markStaged(ref: AssetRef, resourceKey: String, stagedPath: String): Boolean =
         q.markResourceStaged(stagedPath, ref.sourceDeviceId, ref.sourceAssetId, resourceKey).value > 0
 
-    override suspend fun importableAssets(): List<ImportableAsset> =
+    /**
+     * Assets whose every expected resource is staged and that are not yet imported — ready to import.
+     *
+     * **Excludes rows carrying a `createdLocalId`**: those already have an asset in the library, and
+     * importing them again is the duplicate this capability exists to prevent. They leave through
+     * [unconfirmedImports] to be adjudicated, and re-enter here only once their marker is cleared.
+     */
+    suspend fun importableAssets(): List<ImportableAsset> =
         q.selectImportableAssets { device, asset, creationDate ->
             ImportableAsset(AssetRef(device, asset), creationDate)
         }.executeAsList()
 
-    override suspend fun unconfirmedImports(): List<UnconfirmedImport> =
+    /** Rows whose asset was created but whose import was never confirmed — to be adjudicated, not re-imported. */
+    suspend fun unconfirmedImports(): List<UnconfirmedImport> =
         // The marker is non-null by the query's own `IS NOT NULL`, and SQLDelight narrows the generated
         // column type from it — so no narrowing (and no assertion) is needed here.
         q.selectUnconfirmedAssets { device, asset, createdLocalId ->
             UnconfirmedImport(AssetRef(device, asset), createdLocalId)
         }.executeAsList()
 
-    override suspend fun stagedResources(ref: AssetRef): List<StagedResource> =
+    /** The staged resources of an asset, to feed one PHAssetCreationRequest. */
+    suspend fun stagedResources(ref: AssetRef): List<StagedResource> =
         q.selectResourcesForAsset(ref.sourceDeviceId, ref.sourceAssetId) { key, _, role, contentType, original, staged ->
             StagedResource(key, role, contentType, original, staged ?: "")
         }.executeAsList().filter { it.stagedPath.isNotEmpty() }
 
-    override suspend fun markImported(ref: AssetRef, createdLocalId: AssetId) {
+    /** Mark an asset imported and record the created local identifier (the suppression handle). */
+    suspend fun markImported(ref: AssetRef, createdLocalId: AssetId) {
         q.markImported(createdLocalId, ref.sourceDeviceId, ref.sourceAssetId)
     }
 
@@ -142,12 +165,12 @@ class DownloadService(databases: Databases) : DownloadStore {
      * `false` means the row was pruned out from under this import — see the port's KDoc for why that is
      * an emergency rather than a miss.
      */
-    override fun recordCreatedLocalId(ref: AssetRef, createdLocalId: AssetId): Boolean = applied {
+    fun recordCreatedLocalId(ref: AssetRef, createdLocalId: AssetId): Boolean = applied {
         q.recordCreatedLocalId(createdLocalId, ref.sourceDeviceId, ref.sourceAssetId)
     }
 
     /** The mirror of [recordCreatedLocalId], for a change the library reported as failed. */
-    override fun clearCreatedLocalId(ref: AssetRef, createdLocalId: AssetId): Boolean = applied {
+    fun clearCreatedLocalId(ref: AssetRef, createdLocalId: AssetId): Boolean = applied {
         q.clearCreatedLocalId(ref.sourceDeviceId, ref.sourceAssetId, createdLocalId)
     }
 
@@ -155,7 +178,7 @@ class DownloadService(databases: Databases) : DownloadStore {
      * The success mirror. The marker guard is in the SQL, so a completion whose marker has moved on
      * updates no row rather than settling one it no longer describes.
      */
-    override fun confirmCreatedLocalId(ref: AssetRef, createdLocalId: AssetId): Boolean = applied {
+    fun confirmCreatedLocalId(ref: AssetRef, createdLocalId: AssetId): Boolean = applied {
         q.confirmCreatedLocalId(ref.sourceDeviceId, ref.sourceAssetId, createdLocalId)
     }
 
@@ -179,7 +202,7 @@ class DownloadService(databases: Databases) : DownloadStore {
      * `suspend` unlike the three marker writes: this one is reached from the drain, not from inside a
      * PhotoKit block, so it has no reason to carry their constraint.
      */
-    override suspend fun settleUnimportable(ref: AssetRef): Boolean = q.transactionWithResult {
+    suspend fun settleUnimportable(ref: AssetRef): Boolean = q.transactionWithResult {
         q.settleUnimportable(ref.sourceDeviceId, ref.sourceAssetId)
         val applied = q.changedRows().executeAsOne() > 0L
         if (applied) q.deleteResourcesForAsset(ref.sourceDeviceId, ref.sourceAssetId)
@@ -192,7 +215,7 @@ class DownloadService(databases: Databases) : DownloadStore {
      * reads would be equivalent here, but it would put the consistency in the caller's hands, where the next
      * count added could quietly be read outside it.
      */
-    override suspend fun counts(): DownloadCounts = q.projectionCounts().executeAsOne().let {
+    suspend fun counts(): DownloadCounts = q.projectionCounts().executeAsOne().let {
         DownloadCounts(
             imported = it.imported.toInt(),
             stillArriving = it.stillArriving.toInt(),
@@ -209,7 +232,7 @@ class DownloadService(databases: Databases) : DownloadStore {
      * over a bound collection is not expressible in this dialect. Being inside the transaction is what makes
      * that equivalent — and clearer to read than the alternative would have been.
      */
-    override suspend fun pruneNonTerminal(protecting: Set<AssetRef>): List<String> = q.transactionWithResult {
+    suspend fun pruneNonTerminal(protecting: Set<AssetRef>): List<String> = q.transactionWithResult {
         val victims = q.selectPrunableAssets { device, asset -> AssetRef(device, asset) }
             .executeAsList()
             .filterNot { it in protecting }
@@ -223,14 +246,26 @@ class DownloadService(databases: Databases) : DownloadStore {
         stranded
     }
 
-    override suspend fun stagedPathsOfImportedAssets(): List<String> =
+    /** Staged paths of assets whose import is CONFIRMED — redundant bytes, feeding the release pass. */
+    suspend fun stagedPathsOfImportedAssets(): List<String> =
         q.selectStagedPathsOfImportedAssets().executeAsList().filterNotNull()
 
-    override suspend fun dropResources(ref: AssetRef) {
+    /**
+     * Drop one asset's resource rows, once its bytes have been released — so the store never records a
+     * staged path for a file that no longer exists, and so a release pass over confirmed assets is
+     * **self-extinguishing** (the rows that made the work findable are gone). Safe because nothing reads
+     * an imported row's resources.
+     */
+    suspend fun dropResources(ref: AssetRef) {
         q.deleteResourcesForAsset(ref.sourceDeviceId, ref.sourceAssetId)
     }
 
-    override suspend fun dropResourcesOfImportedAssets() {
+    /**
+     * Drop the resource rows of **every** confirmed asset — the bulk half of the staged-byte reclaim.
+     * Paired with [stagedPathsOfImportedAssets] this makes the reclaim self-extinguishing: the rows that
+     * made the work findable are gone, so a second pass finds nothing.
+     */
+    suspend fun dropResourcesOfImportedAssets() {
         q.deleteResourcesOfImportedAssets()
     }
 }

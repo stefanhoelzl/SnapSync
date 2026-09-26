@@ -18,7 +18,7 @@ class DownloadEchoTest {
         w.addForeignDevice("DEV-FOREIGN", eventId, listOf(World.foreignAsset("FQ")))
 
         w.downloadController.reconcile(eventId)
-        // Asked of the transport, not the jobs: the real `QueuedPhotoDownloadJobs` has no inspection seam,
+        // Asked of the transport, not the jobs: the real `DownloadJobs` has no inspection seam,
         // and a started transfer is the stronger claim — it proves the real window and URL guard passed it
         // through to the edge, rather than that a fake recorded it.
         assertTrue(w.downloadTransport?.inFlight()?.isNotEmpty() == true)

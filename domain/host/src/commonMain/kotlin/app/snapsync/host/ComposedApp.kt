@@ -185,8 +185,8 @@ private fun statusSourcesOf(
     pending: MutablePendingJoinSource = MutablePendingJoinSource(),
 ): StatusSources = StatusSources(
     sync = core.syncStatusSource,
-    permission = ports.photoAccess.permission,
-    config = ports.configSource.config,
+    permission = core.photoPermission,
+    config = core.membership,
     creation = core.creationStatus,
     rename = core.renameStatus,
     download = core.downloadStatusSource,

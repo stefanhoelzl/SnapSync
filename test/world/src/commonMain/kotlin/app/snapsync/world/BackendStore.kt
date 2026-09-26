@@ -492,7 +492,7 @@ class BackendStore {
         /**
          * The synthetic in-memory download handle — resolved store-direct by the fake download seams,
          * and a synthetic stand-in for the backend's presigned S3 link. **It must be `https`**: the real
-         * `QueuedPhotoDownloadJobs` guards every url with `isFetchableUrl` and skips anything that is not
+         * `DownloadJobs` guards every url with `isFetchableUrl` and skips anything that is not
          * `http`/`https` — handing a background `URLSession` a hostless or non-HTTP url raises an
          * uncatchable Obj-C exception, so the guard is load-bearing, not cosmetic.
          *

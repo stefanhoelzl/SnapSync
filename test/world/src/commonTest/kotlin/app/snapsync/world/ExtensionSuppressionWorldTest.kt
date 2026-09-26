@@ -8,7 +8,7 @@ import app.snapsync.model.CycleResult
 import app.snapsync.model.PauseReason
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.SuppressionReadiness
-import app.snapsync.ports.SuppressionSource
+import app.snapsync.services.downloads.SuppressionSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue

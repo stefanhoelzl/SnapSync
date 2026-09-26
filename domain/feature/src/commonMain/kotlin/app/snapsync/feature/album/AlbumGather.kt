@@ -1,17 +1,17 @@
 package app.snapsync.feature.album
 
+import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.model.AssetId
-import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.model.grantsPhotoAccess
-import app.snapsync.ports.DeviceIdentity
+import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.model.EventConfig
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.admittedAssetIds
 import app.snapsync.model.AssetRef
-import app.snapsync.ports.ConfigSource
-import app.snapsync.ports.DownloadStore
+import app.snapsync.services.config.ConfigService
+import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.backend.EventUnionSource
-import app.snapsync.ports.LedgerStore
+import app.snapsync.services.ledger.LedgerService
 import app.snapsync.model.EntryScope
 import app.snapsync.model.invocation
 import co.touchlab.kermit.Logger
@@ -41,10 +41,10 @@ const val GATHER_BATCH_SIZE: Int = 500
  * window also admits (listed in this event's manifest, never enqueued again, so never placed at enqueue).
  *
  * Two sets, and only these:
- *  - **own** — the device manifest projection: [LedgerStore.manifestRows] admitted by the membership's
+ *  - **own** — the device manifest projection: [LedgerService.manifestRows] admitted by the membership's
  *    **current** policy, exactly what the device tells the event it contributes;
  *  - **foreign** — the event union's other-device assets this device has imported, resolved by ref through
- *    [DownloadStore.importedLocalIds]. The store is event-blind; the union is what says an asset is in THIS
+ *    [DownloadService.importedLocalIds]. The store is event-blind; the union is what says an asset is in THIS
  *    event, so an import made for another event is never gathered.
  *
  * **App-only by construction.** It is a separate class, built only in the app composition, precisely so the
@@ -62,15 +62,15 @@ const val GATHER_BATCH_SIZE: Int = 500
  * failed batch is swallowed by [AlbumCoordinator.place].
  */
 class AlbumGather(
-    private val configSource: ConfigSource,
-    private val ledger: LedgerStore,
+    private val configSource: ConfigService,
+    private val ledger: LedgerService,
     /** The membership's one selection policy — the same derivation every other consumer uses. */
     private val policyFor: suspend (EventConfig) -> SelectionPolicy,
     private val union: EventUnionSource,
-    private val downloads: DownloadStore,
-    private val identity: DeviceIdentity,
+    private val downloads: DownloadService,
+    private val identity: PersistedDeviceIdentity,
     /** The photo grant: a gather without usable access (`grantsPhotoAccess`) could only fail its adds. */
-    private val photoAccess: PhotoAccessStatusSource,
+    private val photoAccess: GalleryAccessState,
     private val coordinator: AlbumCoordinator,
     /** The app-lifetime scope a gather is launched on — the composition lane, never the UI lane: the
      *  platform add blocks its thread for a whole library change. */
@@ -120,7 +120,7 @@ class AlbumGather(
         when {
             cfg == null || cfg.eventId != eventId -> log.i { "gather: event=$eventId is no longer joined — skipping" }
             !cfg.saveToAlbum -> log.i { "gather: event=$eventId opted out of the album — skipping" }
-            !photoAccess.permission.value.grantsPhotoAccess -> log.i { "gather: photo access not usable — skipping event=$eventId" }
+            !photoAccess.usable -> log.i { "gather: photo access not usable — skipping event=$eventId" }
             else -> {
                 val ids = ownSet(cfg) + foreignSet(eventId)
                 log.i { "gather: placing ${ids.size} asset(s) for event=$eventId" }

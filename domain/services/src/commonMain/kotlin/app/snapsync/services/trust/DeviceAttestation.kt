@@ -9,7 +9,7 @@ import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.AttestStore
 import app.snapsync.ports.Backend
 import app.snapsync.ports.Clock
-import app.snapsync.ports.DeviceIdentity
+import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.ports.DeviceIntegrity
 import app.snapsync.services.backend.Credential
 import app.snapsync.services.version.AppVersionGate
@@ -72,7 +72,7 @@ class DeviceAttestation(
     private val integrity: DeviceIntegrity,
     private val backend: Backend,
     store: AttestStore,
-    private val identity: DeviceIdentity,
+    private val identity: PersistedDeviceIdentity,
     private val clock: Clock,
     private val versionGate: AppVersionGate? = null,
     private val log: Logger = Logger.withTag("DeviceAttestation"),

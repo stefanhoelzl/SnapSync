@@ -2,24 +2,24 @@ package app.snapsync.feature.album
 
 import app.snapsync.model.AssetId
 import app.snapsync.model.runCatchingCancellable
-import app.snapsync.ports.AlbumManager
-import app.snapsync.ports.AlbumMapStore
+import app.snapsync.services.gallery.GalleryAlbums
+import app.snapsync.services.album.AlbumMapService
 import co.touchlab.kermit.Logger
 
 /**
  * The tested `commonMain` orchestration for the event album (capability `event-album`): resolve-or-create
  * the album (reuse across re-join, recreate a deleted one) and dispatch-or-skip an add. All album
  * *decisions* live here so `:test:world` can assert them without PhotoKit; the raw `PHAssetCollection`
- * calls live behind [AlbumManager] and the shared map behind [AlbumMapStore].
+ * calls live behind [GalleryAlbums] and the shared map behind [AlbumMapService].
  *
  * Ownership: **the app is the sole creator** — only the app calls [ensureAlbum] (on the photo-permission
  * grant). Both the app and the extension call [place] (when an own photo's upload is first enqueued), which only ever
  * *adds* to an already-created album. The download path does its add atomically inside the importer's own
- * commit (design D5/D9) and only borrows [AlbumMapStore.get]; it does not route through [place].
+ * commit (design D5/D9) and only borrows [AlbumMapService.get]; it does not route through [place].
  */
 class AlbumCoordinator(
-    private val manager: AlbumManager,
-    private val store: AlbumMapStore,
+    private val manager: GalleryAlbums,
+    private val store: AlbumMapService,
     private val log: Logger = Logger.withTag("AlbumCoordinator"),
 ) {
 

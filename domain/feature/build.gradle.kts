@@ -23,7 +23,9 @@ tasks.withType<KotlinNativeSimulatorTest>().configureEach {
 }
 
 // The core'"'"'s `feature` zone (`docs/architecture.md`, "The module set withholds; packages organize").
-// The rules. Features are mutually blind; they coordinate via one-writer durable state behind shared ports.
+// The rules. Features are mutually blind; they coordinate via one-writer durable state behind shared services.
+// Features see services, never ports: there is no `:domain:ports` edge here, so a port type does not resolve in this
+// zone — the compiler holds the law, not a scan. A feature test that needs a port's mock lives in `:test:feature`.
 //
 // Zone edges are declared with `implementation()`, never `api()`: a zone must not leak to a downstream
 // consumer transitively. A consumer that needs another zone declares it.
@@ -33,8 +35,7 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             implementation(project(":domain:model"))
-            implementation(project(":domain:ports"))
-            // The shared capabilities features stand on: the backend services, attestation and the version gate.
+            // The shared capabilities features stand on: the storage, gallery, transfer and backend services.
             implementation(project(":domain:services"))
             // The per-zone library allowlist (`docs/architecture.md`, "Core purity is closed by
             // default"): coroutines (StateFlow/Flow port shapes), serialization + datetime (the

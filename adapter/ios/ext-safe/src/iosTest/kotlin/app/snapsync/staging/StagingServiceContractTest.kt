@@ -9,7 +9,6 @@ import app.snapsync.contracts.StagedBytesState
 import app.snapsync.contracts.verify
 import app.snapsync.files.IosFiles
 import app.snapsync.model.FileArea
-import app.snapsync.ports.StagedBytes
 import app.snapsync.services.staging.StagingService
 import app.snapsync.testsupport.newTempDirectory
 import app.snapsync.testsupport.removeDirectory
@@ -21,12 +20,12 @@ import kotlin.test.Test
  */
 class StagingServiceContractTest {
 
-    private val binding = object : Binding<StagedBytesState, StagedBytes> {
+    private val binding = object : Binding<StagedBytesState, StagingService> {
         override val host = Host.IOS_SIM_KEXE
         override val kind = BindingKind.Live
         override val reaches = setOf(StagedBytesState.UNAVAILABLE, StagedBytesState.EMPTY, StagedBytesState.STAGED)
 
-        override fun create(state: StagedBytesState, clauseId: String): Entered<StagedBytes> {
+        override fun create(state: StagedBytesState, clauseId: String): Entered<StagingService> {
             if (state == StagedBytesState.UNAVAILABLE) return Entered.Ready(StagingService(IosFiles()))
             val container = newTempDirectory()
             val files = IosFiles(sharedRoot = container, privateRoot = null)
@@ -41,5 +40,5 @@ class StagingServiceContractTest {
     }
 
     @Test
-    fun `the staging service satisfies the StagedBytes contract`() = verify(StagedBytesContract, binding)
+    fun `the staging service satisfies the StagingService contract`() = verify(StagedBytesContract, binding)
 }

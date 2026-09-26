@@ -13,8 +13,6 @@ import app.snapsync.model.eventStart
 import app.snapsync.model.eventEnd
 import app.snapsync.model.deletesAt
 import app.snapsync.model.captureCutoff
-import app.snapsync.ports.ConfigSource
-import app.snapsync.ports.ConfigStore
 import app.snapsync.model.GalleryAccess
 import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.model.Layer
@@ -86,22 +84,6 @@ class PanelController {
 
     val permissionSource: PhotoAccessStatusSource = object : PhotoAccessStatusSource {
         override val permission = permissionState
-    }
-
-    // The config seam + store. The toggle drives the cell directly; the store exists only to
-    // satisfy the container's constructor (the harness never decodes a real event link).
-    val configSource: ConfigSource = object : ConfigSource {
-        override val config = configState
-    }
-
-    val configStore: ConfigStore = object : ConfigStore {
-        override suspend fun save(config: EventConfig) {
-            configState.value = config
-        }
-
-        override suspend fun clear() {
-            configState.value = null
-        }
     }
 
     // The create-status cell, injected so the create presets can forge the create layer (shown only

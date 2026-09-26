@@ -101,7 +101,7 @@ private fun iosHooks(rigUi: RigUi, controls: RigDevControls) = RigHooks(
     // Swift calls entry points from the main thread; so does the rig. A trigger invoked on another lane
     // would not be the call the OS makes, which is the whole reason triggers are entry points.
     mainLane = Dispatchers.Main,
-    deviceLog = LogTailService(IosFiles()),
+    deviceLog = LogTailService(IosFiles())::tail,
     // Grouped by composition root: the `/os/<root>/<member>` segment names whose entry point a caller
     // invokes. `app` is `SnapSyncRoot`'s. A second group joins it when the channel reaches a second root.
     triggerGroups = mapOf(

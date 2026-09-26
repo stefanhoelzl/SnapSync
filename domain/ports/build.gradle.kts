@@ -78,8 +78,8 @@ kover {
 //
 // One package, so no floor rule: the aggregate IS the floor. This zone is the weakest of the four,
 // and the zone split is what revealed it — inside the old single `:domain` aggregate it was
-// averaged away. Much of the gap is the `Companion.None` inert port objects: a default that does
-// nothing has little to execute.
+// averaged away. Since the feature → ports cut the zone holds declarations only, so what it can count is
+// small: the event ports' handler bundles, which only the composition builds.
 kover {
     reports {
         total {
@@ -104,8 +104,17 @@ kover {
                     // LOWERED 72 -> 68 in the same phase, by the "ports hold interfaces only" law: the extension
                     // cycle's never-throw wrapper (`runProcessCycle`, `requeueWhilePending`) MOVED to
                     // `:domain:services` (services/upload) with both of its tests.
+                    // LOWERED 68 -> 43 by the feature → ports cut, by the same law's last step: everything in the zone
+                    // that was not a declaration MOVED out with its tests — the config read rules (`configReadViaFile`,
+                    // `configAfterReload`, `membershipAfterReload`, to `:domain:services`, tests with them), the inline
+                    // logging helpers (to `model/`, `InvocationTest`/`LogAtTest` with them), the inert `None` objects
+                    // (to `compose/`, `InertTest` with them) and the store interfaces' defaults (the stores are
+                    // concrete services now). What remains countable is the event ports' `*Handlers` bundles, built
+                    // only by the composition — `ListenDoorTest` pins that — which no module credited here reaches;
+                    // their wiring runs in `:test:world`'s entry tests. Nothing that stayed lost a test; the covered
+                    // code left.
                     bound {
-                        minValue = 68
+                        minValue = 43
                         coverageUnits = CoverageUnit.INSTRUCTION
                     }
                     // LOWERED 65 -> 57 by the storage-ports re-cut. Forcing proof: the zone's

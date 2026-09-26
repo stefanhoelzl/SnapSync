@@ -1,11 +1,11 @@
 package app.snapsync.feature.status
 
+import app.snapsync.model.AssetId
+import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
 
-import app.snapsync.ports.GalleryStatusSource
 import app.snapsync.model.grantsPhotoAccess
-import app.snapsync.ports.PhotoAccessStatusSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -16,7 +16,7 @@ import app.snapsync.feature.status.readmodel.SyncStatusSource
 /**
  * The real [SyncStatusSource]. Own-device completeness **and** in-flight activity are read from the
  * ledger's per-photo done-ness ([LedgerCountsSource] — one consistent `assetProgress()` read) and counted
- * over the **admitted set** the gallery counted for the upload total ([GalleryStatusSource]); `active` is
+ * over the **admitted set** the gallery counted for the upload total ([OwnDeviceGalleryStatusSource.admitted]); `active` is
  * derived from permission. The source issues **no storage LIST** for upload status — this is the
  * notify-driven, ledger-sourced projection (spec: sync-status).
  *
@@ -40,7 +40,7 @@ import app.snapsync.feature.status.readmodel.SyncStatusSource
  * reported it as the status going backwards when the real counts arrived seconds or minutes later
  * (`SNAPSYNC-14`, `SNAPSYNC-16`). The specs said `Ready` waits for all three inputs the whole time; a
  * seeded value satisfied that vacuously, so the read-ness now lives in the input types themselves —
- * [GalleryStatusSource]'s nullable admitted set and [LedgerCounts.read] — and cannot be satisfied by existing.
+ * the gallery's nullable admitted set and [LedgerCounts.read] — and cannot be satisfied by existing.
  *
  * A **counted** zero is a read value and does mint a snapshot: a non-contributing membership settles
  * the screen exactly as it always has.
@@ -59,16 +59,17 @@ import app.snapsync.feature.status.readmodel.SyncStatusSource
  */
 fun LedgerBackedSyncStatusSource(
     ledgerCounts: LedgerCountsSource,
-    permission: PhotoAccessStatusSource,
-    gallery: GalleryStatusSource,
+    access: GalleryAccessState,
+    /** The own-device admitted set the gallery counted — [OwnDeviceGalleryStatusSource.admitted]. */
+    admitted: StateFlow<Set<AssetId>?>,
     scope: CoroutineScope,
 ): SyncStatusSource {
     val status = MutableStateFlow<SyncStatus>(SyncStatus.Loading)
     scope.launch {
         combine(
             ledgerCounts.counts,
-            permission.permission,
-            gallery.admitted,
+            access.grant,
+            admitted,
         ) { counts, perm, admitted ->
             // The read gate. `admitted == null` is "the library was never enumerated" and `!counts.read`
             // is "the ledger was never read" — both distinct from the zeros they used to be seeded as.

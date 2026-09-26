@@ -5,17 +5,17 @@ import app.snapsync.services.backend.EventUnionSource
 import app.snapsync.model.AlbumId
 import app.snapsync.model.ImportRequest
 import app.snapsync.model.ImportResult
-import app.snapsync.ports.PhotoDownloadJobs
-import app.snapsync.ports.ImportedAssetPresence
-import app.snapsync.ports.GalleryImport
+import app.snapsync.services.downloads.DownloadJobs
+import app.snapsync.services.gallery.ImportedAssetPresence
+import app.snapsync.services.gallery.GalleryImporter
 
 import app.snapsync.model.AssetPresence
 import app.snapsync.model.AssetRef
-import app.snapsync.ports.DownloadStore
+import app.snapsync.services.downloads.DownloadService
 import app.snapsync.model.PlannedAsset
 import app.snapsync.model.PlannedResource
 import app.snapsync.model.EntryScope
-import app.snapsync.ports.StagedBytes
+import app.snapsync.services.staging.StagingService
 import app.snapsync.model.StagedResource
 import app.snapsync.model.UnconfirmedImport
 import app.snapsync.model.invocation
@@ -32,9 +32,9 @@ import kotlinx.coroutines.sync.withLock
  */
 class DownloadController(
     private val union: EventUnionSource,
-    private val store: DownloadStore,
-    private val jobs: PhotoDownloadJobs,
-    private val importer: GalleryImport,
+    private val store: DownloadService,
+    private val jobs: DownloadJobs,
+    private val importer: GalleryImporter,
     // Adjudicates a row whose asset was created but whose import was never confirmed (capability
     // `receiving-photos`). Required, with no default: a permissive stand-in would answer "absent" for
     // assets that exist, clear their markers, and re-import them — which is the defect this guard is
@@ -44,10 +44,9 @@ class DownloadController(
     // created yet). Read once per import, BEFORE it (capability `event-album`), so the platform's change block
     // does no lookup of its own. Required: which album is the album feature's rule, bound by the composition.
     private val eventAlbum: () -> AlbumId?,
-    // Releases the staged bytes of settled rows (capability `receiving-photos`). Defaulted to a no-op
-    // because failing to free disk is harmless, unlike every other port here — and a composition with no
-    // staging of its own genuinely has nothing to release.
-    private val stagedBytes: StagedBytes = StagedBytes.None,
+    // Where staged bytes live, what is still on disk, and the release of settled rows' bytes (capability
+    // `receiving-photos`). Required: a composition that downloads must say where the bytes land.
+    private val stagedBytes: StagingService,
     private val myDeviceId: String,
     // The download arm runs only when the current membership's participation direction includes download
     // (capability `join-event`): an upload-only membership performs no reconcile at ANY trigger. Injected
@@ -454,8 +453,8 @@ class DownloadController(
         val next = store.importableAssets()
             .firstOrNull { it.ref !in attempted && it.ref !in importing } ?: return null
         importing += next.ref
-        // The store holds staged paths relative to the shared area; the library is handed the platform path.
-        val resources = store.stagedResources(next.ref).map { it.copy(stagedPath = stagedBytes.locate(it.stagedPath)) }
+        // Relative to the shared area, as the store holds them: the importer locates them for the library.
+        val resources = store.stagedResources(next.ref)
         return ClaimedImport(next.ref, next.creationDate, resources)
     }
 
@@ -466,7 +465,7 @@ class DownloadController(
      * an import that entered and never exited is visible only as an entry line with no matching exit, and
      * that line is the sole evidence a library stalled.
      *
-     * The claim is released when the library REPORTS — i.e. when [GalleryImport.import] **returns**,
+     * The claim is released when the library REPORTS — i.e. when [GalleryImporter.import] **returns**,
      * whether imported or an observed failure. Nothing else releases it, and that is deliberate:
      *
      *  - **returns** → the library reported → release.

@@ -2,7 +2,7 @@ package app.snapsync.contracts
 
 import app.snapsync.model.AssetId
 import app.snapsync.model.LedgerEntry
-import app.snapsync.ports.LedgerStore
+import app.snapsync.services.ledger.LedgerService
 import app.snapsync.model.LedgerState
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.TerminalOutcome
@@ -19,7 +19,7 @@ import kotlin.test.assertTrue
  * "Advances" is asserted as "greater than", never as an exact step, except for the explicit bump: the SQLite
  * store advances once per row a statement touches, and the count is not part of the contract.
  */
-internal fun ClauseList<LedgerStoreState, LedgerStore>.manifestVersionClauses() {
+internal fun ClauseList<LedgerStoreState, LedgerService>.manifestVersionClauses() {
     clause("a fresh store reads version zero", LedgerStoreState.EMPTY) { backend ->
         assertEquals(0L, backend.manifestVersion())
     }

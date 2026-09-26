@@ -8,7 +8,7 @@ import app.snapsync.model.CaptureDate
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.selectionPolicyFor
 import app.snapsync.model.SelectionRule
-import app.snapsync.ports.CandidateSource
+import app.snapsync.services.gallery.CandidateSource
 import app.snapsync.model.SELECTION_CALIBRATION
 import app.snapsync.rig.AssetView
 import app.snapsync.rig.CalibrationView

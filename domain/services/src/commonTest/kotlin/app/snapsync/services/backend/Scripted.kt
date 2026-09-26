@@ -1,5 +1,8 @@
 package app.snapsync.services.backend
 
+import app.snapsync.services.identity.MapSecureStore
+import app.snapsync.ports.SecureStore
+import app.snapsync.services.identity.identityOf
 import app.snapsync.model.ApnsPushToken
 import app.snapsync.model.CreateEventRequest
 import app.snapsync.model.DeviceFile
@@ -57,5 +60,8 @@ internal class ScriptedCredential(var current: String?, private val recovered: S
 }
 
 /** Services over an authenticated backend that answers every call with [reply], for the need-shaped mappings. */
-internal fun servicesAnswering(reply: Reply<*>, deviceId: () -> String = { "D" }): BackendServices =
-    BackendServices(CredentialedBackend(ScriptedBackend { _, _ -> reply }, ScriptedCredential(null), versionGate = null)) { deviceId() }
+internal fun servicesAnswering(reply: Reply<*>, store: SecureStore = MapSecureStore()): BackendServices =
+    BackendServices(
+        CredentialedBackend(ScriptedBackend { _, _ -> reply }, ScriptedCredential(null), versionGate = null),
+        identityOf("D", store),
+    )

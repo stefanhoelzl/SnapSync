@@ -6,7 +6,7 @@ import app.snapsync.model.AssetId
 import app.snapsync.model.InviteLinkHints
 import app.snapsync.feature.membership.toJoinLoad
 import app.snapsync.model.JoinLoad
-import app.snapsync.ports.PushTokenSource
+import app.snapsync.services.push.PushTokenSource
 import app.snapsync.services.backend.ManifestPublisher
 import app.snapsync.compose.UploaderProcess
 import app.snapsync.compose.AlbumLookupFailure
@@ -23,26 +23,34 @@ import app.snapsync.time.SystemClock
 import app.snapsync.presentation.CutoffFormatter
 import kotlinx.datetime.TimeZone
 import app.snapsync.compose.uploadCore
-import app.snapsync.fake.inMemoryConfigReader
-import app.snapsync.fake.inMemoryConfigSource
-import app.snapsync.fake.inMemoryConfigStore
 import app.snapsync.fake.inMemoryProcessInfo
 import app.snapsync.fake.inMemoryDeviceIntegrity
 import app.snapsync.fake.inMemoryAttestStore
-import app.snapsync.fake.inMemoryDeviceLogSource
-import app.snapsync.fake.inMemoryDeviceManifestStore
-import app.snapsync.fake.inMemoryPushRegistrationRecord
 import app.snapsync.fake.inMemoryCrashReporter
 import app.snapsync.fake.inMemoryFiles
+import app.snapsync.fake.inMemoryDatabases
+import app.snapsync.fake.inMemoryPreferences
+import app.snapsync.fake.inMemorySecureStore
+import app.snapsync.model.FileArea
+import app.snapsync.model.SecureSlots
+import app.snapsync.model.SecureStoreRead
+import app.snapsync.model.StoredProtection
+import app.snapsync.model.DeviceIdentityRole
+import app.snapsync.ports.Databases
+import app.snapsync.ports.Files
+import app.snapsync.ports.PlatformDeviceId
+import app.snapsync.services.config.CONFIG_FILE_NAME
+import app.snapsync.services.identity.PersistedDeviceIdentity
+import app.snapsync.services.album.AlbumMapService
+import app.snapsync.services.staging.DOWNLOAD_STAGING_DIR
+import app.snapsync.model.APP_LOG_FILE_NAME
+import app.snapsync.model.EXTENSION_LOG_FILE_NAME
 import app.snapsync.compose.ProcessPorts
 import app.snapsync.compose.ProcessServices
 import app.snapsync.compose.snapSyncProcess
 import app.snapsync.model.CrashEvent
 import app.snapsync.ports.ProcessMetrics
 import app.snapsync.ports.EntryContext
-import app.snapsync.fake.inMemoryDownloadStore
-import app.snapsync.fake.inMemoryLedgerStore
-import app.snapsync.fake.inMemoryStagedBytes
 import app.snapsync.fake.inMemoryBackgroundTime
 import app.snapsync.fake.inMemoryExtensionRegistry
 import app.snapsync.fake.HeldBackgroundTime
@@ -88,21 +96,19 @@ import app.snapsync.ports.Backend
 import app.snapsync.ports.DeviceIntegrity
 import app.snapsync.model.CandidateRead
 import app.snapsync.model.Candidate
-import app.snapsync.ports.CandidateSource
+import app.snapsync.services.gallery.CandidateSource
 import app.snapsync.services.gallery.GalleryAlbums
 import app.snapsync.model.SELECTION_CALIBRATION
 import app.snapsync.services.gallery.GalleryCandidateSource
 import app.snapsync.model.ConfigRead
-import app.snapsync.ports.ConfigReader
-import app.snapsync.ports.ConfigSource
-import app.snapsync.ports.ConfigStore
+import app.snapsync.services.config.ConfigService
 import app.snapsync.model.CycleResult
-import app.snapsync.ports.DeviceLogSource
-import app.snapsync.ports.DeviceManifestStore
-import app.snapsync.ports.PushRegistrationRecord
-import app.snapsync.ports.DownloadStore
-import app.snapsync.ports.LedgerStore
-import app.snapsync.ports.StagedBytes
+import app.snapsync.services.logs.LogTailService
+import app.snapsync.services.manifest.DeviceManifestService
+import app.snapsync.services.push.PushRegistrationRecord
+import app.snapsync.services.downloads.DownloadService
+import app.snapsync.services.ledger.LedgerService
+import app.snapsync.services.staging.StagingService
 import app.snapsync.model.TransferOutcome
 import kotlin.coroutines.ContinuationInterceptor
 import kotlin.coroutines.EmptyCoroutineContext
@@ -149,18 +155,11 @@ class World(
      */
     val host: String = backend.base,
     /**
-     * The ledger this world composes over. Injectable for ONE reason: building a second world over the
-     * same backend is how a **process boundary** is expressed here. Everything else a world holds is
-     * in-memory and dies with it — which is exactly what a relaunch does to a device — so passing the
-     * ledger on is what makes "did this fact survive the process?" an assertable question rather than a
-     * device-only one (`changes/fix-lost-upload-acks`).
+     * The device's databases — the App-Group ledger and download store — as REAL in-memory SQLite (`docs/testing.md`):
+     * the storage services run their own SQL over them, and they are durable across a [relaunch] as the App-Group
+     * files are. Injectable so a test can hand in its own (the "composition opens no database" test counts opens).
      */
-    val ledgerBackend: LedgerStore = inMemoryLedgerStore(),
-    /**
-     * The download store the app graph writes and the cycle reads for echo suppression — the honest in-memory one
-     * unless a test hands in the real storage service (as the "composition opens no database" test does).
-     */
-    downloadBackend: DownloadStore = inMemoryDownloadStore(),
+    val databases: Databases = inMemoryDatabases(),
     /**
      * Whether this world can ATTEST (capability `privacy-security`). **Off by default**, which is the
      * world as it has always been: attestation is composed because `AppPorts` requires the seams, and
@@ -246,7 +245,6 @@ class World(
             is CandidateRead.Readable -> read.candidates
             CandidateRead.NotReadable -> emptyList()
         }
-    val downloadStore: RecordingDownloadStore = RecordingDownloadStore(downloadBackend)
     // The SAME ledger the composed cycle writes: this adapter records terminal outcomes into it, exactly
     // as both device adapters do, so the world exercises the real two-phase completion.
     // It completes a transfer with a real PUT over the backend's bare client — the network an OS transfer
@@ -260,7 +258,14 @@ class World(
      * [relaunch], as a background `URLSession` is: a relaunched app finds the transfers the dead process started, and
      * their completions arrive there. Each launch's composition registers its own handlers on it.
      */
-    val download: FakeDownload = FakeDownload()
+    val download: FakeDownload = FakeDownload(
+        // The OS's temporary file for a finished download: in the app's private area, where the platform leaves it.
+        leaveTempFile = { description ->
+            val path = "download-tmp/${description.hashCode().toUInt()}"
+            privateFiles[path] = STAGED_BYTES
+            (files.locate(FileArea.PRIVATE, path) as app.snapsync.model.FileResult.Ok).value
+        },
+    )
 
     /** [download], once this launch has brought the session up (a transfer, a cancel, or a handback) — else `null`. */
     val downloadTransport: FakeDownload? get() = download.takeIf { it.realized }
@@ -279,14 +284,22 @@ class World(
      */
     val importer: WorldImports get() = gallery.imports
     /**
-     * The world's "disk" for staged download bytes (capability `receiving-photos`). Real enough to assert
-     * the property that matters — bytes SURVIVE a failed, abandoned or unconfirmed import and vanish only
-     * once the row is settled — rather than merely that a release call happened.
+     * The App-Group container's files (the SHARED area) — the membership, the manifest and push records, the staged
+     * download bytes and the extension's log. Durable across [relaunch], as the container is. The operator's own
+     * cell: the rigging owns what it observes (`docs/architecture.md`).
      */
-    /** The operator's own cell: the rigging owns what it wants to observe and passes it in, rather
-     *  than reading it back off the honest double (`docs/architecture.md`). */
-    val stagedFiles: MutableSet<String> = mutableSetOf()
-    val stagedBytes: StagedBytes = inMemoryStagedBytes(stagedFiles)
+    val sharedFiles: MutableMap<String, ByteArray> = mutableMapOf()
+
+    /** The files the operator made unreadable — a lever cell (see [membershipUnreadable]). */
+    private val deniedFiles: MutableSet<Pair<FileArea, String>> = mutableSetOf()
+
+    /**
+     * The world's "disk" for staged download bytes (capability `receiving-photos`): the staged files in [sharedFiles].
+     * Real enough to assert the property that matters — bytes SURVIVE a failed, abandoned or unconfirmed import and
+     * vanish only once the row is settled — rather than merely that a release call happened.
+     */
+    val stagedFiles: Set<String>
+        get() = sharedFiles.keys.filterTo(mutableSetOf()) { it.startsWith("$DOWNLOAD_STAGING_DIR/") }
 
     /**
      * Model the photo library **ingesting** a staged resource: it takes a resource's file when it
@@ -299,7 +312,7 @@ class World(
      * which are the two states the adjudicator must never confuse.
      */
     fun consumeStagedBytes(vararg paths: String) {
-        stagedFiles.removeAll(paths.toSet())
+        paths.forEach { sharedFiles.remove(it) }
     }
     /** Push-registration writes that LANDED on the mini-edge (capability `receiving-photos`), counted at the
      *  port: the composed registration — its launch/rotation collector and the join's re-PUT — writes through
@@ -346,10 +359,6 @@ class World(
 
     /** The OS-delivered APNs token, as the world's shell delivers it (none until a test delivers one). */
     val pushTokens: PushTokenSource = PushTokenSource("sandbox")
-    val manifestStore: DeviceManifestStore = inMemoryDeviceManifestStore()
-
-    /** The last push registration the backend accepted — an App-Group file on a device, so durable across [relaunch]. */
-    private val pushRegistrationRecord: PushRegistrationRecord = inMemoryPushRegistrationRecord()
     /** Whether the process started reporting — the `CrashReporter.start` observation. */
     val diagnosticsStarted: MutableStateFlow<Boolean> = MutableStateFlow(false)
 
@@ -362,10 +371,16 @@ class World(
      */
     val privateFiles: MutableMap<String, ByteArray> = mutableMapOf()
 
-    /** The device logs a dump reads back. Seed one to give the world a log to carry. */
-    val deviceLogs: MutableStateFlow<Map<DeviceLogSource.Process, String>> = MutableStateFlow(emptyMap())
+    /** The App-Group user defaults (the album map lives there) — durable across [relaunch]. */
+    private val preferenceValues: MutableMap<String, String> = mutableMapOf()
 
-    val albumMapStore = app.snapsync.fake.inMemoryAlbumMapStore()
+    /**
+     * The Keychain items — the device id and the attestation record — durable across [relaunch]. The device id is
+     * seeded: the world plays a device whose app has launched before, so both processes read [ownDeviceId].
+     */
+    private val secureItems: MutableMap<app.snapsync.model.SecureSlot, SecureStoreRead.Found> = mutableMapOf(
+        SecureSlots.DEVICE_ID to SecureStoreRead.Found(ownDeviceId, StoredProtection.BACKGROUND_READABLE),
+    )
 
     /**
      * The world's backend client — bare: it carries nothing but the engine. The credential, the declared version
@@ -391,18 +406,6 @@ class World(
 
     /** The app's manifest publisher — the composed backend service, which the world's extension-tier cycle shares. */
     val manifestPublisher: ManifestPublisher get() = core.backend.manifest
-
-    // The membership: the world's own cells behind the honest config ports (`:adapter:generic:fake`, held to
-    // `ConfigStoreContract` as the App-Group file store is). [configCell] is what operator actions write
-    // directly; [configReadable] is what the [membershipUnreadable] lever moves.
-    private val configCell = MutableStateFlow<EventConfig?>(null)
-    private val configReadable = MutableStateFlow(true)
-    val configSource: ConfigSource = inMemoryConfigSource(configCell, configReadable)
-
-    // The write side of the same cells — the composed `LeaveEvent`/`JoinEvent` clear/set the config the
-    // container reduces from.
-    val configStore: ConfigStore = inMemoryConfigStore(configCell, configReadable)
-
 
     // ---- failure levers -------------------------------------------------------------------------
 
@@ -476,18 +479,10 @@ class World(
      * bugs turned on was the one no test could reach. Set it and a cycle takes [CycleGate.Skip].
      */
     var membershipUnreadable: Boolean
-        get() = !configReadable.value
+        get() = (FileArea.SHARED to CONFIG_FILE_NAME) in deniedFiles
         set(value) {
-            configReadable.value = !value
+            if (value) deniedFiles += FileArea.SHARED to CONFIG_FILE_NAME else deniedFiles -= FileArea.SHARED to CONFIG_FILE_NAME
         }
-
-    /**
-     * The world's membership read as the shared `ConfigReader` port — the honest fake over the same cells,
-     * so the [membershipUnreadable] lever surfaces as [ConfigRead.Unavailable] exactly as an unreadable
-     * store answers, and writes are refused meanwhile. The gate itself is `uploadCore`'s — the world
-     * carries no translation of its own.
-     */
-    private val configReader: ConfigReader = inMemoryConfigReader(configCell, configReadable)
 
     // ---- the composed APP graph (the REAL snapSyncApp, over the fakes) --------------------------
 
@@ -570,6 +565,38 @@ class World(
     private var appJob: Job = Job(scope.coroutineContext[Job])
     private var appScope: CoroutineScope = CoroutineScope(scope.coroutineContext + appJob)
 
+    /** The one [Files] of the device — both areas, over the operator's cells; the denied set is a lever. */
+    private val files: Files = inMemoryFiles(shared = sharedFiles, private = privateFiles, denied = deniedFiles)
+
+    // ---- the storage services of this launch ---------------------------------------------------
+    //
+    // The REAL services, as a root builds them, over the durable cells above. A process holds its own instances, so
+    // [relaunch] builds new ones over the same state — which is what makes a relaunch find exactly what survived.
+
+    /** The membership — the composed features read and write it; operator actions write through it too. */
+    var config: ConfigService = ConfigService(files, worldClock)
+        private set
+
+    /** The upload ledger the composed cycle writes (an App-Group database). */
+    var ledger: LedgerService = LedgerService(databases)
+        private set
+
+    /** The download store the app graph writes and the cycle reads for echo suppression (an App-Group database). */
+    var downloadStore: DownloadService = DownloadService(databases)
+        private set
+
+    /** Staged download bytes: where they land and when they go — over [sharedFiles]. */
+    var stagedBytes: StagingService = StagingService(files)
+        private set
+
+    /** The manifest the upload tier last published — an App-Group file. */
+    var manifestStore: DeviceManifestService = DeviceManifestService(files)
+        private set
+
+    /** The event albums the app created, by event — in the App-Group user defaults. */
+    var albumMapStore: AlbumMapService = albumMapOver(preferenceValues, secureItems)
+        private set
+
     /**
      * What this launch's process set up first — its crash reporting started (`snapSyncProcess`, every root's first
      * act). Replaced by [relaunch], with the process.
@@ -598,7 +625,7 @@ class World(
             crashReporter = inMemoryCrashReporter(started = diagnosticsStarted, dumps = diagnosticsSent),
             processMetrics = NoProcessMetrics,
             logSinks = emptyList(),
-            files = inMemoryFiles(shared = null, private = privateFiles),
+            files = files,
             clock = worldClock,
             entryContext = NoEntryContext,
             dsn = dsn,
@@ -616,7 +643,7 @@ class World(
             crashReporter = inMemoryCrashReporter(),
             processMetrics = NoProcessMetrics,
             logSinks = emptyList(),
-            files = inMemoryFiles(shared = null, private = null),
+            files = inMemoryFiles(shared = sharedFiles, private = null, denied = deniedFiles),
             clock = worldClock,
             entryContext = NoEntryContext,
             dsn = WORLD_DSN,
@@ -639,10 +666,8 @@ class World(
         processInfo = inMemoryProcessInfo(),
         // The device logs a dump reads back (capability `privacy-security`) — empty until an
         // operator seeds them, which is honest: a world has no device writing log files.
-        deviceLogSource = inMemoryDeviceLogSource(deviceLogs),
-        configSource = configSource,
-        // The world's membership lives in-process in the config cell, so there is nothing to re-read.
-        configRefresh = {},
+        deviceLogs = LogTailService(files),
+        config = config,
         // The operator's table of holds: a wake's hold is visible there until it ends, and the operator expires it.
         backgroundTime = inMemoryBackgroundTime(backgroundTimeHolds),
         wake = wake,
@@ -653,7 +678,6 @@ class World(
         lifecycle = lifecycle,
         links = links,
         ui = ui,
-        configStore = configStore,
         photoAccess = permission,
         // The operator plays the OS: nothing uploads on its own. A selection change updates the cell + N and
         // reaches the world uploader's inert units (`OperatorUploadEngine`), counted; the operator invokes the
@@ -661,7 +685,7 @@ class World(
         gallery = gallery,
         // The SAME ledger the composed cycle writes, and the mini-edge's per-device listing the join-time
         // load seeds it from (capability `photo-sharing`).
-        uploadRecord = UploadRecordPorts(ledger = ledgerBackend),
+        uploadRecord = UploadRecordPorts(ledger = ledger),
         downloadStore = downloadStore,
         // Staging root AND release, one port: the world's staged paths are built from the same
         // root the fake reports, exactly as the App-Group container is on device.
@@ -674,7 +698,7 @@ class World(
         manifestStore = manifestStore,
         integrity = integrity,
         attestStore = inMemoryAttestStore(),
-        deviceIdentity = { ownDeviceId },
+        deviceIdentity = identityOver(secureItems, DeviceIdentityRole.MINTING),
         appStoreUrl = WORLD_APP_STORE_URL,
         // The operator IS the engine: nothing auto-runs; a cycle happens when invoked by hand.
         appDrivenUpload = { operatorEngine },
@@ -686,7 +710,7 @@ class World(
         // rather than a world-local provision body (`docs/testing.md`).
         push = PushPorts(
             tokens = pushTokens,
-            record = pushRegistrationRecord,
+            record = PushRegistrationRecord(files),
         ),
         onEventMinted = { eventId -> onEventMinted(eventId) },
         log = logs.logger("World"),
@@ -707,12 +731,14 @@ class World(
      * one, through the same shared host composition, over the same ports.
      *
      * What survives is exactly what survives on a device, and this is the one place that says so:
-     * - **durable**: the ledger and the download store (App-Group databases); the membership, the manifest
-     *   record and the last-registered push record (App-Group files); the attestation record (Keychain); the staged files (App-Group directory); the
+     * - **durable**: the ledger and the download store (App-Group databases, [databases]); the membership, the
+     *   manifest record and the last-registered push record (App-Group files, [sharedFiles]); the attestation record
+     *   (Keychain); the staged files (App-Group directory); the
      *   photo library, its albums and the album map; the backend; the operating system's upload jobs and its
      *   download session; the permission grant; the push token the OS re-delivers at every launch; the reporter's
      *   received dumps and the log;
-     * - **process memory**, gone: the composed core and everything it holds (the version gate, the status
+     * - **process memory**, gone: the storage services' instances (rebuilt over the durable state above), the
+     *   composed core and everything it holds (the version gate, the status
      *   sources' last reads, the create and rename latches, the cycle), the status host, and the download
      *   transport this process had realized.
      *
@@ -725,6 +751,12 @@ class World(
         appJob = Job(scope.coroutineContext[Job])
         appScope = CoroutineScope(scope.coroutineContext + appJob)
         download.relaunched()
+        config = ConfigService(files, worldClock)
+        ledger = LedgerService(databases)
+        downloadStore = DownloadService(databases)
+        stagedBytes = StagingService(files)
+        manifestStore = DeviceManifestService(files)
+        albumMapStore = albumMapOver(preferenceValues, secureItems)
         cycleOfThisLaunch = null
         uploadPortsOfThisLaunch = null
         process = appProcess()
@@ -894,7 +926,7 @@ class World(
     suspend fun seedLegacyStagedBacklog(ref: AssetRef): Set<String> {
         val primaryKey = "${ref.sourceAssetId}-primary.heic"
         val liveKey = "${ref.sourceAssetId}-live.mov"
-        val paths = listOf("${stagedBytes.stagingRoot()}$primaryKey", "${stagedBytes.stagingRoot()}$liveKey")
+        val paths = listOf("${stagedBytes.stagingRoot()}/$primaryKey", "${stagedBytes.stagingRoot()}/$liveKey")
         downloadStore.plan(
             ref,
             DEFAULT_DATE,
@@ -906,13 +938,17 @@ class World(
         downloadStore.markStaged(ref, primaryKey, paths[0])
         downloadStore.markStaged(ref, liveKey, paths[1])
         downloadStore.markImported(ref, AssetId("LOCAL-${ref.sourceAssetId}"))
-        stagedFiles += paths
+        paths.forEach(::stageFile)
         return paths.toSet()
     }
 
     /** Append [text] to a process's device log — the log a diagnostic dump reads back. */
-    fun appendDeviceLog(process: DeviceLogSource.Process, text: String) {
-        deviceLogs.value = deviceLogs.value + (process to (deviceLogs.value[process].orEmpty() + text))
+    fun appendDeviceLog(process: LogTailService.Process, text: String) {
+        val (cell, name) = when (process) {
+            LogTailService.Process.APP -> privateFiles to APP_LOG_FILE_NAME
+            LogTailService.Process.EXTENSION -> sharedFiles to EXTENSION_LOG_FILE_NAME
+        }
+        cell[name] = (cell[name]?.decodeToString().orEmpty() + text).encodeToByteArray()
     }
 
     /** Put an existing own asset into an album some app made — e.g. `placeInAlbum("WhatsApp", "A1")`. */
@@ -1044,7 +1080,7 @@ class World(
     ) {
         // The join-time load, exactly as `flow/Provision` runs it — the composed instance, not a copy.
         loadShareSetFor(eventId)
-        configCell.value = EventConfig(
+        config.save(EventConfig(
             eventId = eventId,
             name = name,
             minPhotoDate = minPhotoDate,
@@ -1053,7 +1089,7 @@ class World(
             startsAt = startsAt,
             direction = direction,
             saveToAlbum = saveToAlbum,
-        )
+        ))
     }
 
     /**
@@ -1075,9 +1111,9 @@ class World(
      */
     suspend fun leave() {
         core.downloadController.onLeaveOrSwitch()
-        configCell.value?.eventId?.let { core.backend.leave.notifyLeaving(it) }
-        ledgerBackend.clear()
-        configCell.value = null
+        config.config.value?.eventId?.let { core.backend.leave.notifyLeaving(it) }
+        ledger.clear()
+        config.clear()
     }
 
     /**
@@ -1086,7 +1122,7 @@ class World(
      * loads nothing, as on a device.
      */
     private suspend fun loadShareSetFor(eventId: String) {
-        if (switchDecision(configCell.value?.eventId, eventId) != SwitchDecision.Stay) core.shareSetLoad.load()
+        if (switchDecision(config.config.value?.eventId, eventId) != SwitchDecision.Stay) core.shareSetLoad.load()
     }
 
     // ---- the upload cycle (the extension tier's shared assembly) --------------------------------
@@ -1101,7 +1137,7 @@ class World(
      * so there is nothing to contribute and `N` is 0, the same answer the cycle reaches.
      */
     suspend fun selectionPolicy(): SelectionPolicy =
-        configCell.value
+        config.config.value
             ?.let {
                 // The SAME derivation the shell and the cycle use — this world composes production
                 // instances, so a policy built any other way here would not be the one under test.
@@ -1136,14 +1172,14 @@ class World(
                 // The world composes the app graph on an OS without the OS-driven mechanism, so its one cycle
                 // takes the app process's admission — the same resolution the device app engine gates on.
                 process = UploaderProcess.App({ core.appUploadAdmission() }, { core.photoPermission.value }),
-                config = configReader,
-                deviceIdentity = { ownDeviceId },
+                config = config,
+                deviceIdentity = identityOver(secureItems, DeviceIdentityRole.READ_ONLY),
                 host = host,
                 // A constant of the running build, as on device: read once, when the cycle is composed. The
                 // metadata client above reads the [appVersion] lever per request instead, which is what lets a
                 // test play an old build against the version gate.
                 appVersion = appVersion,
-                ledger = ledgerBackend,
+                ledger = ledger,
                 upload = platform,
                 gallery = gallery,
                 discovery = discovery,
@@ -1171,7 +1207,7 @@ class World(
      */
     suspend fun runUploadCycle(requeuePending: Boolean = false): CycleResult {
         val result = runCatching { cycle.run() }.getOrElse { CycleResult.FAILED }
-        if (requeuePending && result == CycleResult.COMPLETED && ledgerBackend.aggregates().pending > 0) {
+        if (requeuePending && result == CycleResult.COMPLETED && ledger.aggregates().pending > 0) {
             return CycleResult.PROCESSING
         }
         return result
@@ -1265,6 +1301,19 @@ class World(
         }
     }
 }
+
+/** What an operator-staged file holds — the bytes are never read, only their presence. */
+internal val STAGED_BYTES: ByteArray = "staged".encodeToByteArray()
+
+/** The album map over the world's user-defaults and Keychain cells, as a process builds it. */
+private fun albumMapOver(
+    preferences: MutableMap<String, String>,
+    secure: MutableMap<app.snapsync.model.SecureSlot, SecureStoreRead.Found>,
+) = AlbumMapService(inMemoryPreferences(preferences), inMemorySecureStore(secure))
+
+/** A process's device identity over the world's Keychain cell, in [role]: the app mints, the extension only reads. */
+private fun identityOver(secure: MutableMap<app.snapsync.model.SecureSlot, SecureStoreRead.Found>, role: DeviceIdentityRole) =
+    PersistedDeviceIdentity(role, inMemorySecureStore(secure), PlatformDeviceId { null })
 
 /** The reporting destination a world's processes carry: a world plays a distributed build, which reports. */
 private const val WORLD_DSN: String = "in-memory://world"

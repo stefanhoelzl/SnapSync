@@ -2,7 +2,7 @@ package app.snapsync.contracts
 
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
-import app.snapsync.ports.DownloadStore
+import app.snapsync.services.downloads.DownloadService
 import app.snapsync.model.PlannedAsset
 import app.snapsync.model.PlannedResource
 
@@ -14,12 +14,12 @@ import kotlin.test.assertTrue
 enum class DownloadStoreState { EMPTY }
 
 /**
- * Shared contract for every [DownloadStore] impl — bound on the in-memory fake (JVM + simulator) and the
+ * Shared contract for every [DownloadService] impl — bound on the in-memory fake (JVM + simulator) and the
  * SQLDelight store (JVM over a JDBC driver, simulator over the native driver); mechanism: `docs/architecture.md`.
  * Exercises the download→stage→import lifecycle, the suppression projection, idempotency, and leave/switch
  * pruning.
  */
-object DownloadStoreContract : Contract<DownloadStoreState, DownloadStore>("DownloadStore") {
+object DownloadStoreContract : Contract<DownloadStoreState, DownloadService>("DownloadService") {
 
     override val clauses = clauses {
         clause("plan then pending lists every resource", DownloadStoreState.EMPTY) { s ->

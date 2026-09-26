@@ -1,6 +1,10 @@
 package app.snapsync.world
 
 import app.snapsync.http.HttpBackend
+import app.snapsync.fake.inMemorySecureStore
+import app.snapsync.model.DeviceIdentityRole
+import app.snapsync.ports.PlatformDeviceId
+import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.services.backend.BackendServices
 import app.snapsync.services.backend.Credential
 import app.snapsync.services.backend.CredentialedBackend
@@ -11,7 +15,10 @@ import app.snapsync.services.backend.CredentialedBackend
  * mini-edge verifies none.
  */
 internal fun miniEdgeServices(store: BackendStore, host: String, deviceId: String = "D"): BackendServices =
-    BackendServices(CredentialedBackend(HttpBackend(miniEdgeClient(store), host, "99.0"), NoCredential, versionGate = null)) { deviceId }
+    BackendServices(
+        CredentialedBackend(HttpBackend(miniEdgeClient(store), host, "99.0"), NoCredential, versionGate = null),
+        PersistedDeviceIdentity(DeviceIdentityRole.MINTING, inMemorySecureStore(), PlatformDeviceId { deviceId }),
+    )
 
 private object NoCredential : Credential {
     override fun token(): String? = null

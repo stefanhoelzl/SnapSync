@@ -48,8 +48,10 @@ dependencies {
     // orphans in-flight work), which no text scan can see.
     testImplementation(project(":domain:model"))
     testImplementation(project(":domain:feature"))
-    // The transitions read the membership and the grant through their ports, so the fakes implement those.
+    // The transitions read the membership and the grant through their services, built over the ports' mocks.
     testImplementation(project(":domain:ports"))
+    testImplementation(project(":domain:services"))
+    testImplementation(project(":adapter:generic:fake"))
     // GatedPathPinTest drives the client's REAL ungated-path predicate against the backend's closed list.
     testImplementation(project(":adapter:generic:app"))
     testImplementation(libs.coroutines.test)

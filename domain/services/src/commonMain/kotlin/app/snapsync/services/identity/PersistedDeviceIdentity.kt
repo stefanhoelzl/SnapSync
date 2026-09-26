@@ -4,11 +4,10 @@ import app.snapsync.model.DeviceIdResult
 import app.snapsync.model.DeviceIdentityRole
 import app.snapsync.model.SecureSlots
 import app.snapsync.model.SecureStoreResolution
-import app.snapsync.ports.DeviceIdentity
-import app.snapsync.ports.DeviceIdentityAbsent
+import app.snapsync.model.DeviceIdentityAbsent
 import app.snapsync.ports.PlatformDeviceId
 import app.snapsync.ports.SecureStore
-import app.snapsync.ports.SecureStoreUnavailable
+import app.snapsync.model.SecureStoreUnavailable
 import app.snapsync.services.secure.readExisting
 import app.snapsync.services.secure.resolveOrMint
 import co.touchlab.kermit.Logger
@@ -39,7 +38,7 @@ class PersistedDeviceIdentity(
     private val store: SecureStore,
     private val platformDeviceId: PlatformDeviceId,
     private val log: Logger = Logger.withTag("deviceIdentity"),
-) : DeviceIdentity {
+) {
 
     /**
      * The one resolution of this process, SERIALISED: `lazy`'s synchronized mode is what keeps two first calls from
@@ -96,8 +95,8 @@ class PersistedDeviceIdentity(
         return result
     }
 
-    /** The transitional throwing form every consumer reads today (`DeviceIdentity`). */
-    override fun deviceId(): String = when (val result = resolve()) {
+    /** The transitional throwing form every consumer reads today (`PersistedDeviceIdentity`). */
+    fun deviceId(): String = when (val result = resolve()) {
         is DeviceIdResult.Id -> result.value
         is DeviceIdResult.Unavailable -> throw SecureStoreUnavailable(result.detail)
         DeviceIdResult.AbsentNotMintable -> throw DeviceIdentityAbsent()

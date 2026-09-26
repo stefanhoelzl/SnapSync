@@ -1,7 +1,6 @@
 package app.snapsync.feature.membership
 
-import app.snapsync.ports.ConfigSource
-import app.snapsync.ports.ConfigStore
+import app.snapsync.services.config.ConfigService
 import app.snapsync.services.backend.EventRename
 import app.snapsync.model.RenameOutcome
 
@@ -37,8 +36,7 @@ import app.snapsync.feature.membership.readmodel.RenameStatus
  * job alone. There is exactly one door to the teardown, and this is not it.
  */
 class RenameEvent(
-    private val configSource: ConfigSource,
-    private val store: ConfigStore,
+    private val configSource: ConfigService,
     private val client: EventRename,
     private val status: MutableRenameStatusSource,
     private val log: Logger = Logger.withTag("RenameEvent"),
@@ -101,6 +99,6 @@ class RenameEvent(
             return
         }
         if (current.name == name) return
-        store.save(current.copy(name = name))
+        configSource.save(current.copy(name = name))
     }
 }

@@ -57,7 +57,7 @@ fun ForgeHarnessRoot() {
                     sources = StatusSources(
                         sync = controller.syncSource,
                         permission = controller.permissionSource.permission,
-                        config = controller.configSource.config,
+                        config = controller.currentConfig,
                         creation = controller.creationStatusSource,
                         download = controller.downloadStatusSource,
                         attested = controller.attestedState,

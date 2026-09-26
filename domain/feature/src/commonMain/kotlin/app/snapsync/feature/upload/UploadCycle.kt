@@ -5,10 +5,10 @@ import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.UploadCreateOutcome
 import app.snapsync.model.CycleResult
 import app.snapsync.model.PauseReason
-import app.snapsync.ports.Discovery
-import app.snapsync.ports.PlatformUploadJob
-import app.snapsync.ports.BackgroundTransfer
-import app.snapsync.ports.UploadDiscovery
+import app.snapsync.services.gallery.Discovery
+import app.snapsync.model.PlatformUploadJob
+import app.snapsync.services.upload.BackgroundTransfer
+import app.snapsync.services.gallery.UploadDiscovery
 
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState

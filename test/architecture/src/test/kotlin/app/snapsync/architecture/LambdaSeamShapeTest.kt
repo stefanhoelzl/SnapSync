@@ -10,7 +10,7 @@ import kotlin.test.assertTrue
  *
  * Both close a way for a seam to be silently unwired:
  *
- *  - **A function-typed `var`** is a slot someone must remember to fill. `QueuedPhotoDownloadJobs.onStaged`
+ *  - **A function-typed `var`** is a slot someone must remember to fill. `DownloadJobs.onStaged`
  *    was one, assigned while building the download controller — so a process the OS relaunched only to deliver
  *    download-session events, which builds the jobs and nothing else, dropped every staged photo without a log
  *    line. A callback is a constructor parameter; a callee built later is resolved when the callback runs.

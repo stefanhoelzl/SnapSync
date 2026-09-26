@@ -1,5 +1,6 @@
 package app.snapsync.desktop
 
+import app.snapsync.world.downloadsInFlight
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import app.snapsync.model.EventLookup
@@ -15,8 +16,6 @@ import app.snapsync.model.EventStart
 import app.snapsync.model.EventEnd
 import app.snapsync.model.DeletesAt
 import androidx.compose.runtime.mutableStateOf
-import app.snapsync.ports.ConfigSource
-import app.snapsync.ports.ConfigStore
 import app.snapsync.model.Direction
 import app.snapsync.model.JoinCommit
 import app.snapsync.model.EventConfig
@@ -93,9 +92,6 @@ class WorldInspectorController(private val scope: CoroutineScope) {
     val permissionSource: PhotoAccessStatusSource = object : PhotoAccessStatusSource {
         override val permission get() = world.permission.permission
     }
-    val configSource: ConfigSource = object : ConfigSource {
-        override val config get() = world.configSource.config
-    }
     val creationStatusSource: CreationStatusSource = object : CreationStatusSource {
         override val creationStatus get() = world.creationStatus.creationStatus
     }
@@ -115,10 +111,6 @@ class WorldInspectorController(private val scope: CoroutineScope) {
         scope.launch { afterMutation() }
     }
     val resetRename: suspend () -> Unit = { world.userCommands.resetRename() }
-    val configStore: ConfigStore = object : ConfigStore {
-        override suspend fun save(config: EventConfig) = world.provision(config.eventId, config.name)
-        override suspend fun clear() = world.leave()
-    }
     val leave: suspend () -> Unit = { world.leave(); afterMutation() }
 
     // The real in-place reconfigure edge (capability `manage-membership`): drives the world's REAL
@@ -261,7 +253,7 @@ class WorldInspectorController(private val scope: CoroutineScope) {
     fun invokeExtension() = launchMutation {
         val result = world.runUploadCycle()
         appendConsole("invoke: upload cycle → $result")
-        world.configSource.config.value?.eventId?.let { world.downloadController.reconcile(it) }
+        world.config.config.value?.eventId?.let { world.downloadController.reconcile(it) }
     }
 
     // ---- enrollment ------------------------------------------------------------------------------
@@ -273,7 +265,7 @@ class WorldInspectorController(private val scope: CoroutineScope) {
     }
 
     fun reprovision() = launchMutation {
-        val eventId = world.configSource.config.value?.eventId ?: return@launchMutation
+        val eventId = world.config.config.value?.eventId ?: return@launchMutation
         world.provision(eventId)
         appendConsole("re-provisioned $eventId (the joined event: nothing stopped, nothing loaded)")
     }
@@ -332,7 +324,7 @@ class WorldInspectorController(private val scope: CoroutineScope) {
 
     /** Inject one foreign device carrying a single complete asset into the joined event. */
     fun injectForeignDevice() = launchMutation {
-        val eventId = world.configSource.config.value?.eventId ?: return@launchMutation
+        val eventId = world.config.config.value?.eventId ?: return@launchMutation
         val deviceId = "foreign-${foreignDeviceSeq++}"
         world.addForeignDevice(deviceId, eventId, listOf(World.foreignAsset("$deviceId-a1")))
         injectedDeviceIds += deviceId
@@ -467,11 +459,11 @@ class WorldInspectorController(private val scope: CoroutineScope) {
         // REAL policy over the REAL enumeration, so the row badge cannot drift from what the cycle does.
         // Without this the levers are mute: an operator would add a screenshot, watch it sit in the gallery,
         // and have no way to tell "correctly excluded" from "silently broken".
-        val cutoff = world.configSource.config.value?.minPhotoDate ?: captureCutoff(World.DEFAULT_CUTOFF)
+        val cutoff = world.config.config.value?.minPhotoDate ?: captureCutoff(World.DEFAULT_CUTOFF)
         // One derivation (capability `photo-sharing`) — the same one the cycle uses. The echo set
         // is deliberately empty here because the badge below reports echo separately; the album lookup is
         // real, so an operator can watch the denylist actually bite.
-        val policy = world.configSource.config.value
+        val policy = world.config.config.value
             ?.let { config ->
                 selectionPolicyFor(
                     config = config,
@@ -501,13 +493,12 @@ class WorldInspectorController(private val scope: CoroutineScope) {
         }
         val jobKeys = world.platform.liveJobKeys()
         val jobs = jobKeys.map { key -> JobRow(key, attempts = world.platform.created.count { it.filename == key }) }
-        // The real jobs expose no inspection seam and their description codec is internal to
-        // `:domain`'s feature/download, so the world's recording store wrapper records what the
-        // controller enqueued (see RecordingDownloadStore.enqueueRequests).
-        val downloads = world.downloadStore.enqueueRequests.distinct()
-            .map { (ref, resourceKey) -> DownloadRow(ref.sourceDeviceId, ref.sourceAssetId.value, resourceKey) }
+        // What the download store holds as sent to the OS and not landed — read from its database, since the real
+        // jobs expose no inspection seam and their description codec is internal to the downloads service.
+        val downloads = world.downloadsInFlight()
+            .map { (device, asset, resourceKey) -> DownloadRow(device, asset, resourceKey) }
         return InspectorSnapshot(
-            joinedEventId = world.configSource.config.value?.eventId,
+            joinedEventId = world.config.config.value?.eventId,
             galleryRows = galleryRows,
             backend = backend,
             jobs = jobs,

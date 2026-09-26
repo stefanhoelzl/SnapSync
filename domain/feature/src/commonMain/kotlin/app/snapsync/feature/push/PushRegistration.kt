@@ -2,10 +2,10 @@ package app.snapsync.feature.push
 
 import app.snapsync.model.ApnsPushToken
 import app.snapsync.model.runCatchingCancellable
-import app.snapsync.ports.DeviceIdentity
-import app.snapsync.ports.PushRegistrationRecord
+import app.snapsync.services.identity.PersistedDeviceIdentity
+import app.snapsync.services.push.PushRegistrationRecord
 import app.snapsync.services.backend.PushTokenPublisher
-import app.snapsync.ports.PushTokenSource
+import app.snapsync.services.push.PushTokenSource
 
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.Flow
@@ -36,7 +36,7 @@ class PushRegistration(
     private val record: PushRegistrationRecord,
     /** Whose registration this is: part of the triple, since a changed device id is a registration the backend
      *  has never seen. Read per publish — it is a Keychain read that throws while protected data is unavailable. */
-    private val identity: DeviceIdentity,
+    private val identity: PersistedDeviceIdentity,
     private val log: Logger = Logger.withTag("PushRegistration"),
 ) {
     /**

@@ -9,7 +9,7 @@ import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
-import app.snapsync.ports.CandidateSource
+import app.snapsync.services.gallery.CandidateSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

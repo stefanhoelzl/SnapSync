@@ -22,6 +22,7 @@ module :test:architecture
 module :test:contracts
 module :test:control
 module :test:edge
+module :test:feature
 module :test:harness-driver
 module :test:integration
 module :test:rig
@@ -97,7 +98,6 @@ edge :domain:compose :domain:model
 edge :domain:compose :domain:ports
 edge :domain:compose :domain:services
 edge :domain:feature :domain:model
-edge :domain:feature :domain:ports
 edge :domain:feature :domain:services
 edge :domain:flow :domain:feature
 edge :domain:flow :domain:model
@@ -112,9 +112,11 @@ edge :domain:presentation :domain:model
 edge :domain:services :domain:model
 edge :domain:services :domain:ports
 edge :test:architecture :adapter:generic:app
+edge :test:architecture :adapter:generic:fake
 edge :test:architecture :domain:feature
 edge :test:architecture :domain:model
 edge :test:architecture :domain:ports
+edge :test:architecture :domain:services
 edge :test:contracts :domain:feature
 edge :test:contracts :domain:model
 edge :test:contracts :domain:ports
@@ -125,6 +127,11 @@ edge :test:control :domain:presentation
 edge :test:control :test:rig
 edge :test:edge :adapter:generic:app
 edge :test:edge :test:contracts
+edge :test:feature :adapter:generic:fake
+edge :test:feature :domain:feature
+edge :test:feature :domain:model
+edge :test:feature :domain:ports
+edge :test:feature :domain:services
 edge :test:harness-driver :app:desktop
 edge :test:integration :domain:feature
 edge :test:integration :domain:model

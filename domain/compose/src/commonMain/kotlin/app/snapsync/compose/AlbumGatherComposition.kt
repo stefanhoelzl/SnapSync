@@ -1,5 +1,6 @@
 package app.snapsync.compose
 
+import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.services.backend.EventUnionSource
 import app.snapsync.ports.EntryContext
 import app.snapsync.feature.album.AlbumCoordinator
@@ -22,17 +23,18 @@ internal fun albumGather(
     ports: AppPorts,
     union: EventUnionSource,
     entryContext: EntryContext,
+    access: GalleryAccessState,
     coordinator: AlbumCoordinator,
     scope: CoroutineScope,
     policyFor: suspend (EventConfig) -> SelectionPolicy,
 ): AlbumGather = AlbumGather(
-    configSource = ports.configSource,
+    configSource = ports.config,
     ledger = ports.uploadRecord.ledger,
     policyFor = policyFor,
     union = union,
     downloads = ports.downloadStore,
     identity = ports.deviceIdentity,
-    photoAccess = ports.photoAccess,
+    photoAccess = access,
     coordinator = coordinator,
     scope = scope,
     entryContext = entryContext,
@@ -60,7 +62,7 @@ internal fun CoroutineScope.launchAlbumGrantSubscription(
 ): Job = launch {
     ports.photoAccess.permission.collect { status ->
         if (status.grantsPhotoAccess) {
-            ports.configSource.config.value?.let { cfg ->
+            ports.config.config.value?.let { cfg ->
                 coordinator.ensureAlbum(cfg.eventId, cfg.name, cfg.saveToAlbum)
             }
         }

@@ -6,7 +6,7 @@ import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.selectionPolicyFor
 import app.snapsync.model.EventPhotoSet
-import app.snapsync.ports.CandidateSource
+import app.snapsync.services.gallery.CandidateSource
 
 /**
  * The join-time **shareable-count preview** (capability `join-event`): how many of the device's own

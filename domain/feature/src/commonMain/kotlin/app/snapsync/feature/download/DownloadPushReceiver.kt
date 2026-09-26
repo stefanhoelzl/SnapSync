@@ -1,8 +1,7 @@
 package app.snapsync.feature.download
 
-import app.snapsync.ports.ConfigSource
+import app.snapsync.services.config.ConfigService
 import app.snapsync.model.MembershipRead
-import app.snapsync.ports.PushReceiver
 import co.touchlab.kermit.Logger
 
 /**
@@ -20,11 +19,11 @@ import co.touchlab.kermit.Logger
  */
 class DownloadPushReceiver(
     /** The membership: the active event id is read fresh at every push. */
-    private val configSource: ConfigSource,
+    private val configSource: ConfigService,
     private val controller: DownloadController,
     private val log: Logger = Logger.withTag("DownloadPushReceiver"),
-) : PushReceiver {
-    override suspend fun onSilentPush(eventId: String) {
+) {
+    suspend fun onSilentPush(eventId: String) {
         val active = when (val membership = configSource.membership) {
             is MembershipRead.Member -> membership.config.eventId
             MembershipRead.NotMember -> null

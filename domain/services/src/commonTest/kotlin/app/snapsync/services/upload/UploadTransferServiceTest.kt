@@ -26,12 +26,11 @@ import app.snapsync.model.UploadSource
 import app.snapsync.model.UploadSourceKind
 import app.snapsync.model.UploadTarget
 import app.snapsync.model.WriteOutcome
-import app.snapsync.ports.Discovery
+import app.snapsync.services.gallery.Discovery
 import app.snapsync.ports.Files
 import app.snapsync.ports.GalleryReader
-import app.snapsync.ports.TransferRecord
 import app.snapsync.ports.Upload
-import app.snapsync.ports.UploadDiscovery
+import app.snapsync.services.gallery.UploadDiscovery
 import app.snapsync.ports.UploadHandlers
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -308,7 +307,7 @@ class UploadTransferServiceTest {
     fun `a retry finds nothing to re-point once its job settled and never re-points to a bad destination`() = runTest {
         val upload = ScriptedUpload()
         val record = Record(mutableMapOf(destination to row("A-primary.jpg")))
-        val gone = app.snapsync.ports.PlatformUploadJob("A-primary.jpg", "image/jpeg", null, null)
+        val gone = app.snapsync.model.PlatformUploadJob("A-primary.jpg", "image/jpeg", null, null)
         val transfer = service(upload, record)
         transfer.retryJob(gone, UploadRequest(url, emptyMap(), Resource("A-primary.jpg", AssetId("A"), "", emptyMap(), Unit)))
         upload.offered = listOf(job(UploadJobState.FAILED))

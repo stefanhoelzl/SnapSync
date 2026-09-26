@@ -76,8 +76,8 @@ class TailWorldTest {
         // Staged by a wake the process did not survive to import — recorded, with its bytes on disk.
         val ref = AssetRef("DEV-F", AssetId("FQ"))
         val key = uploadKey(AssetId("FQ"), ResourceRole.PRIMARY, "IMG.HEIC")
-        w.stagedFiles += "/staged/FQ"
-        w.downloadStore.markStaged(ref, key, "/staged/FQ")
+        w.stageFile("download-staging/FQ")
+        w.downloadStore.markStaged(ref, key, "download-staging/FQ")
         val before = w.importer.imported.size
 
         w.backendOffline = true // the push's union read fails fast

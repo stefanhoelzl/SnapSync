@@ -5,8 +5,6 @@ import app.cash.sqldelight.db.SqlSchema
 import app.snapsync.databases.JdbcDatabases
 import app.snapsync.ports.Databases
 import app.snapsync.ports.DbOpen
-import app.snapsync.services.downloads.DownloadService
-import app.snapsync.services.ledger.LedgerService
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -32,7 +30,7 @@ class CompositionOpensNoDatabaseTest {
     @Test
     fun forcing_the_composition_opens_no_database_and_first_use_does() = worldTest {
         val databases = Counting(JdbcDatabases(Files.createTempDirectory("composition").toFile().also { it.deleteOnExit() }))
-        val w = World(this, ledgerBackend = LedgerService(databases), downloadBackend = DownloadService(databases))
+        val w = World(this, databases = databases)
 
         w.core
         w.cycle

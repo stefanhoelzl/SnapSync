@@ -6,8 +6,8 @@ import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.selectionRulesFor
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionScope
-import app.snapsync.ports.Discovery
-import app.snapsync.ports.UploadDiscovery
+import app.snapsync.services.gallery.Discovery
+import app.snapsync.services.gallery.UploadDiscovery
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith

@@ -2,7 +2,7 @@ package app.snapsync.contracts
 
 import app.snapsync.ports.SecureStore
 import app.snapsync.model.SecureStoreRead
-import app.snapsync.ports.SecureStoreUnavailable
+import app.snapsync.model.SecureStoreUnavailable
 import app.snapsync.model.StoredProtection
 import app.snapsync.model.SecureSlot
 import app.snapsync.model.WriteOutcome

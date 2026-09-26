@@ -25,7 +25,7 @@ class UploadCycleWorldTest {
         assertTrue("A-primary.jpg" in w.store.objectsOf(w.ownDeviceId)) // store-direct deposit
 
         w.runUploadCycle() // acknowledge → ledger COMPLETED
-        assertEquals(LedgerState.COMPLETED, w.ledgerBackend.get("A-primary.jpg")?.state)
+        assertEquals(LedgerState.COMPLETED, w.ledger.get("A-primary.jpg")?.state)
     }
 
     @Test
@@ -38,12 +38,12 @@ class UploadCycleWorldTest {
 
         w.platform.failJob("A-primary.jpg", UploadError.Network)
         w.runUploadCycle() // first failure → the single free retry re-points the job, still REQUESTED
-        assertEquals(LedgerState.REQUESTED, w.ledgerBackend.get("A-primary.jpg")?.state)
+        assertEquals(LedgerState.REQUESTED, w.ledger.get("A-primary.jpg")?.state)
         assertEquals(1, w.platform.created.count { it.filename == "A-primary.jpg" })
 
         w.platform.failJob("A-primary.jpg", UploadError.Network)
         w.runUploadCycle() // retry-spent → back to DISCOVERED, then re-created in the same cycle
-        assertEquals(LedgerState.REQUESTED, w.ledgerBackend.get("A-primary.jpg")?.state)
+        assertEquals(LedgerState.REQUESTED, w.ledger.get("A-primary.jpg")?.state)
         assertEquals(2, w.platform.created.count { it.filename == "A-primary.jpg" })
     }
 
@@ -72,10 +72,10 @@ class UploadCycleWorldTest {
         w.removeAsset("A")
         w.discovery.makeWalkUnreadable()
         w.runUploadCycle()
-        assertEquals(LedgerState.COMPLETED, w.ledgerBackend.get("A-primary.jpg")?.state, "nothing deleted")
+        assertEquals(LedgerState.COMPLETED, w.ledger.get("A-primary.jpg")?.state, "nothing deleted")
 
         w.runUploadCycle()
-        assertNull(w.ledgerBackend.get("A-primary.jpg"), "the next readable walk is the evidence")
+        assertNull(w.ledger.get("A-primary.jpg"), "the next readable walk is the evidence")
     }
 
     @Test
@@ -92,7 +92,7 @@ class UploadCycleWorldTest {
         w.provision("E", minPhotoDate = captureCutoff("2026-07-01T00:00:00Z"))
         w.runUploadCycle()
 
-        assertEquals(LedgerState.COMPLETED, w.ledgerBackend.get("A-primary.jpg")?.state)
+        assertEquals(LedgerState.COMPLETED, w.ledger.get("A-primary.jpg")?.state)
     }
 
     @Test
@@ -109,7 +109,7 @@ class UploadCycleWorldTest {
         w.placeInAlbum("WhatsApp", "A")
         w.runUploadCycle()
 
-        assertEquals(LedgerState.COMPLETED, w.ledgerBackend.get("A-primary.jpg")?.state)
+        assertEquals(LedgerState.COMPLETED, w.ledger.get("A-primary.jpg")?.state)
     }
 
     @Test
@@ -127,6 +127,6 @@ class UploadCycleWorldTest {
         w.removeAsset("A")
         w.runUploadCycle()
 
-        assertNull(w.ledgerBackend.get("A-primary.jpg"), "the departed asset's row is deleted")
+        assertNull(w.ledger.get("A-primary.jpg"), "the departed asset's row is deleted")
     }
 }

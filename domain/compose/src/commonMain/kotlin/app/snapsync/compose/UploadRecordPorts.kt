@@ -1,6 +1,6 @@
 package app.snapsync.compose
 
-import app.snapsync.ports.LedgerStore
+import app.snapsync.services.ledger.LedgerService
 
 /**
  * What this process knows about its own uploads: the ledger (spec `docs/architecture.md`, "One shared
@@ -20,5 +20,5 @@ import app.snapsync.ports.LedgerStore
  */
 class UploadRecordPorts(
     /** The app-side ledger handle: the reads above, and the reset family at join and leave. */
-    val ledger: LedgerStore,
+    val ledger: LedgerService,
 )

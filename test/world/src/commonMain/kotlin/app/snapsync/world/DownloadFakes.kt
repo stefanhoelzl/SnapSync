@@ -11,7 +11,7 @@ import app.snapsync.model.AssetRef
 
 /**
  * The operator-driven download **edge** (`docs/testing.md`): a fake [Download] the world composes the **real**
- * [app.snapsync.feature.download.QueuedPhotoDownloadJobs] over — so the bounded window, the tag codec, the URL guard
+ * [app.snapsync.services.downloads.DownloadJobs] over — so the bounded window, the tag codec, the URL guard
  * and the integrity judgement all run against it, and only the platform is played.
  *
  * [finish] mirrors the real `URLSession` delegate, including the ordering the integrity check depends on: the finish
@@ -25,6 +25,12 @@ class FakeDownload(
      * `URLSession`'s do.
      */
     val started: MutableList<Started> = mutableListOf(),
+    /**
+     * Where the OS leaves a finished transfer's bytes: given the transfer's description, write its temporary file and
+     * answer the platform path handed to the finish handler — as a `URLSession` leaves a temp file the app must move
+     * before its callback returns. The default leaves none: a path nothing can adopt.
+     */
+    private val leaveTempFile: (description: String) -> String = { "temp:/$it" },
 ) : Download {
 
     /** Inspection: a transfer started through this session. */
@@ -70,7 +76,7 @@ class FakeDownload(
      * completion. A rejected [outcome] leaves the resource un-staged — the world's pending-for-retry state.
      */
     fun finish(description: String, outcome: TransferOutcome = HEALTHY) {
-        registered().onFinished(description, outcome, "temp:/$description")
+        registered().onFinished(description, outcome, leaveTempFile(description))
         registered().onCompleted(description, null)
     }
 

@@ -1,11 +1,11 @@
 package app.snapsync.feature.membership
 
-import app.snapsync.ports.DeviceIdentity
+import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
 import app.snapsync.services.backend.DeviceFilesSource
 import app.snapsync.services.backend.DeviceListingShapeException
-import app.snapsync.ports.LedgerStore
+import app.snapsync.services.ledger.LedgerService
 import co.touchlab.kermit.Logger
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.withTimeoutOrNull
@@ -44,9 +44,9 @@ private const val LISTING_TIMEOUT_MS = 15_000L
  */
 class ShareSetLoad(
     private val files: DeviceFilesSource,
-    private val ledger: LedgerStore,
+    private val ledger: LedgerService,
     /** The device identity; a thunk because it resolves against a protected store on first use. */
-    private val identity: DeviceIdentity,
+    private val identity: PersistedDeviceIdentity,
     private val log: Logger = Logger.withTag("ShareSetLoad"),
 ) {
     suspend fun load() {

@@ -4,7 +4,6 @@ import app.snapsync.model.PrefRead
 import app.snapsync.model.SecureSlots
 import app.snapsync.model.WriteOutcome
 import app.snapsync.model.runCatchingCancellable
-import app.snapsync.ports.AlbumMapStore
 import app.snapsync.ports.Preferences
 import app.snapsync.ports.SecureStore
 import co.touchlab.kermit.Logger
@@ -16,7 +15,7 @@ import kotlinx.serialization.json.Json
 const val ALBUM_MAP_KEY: String = "app.snapsync.album.map"
 
 /**
- * The event-album map (capability `event-album`): [AlbumMapStore] as JSON under one key of the shared
+ * The event-album map (capability `event-album`): [AlbumMapService] as JSON under one key of the shared
  * [Preferences], so the app (which writes on album creation) and the upload extension (which reads on placement)
  * both see it — readable while locked, which the Keychain item it replaced was not.
  *
@@ -29,14 +28,22 @@ class AlbumMapService(
     /** Where the legacy map may still sit ([SecureSlots.ALBUM_MAP_LEGACY]). */
     private val secureStore: SecureStore,
     private val log: Logger = Logger.withTag("AlbumMap"),
-) : AlbumMapStore {
+) {
 
     private val json = Json { ignoreUnknownKeys = true }
     private val serializer = MapSerializer(String.serializer(), String.serializer())
 
-    override fun get(eventId: String): String? = readMap()[eventId]
+    /**
+     * The stored album `localIdentifier` for [eventId], or `null` if none was ever created.
+     *
+     * Absence: null covers "never created" and "map unreadable" alike — both send the coordinator
+     * down the ensure-then-remember path, which is why this map is described as a self-healing
+     * cache. A wrong null costs one redundant lookup, never a lost photo.
+     */
+    fun get(eventId: String): String? = readMap()[eventId]
 
-    override fun put(eventId: String, albumLocalId: String) {
+    /** Remember [albumLocalId] as [eventId]'s album (overwrites any prior mapping). */
+    fun put(eventId: String, albumLocalId: String) {
         val updated = readMap().toMutableMap().apply { this[eventId] = albumLocalId }
         write(json.encodeToString(serializer, updated))
     }

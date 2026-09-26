@@ -4,11 +4,10 @@ import app.snapsync.model.APP_LOG_FILE_NAME
 import app.snapsync.model.EXTENSION_LOG_FILE_NAME
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
-import app.snapsync.ports.DeviceLogSource
 import app.snapsync.ports.Files
 
 /**
- * The read side of the two device logs (capability `privacy-security`): [DeviceLogSource] over [Files] — the
+ * The read side of the two device logs (capability `privacy-security`): the tail of a process's device log, bounded in bytes, over [Files] — the
  * app's own log in its private area, the extension's in the shared one (the only placement the app, which
  * assembles a diagnostic dump, can read).
  *
@@ -17,13 +16,23 @@ import app.snapsync.ports.Files
  * kept whole. `null` — never an empty string, never a partial lie — when there is nothing to read, including a
  * log that could not be read. The rolled `.1` sibling is stale and never read.
  */
-class LogTailService(private val files: Files) : DeviceLogSource {
+class LogTailService(private val files: Files) {
 
-    override suspend fun tail(process: DeviceLogSource.Process, maxBytes: Int): String? {
+    /** Which process's log to read. Both live on this device; only one is this process's own. */
+    enum class Process { APP, EXTENSION }
+
+    /**
+     * The last [maxBytes]-ish bytes of [process]'s log, line-aligned; `null` if unreadable.
+     *
+     * Absence: null covers "no such log on this device" and "could not read it", and the two are
+     * identical downstream — the dump ships without that section and the reader sees it reported
+     * absent. Nothing branches on which, so the collapse costs no information anyone acts on.
+     */
+    suspend fun tail(process: Process, maxBytes: Int): String? {
         if (maxBytes <= 0) return null
         val (area, name) = when (process) {
-            DeviceLogSource.Process.APP -> FileArea.PRIVATE to APP_LOG_FILE_NAME
-            DeviceLogSource.Process.EXTENSION -> FileArea.SHARED to EXTENSION_LOG_FILE_NAME
+            Process.APP -> FileArea.PRIVATE to APP_LOG_FILE_NAME
+            Process.EXTENSION -> FileArea.SHARED to EXTENSION_LOG_FILE_NAME
         }
         val tail = (files.readTail(area, name, maxBytes) as? FileResult.Ok)?.value ?: return null
         if (tail.bytes.isEmpty()) return null

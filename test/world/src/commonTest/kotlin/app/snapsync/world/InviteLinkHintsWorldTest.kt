@@ -45,7 +45,7 @@ class InviteLinkHintsWorldTest {
         val joining = w.awaitLayer { it is Layer.JoiningEvent }.layer as Layer.JoiningEvent
         assertEquals(INVITED_EVENT, joining.eventId)
         // Nothing joined: no membership on the device, none enrolled on the backend.
-        assertNull(w.configSource.config.value)
+        assertNull(w.config.config.value)
         assertNull(w.store.manifestOf(INVITED_EVENT, w.ownDeviceId), "no enrollment without a tap")
     }
 
@@ -60,7 +60,7 @@ class InviteLinkHintsWorldTest {
         // The switch confirmation over the still-standing membership, exactly as for an unhinted invite.
         val joined = w.awaitLayer { (it as? Layer.Joined)?.pendingSwitch != null }.layer as Layer.Joined
         assertEquals(INVITED_EVENT, joined.pendingSwitch?.eventId)
-        assertEquals(JOINED_EVENT, w.configSource.config.value?.eventId, "the current event was not left")
+        assertEquals(JOINED_EVENT, w.config.config.value?.eventId, "the current event was not left")
         assertNull(w.store.manifestOf(INVITED_EVENT, w.ownDeviceId), "no enrollment without a tap")
     }
 
@@ -72,7 +72,7 @@ class InviteLinkHintsWorldTest {
 
         w.statusHost.onOpenUrl(craftedLink(INVITED_EVENT)).join()
 
-        val config = withTimeout(TIMEOUT_MS) { w.configSource.config.first { it?.eventId == INVITED_EVENT } }
+        val config = withTimeout(TIMEOUT_MS) { w.config.config.first { it?.eventId == INVITED_EVENT } }
         assertNotNull(config)
         assertNotNull(w.store.manifestOf(INVITED_EVENT, w.ownDeviceId), "enrolled without a tap — rig only")
     }

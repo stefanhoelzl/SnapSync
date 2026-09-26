@@ -1,7 +1,7 @@
 package app.snapsync.feature.status
 
 import app.snapsync.model.runCatchingCancellable
-import app.snapsync.ports.ConfigSource
+import app.snapsync.services.config.ConfigService
 import app.snapsync.model.EventConfig
 import app.snapsync.model.SelectionPolicy
 import co.touchlab.kermit.Logger
@@ -46,7 +46,7 @@ class StatusRefresh(
     /** The foreign-download line (capability `receiving-photos`) — a SIBLING feature, so a lambda. */
     private val refreshDownloadLine: suspend () -> Unit,
     /** The joined membership, or `null` when unjoined. */
-    private val configSource: ConfigSource,
+    private val configSource: ConfigService,
     /**
      * What this membership contributes (capability `photo-sharing`) — the ONE derivation, run
      * where the config and both port readers are in scope. Injected because deriving it costs two port

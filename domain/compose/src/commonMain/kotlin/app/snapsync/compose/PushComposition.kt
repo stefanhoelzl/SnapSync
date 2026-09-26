@@ -2,8 +2,8 @@ package app.snapsync.compose
 
 import app.snapsync.model.ApnsPushToken
 import app.snapsync.feature.push.PushRegistration
-import app.snapsync.ports.PushRegistrationRecord
-import app.snapsync.ports.PushTokenSource
+import app.snapsync.services.push.PushRegistrationRecord
+import app.snapsync.services.push.PushTokenSource
 import app.snapsync.services.backend.PushTokenPublisher
 
 /**

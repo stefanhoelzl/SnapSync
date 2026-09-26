@@ -144,13 +144,10 @@ class CompositionSeamTest {
             "two strings computed from this core's own upload resolution (registrable, admission) for the dump",
         "DownloadController.downloadEnabled" to
             "the membership's direction, three-valued (no membership → null → no arm), derived in compose/ over " +
-            "the ConfigSource port the composition already reads",
+            "the ConfigService the composition already reads",
         "DownloadController.eventAlbum" to
             "the current membership's event album — the album feature's AlbumCoordinator.albumIdFor over the " +
-            "ConfigSource port, a sibling feature this one may not name; read from the in-process map, nothing leaves",
-        "QueuedPhotoDownloadJobs.onStaged" to
-            "records a staged resource in the sibling DownloadController, then requests the tail's import on this " +
-            "core's own runner — resolving both when INVOKED, so a download-only relaunch reaches them (capability `receiving-photos`)",
+            "ConfigService, a sibling feature this one may not name; read from the in-process map, nothing leaves",
         "JoinEvent.provision" to
             "runs the provision the composition owns (the Provision flow under its entry label, then the album " +
             "gather start) — core machinery the join use-case may not name",
@@ -395,8 +392,8 @@ class CompositionSeamTest {
                 "boundary named for the need\").\n" +
                 (unpinned + stale).joinToString("\n") + "\n" +
                 "  `+` — a new function-typed constructor parameter. If its binding reads a platform value, " +
-                "performs a platform effect or crosses the network, it is a port (a feature may name ports; " +
-                "reach for an existing one first). If it is a callback into the core's own machinery — a sibling " +
+                "performs a platform effect or crosses the network, it is a port, reached through a service (a feature sees services, never " +
+                "ports; reach for an existing one first). If it is a callback into the core's own machinery — a sibling " +
                 "feature the zone law forbids it to name — pin it in `constructorPins` WITH its binding.\n" +
                 "  `-` — a pin outlived its parameter. Delete it in the same commit.",
         )

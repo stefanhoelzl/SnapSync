@@ -1,15 +1,15 @@
 package app.snapsync.compose
 
-import app.snapsync.feature.upload.WalkMemoUse
+import app.snapsync.services.gallery.WalkMemoUse
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.noContribution
-import app.snapsync.ports.Discovery
+import app.snapsync.services.gallery.Discovery
 import app.snapsync.ports.LibraryChangeToken
 import app.snapsync.ports.LibraryChangeTokenRead
 import app.snapsync.ports.PhotoGrantRead
-import app.snapsync.ports.UploadDiscovery
+import app.snapsync.services.gallery.UploadDiscovery
 import co.touchlab.kermit.Logger
 import kotlin.test.Test
 import kotlin.test.assertEquals

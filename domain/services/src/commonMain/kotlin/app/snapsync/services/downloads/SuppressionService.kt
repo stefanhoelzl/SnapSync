@@ -4,7 +4,6 @@ import app.snapsync.model.AssetId
 import app.snapsync.model.SuppressionReadiness
 import app.snapsync.ports.Databases
 import app.snapsync.ports.DbOpen
-import app.snapsync.ports.SuppressionSource
 import app.snapsync.services.databases.DatabaseUnavailable
 import app.snapsync.services.downloads.db.DownloadDatabase
 import app.snapsync.services.downloads.db.DownloadStoreQueries

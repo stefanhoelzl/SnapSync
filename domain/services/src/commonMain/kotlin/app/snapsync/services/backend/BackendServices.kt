@@ -1,6 +1,6 @@
 package app.snapsync.services.backend
 
-import app.snapsync.ports.DeviceIdentity
+import app.snapsync.services.identity.PersistedDeviceIdentity
 
 /**
  * Every need-shaped backend service, over ONE [AuthenticatedBackend] — so a composition cannot give two of them
@@ -11,7 +11,7 @@ import app.snapsync.ports.DeviceIdentity
  */
 class BackendServices(
     val backend: AuthenticatedBackend,
-    private val identity: DeviceIdentity,
+    private val identity: PersistedDeviceIdentity,
 ) {
     val directory: EventDirectory by lazy { BackendEventDirectory(backend) }
     val creation: EventCreation by lazy { BackendEventCreation(backend) }

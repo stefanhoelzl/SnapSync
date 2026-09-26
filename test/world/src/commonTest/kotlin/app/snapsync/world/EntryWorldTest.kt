@@ -48,7 +48,7 @@ class EntryWorldTest {
 
     private fun World.transientError(): String? = (statusHost.container.stateFlow.value.layer as? Layer.CreateEvent)?.error
 
-    private val World.plannedForeignDownloads: Int get() = downloadStore.enqueueRequests.size
+    private val World.plannedForeignDownloads: Int get() = download.started.size
 
     // ---- Links ----------------------------------------------------------------------------------------------------
 
@@ -201,7 +201,7 @@ class EntryWorldTest {
     fun the_dev_reset_voids_the_membership() = worldTest {
         val w = World(this).joinedWithAForeignPhoto()
         w.devControls.reset()
-        assertNull(w.configSource.config.value, "the reset clears the membership locally")
+        assertNull(w.config.config.value, "the reset clears the membership locally")
     }
 
     /**

@@ -1,14 +1,17 @@
 package app.snapsync.architecture
 
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.EventConfig
-import app.snapsync.ports.PhotoAccessStatusSource
-import app.snapsync.ports.ConfigSource
+import app.snapsync.fake.fixedClock
+import app.snapsync.fake.inMemoryFiles
+import app.snapsync.fake.inMemoryPhotoAccess
+import app.snapsync.services.gallery.GalleryAccessState
+import kotlin.time.Instant
+import app.snapsync.services.config.ConfigService
 import app.snapsync.feature.upload.AppUploadEngine
-import app.snapsync.feature.upload.ExtensionRegistration
+import app.snapsync.services.upload.ExtensionRegistration
 import app.snapsync.feature.upload.UploadAdmission
 import app.snapsync.feature.upload.UploadTransitions
 import app.snapsync.feature.upload.appAdmission
@@ -84,14 +87,19 @@ class ProducerExclusivityTest {
 
     /** One device: OS fact, grant, membership, the rig switch, and the two uploaders' platform state. */
     private class Device(val osSupported: Boolean, registered: Boolean) {
-        var grant = GalleryAccess.NOT_DETERMINED
+        private val grantCell = MutableStateFlow(GalleryAccess.NOT_DETERMINED)
+        var grant: GalleryAccess
+            get() = grantCell.value
+            set(value) { grantCell.value = value }
         var joined = false
+        /** The REAL membership, over an in-memory shared area. */
+        val config = ConfigService(inMemoryFiles(), fixedClock(Instant.parse("2026-01-02T00:00:00Z")))
         var pin: UploaderPin? = null
         val registration = PlatformRegistration(grant, registered, supported = osSupported)
         val engine = Engine()
         val transitions = UploadTransitions(
-            configSource = liveMembership { "E".takeIf { joined } },
-            photoAccess = liveGrant { grant },
+            configSource = config,
+            photoAccess = GalleryAccessState(inMemoryPhotoAccess(grantCell)),
             extensionRegistrable = { extensionRegistrable(osSupported, grant, pin) },
             registration = registration,
             appEngine = { engine },
@@ -117,9 +125,9 @@ class ProducerExclusivityTest {
 
     private suspend fun Device.apply(step: Step) {
         when (step) {
-            Step.Join -> { joined = true; transitions.onJoin() }
+            Step.Join -> { joined = true; config.save(MEMBERSHIP); transitions.onJoin() }
             Step.Reconfigure -> { if (joined) transitions.onReconfigure() }
-            Step.Leave -> { joined = false; transitions.onLeave() }
+            Step.Leave -> { joined = false; config.clear(); transitions.onLeave() }
             is Step.Permission -> { grant = step.grant; registration.grant = grant; transitions.onPermissionChanged() }
             is Step.Launch -> {
                 grant = step.grant; registration.grant = grant; pin = null
@@ -207,17 +215,6 @@ class ProducerExclusivityTest {
     }
 }
 
-/** A membership fake whose answer is read at every access, so a test's `var` drives it live. */
-private fun liveMembership(eventId: () -> String?): ConfigSource = object : ConfigSource {
-    override val config: StateFlow<EventConfig?>
-        get() = MutableStateFlow(
-            eventId()?.let {
-                EventConfig(it, "E", captureCutoff("2026-01-01T00:00:00Z"), maxPhotoDate = captureCeiling("2099-01-01T00:00:00Z"))
-            },
-        )
-}
-
-/** A grant fake read at every access, so a test's `var` drives it live. */
-private fun liveGrant(grant: () -> GalleryAccess): PhotoAccessStatusSource = object : PhotoAccessStatusSource {
-    override val permission: StateFlow<GalleryAccess> get() = MutableStateFlow(grant())
-}
+/** The membership a join persists. */
+private val MEMBERSHIP =
+    EventConfig("E", "E", captureCutoff("2026-01-01T00:00:00Z"), maxPhotoDate = captureCeiling("2099-01-01T00:00:00Z"))

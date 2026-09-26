@@ -9,7 +9,6 @@ import app.snapsync.contracts.Host
 import app.snapsync.contracts.verify
 import app.snapsync.files.IosFiles
 import app.snapsync.services.manifest.DeviceManifestService
-import app.snapsync.ports.DeviceManifestStore
 import app.snapsync.testsupport.newTempDirectory
 import app.snapsync.testsupport.removeDirectory
 import kotlin.test.Test
@@ -22,7 +21,7 @@ import kotlin.test.Test
  */
 class IosDeviceManifestStoreContractTest {
 
-    private val binding = object : Binding<DeviceManifestStoreState, DeviceManifestStore> {
+    private val binding = object : Binding<DeviceManifestStoreState, DeviceManifestService> {
         override val host = Host.IOS_SIM_KEXE
         override val kind = BindingKind.Live
         override val reaches = setOf(
@@ -31,7 +30,7 @@ class IosDeviceManifestStoreContractTest {
             DeviceManifestStoreState.HOLDING,
         )
 
-        override fun create(state: DeviceManifestStoreState, clauseId: String): Entered<DeviceManifestStore> {
+        override fun create(state: DeviceManifestStoreState, clauseId: String): Entered<DeviceManifestService> {
             if (state == DeviceManifestStoreState.UNAVAILABLE) return Entered.Ready(DeviceManifestService(IosFiles()))
             val dir = newTempDirectory()
             if (state == DeviceManifestStoreState.HOLDING) {
@@ -42,6 +41,6 @@ class IosDeviceManifestStoreContractTest {
     }
 
     @Test
-    fun `the App-Group manifest record satisfies the DeviceManifestStore contract`() =
+    fun `the App-Group manifest record satisfies the DeviceManifestService contract`() =
         verify(DeviceManifestStoreContract, binding)
 }

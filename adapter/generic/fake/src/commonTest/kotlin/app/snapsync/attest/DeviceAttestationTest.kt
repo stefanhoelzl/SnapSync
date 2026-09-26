@@ -2,6 +2,10 @@
 
 package app.snapsync.attest
 
+import app.snapsync.fake.inMemorySecureStore
+import app.snapsync.model.DeviceIdentityRole
+import app.snapsync.ports.PlatformDeviceId
+import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.fake.InMemoryAttestStore
 import app.snapsync.model.ApnsPushToken
 import app.snapsync.model.CreateEventRequest
@@ -127,7 +131,7 @@ private fun attestation(
     client: FakeClient = FakeClient(),
     store: AttestStore = InMemoryAttestStore(),
 ) = Triple(
-    DeviceAttestation(key, client, store, { DEVICE }, clock = fixedClock(kotlin.time.Instant.fromEpochSeconds(NOW_SECONDS))),
+    DeviceAttestation(key, client, store, identityOf(DEVICE), clock = fixedClock(kotlin.time.Instant.fromEpochSeconds(NOW_SECONDS))),
     client,
     store,
 )
@@ -615,7 +619,7 @@ class DeviceAttestationTest {
             override suspend fun challenge(): Reply<String> = Reply.Refused(426, """{"minAppVersion":"0.7"}""")
         }
         val attest = DeviceAttestation(
-            FakeKey(), refusing, InMemoryAttestStore(), { DEVICE },
+            FakeKey(), refusing, InMemoryAttestStore(), identityOf(DEVICE),
             clock = fixedClock(kotlin.time.Instant.fromEpochSeconds(NOW_SECONDS)), versionGate = gate,
         )
 
@@ -645,7 +649,7 @@ class DeviceAttestationTest {
         val client = FakeClient()
         val store = InMemoryAttestStore(token = token(1), keyId = "k")
         val attest = DeviceAttestation(
-            key, client, store, { error("keychain locked") },
+            key, client, store, unreadableIdentity(),
             clock = fixedClock(kotlin.time.Instant.fromEpochSeconds(NOW_SECONDS)),
         )
 
@@ -663,7 +667,7 @@ class DeviceAttestationTest {
         }
         val store = InMemoryAttestStore(token = token(1), keyId = "k")
         val attest = DeviceAttestation(
-            FakeKey(), client, store, { DEVICE },
+            FakeKey(), client, store, identityOf(DEVICE),
             clock = fixedClock(kotlin.time.Instant.fromEpochSeconds(NOW_SECONDS)),
         )
 
@@ -692,3 +696,11 @@ class DeviceAttestationTest {
         assertFalse(attest.onRejected(token(30)), "an unreadable store is never read as a cleared token")
     }
 }
+
+/** The app's device identity resolving to [id]: minted as the platform's id over an empty secure store. */
+private fun identityOf(id: String) =
+    PersistedDeviceIdentity(DeviceIdentityRole.MINTING, inMemorySecureStore(), PlatformDeviceId { id })
+
+/** A device identity behind a locked secure store. */
+private fun unreadableIdentity() =
+    PersistedDeviceIdentity(DeviceIdentityRole.MINTING, inMemorySecureStore(unavailable = true), PlatformDeviceId { null })

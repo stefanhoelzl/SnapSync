@@ -20,7 +20,7 @@ interface DeviceEnroller {
  * PUTting a register-only empty manifest, which made it a SECOND writer of a document the upload cycle
  * owns: a device rejoining an event it had already contributed to blanked its own asset set until the
  * next cycle republished it — a window in which the event union listed none of its photos. It also had
- * to reach into [app.snapsync.ports.DeviceManifestStore] to invalidate the producer's skip-if-unchanged
+ * to reach into [app.snapsync.services.manifest.DeviceManifestService] to invalidate the producer's skip-if-unchanged
  * record, purely to repair the wound it had just inflicted. Neither exists now: the membership's asset
  * set survives a rejoin untouched, so an unchanged projection is correctly skipped and the union never
  * goes blank.

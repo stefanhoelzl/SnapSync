@@ -30,9 +30,8 @@ import app.snapsync.scene.IosUi
 import app.snapsync.scene.SceneRecord
 import app.snapsync.link.IosLinks
 import app.snapsync.push.IosPushNotifications
-import app.snapsync.push.IosPushRegistrationRecord
 import app.snapsync.time.SystemClock
-import app.snapsync.ports.PushTokenSource
+import app.snapsync.services.push.PushTokenSource
 import app.snapsync.metrics.MetricKitProcessMetrics
 import app.snapsync.membership.darwinHttpClient
 import app.snapsync.download.IosDownload
@@ -41,9 +40,8 @@ import app.snapsync.ios.urlsession.IosUrlSessionUploadPlatform
 import app.snapsync.ios.urlsession.UPLOAD_SESSION_ID
 import app.snapsync.compose.AppUploaderPorts
 import app.snapsync.compose.appUploader
-import app.snapsync.ports.AlbumMapStore
-import app.snapsync.preferences.IosPreferences
 import app.snapsync.services.album.AlbumMapService
+import app.snapsync.preferences.IosPreferences
 import app.snapsync.services.staging.StagingService
 import app.snapsync.systemui.IosSystemUi
 import app.snapsync.protection.IosProcessInfo
@@ -52,16 +50,16 @@ import app.snapsync.ports.Databases
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.background.IosBackgroundTime
 import app.snapsync.background.IosWake
-import app.snapsync.ports.DeviceIdentity
+import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.model.uploadersCarried
-import app.snapsync.ports.LedgerStore
-import app.snapsync.config.bakedUploadBase
 import app.snapsync.services.ledger.LedgerService
+import app.snapsync.config.bakedUploadBase
 import app.snapsync.services.preferences.removeOrphanedJoinMarker
 import app.snapsync.model.PlatformEntry
 import app.snapsync.logging.FileLogSink
 import app.snapsync.logging.appLogDestination
 import app.snapsync.services.logs.LogTailService
+import app.snapsync.services.push.PushRegistrationRecord
 import app.snapsync.logging.deviceDiagnosticEnvironment
 import app.snapsync.logging.SentryCrashReporter
 import app.snapsync.config.bakedSentryDsn
@@ -77,7 +75,6 @@ import app.snapsync.keychain.platformSecureStore
 import app.snapsync.model.DeviceIdentityRole
 import app.snapsync.ports.SecureStore
 import app.snapsync.services.identity.AttestState
-import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.logging.invocation
 import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
@@ -235,7 +232,7 @@ object SnapSyncRoot {
 
     // The event config (one service is all three config ports — the App-Group file of record), hoisted so a
     // (re)provision can read the current event id and the leave use-case can clear it.
-    private val config: ConfigService by lazy { ConfigService(files) }
+    private val config: ConfigService by lazy { ConfigService(files, process.clock) }
 
     /**
      * The one cutoff formatter every surface shares (capability `photo-sharing`) — the status host's
@@ -244,7 +241,7 @@ object SnapSyncRoot {
 
     // Event album (capability `event-album`): the shared leave-surviving `eventId → albumLocalId` map the composed
     // coordinator (`app.albumCoordinator`) sits on.
-    private val albumMapStore: AlbumMapStore by lazy { AlbumMapService(IosPreferences(), secureStore) }
+    private val albumMapStore: AlbumMapService by lazy { AlbumMapService(IosPreferences(), secureStore) }
 
 
     // The photo-library permission adapter, hoisted so the grant collector and a (re)provision share one
@@ -269,7 +266,7 @@ object SnapSyncRoot {
     // The store is chosen by COMPILATION TARGET (`platformSecureStore`, capability `photo-sharing`): the Keychain
     // on `iosArm64`, the device-id slot in an App-Group file on `iosSimulatorArm64` where the shared group cannot
     // exist. Nothing here decides which — that is the point.
-    private val deviceIdentity: DeviceIdentity by lazy {
+    private val deviceIdentity: PersistedDeviceIdentity by lazy {
         PersistedDeviceIdentity(DeviceIdentityRole.MINTING, secureStore, NoPlatformDeviceId())
     }
 
@@ -310,12 +307,14 @@ object SnapSyncRoot {
                 // The diagnostic dump's two device-side inputs (capability `privacy-security`):
                 // the two log files (this process's own, and the extension's in the App Group) and
                 // the build/OS/device facts. Both are adapter-resolved; the shell only names them.
-                deviceLogSource = LogTailService(files),
+                deviceLogs = LogTailService(files),
                 // Which uploaders this OS carries — a constant of the build. What each may do right now is
                 // runtime-varying, and the dump's state section reports it from the composition's own answers.
                 diagnosticEnvironment = deviceDiagnosticEnvironment(uploadersCarried(osSupportsOsDrivenUpload)),
-                configSource = config,
-                configStore = config,
+                // The membership — read, saved, cleared, and re-read by every trigger flow before it acts:
+                // cross-process writes and a pre-first-unlock seed never notify this process's StateFlow, and the
+                // reload retains the last good value on an unreadable read (the pure `configAfterReload` rule).
+                config = config,
                 photoAccess = permission,
                 // The platform's own UI — the share sheet, the store link, the Settings page (:adapter:ios:app-only).
                 systemUi = IosSystemUi(),
@@ -375,11 +374,6 @@ object SnapSyncRoot {
                 albumMapStore = albumMapStore,
                 // A minted event routes into the host's join gate, so create and a scanned QR take one gate.
                 onEventMinted = { eventId -> host.onEventCreated(eventId) },
-                // The trigger-time membership re-read (migration step 12): every flow re-reads the
-                // persisted config before acting — cross-process writes and a pre-first-unlock seed
-                // never notify this process's StateFlow, and the reload retains the last good value
-                // on an unreadable read (the pure `configAfterReload` rule).
-                configRefresh = config,
                 // The process's background time (`beginBackgroundTask`): what a push or a transfer wake holds across
                 // its own work and its tail, and the only "time is up" those wakes get (capability `sync-status`).
                 backgroundTime = IosBackgroundTime(log),
@@ -390,7 +384,7 @@ object SnapSyncRoot {
                 // builds the registration, its delivery/credential collector and the on-join re-PUT.
                 push = PushPorts(
                     tokens = pushTokenSource,
-                    record = IosPushRegistrationRecord(),
+                    record = PushRegistrationRecord(files),
                 ),
                 // The upload arm's push receiver on the app-driven tier (a thunk — the tier controller
                 // depends on this graph, so it must resolve lazily); null on iOS ≥26.1.
@@ -410,7 +404,7 @@ object SnapSyncRoot {
     // `uploadCore`), the composed counts source's reads, and the membership reset family. On iOS ≥26.1 the
     // extension writes the same ledger from its own process; every write is one guarded transaction owned by
     // named code (capability `photo-sharing`; decision record `changes/both-uploaders-active`).
-    private val ledgerStore: LedgerStore by lazy { LedgerService(databases) }
+    private val ledgerStore: LedgerService by lazy { LedgerService(databases) }
 
     // This process's SQLite databases, in the App-Group container. The stores open them on first use, never at
     // construction: building the composition opens no database (`docs/architecture.md`).

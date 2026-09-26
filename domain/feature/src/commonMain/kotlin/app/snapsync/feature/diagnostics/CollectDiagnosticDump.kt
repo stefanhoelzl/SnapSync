@@ -1,15 +1,15 @@
 package app.snapsync.feature.diagnostics
 
+import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.model.DIAGNOSTIC_LOG_BUDGET_BYTES
 import app.snapsync.model.DiagnosticDump
 import app.snapsync.model.DiagnosticEnvironment
 import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
-import app.snapsync.ports.ConfigSource
-import app.snapsync.ports.DeviceLogSource
-import app.snapsync.ports.DownloadStore
-import app.snapsync.ports.LedgerStore
-import app.snapsync.ports.PhotoAccessStatusSource
+import app.snapsync.services.config.ConfigService
+import app.snapsync.services.logs.LogTailService
+import app.snapsync.services.downloads.DownloadService
+import app.snapsync.services.ledger.LedgerService
 
 /**
  * Assemble one operator-initiated diagnostic dump (capability `privacy-security`).
@@ -18,18 +18,18 @@ import app.snapsync.ports.PhotoAccessStatusSource
  * a projection of state the app already holds, taken at the moment the operator confirms.
  *
  * **No new port surface.** The ledger section is five integers that shipped code already reads —
- * `LedgerStore.aggregates()` plus the download store's three counts. Row lists were considered and
+ * `LedgerService.aggregates()` plus the download store's three counts. Row lists were considered and
  * rejected: completed rows are only readable by loading all of them, and the backlog is unbounded
  * exactly on the stuck device worth dumping from (4,000 outstanding rows is ~400 KB, over half the
  * log budget) while carrying neither state nor attempt. The log says *why*; the counts say *how many*.
  */
 class CollectDiagnosticDump(
     private val environment: DiagnosticEnvironment,
-    private val logs: DeviceLogSource,
-    private val ledger: LedgerStore,
-    private val downloads: DownloadStore,
-    private val config: ConfigSource,
-    private val permission: PhotoAccessStatusSource,
+    private val logs: LogTailService,
+    private val ledger: LedgerService,
+    private val downloads: DownloadService,
+    private val config: ConfigService,
+    private val permission: GalleryAccessState,
     /**
      * The upload facts at the moment of the dump — whether the extension is registrable, and the app uploader's
      * admission — as labelled strings the composition derives from answers it already computes (capability
@@ -52,7 +52,7 @@ class CollectDiagnosticDump(
         val (appLog, extensionLog) = readLogsWithinBudget()
         return DiagnosticDump(
             note = note,
-            state = stateSection(config.config.value, permission.permission.value, screen),
+            state = stateSection(config.config.value, permission.grant.value, screen),
             ledger = ledgerSection(),
             appLog = appLog,
             extensionLog = extensionLog,
@@ -69,9 +69,9 @@ class CollectDiagnosticDump(
      */
     private suspend fun readLogsWithinBudget(): Pair<String, String> {
         val half = budgetBytes / 2
-        val extension = logs.tail(DeviceLogSource.Process.EXTENSION, half).orEmpty()
+        val extension = logs.tail(LogTailService.Process.EXTENSION, half).orEmpty()
         val appShare = budgetBytes - extension.encodeToByteArray().size
-        val app = logs.tail(DeviceLogSource.Process.APP, appShare).orEmpty()
+        val app = logs.tail(LogTailService.Process.APP, appShare).orEmpty()
         return app to extension
     }
 

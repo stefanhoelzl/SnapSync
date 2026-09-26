@@ -23,8 +23,8 @@ on drift; regenerate instead.
 
 ## `feature/download`
 
-- files: `DownloadController.kt`, `DownloadPushReceiver.kt`, `DownloadStatusSource.kt`, `QueuedPhotoDownloadJobs.kt`, `StoreDownloadStatusSource.kt`
-- top-level types: `DownloadController (class)`, `DownloadProgress (class)`, `DownloadPushReceiver (class)`, `DownloadStatusSource (interface)`, `InMemoryDownloadStatusSource (class)`, `QueuedPhotoDownloadJobs (class)`, `StoreDownloadStatusSource (class)`, `TaskTag (class)`
+- files: `DownloadController.kt`, `DownloadPushReceiver.kt`, `DownloadStatusSource.kt`, `StoreDownloadStatusSource.kt`
+- top-level types: `DownloadController (class)`, `DownloadProgress (class)`, `DownloadPushReceiver (class)`, `DownloadStatusSource (interface)`, `InMemoryDownloadStatusSource (class)`, `StoreDownloadStatusSource (class)`
 
 ## `feature/membership`
 
@@ -43,8 +43,8 @@ on drift; regenerate instead.
 
 ## `feature/upload`
 
-- files: `AppUploadMechanism.kt`, `LedgerWriter.kt`, `OsDrivenRegistration.kt`, `PushTailGuard.kt`, `SelectionScopedDiscovery.kt`, `StoredUploadSettle.kt`, `SyncEngine.kt`, `TailRunner.kt`, `UploadConfig.kt`, `UploadCycle.kt`, `UploadTransitions.kt`, `WalkMemo.kt`
-- top-level types: `AppUploadEngine (interface)`, `AppUploadEvents (interface)`, `AppUploadMechanism (interface)`, `CycleGate (interface)`, `ExtensionRegistration (interface)`, `JoinedMembership (class)`, `LedgerWriter (class)`, `OsDrivenRegistration (class)`, `PushTailGuard (class)`, `Rearm (class)`, `SelectionScopedDiscovery (class)`, `StoredUploadSettle (class)`, `SyncEngine (class)`, `TailOutcome (class)`, `TailRunner (class)`, `TailScope (class)`, `TailSignal (class)`, `TailTrigger (class)`, `UploadAdmission (class)`, `UploadConfig (class)`, `UploadCycle (class)`, `UploadTransitions (class)`, `WalkMemo (class)`, `WalkMemoUse (class)`, `WalkOutcome (interface)`
+- files: `AppUploadMechanism.kt`, `LedgerWriter.kt`, `PushTailGuard.kt`, `SelectionScopedDiscovery.kt`, `StoredUploadSettle.kt`, `SyncEngine.kt`, `TailRunner.kt`, `UploadConfig.kt`, `UploadCycle.kt`, `UploadTransitions.kt`
+- top-level types: `AppUploadEngine (interface)`, `AppUploadEvents (interface)`, `AppUploadMechanism (interface)`, `CycleGate (interface)`, `JoinedMembership (class)`, `LedgerWriter (class)`, `PushTailGuard (class)`, `Rearm (class)`, `SelectionScopedDiscovery (class)`, `StoredUploadSettle (class)`, `SyncEngine (class)`, `TailOutcome (class)`, `TailRunner (class)`, `TailScope (class)`, `TailSignal (class)`, `TailTrigger (class)`, `UploadAdmission (class)`, `UploadConfig (class)`, `UploadCycle (class)`, `UploadTransitions (class)`, `WalkOutcome (interface)`
 
 ## Forge name→sources map (`SNAPSYNC_FORGE_STATE`)
 

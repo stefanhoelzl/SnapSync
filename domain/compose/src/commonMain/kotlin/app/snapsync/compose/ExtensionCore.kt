@@ -3,7 +3,7 @@ package app.snapsync.compose
 import app.snapsync.feature.upload.UploadCycle
 import app.snapsync.model.CycleResult
 import app.snapsync.ports.Backend
-import app.snapsync.ports.DeviceIdentity
+import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.ports.ExtensionHandlers
 import app.snapsync.ports.ExtensionHost
 import app.snapsync.ports.EntryContext
@@ -84,5 +84,9 @@ internal fun extensionHandlers(
  *
  * [attestStore] is the root's one in-memory copy of the shared token, the one it re-reads at every invocation.
  */
-fun extensionBackend(backend: Backend, attestStore: CachedAttestStore, identity: DeviceIdentity): BackendServices =
+fun extensionBackend(
+    backend: Backend,
+    attestStore: CachedAttestStore,
+    identity: PersistedDeviceIdentity,
+): BackendServices =
     BackendServices(CredentialedBackend(backend, ExtensionCredential(attestStore), versionGate = null), identity)

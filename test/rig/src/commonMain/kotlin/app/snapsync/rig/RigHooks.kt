@@ -2,7 +2,7 @@ package app.snapsync.rig
 
 import app.snapsync.contracts.CONTRACT_REFUSED
 import app.snapsync.contracts.InAppContract
-import app.snapsync.ports.DeviceLogSource
+import app.snapsync.services.logs.LogTailService
 import kotlin.coroutines.CoroutineContext
 
 /**
@@ -50,8 +50,8 @@ class RigHooks(
      * the whole reason triggers are entry points rather than `flow/` classes.
      */
     val mainLane: CoroutineContext,
-    /** The device-log port, supplied by the shell because `AppCore` does not expose its ports. */
-    val deviceLog: DeviceLogSource,
+    /** The device logs' tail, supplied by the shell because `AppCore` does not expose its ports. */
+    val deviceLog: suspend (process: LogTailService.Process, maxBytes: Int) -> String?,
     /**
      * The wired entry points, **grouped by composition root** — the group name is the `/os/<root>/…` path
      * segment. Each group is meant to cover its root's `@PlatformEntry` population, wired or excluded with a

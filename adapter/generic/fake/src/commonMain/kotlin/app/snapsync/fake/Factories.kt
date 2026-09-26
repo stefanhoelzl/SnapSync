@@ -1,27 +1,14 @@
 package app.snapsync.fake
 
-import app.snapsync.model.AssetId
 import app.snapsync.model.CrashEvent
-import app.snapsync.model.EventConfig
-import app.snapsync.ports.AlbumMapStore
 import app.snapsync.ports.AttestStore
 import app.snapsync.ports.Backend
 import app.snapsync.ports.DeviceIntegrity
 import app.snapsync.model.DeviceFile
 import kotlin.time.Instant
-import app.snapsync.ports.ConfigReader
-import app.snapsync.ports.ConfigSource
-import app.snapsync.ports.ConfigStore
-import app.snapsync.ports.DeviceLogSource
-import app.snapsync.ports.DeviceManifestStore
 import app.snapsync.ports.CrashReporter
-import app.snapsync.ports.DownloadStore
-import app.snapsync.ports.GalleryStatusSource
-import app.snapsync.ports.LedgerStore
 import app.snapsync.ports.ProcessInfo
 import app.snapsync.model.Availability
-import app.snapsync.ports.PushRegistrationRecord
-import app.snapsync.ports.StagedBytes
 import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
@@ -42,41 +29,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
  * A fake needing operator-visible state takes that state as a **parameter**: the caller keeps its
  * own reference and observes it there.
  */
-
-fun inMemoryLedgerStore(): LedgerStore = InMemoryLedgerStore()
-
-fun inMemoryDownloadStore(): DownloadStore = InMemoryDownloadStore()
-
-
-/*
- * The config ports: ONE honest double behind three port-typed factories. Each returns a view over the same
- * two cells, so a save through the store is what the source shows and the reader reads, exactly as the
- * App-Group file store's three ports are one file. [persisted] is the membership, [readable] whether it can
- * be read at all (a device before first unlock); both are the caller's cells.
- */
-
-fun inMemoryConfigSource(
-    persisted: MutableStateFlow<EventConfig?>,
-    readable: MutableStateFlow<Boolean> = MutableStateFlow(true),
-): ConfigSource = InMemoryConfigStore(persisted, readable)
-
-fun inMemoryConfigStore(
-    persisted: MutableStateFlow<EventConfig?>,
-    readable: MutableStateFlow<Boolean> = MutableStateFlow(true),
-): ConfigStore = InMemoryConfigStore(persisted, readable)
-
-fun inMemoryConfigReader(
-    persisted: MutableStateFlow<EventConfig?>,
-    readable: MutableStateFlow<Boolean> = MutableStateFlow(true),
-): ConfigReader = InMemoryConfigStore(persisted, readable)
-
-fun inMemoryDeviceManifestStore(): DeviceManifestStore = InMemoryDeviceManifestStore()
-
-fun inMemoryPushRegistrationRecord(): PushRegistrationRecord = InMemoryPushRegistrationRecord()
-
-fun inMemoryAlbumMapStore(initial: Map<String, String> = emptyMap()): AlbumMapStore =
-    InMemoryAlbumMapStore(initial)
-
 fun inMemoryDeviceIntegrity(available: Boolean = true): DeviceIntegrity = InMemoryDeviceIntegrity(available)
 
 /**
@@ -93,35 +45,12 @@ fun inMemoryBackend(
 fun inMemoryAttestStore(token: String? = null, keyId: String? = null): AttestStore =
     InMemoryAttestStore(token, keyId)
 
-fun inMemoryGalleryStatusSource(state: MutableStateFlow<Set<AssetId>?>): GalleryStatusSource =
-    InMemoryGalleryStatusSource(state)
-
-fun inMemoryGalleryStatusSource(initial: Set<AssetId>? = null): GalleryStatusSource =
-    InMemoryGalleryStatusSource(initial)
-
-fun inMemoryDeviceLogSource(
-    logs: MutableStateFlow<Map<DeviceLogSource.Process, String>>,
-): DeviceLogSource = InMemoryDeviceLogSource(logs)
-
-fun inMemoryDeviceLogSource(
-    logs: Map<DeviceLogSource.Process, String> = emptyMap(),
-): DeviceLogSource = InMemoryDeviceLogSource(logs)
-
 fun inMemoryCrashReporter(
     started: MutableStateFlow<Boolean>,
     dumps: MutableStateFlow<List<CrashEvent>>,
 ): CrashReporter = InMemoryCrashReporter(started, dumps)
 
 fun inMemoryCrashReporter(): CrashReporter = InMemoryCrashReporter()
-
-/**
- * [files] is the caller's own cell. The operator rigging that wants to observe staged paths keeps
- * its reference and reads it there; the honest double does not expose it back.
- */
-fun inMemoryStagedBytes(
-    files: MutableSet<String> = mutableSetOf(),
-    root: String = "staged:/",
-): StagedBytes = InMemoryStagedBytes(files, root)
 
 /** [readable] is the caller's own cell: a device unlocked since boot by default. */
 fun inMemoryProcessInfo(

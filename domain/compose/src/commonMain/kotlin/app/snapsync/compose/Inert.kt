@@ -12,7 +12,7 @@ import app.snapsync.ports.SystemUi
 /** No entry-point context: the world, the harnesses and tests — any process without device logging. */
 object NoEntryContext : EntryContext {
     override fun enter(name: String): Boolean = false
-    override fun exit(owned: Boolean) {}
+    override fun exit(owned: Boolean) = Unit
     override fun current(): String? = null
 }
 

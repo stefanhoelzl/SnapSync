@@ -137,7 +137,8 @@ class ModuleSetTest {
             "ports" to setOf(":domain:model"),
             // The shared capabilities over the thin ports: the vocabulary and the ports, never a feature.
             "services" to setOf(":domain:model", ":domain:ports"),
-            "feature" to setOf(":domain:model", ":domain:ports", ":domain:services"),
+            // Features see services, never ports: with no `ports` edge a port type does not resolve in the zone.
+            "feature" to setOf(":domain:model", ":domain:services"),
             "flow" to setOf(":domain:model", ":domain:feature"),
             "compose" to setOf(":domain:model", ":domain:ports", ":domain:services", ":domain:feature", ":domain:flow"),
             // The UI-state reduction: of the zones, only the vocabulary and the features (and of the features,
@@ -189,7 +190,7 @@ class ModuleSetTest {
         /** Never linked into any shipped-format binary; exempt from the production-module laws. */
         val SUPPORT = setOf(
             ":test:world", ":test:integration", ":test:architecture", ":test:harness-driver",
-            ":tools:diagrams", ":test:edge", ":test:control",
+            ":tools:diagrams", ":test:edge", ":test:control", ":test:feature",
         )
     }
 }

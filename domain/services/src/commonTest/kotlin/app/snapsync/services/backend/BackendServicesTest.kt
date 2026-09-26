@@ -1,5 +1,6 @@
 package app.snapsync.services.backend
 
+import app.snapsync.services.identity.MapSecureStore
 import app.snapsync.model.AssetId
 import app.snapsync.model.CreateOutcome
 import app.snapsync.model.DeviceFile
@@ -132,15 +133,14 @@ class BackendServicesTest {
     }
 
     @Test
-    fun the_leaving_device_is_resolved_per_call_and_an_unreadable_one_is_a_failure() = runTest {
-        var reads = 0
-        val services = servicesAnswering(Reply.Ok(Unit)) { reads++; "D" }
+    fun the_leaving_device_is_resolved_at_the_call_and_an_unreadable_one_is_a_failure() = runTest {
+        val store = MapSecureStore()
+        val services = servicesAnswering(Reply.Ok(Unit), store)
         val leave = services.leave
-        assertEquals(0, reads, "building the service reads no identity — a locked launch composes it")
+        assertEquals(0, store.reads, "building the service reads no identity — a locked launch composes it")
         leave.notifyLeaving("E")
-        leave.notifyLeaving("E")
-        assertEquals(2, reads)
-        val locked = servicesAnswering(Reply.Ok(Unit)) { error("keychain locked") }
+        assertTrue(store.reads > 0, "the call resolves the identity")
+        val locked = servicesAnswering(Reply.Ok(Unit), MapSecureStore(unavailable = true))
         assertTrue(locked.leave.notifyLeaving("E").isFailure)
         assertTrue(locked.pushTokens.publish(app.snapsync.model.ApnsPushToken("t", "e")).isFailure)
     }

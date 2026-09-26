@@ -5,7 +5,7 @@ import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.encodeToJson
 import app.snapsync.model.projectDeviceManifest
 import app.snapsync.model.withVersion
-import app.snapsync.ports.DeviceManifestStore
+import app.snapsync.services.manifest.DeviceManifestService
 import app.snapsync.services.backend.ManifestPublisher
 
 /**
@@ -40,7 +40,7 @@ import app.snapsync.services.backend.ManifestPublisher
  * what keeps two crossing publishes from leaving the backend a snapshot behind (capability `photo-sharing`).
  */
 class DeviceManifestProducer(
-    private val store: DeviceManifestStore,
+    private val store: DeviceManifestService,
     private val publisher: ManifestPublisher,
     private val deviceId: String,
 ) {

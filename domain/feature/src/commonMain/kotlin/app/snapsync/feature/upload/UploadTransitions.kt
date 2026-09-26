@@ -1,7 +1,9 @@
 package app.snapsync.feature.upload
 
-import app.snapsync.ports.PhotoAccessStatusSource
-import app.snapsync.ports.ConfigSource
+import app.snapsync.services.gallery.GalleryAccessState
+import app.snapsync.services.upload.ExtensionRegistration
+
+import app.snapsync.services.config.ConfigService
 import app.snapsync.model.MembershipRead
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.grantsPhotoAccess
@@ -67,9 +69,9 @@ interface AppUploadEngine {
  */
 class UploadTransitions(
     /** The membership — whether an event is configured is read fresh at every transition, never held. */
-    private val configSource: ConfigSource,
+    private val configSource: ConfigService,
     /** The current grant, read fresh at every transition. */
-    private val photoAccess: PhotoAccessStatusSource,
+    private val photoAccess: GalleryAccessState,
     /** The registration fact — `model/extensionRegistrable` over the OS fact, the grant and the rig's switch. */
     private val extensionRegistrable: () -> Boolean,
     /**
@@ -139,7 +141,7 @@ class UploadTransitions(
         val registrable = extensionRegistrable()
         // The OS's read is trusted only under a full grant; anything else changes nothing. A platform without the
         // registration reads `null`, so it changes nothing either.
-        val observed = if (photoAccess.permission.value == GalleryAccess.GRANTED) registration.isRegistered() else null
+        val observed = if (photoAccess.full) registration.isRegistered() else null
         when {
             registrable && observed == false -> registration.register()
             deregisterIfOff && !registrable && observed == true -> registration.deregister()
@@ -162,6 +164,6 @@ class UploadTransitions(
     }
 
     private suspend fun armIfUsable() {
-        if (photoAccess.permission.value.grantsPhotoAccess) appEngine().arm() else appEngine().disarm()
+        if (photoAccess.usable) appEngine().arm() else appEngine().disarm()
     }
 }
