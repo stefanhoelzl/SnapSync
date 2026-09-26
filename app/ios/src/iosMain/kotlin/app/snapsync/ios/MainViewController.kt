@@ -1,5 +1,6 @@
 package app.snapsync.ios
 
+import app.snapsync.presentation.onIntent
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
@@ -131,7 +132,7 @@ private fun composeScene(): UIViewController =
                 // the through-ports repayment; forge and live share this same instance).
                 cutoff = SnapSyncRoot.cutoffFormatter,
                 // The one tap → intent table (spec `sync-status`); this shell binds no tap itself.
-                actions = statusActions(host),
+                actions = statusActions(host::onIntent),
             )
         }
     }

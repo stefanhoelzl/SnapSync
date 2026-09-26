@@ -1,5 +1,6 @@
 package app.snapsync.ios.forge
 
+import app.snapsync.presentation.onIntent
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
@@ -47,7 +48,7 @@ fun MainViewController(): UIViewController = ComposeUIViewController {
         StatusScreen(
             state = state,
             cutoff = cutoffFormatter,
-            actions = statusActions(host),
+            actions = statusActions(host::onIntent),
         )
     }
 }
