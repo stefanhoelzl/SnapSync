@@ -1,7 +1,7 @@
 package app.snapsync.world
 
 import app.snapsync.model.CycleResult
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.GalleryAccess
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -20,7 +20,7 @@ class RelaunchWorldTest {
     @Test
     fun the_durable_state_survives_a_relaunch() = worldTest {
         val w = World(this)
-        w.permission.set(PermissionStatus.GRANTED)
+        w.permission.set(GalleryAccess.GRANTED)
         val event = w.provisionMinted()
         w.addOwnAsset("A")
         assertEquals(CycleResult.COMPLETED, w.runUploadCycle())
@@ -37,7 +37,7 @@ class RelaunchWorldTest {
         assertEquals(rows, w.ledgerBackend.manifestRows(), "the ledger (an App-Group database) survives")
         assertTrue(w.downloadStore.pendingDownloads().isNotEmpty(), "the download store survives")
         assertTrue(w.gallery.current().any { it.assetId == "A" }, "the photo library survives")
-        assertEquals(PermissionStatus.GRANTED, w.permission.permission.value, "the grant survives")
+        assertEquals(GalleryAccess.GRANTED, w.permission.permission.value, "the grant survives")
         val objects = w.neutral.objectsOf(w.ownDeviceId)
         assertTrue(objects is Answer.Available && objects.value.isNotEmpty(), "the backend survives")
 

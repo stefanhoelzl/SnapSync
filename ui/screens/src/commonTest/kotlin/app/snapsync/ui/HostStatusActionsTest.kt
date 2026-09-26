@@ -27,7 +27,7 @@ import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.FromChoice
 import app.snapsync.model.JoinCommit
 import app.snapsync.model.JoinLoad
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.GalleryAccess
 import app.snapsync.model.SyncStatus
 import app.snapsync.model.UntilChoice
 import app.snapsync.model.captureCeiling
@@ -107,7 +107,7 @@ class HostStatusActionsTest {
     /** A real container over plain cells, recording every command it fires. */
     private class Rig(
         config: EventConfig? = null,
-        permission: PermissionStatus = PermissionStatus.GRANTED,
+        permission: GalleryAccess = GalleryAccess.GRANTED,
         refusal: VersionRefusal? = null,
         diagnostics: Boolean = false,
         private val details: suspend (String) -> JoinLoad = { OTHER_EVENT },
@@ -196,7 +196,7 @@ class HostStatusActionsTest {
 
     private fun rig(
         config: EventConfig? = null,
-        permission: PermissionStatus = PermissionStatus.GRANTED,
+        permission: GalleryAccess = GalleryAccess.GRANTED,
         refusal: VersionRefusal? = null,
         diagnostics: Boolean = false,
         details: suspend (String) -> JoinLoad = { OTHER_EVENT },
@@ -284,7 +284,7 @@ class HostStatusActionsTest {
 
     @Test
     fun `a never-asked grant's prompt requests access`() =
-        rigTest(rig(config = MEMBERSHIP, permission = PermissionStatus.NOT_DETERMINED)) { rig ->
+        rigTest(rig(config = MEMBERSHIP, permission = GalleryAccess.NOT_DETERMINED)) { rig ->
             awaitState(rig) { it.joined != null }
             onNodeWithText("Allow photo access").performClick()
             awaitFired(rig, "requestAccess")
@@ -293,7 +293,7 @@ class HostStatusActionsTest {
 
     @Test
     fun `a denied grant's prompt opens Settings`() =
-        rigTest(rig(config = MEMBERSHIP, permission = PermissionStatus.DENIED)) { rig ->
+        rigTest(rig(config = MEMBERSHIP, permission = GalleryAccess.DENIED)) { rig ->
             awaitState(rig) { it.joined != null }
             onNodeWithText("Turn on full access in Settings").performClick()
             awaitFired(rig, "openSettings")
@@ -302,7 +302,7 @@ class HostStatusActionsTest {
 
     @Test
     fun `a partial grant offers the picker and Settings — each its own`() =
-        rigTest(rig(config = MEMBERSHIP, permission = PermissionStatus.LIMITED)) { rig ->
+        rigTest(rig(config = MEMBERSHIP, permission = GalleryAccess.LIMITED)) { rig ->
             awaitState(rig) { it.joined?.canChoosePhotos == true }
             onNodeWithText("Choose more photos").performClick()
             awaitFired(rig, "choosePhotos")
@@ -372,7 +372,7 @@ class HostStatusActionsTest {
 
     @Test
     fun `the access explainer requests access and advances to the confirm`() =
-        rigTest(rig(permission = PermissionStatus.NOT_DETERMINED)) { rig ->
+        rigTest(rig(permission = GalleryAccess.NOT_DETERMINED)) { rig ->
             rig.host.onOpenUrl(linkTo(OTHER_ID))
             awaitState(rig) { (it.joining?.phase as? JoinPhase.Detailed)?.step == JoinPhase.Detailed.Step.ExplainAccess }
             onNodeWithText("I understand").performClick()

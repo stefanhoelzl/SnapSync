@@ -31,7 +31,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.GalleryAccess
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
 import app.snapsync.ui.components.LocalReduceMotion
@@ -539,7 +539,7 @@ class StatusScreenTest {
         var requests = 0
         setContent {
             TestStatusScreen(
-                joined(SyncHealth.NeedsAccess(PermissionStatus.NOT_DETERMINED)),
+                joined(SyncHealth.NeedsAccess(GalleryAccess.NOT_DETERMINED)),
                 actions = testActions(
                     access = testAccessActions(
                         onRequestPermission = { requests++ },
@@ -558,7 +558,7 @@ class StatusScreenTest {
         var settingsOpens = 0
         setContent {
             TestStatusScreen(
-                joined(SyncHealth.NeedsAccess(PermissionStatus.DENIED)),
+                joined(SyncHealth.NeedsAccess(GalleryAccess.DENIED)),
                 actions = testActions(
                     access = testAccessActions(
                         onOpenSettings = { settingsOpens++ },
@@ -670,7 +670,7 @@ class StatusScreenTest {
     fun `needs-access still shows leave and invite — sharing needs no access`() = runComposeUiTest {
         setContent {
             TestStatusScreen(
-                joined(SyncHealth.NeedsAccess(PermissionStatus.DENIED)),
+                joined(SyncHealth.NeedsAccess(GalleryAccess.DENIED)),
              cutoff = fixedCutoff())
         }
         onNodeWithContentDescription("Leave event").assertExists()
@@ -772,8 +772,8 @@ class StatusScreenTest {
         for (value in listOf(
             SyncHealth.InSync,
             SyncHealth.Syncing(Arrow.PULSING, Arrow.HIDDEN),
-            SyncHealth.NeedsAccess(PermissionStatus.DENIED),
-            SyncHealth.NeedsAccess(PermissionStatus.NOT_DETERMINED),
+            SyncHealth.NeedsAccess(GalleryAccess.DENIED),
+            SyncHealth.NeedsAccess(GalleryAccess.NOT_DETERMINED),
         )) {
             health.value = value
             waitForIdle()
@@ -962,7 +962,7 @@ class StatusScreenTest {
     fun `the settings action is present under needs-access — no photo access required`() = runComposeUiTest {
         setContent {
             TestStatusScreen(
-                joined(SyncHealth.NeedsAccess(PermissionStatus.DENIED)),
+                joined(SyncHealth.NeedsAccess(GalleryAccess.DENIED)),
                 cutoff = fixedCutoff(),
             )
         }

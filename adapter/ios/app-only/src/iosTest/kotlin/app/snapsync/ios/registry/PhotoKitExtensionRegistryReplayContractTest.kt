@@ -13,7 +13,7 @@ import app.snapsync.contracts.UploadExtensionRegistryContract
 import app.snapsync.contracts.UploadExtensionRegistryState
 import app.snapsync.contracts.recordingName
 import app.snapsync.contracts.verify
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.GalleryAccess
 import app.snapsync.ports.UploadExtensionRegistry
 import kotlin.test.Test
 
@@ -27,7 +27,7 @@ import kotlin.test.Test
  */
 class PhotoKitExtensionRegistryReplayContractTest {
 
-    private fun replay(grant: PermissionStatus, state: UploadExtensionRegistryState, clauseId: String): Entered<UploadExtensionRegistry> {
+    private fun replay(grant: GalleryAccess, state: UploadExtensionRegistryState, clauseId: String): Entered<UploadExtensionRegistry> {
         val name = recordingName(UploadExtensionRegistryContract.name, Host.IOS_DEVICE_APP, grant)
         val tape = RECORDINGS[name]?.let(Recording::parse)
             ?: return Entered.Unreachable("no recording $name.rec — record it on a device over the rig")
@@ -40,21 +40,21 @@ class PhotoKitExtensionRegistryReplayContractTest {
     private val granted = object : Binding<UploadExtensionRegistryState, UploadExtensionRegistry> {
         override val host = Host.IOS_DEVICE_APP
         override val kind = BindingKind.Replay
-        override val grant = PermissionStatus.GRANTED
+        override val grant = GalleryAccess.GRANTED
         override val reaches = setOf(UploadExtensionRegistryState.RECORD_ABSENT, UploadExtensionRegistryState.RECORD_PRESENT)
 
         override fun create(state: UploadExtensionRegistryState, clauseId: String): Entered<UploadExtensionRegistry> =
-            if (state in reaches) replay(PermissionStatus.GRANTED, state, clauseId) else Entered.Unreachable("recorded under a partial grant")
+            if (state in reaches) replay(GalleryAccess.GRANTED, state, clauseId) else Entered.Unreachable("recorded under a partial grant")
     }
 
     private val limited = object : Binding<UploadExtensionRegistryState, UploadExtensionRegistry> {
         override val host = Host.IOS_DEVICE_APP
         override val kind = BindingKind.Replay
-        override val grant = PermissionStatus.LIMITED
+        override val grant = GalleryAccess.LIMITED
         override val reaches = setOf(UploadExtensionRegistryState.UNDER_PARTIAL_GRANT)
 
         override fun create(state: UploadExtensionRegistryState, clauseId: String): Entered<UploadExtensionRegistry> =
-            if (state in reaches) replay(PermissionStatus.LIMITED, state, clauseId) else Entered.Unreachable("recorded under a full grant")
+            if (state in reaches) replay(GalleryAccess.LIMITED, state, clauseId) else Entered.Unreachable("recorded under a full grant")
     }
 
     @Test

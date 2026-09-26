@@ -216,11 +216,11 @@ private fun deviceFacts(world: World): Map<String, RigCommand> = mapOf(
         CommandResult.ok(
             buildJsonObject {
                 putJsonArray("albums") {
-                    world.albumManager.created.forEach { (id, name) ->
+                    world.gallery.created.forEach { (id, name) ->
                         add(
                             buildJsonObject {
                                 put("id", id); put("name", name)
-                                putJsonArray("assets") { world.albumManager.assetsIn(id).forEach { add(JsonPrimitive(it)) } }
+                                putJsonArray("assets") { world.gallery.assetsIn(id).forEach { add(JsonPrimitive(it)) } }
                             },
                         )
                     }

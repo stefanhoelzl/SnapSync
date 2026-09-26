@@ -22,7 +22,7 @@ import app.snapsync.link.IosLinkOpener
 import app.snapsync.link.SystemUrlOpenerApi
 import app.snapsync.link.UrlOpenerApi
 import app.snapsync.logging.deviceDiagnosticEnvironment
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.GalleryAccess
 import app.snapsync.ports.LinkOpener
 import app.snapsync.ports.SharePresenter
 import app.snapsync.share.IosShareSheet
@@ -100,9 +100,9 @@ fun appDeviceContracts(refusal: () -> String? = { null }): List<InAppContract> =
  * itself is a precondition of the run") — so a person switches it in Settings between the two recordings.
  */
 private fun recordRegistry(refusal: () -> String?): String = when (val grant = currentPhotoPermission()) {
-    PermissionStatus.GRANTED -> refusal()?.let { "$CONTRACT_REFUSED$it\n" }
+    GalleryAccess.GRANTED -> refusal()?.let { "$CONTRACT_REFUSED$it\n" }
         ?: recordAppOnDevice(UploadExtensionRegistryContract, grant) { DeviceRegistryGrantedBinding(it) }
-    PermissionStatus.LIMITED ->
+    GalleryAccess.LIMITED ->
         recordAppOnDevice(UploadExtensionRegistryContract, grant) { DeviceRegistryLimitedBinding(it) }
     else -> CONTRACT_REFUSED +
         "the registration contract records under a full grant or a partial one; this process holds $grant. " +
@@ -117,7 +117,7 @@ private fun recordRegistry(refusal: () -> String?): String = when (val grant = c
  */
 private fun <K : Enum<K>, T> recordAppOnDevice(
     contract: Contract<K, T>,
-    grant: PermissionStatus?,
+    grant: GalleryAccess?,
     binding: (Recorder) -> Binding<K, T>,
 ): String {
     if (NSProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] != null) {

@@ -4,7 +4,7 @@ import app.snapsync.model.DIAGNOSTIC_LOG_BUDGET_BYTES
 import app.snapsync.model.DiagnosticDump
 import app.snapsync.model.DiagnosticEnvironment
 import app.snapsync.model.EventConfig
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.GalleryAccess
 import app.snapsync.ports.ConfigSource
 import app.snapsync.ports.DeviceLogSource
 import app.snapsync.ports.DownloadStore
@@ -87,7 +87,7 @@ class CollectDiagnosticDump(
      */
     private fun stateSection(
         config: EventConfig?,
-        permission: PermissionStatus,
+        permission: GalleryAccess,
         screen: String,
     ): Map<String, String> =
         buildMap {

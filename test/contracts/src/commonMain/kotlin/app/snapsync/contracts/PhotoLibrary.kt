@@ -72,15 +72,12 @@ object PhotoLibrary {
     /** Every contract whose clauses seed the shared library, in a fixed order: the order IS the allocation. */
     val contracts: List<Contract<*, *>> by lazy {
         listOf(
-            CandidateSourceContract,
-            UploadDiscoveryContract,
-            ImportedAssetPresenceContract,
-            AlbumManagerContract,
+            GalleryReaderContract,
             PhotoLibraryImporterContract,
-            // Last, so every window allocated before it stays where it was: its clauses seed the photos they upload.
+            // Its clauses seed the photos they upload.
             BackgroundTransferContract,
-            // After it, for the same reason: its change clause seeds one photo to move the library's token.
-            LibraryChangeTokenContract,
+            // Its change clause seeds one photo to move the library's token.
+            GalleryContract,
         )
     }
 

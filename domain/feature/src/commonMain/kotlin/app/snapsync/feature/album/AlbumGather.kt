@@ -6,7 +6,6 @@ import app.snapsync.ports.DeviceIdentity
 import app.snapsync.model.EventConfig
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.admittedAssetIds
-import app.snapsync.model.denormalizeAssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.ports.ConfigSource
 import app.snapsync.ports.DownloadStore
@@ -132,7 +131,7 @@ class AlbumGather(
     private suspend fun ownSet(cfg: EventConfig): List<String> {
         val rows = ledger.manifestRows()
         val admitted = admittedAssetIds(rows, policyFor(cfg))
-        return admitted.sorted().map(::denormalizeAssetId)
+        return admitted.sorted()
     }
 
     private suspend fun foreignSet(eventId: String): List<String> {

@@ -15,8 +15,8 @@ private const val SUBTYPE_SCREENSHOT = 4
 private const val SUBTYPE_SCREEN_RECORDING = 524_288
 
 /**
- * The app host's raw subtype census for [GalleryReader]: PhotoKit, with no predicate for the total and the
- * SELECT form per subtype. Why it bypasses the policy seam is on [GalleryReader].
+ * The app host's raw subtype census for [GalleryReport]: PhotoKit, with no predicate for the total and the
+ * SELECT form per subtype. Why it bypasses the policy seam is on [GalleryReport].
  */
 @OptIn(ExperimentalForeignApi::class)
 fun photoKitCensus(): CensusView = CensusView(

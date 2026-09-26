@@ -1,8 +1,8 @@
 package app.snapsync.rig
 
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.GalleryAccess
 import app.snapsync.model.UploadError
-import app.snapsync.rig.gallery.GalleryReader
+import app.snapsync.rig.gallery.GalleryReport
 import app.snapsync.rig.gallery.SeedKind
 import app.snapsync.rig.gallery.SeedOutcome
 import app.snapsync.world.Answer
@@ -70,10 +70,10 @@ private fun inspectorLevers(world: World): Map<String, RigCommand> = mapOf(
         CommandResult.ok("""{"membershipUnreadable":${world.membershipUnreadable}}""")
     },
     "permission" to RigCommand { params, _ ->
-        val status = PermissionStatus.entries.firstOrNull { it.name.equals(params["status"], ignoreCase = true) }
+        val status = GalleryAccess.entries.firstOrNull { it.name.equals(params["status"], ignoreCase = true) }
         if (status == null) {
             CommandResult.badRequest(
-                "status must be one of ${PermissionStatus.entries.joinToString("|")}, was '${params["status"]}'",
+                "status must be one of ${GalleryAccess.entries.joinToString("|")}, was '${params["status"]}'",
             )
         } else {
             world.permission.set(status)
@@ -143,7 +143,7 @@ private fun inspectorLevers(world: World): Map<String, RigCommand> = mapOf(
 /** The gallery read over the world: the app's own candidate seam and policy, with the world gallery's census. */
 internal fun worldGalleryReader(world: World): suspend (String?, Boolean, Boolean) -> String =
     { cutoff, resources, includesUpload ->
-        val reader = GalleryReader(
+        val reader = GalleryReport(
             candidates = world.core.candidates,
             grant = { world.core.photoPermission.value.name },
             census = {

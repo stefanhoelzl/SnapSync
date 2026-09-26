@@ -72,7 +72,6 @@ import app.snapsync.model.EventConfig
 import app.snapsync.model.EventEnd
 import app.snapsync.model.EventStart
 import app.snapsync.model.ManifestResource
-import app.snapsync.model.PermissionStatus
 import app.snapsync.model.RawAsset
 import app.snapsync.model.RawResource
 import app.snapsync.model.Resource
@@ -86,7 +85,6 @@ import app.snapsync.model.noContribution
 import app.snapsync.model.normalizeAssetId
 import app.snapsync.model.resourcesFrom
 import app.snapsync.model.selectionPolicyFor
-import app.snapsync.model.toFacts
 import app.snapsync.model.uploadKey
 import app.snapsync.model.AssetRef
 import app.snapsync.ports.AttestClient
@@ -94,6 +92,9 @@ import app.snapsync.ports.AttestKey
 import app.snapsync.model.CandidateRead
 import app.snapsync.model.Candidate
 import app.snapsync.ports.CandidateSource
+import app.snapsync.services.gallery.GalleryAlbums
+import app.snapsync.model.SELECTION_CALIBRATION
+import app.snapsync.services.gallery.GalleryCandidateSource
 import app.snapsync.model.ConfigRead
 import app.snapsync.ports.ConfigReader
 import app.snapsync.ports.ConfigSource
@@ -107,7 +108,6 @@ import app.snapsync.ports.LedgerStore
 import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.ports.StagedBytes
 import app.snapsync.model.TransferOutcome
-import co.touchlab.kermit.Logger
 import kotlin.coroutines.ContinuationInterceptor
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlinx.coroutines.CompletableDeferred
@@ -116,7 +116,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 
 /**
@@ -218,9 +217,13 @@ class World(
     val logs: WorldLog = WorldLog()
 
     /** The world's gallery rigging around the honest raw-asset fake (see [WorldGallery]). */
-    val gallery: WorldGallery = WorldGallery()
-    /** The one read seam, straight off the world-owned cell — no enumerator composition to stand up. */
-    val enumerator: CandidateSource = gallery.source
+    val permission: MutablePhotoAccessStatusSource = MutablePhotoAccessStatusSource()
+
+    /** The world's gallery, over the same grant cell as [permission] (see [WorldGallery]). */
+    val gallery: WorldGallery = WorldGallery(permission.cell)
+
+    /** The raw library read over the world's gallery — the same service the app composes, without the grant wrapper. */
+    val enumerator: CandidateSource = GalleryCandidateSource(gallery)
 
     /**
      * Operator read: the seam's candidates for [policy].
@@ -230,6 +233,13 @@ class World(
      * and the operator's failure lever throws instead. The empty branch is therefore unreachable rather
      * than a default, and it is spelled out so a reader does not mistake it for one.
      */
+    /**
+     * Operator read: the members of the gallery's denylisted albums captured since [cutoff] — through the same
+     * album service and calibration the policy derivation uses, so the inspector shows what a cycle would subtract.
+     */
+    suspend fun denylistedAlbumMembers(cutoff: CaptureCutoff): Set<String> =
+        GalleryAlbums(gallery).assetIdsInAlbums(SELECTION_CALIBRATION, cutoff)
+
     suspend fun readCandidates(policy: SelectionPolicy): List<Candidate> =
         when (val read = enumerator.candidates(policy)) {
             is CandidateRead.Readable -> read.candidates
@@ -242,8 +252,8 @@ class World(
     // crosses — so a completed object is one the chosen backend itself accepted.
     val platform: FakeBackgroundTransfer = FakeBackgroundTransfer(backend.newClient(), ledgerBackend)
     // The cycle's library reads — the change feed and the id-scoped key resolve — over the in-memory gallery,
-    // bound once beside the job queue exactly as the device roots bind `IosDiscovery`.
-    val discovery: FakeUploadDiscovery = FakeUploadDiscovery(enumerator, gallery.contents) { permission.permission.value }
+    // bound once beside the job queue exactly as the device roots bind `GalleryDiscovery`.
+    val discovery: FakeUploadDiscovery = FakeUploadDiscovery(gallery)
     /**
      * The fake execution edge, captured when the real jobs first realize a transport (lazily, on the first
      * transfer — exactly as production does). `null` until then.
@@ -268,13 +278,6 @@ class World(
         clearCreatedLocalId = { ref, id -> downloadStore.clearCreatedLocalId(ref, id) },
         confirmCreatedLocalId = { ref, id -> downloadStore.confirmCreatedLocalId(ref, id) },
     )
-    /**
-     * Presence over the world's own gallery: an asset the importer created is visible here for exactly
-     * the same reason it is visible to upload discovery, so a test cannot assert against an answer the
-     * rest of the world disagrees with (`docs/testing.md`).
-     */
-    val assetPresence: WorldAssetPresence = WorldAssetPresence(gallery)
-
     /**
      * The world's "disk" for staged download bytes (capability `receiving-photos`). Real enough to assert
      * the property that matters — bytes SURVIVE a failed, abandoned or unconfirmed import and vanish only
@@ -326,8 +329,6 @@ class World(
 
     /** The last push registration the backend accepted — an App-Group file on a device, so durable across [relaunch]. */
     private val pushRegistrationRecord: PushRegistrationRecord = inMemoryPushRegistrationRecord()
-    val permission: MutablePhotoAccessStatusSource = MutablePhotoAccessStatusSource()
-
     /** Whether the composition started reporting — the `DiagnosticsReporter.start()` observation. */
     val diagnosticsStarted: MutableStateFlow<Boolean> = MutableStateFlow(false)
 
@@ -341,7 +342,6 @@ class World(
     // over an operator-held cell. Emitting IS the operator lever (see [changeSelection]); replay 0 —
     // a snapshot is a change notification, not a state the composition may re-collect.
     private val selectionChangesCell = MutableSharedFlow<List<Resource>>()
-    val albumManager: FakeAlbumManager = FakeAlbumManager(gallery.contents)
     val albumMapStore = app.snapsync.fake.inMemoryAlbumMapStore()
 
     /**
@@ -510,10 +510,10 @@ class World(
     }
 
     /**
-     * The world's photo-access requester: the honest fake's, over the same cell as [permission]. Asked while
-     * undetermined, the user grants; once the grant is determined a request changes nothing, as on a device.
-     * No limited-library picker exists off device; the selection is changed by the operator lever
-     * [changeSelection] instead, which is the same thing the real picker's outcome amounts to.
+     * The world's Settings surface: the honest fake's, over the same cell as [permission]. Asking for access is
+     * the [gallery]'s: asked while undetermined, the user grants; once the grant is determined a request changes
+     * nothing, as on a device. No limited-library picker exists off device; the selection is changed by the
+     * operator lever [changeSelection] instead, which is the same thing the real picker's outcome amounts to.
      */
     val requester: PhotoAccessRequester = permission.requester
 
@@ -609,7 +609,7 @@ class World(
         // The operator plays the OS: nothing uploads on its own. A selection change updates the cell + N and
         // reaches the world uploader's inert units (`OperatorUploadEngine`), counted; the operator invokes the
         // cycle by hand, exactly like every other world trigger.
-        candidateSource = enumerator,
+        gallery = gallery,
         // The SAME ledger the composed cycle writes, and the mini-edge's per-device listing the join-time
         // load seeds it from (capability `photo-sharing`).
         uploadRecord = UploadRecordPorts(
@@ -617,7 +617,6 @@ class World(
             files = deviceFiles,
         ),
         downloadStore = downloadStore,
-        assetPresence = assetPresence,
         // Staging root AND release, one port: the world's staged paths are built from the same
         // root the fake reports, exactly as the App-Group container is on device.
         stagedBytes = stagedBytes,
@@ -644,7 +643,6 @@ class World(
         appStoreUrl = WORLD_APP_STORE_URL,
         // The operator IS the engine: nothing auto-runs; a cycle happens when invoked by hand.
         appDrivenUpload = { operatorEngine },
-        albumManager = albumManager,
         albumMapStore = albumMapStore,
         // Denylisted-album membership (capability `photo-sharing`) — the REAL policy
         // constant over the world's forgeable album membership, exactly as the shell wires it.
@@ -891,7 +889,7 @@ class World(
 
     /** Put an existing own asset into an album some app made — e.g. `placeInAlbum("WhatsApp", "A1")`. */
     fun placeInAlbum(albumTitle: String, assetId: String) {
-        albumManager.placeIn(albumTitle, assetId)
+        gallery.placeIn(albumTitle, assetId)
     }
 
     /** Remove an own asset from the gallery (absent from the next cycle's walk, which deletes its in-window rows). */
@@ -1127,7 +1125,7 @@ class World(
                 suppression = downloadStore,
                 // The app tier's cycle: the same port and the same declared answer as the app graph's status
                 // total (capability `photo-sharing`) — admit on doubt.
-                albumManager = albumManager,
+                albumManager = GalleryAlbums(gallery),
                 albumLookupFailure = AlbumLookupFailure.AdmitOnDoubt,
                 // Shared with the app graph, as the world's single-process stand-in for the App-Group map.
                 albumCoordinator = core.albumCoordinator,

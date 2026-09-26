@@ -8,7 +8,7 @@ import app.snapsync.model.EventConfig
 import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.ports.ConfigSource
 import app.snapsync.model.MembershipRead
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.GalleryAccess
 import app.snapsync.model.UploaderPin
 import app.snapsync.model.extensionRegistrable
 import kotlinx.coroutines.test.runTest
@@ -30,17 +30,17 @@ class UploadTransitionsTest {
     /** A registration that refuses every write under a partial grant (3311), as the platform does. */
     private class FakeRegistration(
         private val log: MutableList<String>,
-        private val grant: () -> PermissionStatus,
+        private val grant: () -> GalleryAccess,
         var registered: Boolean = false,
     ) : ExtensionRegistration {
         override suspend fun register() {
             log += "register"
-            if (grant() != PermissionStatus.LIMITED) registered = true
+            if (grant() != GalleryAccess.LIMITED) registered = true
         }
 
         override suspend fun deregister() {
             log += "deregister"
-            if (grant() != PermissionStatus.LIMITED) registered = false
+            if (grant() != GalleryAccess.LIMITED) registered = false
         }
 
         override fun isRegistered(): Boolean = registered
@@ -54,7 +54,7 @@ class UploadTransitionsTest {
 
     private class World(
         osSupported: Boolean = true,
-        var grant: PermissionStatus,
+        var grant: GalleryAccess,
         var joined: Boolean = true,
         var unreadable: Boolean = false,
     ) {
@@ -77,7 +77,7 @@ class UploadTransitionsTest {
 
     @Test
     fun `a join under a full grant registers through the toggle and arms the app`() = runTest {
-        val w = World(grant = PermissionStatus.GRANTED)
+        val w = World(grant = GalleryAccess.GRANTED)
         w.registration.registered = true // a stale record that still reads "enabled": a join repairs it anyway
 
         w.transitions.onJoin()
@@ -87,7 +87,7 @@ class UploadTransitionsTest {
 
     @Test
     fun `a join under a limited grant arms the app and attempts no registration write`() = runTest {
-        val w = World(grant = PermissionStatus.LIMITED)
+        val w = World(grant = GalleryAccess.LIMITED)
 
         w.transitions.onJoin()
 
@@ -96,7 +96,7 @@ class UploadTransitionsTest {
 
     @Test
     fun `a join below 26_1 arms the app alone`() = runTest {
-        val w = World(osSupported = false, grant = PermissionStatus.GRANTED)
+        val w = World(osSupported = false, grant = GalleryAccess.GRANTED)
 
         w.transitions.onJoin()
 
@@ -105,7 +105,7 @@ class UploadTransitionsTest {
 
     @Test
     fun `a join without usable access registers nothing and disarms`() = runTest {
-        val w = World(grant = PermissionStatus.DENIED)
+        val w = World(grant = GalleryAccess.DENIED)
 
         w.transitions.onJoin()
 
@@ -116,7 +116,7 @@ class UploadTransitionsTest {
 
     @Test
     fun `a reconfigure never touches the registration and arms the app`() = runTest {
-        val w = World(grant = PermissionStatus.GRANTED)
+        val w = World(grant = GalleryAccess.GRANTED)
         w.registration.registered = true
 
         w.transitions.onReconfigure()
@@ -128,7 +128,7 @@ class UploadTransitionsTest {
 
     @Test
     fun `a permission upgrade registers a missing record and arms the app`() = runTest {
-        val w = World(grant = PermissionStatus.GRANTED)
+        val w = World(grant = GalleryAccess.GRANTED)
 
         w.transitions.onPermissionChanged()
 
@@ -137,7 +137,7 @@ class UploadTransitionsTest {
 
     @Test
     fun `a permission change finding the record present writes nothing`() = runTest {
-        val w = World(grant = PermissionStatus.GRANTED)
+        val w = World(grant = GalleryAccess.GRANTED)
         w.registration.registered = true
 
         w.transitions.onPermissionChanged()
@@ -147,7 +147,7 @@ class UploadTransitionsTest {
 
     @Test
     fun `a downgrade to limited cancels nothing and writes no registration`() = runTest {
-        val w = World(grant = PermissionStatus.LIMITED)
+        val w = World(grant = GalleryAccess.LIMITED)
         w.registration.registered = true // survived the downgrade
 
         w.transitions.onPermissionChanged()
@@ -158,7 +158,7 @@ class UploadTransitionsTest {
 
     @Test
     fun `revocation disarms the heartbeat and cancels nothing`() = runTest {
-        for (grant in listOf(PermissionStatus.DENIED, PermissionStatus.NOT_DETERMINED)) {
+        for (grant in listOf(GalleryAccess.DENIED, GalleryAccess.NOT_DETERMINED)) {
             val w = World(grant = grant)
             w.registration.registered = true
 
@@ -171,7 +171,7 @@ class UploadTransitionsTest {
 
     @Test
     fun `a grant with no event configured arms nothing and registers nothing`() = runTest {
-        for (grant in PermissionStatus.entries) {
+        for (grant in GalleryAccess.entries) {
             val w = World(grant = grant, joined = false)
 
             w.transitions.onPermissionChanged()
@@ -186,7 +186,7 @@ class UploadTransitionsTest {
     fun `an unreadable membership defers every compared transition`() = runTest {
         // A locked device's cold background launch cannot read the config yet. That is not "not joined" (a false
         // leave) and not "joined" (armed for an event nobody can name): nothing moves, and the next one reads again.
-        for (grant in PermissionStatus.entries) {
+        for (grant in GalleryAccess.entries) {
             val w = World(grant = grant, unreadable = true)
 
             w.transitions.onPermissionChanged()
@@ -199,7 +199,7 @@ class UploadTransitionsTest {
 
     @Test
     fun `a launch compares and registers only`() = runTest {
-        val w = World(grant = PermissionStatus.GRANTED)
+        val w = World(grant = GalleryAccess.GRANTED)
         w.transitions.onLaunch()
         assertEquals(listOf("register", "arm"), w.log)
 
@@ -212,7 +212,7 @@ class UploadTransitionsTest {
 
     @Test
     fun `switching the extension off deregisters it now and nothing else does`() = runTest {
-        val w = World(grant = PermissionStatus.GRANTED)
+        val w = World(grant = GalleryAccess.GRANTED)
         w.registration.registered = true
         w.pin = UploaderPin(extension = false)
 
@@ -233,7 +233,7 @@ class UploadTransitionsTest {
 
     @Test
     fun `a leave deregisters then disarms and cancels the app's transfers`() = runTest {
-        val w = World(grant = PermissionStatus.GRANTED)
+        val w = World(grant = GalleryAccess.GRANTED)
         w.registration.registered = true
 
         w.transitions.onLeave()
@@ -243,7 +243,7 @@ class UploadTransitionsTest {
 
     @Test
     fun `below 26_1 a leave and a compared reconcile touch only the app engine`() = runTest {
-        val w = World(osSupported = false, grant = PermissionStatus.GRANTED)
+        val w = World(osSupported = false, grant = GalleryAccess.GRANTED)
 
         w.transitions.onPermissionChanged()
         w.transitions.onLeave()
@@ -253,7 +253,7 @@ class UploadTransitionsTest {
 
     @Test
     fun `only a leave cancels transfers`() = runTest {
-        for (grant in PermissionStatus.entries) {
+        for (grant in GalleryAccess.entries) {
             val w = World(grant = grant)
             w.transitions.onJoin()
             w.transitions.onReconfigure()
@@ -280,6 +280,6 @@ private fun liveMembership(unreadable: () -> Boolean = { false }, eventId: () ->
     }
 
 /** A grant fake read at every access, so a test's `var` drives it live. */
-private fun liveGrant(grant: () -> PermissionStatus): PhotoAccessStatusSource = object : PhotoAccessStatusSource {
-    override val permission: StateFlow<PermissionStatus> get() = MutableStateFlow(grant())
+private fun liveGrant(grant: () -> GalleryAccess): PhotoAccessStatusSource = object : PhotoAccessStatusSource {
+    override val permission: StateFlow<GalleryAccess> get() = MutableStateFlow(grant())
 }

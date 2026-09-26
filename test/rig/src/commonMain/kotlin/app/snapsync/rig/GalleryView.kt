@@ -46,10 +46,19 @@ data class GalleryView(
 @Serializable
 data class CensusView(val total: Long, val screenshots: Long, val screenRecordings: Long)
 
+/**
+ * The origin exclusions' tuning the running app decides with (`SelectionCalibration`): the two resolution floors, in
+ * pixels, and the denylisted album titles. Reported beside every policy read so a surprising exclusion can be read
+ * against the numbers that made it, rather than against a copy of them.
+ */
+@Serializable
+data class CalibrationView(val imageFloor: Long, val videoFloor: Long, val denylistTitles: List<String>)
+
 /** What the policy admitted for a given cutoff, and what it cost to find out. */
 @Serializable
 data class PolicyView(
     val cutoff: String,
+    val calibration: CalibrationView,
     val admitted: Int,
     val excluded: Int,
     /** Whether resources were read. `false` means [AssetView.resources] is absent, not empty. */

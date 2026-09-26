@@ -2,29 +2,25 @@
 
 package app.snapsync.contract
 
-import app.snapsync.album.IosAlbumManager
+import app.snapsync.contracts.GalleryChange
+import app.snapsync.contracts.GalleryContract
+import app.snapsync.contracts.GalleryReaderContract
+import app.snapsync.contracts.GalleryReaderState
+import app.snapsync.contracts.GalleryState
+import app.snapsync.gallery.IosGallery
+import app.snapsync.gallery.IosGalleryReader
+import app.snapsync.ports.GalleryReader
 import app.snapsync.background.IosBackgroundTime
-import app.snapsync.compose.PermissionAwareAssetPresence
-import app.snapsync.compose.PermissionAwareCandidateSource
-import app.snapsync.contracts.AlbumManagerContract
 import app.snapsync.contracts.BackgroundTimeContract
 import app.snapsync.contracts.BackgroundTimeState
 import app.snapsync.contracts.BackgroundTransferContract
-import app.snapsync.contracts.AlbumManagerState
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.DownloadTransportContract
 import app.snapsync.contracts.BindingKind
-import app.snapsync.contracts.CandidateSourceContract
-import app.snapsync.contracts.CandidateSourceState
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
-import app.snapsync.contracts.ImportedAssetPresenceContract
-import app.snapsync.contracts.ImportedAssetPresenceState
 import app.snapsync.contracts.ImportedLibrary
 import app.snapsync.contracts.InAppContract
-import app.snapsync.contracts.LibraryChange
-import app.snapsync.contracts.LibraryChangeTokenContract
-import app.snapsync.contracts.LibraryChangeTokenState
 import app.snapsync.contracts.LinkOpenerContract
 import app.snapsync.contracts.MarkerState
 import app.snapsync.contracts.PhotoAccess
@@ -39,30 +35,19 @@ import app.snapsync.contracts.SEED_COUNT
 import app.snapsync.contracts.SeededLibrary
 import app.snapsync.contracts.SharePresenterContract
 import app.snapsync.contracts.StagedImport
-import app.snapsync.contracts.UploadDiscoveryContract
-import app.snapsync.contracts.UploadDiscoveryState
 import app.snapsync.contracts.currentHost
 import app.snapsync.contracts.simulatorAppContract
 import app.snapsync.download.IosPhotoLibraryImporter
-import app.snapsync.download.PhotoKitAssetPresence
-import app.snapsync.gallery.PhotoKitCandidateSource
 import app.snapsync.gallery.currentPhotoPermission
-import app.snapsync.ios.discovery.IosDiscovery
-import app.snapsync.ios.discovery.PhotoKitLibraryChangeTokenRead
-import app.snapsync.model.PermissionStatus
-import app.snapsync.model.Resource
+import app.snapsync.model.GalleryAccess
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.denormalizeAssetId
 import app.snapsync.permission.PhotoLibraryPermission
-import app.snapsync.ports.AlbumManager
 import app.snapsync.model.AssetRef
 import app.snapsync.ports.BackgroundTime
-import app.snapsync.ports.CandidateSource
-import app.snapsync.ports.ImportedAssetPresence
 import app.snapsync.ports.ProtectedStorage
 import app.snapsync.protection.IosProtectedStorage
 import app.snapsync.model.StagedResource
-import app.snapsync.ports.UploadDiscovery
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -73,7 +58,6 @@ import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.usePinned
 import kotlinx.cinterop.value
-import kotlinx.coroutines.flow.MutableStateFlow
 import platform.Foundation.NSData
 import platform.Foundation.NSError
 import platform.Foundation.NSISO8601DateFormatter
@@ -101,12 +85,9 @@ import platform.Photos.PHPhotoLibrary
  * starts every run from a fresh simulator.
  */
 fun simulatorAppContracts(): List<InAppContract> = listOf(
-    simulatorAppContract(CandidateSourceContract, SimAppCandidateSourceBinding(), ::refusal),
-    simulatorAppContract(UploadDiscoveryContract, SimAppUploadDiscoveryBinding(), ::refusal),
-    simulatorAppContract(LibraryChangeTokenContract, SimAppLibraryChangeTokenBinding(), ::refusal),
-    simulatorAppContract(ImportedAssetPresenceContract, SimAppAssetPresenceBinding(), ::refusal),
+    simulatorAppContract(GalleryReaderContract, SimAppGalleryReaderBinding(), ::refusal),
+    simulatorAppContract(GalleryContract, SimAppGalleryBinding(), ::refusal),
     simulatorAppContract(PhotoAccessContract, SimAppPhotoAccessBinding(), ::refusal),
-    simulatorAppContract(AlbumManagerContract, SimAppAlbumManagerBinding(), ::refusal),
     simulatorAppContract(PhotoLibraryImporterContract, SimAppImporterBinding(), ::refusal),
     simulatorAppContract(ProtectedStorageContract, SimAppProtectedStorageBinding(), ::hostRefusal),
     simulatorAppContract(LinkOpenerContract, SimAppLinkOpenerBinding(), ::hostRefusal),
@@ -125,15 +106,13 @@ private fun hostRefusal(): String? = if (currentHost != Host.IOS_SIM_APP) {
 
 /** Why this process cannot run the simulator app's bindings, or `null` when it can. */
 private fun refusal(): String? = hostRefusal() ?: when {
-    currentPhotoPermission() != PermissionStatus.GRANTED ->
+    currentPhotoPermission() != GalleryAccess.GRANTED ->
         "the simulator app holds ${currentPhotoPermission()}, not GRANTED; grant photo access with applesimutils " +
             "before launch (simctl privacy writes a TCC row PhotoKit does not consult)"
     else -> null
 }
 
 private const val UNREACHABLE_NO_GRANT = "the simulator app runs under the full grant; the no-grant state runs on the test executable"
-
-private val noSelection = MutableStateFlow<List<Resource>?>(null)
 
 /** Creates [SEED_COUNT] ordinary photos captured at [seedDate]; answers their raw `localIdentifier`s. */
 private fun seedPhotos(seedDate: String): List<String> = memScoped {
@@ -158,69 +137,35 @@ private fun seedPhotos(seedDate: String): List<String> = memScoped {
 
 private fun ByteArray.toNSData(): NSData = usePinned { NSData.create(bytes = it.addressOf(0), length = size.toULong()) }
 
-class SimAppCandidateSourceBinding : Binding<CandidateSourceState, SeededLibrary<CandidateSource>> {
+class SimAppGalleryReaderBinding : Binding<GalleryReaderState, SeededLibrary<GalleryReader>> {
     override val host = Host.IOS_SIM_APP
     override val kind = BindingKind.Live
-    override val reaches = setOf(CandidateSourceState.GRANTED_SEEDED, CandidateSourceState.GRANTED_EMPTY_WINDOW)
+    override val reaches = setOf(GalleryReaderState.GRANTED_SEEDED, GalleryReaderState.GRANTED_EMPTY_WINDOW)
 
-    override fun create(state: CandidateSourceState, clauseId: String): Entered<SeededLibrary<CandidateSource>> {
+    override fun create(state: GalleryReaderState, clauseId: String): Entered<SeededLibrary<GalleryReader>> {
         val seeded = when (state) {
-            CandidateSourceState.NO_GRANT -> return Entered.Unreachable(UNREACHABLE_NO_GRANT)
-            CandidateSourceState.GRANTED_SEEDED ->
-                seedPhotos(PhotoLibrary.window(CandidateSourceContract.name, clauseId).seedDate)
-            CandidateSourceState.GRANTED_EMPTY_WINDOW -> emptyList()
+            GalleryReaderState.NO_GRANT -> return Entered.Unreachable(UNREACHABLE_NO_GRANT)
+            GalleryReaderState.GRANTED_SEEDED -> seedPhotos(PhotoLibrary.window(GalleryReaderContract.name, clauseId).seedDate)
+            GalleryReaderState.GRANTED_EMPTY_WINDOW -> emptyList()
         }
-        val source = PermissionAwareCandidateSource(
-            permission = MutableStateFlow(currentPhotoPermission()),
-            walk = PhotoKitCandidateSource(),
-            selection = noSelection,
-        )
-        return Entered.Ready(SeededLibrary(source, seeded))
-    }
-}
-
-class SimAppUploadDiscoveryBinding : Binding<UploadDiscoveryState, SeededLibrary<UploadDiscovery>> {
-    override val host = Host.IOS_SIM_APP
-    override val kind = BindingKind.Live
-    override val reaches = setOf(UploadDiscoveryState.GRANTED_SEEDED)
-
-    override fun create(state: UploadDiscoveryState, clauseId: String): Entered<SeededLibrary<UploadDiscovery>> {
-        if (state == UploadDiscoveryState.NO_GRANT) return Entered.Unreachable(UNREACHABLE_NO_GRANT)
-        val seeded = seedPhotos(PhotoLibrary.window(UploadDiscoveryContract.name, clauseId).seedDate)
-        return Entered.Ready(SeededLibrary(IosDiscovery(Logger.withTag("contract"), PhotoKitCandidateSource()), seeded))
+        return Entered.Ready(SeededLibrary(IosGalleryReader(Logger.withTag("contract")), seeded))
     }
 }
 
 /**
- * The library's change token under the full grant — the only grant the walk memo reads one under. The change a
- * clause makes is one photo created through PhotoKit in its own capture window, which is a change made by this
- * process: the external-change case (a Camera photo) is the device check no host here can reach.
+ * The app's gallery under the full grant — the only grant the walk memo reads a token under. The change a clause
+ * makes is one photo created through PhotoKit in its own capture window, which is a change made by this process:
+ * the external-change case (a Camera photo) is the device check no host here can reach.
  */
-class SimAppLibraryChangeTokenBinding : Binding<LibraryChangeTokenState, LibraryChange> {
+class SimAppGalleryBinding : Binding<GalleryState, GalleryChange> {
     override val host = Host.IOS_SIM_APP
     override val kind = BindingKind.Live
-    override val reaches = setOf(LibraryChangeTokenState.GRANTED)
+    override val reaches = setOf(GalleryState.GRANTED)
 
-    override fun create(state: LibraryChangeTokenState, clauseId: String): Entered<LibraryChange> {
-        val seedDate = PhotoLibrary.window(LibraryChangeTokenContract.name, clauseId).seedDate
-        return Entered.Ready(LibraryChange(PhotoKitLibraryChangeTokenRead()) { seedPhotos(seedDate) })
-    }
-}
-
-class SimAppAssetPresenceBinding : Binding<ImportedAssetPresenceState, SeededLibrary<ImportedAssetPresence>> {
-    override val host = Host.IOS_SIM_APP
-    override val kind = BindingKind.Live
-    override val reaches = setOf(ImportedAssetPresenceState.GRANTED_SEEDED)
-
-    override fun create(state: ImportedAssetPresenceState, clauseId: String): Entered<SeededLibrary<ImportedAssetPresence>> {
-        if (state == ImportedAssetPresenceState.NO_GRANT) return Entered.Unreachable(UNREACHABLE_NO_GRANT)
-        val seeded = seedPhotos(PhotoLibrary.window(ImportedAssetPresenceContract.name, clauseId).seedDate)
-        val presence = PermissionAwareAssetPresence(
-            permission = MutableStateFlow(currentPhotoPermission()),
-            library = PhotoKitAssetPresence(),
-            selection = noSelection,
-        )
-        return Entered.Ready(SeededLibrary(presence, seeded))
+    override fun create(state: GalleryState, clauseId: String): Entered<GalleryChange> {
+        val seedDate = PhotoLibrary.window(GalleryContract.name, clauseId).seedDate
+        val gallery = IosGallery(IosGalleryReader(Logger.withTag("contract")), PhotoLibraryPermission())
+        return Entered.Ready(GalleryChange(gallery) { seedPhotos(seedDate) })
     }
 }
 
@@ -233,17 +178,6 @@ class SimAppPhotoAccessBinding : Binding<PhotoAccessState, PhotoAccess> {
         if (state == PhotoAccessState.NO_GRANT) return Entered.Unreachable(UNREACHABLE_NO_GRANT)
         val adapter = PhotoLibraryPermission()
         return Entered.Ready(PhotoAccess(adapter, adapter))
-    }
-}
-
-class SimAppAlbumManagerBinding : Binding<AlbumManagerState, SeededLibrary<AlbumManager>> {
-    override val host = Host.IOS_SIM_APP
-    override val kind = BindingKind.Live
-    override val reaches = setOf(AlbumManagerState.GRANTED_SEEDED)
-
-    override fun create(state: AlbumManagerState, clauseId: String): Entered<SeededLibrary<AlbumManager>> {
-        val seeded = seedPhotos(PhotoLibrary.window(AlbumManagerContract.name, clauseId).seedDate)
-        return Entered.Ready(SeededLibrary(IosAlbumManager(), seeded))
     }
 }
 
@@ -265,8 +199,6 @@ class SimAppImporterBinding : Binding<PhotoLibraryImporterState, StagedImport> {
             recordCreatedLocalId = { ref, _ -> markers[ref] = MarkerState.RECORDED; true },
             clearCreatedLocalId = { ref, _ -> markers[ref] = MarkerState.CLEARED },
             confirmCreatedLocalId = { ref, _ -> markers[ref] = MarkerState.CONFIRMED },
-            // No event album in a contract run: the importer places nothing.
-            albumId = { null },
             log = Logger.withTag("contract"),
         )
         var staged = 0

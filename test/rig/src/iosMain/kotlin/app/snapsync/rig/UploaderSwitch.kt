@@ -1,6 +1,6 @@
 package app.snapsync.rig
 
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.GalleryAccess
 import app.snapsync.model.UploaderPin
 import app.snapsync.model.extensionRegistrable
 
@@ -48,7 +48,7 @@ object UploaderSwitch {
  */
 fun uploadersCommand(
     osSupportsOsDrivenUpload: () -> Boolean,
-    permission: () -> PermissionStatus,
+    permission: () -> GalleryAccess,
     reconcile: suspend () -> Unit,
 ): RigCommand = RigCommand { params, _ ->
     val app = onOff(params["app"])

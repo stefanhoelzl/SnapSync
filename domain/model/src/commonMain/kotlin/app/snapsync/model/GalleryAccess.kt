@@ -15,7 +15,7 @@ package app.snapsync.model
  * [GRANTED] exactly. A bare `!= GRANTED` comparison is no longer self-evidently correct: every such
  * site states which reading it intends.
  */
-enum class PermissionStatus {
+enum class GalleryAccess {
     NOT_DETERMINED,
     DENIED,
     LIMITED,
@@ -23,11 +23,11 @@ enum class PermissionStatus {
 }
 
 /**
- * The "may the app read photos at all" reading — [PermissionStatus.GRANTED] or
- * [PermissionStatus.LIMITED]. This is the gate for work that operates on whatever the platform lets
+ * The "may the app read photos at all" reading — [GalleryAccess.GRANTED] or
+ * [GalleryAccess.LIMITED]. This is the gate for work that operates on whatever the platform lets
  * the app see (album creation, imports, the sync-active signal). It is deliberately NOT the gate for
- * the autonomous library walks, which require [PermissionStatus.GRANTED] exactly — under a partial
+ * the autonomous library walks, which require [GalleryAccess.GRANTED] exactly — under a partial
  * grant those reads are selection-driven instead (capability `photo-access`).
  */
-val PermissionStatus.grantsPhotoAccess: Boolean
-    get() = this == PermissionStatus.GRANTED || this == PermissionStatus.LIMITED
+val GalleryAccess.grantsPhotoAccess: Boolean
+    get() = this == GalleryAccess.GRANTED || this == GalleryAccess.LIMITED

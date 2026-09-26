@@ -5,7 +5,6 @@ import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.ports.PhotoGrantRead
 import app.snapsync.compose.UploaderProcess
 import app.snapsync.compose.AlbumLookupFailure
-import app.snapsync.ports.AlbumManager
 import app.snapsync.compose.UploadPorts
 import app.snapsync.compose.uploadCore
 import app.snapsync.compose.appUploadDiscovery
@@ -15,9 +14,9 @@ import app.snapsync.engine.LEDGER_APP_GROUP
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.model.SelectionScope
 import app.snapsync.ports.LedgerStore
-import app.snapsync.gallery.PhotoKitCandidateSource
-import app.snapsync.ios.discovery.IosDiscovery
-import app.snapsync.ios.discovery.PhotoKitLibraryChangeTokenRead
+import app.snapsync.ports.Gallery
+import app.snapsync.services.gallery.GalleryAlbums
+import app.snapsync.services.gallery.GalleryDiscovery
 import app.snapsync.gallery.currentPhotoPermission
 import app.snapsync.ios.urlsession.IosBackgroundScheduler
 import app.snapsync.ios.urlsession.IosUrlSessionUploadPlatform
@@ -75,14 +74,11 @@ class UrlSessionUploadController(
     // downloaded + imported. Read once per cycle so an imported foreign asset is never re-uploaded (the
     // echo) — essential now that this tier writes the device manifest and so appears in the union.
     private val suppression: SuppressionSource,
-    // Denylisted-album membership (capability `photo-sharing`) — the SAME port the PhotoKit tier
-    // gets. Both tiers funnel through the shared UploadCycle, so the policy must be supplied on both or the
-    // 18–26.0 tier would happily upload the WhatsApp album the ≥26.1 tier refuses. Takes the cutoff, which
-    // scopes the album member fetch.
-    //
-    // Read through the album port; this tier admits on doubt, exactly as the app graph's status total does
-    // (the shared composition builds both reads from the same port and the same declared answer).
-    private val albumManager: AlbumManager,
+    // The app's gallery: the walk's reads, the change token the walk memo keys on, and — the SAME port the PhotoKit
+    // tier gets — the denylisted-album membership (capability `photo-sharing`). Both tiers funnel through the shared
+    // UploadCycle, so the policy must be supplied on both or the 18–26.0 tier would upload the WhatsApp album the
+    // ≥26.1 tier refuses. This tier admits on doubt, exactly as the app graph's status total does.
+    private val gallery: Gallery,
     // The app graph's per-cycle answers this engine only FORWARDS — see [AppGraphReads].
     private val graph: AppGraphReads,
     // Event-album placement (capability `event-album`): the shared coordinator, so this app-tier
@@ -102,8 +98,8 @@ class UrlSessionUploadController(
     // The app process's discovery binding: the walk behind the walk memo (capability `photo-sharing`, "An unchanged
     // library is answered from the walk memo"). The extension binds its walk bare — it never holds a memo.
     private val discovery = appUploadDiscovery(
-        walk = IosDiscovery(log, PhotoKitCandidateSource()),
-        changeToken = PhotoKitLibraryChangeTokenRead(),
+        walk = GalleryDiscovery(gallery),
+        changeToken = gallery,
         grant = PhotoGrantRead(::currentPhotoPermission),
         log = log,
     )
@@ -163,7 +159,7 @@ class UrlSessionUploadController(
                 suppression = suppression,
                 // Denylisted-album membership (capability `photo-sharing`), scoped by the
                 // cutoff — the SAME wrapper the own-device status total gets (admit-on-doubt).
-                albumManager = albumManager,
+                albumManager = GalleryAlbums(gallery),
                 albumLookupFailure = AlbumLookupFailure.AdmitOnDoubt,
                 albumCoordinator = albumCoordinator,
                 token = token,

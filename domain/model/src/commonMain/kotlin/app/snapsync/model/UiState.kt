@@ -368,7 +368,7 @@ sealed interface SyncHealth {
      * only health that carries a background. Sharing the invite still works with no access.
      */
     @Serializable
-    data class NeedsAccess(val permission: PermissionStatus) : SyncHealth
+    data class NeedsAccess(val permission: GalleryAccess) : SyncHealth
 
     /**
      * The event has not begun: the membership's `startsAt` is still in the future (capability

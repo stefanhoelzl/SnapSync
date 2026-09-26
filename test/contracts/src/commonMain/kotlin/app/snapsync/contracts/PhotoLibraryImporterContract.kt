@@ -66,7 +66,7 @@ object PhotoLibraryImporterContract : Contract<PhotoLibraryImporterState, Staged
         clause("IMPORT_LANDS_AT_ITS_CAPTURE_DATE", PhotoLibraryImporterState.GRANTED_VALID_STAGED) { subject ->
             val clauseId = "IMPORT_LANDS_AT_ITS_CAPTURE_DATE"
             val window = PhotoLibrary.window(name, clauseId)
-            val result = subject.importer.import(ref(clauseId), subject.stage(), window.seedDate)
+            val result = subject.importer.import(ref(clauseId), subject.stage(), window.seedDate, album = null)
             val id = assertIs<ImportResult.Imported>(result, "an ordinary photo imports").createdLocalId
             assertEquals(
                 window.seedDate,
@@ -79,8 +79,8 @@ object PhotoLibraryImporterContract : Contract<PhotoLibraryImporterState, Staged
         clause("A_REPEAT_IMPORT_CREATES_A_SECOND_ASSET", PhotoLibraryImporterState.GRANTED_VALID_STAGED) { subject ->
             val clauseId = "A_REPEAT_IMPORT_CREATES_A_SECOND_ASSET"
             val date = PhotoLibrary.window(name, clauseId).seedDate
-            val first = assertIs<ImportResult.Imported>(subject.importer.import(ref(clauseId), subject.stage(), date))
-            val second = assertIs<ImportResult.Imported>(subject.importer.import(ref(clauseId), subject.stage(), date))
+            val first = assertIs<ImportResult.Imported>(subject.importer.import(ref(clauseId), subject.stage(), date, album = null))
+            val second = assertIs<ImportResult.Imported>(subject.importer.import(ref(clauseId), subject.stage(), date, album = null))
             assertNotEquals(
                 first.createdLocalId,
                 second.createdLocalId,
@@ -93,7 +93,7 @@ object PhotoLibraryImporterContract : Contract<PhotoLibraryImporterState, Staged
         clause("AN_UNDECODABLE_FILE_FAILS_AND_IS_CONSUMED", PhotoLibraryImporterState.GRANTED_INVALID_STAGED) { subject ->
             val clauseId = "AN_UNDECODABLE_FILE_FAILS_AND_IS_CONSUMED"
             val date = PhotoLibrary.window(name, clauseId).seedDate
-            val failed = assertIs<ImportResult.Failed>(subject.importer.import(ref(clauseId), subject.stage(), date))
+            val failed = assertIs<ImportResult.Failed>(subject.importer.import(ref(clauseId), subject.stage(), date, album = null))
             assertTrue(
                 failed.consumedResources,
                 "the library takes a file when it ingests it, before validating it; retrying reads a file that is gone",

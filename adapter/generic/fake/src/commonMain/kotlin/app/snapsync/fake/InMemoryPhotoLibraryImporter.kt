@@ -5,6 +5,7 @@ import app.snapsync.model.RawResource
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.importFilename
 import app.snapsync.model.normalizeAssetId
+import app.snapsync.model.AlbumId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.ImportResult
 import app.snapsync.ports.PhotoLibraryImporter
@@ -66,6 +67,7 @@ internal class InMemoryPhotoLibraryImporter(
         ref: AssetRef,
         resources: List<StagedResource>,
         creationDate: String,
+        album: AlbumId?,
     ): ImportResult {
         val attempt = attempts.getOrElse(ref) { 0 } + 1
         attempts[ref] = attempt

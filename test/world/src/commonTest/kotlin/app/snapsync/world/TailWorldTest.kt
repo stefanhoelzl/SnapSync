@@ -2,7 +2,7 @@ package app.snapsync.world
 
 import app.snapsync.compose.EntryHooks
 import app.snapsync.compose.platformEntries
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.GalleryAccess
 import app.snapsync.model.uploadKey
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.AssetRef
@@ -71,7 +71,7 @@ class TailWorldTest {
     fun under_a_limited_grant_the_push_tail_tops_up_and_walks_nothing() = worldTest {
         val w = World(this)
         w.provision(joined)
-        w.permission.set(PermissionStatus.LIMITED)
+        w.permission.set(GalleryAccess.LIMITED)
         val e = w.entries()
         w.push(e.entries, joined)
 
@@ -118,7 +118,7 @@ class TailWorldTest {
         assertEquals(0, w.operatorEngine.walks, "a freed slot never walks")
         assertEquals(0, w.heartbeatsScheduled, "and re-arms nothing")
 
-        w.permission.set(PermissionStatus.DENIED)
+        w.permission.set(GalleryAccess.DENIED)
         w.core.tail.uploadEvents.uploadCompleted()
         kotlinx.coroutines.delay(200)
         assertEquals(1, w.operatorEngine.topUps, "a late completion after a revoke requests nothing")

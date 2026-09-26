@@ -1,8 +1,11 @@
 package app.snapsync.permission
 
 import app.snapsync.model.ConfinedTo
-import app.snapsync.gallery.PhotoKitCandidateSource
-import app.snapsync.model.PermissionStatus
+import app.snapsync.gallery.photoKitRawAssets
+import app.snapsync.ios.qos.photoKitReadLane
+import app.snapsync.model.resourcesFrom
+import kotlinx.coroutines.withContext
+import app.snapsync.model.GalleryAccess
 import app.snapsync.model.Resource
 import app.snapsync.ports.PhotoSelectionChangeSource
 import app.snapsync.selection.SelectionPlatform
@@ -19,7 +22,7 @@ import platform.Photos.PHFetchResult
 
 /**
  * The iOS [PhotoSelectionChangeSource] (capability `photo-access`): observes the photo
- * library **only while permission is [PermissionStatus.LIMITED]** and emits the full current
+ * library **only while permission is [GalleryAccess.LIMITED]** and emits the full current
  * selection as resources — once when observation begins (the cold-launch baseline read; opening the
  * app is the user action that makes it in-flow) and after each change ([PhotoSelectionObserver] fires
  * for the in-app picker, Settings-side edits, and iCloud sync alike).
@@ -36,9 +39,8 @@ import platform.Photos.PHFetchResult
  * 26.6.2 (11 reads, 4 launch-and-kill cycles, n = 1). No clause can observe a system alert. See
  * changes/archive/2026-09-21-correct-limited-access-alert-rule.
  *
- * The per-asset resource mapping is delegated to the shared enumerator seam
- * ([PhotoLibrary.resources] — the ext-safe `PhotoLibraryResourceEnumerator` in production), bounded
- * by the empty cutoff (`""` admits every asset; the policy filters downstream, in one place). Its
+ * The per-asset resource mapping is the shared ext-safe one ([photoKitRawAssets], also behind
+ * `IosGalleryReader.resources`), unbounded by any policy: the policy filters downstream, in one place. Its
  * cost is one platform round-trip per **selected** asset — selections are hand-picked and small.
  *
  * Snapshots conflate: the flow keeps only the newest unprocessed snapshot (each is the whole
@@ -49,23 +51,22 @@ import platform.Photos.PHFetchResult
  * platform-free and tested on the JVM; this file is only the PhotoKit binding.
  */
 class PhotoSelectionSnapshotSource(
-    permission: StateFlow<PermissionStatus>,
+    permission: StateFlow<GalleryAccess>,
     scope: CoroutineScope,
-    source: PhotoKitCandidateSource,
     ioDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : PhotoSelectionChangeSource by SelectionSnapshotLane(
     permission = permission,
     scope = scope,
     // ONE serial lane for every read, change and emission — the ordering the lane class exists for.
     lane = ioDispatcher.limitedParallelism(1),
-    platform = PhotoKitSelection(source),
+    platform = PhotoKitSelection(),
 )
 
 /**
  * PhotoKit behind [SelectionSnapshotLane]. Every member runs on the lane, so [observer] needs no lock — PhotoKit
  * holds observers weakly, which is why it is retained here at all.
  */
-private class PhotoKitSelection(private val source: PhotoKitCandidateSource) : SelectionPlatform<PHFetchResult, PHChange> {
+private class PhotoKitSelection : SelectionPlatform<PHFetchResult, PHChange> {
 
     @ConfinedTo("selection")
     private var observer: PhotoSelectionObserver? = null
@@ -98,6 +99,7 @@ private class PhotoKitSelection(private val source: PhotoKitCandidateSource) : S
     // Read the resources straight off the HELD result, eagerly: deferring the resource read would leave a later
     // consumer holding only identifiers, and reaching the assets again off-flow would be an autonomous library
     // fetch, which the read discipline forbids. The selection is hand-picked and small, so eagerness costs little.
+    // On the PhotoKit read lane, at its pinned QoS, like every other resource read (see `IosGalleryReader`).
     override suspend fun snapshot(of: PHFetchResult): List<Resource> =
-        source.candidatesFrom(of).flatMap { it.resources() }
+        withContext(photoKitReadLane) { resourcesFrom(photoKitRawAssets(of)) }
 }

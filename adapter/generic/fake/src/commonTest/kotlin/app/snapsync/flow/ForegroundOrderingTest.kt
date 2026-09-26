@@ -134,6 +134,7 @@ class ForegroundOrderingTest {
                 jobs = NoopJobs,
                 importer = NoopImporter,
                 presence = InMemoryAssetPresence(),
+                eventAlbum = { null },
                 myDeviceId = "DEV",
                 downloadEnabled = { true },
             ),
@@ -177,6 +178,7 @@ class ForegroundOrderingTest {
             ref: AssetRef,
             resources: List<StagedResource>,
             creationDate: String,
+            album: String?,
         ): ImportResult = ImportResult.Failed("the flow ordering test never imports")
     }
 

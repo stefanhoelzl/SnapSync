@@ -7,7 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.GalleryAccess
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.model.SyncHealth
 import app.snapsync.ui.components.AppErrorBanner
@@ -74,7 +74,7 @@ internal fun JoinedLayer(
             ended = state.ended,
             onAttentionClick = {
                 if (health is SyncHealth.NeedsAccess) {
-                    if (health.permission == PermissionStatus.NOT_DETERMINED) {
+                    if (health.permission == GalleryAccess.NOT_DETERMINED) {
                         access.onRequestPermission()
                     } else {
                         access.onOpenSettings()
@@ -100,7 +100,7 @@ internal fun JoinedLayer(
 
 private fun SyncHealth.toAppSyncStatus(cutoff: CutoffFormatter): AppSyncStatus = when (this) {
     is SyncHealth.NeedsAccess -> AppSyncStatus.NeedsAccess(
-        if (permission == PermissionStatus.NOT_DETERMINED) AccessPrompt.ALLOW else AccessPrompt.SETTINGS,
+        if (permission == GalleryAccess.NOT_DETERMINED) AccessPrompt.ALLOW else AccessPrompt.SETTINGS,
     )
     // The clock line renders the start in the DEVICE's local zone — a guest in another timezone sees the
     // event begin at their own wall-clock time, which is the honest reading of an instant. An unparseable

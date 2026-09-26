@@ -6,7 +6,7 @@ import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.model.EventConfig
 import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.JoinLoad
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.GalleryAccess
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
 import app.snapsync.model.captureCeiling
@@ -79,7 +79,7 @@ class GuardedIntentTest {
             try {
                 body(
                     StatusContainerHost(
-                        StatusSources(IdleSync(), MutableStateFlow(PermissionStatus.GRANTED), config, rename = rename),
+                        StatusSources(IdleSync(), MutableStateFlow(GalleryAccess.GRANTED), config, rename = rename),
                         scope,
                         queries = joinDetails {
                             JoinLoad.Found(

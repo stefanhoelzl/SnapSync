@@ -1,20 +1,14 @@
 package app.snapsync.fake
 
-import app.snapsync.compose.PermissionAwareAssetPresence
-import app.snapsync.compose.PermissionAwareCandidateSource
-import app.snapsync.contracts.AlbumManagerContract
-import app.snapsync.contracts.AlbumManagerState
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
-import app.snapsync.contracts.CandidateSourceContract
-import app.snapsync.contracts.CandidateSourceState
 import app.snapsync.contracts.Entered
-import app.snapsync.contracts.ImportedAssetPresenceContract
-import app.snapsync.contracts.ImportedAssetPresenceState
+import app.snapsync.contracts.GalleryChange
+import app.snapsync.contracts.GalleryContract
+import app.snapsync.contracts.GalleryReaderContract
+import app.snapsync.contracts.GalleryReaderState
+import app.snapsync.contracts.GalleryState
 import app.snapsync.contracts.ImportedLibrary
-import app.snapsync.contracts.LibraryChange
-import app.snapsync.contracts.LibraryChangeTokenContract
-import app.snapsync.contracts.LibraryChangeTokenState
 import app.snapsync.contracts.MarkerState
 import app.snapsync.contracts.PhotoAccess
 import app.snapsync.contracts.PhotoAccessContract
@@ -25,29 +19,20 @@ import app.snapsync.contracts.PhotoLibraryImporterState
 import app.snapsync.contracts.SEED_COUNT
 import app.snapsync.contracts.SeededLibrary
 import app.snapsync.contracts.StagedImport
-import app.snapsync.contracts.UploadDiscoveryContract
-import app.snapsync.contracts.UploadDiscoveryState
 import app.snapsync.contracts.currentHost
 import app.snapsync.contracts.verify
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.AssetRef
+import app.snapsync.model.GalleryAccess
 import app.snapsync.model.RawAsset
 import app.snapsync.model.RawResource
-import app.snapsync.model.Resource
 import app.snapsync.model.ResourceRole
-import app.snapsync.ports.AlbumManager
-import app.snapsync.model.AssetRef
-import app.snapsync.ports.CandidateSource
-import app.snapsync.ports.ImportedAssetPresence
 import app.snapsync.model.StagedResource
-import app.snapsync.ports.UploadDiscovery
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
+import app.snapsync.ports.GalleryReader
 import kotlin.test.Test
+import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
- * The honest photo-library fakes, held to the contracts the PhotoKit adapters satisfy (capability
- * `docs/architecture.md`). Where production composes a grant-aware layer over the library read, so do these
- * bindings, over the in-memory library instead of PhotoKit.
+ * The honest photo-library fakes, held to the contracts the PhotoKit adapters satisfy (`docs/architecture.md`).
  */
 class PhotoContractBindingsTest {
 
@@ -65,71 +50,25 @@ class PhotoContractBindingsTest {
         )
     }
 
-    private fun grant(granted: Boolean): StateFlow<PermissionStatus> =
-        MutableStateFlow(if (granted) PermissionStatus.GRANTED else PermissionStatus.NOT_DETERMINED)
+    private fun access(granted: Boolean): MutableStateFlow<GalleryAccess> =
+        MutableStateFlow(if (granted) GalleryAccess.GRANTED else GalleryAccess.NOT_DETERMINED)
 
-    private val noSelection: StateFlow<List<Resource>?> = MutableStateFlow(null)
-
-    private val candidateSource = object : Binding<CandidateSourceState, SeededLibrary<CandidateSource>> {
+    private val galleryReader = object : Binding<GalleryReaderState, SeededLibrary<GalleryReader>> {
         override val host = currentHost
         override val kind = BindingKind.Fake
         override val reaches = setOf(
-            CandidateSourceState.NO_GRANT,
-            CandidateSourceState.GRANTED_SEEDED,
-            CandidateSourceState.GRANTED_EMPTY_WINDOW,
+            GalleryReaderState.NO_GRANT,
+            GalleryReaderState.GRANTED_SEEDED,
+            GalleryReaderState.GRANTED_EMPTY_WINDOW,
         )
 
-        override fun create(state: CandidateSourceState, clauseId: String): Entered<SeededLibrary<CandidateSource>> {
+        override fun create(state: GalleryReaderState, clauseId: String): Entered<SeededLibrary<GalleryReader>> {
             val library = when (state) {
-                CandidateSourceState.GRANTED_SEEDED -> seededLibrary(CandidateSourceContract.name, clauseId)
+                GalleryReaderState.GRANTED_SEEDED -> seededLibrary(GalleryReaderContract.name, clauseId)
                 else -> MutableStateFlow(emptyList())
             }
-            val source = PermissionAwareCandidateSource(
-                permission = grant(state != CandidateSourceState.NO_GRANT),
-                walk = inMemoryCandidateSource(library),
-                selection = noSelection,
-            )
-            return Entered.Ready(SeededLibrary(source, library.value.map { it.assetId }))
-        }
-    }
-
-    private val uploadDiscovery = object : Binding<UploadDiscoveryState, SeededLibrary<UploadDiscovery>> {
-        override val host = currentHost
-        override val kind = BindingKind.Fake
-        override val reaches = setOf(UploadDiscoveryState.NO_GRANT, UploadDiscoveryState.GRANTED_SEEDED)
-
-        override fun create(state: UploadDiscoveryState, clauseId: String): Entered<SeededLibrary<UploadDiscovery>> {
-            val granted = state == UploadDiscoveryState.GRANTED_SEEDED
-            val library = if (granted) seededLibrary(UploadDiscoveryContract.name, clauseId) else MutableStateFlow(emptyList())
-            val grant = grant(granted)
-            return Entered.Ready(
-                SeededLibrary(
-                    inMemoryUploadDiscovery(inMemoryCandidateSource(library), library) { grant.value },
-                    library.value.map { it.assetId },
-                ),
-            )
-        }
-    }
-
-    private val presence = object : Binding<ImportedAssetPresenceState, SeededLibrary<ImportedAssetPresence>> {
-        override val host = currentHost
-        override val kind = BindingKind.Fake
-        override val reaches = setOf(ImportedAssetPresenceState.NO_GRANT, ImportedAssetPresenceState.GRANTED_SEEDED)
-
-        override fun create(
-            state: ImportedAssetPresenceState,
-            clauseId: String,
-        ): Entered<SeededLibrary<ImportedAssetPresence>> {
-            val library = when (state) {
-                ImportedAssetPresenceState.GRANTED_SEEDED -> seededLibrary(ImportedAssetPresenceContract.name, clauseId)
-                ImportedAssetPresenceState.NO_GRANT -> MutableStateFlow(emptyList())
-            }
-            val composed = PermissionAwareAssetPresence(
-                permission = grant(state == ImportedAssetPresenceState.GRANTED_SEEDED),
-                library = inMemoryLibraryPresence(library, MutableStateFlow(true)),
-                selection = noSelection,
-            )
-            return Entered.Ready(SeededLibrary(composed, library.value.map { it.assetId }))
+            val gallery = inMemoryGallery(library, access(state != GalleryReaderState.NO_GRANT))
+            return Entered.Ready(SeededLibrary(gallery, library.value.map { it.assetId }))
         }
     }
 
@@ -140,21 +79,10 @@ class PhotoContractBindingsTest {
 
         override fun create(state: PhotoAccessState, clauseId: String): Entered<PhotoAccess> {
             val cell = MutableStateFlow(
-                if (state == PhotoAccessState.GRANTED) PermissionStatus.GRANTED else PermissionStatus.NOT_DETERMINED,
+                if (state == PhotoAccessState.GRANTED) GalleryAccess.GRANTED else GalleryAccess.NOT_DETERMINED,
             )
             val (status, requester) = inMemoryPhotoAccess(cell)
             return Entered.Ready(PhotoAccess(status, requester))
-        }
-    }
-
-    private val albumManager = object : Binding<AlbumManagerState, SeededLibrary<AlbumManager>> {
-        override val host = currentHost
-        override val kind = BindingKind.Fake
-        override val reaches = setOf(AlbumManagerState.GRANTED_SEEDED)
-
-        override fun create(state: AlbumManagerState, clauseId: String): Entered<SeededLibrary<AlbumManager>> {
-            val library = seededLibrary(AlbumManagerContract.name, clauseId)
-            return Entered.Ready(SeededLibrary(inMemoryAlbumManager(library), library.value.map { it.assetId }))
         }
     }
 
@@ -196,47 +124,35 @@ class PhotoContractBindingsTest {
         }
     }
 
-    private val changeToken = object : Binding<LibraryChangeTokenState, LibraryChange> {
+    private val gallery = object : Binding<GalleryState, GalleryChange> {
         override val host = currentHost
         override val kind = BindingKind.Fake
-        override val reaches = setOf(LibraryChangeTokenState.GRANTED)
+        override val reaches = setOf(GalleryState.GRANTED)
 
-        override fun create(state: LibraryChangeTokenState, clauseId: String): Entered<LibraryChange> {
-            val library = seededLibrary(LibraryChangeTokenContract.name, clauseId)
+        override fun create(state: GalleryState, clauseId: String): Entered<GalleryChange> {
+            val library = seededLibrary(GalleryContract.name, clauseId)
             val added = RawAsset(
                 assetId = "contract-$clauseId-change",
-                creationDate = PhotoLibrary.window(LibraryChangeTokenContract.name, clauseId).seedDate,
+                creationDate = PhotoLibrary.window(GalleryContract.name, clauseId).seedDate,
                 rawResources = listOf(RawResource(ResourceRole.PRIMARY, "image/jpeg", "IMG_0009.JPG", Unit)),
             )
-            return Entered.Ready(LibraryChange(inMemoryLibraryChangeTokenRead(library)) { library.value += added })
+            return Entered.Ready(GalleryChange(inMemoryGallery(library, access(granted = true))) { library.value += added })
         }
     }
 
     @Test
-    fun `the in-memory candidate source satisfies the CandidateSource contract`() =
-        verify(CandidateSourceContract, candidateSource)
+    fun `the in-memory gallery satisfies the GalleryReader contract`() =
+        verify(GalleryReaderContract, galleryReader)
 
     @Test
-    fun `the in-memory upload discovery satisfies the UploadDiscovery contract`() =
-        verify(UploadDiscoveryContract, uploadDiscovery)
-
-    @Test
-    fun `the in-memory presence satisfies the ImportedAssetPresence contract`() =
-        verify(ImportedAssetPresenceContract, presence)
+    fun `the in-memory gallery satisfies the Gallery contract`() =
+        verify(GalleryContract, gallery)
 
     @Test
     fun `the in-memory photo access satisfies the PhotoAccess contract`() =
         verify(PhotoAccessContract, photoAccess)
 
     @Test
-    fun `the in-memory album manager satisfies the AlbumManager contract`() =
-        verify(AlbumManagerContract, albumManager)
-
-    @Test
     fun `the in-memory importer satisfies the PhotoLibraryImporter contract`() =
         verify(PhotoLibraryImporterContract, importer)
-
-    @Test
-    fun `the in-memory change token satisfies the LibraryChangeToken contract`() =
-        verify(LibraryChangeTokenContract, changeToken)
 }

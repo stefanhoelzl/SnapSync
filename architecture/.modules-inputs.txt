@@ -87,6 +87,7 @@ edge :domain:compose :domain:feature
 edge :domain:compose :domain:flow
 edge :domain:compose :domain:model
 edge :domain:compose :domain:ports
+edge :domain:compose :domain:services
 edge :domain:feature :domain:model
 edge :domain:feature :domain:ports
 edge :domain:flow :domain:feature

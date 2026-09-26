@@ -32,7 +32,7 @@ import app.snapsync.feature.membership.readmodel.MutableRenameStatusSource
 import app.snapsync.feature.membership.readmodel.RenameFailureReason
 import app.snapsync.feature.membership.readmodel.RenameStatus
 import app.snapsync.feature.membership.readmodel.RenameStatusSource
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.GalleryAccess
 import app.snapsync.model.grantsPhotoAccess
 import app.snapsync.feature.download.readmodel.DownloadProgress
 import app.snapsync.feature.download.readmodel.DownloadStatusSource
@@ -310,7 +310,7 @@ class StatusContainerHost(
                     @Suppress("UNCHECKED_CAST")
                     reduceFrom(
                         values[0] as EventConfig?,
-                        values[1] as PermissionStatus,
+                        values[1] as GalleryAccess,
                         values[2] as SyncStatus,
                         values[3] as CreationStatus,
                         values[4] as DownloadProgress,
@@ -351,7 +351,7 @@ class StatusContainerHost(
         }
 
     /** What the count is recomputed on — the bounds and the grant, never the count itself. */
-    private data class CountKey(val from: CaptureCutoff, val until: CaptureCeiling, val grant: PermissionStatus)
+    private data class CountKey(val from: CaptureCutoff, val until: CaptureCeiling, val grant: GalleryAccess)
 
 
     /**
@@ -852,7 +852,7 @@ class StatusContainerHost(
      */
     private fun deriveLoadedPhase(event: EventDetails): JoinPhase {
         val noEventConfigured = config.value == null
-        val neverAsked = permission.value == PermissionStatus.NOT_DETERMINED
+        val neverAsked = permission.value == GalleryAccess.NOT_DETERMINED
         val step = if (noEventConfigured && neverAsked) {
             JoinPhase.Detailed.Step.ExplainAccess
         } else {
@@ -1068,7 +1068,7 @@ private fun unjoinedLayer(
 
 private fun reduceFrom(
     config: EventConfig?,
-    permission: PermissionStatus,
+    permission: GalleryAccess,
     snapshot: SyncStatus,
     creation: CreationStatus,
     download: DownloadProgress,
@@ -1153,7 +1153,7 @@ private fun joinedLayer(
     config: EventConfig,
     health: SyncHealth,
     pendingSwitch: PendingSwitch?,
-    permission: PermissionStatus,
+    permission: GalleryAccess,
     ended: Boolean,
     rename: RenameStatus,
     reconfiguring: SettingsSurface,
@@ -1170,7 +1170,7 @@ private fun joinedLayer(
         pendingSwitch = pendingSwitch,
         // The resting affordance, not an attention state (capability `photo-access`): a
         // partial grant's joined layer always offers the picker, whatever the health.
-        canChoosePhotos = permission == PermissionStatus.LIMITED,
+        canChoosePhotos = permission == GalleryAccess.LIMITED,
         ended = ended,
         renameState = rename.toRenameState(),
         // The same transient cell the create layer's banner reads. A rejected link is rejected wherever

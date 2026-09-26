@@ -1,11 +1,8 @@
 package app.snapsync.rig.gallery
 
-import app.snapsync.model.PermissionStatus
-import app.snapsync.ports.PhotoAccessRequester
-import app.snapsync.ports.PhotoAccessStatusSource
+import app.snapsync.model.GalleryAccess
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.suspendCancellableCoroutine
 import platform.Foundation.NSThread
 import kotlin.coroutines.resume
@@ -162,15 +159,13 @@ class WipeOutcome(
 suspend fun wipeGallery(
     log: Logger,
     scope: WipeScope,
-    requester: PhotoAccessRequester,
-    status: PhotoAccessStatusSource,
+    requestAccess: suspend () -> GalleryAccess,
     window: WipeWindow? = null,
 ): WipeOutcome {
     // Ask for access first. Without it the fetch returns an empty result and the command looks like it did
     // nothing at all — the one failure mode a wipe cannot afford, since the operator's next move would be
-    // to run it again. Already-granted is a no-op callback, denied returns immediately.
-    requester.request()
-    val grant = status.permission.first { it != PermissionStatus.NOT_DETERMINED }
+    // to run it again. Already-granted answers at once, denied too.
+    val grant = requestAccess()
     log.i { "wipe: photo access = $grant (LIMITED scopes the wipe to the hand-picked selection)" }
     return performWipe(log, scope, grant.name, window)
 }

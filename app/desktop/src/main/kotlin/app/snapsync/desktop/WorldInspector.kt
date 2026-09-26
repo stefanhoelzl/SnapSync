@@ -28,7 +28,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.snapsync.model.UploadError
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.GalleryAccess
 
 /**
  * The world-inspector control panel (`docs/testing.md`): raw Material 3, **never** App*
@@ -73,10 +73,10 @@ fun WorldInspector(
         Header("Membership")
         Text("Permission")
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = { controller.setPermission(PermissionStatus.NOT_DETERMINED) }) { Text("Not determined") }
-            OutlinedButton(onClick = { controller.setPermission(PermissionStatus.DENIED) }) { Text("Denied") }
-            OutlinedButton(onClick = { controller.setPermission(PermissionStatus.LIMITED) }) { Text("Limited") }
-            OutlinedButton(onClick = { controller.setPermission(PermissionStatus.GRANTED) }) { Text("Granted") }
+            OutlinedButton(onClick = { controller.setPermission(GalleryAccess.NOT_DETERMINED) }) { Text("Not determined") }
+            OutlinedButton(onClick = { controller.setPermission(GalleryAccess.DENIED) }) { Text("Denied") }
+            OutlinedButton(onClick = { controller.setPermission(GalleryAccess.LIMITED) }) { Text("Limited") }
+            OutlinedButton(onClick = { controller.setPermission(GalleryAccess.GRANTED) }) { Text("Granted") }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Next request → ")

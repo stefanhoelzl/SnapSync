@@ -1,6 +1,6 @@
 package app.snapsync.world
 
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.GalleryAccess
 import app.snapsync.model.CycleResult
 
 import kotlin.test.Test
@@ -24,7 +24,7 @@ class AdmissionWorldTest {
         w.runUploadCycle()
         assertTrue(w.store.union(eventId)!!.any { it.deviceId == w.ownDeviceId && it.assetId == "A" })
 
-        w.permission.set(PermissionStatus.NOT_DETERMINED)
+        w.permission.set(GalleryAccess.NOT_DETERMINED)
         w.addOwnAsset("B")
 
         assertEquals(CycleResult.SKIPPED, w.runUploadCycle(), "no usable access: the engine is not the resolved one")
@@ -39,11 +39,11 @@ class AdmissionWorldTest {
     fun a_restored_grant_resumes_where_it_left_off() = worldTest {
         val w = World(this)
         w.provision("E")
-        w.permission.set(PermissionStatus.DENIED)
+        w.permission.set(GalleryAccess.DENIED)
         w.addOwnAsset("A")
         assertEquals(CycleResult.SKIPPED, w.runUploadCycle())
 
-        w.permission.set(PermissionStatus.GRANTED)
+        w.permission.set(GalleryAccess.GRANTED)
 
         assertEquals(CycleResult.COMPLETED, w.runUploadCycle())
         assertTrue(w.platform.created.any { it.filename == "A-primary.jpg" })

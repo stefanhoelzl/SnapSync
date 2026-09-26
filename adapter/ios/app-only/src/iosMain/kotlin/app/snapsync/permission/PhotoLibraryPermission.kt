@@ -2,13 +2,15 @@ package app.snapsync.permission
 
 import app.snapsync.gallery.currentPhotoPermission
 import app.snapsync.logging.invocation
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.GalleryAccess
 import app.snapsync.objc.objcBoundary
 import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.ports.PhotoAccessStatusSource
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 import platform.Foundation.NSNotification
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSOperationQueue
@@ -18,27 +20,28 @@ import platform.Photos.PHPhotoLibrary
 import platform.PhotosUI.presentLimitedLibraryPickerFromViewController
 import platform.UIKit.UIApplication
 import platform.UIKit.UIApplicationDidBecomeActiveNotification
+import platform.UIKit.UIApplicationState
 import platform.UIKit.UIApplicationOpenSettingsURLString
 import platform.darwin.NSObjectProtocol
 import platform.darwin.dispatch_async
 import platform.darwin.dispatch_get_main_queue
 
 /**
- * The iOS PhotoKit adapter — the first real platform implementation. One object implementing both
- * permission ports (the interface docs anticipate this).
+ * The iOS photo-permission adapter: the permission status source, the Settings surface, and — for
+ * [IosGallery] — the permission dialog and the limited-library picker, which both need UIKit.
  *
  * PhotoKit exposes the current authorization status **synchronously**, so the source seeds a real
  * value at construction (no Loading on the permission seam). It exposes **no** change observer, and
  * the user can flip access in system Settings while the app is backgrounded — so the adapter treats
  * the app returning to the foreground (`UIApplicationDidBecomeActiveNotification`) as a refresh
- * ding, re-reading the status. Status changes from a `request()` arrive via the same source.
+ * ding, re-reading the status. Status changes from [requestAccess] arrive via the same source.
  *
  * The mapping is faithful: `.authorized` → GRANTED (full library), `.limited` → LIMITED (the user's
  * hand-picked selection — a first-class working grant, capability `photo-access`),
  * `.notDetermined` → NOT_DETERMINED, `.denied`/`.restricted` → DENIED. Access level is `.readWrite`
  * (PhotoKit has no read-only level; it is what discovery, resource reads, and imports need).
  *
- * Requires `NSPhotoLibraryUsageDescription` in the app's Info.plist, or `request()` traps.
+ * Requires `NSPhotoLibraryUsageDescription` in the app's Info.plist, or [requestAccess] traps.
  */
 class PhotoLibraryPermission : PhotoAccessStatusSource, PhotoAccessRequester {
 
@@ -46,7 +49,7 @@ class PhotoLibraryPermission : PhotoAccessStatusSource, PhotoAccessRequester {
 
     private val log = Logger.withTag("photoPermission")
 
-    override val permission: StateFlow<PermissionStatus> = state
+    override val permission: StateFlow<GalleryAccess> = state
 
     // Block-based observer kept for the app's lifetime; the center retains it until removeObserver,
     // which v1 never calls (single app-lifetime adapter).
@@ -60,16 +63,32 @@ class PhotoLibraryPermission : PhotoAccessStatusSource, PhotoAccessRequester {
             // PLATFORM ENTRY POINT (spec `privacy-security`): the OS calls this observer body, so
             // it records that it was called and what it read. Once per foreground: INFO.
             objcBoundary(log, "photoPermission.onDidBecomeActive") {
-                log.invocation("photoPermission.onDidBecomeActive", result = { status: PermissionStatus -> "$status" }) {
+                log.invocation("photoPermission.onDidBecomeActive", result = { status: GalleryAccess -> "$status" }) {
                     read().also { state.value = it }
                 }
             }
         }
 
-    override fun request() {
-        // Fire-and-forget: the result lands on the source via read(), per the port contract.
-        PHPhotoLibrary.requestAuthorizationForAccessLevel(PHAccessLevelReadWrite) { _ ->
-            objcBoundary(log, "photoPermission.request.completion") { state.value = read() }
+    /**
+     * Ask for access and answer the grant that results; the same value lands on [permission]. With no screen
+     * the dialog could present on — the app in the background — it asks nothing and answers the grant as it
+     * stands (`Gallery.requestAccess`). The state read hops to the main queue, where UIKit answers it.
+     */
+    suspend fun requestAccess(): GalleryAccess = suspendCancellableCoroutine { cont ->
+        dispatch_async(dispatch_get_main_queue()) {
+            objcBoundary(log, "photoPermission.requestAccess") {
+                if (UIApplication.sharedApplication.applicationState == UIApplicationState.UIApplicationStateBackground) {
+                    cont.resume(read())
+                } else {
+                    PHPhotoLibrary.requestAuthorizationForAccessLevel(PHAccessLevelReadWrite) { _ ->
+                        objcBoundary(log, "photoPermission.request.completion") {
+                            val now = read()
+                            state.value = now
+                            cont.resume(now)
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -88,14 +107,19 @@ class PhotoLibraryPermission : PhotoAccessStatusSource, PhotoAccessRequester {
      * passed as `AppPorts.presentPhotoPicker: () -> Unit` — a platform presentation handed to the core
      * behind a type that said nothing, and defaulted inert, so a composition that never wired it looked
      * exactly like one that had (`docs/architecture.md`, "Ports are the I/O boundary named for the
-     * need"). It is folded into this adapter because [PhotoAccessRequester] is where it belongs: the
-     * same object already presents the permission dialog and the Settings page, and the picker is the
-     * third face of that one need.
+     * need"). It lives in this adapter because the same object already presents the permission dialog and
+     * the Settings page, and the picker is the third face of that one need; [IosGallery] exposes it as
+     * `widenSelection`.
      *
-     * Fire-and-forget, like the rest of this port: PhotoKit reports the resulting selection through the
+     * Answers the grant once the picker is presented: PhotoKit reports the resulting selection through the
      * library change observer, never through a completion handler here.
      */
-    override fun choosePhotos() {
+    suspend fun widenSelection(): GalleryAccess {
+        presentPicker()
+        return read()
+    }
+
+    private fun presentPicker() {
         // Same main-queue hop and presenter walk as `openSettings`/`IosShareSheet`, for the same two
         // reasons: UIKit rejects presentation from a covered controller, and presentation asserts the
         // main queue (presenting off-main traps with SIGTRAP) while commands can arrive on any lane.
@@ -127,5 +151,5 @@ class PhotoLibraryPermission : PhotoAccessStatusSource, PhotoAccessRequester {
     }
 
     // The one mapping, shared with the extension process (ext-safe `currentPhotoPermission`).
-    private fun read(): PermissionStatus = currentPhotoPermission()
+    private fun read(): GalleryAccess = currentPhotoPermission()
 }

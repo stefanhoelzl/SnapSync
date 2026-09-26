@@ -4,7 +4,7 @@ import app.snapsync.model.CandidateRead
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.candidatesFromResources
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.GalleryAccess
 import app.snapsync.ports.CandidateSource
 import kotlinx.coroutines.flow.StateFlow
 
@@ -58,17 +58,17 @@ import kotlinx.coroutines.flow.StateFlow
  * because `AppPorts` is where both halves are already available.
  */
 class PermissionAwareCandidateSource(
-    private val permission: StateFlow<PermissionStatus>,
+    private val permission: StateFlow<GalleryAccess>,
     private val walk: CandidateSource,
     private val selection: StateFlow<List<Resource>?>,
 ) : CandidateSource {
 
     override suspend fun candidates(policy: SelectionPolicy): CandidateRead =
         when (permission.value) {
-            PermissionStatus.GRANTED -> walk.candidates(policy)
-            PermissionStatus.LIMITED -> selection.value
+            GalleryAccess.GRANTED -> walk.candidates(policy)
+            GalleryAccess.LIMITED -> selection.value
                 ?.let { CandidateRead.Readable(candidatesFromResources(it)) }
                 ?: CandidateRead.NotReadable
-            PermissionStatus.DENIED, PermissionStatus.NOT_DETERMINED -> CandidateRead.NotReadable
+            GalleryAccess.DENIED, GalleryAccess.NOT_DETERMINED -> CandidateRead.NotReadable
         }
 }

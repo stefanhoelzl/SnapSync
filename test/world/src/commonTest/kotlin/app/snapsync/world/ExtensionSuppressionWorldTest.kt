@@ -5,7 +5,7 @@ import app.snapsync.compose.UploaderProcess
 import app.snapsync.compose.uploadCore
 import app.snapsync.model.CycleResult
 import app.snapsync.model.PauseReason
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.GalleryAccess
 import app.snapsync.model.SuppressionReadiness
 import app.snapsync.ports.SuppressionSource
 import kotlin.test.Test
@@ -27,7 +27,7 @@ class ExtensionSuppressionWorldTest {
     }
 
     /** The world's own cycle bundle, re-bound as the extension process over [suppression]. */
-    private fun World.extensionPorts(grant: PermissionStatus, suppression: SuppressionSource): UploadPorts {
+    private fun World.extensionPorts(grant: GalleryAccess, suppression: SuppressionSource): UploadPorts {
         val app = uploadPorts
         return UploadPorts(
             config = app.config, deviceIdentity = app.deviceIdentity, host = app.host, ledger = app.ledger,
@@ -47,13 +47,13 @@ class ExtensionSuppressionWorldTest {
         w.addOwnAsset("A")
         val suppression = ScriptedSuppression(SuppressionReadiness.OldSchema)
 
-        val result = uploadCore(this, w.extensionPorts(PermissionStatus.GRANTED, suppression)).run()
+        val result = uploadCore(this, w.extensionPorts(GalleryAccess.GRANTED, suppression)).run()
 
         assertEquals(CycleResult.Paused(PauseReason.OLD_SCHEMA), result)
         assertTrue(w.platform.created.isEmpty(), "uploading without suppression would send downloaded photos back")
 
         suppression.readiness = SuppressionReadiness.Ready
-        assertEquals(CycleResult.COMPLETED, uploadCore(this, w.extensionPorts(PermissionStatus.GRANTED, suppression)).run())
+        assertEquals(CycleResult.COMPLETED, uploadCore(this, w.extensionPorts(GalleryAccess.GRANTED, suppression)).run())
         assertTrue(w.platform.created.any { it.filename == "A-primary.jpg" }, "once the app migrated it, the cycle runs")
     }
 
@@ -63,7 +63,7 @@ class ExtensionSuppressionWorldTest {
         w.provision("E")
         val suppression = ScriptedSuppression(SuppressionReadiness.OldSchema)
 
-        val result = uploadCore(this, w.extensionPorts(PermissionStatus.LIMITED, suppression)).run()
+        val result = uploadCore(this, w.extensionPorts(GalleryAccess.LIMITED, suppression)).run()
 
         assertEquals(CycleResult.SKIPPED, result, "a process that may not create withholds; it never pauses")
         assertEquals(0, suppression.asked, "admission is decided before the download store is opened")
@@ -77,7 +77,7 @@ class ExtensionSuppressionWorldTest {
 
         val result = uploadCore(
             this,
-            w.extensionPorts(PermissionStatus.GRANTED, ScriptedSuppression(SuppressionReadiness.Unavailable("locked"))),
+            w.extensionPorts(GalleryAccess.GRANTED, ScriptedSuppression(SuppressionReadiness.Unavailable("locked"))),
         ).run()
 
         assertEquals(CycleResult.COMPLETED, result, "\"I could not look\" is a clean skip")

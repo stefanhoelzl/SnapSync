@@ -1,7 +1,7 @@
 package app.snapsync.selection
 
 import app.snapsync.model.ConfinedTo
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.GalleryAccess
 import app.snapsync.model.Resource
 import app.snapsync.ports.PhotoSelectionChangeSource
 import kotlinx.coroutines.CoroutineDispatcher
@@ -40,7 +40,7 @@ interface SelectionPlatform<F : Any, C : Any> {
  * "State reached from OS callbacks is confined", `docs/architecture.md`; decision record
  * `harden-seam-bug-classes`, D12).
  *
- * Observes only while the grant is [PermissionStatus.LIMITED]: a baseline snapshot when observation begins, and one
+ * Observes only while the grant is [GalleryAccess.LIMITED]: a baseline snapshot when observation begins, and one
  * per change after it. Every piece of work — beginning, ending, the baseline, each change — goes through ONE channel
  * consumed on ONE serial [lane], so:
  *
@@ -60,7 +60,7 @@ interface SelectionPlatform<F : Any, C : Any> {
  * written only by the permission collector and read by the consumer.
  */
 class SelectionSnapshotLane<F : Any, C : Any>(
-    permission: StateFlow<PermissionStatus>,
+    permission: StateFlow<GalleryAccess>,
     scope: CoroutineScope,
     /** Serial: production passes `Dispatchers.Default.limitedParallelism(1)`. */
     lane: CoroutineDispatcher,
@@ -107,7 +107,7 @@ class SelectionSnapshotLane<F : Any, C : Any>(
         scope.launch {
             var limited = false
             permission.collect { status ->
-                val nowLimited = status == PermissionStatus.LIMITED
+                val nowLimited = status == GalleryAccess.LIMITED
                 if (nowLimited == limited) return@collect
                 limited = nowLimited
                 generation++

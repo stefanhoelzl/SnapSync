@@ -32,7 +32,7 @@ class ImporterFixtureTest {
     )
 
     private suspend fun FakePhotoLibraryImporter.importOnce(): ImportResult =
-        import(ref, listOf(resource()), "2026-06-30T10:00:00Z")
+        import(ref, listOf(resource()), "2026-06-30T10:00:00Z", album = null)
 
     /**
      * The marker writes are REQUIRED collaborators now, so every construction here supplies them — which

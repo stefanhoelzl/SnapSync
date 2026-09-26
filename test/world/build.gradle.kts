@@ -52,6 +52,9 @@ kotlin {
             // The real Ktor clients the mini-edge serves (HttpDeviceFilesSource, HttpEventUnionSource,
             // HttpEventCreation, HttpEnrollment, HttpLeaveNotifier, HttpEventDirectory).
             api(project(":adapter:generic:app"))
+            // The gallery services the device roots compose over the gallery (discovery, album operations), so
+            // the world's cycle reads the gallery through the same services the phone's does.
+            implementation(project(":domain:services"))
             implementation(libs.coroutines.core)
             implementation(libs.kermit)
             implementation(libs.kotlinx.datetime)
@@ -67,9 +70,6 @@ kotlin {
         }
         // The real storage services over the real JVM `Databases`, for the test that forcing the composition
         // opens no database (`docs/architecture.md`).
-        jvmTest.dependencies {
-            implementation(project(":domain:services"))
-        }
         commonTest.dependencies {
             implementation(kotlin("test"))
             implementation(libs.coroutines.test)

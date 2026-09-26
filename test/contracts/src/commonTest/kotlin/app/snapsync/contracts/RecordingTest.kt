@@ -1,6 +1,6 @@
 package app.snapsync.contracts
 
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.GalleryAccess
 import kotlin.test.Test
 import kotlin.test.assertNull
 import kotlin.test.assertEquals
@@ -92,7 +92,7 @@ class RecordingTest {
         assertEquals("SecureStore@IOS_DEVICE_APP", recordingName("SecureStore", Host.IOS_DEVICE_APP, null))
         assertEquals(
             "UploadExtensionRegistry@IOS_DEVICE_APP.LIMITED",
-            recordingName("UploadExtensionRegistry", Host.IOS_DEVICE_APP, PermissionStatus.LIMITED),
+            recordingName("UploadExtensionRegistry", Host.IOS_DEVICE_APP, GalleryAccess.LIMITED),
         )
     }
 

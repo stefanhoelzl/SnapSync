@@ -53,7 +53,7 @@ import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.EventConfig
 import app.snapsync.model.JoinLoad
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.GalleryAccess
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionScope
 import app.snapsync.model.grantsPhotoAccess
@@ -67,6 +67,12 @@ import app.snapsync.ports.ConfigRefresh
 import app.snapsync.ports.Clock
 import app.snapsync.ports.TimeZoneSource
 import app.snapsync.ports.AlbumManager
+import app.snapsync.ports.CandidateSource
+import app.snapsync.ports.Gallery
+import app.snapsync.ports.ImportedAssetPresence
+import app.snapsync.services.gallery.GalleryAlbums
+import app.snapsync.services.gallery.GalleryAssetPresence
+import app.snapsync.services.gallery.GalleryCandidateSource
 import app.snapsync.ports.AlbumMapStore
 import app.snapsync.ports.AttestClient
 import app.snapsync.ports.AttestKey
@@ -89,8 +95,6 @@ import app.snapsync.ports.LeaveNotifier
 import app.snapsync.ports.LogScope
 import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.ports.PhotoAccessStatusSource
-import app.snapsync.ports.CandidateSource
-import app.snapsync.ports.ImportedAssetPresence
 import app.snapsync.model.Handoff
 import app.snapsync.ports.PlatformHandoff
 import app.snapsync.ports.StagedBytes
@@ -128,12 +132,16 @@ class AppPorts(
     val configSource: ConfigSource,
     val configStore: ConfigStore,
     val photoAccess: PhotoAccessStatusSource,
-    /** The photo-access request/Settings/picker surface — the port behind the bundle's `requestAccess` /
-     *  `openSettings` / `choosePhotos` user-tap commands (migration step 9: presentation fires them
-     *  through the bundle and never names the port). `choosePhotos` was a separate
-     *  `presentPhotoPicker: () -> Unit` field until this port absorbed it: it is the same need — hand the
-     *  user back to the system to widen what this app may see — answered through the same read-models. */
+    /** The platform's settings surface — the port behind the bundle's `openSettings` user-tap command
+     *  (presentation fires it through the bundle and never names the port). */
     val photoAccessRequester: PhotoAccessRequester,
+    /**
+     * The device's photo library (`docs/architecture.md`): every read the status total, the join preview, the
+     * download guard and the event album make, the album writes, and the `requestAccess` / `choosePhotos`
+     * user taps. The decisions over it — which grant may answer, what is denylisted — are the services this
+     * graph builds over it, never the gallery's.
+     */
+    val gallery: Gallery,
     /** The two ways this app hands something to the platform and stops being involved — the share sheet
      *  for the invite URL and the URL opener for the store link (see [PlatformHandoff]). Both inert
      *  off-device, so a composition with no platform to reach writes nothing about either. */
@@ -150,22 +158,11 @@ class AppPorts(
      * be on, which is the class of defect this law exists to end.
      */
     val uiLane: CoroutineContext,
-    /** The permission-aware gallery read seam. ONE instance serves both the status total and the
-     *  join-time shareable-count preview (capability `join-event`), so the two cannot disagree. */
-    val candidateSource: CandidateSource,
     /** What this process knows about its own uploads — the ledger, the backend's listing of it, and the
      *  join marker tying the two to an event. Read-only in this graph: see [UploadRecordPorts]. */
     val uploadRecord: UploadRecordPorts,
     val downloadStore: DownloadStore,
     val importer: PhotoLibraryImporter,
-    /**
-     * Whether an asset this device created still exists — the **full-access** source only (capability
-     * `receiving-photos`). Composition wraps it in [PermissionAwareAssetPresence] below, which is what
-     * decides whether a miss may be reported as absence at all; a partial or revoked grant answers from
-     * the held selection instead and never reaches this. Defaults to unanswerable so a composition that
-     * cannot look never claims an asset is gone — the one wrong answer that re-creates the defect.
-     */
-    val assetPresence: ImportedAssetPresence = ImportedAssetPresence.Unanswerable,
     /**
      * Where downloaded bytes are staged, and who releases them once their row settles (capability
      * `receiving-photos`).
@@ -243,7 +240,6 @@ class AppPorts(
     /** The runtime inputs only a rig build can set — the per-uploader pin and the invite-link hints. Both are
      *  inert in a production build (see [RigSwitches]); required, so every root states them. */
     val rigSwitches: RigSwitches,
-    val albumManager: AlbumManager,
     val albumMapStore: AlbumMapStore,
     /** Tells the shared event this device is leaving (capability `manage-membership`). This was
      *  `notifyLeave: suspend (eventId) -> Unit`, a lambda the shell built by closing over the adapter
@@ -360,7 +356,7 @@ class AppCore internal constructor(
     val candidates: CandidateSource by lazy {
         PermissionAwareCandidateSource(
             permission = ports.photoAccess.permission,
-            walk = ports.candidateSource,
+            walk = GalleryCandidateSource(ports.gallery),
             selection = latestSelectionSnapshot,
         )
     }
@@ -374,7 +370,7 @@ class AppCore internal constructor(
     private val assetPresence: ImportedAssetPresence by lazy {
         PermissionAwareAssetPresence(
             permission = ports.photoAccess.permission,
-            library = ports.assetPresence,
+            library = GalleryAssetPresence(ports.gallery),
             selection = latestSelectionSnapshot,
         )
     }
@@ -407,7 +403,7 @@ class AppCore internal constructor(
         shareableCountSource.count(includesUpload = true, cutoff = cutoff, ceiling = until)
 
     /** The photo-access grant, exposed for the join surface's count-recompute trigger (a late resolve). */
-    val photoPermission: StateFlow<PermissionStatus> get() = ports.photoAccess.permission
+    val photoPermission: StateFlow<GalleryAccess> get() = ports.photoAccess.permission
 
     /** The real ledger-backed status source (ledger truth × permission × gallery total). */
     val syncStatusSource: SyncStatusSource by lazy {
@@ -457,6 +453,11 @@ class AppCore internal constructor(
             jobs = downloadJobs,
             importer = ports.importer,
             presence = assetPresence,
+            // The import-time album: the membership's opt-in gate is the coordinator's rule (capability
+            // `event-album`); this only reads the current membership's facts.
+            eventAlbum = {
+                ports.configSource.config.value?.let { albumCoordinator.albumIdFor(it.eventId, it.saveToAlbum) }
+            },
             stagedBytes = ports.stagedBytes,
             myDeviceId = ports.deviceIdentity.deviceId(),
             // Three-valued, no fallback (capability `receiving-photos`): no membership → `null` → no arm.
@@ -475,10 +476,13 @@ class AppCore internal constructor(
         )
     }
 
+    /** The album operations over the gallery (capabilities `event-album`, `photo-sharing`). */
+    private val albumManager: AlbumManager by lazy { GalleryAlbums(ports.gallery) }
+
     // Event album (capability `event-album`): the coordinator over the shared leave-surviving map.
     // The APP is the SOLE creator (on the permission grant); both processes only add.
     val albumCoordinator: AlbumCoordinator by lazy {
-        AlbumCoordinator(ports.albumManager, ports.albumMapStore)
+        AlbumCoordinator(albumManager, ports.albumMapStore)
     }
 
     // The event album's gather (capability `event-album`): place what the device already holds for the event.
@@ -745,7 +749,7 @@ class AppCore internal constructor(
     private suspend fun albumExclusionsWhenReadable(cutoff: CaptureCutoff): Set<String> =
         // The app tier admits on doubt: a failed lookup must never drop a real photo from the total.
         denylistedAlbumMembers(
-            ports.albumManager, cutoff, ports.photoAccess.permission.value, AlbumLookupFailure.AdmitOnDoubt,
+            albumManager, cutoff, ports.photoAccess.permission.value, AlbumLookupFailure.AdmitOnDoubt,
             ports.log,
         )
 
@@ -1007,14 +1011,14 @@ class AppCore internal constructor(
                     tapLog.recordingRefusal("tap.openLink", ports.handoff.links.open(url))
                 }
             },
-            // The permission user-taps (capability `photo-access`), bound to the requester port here
-            // so presentation never names it (migration step 9). `requestAccess` returns nothing and
-            // cannot suspend — the grant arrives only via the permission read-model StateFlow.
-            requestAccess = { onUiLane("tap.requestAccess") { ports.photoAccessRequester.request() } },
+            // The permission user-taps (capability `photo-access`), bound to the gallery here so presentation
+            // never names it. Each tap is fire-and-forget: the screen follows the permission read-model StateFlow,
+            // never the gallery's answer.
+            requestAccess = { onUiLane("tap.requestAccess") { ports.gallery.requestAccess() } },
             openSettings = { onUiLane("tap.openSettings") { ports.photoAccessRequester.openSettings() } },
             // The picker presentation is platform surface; the selection outcome arrives only via
-            // the selection-change seam (fire-and-forget, like every command here).
-            choosePhotos = { onUiLane("tap.choosePhotos") { ports.photoAccessRequester.choosePhotos() } },
+            // the selection-change seam.
+            choosePhotos = { onUiLane("tap.choosePhotos") { ports.gallery.widenSelection() } },
             // In-place membership reconfigure (capability `manage-membership`): edit direction/
             // cutoff/album without leaving. Distinct from `openSettings` (the iOS system settings page).
             reconfigure = { eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum ->
@@ -1140,7 +1144,7 @@ class AppCore internal constructor(
             // So under that grant it waits for the snapshot rather than asking a question the source cannot
             // answer yet. If the emission never comes the sweep never runs, which costs the same deferral
             // without the wasted lookup.
-            if (ports.photoAccess.permission.value == PermissionStatus.LIMITED) {
+            if (ports.photoAccess.permission.value == GalleryAccess.LIMITED) {
                 latestSelectionSnapshot.filterNotNull().first()
             }
             downloadController.sweepInterruptedImports()

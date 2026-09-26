@@ -29,7 +29,7 @@ class SelectionScopeTest {
     @Test
     fun `LIMITED scopes discovery to exactly the snapshot`() {
         val snapshot = snapshotOf("S1", "S2")
-        val scope = selectionScope(PermissionStatus.LIMITED, snapshot)
+        val scope = selectionScope(GalleryAccess.LIMITED, snapshot)
         assertIs<SelectionScope.Scoped>(scope)
         assertEquals(listOf("S1", "S2"), scope.resources.map { it.assetId })
     }
@@ -41,12 +41,12 @@ class SelectionScopeTest {
         // under a grant whose entire point is that it may not; collapsing it to an empty Scoped would read
         // as "every photo was de-selected" to an authoritative walk, and delete every row
         // (`changes/selection-is-the-walk`, D1).
-        assertSame(SelectionScope.Unread, selectionScope(PermissionStatus.LIMITED, null))
+        assertSame(SelectionScope.Unread, selectionScope(GalleryAccess.LIMITED, null))
     }
 
     @Test
     fun `LIMITED with an empty selection is scoped rather than unrestricted`() {
-        assertIs<SelectionScope.Scoped>(selectionScope(PermissionStatus.LIMITED, emptyList()))
+        assertIs<SelectionScope.Scoped>(selectionScope(GalleryAccess.LIMITED, emptyList()))
     }
 
     @Test
@@ -54,7 +54,7 @@ class SelectionScopeTest {
         // Total over the enum: only LIMITED scopes. DENIED / NOT_DETERMINED yield Unrestricted because
         // this value says what discovery MAY consult — refusing the read is the permission-aware
         // source's answer, not this one's — and a stale snapshot must not survive a grant widening.
-        for (status in PermissionStatus.entries - PermissionStatus.LIMITED) {
+        for (status in GalleryAccess.entries - GalleryAccess.LIMITED) {
             for (snapshot in listOf(null, emptyList(), snapshotOf("S1"))) {
                 assertSame(
                     SelectionScope.Unrestricted, selectionScope(status, snapshot),

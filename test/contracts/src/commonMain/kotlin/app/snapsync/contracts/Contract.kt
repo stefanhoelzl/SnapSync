@@ -1,6 +1,6 @@
 package app.snapsync.contracts
 
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.GalleryAccess
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 
@@ -73,10 +73,10 @@ interface Binding<K : Enum<K>, T> {
      *
      * A grant is not host identity, but it does decide which recording a recorded host's run belongs to: one
      * run holds one grant, so a host recorded under two grants keeps two files, named by [recordingName]. Where
-     * declared, it MUST be written as `override val grant = PermissionStatus.X` — the contract-coverage gate
+     * declared, it MUST be written as `override val grant = GalleryAccess.X` — the contract-coverage gate
      * reads it from source to find the recording a replay binding counts through.
      */
-    val grant: PermissionStatus? get() = null
+    val grant: GalleryAccess? get() = null
 
     /**
      * A FRESH [T] already in [state], or [Entered.Unreachable] naming why this host cannot produce it.
@@ -109,5 +109,5 @@ fun runEntry(block: suspend () -> Unit) {
  * (`docs/architecture.md`, "A recording is one committed plain-text file per contract and host"):
  * `<Contract>@<HOST>` where no grant is declared, `<Contract>@<HOST>.<GRANT>` where one is.
  */
-fun recordingName(contract: String, host: Host, grant: PermissionStatus?): String =
+fun recordingName(contract: String, host: Host, grant: GalleryAccess?): String =
     "$contract@${host.name}" + (grant?.let { ".${it.name}" } ?: "")

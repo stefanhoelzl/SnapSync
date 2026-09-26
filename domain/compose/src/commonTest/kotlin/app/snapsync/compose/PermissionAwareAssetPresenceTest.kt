@@ -1,7 +1,7 @@
 package app.snapsync.compose
 
 import app.snapsync.model.AssetPresence
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.GalleryAccess
 import app.snapsync.model.RESOURCE_META_CREATION_DATE
 import app.snapsync.model.Resource
 import app.snapsync.ports.ImportedAssetPresence
@@ -42,7 +42,7 @@ class PermissionAwareAssetPresenceTest {
     }
 
     private fun source(
-        permission: PermissionStatus,
+        permission: GalleryAccess,
         library: RecordingLibrary = RecordingLibrary(emptyMap()),
         snapshot: List<Resource>? = null,
     ) = library to PermissionAwareAssetPresence(
@@ -54,7 +54,7 @@ class PermissionAwareAssetPresenceTest {
     @Test
     fun `GRANTED asks the library and both verdicts stand`() = runTest {
         val (library, source) = source(
-            PermissionStatus.GRANTED,
+            GalleryAccess.GRANTED,
             RecordingLibrary(mapOf("HERE" to AssetPresence.PRESENT, "GONE" to AssetPresence.ABSENT)),
         )
         assertEquals(
@@ -66,7 +66,7 @@ class PermissionAwareAssetPresenceTest {
 
     @Test
     fun `LIMITED answers from the snapshot and never queries the library`() = runTest {
-        val (library, source) = source(PermissionStatus.LIMITED, snapshot = snapshotOf("S1"))
+        val (library, source) = source(GalleryAccess.LIMITED, snapshot = snapshotOf("S1"))
         assertEquals(mapOf("S1" to AssetPresence.PRESENT), source.presence(setOf("S1")))
         assertEquals(0, library.queries, "no library read under a partial grant")
     }
@@ -77,7 +77,7 @@ class PermissionAwareAssetPresenceTest {
         // only, so one created under a full grant is real but invisible after a downgrade (measured,
         // capability `photo-access`). Reading that miss as ABSENT clears a live marker and
         // re-imports a photo the device already holds.
-        val (_, source) = source(PermissionStatus.LIMITED, snapshot = snapshotOf("S1"))
+        val (_, source) = source(GalleryAccess.LIMITED, snapshot = snapshotOf("S1"))
         assertEquals(mapOf("MISSING" to AssetPresence.UNKNOWN), source.presence(setOf("MISSING")))
     }
 
@@ -85,7 +85,7 @@ class PermissionAwareAssetPresenceTest {
     fun `LIMITED before the first snapshot answers UNKNOWN for everything`() = runTest {
         // The honest gap between a grant turning partial and the first observer emission: nothing is
         // known to be selected, and we may not go looking. Every row simply waits.
-        val (library, source) = source(PermissionStatus.LIMITED, snapshot = null)
+        val (library, source) = source(GalleryAccess.LIMITED, snapshot = null)
         val verdicts = source.presence(setOf("A", "B"))
         assertEquals(mapOf("A" to AssetPresence.UNKNOWN, "B" to AssetPresence.UNKNOWN), verdicts)
         assertEquals(0, library.queries)
@@ -93,7 +93,7 @@ class PermissionAwareAssetPresenceTest {
 
     @Test
     fun `an unusable grant answers UNKNOWN and never queries the library`() = runTest {
-        for (status in listOf(PermissionStatus.DENIED, PermissionStatus.NOT_DETERMINED)) {
+        for (status in listOf(GalleryAccess.DENIED, GalleryAccess.NOT_DETERMINED)) {
             // A snapshot is present and still may not be trusted: without a usable grant a query returns
             // nothing for assets that exist, and an import cannot succeed anyway.
             val (library, source) = source(status, snapshot = snapshotOf("S1"))
@@ -106,7 +106,7 @@ class PermissionAwareAssetPresenceTest {
     fun `every id asked about comes back with a verdict`() = runTest {
         // The port's contract: a missing entry and UNKNOWN mean the same thing to callers, and returning
         // the entry is the honest form. Asserted on the two arms that build the map themselves.
-        for (status in listOf(PermissionStatus.LIMITED, PermissionStatus.DENIED)) {
+        for (status in listOf(GalleryAccess.LIMITED, GalleryAccess.DENIED)) {
             val (_, source) = source(status, snapshot = snapshotOf("S1"))
             val asked = setOf("S1", "S2", "S3")
             assertEquals(asked, source.presence(asked).keys, "$status answers every id it was asked")

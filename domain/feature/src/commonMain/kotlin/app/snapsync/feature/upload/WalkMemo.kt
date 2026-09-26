@@ -1,6 +1,6 @@
 package app.snapsync.feature.upload
 
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.GalleryAccess
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.ports.Discovery
@@ -41,7 +41,7 @@ enum class WalkMemoUse {
  * and denylisted-album id sets) change only when the library does, which moves the token anyway.
  *
  * **It never upgrades a result that was not authoritative.** Only a walk that completed ([walk] returned), under a
- * full grant ([PermissionStatus.GRANTED], read before the walk), over a readable library ([Discovery.fullEnumeration])
+ * full grant ([GalleryAccess.GRANTED], read before the walk), over a readable library ([Discovery.fullEnumeration])
  * is stored. A walk abandoned by a stop throws out of [discover] and stores nothing. A walk under any other grant is
  * passed through untouched, with no token read at all — so a limited or absent grant never meets the memo, and an
  * entry is never served under a grant other than the one it was taken under.
@@ -68,10 +68,10 @@ class WalkMemo(
     private class Entry(
         val token: LibraryChangeToken,
         val policy: SelectionPolicy,
-        val grant: PermissionStatus,
+        val grant: GalleryAccess,
         val discovery: Discovery,
     ) {
-        fun matches(token: LibraryChangeToken, policy: SelectionPolicy, grant: PermissionStatus): Boolean =
+        fun matches(token: LibraryChangeToken, policy: SelectionPolicy, grant: GalleryAccess): Boolean =
             this.grant == grant && this.policy == policy && this.token.sameLibraryAs(token)
     }
 
@@ -81,8 +81,8 @@ class WalkMemo(
 
     override suspend fun discover(policy: SelectionPolicy): Discovery {
         val grantNow = grant.current()
-        if (grantNow != PermissionStatus.GRANTED) return walk.discover(policy)
-        val token = changeToken.current() ?: return walk.discover(policy)
+        if (grantNow != GalleryAccess.GRANTED) return walk.discover(policy)
+        val token = changeToken.changeToken() ?: return walk.discover(policy)
         val held = lock.withLock { entry }?.takeIf { it.matches(token, policy, grantNow) }
         if (held != null && use == WalkMemoUse.SERVE) {
             log.i { "walk memo: library unchanged, answered ${held.discovery.candidates.size} candidate(s) without a walk" }

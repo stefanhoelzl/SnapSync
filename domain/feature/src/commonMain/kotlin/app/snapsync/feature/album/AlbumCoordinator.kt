@@ -72,20 +72,20 @@ class AlbumCoordinator(
         if (saveToAlbum) store.get(eventId) else null
 
     /**
-     * Add [rawLocalIds] to [eventId]'s album, best-effort. If no album exists yet (the app has not created
+     * Add [assetIds] (the gallery's asset ids) to [eventId]'s album, best-effort. If no album exists yet (the app has not created
      * it), the add is **skipped** (never created here) — the app's [ensureAlbum] on the permission grant
      * guarantees the album exists before sync in practice. A failure to add is logged, never thrown.
      */
-    suspend fun place(eventId: String, rawLocalIds: List<String>) {
-        if (rawLocalIds.isEmpty()) return
+    suspend fun place(eventId: String, assetIds: List<String>) {
+        if (assetIds.isEmpty()) return
         val albumId = store.get(eventId)
         if (albumId == null) {
-            log.i { "place: no album yet for event=$eventId — skipping ${rawLocalIds.size} asset(s)" }
+            log.i { "place: no album yet for event=$eventId — skipping ${assetIds.size} asset(s)" }
             return
         }
         runCatchingCancellable {
-            manager.add(albumId, rawLocalIds)
-            log.i { "place: added ${rawLocalIds.size} asset(s) to album=$albumId for event=$eventId" }
+            manager.add(albumId, assetIds)
+            log.i { "place: added ${assetIds.size} asset(s) to album=$albumId for event=$eventId" }
         }.onFailure { log.w(it) { "place: add to album failed for event=$eventId" } }
     }
 }

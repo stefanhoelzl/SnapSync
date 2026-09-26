@@ -9,7 +9,7 @@ import app.snapsync.feature.membership.readmodel.MutableRenameStatusSource
 import app.snapsync.feature.membership.readmodel.RenameStatusSource
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.model.EventConfig
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.GalleryAccess
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import app.snapsync.feature.version.readmodel.VersionRefusal
@@ -37,7 +37,7 @@ class StatusSources(
      * photo-access explainer (capability `join-event`). That read is a snapshot, not an observation —
      * the phase advances only by user action.
      */
-    val permission: StateFlow<PermissionStatus>,
+    val permission: StateFlow<GalleryAccess>,
     /** The persisted membership. Config presence is the reduction's top rung. */
     val config: StateFlow<EventConfig?>,
     /**

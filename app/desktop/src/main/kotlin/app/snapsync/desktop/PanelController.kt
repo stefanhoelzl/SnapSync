@@ -16,7 +16,7 @@ import app.snapsync.model.captureCutoff
 import app.snapsync.ports.ConfigSource
 import app.snapsync.ports.ConfigStore
 import app.snapsync.ports.PhotoAccessRequester
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.GalleryAccess
 import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.model.Layer
 import app.snapsync.model.EventDetails
@@ -54,7 +54,7 @@ class PanelController {
             ),
         ),
     )
-    private val permissionState = MutableStateFlow(PermissionStatus.NOT_DETERMINED)
+    private val permissionState = MutableStateFlow(GalleryAccess.NOT_DETERMINED)
     private val configState = MutableStateFlow<EventConfig?>(null)
     private val creationState = MutableStateFlow<CreationStatus>(CreationStatus.Idle)
     private val armedGrants = MutableStateFlow(true)
@@ -120,28 +120,17 @@ class PanelController {
     }
 
     val requester: PhotoAccessRequester = object : PhotoAccessRequester {
-        override fun request() {
-            permissionState.value =
-                if (armedGrants.value) PermissionStatus.GRANTED else PermissionStatus.DENIED
-        }
-
         override fun openSettings() {
             // The fake can't open anything: play "the user in Settings" with the
             // permission presets instead.
             println("openSettings() — simulate the Settings visit via the Permission presets")
-        }
-
-        override fun choosePhotos() {
-            // Same shape as openSettings: there is no limited-library picker off device. The forge
-            // renders state, so the picker's only observable effect here is that the tap happened.
-            println("choosePhotos() — no limited-library picker off device; forge the outcome via the presets")
         }
     }
 
     /**
      * The forge's command bundle: every command stated. The forge renders forged state, so the domain
      * commands are inert and the platform ones print what a device would have done — except the
-     * permission taps, which play the grant through [requester]. The bug-report command echoes to the
+     * permission taps, which play the grant (see [requestAccess]). The bug-report command echoes to the
      * console so the hidden double-tap and its sheet are reviewable offscreen (capability
      * `privacy-security`); the shared forge host factory stays without one, so the on-device forge
      * composition (no DSN) still offers no affordance at all.
@@ -156,10 +145,17 @@ class PanelController {
             runCatchingCancellable { Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(url), null) }
             println("share invite → $url")
         },
-        requestAccess = requester::request,
+        // The permission dialog, played: the armed answer becomes the grant.
+        requestAccess = {
+            permissionState.value = if (armedGrants.value) GalleryAccess.GRANTED else GalleryAccess.DENIED
+        },
         openSettings = requester::openSettings,
         openLink = { url -> println("openLink → $url") },
-        choosePhotos = requester::choosePhotos,
+        // Same shape as openSettings: there is no limited-library picker off device. The forge renders state, so
+        // the picker's only observable effect here is that the tap happened.
+        choosePhotos = {
+            println("choosePhotos() — no limited-library picker off device; forge the outcome via the presets")
+        },
         reconfigure = { _, _, _, _, _ -> ReconfigureOutcome.NotCurrent },
         rename = { _, _ -> },
         resetRename = {},
@@ -181,19 +177,19 @@ class PanelController {
     // walk possible.
 
     fun showPermissionNotDetermined() {
-        permissionState.value = PermissionStatus.NOT_DETERMINED
+        permissionState.value = GalleryAccess.NOT_DETERMINED
     }
 
     fun showPermissionDenied() {
-        permissionState.value = PermissionStatus.DENIED
+        permissionState.value = GalleryAccess.DENIED
     }
 
     fun showPermissionLimited() {
-        permissionState.value = PermissionStatus.LIMITED
+        permissionState.value = GalleryAccess.LIMITED
     }
 
     fun showPermissionGranted() {
-        permissionState.value = PermissionStatus.GRANTED
+        permissionState.value = GalleryAccess.GRANTED
     }
 
     // PermissionBlocked presets: an event is connected (config present) but permission is not
@@ -203,13 +199,13 @@ class PanelController {
     fun showPermissionBlockedNotDetermined() {
         resetOverlays()
         configState.value = CANNED_CONFIG
-        permissionState.value = PermissionStatus.NOT_DETERMINED
+        permissionState.value = GalleryAccess.NOT_DETERMINED
     }
 
     fun showPermissionBlockedDenied() {
         resetOverlays()
         configState.value = CANNED_CONFIG
-        permissionState.value = PermissionStatus.DENIED
+        permissionState.value = GalleryAccess.DENIED
     }
 
     // Join-gate presets (capability `join-event`): forge the full-screen `Layer.JoiningEvent` by
@@ -260,7 +256,7 @@ class PanelController {
     fun showSwitchLoadFailed() = forgeSwitch(JoinPhase.LoadFailed)
 
     private fun forgeSwitch(phase: JoinPhase) {
-        permissionState.value = PermissionStatus.GRANTED
+        permissionState.value = GalleryAccess.GRANTED
         configState.value = CANNED_CONFIG
         syncState.value = SyncStatus.Ready(progress(completed = 34, total = 34))
         attestedState.value = true
@@ -272,7 +268,7 @@ class PanelController {
     // precondition-forcing preset restores the cell (see `resetOverlays`), so this never sticks.
     fun showUnattested() {
         pendingJoinSource.set(null)
-        permissionState.value = PermissionStatus.GRANTED
+        permissionState.value = GalleryAccess.GRANTED
         configState.value = CANNED_CONFIG
         attestedState.value = false
     }
@@ -281,7 +277,7 @@ class PanelController {
     // both gates (Granted + config present), since the reducer only surfaces Loading once both pass.
     fun showLoading() {
         resetOverlays()
-        permissionState.value = PermissionStatus.GRANTED
+        permissionState.value = GalleryAccess.GRANTED
         configState.value = CANNED_CONFIG
         syncState.value = SyncStatus.Loading
     }
@@ -379,7 +375,7 @@ class PanelController {
     // it forces both preconditions (permission granted AND config present) and clears the overlays.
     private fun forgeSync(status: SyncProgress) {
         resetOverlays()
-        permissionState.value = PermissionStatus.GRANTED
+        permissionState.value = GalleryAccess.GRANTED
         configState.value = CANNED_CONFIG
         syncState.value = SyncStatus.Ready(status)
     }

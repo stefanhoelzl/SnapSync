@@ -4,7 +4,7 @@ import app.snapsync.feature.membership.JoinOutcome
 import app.snapsync.model.Direction
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.GalleryAccess
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.deletesAt
@@ -40,13 +40,13 @@ class AlbumWorldTest {
 
         // Both assets landed in the event album (raw ids recovered by the cycle's reversal) before either
         // upload finished.
-        assertEquals(setOf("A", "B"), w.albumManager.assetsIn(albumId).toSet())
+        assertEquals(setOf("A", "B"), w.gallery.assetsIn(albumId).toSet())
 
         w.platform.completeJob("A-primary.jpg")
         w.platform.completeJob("B-primary.jpg")
         w.runUploadCycle()                       // ack → COMPLETED, and nothing is placed again
 
-        assertEquals(2, w.albumManager.assetsIn(albumId).size, "a completion places nothing a second time")
+        assertEquals(2, w.gallery.assetsIn(albumId).size, "a completion places nothing a second time")
     }
 
     @Test
@@ -60,7 +60,7 @@ class AlbumWorldTest {
         w.platform.completeJob("A-primary.jpg")
         w.runUploadCycle()
 
-        assertTrue(w.albumManager.added.isEmpty())
+        assertTrue(w.gallery.added.isEmpty())
     }
 
     @Test
@@ -71,7 +71,7 @@ class AlbumWorldTest {
         // A second ensure (e.g. a re-join with the box checked) reuses the stored album, no duplicate.
         val second = w.albumCoordinator.ensureAlbum("E", "Party", saveToAlbum = true)!!
         assertEquals(first, second)
-        assertEquals(1, w.albumManager.created.size)
+        assertEquals(1, w.gallery.created.size)
     }
 
     // ---- the gather (capability `event-album`, "Ensuring the album gathers what the device already holds") --
@@ -118,13 +118,13 @@ class AlbumWorldTest {
         w.provision("E", name = "Party", saveToAlbum = false)
         w.shareToCompletion("A")
         val received = w.receive("DEV-PEER", "E", "FQ")
-        assertTrue(w.albumManager.added.isEmpty(), "nothing placed while the album is off")
+        assertTrue(w.gallery.added.isEmpty(), "nothing placed while the album is off")
 
         w.albumOn("E")
         w.core.albumGather.awaitStarted()
 
-        val albumId = w.albumManager.created.single().first
-        assertEquals(setOf("A", received), w.albumManager.assetsIn(albumId).toSet())
+        val albumId = w.gallery.created.single().first
+        assertEquals(setOf("A", received), w.gallery.assetsIn(albumId).toSet())
     }
 
     @Test
@@ -142,11 +142,11 @@ class AlbumWorldTest {
 
         assertEquals(JoinOutcome.Committed, w.join("E2", saveToAlbum = true))
         w.core.albumGather.awaitStarted()
-        assertTrue(w.albumManager.assetsIn(albumId).isEmpty(), "the join's gather finds no dated own row yet")
+        assertTrue(w.gallery.assetsIn(albumId).isEmpty(), "the join's gather finds no dated own row yet")
 
         w.runUploadCycle()
 
-        assertEquals(listOf("A"), w.albumManager.assetsIn(albumId), "the carried-over photo is in the new album")
+        assertEquals(listOf("A"), w.gallery.assetsIn(albumId), "the carried-over photo is in the new album")
         assertEquals(jobsBefore, w.platform.created.size, "and no upload job was created to put it there")
     }
 
@@ -161,7 +161,7 @@ class AlbumWorldTest {
         w.join("E2", saveToAlbum = true)
         w.core.albumGather.awaitStarted()
 
-        assertTrue(w.albumManager.assetsIn(albumId).isEmpty(), "E1's import is not in E2's union")
+        assertTrue(w.gallery.assetsIn(albumId).isEmpty(), "E1's import is not in E2's union")
     }
 
     @Test
@@ -175,7 +175,7 @@ class AlbumWorldTest {
         w.albumOn("E")
         w.core.albumGather.awaitStarted()
 
-        assertEquals(listOf("A"), w.albumManager.assetsIn(w.albumManager.created.single().first))
+        assertEquals(listOf("A"), w.gallery.assetsIn(w.gallery.created.single().first))
     }
 
     private suspend fun World.seedCompletedOwnRow(assetId: String) {
@@ -186,7 +186,7 @@ class AlbumWorldTest {
 
     /** Let the permission collector run until it has ensured the album, then let any gather it started finish. */
     private suspend fun World.settleGrant() {
-        withTimeout(5_000) { while (albumManager.created.isEmpty()) yield() }
+        withTimeout(5_000) { while (gallery.created.isEmpty()) yield() }
         core.albumGather.awaitStarted()
     }
 
@@ -199,22 +199,22 @@ class AlbumWorldTest {
         w.core.installPermissionSubscriptions() // first observation: already GRANTED
         w.settleGrant()
 
-        assertTrue(w.albumManager.added.isEmpty(), "the replayed first observation is not a grant")
+        assertTrue(w.gallery.added.isEmpty(), "the replayed first observation is not a grant")
     }
 
     @Test
     fun a_grant_while_running_ensures_the_album_and_gathers() = worldTest {
         val w = World(this)
-        w.permission.set(PermissionStatus.NOT_DETERMINED)
+        w.permission.set(GalleryAccess.NOT_DETERMINED)
         w.provision("E", saveToAlbum = true)
         w.seedCompletedOwnRow("A")
         w.core.installPermissionSubscriptions()
         yield() // the collector observes NOT_DETERMINED first
 
-        w.permission.set(PermissionStatus.GRANTED)
+        w.permission.set(GalleryAccess.GRANTED)
         w.settleGrant()
 
-        assertEquals(listOf("A"), w.albumManager.assetsIn(w.albumManager.created.single().first))
+        assertEquals(listOf("A"), w.gallery.assetsIn(w.gallery.created.single().first))
     }
 
     @Test
@@ -222,14 +222,14 @@ class AlbumWorldTest {
         val w = World(this)
         w.provision("E1", saveToAlbum = false)
         w.shareToCompletion("A")
-        w.albumManager.holdAdds()
+        w.gallery.holdAdds()
 
         // If Save awaited the gather, this would never return: every add is held.
         withTimeout(5_000) { w.albumOn("E1") }
-        assertTrue(w.albumManager.added.isEmpty(), "the gather is still held")
-        w.albumManager.releaseAdds()
+        assertTrue(w.gallery.added.isEmpty(), "the gather is still held")
+        w.gallery.releaseAdds()
         w.core.albumGather.awaitStarted()
-        assertTrue(w.albumManager.added.isNotEmpty())
+        assertTrue(w.gallery.added.isNotEmpty())
 
         w.leave()
         // Something the join's gather will place: a photo received in E2, whose import row is permanent
@@ -238,12 +238,12 @@ class AlbumWorldTest {
         w.receive("DEV-PEER", "E2", "FQ")
         w.leave()
         w.albumCoordinator.ensureAlbum("E2", "Trip", saveToAlbum = true)
-        w.albumManager.holdAdds()
-        val placedBefore = w.albumManager.added.size
+        w.gallery.holdAdds()
+        val placedBefore = w.gallery.added.size
         withTimeout(5_000) { w.join("E2", saveToAlbum = true) }
-        assertEquals(placedBefore, w.albumManager.added.size, "the join returned with its gather still held")
-        w.albumManager.releaseAdds()
+        assertEquals(placedBefore, w.gallery.added.size, "the join returned with its gather still held")
+        w.gallery.releaseAdds()
         w.core.albumGather.awaitStarted()
-        assertTrue(w.albumManager.added.size > placedBefore)
+        assertTrue(w.gallery.added.size > placedBefore)
     }
 }

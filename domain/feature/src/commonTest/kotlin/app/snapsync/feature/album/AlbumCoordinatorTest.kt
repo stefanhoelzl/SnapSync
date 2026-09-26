@@ -1,5 +1,7 @@
 package app.snapsync.feature.album
 
+import app.snapsync.model.CaptureCutoff
+import app.snapsync.model.SelectionCalibration
 import app.snapsync.ports.AlbumManager
 import app.snapsync.ports.AlbumMapStore
 import kotlinx.coroutines.test.runTest
@@ -22,10 +24,10 @@ private class FakeAlbumManager(
 
     override suspend fun exists(albumLocalId: String): Boolean = albumLocalId in existingIds
 
-    override suspend fun assetIdsInAlbums(titles: Set<String>, since: String): Set<String> = emptySet()
+    override suspend fun assetIdsInAlbums(calibration: SelectionCalibration, since: CaptureCutoff): Set<String> = emptySet()
 
-    override suspend fun add(albumLocalId: String, rawLocalIds: List<String>) {
-        added.add(albumLocalId to rawLocalIds)
+    override suspend fun add(albumLocalId: String, assetIds: List<String>) {
+        added.add(albumLocalId to assetIds)
     }
 }
 
@@ -141,8 +143,8 @@ class AlbumCoordinatorTest {
         val manager = object : AlbumManager {
             override suspend fun ensureCreated(name: String): String? = "x"
             override suspend fun exists(albumLocalId: String): Boolean = true
-            override suspend fun assetIdsInAlbums(titles: Set<String>, since: String): Set<String> = emptySet()
-            override suspend fun add(albumLocalId: String, rawLocalIds: List<String>) = error("boom")
+            override suspend fun assetIdsInAlbums(calibration: SelectionCalibration, since: CaptureCutoff): Set<String> = emptySet()
+            override suspend fun add(albumLocalId: String, assetIds: List<String>) = error("boom")
         }
         val store = InMemoryAlbumMapStore().apply { put(event, "album-X") }
         AlbumCoordinator(manager, store).place(event, listOf("A/L0/1")) // must not throw

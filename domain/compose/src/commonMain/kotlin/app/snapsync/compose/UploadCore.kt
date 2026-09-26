@@ -17,7 +17,6 @@ import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.selectionPolicyFor
 import app.snapsync.model.EdgeUploadRequestProvider
-import app.snapsync.model.denormalizeAssetId
 import app.snapsync.ports.AlbumManager
 import app.snapsync.ports.DeviceIdentity
 import app.snapsync.ports.PhotoGrantRead
@@ -82,7 +81,8 @@ class UploadPorts(
     val transfer: BackgroundTransfer,
     /**
      * The cycle's photo-library reads (capability `background-upload`, "Ledger keys resolve to uploadable
-     * resources"): bound once per root — `IosDiscovery` on both device tiers — and never by a transport.
+     * resources"): bound once per root — `GalleryDiscovery` over the gallery on both device tiers — and never by a
+     * transport.
      */
     val discovery: UploadDiscovery,
     /** Crash/error reporting (capability `privacy-security`). Required on both tiers — see AppPorts. */
@@ -114,7 +114,7 @@ class UploadPorts(
     val albumManager: AlbumManager,
     /** How this tier answers a failed denylisted-album lookup — see [AlbumLookupFailure]. */
     val albumLookupFailure: AlbumLookupFailure,
-    /** Event-album placement (capability `event-album`); the `denormalizeAssetId` mapping is shared here. */
+    /** Event-album placement (capability `event-album`). */
     val albumCoordinator: AlbumCoordinator,
     /** The attestation bearer token, read per request. Required: `{ null }` must be stated, not inherited. */
     val token: suspend () -> String?,
@@ -199,12 +199,8 @@ fun uploadCore(scope: CoroutineScope, ports: UploadPorts): UploadCycle {
                 manifestVersion = manifestVersion,
             )
         },
-        // The cycle applies the membership's opt-in (it arrived with the gate); this translation
-        // only reverses the normalized `assetId` (`_`→`/`) — previously copied identically at all
-        // three call sites.
-        placeInAlbum = { eventId, assetIds ->
-            ports.albumCoordinator.place(eventId, assetIds.map(::denormalizeAssetId))
-        },
+        // The cycle applies the membership's opt-in (it arrived with the gate).
+        placeInAlbum = { eventId, assetIds -> ports.albumCoordinator.place(eventId, assetIds.toList()) },
     )
 }
 

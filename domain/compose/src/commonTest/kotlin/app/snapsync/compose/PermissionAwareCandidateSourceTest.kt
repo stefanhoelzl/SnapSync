@@ -4,7 +4,7 @@ import app.snapsync.model.AssetFacts
 import app.snapsync.model.Candidate
 import app.snapsync.model.CandidateRead
 import app.snapsync.model.CaptureDate
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.GalleryAccess
 import app.snapsync.model.RESOURCE_META_CREATION_DATE
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
@@ -70,7 +70,7 @@ class PermissionAwareCandidateSourceTest {
     }
 
     private fun source(
-        permission: PermissionStatus,
+        permission: GalleryAccess,
         walk: RecordingWalk = RecordingWalk(listOf("W")),
         snapshot: List<Resource>? = null,
     ) = walk to PermissionAwareCandidateSource(
@@ -81,7 +81,7 @@ class PermissionAwareCandidateSourceTest {
 
     @Test
     fun `GRANTED walks the library`() = runTest {
-        val (walk, source) = source(PermissionStatus.GRANTED)
+        val (walk, source) = source(GalleryAccess.GRANTED)
         assertEquals(listOf("W"), source.readable(policy()).map { it.facts.assetId })
         assertEquals(1, walk.walks)
     }
@@ -92,7 +92,7 @@ class PermissionAwareCandidateSourceTest {
         // source that merely *happened* to return the right ids while also walking would be reading the
         // wrong universe — it could surface photos the member never chose to share. (Not an alert
         // argument: reads of an unchanged library raise no limited-access prompt — `photo-access`.)
-        val (walk, source) = source(PermissionStatus.LIMITED, snapshot = snapshotOf("S1", "S2"))
+        val (walk, source) = source(GalleryAccess.LIMITED, snapshot = snapshotOf("S1", "S2"))
         assertEquals(listOf("S1", "S2"), source.readable(policy()).map { it.facts.assetId })
         assertEquals(0, walk.walks, "no autonomous library read under a partial grant")
     }
@@ -104,7 +104,7 @@ class PermissionAwareCandidateSourceTest {
         // counted zero that settles the screen at "In sync", which on a member who HAS photos selected is
         // a frame the projection can never take back (capability `sync-status`). This case is the whole
         // reason the seam answers with a sealed type rather than a list.
-        val (walk, source) = source(PermissionStatus.LIMITED, snapshot = null)
+        val (walk, source) = source(GalleryAccess.LIMITED, snapshot = null)
         assertEquals(CandidateRead.NotReadable, source.candidates(policy()))
         assertEquals(0, walk.walks, "and it still may not go looking")
     }
@@ -113,14 +113,14 @@ class PermissionAwareCandidateSourceTest {
     fun `an EMPTY snapshot is readable — a counted zero rather than an absence`() = runTest {
         // The other half of the pair above, and the reason it cannot simply be `.orEmpty()`: a member who
         // selected nothing is receive-only, which is a valid resting state, and their screen SHOULD settle.
-        val (walk, source) = source(PermissionStatus.LIMITED, snapshot = emptyList())
+        val (walk, source) = source(GalleryAccess.LIMITED, snapshot = emptyList())
         assertEquals(CandidateRead.Readable(emptyList()), source.candidates(policy()))
         assertEquals(0, walk.walks)
     }
 
     @Test
     fun `an unusable grant is NOT READABLE and never walks`() = runTest {
-        for (status in listOf(PermissionStatus.DENIED, PermissionStatus.NOT_DETERMINED)) {
+        for (status in listOf(GalleryAccess.DENIED, GalleryAccess.NOT_DETERMINED)) {
             val (walk, source) = source(status, snapshot = snapshotOf("S"))
             assertEquals(CandidateRead.NotReadable, source.candidates(policy()), "$status has no answer")
             assertEquals(0, walk.walks, "$status never walks")
@@ -133,7 +133,7 @@ class PermissionAwareCandidateSourceTest {
         // candidate for them must therefore issue nothing: a deferred read here would have to reach the
         // assets again later, off-flow — an autonomous library fetch the read discipline forbids
         // (capability `photo-access`).
-        val (_, source) = source(PermissionStatus.LIMITED, snapshot = snapshotOf("S1"))
+        val (_, source) = source(GalleryAccess.LIMITED, snapshot = snapshotOf("S1"))
         val resources = source.readable(policy()).single().resources()
         assertEquals(listOf("S1-primary.jpg"), resources.map { it.filename })
     }

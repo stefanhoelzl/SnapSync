@@ -1,6 +1,8 @@
 package app.snapsync.album
 
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.CaptureCutoff
+import app.snapsync.model.SelectionCalibration
+import app.snapsync.model.GalleryAccess
 import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.fake.inMemoryAlbumMapStore
 import app.snapsync.fake.inMemoryDownloadStore
@@ -44,9 +46,9 @@ class AlbumGatherTest {
         val added: Set<String> get() = calls.flatten().toSet()
         override suspend fun ensureCreated(name: String): String? = error("the gather never creates an album")
         override suspend fun exists(albumLocalId: String): Boolean = true
-        override suspend fun assetIdsInAlbums(titles: Set<String>, since: String): Set<String> = emptySet()
-        override suspend fun add(albumLocalId: String, rawLocalIds: List<String>) {
-            calls += rawLocalIds
+        override suspend fun assetIdsInAlbums(calibration: SelectionCalibration, since: CaptureCutoff): Set<String> = emptySet()
+        override suspend fun add(albumLocalId: String, assetIds: List<String>) {
+            calls += assetIds
             if (calls.size == failingCall) error("boom")
         }
     }
@@ -91,7 +93,7 @@ class AlbumGatherTest {
             union = union,
             downloads = downloads,
             identity = { SELF },
-            photoAccess = liveGrant { if (this.granted) PermissionStatus.GRANTED else PermissionStatus.DENIED },
+            photoAccess = liveGrant { if (this.granted) GalleryAccess.GRANTED else GalleryAccess.DENIED },
             coordinator = AlbumCoordinator(manager, inMemoryAlbumMapStore(mapOf("E2" to "ALBUM-2"))),
             scope = scope,
             logScope = LogScope.NoOp,
@@ -125,7 +127,7 @@ class AlbumGatherTest {
         val r = rig()
         r.own("OWN_1_L0_001", "2026-09-10T00:00:00Z", eventId = "E1")
         r.gather.gather("E2")
-        assertEquals(setOf("OWN/1/L0/001"), r.manager.added, "normalized ids are reversed to raw localIdentifiers")
+        assertEquals(setOf("OWN_1_L0_001"), r.manager.added, "own and foreign photos reach the album in one id form: the gallery's")
     }
 
     @Test
@@ -265,6 +267,6 @@ class AlbumGatherTest {
 
 
 /** A grant fake read at every access, so a test's `var` drives it live. */
-private fun liveGrant(grant: () -> PermissionStatus): PhotoAccessStatusSource = object : PhotoAccessStatusSource {
-    override val permission: StateFlow<PermissionStatus> get() = MutableStateFlow(grant())
+private fun liveGrant(grant: () -> GalleryAccess): PhotoAccessStatusSource = object : PhotoAccessStatusSource {
+    override val permission: StateFlow<GalleryAccess> get() = MutableStateFlow(grant())
 }

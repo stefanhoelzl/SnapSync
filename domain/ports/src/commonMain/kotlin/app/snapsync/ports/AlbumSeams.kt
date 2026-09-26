@@ -1,18 +1,18 @@
 package app.snapsync.ports
 
+import app.snapsync.model.CaptureCutoff
+import app.snapsync.model.SelectionCalibration
+
 /**
- * The platform seam for PhotoKit album (`PHAssetCollection`) operations (capability `event-album`).
- * Everything PhotoKit-specific lives behind it; the iOS impl (`IosAlbumManager`) is the only place that
- * touches `PHAssetCollectionChangeRequest`, so the orchestration in [AlbumCoordinator] stays pure and
- * testable on the simulator/JVM with a fake.
+ * The album operations the event album and the denylist need (capabilities `event-album`, `photo-sharing`).
+ * Implemented by `GalleryAlbums` over the [GalleryReader]; the orchestration lives in [AlbumCoordinator].
  *
  * All operations are **best-effort** and only ever mutate collections — never the assets themselves.
  */
 interface AlbumManager {
-
     /**
-     * Create a new album titled [name] and return its stable `localIdentifier`, or `null` if creation
-     * failed. **Only the app** calls this (it is the sole creator; see [AlbumCoordinator]).
+     * Create a new album titled [name] and return its id, or `null` if creation failed. **Only the app**
+     * calls this (it is the sole creator; see [AlbumCoordinator]).
      *
      * Absence: null means creation failed, whatever the cause, and the membership then files nothing
      * into an album the member explicitly opted into — silently. That is the ONE verdict in this
@@ -27,28 +27,21 @@ interface AlbumManager {
     suspend fun exists(albumLocalId: String): Boolean
 
     /**
-     * Add the library assets identified by [rawLocalIds] (raw PHAsset `localIdentifier`s) to the album
-     * [albumLocalId]. Best-effort: a missing asset is skipped, adding an already-present asset is a no-op.
+     * Add the library assets [assetIds] (the gallery's asset ids, as the ledger and the download store carry
+     * them) to the album [albumLocalId]. Best-effort: a missing asset is skipped, adding an already-present
+     * asset is a no-op.
      */
-    suspend fun add(albumLocalId: String, rawLocalIds: List<String>)
+    suspend fun add(albumLocalId: String, assetIds: List<String>)
 
     /**
-     * The **normalized** asset ids (`'/'→'_'`, as the ledger and upload keys carry them) of every asset that
-     * belongs to a **user album** whose title matches one of [titles], captured at or after [since].
-     *
-     * **Decision-free** (capability `photo-sharing`): the titles to look for are a *parameter*. The
-     * policy — which titles are denied — lives in `commonMain` ([app.snapsync.model.SelectionCalibration.denylistTitles]), never in this
-     * untestable platform shell, per the same rule that keeps album *placement* decisions out of it.
+     * The asset ids of every asset in a **user album** the [calibration] denies, captured at or after [since].
      *
      * Matching is on **user albums by title only**. A smart album's title is system-localized ("Screenshots"
-     * / "Bildschirmfotos"), so title-matching one is meaningless — smart albums are excluded by *subtype*
-     * elsewhere, and screenshots do not need this seam at all.
-     *
-     * Cost is proportional to the number of albums, **not** the number of assets: one collection fetch per
-     * album, with [since] pushed into the member fetch. It must never become a per-asset membership test —
-     * that is the shape that made the whole-library walk expensive in the first place.
+     * / "Bildschirmfotos"), so title-matching one is meaningless — screenshots are excluded by their own fact.
+     * Cost is proportional to the number of albums, **not** the number of assets; it must never become a
+     * per-asset membership test.
      */
-    suspend fun assetIdsInAlbums(titles: Set<String>, since: String): Set<String>
+    suspend fun assetIdsInAlbums(calibration: SelectionCalibration, since: CaptureCutoff): Set<String>
 }
 
 /**
