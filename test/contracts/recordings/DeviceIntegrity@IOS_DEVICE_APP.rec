@@ -1,0 +1,21 @@
+# contract: DeviceIntegrity
+# host: IOS_DEVICE_APP
+# device: iPhone12,8
+# os: Version 26.6.2 (Build 23G90)
+# build: 1
+# kotlin: 2.4.0
+# recorded: 2026-09-26T13:55:12Z
+# live AN_UNAVAILABLE_SERVICE_SAYS_SO: NotRunHere(the app process on a device has App Attest (the kexe host covers UNSUPPORTED))
+# live AN_UNAVAILABLE_SERVICE_REFUSES_A_FRESH_PROOF: NotRunHere(the app process on a device has App Attest (the kexe host covers UNSUPPORTED))
+# live AN_UNAVAILABLE_SERVICE_REFUSES_A_RENEWAL_PROOF: NotRunHere(the app process on a device has App Attest (the kexe host covers UNSUPPORTED))
+# live AN_AVAILABLE_SERVICE_SAYS_SO: Passed
+# live A_FRESH_PROOF_NAMES_A_KEY_THAT_THEN_SIGNS: Passed
+# live AN_UNKNOWN_KEY_CANNOT_SIGN: Passed
+[AN_AVAILABLE_SERVICE_SAYS_SO]
+isSupported() -> true
+[AN_UNKNOWN_KEY_CANNOT_SIGN]
+generateAssertion(keyId=unknown-key:AN_UNKNOWN_KEY_CANNOT_SIGN clientDataHash=a251936d80b182ebe4fde8ba78128e45a0165558cc2e9e9f03ad1bececba2177) -> error domain=com.apple.devicecheck.error code=3 description=The operation couldn’t be completed. (com.apple.devicecheck.error error 3.)
+[A_FRESH_PROOF_NAMES_A_KEY_THAT_THEN_SIGNS]
+generateKey() -> keyId=<masked>
+attestKey(keyId=<masked> clientDataHash=3da08435a5fcb11b045679323d25d5c89690a380dbbfa99a7ed7cd98ba25cad0) -> data=<masked>
+generateAssertion(keyId=<masked> clientDataHash=3da08435a5fcb11b045679323d25d5c89690a380dbbfa99a7ed7cd98ba25cad0) -> data=<masked>
