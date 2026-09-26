@@ -62,12 +62,11 @@ import platform.posix.write
 class FileLogSink internal constructor(
     private val path: String?,
     private val maxBytes: Long,
-    /** The wall clock, in epoch milliseconds — injected only by tests, to reach the periodic re-check. */
-    private val nowMillis: () -> Long,
+    /** The wall clock — replaced only by tests, to reach the periodic re-check. */
+    private val clock: kotlin.time.Clock,
 ) : LogSink {
 
-    constructor(path: String?, maxBytes: Long = 10L * 1024 * 1024) :
-        this(path, maxBytes, { Clock.System.now().toEpochMilliseconds() })
+    constructor(path: String?, maxBytes: Long = 10L * 1024 * 1024) : this(path, maxBytes, Clock.System)
 
     private val lock = NSLock()
 
@@ -80,7 +79,7 @@ class FileLogSink internal constructor(
 
     override fun write(severity: Severity, tag: String, line: String) {
         val p = path ?: return
-        val now = nowMillis()
+        val now = clock.now().toEpochMilliseconds()
         val bytes = "${utcLogStamp(now)} $line\n".encodeToByteArray()
         lock.lock()
         try {

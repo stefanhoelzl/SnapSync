@@ -1,4 +1,4 @@
-package app.snapsync.ports
+package app.snapsync.services.upload
 
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test

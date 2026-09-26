@@ -176,6 +176,27 @@ class SwiftShellGuardTest {
         assertTrue(checked >= 8, "the forwarding rule matched only $checked functions — the scan is broken")
     }
 
+    /**
+     * **SwiftUI pulls the scene, and binds only the generation** (`docs/architecture.md`, "Composition and shells";
+     * capability `sync-status`). The scene's existence is decided by the iOS UI adapter when SwiftUI asks for a
+     * controller, and the only value SwiftUI binds is the generation `onSceneActive()` answers — so `ContentView` makes
+     * its controller through exactly one call and rebuilds only when that answer changes. A second pull site, or an
+     * `.id` bound to anything else, would hand out a scene the adapter's record never saw (Bugsink SNAPSYNC-15/24).
+     */
+    @Test
+    fun `SwiftUI pulls the scene once and binds only the generation`() {
+        // Code only: the file's comments explain `.id(…)` and name the entry point in prose.
+        val text = File(repoRoot, "iosApp/iosApp/ContentView.swift").readLines()
+            .joinToString("\n") { it.substringBefore("//") }
+        assertEquals(1, Regex("""MainViewControllerKt\.MainViewController\(\)""").findAll(text).count(), "one pull site")
+        assertEquals(1, Regex("""\.id\(""").findAll(text).count(), "one bound identity")
+        assertTrue("""\.id\(generation\)""".toRegex().containsMatchIn(text), "bound to the generation")
+        assertTrue(
+            Regex("""generation\s*=\s*SnapSyncRoot\.shared\.onSceneActive\(\)""").containsMatchIn(text),
+            "the generation is the UI adapter's answer, never a Swift-side value",
+        )
+    }
+
     private companion object {
         /** Enough lines to cover a shell function's body; they are all short by the transcriber law. */
         const val BODY_SCAN_LINES = 14

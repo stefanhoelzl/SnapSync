@@ -30,7 +30,7 @@ class CatchGateTest {
     private val allowed = mapOf(
         "/domain/model/src/commonMain/kotlin/app/snapsync/model/Catching.kt" to
             "the cancellation-keeping helpers themselves",
-        "/domain/ports/src/commonMain/kotlin/app/snapsync/ports/BackgroundTransfer.kt" to
+        "/domain/services/src/commonMain/kotlin/app/snapsync/services/upload/ProcessCycle.kt" to
             "runProcessCycle: the extension's ObjC boundary — any throwable, cancellation included, aborts the process",
         "/adapter/ios/ext-safe/src/iosMain/kotlin/app/snapsync/objc/ObjCBoundary.kt" to
             "objcBoundary: every Kotlin block and delegate method ObjC calls — nothing may unwind into ObjC frames",
