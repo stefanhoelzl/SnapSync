@@ -60,6 +60,7 @@ class CompositionSeamTest {
         "UploadPorts" to "domain/compose/src/commonMain/kotlin/app/snapsync/compose/UploadCore.kt",
         "UploadRecordPorts" to "domain/compose/src/commonMain/kotlin/app/snapsync/compose/UploadRecordPorts.kt",
         "PushPorts" to "domain/compose/src/commonMain/kotlin/app/snapsync/compose/PushComposition.kt",
+        "ProcessPorts" to "domain/compose/src/commonMain/kotlin/app/snapsync/compose/ProcessComposition.kt",
     )
 
     /**
@@ -127,6 +128,8 @@ class CompositionSeamTest {
         "UploadRecordPorts" to emptyMap(),
         // Empty for the same reason: the push registration's two ports, grouped as one need.
         "PushPorts" to emptyMap(),
+        // Empty for the same reason: the per-process ports every root hands `snapSyncProcess` first.
+        "ProcessPorts" to emptyMap(),
     )
 
     /**
@@ -446,7 +449,7 @@ class CompositionSeamTest {
     @Test
     fun `the gate actually parsed every composition bundle (non-vacuity floor)`() {
         // UploadRecordPorts: the join marker, then the device listing (now a backend service) left it; PushPorts: the publisher did.
-        val floors = mapOf("AppPorts" to 30, "UploadPorts" to 10, "UploadRecordPorts" to 1, "PushPorts" to 2)
+        val floors = mapOf("AppPorts" to 30, "UploadPorts" to 10, "UploadRecordPorts" to 1, "PushPorts" to 2, "ProcessPorts" to 5)
         floors.forEach { (bundle, floor) ->
             assertTrue(
                 params(bundle).size >= floor,

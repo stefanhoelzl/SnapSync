@@ -34,8 +34,7 @@ import app.snapsync.push.IosPushRegistrationRecord
 import app.snapsync.time.SystemClock
 import app.snapsync.time.SystemTimeZone
 import app.snapsync.ports.PushTokenSource
-import app.snapsync.metrics.MetricKitProcessMetricSource
-import app.snapsync.metrics.ProcessMetricHandler
+import app.snapsync.metrics.MetricKitProcessMetrics
 import app.snapsync.membership.darwinHttpClient
 import app.snapsync.download.IosDownloadTransport
 import app.snapsync.ports.AlbumMapStore
@@ -72,7 +71,11 @@ import app.snapsync.logging.FileLogWriter
 import app.snapsync.logging.appLogDestination
 import app.snapsync.services.logs.LogTailService
 import app.snapsync.logging.deviceDiagnosticEnvironment
-import app.snapsync.logging.SentryDiagnosticsReporter
+import app.snapsync.logging.SentryCrashReporter
+import app.snapsync.config.bakedSentryDsn
+import app.snapsync.compose.ProcessPorts
+import app.snapsync.compose.ProcessServices
+import app.snapsync.compose.snapSyncProcess
 import app.snapsync.logging.appBuildVersion
 import app.snapsync.logging.IosLogScope
 import app.snapsync.logging.PublicNSLogWriter
@@ -167,45 +170,48 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
     private val log = Logger.withTag("SnapSyncRoot")
 
     /**
-     * What a delivered process-metric report does (capability `privacy-security`): the device-log
-     * line, the standing context, and an event when the rule says it crossed.
-     *
-     * `internal`, not `private`, for one reason: the rig's contributed hook drives a synthetic report
-     * through THIS instance. Exercising a copy would prove only that the copy works; the point of the
-     * route is that the path the OS drives is the path a test drives. `internal` is module-wide and is
-     * not exported to the `SnapSyncKit` ObjC header.
-     *
-     * The reporter is constructed here rather than reached through [app], which would force the
-     * deferred graph. `SentryDiagnosticsReporter` is idempotent and its scope writes are
-     * process-global, so a second instance changes nothing.
-     */
-    internal val processMetricHandler: ProcessMetricHandler =
-        ProcessMetricHandler(SentryDiagnosticsReporter())
-
-    /**
-     * The OS's own account of how this process has been behaving (capability `privacy-security`).
-     *
-     * Seated HERE, in the object's own initialization, rather than on [app]. Two measured facts force
-     * it, and neither is a preference:
+     * The OS's own account of how this process has been behaving (capability `privacy-security`) — the MetricKit
+     * seat, constructed HERE, in the object's own initialization, and listened to by [process] right below. Two
+     * measured facts force the seat, and neither is a preference:
      *
      *  1. MetricKit accumulates **nothing** for an app until a process first touches it, and never
-     *     retroactively — so the earliest path that runs on every launch is the only correct seat.
-     *     `app` is `by lazy` precisely so a cold background wake does not force the graph, and a wake
-     *     that never forced it would be a day of attribution nobody gets back.
-     *  2. Delivery is **one-shot**: reports wait indefinitely while nothing observes, then are handed
-     *     over exactly once. Subscribing without a live handler therefore DISCARDS a report the OS was
-     *     holding safely — worse than not subscribing at all. So observing and handling are wired in
-     *     the same act, with the handler already complete above.
+     *     retroactively — so the earliest path that runs on every launch is the only correct seat. [app] is
+     *     `by lazy` precisely so a cold background wake does not force the graph, and a wake that never forced
+     *     it would be a day of attribution nobody gets back.
+     *  2. Delivery is **one-shot**: reports wait indefinitely while nothing listens, then are handed over exactly
+     *     once. Listening without a live handler therefore DISCARDS a report the OS was holding safely — worse
+     *     than not listening at all. `snapSyncProcess` builds the handler before it listens.
      *
-     * Read by nobody on purpose: **the field IS the retention.** The source holds the OS subscriber,
-     * and MetricKit is not documented to keep a strong reference to it — so a collected source would
-     * take the subscriber with it, and this would fail the way it least tolerates: silently, and only
-     * on the devices that had something to report.
+     * Read by nobody but the composition on purpose: **the field IS the retention.** The adapter holds the OS
+     * subscriber, and MetricKit is not documented to keep a strong reference to it — so a collected adapter would
+     * take the subscriber with it, and this would fail silently, and only on the devices that had something to
+     * report.
      */
-    @Suppress("UnusedPrivateProperty")
-    private val processMetrics: MetricKitProcessMetricSource =
-        MetricKitProcessMetricSource().also { it.observe(processMetricHandler::handle) }
+    private val processMetrics: MetricKitProcessMetrics = MetricKitProcessMetrics()
 
+    /**
+     * This process's per-process services (`snapSyncProcess`, every root's first act): its ONE crash reporter —
+     * started here, before any other wiring can fail — its process metrics, its files and its entry-point seam.
+     *
+     * `internal`, not `private`, for one further reader: the rig's contributed hook drives a synthetic process-metric
+     * report through [ProcessServices.processAccount], THIS instance — exercising a copy would prove only that the
+     * copy works. `internal` is module-wide and is not exported to the `SnapSyncKit` ObjC header.
+     */
+    internal val process: ProcessServices = snapSyncProcess(
+        ProcessPorts(
+            crashReporter = SentryCrashReporter(),
+            processMetrics = processMetrics,
+            files = IosFiles(),
+            entryContext = IosLogScope,
+            dsn = bakedSentryDsn(),
+        ),
+    )
+
+    init {
+        // The crash channel's log writer, beside the device-log writers the first init block installed — present only
+        // on a build that reports.
+        process.installLogWriters()
+    }
 
     // The app-scope error boundary. Without a handler, an uncaught throwable from any `scope.launch`
     // hits Kotlin/Native's default terminate → SIGABRT — a background failure (a platform-API call, an
@@ -293,7 +299,7 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
 
     // This process's files, by area: the App-Group container and its own Documents. One instance; the file-backed
     // services below are built over it (`docs/architecture.md`).
-    private val files: Files by lazy { IosFiles() }
+    private val files: Files get() = process.files
 
     // The device manifest's skip record: one instance for the app graph's producer and the app's uploader.
     private val manifestStore: DeviceManifestService by lazy { DeviceManifestService(files) }
@@ -364,12 +370,12 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
     private val composed: ComposedApp by lazy {
         snapSyncHost(
             scope = scope,
+            process = process,
             ports = AppPorts(
                 // The main lane (law "Dispatcher lanes are fixed by the composition"). This shell is
                 // the only place in the app process that may name it: platform UI runs here, and
                 // nothing else does.
                 uiLane = Dispatchers.Main,
-                diagnosticsReporter = SentryDiagnosticsReporter(),
                 // Recorded by the background entry points; decides nothing (capability `sync-status`).
                 protectedStorage = IosProtectedStorage(),
                 // The diagnostic dump's two device-side inputs (capability `privacy-security`):
@@ -887,12 +893,12 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
     // drain, which may adopt an old upload session whichever mechanism is live.
     private val urlSessionUpload: UrlSessionUploadController by lazy {
         UrlSessionUploadController(
-            scope, ledgerStore, config, manifestStore,
+            scope, process, ledgerStore, config, manifestStore,
             // A supplier, not the resolved id: the cycle's gate probes it each run, so an unreadable
             // Keychain skips the cycle cleanly instead of throwing out of it. The lazy caches the first
             // success, so this is one read per process, as before.
             deviceIdentity = deviceIdentity,
-            host = backendHost, log = log,
+            host = backendHost,
             manifestPublisher = app.backend.manifest,
             // The app-driven tier performs its OWN uploads, so its request provider needs the token too.
             token = { app.attestation.token() },
@@ -946,8 +952,8 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
  * app CPU across the whole watchdog allowance — blocked, not busy (`IosGalleryReader`).
  *
  * **Why exactly one thread.** `Dispatchers.Main` is single-threaded and core code relies on that for
- * mutual exclusion — the selection observer's lock-free register/unregister and
- * `SentryDiagnosticsReporter`'s plain init flag both say so, and whatever else assumes it cannot be
+ * mutual exclusion — the selection observer's lock-free register/unregister says
+ * so, and whatever else assumes it cannot be
  * enumerated. One thread changes which thread and nothing else; a pool would silently turn every
  * un-enumerated assumption into a race.
  *

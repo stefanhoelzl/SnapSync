@@ -5,7 +5,8 @@ import app.snapsync.model.PlatformEntry
 import app.snapsync.model.ProcessMetricReport
 import app.snapsync.model.flattenToDottedKeys
 import app.snapsync.objc.objcBoundary
-import app.snapsync.ports.ProcessMetricSource
+import app.snapsync.ports.MetricHandlers
+import app.snapsync.ports.ProcessMetrics
 import app.snapsync.ports.invocation
 import co.touchlab.kermit.Logger
 import platform.MetricKit.MXDiagnosticPayload
@@ -15,7 +16,7 @@ import platform.MetricKit.MXMetricPayload
 import platform.darwin.NSObject
 
 /**
- * The MetricKit binding of [ProcessMetricSource] (capability `privacy-security`).
+ * The MetricKit binding of [ProcessMetrics] (capability `privacy-security`).
  *
  * Seated in `:adapter:ios:app-only` by linkage: MetricKit is app-process-only, and the
  * background-upload extension must not link it. That is not a tidiness point — a subscriber in the
@@ -35,46 +36,45 @@ import platform.darwin.NSObject
  * Whether that field was elided or merely unreliable was never settled; what is settled is that it is
  * the only structural difference between the shape that worked and the shape that did not.
  *
- * So [subscriber] is a `val` initialised at construction and read on every [observe], and the
- * subscriber reads its own callback field on every delivery. Nothing here is write-only.
+ * So [subscriber] is held in a field that [listen] writes and reads, and the subscriber reads its own handlers on
+ * every delivery. Nothing here is write-only.
  *
  * The subscriber cannot simply BE this class: Kotlin/Native refuses to mix Kotlin and Objective-C
  * supertypes, so a class conforming to `MXMetricManagerSubscriberProtocol` may not also implement the
- * Kotlin [ProcessMetricSource] interface. (That error surfaces only in the **native** compile —
+ * Kotlin [ProcessMetrics] interface. (That error surfaces only in the **native** compile —
  * `compileIosMainKotlinMetadata` accepts it, which is the law "a platform-capability claim is settled
  * by a compile" showing its teeth.)
  *
  * ⚠️ **Registering commits us to handling.** Delivery is one-shot: MetricKit holds a report
  * indefinitely while nobody subscribes, and hands it over exactly once thereafter (measured — reports
  * survived a full day of a non-subscribing build and arrived when a subscriber returned). So
- * [observe] must only be called where the handler is already live; registering and then dropping what
+ * [listen] must only be called where the handler is already live; registering and then dropping what
  * arrives is strictly worse than never registering.
  *
  * **No port contract, by reason rather than omission** (`docs/architecture.md`, "Every clause runs
  * against a real implementation on some host"). No host can enter a state for a clause: MetricKit delivers when
  * the OS decides — roughly daily, one-shot, and only on a device — so a binding cannot make a report arrive,
  * and a recording would replay only a payload we chose. Nor is there an in-memory double for a contract to
- * license: the app root constructs this class directly. The measured evidence lives in this comment (the
- * seventeen payloads, the write-only field that silenced them, the day-long hold); the rule over what arrives
- * is `:domain:model`'s, tested there.
+ * license: the app root constructs this class directly, and every other process binds `ProcessMetrics.None`. The
+ * measured evidence lives in this comment (the seventeen payloads, the write-only field that silenced them, the
+ * day-long hold); the rule over what arrives is `:domain:model`'s, tested there.
  *
  * ⏰ **Expiry**: this whole `MX*` surface is deprecated at iOS 27 in favour of a Swift-only successor
  * that Kotlin/Native cannot call. When that bites, this class is what gets replaced — behind
- * [ProcessMetricSource], with the rule, the thresholds and the channels untouched.
+ * [ProcessMetrics], with the rule, the thresholds and the channels untouched.
  */
-class MetricKitProcessMetricSource(
-    private val log: Logger = Logger.withTag("processMetrics"),
-) : ProcessMetricSource {
+class MetricKitProcessMetrics : ProcessMetrics {
+
+    private val log: Logger = Logger.withTag("processMetrics")
 
     /**
-     * The ObjC subscriber this retains, built by [observe] around the handler it delivers to — the handler
-     * is a constructor argument, not a slot assigned later (law "Callbacks are bound at construction",
-     * `docs/architecture.md`), so a subscriber that exists always has somewhere to deliver.
+     * The ObjC subscriber this retains, built by [listen] around the handlers it delivers to — they are its
+     * constructor argument, not a slot assigned later, so a subscriber that exists always has somewhere to deliver.
      */
     private var subscriber: MetricKitSubscriber? = null
 
-    override fun observe(onReport: (ProcessMetricReport) -> Unit) {
-        val subscriber = MetricKitSubscriber(log, onReport).also { this.subscriber = it }
+    override fun listen(handlers: MetricHandlers) {
+        val subscriber = MetricKitSubscriber(log, handlers).also { this.subscriber = it }
         val manager = MXMetricManager.sharedManager
         // The `shared` touch is itself load-bearing: MetricKit accumulates NOTHING for an app until
         // this is first called, and never retroactively. A launch that does not reach here is
@@ -101,15 +101,15 @@ class MetricKitProcessMetricSource(
  * `privacy-security`). ⚠️ If a callback ever hands work to another thread, those lines log
  * unprefixed — move it to the process-wide claim rather than accept that silently.
  *
- * Separate from [MetricKitProcessMetricSource] because Kotlin/Native refuses to mix Kotlin and ObjC
+ * Separate from [MetricKitProcessMetrics] because Kotlin/Native refuses to mix Kotlin and ObjC
  * supertypes, so the class ObjC is handed cannot also be the class `:domain` sees. Internal rather
  * than private: a private nested class was the previous shape, and keeping this one visible to the
  * module is a small nudge against quietly nesting it again.
  */
 internal class MetricKitSubscriber(
     private val log: Logger,
-    /** Where each report goes; supplied by [MetricKitProcessMetricSource.observe]. */
-    private val onReport: (ProcessMetricReport) -> Unit,
+    /** Where each report goes; supplied by [MetricKitProcessMetrics.listen]. */
+    private val handlers: MetricHandlers,
 ) : NSObject(), MXMetricManagerSubscriberProtocol {
 
     @PlatformEntry
@@ -142,6 +142,6 @@ internal class MetricKitSubscriber(
      */
     private fun deliver(raw: Map<Any?, *>) {
         val nested = raw.entries.associate { (key, value) -> key.toString() to value }
-        onReport(ProcessMetricReport(flattenToDottedKeys(nested)))
+        handlers.onReport(ProcessMetricReport(flattenToDottedKeys(nested)))
     }
 }

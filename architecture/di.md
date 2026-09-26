@@ -45,18 +45,18 @@ Roots found:
 | `IosShareSheet` | x | |
 | `LedgerService` | x | x |
 | `LogTailService` | x | |
-| `MetricKitProcessMetricSource` | x | |
+| `MetricKitProcessMetrics` | x | |
 | `NoPlatformDeviceId` | x | x |
 | `OsDrivenRegistration` | x | |
 | `PersistedDeviceIdentity` | x | x |
 | `PhotoLibraryPermission` | x | |
 | `PlatformHandoff` | x | |
-| `ProcessMetricHandler` | x | |
+| `ProcessPorts` | x | x |
 | `PublicNSLogWriter` | x | x |
 | `PushPorts` | x | |
 | `PushTokenSource` | x | |
 | `RigSwitches` | x | |
-| `SentryDiagnosticsReporter` | x | x |
+| `SentryCrashReporter` | x | x |
 | `StagingService` | x | |
 | `SuppressionService` | | x |
 | `UploadPorts` | | x |

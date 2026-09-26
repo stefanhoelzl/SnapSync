@@ -1,6 +1,6 @@
 package app.snapsync.fake
 
-import app.snapsync.model.DiagnosticDump
+import app.snapsync.model.CrashEvent
 import app.snapsync.model.EventConfig
 import app.snapsync.ports.AlbumMapStore
 import app.snapsync.ports.AttestStore
@@ -13,7 +13,7 @@ import app.snapsync.ports.ConfigSource
 import app.snapsync.ports.ConfigStore
 import app.snapsync.ports.DeviceLogSource
 import app.snapsync.ports.DeviceManifestStore
-import app.snapsync.ports.DiagnosticsReporter
+import app.snapsync.ports.CrashReporter
 import app.snapsync.ports.DownloadStore
 import app.snapsync.ports.GalleryStatusSource
 import app.snapsync.ports.LedgerStore
@@ -105,13 +105,12 @@ fun inMemoryDeviceLogSource(
     logs: Map<DeviceLogSource.Process, String> = emptyMap(),
 ): DeviceLogSource = InMemoryDeviceLogSource(logs)
 
-fun inMemoryDiagnosticsReporter(
+fun inMemoryCrashReporter(
     started: MutableStateFlow<Boolean>,
-    sent: MutableStateFlow<List<DiagnosticDump>>,
-    isConfigured: Boolean = true,
-): DiagnosticsReporter = InMemoryDiagnosticsReporter(started, sent, isConfigured)
+    dumps: MutableStateFlow<List<CrashEvent>>,
+): CrashReporter = InMemoryCrashReporter(started, dumps)
 
-fun inMemoryDiagnosticsReporter(): DiagnosticsReporter = InMemoryDiagnosticsReporter()
+fun inMemoryCrashReporter(): CrashReporter = InMemoryCrashReporter()
 
 /**
  * [files] is the caller's own cell. The operator rigging that wants to observe staged paths keeps

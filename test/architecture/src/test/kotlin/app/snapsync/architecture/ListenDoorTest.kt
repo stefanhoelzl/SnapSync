@@ -11,7 +11,9 @@ import kotlin.test.assertTrue
  * callback some root or adapter wired up for itself:
  *
  *  - a `*Handlers` bundle is constructed only in `compose/` (production source), where the handler table lives;
- *  - `listen` is called only from the host zone, once per adapter, as the graph is composed.
+ *  - `listen` is called only from the host zone, once per adapter, as the graph is composed — and from
+ *    `snapSyncProcess` for the per-process event ports (`CrashReporter`, `ProcessMetrics`): every root sets those up
+ *    before it composes anything, and the upload extension has no host zone at all.
  *
  * Both are pinned exact-in-set and non-vacuous: a gate that finds no construction site or no registration would be
  * passing on nothing. Test equipment (contract bindings, the rig, the world) is not production and registers its
@@ -33,7 +35,10 @@ class ListenDoorTest {
         val sites = filesMatching(Regex("""(?<!class )\b[A-Z]\w*Handlers\("""))
         assertTrue(sites.isNotEmpty(), "no handler bundle is built anywhere — the scan is broken")
         assertEquals(
-            setOf("/domain/compose/src/commonMain/kotlin/app/snapsync/compose/GalleryHandlersComposition.kt"),
+            setOf(
+                "/domain/compose/src/commonMain/kotlin/app/snapsync/compose/GalleryHandlersComposition.kt",
+                "/domain/compose/src/commonMain/kotlin/app/snapsync/compose/ProcessComposition.kt",
+            ),
             sites,
             "a `*Handlers` bundle built outside `compose/` is a callback wired past the composition's door",
         )
@@ -44,7 +49,11 @@ class ListenDoorTest {
         val sites = filesMatching(Regex("""\.listen\("""))
         assertTrue(sites.isNotEmpty(), "no event port is listened to anywhere — the scan is broken")
         assertEquals(
-            setOf("/domain/host/src/commonMain/kotlin/app/snapsync/host/ComposedApp.kt"),
+            setOf(
+                "/domain/host/src/commonMain/kotlin/app/snapsync/host/ComposedApp.kt",
+                // The per-process event ports: set up by every root before any composition (the extension has no host).
+                "/domain/compose/src/commonMain/kotlin/app/snapsync/compose/ProcessComposition.kt",
+            ),
             sites,
             "an event port registered outside the host zone escapes the one registration per adapter",
         )

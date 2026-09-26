@@ -32,10 +32,17 @@ interface LogScope {
     /** Clear the context, but only if [owned] (i.e. this caller established it via [enter]). */
     fun exit(owned: Boolean)
 
+    /**
+     * The entry point a line logged right now, on this thread, belongs to — or `null` when none is claimed. Read by
+     * the log writers the process services install, so the crash channel can tag an event with its trigger.
+     */
+    fun current(): String?
+
     /** The no-context implementation for world / tests (and any binary without device logging). */
     object NoOp : LogScope {
         override fun enter(name: String): Boolean = false
         override fun exit(owned: Boolean) {}
+        override fun current(): String? = null
     }
 }
 

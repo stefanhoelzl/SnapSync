@@ -2,6 +2,7 @@ package app.snapsync.host
 
 import app.snapsync.compose.AppCore
 import app.snapsync.compose.AppPorts
+import app.snapsync.compose.ProcessServices
 import app.snapsync.compose.snapSyncApp
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.MutablePendingJoinSource
@@ -58,8 +59,8 @@ class ComposedApp internal constructor(
  * function exists to end — the control channel's JVM host once built its status host without the version
  * refusal and never registered for pushes, and nothing said so.
  */
-fun snapSyncHost(scope: CoroutineScope, ports: AppPorts): ComposedApp {
-    val core = snapSyncApp(scope, ports)
+fun snapSyncHost(scope: CoroutineScope, process: ProcessServices, ports: AppPorts): ComposedApp {
+    val core = snapSyncApp(scope, process, ports)
     // The event ports' ONE registration each, on composition — a background wake's import needs its handlers as much
     // as a foreground launch does. `listen` only registers: the selection observer opens at host assembly below.
     ports.gallery.listen(core.galleryHandlers)

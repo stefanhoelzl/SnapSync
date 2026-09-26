@@ -25,7 +25,6 @@ import app.snapsync.ports.BackgroundTransfer
 import app.snapsync.ports.UploadDiscovery
 import app.snapsync.model.ConfigRead
 import app.snapsync.ports.ConfigReader
-import app.snapsync.ports.DiagnosticsReporter
 import app.snapsync.ports.DeviceIdentityAbsent
 import app.snapsync.ports.DeviceManifestStore
 import app.snapsync.services.backend.ManifestPublisher
@@ -85,8 +84,6 @@ class UploadPorts(
      * transport.
      */
     val discovery: UploadDiscovery,
-    /** Crash/error reporting (capability `privacy-security`). Required on both tiers — see AppPorts. */
-    val diagnosticsReporter: DiagnosticsReporter,
     /**
      * Which uploader process this cycle runs in, which decides whether it may run a cycle now (capability
      * `background-upload`, "The upload cycle owns its entry decision"), read once per gate. Required, with **no
@@ -148,10 +145,9 @@ class UploadPorts(
  * subscriptions here, which do.
  */
 @Suppress("UNUSED_PARAMETER")
-fun uploadCore(scope: CoroutineScope, ports: UploadPorts): UploadCycle {
-    // First act (idempotent — the app process composes this beside snapSyncApp): the extension
-    // process has no other composition entry, so this is where its reporter comes up.
-    ports.diagnosticsReporter.start()
+fun uploadCore(scope: CoroutineScope, process: ProcessServices, ports: UploadPorts): UploadCycle {
+    // [process] is required and unread: it proves the process set up its crash reporting before this cycle was
+    // composed (`snapSyncProcess`, every root's first act).
     val ledger = LedgerWriter(ports.ledger)
     // Constructed lazily so the device id resolves on first in-cycle use — after the gate's probe
     // has succeeded — never at composition time, where a locked device would throw out of assembly.

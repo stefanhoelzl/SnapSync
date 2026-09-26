@@ -1,6 +1,6 @@
 package app.snapsync.rig
 
-import app.snapsync.model.DiagnosticDump
+import app.snapsync.model.CrashEvent
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.encodeToJson
 import app.snapsync.ports.DeviceLogSource
@@ -272,11 +272,15 @@ private fun unionJson(event: String, union: List<UnionAsset>): String = buildJso
 private fun manifestJson(event: String, device: String, manifest: DeviceManifest?): String =
     """{"event":${JsonPrimitive(event)},"device":${JsonPrimitive(device)},"manifest":${manifest?.encodeToJson() ?: "null"}}"""
 
-private fun dumpJson(dump: DiagnosticDump) = buildJsonObject {
-    put("note", dump.note)
-    putJsonObject("state") { dump.state.forEach { (k, v) -> put(k, v) } }
-    putJsonObject("ledger") { dump.ledger.forEach { (k, v) -> put(k, v) } }
-    put("appLog", dump.appLog)
-    put("extensionLog", dump.extensionLog)
-    put("logBytes", dump.logBytes)
+/** A dump as it left the process, read back into its five sections (`model/diagnosticDumpEvent` wrote them). */
+private fun dumpJson(dump: CrashEvent) = buildJsonObject {
+    val section = { name: String -> dump.contexts[name].orEmpty() }
+    val appLog = section("app_log")["text"].orEmpty()
+    val extensionLog = section("ext_log")["text"].orEmpty()
+    put("note", section("note")["text"].orEmpty())
+    putJsonObject("state") { section("state").forEach { (k, v) -> put(k, v) } }
+    putJsonObject("ledger") { section("ledger").forEach { (k, v) -> put(k, v) } }
+    put("appLog", appLog)
+    put("extensionLog", extensionLog)
+    put("logBytes", appLog.encodeToByteArray().size + extensionLog.encodeToByteArray().size)
 }

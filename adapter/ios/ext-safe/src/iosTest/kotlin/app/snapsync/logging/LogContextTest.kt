@@ -115,7 +115,7 @@ class LogContextTest {
     fun `a process-wide enter nested under a thread-scoped claim claims nothing`() {
         val outer = LogContext.enterThread("didReceiveMetricPayloads")
         try {
-            val nested = LogContext.enter("SentryDiagnosticsReporter.start")
+            val nested = LogContext.enter("SentryCrashReporter.start")
             try {
                 assertFalse(nested, "a nested seam must not take the global slot")
                 assertEquals("didReceiveMetricPayloads", LogContext.current)

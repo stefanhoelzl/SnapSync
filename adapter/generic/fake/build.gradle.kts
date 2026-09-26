@@ -44,6 +44,8 @@ kotlin {
             implementation(project(":domain:compose"))
             // The storage services' fake-driven tests: the services over the storage mocks (`docs/testing.md`).
             implementation(project(":domain:services"))
+            // The process services hand the root a Kermit writer to install (`ProcessServices.logWriters`).
+            implementation(libs.kermit)
         }
     }
 }

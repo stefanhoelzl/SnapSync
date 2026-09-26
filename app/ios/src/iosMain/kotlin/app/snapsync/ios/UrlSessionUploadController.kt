@@ -30,7 +30,7 @@ import app.snapsync.feature.upload.AppUploadMechanism
 import app.snapsync.feature.upload.UploadAdmission
 import app.snapsync.feature.upload.WalkOutcome
 import app.snapsync.logging.appMarketingVersion
-import app.snapsync.logging.SentryDiagnosticsReporter
+import app.snapsync.compose.ProcessServices
 import app.snapsync.logging.invocation
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
@@ -50,6 +50,8 @@ import kotlinx.coroutines.CoroutineScope
  */
 class UrlSessionUploadController(
     private val scope: CoroutineScope,
+    // The app process's per-process services — the one crash reporter, set up by the root before anything else.
+    private val process: ProcessServices,
     private val ledgerStore: LedgerStore,
     private val configSource: ConfigReader,
     // The device manifest's skip record — the same file-backed service the app graph's manifest producer reads.
@@ -61,7 +63,6 @@ class UrlSessionUploadController(
     // per cycle costs nothing: the identity caches for the process lifetime after its first success.
     private val deviceIdentity: DeviceIdentity,
     private val host: String,
-    private val log: Logger,
     // The in-cycle device-manifest PUT: the app core's backend service, over its one authenticated backend.
     private val manifestPublisher: ManifestPublisher,
     // The device token (capability `privacy-security`), read PER REQUEST so a background renewal is
@@ -89,6 +90,10 @@ class UrlSessionUploadController(
     // provider, resolved when the transport calls, because the core is composed after this adapter exists.
     private val events: () -> AppUploadEvents,
 ) : AppUploadMechanism {
+
+    // The root's own tag, so every line this controller writes reads exactly as it did while the root passed its
+    // logger in — the parameter went when the process services came in (the shell's parameter ceiling).
+    private val log: Logger = Logger.withTag("SnapSyncRoot")
     companion object {
         const val SESSION_IDENTIFIER = "app.snapsync.upload.session"
         const val HEARTBEAT_TASK_IDENTIFIER = "app.snapsync.upload.heartbeat"
@@ -138,9 +143,9 @@ class UrlSessionUploadController(
     private val cycle: UploadCycle by lazy {
         uploadCore(
             scope,
+            process,
             UploadPorts(
                 appVersion = appMarketingVersion(),
-                diagnosticsReporter = SentryDiagnosticsReporter(),
                 process = UploaderProcess.App(graph.admission, PhotoGrantRead { graph.photoAccess.permission.value }),
                 config = configSource,
                 // Resolved per probe/use, never held: an unresolvable Keychain id must skip the
