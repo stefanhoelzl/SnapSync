@@ -350,11 +350,12 @@ Targets are `jvm()` and `iosSimulatorArm64` only. It never links into a shipped 
   own. It binds **no port to a body that stands in for core machinery**: the provision, the attestation
   refresh and push registration all run for real. A mirror of a composition root drifts silently, and a
   mirror that is *more* correct than production stays green while the defect ships.
-- **Only the edges are doubles:** `BackgroundTransfer`, `UploadDiscovery`, `DownloadTransport`,
-  `PhotoLibraryImporter`, the storage seams and the HTTP client.
+- **Only the edges are doubles:** `BackgroundTransfer`, `DownloadTransport`, the `Gallery`, the storage
+  seams and the HTTP client. The services over them (the gallery's discovery, presence and albums; the stores) are
+  the real ones.
 - **Honest fakes live in `:adapter:generic:fake`; levers live in `:test:world`.** A lever (a settable
   cell, a failure switch, an inspection list) goes on a world wrapper that owns the fake's
-  constructor-injected state (`WorldGallery`, `RecordingDownloadStore`, the `Fake*` photo wrappers). It is
+  constructor-injected state (`WorldGallery` — its import script is `WorldImports` —, `RecordingDownloadStore`). It is
   never a public member of the fake, and the fake-honesty gate enforces that. For a contracted port, the
   world uses the contract-bound fake, wrapped, and never a second levered implementation.
 - **The world's transfer doubles are contract `Fake` bindings** (`TransferContractsTest`). A clause the
