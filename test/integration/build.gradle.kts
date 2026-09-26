@@ -79,6 +79,19 @@ tasks.register<Test>("journeys") {
     }
 }
 
+// The journeys' full runtime classpath, one line, so `scripts/sim-contracts` can run them with a bare `java` next to
+// a live simulator instead of starting Gradle there: a Gradle daemon plus a test JVM pushed the 7 GB CI runner into
+// swap at exactly that moment, and the app missed its 5 s HTTP timeout on a request the backend had answered in
+// 132 ms (run 36173548419).
+val journeysClasspath by tasks.registering {
+    description = "Writes the journeys' runtime classpath to build/journeys-classpath.txt (ios-contracts only)."
+    val classpath = journeys.runtimeClasspath
+    val out = layout.buildDirectory.file("journeys-classpath.txt")
+    inputs.files(classpath)
+    outputs.file(out)
+    doLast { out.get().asFile.writeText(classpath.asPath) }
+}
+
 tasks.test {
     // JUnit 4: the contracts module (on the runtime path through the rig) binds kotlin-test to JUnit 4 in its main
     // code, and two kotlin-test framework bindings cannot coexist (the same reason `:test:control` gives).
