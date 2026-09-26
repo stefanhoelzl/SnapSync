@@ -1,0 +1,27 @@
+# contract: Upload
+# host: IOS_DEVICE_PHOTOKIT_EXT
+# file: Upload@IOS_DEVICE_PHOTOKIT_EXT.rec
+# device: iPhone12,8
+# os: Version 26.6.2 (Build 23G90)
+# build: 1
+# kotlin: 2.4.0
+# recorded: 2026-09-26T17:22:03Z
+# live PRESENTED_SUCCESS_IS_PRESENTED_UNTIL_ACKNOWLEDGED: Passed
+# live PRESENTED_REFUSAL_IS_OFFERED_FOR_RETRY: Passed
+# live PRESENTED_RETRY_SPENT_IS_PRESENTED_UNTIL_ACKNOWLEDGED: Passed
+[PRESENTED_REFUSAL_IS_OFFERED_FOR_RETRY]
+create(to=http://127.0.0.1:18099/api/v2/Upload/PRESENTED_REFUSAL_IS_OFFERED_FOR_RETRY/upload-1/s500-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+fetch(RETRY) -> n=1 [path=/api/v2/Upload/PRESENTED_REFUSAL_IS_OFFERED_FOR_RETRY/upload-1/s500-n0-len ct=image/jpeg state=FAILED err=- res=- type=-]
+[PRESENTED_RETRY_SPENT_IS_PRESENTED_UNTIL_ACKNOWLEDGED]
+create(to=http://127.0.0.1:18099/api/v2/Upload/PRESENTED_RETRY_SPENT_IS_PRESENTED_UNTIL_ACKNOWLEDGED/upload-1/s500-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+fetch(RETRY) -> n=1 [path=/api/v2/Upload/PRESENTED_RETRY_SPENT_IS_PRESENTED_UNTIL_ACKNOWLEDGED/upload-1/s500-n0-len ct=image/jpeg state=FAILED err=- res=- type=-]
+retry(path=/api/v2/Upload/PRESENTED_RETRY_SPENT_IS_PRESENTED_UNTIL_ACKNOWLEDGED/upload-1/s500-n0-len to=http://127.0.0.1:18099/api/v2/Upload/PRESENTED_RETRY_SPENT_IS_PRESENTED_UNTIL_ACKNOWLEDGED/upload-1/s500-n0-len method=PUT headers=Content-Type:image/jpeg) -> ok=true code=- desc=-
+fetch(ACKNOWLEDGE) -> n=1 [path=/api/v2/Upload/PRESENTED_RETRY_SPENT_IS_PRESENTED_UNTIL_ACKNOWLEDGED/upload-1/s500-n0-len ct=image/jpeg state=FAILED err=- res=- type=-]
+acknowledge(path=/api/v2/Upload/PRESENTED_RETRY_SPENT_IS_PRESENTED_UNTIL_ACKNOWLEDGED/upload-1/s500-n0-len) -> ok=true code=- desc=-
+fetch(ACKNOWLEDGE) -> n=0
+[PRESENTED_SUCCESS_IS_PRESENTED_UNTIL_ACKNOWLEDGED]
+create(to=http://127.0.0.1:18099/api/v2/Upload/PRESENTED_SUCCESS_IS_PRESENTED_UNTIL_ACKNOWLEDGED/upload-1/s200-n0-len method=PUT headers=Content-Type:image/jpeg resource=photo) -> ok=true code=- desc=-
+fetch(ACKNOWLEDGE) -> n=1 [path=/api/v2/Upload/PRESENTED_SUCCESS_IS_PRESENTED_UNTIL_ACKNOWLEDGED/upload-1/s200-n0-len ct=image/jpeg state=SUCCEEDED err=- res=- type=-]
+acknowledge(path=/api/v2/Upload/PRESENTED_SUCCESS_IS_PRESENTED_UNTIL_ACKNOWLEDGED/upload-1/s200-n0-len) -> ok=true code=- desc=-
+fetch(ACKNOWLEDGE) -> n=0
+landed(/Upload/PRESENTED_SUCCESS_IS_PRESENTED_UNTIL_ACKNOWLEDGED/upload-1/s200-n0-len) -> ct=image/jpeg
