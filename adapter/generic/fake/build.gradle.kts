@@ -21,7 +21,12 @@ plugins {
 kotlin {
     jvmToolchain(libs.versions.jdk.get().toInt())
     jvm()
-    iosSimulatorArm64()
+    iosSimulatorArm64().binaries.all {
+        // `-lsqlite3`: `inMemoryDatabases()` runs SQLDelight's native driver, whose sqliter cinterop declares the
+        // system library only for a compilation that depends on the driver directly — not for this test executable's
+        // own link (the trap `:adapter:ios:ext-safe`'s build file documents). The library is on every Apple platform.
+        if (this is org.jetbrains.kotlin.gradle.plugin.mpp.TestExecutable) linkerOpts("-lsqlite3")
+    }
     sourceSets {
         commonMain.dependencies {
             api(project(":domain:model"))
