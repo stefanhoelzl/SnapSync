@@ -42,6 +42,7 @@ Roots found:
 | `IosProcessInfo` | x | |
 | `IosPushRegistrationRecord` | x | |
 | `IosSystemUi` | x | |
+| `IosWake` | x | |
 | `LedgerService` | x | x |
 | `LogTailService` | x | |
 | `MetricKitProcessMetrics` | x | |

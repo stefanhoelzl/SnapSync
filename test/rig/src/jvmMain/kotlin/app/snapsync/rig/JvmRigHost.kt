@@ -6,6 +6,7 @@ import app.snapsync.compose.EntryHooks
 import app.snapsync.compose.extensionEntries
 import app.snapsync.compose.platformEntries
 import app.snapsync.model.InviteLinkHints
+import app.snapsync.model.WakeId
 import app.snapsync.ports.DeviceLogSource
 import app.snapsync.world.DenoBackend
 import app.snapsync.world.MiniEdgeBackend
@@ -138,8 +139,7 @@ class JvmRigHost private constructor(
                     openUrl = { url -> world.statusHost.onOpenUrl(url) },
                     assembleHost = {},
                     deliverPushToken = { hex -> world.pushTokens.deliver(hex) },
-                    // The iOS identifiers, so a test passes the same argument to either host.
-                    uploadHeartbeatTaskId = UPLOAD_HEARTBEAT_TASK,
+                    // The iOS identifier, so a test passes the same argument to either host.
                     uploadTransferChannel = UPLOAD_TRANSFER_CHANNEL,
                 ),
             )
@@ -152,7 +152,7 @@ class JvmRigHost private constructor(
                 mainLane = lane,
                 deviceLog = worldLog(world),
                 triggerGroups = mapOf(
-                    "app" to TriggerGroup(lane = lane, wired = appTriggers(entries), excluded = emptyMap()),
+                    "app" to TriggerGroup(lane = lane, wired = appTriggers(entries, world), excluded = emptyMap()),
                     "photokit-ext" to TriggerGroup(
                         // The extension process has no main lane: its root runs on the OS-invoked thread.
                         lane = Dispatchers.Default,
@@ -185,7 +185,7 @@ class JvmRigHost private constructor(
             )
         }
 
-        private fun appTriggers(entries: app.snapsync.ports.PlatformEntries): Map<String, RigTrigger> = mapOf(
+        private fun appTriggers(entries: app.snapsync.ports.PlatformEntries, world: World): Map<String, RigTrigger> = mapOf(
             "onForeground" to RigTrigger.Fire { entries.onForeground() },
             "onBackground" to RigTrigger.Fire { entries.onBackground() },
             "onPushToken" to RigTrigger.Fire { arg -> entries.onPushToken(arg.orEmpty()) },
@@ -195,9 +195,11 @@ class JvmRigHost private constructor(
             "onSilentPush" to RigTrigger.Receipted { arg, done ->
                 entries.onSilentPush(mapOf("eventId" to arg), done)
             },
+            // The iOS task identifier is the argument, as the OS delivers it: the heartbeat's wakes the world's `Wake`
+            // (the operator's lever, as the iOS adapter's launch handler does); any other is answered at once, unknown.
             "onBackgroundTask" to
                 RigTrigger.Receipted { arg, done ->
-                    entries.onBackgroundTask(arg.orEmpty(), done)
+                    if (arg == UPLOAD_HEARTBEAT_TASK) world.wake.fire(WakeId.Heartbeat, rigCompletion(done)) else done()
                 },
             "onBackgroundTransfers" to
                 RigTrigger.Receipted { arg, done ->

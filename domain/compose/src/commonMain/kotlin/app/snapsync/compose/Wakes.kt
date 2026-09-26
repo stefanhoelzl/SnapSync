@@ -7,14 +7,15 @@ import app.snapsync.feature.upload.TailTrigger
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.BackgroundTimeHold
-import app.snapsync.ports.OsCompletions
+import app.snapsync.services.wake.OsCompletions
 import co.touchlab.kermit.Logger
 import kotlin.concurrent.atomics.AtomicBoolean
 import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
 /**
- * One wake's hold on the process's **background time** (capability `sync-status`, "OS completion handlers are
+ * One wake's hold on the process's **background time** — `WakeHold`, not `Wake`, since `Wake` is the port the
+ * operating system's scheduled wakes arrive through (capability `sync-status`, "OS completion handlers are
  * released only after their work completes"; `docs/architecture.md`, "Background time is an outbound port named
  * for the need"; decision record `changes/own-work-per-wake`, D3 and D5).
  *
@@ -24,6 +25,10 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
  * signal that never comes ends in Apple's expiry rather than in a handler held forever. Background time is per app,
  * not per hold, so a hold per wake costs no time.
  *
+ * A tail requested **in-process** — a membership transition's arm, an upload completion's top-up, a staged download's
+ * import, a selection change — holds one too, from the request to the tail's end (phase 11f): free on iOS, and it is
+ * what keeps a process the app just left, or an Android worker's top-up, from being frozen mid-unit.
+ *
  * **On Apple's expiry** — the hold's expiration handler, the only "time is up" a silent push or a transfer wake gets —
  * it requests the tail's stop, releases every OS handler it [guard]s, and ends the hold, **at once**: it never waits
  * for the unit in flight, which runs on until iOS suspends the process (every unit is a safe retry) while no new one
@@ -31,7 +36,7 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
  * — a refused begin included, which the port reports as an immediate expiry — requests no tail afterwards: a stop
  * while no tail runs is a no-op, so a tail requested after one would run with no time left to run in.
  */
-internal class Wake(
+internal class WakeHold(
     private val label: String,
     time: BackgroundTime,
     private val tail: TailRunner,
@@ -92,39 +97,4 @@ internal class Wake(
     }
 
     private fun reason() = "background time for $label is up"
-}
-
-/**
- * The operating system's "time is up" signal for each background task the core is running, keyed by the identifier
- * it delivered (capability `sync-status`, "Background tasks are forwarded by the identifier the OS delivered").
- *
- * A task's expiry action is opened when it is routed and closed when its work ends; [expire] runs the one open for an
- * identifier. The expiry arrives on a thread the core does not choose (the operating system calls the expiration
- * handler on its own queue, and it must be answered promptly), so the table is one atomic reference replaced whole
- * rather than state confined to the composition lane: a hop onto that lane could wait behind a blocking platform call.
- * The operating system runs at most one task per identifier, so an identifier maps to at most one action; a close
- * removes only its own, so a later run of the same task is never closed by an earlier one's end.
- */
-internal class TaskExpiries {
-    /** One task's expiry action — a class rather than a bare function so a close can compare identities. */
-    class Open internal constructor(val onExpiry: () -> Unit)
-
-    private val running = AtomicReference<Map<String, Open>>(emptyMap())
-
-    /** Opens the expiry action for a task now running as [identifier]. */
-    fun open(identifier: String, onExpiry: () -> Unit): Open =
-        Open(onExpiry).also { open -> replace { it + (identifier to open) } }
-
-    /** Closes [open], if it is still the one open for [identifier]. */
-    fun close(identifier: String, open: Open) = replace { if (it[identifier] === open) it - identifier else it }
-
-    /** Runs the expiry action of the task running as [identifier]; `false` when none is. */
-    fun expire(identifier: String): Boolean = running.load()[identifier]?.also { it.onExpiry() } != null
-
-    private fun replace(change: (Map<String, Open>) -> Map<String, Open>) {
-        while (true) {
-            val current = running.load()
-            if (running.compareAndSet(current, change(current))) return
-        }
-    }
 }

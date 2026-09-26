@@ -99,6 +99,8 @@ import app.snapsync.ports.StagedBytes
 import app.snapsync.ports.invocation
 import co.touchlab.kermit.Logger
 import app.snapsync.ports.ProcessInfo
+import app.snapsync.ports.Wake
+import app.snapsync.ports.WakeHandlers
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.ContinuationInterceptor
 import kotlinx.coroutines.CoroutineScope
@@ -210,6 +212,12 @@ class AppPorts(
      *  those wakes get. Required: a composition without it would hold nothing, and no expiry would ever stop a
      *  tail. */
     val backgroundTime: BackgroundTime,
+    /**
+     * The operating system's scheduled wakes (`docs/architecture.md`, "Background execution"): the heartbeat the tail
+     * runner re-arms, and — through its `listen`, registered as the graph is composed — the wakes it delivers.
+     * Required: a composition without it could never be woken to upload with the app closed.
+     */
+    val wake: Wake,
     /** The **OS-driven** registration where this OS carries its selector (iOS ≥26.1) — `null` elsewhere,
      *  keeping it entirely unconstructed where the selector does not exist. */
     val extensionRegistration: () -> ExtensionRegistration?,
@@ -653,6 +661,9 @@ class AppCore internal constructor(
 
     /** What the gallery tells this core — registered by the host zone's `listen` (see [galleryHandlers]). */
     val galleryHandlers: GalleryHandlers = galleryHandlers(ports.downloadStore, ports.log, selectionChanges)
+
+    /** What the operating system's scheduled wakes tell this core — registered by the host zone's `listen`. */
+    val wakeHandlers: WakeHandlers = wakeHandlers(this)
 
     /**
      * What upload discovery may read right now (consumed by the tier controllers' `uploadCore` ports).

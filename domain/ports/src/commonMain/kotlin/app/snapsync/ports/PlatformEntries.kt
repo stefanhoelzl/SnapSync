@@ -11,9 +11,9 @@ import app.snapsync.model.CycleResult
  * **core implements it** (`compose/`'s `platformEntries`) and the shell drives it. The composition root implements
  * it by Kotlin delegation, so the forwarding from the operating system's callback to the core is written by the
  * compiler and a crossed wire has nowhere to sit. The transcription that used to live in the untested shell — what own
- * work an entry runs, how its completion is held, when it hands the rest to the tail, how a background task or transfer
- * channel is routed — is
- * the implementation's, and `:test:contracts`' `PlatformEntriesContract` specifies it.
+ * work an entry runs, how its completion is held, when it hands the rest to the tail, how a transfer channel is
+ * routed — is the implementation's, and `:test:contracts`' `PlatformEntriesContract` specifies it. A scheduled background task
+ * is not an entry: it arrives through the `Wake` event port.
  *
  * Members are named for what the operating system is saying, never for the API that says it, and carry only
  * platform-independent values — an Android shell would drive the same port.
@@ -43,34 +43,6 @@ interface PlatformEntries {
      */
     @PlatformEntry
     fun onSilentPush(payload: Map<Any?, *>, completion: () -> Unit)
-
-    /**
-     * The operating system launched the background task registered as [identifier] — the identifier it
-     * delivered, never one the shell chose. [completion] is released after the task's work — its tail — or at once
-     * on the operating system's expiry ([onBackgroundTaskTimeUp]), whichever comes first, exactly once; an
-     * identifier the core does not know is released at once and logged.
-     */
-    @PlatformEntry
-    fun onBackgroundTask(identifier: String, completion: () -> Unit)
-
-    /**
-     * The operating system says the background task it launched as [identifier] — the identifier it delivered to
-     * [onBackgroundTask] — is out of time (a `BGTask`'s expiration handler, on iOS).
-     *
-     * This is the one place the operating system's own "time is up" for a background task reaches the core
-     * (capability `sync-status`, "Time is up is learned only from the operating system"). The core answers it by
-     * stopping that task's work and releasing the completion it holds for it; the shell forwards it and does
-     * nothing else — above all, it does **not** complete the task itself, because the completion handed to
-     * [onBackgroundTask] is the only path to completing it and a second, racing completion from the shell is what
-     * this member replaces (`docs/architecture.md`, "OS entry points cross an inbound port").
-     *
-     * It returns at once: the operating system expects its expiration handler back promptly, so the stop is
-     * requested and the completion released here, without waiting for the unit in flight — which runs on until the
-     * process is suspended, and starts nothing after it. An identifier the core holds no running task for — one that
-     * already finished, or one it never knew — is logged and otherwise ignored.
-     */
-    @PlatformEntry
-    fun onBackgroundTaskTimeUp(identifier: String)
 
     /**
      * The operating system is handing back finished background transfers for [channel]. [completion] is

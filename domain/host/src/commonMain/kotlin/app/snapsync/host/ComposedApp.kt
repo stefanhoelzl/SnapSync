@@ -45,8 +45,9 @@ class ComposedApp internal constructor(
  * touch of [ComposedApp.host] — the host-assembly subscriptions and the status host, observing every read-model the
  * core exposes.
  *
- * The gallery's handlers are registered here too, on composition, for the same reason: an import finishing in a
- * background wake must find them. Registering starts nothing — the selection observer opens at host assembly.
+ * The gallery's and the wake's handlers are registered here too, on composition, for the same reason: an import
+ * finishing in a background wake, or the wake itself, must find them. Registering starts nothing — the selection
+ * observer opens at host assembly.
  *
  * The push registration is installed HERE, on composition, rather than at host assembly: a process composes its
  * graph on every cold start — the first operating-system entry that reaches the core does it, foreground or
@@ -64,6 +65,9 @@ fun snapSyncHost(scope: CoroutineScope, process: ProcessServices, ports: AppPort
     // The event ports' ONE registration each, on composition — a background wake's import needs its handlers as much
     // as a foreground launch does. `listen` only registers: the selection observer opens at host assembly below.
     ports.gallery.listen(core.galleryHandlers)
+    // On iOS this registration IS the `BGTask` launch handler, which Apple requires before launch finishes — why the
+    // root composes at launch. It starts nothing: the handlers run only when the operating system wakes the app.
+    ports.wake.listen(core.wakeHandlers)
     core.installPushRegistration()
     // The zone is read ONCE, here, from the process's one clock: a formatter whose zone moved under a
     // running screen would render one capture date two ways.

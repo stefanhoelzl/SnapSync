@@ -1,7 +1,8 @@
 package app.snapsync.feature.download
 
 import app.snapsync.model.ConfinedTo
-import app.snapsync.ports.OsCompletions
+import app.snapsync.ports.Completion
+import app.snapsync.services.wake.OsCompletions
 import app.snapsync.ports.DownloadTask
 import app.snapsync.ports.DownloadTransport
 import app.snapsync.ports.DownloadTransportHost
@@ -304,7 +305,7 @@ class QueuedPhotoDownloadJobs(
      * stagings are recorded, and realize the transport so its delegate receives the pending events. Returns the
      * handover, through which the wake's owner learns of the release and forwards the operating system's expiry.
      */
-    fun adoptBackgroundEvents(completion: () -> Unit): OsCompletions.Handover =
+    fun adoptBackgroundEvents(completion: Completion): OsCompletions.Handover =
         log.invocation(entryContext, "download.adoptBackgroundEvents") {
             // Logged (law "Absence is never silent"): without it no diagnostic dump could distinguish a wake whose
             // handler was released from one where it was never called.

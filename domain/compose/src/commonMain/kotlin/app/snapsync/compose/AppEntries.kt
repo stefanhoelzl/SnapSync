@@ -4,7 +4,7 @@ import app.snapsync.ports.EntryContext
 import app.snapsync.feature.upload.TailTrigger
 import app.snapsync.model.pushEventId
 import app.snapsync.model.runCatchingCancellable
-import app.snapsync.ports.OsCompletions
+import app.snapsync.services.wake.OsCompletions
 import app.snapsync.ports.PlatformEntries
 import app.snapsync.ports.invocation
 import kotlinx.coroutines.CoroutineScope
@@ -19,7 +19,7 @@ import kotlinx.coroutines.launch
  * are the honest shape. They are not [AppPorts] fields because the host is built *from* the [AppCore] these entries
  * belong to: the entries can only exist after it.
  *
- * The identifiers are the adapters' own constants, handed in as data so the routing below compares strings and no
+ * The identifier is the upload adapter's own constant, handed in as data so the routing below compares strings and no
  * platform constant enters `:domain`.
  */
 class EntryHooks(
@@ -35,8 +35,6 @@ class EntryHooks(
     val assembleHost: () -> Unit,
     /** Hand a push token to the source the registration collector observes. */
     val deliverPushToken: (hex: String) -> Unit,
-    /** The background task that is the app-driven uploader's heartbeat — the only background task there is. */
-    val uploadHeartbeatTaskId: String,
     /** The transfer channel whose handbacks belong to the app's uploader; every other channel is the downloads'. */
     val uploadTransferChannel: String,
 )
@@ -61,20 +59,19 @@ fun platformEntries(core: () -> AppCore, hooks: EntryHooks): PlatformEntries = A
  * | silent push | union read, plan, enqueue (`SilentPush`) | after that own work | the tail, active event only |
  * | download-session relaunch | staging the delivered files | at the drain report | the tail |
  * | upload-session relaunch | recording the terminals | at the drain report | the tail |
- * | heartbeat `BGTask` | none — the task is a grant of time | after its tail | — |
  * | foreground | the `Foreground` flow | (no handler) | the tail |
  *
  * The prelude is the membership re-read and the attestation refresh. A push and a transfer wake take the process's
- * **background time** no later than their handler is handed over ([Wake]), and hold it across the own work, the
+ * **background time** no later than their handler is handed over ([WakeHold]), and hold it across the own work, the
  * handler's release and the tail; its expiry — Apple's only "time is up" for those wakes — stops the tail, releases
- * the handler and ends the hold at once. A `BGTask` holds its own completion until its tail ends; its forwarded
- * expiry ([onBackgroundTaskTimeUp]) stops the tail and completes the task at once. No clock of the app's own bounds
- * anything here.
+ * the handler and ends the hold at once. The heartbeat is not an entry here: it arrives through the `Wake` event port,
+ * whose handler ([wakeHandlers]) holds its completion until its tail ends. No clock of the app's own bounds anything
+ * here.
  *
  * **The tail is requested here, after a flow returns — never from inside one** (`docs/architecture.md`, "A
  * trigger flow never outlives its own run"). Nothing here decides upload behaviour: the tail's units decide at the
- * upload cycle's own entry gate. The two comparisons below route by the identifier the operating system delivered;
- * they choose a handler, not whether work happens. `PlatformEntriesContract` specifies all of it, bound over the
+ * upload cycle's own entry gate. The one comparison below routes by the identifier the operating system delivered;
+ * it chooses a handler, not whether work happens. `PlatformEntriesContract` specifies all of it, bound over the
  * world on the JVM and in the simulator.
  */
 internal class AppEntries(
@@ -90,10 +87,7 @@ internal class AppEntries(
     private val scope: CoroutineScope get() = app.scope
     private val log get() = ports.log
 
-    /** The operating system's expiry signal for each background task this core is running (see [TaskExpiries]). */
-    private val taskExpiries = TaskExpiries()
-
-    private fun wake(label: String) = Wake(label, ports.backgroundTime, app.tail.runner, log)
+    private fun wake(label: String) = app.tail.hold(label)
 
     override fun onForeground() = log.invocation(entry, "onForeground", params = app.foregroundParams()) {
         hooks.markActive()
@@ -137,7 +131,7 @@ internal class AppEntries(
             // built by the composed graph, and a cold background start installs no permission-grant subscription.
             val wake = wake("onSilentPush")
             val completions = OsCompletions("onSilentPush", log = log)
-            wake.guard(completions.adopt(completion))
+            wake.guard(completions.adopt(completionOf(completion)))
             scope.launch {
                 completions.releaseAfter {
                     log.invocation(
@@ -156,28 +150,6 @@ internal class AppEntries(
             Unit
         }
 
-    override fun onBackgroundTask(identifier: String, completion: () -> Unit) =
-        log.invocation(entry, "onBackgroundTask", params = "identifier=$identifier") {
-            when (identifier) {
-                hooks.uploadHeartbeatTaskId -> runHeartbeat(identifier, completion)
-                // Registered in the shell but unknown here: complete it, and say so — a task held forever costs the
-                // app its future background time.
-                else -> {
-                    log.w { "unknown background task '$identifier' — completed without work" }
-                    completion()
-                }
-            }
-        }
-
-    override fun onBackgroundTaskTimeUp(identifier: String) =
-        log.invocation(entry, "onBackgroundTaskTimeUp", params = "identifier=$identifier") {
-            // Answered here and nowhere else: the shell forwards the OS's expiration handler and completes nothing
-            // (capability `sync-status`, "Background tasks are forwarded by the identifier the OS delivered").
-            if (!taskExpiries.expire(identifier)) {
-                log.w { "time is up for background task '$identifier', which the core is not running — ignored" }
-            }
-        }
-
     override fun onBackgroundTransfers(channel: String, completion: () -> Unit) {
         log.invocation(entry, "onBackgroundTransfers", params = "channel=$channel") {
             // The background time first: no later than the handover, so the wait for the session's drain report is
@@ -185,10 +157,11 @@ internal class AppEntries(
             val wake = wake("onBackgroundTransfers($channel)")
             // Routed synchronously: the handler must be adopted before its session can report its events drained.
             val (handover, trigger) = when (channel) {
-                hooks.uploadTransferChannel -> app.tail.uploadCompletions.adopt(completion).also {
+                hooks.uploadTransferChannel -> app.tail.uploadCompletions.adopt(completionOf(completion)).also {
                     ports.appDrivenUpload().reattach()
                 } to TailTrigger.UPLOAD_SESSION_EVENTS
-                else -> app.downloadJobs.adoptBackgroundEvents(completion) to TailTrigger.DOWNLOAD_SESSION_EVENTS
+                else -> app.downloadJobs.adoptBackgroundEvents(completionOf(completion)) to
+                    TailTrigger.DOWNLOAD_SESSION_EVENTS
             }
             wake.guard(handover)
             scope.launch {
@@ -201,39 +174,6 @@ internal class AppEntries(
                 // which releases the handler. The rest is the tail's.
                 handover.awaitRelease()
                 wake.thenTail(trigger)
-            }
-        }
-    }
-
-    /**
-     * The upload heartbeat `BGTask`: it has no own work beyond the prelude — the task is a grant of time, and its work
-     * is the tail — so its completion is held until that tail ends, or released at once on its forwarded expiry,
-     * which also stops the tail. The heartbeat re-arm is the tail runner's.
-     */
-    private fun runHeartbeat(identifier: String, completion: () -> Unit) {
-        val completions = OsCompletions("runUploadHeartbeat", log = log)
-        val handover = completions.adopt(completion)
-        // Opened before the launch, so an expiry the OS fires before the coroutine first runs is not lost.
-        val open = taskExpiries.open(identifier) {
-            val reason = "BGTask '$identifier' expirationHandler (runUploadHeartbeat)"
-            app.tail.runner.stop(reason)
-            handover.releaseOnExpiry(reason)
-        }
-        scope.launch {
-            try {
-                completions.releaseAfter {
-                    log.invocation(entry, "runUploadHeartbeat") {
-                        app.prelude()
-                        // A task whose time is already up requests no tail: a stop while none runs is a no-op. A tail
-                        // that fails is contained — the task is still completed, and the next wake retries.
-                        if (!handover.isReleased) {
-                            runCatchingCancellable { app.tail.runner.request(TailTrigger.HEARTBEAT) }
-                                .onFailure { log.w(it) { "runUploadHeartbeat: its tail failed" } }
-                        }
-                    }
-                }
-            } finally {
-                taskExpiries.close(identifier, open)
             }
         }
     }
@@ -254,7 +194,7 @@ private fun AppCore.foregroundParams(): String =
  * pre-first-unlock seed never notify this process's StateFlow), then renew a stale attestation token. Each is
  * best-effort — a failed prelude must not rob the wake of its tail, whose units read the membership themselves.
  */
-private suspend fun AppCore.prelude() {
+internal suspend fun AppCore.prelude() {
     runCatchingCancellable { ports.configRefresh.refresh() }
         .onFailure { ports.log.w(it) { "prelude: the membership re-read failed" } }
     runCatchingCancellable { attestation.refresh() }

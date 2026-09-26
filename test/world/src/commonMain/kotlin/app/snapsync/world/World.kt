@@ -302,8 +302,14 @@ class World(
     var registerPushCount: Int = 0
         private set
 
+    /**
+     * The operating system's scheduled wakes — the queue the heartbeat lands in, durable across [relaunch]. The
+     * operator delivers a wake through [WorldWake.fire]; nothing fires one on its own.
+     */
+    val wake: WorldWake = WorldWake()
+
     /** How many times the tail runner re-armed the app uploader's heartbeat — counted, never run. */
-    val heartbeatsScheduled: Int get() = operatorEngine.heartbeat.scheduled
+    val heartbeatsScheduled: Int get() = wake.heartbeatsScheduled
 
     /**
      * The operating system's table of outstanding background-time holds (`docs/architecture.md`, "Background
@@ -619,6 +625,7 @@ class World(
         configRefresh = {},
         // The operator's table of holds: a wake's hold is visible there until it ends, and the operator expires it.
         backgroundTime = inMemoryBackgroundTime(backgroundTimeHolds),
+        wake = wake,
         // The world composes an OS without the OS-driven mechanism, and no rig switch: both stated.
         extensionRegistration = { null },
         rigSwitches = RigSwitches(uploaderPin = { null }, inviteLinkHints = inviteLinkHints),

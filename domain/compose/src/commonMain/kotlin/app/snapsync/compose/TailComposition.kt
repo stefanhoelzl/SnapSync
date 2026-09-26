@@ -11,8 +11,8 @@ import app.snapsync.feature.upload.TailRunner
 import app.snapsync.feature.upload.TailTrigger
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.runCatchingCancellable
-import app.snapsync.ports.BackgroundScheduler
-import app.snapsync.ports.OsCompletions
+import app.snapsync.services.wake.Heartbeat
+import app.snapsync.services.wake.OsCompletions
 import app.snapsync.ports.invocation
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
@@ -49,11 +49,8 @@ class AppTail internal constructor(
     /** The app uploader, resolved at first use — it owns a process-lifetime background session on a device. */
     private val mechanism: AppUploadMechanism get() = ports.appDrivenUpload()
 
-    /** The heartbeat the runner re-arms, forwarded to the mechanism's own at every call. */
-    private val heartbeat = object : BackgroundScheduler {
-        override fun scheduleNext() = mechanism.heartbeat.scheduleNext()
-        override fun cancel() = mechanism.heartbeat.cancel()
-    }
+    /** The heartbeat the runner re-arms and a disarm cancels — the process's, over the `Wake` port. */
+    private val heartbeat = Heartbeat(ports.wake, ports.log)
 
     /** The one tail runner of this process. */
     val runner: TailRunner by lazy {
@@ -75,7 +72,8 @@ class AppTail internal constructor(
             mayCreate = mayCreate,
             foregrounded = { foreground.load() },
             refreshStatus = refreshCounts,
-            scheduler = heartbeat,
+            heartbeat = heartbeat,
+            importsRemain = { ports.downloadStore.importableAssets().isNotEmpty() },
             leftover = { "staged downloads not yet imported: ${ports.downloadStore.importableAssets().size}" },
             log = ports.log,
             entryContext = entryContext,
@@ -90,14 +88,17 @@ class AppTail internal constructor(
 
     /**
      * Request [trigger]'s tail without awaiting it, for a caller that holds no OS handler and must not wait on the
-     * tail: a transition, a completion, a staging. A failed tail is logged here — nobody else awaits it.
+     * tail: a transition, a completion, a staging. It holds the process's background time from the request to the
+     * tail's end ([WakeHold]), taken here, before the launch, so no instant between the two holds nothing. A failed
+     * tail is logged by the hold — nobody else awaits it.
      */
     fun requestDetached(trigger: TailTrigger) {
-        scope.launch {
-            runCatchingCancellable { runner.request(trigger) }
-                .onFailure { ports.log.w(it) { "the tail requested by $trigger failed" } }
-        }
+        val hold = hold("tail($trigger)")
+        scope.launch { hold.thenTail(trigger) }
     }
+
+    /** A hold on the process's background time for [label], whose expiry stops this tail. */
+    internal fun hold(label: String): WakeHold = WakeHold(label, ports.backgroundTime, runner, ports.log)
 
     /**
      * The seam the membership transitions drive (capability `background-upload`): an arm requests the tail — detached,
@@ -106,7 +107,7 @@ class AppTail internal constructor(
      */
     val appEngine: AppUploadEngine = object : AppUploadEngine {
         override suspend fun arm() = requestDetached(TailTrigger.ARM)
-        override suspend fun disarm() = mechanism.heartbeat.cancel()
+        override suspend fun disarm() = heartbeat.cancel()
         override suspend fun cancelTransfers() = mechanism.cancelTransfers()
     }
 
@@ -134,9 +135,10 @@ class AppTail internal constructor(
      * snapshot there — then the tail (① import, ② top-up from the snapshot; never ③ under a partial grant).
      */
     internal suspend fun onSelectionChanged() = ports.log.invocation(entryContext, "onSelectionChanged") {
+        // Held from before its own work to its tail's end, like any in-process request (see [requestDetached]).
+        val hold = hold("onSelectionChanged")
         runCatchingCancellable { mechanism.walkAndPublish { false } }
             .onFailure { ports.log.w(it) { "the selection change's discovery failed; its tail still runs" } }
-        runner.request(TailTrigger.SELECTION_CHANGE)
-        Unit
+        hold.thenTail(TailTrigger.SELECTION_CHANGE)
     }
 }

@@ -1,20 +1,19 @@
 import SwiftUI
 import SnapSyncKit
 import UIKit
-import BackgroundTasks
 
 // The app delegate is a PURE TRANSCRIBER (`docs/architecture.md`, "Shells are wiring only";
 // migration step 12): every OS callback forwards its raw, ObjC-visible input WHOLE to Kotlin, which
 // holds every decision in tested code. No `if`/`guard`/`switch` lives in this file — the pin table in
 // SwiftShellGuardTest holds that at zero. The hooks:
-//   1. `didFinishLaunchingWithOptions` — registers the one BGTask handler (the upload heartbeat),
-//      forwarding the task and its expiration handler by the identifier the OS delivered (Apple requires
-//      registration before launch finishes; the identifier MUST be in Info.plist
-//      BGTaskSchedulerPermittedIdentifiers), and calls SnapSyncRoot.onLaunch, which asks for an APNs
-//      token (at every cold start, and again at every foreground entry from its didBecomeActive observer —
-//      capability `receiving-photos`) and installs the Kotlin-side NSNotificationCenter lifecycle observers
-//      (didBecomeActive/willResignActive — the scenePhase `if` that used to live in the App body is
-//      a decision, so it moved to Kotlin with the OS notifications as its input).
+//   1. `didFinishLaunchingWithOptions` — calls SnapSyncRoot.onLaunch, ONE statement that forces the root:
+//      it composes the graph, whose wake adapter registers the upload heartbeat's BGTask launch handler
+//      (Apple requires registration before launch finishes; the identifier MUST be in Info.plist
+//      BGTaskSchedulerPermittedIdentifiers — the registration moved to Kotlin's `IosWake` in phase 11f),
+//      asks for an APNs token (at every cold start, and again at every foreground entry from its
+//      didBecomeActive observer — capability `receiving-photos`) and installs the Kotlin-side
+//      NSNotificationCenter lifecycle observers (didBecomeActive/willResignActive — the scenePhase `if` that
+//      used to live in the App body is a decision, so it moved to Kotlin with the OS notifications as its input).
 //   2. `handleEventsForBackgroundURLSession` — the OS relaunches the app to finish background photo
 //      downloads; SnapSyncRoot adopts the session, stages, and releases the handler — the imports follow
 //      in the core's tail, under the app's own background time.
@@ -22,28 +21,15 @@ import BackgroundTasks
 //      decision); an incoming silent push forwards its `userInfo` dictionary WHOLE — the `eventId`
 //      extraction is Kotlin's tested payload codec (capability `receiving-photos`).
 final class AppDelegate: NSObject, UIApplicationDelegate {
-    // The app-driven upload heartbeat — the one background task: the grant of time whose work is the core's tail
-    // (import staged downloads, top up the background URLSession queue, walk for new captures). The registration
-    // forwards the OS's own `task.identifier`, never its literal: Kotlin routes it, so a copied block cannot hand one
-    // task to another's handler. The OS's "time is up" is FORWARDED, never answered here: Kotlin holds the task's
-    // completion and is the only one that completes it — at once, stopping the tail as it does (capability
-    // `sync-status`).
+    // The upload heartbeat's BGTask launch handler is registered by Kotlin (`IosWake.listen`), which `onLaunch`
+    // reaches by composing the graph — inside this callback, as Apple requires. Kotlin also observes the
+    // foreground/background lifecycle itself (NSNotificationCenter); this call installs those observers before the
+    // scene ever becomes active, and asks for the APNs token (delivered async to the callbacks below; silent pushes
+    // need no user prompt).
     func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
-        BGTaskScheduler.shared.register(
-            forTaskWithIdentifier: "app.snapsync.upload.heartbeat",
-            using: nil
-        ) { task in
-            task.expirationHandler = { SnapSyncRoot.shared.onBackgroundTaskTimeUp(identifier: task.identifier) }
-            SnapSyncRoot.shared.onBackgroundTask(identifier: task.identifier) {
-                task.setTaskCompleted(success: true)
-            }
-        }
-        // Kotlin observes the foreground/background lifecycle itself (NSNotificationCenter); this
-        // call installs those observers before the scene ever becomes active, and asks for the APNs token
-        // (delivered async to the callbacks below; silent pushes need no user prompt).
         SnapSyncRoot.shared.onLaunch()
         return true
     }

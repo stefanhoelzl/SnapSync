@@ -241,6 +241,9 @@ class CompositionSeamTest {
         "TailRunner.leftover" to
             "a one-line summary of what a stop left, read from the core's own DownloadStore PORT (the staged imports " +
             "not yet made) for the operating-system expiry line — a read the runner may not name (feature-blindness)",
+        "TailRunner.importsRemain" to
+            "whether staged downloads still wait to be imported, read from the core's own DownloadStore PORT for the " +
+            "heartbeat's re-arm — a read the runner may not name (feature-blindness)",
         "TailSignal.stop" to
             "the running tail's own stop flag (set by TailRunner.stop, Apple's expiry forwarded) — built only by the " +
             "runner itself (internal constructor), an in-memory read",
@@ -249,9 +252,9 @@ class CompositionSeamTest {
             "deferred construction: a cold background wake builds no more of the graph than it reaches",
         "AppTail.mayCreate" to "this core's own app admission (AppCore.appMayCreate), read fresh at each completion",
         "AppTail.refreshCounts" to "this core's own ledger-counts refresh (AppCore.ledgerCounts.refresh)",
-        "Open.onExpiry" to
-            "a running background task's expiry action, built by the inbound port's implementation: it stops this " +
-            "core's tail and releases the OsCompletions handover it holds — core machinery answering the OS's signal",
+        "BareCompletion.handler" to
+            "the operating system's own completion block an inbound-port entry was handed, wrapped as a " +
+                "Completion so OsCompletions can hold it — the OS's handler, released once, never a core seam",
         "SelectionScopedDiscovery.selectionScope" to "UploadPorts.selectionScope, forwarded — a pure core read",
         "JoinedMembership.policy" to "the membership's ONE selection-policy derivation, built by the entry gate",
         "UploadCycle.readGate" to "uploadCore's own entry-gate translation over the ports (readGate in UploadCore.kt)",

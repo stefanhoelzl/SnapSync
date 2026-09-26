@@ -1,6 +1,6 @@
 @file:OptIn(ExperimentalForeignApi::class)
 
-package app.snapsync.ios.urlsession
+package app.snapsync.background
 
 import app.snapsync.objc.checkedObjC
 import app.snapsync.objc.objcBoundary
@@ -8,12 +8,13 @@ import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.suspendCancellableCoroutine
 import platform.BackgroundTasks.BGProcessingTaskRequest
+import platform.BackgroundTasks.BGTask
 import platform.BackgroundTasks.BGTaskRequest
 import platform.BackgroundTasks.BGTaskScheduler
 import kotlin.coroutines.resume
 
 /**
- * **The operating-system boundary of [IosBackgroundScheduler]**: the `BGTaskScheduler` calls it makes, and the one
+ * **The operating-system boundary of [IosWake]**: the `BGTaskScheduler` calls it makes, and the one
  * read a clause observes the system's queue through (`docs/architecture.md`, "Hosts CI cannot reach are
  * recorded at the operating-system boundary and replayed on every build").
  *
@@ -24,6 +25,13 @@ import kotlin.coroutines.resume
  * `internal`: the recording and replaying implementations live in this module's rig-gated source set and its tests.
  */
 internal interface BackgroundTaskApi {
+    /**
+     * Register [launch] as the handler the system runs when it launches the task [identifier]; `false` when the system
+     * refused. Apple requires it before the app finishes launching, once per identifier per process — which is why no
+     * contract clause makes this call (a second registration raises), and a recording holds none.
+     */
+    fun register(identifier: String, launch: (BGTask) -> Unit): Boolean
+
     /** Submit [request]: success when the system accepted it, otherwise its refusal as an `ObjCFailure`. */
     fun submit(request: BGProcessingTaskRequest): Result<Unit>
 
@@ -36,6 +44,13 @@ internal interface BackgroundTaskApi {
 /** The real `BGTaskScheduler`. The only implementation a production build contains. */
 internal object SystemBackgroundTaskApi : BackgroundTaskApi {
     private val log = Logger.withTag("BackgroundTaskApi")
+
+    override fun register(identifier: String, launch: (BGTask) -> Unit): Boolean =
+        BGTaskScheduler.sharedScheduler.registerForTaskWithIdentifier(identifier, usingQueue = null) { task ->
+            objcBoundary(log, "bgTask.launch($identifier)") {
+                if (task != null) launch(task) else log.e { "the system launched $identifier with no task" }
+            }
+        }
 
     override fun submit(request: BGProcessingTaskRequest): Result<Unit> =
         checkedObjC("submitTaskRequest(${request.identifier})") { BGTaskScheduler.sharedScheduler.submitTaskRequest(request, it) }

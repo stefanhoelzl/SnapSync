@@ -1,16 +1,16 @@
 package app.snapsync.feature.upload
 
-import app.snapsync.ports.BackgroundScheduler
 import app.snapsync.model.CycleResult
 
 /**
  * The app's uploader as the shell supplies it: the transport-bound half of the app-driven tier (capability
- * `background-upload`) — its two tail units, its heartbeat, and its session.
+ * `background-upload`) — its two tail units and its session.
  *
- * It holds **no trigger and no OS completion handler**. Which wake runs what, when the heartbeat is re-armed and how a
- * wake's handler is held are the core's — the tail runner and the inbound port's implementation (decision record
- * `changes/own-work-per-wake`, D1 and D5) — so a mechanism cannot fail to release a handler, and cannot run a unit the
- * tail did not ask for. Both units pass through the shared upload cycle's entry gate, which decides whether this
+ * It holds **no trigger, no OS completion handler and no heartbeat**. Which wake runs what, when the heartbeat — the
+ * core's, over the `Wake` port — is re-armed and how a wake's handler is held are the core's: the tail runner and the
+ * inbound port's implementation (decision record `changes/own-work-per-wake`, D1 and D5) — so a mechanism cannot
+ * fail to release a handler, and cannot run a unit the tail did not ask for. Both units pass through the shared upload
+ * cycle's entry gate, which decides whether this
  * process may create (capability `background-upload`), so a unit a declining membership reaches still returns.
  */
 interface AppUploadMechanism {
@@ -23,9 +23,6 @@ interface AppUploadMechanism {
      * selection snapshot.
      */
     suspend fun walkAndPublish(stopRequested: () -> Boolean): WalkOutcome
-
-    /** The `BGProcessingTask` heartbeat: the tail runner re-arms it, and a disarm cancels it. */
-    val heartbeat: BackgroundScheduler
 
     /** Cancel every in-flight transfer and delete its staged file (a leave). Touches no ledger row. */
     suspend fun cancelTransfers()

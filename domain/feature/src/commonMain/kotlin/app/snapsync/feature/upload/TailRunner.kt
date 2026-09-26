@@ -3,10 +3,10 @@
 package app.snapsync.feature.upload
 
 import app.snapsync.model.runCatchingCancellable
-import app.snapsync.ports.BackgroundScheduler
 import app.snapsync.model.CycleResult
 import app.snapsync.ports.EntryContext
 import app.snapsync.ports.invocation
+import app.snapsync.services.wake.Heartbeat
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Deferred
@@ -184,7 +184,9 @@ data class TailOutcome(val result: CycleResult, val cut: Boolean)
  *
  * **Rules carried over from the pump.** `PROCESSING` never busy-loops: a truncated ② is not re-run for that reason
  * alone (a completion or the heartbeat re-requests it); the ③ → ② loop runs only because ③ recorded rows. `SKIPPED`
- * never re-arms, at any trigger. The re-arm decision is exhaustive over [CycleResult] and made outside [mutex]. A
+ * never re-arms for the upload units' sake, at any trigger — only staged imports still waiting ([importsRemain]) re-arm
+ * a trigger whose upload outcome would not. The re-arm decision is exhaustive over [CycleResult] and made outside
+ * [mutex]. A
  * completion is requested only while [mayCreate] (it is always recorded by the transport first). A failed tail fails
  * every waiter and consumes its pending pass, so no phantom pass lands on the next request. Ledger counts refresh
  * after each unit only while [foregrounded] (design D11), best-effort.
@@ -208,7 +210,16 @@ class TailRunner(
     /** Whether the app is foregrounded now: the only state in which a unit refreshes the counts. */
     private val foregrounded: () -> Boolean,
     private val refreshStatus: suspend () -> Unit,
-    private val scheduler: BackgroundScheduler,
+    /** The heartbeat the re-arm rule arms (capability `background-upload`). */
+    private val heartbeat: Heartbeat,
+    /**
+     * Whether staged downloads are still waiting to be imported — asked after a tail whose upload units would not
+     * re-arm on their own. Leftover imports count as work remaining, so they keep the heartbeat armed until ① has
+     * drained them (declared in phase 11f): without it a membership that only receives never arms one, and a photo
+     * whose save iOS cut short waited for the next push or the next opening (capability `receiving-photos`, "Photos
+     * arrive without the app being opened"). A read of the core's own store; a failed read re-arms nothing.
+     */
+    private val importsRemain: suspend () -> Boolean,
     /**
      * What a stop left behind, beyond the units it kept from running — for the operating-system expiry line
      * (capability `privacy-security`, "Operating-system expiry is logged"): at least the staged downloads not yet
@@ -241,7 +252,7 @@ class TailRunner(
                 return@invocation null
             }
             val outcome = admit(trigger)
-            if (shouldSchedule(outcome, trigger.rearm)) scheduler.scheduleNext()
+            if (shouldSchedule(outcome, trigger.rearm) || importsLeft(trigger.rearm)) heartbeat.arm()
             outcome
         }
 
@@ -381,13 +392,26 @@ class TailRunner(
 
     /**
      * The re-arm decision for [outcome] under [rearm] — exhaustive, so a new [CycleResult] variant is a compile error
-     * here rather than a policy nobody chose. `SKIPPED` schedules nothing at any trigger: the membership contributes
-     * nothing, and the transition that changes that arrives as [TailTrigger.ARM].
+     * here rather than a policy nobody chose. `SKIPPED` schedules nothing for the uploads at any trigger: the
+     * membership contributes nothing, and the transition that changes that arrives as [TailTrigger.ARM]. Leftover staged imports
+     * are the other half of "work remains" ([importsLeft]).
      */
     private fun shouldSchedule(outcome: TailOutcome, rearm: Rearm): Boolean = when (outcome.result) {
         CycleResult.SKIPPED -> false
         CycleResult.PROCESSING, is CycleResult.Paused -> rearm != Rearm.NEVER
         CycleResult.COMPLETED, CycleResult.FAILED -> rearm == Rearm.ALWAYS
+    }
+
+    /**
+     * Whether leftover staged imports re-arm a trigger its upload outcome did not: a trigger that never re-arms still
+     * does not, and one that does counts them as work remaining — decided outside [mutex], like the rest of the re-arm.
+     */
+    private suspend fun importsLeft(rearm: Rearm): Boolean {
+        if (rearm == Rearm.NEVER) return false
+        return runCatchingCancellable { importsRemain() }
+            .onFailure { log.w(it) { "whether staged imports remain is unreadable — no re-arm for them" } }
+            .getOrDefault(false)
+            .also { left -> if (left) log.i { "staged downloads remain to import — the heartbeat is re-armed" } }
     }
 
     /** One tail: its first scope, the pass joiners requested, its stop, and what its waiters await. */
