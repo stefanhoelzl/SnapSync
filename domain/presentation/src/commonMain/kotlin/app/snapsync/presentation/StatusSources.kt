@@ -12,7 +12,7 @@ import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import app.snapsync.feature.version.readmodel.VersionRefusal
+import app.snapsync.model.VersionRefusal
 
 /**
  * Every read-model [StatusContainerHost] reduces over, in one bundle.
@@ -79,7 +79,7 @@ class StatusSources(
     val pending: MutablePendingJoinSource = MutablePendingJoinSource(),
     /**
      * Whether the backend is refusing this build as too old, and the version it named (capability
-     * `app-update-required`) — `AppVersionGate.refusal`, written by the shared HTTP client's interceptor.
+     * `app-update-required`) — `AppVersionGate.refusal`, written by the core's authenticated backend on every backend answer.
      *
      * An OBSERVATION, like every field here, so it does not cross `flow/` (`docs/architecture.md`,
      * "Commands cross one door": reads do not). Defaults to never-refused, so a host with no backend —

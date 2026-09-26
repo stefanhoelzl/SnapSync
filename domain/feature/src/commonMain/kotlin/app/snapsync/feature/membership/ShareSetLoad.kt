@@ -3,8 +3,8 @@ package app.snapsync.feature.membership
 import app.snapsync.ports.DeviceIdentity
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
-import app.snapsync.ports.DeviceFilesSource
-import app.snapsync.ports.DeviceListingShapeException
+import app.snapsync.services.backend.DeviceFilesSource
+import app.snapsync.services.backend.DeviceListingShapeException
 import app.snapsync.ports.LedgerStore
 import co.touchlab.kermit.Logger
 import kotlin.coroutines.cancellation.CancellationException

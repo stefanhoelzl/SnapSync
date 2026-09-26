@@ -34,6 +34,8 @@ kotlin {
         commonMain.dependencies {
             implementation(project(":domain:model"))
             implementation(project(":domain:ports"))
+            // The shared capabilities features stand on: the backend services, attestation and the version gate.
+            implementation(project(":domain:services"))
             // The per-zone library allowlist (`docs/architecture.md`, "Core purity is closed by
             // default"): coroutines (StateFlow/Flow port shapes), serialization + datetime (the
             // config/manifest vocabulary and cutoff codecs), kermit (the engine's diagnostics).

@@ -28,7 +28,7 @@ import app.snapsync.ports.ConfigReader
 import app.snapsync.ports.DiagnosticsReporter
 import app.snapsync.ports.DeviceIdentityAbsent
 import app.snapsync.ports.DeviceManifestStore
-import app.snapsync.ports.ManifestPublisher
+import app.snapsync.services.backend.ManifestPublisher
 import app.snapsync.ports.SecureStoreUnavailable
 import app.snapsync.ports.LedgerStore
 import app.snapsync.ports.SuppressionSource
@@ -106,7 +106,10 @@ class UploadPorts(
      */
     val selectionScope: () -> SelectionScope,
     val manifestStore: DeviceManifestStore,
-    /** The device-manifest publisher — production passes `:adapter:generic:app`'s `HttpManifestPublisher`. */
+    /**
+     * The device-manifest publisher — a backend service over this process's authenticated backend: the app passes
+     * its core's (`AppCore.backend`), the extension the one [extensionBackend] composes.
+     */
     val manifestPublisher: ManifestPublisher,
     /** Echo-suppression (capability `receiving-photos`): required, no default (`background-upload`). */
     val suppression: SuppressionSource,

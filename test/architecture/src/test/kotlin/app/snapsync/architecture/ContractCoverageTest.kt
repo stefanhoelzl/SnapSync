@@ -48,13 +48,15 @@ class ContractCoverageTest {
         val grant: String?,
     )
 
+    // A contract's clauses are read from EVERY source, not only the file declaring it: a contract split for size
+    // declares its clauses in part files (`ClauseList<State, …>.someClauses()`), and a scan of the declaring file alone
+    // would see none of them. The state enum names the contract, so a clause belongs to the contract of its enum.
     private val contracts: List<ContractDecl> = sources.flatMap { src ->
         CONTRACT.findAll(src.text).map { m ->
             val enum = m.groupValues[1]
-            val clauses = CLAUSE.findAll(src.text)
+            val clauses = sources.flatMap { any -> CLAUSE.findAll(any.text).toList() }
                 .filter { it.groupValues[2] == enum }
                 .map { it.groupValues[1].replace("\\\"", "\"") to it.groupValues[3] }
-                .toList()
             ContractDecl(m.groupValues[2], enum, clauses, src.path)
         }.toList()
     }

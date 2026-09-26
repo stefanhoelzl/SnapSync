@@ -102,8 +102,8 @@ private fun statusSourcesOf(
     creation = core.creationStatus,
     rename = core.renameStatus,
     download = core.downloadStatusSource,
-    attested = core.attestation.attested,
+    attested = core.attested,
     pending = pending,
-    versionRefusal = core.versionGate.refusal,
+    versionRefusal = core.versionRefusal,
     appStoreUrl = ports.appStoreUrl,
 )

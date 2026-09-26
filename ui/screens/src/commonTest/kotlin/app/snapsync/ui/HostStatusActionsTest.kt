@@ -58,7 +58,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.datetime.TimeZone
-import app.snapsync.feature.version.readmodel.VersionRefusal
+import app.snapsync.model.VersionRefusal
 
 /** The event the joined tests are members of. */
 private const val JOINED_ID = "11111111-1111-4111-8111-111111111111"

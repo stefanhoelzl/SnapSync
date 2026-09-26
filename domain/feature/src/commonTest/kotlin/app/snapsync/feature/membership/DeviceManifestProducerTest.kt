@@ -16,9 +16,9 @@ import app.snapsync.model.selectionRulesFor
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.projectDeviceManifest
 import app.snapsync.ports.DeviceManifestStore
-import app.snapsync.ports.EventJoin
+import app.snapsync.services.backend.EventJoin
 import app.snapsync.model.JoinResult
-import app.snapsync.ports.ManifestPublisher
+import app.snapsync.services.backend.ManifestPublisher
 
 import app.snapsync.model.Resource
 import kotlinx.coroutines.test.runTest
@@ -77,8 +77,8 @@ class DeviceManifestProducerTest {
 
     private class FakeUploader(var ok: Boolean = true) : ManifestPublisher {
         val puts = mutableListOf<Triple<String, String, String>>()
-        override suspend fun publish(eventId: String, deviceId: String, json: String): Boolean {
-            puts += Triple(eventId, deviceId, json)
+        override suspend fun publish(eventId: String, deviceId: String, manifest: DeviceManifest): Boolean {
+            puts += Triple(eventId, deviceId, manifest.encodeToJson())
             return ok
         }
     }

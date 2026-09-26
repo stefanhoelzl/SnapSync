@@ -6,7 +6,7 @@ import app.snapsync.model.encodeToJson
 import app.snapsync.model.projectDeviceManifest
 import app.snapsync.model.withVersion
 import app.snapsync.ports.DeviceManifestStore
-import app.snapsync.ports.ManifestPublisher
+import app.snapsync.services.backend.ManifestPublisher
 
 /**
  * Writes the per-event device manifest each cycle (capability `photo-sharing`). The **sole** writer of
@@ -65,7 +65,8 @@ class DeviceManifestProducer(
         rows: List<LedgerEntry>,
         manifestVersion: Long,
     ): Boolean {
-        val json = projectDeviceManifest(deviceId, rows, policy).withVersion(manifestVersion).encodeToJson()
+        val manifest = projectDeviceManifest(deviceId, rows, policy).withVersion(manifestVersion)
+        val json = manifest.encodeToJson()
         // Skip-if-unchanged, keyed by EVENT. The projected JSON is event-independent (`{deviceId,
         // assets, version}`), so without the event id in the marker a **switch** to a new event would compare
         // equal to the prior event's upload and skip writing the new event's (still-absent) device.json.
@@ -81,7 +82,7 @@ class DeviceManifestProducer(
         // a snapshot at least as new is already there, and at worst the next cycle republishes once.
         val marker = "$eventId $json"
         if (marker == store.loadLastUploaded()) return false
-        if (!publisher.publish(eventId, deviceId, json)) return false
+        if (!publisher.publish(eventId, deviceId, manifest)) return false
         store.saveLastUploaded(marker)
         return true
     }

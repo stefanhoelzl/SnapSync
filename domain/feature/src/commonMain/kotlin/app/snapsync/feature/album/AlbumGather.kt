@@ -9,7 +9,7 @@ import app.snapsync.model.admittedAssetIds
 import app.snapsync.model.AssetRef
 import app.snapsync.ports.ConfigSource
 import app.snapsync.ports.DownloadStore
-import app.snapsync.ports.EventUnionSource
+import app.snapsync.services.backend.EventUnionSource
 import app.snapsync.ports.LedgerStore
 import app.snapsync.ports.LogScope
 import app.snapsync.ports.invocation

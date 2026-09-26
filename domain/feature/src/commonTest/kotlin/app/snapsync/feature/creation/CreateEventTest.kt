@@ -1,7 +1,7 @@
 package app.snapsync.feature.creation
 
 import app.snapsync.model.CreateOutcome
-import app.snapsync.ports.EventCreation
+import app.snapsync.services.backend.EventCreation
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi

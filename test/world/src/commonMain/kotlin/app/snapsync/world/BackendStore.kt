@@ -122,6 +122,18 @@ class BackendStore {
     private val deviceConfigs = mutableMapOf<String, String>()
 
 
+    /**
+     * The attestation challenges this store issued (`GET /attest/challenge`) — a mint verifies against them, as the
+     * real edge verifies its HMAC-signed challenge, so an attestation over a nonce this edge never issued is refused.
+     */
+    private val issuedChallenges = mutableSetOf<String>()
+
+    /** Issue a fresh attestation challenge. */
+    fun issueChallenge(): String = "mini-edge-challenge-${issuedChallenges.size + 1}".also { issuedChallenges += it }
+
+    /** Whether this store issued [challenge]. */
+    fun issued(challenge: String): Boolean = challenge in issuedChallenges
+
     /** Failure lever: when true, the per-device listing and event-union routes fail (mini-edge `502`). */
     var offline: Boolean = false
 
@@ -413,7 +425,7 @@ class BackendStore {
 
     /**
      * The per-device file listing (`GET /files/devices/<id>`) — one entry per stored object. Serves
-     * the join-time load (`HttpDeviceFilesSource`); the world computes it once.
+     * the join-time load (the device-files service over `HttpBackend`); the world computes it once.
      */
     fun deviceListing(deviceId: String): List<FileEntryDto> =
         byteStore[deviceId].orEmpty().map { filename ->

@@ -127,25 +127,25 @@ tasks.named<Test>("jvmTest") {
 //
 // Bounds are whole percentages (`minValue` is an `Int`), so each concedes up to 1% of its scope.
 //
-// THE PACKAGE FLOOR NOW GATES. It was seeded at 0 because four production classes carried no test
-// at all - `HttpAttestClient` (the client behind capability `privacy-security`, 500 instructions),
-// `HttpEnrollment`, `HttpDeviceFilesSource` and `SystemTime`. All four are covered now, so the floor
-// rose 0 -> 75 in one step and the rule guards every package in the module. 75 is `app.snapsync.join`,
-// and what is left there is generated: the decode-only DTOs' synthetic constructors, which no test can
-// reach. (The SQLDelight stores that were the next step moved to `:domain:services`.)
+// THE PACKAGE FLOOR GATES. It was seeded at 0 because four production classes carried no test at all, rose
+// 0 -> 75 once they were covered, and 75 -> 90 when the ten backend clients became one `HttpBackend` (phase 11c,
+// measured 98.1% for `app.snapsync.http`): its optional-field bodies are read as JSON objects, so the generated
+// serializers' unreachable halves that held the old `app.snapsync.join` at 75 are gone. 90 is `app.snapsync.databases`.
 kover {
     reports {
         total {
             verify {
                 onCheck = true
                 rule(":adapter:generic:app aggregate") {
+                    // 89 -> 96 with `HttpBackend` (measured 96.6%).
                     bound {
-                        minValue = 89
+                        minValue = 96
                         coverageUnits = CoverageUnit.INSTRUCTION
                     }
-                    // 56 -> 63 when the SQLDelight stores moved to `:domain:services` (measured 64.0%).
+                    // 56 -> 63 when the SQLDelight stores moved to `:domain:services` (measured 64.0%); 63 -> 78 with
+                    // `HttpBackend` (measured 78.1%).
                     bound {
-                        minValue = 63
+                        minValue = 78
                         coverageUnits = CoverageUnit.BRANCH
                     }
                 }
@@ -154,7 +154,7 @@ kover {
                 rule(":adapter:generic:app package floor") {
                     groupBy = GroupingEntityType.PACKAGE
                     bound {
-                        minValue = 75
+                        minValue = 90
                         coverageUnits = CoverageUnit.INSTRUCTION
                     }
                 }

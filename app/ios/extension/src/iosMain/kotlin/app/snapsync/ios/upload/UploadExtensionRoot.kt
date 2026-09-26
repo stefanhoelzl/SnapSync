@@ -6,7 +6,7 @@ import app.snapsync.compose.UploaderProcess
 import app.snapsync.model.SelectionScope
 import app.snapsync.compose.AlbumLookupFailure
 import app.snapsync.gallery.IosGalleryReader
-import app.snapsync.feature.trust.CachedAttestStore
+import app.snapsync.services.trust.CachedAttestStore
 import app.snapsync.compose.UploadPorts
 import app.snapsync.compose.uploadCore
 import app.snapsync.compose.extensionEntries
@@ -36,7 +36,8 @@ import app.snapsync.ports.PhotoGrantRead
 import app.snapsync.ports.UploadDiscovery
 import app.snapsync.services.gallery.GalleryAlbums
 import app.snapsync.services.gallery.GalleryDiscovery
-import app.snapsync.join.HttpManifestPublisher
+import app.snapsync.compose.extensionBackend
+import app.snapsync.http.HttpBackend
 import app.snapsync.ports.BackgroundTransfer
 import app.snapsync.model.CycleResult
 import app.snapsync.ports.processingResultRawValue
@@ -210,15 +211,15 @@ object UploadExtensionRoot : ExtensionEntries by extensionRootEntries() {
         .onFailure { log.w(it) { "attest token unreadable — proceeding unauthenticated (expect 401)" } }
         .getOrNull()
 
-    private val httpClient by lazy {
-        darwinHttpClient(
-            token = { attestToken() },
-            // The extension cannot attest, so it cannot recover on its own — but it CAN drop a token the
-            // backend has rejected. That is what makes the app re-mint at its next wake: `isStale(null)` is
-            // true, while a rejected-but-unexpired token would have looked perfectly fine forever. Only if the
-            // shared item still holds the token that was refused: the app may have renewed it meanwhile.
-            onRejected = { sent -> runCatchingCancellable { attestStore.clearTokenIf(sent) } },
-        )
+    /**
+     * The extension's backend services (`compose/`'s [extensionBackend]): the same `HttpBackend` the app runs over
+     * its own Darwin client, behind a credential that only DROPS a token the backend rejected. The extension cannot
+     * attest, so it cannot recover on its own — but dropping a rejected token is what makes the app re-mint at its
+     * next wake: `isStale(null)` is true, while a rejected-but-unexpired token would have looked perfectly fine
+     * forever. Only if the shared item still holds the token that was refused: the app may have renewed it meanwhile.
+     */
+    private val backend by lazy {
+        extensionBackend(HttpBackend(darwinHttpClient(), bakedUploadBase(), appMarketingVersion()), attestStore, deviceIdentity)
     }
 
     // The extension's process scope, handed to the shared composition per its contract (`module-
@@ -263,11 +264,11 @@ object UploadExtensionRoot : ExtensionEntries by extensionRootEntries() {
                 ledger = ledgerStore,
                 transfer = platform,
                 discovery = discovery,
-                // The per-event device manifest (capability `photo-sharing`): the extension is its
-                // SOLE writer and PUTs it SYNCHRONOUSLY in-cycle via the generic `HttpManifestPublisher`
-                // (the former extension-local `IosEnrollment` copy is dead — one uploader serves all).
+                // The per-event device manifest (capability `photo-sharing`): the extension PUTs it
+                // SYNCHRONOUSLY in-cycle through its backend's manifest service (the former extension-local
+                // `IosEnrollment` copy is dead — one uploader serves all).
                 manifestStore = DeviceManifestService(files),
-                manifestPublisher = HttpManifestPublisher(httpClient, bakedUploadBase()),
+                manifestPublisher = backend.manifest,
                 suppression = suppression,
                 // Denylisted-album membership (capability `photo-sharing`): this tier's
                 // stated failure posture is unchanged — a thrown lookup fails the cycle (retried on

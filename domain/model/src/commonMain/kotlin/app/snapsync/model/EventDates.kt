@@ -126,7 +126,7 @@ value class DeletesAt(val at: CaptureDate) : Comparable<DeletesAt> {
  * dangerous direction: fed to the floor's `maxOf` clamp such a value reads as EARLIER and loses,
  * silently lowering the capture floor and admitting photos the member excluded. A lexicographic compare
  * that mixes the two shapes is wrong in a way no test using round instants would ever show. Nothing in
- * the client reads it; the type exists to keep it that way. (`HttpEventDirectory` is where the shape is
+ * the client reads it; the type exists to keep it that way. (`BackendEventDirectory` is where the shape is
  * normalized at the wire boundary, for exactly this reason.)
  */
 @Serializable(with = MillisInstantSerializer::class)

@@ -30,8 +30,7 @@ dependencies {
     // `StatusPane` provides the design-system's test-only `LocalDarkThemeOverride` around the phone
     // pane, so the components module is a direct dependency rather than transitive through `:ui:screens`.
     implementation(project(":ui:components"))
-    // The real Ktor clients the world composes (HttpEventCreation, HttpEventDirectory) moved
-    // to the adapter layer at migration step 4.
+    // The production `HttpBackend` the world composes over its mini-edge.
     implementation(project(":adapter:generic:app"))
     // The full-stack harness: the controllable world (BackendStore + mini-edge + levers wrapping
     // `:adapter:generic:fake`) whose `World.core` IS the shared `snapSyncApp` composition.

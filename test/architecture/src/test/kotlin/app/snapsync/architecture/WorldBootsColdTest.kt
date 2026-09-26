@@ -89,7 +89,7 @@ class WorldBootsColdTest {
                 val controller: DownloadController get() = core.downloadController
                 val cycle: UploadCycle by lazy { uploadCore(scope, core.ports) }
                 val eager = core.downloadJobs
-                val client = miniEdgeClient(store).withCredentialInterceptor(onServed = { core.versionGate.served() })
+                val port = WorldBackendPort(miniEdgeClient(store), base, { core.versionRefusal.value.toString() }) {}
                 init {
                     core.downloadController
                 }

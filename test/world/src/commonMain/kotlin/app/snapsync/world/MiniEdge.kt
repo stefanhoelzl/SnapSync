@@ -24,10 +24,8 @@ import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * The Ktor `MockEngine` mini-edge (`docs/testing.md`): a routing `HttpClient` that
- * answers the app-side metadata calls off the [store], so the REAL common-Ktor seams
- * (`HttpDeviceFilesSource`, `HttpEventUnionSource`, `HttpEventCreation`, `HttpEventJoin` and
- * `HttpManifestPublisher`) run unmodified against it. It generalizes the repo's existing
- * single-response `MockEngine` test pattern (`HttpEventUnionSourceTest`) into a **route table**
+ * answers the app-side metadata calls off the [store], so the REAL `HttpBackend` runs unmodified against it. It
+ * generalizes the repo's single-response `MockEngine` test pattern (`HttpBackendTest`) into a **route table**
  * dispatching on method + path:
  *
  * ```
@@ -38,11 +36,14 @@ import kotlinx.serialization.json.jsonPrimitive
  * PATCH /events/<id>                -> 200 { … } ; rename (name only) | 400 | 404 (unregistered)
  * PUT  /events/<id>/devices/<id>    -> 200 ; deposit the manifest into the store
  * DELETE /events/<id>/devices/<id>  -> 200 ; leave (rename-only: mark departed) | 404 (unregistered event)
+ * GET  /attest/challenge            -> 200 { challenge }
+ * POST /attest/token                -> 200 { token } for the in-memory integrity's attestation | 401
+ * POST /attest/renew                -> 401 not attested (the store holds no enrolment)
  * (unmatched)                       -> 404
  * ```
  *
- * The same returned [HttpClient] is injected into all four real seams, mirroring how the extension
- * composition root shares one `darwinHttpClient()`.
+ * The returned [HttpClient] goes under the world's one `HttpBackend`, mirroring how each device root puts one
+ * `darwinHttpClient()` under its own.
  */
 fun miniEdgeClient(store: BackendStore): HttpClient {
     val json = Json { ignoreUnknownKeys = true }
@@ -81,6 +82,7 @@ fun miniEdgeClient(store: BackendStore): HttpClient {
                 ?.let { return@MockEngine it }
 
             if (version == 2) {
+                attestRoute(store, json, method, segments, body)?.let { return@MockEngine it }
                 v2Upload(store, method, segments, request.url.parameters["filename"])?.let { return@MockEngine it }
                 v2Route(store, json, method, segments, body)?.let { return@MockEngine it }
             }

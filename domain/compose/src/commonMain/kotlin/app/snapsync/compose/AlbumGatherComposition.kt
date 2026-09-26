@@ -1,5 +1,6 @@
 package app.snapsync.compose
 
+import app.snapsync.services.backend.EventUnionSource
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.album.AlbumGather
 import app.snapsync.model.EventConfig
@@ -18,6 +19,7 @@ import kotlinx.coroutines.launch
  */
 internal fun albumGather(
     ports: AppPorts,
+    union: EventUnionSource,
     coordinator: AlbumCoordinator,
     scope: CoroutineScope,
     policyFor: suspend (EventConfig) -> SelectionPolicy,
@@ -25,7 +27,7 @@ internal fun albumGather(
     configSource = ports.configSource,
     ledger = ports.uploadRecord.ledger,
     policyFor = policyFor,
-    union = ports.union,
+    union = union,
     downloads = ports.downloadStore,
     identity = ports.deviceIdentity,
     photoAccess = ports.photoAccess,

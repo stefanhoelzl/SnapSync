@@ -262,7 +262,7 @@ data class PendingSwitch(val eventId: String, val phase: JoinPhase)
  * them. Giving them a home ends that: the phases that have details hold this, the phases that have none
  * hold nothing, and no phase restates another's fields.
  *
- * [startsAt] is the event's **start date** — already a canonical UTC `…Z` string (`HttpEventDirectory`
+ * [startsAt] is the event's **start date** — already a canonical UTC `…Z` string (`BackendEventDirectory`
  * normalizes it and fails the load rather than invent one). It is both the range row's lower **default**
  * and its **floor** (capability `photo-sharing`): the row cannot be empty and the confirm cannot
  * join below it, so joining at whole-library scope is unrepresentable. It also decides the range

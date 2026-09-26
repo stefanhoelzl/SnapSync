@@ -5,7 +5,7 @@ package app.snapsync.feature.push
 import app.snapsync.model.ApnsPushToken
 import app.snapsync.ports.DeviceIdentity
 import app.snapsync.ports.PushRegistrationRecord
-import app.snapsync.ports.PushTokenPublisher
+import app.snapsync.services.backend.PushTokenPublisher
 import app.snapsync.ports.PushTokenSource
 import app.snapsync.ports.SecureStoreUnavailable
 
@@ -18,7 +18,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** The address and body are the adapter's (`HttpPushTokenPublisherTest`); this double records what was published. */
+/** The address and body are `HttpBackend`'s (`HttpBackendTest`); this double records what was published. */
 private class FakePushTokenPublisher(private val result: Result<Unit> = Result.success(Unit)) : PushTokenPublisher {
     val calls = mutableListOf<ApnsPushToken>()
 

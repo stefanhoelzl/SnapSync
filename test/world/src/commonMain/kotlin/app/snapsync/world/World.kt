@@ -3,9 +3,8 @@ package app.snapsync.world
 import app.snapsync.model.InviteLinkHints
 import app.snapsync.feature.membership.toJoinLoad
 import app.snapsync.model.JoinLoad
-import app.snapsync.push.HttpPushTokenPublisher
 import app.snapsync.ports.PushTokenSource
-import app.snapsync.ports.PushTokenPublisher
+import app.snapsync.services.backend.ManifestPublisher
 import app.snapsync.compose.UploaderProcess
 import app.snapsync.compose.AlbumLookupFailure
 import app.snapsync.compose.AppCore
@@ -21,15 +20,11 @@ import app.snapsync.model.PlannedResource
 import app.snapsync.time.SystemClock
 import kotlinx.datetime.TimeZone
 import app.snapsync.compose.uploadCore
-import app.snapsync.download.HttpEventUnionSource
-import app.snapsync.eventcreation.HttpEventCreation
-import app.snapsync.eventcreation.HttpEventRename
-import app.snapsync.fake.inMemoryAttestClient
 import app.snapsync.fake.inMemoryConfigReader
 import app.snapsync.fake.inMemoryConfigSource
 import app.snapsync.fake.inMemoryConfigStore
 import app.snapsync.fake.inMemoryProtectedStorage
-import app.snapsync.fake.inMemoryAttestKey
+import app.snapsync.fake.inMemoryDeviceIntegrity
 import app.snapsync.fake.inMemoryAttestStore
 import app.snapsync.fake.inMemoryDeviceLogSource
 import app.snapsync.fake.inMemoryDeviceManifestStore
@@ -53,12 +48,6 @@ import app.snapsync.feature.status.OwnDeviceGalleryStatusSource
 import app.snapsync.feature.status.ReadingLedgerCountsSource
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.feature.upload.UploadCycle
-import app.snapsync.join.HttpEventJoin
-import app.snapsync.join.HttpManifestPublisher
-import app.snapsync.join.HttpEventDirectory
-import app.snapsync.http.withCredentialInterceptor
-import app.snapsync.membership.HttpDeviceFilesSource
-import app.snapsync.membership.HttpLeaveNotifier
 import app.snapsync.model.AssetFacts
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
@@ -86,8 +75,8 @@ import app.snapsync.model.resourcesFrom
 import app.snapsync.model.selectionPolicyFor
 import app.snapsync.model.uploadKey
 import app.snapsync.model.AssetRef
-import app.snapsync.ports.AttestClient
-import app.snapsync.ports.AttestKey
+import app.snapsync.ports.Backend
+import app.snapsync.ports.DeviceIntegrity
 import app.snapsync.model.CandidateRead
 import app.snapsync.model.Candidate
 import app.snapsync.ports.CandidateSource
@@ -337,26 +326,19 @@ class World(
     val albumMapStore = app.snapsync.fake.inMemoryAlbumMapStore()
 
     /**
-     * The one shared mini-edge client injected into every real common-Ktor seam — carrying the REAL
-     * cross-cutting interceptor the device installs (`:adapter:generic:app`'s
-     * [withCredentialInterceptor], the same function `darwinHttpClient` applies).
-     *
-     * Applying it here is what makes the version gate reach the screen in this harness rather than
-     * being simulated: a `426` from the mini-edge travels the actual path — interceptor → the core's
-     * `AppVersionGate` → the read-model the container reduces over. Without it the world would have to
-     * write the gate directly, which would assert the harness's own wiring and nothing else.
-     *
-     * The declared version is an operator lever ([appVersion]) so a test can be an old build; the token
-     * is null, because the mini-edge is unauthenticated and the world says so explicitly.
+     * The world's backend client — bare: it carries nothing but the engine. The credential, the declared version
+     * and every verdict are the port's and the composed services', exactly as on a device, so a `426` from the
+     * mini-edge travels the actual path — `HttpBackend` → the authenticated backend → the core's version gate → the
+     * read-model the container reduces over — rather than being simulated. [NeutralBackend]'s byte seeding uses it
+     * directly, since bytes are the OS transfer's route, not the backend port's.
      */
-    val client = backend.newClient().withCredentialInterceptor(
-        // An attesting world sends the credential it holds, as a device does, so a backend that rejects it reaches
-        // the core's rejection route; otherwise none, because the mini-edge is unauthenticated.
-        token = { if (attests) core.attestation.token() else null },
-        // The core's verdicts object, as the device hands it — its rejection arm fires only for a sent token.
-        verdicts = { core.backendVerdicts },
-        appVersion = { appVersion },
-    )
+    val client = backend.newClient()
+
+    /**
+     * The [Backend] port the composition stands on: the production `HttpBackend`, declaring the [appVersion] lever
+     * per call and counting push registrations ([registerPushCount]) — see [WorldBackendPort].
+     */
+    val backendPort: Backend = WorldBackendPort(client, host, appVersion = { appVersion }, onDeviceConfig = { registerPushCount++ })
 
     /**
      * The marketing version this world's requests DECLARE (capability `app-update-required`) — an operator
@@ -365,18 +347,8 @@ class World(
      */
     var appVersion: String = "99.0"
 
-    /** The `:adapter:generic:app` enrollment PUT over the mini-edge — the ONE `Enrollment` impl (the
-     *  world's byte-identical copy died at step 10, closing the deletion ledger's last row). */
-    val manifestPublisher: HttpManifestPublisher = HttpManifestPublisher(client, host)
-    val eventJoin: HttpEventJoin = HttpEventJoin(client, host)
-    /**
-     * The REAL backend-leave seam (the `:adapter:generic:app` [HttpLeaveNotifier] over the mini-edge),
-     * bound to this world's own device — which is what the port means (see
-     * [app.snapsync.ports.LeaveNotifier]): "this device is leaving". A test that must speak for a
-     * DIFFERENT member binds its own instance to that id, so the substitution is visible where it is
-     * made rather than hidden in an argument at a call site.
-     */
-    private val leaveNotifier = HttpLeaveNotifier(client, host) { ownDeviceId }
+    /** The app's manifest publisher — the composed backend service, which the world's extension-tier cycle shares. */
+    val manifestPublisher: ManifestPublisher get() = core.backend.manifest
 
     // The membership: the world's own cells behind the honest config ports (`:adapter:generic:fake`, held to
     // `ConfigStoreContract` as the App-Group file store is). [configCell] is what operator actions write
@@ -389,9 +361,6 @@ class World(
     // container reduces from.
     val configStore: ConfigStore = inMemoryConfigStore(configCell, configReadable)
 
-    // The real common-Ktor seams over the mini-edge (single client, exactly as production shares one).
-    val deviceFiles = HttpDeviceFilesSource(client, host)
-    val unionSource = HttpEventUnionSource(client, host)
 
     // ---- failure levers -------------------------------------------------------------------------
 
@@ -524,8 +493,11 @@ class World(
     // What this makes reachable: the CREDENTIAL arm of `AppCore.installPushRegistration` — see
     // `:test:integration`'s `a_new_credential_re_registers_the_push_token_with_no_new_delivery`, which
     // needs a token change to happen at all.
-    private val attestKey: AttestKey = inMemoryAttestKey(supported = attests)
-    private val attestClient: AttestClient = inMemoryAttestClient(mints = attests)
+    //
+    // Attesting goes through the backend port like every other call: the mini-edge serves the three `/attest/…`
+    // routes and mints for the in-memory integrity's attestations (`MiniEdgeAttest.kt`). The real `api/` verifies a
+    // genuine App Attest attestation, which nothing off a device produces, so an attesting world needs the mini-edge.
+    private val integrity: DeviceIntegrity = inMemoryDeviceIntegrity(available = attests)
     // The Keychain's attestation record: durable across a relaunch, as on a device.
     private val attestStore = inMemoryAttestStore()
 
@@ -603,10 +575,7 @@ class World(
         gallery = gallery,
         // The SAME ledger the composed cycle writes, and the mini-edge's per-device listing the join-time
         // load seeds it from (capability `photo-sharing`).
-        uploadRecord = UploadRecordPorts(
-            ledger = ledgerBackend,
-            files = deviceFiles,
-        ),
+        uploadRecord = UploadRecordPorts(ledger = ledgerBackend),
         downloadStore = downloadStore,
         // Staging root AND release, one port: the world's staged paths are built from the same
         // root the fake reports, exactly as the App-Group container is on device.
@@ -614,14 +583,11 @@ class World(
         newDownloadTransport = { transportHost ->
             FakeDownloadTransport(transportHost, stagedFiles, downloadSession).also { downloadTransport = it }
         },
-        union = unionSource,
-        directory = HttpEventDirectory(client, host),
-        eventJoin = eventJoin,
+        // The backend: the production `HttpBackend` over the mini-edge (or the real `api/`), every need-shaped
+        // service composed over it inside the core, as on the phone.
+        backend = backendPort,
         manifestStore = manifestStore,
-        eventCreation = HttpEventCreation(client, host),
-        eventRename = HttpEventRename(client, host),
-        attestKey = attestKey,
-        attestClient = attestClient,
+        integrity = integrity,
         attestStore = inMemoryAttestStore(),
         deviceIdentity = { ownDeviceId },
         clock = { kotlin.time.Instant.fromEpochMilliseconds(nowMillis) },
@@ -636,14 +602,10 @@ class World(
         albumMapStore = albumMapStore,
         // Denylisted-album membership (capability `photo-sharing`) — the REAL policy
         // constant over the world's forgeable album membership, exactly as the shell wires it.
-        leaveNotifier = leaveNotifier,
-        // The push registration writes to the mini-edge, counted (see [registerPushCount]). A join in the
-        // world runs the REAL Provision flow now — including this re-registration — rather than a
-        // world-local provision body (`docs/testing.md`).
+        // The push registration writes to the backend through the composed service, counted at the port (see
+        // [registerPushCount]). A join in the world runs the REAL Provision flow — including this re-registration —
+        // rather than a world-local provision body (`docs/testing.md`).
         push = PushPorts(
-            publisher = HttpPushTokenPublisher(client, host, deviceId = { ownDeviceId }).let { inner ->
-                PushTokenPublisher { token -> inner.publish(token).also { registerPushCount++ } }
-            },
             tokens = pushTokens,
             record = pushRegistrationRecord,
         ),
@@ -894,7 +856,7 @@ class World(
     // the world's own membership as much as the backend's.
 
     /** The backend-neutral reads and levers — the same calls over the mini-edge and the real backend. */
-    val neutral: NeutralBackend by lazy { NeutralBackend(backend, client, host, deviceFiles, unionSource) }
+    val neutral: NeutralBackend by lazy { NeutralBackend(backend, client, host, backendPort, appVersion = { appVersion }) }
 
     /**
      * [provision], with the event id **the backend mints** — the only kind the real backend accepts, and the
@@ -1010,7 +972,7 @@ class World(
     /**
      * Leave the joined event — the **faithful** in-place clear (NOT a world rebuild): run the real
      * [DownloadController.onLeaveOrSwitch] (cancel transfers, prune non-terminal download rows), then
-     * the real backend leave (the `:adapter:generic:app` `HttpLeaveNotifier` over the mini-edge — the same
+     * the real backend leave (the composed leave service over the world's backend port — the same
      * `DELETE` the app fires, driving the store's RENAME-ONLY departed-mark), then clear the upload ledger
      * (the ledger is the current membership's share set — capability `photo-sharing`) and the config cell.
      * Deliberately an operator edge, not [UserCommands.leave]: the composed leave's backend notify is
@@ -1026,7 +988,7 @@ class World(
      */
     suspend fun leave() {
         core.downloadController.onLeaveOrSwitch()
-        configCell.value?.eventId?.let { leaveNotifier.notifyLeaving(it) }
+        configCell.value?.eventId?.let { core.backend.leave.notifyLeaving(it) }
         ledgerBackend.clear()
         configCell.value = null
     }

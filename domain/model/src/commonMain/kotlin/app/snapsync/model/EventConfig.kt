@@ -61,7 +61,7 @@ internal fun EventLinkPayload.sameAs(other: EventLinkPayload): Boolean =
  *
  * ⚠️ This requires the **key**, not a non-blank **value**: `{"name":""}` decodes perfectly well (pinned
  * by `EventConfigTest`, so the next reader is not misled by the declaration). The blank-name guard lives
- * at `HttpEventDirectory`, and it is the ONLY one — nothing downstream re-checks.
+ * at `BackendEventDirectory`, and it is the ONLY one — nothing downstream re-checks.
  * Decision record: `changes/archive/…-remove-nameless-config-fallback`.
  *
  * [minPhotoDate] is **required and non-null**, with **no default** (capability `photo-sharing`): the

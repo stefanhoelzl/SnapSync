@@ -78,7 +78,7 @@ import app.snapsync.model.SyncHealth
 import app.snapsync.model.UiState
 import app.snapsync.model.details
 import app.snapsync.model.step
-import app.snapsync.feature.version.readmodel.VersionRefusal
+import app.snapsync.model.VersionRefusal
 
 class StatusContainerHost(
     // Every read-model this container reduces over (see [StatusSources]). Bundled because they are one
@@ -796,7 +796,7 @@ class StatusContainerHost(
             // on the same retryable surface.
             //
             // ⚠️ Defence in depth: UNREACHABLE through the production binding today, and knowingly kept.
-            // `HttpEventDirectory.fetch` is `runCatchingCancellable { … }.getOrDefault(EventLookup.Failed)` and
+            // `BackendEventDirectory.fetch` maps every backend answer, a transport failure included, to an outcome and
             // `toJoinLoad` is pure, so the bound lambda cannot throw — but `loadJoinDetails` is an injected
             // `suspend (String) -> JoinLoad` and nothing here can know that. It stays because the invariant
             // is one adapter change away from being false, and the cost of it being false is a screen no

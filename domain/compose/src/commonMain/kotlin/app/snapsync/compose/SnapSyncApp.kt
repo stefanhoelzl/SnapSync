@@ -1,5 +1,6 @@
 package app.snapsync.compose
 
+import app.snapsync.model.VersionRefusal
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.album.AlbumGather
@@ -33,8 +34,8 @@ import app.snapsync.feature.status.ReadingLedgerCountsSource
 import app.snapsync.feature.status.ShareableCountSource
 import app.snapsync.feature.status.StatusRefresh
 import app.snapsync.feature.status.readmodel.SyncStatusSource
-import app.snapsync.feature.trust.DeviceAttestation
-import app.snapsync.feature.version.AppVersionGate
+import app.snapsync.services.trust.DeviceAttestation
+import app.snapsync.services.version.AppVersionGate
 import app.snapsync.feature.upload.AppUploadMechanism
 import app.snapsync.feature.upload.PushTailGuard
 import app.snapsync.feature.upload.TailTrigger
@@ -78,8 +79,8 @@ import app.snapsync.services.gallery.GalleryAlbums
 import app.snapsync.services.gallery.GalleryAssetPresence
 import app.snapsync.services.gallery.GalleryCandidateSource
 import app.snapsync.ports.AlbumMapStore
-import app.snapsync.ports.AttestClient
-import app.snapsync.ports.AttestKey
+import app.snapsync.ports.Backend
+import app.snapsync.ports.DeviceIntegrity
 import app.snapsync.ports.AttestStore
 import app.snapsync.ports.ConfigSource
 import app.snapsync.model.DiagnosticEnvironment
@@ -89,13 +90,10 @@ import app.snapsync.ports.ConfigStore
 import app.snapsync.ports.DownloadStore
 import app.snapsync.ports.DownloadTransport
 import app.snapsync.ports.DownloadTransportHost
-import app.snapsync.ports.EventCreation
-import app.snapsync.ports.EventRename
-import app.snapsync.ports.EventDirectory
-import app.snapsync.ports.EventUnionSource
 import app.snapsync.ports.DeviceManifestStore
-import app.snapsync.ports.EventJoin
-import app.snapsync.ports.LeaveNotifier
+import app.snapsync.services.backend.BackendServices
+import app.snapsync.services.backend.CredentialedBackend
+import app.snapsync.services.backend.LeaveNotifier
 import app.snapsync.ports.LogScope
 import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.ports.PhotoAccessStatusSource
@@ -176,10 +174,13 @@ class AppPorts(
      */
     val stagedBytes: StagedBytes,
     val newDownloadTransport: (DownloadTransportHost) -> DownloadTransport,
-    val union: EventUnionSource,
-    val directory: EventDirectory,
-    /** The join request — production passes `:adapter:generic:app`'s `HttpEventJoin`. */
-    val eventJoin: EventJoin,
+    /**
+     * The backend (`docs/architecture.md`, "Ports are the I/O boundary named for the need") — production passes
+     * `:adapter:generic:app`'s `HttpBackend` over the platform's HTTP client. Every need-shaped backend service is
+     * composed over it here, behind ONE authenticated backend, so no root can wire a call without the credential or
+     * without the version verdicts.
+     */
+    val backend: Backend,
     /**
      * The **same** manifest record the upload tier's producer keeps (`UploadPorts.manifestStore`).
      * Enrolling overwrites the server's manifest with an empty one, so it must invalidate that record or
@@ -187,16 +188,8 @@ class AppPorts(
      * Required rather than defaulted: a shell that quietly omitted it would reproduce the bug exactly.
      */
     val manifestStore: DeviceManifestStore,
-    val eventCreation: EventCreation,
-    /**
-     * The event-rename seam (capability `manage-membership`). **Required, not defaulted**: an inert default
-     * would leave the status screen's rename affordance visible and silently doing nothing — the one
-     * outcome [UserCommands.sendDiagnostics]'s contract forbids, and the reason that command is nullable
-     * rather than inert. A root that cannot rename must fail to compile, not ship a dead pen.
-     */
-    val eventRename: EventRename,
-    val attestKey: AttestKey,
-    val attestClient: AttestClient,
+    /** The platform's device-integrity service (App Attest on iOS) — what the attestation service proves with. */
+    val integrity: DeviceIntegrity,
     val attestStore: AttestStore,
     /** The device identity (a port: its resolve reads the Keychain and throws while protected data is
      *  unavailable). Read per use, so no composition-time resolve can abort a locked background launch. */
@@ -242,13 +235,6 @@ class AppPorts(
      *  inert in a production build (see [RigSwitches]); required, so every root states them. */
     val rigSwitches: RigSwitches,
     val albumMapStore: AlbumMapStore,
-    /** Tells the shared event this device is leaving (capability `manage-membership`). This was
-     *  `notifyLeave: suspend (eventId) -> Unit`, a lambda the shell built by closing over the adapter
-     *  AND this device's id — a backend call reaching out of the process behind a type indistinguishable
-     *  from in-core coordination. The id now lives where it is a constant: in the adapter (see
-     *  [LeaveNotifier]). The `flow/` and `feature/` consumers still take a lambda, which `compose/`
-     *  builds from this port — they may not name a port at all (law "flow/ never references ports/"). */
-    val leaveNotifier: LeaveNotifier,
     val onEventMinted: suspend (eventId: String) -> Unit,
     /** The push registration's ports (capability `receiving-photos`) — see [PushPorts]. */
     val push: PushPorts,
@@ -300,32 +286,43 @@ class AppCore internal constructor(
     }
 
     /**
-     * Whether the backend is refusing this build as too old (capability `app-update-required`). NOT lazy:
-     * its writer is the shell's HTTP interceptor, built before this graph is touched, and a lazy cell
-     * would be created by its first reader — possibly after the refusal it exists to record.
+     * Whether the backend is refusing this build as too old (capability `app-update-required`). NOT lazy: the
+     * status host observes it from its first frame, and a lazy cell created by a late reader could miss nothing
+     * today but would invite a writer that captured an earlier one.
      */
     val versionGate: AppVersionGate = AppVersionGate()
 
     /**
-     * What the backend's answers tell this core (the inbound port [app.snapsync.ports.BackendVerdicts]): the
-     * object every root hands its credential-carrying HTTP client, so the three callbacks are wired as one.
-     * Not lazy, for the reason [versionGate] is not.
-     */
-    val backendVerdicts: app.snapsync.ports.BackendVerdicts = backendVerdictsOf()
-
-    /**
      * Device attestation (capability `privacy-security`) — the bearer token EVERY backend call
-     * carries. Composed here; only the app process can attest (`DCAppAttestService.isSupported` is
-     * false in an app extension — measured), and the extension reads the token this writes.
+     * carries, and the app's recovery when the backend rejects it. Composed here; only the app process can
+     * attest (`DCAppAttestService.isSupported` is false in an app extension — measured), and the extension
+     * reads the token this writes.
      */
     val attestation: DeviceAttestation by lazy {
         DeviceAttestation(
-            key = ports.attestKey,
-            client = ports.attestClient,
+            integrity = ports.integrity,
+            backend = ports.backend,
             store = ports.attestStore,
             identity = ports.deviceIdentity,
             clock = ports.clock,
+            versionGate = versionGate,
         )
+    }
+
+    /** [versionGate]'s cell, for readers outside the core (the status host), which see no service type. */
+    val versionRefusal: StateFlow<VersionRefusal?> get() = versionGate.refusal
+
+    /** [attestation]'s health cell, for readers outside the core (the status host), which see no service type. */
+    val attested: StateFlow<Boolean> get() = attestation.attested
+
+    /**
+     * Every need-shaped backend service, over one authenticated backend whose credential is [attestation]
+     * (capability `privacy-security`: a rejected token is dropped, a new one obtained, and the call retried once)
+     * and whose verdicts reach [versionGate]. Public for the app root's uploader, which publishes its manifest
+     * through [BackendServices.manifest] like every other caller.
+     */
+    val backend: BackendServices by lazy {
+        BackendServices(CredentialedBackend(ports.backend, attestation, versionGate), ports.deviceIdentity)
     }
 
     // Own-device completeness AND in-flight, both from one consistent per-photo `assetProgress()` read
@@ -445,7 +442,7 @@ class AppCore internal constructor(
     // The download orchestrator: union → foreign selection → download → import → suppression.
     val downloadController: DownloadController by lazy {
         DownloadController(
-            union = ports.union,
+            union = backend.union,
             store = ports.downloadStore,
             jobs = downloadJobs,
             importer = ports.gallery,
@@ -485,7 +482,9 @@ class AppCore internal constructor(
     // The event album's gather (capability `event-album`): place what the device already holds for the event.
     // Built HERE and nowhere in the extension's graph, so "the extension never gathers" holds by
     // construction. Started, never awaited, by the act that triggered it.
-    val albumGather: AlbumGather by lazy { albumGather(ports, albumCoordinator, scope, ::selectionPolicyForMembership) }
+    val albumGather: AlbumGather by lazy {
+        albumGather(ports, backend.union, albumCoordinator, scope, ::selectionPolicyForMembership)
+    }
 
     /**
      * Whether the upload extension may be registered now (capability `background-upload`, "Whether the extension
@@ -531,18 +530,18 @@ class AppCore internal constructor(
 
     /**
      * The backend-leave effect the leave use-case and the switch path both fire (capability
-     * `manage-membership`) — the [LeaveNotifier] port wrapped as the `suspend (eventId) -> Unit` its two
+     * `manage-membership`) — the [LeaveNotifier] service wrapped as the `suspend (eventId) -> Unit` its two
      * consumers take. Built here because `flow/Provision` may not name a port at all (law "flow/ never
      * references ports/"), and `LeaveEvent` takes the same shape so the two paths cannot diverge.
      *
-     * The port's failed [Result] is **logged, not propagated**: leaving is best-effort by contract and
+     * The service's failed [Result] is **logged, not propagated**: leaving is best-effort by contract and
      * the local teardown has already completed by the time this runs, so there is nothing to roll back.
      * Logging it is what keeps the accepted abandon-leak (a backend membership left in place) from being
      * silent — the drop used to be invisible at every layer (`docs/architecture.md`, "Absence is
      * never silent").
      */
     private val notifyLeave: suspend (eventId: String) -> Unit = { eventId ->
-        ports.leaveNotifier.notifyLeaving(eventId).onFailure { failure ->
+        backend.leave.notifyLeaving(eventId).onFailure { failure ->
             ports.log.w(failure) {
                 "leave notify failed for $eventId — this device is gone locally; the backend membership " +
                     "remains until the sweep (the accepted abandon-leak)"
@@ -566,7 +565,7 @@ class AppCore internal constructor(
 
     // The join-time load (capability `photo-sharing`), built in `shareSetLoadFor`. Public for
     // the world harness, whose operator provision runs this instance rather than a copy.
-    val shareSetLoad: ShareSetLoad by lazy { shareSetLoadFor(ports) }
+    val shareSetLoad: ShareSetLoad by lazy { shareSetLoadFor(ports, backend.deviceFiles) }
 
     // The in-place reconfigure use-case (capability `manage-membership`): rewrite the joined
     // membership's participation fields (direction/cutoff/album) whole, then re-drive the provision-side
@@ -580,8 +579,8 @@ class AppCore internal constructor(
         JoinEvent(
             configSource = ports.configSource,
             identity = ports.deviceIdentity,
-            details = ports.directory,
-            enroller = ManifestDeviceEnroller(ports.eventJoin),
+            details = backend.directory,
+            enroller = ManifestDeviceEnroller(backend.join),
             // Every provision route — interactive join, switch, retry, `autoJoin`, a create routed into the
             // join gate — passes here, so the album gather is started once the provision returns. It starts
             // HERE rather than inside `flow/Provision`: a flow may not detach work (law "A trigger flow never
@@ -619,7 +618,7 @@ class AppCore internal constructor(
     // the rule requires a definitive `NotFound` AND the membership's own persisted deadline before it
     // will tear anything down (capability `manage-membership`).
     private val fetchEventDetails: suspend (eventId: String) -> JoinLoad = { eventId ->
-        ports.directory.fetch(eventId).toJoinLoad()
+        backend.directory.fetch(eventId).toJoinLoad()
     }
 
     /** The create-event status the use-case drives and the container reads (same instance). */
@@ -636,7 +635,7 @@ class AppCore internal constructor(
         RenameEvent(
             configSource = ports.configSource,
             store = ports.configStore,
-            client = ports.eventRename,
+            client = backend.rename,
             status = renameStatus,
         )
     }
@@ -645,7 +644,7 @@ class AppCore internal constructor(
     // join gate a scanned QR takes (capability `photo-sharing`).
     val eventCreator: EventCreator by lazy {
         CreateEvent(
-            client = ports.eventCreation,
+            client = backend.creation,
             status = creationStatus,
             onMinted = ports.onEventMinted,
         )
@@ -810,7 +809,7 @@ class AppCore internal constructor(
             statusPoller = statusCountsPoller,
             reloadConfig = { ports.configRefresh.refresh() },
             // The upload side's own work at a foreground entry; its top-up and walk are the tail's.
-            settleStored = storedUploadSettleFor(ports)::settle,
+            settleStored = storedUploadSettleFor(ports, backend.deviceFiles)::settle,
             refreshStatus = { refreshStatusSources() },
             activeEventId = { ports.configSource.config.value?.eventId },
             fetchEventDetails = fetchEventDetails,
@@ -1203,7 +1202,7 @@ class AppCore internal constructor(
     private val pushRegistrationInstalled = AtomicBoolean(false)
 
     /** The device's push registration (capability `receiving-photos`) — see [pushRegistrationFor]. */
-    val pushRegistration: PushRegistration by lazy { pushRegistrationFor(ports) }
+    val pushRegistration: PushRegistration by lazy { pushRegistrationFor(ports, backend.pushTokens) }
 
 }
 

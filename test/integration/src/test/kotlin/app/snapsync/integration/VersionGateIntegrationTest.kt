@@ -11,9 +11,10 @@ import kotlin.test.assertNotNull
  * control protocol.
  *
  * Nothing here is simulated between the wire and the screen. The mini-edge answers a genuine `426`; the REAL
- * interceptor the device installs reads it; the REAL `AppVersionGate` on the composed `AppCore` records it; and the
- * REAL container reduces it into `UiState`. What each of those steps proves separately is asserted separately —
- * `CredentialInterceptorTest` for the branch, `MiniEdgeV2Test` for the refusal — and what only this can prove is
+ * `HttpBackend` the device runs over carries it; the REAL authenticated backend composed in `AppCore` hands it to the
+ * REAL `AppVersionGate`, which records it; and the REAL container reduces it into `UiState`. What each of those steps
+ * proves separately is asserted separately — `CredentialedBackendTest` for the branch, `MiniEdgeV2Test` for the
+ * refusal — and what only this can prove is
  * that they are CONNECTED, which is exactly the class of defect a device meets and no unit test sees.
  *
  * The second test is the one that matters most in the field. A refusal that never clears is a member stuck on an
@@ -56,7 +57,7 @@ class VersionGateIntegrationTest {
 
     @Test
     fun a_served_build_never_sees_the_screen() = rigTest {
-        // The negative direction, and it is not ceremony: an interceptor that reported on every response would park
+        // The negative direction, and it is not ceremony: a gate that reported on every response would park
         // every member on an update screen, and the two tests above would still pass.
         createAndJoin()
         device("backend/min-app-version", "minimum" to "0.4")

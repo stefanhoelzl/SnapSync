@@ -47,15 +47,13 @@ interface WorldBackend {
     val base: String
 
     /**
-     * A NEW bare client for this backend, with no interceptor, on every call. The world wraps one in the
-     * production interceptor for its seams and hands another, bare, to the upload double as the network an OS
-     * transfer crosses.
+     * A NEW bare client for this backend on every call. The world puts one under its `HttpBackend` and hands
+     * another to the upload double as the network an OS transfer crosses.
      *
-     * A fresh instance per call rather than one shared value, and that is forced: the production interceptor
-     * installs itself INTO the client it is given (`withCredentialInterceptor` returns the same client), so a
-     * shared instance would carry every world's interceptor at once — and the OS's own request, which already
-     * declares the app version, would reach the backend declaring it twice. Measured: the real edge reads
-     * that as unparseable and answers `426`.
+     * A fresh instance per call rather than one shared value: a client is a resource each world closes on its own
+     * schedule, and a plugin one world installed into a shared client would reach every other world's requests —
+     * which is how a shared client once made the OS's own request, already declaring the app version, reach the
+     * backend declaring it twice (the real edge reads that as unparseable and answers `426`).
      */
     fun newClient(): HttpClient
 }

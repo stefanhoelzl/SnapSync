@@ -3,8 +3,8 @@ package app.snapsync.feature.upload
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
 import app.snapsync.model.TerminalOutcome
-import app.snapsync.ports.DeviceFilesSource
-import app.snapsync.ports.DeviceListingShapeException
+import app.snapsync.services.backend.DeviceFilesSource
+import app.snapsync.services.backend.DeviceListingShapeException
 import app.snapsync.model.StoredResource
 import co.touchlab.kermit.LogWriter
 import co.touchlab.kermit.Logger

@@ -1,15 +1,9 @@
 package app.snapsync.world
 
-import app.snapsync.download.HttpEventUnionSource
-import app.snapsync.join.HttpEventJoin
-import app.snapsync.join.HttpManifestPublisher
-import app.snapsync.ports.DeviceListingShapeException
+import app.snapsync.services.backend.DeviceListingShapeException
 import app.snapsync.model.JoinResult
 import app.snapsync.model.CreateOutcome
-import app.snapsync.eventcreation.HttpEventCreation
 import app.snapsync.model.DeviceManifest
-import app.snapsync.model.encodeToJson
-import app.snapsync.membership.HttpDeviceFilesSource
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -32,7 +26,7 @@ class MiniEdgeTest {
         // Against the v2 host: the seam now recomposes the key from the identity terms the backend
         // answers in, so it can no longer read the v1 listing (see the shape test below).
         val store = BackendStore().apply { deposit("D", "x-primary.jpg") }
-        val src = HttpDeviceFilesSource(miniEdgeClient(store), host)
+        val src = miniEdgeServices(store, host).deviceFiles
         assertEquals(listOf("x-primary.jpg"), src.list("D").getOrThrow().map { it.key })
     }
 
@@ -45,7 +39,7 @@ class MiniEdgeTest {
             deposit("D", "9E3F-4A_L0_001-primary.heic")
             deposit("D", "9E3F-4A_L0_001-live.mov")
         }
-        val src = HttpDeviceFilesSource(miniEdgeClient(store), host)
+        val src = miniEdgeServices(store, host).deviceFiles
         assertEquals(
             listOf("9E3F-4A_L0_001-primary.heic", "9E3F-4A_L0_001-live.mov"),
             src.list("D").getOrThrow().map { it.key },
@@ -61,14 +55,14 @@ class MiniEdgeTest {
         // library, with no failed request anywhere. Requiring `assetId` and `role` is what makes this
         // loud instead.
         val store = BackendStore().apply { deposit("D", "x-primary.jpg") }
-        val failure = HttpDeviceFilesSource(miniEdgeClient(store), v1Host).list("D").exceptionOrNull()
+        val failure = miniEdgeServices(store, v1Host).deviceFiles.list("D").exceptionOrNull()
         assertTrue(failure is DeviceListingShapeException, "was $failure")
     }
 
     @Test
     fun device_files_offline_is_failure() = runTest {
         val store = BackendStore().apply { offline = true }
-        val src = HttpDeviceFilesSource(miniEdgeClient(store), host)
+        val src = miniEdgeServices(store, host).deviceFiles
         val failure = src.list("D").exceptionOrNull()
         assertNotNull(failure)
         // A transport failure, distinguishably: it heals on the next cycle, where a shape failure does
@@ -82,7 +76,7 @@ class MiniEdgeTest {
         val asset = World.foreignAsset("Q")
         store.putManifest("E", "D", foreignManifest("D", listOf(asset)))
         store.deposit("D", asset.resources[0].key)
-        val union = HttpEventUnionSource(miniEdgeClient(store), host).union("E").getOrThrow()
+        val union = miniEdgeServices(store, host).union.union("E").getOrThrow()
         assertEquals(1, union.size)
         assertEquals("D", union[0].deviceId)
         assertEquals("Q-primary.heic", union[0].resources[0].key)
@@ -90,20 +84,20 @@ class MiniEdgeTest {
 
     @Test
     fun union_unregistered_is_failure() = runTest {
-        val src = HttpEventUnionSource(miniEdgeClient(BackendStore()), host)
+        val src = miniEdgeServices(BackendStore(), host).union
         assertTrue(src.union("E").isFailure) // 404 → failed Result
     }
 
     @Test
     fun union_offline_is_failure() = runTest {
         val store = BackendStore().apply { registerEvent("E"); offline = true }
-        assertTrue(HttpEventUnionSource(miniEdgeClient(store), host).union("E").isFailure)
+        assertTrue(miniEdgeServices(store, host).union.union("E").isFailure)
     }
 
     @Test
     fun event_creation_mints_and_registers_marker() = runTest {
         val store = BackendStore()
-        val outcome = HttpEventCreation(miniEdgeClient(store), host)
+        val outcome = miniEdgeServices(store, host).creation
             .create("Party", "2026-07-14T18:00:00Z", null)
         assertTrue(outcome is CreateOutcome.Created)
         val eventId = outcome.eventId
@@ -113,7 +107,7 @@ class MiniEdgeTest {
 
     @Test
     fun event_creation_rejects_blank_name() = runTest {
-        val outcome = HttpEventCreation(miniEdgeClient(BackendStore()), host)
+        val outcome = miniEdgeServices(BackendStore(), host).creation
             .create("   ", "2026-07-14T18:00:00Z", null)
         assertEquals(CreateOutcome.InvalidName, outcome)
     }
@@ -125,7 +119,7 @@ class MiniEdgeTest {
         // fails in the fast loop instead.
         val store = BackendStore()
         for (bad in listOf("2026-07-14T18:00:00.000Z", "2026-07-14T18:00:00+02:00", "", "yesterday")) {
-            val outcome = HttpEventCreation(miniEdgeClient(store), host).create("Party", bad, null)
+            val outcome = miniEdgeServices(store, host).creation.create("Party", bad, null)
             assertEquals(CreateOutcome.InvalidWindow, outcome, "startsAt=$bad must be rejected (400) as a date refusal")
         }
     }
@@ -134,12 +128,11 @@ class MiniEdgeTest {
     fun joining_then_publishing_lands_the_manifest_in_the_store() = runTest {
         // Two requests now, in this order: the join owns membership, the publish owns contribution.
         val store = BackendStore().apply { registerEvent("E") }
-        val client = miniEdgeClient(store)
+        val services = miniEdgeServices(store, host)
 
-        assertEquals(JoinResult.JOINED, HttpEventJoin(client, host).join("E", "D"))
+        assertEquals(JoinResult.JOINED, services.join.join("E", "D"))
 
-        val json = DeviceManifest("D", listOf(World.foreignAsset("Q"))).encodeToJson()
-        assertTrue(HttpManifestPublisher(client, host).publish("E", "D", json))
+        assertTrue(services.manifest.publish("E", "D", DeviceManifest("D", listOf(World.foreignAsset("Q")))))
         assertNotNull(store.manifestOf("E", "D"))
     }
 
@@ -148,9 +141,7 @@ class MiniEdgeTest {
         // The divergence this world exists to prevent: modelling the publish as a create would let a
         // device pass here and fail against the real backend.
         val store = BackendStore().apply { registerEvent("E") }
-        val json = DeviceManifest("D", emptyList()).encodeToJson()
-
-        assertFalse(HttpManifestPublisher(miniEdgeClient(store), host).publish("E", "D", json))
+        assertFalse(miniEdgeServices(store, host).manifest.publish("E", "D", DeviceManifest("D", emptyList())))
         assertNull(store.manifestOf("E", "D"))
     }
 }

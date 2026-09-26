@@ -2,10 +2,16 @@ package app.snapsync.compose
 
 import app.snapsync.feature.upload.UploadCycle
 import app.snapsync.model.CycleResult
+import app.snapsync.ports.Backend
+import app.snapsync.ports.DeviceIdentity
 import app.snapsync.ports.ExtensionEntries
 import app.snapsync.ports.LogScope
 import app.snapsync.ports.invocation
 import app.snapsync.ports.runProcessCycle
+import app.snapsync.services.backend.BackendServices
+import app.snapsync.services.backend.CredentialedBackend
+import app.snapsync.services.trust.CachedAttestStore
+import app.snapsync.services.trust.ExtensionCredential
 
 /**
  * The core's implementation of the upload extension's inbound port (`docs/architecture.md`, "OS entry points
@@ -61,3 +67,14 @@ fun extensionEntries(
             }
         }
     }
+
+/**
+ * The upload extension's backend services (capability `privacy-security`): the same need-shaped services the app
+ * composes, over an authenticated backend whose credential only DROPS a rejected token ([ExtensionCredential]) —
+ * the extension cannot attest, so it never retries a rejected call — and with no version gate, because the
+ * extension has no screen to show a refusal on.
+ *
+ * [attestStore] is the root's one in-memory copy of the shared token, the one it re-reads at every invocation.
+ */
+fun extensionBackend(backend: Backend, attestStore: CachedAttestStore, identity: DeviceIdentity): BackendServices =
+    BackendServices(CredentialedBackend(backend, ExtensionCredential(attestStore), versionGate = null), identity)

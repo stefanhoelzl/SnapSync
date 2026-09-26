@@ -19,10 +19,10 @@ import app.snapsync.ports.AlbumManager
 import app.snapsync.model.AssetRef
 import app.snapsync.ports.ConfigSource
 import app.snapsync.ports.DownloadStore
-import app.snapsync.ports.EventUnionSource
+import app.snapsync.services.backend.EventUnionSource
 import app.snapsync.ports.LogScope
 import app.snapsync.model.PlannedResource
-import app.snapsync.ports.UnionAsset
+import app.snapsync.model.UnionAsset
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async

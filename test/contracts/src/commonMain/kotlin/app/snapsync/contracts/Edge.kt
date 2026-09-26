@@ -30,15 +30,15 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
-// ---- The backend contracts' shared vocabulary (`docs/architecture.md`) --------------------------------
+// ---- The Backend contract's shared vocabulary (`docs/testing.md`) ------------------------------------
 //
-// Every backend port is implemented by the SAME production `Http*` client in every binding; what differs is
-// the edge behind it — the real `api/` served locally (`Live`), or a stand-in (`Fake`). The clauses are about
-// the edge, seen through the client the app ships. Each binding enters a clause's state through the edge's
-// PUBLIC HTTP surface with [EdgeSetup], never by writing a stand-in's store directly: a setup route one edge
-// cannot follow is a state that edge does not reach, and it says so with `Unreachable`.
+// The contract is about the backend, seen through the port the app ships. A binding pairs an implementation of the
+// port — the production `HttpBackend` in front of the real `api/` (`Live`) or the mini-edge (`Fake`), or the
+// in-memory mock (`Fake`) — with a way to enter each clause's state: [BackendSetup], through the backend's PUBLIC
+// surface, never by writing a stand-in's store directly. A setup step one backend cannot follow is a state that
+// backend does not reach, and it says so with `Unreachable`.
 
-/** A version every edge serves: the setup client declares it, and so does a client under contract by default. */
+/** A version every edge serves: the setup declares it, and so does a client under contract by default. */
 const val SERVED_APP_VERSION = "99.0"
 
 /** A version below any minimum an edge has ever set, so declaring it is a build the edge refuses. */
@@ -51,45 +51,13 @@ const val FOREIGN_TOKEN = "foreign.0.not-a-signature-this-edge-issued"
 const val SEEDED_STARTS_AT = "2030-01-01T00:00:00Z"
 const val SEEDED_ENDS_AT = "2030-01-08T00:00:00Z"
 
-/** What the app's client declares about itself on every call: the two things the edge's gate judges. */
+/**
+ * What the app declares about itself in a clause's state: the build version (the HTTP adapter's constructor value)
+ * and the token the clause passes to the port's gated routes.
+ */
 class ClientIdentity(val appVersion: String, val token: String?) {
     companion object {
         val SERVED = ClientIdentity(SERVED_APP_VERSION, token = null)
-    }
-}
-
-/**
- * What the edge told the app about its credential and its build — outcomes that reach the app ONLY through the
- * HTTP interceptor's callbacks, never through a port's result (`docs/architecture.md`, "Clauses are
- * conditioned on states that bindings enter at construction"). It reports the state the app now holds, not
- * which callback ran.
- */
-interface GateObservation {
-    /** The edge refused the credential this client presented. */
-    val credentialRejected: Boolean
-
-    /** The edge refused this build; [refusedMinimum] is the minimum it named, if it named one. */
-    val buildRefused: Boolean
-    val refusedMinimum: String?
-}
-
-/** The [GateObservation] every binding wires into `withCredentialInterceptor`'s callbacks. */
-class GateRecorder : GateObservation {
-    override var credentialRejected = false
-        private set
-    override var buildRefused = false
-        private set
-    override var refusedMinimum: String? = null
-        private set
-
-    @Suppress("UNUSED_PARAMETER") // the contracts observe THAT a credential was rejected, not which
-    fun onRejected(sentToken: String) {
-        credentialRejected = true
-    }
-
-    fun onVersionRefused(minimum: String?) {
-        buildRefused = true
-        refusedMinimum = minimum
     }
 }
 
@@ -108,33 +76,52 @@ class Seeded(
     val asset: SeededAsset? = null,
 )
 
-/** A backend clause's subject: the port, the addresses its state was entered at, and the gate's outcomes. */
+/** A backend clause's subject: the port, the addresses and identity its state was entered with, and the setup. */
 class EdgeSubject<P>(
     val port: P,
     val seeded: Seeded,
-    val gate: GateObservation,
     /**
-     * The edge's public surface, for a clause whose promise is observable only on another route — a publish's effect
-     * on the union. Null for a binding with no edge behind it (an in-memory attest client).
+     * The backend's public surface, for a clause whose promise is observable only on another route — a publish's
+     * effect on the union. Null for a binding with no backend behind it.
      */
-    private val edge: EdgeSetup? = null,
+    private val edge: BackendSetup? = null,
 ) {
-    /** The edge's public surface; a clause asking for it on a binding with none fails naming that. */
-    val setup: EdgeSetup get() = requireNotNull(edge) { "this binding has no edge to read through" }
+    /** The token this state's calls carry. */
+    val token: String? get() = seeded.identity.token
+
+    /** The backend's public surface; a clause asking for it on a binding with none fails naming that. */
+    val setup: BackendSetup get() = requireNotNull(edge) { "this binding has no backend to read through" }
+}
+
+/** How a binding enters backend states: through the backend's public surface, whatever that backend is. */
+interface BackendSetup {
+    fun freshId(): String
+    suspend fun createEvent(name: String): CreatedEvent
+    suspend fun join(eventId: String, deviceId: String)
+
+    /** Joins fresh devices until the backend answers `409` — capacity without restating the backend's configured one. */
+    suspend fun fillToCapacity(eventId: String)
+    suspend fun publish(eventId: String, deviceId: String, assets: List<SeededAsset>)
+
+    /** The asset ids the event's union serves — a read of the public surface, as a member makes it. */
+    suspend fun unionAssetIds(eventId: String): Set<String>
+
+    /** One resource's bytes landing, as the app's uploader addresses them. */
+    suspend fun upload(deviceId: String, asset: SeededAsset, role: ResourceRole)
 }
 
 /**
- * Enters backend states through the edge's public HTTP surface. [client] carries no interceptor: setup is not
- * under contract, and every step checks its own status so a setup failure names the step, not the clause.
+ * [BackendSetup] over the edge's public HTTP surface. Setup is not under contract, and every step checks its own
+ * status so a setup failure names the step, not the clause.
  */
-class EdgeSetup(private val client: HttpClient, base: String) {
+class EdgeSetup(private val client: HttpClient, base: String) : BackendSetup {
     private val base = base.trimEnd('/')
     private val json = Json { ignoreUnknownKeys = true }
 
     @OptIn(ExperimentalUuidApi::class)
-    fun freshId(): String = Uuid.random().toString()
+    override fun freshId(): String = Uuid.random().toString()
 
-    suspend fun createEvent(name: String): CreatedEvent {
+    override suspend fun createEvent(name: String): CreatedEvent {
         val body = buildJsonObject {
             put("name", JsonPrimitive(name))
             put("startsAt", JsonPrimitive(SEEDED_STARTS_AT))
@@ -153,7 +140,7 @@ class EdgeSetup(private val client: HttpClient, base: String) {
         )
     }
 
-    suspend fun join(eventId: String, deviceId: String) {
+    override suspend fun join(eventId: String, deviceId: String) {
         checked("join $deviceId", client.put("$base/events/$eventId/devices/$deviceId") { served() })
     }
 
@@ -161,7 +148,7 @@ class EdgeSetup(private val client: HttpClient, base: String) {
      * Joins fresh devices until the edge answers `409` — how a binding fills an event to capacity without
      * restating the edge's configured capacity here, where it would drift from the deployment it came from.
      */
-    suspend fun fillToCapacity(eventId: String) {
+    override suspend fun fillToCapacity(eventId: String) {
         repeat(MAX_CAPACITY_PROBE) {
             val response = client.put("$base/events/$eventId/devices/${freshId()}") { served() }
             if (response.status == HttpStatusCode.Conflict) return
@@ -170,7 +157,7 @@ class EdgeSetup(private val client: HttpClient, base: String) {
         error("setup step 'fill to capacity': still admitting after $MAX_CAPACITY_PROBE joins")
     }
 
-    suspend fun publish(eventId: String, deviceId: String, assets: List<SeededAsset>) {
+    override suspend fun publish(eventId: String, deviceId: String, assets: List<SeededAsset>) {
         val manifest = DeviceManifest(deviceId, assets.map { it.manifestEntry() })
         checked(
             "publish manifest",
@@ -183,14 +170,14 @@ class EdgeSetup(private val client: HttpClient, base: String) {
     }
 
     /** The asset ids the event's union serves — a read of the backend's public surface, as a member makes it. */
-    suspend fun unionAssetIds(eventId: String): Set<String> {
+    override suspend fun unionAssetIds(eventId: String): Set<String> {
         val response = checked("read the union", client.get("$base/events/$eventId/files") { served() })
         return json.parseToJsonElement(response.bodyAsText()).jsonArray
             .mapTo(mutableSetOf()) { it.jsonObject.getValue("assetId").jsonPrimitive.content }
     }
 
     /** Uploads one resource's bytes, as the app's uploader addresses them. */
-    suspend fun upload(deviceId: String, asset: SeededAsset, role: ResourceRole) {
+    override suspend fun upload(deviceId: String, asset: SeededAsset, role: ResourceRole) {
         checked(
             "upload ${asset.assetId}/${role.wire}",
             client.put("$base/files/devices/$deviceId/${asset.assetId}/${role.wire}?filename=${asset.filename}") {
