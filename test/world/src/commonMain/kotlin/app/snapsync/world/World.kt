@@ -1124,7 +1124,7 @@ class World(
         get() = cycleOfThisLaunch ?: uploadCore(appScope, process, uploadPorts).also { cycleOfThisLaunch = it }
     private var cycleOfThisLaunch: UploadCycle? = null
 
-    /** What [cycle] is built over — the extension tier's inbound port reads its ledger and log from the same bundle. */
+    /** What [cycle] is built over — the extension's handlers read its ledger and log from the same bundle. */
     val uploadPorts: UploadPorts
         get() = uploadPortsOfThisLaunch ?: buildUploadPorts().also { uploadPortsOfThisLaunch = it }
     private var uploadPortsOfThisLaunch: UploadPorts? = null

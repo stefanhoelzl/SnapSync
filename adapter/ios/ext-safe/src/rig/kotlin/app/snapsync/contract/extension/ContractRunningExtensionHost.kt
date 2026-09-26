@@ -10,7 +10,8 @@ import app.snapsync.ios.upload.extensionTransferClauses
 import app.snapsync.ios.upload.transferRunStep
 import app.snapsync.logging.appGroupDirectory
 import app.snapsync.model.CycleResult
-import app.snapsync.ports.ExtensionEntries
+import app.snapsync.ports.ExtensionHandlers
+import app.snapsync.ports.ExtensionHost
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -28,7 +29,7 @@ import platform.Foundation.writeToFile
  * App Group both processes share:
  *
  *  1. the app's rig writes [RUN_REQUEST_FILE] naming the contract, then makes the OS invoke the extension;
- *  2. the extension's `process()` — [contractRunningEntries] — finds the request, deletes it, runs the contract
+ *  2. the extension's `process()` — [ContractRunningExtensionHost] — finds the request, deletes it, runs the contract
  *     in place of the upload cycle, and writes the recording to [RUN_RESULT_FILE];
  *  3. the rig reads the result back and answers it.
  *
@@ -94,8 +95,9 @@ fun extensionRunPlan(): List<Pair<String, Int>> =
     extensionTransferClauses().map { id -> id to callsFor(UploadContract.clauses.first { it.id == id }.state) }
 
 /**
- * [core] with one difference: when the app's rig has requested a contract run, `process()` performs the run's next
- * call INSTEAD of the upload cycle.
+ * The extension's entry port with one difference: when the app's rig has requested a contract run, an invocation
+ * performs the run's next call INSTEAD of the upload cycle. A decorator over [inner] — its forwarding [listen] is the
+ * composition's one registration, with the cycle handler wrapped.
  *
  * A run spans calls — a job the extension creates is uploaded only after the call returns (measured, SE2, iOS 26.6) —
  * so a call that prepared answers `PROCESSING`, which brings the next call five minutes later (measured), and keeps
@@ -103,12 +105,16 @@ fun extensionRunPlan(): List<Pair<String, Int>> =
  * and answers `COMPLETED`. The request is deleted BEFORE each call's work and rewritten only after it, so a call the OS
  * kills — about 60 s in, with no notice — ends the run rather than repeating.
  */
-fun contractRunningEntries(core: ExtensionEntries): ExtensionEntries = object : ExtensionEntries by core {
+class ContractRunningExtensionHost(private val inner: ExtensionHost) : ExtensionHost {
     private val log = Logger.withTag("ExtensionContract")
 
-    override suspend fun process(): CycleResult {
-        val requestPath = contractRunFile(RUN_REQUEST_FILE) ?: return core.process()
-        val request = readContractRunFile(requestPath)?.trim() ?: return core.process()
+    override fun listen(handlers: ExtensionHandlers) = inner.listen(
+        ExtensionHandlers(onProcess = { contractOr(handlers.onProcess) }, onTerminate = handlers.onTerminate),
+    )
+
+    private suspend fun contractOr(cycle: suspend () -> CycleResult): CycleResult {
+        val requestPath = contractRunFile(RUN_REQUEST_FILE) ?: return cycle()
+        val request = readContractRunFile(requestPath)?.trim() ?: return cycle()
         deleteContractRunFile(requestPath)
         val call = contractRunFile(RUN_CALL_FILE)?.let(::readContractRunFile)?.trim()?.toIntOrNull() ?: 1
         val tape = contractRunFile(RUN_TAPE_FILE)?.let(::readContractRunFile)

@@ -2,8 +2,8 @@
 
 package app.snapsync.rig
 
+import app.snapsync.world.composeExtension
 import app.snapsync.contracts.EntryDriver
-import app.snapsync.compose.extensionEntries
 import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.WakeId
 import app.snapsync.ports.DeviceLogSource
@@ -131,7 +131,7 @@ class JvmRigHost private constructor(
             screen: Screen,
             publishBoundPort: (Int) -> Unit,
         ): RigHooks {
-            val extension = extensionEntries(ports = { world.uploadPorts }, cycle = { world.cycle })
+            val extension = world.composeExtension()
             return RigHooks(
                 bootedAt = Clock.System.now().toString(),
                 uploadTier = "world",
@@ -154,7 +154,7 @@ class JvmRigHost private constructor(
                                         """"created":${world.platform.created.size}}""" + "\n"
                                 }
                             },
-                            "onTerminate" to RigTrigger.Fire { extension.onTerminate() },
+                            "onTerminate" to RigTrigger.Fire { extension.terminate() },
                         ),
                         excluded = emptyMap(),
                     ),

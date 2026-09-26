@@ -97,8 +97,12 @@ kover {
                     // `DevHandlers`) are constructed only by the composition and the host zone — `ListenDoorTest` pins
                     // that — which no module credited here reaches; their wiring runs in `:test:world`'s
                     // `EntryWorldTest`. What stayed here lost no test.
+                    // LOWERED 74 -> 72 in the same phase: the extension's raw-value mapping
+                    // (`processingResultRawValue`) MOVED to `:adapter:ios:ext-safe` with its test — the platform's
+                    // magic values belong to the adapter that answers the platform — and the new
+                    // `ExtensionHandlers` bundle is built only by the extension's composition.
                     bound {
-                        minValue = 74
+                        minValue = 72
                         coverageUnits = CoverageUnit.INSTRUCTION
                     }
                     // LOWERED 65 -> 57 by the storage-ports re-cut. Forcing proof: the zone's
@@ -107,8 +111,10 @@ kover {
                     // here lost a test; the ratio fell because the covered code left. Raise it
                     // again as the remaining port-adjacent helpers re-home or gain tests.
                     // LOWERED 57 -> 56 by 11f, for the same move: `OsCompletions`' guarded branches left with it.
+                    // LOWERED 56 -> 52 by 11g1: the raw-value mapping's branches left with it, for
+                    // `:adapter:ios:ext-safe`.
                     bound {
-                        minValue = 56
+                        minValue = 52
                         coverageUnits = CoverageUnit.BRANCH
                     }
                 }
