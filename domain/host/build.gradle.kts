@@ -7,7 +7,7 @@ plugins {
 // The core's host zone (`docs/architecture.md`, "Zones inside the core"; "One shared composition"):
 // `snapSyncHost` composes the core (`snapSyncApp`) AND the status host over it, with the host-assembly
 // subscriptions. Every root that runs the live app calls it — the iOS shell, and the world (so the control
-// channel's JVM host, the inbound-port contract fixtures and every test driving them) — so the host a test drives
+// channel's JVM host and every world test driving the entry ports) — so the host a test drives
 // is the host the phone runs.
 //
 // The one zone that sees both the composition zone and presentation, which must stay blind to each other: the

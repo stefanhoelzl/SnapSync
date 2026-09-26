@@ -174,7 +174,7 @@ class World(
      * Whether this world's join gate acts on an invite link's dev/test hints (`autoJoin` + its overrides,
      * capability `join-event`). **[InviteLinkHints.Ignored] by default — the phone's shipped answer**, so a
      * world composes exactly what a production root composes. The control channel's JVM host passes
-     * [InviteLinkHints.Honoured], as the rig's boot hook does on a device.
+     * [InviteLinkHints.Honoured], as the rig's development controls do on a device.
      */
     val inviteLinkHints: InviteLinkHints = InviteLinkHints.Ignored,
     /**

@@ -34,8 +34,8 @@ import kotlin.test.fail
  * deliberately in `test/rig/build.gradle.kts`).
  *
  * `SnapSyncRoot.kt` held one more — the background-`URLSession` routing by session identifier — until the
- * shell became a driving adapter (`shell-as-driving-adapter`): the routing moved into the core's implementation
- * of the app's inbound port, where the port contract covers it, and the root reaches it by delegation. That pin
+ * shell became a driving adapter (`shell-as-driving-adapter`): the routing moved into the adapters' dispatcher
+ * (`BackgroundSessions`), where `BackgroundSessionsTest` covers it. That pin
  * left because the decision left the shell, and unlike the rig's, it is now tested.
  */
 class KotlinShellGuardTest {

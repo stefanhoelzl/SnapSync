@@ -10,7 +10,7 @@ package app.snapsync.model
  * event, and start sharing. The authority is this value instead, supplied by the composition root.
  *
  * **A production build is always [Ignored]**, and that is structural rather than a runtime check: the only
- * writer of [Honoured] is the control channel's boot hook (and its JVM host), whose source is compiled only
+ * answer of [Honoured] is the control channel's development controls (and its JVM host's world), whose source is compiled only
  * into a build made with `-Psnapsync.rig=true`. Under [Ignored] an `autoJoin` link opens the ordinary join
  * confirmation and every override is discarded — the join screen seeds its own defaults, as for any invite.
  */

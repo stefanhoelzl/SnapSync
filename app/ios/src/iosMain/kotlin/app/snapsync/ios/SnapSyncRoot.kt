@@ -115,12 +115,12 @@ import platform.Foundation.NSProcessInfo
  * untested by the project's hard rule, and parking that decision here is precisely how the app-driven tier
  * shipped a provision path that destroyed its ledger and started nothing (capability `background-upload`).
  *
- * **The OS entries are the core's.** This root is the *driving adapter* of the app's inbound port
- * [PlatformEntries] (`docs/architecture.md`, "OS entry points cross an inbound port"): it implements the port
- * by delegation to the core's `platformEntries`, so which own work an entry runs, how its completion is held, when the tail runs
- * and how a background task or transfer channel is routed are written once, in `compose/`, and covered by the
- * port's contract. What stays here is what only a root can do — the hooks the core cannot name ([rootEntries]),
- * and the entries that are not the port's (`onLaunch`, the activity filter's doors, the log-only scene callbacks).
+ * **The OS entries are the adapters'.** Every callback the Swift shell forwards reaches an entry port's adapter in
+ * one line — `Lifecycle`, `Links`, `PushNotifications`, `Ui` (`docs/architecture.md`, "Events arrive through
+ * `listen`") — and what a delivery runs is the composition's handler, registered as the graph is composed. So which
+ * own work an entry runs, how its completion is held and when the tail runs are written once, in `compose/`, and
+ * pinned by the world's entry tests. What stays here is what only a root can do: build the adapters, the ONE cutoff
+ * formatter, and the build's adapter set (`platformAdapters()`), and compose at launch (`onLaunch`).
  */
 object SnapSyncRoot {
 

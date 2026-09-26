@@ -15,7 +15,7 @@ import co.touchlab.kermit.Logger
  * through the process's tail, which runs after the OS handler is released, under the process's background time.
  * Running the upload cycle here held the handler behind a library walk (measured: a push that waited 22.5 s behind
  * another cycle's walk) for work the push is not about. Whether the wake joins that tail — only for the active event
- * — is decided by the upload arm's tested guard, and the tail is requested by the inbound port's implementation
+ * — is decided by the upload arm's tested guard, and the tail is requested by the push handler
  * **after** this flow returns, never from inside it (law "A trigger flow never outlives its own run").
  *
  * [run] takes the OS payload **whole** (migration step 12, the transcriber law): the `model/` codec ([pushEventId]) is

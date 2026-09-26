@@ -14,7 +14,7 @@ import app.snapsync.feature.status.StatusCountsPoller
  *
  * [statusPoller] is `feature/status`'s poll: its cadence is the feature's rule, and this flow only
  * orders its lifecycle against the OS callback. The entry-point log wrap and the "entering background"
- * banner stay with the inbound port's implementation.
+ * banner stay with the background handler.
  */
 class Background(
     private val statusPoller: StatusCountsPoller,

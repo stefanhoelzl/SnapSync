@@ -32,8 +32,8 @@ import kotlin.time.Duration.Companion.seconds
  *
  * A hook, not a second server — exactly the extension `RigHooks` was shaped for ("a second platform brings its own
  * hook; the server, the routes and the state projection are unchanged"). What this file adds is only what the iOS
- * shell adds on its side: the composition lane, the status host over the core's read-models, the inbound ports'
- * implementations the `/os` verbs invoke, and this host's classification of the shared vocabulary.
+ * shell adds on its side: the composition lane, the status host over the core's read-models, the entry-port
+ * driver the `/os` verbs invoke ([WorldEntryDriver]), and this host's classification of the shared vocabulary.
  *
  * The world is composed on a **serial, non-UI** lane, the structure the device shell uses and the full-stack
  * harness mirrors (`docs/testing.md`, "The harness composes the live core on the shipped lane
@@ -109,7 +109,7 @@ class JvmRigHost private constructor(
         private fun compose(scope: CoroutineScope, backend: WorldBackend): World {
             // Attesting over the mini-edge, as a device attests; not over the real backend, whose local serve
             // attaches a dev fallback credential and models no attestation exchange.
-            // Invite-link hints honoured, as the rig's boot hook sets them on a device: this host IS the control
+            // Invite-link hints honoured, as the rig's development controls answer them on a device: this host IS the control
             // channel, whose callers join headlessly with `autoJoin` (capability `join-event`).
             val world = World(
                 scope,
