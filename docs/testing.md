@@ -120,10 +120,9 @@ Most of this risk has been removed by moving code:
 - The tap → intent table is one factory in `:ui:screens`, and it is click-tested there.
 
 What is still uncovered:
-- Swift argument-level forwarding: the right entry called with a wrong argument of the same type. (The one
-  `BGTask` registration forwards the OS-delivered identifier to `onBackgroundTask`, and its expiration handler
-  forwards the same identifier to `onBackgroundTaskTimeUp`, so a copied registration block cannot misroute a
-  task or its expiry.)
+- Swift argument-level forwarding: the right entry called with a wrong argument of the same type. (Since 11f the
+  `BGTask` registration is Kotlin's — `IosWake` registers the heartbeat and hands its expiry to the wake's
+  `Completion` — so Swift forwards no task identifier at all.)
 - The hand-written shell entries outside the port: `onLaunch`, the event-link activity filter's call site,
   and the log-only callbacks.
 

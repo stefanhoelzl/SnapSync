@@ -144,9 +144,10 @@ One line each. The authority is the named gate. Gates live in `:test:architectur
 | Anything touching an external system (time, files, network, platform) goes through a port in `ports/`, named for the **need**, never the technology. The process-level ones are one external system each: `CrashReporter`, `ProcessMetrics`, `LogSink`, `Clock` (now and the device zone), `ProcessInfo` (protected-data availability, `UNKNOWN` where it cannot be asked), `SystemUi` (share sheet, open a URL, the app's Settings page) and `EntryContext` (the ambient entry-point seam; a thread-scoped variant for callbacks that must not label concurrent work) | **review** (partly the compiler: `ports/` cannot import Ktor, nor any of SQLDelight but its runtime interfaces, which `Databases` carries) |
 | A storage port is one external system and decides nothing (`Databases`: open by name, read-write or read-only; `Files`: read, tail, write, delete, exists, locate within an area; `Preferences`: get, set, remove). What a store holds, when it opens and what a failure means is a service's, in `services/` | **review** |
 | The photo library is one thin port: `GalleryReader` (both processes: assets by policy or id, resources by id, albums, album members, create, add) and `Gallery` (the app: plus the access request, the selection picker, the partial grant's selection observer, the import and the change token). It answers what the platform shows, and `NotReadable` — never an empty answer — when no grant lets the process read. Whether a walk is authoritative for deletion, which grant may say a photo is gone and which albums are denied are the gallery services' (`services/`). Asset ids cross in one form, opaque to the core | `GalleryReaderContract`, `GalleryContract`, `GalleryImportContract` (live on `IOS_SIM_APP`, the no-grant state on `IOS_SIM_KEXE`) + `GalleryServicesTest` |
+| The transfers are thin event ports, one external system each: `Upload` (create from a source the platform accepts — a library resource or an exported file — list a job set, retry, acknowledge, cancel), `Download` (start, cancel everything the session holds, and a finish reported with its facts and temporary file), `Wake` (schedule and cancel a `WakeId`, and hear the wake) and `ExtensionRegistry` (set and read the upload extension's registration, `Unsupported` on a platform without one — so no root holds an `if` around it). What a job means for the ledger, what a body may be staged as and when the heartbeat is armed are the services' (`UploadTransferService`, `Heartbeat`) and the features' (the download jobs, the tail runner). A platform's in-flight limit is its own and surfaces as `LIMIT_EXCEEDED`: the services create until refused. An OS completion handler crosses as a `Completion` (release once; `onExpired` only where the platform has an expiry signal) | `UploadContract`, `DownloadContract` (live on `IOS_SIM_APP`, the extension's queue recorded on a device), `WakeContract` and `ExtensionRegistryContract` (recorded, under their pre-11f names) + `UploadTransferServiceTest`, `UploadJobDecisionsTest`, `HeartbeatTest` |
 | The origin exclusions' tuning — the two resolution floors and the album denylist — is one `SelectionCalibration` value in `model/`, product policy rather than a platform fact: no composition supplies its own, so the app and the extension cannot disagree | **review** |
 | `SecureStore` writes answer a `WriteOutcome`; the identity and attestation services throw where the old throwing store did, so a refused write fails the operation (the device id is unavailable and never used unsaved; a token is not accepted; a keyId is refused). A write may replace by delete-then-add, so after a refused one the old value may be gone | `SecureStoreContract` (`INACCESSIBLE_WRITE_REFUSES`) + `PersistedDeviceIdentityTest`, `AttestStateTest` |
-| Ports never call ports: no adapter's constructor takes a port. Combining two external systems is a service's job (`services/`) or a feature's, so no decision hides inside an adapter where a mock cannot see it and a second platform would have to re-make it | `PortsNeverCallPortsTest` (every constructor parameter of the adapter modules' production source sets typed as a `ports/` interface; the rig's decorators are exempt). Its allowlist is exact both ways and only shrinks: the holdings 11d, 11e and 11f remove, each named with its phase |
+| Ports never call ports: no adapter's constructor takes a port. Combining two external systems is a service's job (`services/`) or a feature's, so no decision hides inside an adapter where a mock cannot see it and a second platform would have to re-make it | `PortsNeverCallPortsTest` (every constructor parameter of the adapter modules' production source sets typed as a `ports/` interface; the rig's decorators are exempt). Its allowlist is exact both ways and only shrinks: 11d, 11e and 11f emptied their holdings; what remains is named with its owner |
 | The backend is ONE port, `Backend`: one method per route, answering a typed `Reply` (`Ok`, `Refused(status, body)`, `Malformed`, `Unreachable`), deciding nothing. A method takes a `token` exactly when its route is gated. `HttpBackend` is its one implementation on every platform, over the HTTP client each composition supplies | `BackendContract` (live against `api/`) + `HttpBackendTest` (the token-taking routes are exactly `isGatedRequest`'s) |
 | The backend's verdicts are `AuthenticatedBackend`'s, in `services/`, and nowhere else: it reads the credential per call; a `401` on a gated call that carried a token drops THAT token, recovers, and retries the call once with the recovered token; a `426` on any route refuses the build; a success clears the refusal. The app's credential re-attests; the extension's only drops the token and never retries. Every need-shaped backend service (directory, join, manifest, leave, union, device files, create, rename, push token) sits over it; attestation reaches the ungated `/attest/…` routes on the raw port, so recovery never re-enters itself | `CredentialedBackendTest`, `BackendServicesTest`, `CredentialRecoveryWorldTest` (the loop, composed) |
 | `DeviceIntegrity` only proves (`prove(challenge, handle?)`: a fresh key's attestation, or an assertion by an existing one). The attestation service decides when, and `AttestState` keeps the token and key handle | `DeviceIntegrityContract` (recorded on a device, replayed every build) + `DeviceAttestationTest` |
@@ -172,6 +173,12 @@ One line each. The authority is the named gate. Gates live in `:test:architectur
 | `Gallery` | `onChanged(SelectionSnapshot)` | hands the snapshot to the core's conflated channel; host assembly's collector recounts `N` and runs the selection's tail (a flow command) | the selection lane |
 | `Gallery` | `onImportPlaceholder(ref, id)` | the download store's guarded marker write (a service call), synchronous — the lane exception: it must land inside the change block, before the asset is observable | the platform's change block |
 | `Gallery` | `onImportSettled(ref, outcome)` | the download store's confirm or clear (a service call), persisted inline — the platform reports it once, even when the requester is gone | the platform's completion |
+| `Wake` | `onWake(id, completion)` | the heartbeat's tail under the completion, released after the tail or at once on `Completion.onExpired` (a flow command: the tail runner) | the platform's launch handler |
+| `Upload` | `onFinished(job)` | the upload service's guarded terminal write, inline — reported once — then the tail's top-up | the session's delegate queue |
+| `Upload`, `Download` | `onBackgroundEvents(completion)` | a transfer wake: background time, the completion adopted by `OsCompletions`, the prelude, then the tail after the drain report | the platform's relaunch callback |
+| `Upload`, `Download` | `onEventsDrained()` | releases the adopted completions after the wake's own work (a download's stagings, joined first) | the session's delegate queue |
+| `Download` | `onFinished(tag, facts, tempPath)` | the download jobs' integrity check and the move into staging, inline — the platform deletes the file when it returns; the store write it causes is launched and joined before the release | the session's delegate queue |
+| `Download` | `onCompleted(tag, error)`, `onInvalidated()` | frees the window slot; empties the window after a system invalidation | the session's delegate queue |
 
 ### State and authority
 
@@ -180,8 +187,8 @@ One line each. The authority is the named gate. Gates live in `:test:architectur
 | Authority lives behind ports. After process death every fact is recoverable from a durable store or the external system. This binds adapters too | **review** |
 | A delivery the platform makes **once** is persisted before the entry point returns, citing proof (API contract, vendor doc, or measurement) that it is once-only. A MetricKit report is handled **inline** on the thread MetricKit delivers on (the lane law's one exception for it): `ProcessAccount` attaches it to the crash channel and logs it before the callback returns | **review** |
 | Each kind of write to a durable port has exactly one owner (a feature use case or a port's guarded write), written as one transaction with the guard in the statement. Two processes running that owner is fine | **review** |
-| No transport adapter holds `LedgerStore` (transports get the narrow `TransferRecord`) | `TransportLedgerGateTest` |
-| Holding an OS completion handler is confined to `ports/OsCompletions` (Kotlin and Swift). Releasing before the wake's own work is not expressible on it | `OsHandlerContainmentTest` (storing) + the type (releasing early) |
+| No transport adapter holds the ledger, not even the narrow `TransferRecord`: the upload service records a transfer's end, through that guarded write, where the platform reports it | `TransportLedgerGateTest` |
+| Holding an OS completion handler is confined to `services/wake/OsCompletions` (Kotlin and Swift). Releasing before the wake's own work is not expressible on it | `OsHandlerContainmentTest` (storing) + the type (releasing early) |
 | The walk memo is built in one place (`appUploadDiscovery`) and bound only by the app's uploader, never by the extension or the shared `uploadCore` | `WalkMemoContainmentTest` |
 | Mutable state touched from an OS callback thread is confined to a named lane (`@ConfinedTo`) or is a thread-safe primitive | `ConfinementGateTest` (heuristic) |
 
@@ -218,7 +225,7 @@ One line each. The authority is the named gate. Gates live in `:test:architectur
 
 | law | enforced by |
 |---|---|
-| Three lanes: **main** (platform UI only), **CPU** (presentation reduction), **composition** (a dedicated serial dispatcher for blocking calls, network, stores; its thread pinned to `QOS_CLASS_USER_INITIATED` by its first task, logged once). The live scope is never UI-bound, in any binary | **review** for the scope. The main lane is gated below |
+| Three lanes: **main** (platform UI only, and the one UIKit completion handler UIKit requires there — a background `URLSession`'s, released by its adapter's `Completion`), **CPU** (presentation reduction), **composition** (a dedicated serial dispatcher for blocking calls, network, stores; its thread pinned to `QOS_CLASS_USER_INITIATED` by its first task, logged once). The live scope is never UI-bound, in any binary | **review** for the scope. The main lane is gated below |
 | One adapter-owned hop lane beside them: the **PhotoKit read lane** (`photoKitReadLane`, `:adapter:ios:ext-safe`), a single dedicated thread pinned to `USER_INITIATED`, used by the discovery walk and the candidate source. A dedicated thread, because a pooled worker left at `USER_INITIATED` would carry the class into unrelated work | **review** |
 | The main thread is named only by allowlisted platform-UI adapters (Kotlin `Dispatchers.Main`, `MainScope()`, `dispatch_get_main_queue`, `NSOperationQueue.mainQueue`; Swift `DispatchQueue.main`). `runBlocking` appears only in the extension root | `MainLaneContainmentTest` |
 | An adapter's dispatcher hop means throughput, never safety (the composition already keeps work off main) | **review** |
@@ -759,9 +766,9 @@ Keychain (only in `:adapter:ios:ext-safe`, as `IosSecureStore`; every item is re
 `simulator.entitlements` carries the App Group only and **must not** declare `keychain-access-groups`,
 because that makes an ad-hoc simulator build unlaunchable.
 
-OS-registered identifiers: the one BGTask `app.snapsync.upload.heartbeat` (Kotlin, `Info.plist` and the Swift
-registrations must agree: `RuntimeIdentityTest` asserts `BGTaskSchedulerPermittedIdentifiers` lists **exactly**
-the pinned set, and the Swift shell registers exactly that set, so a retired id such as
+OS-registered identifiers: the one BGTask `app.snapsync.upload.heartbeat` (Kotlin and `Info.plist` must agree:
+`RuntimeIdentityTest` asserts `BGTaskSchedulerPermittedIdentifiers` lists **exactly** the pinned set, the wake adapter
+registers exactly that set in its `listen`, and the Swift shell registers none, so a retired id such as
 `app.snapsync.download.backstop` left in the plist fails the build); background `URLSession`s `app.snapsync.upload.session` and
 `app.snapsync.download.bg` (the OS reattaches transfers by these); framework base names `SnapSyncKit`
 and `SnapSyncUploadKit`. The pinned inventory, including retired names kept for recognition, is
@@ -772,20 +779,22 @@ and `SnapSyncUploadKit`. The pinned inventory, including retired names kept for 
 ## 10. Background execution: each wake's own work, then one tail
 
 How the app process spends an OS wake. The user-visible promises this serves are in
-`openspec/specs/background-upload` and `receiving-photos`. The code of record is `compose/AppEntries.kt`,
-`compose/Wakes.kt` and `feature/upload/TailRunner.kt`. Decision record:
-`changes/archive/2026-09-25-own-work-per-wake`.
+`openspec/specs/background-upload` and `receiving-photos`. The code of record is `compose/AppEntries.kt` (the inbound
+port's entries), `compose/WakeEntry.kt` and `compose/TransferEntries.kt` (the `Wake`, `Upload` and `Download` event
+ports' handlers), `compose/Wakes.kt` (`WakeHold`) and `feature/upload/TailRunner.kt`. Decision record:
+`changes/archive/2026-09-25-own-work-per-wake`; phase 11f moved the heartbeat and the transfer relaunches from the
+inbound port onto event ports without changing what each wake runs.
 
-**Own work per wake.** Every entry point (the inbound port's implementation in `compose/`) runs a shared
-prelude (membership re-read, attestation refresh), then only the work its event is about, and then hands the
-rest to the tail:
+**Own work per wake.** Every wake — an inbound-port entry, or an event port's handler — runs a shared prelude
+(membership re-read, attestation refresh), then only the work its event is about, and then hands the rest to the
+tail:
 
 | wake | own work | tail | heartbeat re-arm |
 |---|---|---|---|
 | silent push (active event only, `PushTailGuard`) | union read, plan, download enqueue | full | always |
 | download-session relaunch | stage the delivered files | full | only if work remains |
 | upload-session relaunch (iOS 18–26.0) | the delegate records terminals | full | only if work remains |
-| heartbeat `BGTask` `app.snapsync.upload.heartbeat` | none: the task *is* the tail | full | always |
+| heartbeat (`Wake`; on iOS the `BGTask` `app.snapsync.upload.heartbeat`) | none: the wake *is* the tail | full | always |
 | limited-grant selection change | snapshot-fed discovery → manifest | full | always |
 | foreground | download reconcile, stored-upload settle, staged-byte reclaim, status and membership refresh | full | always |
 | membership transition's arm | none (requested detached) | full | always |
@@ -802,15 +811,29 @@ applies its own re-arm to the outcome. A throwing unit fails the tail and every 
 is the only drain, plus the once-per-process interrupted-import sweep at host assembly (same per-asset claims).
 There is no download backstop task any more.
 
-**Handlers and time.** OS completion handlers are held only by `ports/OsCompletions`, with two release paths:
-after the own work, or at once on the OS's expiry, each handler exactly once. A push or `URLSession` handler is
-released right after its own work (the `URLSession` one on the main thread, at `urlSessionDidFinishEvents`, once
-the stagings it started are recorded). The tail then runs under the process's background time, the
+**The heartbeat** is the `Heartbeat` service (`services/wake`) over the `Wake` port: a one-shot wake no sooner than
+60 s from now, needing the network, re-requested each time; it arms and cancels every `WakeId` on every platform,
+and a platform without a kind of wake answers `Unsupported` (iOS has no library-change wake). **When** it is armed is
+the table's rule — `TailRunner.shouldSchedule` over each trigger's re-arm — with one addition (phase 11f): after a
+tail whose upload units would not re-arm (a declining membership's `SKIPPED`, or a drained relaunch), staged downloads
+still waiting to be imported count as work remaining and arm it — except for the triggers that never re-arm. So a
+membership that only receives arms a heartbeat while a save iOS cut short is waiting, and not otherwise.
+
+**In-process requests hold time too.** A tail requested from inside the process — a transition's arm, an upload
+completion's top-up, a staged download's import, a selection change (its own work included) — holds the process's
+background time from the request to the tail's end (`WakeHold`), as a wake does. Free on iOS, where background time
+is per app; on Android it is what keeps a worker's top-up from being frozen mid-unit.
+
+**Handlers and time.** OS completion handlers cross as a `Completion` and are held only by
+`services/wake/OsCompletions`, with two release paths: after the own work, or at once on the OS's expiry, each
+handler exactly once. A push or `URLSession` handler is released right after its own work (the `URLSession` one at
+`urlSessionDidFinishEvents`, once the stagings it started are recorded — its adapter's `Completion` puts the call on
+the main thread UIKit requires). The tail then runs under the process's background time, the
 `BackgroundTime` port (`beginBackgroundTask` in `:adapter:ios:app-only`), begun no later than the handover and
 also held by foreground entry. A `BGTask` holds `setTaskCompleted` until its tail ends. **No clock of ours**:
 there is no receipt deadline, no manifest timeout and no `backgroundTimeRemaining` read. "Time is up" is only
-the `BGTask`'s `expirationHandler` (forwarded by Swift as `onBackgroundTaskTimeUp`, never answered in Swift) or
-the background task's expiration handler; a refused hold reports as an immediate expiry. On expiry the core
+the `BGTask`'s `expirationHandler` (the wake adapter's `Completion.onExpired`; nothing in Swift answers it) or the
+background task's expiration handler; a refused hold reports as an immediate expiry. On expiry the core
 requests the tail's stop and releases and ends everything **at once**. The unit in flight is not cancelled and
 runs on until suspension, nothing new starts, and a stopped tail counts as `PROCESSING` for the re-arm. The
 walk is atomic: a stopped walk is abandoned and writes nothing. The only timeout left is the HTTP client's
@@ -875,8 +898,11 @@ model ← ports ← services ← feature ← flow ← compose
 
 **Ports:**
 - Backend: typed, one HTTP client per composition (11c, shipped — section 2).
-- Gallery and GalleryReader (shipped in 11d; `export` of a resource to a file waits for the transfer ports in 11f).
-- Upload, ExtensionRegistry, Download and Wake.
+- Gallery and GalleryReader (shipped in 11d; `export` of a resource to a file landed with the transfer ports in 11f).
+- Upload, ExtensionRegistry, Download and Wake (11f, shipped — section 10). `Upload` is one port for both upload
+  tiers, answering which source it takes (a library resource, or a file the upload services export); the job
+  decisions — which ledger row a job answers, when a free retry is spent, which end is recorded — are the upload
+  services' (`services/upload`).
 - Files, Databases, Preferences, SecureStore and PlatformDeviceId.
 - DeviceIntegrity (11c, shipped). (The process ports — CrashReporter, ProcessMetrics, SystemUi, Clock, ProcessInfo,
   LogSink and EntryContext — landed in 11e and are described above.)
@@ -898,6 +924,6 @@ persisted inline on the delivering thread.
   the denylist mean the same on every platform.
 
 **Phases.** 11a structure (shipped) → 11b storage and `:domain:services` (shipped) → 11c backend and integrity
-(shipped), 11d gallery (shipped) and 11e process ports (shipped), in parallel → 11f transfer → 11g entry surface. 11i
+(shipped), 11d gallery (shipped) and 11e process ports (shipped), in parallel → 11f transfer (shipped) → 11g entry surface. 11i
 (raw asset ids) follows 11c, 11d and 11f, then comes 11h (the mock mix chosen at launch). Phases 11f–11g are being
 designed again against §10's wake model.

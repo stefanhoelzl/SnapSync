@@ -110,8 +110,8 @@ is no per-root cycle or feature assembly any more.
   stores, `:adapter:generic:app` HTTP adapters) and calls `uploadCore(scope, ports)`; `process()` runs
   one blocking cycle of the composed `UploadCycle`, then maps the pending→`PROCESSING` requeue and
   the raw-value handoff through the tested `ports/` rules.
-- The app-driven tier's `UrlSessionUploadController` calls the same `uploadCore` over its own ports
-  (background-`URLSession` platform and scheduler stay tier-local mechanism; the app's `TailRunner` drives it).
+- The app-driven tier's uploader (`compose/AppUploader.kt`) calls the same `uploadCore` over the app's own
+  `Upload` port (the background-`URLSession` adapter); the app's `TailRunner` drives it.
 
 **Neither is the direction gate** (capability `background-upload`). Whether a membership uploads **at all** is
 decided inside `UploadCycle`, from a required `Contribution` (`:domain` `model/`) carrying the membership's
@@ -155,9 +155,9 @@ the compiler cannot — that the extension is never registrable below 26.1, and 
 deregisters or cancels anywhere but at a leave.
 
 **Ledger writers are owned by code, not by a process** (`photo-sharing`). The app holds a `LedgerWriter` on every
-OS version — constructed in `UrlSessionUploadController` through `uploadCore` — and on **iOS ≥26.1** the
+OS version — constructed in the app's uploader (`compose/AppUploader.kt`) through `uploadCore` — and on **iOS ≥26.1** the
 **extension** holds one too. Every write is one guarded transaction owned by named code: the cycle's record
-family, a transport's guarded terminal write, and the membership reset family. Outside that controller,
+family, a transport's guarded terminal write, and the membership reset family. Outside that uploader,
 `:app:ios` constructs no writer.
 
 ## Entitlements & Info.plist (the cross-process glue)
@@ -239,7 +239,7 @@ rig's boot hook, not compiled in without `-Psnapsync.rig=true`).
   `PHBackgroundResourceUploadJobExtension` is confined to the Swift shell + deployment target.
 - **app-driven `URLSession` (`background-upload`) — every iOS version, whenever access is usable.** The
   **main app process** uploads over a background `URLSession` + `BGProcessingTask`, via
-  `IosUrlSessionUploadPlatform` / `IosBackgroundScheduler` (`:adapter:ios:app-only`) driving the same `:domain`
+  `IosUrlSessionUploadPlatform` / `IosWake` (`:adapter:ios:app-only`) driving the same `:domain`
   feature/upload `UploadCycle`, whose units (`topUp`, `walkAndPublish`) run in the app's one `TailRunner`. Below 26.1 it is the only uploader; from 26.1
   it runs beside the extension, both writing the one App-Group ledger (every write a guarded single transaction).
 
