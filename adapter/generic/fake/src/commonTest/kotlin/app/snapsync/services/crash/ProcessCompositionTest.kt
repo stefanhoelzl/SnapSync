@@ -9,6 +9,7 @@ import app.snapsync.model.CrashEvent
 import app.snapsync.model.DiagnosticDump
 import app.snapsync.model.DumpResult
 import app.snapsync.model.NON_REDACTED_TAG
+import app.snapsync.model.SAVED_DIAGNOSTIC_REPORT_PATH
 import app.snapsync.model.ProcessMetricReport
 import app.snapsync.ports.EntryContext
 import app.snapsync.ports.MetricHandlers
@@ -33,6 +34,7 @@ class ProcessCompositionTest {
     private val id = "550e8400-e29b-41d4-a716-446655440000"
     private val started = MutableStateFlow(false)
     private val dumps = MutableStateFlow<List<CrashEvent>>(emptyList())
+    private val privateFiles = mutableMapOf<String, ByteArray>()
 
     /** A provider that hands over whatever it holds the moment something listens — MetricKit's one-shot shape. */
     private class HeldReports(private val held: List<ProcessMetricReport>) : ProcessMetrics {
@@ -50,7 +52,7 @@ class ProcessCompositionTest {
         crashReporter = reporter,
         processMetrics = metrics,
         logSinks = emptyList(),
-        files = inMemoryFiles(),
+        files = inMemoryFiles(private = privateFiles),
         clock = fixedClock(kotlin.time.Instant.fromEpochSeconds(0)),
         entryContext = EntryContext.NoOp,
         dsn = dsn,
@@ -69,13 +71,37 @@ class ProcessCompositionTest {
     }
 
     @Test
-    fun a_build_that_reports_nowhere_starts_nothing_and_installs_nothing() = runTest {
+    fun a_build_that_reports_nowhere_starts_nothing_and_installs_nothing() {
         val process = process(dsn = null)
         assertFalse(started.value, "no destination, no channel — and no connection ever opened")
         assertFalse(process.crash.isConfigured)
         assertEquals(1, process.logWriters.size, "only the sinks' writer: a build that reports nowhere never constructs the crash one")
-        assertIs<DumpResult.NotSent>(process.crash.sendDump(dump()))
-        assertTrue(dumps.value.isEmpty())
+    }
+
+    @Test
+    fun a_build_that_reports_nowhere_keeps_the_latest_report_on_the_device_and_sends_nothing() = runTest {
+        val process = process(dsn = null)
+        assertEquals(DumpResult.Saved(SAVED_DIAGNOSTIC_REPORT_PATH), process.crash.sendDump(dump()))
+        val second = DiagnosticDump("second report", mapOf("screen" to "Joined"), emptyMap(), "app\n", "ext\n")
+        assertEquals(DumpResult.Saved(SAVED_DIAGNOSTIC_REPORT_PATH), process.crash.sendDump(second))
+        val saved = privateFiles.getValue(SAVED_DIAGNOSTIC_REPORT_PATH).decodeToString()
+        assertTrue("second report" in saved && "stuck on" !in saved, "the later report replaces the earlier: $saved")
+        assertTrue(dumps.value.isEmpty(), "nothing left the phone")
+        assertFalse(started.value)
+    }
+
+    @Test
+    fun a_report_that_cannot_be_saved_says_so() = runTest {
+        val crash = CrashReporting(inMemoryCrashReporter(), null, EntryContext.NoOp, inMemoryFiles(private = null))
+        assertIs<DumpResult.NotSent>(crash.sendDump(dump()))
+    }
+
+    @Test
+    fun the_saved_report_holds_the_five_sections_with_identifiers_intact() {
+        val saved = app.snapsync.model.savedDiagnosticReport(dump())
+        listOf("\"note\"", "\"state\"", "\"ledger\"", "\"app_log\"", "\"ext_log\"", id).forEach {
+            assertTrue(it in saved, "missing $it: $saved")
+        }
     }
 
     @Test
@@ -126,7 +152,7 @@ class ProcessCompositionTest {
     @Test
     fun the_log_writer_hands_every_line_to_the_channel_and_an_error_as_an_event_tagged_with_its_entry_point() {
         val reporter = Recording()
-        val writer = assertNotNull(CrashReporting(reporter, "https://key@ingest/1", Entry("process")).logWriter)
+        val writer = assertNotNull(CrashReporting(reporter, "https://key@ingest/1", Entry("process"), inMemoryFiles()).logWriter)
         writer.log(co.touchlab.kermit.Severity.Info, "enumerated 3", "gallery", null)
         writer.log(co.touchlab.kermit.Severity.Error, "reconcile($id) failed", "engine", null)
         assertEquals(listOf("[process] enumerated 3", "[process] reconcile(‹uuid›) failed"), reporter.crumbs.map { it.message })
@@ -164,11 +190,11 @@ class ProcessCompositionTest {
 
     @Test
     fun describing_the_process_starts_a_reporting_channel_itself() {
-        val crash = CrashReporting(inMemoryCrashReporter(started, dumps), "https://key@ingest/1", EntryContext.NoOp)
+        val crash = CrashReporting(inMemoryCrashReporter(started, dumps), "https://key@ingest/1", EntryContext.NoOp, inMemoryFiles())
         assertFalse(started.value)
         crash.describeProcess(ProcessMetricReport(emptyMap()))
         assertTrue(started.value, "an account that outran the composition must not reach an unstarted channel")
         assertNotNull(crash.logWriter)
-        assertNull(CrashReporting(inMemoryCrashReporter(), null, EntryContext.NoOp).logWriter)
+        assertNull(CrashReporting(inMemoryCrashReporter(), null, EntryContext.NoOp, inMemoryFiles()).logWriter)
     }
 }

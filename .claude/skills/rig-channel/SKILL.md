@@ -273,7 +273,7 @@ curl -X POST localhost:18099/user/leave
 
 # THE REST OF /user (both hosts): rename[?event=]&name=, renameStatusConsumed, confirmSwitch, retryLoad, retryJoin,
 # setRange?[from=eventStart|now][&until=eventEnd][&cutoff=…Z][&until=…Z]  (sets the form, commits nothing),
-# sendDiagnostics?note=&screen=  (409 on every rig build of the app: no DSN, no reporter, nothing sent)
+# sendDiagnostics?note=&screen=  (a rig build of the app carries no DSN: it SAVES the report to Documents/diagnostic-report.json, sends nothing)
 ```
 
 ⚠️ **`create` is non-idempotent** — every call mints a **new** backend event. There is no launch variable

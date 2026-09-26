@@ -20,7 +20,16 @@ import kotlinx.serialization.Serializable
 data class UiState(
     val layer: Layer,
     val overlays: Overlays = Overlays(),
+    /** Where a bug report goes on this build — what the report sheet says, and what its button reads. */
+    val reportDestination: ReportDestination = ReportDestination.DEVELOPER,
 )
+
+/**
+ * Where a bug report goes (capability `privacy-security`) — a constant of the build: a distributed build sends it to
+ * the developer's error-tracking service; a build that reports nowhere keeps it on this device.
+ */
+@Serializable
+enum class ReportDestination { DEVELOPER, THIS_DEVICE }
 
 /**
  * What is drawn OVER the current [Layer] — the confirmations and sheets.

@@ -1013,21 +1013,15 @@ class AppCore internal constructor(
             // eliminate.
             resetRename = { awaitingOnCoreLane<Unit>("tap.resetRename") { renameEvent.reset() } },
             // The hidden diagnostic dump (capability `privacy-security`), fired once the operator has
-            // written what went wrong. NULL on a build with no reporting configuration, so the screen
-            // wires no gesture and no sheet can open — a build that can send nothing must not offer an
-            // affordance suggesting it can. This is the ONE place that decision is made.
-            sendDiagnostics = if (process.crash.isConfigured) {
-                { note, screen ->
-                    // Core lane and awaited: the dump reads both device logs (~700 KB) before it sends,
-                    // which is exactly the blocking work the main lane must never see, and the sheet
-                    // waits on it.
-                    awaitingOnCoreLane<Unit>("tap.sendDiagnostics", params = "screen=$screen") {
-                        val result = process.crash.sendDump(collectDiagnosticDump.collect(note, screen))
-                        ports.log.i { "diagnostic dump: $result" }
-                    }
+            // written what went wrong: sent where the build reports, kept on the device where it does not —
+            // the process's crash reporting decides, and the answer is logged either way.
+            sendDiagnostics = { note, screen ->
+                // Core lane and awaited: the dump reads both device logs (~700 KB) before it sends or saves,
+                // which is exactly the blocking work the main lane must never see, and the sheet waits on it.
+                awaitingOnCoreLane<Unit>("tap.sendDiagnostics", params = "screen=$screen") {
+                    val result = process.crash.sendDump(collectDiagnosticDump.collect(note, screen))
+                    ports.log.i { "diagnostic dump: $result" }
                 }
-            } else {
-                null
             },
         )
     }

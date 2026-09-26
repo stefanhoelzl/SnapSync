@@ -21,7 +21,7 @@ internal fun testActions(
     onCreateEvent: (String, LocalDateTime, LocalDateTime) -> Unit = { _, _, _ -> },
     onOpenLink: (String) -> Unit = {},
     participation: ParticipationActions = testParticipationActions(),
-    onSendDiagnostics: ((note: String, screen: String) -> Unit)? = null,
+    onSendDiagnostics: (note: String, screen: String) -> Unit = { _, _ -> },
 ) = StatusActions(join, joined, access, switch, surfaces, onCreateEvent, onOpenLink, participation, onSendDiagnostics)
 
 internal fun testJoinGateActions(

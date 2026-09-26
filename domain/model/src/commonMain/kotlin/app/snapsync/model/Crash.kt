@@ -64,9 +64,33 @@ sealed interface DumpResult {
     /** Handed to the channel, which queues and retransmits it. Returning does NOT mean it left the device. */
     data object Queued : DumpResult
 
-    /** Nothing was sent, and [reason] says why (the channel is not running, or the build reports nowhere). */
+    /**
+     * Kept on the device at [path] (in the app's own files), because this build reports nowhere (capability
+     * `privacy-security`). It never leaves the phone.
+     */
+    data class Saved(val path: String) : DumpResult
+
+    /** Nothing was sent or saved, and [reason] says why (the channel is not running, or the write was refused). */
     data class NotSent(val reason: String) : DumpResult
 }
+
+/** Where a build that reports nowhere keeps the latest report: its own files' PRIVATE area, replaced each time. */
+const val SAVED_DIAGNOSTIC_REPORT_PATH: String = "diagnostic-report.json"
+
+/**
+ * The report a build that reports nowhere keeps on the device: the same five sections [diagnosticDumpEvent] would
+ * send, as JSON, identifiers intact — so a saved report reads like a received one.
+ */
+fun savedDiagnosticReport(dump: DiagnosticDump): String = kotlinx.serialization.json.Json.encodeToString(
+    kotlinx.serialization.json.JsonObject.serializer(),
+    kotlinx.serialization.json.buildJsonObject {
+        diagnosticDumpEvent(dump).contexts.forEach { (name, fields) ->
+            put(name, kotlinx.serialization.json.buildJsonObject {
+                fields.forEach { (key, value) -> put(key, kotlinx.serialization.json.JsonPrimitive(value)) }
+            })
+        }
+    },
+)
 
 /** The context section name process metrics ride in, so a reader always finds them in one place. */
 const val PROCESS_METRIC_CONTEXT: String = "process_metrics"

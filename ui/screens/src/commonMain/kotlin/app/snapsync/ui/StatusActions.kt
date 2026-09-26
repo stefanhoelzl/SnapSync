@@ -25,9 +25,8 @@ import kotlinx.datetime.LocalDateTime
  * (`HostStatusActions.kt`), over its container, so a new action is wired once and a forgotten one does not
  * compile.
  *
- * [onSendDiagnostics] stays NULLABLE rather than defaulting to an inert lambda, and that is a contract
- * rather than a convenience: a build with no reporting channel must wire no gesture at all, because an
- * affordance that silently does nothing is the one outcome `privacy-security` forbids.
+ * [onSendDiagnostics] is wired on every build: a build with no reporting channel keeps the report on the device,
+ * and the sheet says so (`UiState.reportDestination`, capability `privacy-security`).
  */
 class StatusActions(
     val join: JoinGateActions,
@@ -64,7 +63,7 @@ class StatusActions(
     // NULLABLE rather than defaulting to an inert lambda, and that is a contract rather than a
     // convenience: a build with no reporting channel must wire no gesture at all, because an affordance
     // that silently does nothing is the one outcome `privacy-security` forbids.
-    val onSendDiagnostics: ((note: String, screen: String) -> Unit)?,
+    val onSendDiagnostics: (note: String, screen: String) -> Unit,
 )
 
 /**

@@ -1,5 +1,6 @@
 package app.snapsync.presentation
 
+import app.snapsync.model.ReportDestination
 import app.snapsync.model.ReconfigureOutcome
 import app.snapsync.model.UserQueries
 import app.snapsync.model.CaptureCeiling
@@ -106,9 +107,10 @@ class StatusContainerHostSurfacesTest {
         scope: CoroutineScope,
         spy: Spy = Spy(),
         config: MutableStateFlow<EventConfig?> = MutableStateFlow(CONFIG),
-        sendDiagnostics: (suspend (String, String) -> Unit)? = null,
+        sendDiagnostics: suspend (String, String) -> Unit = { _, _ -> },
         queries: UserQueries = noQueries,
         onCommitJoin: suspend (eventId: String) -> Unit = {},
+        reportDestination: ReportDestination = ReportDestination.DEVELOPER,
     ) = StatusContainerHost(
         StatusSources(FakeSync(), MutableStateFlow(GalleryAccess.GRANTED), config),
         scope,
@@ -131,6 +133,7 @@ class StatusContainerHostSurfacesTest {
         ),
         queries = queries,
         diagnostics = testDiagnostics(),
+        reportDestination = reportDestination,
     )
 
     /** Await the first state satisfying [predicate] — failing loudly rather than hanging if none comes. */
@@ -156,15 +159,16 @@ class StatusContainerHostSurfacesTest {
     private fun onHost(
         spy: Spy = Spy(),
         config: MutableStateFlow<EventConfig?> = MutableStateFlow(CONFIG),
-        sendDiagnostics: (suspend (String, String) -> Unit)? = null,
+        sendDiagnostics: suspend (String, String) -> Unit = { _, _ -> },
         queries: UserQueries = noQueries,
         onCommitJoin: suspend (eventId: String) -> Unit = {},
+        reportDestination: ReportDestination = ReportDestination.DEVELOPER,
         body: suspend (StatusContainerHost) -> Unit,
     ) = runTest {
         withContext(Dispatchers.Default) {
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
             try {
-                body(host(scope, spy, config, sendDiagnostics, queries, onCommitJoin))
+                body(host(scope, spy, config, sendDiagnostics, queries, onCommitJoin, reportDestination))
             } finally {
                 scope.cancel()
             }
@@ -534,17 +538,21 @@ class StatusContainerHostSurfacesTest {
     }
 
     @Test
-    fun `a build with no reporting channel offers no diagnostics gesture at all`() = onHost { host ->
-        // Not a no-op command: the affordance must not EXIST, so the screen wires no gesture rather than
-        // wiring one that silently does nothing.
-        assertNull(host.onSendDiagnostics)
-    }
+    fun `every state says where this build's bug report goes`() =
+        onHost(reportDestination = ReportDestination.THIS_DEVICE) { host ->
+            withTimeout(5.seconds) {
+                while (host.container.stateFlow.value.reportDestination != ReportDestination.THIS_DEVICE) {
+                    kotlinx.coroutines.yield()
+                }
+            }
+            assertEquals(ReportDestination.THIS_DEVICE, host.container.stateFlow.value.reportDestination)
+        }
 
     @Test
     fun `a build with a channel forwards the note and the surface it was sent from`() {
         val spy = Spy()
         return onHost(spy, sendDiagnostics = { note, screen -> spy.diagnostics += note to screen }) { host ->
-            assertNotNull(host.onSendDiagnostics).invoke("photos are not arriving", "joined")
+            host.onSendDiagnostics("photos are not arriving", "joined")
             withTimeout(5.seconds) {
                 while (spy.diagnostics.isEmpty()) kotlinx.coroutines.yield()
             }

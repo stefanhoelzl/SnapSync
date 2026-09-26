@@ -79,6 +79,8 @@ fun snapSyncHost(scope: CoroutineScope, process: ProcessServices, ports: AppPort
             queries = core.userQueries,
             // Whose word authorizes a headless join: the root's, never the link's (capability `join-event`).
             inviteLinkHints = ports.rigSwitches.inviteLinkHints,
+            // Where a bug report goes on this build — the sheet says it (capability `privacy-security`).
+            reportDestination = process.reportDestination,
             diagnostics = StatusDiagnostics(
                 log = { message -> ports.log.i { message } },
                 // `Error`: the threshold at which a Kermit line becomes a crash-reporting event rather than a

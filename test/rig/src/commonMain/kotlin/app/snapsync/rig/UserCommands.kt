@@ -75,11 +75,9 @@ fun userCommands(host: () -> StatusContainerHost): Map<String, RigUserCommand> =
     "retryLoad" to RigUserCommand { host().onRetryLoad() },
     "retryJoin" to RigUserCommand { host().onRetryJoin() },
     // The dump goes to the build's configured reporter; a build with none (every dev and rig build of the app,
-    // which carries no DSN) has no such command at all, and says so rather than accepting a tap nothing hears.
+    // which carries no DSN) keeps it on the device, as the sheet does (capability `privacy-security`).
     "sendDiagnostics" to RigUserCommand { params ->
-        val send = host().onSendDiagnostics
-            ?: throw UserCommandRefused("this build carries no configured crash reporter, so there is no dump to send")
-        send(params["note"].orEmpty(), params["screen"] ?: "rig")
+        host().onSendDiagnostics(params["note"].orEmpty(), params["screen"] ?: "rig")
     },
 )
 

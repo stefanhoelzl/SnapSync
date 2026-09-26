@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import app.snapsync.model.EVENT_NAME_MAX_LENGTH
 import app.snapsync.model.EventConfig
+import app.snapsync.model.ReportDestination
 import app.snapsync.model.JoinedSurface
 import app.snapsync.model.Layer
 import app.snapsync.presentation.CutoffFormatter
@@ -94,7 +95,7 @@ fun StatusScreen(
             bottomActions = bottomActions,
             contentPinsActionCluster = chrome.pinsActionCluster,
             // Hidden, and only where there is a channel to send to.
-            onTitleDoubleTap = actions.onSendDiagnostics?.let { actions.surfaces.onReportBugOpen },
+            onTitleDoubleTap = actions.surfaces.onReportBugOpen,
         ) {
             CurrentLayer(state = state, chrome = chrome, cutoff = cutoff, actions = actions)
         }
@@ -170,8 +171,8 @@ private fun StatusOverlays(state: UiState, actions: StatusActions) {
     if (overlays.renaming && joined != null) {
         RenameSheet(joined.membership, joined.renameState, actions)
     }
-    if (overlays.reportingBug && actions.onSendDiagnostics != null) {
-        BugReportSheet(actions, actions.onSendDiagnostics, screenLabel(state))
+    if (overlays.reportingBug) {
+        BugReportSheet(actions, actions.onSendDiagnostics, screenLabel(state), state.reportDestination)
     }
     // A switch confirmation over the joined screen (scanning a different event while joined).
     joined?.pendingSwitch?.let { switch ->
@@ -274,15 +275,27 @@ private fun BugReportSheet(
     actions: StatusActions,
     onSend: (note: String, screen: String) -> Unit,
     screen: String,
+    destination: ReportDestination,
 ) {
     AppTextPromptSheet(
-        copy = DialogCopy(
-            title = "Report a problem",
-            body = "Sent with the app's recent activity log and sync state to the developer's " +
-            "error-tracking service.",
-            confirmLabel = "Send",
-            cancelLabel = "Cancel",
-        ),
+        copy = when (destination) {
+            ReportDestination.DEVELOPER -> DialogCopy(
+                title = "Report a problem",
+                body = "Sent with the app's recent activity log and sync state to the developer's " +
+                    "error-tracking service.",
+                confirmLabel = "Send",
+                cancelLabel = "Cancel",
+            )
+            // A build that reports nowhere keeps the report on the phone, and says so — it never suggests a
+            // destination it does not have (capability `privacy-security`).
+            ReportDestination.THIS_DEVICE -> DialogCopy(
+                title = "Report a problem",
+                body = "Saved on this device with the app's recent activity log and sync state. " +
+                    "Nothing is sent.",
+                confirmLabel = "Save",
+                cancelLabel = "Cancel",
+            )
+        },
         field = PromptField(
             placeholder = "What went wrong, and what were you doing?",
             // The description titles the report in the error-tracking service, so it is bounded to

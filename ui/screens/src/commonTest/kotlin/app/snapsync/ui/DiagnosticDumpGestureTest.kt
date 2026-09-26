@@ -2,6 +2,7 @@
 
 package app.snapsync.ui
 
+import app.snapsync.model.ReportDestination
 import app.snapsync.model.Layer
 import app.snapsync.model.Overlays
 import app.snapsync.model.PendingSwitch
@@ -166,17 +167,24 @@ class DiagnosticDumpGestureTest {
     }
 
     @Test
-    fun `a build with no reporting channel opens no sheet at all`() = runComposeUiTest {
-        // The command is null — every dev, sideload and simulator build. The gesture must be absent,
-        // not inert: an affordance that exists and silently does nothing is the one outcome forbidden,
-        // because it is indistinguishable from a report that failed to send.
+    fun `a build that reports nowhere says the report stays on this device and saves it`() = runComposeUiTest {
+        // Every dev, sideload and simulator build: the sheet must not suggest a destination the build does not
+        // have — it says where the report goes, and its button reads Save (capability `privacy-security`).
+        val saved = mutableListOf<String>()
         setContent {
             TestStatusScreen(
-                UiState(Layer.CreateEvent()), cutoff = fixedCutoff(), actions = testActions(onSendDiagnostics = null))
+                reporting(Layer.CreateEvent()).copy(reportDestination = ReportDestination.THIS_DEVICE),
+                cutoff = fixedCutoff(),
+                actions = testActions(onSendDiagnostics = { note, _ -> saved += note }),
+            )
         }
 
+        onNodeWithText("Saved on this device", substring = true).assertExists()
+        onNodeWithText("Send").assertDoesNotExist()
+        onNodeWithText(placeholder).performTextInput("it froze")
+        onNodeWithText("Save").performClick()
 
-        onNodeWithText(sheetTitle).assertDoesNotExist()
+        assertEquals(listOf("it froze"), saved)
     }
 
     @Test
