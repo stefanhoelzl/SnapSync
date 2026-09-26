@@ -181,4 +181,22 @@ class RegistrationOutcomeTest {
                 "'nothing wrong' are different answers",
         )
     }
+
+    @Test
+    fun `a platform without the extension answers unsupported in both directions and quietly`() {
+        for (enabling in listOf(true, false)) {
+            val outcome = registrationOutcome(enabling, RegistrationAnswer.Unsupported)
+            assertEquals(RegistrationOutcome.Unsupported(enabling), outcome)
+            assertEquals(Severity.Debug, outcome.severity, "every join below iOS 26.1 reaches this")
+        }
+    }
+
+    @Test
+    fun `an answered write is classified from its facts`() {
+        assertEquals(
+            RegistrationOutcome.NothingToDisable,
+            registrationOutcome(enabling = false, RegistrationAnswer.Answered(false, "PHPhotosErrorDomain", 3201)),
+        )
+        assertEquals(RegistrationOutcome.Applied(true), registrationOutcome(true, RegistrationAnswer.Answered(true, null, null)))
+    }
 }

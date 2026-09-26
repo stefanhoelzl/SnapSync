@@ -6,17 +6,17 @@ import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.Recorder
 import app.snapsync.contracts.Replayer
-import app.snapsync.contracts.UploadExtensionRegistryState
+import app.snapsync.contracts.ExtensionRegistryState
 import app.snapsync.ios.registry.ExtensionRegistrationApi
 import app.snapsync.ios.registry.PhotoKitExtensionRegistry
-import app.snapsync.ios.registry.RegistrationAnswer
+import app.snapsync.ios.registry.PlatformWriteAnswer
 import app.snapsync.ios.registry.SystemExtensionRegistrationApi
 import app.snapsync.model.GalleryAccess
-import app.snapsync.ports.UploadExtensionRegistry
+import app.snapsync.ports.ExtensionRegistry
 import co.touchlab.kermit.Logger
 
 /*
- * `UploadExtensionRegistryContract`'s iOS bindings (`docs/architecture.md`): the real
+ * `ExtensionRegistryContract`'s iOS bindings (`docs/architecture.md`): the real
  * `PhotoKitExtensionRegistry` recorded in the app on a device — once under a full grant, once under a partial
  * one — and replayed on every CI build.
  *
@@ -27,11 +27,11 @@ import co.touchlab.kermit.Logger
 private fun setCall(enabled: Boolean) = "setUploadJobExtensionEnabled(enabled=$enabled)"
 private const val IS_ENABLED_CALL = "isUploadJobExtensionEnabled()"
 
-private fun RegistrationAnswer.render() = "ok=$ok domain=${errorDomain ?: "-"} code=${errorCode ?: "-"}"
+private fun PlatformWriteAnswer.render() = "ok=$ok domain=${errorDomain ?: "-"} code=${errorCode ?: "-"}"
 
-private fun parseAnswer(rendered: String): RegistrationAnswer {
+private fun parseAnswer(rendered: String): PlatformWriteAnswer {
     val fields = rendered.split(' ').associate { it.substringBefore('=') to it.substringAfter('=') }
-    return RegistrationAnswer(
+    return PlatformWriteAnswer(
         ok = fields.getValue("ok").toBooleanStrict(),
         errorDomain = fields.getValue("domain").takeIf { it != "-" },
         errorCode = fields.getValue("code").takeIf { it != "-" }?.toLong(),
@@ -43,7 +43,7 @@ internal class RecordingRegistrationApi(
     private val real: ExtensionRegistrationApi,
     private val recorder: Recorder,
 ) : ExtensionRegistrationApi {
-    override fun setEnabled(enabled: Boolean): RegistrationAnswer =
+    override fun setEnabled(enabled: Boolean): PlatformWriteAnswer =
         real.setEnabled(enabled).also { recorder.record(setCall(enabled), it.render()) }
 
     override fun isEnabled(): Boolean = real.isEnabled().also { recorder.record(IS_ENABLED_CALL, "$it") }
@@ -51,7 +51,7 @@ internal class RecordingRegistrationApi(
 
 /** Answers every call from one clause's recorded block, exactly and in order. */
 internal class ReplayingRegistrationApi(private val replayer: Replayer) : ExtensionRegistrationApi {
-    override fun setEnabled(enabled: Boolean): RegistrationAnswer = parseAnswer(replayer.answer(setCall(enabled)))
+    override fun setEnabled(enabled: Boolean): PlatformWriteAnswer = parseAnswer(replayer.answer(setCall(enabled)))
     override fun isEnabled(): Boolean = replayer.answer(IS_ENABLED_CALL).toBooleanStrict()
 }
 
@@ -64,15 +64,16 @@ private val log = Logger.withTag("RegistryContract")
  */
 internal fun registryInState(
     api: ExtensionRegistrationApi,
-    state: UploadExtensionRegistryState,
+    state: ExtensionRegistryState,
     afterDispose: () -> Unit = {},
-): Entered<UploadExtensionRegistry> {
+): Entered<ExtensionRegistry> {
     when (state) {
-        UploadExtensionRegistryState.RECORD_ABSENT -> api.setEnabled(false)
-        UploadExtensionRegistryState.RECORD_PRESENT -> api.setEnabled(true)
-        UploadExtensionRegistryState.UNDER_PARTIAL_GRANT -> Unit
+        ExtensionRegistryState.RECORD_ABSENT -> api.setEnabled(false)
+        ExtensionRegistryState.RECORD_PRESENT -> api.setEnabled(true)
+        ExtensionRegistryState.UNDER_PARTIAL_GRANT -> Unit
     }
-    return Entered.Ready(PhotoKitExtensionRegistry(log, api), dispose = afterDispose)
+    // Recorded on an iOS 26.6 device, which carries the selector: replayed as such on whatever host replays it.
+    return Entered.Ready(PhotoKitExtensionRegistry(log, api, supported = true), dispose = afterDispose)
 }
 
 internal const val REGISTRY_NEEDS_FULL_GRANT =
@@ -85,13 +86,13 @@ internal const val REGISTRY_NEEDS_PARTIAL_GRANT =
  * Replayed on every CI build by `PhotoKitExtensionRegistryReplayContractTest`.
  */
 internal class DeviceRegistryGrantedBinding(private val recorder: Recorder) :
-    Binding<UploadExtensionRegistryState, UploadExtensionRegistry> {
+    Binding<ExtensionRegistryState, ExtensionRegistry> {
     override val host = Host.IOS_DEVICE_APP
     override val kind = BindingKind.Live
     override val grant = GalleryAccess.GRANTED
-    override val reaches = setOf(UploadExtensionRegistryState.RECORD_ABSENT, UploadExtensionRegistryState.RECORD_PRESENT)
+    override val reaches = setOf(ExtensionRegistryState.RECORD_ABSENT, ExtensionRegistryState.RECORD_PRESENT)
 
-    override fun create(state: UploadExtensionRegistryState, clauseId: String): Entered<UploadExtensionRegistry> {
+    override fun create(state: ExtensionRegistryState, clauseId: String): Entered<ExtensionRegistry> {
         if (state !in reaches) return Entered.Unreachable(REGISTRY_NEEDS_PARTIAL_GRANT)
         recorder.open(clauseId)
         return registryInState(RecordingRegistrationApi(SystemExtensionRegistrationApi, recorder), state)
@@ -103,13 +104,13 @@ internal class DeviceRegistryGrantedBinding(private val recorder: Recorder) :
  * run. Replayed on every CI build by `PhotoKitExtensionRegistryReplayContractTest`.
  */
 internal class DeviceRegistryLimitedBinding(private val recorder: Recorder) :
-    Binding<UploadExtensionRegistryState, UploadExtensionRegistry> {
+    Binding<ExtensionRegistryState, ExtensionRegistry> {
     override val host = Host.IOS_DEVICE_APP
     override val kind = BindingKind.Live
     override val grant = GalleryAccess.LIMITED
-    override val reaches = setOf(UploadExtensionRegistryState.UNDER_PARTIAL_GRANT)
+    override val reaches = setOf(ExtensionRegistryState.UNDER_PARTIAL_GRANT)
 
-    override fun create(state: UploadExtensionRegistryState, clauseId: String): Entered<UploadExtensionRegistry> {
+    override fun create(state: ExtensionRegistryState, clauseId: String): Entered<ExtensionRegistry> {
         if (state !in reaches) return Entered.Unreachable(REGISTRY_NEEDS_FULL_GRANT)
         recorder.open(clauseId)
         return registryInState(RecordingRegistrationApi(SystemExtensionRegistrationApi, recorder), state)

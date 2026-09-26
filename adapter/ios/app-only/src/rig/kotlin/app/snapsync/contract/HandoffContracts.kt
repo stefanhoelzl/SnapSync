@@ -13,7 +13,7 @@ import app.snapsync.contracts.LinkOpenerState
 import app.snapsync.contracts.Recorder
 import app.snapsync.contracts.Replayer
 import app.snapsync.contracts.SharePresenterState
-import app.snapsync.contracts.UploadExtensionRegistryContract
+import app.snapsync.contracts.ExtensionRegistryContract
 import app.snapsync.contracts.recordingName
 import app.snapsync.gallery.currentPhotoPermission
 import app.snapsync.contracts.render
@@ -89,7 +89,7 @@ fun appDeviceContracts(refusal: () -> String? = { null }): List<InAppContract> =
         recordAppOnDevice(LinkOpenerContract, null) { DeviceLinkOpenerBinding(it) }
     },
     InAppContract(WakeContract.name, Host.IOS_DEVICE_APP) { recordScheduler() },
-    InAppContract(UploadExtensionRegistryContract.name, Host.IOS_DEVICE_APP) { recordRegistry(refusal) },
+    InAppContract(ExtensionRegistryContract.name, Host.IOS_DEVICE_APP) { recordRegistry(refusal) },
 )
 
 /**
@@ -99,9 +99,9 @@ fun appDeviceContracts(refusal: () -> String? = { null }): List<InAppContract> =
  */
 private fun recordRegistry(refusal: () -> String?): String = when (val grant = currentPhotoPermission()) {
     GalleryAccess.GRANTED -> refusal()?.let { "$CONTRACT_REFUSED$it\n" }
-        ?: recordAppOnDevice(UploadExtensionRegistryContract, grant) { DeviceRegistryGrantedBinding(it) }
+        ?: recordAppOnDevice(ExtensionRegistryContract, grant) { DeviceRegistryGrantedBinding(it) }
     GalleryAccess.LIMITED ->
-        recordAppOnDevice(UploadExtensionRegistryContract, grant) { DeviceRegistryLimitedBinding(it) }
+        recordAppOnDevice(ExtensionRegistryContract, grant) { DeviceRegistryLimitedBinding(it) }
     else -> CONTRACT_REFUSED +
         "the registration contract records under a full grant or a partial one; this process holds $grant. " +
         "Set photo access in Settings and re-run.\n"

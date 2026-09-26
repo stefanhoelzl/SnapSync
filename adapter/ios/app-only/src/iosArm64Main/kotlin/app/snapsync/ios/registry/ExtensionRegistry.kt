@@ -1,6 +1,6 @@
 package app.snapsync.ios.registry
 
-import app.snapsync.ports.UploadExtensionRegistry
+import app.snapsync.ports.ExtensionRegistry
 import co.touchlab.kermit.Logger
 
 /**
@@ -9,4 +9,4 @@ import co.touchlab.kermit.Logger
  * Every shipped binary compiles this actual and only this one; the simulator substitute is absent from the
  * binary rather than merely unused.
  */
-actual fun uploadExtensionRegistry(log: Logger): UploadExtensionRegistry = PhotoKitExtensionRegistry(log)
+actual fun extensionRegistry(log: Logger): ExtensionRegistry = PhotoKitExtensionRegistry(log)

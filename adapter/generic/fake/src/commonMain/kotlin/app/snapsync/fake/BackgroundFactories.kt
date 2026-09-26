@@ -3,6 +3,7 @@ package app.snapsync.fake
 import app.snapsync.model.WakeId
 import app.snapsync.model.WakeTrigger
 import app.snapsync.ports.BackgroundTime
+import app.snapsync.ports.ExtensionRegistry
 import app.snapsync.ports.Wake
 import kotlinx.coroutines.flow.MutableStateFlow
 
@@ -25,3 +26,10 @@ fun inMemoryWake(
  */
 fun inMemoryBackgroundTime(held: MutableStateFlow<List<HeldBackgroundTime>> = MutableStateFlow(emptyList())): BackgroundTime =
     InMemoryBackgroundTime(held)
+
+/**
+ * [record] is the caller's own cell: whether a registration exists. `null` (the default) is a platform without the
+ * upload extension, answering `Unsupported`.
+ */
+fun inMemoryExtensionRegistry(record: MutableStateFlow<Boolean>? = null): ExtensionRegistry =
+    InMemoryExtensionRegistry(record)

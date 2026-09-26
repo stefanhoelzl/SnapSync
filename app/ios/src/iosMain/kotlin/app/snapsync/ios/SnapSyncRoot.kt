@@ -25,8 +25,8 @@ import app.snapsync.ports.Backend
 import app.snapsync.services.manifest.DeviceManifestService
 import app.snapsync.gallery.IosGallery
 import app.snapsync.gallery.IosGalleryReader
-import app.snapsync.ios.registry.uploadExtensionRegistry
-import app.snapsync.ports.UploadExtensionRegistry
+import app.snapsync.ports.ExtensionRegistry
+import app.snapsync.ios.registry.extensionRegistry as platformExtensionRegistry
 import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.StatusContainerHost
@@ -48,8 +48,6 @@ import app.snapsync.protection.IosProcessInfo
 import app.snapsync.databases.IosDatabases
 import app.snapsync.ports.Databases
 import app.snapsync.services.downloads.DownloadService
-import app.snapsync.feature.upload.ExtensionRegistration
-import app.snapsync.feature.upload.OsDrivenRegistration
 import app.snapsync.model.UploaderPin
 import app.snapsync.background.IosBackgroundTime
 import app.snapsync.background.IosWake
@@ -271,28 +269,6 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
      */
     internal var inviteLinkHints: InviteLinkHints = InviteLinkHints.Ignored
 
-    /**
-     * The OS-driven registration, composed **only where its API exists**.
-     *
-     * The one remaining switch, and it earns its place: `setUploadJobExtensionEnabled` does not exist
-     * below iOS 26.1, so constructing this object there would put a trapping selector one call away. Below
-     * 26.1 the thunk never touches it, which is what keeps that structural rather than guarded. It decides
-     * nothing else — it does not say which mechanism runs, only which one this OS *has*.
-     */
-    private val osDrivenRegistrationThunk: () -> ExtensionRegistration? =
-        if (osSupportsOsDrivenUpload) ({ osDrivenRegistration }) else ({ null })
-
-    /**
-     * The OS's registration record, composed under the same switch and for the same reason: both of its
-     * verbs are 26.1 selectors, so the adapter must not exist where they do not.
-     *
-     * `internal` so the rig's hook can read the registration through the very port the app registers
-     * through, rather than asking PhotoKit a second time and possibly getting a different answer. Not
-     * exported to the ObjC framework header.
-     */
-    internal val osExtensionRegistryThunk: () -> UploadExtensionRegistry? =
-        if (osSupportsOsDrivenUpload) ({ extensionRegistry }) else ({ null })
-
     // This process's files, by area: the App-Group container and its own Documents. One instance; the file-backed
     // services below are built over it (`docs/architecture.md`).
     private val files: Files get() = process.files
@@ -414,7 +390,9 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
                 // The mechanisms this OS carries. WHICH one runs is resolution's answer, re-evaluated on
                 // every transition (capability `background-upload`) — this root supplies only facts.
                 appDrivenUpload = { urlSessionUpload },
-                extensionRegistration = osDrivenRegistrationThunk,
+                // The upload extension's registration record, on every OS: below iOS 26.1 the adapter answers
+                // `Unsupported` itself (the version check is its own), so the root holds no `if` around it.
+                extensionRegistry = extensionRegistry,
                 osSupportsOsDrivenUpload = osSupportsOsDrivenUpload,
                 // Read through the field at every use, not captured here: the field is the rig's seam, and a
                 // capture would freeze whatever it held when the graph was first forced.
@@ -865,14 +843,6 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
     // can rescue a membership provisioned while access was already granted — the provision flow owns
     // that case.
 
-    // The two uploaders this OS can carry. Both are `by lazy`: `OsDrivenRegistration` is
-    // constructed only where its registration selector exists (≥26.1), so no code path can trap on a
-    // lower system. Both run where both exist, each deciding at its own entry gate. (What each membership
-    // transition does to them is composed in the app graph as `app.uploadTransitions`.)
-    private val osDrivenRegistration: OsDrivenRegistration by lazy {
-        OsDrivenRegistration(extensionRegistry, log, IosEntryContext)
-    }
-
     /**
      * The operating system's scheduled wakes — one per process, since its `listen` registers the `BGTask` launch
      * handler and a second registration raises. `internal` so the control channel can deliver a task it plays the OS
@@ -880,10 +850,13 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
      */
     internal val wakeAdapter: IosWake by lazy { IosWake(log) }
 
-    // The registration port's adapter, chosen by compilation target (capability `background-upload`).
-    // Hoisted beside the producer because two readers share it: the producer, which performs the ritual,
-    // and the control channel, which reports what the OS answers.
-    private val extensionRegistry: UploadExtensionRegistry by lazy { uploadExtensionRegistry(log) }
+    /**
+     * The registration port's adapter, chosen by compilation target (capability `background-upload`), on every OS.
+     * `internal` so the control channel reads the registration through the very port the app registers through,
+     * rather than asking PhotoKit a second time and possibly getting a different answer. Not exported to the ObjC
+     * framework header.
+     */
+    internal val extensionRegistry: ExtensionRegistry by lazy { platformExtensionRegistry(log) }
 
     // The ONE gallery this process holds: every photo-library read and album write the status total, the join
     // preview, the download guard, the event album and the app's uploader make.

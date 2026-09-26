@@ -1,7 +1,8 @@
 package app.snapsync.feature.upload
 
-import app.snapsync.model.RegistrationOutcome
-import app.snapsync.ports.UploadExtensionRegistry
+import app.snapsync.model.RegistrationAnswer
+import app.snapsync.model.RegistrationState
+import app.snapsync.ports.ExtensionRegistry
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -24,24 +25,24 @@ class OsDrivenRegistrationTest {
      */
     private class RecordingRegistry(
         private val log: MutableList<String>,
-        var refuseWith: Pair<Boolean, RegistrationOutcome>? = null,
+        var refuseWith: Pair<Boolean, RegistrationAnswer>? = null,
         var registered: Boolean = false,
-    ) : UploadExtensionRegistry {
-        override suspend fun setEnabled(enabled: Boolean): RegistrationOutcome {
+    ) : ExtensionRegistry {
+        override suspend fun setEnabled(enabled: Boolean): RegistrationAnswer {
             log += if (enabled) "enable" else "disable"
             refuseWith?.takeIf { it.first == enabled }?.let { return it.second }
             val existed = registered
             registered = enabled
             return if (!enabled && !existed) {
-                RegistrationOutcome.NothingToDisable
+                RegistrationAnswer.Answered(ok = false, domain = "PHPhotosErrorDomain", code = 3201)
             } else {
-                RegistrationOutcome.Applied(enabled)
+                RegistrationAnswer.Answered(ok = true, domain = null, code = null)
             }
         }
 
-        override fun isEnabled(): Boolean = registered
+        override fun isEnabled(): RegistrationState =
+            if (registered) RegistrationState.REGISTERED else RegistrationState.NOT_REGISTERED
     }
-
 
     private fun mechanism(
         log: MutableList<String>,
@@ -70,7 +71,7 @@ class OsDrivenRegistrationTest {
         val registry = RecordingRegistry(log, registered = true)
         val (mechanism, _) = mechanism(log, registry = registry)
         mechanism.register()
-        assertTrue(registry.isEnabled(), "the ritual must leave a live registration behind")
+        assertTrue(registry.registered, "the ritual must leave a live registration behind")
     }
 
     /**
@@ -84,11 +85,11 @@ class OsDrivenRegistrationTest {
         val log = mutableListOf<String>()
         val registry = RecordingRegistry(
             log,
-            refuseWith = true to RegistrationOutcome.Failed(enabling = true, domain = "PHPhotosErrorDomain", code = 3202L),
+            refuseWith = true to RegistrationAnswer.Answered(ok = false, domain = "PHPhotosErrorDomain", code = 3202L),
         )
         val (mechanism, _) = mechanism(log, registry = registry)
         mechanism.register()
-        assertTrue(!registry.isEnabled(), "a refused enable must not leave the app believing it registered")
+        assertTrue(!registry.registered, "a refused enable must not leave the app believing it registered")
     }
 
     // ── Deregistration ────────────────────────────────────────────────────────────────────────────
@@ -105,7 +106,28 @@ class OsDrivenRegistrationTest {
         mechanism.register()
         log.clear()
         mechanism.deregister()
-        assertTrue(!registry.isEnabled(), "deregister must deregister")
+        assertTrue(!registry.registered, "deregister must deregister")
         assertEquals(listOf("disable"), log, "deregister must touch nothing but the registration")
+    }
+
+    // ── A platform without the mechanism ───────────────────────────────────────────────────────────
+
+    /** Below iOS 26.1, on the JVM, on Android: the port answers `Unsupported`, and nothing reads as registered. */
+    @Test
+    fun `a platform without the extension registers nothing and reads no record`() = runTest {
+        val unsupported = object : ExtensionRegistry {
+            var writes = 0
+            override suspend fun setEnabled(enabled: Boolean): RegistrationAnswer {
+                writes++
+                return RegistrationAnswer.Unsupported
+            }
+
+            override fun isEnabled() = RegistrationState.UNSUPPORTED
+        }
+        val mechanism = OsDrivenRegistration(unsupported)
+        mechanism.register()
+        mechanism.deregister()
+        assertEquals(3, unsupported.writes, "the ritual still runs; the port answers it without the OS")
+        assertEquals(null, mechanism.isRegistered())
     }
 }

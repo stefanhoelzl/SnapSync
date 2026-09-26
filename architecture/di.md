@@ -47,7 +47,6 @@ Roots found:
 | `LogTailService` | x | |
 | `MetricKitProcessMetrics` | x | |
 | `NoPlatformDeviceId` | x | x |
-| `OsDrivenRegistration` | x | |
 | `PersistedDeviceIdentity` | x | x |
 | `PhotoLibraryPermission` | x | |
 | `ProcessPorts` | x | x |

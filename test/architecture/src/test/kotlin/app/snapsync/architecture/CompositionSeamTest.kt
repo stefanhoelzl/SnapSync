@@ -96,11 +96,6 @@ class CompositionSeamTest {
                 "a factory for the app's uploader mechanism (an AppUploadMechanism, whose platform touches are its own " +
                 "adapter's). A thunk so the engine is constructed at first use rather than while the graph " +
                 "is being assembled",
-            "extensionRegistration" to
-                "the same, and `null` where this OS does not carry that mechanism at all — the " +
-                "nullability IS that OS answer, and it must be a call rather than a value the bundle " +
-                "carries so the registration is never constructed where its selector does not exist. " +
-                "What it returns reaches the platform only through the UploadExtensionRegistry port",
             "onEventMinted" to
                 "hands a minted event id back to the shell's link entry, which forwards it into THIS " +
                 "core's join gate — a U-turn through the entry surface so create and a scanned QR take " +

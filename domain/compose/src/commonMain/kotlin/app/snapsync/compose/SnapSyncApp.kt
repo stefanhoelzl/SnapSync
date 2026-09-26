@@ -40,6 +40,8 @@ import app.snapsync.feature.upload.AppUploadMechanism
 import app.snapsync.feature.upload.PushTailGuard
 import app.snapsync.feature.upload.TailTrigger
 import app.snapsync.feature.upload.ExtensionRegistration
+import app.snapsync.feature.upload.OsDrivenRegistration
+import app.snapsync.ports.ExtensionRegistry
 import app.snapsync.feature.upload.UploadAdmission
 import app.snapsync.feature.upload.UploadTransitions
 import app.snapsync.feature.upload.appAdmission
@@ -120,7 +122,7 @@ import kotlinx.coroutines.withContext
  * supplies them here; [snapSyncApp] composes the feature graph.
  *
  * Some inputs are deliberately **lambdas built by the shell**: the coordination hooks ([provision],
- * [onEventMinted]) bridge into the shell's entry surfaces; [appDrivenUpload] and [extensionRegistration]
+ * [onEventMinted]) bridge into the shell's entry surfaces; [appDrivenUpload] and [extensionRegistry]
  * are the uploaders this OS can carry — both run, each deciding at its own entry gate (`background-upload`,
  * "Both uploaders may run; an overlap is a duplicate, never a loss"). The denylisted-album read is
  * built here from [albumManager] with the app tier's admit-on-doubt answer, for both the own-device
@@ -218,12 +220,13 @@ class AppPorts(
      * Required: a composition without it could never be woken to upload with the app closed.
      */
     val wake: Wake,
-    /** The **OS-driven** registration where this OS carries its selector (iOS ≥26.1) — `null` elsewhere,
-     *  keeping it entirely unconstructed where the selector does not exist. */
-    val extensionRegistration: () -> ExtensionRegistration?,
+    /** The OS's record of the upload extension's registration — present on every platform; one without the
+     *  OS-driven mechanism (iOS below 26.1, the JVM) answers `Unsupported` and asks the OS nothing. The
+     *  disable→enable ritual over it is composed here ([AppCore.extensionRegistration]). */
+    val extensionRegistry: ExtensionRegistry,
     /** Whether this OS carries the OS-driven mechanism at all — an input to the registration fact, kept a plain
-     *  fact rather than derived from [extensionRegistration] so asking never has the side effect of
-     *  constructing a registration it is only asking about. */
+     *  fact (a constant of the running OS) rather than read through [extensionRegistry], so asking it is never an
+     *  operating-system call. */
     val osSupportsOsDrivenUpload: Boolean = false,
     /** The runtime inputs only a rig build can set — the per-uploader pin and the invite-link hints. Both are
      *  inert in a production build (see [RigSwitches]); required, so every root states them. */
@@ -488,12 +491,17 @@ class AppCore internal constructor(
     // The upload arm (capability `background-upload`): what each membership transition does to the two
     // uploaders. Stateless — every decision is derived from the registration fact, the grant and whether a
     // membership exists, at the moment of the transition; the root defaults nothing.
+    /** The OS-driven mechanism's registration ritual, over the registry port (capability `background-upload`). */
+    val extensionRegistration: ExtensionRegistration by lazy {
+        OsDrivenRegistration(ports.extensionRegistry, ports.log, process.entryContext)
+    }
+
     val uploadTransitions: UploadTransitions by lazy {
         UploadTransitions(
             configSource = ports.configSource,
             photoAccess = ports.photoAccess,
             extensionRegistrable = extensionRegistrableNow,
-            registration = ports.extensionRegistration(),
+            registration = extensionRegistration,
             appEngine = { tail.appEngine },
             log = ports.log,
             entryContext = process.entryContext,

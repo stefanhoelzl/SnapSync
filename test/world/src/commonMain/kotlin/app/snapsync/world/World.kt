@@ -41,6 +41,7 @@ import app.snapsync.fake.inMemoryDownloadStore
 import app.snapsync.fake.inMemoryLedgerStore
 import app.snapsync.fake.inMemoryStagedBytes
 import app.snapsync.fake.inMemoryBackgroundTime
+import app.snapsync.fake.inMemoryExtensionRegistry
 import app.snapsync.fake.HeldBackgroundTime
 import app.snapsync.feature.upload.TailTrigger
 import app.snapsync.feature.album.AlbumCoordinator
@@ -627,7 +628,7 @@ class World(
         backgroundTime = inMemoryBackgroundTime(backgroundTimeHolds),
         wake = wake,
         // The world composes an OS without the OS-driven mechanism, and no rig switch: both stated.
-        extensionRegistration = { null },
+        extensionRegistry = inMemoryExtensionRegistry(),
         rigSwitches = RigSwitches(uploaderPin = { null }, inviteLinkHints = inviteLinkHints),
         configStore = configStore,
         photoAccess = permission,
