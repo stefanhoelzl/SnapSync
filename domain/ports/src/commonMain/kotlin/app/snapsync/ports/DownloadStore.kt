@@ -92,8 +92,12 @@ interface DownloadStore : SuppressionSource {
      */
     suspend fun markAllEnqueued(downloads: Collection<PendingDownload>)
 
-    /** Mark a resource's bytes downloaded and durably staged at [stagedPath]. */
-    suspend fun markStaged(ref: AssetRef, resourceKey: String, stagedPath: String)
+    /**
+     * Mark a resource's bytes downloaded and durably staged at [stagedPath]; answers whether a row took it. `false` is
+     * a resource with no row — a transfer a leave's prune outran, or one a relaunched process inherited for an event
+     * it has left — whose staged file nothing references and the caller discards.
+     */
+    suspend fun markStaged(ref: AssetRef, resourceKey: String, stagedPath: String): Boolean
 
     /**
      * Assets whose every expected resource is staged and that are not yet imported — ready to import.

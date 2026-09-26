@@ -2,7 +2,7 @@ package app.snapsync.contract.extension
 
 import app.snapsync.contracts.CONTRACT_REFUSED
 import app.snapsync.contracts.CONTRACT_TIMEOUT
-import app.snapsync.contracts.BackgroundTransferContract
+import app.snapsync.contracts.UploadContract
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.Recording
 import app.snapsync.contracts.InAppContract
@@ -36,8 +36,8 @@ fun extensionContractEntries(
     membershipRefusal: () -> String?,
     registry: () -> ExtensionRegistry,
 ): List<InAppContract> = listOf(
-    InAppContract(BackgroundTransferContract.name, Host.IOS_DEVICE_PHOTOKIT_EXT) {
-        runInExtension(BackgroundTransferContract.name, membershipRefusal, registry)
+    InAppContract(UploadContract.name, Host.IOS_DEVICE_PHOTOKIT_EXT) {
+        runInExtension(UploadContract.name, membershipRefusal, registry)
     },
 )
 

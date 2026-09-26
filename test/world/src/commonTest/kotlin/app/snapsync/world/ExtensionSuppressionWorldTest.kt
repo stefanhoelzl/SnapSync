@@ -31,7 +31,7 @@ class ExtensionSuppressionWorldTest {
         val app = uploadPorts
         return UploadPorts(
             config = app.config, deviceIdentity = app.deviceIdentity, host = app.host, ledger = app.ledger,
-            transfer = app.transfer, discovery = app.discovery,
+            upload = app.upload, gallery = app.gallery, discovery = app.discovery,
             process = UploaderProcess.Extension { grant }, selectionScope = app.selectionScope,
             manifestStore = app.manifestStore, manifestPublisher = app.manifestPublisher, suppression = suppression,
             albumManager = app.albumManager, albumLookupFailure = app.albumLookupFailure,

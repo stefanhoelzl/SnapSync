@@ -113,11 +113,10 @@ class AppTail internal constructor(
 
     /**
      * The upload session's OS completion handlers (`handleEventsForBackgroundURLSession`), held from the handover to
-     * the session's drain report — the relaunch's own work, recording the terminals, is done by then — and released
-     * on the main lane UIKit requires (capability `sync-status`).
+     * the session's drain report — the relaunch's own work, recording the terminals, is done by then (capability
+     * `sync-status`). The adapter's completion puts the release on the main thread UIKit requires.
      */
-    val uploadCompletions: OsCompletions =
-        OsCompletions("url-session.onBackgroundSessionEvents", ports.uiLane, ports.log)
+    val uploadCompletions: OsCompletions = OsCompletions("url-session.onBackgroundSessionEvents", log = ports.log)
 
     /** What the upload transport tells the core — see [AppUploadEvents]. */
     val uploadEvents: AppUploadEvents = object : AppUploadEvents {

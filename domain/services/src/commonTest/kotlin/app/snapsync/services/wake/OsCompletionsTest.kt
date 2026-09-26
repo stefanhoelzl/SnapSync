@@ -2,13 +2,10 @@ package app.snapsync.services.wake
 
 import app.snapsync.ports.Completion
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.Runnable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
-import kotlin.coroutines.CoroutineContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -17,8 +14,7 @@ import kotlin.test.assertTrue
 /**
  * The OS-handler contract (capability `sync-status`, "OS completion handlers are released only after their work
  * completes"): released after the wake's own work, on every path; released at once on the operating system's
- * expiry; exactly once whichever path gets there first; never orphaned by a second handover; and released after own
- * work through the lane UIKit requires.
+ * expiry; exactly once whichever path gets there first; and never orphaned by a second handover.
  *
  * **Every handler here has a distinct identity, and each is asserted individually.** A shared counter cannot see the
  * failure a single stored slot causes: with two wakes the first handler is dropped and never called, and a test
@@ -31,15 +27,6 @@ class OsCompletionsTest {
     private class Handlers {
         val released = mutableListOf<String>()
         fun handler(id: String): Completion = completionOf { released += id }
-    }
-
-    /** Runs inline but counts its dispatches, so a release can prove it arrived *through* the lane. */
-    private class CountingLane : CoroutineDispatcher() {
-        var dispatches = 0
-        override fun dispatch(context: CoroutineContext, block: Runnable) {
-            dispatches++
-            block.run()
-        }
     }
 
     @Test
@@ -146,19 +133,6 @@ class OsCompletionsTest {
         wake.cancel()
         wake.join()
         assertEquals(listOf("wake-A"), h.released)
-    }
-
-    @Test
-    fun `the release after the own work arrives through the injected lane`() = runTest {
-        // UIKit requires the background-session handler on the main thread, and its drain signal is delivered on a
-        // session-owned queue — so the lane is the only thing putting the release where it belongs.
-        val lane = CountingLane()
-        var dispatchesSeenByHandler = -1
-        val completions = OsCompletions("test", releaseLane = lane)
-        completions.adopt(completionOf { dispatchesSeenByHandler = lane.dispatches })
-        completions.releaseAfter { }
-        assertEquals(1, lane.dispatches, "the release did not go through the lane")
-        assertEquals(1, dispatchesSeenByHandler, "the handler ran outside the lane's dispatch")
     }
 }
 

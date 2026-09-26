@@ -41,6 +41,14 @@ interface StagedBytes {
      */
     fun locate(path: String): String
 
+    /**
+     * Take over a finished download's bytes the platform left at [tempPath], moving them to [path] (relative) —
+     * replacing whatever was there: a re-download is last-write-wins. **Not suspending**, because its caller is the
+     * download's finish callback, after which the platform deletes [tempPath]. `false` when the bytes could not be
+     * kept; they are then downloaded again by a later reconcile, never lost.
+     */
+    fun stage(tempPath: String, path: String): Boolean
+
     /** Delete the files at [paths] (relative). Missing files are not an error; the operation is idempotent. */
     suspend fun release(paths: List<String>)
 
@@ -96,6 +104,9 @@ interface StagedBytes {
              * this names no NEW directory — nothing is ever written through it.
              */
             override fun locate(path: String): String = path
+
+            /** Stages nothing — see [stagingRoot]: the bytes stay where the platform left them. */
+            override fun stage(tempPath: String, path: String): Boolean = false
 
             override suspend fun release(paths: List<String>) = Unit
 

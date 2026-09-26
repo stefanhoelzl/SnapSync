@@ -57,7 +57,7 @@ import platform.Foundation.NSURLSessionConfiguration
  * continuing across suspension or termination; the OS relaunching a terminated app for
  * `handleEventsForBackgroundURLSession` (device-only by vendor guidance — Quinn, *Testing Background Session
  * Code*, r. 16532261 — and unmeasurable there besides); reattachment to a prior process's tasks
- * ([IosUrlSessionUploadPlatform.reattach] can never find one); or the behaviour of
+ * (a session brought up by `handleEvents` can never find one); or the behaviour of
  * `__NSURLBackgroundSession`, including the invalidation defect
  * (`changes/archive/2026-07-12-fix-download-session-lifecycle` D5) — measured 2026-08-25, after the daemon
  * rejects and cancels the connection the client session does **not** call `didBecomeInvalidWithError`

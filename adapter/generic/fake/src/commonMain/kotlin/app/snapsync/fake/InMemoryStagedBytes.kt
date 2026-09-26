@@ -29,6 +29,9 @@ internal class InMemoryStagedBytes(
      */
     override fun locate(path: String): String = path
 
+    /** The in-memory disk holds no platform temp files: staging a finished body puts [path] on it, and takes. */
+    override fun stage(tempPath: String, path: String): Boolean = files.add(path).let { true }
+
     override suspend fun release(paths: List<String>) {
         files.removeAll(paths.toSet())
     }

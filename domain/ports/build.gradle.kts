@@ -86,11 +86,14 @@ kover {
             verify {
                 onCheck = true
                 rule(":domain:ports aggregate") {
-                    // LOWERED 83 -> 80 by the transfer re-cut (11f). Forcing proof: `OsCompletions` and its test
-                    // MOVED to `:domain:services` (services/wake), where they are covered and floored at 93; what
-                    // stayed here lost no test. Raise it again as the port-adjacent helpers re-home or gain tests.
+                    // LOWERED 83 -> 77 by the transfer re-cut (11f). Forcing proof, two parts: `OsCompletions` and
+                    // its test MOVED to `:domain:services` (services/wake), where they are covered and floored at 93;
+                    // and the new event ports' handler bundles (`UploadHandlers`, `DownloadHandlers`) are constructed
+                    // only by the composition — `ListenDoorTest` pins that — which no module credited here reaches
+                    // (their wiring runs in `:test:world`'s transfer-wake tests, credited to services). What stayed
+                    // here lost no test. Raise it again as the port-adjacent helpers re-home or gain tests.
                     bound {
-                        minValue = 80
+                        minValue = 77
                         coverageUnits = CoverageUnit.INSTRUCTION
                     }
                     // LOWERED 65 -> 57 by the storage-ports re-cut. Forcing proof: the zone's

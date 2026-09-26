@@ -2,7 +2,7 @@
 
 package app.snapsync.feature.upload
 
-import app.snapsync.model.CreateResult
+import app.snapsync.model.UploadCreateOutcome
 import app.snapsync.model.CycleResult
 import app.snapsync.ports.Discovery
 import app.snapsync.ports.PlatformUploadJob
@@ -178,12 +178,12 @@ class UploadCycleTest {
             }
             return Discovery(candidates, fullEnumeration)
         }
-        override suspend fun createJob(request: UploadRequest, resource: Resource): CreateResult {
-            if (failCreate) return CreateResult.FAILED
-            if (creates >= limitAfter) return CreateResult.LIMIT_EXCEEDED
+        override suspend fun createJob(request: UploadRequest, resource: Resource): UploadCreateOutcome {
+            if (failCreate) return UploadCreateOutcome.FAILED
+            if (creates >= limitAfter) return UploadCreateOutcome.LIMIT_EXCEEDED
             creates++
             created += resource
-            return CreateResult.CREATED
+            return UploadCreateOutcome.CREATED
         }
     }
 

@@ -1,7 +1,6 @@
 package app.snapsync.ios.upload
 
-import app.snapsync.ports.BackgroundTransfer
-import app.snapsync.ports.TransferRecord
+import app.snapsync.ports.Upload
 import co.touchlab.kermit.Logger
 
 /**
@@ -42,7 +41,4 @@ import co.touchlab.kermit.Logger
  *
  * Decision record: `changes/exercise-os-driven-upload-on-simulator` (D6, D7).
  */
-expect fun uploadJobQueue(
-    log: Logger,
-    ledger: TransferRecord,
-): BackgroundTransfer
+expect fun uploadJobQueue(log: Logger): Upload

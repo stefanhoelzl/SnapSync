@@ -43,4 +43,18 @@ interface Files {
 
     /** The platform path of [path] in [area], for a platform API that must be handed a file. Nothing is created. */
     fun locate(area: FileArea, path: String): FileResult<String>
+
+    /**
+     * Move [from] to [to] within [area], replacing whatever [to] held and creating its parent directories.
+     * [FileResult.NotFound] when [from] does not exist.
+     */
+    fun move(area: FileArea, from: String, to: String): FileResult<Unit>
+
+    /**
+     * Take over the file the platform handed the process at [osPath] — a finished download's temporary file, which
+     * the OS deletes when its callback returns — moving it to [to] in [area], replacing whatever [to] held and
+     * creating its parent directories. The one member that takes a platform path: the platform chose it, and the
+     * file must leave it before the callback returns. [FileResult.NotFound] when nothing is at [osPath].
+     */
+    fun adopt(osPath: String, area: FileArea, to: String): FileResult<Unit>
 }

@@ -61,6 +61,7 @@ class CompositionSeamTest {
         "UploadRecordPorts" to "domain/compose/src/commonMain/kotlin/app/snapsync/compose/UploadRecordPorts.kt",
         "PushPorts" to "domain/compose/src/commonMain/kotlin/app/snapsync/compose/PushComposition.kt",
         "ProcessPorts" to "domain/compose/src/commonMain/kotlin/app/snapsync/compose/ProcessComposition.kt",
+        "AppUploaderPorts" to "domain/compose/src/commonMain/kotlin/app/snapsync/compose/AppUploader.kt",
     )
 
     /**
@@ -84,14 +85,6 @@ class CompositionSeamTest {
      */
     private val pins: Map<String, Map<String, String>> = mapOf(
         "AppPorts" to mapOf(
-            // A factory FOR a port, which is the opposite of a lambda standing in for one: what it
-            // returns is the declared boundary. It is a lambda because the transport must be handed the
-            // queue that owns it (`DownloadTransportHost`), which does not exist until the feature is
-            // built — a cycle in the object graph, broken here.
-            "newDownloadTransport" to
-                "builds the DownloadTransport PORT, which is where the crossing is declared; a lambda " +
-                "only because the transport takes the host queue that does not exist until the feature " +
-                "is constructed",
             "appDrivenUpload" to
                 "a factory for the app's uploader mechanism (an AppUploadMechanism, whose platform touches are its own " +
                 "adapter's). A thunk so the engine is constructed at first use rather than while the graph " +
@@ -125,6 +118,8 @@ class CompositionSeamTest {
         "PushPorts" to emptyMap(),
         // Empty for the same reason: the per-process ports every root hands `snapSyncProcess` first.
         "ProcessPorts" to emptyMap(),
+        // Empty for the same reason: the app uploader's own reads and constants, beside the core it serves.
+        "AppUploaderPorts" to emptyMap(),
     )
 
     /**
@@ -173,9 +168,6 @@ class CompositionSeamTest {
         "DownloadController.eventAlbum" to
             "the current membership's event album — the album feature's AlbumCoordinator.albumIdFor over the " +
             "ConfigSource port, a sibling feature this one may not name; read from the in-process map, nothing leaves",
-        "QueuedPhotoDownloadJobs.newTransport" to
-            "builds the DownloadTransport PORT around the jobs' own host queue — the object-graph cycle " +
-            "AppPorts.newDownloadTransport breaks",
         "QueuedPhotoDownloadJobs.onStaged" to
             "records a staged resource in the sibling DownloadController, then requests the tail's import on this " +
             "core's own runner — resolving both when INVOKED, so a download-only relaunch reaches them (capability `receiving-photos`)",
@@ -447,7 +439,10 @@ class CompositionSeamTest {
     @Test
     fun `the gate actually parsed every composition bundle (non-vacuity floor)`() {
         // UploadRecordPorts: the join marker, then the device listing (now a backend service) left it; PushPorts: the publisher did.
-        val floors = mapOf("AppPorts" to 30, "UploadPorts" to 10, "UploadRecordPorts" to 1, "PushPorts" to 2, "ProcessPorts" to 5)
+        val floors = mapOf(
+            "AppPorts" to 30, "UploadPorts" to 10, "UploadRecordPorts" to 1, "PushPorts" to 2, "ProcessPorts" to 5,
+            "AppUploaderPorts" to 4,
+        )
         floors.forEach { (bundle, floor) ->
             assertTrue(
                 params(bundle).size >= floor,

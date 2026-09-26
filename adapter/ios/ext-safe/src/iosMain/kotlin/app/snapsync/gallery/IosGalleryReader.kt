@@ -13,6 +13,7 @@ import app.snapsync.model.GalleryAccess
 import app.snapsync.model.GalleryRead
 import app.snapsync.model.RawAsset
 import app.snapsync.model.RawResource
+import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.WriteOutcome
 import app.snapsync.model.denormalizeAssetId
@@ -25,7 +26,13 @@ import app.snapsync.ports.GalleryReader
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.resume
+import platform.Foundation.NSError
+import platform.Foundation.NSFileManager
+import platform.Foundation.NSURL
+import platform.Photos.PHAssetResourceManager
 import platform.Foundation.NSPredicate
 import platform.Photos.PHAsset
 import platform.Photos.PHAssetCollection
@@ -160,6 +167,28 @@ class IosGalleryReader(private val log: Logger = Logger.withTag("gallery")) : Ga
      * lets a repeated gather re-add without placing anything twice. See
      * changes/archive/2026-09-21-album-gathers-retroactively.
      */
+    /**
+     * `PHAssetResourceManager.writeDataForAssetResource` to [to], after removing whatever was there (a prior partial
+     * export for the same key). It moved here from the app's `URLSession` uploader in phase 11f: reading a resource's
+     * bytes is the photo library's, and the uploader now takes the file.
+     */
+    override suspend fun export(resource: Resource, to: String): WriteOutcome {
+        val handle = resource.data as? PHAssetResource
+            ?: return WriteOutcome.Failed("${resource.filename}: the payload is not a PHAssetResource")
+        val file = NSURL.fileURLWithPath(to)
+        checkedObjC("removeItemAtURL") { NSFileManager.defaultManager.removeItemAtURL(file, error = it) }
+        val error: NSError? = suspendCancellableCoroutine { cont ->
+            PHAssetResourceManager.defaultManager().writeDataForAssetResource(handle, toFile = file, options = null) { err ->
+                objcBoundary(log, "export.completion") { cont.resume(err) }
+            }
+        }
+        return if (error == null) {
+            WriteOutcome.Ok
+        } else {
+            WriteOutcome.Failed("${resource.filename}: ${error.domain}/${error.code} ${error.localizedDescription}")
+        }
+    }
+
     override suspend fun addToAlbum(album: AlbumId, assets: Set<AssetId>): WriteOutcome {
         if (assets.isEmpty()) return WriteOutcome.Ok
         val collection = PHAssetCollection.fetchAssetCollectionsWithLocalIdentifiers(listOf(album), null)

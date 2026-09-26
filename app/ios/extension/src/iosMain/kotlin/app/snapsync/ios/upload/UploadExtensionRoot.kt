@@ -38,7 +38,7 @@ import app.snapsync.services.gallery.GalleryAlbums
 import app.snapsync.services.gallery.GalleryDiscovery
 import app.snapsync.compose.extensionBackend
 import app.snapsync.http.HttpBackend
-import app.snapsync.ports.BackgroundTransfer
+import app.snapsync.ports.Upload
 import app.snapsync.model.CycleResult
 import app.snapsync.ports.processingResultRawValue
 import app.snapsync.feature.upload.UploadCycle
@@ -152,16 +152,16 @@ object UploadExtensionRoot : ExtensionEntries by extensionRootEntries() {
     // The extension's gallery: reads and album adds only — no access request, no change token, no memo.
     private val gallery: GalleryReader by lazy { IosGalleryReader() }
     private val discovery: UploadDiscovery by lazy { GalleryDiscovery(gallery) }
-    private val platform: BackgroundTransfer by lazy {
-        // The adapter records terminal outcomes into the ledger — through the narrow `TransferRecord` the
-        // store satisfies — and acknowledges in place. Same store the cycle gets.
+    private val platform: Upload by lazy {
+        // The upload-job queue, thin: the shared composition's upload service records terminal outcomes into the
+        // ledger and acknowledges every presented job.
         //
         // WHICH adapter is chosen by the COMPILATION TARGET, not here (capability `background-upload`,
         // "The upload-job subsystem binding is fixed by the compilation target"). Every shipped binary is
         // `iosArm64` and binds the PhotoKit queue; `iosSimulatorArm64` binds a substitute, because on that
         // host job creation does not fail — it raises an uncaught ObjC exception inside PhotoKit and kills
         // the process. This root is unchanged either way: it names the need, and the target answers it.
-        uploadJobQueue(log, ledgerStore)
+        uploadJobQueue(log)
     }
 
     // The app-written download store, opened READ-ONLY through the NARROWED SuppressionSource type
@@ -289,7 +289,8 @@ object UploadExtensionRoot : ExtensionEntries by extensionRootEntries() {
                 // `uploadBase` baked into the extension bundle.
                 host = bakedUploadBase(),
                 ledger = ledgerStore,
-                transfer = platform,
+                upload = platform,
+                gallery = gallery,
                 discovery = discovery,
                 // The per-event device manifest (capability `photo-sharing`): the extension PUTs it
                 // SYNCHRONOUSLY in-cycle through its backend's manifest service (the former extension-local

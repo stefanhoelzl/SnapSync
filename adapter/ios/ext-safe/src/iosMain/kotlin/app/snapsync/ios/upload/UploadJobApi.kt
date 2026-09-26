@@ -2,11 +2,8 @@
 
 package app.snapsync.ios.upload
 
-import app.snapsync.gallery.photoKitResourceRole
 import app.snapsync.model.UploadError
-import app.snapsync.model.assetIdFromUploadKey
-import app.snapsync.model.denormalizeAssetId
-import app.snapsync.model.roleFromUploadKey
+import app.snapsync.model.UploadJobState
 import app.snapsync.objc.ObjCFailure
 import app.snapsync.objc.checkedObjC
 import app.snapsync.objc.objcBoundary
@@ -15,7 +12,6 @@ import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSError
 import platform.Foundation.NSURLRequest
-import platform.Photos.PHAsset
 import platform.Photos.PHAssetResource
 import platform.Photos.PHAssetResourceUploadJob
 import platform.Photos.PHAssetResourceUploadJobAction
@@ -42,16 +38,13 @@ internal class UploadJobFacts(
     val destinationPath: String?,
     /** The `Content-Type` the stored destination carries, or `null`. */
     val contentTypeHeader: String?,
-    val state: PhotoKitJobState,
+    val state: UploadJobState,
     val error: UploadError?,
     /** The job's resource, or `null` when the OS answered none. */
     val resource: Any?,
     /** The resource's uniform type identifier, where a resource was answered. */
     val resourceType: String?,
 )
-
-/** A photo's live resource, fetched by identifier: the handle a re-created job sends, and its type. */
-internal class LiveResource(val handle: Any, val type: String?)
 
 /** What the OS answered a change request: whether it took, and if not, which code and why. */
 internal class ChangeAnswer(val ok: Boolean, val code: Long?, val description: String?)
@@ -67,13 +60,6 @@ internal interface UploadJobApi {
     fun acknowledge(job: UploadJobFacts): ChangeAnswer
     fun retry(job: UploadJobFacts, destination: NSURLRequest): ChangeAnswer
     fun create(destination: NSURLRequest, resource: Any): ChangeAnswer
-
-    /**
-     * The live resource for the upload [key] — the photo's resource of the key's role — or `null` when the photo has
-     * left the library. What a retry-spent job's `resource` would have been: the OS answers none for one (measured,
-     * SE2, iOS 26.6.2), so re-creation fetches it by identifier instead.
-     */
-    fun liveResource(key: String): LiveResource?
 }
 
 /** The real PhotoKit calls. */
@@ -95,7 +81,7 @@ internal class SystemUploadJobApi(private val log: Logger) : UploadJobApi {
             val error: NSError? = job.error
             out += UploadJobFacts(
                 handle = job,
-                destinationPath = destination?.URL?.path,
+                destinationPath = photoKitDestinationPath(destination),
                 contentTypeHeader = destination.contentTypeHeader(),
                 state = photoKitJobState(job.state),
                 error = error?.let(::photoKitUploadError),
@@ -122,16 +108,6 @@ internal class SystemUploadJobApi(private val log: Logger) : UploadJobApi {
         return change("createJob") {
             PHAssetResourceUploadJobChangeRequest.creationRequestForJobWithDestination(destination, phResource)
         }
-    }
-
-    override fun liveResource(key: String): LiveResource? {
-        val localId = denormalizeAssetId(assetIdFromUploadKey(key))
-        val role = roleFromUploadKey(key)
-        val asset = PHAsset.fetchAssetsWithLocalIdentifiers(listOf(localId), null).firstObject() as? PHAsset ?: return null
-        val resource = PHAssetResource.assetResourcesForAsset(asset)
-            .filterIsInstance<PHAssetResource>()
-            .firstOrNull { photoKitResourceRole(it.type) == role } ?: return null
-        return LiveResource(resource, resource.uniformTypeIdentifier)
     }
 
     private fun change(name: String, request: () -> Unit): ChangeAnswer {

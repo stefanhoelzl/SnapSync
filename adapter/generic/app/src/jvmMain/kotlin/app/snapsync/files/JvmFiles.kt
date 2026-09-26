@@ -60,6 +60,23 @@ class JvmFiles(private val shared: File?, private val private: File?) : Files {
     override fun locate(area: FileArea, path: String): FileResult<String> =
         resolve(area, path)?.let { FileResult.Ok(it.absolutePath) } ?: FileResult.AreaUnavailable
 
+    override fun move(area: FileArea, from: String, to: String): FileResult<Unit> {
+        val destination = resolve(area, to) ?: return FileResult.AreaUnavailable
+        return io(area, from) { source -> moveReplacing(source, destination) }
+    }
+
+    override fun adopt(osPath: String, area: FileArea, to: String): FileResult<Unit> {
+        val destination = resolve(area, to) ?: return FileResult.AreaUnavailable
+        return io(area, to) { moveReplacing(File(osPath), destination) }
+    }
+
+    private fun moveReplacing(source: File, destination: File): FileResult<Unit> {
+        if (!source.exists()) return FileResult.NotFound
+        destination.parentFile?.mkdirs()
+        Nio.move(source.toPath(), destination.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        return FileResult.Ok(Unit)
+    }
+
     private fun <T> io(area: FileArea, path: String, op: (File) -> FileResult<T>): FileResult<T> {
         val file = resolve(area, path) ?: return FileResult.AreaUnavailable
         return runCatchingCancellable { op(file) }.getOrElse { failure ->

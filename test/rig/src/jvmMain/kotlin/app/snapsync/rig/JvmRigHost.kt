@@ -139,8 +139,6 @@ class JvmRigHost private constructor(
                     openUrl = { url -> world.statusHost.onOpenUrl(url) },
                     assembleHost = {},
                     deliverPushToken = { hex -> world.pushTokens.deliver(hex) },
-                    // The iOS identifier, so a test passes the same argument to either host.
-                    uploadTransferChannel = UPLOAD_TRANSFER_CHANNEL,
                 ),
             )
             val extension = extensionEntries(ports = { world.uploadPorts }, cycle = { world.cycle })
@@ -201,9 +199,16 @@ class JvmRigHost private constructor(
                 RigTrigger.Receipted { arg, done ->
                     if (arg == UPLOAD_HEARTBEAT_TASK) world.wake.fire(WakeId.Heartbeat, rigCompletion(done)) else done()
                 },
+            // The session identifier is the argument, as the OS delivers it: the app uploader's session hands its events
+            // back through the world's upload session, every other identifier through the download session — the iOS
+            // adapter's routing, played by the world's operating system.
             "onBackgroundTransfers" to
                 RigTrigger.Receipted { arg, done ->
-                    entries.onBackgroundTransfers(arg.orEmpty(), done)
+                    if (arg == UPLOAD_TRANSFER_CHANNEL) {
+                        world.appUpload.handBack(rigCompletion(done))
+                    } else {
+                        world.download.handBack(rigCompletion(done))
+                    }
                 },
         )
 

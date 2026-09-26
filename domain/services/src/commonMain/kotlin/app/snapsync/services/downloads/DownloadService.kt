@@ -107,9 +107,8 @@ class DownloadService(databases: Databases) : DownloadStore {
         }
     }
 
-    override suspend fun markStaged(ref: AssetRef, resourceKey: String, stagedPath: String) {
-        q.markResourceStaged(stagedPath, ref.sourceDeviceId, ref.sourceAssetId, resourceKey)
-    }
+    override suspend fun markStaged(ref: AssetRef, resourceKey: String, stagedPath: String): Boolean =
+        q.markResourceStaged(stagedPath, ref.sourceDeviceId, ref.sourceAssetId, resourceKey).value > 0
 
     override suspend fun importableAssets(): List<ImportableAsset> =
         q.selectImportableAssets { device, asset, creationDate ->

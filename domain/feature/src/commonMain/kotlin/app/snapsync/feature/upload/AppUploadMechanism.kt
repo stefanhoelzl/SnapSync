@@ -26,19 +26,11 @@ interface AppUploadMechanism {
 
     /** Cancel every in-flight transfer and delete its staged file (a leave). Touches no ledger row. */
     suspend fun cancelTransfers()
-
-    /**
-     * Bring the background transfer session up, so the operating system delivers the events it holds for it — the
-     * completions the transport records as they arrive, then the report that every event was delivered
-     * ([AppUploadEvents.eventsDrained]).
-     */
-    fun reattach()
 }
 
 /**
- * What the app uploader's transport tells the core. The root binds each to one call into the composed core at
- * construction (`docs/architecture.md`, "Callbacks are bound at construction"): the transport exists before the
- * core that answers it, which is the construction cycle this interface crosses.
+ * What the app uploader's transport tells the core — each one call from the upload port's handlers, which the
+ * composition builds and the host zone registers.
  */
 interface AppUploadEvents {
     /**

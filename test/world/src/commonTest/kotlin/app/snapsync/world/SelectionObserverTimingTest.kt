@@ -31,7 +31,6 @@ class SelectionObserverTimingTest {
                 openUrl = {},
                 assembleHost = { w.statusHost },
                 deliverPushToken = {},
-                uploadTransferChannel = "world.upload.session",
             ),
         )
 
@@ -41,7 +40,7 @@ class SelectionObserverTimingTest {
             withTimeout(5_000) { released.await() }
         }
         wake { done -> w.wake.fire(WakeId.Heartbeat, bareCompletion(done)) }
-        wake { done -> entries.onBackgroundTransfers("world.upload.session", done) }
+        wake { done -> w.appUpload.handBack(bareCompletion(done)) }
         wake { done -> entries.onSilentPush(mapOf<Any?, Any?>("eventId" to "E"), done) }
         assertFalse(w.gallery.observing, "a wake that never builds the screen opened the selection observer")
 

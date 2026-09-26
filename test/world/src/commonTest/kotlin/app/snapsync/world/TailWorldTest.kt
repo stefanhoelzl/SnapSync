@@ -37,7 +37,6 @@ class TailWorldTest {
                 openUrl = {},
                 assembleHost = { assembled = true },
                 deliverPushToken = {},
-                uploadTransferChannel = "world.upload.session",
             ),
         )
         return Entries(entries) { assembled }

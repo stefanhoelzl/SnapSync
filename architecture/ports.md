@@ -13,18 +13,19 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `AlbumMapStore` | `:domain:ports` | `:adapter:generic:fake` InMemoryAlbumMapStore; `:domain:feature` InMemoryAlbumMapStore; `:domain:services` AlbumMapService | yes |
 | `AppUploadEngine` | `:domain:feature` | `:domain:feature` FakeEngine; `:test:architecture` Engine | yes |
 | `AppUploadEvents` | `:domain:feature` | — | no |
-| `AppUploadMechanism` | `:domain:feature` | `:app:ios` UrlSessionUploadController; `:test:world` OperatorUploadEngine | yes |
+| `AppUploadMechanism` | `:domain:feature` | `:domain:compose` ComposedAppUploader; `:test:world` OperatorUploadEngine | yes |
 | `AttestStore` | `:domain:ports` | `:adapter:generic:fake` InMemoryAttestStore; `:domain:services` AttestState, CachedAttestStore, Item, SharedItem | yes |
 | `AuthenticatedBackend` | `:domain:services` | `:domain:services` CredentialedBackend | no |
 | `Backend` | `:domain:ports` | `:adapter:generic:app` HttpBackend; `:adapter:generic:fake` FakeClient, InMemoryBackend; `:domain:services` ScriptedBackend; `:test:world` WorldBackendPort | yes |
 | `BackgroundTime` | `:domain:ports` | `:adapter:generic:fake` InMemoryBackgroundTime; `:adapter:ios:app-only` IosBackgroundTime | yes |
 | `BackgroundTimeHold` | `:domain:ports` | `:adapter:generic:fake` Hold; `:adapter:ios:app-only` Held, Refused | no |
-| `BackgroundTransfer` | `:domain:ports` | `:adapter:ios:app-only` IosUrlSessionUploadPlatform; `:adapter:ios:ext-safe` IosPhotoKitUploadPlatform, PlayedOs, SimulatorUploadJobQueue; `:domain:feature` FakePlatform, Library; `:test:world` FakeBackgroundTransfer, NetworkedTransfer | yes |
+| `BackgroundTransfer` | `:domain:ports` | `:domain:feature` FakePlatform, Library; `:domain:services` UploadTransferService | yes |
 | `Candidate` | `:domain:model` | `:domain:model` BatchedCandidate, HeldCandidate, LazyCandidate | no |
 | `CandidateRead` | `:domain:model` | `:domain:model` NotReadable, Readable | no |
 | `CandidateSource` | `:domain:ports` | `:adapter:generic:fake` Blowing, RecordingEnumerator, ResourceCandidates, Switchable; `:domain:compose` PermissionAwareCandidateSource, RecordingWalk; `:domain:feature` FactsSource, OneAsset, UnreadableSource; `:domain:services` GalleryCandidateSource | no |
+| `ChangeOutcome` | `:domain:model` | `:domain:model` Applied, Refused | no |
 | `Clock` | `:domain:ports` | `:adapter:generic:app` SystemClock; `:domain:presentation` MovableClock; `:ui:screens` MovableClock | no |
-| `Completion` | `:domain:ports` | `:adapter:ios:app-only` Released, TaskCompletion; `:domain:compose` BareCompletion; `:test:world` OsCompletion | yes |
+| `Completion` | `:domain:ports` | `:adapter:ios:app-only` Released, SessionCompletion, TaskCompletion; `:domain:compose` BareCompletion; `:test:world` OsCompletion | yes |
 | `ConfigDecodeResult` | `:domain:model` | `:domain:model` Failure, Success | no |
 | `ConfigFileDecode` | `:domain:model` | `:domain:model` Foreign, Unusable, Valid | no |
 | `ConfigFileRead` | `:domain:model` | `:domain:model` Content, Failed, Missing | no |
@@ -51,11 +52,9 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `DeviceIntegrity` | `:domain:ports` | `:adapter:generic:fake` FakeKey, InMemoryDeviceIntegrity; `:adapter:ios:ext-safe` IosDeviceIntegrity | yes |
 | `DeviceLogSource` | `:domain:ports` | `:adapter:generic:fake` InMemoryDeviceLogSource; `:domain:services` LogTailService | yes |
 | `DeviceManifestStore` | `:domain:ports` | `:adapter:generic:fake` InMemoryDeviceManifestStore; `:domain:feature` FakeStore; `:domain:services` DeviceManifestService | yes |
+| `Download` | `:domain:ports` | `:adapter:ios:app-only` IosDownload; `:domain:feature` FakeDownload; `:test:world` FakeDownload, NetworkedDownload | yes |
 | `DownloadStatusSource` | `:domain:feature` | `:domain:feature` InMemoryDownloadStatusSource, StoreDownloadStatusSource | yes |
 | `DownloadStore` | `:domain:ports` | `:adapter:generic:fake` InMemoryDownloadStore, PlanCountingStore, ReclaimSpyStore; `:domain:services` DownloadService; `:test:world` RecordingDownloadStore | yes |
-| `DownloadTask` | `:domain:ports` | `:adapter:ios:app-only` IosDownloadTask | no |
-| `DownloadTransport` | `:domain:ports` | `:adapter:ios:app-only` IosDownloadTransport; `:domain:feature` FakeDownloadTransport; `:test:world` FakeDownloadTransport | yes |
-| `DownloadTransportHost` | `:domain:ports` | `:test:contracts` ClauseHost | yes |
 | `DumpResult` | `:domain:model` | `:domain:model` NotSent, Queued, Saved | no |
 | `Enter` | `:domain:feature` | `:domain:feature` Join, LeavePrevious | no |
 | `EntryContext` | `:domain:ports` | `:adapter:generic:fake` Entry; `:adapter:ios:ext-safe` IosEntryContext, IosThreadEntryContext; `:domain:ports` NoOp, RecordingScope | no |
@@ -71,17 +70,19 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `ExtensionEntries` | `:domain:ports` | `:app:ios:extension` UploadExtensionRoot | no |
 | `ExtensionRegistration` | `:domain:feature` | `:domain:feature` FakeRegistration, OsDrivenRegistration; `:test:architecture` PlatformRegistration | yes |
 | `ExtensionRegistry` | `:domain:ports` | `:adapter:generic:fake` InMemoryExtensionRegistry; `:adapter:ios:app-only` PhotoKitExtensionRegistry, SimulatorExtensionRegistry; `:domain:feature` RecordingRegistry | yes |
+| `FetchedJob` | `:domain:services` | `:domain:services` AcknowledgeToDrain, Emit | no |
 | `FileResult` | `:domain:model` | `:domain:model` AreaUnavailable, Denied, Failed, NotFound, Ok | no |
-| `Files` | `:domain:ports` | `:adapter:generic:app` JvmFiles; `:adapter:generic:fake` Answering, InMemoryFiles; `:adapter:ios:ext-safe` IosFiles | yes |
+| `Files` | `:domain:ports` | `:adapter:generic:app` JvmFiles; `:adapter:generic:fake` Answering, InMemoryFiles; `:adapter:ios:ext-safe` IosFiles; `:domain:services` Adopting, SharedArea | yes |
 | `Found` | `:domain:services` | `:domain:services` Failed, Missing, OldSchema, Open | no |
 | `Gallery` | `:domain:ports` | `:adapter:generic:fake` InMemoryGallery; `:adapter:ios:app-only` IosGallery; `:test:world` WorldGallery | yes |
 | `GalleryImport` | `:domain:ports` | `:adapter:generic:fake` FakeImporter, NoopImporter | yes |
 | `GalleryRead` | `:domain:model` | `:domain:model` NotReadable, Read | no |
-| `GalleryReader` | `:domain:ports` | `:adapter:ios:app-only` IosGallery; `:adapter:ios:ext-safe` IosGalleryReader; `:domain:services` ScriptedGallery | no |
+| `GalleryReader` | `:domain:ports` | `:adapter:ios:app-only` IosGallery; `:adapter:ios:ext-safe` IosGalleryReader; `:domain:services` Library, ScriptedGallery | no |
 | `GalleryStatusSource` | `:domain:ports` | `:adapter:generic:fake` InMemoryGalleryStatusSource; `:domain:feature` OwnDeviceGalleryStatusSource | yes |
 | `Handoff` | `:domain:model` | `:domain:model` Accepted, Refused | no |
 | `ImportResult` | `:domain:model` | `:domain:model` Failed, Imported | no |
 | `ImportedAssetPresence` | `:domain:ports` | `:adapter:generic:fake` CountingPresence, InMemoryAssetPresence; `:domain:compose` PermissionAwareAssetPresence, RecordingLibrary; `:domain:services` GalleryAssetPresence | yes |
+| `JobRow` | `:domain:services` | `:domain:services` Found, Pruned, Unmappable | no |
 | `JoinLoad` | `:domain:model` | `:domain:model` Failed, Found, NotFound | no |
 | `JoinPhase` | `:domain:model` | `:domain:model` Detailed, LoadFailed, Loading, NotFound | no |
 | `JoinedSurface` | `:domain:model` | `:domain:model` Reconfigure, Status | no |
@@ -137,10 +138,12 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `SyncStatusSource` | `:domain:feature` | `:domain:presentation` ConstSyncStatusSource, FakeSync, FakeSyncStatusSource, IdleSync | yes |
 | `SystemUi` | `:domain:ports` | `:adapter:ios:app-only` IosSystemUi | no |
 | `TokenOutcome` | `:domain:model` | `:domain:model` ChallengeStale, Minted, NotAttested, Refused, Unreachable | no |
-| `TransferRecord` | `:domain:ports` | — | no |
-| `UploadDiscovery` | `:domain:ports` | `:domain:feature` FakePlatform, Library, RecordingDelegate, SelectionScopedDiscovery, WalkMemo; `:domain:services` GalleryDiscovery; `:test:world` FakeUploadDiscovery | yes |
+| `TransferRecord` | `:domain:ports` | `:domain:services` Record | no |
+| `Upload` | `:domain:ports` | `:adapter:ios:app-only` IosUrlSessionUploadPlatform; `:adapter:ios:ext-safe` IosPhotoKitUploadPlatform, PlayedOs, SimulatorUploadJobQueue; `:domain:services` ScriptedUpload; `:test:world` FakeUpload, NetworkedUpload, WorldAppUpload | yes |
+| `UploadDiscovery` | `:domain:ports` | `:domain:feature` FakePlatform, Library, RecordingDelegate, SelectionScopedDiscovery, WalkMemo; `:domain:services` GalleryDiscovery, Resources; `:test:world` FakeUploadDiscovery | yes |
 | `UploadError` | `:domain:model` | `:domain:model` Cancelled, Http, Network, Unknown | no |
 | `UploadRequestProvider` | `:domain:model` | `:adapter:generic:fake` RecordingUploadRequestProvider; `:domain:feature` Provider, StubUploadRequestProvider; `:domain:model` EdgeUploadRequestProvider | no |
+| `UploadSource` | `:domain:model` | `:domain:model` File, Resource | no |
 | `UploaderProcess` | `:domain:compose` | `:domain:compose` App, Extension | no |
 | `Wake` | `:domain:ports` | `:adapter:generic:fake` InMemoryWake; `:adapter:ios:app-only` IosWake; `:domain:services` RecordingWake; `:test:world` WorldWake | yes |
 | `WakeTrigger` | `:domain:model` | `:domain:model` After, LibraryChange | no |

@@ -1,5 +1,6 @@
 package app.snapsync.ports
 
+import app.snapsync.model.Resource
 import app.snapsync.model.AlbumId
 import app.snapsync.model.AlbumRecord
 import app.snapsync.model.AssetFacts
@@ -78,6 +79,13 @@ interface GalleryReader {
      * the album is a no-op. An album that no longer resolves is [WriteOutcome.Failed].
      */
     suspend fun addToAlbum(album: AlbumId, assets: Set<AssetId>): WriteOutcome
+
+    /**
+     * Write [resource]'s bytes to the platform file [to] (a `Files.locate` answer), replacing whatever it held — for an
+     * uploader that sends from a file. A resource that is not this library's own handle, or one the library can no
+     * longer produce, is [WriteOutcome.Failed]; nothing is left at [to] then.
+     */
+    suspend fun export(resource: Resource, to: String): WriteOutcome
 }
 
 /**

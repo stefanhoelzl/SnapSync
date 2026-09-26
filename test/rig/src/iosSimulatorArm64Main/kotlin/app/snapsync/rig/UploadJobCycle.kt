@@ -2,7 +2,7 @@ package app.snapsync.rig
 
 import app.snapsync.ios.upload.CreatedUploadJob
 import app.snapsync.ios.upload.FinishedUploadJob
-import app.snapsync.ios.upload.PhotoKitJobState
+import app.snapsync.model.UploadJobState
 import app.snapsync.ios.upload.SimulatorJobAction
 import app.snapsync.ios.registry.SimulatorExtensionRecord
 import app.snapsync.ios.upload.SimulatorUploadJobs
@@ -21,7 +21,7 @@ import kotlinx.serialization.json.Json
  * topology instead of inventing a second one. It also means a relaunch cannot leave a queue disagreeing
  * with the durable ledger, and there is nothing here to serialize or migrate.
  *
- * The wire vocabulary is the **platform's own**, and it is already pinned: `PhotoKitJobState`'s five cases
+ * The wire vocabulary is the **platform's own**, and it is already pinned: `UploadJobState`'s five cases
  * are held against the Photos klib by `:test:architecture`'s platform-vocabulary pin, so a case Apple adds
  * fails the Kotlin bump rather than reaching a scenario untaught. A caller playing the OS speaks the OS's
  * terms.
@@ -85,8 +85,8 @@ internal actual suspend fun beginUploadJobCycle(body: String?): String? {
     for (job in request.finished) {
         val action = SimulatorJobAction.entries.firstOrNull { it.name.equals(job.action, ignoreCase = true) }
             ?: return refusal("action", job.action, SimulatorJobAction.entries.map { it.name })
-        val state = PhotoKitJobState.entries.firstOrNull { it.name.equals(job.state, ignoreCase = true) }
-            ?: return refusal("state", job.state, PhotoKitJobState.entries.map { it.name })
+        val state = UploadJobState.entries.firstOrNull { it.name.equals(job.state, ignoreCase = true) }
+            ?: return refusal("state", job.state, UploadJobState.entries.map { it.name })
         val error = uploadError(job) ?: if (job.error == null) {
             null
         } else {

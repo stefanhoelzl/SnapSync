@@ -35,6 +35,12 @@ class StagingService(
         else -> error("the shared area cannot hold staged downloads ($located)")
     }
 
+    override fun stage(tempPath: String, path: String): Boolean =
+        when (val adopted = files.adopt(tempPath, FileArea.SHARED, path)) {
+            is FileResult.Ok -> true
+            else -> false.also { log.w { "stage: $path was not kept ($adopted) — it is downloaded again later" } }
+        }
+
     override suspend fun release(paths: List<String>) {
         paths.forEach { path ->
             when (val deleted = files.delete(FileArea.SHARED, path)) {

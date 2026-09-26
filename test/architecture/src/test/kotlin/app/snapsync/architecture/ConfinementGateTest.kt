@@ -35,8 +35,8 @@ class ConfinementGateTest {
             "SelectionSnapshotLane", // PhotoKit change notifications
         "adapter/ios/app-only/src/iosMain/kotlin/app/snapsync/permission/PhotoKitSelection.kt" to
             "PhotoKitSelection",
-        "adapter/ios/app-only/src/iosMain/kotlin/app/snapsync/download/IosDownloadTransport.kt" to
-            "IosDownloadTransport",
+        "adapter/ios/app-only/src/iosMain/kotlin/app/snapsync/download/IosDownload.kt" to
+            "IosDownload",
         "adapter/ios/app-only/src/iosMain/kotlin/app/snapsync/ios/urlsession/IosUrlSessionUploadPlatform.kt" to
             "IosUrlSessionUploadPlatform",
         "adapter/ios/ext-safe/src/iosMain/kotlin/app/snapsync/ios/upload/IosPhotoKitUploadPlatform.kt" to

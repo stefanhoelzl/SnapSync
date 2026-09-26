@@ -1,7 +1,7 @@
 package app.snapsync.model
 
 /**
- * What a finished transfer turned out to be — the facts [DownloadTransportHost.accepts] judges it on
+ * What a finished transfer turned out to be — the facts the download feature judges it on
  * (capability `receiving-photos`). Data only: the platform edge reads these off its response object, and
  * nothing platform-shaped crosses the seam.
  *
@@ -15,3 +15,9 @@ data class TransferOutcome(
     val expectedBytes: Long,
     val receivedBytes: Long,
 )
+
+/**
+ * Whether the platform took a download request. The causes of [NotStarted] are collapsed on purpose: every one leaves
+ * the resource pending until the next reconcile, exactly as a started-then-failed transfer does.
+ */
+enum class StartResult { Started, NotStarted }

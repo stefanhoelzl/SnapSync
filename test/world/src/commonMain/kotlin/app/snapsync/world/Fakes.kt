@@ -22,14 +22,22 @@ import app.snapsync.model.AssetRef
 import app.snapsync.ports.DownloadStore
 import app.snapsync.model.PendingDownload
 import app.snapsync.ports.PhotoAccessStatusSource
-import app.snapsync.feature.upload.AppUploadEvents
 import app.snapsync.feature.upload.AppUploadMechanism
 import app.snapsync.feature.upload.WalkOutcome
 import app.snapsync.fake.inMemoryWake
 import app.snapsync.model.ScheduleResult
 import app.snapsync.model.WakeId
 import app.snapsync.model.WakeTrigger
+import app.snapsync.model.ChangeOutcome
+import app.snapsync.model.UploadCreateOutcome
+import app.snapsync.model.UploadJob
+import app.snapsync.model.UploadJobSet
+import app.snapsync.model.UploadSource
+import app.snapsync.model.UploadSourceKind
+import app.snapsync.model.UploadTarget
 import app.snapsync.ports.Completion
+import app.snapsync.ports.Upload
+import app.snapsync.ports.UploadHandlers
 import app.snapsync.ports.Wake
 import app.snapsync.ports.WakeHandlers
 import app.snapsync.model.CycleResult
@@ -196,6 +204,9 @@ class WorldGallery(
         return honest.addToAlbum(album, assets)
     }
 
+    override suspend fun export(resource: app.snapsync.model.Resource, to: String): WriteOutcome =
+        honest.export(resource, to)
+
     override suspend fun requestAccess(): GalleryAccess = honest.requestAccess()
 
     override suspend fun widenSelection(): GalleryAccess = honest.widenSelection()
@@ -231,6 +242,12 @@ class RecordingDownloadStore(private val inner: DownloadStore) : DownloadStore b
     /** Inspection: every (asset, resourceKey) the controller enqueued, in order. */
     val enqueueRequests = mutableListOf<Pair<AssetRef, String>>()
 
+    /** Inspection: every staging the store took, in order — the store write a download wake's handler waits for. */
+    val stagings = mutableListOf<Pair<AssetRef, String>>()
+
+    override suspend fun markStaged(ref: AssetRef, resourceKey: String, stagedPath: String): Boolean =
+        inner.markStaged(ref, resourceKey, stagedPath).also { if (it) stagings += ref to resourceKey }
+
     override suspend fun markEnqueued(ref: AssetRef, resourceKey: String) {
         enqueueRequests += ref to resourceKey
         inner.markEnqueued(ref, resourceKey)
@@ -253,22 +270,16 @@ class RecordingDownloadStore(private val inner: DownloadStore) : DownloadStore b
  * The world's app-driven [AppUploadMechanism]: its units are inert, because **the operator is the engine** — nothing
  * uploads on its own in the world (`docs/testing.md`), and a cycle happens only when the operator invokes it.
  * The composed tail runner still drives these units from every wake the world's OS entries deliver, so what is counted
- * here is what the runner asked of the uploader: a test reads which units a wake reached, in the real order.
- *
- * [events] is the core the world composed, resolved per call: the world's transfer session has nothing in flight, so a
- * [reattach] reports its events drained at once, which is what releases the handler the wake handed over.
+ * here is what the runner asked of the uploader: a test reads which units a wake reached, in the real order. Its
+ * transfer session's background events are [WorldAppUpload]'s.
  */
-class OperatorUploadEngine(private val events: () -> AppUploadEvents) : AppUploadMechanism {
+class OperatorUploadEngine : AppUploadMechanism {
     /** How many top-ups (②) the tail asked for. */
     var topUps: Int = 0
         private set
 
     /** How many walks (③) — including a selection change's own work — the tail asked for. */
     var walks: Int = 0
-        private set
-
-    /** How many background-transfer handbacks reached this uploader's session. */
-    var transferHandbacks: Int = 0
         private set
 
     /** What each top-up answers — the operator's lever for a truncated or declining pass. */
@@ -295,16 +306,49 @@ class OperatorUploadEngine(private val events: () -> AppUploadEvents) : AppUploa
 
     override suspend fun cancelTransfers() = Unit
 
-    override fun reattach() {
-        transferHandbacks++
-        // Nothing is in flight in the world, so the session has nothing to deliver: its drain report comes at once.
-        events().eventsDrained()
-    }
-
     private suspend fun park() {
         val gate = nextUnitGate ?: return
         nextUnitGate = null
         gate.await()
+    }
+}
+
+/**
+ * The app uploader's transfer session as the world's operating system plays it (`docs/testing.md`): an [Upload] that
+ * holds no jobs — the world's app uploader is the inert [OperatorUploadEngine] — and whose one lever hands the session's
+ * background events back to the composition that listened, as a `handleEventsForBackgroundURLSession` relaunch does.
+ * Nothing is in flight in the world, so the session has nothing to deliver: its drain report follows at once.
+ */
+class WorldAppUpload : Upload {
+    private var handlers: UploadHandlers? = null
+
+    /** How many background-event handbacks reached this session. */
+    var handbacks: Int = 0
+        private set
+
+    override val accepts: UploadSourceKind = UploadSourceKind.FILE
+
+    override fun listen(handlers: UploadHandlers) {
+        this.handlers = handlers
+    }
+
+    override suspend fun create(source: UploadSource, target: UploadTarget, tag: String): UploadCreateOutcome =
+        UploadCreateOutcome.FAILED
+
+    override suspend fun jobs(set: UploadJobSet): List<UploadJob> = emptyList()
+
+    override suspend fun retry(job: UploadJob, target: UploadTarget): ChangeOutcome = ChangeOutcome.Applied
+
+    override suspend fun acknowledge(job: UploadJob): ChangeOutcome = ChangeOutcome.Applied
+
+    override suspend fun cancel(job: UploadJob): ChangeOutcome = ChangeOutcome.Applied
+
+    /** Operator lever: the operating system relaunches the app for this session's events, handing [completion]. */
+    fun handBack(completion: Completion) {
+        val registered = checkNotNull(handlers) { "no composition listened to the upload session" }
+        registered.onBackgroundEvents(completion)
+        handbacks++
+        registered.onEventsDrained()
     }
 }
 

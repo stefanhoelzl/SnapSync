@@ -51,6 +51,11 @@ class MainLaneContainmentTest {
         // PresentLimitedLibraryPicker.kt), and observes UIApplication notifications; both main-thread-only.
         "/adapter/ios/app-only/src/iosMain/kotlin/app/snapsync/permission/PhotoLibraryPermission.kt" to
             "presentLimitedLibraryPicker + a UIApplication notification observer",
+        // Releases `handleEventsForBackgroundURLSession`'s completion handler, which is part of UIKit and must be
+        // called on the main thread (Apple's `UIApplicationDelegate` documentation). The core decides when; this
+        // adapter's `Completion` puts the call where UIKit requires (phase 11f — before it, `OsCompletions` took a lane).
+        "/adapter/ios/app-only/src/iosMain/kotlin/app/snapsync/ios/urlsession/SessionCompletion.kt" to
+            "the background URLSession completion handler (UIKit, main-thread-only)",
         // Reads the main-thread-only `isProtectedDataAvailable` for the background entry points' diagnostics
         // (capability `sync-status`). The read moved here from `SnapSyncRoot` when the shell became a driving
         // adapter: the core's entries ask the `ProcessInfo` port, and this adapter names the lane itself.

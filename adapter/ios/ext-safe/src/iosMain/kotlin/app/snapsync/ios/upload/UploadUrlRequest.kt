@@ -1,6 +1,6 @@
 package app.snapsync.ios.upload
 
-import app.snapsync.model.UploadRequest
+import app.snapsync.model.UploadTarget
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSMutableURLRequest
@@ -9,7 +9,7 @@ import platform.Foundation.setHTTPMethod
 import platform.Foundation.setValue
 
 /**
- * Build the edge PUT request for [request] — HTTP/3 disabled (see below). Shared by both upload tiers'
+ * Build the edge PUT request for [target] — HTTP/3 disabled (see below). Shared by both upload tiers'
  * transports, which is why it lives beside neither of them.
  *
  * Force HTTP/2-over-TCP: the system otherwise performs the upload over HTTP/3 (QUIC) against the public edge
@@ -18,10 +18,10 @@ import platform.Foundation.setValue
  * out of HTTP/3 keeps uploads on TCP.
  */
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
-fun uploadUrlRequest(url: NSURL, request: UploadRequest): NSMutableURLRequest {
+fun uploadUrlRequest(url: NSURL, target: UploadTarget): NSMutableURLRequest {
     val urlRequest = NSMutableURLRequest(uRL = url)
     urlRequest.setHTTPMethod("PUT")
-    request.headers.forEach { (name, value) -> urlRequest.setValue(value, forHTTPHeaderField = name) }
+    target.headers.forEach { (name, value) -> urlRequest.setValue(value, forHTTPHeaderField = name) }
     urlRequest.setAssumesHTTP3Capable(false)
     return urlRequest
 }

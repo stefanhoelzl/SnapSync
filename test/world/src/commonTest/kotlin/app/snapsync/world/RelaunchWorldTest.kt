@@ -42,7 +42,7 @@ class RelaunchWorldTest {
         assertTrue(objects is Answer.Available && objects.value.isNotEmpty(), "the backend survives")
 
         // The OS download session survives: the relaunched app's transport receives the dead process's transfers.
-        w.core.downloadJobs.adoptBackgroundEvents(bareCompletion {})
+        w.download.handBack(bareCompletion {})
         val adopted = assertNotNull(w.downloadTransport, "the relaunched app realized a transport").inFlight().map { it.description }
         assertEquals(session, adopted, "the relaunched app's transport holds the dead process's transfers")
         session.forEach { assertNotNull(w.downloadTransport).finish(it) }

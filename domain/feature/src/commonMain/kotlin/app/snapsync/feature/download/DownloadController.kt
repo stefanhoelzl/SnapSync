@@ -196,11 +196,20 @@ class DownloadController(
      * background-`URLSession` delegate, possibly while backgrounded / on relaunch). Records it staged — and that is
      * all: staging is a download wake's own work, and the import it makes possible is the tail's first unit, which
      * the composition requests once the staging is recorded (capability `receiving-photos`, "Import without foreground;
-     * staged by the wake, imported by the tail").
+     * staged by the wake, imported by the tail"). Answers whether a row took it; a staging no row takes has its file
+     * discarded here.
      */
-    suspend fun onResourceStaged(ref: AssetRef, resourceKey: String, stagedPath: String) =
-        log.invocation(entryContext, "onResourceStaged", params = "key=$resourceKey") {
-            mutex.withLock { store.markStaged(ref, resourceKey, stagedPath) }
+    suspend fun onResourceStaged(ref: AssetRef, resourceKey: String, stagedPath: String): Boolean =
+        log.invocation(entryContext, "onResourceStaged", params = "key=$resourceKey", result = { "recorded=$it" }) {
+            val recorded = mutex.withLock { store.markStaged(ref, resourceKey, stagedPath) }
+            // No row took it: the transfer outran a leave's prune, or a relaunched process inherited it for an event it
+            // has left. Nothing references the file, so it goes now rather than sitting unreclaimable.
+            if (!recorded) {
+                log.i { "staged $resourceKey has no row to record against — its file is discarded" }
+                runCatchingCancellable { stagedBytes.release(listOf(stagedPath)) }
+                    .onFailure { log.w(it) { "discarding the unrecorded staged file failed — left behind" } }
+            }
+            recorded
         }
 
     /**

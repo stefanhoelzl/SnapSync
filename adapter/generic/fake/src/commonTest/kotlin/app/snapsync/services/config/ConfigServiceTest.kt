@@ -32,6 +32,8 @@ class ConfigServiceTest {
         override fun delete(area: FileArea, path: String): FileResult<Unit> = answer
         override fun exists(area: FileArea, path: String): FileResult<Boolean> = answer
         override fun locate(area: FileArea, path: String): FileResult<String> = answer
+        override fun move(area: FileArea, from: String, to: String): FileResult<Unit> = answer
+        override fun adopt(osPath: String, area: FileArea, to: String): FileResult<Unit> = answer
     }
 
     @Test

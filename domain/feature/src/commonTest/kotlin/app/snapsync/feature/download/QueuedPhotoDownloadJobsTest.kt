@@ -1,9 +1,9 @@
 package app.snapsync.feature.download
 
-import app.snapsync.ports.DownloadTask
-import app.snapsync.ports.DownloadTransport
+import app.snapsync.model.StartResult
+import app.snapsync.ports.Download
 import app.snapsync.ports.StagedBytes
-import app.snapsync.ports.DownloadTransportHost
+import app.snapsync.ports.DownloadHandlers
 import app.snapsync.model.TransferOutcome
 
 import app.snapsync.model.AssetRef
@@ -49,66 +49,67 @@ class QueuedPhotoDownloadJobsTest {
     }
 
     /**
-     * A [DownloadTransport] that behaves like the real background `URLSession` **including its fatal
-     * edge**: once the session is gone, creating a task raises — on iOS that is an uncatchable
-     * Objective-C `NSException` which aborts the process. A test that trips this `check` is reproducing
-     * the production crash.
+     * A [Download] that behaves like the real background `URLSession` port: it starts transfers, tells the jobs what
+     * the platform would — through the calls the composition's handlers make — and cancels what it holds. It never
+     * destroys its session; the system may invalidate one ([systemInvalidates]), after which the port runs on a fresh
+     * one ([sessions] counts them).
      */
-    private class FakeDownloadTransport(val host: DownloadTransportHost) : DownloadTransport {
+    private class FakeDownload : Download {
+        lateinit var jobs: QueuedPhotoDownloadJobs
 
         class Started(val url: String, val description: String) {
             var cancelled = false
         }
 
         val started = mutableListOf<Started>()
-        var destroyed = false
+
+        /** How many sessions the port has run on — one, until the system invalidates it. */
+        var sessions = 1
             private set
 
-        override fun start(url: String, description: String): DownloadTask? {
-            check(!destroyed) { "task created on a destroyed transport — this aborts the process on iOS" }
-            val s = Started(url, description)
-            started += s
-            return object : DownloadTask {
-                override fun cancel() {
-                    s.cancelled = true
-                    host.onCompleted(description, "cancelled")
-                }
+        /** The staged paths the jobs moved finished bodies to. */
+        val stagedTemps = mutableListOf<String>()
+
+        override fun listen(handlers: DownloadHandlers) = Unit
+
+        override fun start(url: String, tag: String): StartResult {
+            started += Started(url, tag)
+            return StartResult.Started
+        }
+
+        override suspend fun cancelAll() {
+            started.filterNot { it.cancelled }.forEach {
+                it.cancelled = true
+                jobs.onCompleted(it.description, "cancelled")
             }
         }
 
-        /** Only the staging half of [finish]: what the delegate queue does for one finished transfer's bytes. */
-        fun stage(description: String) {
-            host.destinationFor(description)?.let { host.onStaged(description, it) }
-        }
+        /** Only the finish half of [finish]: what the delegate queue does for one finished transfer's bytes. */
+        fun stage(description: String) = jobs.onFinished(description, OK, "temp:/$description")
 
         /** The session delivered every event it had — `URLSessionDidFinishEventsForBackgroundURLSession`. */
-        fun eventsFinished() = host.onBackgroundEventsFinished()
+        fun eventsFinished() = jobs.onBackgroundEventsFinished()
 
-        /** The system invalidated the session — the only way a transport ever dies. */
+        /** The system invalidated the session — the only way one ever dies. */
         fun systemInvalidates() {
-            destroyed = true
-            host.onInvalidated()
+            sessions++
+            started.forEach { it.cancelled = true }
+            jobs.onInvalidated()
         }
 
         /**
-         * Exactly what the real delegate does on finish: ask whether the bytes may be staged, and only
-         * then ask where they go, move them, and report. The completion fires either way — a download's
-         * completion callback follows its finish callback whether or not anything went wrong, which is
-         * what frees the window slot.
-         *
-         * The default outcome is a plain `200` with no declared length: the shape of an ordinary healthy
-         * transfer, so existing tests describe what they always did.
+         * Exactly what the real delegate does on finish: hand the facts and the temporary file, then complete — a
+         * download's completion callback follows its finish callback whether or not anything went wrong, which is
+         * what frees the window slot. The default outcome is a plain `200` with no declared length.
          */
         fun finish(description: String, outcome: TransferOutcome = OK) {
-            if (host.accepts(description, outcome)) {
-                host.destinationFor(description)?.let { host.onStaged(description, it) }
-            }
-            host.onCompleted(description, null)
+            jobs.onFinished(description, outcome, "temp:/$description")
+            jobs.onCompleted(description, null)
         }
     }
 
     private class Harness(scope: CoroutineScope) {
-        val transports = mutableListOf<FakeDownloadTransport>()
+        val transport = FakeDownload()
         val staged = mutableListOf<Triple<AssetRef, String, String>>()
 
         /** What a staged resource is delivered to; a test swaps it to model a slow or stalled import. */
@@ -117,12 +118,9 @@ class QueuedPhotoDownloadJobsTest {
         val jobs = QueuedPhotoDownloadJobs(
             scope = scope,
             staging = RootedStaging,
-            newTransport = { events -> FakeDownloadTransport(events).also { transports += it } },
+            download = transport,
             onStaged = { ref, key, path -> deliver(ref, key, path) },
-        )
-
-        /** The transport currently in use (the last one built). */
-        val transport: FakeDownloadTransport get() = transports.last()
+        ).also { transport.jobs = it }
     }
 
     private fun pending(assetId: String, key: String, url: String = "https://cdn.example/$assetId/$key") =
@@ -270,17 +268,15 @@ class QueuedPhotoDownloadJobsTest {
         h.jobs.cancelAll()
         advanceUntilIdle()
 
-        // The TASK was cancelled...
+        // The TASK was cancelled — the session survived it.
         assertTrue(h.transport.started.single().cancelled, "the in-flight task should be cancelled")
-        // ...and the TRANSPORT survived it.
-        assertFalse(h.transport.destroyed, "cancelAll must never destroy the transport")
 
         // The crash scenario: a later reconcile enqueues again. This must not raise.
         h.jobs.enqueue(listOf(pending("B", "b-primary.heic")))
         advanceUntilIdle()
 
         assertEquals(2, h.transport.started.size, "a download after a cancel must still start")
-        assertEquals(1, h.transports.size, "the transport is a singleton — it was never rebuilt")
+        assertEquals(1, h.transport.sessions, "the session is a singleton — cancelling never ends it")
     }
 
     @Test
@@ -389,7 +385,7 @@ class QueuedPhotoDownloadJobsTest {
         h.jobs.enqueue(old.drop(MAX_IN_FLIGHT))
         advanceUntilIdle()
         // Every OLD resource has now finished once — the store would call the backlog drained.
-        val done = mutableSetOf<FakeDownloadTransport.Started>()
+        val done = mutableSetOf<FakeDownload.Started>()
         val finished = mutableSetOf<String>()
         while (finished.size < old.size) {
             val next = h.transport.started.first { !it.cancelled && it.description !in finished && it !in done }
@@ -408,7 +404,7 @@ class QueuedPhotoDownloadJobsTest {
     }
 
     /** Finish every started transfer, including any the completions start, until nothing is running. */
-    private fun TestScope.finishEverything(h: Harness, done: MutableSet<FakeDownloadTransport.Started>) {
+    private fun TestScope.finishEverything(h: Harness, done: MutableSet<FakeDownload.Started>) {
         while (true) {
             val next = h.transport.started.firstOrNull { it !in done } ?: return
             done += next
@@ -582,45 +578,40 @@ class QueuedPhotoDownloadJobsTest {
     // ---- self-heal on a system-invalidated transport ------------------------------------------------
 
     /**
-     * We never destroy the transport — but iOS can. When it does, the next transfer must build a fresh
-     * session rather than reuse the dead one (which would abort the process).
+     * We never destroy the session — but iOS can. When it does, its transfers are gone: the window empties and
+     * refills, and the next transfer runs on the fresh session the port builds.
      */
     @Test
-    fun a_system_invalidated_transport_is_rebuilt_on_the_next_transfer() = runTest {
+    fun a_system_invalidated_session_empties_the_window_and_the_next_transfer_runs() = runTest {
         val h = Harness(this)
         h.jobs.enqueue(listOf(pending("A", "a-primary.heic")))
         advanceUntilIdle()
-        assertEquals(1, h.transports.size)
 
         h.transport.systemInvalidates()
         advanceUntilIdle()
-
-        // The next enqueue must NOT touch the dead transport (its `start` would raise).
         h.jobs.enqueue(listOf(pending("B", "b-primary.heic")))
         advanceUntilIdle()
 
-        assertEquals(2, h.transports.size, "a fresh transport is built after a system invalidation")
-        assertTrue(h.transports[0].destroyed)
-        assertFalse(h.transports[1].destroyed)
-        assertEquals(1, h.transports[1].started.size, "the transfer runs on the fresh transport")
+        assertEquals(2, h.transport.sessions, "the port runs on a fresh session after a system invalidation")
+        assertEquals(listOf("A", "B"), h.transport.started.map { decodeTag(it.description)?.ref?.sourceAssetId }, "B starts")
     }
 
     /** A staging area rooted at the relative `root`, located under `/abs/` — so a test sees which of the two it got. */
     private object RootedStaging : StagedBytes {
         override fun stagingRoot() = "root"
         override fun locate(path: String) = "/abs/$path"
+        override fun stage(tempPath: String, path: String) = true
         override suspend fun release(paths: List<String>) = Unit
         override suspend fun allPresent(paths: List<String>) = true
     }
 
     @Test
-    fun `the transport is handed the located path and the store is told the relative one`() = runTest {
+    fun `a finished body is staged under the relative path and the store is told it`() = runTest {
         val h = Harness(backgroundScope)
         h.jobs.enqueue(listOf(pending("A", "a-primary.heic")))
         runCurrent()
         val description = h.transport.started.single().description
 
-        assertEquals("/abs/root/DEVICE-A/a-primary.heic", h.transport.host.destinationFor(description))
         h.transport.finish(description)
         runCurrent()
         assertEquals("root/DEVICE-A/a-primary.heic", h.staged.single().third, "no platform path reaches the store")

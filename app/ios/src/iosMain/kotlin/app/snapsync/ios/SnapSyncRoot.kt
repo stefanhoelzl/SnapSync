@@ -21,6 +21,8 @@ import app.snapsync.config.bakedAppStoreUrl
 import app.snapsync.attest.IosDeviceIntegrity
 import app.snapsync.http.HttpBackend
 import app.snapsync.logging.appMarketingVersion
+import app.snapsync.gallery.currentPhotoPermission
+import app.snapsync.ports.PhotoGrantRead
 import app.snapsync.ports.Backend
 import app.snapsync.services.manifest.DeviceManifestService
 import app.snapsync.gallery.IosGallery
@@ -35,7 +37,12 @@ import app.snapsync.time.SystemClock
 import app.snapsync.ports.PushTokenSource
 import app.snapsync.metrics.MetricKitProcessMetrics
 import app.snapsync.membership.darwinHttpClient
-import app.snapsync.download.IosDownloadTransport
+import app.snapsync.download.IosDownload
+import app.snapsync.ios.urlsession.BackgroundSessions
+import app.snapsync.ios.urlsession.IosUrlSessionUploadPlatform
+import app.snapsync.ios.urlsession.UPLOAD_SESSION_ID
+import app.snapsync.compose.AppUploaderPorts
+import app.snapsync.compose.appUploader
 import app.snapsync.ports.AlbumMapStore
 import app.snapsync.preferences.IosPreferences
 import app.snapsync.services.album.AlbumMapService
@@ -373,7 +380,8 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
                 // Names the App-Group staging directory and frees the files of settled rows
                 // (capability `receiving-photos`) — one port owns both halves.
                 stagedBytes = StagingService(files),
-                newDownloadTransport = { host -> IosDownloadTransport(host) },
+                // The platform's background downloads — an event port the host zone listens to.
+                download = downloadAdapter,
                 // The backend: every need-shaped service is composed over it inside the core.
                 backend = backend,
                 // The App-Group file, so the record this app process invalidates at enroll is the same one
@@ -389,7 +397,20 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
                 appStoreUrl = bakedAppStoreUrl(),
                 // The mechanisms this OS carries. WHICH one runs is resolution's answer, re-evaluated on
                 // every transition (capability `background-upload`) — this root supplies only facts.
-                appDrivenUpload = { urlSessionUpload },
+                appDrivenUpload = {
+                    appUploader(
+                        app,
+                        AppUploaderPorts(
+                            // The THREE-state membership read, never the core's StateFlow (capability `join-event`).
+                            config = config,
+                            grant = PhotoGrantRead(::currentPhotoPermission),
+                            host = backendHost,
+                            appVersion = appMarketingVersion(),
+                        ),
+                    )
+                },
+                // The app's uploader transport: a background `URLSession` on every iOS version.
+                appUpload = uploadAdapter,
                 // The upload extension's registration record, on every OS: below iOS 26.1 the adapter answers
                 // `Unsupported` itself (the version check is its own), so the root holds no `if` around it.
                 extensionRegistry = extensionRegistry,
@@ -803,6 +824,18 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
     }
 
     /**
+     * The operating system is handing back finished background transfers for the session [channel] — forwarded whole
+     * from the Swift `AppDelegate`'s `handleEventsForBackgroundURLSession`. Routed by the adapter module's
+     * [BackgroundSessions] to the session it names, whose handlers (registered as the graph is composed) hold
+     * [completion] across the wake. Not an inbound-port member since phase 11f: a session's events arrive through the
+     * `Upload` and `Download` event ports, and this is the shell's reach to their adapters until the entry surface is
+     * re-cut (11g).
+     */
+    @PlatformEntry
+    fun onBackgroundTransfers(channel: String, completion: () -> Unit) =
+        backgroundSessions.handleEvents(channel, completion)
+
+    /**
      * APNs registration **failed** (capability `receiving-photos`), forwarded from the Swift
      * AppDelegate's `didFailToRegisterForRemoteNotificationsWithError` with the error already
      * rendered to a string (an encoding, not a decision).
@@ -862,43 +895,19 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
     // preview, the download guard, the event album and the app's uploader make.
     private val gallery: IosGallery by lazy { IosGallery(IosGalleryReader(), permission, scope) }
 
-    // The app-driven mechanism's composition root. Built lazily; reached whenever resolution yields
-    // URL_SESSION — every OS below 26.1, and ≥26.1 under a partial grant — plus the background-session
-    // drain, which may adopt an old upload session whichever mechanism is live.
-    private val urlSessionUpload: UrlSessionUploadController by lazy {
-        UrlSessionUploadController(
-            scope, process, ledgerStore, config, manifestStore,
-            // A supplier, not the resolved id: the cycle's gate probes it each run, so an unreadable
-            // Keychain skips the cycle cleanly instead of throwing out of it. The lazy caches the first
-            // success, so this is one read per process, as before.
-            deviceIdentity = deviceIdentity,
-            host = backendHost,
-            manifestPublisher = app.backend.manifest,
-            // The app-driven tier performs its OWN uploads, so its request provider needs the token too.
-            token = { app.attestation.token() },
-            // A retry's request re-reads the store of record (the extension may have cleared a rejected token).
-            freshToken = { app.attestation.freshToken() },
-            // Echo-suppression: the concrete store IS the narrowed SuppressionSource port.
-            suppression = downloadStore,
-            // Denylisted-album membership (capability `photo-sharing`). Supplied on THIS tier too:
-            // both tiers funnel through the shared UploadCycle, and a policy wired on only one of them is
-            // exactly the class of bug that once shipped the app-driven tier without a direction gate.
-            gallery = gallery,
-            // Event album (capability `event-album`): the composed coordinator; the cycle applies the
-            // membership's opt-in (which arrived with its gate) and `uploadCore` owns the shared
-            // `assetId` denormalization.
-            albumCoordinator = app.albumCoordinator,
-            // The app graph's per-cycle answers, forwarded only: current permission, the walk-vs-snapshot
-            // decision (capability `photo-access`), and whether this engine may run (`background-upload`).
-            graph = AppGraphReads(
-                photoAccess = permission,
-                selectionScope = { app.selectionScope() },
-                admission = { app.appUploadAdmission() },
-            ),
-            // The transport's completions and drain reports, each one call into the composed core's tail. The
-            // handlers they release are the core's, released on the main lane `AppPorts.uiLane` names.
-            events = { app.tail.uploadEvents },
-        )
+    /** The app's uploader transport — one per process, since it owns the upload session's delegate. */
+    private val uploadAdapter: IosUrlSessionUploadPlatform by lazy { IosUrlSessionUploadPlatform(log, UPLOAD_SESSION_ID) }
+
+    /** The platform's background downloads — one per process, since it owns the download session's delegate. */
+    private val downloadAdapter: IosDownload by lazy { IosDownload() }
+
+    /**
+     * Where `handleEventsForBackgroundURLSession` goes: routed by the identifier the OS named, in the adapter module.
+     * Composes the graph first, so the sessions' handlers are registered before the session they bring up delivers.
+     */
+    private val backgroundSessions: BackgroundSessions by lazy {
+        composed
+        BackgroundSessions(uploadAdapter, downloadAdapter)
     }
 
     /** Whether the iOS 26.1 background-upload API is present on this system. */
@@ -963,7 +972,6 @@ private fun rootEntries(): PlatformEntries = platformEntries(
         openUrl = { url -> SnapSyncRoot.host.onOpenUrl(url) },
         assembleHost = { SnapSyncRoot.host },
         deliverPushToken = { hex -> SnapSyncRoot.pushTokenSource.deliver(hex) },
-        uploadTransferChannel = UrlSessionUploadController.SESSION_IDENTIFIER,
     ),
 )
 

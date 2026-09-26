@@ -28,6 +28,16 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadStore>("Down
             assertTrue(s.importableAssets().isEmpty()) // nothing staged yet
         }
 
+        clause("staging a resource with no row applies to nothing", DownloadStoreState.EMPTY) { s ->
+            assertFalse(
+                s.markStaged(ref, "ASSET-Q-primary.heic", "/stage/orphan.heic"),
+                "a transfer that outran its row's prune is answered as unrecorded, so its file is discarded",
+            )
+            assertTrue(s.importableAssets().isEmpty(), "and nothing becomes importable")
+            s.plan(ref, "2026-06-30T10:00:00Z", resources())
+            assertTrue(s.markStaged(ref, "ASSET-Q-primary.heic", "/stage/primary.heic"), "a planned row takes it")
+        }
+
         clause("importable only when all resources staged", DownloadStoreState.EMPTY) { s ->
             s.plan(ref, "2026-06-30T10:00:00Z", resources())
             s.markStaged(ref, "ASSET-Q-primary.heic", "/stage/primary.heic")

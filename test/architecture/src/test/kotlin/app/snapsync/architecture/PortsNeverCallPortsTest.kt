@@ -29,10 +29,6 @@ class PortsNeverCallPortsTest {
 
     /** `Class.parameter` → the phase that removes it. */
     private val remaining = mapOf(
-        "IosPhotoKitUploadPlatform.ledger" to "11f (transfer): the PhotoKit tier's transfer record",
-        "IosUrlSessionUploadPlatform.ledger" to "11f (transfer): the app's uploader's transfer record",
-        "SimulatorUploadJobQueue.ledger" to "11f (transfer): the simulator's upload-job queue's transfer record",
-        "IosDownloadTransport.host" to "11f (transfer): the download transport's host queue",
         "SimulatorSecureStore.keychain" to "unowned: the simulator's secure store routing the device-id slot to a file",
         "SimulatorSecureStore.files" to "unowned: the same",
     )
