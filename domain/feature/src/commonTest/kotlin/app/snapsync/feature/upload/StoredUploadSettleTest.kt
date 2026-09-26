@@ -1,5 +1,6 @@
 package app.snapsync.feature.upload
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
 import app.snapsync.model.TerminalOutcome
@@ -43,10 +44,10 @@ class StoredUploadSettleTest {
     }
 
     private fun listing(vararg keys: String) =
-        FakeFiles(Result.success(keys.map { StoredResource(it, it.substringBefore('-')) }))
+        FakeFiles(Result.success(keys.map { StoredResource(it, AssetId(it.substringBefore('-'))) }))
 
     private suspend fun ledgerHolding(vararg rows: Pair<String, LedgerState>) = InMemoryLedgerStore().apply {
-        resetTo(rows.map { (key, state) -> LedgerEntry(key, key.substringBefore('-'), state) })
+        resetTo(rows.map { (key, state) -> LedgerEntry(key, AssetId(key.substringBefore('-')), state) })
     }
 
     @Test

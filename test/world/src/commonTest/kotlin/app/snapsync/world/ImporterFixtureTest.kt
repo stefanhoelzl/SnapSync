@@ -1,5 +1,6 @@
 package app.snapsync.world
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.ImportRequest
 import app.snapsync.model.ImportResult
@@ -23,7 +24,7 @@ import kotlinx.coroutines.test.runTest
  */
 class ImporterFixtureTest {
 
-    private val ref = AssetRef("DEV-F", "FQ")
+    private val ref = AssetRef("DEV-F", AssetId("FQ"))
 
     private fun resource() = StagedResource(
         resourceKey = "FQ-primary.heic",

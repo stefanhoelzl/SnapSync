@@ -35,7 +35,7 @@ class EventPhotoSetReadableTest {
     )
 
     private fun camera(assetId: String, creationDate: String = inWindow) = candidatesFromFacts(
-        listOf(AssetFacts(assetId = assetId, creationDate = CaptureDate(creationDate))),
+        listOf(AssetFacts(assetId = AssetId(assetId), creationDate = CaptureDate(creationDate))),
     )
 
     @Test

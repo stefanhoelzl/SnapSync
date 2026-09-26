@@ -48,7 +48,7 @@ class EventPhotoSetResourcesTest {
         height: Long = 3024,
     ) = Resource(
         filename = filename,
-        assetId = assetId,
+        assetId = AssetId(assetId),
         contentType = if (isVideo) "public.mpeg-4" else "public.heic",
         metadata = mapOf(
             RESOURCE_META_CREATION_DATE to creationDate,
@@ -68,7 +68,7 @@ class EventPhotoSetResourcesTest {
         width: Long = 4032,
         height: Long = 3024,
     ) = AssetFacts(
-        assetId = assetId,
+        assetId = AssetId(assetId),
         creationDate = CaptureDate(creationDate),
         isScreenshot = isScreenshot,
         pixelArea = width * height,
@@ -102,7 +102,7 @@ class EventPhotoSetResourcesTest {
         val out = EventPhotoSet(policy()) { candidatesFromResources(library) }.resources()
 
         assertEquals(listOf("CAM-primary.heic"), out.map { it.filename })
-        assertTrue(out.none { it.assetId == "SHOT" }, "an excluded asset leaked a resource: $out")
+        assertTrue(out.none { it.assetId == AssetId("SHOT") }, "an excluded asset leaked a resource: $out")
     }
 
     @Test
@@ -124,18 +124,18 @@ class EventPhotoSetResourcesTest {
     fun `resources are fetched only for the assets that survive admission`() = runTest {
         // The cost ladder, as an assertion. ~110 ms per asset on an SE2 is what a fetch-then-filter shape
         // spends on photos it is about to drop — and this type exists to filter first.
-        val fetched = mutableListOf<String>()
+        val fetched = mutableListOf<AssetId>()
         val candidates = candidatesFromFacts(
             facts = listOf(facts("CAM"), facts("SHOT", isScreenshot = true)),
             resourcesFor = { assetId ->
                 fetched += assetId
-                listOf(resource(assetId, "$assetId.heic"))
+                listOf(resource(assetId.value, "$assetId.heic"))
             },
         )
 
         val out = EventPhotoSet(policy()) { candidates }.resources()
 
-        assertEquals(listOf("CAM"), fetched, "a resource was read for an asset that was then dropped")
+        assertEquals(listOf(AssetId("CAM")), fetched, "a resource was read for an asset that was then dropped")
         assertEquals(listOf("CAM.heic"), out.map { it.filename })
     }
 

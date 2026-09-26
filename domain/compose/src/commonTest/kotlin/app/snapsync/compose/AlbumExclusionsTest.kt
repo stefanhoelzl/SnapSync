@@ -1,5 +1,6 @@
 package app.snapsync.compose
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.SELECTION_CALIBRATION
 import app.snapsync.model.SelectionCalibration
@@ -25,15 +26,15 @@ class AlbumExclusionsTest {
 
     /** Answers a fixed membership and counts every lookup. */
     private class RecordingAlbums(
-        private val members: Set<String> = setOf("wa-1", "wa-2"),
+        private val members: Set<AssetId> = setOf(AssetId("wa-1"), AssetId("wa-2")),
         private val failure: Throwable? = null,
     ) : AlbumManager {
         var lookups = 0
         var lastCalibration: SelectionCalibration? = null
         override suspend fun ensureCreated(name: String): String? = error("not used")
         override suspend fun exists(albumLocalId: String): Boolean = error("not used")
-        override suspend fun add(albumLocalId: String, assetIds: List<String>) = error("not used")
-        override suspend fun assetIdsInAlbums(calibration: SelectionCalibration, since: CaptureCutoff): Set<String> {
+        override suspend fun add(albumLocalId: String, assetIds: List<AssetId>) = error("not used")
+        override suspend fun assetIdsInAlbums(calibration: SelectionCalibration, since: CaptureCutoff): Set<AssetId> {
             lookups++
             lastCalibration = calibration
             failure?.let { throw it }
@@ -49,7 +50,7 @@ class AlbumExclusionsTest {
         for (onFailure in AlbumLookupFailure.entries) {
             val albums = RecordingAlbums()
             val ids = denylistedAlbumMembers(albums, cutoff, GalleryAccess.GRANTED, onFailure, log)
-            assertEquals(setOf("wa-1", "wa-2"), ids, "$onFailure")
+            assertEquals(setOf(AssetId("wa-1"), AssetId("wa-2")), ids, "$onFailure")
             assertEquals(1, albums.lookups, "$onFailure")
             assertEquals(SELECTION_CALIBRATION, albums.lastCalibration)
         }

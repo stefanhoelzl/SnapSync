@@ -2,6 +2,7 @@ package app.snapsync.http
 
 import app.snapsync.model.APP_VERSION_HEADER
 import app.snapsync.model.ApnsPushToken
+import app.snapsync.model.AssetId
 import app.snapsync.model.CreateEventRequest
 import app.snapsync.model.DeviceFile
 import app.snapsync.model.DeviceManifest
@@ -156,7 +157,8 @@ class HttpBackend(
             json.decodeFromString(ListSerializer(AssetDto.serializer()), text).map { dto ->
                 UnionAsset(
                     deviceId = dto.deviceId,
-                    assetId = dto.assetId,
+                    // A non-canonical id fails the constructor, and the exchange answers that as Malformed.
+                    assetId = AssetId(dto.assetId),
                     creationDate = dto.creationDate,
                     resources = dto.resources.map { UnionResource(it.key, it.url, it.role, it.contentType, it.filename) },
                 )
@@ -165,7 +167,7 @@ class HttpBackend(
 
     override suspend fun deviceFiles(token: String?, deviceId: String): Reply<List<DeviceFile>> =
         exchange(HttpMethod.Get, "/files/devices/$deviceId", token) { text ->
-            json.decodeFromString(ListSerializer(StoredDto.serializer()), text).map { DeviceFile(it.assetId, it.role, it.filename) }
+            json.decodeFromString(ListSerializer(StoredDto.serializer()), text).map { DeviceFile(AssetId(it.assetId), it.role, it.filename) }
         }
 
     override suspend fun putDeviceConfig(token: String?, deviceId: String, push: ApnsPushToken): Reply<Unit> =

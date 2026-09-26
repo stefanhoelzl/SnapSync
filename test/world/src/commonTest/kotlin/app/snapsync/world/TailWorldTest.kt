@@ -2,6 +2,7 @@ package app.snapsync.world
 
 import app.snapsync.compose.EntryHooks
 import app.snapsync.compose.platformEntries
+import app.snapsync.model.AssetId
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.uploadKey
 import app.snapsync.model.ResourceRole
@@ -95,8 +96,8 @@ class TailWorldTest {
         w.addForeignDevice("DEV-F", joined, listOf(World.foreignAsset("FQ")))
         w.downloadController.reconcile(joined) // plans the asset
         // Staged by a wake the process did not survive to import — recorded, with its bytes on disk.
-        val ref = AssetRef("DEV-F", "FQ")
-        val key = uploadKey("FQ", ResourceRole.PRIMARY, "IMG.HEIC")
+        val ref = AssetRef("DEV-F", AssetId("FQ"))
+        val key = uploadKey(AssetId("FQ"), ResourceRole.PRIMARY, "IMG.HEIC")
         w.stagedFiles += "/staged/FQ"
         w.downloadStore.markStaged(ref, key, "/staged/FQ")
         val before = w.importer.imported.size

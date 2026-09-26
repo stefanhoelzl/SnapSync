@@ -12,7 +12,7 @@ class EdgeUploadRequestProviderTest {
 
     private fun resource(filename: String, contentType: String = "image/jpeg") = Resource(
         filename = filename,
-        assetId = "asset-1",
+        assetId = AssetId("asset-1"),
         contentType = contentType,
         metadata = mapOf("ignored" to "value"),
         data = ByteArray(0),
@@ -30,7 +30,7 @@ class EdgeUploadRequestProviderTest {
         val req = provider().provide(
             Resource(
                 filename = "ABC123_DEF-primary.jpg",
-                assetId = "ABC123_DEF",
+                assetId = AssetId("ABC123_DEF"),
                 contentType = "image/jpeg",
                 metadata = mapOf(RESOURCE_META_ORIGINAL_FILENAME to "IMG_0001.JPG"),
                 data = ByteArray(0),
@@ -45,18 +45,19 @@ class EdgeUploadRequestProviderTest {
     @Test
     fun percent_encodes_reserved_bytes_in_every_composed_part() = runTest {
         // Space → %20, `/` → %2F, multi-byte UTF-8 (ä = C3 A4) → %C3%A4, all uppercase hex. The capture
-        // name is the part that realistically carries them, and it must never reach a path segment.
+        // name is the only part that can carry them — a canonical AssetId cannot — and it must never reach a
+        // path segment.
         val req = provider().provide(
             Resource(
-                filename = "a b-primary.jpg",
-                assetId = "a b",
+                filename = "a-primary.jpg",
+                assetId = AssetId("a"),
                 contentType = "image/jpeg",
                 metadata = mapOf(RESOURCE_META_ORIGINAL_FILENAME to "a b/ä.jpg"),
                 data = ByteArray(0),
             ),
         )
         assertTrue(
-            req.url.endsWith("/files/devices/$deviceId/a%20b/primary?filename=a%20b%2F%C3%A4.jpg"),
+            req.url.endsWith("/files/devices/$deviceId/a/primary?filename=a%20b%2F%C3%A4.jpg"),
             "was ${req.url}",
         )
     }
@@ -69,14 +70,14 @@ class EdgeUploadRequestProviderTest {
         val original = provider().provide(
             Resource(
                 filename = "K-primary.jpg",
-                assetId = "K",
+                assetId = AssetId("K"),
                 contentType = "image/jpeg",
                 metadata = mapOf(RESOURCE_META_ORIGINAL_FILENAME to "IMG_9.JPG"),
                 data = ByteArray(0),
             ),
         )
         val rebuilt = provider().provide(
-            Resource("K-primary.jpg", "K", "image/jpeg", emptyMap(), ByteArray(0)),
+            Resource("K-primary.jpg", AssetId("K"), "image/jpeg", emptyMap(), ByteArray(0)),
         )
         // Same identity, so the endpoint composes the same object name; only the recorded capture
         // metadata differs.
@@ -117,7 +118,7 @@ class EdgeUploadRequestProviderTest {
         val req = provider().provide(
             Resource(
                 filename = "x.jpg",
-                assetId = "asset-1",
+                assetId = AssetId("asset-1"),
                 contentType = "public.jpeg",
                 metadata = mapOf(RESOURCE_META_MIME to "image/jpeg"),
                 data = ByteArray(0),
@@ -135,7 +136,7 @@ class EdgeUploadRequestProviderTest {
         assertEquals("image/heic", rebuilt.headers["Content-Type"])
 
         val blank = provider().provide(
-            Resource("x.jpg", "asset-1", "image/heic", mapOf(RESOURCE_META_MIME to "  "), ByteArray(0)),
+            Resource("x.jpg", AssetId("asset-1"), "image/heic", mapOf(RESOURCE_META_MIME to "  "), ByteArray(0)),
         )
         assertEquals("image/heic", blank.headers["Content-Type"])
     }

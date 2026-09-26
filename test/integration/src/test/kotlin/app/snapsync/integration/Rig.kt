@@ -3,6 +3,7 @@ package app.snapsync.integration
 import app.snapsync.control.Reply
 import app.snapsync.control.RigClient
 import app.snapsync.control.done
+import app.snapsync.model.AssetId
 import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.encodeEventUrl
 import app.snapsync.model.JoinPhase
@@ -139,4 +140,4 @@ val RigState.health: SyncHealth? get() = joined?.health
 
 /** The primary upload key of an own photo [assetId] with the default capture name — what the backend lists. */
 fun primaryKey(assetId: String, filename: String = "IMG.JPG"): String =
-    app.snapsync.model.uploadKey(assetId, app.snapsync.model.ResourceRole.PRIMARY, filename)
+    app.snapsync.model.uploadKey(AssetId(assetId), app.snapsync.model.ResourceRole.PRIMARY, filename)

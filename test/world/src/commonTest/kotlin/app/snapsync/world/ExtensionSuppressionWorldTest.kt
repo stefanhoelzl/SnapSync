@@ -3,6 +3,7 @@ package app.snapsync.world
 import app.snapsync.compose.UploadPorts
 import app.snapsync.compose.UploaderProcess
 import app.snapsync.compose.uploadCore
+import app.snapsync.model.AssetId
 import app.snapsync.model.CycleResult
 import app.snapsync.model.PauseReason
 import app.snapsync.model.GalleryAccess
@@ -23,7 +24,7 @@ class ExtensionSuppressionWorldTest {
     private class ScriptedSuppression(var readiness: SuppressionReadiness) : SuppressionSource {
         var asked = 0
         override suspend fun readiness(): SuppressionReadiness = readiness.also { asked++ }
-        override suspend fun suppressedLocalIds(): Set<String> = emptySet()
+        override suspend fun suppressedLocalIds(): Set<AssetId> = emptySet()
     }
 
     /** The world's own cycle bundle, re-bound as the extension process over [suppression]. */

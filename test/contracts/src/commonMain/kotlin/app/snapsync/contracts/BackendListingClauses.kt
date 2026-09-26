@@ -1,5 +1,6 @@
 package app.snapsync.contracts
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.Reply
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.uploadKey

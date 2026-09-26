@@ -1,6 +1,7 @@
 package app.snapsync.compose
 
 import app.snapsync.model.AssetFacts
+import app.snapsync.model.AssetId
 import app.snapsync.model.Candidate
 import app.snapsync.model.CandidateRead
 import app.snapsync.model.CaptureDate
@@ -47,7 +48,7 @@ class PermissionAwareCandidateSourceTest {
             return CandidateRead.Readable(
                 ids.map { id ->
                     object : Candidate {
-                        override val facts = AssetFacts(id, CaptureDate("2026-06-01T00:00:00Z"))
+                        override val facts = AssetFacts(AssetId(id), CaptureDate("2026-06-01T00:00:00Z"))
                         override suspend fun resources(): List<Resource> = emptyList()
                     }
                 },
@@ -62,7 +63,7 @@ class PermissionAwareCandidateSourceTest {
     private fun snapshotOf(vararg ids: String) = ids.map {
         Resource(
             "$it-primary.jpg",
-            it,
+            AssetId(it),
             "image/jpeg",
             mapOf(RESOURCE_META_CREATION_DATE to "2026-06-01T00:00:00Z"),
             Unit,
@@ -82,7 +83,7 @@ class PermissionAwareCandidateSourceTest {
     @Test
     fun `GRANTED walks the library`() = runTest {
         val (walk, source) = source(GalleryAccess.GRANTED)
-        assertEquals(listOf("W"), source.readable(policy()).map { it.facts.assetId })
+        assertEquals(listOf(AssetId("W")), source.readable(policy()).map { it.facts.assetId })
         assertEquals(1, walk.walks)
     }
 
@@ -93,7 +94,7 @@ class PermissionAwareCandidateSourceTest {
         // wrong universe — it could surface photos the member never chose to share. (Not an alert
         // argument: reads of an unchanged library raise no limited-access prompt — `photo-access`.)
         val (walk, source) = source(GalleryAccess.LIMITED, snapshot = snapshotOf("S1", "S2"))
-        assertEquals(listOf("S1", "S2"), source.readable(policy()).map { it.facts.assetId })
+        assertEquals(listOf(AssetId("S1"), AssetId("S2")), source.readable(policy()).map { it.facts.assetId })
         assertEquals(0, walk.walks, "no autonomous library read under a partial grant")
     }
 

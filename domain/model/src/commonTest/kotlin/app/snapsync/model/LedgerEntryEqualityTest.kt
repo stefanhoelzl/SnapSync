@@ -19,7 +19,7 @@ class LedgerEntryEqualityTest {
 
     private val base = LedgerEntry(
         key = "A-primary.jpg",
-        assetId = "A",
+        assetId = AssetId("A"),
         state = LedgerState.COMPLETED,
         creationDate = "2026-08-28T10:00:00Z",
         role = ResourceRole.PRIMARY,
@@ -38,7 +38,7 @@ class LedgerEntryEqualityTest {
     fun a_row_differing_in_any_single_field_is_not_equal() {
         val variants = mapOf(
             "key" to base.copyWith(key = "B-primary.jpg"),
-            "assetId" to base.copyWith(assetId = "B"),
+            "assetId" to base.copyWith(assetId = AssetId("B")),
             "state" to base.copyWith(state = LedgerState.REQUESTED),
             "creationDate" to base.copyWith(creationDate = "2026-08-29T10:00:00Z"),
             "role" to base.copyWith(role = ResourceRole.LIVE),
@@ -65,7 +65,7 @@ class LedgerEntryEqualityTest {
 
     private fun LedgerEntry.copyWith(
         key: String = this.key,
-        assetId: String = this.assetId,
+        assetId: AssetId = this.assetId,
         state: LedgerState = this.state,
         creationDate: String = this.creationDate,
         role: ResourceRole? = this.role,

@@ -1,6 +1,7 @@
 package app.snapsync.contracts
 
 import app.snapsync.model.ApnsPushToken
+import app.snapsync.model.AssetId
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.Reply
 import app.snapsync.ports.Backend
@@ -95,7 +96,7 @@ internal fun ClauseList<BackendState, EdgeSubject<Backend>>.membershipClauses() 
 }
 
 private fun manifest(deviceId: String) =
-    DeviceManifest(deviceId, listOf(SeededAsset("asset-1", listOf(app.snapsync.model.ResourceRole.PRIMARY)).manifestEntry()))
+    DeviceManifest(deviceId, listOf(SeededAsset(AssetId("asset-1"), listOf(app.snapsync.model.ResourceRole.PRIMARY)).manifestEntry()))
 
 /** A manifest declaring exactly [asset], projected under manifest [version]. */
 private fun versioned(deviceId: String, asset: SeededAsset, version: Long) =

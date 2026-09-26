@@ -1,5 +1,6 @@
 package app.snapsync.services.downloads
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.SuppressionReadiness
 import app.snapsync.ports.Databases
 import app.snapsync.ports.DbOpen
@@ -37,7 +38,7 @@ class SuppressionService(private val databases: Databases) : SuppressionSource {
         is Found.Failed -> SuppressionReadiness.Unavailable(found.detail)
     }
 
-    override suspend fun suppressedLocalIds(): Set<String> = when (val found = open()) {
+    override suspend fun suppressedLocalIds(): Set<AssetId> = when (val found = open()) {
         is Found.Open -> found.queries.suppressedLocalIds().executeAsList().mapNotNull { it }.toSet()
         Found.Missing -> emptySet()
         // Never "nothing suppressed": either would upload downloaded photos back into the event.

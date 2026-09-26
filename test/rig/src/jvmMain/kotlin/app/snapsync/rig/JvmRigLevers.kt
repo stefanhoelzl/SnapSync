@@ -1,5 +1,6 @@
 package app.snapsync.rig
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.CrashEvent
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.encodeToJson
@@ -179,7 +180,7 @@ private fun osAndLibraryLevers(world: World, afterRelaunch: () -> Unit): Map<Str
     "import/await-parked" to RigCommand { _, _ ->
         val ref = withTimeoutOrNull(AWAIT) { world.importerSuspended.await() }
             ?: return@RigCommand CommandResult.refused("no import parked within $AWAIT")
-        CommandResult.ok(buildJsonObject { put("device", ref.sourceDeviceId); put("asset", ref.sourceAssetId) }.toString())
+        CommandResult.ok(buildJsonObject { put("device", ref.sourceDeviceId); put("asset", ref.sourceAssetId.value) }.toString())
     },
     "import/resume" to RigCommand { params, _ ->
         world.resumeSuspendedImport(succeeded = params["succeeded"]?.toBoolean() ?: true)
@@ -198,7 +199,7 @@ private fun osAndLibraryLevers(world: World, afterRelaunch: () -> Unit): Map<Str
     "staging/seed-legacy-backlog" to RigCommand { params, _ ->
         val device = params["device"] ?: "DEV-LEGACY"
         val asset = params["asset"] ?: "LEGACY"
-        val paths = world.seedLegacyStagedBacklog(app.snapsync.model.AssetRef(device, asset))
+        val paths = world.seedLegacyStagedBacklog(app.snapsync.model.AssetRef(device, AssetId(asset)))
         CommandResult.ok(buildJsonObject { putJsonArray("staged") { paths.sorted().forEach { add(JsonPrimitive(it)) } } }.toString())
     },
 )
@@ -220,7 +221,7 @@ private fun deviceFacts(world: World): Map<String, RigCommand> = mapOf(
                         add(
                             buildJsonObject {
                                 put("id", id); put("name", name)
-                                putJsonArray("assets") { world.gallery.assetsIn(id).forEach { add(JsonPrimitive(it)) } }
+                                putJsonArray("assets") { world.gallery.assetsIn(id).forEach { add(JsonPrimitive(it.value)) } }
                             },
                         )
                     }
@@ -261,7 +262,7 @@ private fun unionJson(event: String, union: List<UnionAsset>): String = buildJso
         union.forEach { a ->
             add(
                 buildJsonObject {
-                    put("device", a.deviceId); put("asset", a.assetId)
+                    put("device", a.deviceId); put("asset", a.assetId.value)
                     putJsonArray("roles") { a.resources.forEach { add(JsonPrimitive(it.role)) } }
                 },
             )

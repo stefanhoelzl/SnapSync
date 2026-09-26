@@ -1,5 +1,6 @@
 package app.snapsync.feature.status
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.runCatchingCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -18,7 +19,7 @@ import kotlinx.coroutines.flow.asStateFlow
  * seeds them all), so a whole-ledger count would mask pending in-window photos behind historical
  * completions. The ledger-backed status source counts them against the admitted set `N` counts.
  */
-data class LedgerCounts(val done: Set<String>, val pending: Set<String>, val read: Boolean = true) {
+data class LedgerCounts(val done: Set<AssetId>, val pending: Set<AssetId>, val read: Boolean = true) {
 
     companion object {
         /**
@@ -38,7 +39,7 @@ data class LedgerCounts(val done: Set<String>, val pending: Set<String>, val rea
         val ZERO = LedgerCounts(done = emptySet(), pending = emptySet())
 
         /** Split one `assetProgress()` answer (`assetId → done`) into the two sets. */
-        fun of(progress: Map<String, Boolean>): LedgerCounts = LedgerCounts(
+        fun of(progress: Map<AssetId, Boolean>): LedgerCounts = LedgerCounts(
             done = progress.filterValues { it }.keys,
             pending = progress.filterValues { !it }.keys,
         )
@@ -93,7 +94,7 @@ class MutableLedgerCountsSource(initial: LedgerCounts = LedgerCounts.UNREAD) : L
     override suspend fun refresh() = Unit
 
     /** Publish done-ness as a **read** value — stating it is what a caller of this means. */
-    fun set(done: Set<String>, pending: Set<String>) {
+    fun set(done: Set<AssetId>, pending: Set<AssetId>) {
         _counts.value = LedgerCounts(done = done, pending = pending)
     }
 }

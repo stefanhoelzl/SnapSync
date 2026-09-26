@@ -1,5 +1,6 @@
 package app.snapsync.world
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.Resource
 import app.snapsync.model.UploadError
@@ -29,7 +30,7 @@ import app.snapsync.model.runCatchingCancellable
 /** One job the world's uploader was asked to create: the upload key it was tagged with, and the type it declared. */
 class CreatedUpload(val filename: String, val contentType: String) {
     /** The photo's id, recovered from the key (`<assetId>-<role>.<ext>`). */
-    val assetId: String get() = assetIdFromUploadKey(filename)
+    val assetId: AssetId get() = assetIdFromUploadKey(filename)
 }
 
 /**

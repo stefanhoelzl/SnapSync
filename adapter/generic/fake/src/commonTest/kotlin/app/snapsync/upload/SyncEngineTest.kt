@@ -1,5 +1,6 @@
 package app.snapsync.upload
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.toLedgerRow
 import app.snapsync.fake.InMemoryLedgerStore
 
@@ -38,7 +39,7 @@ class SyncEngineTest {
         assetId: String = "cloud-1",
     ) = Resource(
         filename = filename,
-        assetId = assetId,
+        assetId = AssetId(assetId),
         contentType = "image/heic",
         metadata = mapOf("asset-id" to "cloud-1", "created" to "2026-06-12T10:00:00Z"),
         data = byteArrayOf(1, 2, 3),
@@ -273,7 +274,7 @@ class SyncEngineTest {
 
         engine.handle(SyncEvent.UploadStarted(request))
 
-        assertEquals("A", ledger.entry(resource.filename)?.assetId)
+        assertEquals(AssetId("A"), ledger.entry(resource.filename)?.assetId)
     }
 
     @Test

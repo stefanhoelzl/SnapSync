@@ -1,5 +1,6 @@
 package app.snapsync.ports
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.DownloadCounts
 import app.snapsync.model.ImportableAsset
@@ -25,7 +26,7 @@ interface SuppressionSource {
      */
     suspend fun readiness(): SuppressionReadiness
 
-    suspend fun suppressedLocalIds(): Set<String>
+    suspend fun suppressedLocalIds(): Set<AssetId>
 }
 
 /**
@@ -64,7 +65,7 @@ interface DownloadStore : SuppressionSource {
      * (capability `event-album`) is the one consumer. Deliberately not on [SuppressionSource]: the
      * extension never gathers.
      */
-    suspend fun importedLocalIds(refs: Collection<AssetRef>): Map<AssetRef, String>
+    suspend fun importedLocalIds(refs: Collection<AssetRef>): Map<AssetRef, AssetId>
 
     /** Record a foreign asset (with its capture [creationDate]) and its expected resources as PENDING (idempotent; never downgrades IMPORTED). */
     suspend fun plan(ref: AssetRef, creationDate: String, resources: List<PlannedResource>)
@@ -115,7 +116,7 @@ interface DownloadStore : SuppressionSource {
     suspend fun stagedResources(ref: AssetRef): List<StagedResource>
 
     /** Mark an asset imported and record the created local identifier (the suppression handle). */
-    suspend fun markImported(ref: AssetRef, createdLocalId: String)
+    suspend fun markImported(ref: AssetRef, createdLocalId: AssetId)
 
     /**
      * Record ONLY the created local identifier, leaving the row non-terminal — the marker written from
@@ -149,7 +150,7 @@ interface DownloadStore : SuppressionSource {
      *
      * Idempotent; a marker written for a change that then fails is cleared by [clearCreatedLocalId].
      */
-    fun recordCreatedLocalId(ref: AssetRef, createdLocalId: String): Boolean
+    fun recordCreatedLocalId(ref: AssetRef, createdLocalId: AssetId): Boolean
 
     /**
      * Undo [recordCreatedLocalId] for a change the platform reported as **failed** — the exact mirror,
@@ -172,7 +173,7 @@ interface DownloadStore : SuppressionSource {
      * Returns whether it applied, so a caller can tell "the verdict landed" from "the row moved on" —
      * different answers, and the second must not be acted on further.
      */
-    fun clearCreatedLocalId(ref: AssetRef, createdLocalId: String): Boolean
+    fun clearCreatedLocalId(ref: AssetRef, createdLocalId: AssetId): Boolean
 
     /**
      * The **success** mirror of [recordCreatedLocalId]: settle the row against the marker it already
@@ -197,7 +198,7 @@ interface DownloadStore : SuppressionSource {
      * settled nothing must not go on to release that row's staged bytes: those files belong to whatever
      * the row moved on to, and a live import is reading from them.
      */
-    fun confirmCreatedLocalId(ref: AssetRef, createdLocalId: String): Boolean
+    fun confirmCreatedLocalId(ref: AssetRef, createdLocalId: AssetId): Boolean
 
     /**
      * Settle a row as permanently unimportable, reporting whether it applied (capability `receiving-photos`).

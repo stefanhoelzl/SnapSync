@@ -1,5 +1,6 @@
 package app.snapsync.downloadstore
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
@@ -56,9 +57,9 @@ class DownloadStoreMigrationTest {
         DownloadDatabase.Schema.migrate(driver, 1L, DownloadDatabase.Schema.version).await()
 
         val store = DownloadService(opened(driver))
-        assertEquals(setOf("LOCAL-OLD"), store.suppressedLocalIds(), "suppression row survived the migration")
+        assertEquals(setOf(AssetId("LOCAL-OLD")), store.suppressedLocalIds(), "suppression row survived the migration")
         assertEquals(1, store.counts().imported)
-        assertEquals(true, store.isSettled(AssetRef("DEV-A", "OLD")))
+        assertEquals(true, store.isSettled(AssetRef("DEV-A", AssetId("OLD"))))
     }
 
     /**

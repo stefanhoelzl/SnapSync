@@ -1,5 +1,6 @@
 package app.snapsync.feature.status
 
+import app.snapsync.model.AssetId
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import app.snapsync.ports.ConfigSource
@@ -57,7 +58,7 @@ class StatusRefreshTest {
         override suspend fun candidates(policy: SelectionPolicy): CandidateRead = CandidateRead.Readable(
             listOf(
                 object : Candidate {
-                    override val facts = AssetFacts("A", CaptureDate("2026-06-01T00:00:00Z"))
+                    override val facts = AssetFacts(AssetId("A"), CaptureDate("2026-06-01T00:00:00Z"))
                     override suspend fun resources(): List<Resource> = emptyList()
                 },
             ),
@@ -82,7 +83,7 @@ class StatusRefreshTest {
         val refresh = StatusRefresh(
             ledgerCounts = ReadingLedgerCountsSource {
                 steps += "ledger"
-                LedgerCounts(done = setOf("d1"), pending = emptySet())
+                LedgerCounts(done = setOf(AssetId("d1")), pending = emptySet())
             },
             gallery = gallery,
             refreshDownloadLine = { steps += "downloads" },
@@ -107,7 +108,7 @@ class StatusRefreshTest {
         // The ordering assertions above would all pass against a method that walked and threw the
         // answer away, so pin that the sequence actually produces `N`.
         val gallery = OwnDeviceGalleryStatusSource(OneAsset())
-        val counts = ReadingLedgerCountsSource { LedgerCounts(done = setOf("d1", "d2", "d3"), pending = setOf("p1")) }
+        val counts = ReadingLedgerCountsSource { LedgerCounts(done = setOf(AssetId("d1"), AssetId("d2"), AssetId("d3")), pending = setOf(AssetId("p1"))) }
         StatusRefresh(
             ledgerCounts = counts,
             gallery = gallery,
@@ -115,8 +116,8 @@ class StatusRefreshTest {
             configSource = membership(config),
             policyFor = { policy() },
         ).run()
-        assertEquals(setOf("A"), gallery.admitted.value, "N is the admitted own-asset count")
-        assertEquals(LedgerCounts(done = setOf("d1", "d2", "d3"), pending = setOf("p1")), counts.counts.value, "and the counts are read")
+        assertEquals(setOf(AssetId("A")), gallery.admitted.value, "N is the admitted own-asset count")
+        assertEquals(LedgerCounts(done = setOf(AssetId("d1"), AssetId("d2"), AssetId("d3")), pending = setOf(AssetId("p1"))), counts.counts.value, "and the counts are read")
     }
 
     @Test

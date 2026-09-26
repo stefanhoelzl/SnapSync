@@ -1,5 +1,6 @@
 package app.snapsync.fake
 
+import app.snapsync.model.AssetId
 import app.snapsync.ports.GalleryStatusSource
 
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,9 +20,9 @@ import kotlinx.coroutines.flow.asStateFlow
  * projection that rendered "In sync" over unread inputs shipped twice (`SNAPSYNC-14`, `SNAPSYNC-16`).
  * A fake seeded with a count it was never given cannot fail the way the device fails.
  */
-internal class InMemoryGalleryStatusSource(state: MutableStateFlow<Set<String>?>) : GalleryStatusSource {
+internal class InMemoryGalleryStatusSource(state: MutableStateFlow<Set<AssetId>?>) : GalleryStatusSource {
 
-    constructor(initial: Set<String>? = null) : this(MutableStateFlow(initial))
+    constructor(initial: Set<AssetId>? = null) : this(MutableStateFlow(initial))
 
-    override val admitted: StateFlow<Set<String>?> = state.asStateFlow()
+    override val admitted: StateFlow<Set<AssetId>?> = state.asStateFlow()
 }

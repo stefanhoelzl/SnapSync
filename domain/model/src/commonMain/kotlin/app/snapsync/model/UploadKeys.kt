@@ -38,37 +38,13 @@ enum class ResourceRole(val wire: String) {
 const val APP_VERSION_HEADER: String = "x-snapsync-app-version"
 
 /**
- * Normalize a raw PHAsset `localIdentifier` into the `assetId` used in keys and the suppression match:
- * `/`→`_` so the identifier is a single slash-free path segment (the edge endpoint rejects a decoded
- * `/`). This is the **single** definition of that transform on the discovery/enumeration side — the
- * upload producer and the join enumerator normalize through it — and it is **load-bearing** for
- * echo-suppression: the download importer normalizes the imported asset's `createdLocalId` the *same*
- * way (`IosPhotoLibraryImporter`), so a discovered `assetId` meets its stored `createdLocalId` and the
- * asset is suppressed. Keep the two transforms identical or the echo re-uploads.
- */
-fun normalizeAssetId(rawLocalIdentifier: String): String = rawLocalIdentifier.replace('/', '_')
-
-/**
- * Recover the raw PHAsset `localIdentifier` from a normalized [assetId] — the inverse of
- * [normalizeAssetId] — for the event-album upload-add path (capability `event-album`), which must
- * `PHAsset.fetchAssetsWithLocalIdentifiers` a completed upload whose ledger key only carries the
- * normalized id. The reversal (`_`→`/`) is **exact** for real identifiers: a `localIdentifier` is
- * `{UUID}/L0/NNN` (UUID = hex + hyphen, never `_`), so the only underscores present are the ones that
- * were slashes — the same `_`-free invariant the whole key round-trip (`assetIdFromUploadKey`) already
- * relies on. A hypothetical native `_` would fetch nothing and the add is best-effort (skips), so this
- * never mis-adds.
- */
-fun denormalizeAssetId(assetId: String): String = assetId.replace('_', '/')
-
-/**
  * Pure construction of an asset resource's ledger key / object name — the single place the role-based
- * `"<assetId>-<role>.<ext>"` layout lives, where `assetId` is the PHAsset's `localIdentifier` (v1,
- * single-device) with `/`→`_` (via [normalizeAssetId]). Kept platform-free so the layout is unit-tested on the simulator
- * instead of trapped inside the PhotoKit adapter; the adapter (and the device listing's seam) only supply the
- * raw fields. Shared by the upload producer (`:app:ios:extension`) and the manifest synthesis
+ * `"<assetId>-<role>.<ext>"` layout lives, `assetId` being the canonical [AssetId]. Kept platform-free so
+ * the layout is unit-tested on the simulator instead of trapped inside the PhotoKit adapter; the adapter (and
+ * the device listing's seam) only supply the raw fields. Shared by the upload producer (`:app:ios:extension`) and the manifest synthesis
  * so a manifest's `filename` is byte-identical to what the producer uploads under.
  */
-fun uploadKey(assetId: String, role: ResourceRole, originalFilename: String): String =
+fun uploadKey(assetId: AssetId, role: ResourceRole, originalFilename: String): String =
     "$assetId-${role.wire}.${fileExtension(originalFilename)}"
 
 /** The lowercased filename extension, or `bin` when the original filename carries none. */
@@ -121,8 +97,8 @@ fun roleFromUploadKey(filename: String): ResourceRole {
  * == id` — and the single shared implementation of that parse, so every site holding only a key (the
  * upload-job reconstruction, the discovery's key-to-asset lookup) recovers the same identity (the parse
  * is load-bearing at the record path). The join-time load is not one of them: it seeds the `assetId`
- * the backend's listing reports. Kept here in `:domain:gallery` next to [uploadKey], never duplicated per-consumer.
+ * the backend's listing reports. Kept here next to [uploadKey], never duplicated per-consumer.
  */
-fun assetIdFromUploadKey(filename: String): String =
-    filename.substringBeforeLast('.').substringBeforeLast('-')
+fun assetIdFromUploadKey(filename: String): AssetId =
+    AssetId(filename.substringBeforeLast('.').substringBeforeLast('-'))
 

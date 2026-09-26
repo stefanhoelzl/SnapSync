@@ -1,5 +1,6 @@
 package app.snapsync.services.gallery
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.AssetPresence
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.GalleryRead
@@ -17,7 +18,7 @@ import app.snapsync.ports.ImportedAssetPresence
  */
 class GalleryAssetPresence(private val gallery: GalleryReader) : ImportedAssetPresence {
 
-    override suspend fun presence(localIds: Set<String>): Map<String, AssetPresence> {
+    override suspend fun presence(localIds: Set<AssetId>): Map<AssetId, AssetPresence> {
         if (localIds.isEmpty()) return emptyMap()
         if (gallery.access() != GalleryAccess.GRANTED) return localIds.associateWith { AssetPresence.UNKNOWN }
         return when (val read = gallery.assetsById(localIds)) {

@@ -1,13 +1,6 @@
 package app.snapsync.model
 
-/**
- * An asset's identity as the gallery hands it out — **opaque to the core**: it is stored, compared and handed
- * back, never parsed. Until raw asset ids land (11i) the iOS adapter hands out the normalized form
- * (`/`→`_`, [normalizeAssetId]) that the ledger and the upload keys carry, and converts back itself.
- */
-typealias AssetId = String
-
-/** An album's identity as the gallery hands it out; opaque to the core, like [AssetId]. */
+/** An album's identity as the gallery hands it out; opaque to the core. */
 typealias AlbumId = String
 
 /**

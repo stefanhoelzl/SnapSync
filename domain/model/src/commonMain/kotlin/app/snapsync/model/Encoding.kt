@@ -36,7 +36,7 @@ internal fun encodeFilenameSegment(filename: String): String {
  * to perform the request at all, and it is unaffected by any handling of the query.
  *
  * Percent-encoding is left exactly as composed. That is safe for what this addresses because a
- * normalized `assetId` and a role token contain only unreserved characters, so the encoded and decoded
+ * canonical [AssetId] and a role token contain only unreserved characters, so the encoded and decoded
  * spellings coincide — and the tier that compares it keeps a fallback for any row where they would not.
  */
 fun destinationPathOf(url: String): String {

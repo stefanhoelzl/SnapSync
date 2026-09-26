@@ -65,7 +65,7 @@ data class EventMeta(
 data class EventRenamed(val name: String?)
 
 /** One resource a device has stored (`GET /files/devices/<id>`), in the terms the backend addresses it by. */
-data class DeviceFile(val assetId: String, val role: ResourceRole, val filename: String)
+data class DeviceFile(val assetId: AssetId, val role: ResourceRole, val filename: String)
 
 /** One resource of a foreign asset in the event-wide union (`GET /events/<id>/files`). */
 class UnionResource(
@@ -79,7 +79,7 @@ class UnionResource(
 /** One **complete** asset in the event-wide union, tagged with its owning device and capture date. */
 class UnionAsset(
     val deviceId: String,
-    val assetId: String,
+    val assetId: AssetId,
     val creationDate: String,
     val resources: List<UnionResource>,
 )

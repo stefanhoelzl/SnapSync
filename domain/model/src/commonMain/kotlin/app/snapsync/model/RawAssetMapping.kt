@@ -3,16 +3,16 @@ package app.snapsync.model
 /**
  * The **pure fan-out mapping** `RawAsset` → engine `Resource`s — the single site of the fan-out
  * orchestration, extracted from the iOS enumerator so it runs on JVM + the simulator (capability
- * `sync-status`, Move A). For each [RawAsset]: normalize its `assetId` `'/'→'_'` ([normalizeAssetId]);
- * for each [RawResource], drop it when its raw [RawResource.type] maps to no role
+ * `sync-status`, Move A). For each [RawAsset]
+ * (whose [AssetId] the adapter already minted canonical), for each [RawResource], drop it when its raw [RawResource.type] maps to no role
  * ([resourceRole] — originals only), else wrap it as a `Resource` whose `filename` is the shared
  * [uploadKey] and whose `metadata` carries the per-asset manifest detail (creation date, original
  * filename, iOS-resolved MIME). The opaque [RawResource.handle] rides into `Resource.data` uninterpreted.
- * Platform-free, so the role-skip / normalization / key-derivation is exercised without PhotoKit.
+ * Platform-free, so the role-skip / key-derivation is exercised without PhotoKit.
  */
 fun resourcesFrom(rawAssets: List<RawAsset>): List<Resource> =
     rawAssets.flatMap { asset ->
-        val assetId = normalizeAssetId(asset.assetId)
+        val assetId = asset.assetId
         asset.rawResources.mapNotNull { raw ->
             val role = raw.role ?: return@mapNotNull null
             Resource(
@@ -40,14 +40,14 @@ fun resourcesFrom(rawAssets: List<RawAsset>): List<Resource> =
     }
 
 /**
- * The neutral [AssetFacts] of one raw asset, with the id normalized.
+ * The neutral [AssetFacts] of one raw asset.
  *
  * Every fact reads a plain in-memory platform property, so this is complete whether or not the asset's
  * resources have been fetched — a facts-only walk and a resource-carrying one produce the identical value,
  * which is what lets every consumer resolve the same admitted set at different costs.
  */
 fun RawAsset.toFacts(): AssetFacts = AssetFacts(
-    assetId = normalizeAssetId(assetId),
+    assetId = assetId,
     creationDate = CaptureDate(creationDate),
     isScreenshot = facts.isScreenshot,
     isScreenRecording = facts.isScreenRecording,

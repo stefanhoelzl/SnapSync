@@ -1,5 +1,6 @@
 package app.snapsync.world
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.assetIdFromUploadKey
@@ -175,7 +176,7 @@ class BackendStore {
     }
 
     /** Per event this device is a member of, the asset ids of its that are servable (every declared role stored). */
-    private fun servableByEvent(deviceId: String): Map<String, Set<String>> =
+    private fun servableByEvent(deviceId: String): Map<String, Set<AssetId>> =
         memberships.filterKeys { it.second == deviceId }.map { (key, membership) ->
             val present = byteStore[deviceId].orEmpty()
             key.first to membership.manifest.assets
@@ -441,7 +442,7 @@ class BackendStore {
     fun deviceListingV2(deviceId: String): List<DeviceResourceDto> =
         byteStore[deviceId].orEmpty().map { key ->
             DeviceResourceDto(
-                assetId = assetIdFromUploadKey(key),
+                assetId = assetIdFromUploadKey(key).value,
                 role = roleFromUploadKey(key).wire,
                 filename = key,
             )
@@ -469,7 +470,7 @@ class BackendStore {
                 out.add(
                     UnionAssetDto(
                         deviceId = deviceId,
-                        assetId = asset.assetId,
+                        assetId = asset.assetId.value,
                         creationDate = asset.creationDate,
                         resources = asset.resources.map { r ->
                             UnionResourceDto(

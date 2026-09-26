@@ -1,5 +1,6 @@
 package app.snapsync.services.backend
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.CreateOutcome
 import app.snapsync.model.DeviceFile
 import app.snapsync.model.DeviceManifest
@@ -155,8 +156,8 @@ class BackendServicesTest {
 
     @Test
     fun the_device_listing_recomposes_each_storage_key() = runTest {
-        val listed = servicesAnswering(Reply.Ok(listOf(DeviceFile("A", ResourceRole.PRIMARY, "IMG_1.HEIC")))).deviceFiles.list("D")
-        assertEquals(listOf(StoredResource("A-primary.heic", "A")), listed.getOrThrow())
+        val listed = servicesAnswering(Reply.Ok(listOf(DeviceFile(AssetId("A"), ResourceRole.PRIMARY, "IMG_1.HEIC")))).deviceFiles.list("D")
+        assertEquals(listOf(StoredResource("A-primary.heic", AssetId("A"))), listed.getOrThrow())
     }
 
     @Test
@@ -170,7 +171,7 @@ class BackendServicesTest {
 
     @Test
     fun the_union_is_served_or_a_failure_never_an_empty_one() = runTest {
-        val asset = UnionAsset("D", "A", "c", emptyList())
+        val asset = UnionAsset("D", AssetId("A"), "c", emptyList())
         assertEquals(listOf(asset), servicesAnswering(Reply.Ok(listOf(asset))).union.union("E").getOrThrow())
         assertTrue(servicesAnswering(Reply.Refused(404, "")).union.union("E").isFailure)
         assertTrue(servicesAnswering(offline).union.union("E").isFailure)

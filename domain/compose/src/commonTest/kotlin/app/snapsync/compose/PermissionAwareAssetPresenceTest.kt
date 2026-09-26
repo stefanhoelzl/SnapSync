@@ -1,5 +1,6 @@
 package app.snapsync.compose
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.AssetPresence
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.RESOURCE_META_CREATION_DATE
@@ -23,9 +24,9 @@ import kotlinx.coroutines.test.runTest
 class PermissionAwareAssetPresenceTest {
 
     /** Counts queries, because "answered from the snapshot" and "did not look" are different claims. */
-    private class RecordingLibrary(private val verdicts: Map<String, AssetPresence>) : ImportedAssetPresence {
+    private class RecordingLibrary(private val verdicts: Map<AssetId, AssetPresence>) : ImportedAssetPresence {
         var queries = 0
-        override suspend fun presence(localIds: Set<String>): Map<String, AssetPresence> {
+        override suspend fun presence(localIds: Set<AssetId>): Map<AssetId, AssetPresence> {
             queries++
             return localIds.associateWith { verdicts[it] ?: AssetPresence.ABSENT }
         }
@@ -34,7 +35,7 @@ class PermissionAwareAssetPresenceTest {
     private fun snapshotOf(vararg ids: String) = ids.map {
         Resource(
             "$it-primary.jpg",
-            it,
+            AssetId(it),
             "image/jpeg",
             mapOf(RESOURCE_META_CREATION_DATE to "2026-06-01T00:00:00Z"),
             Unit,
@@ -55,11 +56,11 @@ class PermissionAwareAssetPresenceTest {
     fun `GRANTED asks the library and both verdicts stand`() = runTest {
         val (library, source) = source(
             GalleryAccess.GRANTED,
-            RecordingLibrary(mapOf("HERE" to AssetPresence.PRESENT, "GONE" to AssetPresence.ABSENT)),
+            RecordingLibrary(mapOf(AssetId("HERE") to AssetPresence.PRESENT, AssetId("GONE") to AssetPresence.ABSENT)),
         )
         assertEquals(
-            mapOf("HERE" to AssetPresence.PRESENT, "GONE" to AssetPresence.ABSENT),
-            source.presence(setOf("HERE", "GONE")),
+            mapOf(AssetId("HERE") to AssetPresence.PRESENT, AssetId("GONE") to AssetPresence.ABSENT),
+            source.presence(setOf(AssetId("HERE"), AssetId("GONE"))),
         )
         assertEquals(1, library.queries, "a full grant is the only view that may be asked")
     }
@@ -67,7 +68,7 @@ class PermissionAwareAssetPresenceTest {
     @Test
     fun `LIMITED answers from the snapshot and never queries the library`() = runTest {
         val (library, source) = source(GalleryAccess.LIMITED, snapshot = snapshotOf("S1"))
-        assertEquals(mapOf("S1" to AssetPresence.PRESENT), source.presence(setOf("S1")))
+        assertEquals(mapOf(AssetId("S1") to AssetPresence.PRESENT), source.presence(setOf(AssetId("S1"))))
         assertEquals(0, library.queries, "no library read under a partial grant")
     }
 
@@ -78,7 +79,7 @@ class PermissionAwareAssetPresenceTest {
         // capability `photo-access`). Reading that miss as ABSENT clears a live marker and
         // re-imports a photo the device already holds.
         val (_, source) = source(GalleryAccess.LIMITED, snapshot = snapshotOf("S1"))
-        assertEquals(mapOf("MISSING" to AssetPresence.UNKNOWN), source.presence(setOf("MISSING")))
+        assertEquals(mapOf(AssetId("MISSING") to AssetPresence.UNKNOWN), source.presence(setOf(AssetId("MISSING"))))
     }
 
     @Test
@@ -86,8 +87,8 @@ class PermissionAwareAssetPresenceTest {
         // The honest gap between a grant turning partial and the first observer emission: nothing is
         // known to be selected, and we may not go looking. Every row simply waits.
         val (library, source) = source(GalleryAccess.LIMITED, snapshot = null)
-        val verdicts = source.presence(setOf("A", "B"))
-        assertEquals(mapOf("A" to AssetPresence.UNKNOWN, "B" to AssetPresence.UNKNOWN), verdicts)
+        val verdicts = source.presence(setOf(AssetId("A"), AssetId("B")))
+        assertEquals(mapOf(AssetId("A") to AssetPresence.UNKNOWN, AssetId("B") to AssetPresence.UNKNOWN), verdicts)
         assertEquals(0, library.queries)
     }
 
@@ -97,7 +98,7 @@ class PermissionAwareAssetPresenceTest {
             // A snapshot is present and still may not be trusted: without a usable grant a query returns
             // nothing for assets that exist, and an import cannot succeed anyway.
             val (library, source) = source(status, snapshot = snapshotOf("S1"))
-            assertEquals(mapOf("S1" to AssetPresence.UNKNOWN), source.presence(setOf("S1")), "$status")
+            assertEquals(mapOf(AssetId("S1") to AssetPresence.UNKNOWN), source.presence(setOf(AssetId("S1"))), "$status")
             assertEquals(0, library.queries, "$status never queries")
         }
     }
@@ -108,7 +109,7 @@ class PermissionAwareAssetPresenceTest {
         // the entry is the honest form. Asserted on the two arms that build the map themselves.
         for (status in listOf(GalleryAccess.LIMITED, GalleryAccess.DENIED)) {
             val (_, source) = source(status, snapshot = snapshotOf("S1"))
-            val asked = setOf("S1", "S2", "S3")
+            val asked = setOf(AssetId("S1"), AssetId("S2"), AssetId("S3"))
             assertEquals(asked, source.presence(asked).keys, "$status answers every id it was asked")
             assertTrue(source.presence(asked).values.all { it != AssetPresence.ABSENT }, "$status never ABSENT")
         }

@@ -1,6 +1,7 @@
 package app.snapsync.gallery
 
 import app.snapsync.fake.InMemoryGalleryStatusSource
+import app.snapsync.model.AssetId
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -12,8 +13,8 @@ class InMemoryGalleryStatusSourceTest {
 
     @Test
     fun seeds_a_real_value_available_synchronously() {
-        val source = InMemoryGalleryStatusSource(initial = setOf("a", "b", "c", "d", "e"))
-        assertEquals(setOf("a", "b", "c", "d", "e"), source.admitted.value)
+        val source = InMemoryGalleryStatusSource(initial = setOf(AssetId("a"), AssetId("b"), AssetId("c"), AssetId("d"), AssetId("e")))
+        assertEquals(setOf(AssetId("a"), AssetId("b"), AssetId("c"), AssetId("d"), AssetId("e")), source.admitted.value)
     }
 
     @Test
@@ -32,10 +33,10 @@ class InMemoryGalleryStatusSourceTest {
     @Test
     fun writing_the_owned_cell_re_emits_the_new_set() = runTest {
         // The honest fake exposes only the port; whoever constructs it owns the cell (fake-honesty gate).
-        val cell = MutableStateFlow<Set<String>?>(setOf("a"))
+        val cell = MutableStateFlow<Set<AssetId>?>(setOf(AssetId("a")))
         val source = InMemoryGalleryStatusSource(cell)
-        cell.value = setOf("a", "b")
-        assertEquals(setOf("a", "b"), source.admitted.first())
-        assertEquals(setOf("a", "b"), source.admitted.value)
+        cell.value = setOf(AssetId("a"), AssetId("b"))
+        assertEquals(setOf(AssetId("a"), AssetId("b")), source.admitted.first())
+        assertEquals(setOf(AssetId("a"), AssetId("b")), source.admitted.value)
     }
 }

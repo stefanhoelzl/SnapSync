@@ -1,5 +1,6 @@
 package app.snapsync.services.gallery
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.GalleryRead
 import app.snapsync.model.SelectionCalibration
@@ -24,7 +25,7 @@ class GalleryAlbums(
     override suspend fun exists(albumLocalId: String): Boolean =
         (gallery.albumsById(setOf(albumLocalId)) as? GalleryRead.Read)?.value?.isNotEmpty() == true
 
-    override suspend fun add(albumLocalId: String, assetIds: List<String>) {
+    override suspend fun add(albumLocalId: String, assetIds: List<AssetId>) {
         if (assetIds.isEmpty()) return
         val outcome = gallery.addToAlbum(albumLocalId, assetIds.toSet())
         if (outcome != WriteOutcome.Ok) log.w { "add to album $albumLocalId: $outcome (${assetIds.size} asset(s))" }
@@ -34,7 +35,7 @@ class GalleryAlbums(
      * Cost is O(albums), never O(assets): one listing, then one member read per denied album. An unreadable
      * gallery answers the empty set — the denylist is a subtraction and the policy admits on doubt.
      */
-    override suspend fun assetIdsInAlbums(calibration: SelectionCalibration, since: CaptureCutoff): Set<String> {
+    override suspend fun assetIdsInAlbums(calibration: SelectionCalibration, since: CaptureCutoff): Set<AssetId> {
         val albums = (gallery.albums() as? GalleryRead.Read)?.value ?: return emptySet()
         return albums.filter { calibration.isDenylistedAlbum(it.title) }.flatMapTo(mutableSetOf()) { album ->
             val members = (gallery.albumMembers(album.id, since) as? GalleryRead.Read)?.value.orEmpty()

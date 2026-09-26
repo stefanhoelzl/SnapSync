@@ -30,7 +30,7 @@ class DenoWorldTest {
 
         w.addForeignDeviceMinted(FOREIGN, listOf(World.foreignAsset(FOREIGN_ASSET)), eventId)
         val union = w.neutral.unionOf(eventId).orFail()
-        assertTrue(union.any { it.deviceId == FOREIGN && it.assetId == FOREIGN_ASSET }, "the foreign asset is in the union")
+        assertTrue(union.any { it.deviceId == FOREIGN && it.assetId.value == FOREIGN_ASSET }, "the foreign asset is in the union")
         assertEquals(true, w.neutral.isRegistered(eventId).orFail())
     }
 

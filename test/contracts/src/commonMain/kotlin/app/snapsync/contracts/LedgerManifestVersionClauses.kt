@@ -1,5 +1,6 @@
 package app.snapsync.contracts
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.LedgerEntry
 import app.snapsync.ports.LedgerStore
 import app.snapsync.model.LedgerState
@@ -44,7 +45,7 @@ internal fun ClauseList<LedgerStoreState, LedgerStore>.manifestVersionClauses() 
 
     clause("a detail backfill advances the version", LedgerStoreState.EMPTY) { backend ->
         // A bare row, as the join-time load seeds it: no capture date, no role, no detail.
-        backend.resetTo(listOf(LedgerEntry("A-primary.heic", "A", LedgerState.COMPLETED)))
+        backend.resetTo(listOf(LedgerEntry("A-primary.heic", AssetId("A"), LedgerState.COMPLETED)))
         val before = backend.manifestVersion()
         backend.backfillManifestDetail(entry(key = "A-primary.heic", assetId = "A"))
         assertTrue(backend.manifestVersion() > before)
@@ -80,7 +81,7 @@ internal fun ClauseList<LedgerStoreState, LedgerStore>.manifestVersionClauses() 
     clause("a declined record leaves the version alone", LedgerStoreState.EMPTY) { backend ->
         backend.recordUnlessSettled(entry(state = LedgerState.COMPLETED))
         val before = backend.manifestVersion()
-        val stale = LedgerEntry(entry().key, "B", LedgerState.DISCOVERED, creationDate = "2020-01-01T00:00:00Z")
+        val stale = LedgerEntry(entry().key, AssetId("B"), LedgerState.DISCOVERED, creationDate = "2020-01-01T00:00:00Z")
         assertEquals(false, backend.recordUnlessSettled(stale), "a settled row is never overwritten")
         assertEquals(before, backend.manifestVersion())
     }

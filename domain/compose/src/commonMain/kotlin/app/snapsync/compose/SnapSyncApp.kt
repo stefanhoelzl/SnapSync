@@ -1,5 +1,6 @@
 package app.snapsync.compose
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.VersionRefusal
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.feature.album.AlbumCoordinator
@@ -740,7 +741,7 @@ class AppCore internal constructor(
      * under a FULL grant: under `LIMITED` the album structure is unreadable, so the lookup could only ever
      * answer the empty set it now answers without the round-trip.
      */
-    private suspend fun albumExclusionsWhenReadable(cutoff: CaptureCutoff): Set<String> =
+    private suspend fun albumExclusionsWhenReadable(cutoff: CaptureCutoff): Set<AssetId> =
         // The app tier admits on doubt: a failed lookup must never drop a real photo from the total.
         denylistedAlbumMembers(
             albumManager, cutoff, ports.photoAccess.permission.value, AlbumLookupFailure.AdmitOnDoubt,

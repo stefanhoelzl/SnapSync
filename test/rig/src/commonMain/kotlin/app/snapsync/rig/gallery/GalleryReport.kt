@@ -96,7 +96,7 @@ class GalleryReport(
             // "these all applied" when only one had to.
             val refusedBy = if (admitted) null else rules.firstOrNull { !it.admits(facts) }
             AssetView(
-                assetId = facts.assetId,
+                assetId = facts.assetId.value,
                 captureDate = facts.creationDate.iso,
                 pixelArea = facts.pixelArea,
                 isScreenshot = facts.isScreenshot,

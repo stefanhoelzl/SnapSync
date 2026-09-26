@@ -25,7 +25,7 @@ package app.snapsync.model
  */
 class LedgerEntry(
     val key: String,
-    val assetId: String,
+    val assetId: AssetId,
     val state: LedgerState,
     val creationDate: String = "",
     val role: ResourceRole? = null,
@@ -44,7 +44,7 @@ class LedgerEntry(
      *
      * The PATH, not the whole URL: it is what the platform must keep in order to perform the request at
      * all, and it is unaffected by any handling of the query. In practice the two spellings coincide,
-     * because a normalized `assetId` and a role token contain only unreserved characters.
+     * because a canonical [AssetId] and a role token contain only unreserved characters.
      */
     val destinationPath: String? = null,
 ) {
@@ -254,7 +254,7 @@ class LedgerAggregates(
  * read returns these so a status projection can group outstanding resources by photo; the backend
  * never interprets them (it just reports the rows whose state is not `COMPLETED`).
  */
-class PendingResource(val assetId: String, val key: String) {
+class PendingResource(val assetId: AssetId, val key: String) {
     override fun equals(other: Any?): Boolean =
         other is PendingResource && assetId == other.assetId && key == other.key
 

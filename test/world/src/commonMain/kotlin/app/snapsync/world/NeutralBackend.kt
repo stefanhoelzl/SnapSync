@@ -1,6 +1,7 @@
 package app.snapsync.world
 
 import app.snapsync.model.APP_VERSION_HEADER
+import app.snapsync.model.AssetId
 import app.snapsync.model.CreateEventRequest
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.ManifestResource
@@ -178,7 +179,7 @@ class NeutralBackend internal constructor(
     }
 
     /** One resource's bytes, where the app's uploader addresses them. */
-    internal suspend fun upload(deviceId: String, assetId: String, resource: ManifestResource) {
+    internal suspend fun upload(deviceId: String, assetId: AssetId, resource: ManifestResource) {
         checked(
             "upload ${resource.key} for $deviceId",
             client.put("$host/files/devices/$deviceId/$assetId/${resource.role.wire}?filename=${resource.filename}") {

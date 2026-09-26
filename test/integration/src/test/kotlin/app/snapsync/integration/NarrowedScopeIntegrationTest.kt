@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.assetIdFromUploadKey
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -108,7 +109,7 @@ class NarrowedScopeIntegrationTest {
         uploadAll()
 
         val listed = manifest(event)?.keys.orEmpty()
-        val uploaded = objects().mapTo(mutableSetOf(), ::assetIdFromUploadKey)
+        val uploaded = objects().mapTo(mutableSetOf()) { assetIdFromUploadKey(it).value }
         assertEquals(setOf("LATE"), listed, "the manifest declares only what the narrowed policy admits")
         assertEquals(listed, uploaded, "what is declared and what is uploaded are one set")
     }

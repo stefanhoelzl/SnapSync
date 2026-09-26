@@ -12,7 +12,6 @@ import app.snapsync.model.Resource
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.StagedResource
 import app.snapsync.model.importFilename
-import app.snapsync.model.normalizeAssetId
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.GalleryRead
@@ -84,7 +83,7 @@ internal class InMemoryGallery(
         fun settle(outcome: ImportResult) = outcome.also { handlers.onImportSettled(ref, it) }
         answers.beforeChange(ref)?.let { return settle(ImportResult.Failed(it)) }
         val suffix = if (attempt == 1) "" else "-$attempt"
-        val createdLocalId = normalizeAssetId("imported-${ref.sourceDeviceId}-${ref.sourceAssetId}$suffix")
+        val createdLocalId = AssetId("imported-${ref.sourceDeviceId}-${ref.sourceAssetId}$suffix")
         handlers.onImportPlaceholder(ref, createdLocalId)
         answers.beforeCommit(ref)?.let { return settle(ImportResult.Failed(it, placeholder = createdLocalId)) }
         library.value = library.value + createdAsset(createdLocalId, request.resources, request.creationDate)
@@ -171,7 +170,7 @@ internal class InMemoryGallery(
     private inline fun <T> readable(read: () -> T): GalleryRead<T> =
         if (access.value.grantsPhotoAccess) GalleryRead.Read(read()) else GalleryRead.NotReadable
 
-    private fun createdAsset(id: String, resources: List<StagedResource>, creationDate: String) = RawAsset(
+    private fun createdAsset(id: AssetId, resources: List<StagedResource>, creationDate: String) = RawAsset(
         assetId = id,
         creationDate = creationDate,
         rawResources = resources.map { staged ->

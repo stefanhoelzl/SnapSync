@@ -1,5 +1,6 @@
 package app.snapsync.fake
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.AssetPresence
 import app.snapsync.ports.ImportedAssetPresence
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -13,11 +14,11 @@ import kotlinx.coroutines.flow.StateFlow
  * mistaken for `ABSENT`.
  */
 internal class InMemoryAssetPresence(
-    private val present: MutableStateFlow<Set<String>> = MutableStateFlow(emptySet()),
+    private val present: MutableStateFlow<Set<AssetId>> = MutableStateFlow(emptySet()),
     private val readable: StateFlow<Boolean> = MutableStateFlow(true),
 ) : ImportedAssetPresence {
 
-    override suspend fun presence(localIds: Set<String>): Map<String, AssetPresence> =
+    override suspend fun presence(localIds: Set<AssetId>): Map<AssetId, AssetPresence> =
         if (!readable.value) {
             localIds.associateWith { AssetPresence.UNKNOWN }
         } else {

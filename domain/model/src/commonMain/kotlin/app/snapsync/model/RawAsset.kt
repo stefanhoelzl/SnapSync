@@ -28,10 +28,10 @@ class RawResource(
 )
 
 /**
- * One asset as raw facts: the **raw** `localIdentifier` (still carrying `/` — [resourcesFrom] normalizes
- * it), the iOS-resolved capture [creationDate] (ISO-8601), the neutral origin [facts] below, and every
- * platform [rawResources] (including non-originals; the mapping drops those with no role). The single
- * decision-free unit the walk emits.
+ * One asset as raw facts: its canonical [AssetId] (the adapter's mapping of the platform id), the
+ * iOS-resolved capture [creationDate] (ISO-8601), the neutral origin [facts] below, and every platform
+ * [rawResources] (including non-originals; the mapping drops those with no role). The single decision-free
+ * unit the walk emits.
  *
  * [facts] are the inputs the selection policy's rules decide on (capability `photo-sharing`),
  * and they are **neutral**: the platform interprets its own media model — on iOS the `PHAssetMediaSubtype`
@@ -48,7 +48,7 @@ class RawResource(
  * fake asset is therefore admitted unless it opts into an exclusion.
  */
 class RawAsset(
-    val assetId: String,
+    val assetId: AssetId,
     val creationDate: String,
     val rawResources: List<RawResource>,
     val facts: AssetFacts = AssetFacts(assetId = assetId, creationDate = CaptureDate(creationDate)),

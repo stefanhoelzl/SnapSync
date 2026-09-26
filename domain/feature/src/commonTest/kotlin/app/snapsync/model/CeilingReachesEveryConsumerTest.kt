@@ -49,7 +49,7 @@ class CeilingReachesEveryConsumerTest {
 
     private fun resource(assetId: String, creationDate: String) = Resource(
         filename = "$assetId-primary.heic",
-        assetId = assetId,
+        assetId = AssetId(assetId),
         contentType = "public.heic",
         metadata = mapOf(
             RESOURCE_META_CREATION_DATE to creationDate,
@@ -69,13 +69,13 @@ class CeilingReachesEveryConsumerTest {
     )
 
     /** The admitted set, asked exactly as every production consumer asks for it. */
-    private suspend fun admitted(p: SelectionPolicy? = null): Set<String> =
+    private suspend fun admitted(p: SelectionPolicy? = null): Set<AssetId> =
         EventPhotoSet(p ?: policyOf()) { candidatesFromResources(discovered) }
             .assets().mapTo(mutableSetOf()) { it.facts.assetId }
 
     @Test
     fun `the byte upload admits only the in-window asset`() = runTest {
-        assertEquals(setOf("IN"), admitted())
+        assertEquals(setOf(AssetId("IN")), admitted())
     }
 
     @Test
@@ -84,7 +84,7 @@ class CeilingReachesEveryConsumerTest {
         // in `device.json`, entered the event union, and was offered to every other member as bytes that
         // were never uploaded. A 404 for everyone.
         val manifest = projectDeviceManifest("dev", ledgerRows(), policyOf())
-        assertEquals(listOf("IN"), manifest.assets.map { it.assetId })
+        assertEquals(listOf(AssetId("IN")), manifest.assets.map { it.assetId })
     }
 
     @Test
@@ -122,7 +122,7 @@ class CeilingReachesEveryConsumerTest {
 
         assertEquals(fromResources, fromFacts)
         assertEquals(fromResources, fromManifest)
-        assertTrue("AFTER" !in fromResources, "the post-ceiling asset is admitted by no consumer")
+        assertTrue(AssetId("AFTER") !in fromResources, "the post-ceiling asset is admitted by no consumer")
     }
 
     @Test
@@ -130,6 +130,6 @@ class CeilingReachesEveryConsumerTest {
         // The control. Without it the tests above would pass just as well against a policy that dropped
         // the asset for some unrelated reason — which is precisely how the original bug hid.
         val unbounded = policyOf(ceiling = null)
-        assertEquals(setOf("IN", "AFTER"), admitted(unbounded))
+        assertEquals(setOf(AssetId("IN"), AssetId("AFTER")), admitted(unbounded))
     }
 }

@@ -13,7 +13,7 @@ class ManifestProjectionChangeTest {
 
     private val base = LedgerEntry(
         key = "A-primary.jpg",
-        assetId = "A",
+        assetId = AssetId("A"),
         state = LedgerState.DISCOVERED,
         creationDate = "2026-08-28T10:00:00Z",
         role = ResourceRole.PRIMARY,
@@ -24,7 +24,7 @@ class ManifestProjectionChangeTest {
 
     private fun with(
         key: String = base.key,
-        assetId: String = base.assetId,
+        assetId: AssetId = base.assetId,
         state: LedgerState = base.state,
         creationDate: String = base.creationDate,
         role: ResourceRole? = base.role,
@@ -48,7 +48,7 @@ class ManifestProjectionChangeTest {
     fun every_projected_field_changes_the_projection() {
         val variants = mapOf(
             "key" to with(key = "B-primary.jpg"),
-            "assetId" to with(assetId = "B"),
+            "assetId" to with(assetId = AssetId("B")),
             "creationDate" to with(creationDate = "2026-08-29T10:00:00Z"),
             "role" to with(role = ResourceRole.LIVE),
             "contentType" to with(contentType = "image/heic"),

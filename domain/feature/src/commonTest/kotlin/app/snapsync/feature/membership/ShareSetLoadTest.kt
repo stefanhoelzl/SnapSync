@@ -1,6 +1,7 @@
 package app.snapsync.feature.membership
 
 import app.snapsync.feature.upload.InMemoryLedgerStore
+import app.snapsync.model.AssetId
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
 import app.snapsync.services.backend.DeviceFilesSource
@@ -49,15 +50,15 @@ class ShareSetLoadTest {
 
     /** What a device carries into a join: work in flight, work waiting, and a stale belief inside the window. */
     private suspend fun leftovers() = ledgerHolding(
-        LedgerEntry("R-primary.heic", "R", LedgerState.REQUESTED),
-        LedgerEntry("D-primary.heic", "D", LedgerState.DISCOVERED),
-        LedgerEntry("S-primary.heic", "S", LedgerState.COMPLETED),
+        LedgerEntry("R-primary.heic", AssetId("R"), LedgerState.REQUESTED),
+        LedgerEntry("D-primary.heic", AssetId("D"), LedgerState.DISCOVERED),
+        LedgerEntry("S-primary.heic", AssetId("S"), LedgerState.COMPLETED),
     )
 
     @Test
     fun `a confirmed listing becomes exactly the ledger`() = runTest {
         val files = FakeFiles(
-            Result.success(listOf(StoredResource("A-primary.heic", "A"), StoredResource("A-live.mov", "A"))),
+            Result.success(listOf(StoredResource("A-primary.heic", AssetId("A")), StoredResource("A-live.mov", AssetId("A")))),
         )
         val ledger = leftovers()
 
@@ -74,18 +75,18 @@ class ShareSetLoadTest {
 
     @Test
     fun `the seeded assetId is the one the backend reported never parsed from the key`() = runTest {
-        val files = FakeFiles(Result.success(listOf(StoredResource("K-primary.heic", "reported"))))
+        val files = FakeFiles(Result.success(listOf(StoredResource("K-primary.heic", AssetId("reported")))))
         val ledger = InMemoryLedgerStore()
 
         ShareSetLoad(files, ledger, { deviceId }).load()
 
-        assertEquals("reported", ledger.get("K-primary.heic")?.assetId)
+        assertEquals(AssetId("reported"), ledger.get("K-primary.heic")?.assetId)
     }
 
     @Test
     fun `seeded rows are bare`() = runTest {
         // A listing carries no capture date; the first walk after the join fills the detail.
-        val files = FakeFiles(Result.success(listOf(StoredResource("A-primary.heic", "A"))))
+        val files = FakeFiles(Result.success(listOf(StoredResource("A-primary.heic", AssetId("A")))))
         val ledger = InMemoryLedgerStore()
 
         ShareSetLoad(files, ledger, { deviceId }).load()

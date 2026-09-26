@@ -1,5 +1,6 @@
 package app.snapsync.compose
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.SELECTION_CALIBRATION
@@ -44,7 +45,7 @@ internal suspend fun denylistedAlbumMembers(
     grant: GalleryAccess,
     onFailure: AlbumLookupFailure,
     log: Logger,
-): Set<String> = when {
+): Set<AssetId> = when {
     grant != GalleryAccess.GRANTED -> emptySet()
     onFailure == AlbumLookupFailure.FailCycle -> manager.assetIdsInAlbums(SELECTION_CALIBRATION, cutoff)
     else ->

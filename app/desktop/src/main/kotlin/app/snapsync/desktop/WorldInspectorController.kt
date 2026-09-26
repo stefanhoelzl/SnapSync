@@ -490,7 +490,7 @@ class WorldInspectorController(private val scope: CoroutineScope) {
         val galleryRows = world.gallery.current()
             .map {
                 GalleryRow(
-                    it.assetId,
+                    it.assetId.value,
                     suppressed = it.assetId in suppressed,
                     policyExcluded = it.assetId in policyExcluded,
                 )
@@ -505,7 +505,7 @@ class WorldInspectorController(private val scope: CoroutineScope) {
         // `:domain`'s feature/download, so the world's recording store wrapper records what the
         // controller enqueued (see RecordingDownloadStore.enqueueRequests).
         val downloads = world.downloadStore.enqueueRequests.distinct()
-            .map { (ref, resourceKey) -> DownloadRow(ref.sourceDeviceId, ref.sourceAssetId, resourceKey) }
+            .map { (ref, resourceKey) -> DownloadRow(ref.sourceDeviceId, ref.sourceAssetId.value, resourceKey) }
         return InspectorSnapshot(
             joinedEventId = world.configSource.config.value?.eventId,
             galleryRows = galleryRows,

@@ -1,5 +1,6 @@
 package app.snapsync.feature.upload
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.Candidate
 import app.snapsync.model.LedgerState
 import app.snapsync.model.RESOURCE_META_CREATION_DATE
@@ -97,7 +98,7 @@ class UploadCycleTailUnitsTest {
     }
 
     private fun resource(name: String) = Resource(
-        filename = name, assetId = name, contentType = "image/jpeg",
+        filename = name, assetId = AssetId(name), contentType = "image/jpeg",
         metadata = mapOf(RESOURCE_META_CREATION_DATE to "2026-06-01T10:00:00Z"), data = Unit,
     )
 

@@ -5,6 +5,7 @@ import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlSchema
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import app.snapsync.databases.JdbcDatabases
+import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.PlannedResource
 import app.snapsync.model.SuppressionReadiness
@@ -25,7 +26,7 @@ import kotlinx.coroutines.test.runTest
 class SuppressionOverDatabaseTest {
 
     private val dir = Files.createTempDirectory("suppression").toFile().also(File::deleteOnExit)
-    private val ref = AssetRef(sourceDeviceId = "device-b", sourceAssetId = "asset-9")
+    private val ref = AssetRef(sourceDeviceId = "device-b", sourceAssetId = AssetId("asset-9"))
     private val resource = PlannedResource("photo-9.heic", "https://example.invalid/9", "photo", "image/heic", "photo-9.heic")
 
     @Test
@@ -36,9 +37,9 @@ class SuppressionOverDatabaseTest {
         assertEquals(emptySet(), extension.suppressedLocalIds())
 
         app.plan(ref, creationDate = "2026-08-08T12:00:00Z", resources = listOf(resource))
-        app.recordCreatedLocalId(ref, "local-1")
+        app.recordCreatedLocalId(ref, AssetId("local-1"))
 
-        assertEquals(setOf("local-1"), extension.suppressedLocalIds())
+        assertEquals(setOf(AssetId("local-1")), extension.suppressedLocalIds())
     }
 
     @Test
@@ -52,7 +53,7 @@ class SuppressionOverDatabaseTest {
         DownloadService(JdbcDatabases(dir)).counts() // the app's first use migrates it
 
         assertEquals(SuppressionReadiness.Ready, extension.readiness())
-        assertEquals(setOf("LOCAL-OLD"), extension.suppressedLocalIds(), "the old suppression row survived")
+        assertEquals(setOf(AssetId("LOCAL-OLD")), extension.suppressedLocalIds(), "the old suppression row survived")
     }
 
     /** The store as the first shipped schema wrote it — no `creationDate`, version 1 — with one imported asset. */

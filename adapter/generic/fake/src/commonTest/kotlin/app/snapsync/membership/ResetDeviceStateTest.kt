@@ -3,6 +3,7 @@ package app.snapsync.membership
 import app.snapsync.fake.InMemoryDownloadStore
 import app.snapsync.fake.InMemoryLedgerStore
 import app.snapsync.feature.membership.ResetDeviceState
+import app.snapsync.model.AssetId
 import app.snapsync.model.EventConfig
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
@@ -55,8 +56,8 @@ class ResetDeviceStateTest {
     @Test
     fun `it clears the ledger and the config`() = runTest {
         val f = Fixture()
-        f.ledger.recordUnlessSettled(LedgerEntry("IMG_1.HEIC", "asset-1", LedgerState.COMPLETED))
-        f.ledger.recordUnlessSettled(LedgerEntry("IMG_2.HEIC", "asset-2", LedgerState.COMPLETED))
+        f.ledger.recordUnlessSettled(LedgerEntry("IMG_1.HEIC", AssetId("asset-1"), LedgerState.COMPLETED))
+        f.ledger.recordUnlessSettled(LedgerEntry("IMG_2.HEIC", AssetId("asset-2"), LedgerState.COMPLETED))
 
         f.reset().reset()
 
@@ -71,10 +72,10 @@ class ResetDeviceStateTest {
     @Test
     fun `imported downloads survive so no downloaded photo is re-uploaded`() = runTest {
         val f = Fixture()
-        val imported = AssetRef("device-A", "asset-imported")
-        val pending = AssetRef("device-B", "asset-pending")
+        val imported = AssetRef("device-A", AssetId("asset-imported"))
+        val pending = AssetRef("device-B", AssetId("asset-pending"))
         f.downloads.plan(imported, "2026-07-01T10:00:00Z", listOf(resource("a.HEIC")))
-        f.downloads.markImported(imported, createdLocalId = "local-123")
+        f.downloads.markImported(imported, createdLocalId = AssetId("local-123"))
         f.downloads.plan(pending, "2026-07-01T11:00:00Z", listOf(resource("b.HEIC")))
 
         f.reset().reset()
@@ -84,7 +85,7 @@ class ResetDeviceStateTest {
         assertTrue(f.downloads.isSettled(imported))
         // The suppression handle is the reason imported rows are kept: the upload path reads it to
         // avoid re-uploading a photo this device downloaded (the echo).
-        assertEquals(setOf("local-123"), f.downloads.suppressedLocalIds())
+        assertEquals(setOf(AssetId("local-123")), f.downloads.suppressedLocalIds())
     }
 
     @Test
@@ -105,7 +106,7 @@ class ResetDeviceStateTest {
             override suspend fun save(config: EventConfig) {}
             override suspend fun clear() = throw IllegalStateException("config write failed")
         }
-        f.ledger.recordUnlessSettled(LedgerEntry("IMG_1.HEIC", "asset-1", LedgerState.COMPLETED))
+        f.ledger.recordUnlessSettled(LedgerEntry("IMG_1.HEIC", AssetId("asset-1"), LedgerState.COMPLETED))
 
         ResetDeviceState(
             config = throwingConfig,

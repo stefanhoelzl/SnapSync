@@ -1,5 +1,6 @@
 package app.snapsync.fake
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.CrashEvent
 import app.snapsync.model.EventConfig
 import app.snapsync.ports.AlbumMapStore
@@ -92,10 +93,10 @@ fun inMemoryBackend(
 fun inMemoryAttestStore(token: String? = null, keyId: String? = null): AttestStore =
     InMemoryAttestStore(token, keyId)
 
-fun inMemoryGalleryStatusSource(state: MutableStateFlow<Set<String>?>): GalleryStatusSource =
+fun inMemoryGalleryStatusSource(state: MutableStateFlow<Set<AssetId>?>): GalleryStatusSource =
     InMemoryGalleryStatusSource(state)
 
-fun inMemoryGalleryStatusSource(initial: Set<String>? = null): GalleryStatusSource =
+fun inMemoryGalleryStatusSource(initial: Set<AssetId>? = null): GalleryStatusSource =
     InMemoryGalleryStatusSource(initial)
 
 fun inMemoryDeviceLogSource(
