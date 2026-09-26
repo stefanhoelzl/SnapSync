@@ -105,7 +105,7 @@ is no per-root cycle or feature assembly any more.
   resort for what nothing else did, and it is what makes an otherwise-invisible launch crash
   self-diagnosing (the exception text lands in `debug.log` instead of an opaque abort).
 - **Extension**: `app/ios/extension/src/iosMain/.../UploadExtensionRoot.kt` — builds
-  `UploadPorts` (the file-backed `ConfigReader`, the PhotoKit `IosPhotoKitUploadPlatform` +
+  `UploadPorts` (the file-backed `ConfigService`, the PhotoKit `IosPhotoKitUploadPlatform` +
   `IosDiscovery` — both from `:adapter:ios:ext-safe`, where the platform adapter lives — App-Group
   stores, `:adapter:generic:app` HTTP adapters) and calls `uploadCore(scope, ports)`; `process()` runs
   one blocking cycle of the composed `UploadCycle`, then maps the pending→`PROCESSING` requeue and
