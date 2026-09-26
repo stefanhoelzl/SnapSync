@@ -22,6 +22,7 @@ import app.snapsync.model.UploadRequest
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.EventPhotoSet
+import app.snapsync.model.resourcesOf
 import app.snapsync.model.admittedAssetIds
 import app.snapsync.model.assetIdFromUploadKey
 import co.touchlab.kermit.Logger
@@ -346,7 +347,7 @@ class UploadCycle(
             val healing = toRead.mapTo(mutableSetOf()) { it.facts.assetId }.filterTo(mutableSetOf()) { id ->
                 byAsset[id]?.any { it.needsManifestDetail } == true
             }
-            val liveResources = toRead.flatMap { it.resources() }
+            val liveResources = resourcesOf(toRead)
                 .also {
                     log.i {
                         "selection policy admitted ${admitted.size} of ${discovery.candidates.size} " +

@@ -34,12 +34,4 @@ interface ImportedAssetPresence {
      * is the honest form.
      */
     suspend fun presence(localIds: Set<String>): Map<String, AssetPresence>
-
-    companion object {
-        /** Answers nothing, for compositions that never adjudicate (the desktop harnesses). */
-        val Unanswerable: ImportedAssetPresence = object : ImportedAssetPresence {
-            override suspend fun presence(localIds: Set<String>): Map<String, AssetPresence> =
-                localIds.associateWith { AssetPresence.UNKNOWN }
-        }
-    }
 }

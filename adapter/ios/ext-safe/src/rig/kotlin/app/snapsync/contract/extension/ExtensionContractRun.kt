@@ -7,7 +7,7 @@ import app.snapsync.contracts.Host
 import app.snapsync.contracts.Recording
 import app.snapsync.contracts.InAppContract
 import app.snapsync.gallery.currentPhotoPermission
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.GalleryAccess
 import app.snapsync.model.RegistrationOutcome
 import app.snapsync.ports.UploadExtensionRegistry
 import app.snapsync.contracts.runEntry
@@ -118,7 +118,7 @@ private fun merge(bodies: List<String>): String {
 private fun refusalFor(membershipRefusal: () -> String?, registry: () -> UploadExtensionRegistry?): String? = when {
     NSProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] != null ->
         "this process is a simulator app; the upload extension is recorded on a device"
-    currentPhotoPermission() != PermissionStatus.GRANTED ->
+    currentPhotoPermission() != GalleryAccess.GRANTED ->
         "the upload-job contract records under a full photo grant; this process holds ${currentPhotoPermission()}"
     registry() == null -> "this OS carries no upload extension (below iOS 26.1)"
     else -> membershipRefusal()

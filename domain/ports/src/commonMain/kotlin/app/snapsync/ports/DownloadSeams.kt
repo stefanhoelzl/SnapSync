@@ -1,5 +1,6 @@
 package app.snapsync.ports
 
+import app.snapsync.model.AlbumId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.ImportResult
 import app.snapsync.model.PendingDownload
@@ -31,6 +32,10 @@ interface PhotoLibraryImporter {
     /**
      * Import the [resources] as one asset whose capture timestamp is [creationDate] (ISO-8601), so the
      * imported photo sorts by its **original** date in the library rather than the import time.
+     *
+     * [album] is the event album the created asset is filed into **in the same commit** (capability
+     * `event-album`: a received photo is never briefly loose), resolved by the caller before the import; `null`
+     * imports to the camera roll only. An album that no longer resolves never fails the import.
      */
-    suspend fun import(ref: AssetRef, resources: List<StagedResource>, creationDate: String): ImportResult
+    suspend fun import(ref: AssetRef, resources: List<StagedResource>, creationDate: String, album: AlbumId?): ImportResult
 }

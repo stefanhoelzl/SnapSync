@@ -1,7 +1,7 @@
 package app.snapsync.feature.upload
 
 import app.snapsync.model.PauseReason
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.GalleryAccess
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.SelectionScope
 import app.snapsync.model.SuppressionReadiness
@@ -173,7 +173,7 @@ enum class UploadAdmission {
  * `photo-access`; decision record `changes/selection-is-the-walk`, D1). The scope is derived from the
  * same snapshot cell discovery reads, so admission and discovery cannot disagree about whether it was read.
  */
-fun appAdmission(permission: PermissionStatus, scope: SelectionScope, pin: UploaderPin? = null): UploadAdmission =
+fun appAdmission(permission: GalleryAccess, scope: SelectionScope, pin: UploaderPin? = null): UploadAdmission =
     if (permission.grantsPhotoAccess && scope != SelectionScope.Unread && pin?.app != false) {
         UploadAdmission.Admit
     } else {
@@ -188,8 +188,8 @@ fun appAdmission(permission: PermissionStatus, scope: SelectionScope, pin: Uploa
  * selection scope: the extension's default there (`Unrestricted`) is untrue
  * under a partial grant, which is exactly the case this answer exists for.
  */
-fun extensionAdmission(permission: PermissionStatus): UploadAdmission =
-    if (permission == PermissionStatus.GRANTED) UploadAdmission.Admit else UploadAdmission.Withheld
+fun extensionAdmission(permission: GalleryAccess): UploadAdmission =
+    if (permission == GalleryAccess.GRANTED) UploadAdmission.Admit else UploadAdmission.Withheld
 
 /**
  * Decide what this invocation does. [configReadable] is `false` **only** when a required read failed

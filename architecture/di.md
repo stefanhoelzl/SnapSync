@@ -28,6 +28,8 @@ Roots found:
 | `DownloadService` | x | |
 | `EntryHooks` | x | |
 | `FileLogWriter` | x | x |
+| `GalleryAlbums` | | x |
+| `GalleryDiscovery` | | x |
 | `HttpAttestClient` | x | |
 | `HttpDeviceFilesSource` | x | |
 | `HttpEventCreation` | x | |
@@ -38,13 +40,13 @@ Roots found:
 | `HttpLeaveNotifier` | x | |
 | `HttpManifestPublisher` | | x |
 | `HttpPushTokenPublisher` | x | |
-| `IosAlbumManager` | x | x |
 | `IosAttestKey` | x | |
 | `IosBackgroundTime` | x | |
 | `IosDatabases` | x | x |
-| `IosDiscovery` | | x |
 | `IosDownloadTransport` | x | |
 | `IosFiles` | x | x |
+| `IosGallery` | x | |
+| `IosGalleryReader` | x | x |
 | `IosLinkOpener` | x | |
 | `IosPhotoLibraryImporter` | x | |
 | `IosPreferences` | x | x |
@@ -57,8 +59,6 @@ Roots found:
 | `NoPlatformDeviceId` | x | x |
 | `OsDrivenRegistration` | x | |
 | `PersistedDeviceIdentity` | x | x |
-| `PhotoKitAssetPresence` | x | |
-| `PhotoKitCandidateSource` | x | x |
 | `PhotoLibraryPermission` | x | |
 | `PhotoSelectionSnapshotSource` | x | |
 | `PlatformHandoff` | x | |

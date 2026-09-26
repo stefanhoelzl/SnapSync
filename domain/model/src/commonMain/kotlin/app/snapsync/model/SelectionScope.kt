@@ -29,7 +29,7 @@ sealed interface SelectionScope {
  * selection snapshot → what discovery may read right now.
  *
  * Pure, and seated here rather than in the composition that calls it. It decides what a partial-grant
- * member may upload **at all** — under [PermissionStatus.LIMITED] the hand-picked selection IS the
+ * member may upload **at all** — under [GalleryAccess.LIMITED] the hand-picked selection IS the
  * membership's own-photo scope — which is a rule about the vocabulary, not a wiring choice; the
  * composition's job is to supply the two inputs, and it holds neither of them as a constant.
  *
@@ -43,8 +43,8 @@ sealed interface SelectionScope {
  * where there is nothing to read anyway: the scope says what discovery *may* consult, and refusing the read
  * is the permission-aware source's answer, not this one's.
  */
-fun selectionScope(permission: PermissionStatus, snapshot: List<Resource>?): SelectionScope =
-    if (permission == PermissionStatus.LIMITED) {
+fun selectionScope(permission: GalleryAccess, snapshot: List<Resource>?): SelectionScope =
+    if (permission == GalleryAccess.LIMITED) {
         snapshot?.let { SelectionScope.Scoped(it) } ?: SelectionScope.Unread
     } else {
         SelectionScope.Unrestricted

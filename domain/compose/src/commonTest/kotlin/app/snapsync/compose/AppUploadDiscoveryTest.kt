@@ -1,7 +1,7 @@
 package app.snapsync.compose
 
 import app.snapsync.feature.upload.WalkMemoUse
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.GalleryAccess
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.noContribution
@@ -38,9 +38,9 @@ class AppUploadDiscoveryTest {
             override fun sameLibraryAs(other: LibraryChangeToken) = true
         }
         val tokens = object : LibraryChangeTokenRead {
-            override suspend fun current(): LibraryChangeToken = unchanged
+            override suspend fun changeToken(): LibraryChangeToken = unchanged
         }
-        val discovery = appUploadDiscovery(walk, tokens, PhotoGrantRead { PermissionStatus.GRANTED }, Logger.withTag("test"))
+        val discovery = appUploadDiscovery(walk, tokens, PhotoGrantRead { GalleryAccess.GRANTED }, Logger.withTag("test"))
 
         discovery.discover(noContribution())
         discovery.discover(noContribution())

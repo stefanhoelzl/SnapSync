@@ -3,7 +3,7 @@ package app.snapsync.feature.upload
 import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.ports.ConfigSource
 import app.snapsync.model.MembershipRead
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.GalleryAccess
 import app.snapsync.model.grantsPhotoAccess
 import app.snapsync.ports.LogScope
 import app.snapsync.ports.invocation
@@ -137,7 +137,7 @@ class UploadTransitions(
         if (registration != null) {
             val registrable = extensionRegistrable()
             // The OS's read is trusted only under a full grant; anything else changes nothing.
-            val observed = if (photoAccess.permission.value == PermissionStatus.GRANTED) registration.isRegistered() else null
+            val observed = if (photoAccess.permission.value == GalleryAccess.GRANTED) registration.isRegistered() else null
             when {
                 registrable && observed == false -> registration.register()
                 deregisterIfOff && !registrable && observed == true -> registration.deregister()

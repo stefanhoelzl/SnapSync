@@ -14,7 +14,7 @@ import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Instant
 import app.snapsync.model.Layer
 import app.snapsync.presentation.StatusContainerHost
-import app.snapsync.rig.gallery.GalleryReader
+import app.snapsync.rig.gallery.GalleryReport
 import app.snapsync.rig.gallery.photoKitCensus
 import app.snapsync.rig.gallery.SeedKind
 import app.snapsync.rig.gallery.WipeScope
@@ -85,7 +85,7 @@ fun deviceCommands(
             else -> {
                 val window =
                     if (limit == null && offset == null) null else WipeWindow(offset ?: 0L, limit)
-                val o = wipeGallery(log, scope, photoAccess, photoAccess, window = window)
+                val o = wipeGallery(log, scope, photoAccess::requestAccess, window = window)
                 val windowJson =
                     o.window?.let { """{"offset":${it.offset},"limit":${it.limit}}""" } ?: "null"
                 CommandResult.ok(
@@ -143,7 +143,7 @@ private fun jsonArray(values: List<String>): String =
 /** The gallery read, bound to the app's own permission-aware candidate seam rather than a second walk. */
 fun galleryReader(core: () -> AppCore): suspend (String?, Boolean, Boolean) -> String =
     { cutoff, resources, includesUpload ->
-    val reader = GalleryReader(
+    val reader = GalleryReport(
         candidates = core().candidates,
         grant = { core().photoPermission.value.name },
         census = ::photoKitCensus,

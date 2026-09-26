@@ -1,5 +1,7 @@
 package app.snapsync.flow
 
+import app.snapsync.model.CaptureCutoff
+import app.snapsync.model.SelectionCalibration
 import app.snapsync.fake.InMemoryAlbumMapStore
 import app.snapsync.fake.InMemoryAssetPresence
 import app.snapsync.fake.InMemoryDownloadStore
@@ -184,6 +186,7 @@ class ProvisionTest {
                 jobs = NoopJobs,
                 importer = NoopImporter,
                 presence = InMemoryAssetPresence(),
+                eventAlbum = { null },
                 myDeviceId = "DEV",
                 downloadEnabled = { true },
             ),
@@ -221,8 +224,8 @@ class ProvisionTest {
             return "album-for-$name"
         }
         override suspend fun exists(albumLocalId: String): Boolean = true
-        override suspend fun add(albumLocalId: String, rawLocalIds: List<String>) = Unit
-        override suspend fun assetIdsInAlbums(titles: Set<String>, since: String): Set<String> = emptySet()
+        override suspend fun add(albumLocalId: String, assetIds: List<String>) = Unit
+        override suspend fun assetIdsInAlbums(calibration: SelectionCalibration, since: CaptureCutoff): Set<String> = emptySet()
     }
 
     private object NoopJobs : PhotoDownloadJobs {
@@ -235,6 +238,7 @@ class ProvisionTest {
             ref: AssetRef,
             resources: List<StagedResource>,
             creationDate: String,
+            album: String?,
         ): ImportResult = ImportResult.Failed("the provision test never imports")
     }
 }

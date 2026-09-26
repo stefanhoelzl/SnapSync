@@ -1,9 +1,17 @@
 package app.snapsync.world
 
-import app.snapsync.fake.inMemoryCandidateSource
-import app.snapsync.model.CandidateRead
-import app.snapsync.ports.CandidateSource
-import app.snapsync.model.PermissionStatus
+import app.snapsync.fake.inMemoryGallery
+import app.snapsync.fake.inMemoryPhotoAccess
+import app.snapsync.model.AlbumId
+import app.snapsync.model.AlbumRecord
+import app.snapsync.model.AssetFacts
+import app.snapsync.model.AssetId
+import app.snapsync.model.CaptureCutoff
+import app.snapsync.model.GalleryRead
+import app.snapsync.model.WriteOutcome
+import app.snapsync.ports.Gallery
+import app.snapsync.ports.LibraryChangeToken
+import app.snapsync.model.GalleryAccess
 import app.snapsync.model.RawAsset
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.AssetRef
@@ -17,69 +25,54 @@ import app.snapsync.ports.BackgroundScheduler
 import app.snapsync.model.CycleResult
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
-import app.snapsync.fake.inMemoryPhotoAccess
 import app.snapsync.ports.PhotoAccessRequester
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * The world's rigging around the honest `:adapter:generic:fake` [inMemoryPhotoAccess] status source: the
- * status is the honest fake's, over a cell this wrapper owns, and [set] is the operator's lever — the user
- * changing the grant in Settings, which no port member can do. Drives the status projection's `active` flag.
+ * status is the honest fake's, over [cell], which this wrapper owns and the world's gallery shares, and [set] is
+ * the operator's lever — the user changing the grant in Settings, which no port member can do. Drives the status
+ * projection's `active` flag.
  */
 class MutablePhotoAccessStatusSource(
-    initial: PermissionStatus = PermissionStatus.GRANTED,
+    initial: GalleryAccess = GalleryAccess.GRANTED,
 ) : PhotoAccessStatusSource {
-    private val cell = MutableStateFlow(initial)
+    /** The grant cell — shared with the world's [WorldGallery], as one `PHPhotoLibrary` answers both on device. */
+    internal val cell = MutableStateFlow(initial)
     private val honest = inMemoryPhotoAccess(cell)
 
-    override val permission: StateFlow<PermissionStatus> = honest.first.permission
+    override val permission: StateFlow<GalleryAccess> = honest.first.permission
 
-    /** The requester over the same cell: what the user chooses when the app asks. */
+    /** The Settings surface over the same cell. */
     val requester: PhotoAccessRequester = honest.second
 
-    fun set(value: PermissionStatus) {
+    fun set(value: GalleryAccess) {
         cell.value = value
     }
 }
 
 /**
- * The world's gallery: the operator rigging around the honest `:adapter:generic:fake` [inMemoryCandidateSource]
- * (`docs/architecture.md`, "The fake-honesty gate": the fake exposes only its port; the settable
- * state cell and the unscoped [current] read live HERE, in the world wrapper). [source] is what the
- * compositions consume; [set]/[current] are what the operator (and [FakePhotoLibraryImporter]) drive.
+ * The world's gallery: the operator rigging around the honest `:adapter:generic:fake` [inMemoryGallery]
+ * (`docs/architecture.md`, "The fake-honesty gate": the fake exposes only its port; the settable cells, the
+ * levers and the inspection live HERE). Every answer is the honest fake's — the one the gallery contracts hold
+ * to the PhotoKit adapters — except where a lever below says otherwise.
+ *
+ * [access] is the grant cell the world's permission source owns, so the gallery and the status source agree.
  */
-class WorldGallery {
+class WorldGallery(access: MutableStateFlow<GalleryAccess> = MutableStateFlow(GalleryAccess.GRANTED)) : Gallery {
     private val state = MutableStateFlow<List<RawAsset>>(emptyList())
 
-    /** The honest port impl over the world-owned cell — handed straight to the compositions. */
-    private val honest: CandidateSource = inMemoryCandidateSource(state)
-
     /**
-     * Operator lever: make the next enumeration THROW, as a platform walk can (capability
-     * `sync-status`). It exists so a test can assert what a failed count does — the total stays
-     * *not counted* rather than collapsing to a `0` that would read as "everything shared" — which is
-     * otherwise unreachable without a device.
+     * Pre-existing albums the *user's other apps* made — title → the normalized assetIds inside them. The honest
+     * fake reads this cell; [placeIn] is how the harness and the integration tests forge "this photo arrived via
+     * WhatsApp" without PhotoKit (capability `photo-sharing`).
      */
-    var failNextEnumeration: Boolean = false
+    private val userAlbums = MutableStateFlow<Map<String, Set<String>>>(emptyMap())
 
-    /**
-     * The seam the compositions consume: the honest fake, plus the operator's failure lever.
-     *
-     * The lever THROWS rather than answering `NotReadable`, and the distinction is the point: a platform
-     * walk that fails is a failure, caught by whoever owns the count, while `NotReadable` is a
-     * successful read with no answer to give (capability `sync-status`). Modelling the failure as an
-     * absence here would collapse the two states the world exists to keep apart.
-     */
-    val source: CandidateSource = object : CandidateSource {
-        override suspend fun candidates(policy: SelectionPolicy): CandidateRead =
-            if (failNextEnumeration) {
-                failNextEnumeration = false
-                error("the operator forced this enumeration to fail")
-            } else {
-                honest.candidates(policy)
-            }
-    }
+    private val honest: Gallery = inMemoryGallery(state, access, userAlbums)
+
+    // ---- the library ----------------------------------------------------------------------------
 
     /** The current contents, unscoped — a rigging-only read (production has no unbounded walk). */
     fun current(): List<RawAsset> = state.value
@@ -87,12 +80,99 @@ class WorldGallery {
     /** The writable cell itself, for the honest importer, which lands its assets here. */
     internal val cell: MutableStateFlow<List<RawAsset>> get() = state
 
-    /** The same contents as a cell, for the honest doubles that read the library by identifier. */
+    /** The same contents as a cell. */
     val contents: StateFlow<List<RawAsset>> = state.asStateFlow()
 
     fun set(rawAssets: List<RawAsset>) {
         state.value = rawAssets
     }
+
+    /**
+     * Operator lever: make the next walk THROW, as a platform walk can (capability `sync-status`). It exists so
+     * a test can assert what a failed count does — the total stays *not counted* rather than collapsing to a `0`
+     * that would read as "everything shared" — which is otherwise unreachable without a device.
+     *
+     * It THROWS rather than answering `NotReadable`, and the distinction is the point: a platform walk that
+     * fails is a failure, caught by whoever owns the count, while `NotReadable` is a successful read with no
+     * answer to give. Modelling the failure as an absence would collapse the two states the world keeps apart.
+     */
+    var failNextEnumeration: Boolean = false
+
+    /**
+     * Operator lever: the by-identifier read cannot see the library, as a partial or revoked grant's cannot —
+     * every presence answer is then `UNKNOWN`, which must never be confused with `ABSENT`.
+     */
+    var byIdReadable: Boolean = true
+
+    // ---- the albums -------------------------------------------------------------------------------
+
+    val created = mutableListOf<Pair<String, String>>()      // (albumId, name)
+    val added = mutableListOf<Pair<String, List<String>>>()   // (albumId, assetIds)
+    private val deleted = mutableSetOf<String>()
+    private var addsHeld: CompletableDeferred<Unit>? = null
+
+    /** Put [assetId] into an album titled [title] — e.g. `placeIn("WhatsApp", "A1")`. */
+    fun placeIn(title: String, assetId: String) {
+        userAlbums.value = userAlbums.value + (title to (userAlbums.value[title].orEmpty() + assetId))
+    }
+
+    /** Simulate the user deleting an album (so it no longer resolves and a re-join recreates). */
+    fun delete(albumId: String) { deleted.add(albumId) }
+
+    /** Every asset id added to [albumId] across all adds, in order. */
+    fun assetsIn(albumId: String): List<String> = added.filter { it.first == albumId }.flatMap { it.second }
+
+    /**
+     * Operator lever: every add waits until [releaseAdds]. During a join or a reconfigure Save only the event
+     * album's gather adds, so this is how a test shows the act that started a gather never waits on it
+     * (capability `event-album`).
+     */
+    fun holdAdds() { addsHeld = CompletableDeferred() }
+
+    fun releaseAdds() {
+        addsHeld?.complete(Unit)
+        addsHeld = null
+    }
+
+    // ---- the port ---------------------------------------------------------------------------------
+
+    override fun access(): GalleryAccess = honest.access()
+
+    override suspend fun assets(policy: SelectionPolicy): GalleryRead<List<AssetFacts>> {
+        if (failNextEnumeration) {
+            failNextEnumeration = false
+            error("the operator forced this enumeration to fail")
+        }
+        return honest.assets(policy)
+    }
+
+    override suspend fun assetsById(ids: Set<AssetId>): GalleryRead<List<AssetFacts>> =
+        if (byIdReadable) honest.assetsById(ids) else GalleryRead.NotReadable
+
+    override suspend fun resources(ids: Set<AssetId>): GalleryRead<List<RawAsset>> = honest.resources(ids)
+
+    override suspend fun albums(): GalleryRead<List<AlbumRecord>> = honest.albums()
+
+    override suspend fun albumsById(ids: Set<AlbumId>): GalleryRead<List<AlbumRecord>> =
+        honest.albumsById(ids - deleted)
+
+    override suspend fun albumMembers(album: AlbumId, since: CaptureCutoff?): GalleryRead<Set<AssetId>> =
+        honest.albumMembers(album, since)
+
+    override suspend fun createAlbum(title: String): AlbumId? =
+        honest.createAlbum(title)?.also { created.add(it to title) }
+
+    override suspend fun addToAlbum(album: AlbumId, assets: Set<AssetId>): WriteOutcome {
+        addsHeld?.await()
+        added.add(album to assets.toList())
+        return honest.addToAlbum(album, assets)
+    }
+
+    override suspend fun requestAccess(): GalleryAccess = honest.requestAccess()
+
+    override suspend fun widenSelection(): GalleryAccess = honest.widenSelection()
+
+    override suspend fun changeToken(): LibraryChangeToken? = honest.changeToken()
 }
 
 /**

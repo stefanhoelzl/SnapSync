@@ -8,7 +8,7 @@ import app.snapsync.feature.upload.AppUploadEvents
 import app.snapsync.feature.upload.AppUploadMechanism
 import app.snapsync.feature.upload.TailRunner
 import app.snapsync.feature.upload.TailTrigger
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.GalleryAccess
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.BackgroundScheduler
 import app.snapsync.ports.OsCompletions
@@ -68,7 +68,7 @@ class AppTail internal constructor(
             topUp = { stop -> mechanism.topUp(stop) },
             walkAndPublish = { stop -> mechanism.walkAndPublish(stop) },
             // Exactly a full grant: under a partial one the tail reads no library (capability `photo-access`).
-            walkPermitted = { ports.photoAccess.permission.value == PermissionStatus.GRANTED },
+            walkPermitted = { ports.photoAccess.permission.value == GalleryAccess.GRANTED },
             mayCreate = mayCreate,
             foregrounded = { foreground.load() },
             refreshStatus = refreshCounts,

@@ -24,7 +24,7 @@ import kotlin.test.assertTrue
  * PhotoKit cannot express must fall through to the admission, and the `when` must force that choice to be
  * made explicitly rather than by omission.
  */
-class PhotoKitCandidateSourceTest {
+class PhotoKitPredicateTest {
 
     private val cutoff = captureCutoff("2026-06-01T00:00:00Z")
     private val ceiling = captureCeiling("2026-06-30T00:00:00Z")

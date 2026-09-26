@@ -115,7 +115,7 @@ class EventPhotoSet(
      * Per **asset**, not per resource: an asset's resources stand or fall together, or a Live Photo's
      * paired video survives its excluded primary as an orphan whose bytes nothing uploads.
      */
-    suspend fun resources(): List<Resource> = admitted().flatMap { it.resources() }
+    suspend fun resources(): List<Resource> = resourcesOf(admitted())
 
     private suspend fun admitted(): List<Candidate> =
         // No caller-side short-circuit for a non-contributing membership. The walk it used to avoid costs
@@ -178,4 +178,36 @@ private class LazyCandidate(
     private val resourcesFor: suspend (String) -> List<Resource>,
 ) : Candidate {
     override suspend fun resources(): List<Resource> = resourcesFor(facts.assetId)
+}
+
+/**
+ * Reads the resources of several assets in **one** platform request, keyed by asset id — how a gallery that
+ * answers by identifier keeps the cost ladder's saving: a walk hands out facts, and the admitted assets'
+ * resources are then fetched together rather than one request each.
+ */
+fun interface ResourceBatch {
+    suspend fun read(assetIds: Set<String>): Map<String, List<Resource>>
+}
+
+/** Candidates over a facts-only read whose resources are reached through [batch] — see [resourcesOf]. */
+fun candidatesFromFacts(facts: List<AssetFacts>, batch: ResourceBatch): List<Candidate> =
+    facts.map { BatchedCandidate(it, batch) }
+
+/**
+ * The resources of [candidates], in order — one [ResourceBatch.read] per batch the candidates share, so a
+ * consumer that needs many admitted assets' resources pays one platform request, not one per asset. A
+ * candidate with no batch reads its own, exactly as [Candidate.resources] would.
+ */
+suspend fun resourcesOf(candidates: List<Candidate>): List<Resource> {
+    val batched = candidates.filterIsInstance<BatchedCandidate>().groupBy { it.batch }
+    val read = mutableMapOf<String, List<Resource>>()
+    for ((batch, group) in batched) read += batch.read(group.mapTo(linkedSetOf()) { it.facts.assetId })
+    return candidates.flatMap { if (it is BatchedCandidate) read[it.facts.assetId].orEmpty() else it.resources() }
+}
+
+private class BatchedCandidate(
+    override val facts: AssetFacts,
+    val batch: ResourceBatch,
+) : Candidate {
+    override suspend fun resources(): List<Resource> = batch.read(setOf(facts.assetId))[facts.assetId].orEmpty()
 }

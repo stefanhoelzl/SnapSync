@@ -2,6 +2,7 @@ package app.snapsync.feature.download
 
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.EventUnionSource
+import app.snapsync.model.AlbumId
 import app.snapsync.model.ImportResult
 import app.snapsync.ports.PhotoDownloadJobs
 import app.snapsync.ports.ImportedAssetPresence
@@ -38,6 +39,10 @@ class DownloadController(
     // assets that exist, clear their markers, and re-import them — which is the defect this guard is
     // here to prevent, reintroduced by the thing meant to prevent it.
     private val presence: ImportedAssetPresence,
+    // The event album an import files into, for the current membership — `null` for none (opted out, or not
+    // created yet). Read once per import, BEFORE it (capability `event-album`), so the platform's change block
+    // does no lookup of its own. Required: which album is the album feature's rule, bound by the composition.
+    private val eventAlbum: () -> AlbumId?,
     // Releases the staged bytes of settled rows (capability `receiving-photos`). Defaulted to a no-op
     // because failing to free disk is harmless, unlike every other port here — and a composition with no
     // staging of its own genuinely has nothing to release.
@@ -471,7 +476,7 @@ class DownloadController(
         log.invocation(logScope, "import", params = "asset=${claimed.ref.sourceAssetId}") {
             val ref = claimed.ref
             // No try/catch: a throw leaves the ref claimed and propagates. See the KDoc above.
-            val result = importer.import(ref, claimed.resources, claimed.creationDate)
+            val result = importer.import(ref, claimed.resources, claimed.creationDate, eventAlbum())
             mutex.withLock {
                 when (result) {
                     is ImportResult.Imported -> {

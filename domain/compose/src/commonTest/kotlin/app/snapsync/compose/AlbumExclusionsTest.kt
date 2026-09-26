@@ -1,7 +1,9 @@
 package app.snapsync.compose
 
+import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.SELECTION_CALIBRATION
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.SelectionCalibration
+import app.snapsync.model.GalleryAccess
 import app.snapsync.model.captureCutoff
 import app.snapsync.ports.AlbumManager
 import co.touchlab.kermit.Logger
@@ -27,13 +29,13 @@ class AlbumExclusionsTest {
         private val failure: Throwable? = null,
     ) : AlbumManager {
         var lookups = 0
-        var lastTitles: Set<String>? = null
+        var lastCalibration: SelectionCalibration? = null
         override suspend fun ensureCreated(name: String): String? = error("not used")
         override suspend fun exists(albumLocalId: String): Boolean = error("not used")
-        override suspend fun add(albumLocalId: String, rawLocalIds: List<String>) = error("not used")
-        override suspend fun assetIdsInAlbums(titles: Set<String>, since: String): Set<String> {
+        override suspend fun add(albumLocalId: String, assetIds: List<String>) = error("not used")
+        override suspend fun assetIdsInAlbums(calibration: SelectionCalibration, since: CaptureCutoff): Set<String> {
             lookups++
-            lastTitles = titles
+            lastCalibration = calibration
             failure?.let { throw it }
             return members
         }
@@ -46,16 +48,16 @@ class AlbumExclusionsTest {
     fun a_full_grant_asks_and_answers_the_membership() = runTest {
         for (onFailure in AlbumLookupFailure.entries) {
             val albums = RecordingAlbums()
-            val ids = denylistedAlbumMembers(albums, cutoff, PermissionStatus.GRANTED, onFailure, log)
+            val ids = denylistedAlbumMembers(albums, cutoff, GalleryAccess.GRANTED, onFailure, log)
             assertEquals(setOf("wa-1", "wa-2"), ids, "$onFailure")
             assertEquals(1, albums.lookups, "$onFailure")
-            assertEquals(SELECTION_CALIBRATION.denylistTitles, albums.lastTitles)
+            assertEquals(SELECTION_CALIBRATION, albums.lastCalibration)
         }
     }
 
     @Test
     fun any_other_grant_answers_empty_without_a_platform_call() = runTest {
-        val notFull = PermissionStatus.entries - PermissionStatus.GRANTED
+        val notFull = GalleryAccess.entries - GalleryAccess.GRANTED
         for (grant in notFull) for (onFailure in AlbumLookupFailure.entries) {
             val albums = RecordingAlbums()
             val ids = denylistedAlbumMembers(albums, cutoff, grant, onFailure, log)
@@ -70,13 +72,13 @@ class AlbumExclusionsTest {
         assertEquals(
             emptySet(),
             denylistedAlbumMembers(
-                RecordingAlbums(failure = boom), cutoff, PermissionStatus.GRANTED, AlbumLookupFailure.AdmitOnDoubt, log,
+                RecordingAlbums(failure = boom), cutoff, GalleryAccess.GRANTED, AlbumLookupFailure.AdmitOnDoubt, log,
             ),
             "the app tier admits on doubt",
         )
         assertFailsWith<IllegalStateException> {
             denylistedAlbumMembers(
-                RecordingAlbums(failure = boom), cutoff, PermissionStatus.GRANTED, AlbumLookupFailure.FailCycle, log,
+                RecordingAlbums(failure = boom), cutoff, GalleryAccess.GRANTED, AlbumLookupFailure.FailCycle, log,
             )
         }
     }

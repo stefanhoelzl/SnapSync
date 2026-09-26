@@ -25,7 +25,7 @@ import app.snapsync.feature.creation.readmodel.MutableCreationStatusSource
  * (capability `photo-sharing`). That is not a special case here — it simply falls out, and this
  * use-case does no clamping of its own.
  *
- * It never inspects `PermissionStatus`: a missing grant surfaces afterward via the existing
+ * It never inspects `GalleryAccess`: a missing grant surfaces afterward via the existing
  * `PermissionBlocked` path once config is present.
  */
 class CreateEvent(

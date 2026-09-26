@@ -1,5 +1,10 @@
 package app.snapsync.desktop
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import app.snapsync.model.EventLookup
+import app.snapsync.model.SelectionPolicy
+import app.snapsync.feature.download.readmodel.DownloadStatusSource
 import app.snapsync.model.runCatchingCancellable
 import java.awt.datatransfer.StringSelection
 import java.awt.Toolkit
@@ -9,9 +14,7 @@ import app.snapsync.model.ReconfigureOutcome
 import app.snapsync.model.EventStart
 import app.snapsync.model.EventEnd
 import app.snapsync.model.DeletesAt
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import app.snapsync.ports.ConfigSource
 import app.snapsync.ports.ConfigStore
 import app.snapsync.model.Direction
@@ -23,23 +26,19 @@ import app.snapsync.model.UploadError
 import app.snapsync.feature.creation.readmodel.CreationStatusSource
 import app.snapsync.feature.membership.readmodel.RenameStatusSource
 import app.snapsync.model.EventCreator
-import app.snapsync.model.EventLookup
 import app.snapsync.feature.membership.JoinEvent
 import app.snapsync.ports.PhotoAccessRequester
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.GalleryAccess
 import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.feature.membership.toJoinLoad
 import app.snapsync.model.JoinLoad
 import app.snapsync.presentation.StatusContainerHost
-import app.snapsync.model.SELECTION_CALIBRATION
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
-import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.EventPhotoSet
 import app.snapsync.model.noContribution
 import app.snapsync.model.selectionPolicyFor
 import app.snapsync.model.captureCutoff
-import app.snapsync.feature.download.readmodel.DownloadStatusSource
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.world.World
 import kotlinx.coroutines.CoroutineScope
@@ -172,10 +171,17 @@ class WorldInspectorController(private val scope: CoroutineScope) {
                 runCatchingCancellable { Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(url), null) }
                 appendConsole("share invite → $url")
             },
-            requestAccess = requester::request,
+            // The permission dialog, played: the armed answer becomes the grant.
+            requestAccess = {
+                launchMutation { world.permission.set(if (armedGrants) GalleryAccess.GRANTED else GalleryAccess.DENIED) }
+            },
             openSettings = requester::openSettings,
             openLink = { url -> appendConsole("openLink → $url (the harness opens no browser)") },
-            choosePhotos = requester::choosePhotos,
+            // No limited-library picker exists off device. The outcome a real picker produces — a new selection
+            // snapshot — is the world's `changeSelection` lever, so the console says where to reach for it.
+            choosePhotos = {
+                appendConsole("choosePhotos() — no picker off device; drive World.changeSelection(...) for the outcome")
+            },
             reconfigure = reconfigure,
             rename = rename,
             resetRename = resetRename,
@@ -186,21 +192,12 @@ class WorldInspectorController(private val scope: CoroutineScope) {
     val queries: UserQueries
         get() = UserQueries(loadJoinDetails = ::loadJoinDetails, shareableCount = ::loadShareableCount)
 
-    /** What the next gate-driven `request()` resolves to. */
+    /** What the next gate-driven access request resolves to. */
     var armedGrants: Boolean by mutableStateOf(true)
         private set
 
     val requester: PhotoAccessRequester = object : PhotoAccessRequester {
-        override fun request() = launchMutation {
-            world.permission.set(if (armedGrants) PermissionStatus.GRANTED else PermissionStatus.DENIED)
-        }
         override fun openSettings() = appendConsole("openSettings() — use the Permission segment instead")
-
-        // No limited-library picker exists off device. The outcome a real picker produces — a new
-        // selection snapshot — is the world's `changeSelection` lever, so the console says where to
-        // reach for it rather than pretending the sheet opened.
-        override fun choosePhotos() =
-            appendConsole("choosePhotos() — no picker off device; drive World.changeSelection(...) for the outcome")
     }
 
     // ---- engine console -------------------------------------------------------------------------
@@ -282,7 +279,7 @@ class WorldInspectorController(private val scope: CoroutineScope) {
 
     // ---- enrollment ------------------------------------------------------------------------------
 
-    fun setPermission(status: PermissionStatus) = launchMutation { world.permission.set(status) }
+    fun setPermission(status: GalleryAccess) = launchMutation { world.permission.set(status) }
 
     fun armNextRequest(grants: Boolean) {
         armedGrants = grants
@@ -493,7 +490,7 @@ class WorldInspectorController(private val scope: CoroutineScope) {
                     config = config,
                     suppressedAssetIds = { emptySet() },
                     albumExcludedAssetIds = {
-                        world.albumManager.assetIdsInAlbums(SELECTION_CALIBRATION.denylistTitles, it.at.iso)
+                        world.denylistedAlbumMembers(it)
                     },
                 )
             }

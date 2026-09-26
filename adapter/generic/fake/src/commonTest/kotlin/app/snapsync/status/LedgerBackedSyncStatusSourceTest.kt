@@ -8,7 +8,7 @@ import app.snapsync.model.SyncStatus
 import app.snapsync.feature.status.LedgerBackedSyncStatusSource
 import app.snapsync.feature.status.MutableLedgerCountsSource
 import app.snapsync.fake.InMemoryGalleryStatusSource
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.GalleryAccess
 import app.snapsync.ports.PhotoAccessStatusSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -22,7 +22,7 @@ import kotlinx.coroutines.test.runTest
 class LedgerBackedSyncStatusSourceTest {
 
     private val ledgerCounts = MutableLedgerCountsSource()
-    private val permission = FakePermissionSource(PermissionStatus.GRANTED)
+    private val permission = FakePermissionSource(GalleryAccess.GRANTED)
     // The honest fake exposes only the port; the test owns the cell it reads (fake-honesty gate).
     private val galleryCell = MutableStateFlow<Set<String>?>(emptySet())
     private val gallery = InMemoryGalleryStatusSource(galleryCell)
@@ -223,7 +223,7 @@ class LedgerBackedSyncStatusSourceTest {
         val source = source(backgroundScope)
         runCurrent()
 
-        permission.state.value = PermissionStatus.DENIED
+        permission.state.value = GalleryAccess.DENIED
         runCurrent()
 
         assertEquals(ready(pending = 3, completed = 1, total = 4, active = false), source.status.value)
@@ -237,7 +237,7 @@ class LedgerBackedSyncStatusSourceTest {
         val source = source(backgroundScope)
         runCurrent()
 
-        permission.state.value = PermissionStatus.LIMITED
+        permission.state.value = GalleryAccess.LIMITED
         runCurrent()
 
         assertEquals(ready(pending = 3, completed = 1, total = 4, active = true), source.status.value)
@@ -319,7 +319,7 @@ class LedgerBackedSyncStatusSourceTest {
     }
 }
 
-private class FakePermissionSource(initial: PermissionStatus) : PhotoAccessStatusSource {
+private class FakePermissionSource(initial: GalleryAccess) : PhotoAccessStatusSource {
     val state = MutableStateFlow(initial)
-    override val permission: StateFlow<PermissionStatus> = state
+    override val permission: StateFlow<GalleryAccess> = state
 }

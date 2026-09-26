@@ -12,7 +12,7 @@ import app.snapsync.model.DiagnosticEnvironment
 import app.snapsync.model.EventConfig
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.GalleryAccess
 import app.snapsync.ports.ConfigSource
 import app.snapsync.ports.DeviceLogSource
 import app.snapsync.ports.PhotoAccessStatusSource
@@ -48,7 +48,7 @@ class CollectDiagnosticDumpTest {
         appLog: String? = null,
         extLog: String? = null,
         config: EventConfig? = null,
-        permission: PermissionStatus = PermissionStatus.GRANTED,
+        permission: GalleryAccess = GalleryAccess.GRANTED,
         ledger: InMemoryLedgerStore = InMemoryLedgerStore(),
         downloads: InMemoryDownloadStore = InMemoryDownloadStore(),
         environment: DiagnosticEnvironment = DiagnosticEnvironment.UNKNOWN,
@@ -66,7 +66,7 @@ class CollectDiagnosticDumpTest {
             override val config: StateFlow<EventConfig?> = MutableStateFlow(config)
         },
         permission = object : PhotoAccessStatusSource {
-            override val permission: StateFlow<PermissionStatus> = MutableStateFlow(permission)
+            override val permission: StateFlow<GalleryAccess> = MutableStateFlow(permission)
         },
         uploadFacts = { mapOf("extension_registrable" to "false", "app_admission" to "Admit") },
         budgetBytes = budget,
@@ -124,7 +124,7 @@ class CollectDiagnosticDumpTest {
                 direction = Direction.Both,
                 saveToAlbum = true,
             ),
-            permission = PermissionStatus.LIMITED,
+            permission = GalleryAccess.LIMITED,
             environment = DiagnosticEnvironment(
                 appVersion = "0.2",
                 buildNumber = "512",
@@ -153,7 +153,7 @@ class CollectDiagnosticDumpTest {
         // No shipped read makes that count available to this feature, so reporting it would mean
         // adding a seam for diagnostics alone — which `privacy-security` forbids: a dump reads no
         // data the app does not already read.
-        val dump = collector(permission = PermissionStatus.LIMITED).collect(NOTE, SCREEN)
+        val dump = collector(permission = GalleryAccess.LIMITED).collect(NOTE, SCREEN)
 
         assertTrue(
             dump.state.keys.none { "selection" in it },

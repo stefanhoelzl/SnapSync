@@ -107,7 +107,7 @@ class DownloadControllerTest {
 
         private val never = CompletableDeferred<Unit>()
 
-        override suspend fun import(ref: AssetRef, resources: List<StagedResource>, creationDate: String): ImportResult {
+        override suspend fun import(ref: AssetRef, resources: List<StagedResource>, creationDate: String, album: String?): ImportResult {
             attempted += ref
             val forThisRef = attempted.count { it == ref }
             check(forThisRef <= attemptCap) {
@@ -156,6 +156,7 @@ class DownloadControllerTest {
         downloadEnabled: () -> Boolean? = { true },
     ) = DownloadController(
         union, store, jobs, importer, presence,
+        eventAlbum = { null },
         // Named from here on: this constructor has grown twice mid-change, and positional
         // arguments silently re-bind when it does.
         stagedBytes = stagedBytes,

@@ -2,7 +2,7 @@ package app.snapsync.presentation
 
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.model.EventConfig
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.GalleryAccess
 import app.snapsync.model.SyncStatus
 import app.snapsync.model.UserCommands
 import app.snapsync.model.captureCeiling
@@ -146,7 +146,7 @@ private fun gateHost(
         sync = object : SyncStatusSource {
             override val status: StateFlow<SyncStatus> = MutableStateFlow(SyncStatus.Loading)
         },
-        permission = MutableStateFlow(PermissionStatus.GRANTED),
+        permission = MutableStateFlow(GalleryAccess.GRANTED),
         config = MutableStateFlow(config),
         versionRefusal = refusal,
         appStoreUrl = appStoreUrl,

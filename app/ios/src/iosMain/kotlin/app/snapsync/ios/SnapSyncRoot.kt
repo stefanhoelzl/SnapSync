@@ -25,7 +25,8 @@ import app.snapsync.attest.IosAttestKey
 import app.snapsync.join.HttpEventJoin
 import app.snapsync.join.HttpEventDirectory
 import app.snapsync.services.manifest.DeviceManifestService
-import app.snapsync.gallery.PhotoKitCandidateSource
+import app.snapsync.gallery.IosGallery
+import app.snapsync.gallery.IosGalleryReader
 import app.snapsync.ios.registry.uploadExtensionRegistry
 import app.snapsync.ports.UploadExtensionRegistry
 import app.snapsync.permission.PhotoLibraryPermission
@@ -44,13 +45,11 @@ import app.snapsync.membership.HttpLeaveNotifier
 import app.snapsync.membership.darwinHttpClient
 import app.snapsync.download.HttpEventUnionSource
 import app.snapsync.download.IosDownloadTransport
-import app.snapsync.album.IosAlbumManager
 import app.snapsync.ports.AlbumMapStore
 import app.snapsync.preferences.IosPreferences
 import app.snapsync.services.album.AlbumMapService
 import app.snapsync.download.IosPhotoLibraryImporter
 import app.snapsync.services.staging.StagingService
-import app.snapsync.download.PhotoKitAssetPresence
 import app.snapsync.link.IosLinkOpener
 import app.snapsync.ports.PlatformHandoff
 import app.snapsync.ports.PlatformEntries
@@ -318,12 +317,9 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
      */
     val cutoffFormatter: CutoffFormatter get() = composed.cutoffFormatter
 
-    // Event album (capability `event-album`): the shared leave-surviving `eventId → albumLocalId` map and
-    // the PhotoKit manager — the two adapters the composed coordinator (`app.albumCoordinator`) sits on.
-    // Hoisted: the selection policy also reads the manager directly (denylisted-album membership), and
-    // the atomic import-time album lookup reads the map (capability `photo-sharing`).
+    // Event album (capability `event-album`): the shared leave-surviving `eventId → albumLocalId` map the composed
+    // coordinator (`app.albumCoordinator`) sits on.
     private val albumMapStore: AlbumMapStore by lazy { AlbumMapService(IosPreferences(), secureStore) }
-    private val albumManager: IosAlbumManager by lazy { IosAlbumManager() }
 
 
     // The photo-library permission adapter, hoisted so the grant collector and a (re)provision share one
@@ -406,7 +402,7 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
                 // The platform half of the share command: a system sheet over the top view controller
                 // (:adapter:ios:app-only).
                 handoff = PlatformHandoff(share = IosShareSheet(), links = IosLinkOpener()),
-                candidateSource = candidateSource,
+                gallery = gallery,
                 // Selection snapshots under a partial grant (capability `photo-access`):
                 // observes only while LIMITED; each emission is one in-flow read serving N and the
                 // cycle's discovery alike.
@@ -422,12 +418,11 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
                 downloadStore = downloadStore,
                 // Full-access presence for the import guard; composition wraps it so a partial or
                 // revoked grant never reports an asset as absent (capability `receiving-photos`).
-                assetPresence = PhotoKitAssetPresence(),
                 // Names the App-Group staging directory and frees the files of settled rows
                 // (capability `receiving-photos`) — one port owns both halves.
                 stagedBytes = StagingService(files),
                 // The importer writes createdLocalId synchronously from inside a PhotoKit change
-                // block (concrete store, not the port) and borrows the atomic album-add lookup.
+                // block (concrete store, not the port).
                 importer = IosPhotoLibraryImporter(
                     recordCreatedLocalId = { ref, id -> downloadStore.recordCreatedLocalId(ref, id) },
                     // The mirror, for a commit the library reports as failed (capability `receiving-photos`).
@@ -437,15 +432,6 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
                     // The success mirror: the completion settles the row itself, so an import whose
                     // requester is gone records its own outcome (capability `receiving-photos`).
                     confirmCreatedLocalId = { ref, id -> downloadStore.confirmCreatedLocalId(ref, id) },
-                    // The atomic import-time album lookup: the membership's opt-in gate is the
-                    // coordinator's rule (capability `event-album`); this thunk only reads the
-                    // current membership's facts. Deferred — it runs inside a PhotoKit change block,
-                    // long after this graph is constructed.
-                    albumId = {
-                        config.config.value?.let { cfg ->
-                            app.albumCoordinator.albumIdFor(cfg.eventId, cfg.saveToAlbum)
-                        }
-                    },
                 ),
                 newDownloadTransport = { host -> IosDownloadTransport(host) },
                 union = HttpEventUnionSource(http, backendHost),
@@ -480,7 +466,6 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
                     // one writer, has run at image load.
                     inviteLinkHints = inviteLinkHints,
                 ),
-                albumManager = albumManager,
                 albumMapStore = albumMapStore,
                 leaveNotifier = leaveNotifier,
                 // A minted event routes into the host's join gate, so create and a scanned QR take one gate.
@@ -961,18 +946,14 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
     // and the control channel, which reports what the OS answers.
     private val extensionRegistry: UploadExtensionRegistry by lazy { uploadExtensionRegistry(log) }
 
-    // The ONE PhotoKit read seam this process holds (shared by the gallery walk and the
-    // selection-snapshot mapping — one mapping, one place).
-    // One instance serves every reader — the status total, the join preview, both upload tiers, and the
-    // selection observer. There used to be two (a resource-reading walk and a facts-only one) because the
-    // seam forced the choice at construction; a candidate defers it to the caller instead, so the cheap
-    // and the expensive read are the same source asked different questions.
-    private val candidateSource: PhotoKitCandidateSource by lazy { PhotoKitCandidateSource() }
+    // The ONE gallery this process holds: every photo-library read and album write the status total, the join
+    // preview, the download guard, the event album and the app's uploader make.
+    private val gallery: IosGallery by lazy { IosGallery(IosGalleryReader(), permission) }
 
     // The selection-change source (capability `photo-access`): registers the library observer
     // only while permission is LIMITED; the app graph collects its snapshots.
     private val selectionSource: PhotoSelectionSnapshotSource by lazy {
-        PhotoSelectionSnapshotSource(permission.permission, scope, candidateSource)
+        PhotoSelectionSnapshotSource(permission.permission, scope)
     }
 
     // The app-driven mechanism's composition root. Built lazily; reached whenever resolution yields
@@ -996,7 +977,7 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
             // Denylisted-album membership (capability `photo-sharing`). Supplied on THIS tier too:
             // both tiers funnel through the shared UploadCycle, and a policy wired on only one of them is
             // exactly the class of bug that once shipped the app-driven tier without a direction gate.
-            albumManager = albumManager,
+            gallery = gallery,
             // Event album (capability `event-album`): the composed coordinator; the cycle applies the
             // membership's opt-in (which arrived with its gate) and `uploadCore` owns the shared
             // `assetId` denormalization.
@@ -1036,7 +1017,7 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
  * was not: 21 of 23 iOS adapter files touching a blocking platform API hop nowhere. Owning the
  * decision here makes a blocking call off-main by construction. Forcing proof: build 521 died on an
  * iPhone11,2 / iOS 18.7.9 with `assetsd` wedged inside `fetchPersistentChangesSinceToken`, 0.071 s of
- * app CPU across the whole watchdog allowance — blocked, not busy (`IosDiscovery`).
+ * app CPU across the whole watchdog allowance — blocked, not busy (`IosGalleryReader`).
  *
  * **Why exactly one thread.** `Dispatchers.Main` is single-threaded and core code relies on that for
  * mutual exclusion — `PhotoSelectionSnapshotSource`'s lock-free register/unregister and

@@ -4,6 +4,7 @@ import app.snapsync.gallery.Iso8601
 import app.snapsync.ios.qos.qosLabel
 import app.snapsync.model.importFilename
 import app.snapsync.objc.objcBoundary
+import app.snapsync.model.AlbumId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.ImportResult
 import app.snapsync.ports.PhotoLibraryImporter
@@ -41,10 +42,11 @@ import kotlin.coroutines.resume
  * `/`→`_`, so the upload extension's discovery matches it) is recorded via [recordCreatedLocalId]
  * **inside** the change block — before the new asset can be observed — so it is never re-uploaded.
  *
- * Event album (capability `event-album`): when [albumId] returns a non-null album `localIdentifier` (the
+ * Event album (capability `event-album`): when the caller passes an album `localIdentifier` (the
  * membership opted in and the app already created the album), the created asset is added to that album
- * **in the same commit** as its creation, so a received photo is atomically already-in-the-album. Absent
- * an album id (opt-out, or not yet created), the asset imports to the camera roll only. Best-effort — a
+ * **in the same commit** as its creation, so a received photo is atomically already-in-the-album. The album
+ * is resolved BEFORE `performChanges`, so the change block does no fetch of its own. Absent an album id
+ * (opt-out, or not yet created), the asset imports to the camera roll only. Best-effort — a
  * missing/unresolvable album never fails the import.
  */
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
@@ -68,11 +70,15 @@ class IosPhotoLibraryImporter(
      * completion that arrives after its requester is gone still records the import.
      */
     private val confirmCreatedLocalId: (AssetRef, String) -> Unit,
-    private val albumId: () -> String?,
     private val log: Logger = Logger.withTag("PhotoImporter"),
 ) : PhotoLibraryImporter {
 
-    override suspend fun import(ref: AssetRef, resources: List<StagedResource>, creationDate: String): ImportResult {
+    override suspend fun import(
+        ref: AssetRef,
+        resources: List<StagedResource>,
+        creationDate: String,
+        album: AlbumId?,
+    ): ImportResult {
         // The shared default formatter (second precision only, exactly as before) — see [Iso8601].
         val captureDate = Iso8601.parse(creationDate)
         if (captureDate == null) log.w { "unparseable creationDate '$creationDate' for ${ref.sourceAssetId} — will default to import time" }
@@ -87,6 +93,11 @@ class IosPhotoLibraryImporter(
         }
         if (typed.isEmpty()) return ImportResult.Failed("no importable resources for ${ref.sourceAssetId}")
 
+        // Resolved before the transaction: an album the member deleted files nothing and fails nothing.
+        val collection = album?.let { id ->
+            (PHAssetCollection.fetchAssetCollectionsWithLocalIdentifiers(listOf(id), null).firstObject() as? PHAssetCollection)
+                .also { if (it == null) log.w { "event album $id no longer resolves — camera roll only" } }
+        }
         val created = CreatedAsset()
         // The class `performChanges` is called at — read here, on the caller's thread, for the block's trace.
         val callerQos = qosLabel()
@@ -118,7 +129,7 @@ class IosPhotoLibraryImporter(
                     // below judges that commit exactly as it judges any other: no placeholder means `Failed`, and
                     // an asset that did land is reported as landed, because retrying it would duplicate it.
                     objcBoundary(log, "import.changeBlock") {
-                        requestCreation(ref, typed, captureDate, created, callerQos)
+                        requestCreation(ref, typed, captureDate, collection, created, callerQos)
                     }
                 },
                 { success, error ->
@@ -176,6 +187,7 @@ private fun consumedResources(error: NSError?): Boolean {
         ref: AssetRef,
         typed: List<Triple<Long, String, String>>,
         captureDate: NSDate?,
+        collection: PHAssetCollection?,
         created: CreatedAsset,
         callerQos: String,
     ) {
@@ -253,20 +265,10 @@ private fun consumedResources(error: NSError?): Boolean {
             }
         }
         // Event album (capability `event-album`): add the just-created asset to the event
-        // album in THIS commit (atomic — never briefly loose). Best-effort: if the album no
-        // longer resolves, import to the camera roll only.
-        val album = albumId()
-        if (album != null && placeholder != null) {
-            val collection = PHAssetCollection
-                .fetchAssetCollectionsWithLocalIdentifiers(listOf(album), null)
-                .firstObject() as? PHAssetCollection
-            if (collection != null) {
-                val members = NSMutableArray().apply { addObject(placeholder) }
-                PHAssetCollectionChangeRequest.changeRequestForAssetCollection(collection)
-                    ?.addAssets(members)
-            } else {
-                log.w { "event album $album no longer resolves — camera roll only" }
-            }
+        // album in THIS commit (atomic — never briefly loose).
+        if (collection != null && placeholder != null) {
+            val members = NSMutableArray().apply { addObject(placeholder) }
+            PHAssetCollectionChangeRequest.changeRequestForAssetCollection(collection)?.addAssets(members)
         }
     }
 

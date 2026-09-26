@@ -13,7 +13,7 @@ import app.snapsync.feature.upload.UploadAdmission
 import app.snapsync.feature.upload.UploadTransitions
 import app.snapsync.feature.upload.appAdmission
 import app.snapsync.feature.upload.extensionAdmission
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.GalleryAccess
 import app.snapsync.model.UploaderPin
 import app.snapsync.model.extensionRegistrable
 import app.snapsync.model.selectionScope
@@ -46,22 +46,22 @@ import kotlin.test.assertTrue
 class ProducerExclusivityTest {
 
     /** The platform's registration record as measured: unchangeable under a partial grant, unreadable without a full one. */
-    private class PlatformRegistration(var grant: PermissionStatus, var registered: Boolean) : ExtensionRegistration {
+    private class PlatformRegistration(var grant: GalleryAccess, var registered: Boolean) : ExtensionRegistration {
         val calls = mutableListOf<String>()
 
         override suspend fun register() {
             calls += "register"
-            if (grant != PermissionStatus.LIMITED) registered = true
+            if (grant != GalleryAccess.LIMITED) registered = true
         }
 
         override suspend fun deregister() {
             calls += "deregister"
-            if (grant != PermissionStatus.LIMITED) registered = false
+            if (grant != GalleryAccess.LIMITED) registered = false
         }
 
         override fun isRegistered(): Boolean {
             calls += "read"
-            return grant == PermissionStatus.GRANTED && registered
+            return grant == GalleryAccess.GRANTED && registered
         }
     }
 
@@ -76,7 +76,7 @@ class ProducerExclusivityTest {
 
     /** One device: OS fact, grant, membership, the rig switch, and the two uploaders' platform state. */
     private class Device(val osSupported: Boolean, registered: Boolean) {
-        var grant = PermissionStatus.NOT_DETERMINED
+        var grant = GalleryAccess.NOT_DETERMINED
         var joined = false
         var pin: UploaderPin? = null
         val registration = PlatformRegistration(grant, registered)
@@ -95,15 +95,15 @@ class ProducerExclusivityTest {
         data object Join : Step
         data object Reconfigure : Step
         data object Leave : Step
-        data class Permission(val grant: PermissionStatus) : Step
+        data class Permission(val grant: GalleryAccess) : Step
         /** A relaunch with its UI; the grant may have changed while dead, and the switch dies with the process. */
-        data class Launch(val grant: PermissionStatus) : Step
+        data class Launch(val grant: GalleryAccess) : Step
         data class Override(val pin: UploaderPin?) : Step
     }
 
     private val steps: List<Step> = buildList {
         add(Step.Join); add(Step.Reconfigure); add(Step.Leave)
-        for (g in PermissionStatus.entries) { add(Step.Permission(g)); add(Step.Launch(g)) }
+        for (g in GalleryAccess.entries) { add(Step.Permission(g)); add(Step.Launch(g)) }
         for (pin in listOf(null, UploaderPin(app = false), UploaderPin(extension = false))) add(Step.Override(pin))
     }
 
@@ -125,7 +125,7 @@ class ProducerExclusivityTest {
     fun `the extension is never registrable below 26_1`() {
         // The sharper risk, with no other guard in this module: below 26.1 the registration selector does not
         // exist, so a registrable cell there is a dead process, not a wrong choice.
-        for (permission in PermissionStatus.entries) {
+        for (permission in GalleryAccess.entries) {
             for (pin in listOf(null, UploaderPin(), UploaderPin(app = false), UploaderPin(extension = false))) {
                 assertTrue(!extensionRegistrable(false, permission, pin), "registrable below 26.1: $permission / $pin")
             }
@@ -134,14 +134,14 @@ class ProducerExclusivityTest {
 
     @Test
     fun `the admission gates answer from the grant and the switch alone`() {
-        for (permission in PermissionStatus.entries) {
+        for (permission in GalleryAccess.entries) {
             for (pin in listOf(null, UploaderPin(), UploaderPin(app = false), UploaderPin(extension = false))) {
-                val usable = permission == PermissionStatus.GRANTED || permission == PermissionStatus.LIMITED
+                val usable = permission == GalleryAccess.GRANTED || permission == GalleryAccess.LIMITED
                 val app = appAdmission(permission, selectionScope(permission, emptyList()), pin) == UploadAdmission.Admit
                 assertEquals(usable && pin?.app != false, app, "app under $permission / $pin")
             }
             val ext = extensionAdmission(permission) == UploadAdmission.Admit
-            assertEquals(permission == PermissionStatus.GRANTED, ext, "extension under $permission")
+            assertEquals(permission == GalleryAccess.GRANTED, ext, "extension under $permission")
         }
     }
 
@@ -182,14 +182,14 @@ class ProducerExclusivityTest {
             assertTrue(step == Step.Leave || switchedOff, "a deregistration outside a leave or the switch — $where")
         }
         val forced = step == Step.Join || step == Step.Leave
-        if (!forced && device.grant != PermissionStatus.GRANTED) {
+        if (!forced && device.grant != GalleryAccess.GRANTED) {
             assertTrue(
                 reg.none { it == "register" || it == "deregister" },
                 "a compared transition wrote the registration under ${device.grant} — $where",
             )
         }
         val switchedOff = step is Step.Override && step.pin?.extension == false
-        val couldDeregister = device.joined && device.osSupported && device.grant == PermissionStatus.GRANTED
+        val couldDeregister = device.joined && device.osSupported && device.grant == GalleryAccess.GRANTED
         if (switchedOff && couldDeregister) {
             assertTrue(!device.registration.registered, "switching the extension off left it registered — $where")
         }
@@ -210,6 +210,6 @@ private fun liveMembership(eventId: () -> String?): ConfigSource = object : Conf
 }
 
 /** A grant fake read at every access, so a test's `var` drives it live. */
-private fun liveGrant(grant: () -> PermissionStatus): PhotoAccessStatusSource = object : PhotoAccessStatusSource {
-    override val permission: StateFlow<PermissionStatus> get() = MutableStateFlow(grant())
+private fun liveGrant(grant: () -> GalleryAccess): PhotoAccessStatusSource = object : PhotoAccessStatusSource {
+    override val permission: StateFlow<GalleryAccess> get() = MutableStateFlow(grant())
 }

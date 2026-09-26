@@ -18,7 +18,7 @@ import kotlin.test.assertEquals
  *  - `appUploadDiscovery` is called in production source from **one** file, the app's uploader — never from the
  *    extension's root or the shared `uploadCore`, which the extension also calls.
  *
- * The iOS token read (`PhotoKitLibraryChangeTokenRead`) is kept out by linkage besides: it lives in
+ * The iOS token read (`IosGallery.changeToken`) is kept out by linkage besides: it lives in
  * `:adapter:ios:app-only`, which the extension does not link.
  */
 class WalkMemoContainmentTest {

@@ -172,6 +172,9 @@ class CompositionSeamTest {
         "DownloadController.downloadEnabled" to
             "the membership's direction, three-valued (no membership → null → no arm), derived in compose/ over " +
             "the ConfigSource port the composition already reads",
+        "DownloadController.eventAlbum" to
+            "the current membership's event album — the album feature's AlbumCoordinator.albumIdFor over the " +
+            "ConfigSource port, a sibling feature this one may not name; read from the in-process map, nothing leaves",
         "QueuedPhotoDownloadJobs.newTransport" to
             "builds the DownloadTransport PORT around the jobs' own host queue — the object-graph cycle " +
             "AppPorts.newDownloadTransport breaks",

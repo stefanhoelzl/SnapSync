@@ -38,7 +38,7 @@ import co.touchlab.kermit.Logger
  * policy's reads, and album creation and membership are the real platform APIs on every target — they
  * work on a simulator, and they are among the most valuable things that host exercises. Discovery is
  * therefore not reached through this seam at all: the root binds the real PhotoKit discovery
- * (`IosDiscovery`, the cycle's `UploadDiscovery`) beside it, identically on every target.
+ * (`GalleryDiscovery` over `IosGalleryReader`, the cycle's `UploadDiscovery`) beside it, identically on every target.
  *
  * Decision record: `changes/exercise-os-driven-upload-on-simulator` (D6, D7).
  */

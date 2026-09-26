@@ -29,6 +29,7 @@ kotlin {
         commonMain.dependencies {
             implementation(project(":domain:model"))
             implementation(project(":domain:ports"))
+            implementation(project(":domain:services"))
             implementation(project(":domain:feature"))
             implementation(project(":domain:flow"))
             // The per-zone library allowlist (`docs/architecture.md`, "Core purity is closed by

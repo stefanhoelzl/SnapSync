@@ -1,6 +1,6 @@
 package app.snapsync.feature.upload
 
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.GalleryAccess
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.candidatesFromResources
@@ -37,7 +37,7 @@ class WalkMemoTest {
      * moves on every change — a fresh token object per read, equal by value, as PhotoKit's are.
      */
     private class Library(var assets: List<String>) : UploadDiscovery {
-        var grant = PermissionStatus.GRANTED
+        var grant = GalleryAccess.GRANTED
         var readable = true
         var walks = 0
         var tokenReads = 0
@@ -56,7 +56,7 @@ class WalkMemoTest {
             walks++
             duringWalk?.also { duringWalk = null }?.invoke()
             if (!readable) return Discovery(emptyList(), fullEnumeration = false)
-            return Discovery(candidatesFromResources(assets.map(::resource)), fullEnumeration = grant == PermissionStatus.GRANTED)
+            return Discovery(candidatesFromResources(assets.map(::resource)), fullEnumeration = grant == GalleryAccess.GRANTED)
         }
 
         override suspend fun resourcesFor(keys: Set<String>): List<Resource> =
@@ -64,7 +64,7 @@ class WalkMemoTest {
 
         /** The library's change token, as the platform reads it. */
         val tokens = object : LibraryChangeTokenRead {
-            override suspend fun current(): LibraryChangeToken? {
+            override suspend fun changeToken(): LibraryChangeToken? {
                 tokenReads++
                 return if (tokenAvailable) Token(version) else null
             }
@@ -136,7 +136,7 @@ class WalkMemoTest {
         val memo = memo(library)
         memo.discover(policy("2026-01-01T00:00:00Z"))
 
-        library.grant = PermissionStatus.LIMITED
+        library.grant = GalleryAccess.LIMITED
         val limited = memo.discover(policy("2026-01-01T00:00:00Z"))
 
         assertEquals(2, library.walks, "the full grant's entry is not served under a partial one")
@@ -147,11 +147,11 @@ class WalkMemoTest {
     @Test
     fun `a limited-grant walk is never memoised`() = runTest {
         val library = Library(listOf("A"))
-        library.grant = PermissionStatus.LIMITED
+        library.grant = GalleryAccess.LIMITED
         val memo = memo(library)
         memo.discover(policy("2026-01-01T00:00:00Z"))
 
-        library.grant = PermissionStatus.GRANTED
+        library.grant = GalleryAccess.GRANTED
         val full = memo.discover(policy("2026-01-01T00:00:00Z"))
 
         assertEquals(2, library.walks, "nothing the partial grant saw is served once the grant is full")

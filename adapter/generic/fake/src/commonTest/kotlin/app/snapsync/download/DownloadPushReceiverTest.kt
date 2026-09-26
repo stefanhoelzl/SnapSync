@@ -4,7 +4,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.GalleryAccess
 import app.snapsync.model.EventConfig
 import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.ports.ConfigSource
@@ -48,12 +48,13 @@ class DownloadPushReceiverTest {
     }
 
     private class NoopImporter : PhotoLibraryImporter {
-        override suspend fun import(ref: AssetRef, resources: List<StagedResource>, creationDate: String) =
+        override suspend fun import(ref: AssetRef, resources: List<StagedResource>, creationDate: String, album: String?) =
             ImportResult.Imported("LOCAL")
     }
 
     private fun controller(union: RecordingUnion) = DownloadController(
         union, InMemoryDownloadStore(), NoopJobs(), NoopImporter(), InMemoryAssetPresence(),
+        eventAlbum = { null },
         myDeviceId = myDevice,
         // These tests exercise the ACTIVE-EVENT guard, which is orthogonal to the direction gate
         // (capability `receiving-photos`) — so state a downloading membership explicitly. The gate no

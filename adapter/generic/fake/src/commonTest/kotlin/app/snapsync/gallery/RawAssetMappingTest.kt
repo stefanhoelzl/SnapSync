@@ -1,6 +1,9 @@
 package app.snapsync.gallery
 
-import app.snapsync.fake.InMemoryCandidateSource
+import app.snapsync.fake.inMemoryGallery
+import app.snapsync.ports.CandidateSource
+import app.snapsync.services.gallery.GalleryCandidateSource
+import kotlinx.coroutines.flow.MutableStateFlow
 import app.snapsync.model.AssetFacts
 import app.snapsync.model.Candidate
 import app.snapsync.model.CandidateRead
@@ -35,12 +38,15 @@ import kotlin.test.assertTrue
  * loop (role filter, `'/'→'_'` normalization, `uploadKey`, metadata assembly) previously lived only in
  * the iOS enumerator; here it runs on JVM and the iOS simulator against a fake raw-asset walk.
  */
+/** The library read over an in-memory gallery holding [assets] — the service the app composes over the gallery. */
+private fun librarySource(assets: List<RawAsset>): CandidateSource = GalleryCandidateSource(inMemoryGallery(MutableStateFlow(assets)))
+
 /** An admitting policy bounded below by [cutoff] — what the fake narrows its walk by. */
 private suspend fun admitting(cutoff: String) =
     SelectionPolicy(selectionRulesFor(includesUpload = true, cutoff = captureCutoff(cutoff), ceiling = null, suppressedAssetIds = { emptySet() }, albumExcludedAssetIds = { emptySet() }))
 
 /** The resources a source yields for [cutoff] — walk composed with the per-candidate mapping. */
-private suspend fun InMemoryCandidateSource.resourcesFor(cutoff: String) =
+private suspend fun CandidateSource.resourcesFor(cutoff: String) =
     readCandidates(admitting(cutoff)).flatMap { it.resources() }.map { it.filename }
 
 /**
@@ -48,8 +54,8 @@ private suspend fun InMemoryCandidateSource.resourcesFor(cutoff: String) =
  * (capability `sync-status`). Asserting that here keeps every case below about the MAPPING rather
  * than about a branch none of them exercises.
  */
-private suspend fun InMemoryCandidateSource.readCandidates(policy: SelectionPolicy): List<Candidate> =
-    assertIs<CandidateRead.Readable>(candidates(policy), "the in-memory source always reads").candidates
+private suspend fun CandidateSource.readCandidates(policy: SelectionPolicy): List<Candidate> =
+    assertIs<CandidateRead.Readable>(candidates(policy), "a granted in-memory gallery always reads").candidates
 
 class RawAssetMappingTest {
 
@@ -143,7 +149,7 @@ class RawAssetMappingTest {
                 pixelArea = 750L * 1334L,
             ),
         )
-        val source = InMemoryCandidateSource(listOf(screenshot))
+        val source = librarySource(listOf(screenshot))
         val policy = admitting("2026-01-01T00:00:00Z")
 
         val candidates = source.readCandidates(policy)
@@ -167,7 +173,7 @@ class RawAssetMappingTest {
 
     @Test
     fun the_source_composes_walk_then_map_per_candidate() = runTest {
-        val source = InMemoryCandidateSource(
+        val source = librarySource(
             listOf(
                 RawAsset("A", IN_SCOPE, listOf(raw(ResourceRole.PRIMARY, name = "a.JPG"))),
                 RawAsset("B", IN_SCOPE, listOf(raw(ResourceRole.PRIMARY, name = "b.JPG"))),
@@ -181,7 +187,7 @@ class RawAssetMappingTest {
     fun the_bounded_walk_excludes_assets_captured_before_the_bound() = runTest {
         // There is no unbounded walk (capability `photo-sharing`): the whole-library enumeration cost
         // one synchronous PhotoKit round-trip per asset, and a membership always has a cutoff to scope it.
-        val source = InMemoryCandidateSource(
+        val source = librarySource(
             listOf(
                 RawAsset("OLD", "2000-01-01T00:00:00Z", listOf(raw(ResourceRole.PRIMARY, name = "old.JPG"))),
                 RawAsset("NEW", IN_SCOPE, listOf(raw(ResourceRole.PRIMARY, name = "new.JPG"))),
@@ -195,9 +201,7 @@ class RawAssetMappingTest {
     fun a_candidate_reads_its_resources_only_when_asked() = runTest {
         // The cost ladder, over the fake: obtaining candidates costs nothing per asset, and the mapping
         // (role filter, upload key, id normalization) runs per candidate when its resources are asked for.
-        // The id-scoped resolve that used to be tested here is internal to `IosDiscovery` — only it has
-        // identifiers to scope by, because only it resolves ledger keys.
-        val source = InMemoryCandidateSource(
+        val source = librarySource(
             listOf(
                 RawAsset("OLD", "2000-01-01T00:00:00Z", listOf(raw(ResourceRole.PRIMARY, name = "old.JPG"))),
                 RawAsset("NEW", IN_SCOPE, listOf(raw(ResourceRole.PRIMARY, name = "new.JPG"))),
@@ -212,7 +216,7 @@ class RawAssetMappingTest {
     @Test
     fun an_undated_asset_is_before_every_bound() = runTest {
         // An empty `creationDate` sorts before any non-empty cutoff, so an undated asset is never in scope.
-        val source = InMemoryCandidateSource(listOf(RawAsset("U", "", listOf(raw(ResourceRole.PRIMARY, name = "u.JPG")))))
+        val source = librarySource(listOf(RawAsset("U", "", listOf(raw(ResourceRole.PRIMARY, name = "u.JPG")))))
 
         assertEquals(emptyList(), source.resourcesFor(CUTOFF))
     }

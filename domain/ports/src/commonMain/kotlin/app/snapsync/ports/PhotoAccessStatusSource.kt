@@ -1,6 +1,6 @@
 package app.snapsync.ports
 
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.GalleryAccess
 
 import kotlinx.coroutines.flow.StateFlow
 
@@ -11,5 +11,5 @@ import kotlinx.coroutines.flow.StateFlow
  * [PhotoAccessRequester] commands never carry results back.
  */
 interface PhotoAccessStatusSource {
-    val permission: StateFlow<PermissionStatus>
+    val permission: StateFlow<GalleryAccess>
 }

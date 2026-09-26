@@ -1,20 +1,17 @@
 package app.snapsync.world
 
 import app.snapsync.model.SelectionPolicy
-import app.snapsync.model.RawAsset
-import app.snapsync.model.PermissionStatus
 import app.snapsync.model.Resource
 import app.snapsync.model.UploadError
 import app.snapsync.model.UploadRequest
-import app.snapsync.ports.CandidateSource
 import app.snapsync.model.CreateResult
 import app.snapsync.ports.Discovery
 import app.snapsync.ports.PlatformUploadJob
 import app.snapsync.ports.BackgroundTransfer
 import app.snapsync.ports.TransferRecord
 import app.snapsync.ports.UploadDiscovery
-import app.snapsync.fake.inMemoryUploadDiscovery
-import kotlinx.coroutines.flow.StateFlow
+import app.snapsync.ports.GalleryReader
+import app.snapsync.services.gallery.GalleryDiscovery
 import app.snapsync.model.TerminalOutcome
 import io.ktor.client.HttpClient
 import io.ktor.client.request.headers
@@ -45,7 +42,7 @@ import app.snapsync.model.runCatchingCancellable
  * green suite hide the very defect this models.
  *
  * It serves no library read. The change feed and the key resolve are [FakeUploadDiscovery]'s, bound beside
- * this queue exactly as a device root binds `IosDiscovery` beside its transport.
+ * this queue exactly as a device root binds `GalleryDiscovery` beside its transport.
  */
 class FakeBackgroundTransfer(
     /** The network an OS transfer crosses: the world's backend's bare client, or a binding's fixture engine. */
@@ -177,21 +174,16 @@ class FakeBackgroundTransfer(
 }
 
 /**
- * The world's rigging around the honest `:adapter:generic:fake` [inMemoryUploadDiscovery]: the cycle's two
- * library reads over the in-memory gallery, plus the operator's lever and the inspection a test uses to tell
- * a cycle that walked from one that enqueued from the ledger.
+ * The world's rigging around the cycle's two library reads: the same `GalleryDiscovery` service the device
+ * roots compose, over the world's gallery, plus the operator's lever and the inspection a test uses to tell a
+ * cycle that walked from one that enqueued from the ledger.
  *
- * The reads themselves are the honest fake's, the one `UploadDiscoveryContract` holds to `IosDiscovery`;
- * nothing here answers differently from it except the one lever, [makeWalkUnreadable], which answers the next
- * walk the way a device answers a library it could not read.
+ * Nothing here answers differently from the service except the one lever, [makeWalkUnreadable], which answers
+ * the next walk the way a device answers a library it could not read.
  */
-class FakeUploadDiscovery(
-    source: CandidateSource,
-    library: StateFlow<List<RawAsset>>,
-    grant: () -> PermissionStatus,
-) : UploadDiscovery {
+class FakeUploadDiscovery(gallery: GalleryReader) : UploadDiscovery {
 
-    private val honest: UploadDiscovery = inMemoryUploadDiscovery(source, library, grant)
+    private val honest: UploadDiscovery = GalleryDiscovery(gallery)
 
     /** Every key ever asked for, counted with repeats (see [resourcesFor]). */
     var resolvedKeyCount = 0

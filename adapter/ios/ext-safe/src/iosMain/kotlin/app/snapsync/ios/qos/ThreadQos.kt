@@ -70,7 +70,7 @@ fun newUserInitiatedLane(name: String, log: Logger = Logger.withTag("qos")): Cor
 }
 
 /**
- * The lane the PhotoKit **reads** hop to (`IosDiscovery`, `PhotoKitCandidateSource`): one thread, pinned at
+ * The lane the PhotoKit **reads** hop to (`IosGalleryReader`, the selection snapshot, the change token): one thread, pinned at
  * USER_INITIATED — in whichever process links it (the app, and the upload extension, whose own scope runs on
  * `Dispatchers.Default` threads of the class the OS launched it at).
  *

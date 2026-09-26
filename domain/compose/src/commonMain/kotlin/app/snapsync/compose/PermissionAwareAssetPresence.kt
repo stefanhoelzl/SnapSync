@@ -1,7 +1,7 @@
 package app.snapsync.compose
 
 import app.snapsync.model.AssetPresence
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.GalleryAccess
 import app.snapsync.model.Resource
 import app.snapsync.ports.ImportedAssetPresence
 import kotlinx.coroutines.flow.StateFlow
@@ -30,15 +30,15 @@ import kotlinx.coroutines.flow.StateFlow
  * because both halves are already available here.
  */
 class PermissionAwareAssetPresence(
-    private val permission: StateFlow<PermissionStatus>,
+    private val permission: StateFlow<GalleryAccess>,
     private val library: ImportedAssetPresence,
     private val selection: StateFlow<List<Resource>?>,
 ) : ImportedAssetPresence {
 
     override suspend fun presence(localIds: Set<String>): Map<String, AssetPresence> =
         when (permission.value) {
-            PermissionStatus.GRANTED -> library.presence(localIds)
-            PermissionStatus.LIMITED -> {
+            GalleryAccess.GRANTED -> library.presence(localIds)
+            GalleryAccess.LIMITED -> {
                 // A null snapshot is the honest gap between a grant turning partial and the first
                 // observer emission: nothing is known to be selected, and we may not go looking.
                 val selected = selection.value.orEmpty().mapTo(mutableSetOf()) { it.assetId }
@@ -46,7 +46,7 @@ class PermissionAwareAssetPresence(
                     if (it in selected) AssetPresence.PRESENT else AssetPresence.UNKNOWN
                 }
             }
-            PermissionStatus.DENIED, PermissionStatus.NOT_DETERMINED ->
+            GalleryAccess.DENIED, GalleryAccess.NOT_DETERMINED ->
                 localIds.associateWith { AssetPresence.UNKNOWN }
         }
 }

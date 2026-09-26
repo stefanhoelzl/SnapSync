@@ -2,13 +2,11 @@ package app.snapsync.fake
 
 import app.snapsync.model.DiagnosticDump
 import app.snapsync.model.EventConfig
-import app.snapsync.model.RawAsset
 import app.snapsync.model.Resource
 import app.snapsync.ports.AlbumMapStore
 import app.snapsync.ports.AttestClient
 import app.snapsync.ports.AttestKey
 import app.snapsync.ports.AttestStore
-import app.snapsync.ports.CandidateSource
 import app.snapsync.ports.ConfigReader
 import app.snapsync.ports.ConfigSource
 import app.snapsync.ports.ConfigStore
@@ -17,7 +15,6 @@ import app.snapsync.ports.DeviceManifestStore
 import app.snapsync.ports.DiagnosticsReporter
 import app.snapsync.ports.DownloadStore
 import app.snapsync.ports.GalleryStatusSource
-import app.snapsync.ports.ImportedAssetPresence
 import app.snapsync.ports.LedgerStore
 import app.snapsync.ports.PhotoSelectionChangeSource
 import app.snapsync.ports.ProtectedStorage
@@ -91,12 +88,6 @@ fun inMemoryAttestClient(
 fun inMemoryAttestStore(token: String? = null, keyId: String? = null): AttestStore =
     InMemoryAttestStore(token, keyId)
 
-fun inMemoryCandidateSource(state: MutableStateFlow<List<RawAsset>>): CandidateSource =
-    InMemoryCandidateSource(state)
-
-fun inMemoryCandidateSource(initial: List<RawAsset> = emptyList()): CandidateSource =
-    InMemoryCandidateSource(initial)
-
 fun inMemoryGalleryStatusSource(state: MutableStateFlow<Set<String>?>): GalleryStatusSource =
     InMemoryGalleryStatusSource(state)
 
@@ -122,11 +113,6 @@ fun inMemoryDiagnosticsReporter(
 ): DiagnosticsReporter = InMemoryDiagnosticsReporter(started, sent, isConfigured)
 
 fun inMemoryDiagnosticsReporter(): DiagnosticsReporter = InMemoryDiagnosticsReporter()
-
-fun inMemoryAssetPresence(
-    present: MutableStateFlow<Set<String>> = MutableStateFlow(emptySet()),
-    readable: MutableStateFlow<Boolean> = MutableStateFlow(true),
-): ImportedAssetPresence = InMemoryAssetPresence(present, readable)
 
 /**
  * [files] is the caller's own cell. The operator rigging that wants to observe staged paths keeps

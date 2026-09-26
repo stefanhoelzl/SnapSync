@@ -13,7 +13,7 @@ import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.JoinLoad
 import app.snapsync.model.UserQueries
 import app.snapsync.model.encodeEventUrl
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.GalleryAccess
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
 import app.snapsync.feature.status.readmodel.SyncStatusSource
@@ -97,7 +97,7 @@ fun forgeStatusHost(state: String, scope: CoroutineScope, cutoffFormatter: Cutof
  */
 private enum class ForgePreset(
     val id: String,
-    val permission: PermissionStatus,
+    val permission: GalleryAccess,
     val config: EventConfig?,
     val sync: SyncStatus,
     /**
@@ -108,15 +108,15 @@ private enum class ForgePreset(
 ) {
     /** The create/landing screen. Config absent is the create layer's only precondition; permission
      *  and sync are irrelevant behind it. */
-    CREATE("create", PermissionStatus.GRANTED, null, ready(completed = 0, total = 0)),
+    CREATE("create", GalleryAccess.GRANTED, null, ready(completed = 0, total = 0)),
 
     /** The full-screen "Join event" confirmation a scanned QR opens (capability `join-event`). Config
      *  absent makes it a first join (not a switch), and a granted permission makes `readyOrExplain`
      *  pick `JoinPhase.Ready` — the loaded gate showing the event and its confirm affordance. */
-    JOINING("joining", PermissionStatus.GRANTED, null, ready(completed = 0, total = 0), openInvite = true),
+    JOINING("joining", GalleryAccess.GRANTED, null, ready(completed = 0, total = 0), openInvite = true),
 
     /** Joined and settled — everything shared and received, so both arrows collapse to `InSync`. */
-    IN_SYNC("in_sync", PermissionStatus.GRANTED, EVENT, ready(completed = 34, total = 34)),
+    IN_SYNC("in_sync", GalleryAccess.GRANTED, EVENT, ready(completed = 34, total = 34)),
     ;
 
     companion object {

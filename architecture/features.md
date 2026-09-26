@@ -62,6 +62,6 @@ Declared in `domain/presentation/src/forge/kotlin/app/snapsync/presentation/Forg
 
 | State | Forged inputs |
 |---|---|
-| `create` | `PermissionStatus.GRANTED, null, ready(completed = 0, total = 0)` |
-| `joining` | `PermissionStatus.GRANTED, null, ready(completed = 0, total = 0), openInvite = true` |
-| `in_sync` | `PermissionStatus.GRANTED, EVENT, ready(completed = 34, total = 34)` |
+| `create` | `GalleryAccess.GRANTED, null, ready(completed = 0, total = 0)` |
+| `joining` | `GalleryAccess.GRANTED, null, ready(completed = 0, total = 0), openInvite = true` |
+| `in_sync` | `GalleryAccess.GRANTED, EVENT, ready(completed = 34, total = 34)` |

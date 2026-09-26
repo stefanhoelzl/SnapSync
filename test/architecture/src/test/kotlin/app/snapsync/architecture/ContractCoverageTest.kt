@@ -15,7 +15,7 @@ import kotlin.test.fail
  *  - every contract (an `object` extending `Contract`, with the name it passes) and its `clause(...)` calls;
  *  - every binding (`: Binding<State, Port>`), its `kind`, `host` and literal `reaches = setOf(...)`;
  *  - every recording (`test/contracts/recordings/<Name>@<HOST>[.<GRANT>].rec`) and its `[CLAUSE_ID]` blocks —
- *    a binding that declares `override val grant = PermissionStatus.X` counts only through its grant's file;
+ *    a binding that declares `override val grant = GalleryAccess.X` counts only through its grant's file;
  *
  * and fails any clause whose state no `Live` binding on a host CI runs declares reachable, and whose id no
  * `Replay` binding's recording holds. A host some `Replay` binding names is a RECORDED host — CI never runs it
@@ -164,7 +164,7 @@ class ContractCoverageTest {
         assertTrue(
             undeclared.isEmpty(),
             "recordings carry a grant no Replay binding of that contract and host declares (`override val grant = " +
-                "PermissionStatus.X`), so nothing replays them: $undeclared",
+                "GalleryAccess.X`), so nothing replays them: $undeclared",
         )
     }
 
@@ -217,7 +217,7 @@ class ContractCoverageTest {
         val REACHES = Regex("""override val reaches\s*=\s*setOf\(([^)]*)\)""")
         val KIND = Regex("""override val kind\s*=\s*BindingKind\.(\w+)""")
         val HOST = Regex("""override val host\s*=\s*(Host\.\w+|currentHost)""")
-        val GRANT = Regex("""override val grant\s*=\s*PermissionStatus\.(\w+)""")
+        val GRANT = Regex("""override val grant\s*=\s*GalleryAccess\.(\w+)""")
         val STATE_REF = Regex("""\w+\.\w+""")
         val BLOCK = Regex("""\[(.+)]""")
         val HOST_ENUM = Regex("""enum class Host \{(.*?)\n}""", RegexOption.DOT_MATCHES_ALL)

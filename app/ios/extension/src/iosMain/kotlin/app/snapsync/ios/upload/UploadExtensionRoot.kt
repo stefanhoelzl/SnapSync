@@ -5,7 +5,7 @@ import app.snapsync.ports.DeviceIdentity
 import app.snapsync.compose.UploaderProcess
 import app.snapsync.model.SelectionScope
 import app.snapsync.compose.AlbumLookupFailure
-import app.snapsync.gallery.PhotoKitGrantRead
+import app.snapsync.gallery.IosGalleryReader
 import app.snapsync.feature.trust.CachedAttestStore
 import app.snapsync.compose.UploadPorts
 import app.snapsync.compose.uploadCore
@@ -14,7 +14,6 @@ import app.snapsync.ports.ExtensionEntries
 import app.snapsync.logging.IosLogScope
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.model.PlatformEntry
-import app.snapsync.album.IosAlbumManager
 import app.snapsync.preferences.IosPreferences
 import app.snapsync.services.album.AlbumMapService
 import app.snapsync.files.IosFiles
@@ -31,7 +30,12 @@ import app.snapsync.ports.SuppressionSource
 import app.snapsync.databases.IosDatabases
 import app.snapsync.ports.Databases
 import app.snapsync.services.downloads.SuppressionService
-import app.snapsync.ios.discovery.IosDiscovery
+import app.snapsync.ports.AlbumManager
+import app.snapsync.ports.GalleryReader
+import app.snapsync.ports.PhotoGrantRead
+import app.snapsync.ports.UploadDiscovery
+import app.snapsync.services.gallery.GalleryAlbums
+import app.snapsync.services.gallery.GalleryDiscovery
 import app.snapsync.join.HttpManifestPublisher
 import app.snapsync.ports.BackgroundTransfer
 import app.snapsync.model.CycleResult
@@ -40,7 +44,6 @@ import app.snapsync.feature.upload.UploadCycle
 import app.snapsync.ports.LedgerStore
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.manifest.DeviceManifestService
-import app.snapsync.gallery.PhotoKitCandidateSource
 import app.snapsync.membership.darwinHttpClient
 import app.snapsync.logging.FileLogWriter
 import app.snapsync.logging.extensionLogDestination
@@ -117,9 +120,9 @@ object UploadExtensionRoot : ExtensionEntries by extensionRootEntries() {
 
     // The ledger: shared with the app; either process may open it read-write and migrate it.
     private val ledgerStore: LedgerStore by lazy { LedgerService(databases) }
-    private val discovery: IosDiscovery by lazy {
-        IosDiscovery(log, PhotoKitCandidateSource())
-    }
+    // The extension's gallery: reads and album adds only — no access request, no change token, no memo.
+    private val gallery: GalleryReader by lazy { IosGalleryReader() }
+    private val discovery: UploadDiscovery by lazy { GalleryDiscovery(gallery) }
     private val platform: BackgroundTransfer by lazy {
         // The adapter records terminal outcomes into the ledger — through the narrow `TransferRecord` the
         // store satisfies — and acknowledges in place. Same store the cycle gets.
@@ -141,9 +144,9 @@ object UploadExtensionRoot : ExtensionEntries by extensionRootEntries() {
     private val configSource: ConfigService by lazy { ConfigService(files) }
 
     // Event album (capability `event-album`): the coordinator over the shared leave-surviving map and the
-    // PhotoKit album manager. The extension only ever ADDS completed uploads (the app is the sole creator).
-    // The manager is hoisted because the selection policy also reads it (denylisted-album membership).
-    private val albumManager: IosAlbumManager by lazy { IosAlbumManager() }
+    // gallery's album operations. The extension only ever ADDS completed uploads (the app is the sole creator).
+    // Hoisted because the selection policy also reads it (denylisted-album membership).
+    private val albumManager: AlbumManager by lazy { GalleryAlbums(gallery) }
     private val albumCoordinator: AlbumCoordinator by lazy {
         AlbumCoordinator(albumManager, AlbumMapService(IosPreferences(), secureStore))
     }
@@ -246,7 +249,7 @@ object UploadExtensionRoot : ExtensionEntries by extensionRootEntries() {
                 // and a cycle here has no selection snapshot to scope to. Measured (SE2, iOS 26.6, 2026-09-21): the
                 // OS invoked a surviving registration under `.limited` 4 s after a photo joined the selection, so
                 // this gate is what stops it (changes/archive/2026-09-22-both-uploaders-active).
-                process = UploaderProcess.Extension(PhotoKitGrantRead),
+                process = UploaderProcess.Extension(PhotoGrantRead { gallery.access() }),
                 // Unrestricted, stated: the extension never reads the library under a partial grant — the OS
                 // does invoke a surviving registration there, but its admission withholds before any read.
                 selectionScope = { SelectionScope.Unrestricted },

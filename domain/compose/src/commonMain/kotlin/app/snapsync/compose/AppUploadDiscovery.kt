@@ -29,8 +29,9 @@ val APP_WALK_MEMO_USE: WalkMemoUse = WalkMemoUse.SERVE
  * uploader — the upload extension binds its walk bare and walks afresh on every `process()` call (capability
  * `background-upload`; `WalkMemoContainmentTest` pins both sides).
  *
- * [changeToken] and [grant] are platform reads: the library's change token, and the grant [walk] itself decides
- * its authority by, so the memo keys on the same answer the walk reports under.
+ * [changeToken] is the app's `Gallery` — the extension's `GalleryReader` has none to offer — and
+ * [grant] the grant [walk] itself decides its authority by, so the memo keys on the same answer the walk reports
+ * under.
  */
 fun appUploadDiscovery(
     walk: UploadDiscovery,

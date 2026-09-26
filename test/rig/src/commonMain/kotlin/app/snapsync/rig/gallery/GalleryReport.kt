@@ -9,7 +9,9 @@ import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.selectionPolicyFor
 import app.snapsync.model.SelectionRule
 import app.snapsync.ports.CandidateSource
+import app.snapsync.model.SELECTION_CALIBRATION
 import app.snapsync.rig.AssetView
+import app.snapsync.rig.CalibrationView
 import app.snapsync.rig.CensusView
 import app.snapsync.rig.GalleryView
 import app.snapsync.rig.PolicyView
@@ -46,7 +48,7 @@ import kotlin.time.TimeSource
  * library changed outside the selection since the app last looked — which is why this is its own route and
  * not a field of `/device/state`.
  */
-class GalleryReader(
+class GalleryReport(
     private val candidates: CandidateSource,
     private val grant: () -> String,
     /**
@@ -120,6 +122,9 @@ class GalleryReader(
             grant = grant(),
             policy = PolicyView(
                 cutoff = cutoff,
+                calibration = SELECTION_CALIBRATION.let {
+                    CalibrationView(it.imageFloor, it.videoFloor, it.denylistTitles.sorted())
+                },
                 admitted = assets.count { it.admitted },
                 excluded = assets.count { !it.admitted },
                 readResources = resources,

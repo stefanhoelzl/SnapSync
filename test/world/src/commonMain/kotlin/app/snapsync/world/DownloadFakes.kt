@@ -4,17 +4,14 @@ import app.snapsync.ports.DownloadTask
 import app.snapsync.ports.DownloadTransport
 import app.snapsync.ports.DownloadTransportHost
 import app.snapsync.model.ImportResult
-import app.snapsync.ports.ImportedAssetPresence
 import app.snapsync.ports.PhotoLibraryImporter
 import app.snapsync.fake.LibraryChangeAnswers
 import app.snapsync.fake.inMemoryPhotoLibraryImporter
-import app.snapsync.fake.inMemoryLibraryPresence
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.CompletableDeferred
 import app.snapsync.model.TransferOutcome
+import app.snapsync.model.AlbumId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.StagedResource
-import app.snapsync.model.AssetPresence
 
 /**
  * The operator-driven download **execution edge** (`docs/testing.md`): a fake
@@ -236,6 +233,7 @@ class FakePhotoLibraryImporter(
         ref: AssetRef,
         resources: List<StagedResource>,
         creationDate: String,
+        album: AlbumId?,
     ): ImportResult {
         val attempt = attempts.getOrElse(ref) { 0 } + 1
         attempts[ref] = attempt
@@ -243,30 +241,8 @@ class FakePhotoLibraryImporter(
             "imported ${ref.sourceAssetId} $attempt times (cap $attemptCap) — the drain is live-locking " +
                 "on one ref instead of offering it once"
         }
-        return honest.import(ref, resources, creationDate)
+        return honest.import(ref, resources, creationDate, album)
     }
 }
 
 
-/**
- * The world's [ImportedAssetPresence]: the rigging around the honest `:adapter:generic:fake`
- * [inMemoryLibraryPresence] over the world's own gallery (`docs/testing.md`). An import that
- * landed is visible here for the same reason it is visible to upload discovery, so a test cannot assert
- * against a presence answer the rest of the world disagrees with.
- *
- * [readable] is the operator's lever over the grant's *other* question: with it false every answer is
- * `UNKNOWN`, which is what a partial or revoked photo grant produces and what must never be confused with
- * `ABSENT`.
- */
-class WorldAssetPresence(gallery: WorldGallery) : ImportedAssetPresence {
-
-    private val readableCell = MutableStateFlow(true)
-    private val honest = inMemoryLibraryPresence(gallery.contents, readableCell)
-
-    /** Operator lever: make the library unanswerable, as a partial or revoked grant does. */
-    var readable: Boolean
-        get() = readableCell.value
-        set(value) { readableCell.value = value }
-
-    override suspend fun presence(localIds: Set<String>): Map<String, AssetPresence> = honest.presence(localIds)
-}

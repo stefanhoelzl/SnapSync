@@ -7,7 +7,7 @@ import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
 import app.snapsync.model.FromChoice
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.GalleryAccess
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
 import app.snapsync.model.UntilChoice
@@ -110,7 +110,7 @@ class StatusContainerHostSurfacesTest {
         queries: UserQueries = noQueries,
         onCommitJoin: suspend (eventId: String) -> Unit = {},
     ) = StatusContainerHost(
-        StatusSources(FakeSync(), MutableStateFlow(PermissionStatus.GRANTED), config),
+        StatusSources(FakeSync(), MutableStateFlow(GalleryAccess.GRANTED), config),
         scope,
         commands = testCommands(
             reconfigure = { id, direction, from, until, album ->

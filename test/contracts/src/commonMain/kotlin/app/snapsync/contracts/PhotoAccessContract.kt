@@ -1,6 +1,6 @@
 package app.snapsync.contracts
 
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.GalleryAccess
 import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.ports.PhotoAccessStatusSource
 import kotlin.test.assertEquals
@@ -22,11 +22,10 @@ class PhotoAccess(val status: PhotoAccessStatusSource, val requester: PhotoAcces
  * What every photo-access adapter promises (`docs/architecture.md` — this list IS the specification of
  * the ports' obligations).
  *
- * Only [PhotoAccessRequester.request] is contracted, and only once the grant is determined. Asked while
- * undetermined, it raises a system prompt that only a person can answer. `openSettings` and `choosePhotos`
- * hand the user to another surface, and what the user chooses there is read back only afterwards, through the
- * status. None of those has an outcome a run can reach (`docs/architecture.md`, "An authorization the
- * process cannot give itself is a precondition of the run").
+ * Only the status is contracted: `openSettings` hands the user to another surface, and what the user chooses
+ * there is read back only afterwards, through the status — no outcome a run can reach (`docs/architecture.md`,
+ * "An authorization the process cannot give itself is a precondition of the run"). Asking for access is the
+ * gallery's, contracted by `GalleryContract`.
  */
 object PhotoAccessContract : Contract<PhotoAccessState, PhotoAccess>("PhotoAccess") {
 
@@ -35,23 +34,13 @@ object PhotoAccessContract : Contract<PhotoAccessState, PhotoAccess>("PhotoAcces
         clause("NO_GRANT_READS_AS_NOT_GRANTED", PhotoAccessState.NO_GRANT) { access ->
             val status = access.status.permission.value
             assertTrue(
-                status == PermissionStatus.NOT_DETERMINED || status == PermissionStatus.DENIED,
+                status == GalleryAccess.NOT_DETERMINED || status == GalleryAccess.DENIED,
                 "a process holding no grant reads undetermined or denied, got $status",
             )
         }
 
         clause("GRANTED_READS_GRANTED", PhotoAccessState.GRANTED) { access ->
-            assertEquals(PermissionStatus.GRANTED, access.status.permission.value)
-        }
-
-        clause("GRANTED_REQUEST_CHANGES_NOTHING", PhotoAccessState.GRANTED) { access ->
-            access.requester.request()
-            access.requester.request()
-            assertEquals(
-                PermissionStatus.GRANTED,
-                access.status.permission.value,
-                "a request after the grant is determined asks nothing and changes nothing, however often it runs",
-            )
+            assertEquals(GalleryAccess.GRANTED, access.status.permission.value)
         }
     }
 }

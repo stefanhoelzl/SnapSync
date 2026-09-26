@@ -21,7 +21,7 @@ data class UploaderPin(val app: Boolean = true, val extension: Boolean = true)
  *
  * - **Never below iOS 26.1** ([osSupportsOsDrivenUpload] `false`): the registration selector does not exist there,
  *   and calling it would trap and abort the process — so no pin can make this `true` there.
- * - **Only under [PermissionStatus.GRANTED]**: under `LIMITED` every registration write is refused (`3311`,
+ * - **Only under [GalleryAccess.GRANTED]**: under `LIMITED` every registration write is refused (`3311`,
  *   measured SE2/26.6), and under no access there is nothing to register for.
  *
  * Total and pure, re-evaluated at every transition rather than resolved once per process: the grant changes at
@@ -29,9 +29,9 @@ data class UploaderPin(val app: Boolean = true, val extension: Boolean = true)
  */
 fun extensionRegistrable(
     osSupportsOsDrivenUpload: Boolean,
-    permission: PermissionStatus,
+    permission: GalleryAccess,
     pin: UploaderPin? = null,
-): Boolean = osSupportsOsDrivenUpload && permission == PermissionStatus.GRANTED && pin?.extension != false
+): Boolean = osSupportsOsDrivenUpload && permission == GalleryAccess.GRANTED && pin?.extension != false
 
 /**
  * Which uploaders this OS carries, as the diagnostic dump names it (capability `privacy-security`): the app's on

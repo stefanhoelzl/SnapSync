@@ -27,7 +27,7 @@ import app.snapsync.gallery.currentPhotoPermission
 import app.snapsync.logging.deviceDiagnosticEnvironment
 import app.snapsync.model.LedgerState
 import app.snapsync.gallery.photoKitResourceRole
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.GalleryAccess
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.normalizeAssetId
 import app.snapsync.model.uploadKey
@@ -219,7 +219,7 @@ internal fun transferRunStep(clauseId: String, call: Int, tape: String?): Step {
     val clause = BackgroundTransferContract.clauses.firstOrNull { it.id == clauseId && it.state in BackgroundTransferContract.PRESENTED }
     val refused = when {
         clause == null -> "no presented-state clause $clauseId in ${BackgroundTransferContract.name}"
-        currentPhotoPermission() != PermissionStatus.GRANTED ->
+        currentPhotoPermission() != GalleryAccess.GRANTED ->
             "the upload-job contract records under a full photo grant; this process holds ${currentPhotoPermission()}"
         bakedUploadBase() != CONTRACT_UPLOAD_BASE ->
             "this build uploads to ${bakedUploadBase()}; the recording names $CONTRACT_UPLOAD_BASE (the rig build's local deployment)"

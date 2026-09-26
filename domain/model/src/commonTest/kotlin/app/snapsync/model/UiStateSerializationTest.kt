@@ -93,7 +93,7 @@ class UiStateSerializationTest {
                 Layer.Joined(
                     membership = membership,
                     inviteUrl = "https://snapsync.stho.net/join#v=3&d=x",
-                    health = SyncHealth.NeedsAccess(PermissionStatus.DENIED),
+                    health = SyncHealth.NeedsAccess(GalleryAccess.DENIED),
                     ended = true,
                     canChoosePhotos = true,
                     notice = "something worth saying",
