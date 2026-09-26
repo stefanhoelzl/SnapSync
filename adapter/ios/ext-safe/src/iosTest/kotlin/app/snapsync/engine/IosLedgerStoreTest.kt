@@ -1,5 +1,6 @@
 package app.snapsync.engine
 
+import app.snapsync.model.AssetId
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
 import app.snapsync.testsupport.fileExists
@@ -35,7 +36,7 @@ class IosLedgerStoreTest {
 
     private fun entry(key: String, state: LedgerState = LedgerState.COMPLETED) = LedgerEntry(
         key = key,
-        assetId = "asset-$key",
+        assetId = AssetId("asset-$key"),
         state = state,
         creationDate = "2026-08-08T12:00:00Z",
     )
@@ -63,7 +64,7 @@ class IosLedgerStoreTest {
 
                 val row = assertNotNull(store.get("photo-1.heic"))
                 assertEquals(LedgerState.COMPLETED, row.state)
-                assertEquals("asset-photo-1.heic", row.assetId)
+                assertEquals(AssetId("asset-photo-1.heic"), row.assetId)
             }
         }
     }

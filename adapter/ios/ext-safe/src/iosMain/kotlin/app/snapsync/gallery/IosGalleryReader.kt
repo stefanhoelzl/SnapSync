@@ -16,10 +16,8 @@ import app.snapsync.model.RawResource
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.WriteOutcome
-import app.snapsync.model.denormalizeAssetId
 import app.snapsync.model.grantsPhotoAccess
 import app.snapsync.logging.invocation
-import app.snapsync.model.normalizeAssetId
 import app.snapsync.objc.checkedObjC
 import app.snapsync.objc.objcBoundary
 import app.snapsync.ports.GalleryReader
@@ -49,9 +47,8 @@ import platform.UniformTypeIdentifiers.UTType
  * The PhotoKit [GalleryReader] — every photo-library read and album write either process makes, and the only
  * place outside the app's own adapters that touches `PHAsset`, `PHAssetResource` or `PHAssetCollection`.
  *
- * **Asset ids cross normalized** (`/`→`_`, the form the ledger and the upload keys carry): every id handed out is
- * normalized and every id handed in is converted back, so the core holds one form. The conversion is exact in
- * both directions — a `localIdentifier` never contains `_`. Album ids cross as PhotoKit's own.
+ * **Asset ids cross canonical** ([PhotoKitAssetIds]): every id handed out is minted from its `localIdentifier`
+ * and every id handed in is mapped back, so the core holds one form. Album ids cross as PhotoKit's own.
  *
  * **Facts are cheap; resources are not.** [assets] reads plain in-memory `PHAsset` properties;
  * `PHAssetResource.assetResourcesForAsset` — a synchronous XPC round-trip into `photolibraryd`, ~110 ms per asset
@@ -140,7 +137,7 @@ class IosGalleryReader(private val log: Logger = Logger.withTag("gallery")) : Ga
                 }
             }
             val assets = PHAsset.fetchAssetsInAssetCollection(collection, options)
-            buildSet { assets.forEachAsset { add(normalizeAssetId(it.localIdentifier)) } }
+            buildSet { assets.forEachAsset { asset -> asset.canonicalIdOrReport()?.let(::add) } }
         }
     }
 
@@ -217,7 +214,7 @@ class IosGalleryReader(private val log: Logger = Logger.withTag("gallery")) : Ga
         if (!access().grantsPhotoAccess) GalleryRead.NotReadable else GalleryRead.Read(withContext(photoKitReadLane) { read() })
 
     private fun fetchById(ids: Set<AssetId>): PHFetchResult =
-        PHAsset.fetchAssetsWithLocalIdentifiers(ids.map(::denormalizeAssetId), null)
+        PHAsset.fetchAssetsWithLocalIdentifiers(ids.map(PhotoKitAssetIds::localIdentifierOf), null)
 
     private fun records(collections: PHFetchResult): List<AlbumRecord> = buildList {
         var i = 0uL
@@ -231,7 +228,10 @@ class IosGalleryReader(private val log: Logger = Logger.withTag("gallery")) : Ga
 
 /** The facts of every asset of an already-fetched [result] — plain in-memory properties, no resource read. */
 fun photoKitFacts(result: PHFetchResult): List<AssetFacts> = buildList {
-    result.forEachAsset { add(it.toAssetFacts(creationDateOf(it))) }
+    result.forEachAsset { asset ->
+        val id = asset.canonicalIdOrReport() ?: return@forEachAsset
+        add(asset.toAssetFacts(id, creationDateOf(asset)))
+    }
 }
 
 /**
@@ -243,6 +243,7 @@ fun photoKitFacts(result: PHFetchResult): List<AssetFacts> = buildList {
  */
 fun photoKitRawAssets(result: PHFetchResult): List<RawAsset> = buildList {
     result.forEachAsset { asset ->
+        val id = asset.canonicalIdOrReport() ?: return@forEachAsset
         val creationDate = creationDateOf(asset)
         val rawResources = PHAssetResource.assetResourcesForAsset(asset).map { any ->
             val resource = any as PHAssetResource
@@ -259,7 +260,7 @@ fun photoKitRawAssets(result: PHFetchResult): List<RawAsset> = buildList {
                 handle = resource, // opaque PHAssetResource, crosses uninterpreted
             )
         }
-        add(RawAsset(normalizeAssetId(asset.localIdentifier), creationDate, rawResources, asset.toAssetFacts(creationDate)))
+        add(RawAsset(id, creationDate, rawResources, asset.toAssetFacts(id, creationDate)))
     }
 }
 

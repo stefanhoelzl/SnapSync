@@ -1,9 +1,11 @@
 package app.snapsync.download
 
 import app.snapsync.gallery.Iso8601
+import app.snapsync.gallery.PhotoKitAssetIds
 import app.snapsync.ios.qos.qosLabel
 import app.snapsync.model.importFilename
 import app.snapsync.objc.objcBoundary
+import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.ImportResult
 import app.snapsync.model.ImportRequest
@@ -161,7 +163,7 @@ private fun consumedResources(error: NSError?): Boolean {
 
     /** What the change block learned about the asset it asked for, read by the completion. */
     private class CreatedAsset {
-        var localId: String? = null
+        var localId: AssetId? = null
     }
 
     /** The change block's body: request the asset, write its marker, and file it in the event album. */
@@ -226,12 +228,12 @@ private fun consumedResources(error: NSError?): Boolean {
         // observable, so the upload extension never re-uploads this asset.
         val placeholder = request.placeholderForCreatedAsset
         val raw = placeholder?.localIdentifier
-        if (raw != null) {
-            // `/`→`_` MUST match `:domain:gallery`'s `normalizeAssetId` (the discovery-side
-            // transform) exactly, or the discovered assetId never meets this createdLocalId
-            // and the echo re-uploads. Inlined (no gallery dep here); kept identical by the
-            // gallery `normalizeAssetId` contract test.
-            val id = raw.replace('/', '_')
+        // The SAME mapping the gallery reader mints ids with, or the discovered asset never meets this
+        // createdLocalId and the echo re-uploads. A placeholder with no canonical id records no marker;
+        // the error line is what says so.
+        val id = raw?.let(PhotoKitAssetIds::assetIdOf)
+        if (raw != null && id == null) log.e { "import: placeholder '$raw' has no canonical id — no suppression marker" }
+        if (id != null) {
             created.localId = id
             // The marker, synchronously, on this thread — before the commit is observable. A row pruned out
             // from under this import is the handler's to report (it knows whether the write landed).

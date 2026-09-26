@@ -1,6 +1,7 @@
 package app.snapsync.gallery
 
 import app.snapsync.model.AssetFacts
+import app.snapsync.model.AssetId
 import app.snapsync.model.CaptureDate
 import platform.Photos.PHAsset
 import platform.Photos.PHAssetMediaTypeVideo
@@ -20,14 +21,12 @@ import platform.Photos.PHAssetMediaTypeVideo
  * The GIF fact is deliberately absent here: it lives on a *resource*'s MIME type, not on the asset, and
  * is folded in by `RawAsset.toFacts()` once the resources are known.
  */
-internal fun PHAsset.toAssetFacts(creationDate: String): AssetFacts {
+internal fun PHAsset.toAssetFacts(assetId: AssetId, creationDate: String): AssetFacts {
     val subtypes = mediaSubtypes.toLong()
     val width = pixelWidth.toLong()
     val height = pixelHeight.toLong()
     return AssetFacts(
-        // AssetFacts normalizes this itself — the raw `localIdentifier` would match neither the echo
-        // set nor the album denylist, and both would silently admit everything. See AssetFacts.assetId.
-        assetId = localIdentifier,
+        assetId = assetId,
         creationDate = CaptureDate(creationDate),
         isScreenshot = subtypes and SUBTYPE_SCREENSHOT != 0L,
         isScreenRecording = subtypes and SUBTYPE_SCREEN_RECORDING != 0L,
