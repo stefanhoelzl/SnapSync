@@ -125,7 +125,7 @@ class CompositionSeamTest {
         // a bundle whose inventory is empty must still be listed or the set-of-bundles check below cannot
         // tell "no seams" from "not scanned".
         "UploadRecordPorts" to emptyMap(),
-        // Empty for the same reason: the push registration's three ports, grouped as one need.
+        // Empty for the same reason: the push registration's two ports, grouped as one need.
         "PushPorts" to emptyMap(),
     )
 
@@ -255,7 +255,7 @@ class CompositionSeamTest {
         "UploadCycle.engineFor" to
             "builds the SyncEngine over the gate's config per cycle — core machinery, whose transfer is a port",
         "UploadCycle.onDiscovery" to
-            "the sibling DeviceManifestProducer (its publish crosses the ManifestPublisher PORT)",
+            "the sibling DeviceManifestProducer (its publish is the ManifestPublisher backend service, over the Backend PORT)",
         "UploadCycle.placeInAlbum" to
             "the sibling AlbumCoordinator.place (its PhotoKit touches are the AlbumManager port's)",
         "UploadTransitions.extensionRegistrable" to
@@ -445,7 +445,8 @@ class CompositionSeamTest {
      */
     @Test
     fun `the gate actually parsed every composition bundle (non-vacuity floor)`() {
-        val floors = mapOf("AppPorts" to 30, "UploadPorts" to 10, "UploadRecordPorts" to 2, "PushPorts" to 3) // the join marker left it
+        // UploadRecordPorts: the join marker, then the device listing (now a backend service) left it; PushPorts: the publisher did.
+        val floors = mapOf("AppPorts" to 30, "UploadPorts" to 10, "UploadRecordPorts" to 1, "PushPorts" to 2)
         floors.forEach { (bundle, floor) ->
             assertTrue(
                 params(bundle).size >= floor,

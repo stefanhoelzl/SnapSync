@@ -4,7 +4,7 @@ import app.snapsync.model.DiagnosticDump
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.encodeToJson
 import app.snapsync.ports.DeviceLogSource
-import app.snapsync.ports.UnionAsset
+import app.snapsync.model.UnionAsset
 import app.snapsync.world.Answer
 import app.snapsync.world.World
 import kotlinx.coroutines.launch

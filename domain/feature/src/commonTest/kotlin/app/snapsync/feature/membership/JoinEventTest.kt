@@ -1,7 +1,7 @@
 package app.snapsync.feature.membership
 
 import app.snapsync.model.EventLookup
-import app.snapsync.ports.EventDirectory
+import app.snapsync.services.backend.EventDirectory
 import app.snapsync.model.JoinResult
 
 import app.snapsync.ports.ConfigSource

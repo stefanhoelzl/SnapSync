@@ -28,15 +28,6 @@ class JoinSeamsTest {
     }
 
     @Test
-    fun a_shape_failure_is_a_distinguishable_type_carrying_its_reason() {
-        // The reconciler branches on this type to tell a permanent failure from a transient one, so it
-        // must stay a type rather than a message anyone has to parse.
-        // Typed as `Exception`: the subtype relation is asserted by this compiling.
-        val e: Exception = DeviceListingShapeException("no assetId")
-        assertEquals("no assetId", e.message)
-    }
-
-    @Test
     fun the_platform_handoffs_default_to_inert() = runTest {
         // What every off-device composition (the harnesses, the world) stands on: there is no platform to
         // hand anything to, and saying so explicitly is what keeps the graph constructible there.

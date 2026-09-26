@@ -1,10 +1,10 @@
 package app.snapsync.attest
 
 import app.snapsync.attest.contract.ReplayingAppAttestApi
-import app.snapsync.attest.contract.attestKeyInState
+import app.snapsync.attest.contract.integrityInState
 import app.snapsync.attest.contract.attestStoreInState
-import app.snapsync.contracts.AttestKeyContract
-import app.snapsync.contracts.AttestKeyState
+import app.snapsync.contracts.DeviceIntegrityContract
+import app.snapsync.contracts.DeviceIntegrityState
 import app.snapsync.contracts.AttestStoreContract
 import app.snapsync.contracts.AttestStoreState
 import app.snapsync.contracts.Binding
@@ -16,14 +16,14 @@ import app.snapsync.contracts.Replayer
 import app.snapsync.contracts.verify
 import app.snapsync.keychain.contract.RECORDINGS
 import app.snapsync.keychain.contract.ReplayingKeychainApi
-import app.snapsync.ports.AttestKey
+import app.snapsync.ports.DeviceIntegrity
 import app.snapsync.ports.AttestStore
 import kotlin.test.Test
 
 /**
  * App Attest and the attestation store on an entitled device, REPLAYED (`docs/architecture.md`): the
- * CURRENT [IosAttestKey] and `AttestState` over [app.snapsync.keychain.IosSecureStore] run against what iOS answered when
- * `test/contracts/recordings/AttestKey@IOS_DEVICE_APP.rec` and `AttestStore@IOS_DEVICE_APP.rec` were recorded,
+ * CURRENT [IosDeviceIntegrity] and `AttestState` over [app.snapsync.keychain.IosSecureStore] run against what iOS answered when
+ * `test/contracts/recordings/DeviceIntegrity@IOS_DEVICE_APP.rec` and `AttestStore@IOS_DEVICE_APP.rec` were recorded,
  * and the current clauses judge.
  *
  * What the App Attest replay proves is the adapter's half: the calls it makes, in order, and the
@@ -44,20 +44,20 @@ class AttestReplayContractTest {
         if (RECORDINGS[name] == null) "no recording $name.rec — record it on a device over the rig"
         else "$name.rec holds no block for $clauseId — re-record"
 
-    private val key = object : Binding<AttestKeyState, AttestKey> {
+    private val key = object : Binding<DeviceIntegrityState, DeviceIntegrity> {
         override val host = Host.IOS_DEVICE_APP
         override val kind = BindingKind.Replay
-        override val reaches = setOf(AttestKeyState.SUPPORTED)
+        override val reaches = setOf(DeviceIntegrityState.AVAILABLE)
 
-        override fun create(state: AttestKeyState, clauseId: String): Entered<AttestKey> {
+        override fun create(state: DeviceIntegrityState, clauseId: String): Entered<DeviceIntegrity> {
             if (state !in reaches) return Entered.Unreachable("the app process on a device has App Attest")
             val replayer = replayer(KEY, clauseId) ?: return Entered.Unreachable(missing(KEY, clauseId))
-            return attestKeyInState(ReplayingAppAttestApi(replayer), state, afterDispose = replayer::assertExhausted)
+            return integrityInState(ReplayingAppAttestApi(replayer), state, afterDispose = replayer::assertExhausted)
         }
     }
 
     @Test
-    fun `the recorded device App Attest satisfies the AttestKey contract`() = verify(AttestKeyContract, key)
+    fun `the recorded device App Attest satisfies the DeviceIntegrity contract`() = verify(DeviceIntegrityContract, key)
 
     private val store = object : Binding<AttestStoreState, AttestStore> {
         override val host = Host.IOS_DEVICE_APP
@@ -75,7 +75,7 @@ class AttestReplayContractTest {
     fun `the recorded device Keychain satisfies the AttestStore contract`() = verify(AttestStoreContract, store)
 
     private companion object {
-        const val KEY = "AttestKey@IOS_DEVICE_APP"
+        const val KEY = "DeviceIntegrity@IOS_DEVICE_APP"
         const val STORE = "AttestStore@IOS_DEVICE_APP"
     }
 }

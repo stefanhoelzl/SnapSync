@@ -20,7 +20,7 @@ import app.snapsync.services.gallery.GalleryDiscovery
 import app.snapsync.gallery.currentPhotoPermission
 import app.snapsync.ios.urlsession.IosBackgroundScheduler
 import app.snapsync.ios.urlsession.IosUrlSessionUploadPlatform
-import app.snapsync.join.HttpManifestPublisher
+import app.snapsync.services.backend.ManifestPublisher
 import app.snapsync.ports.BackgroundScheduler
 import app.snapsync.model.CycleResult
 import app.snapsync.feature.upload.UploadCycle
@@ -33,7 +33,6 @@ import app.snapsync.logging.appMarketingVersion
 import app.snapsync.logging.SentryDiagnosticsReporter
 import app.snapsync.logging.invocation
 import co.touchlab.kermit.Logger
-import io.ktor.client.HttpClient
 import kotlinx.coroutines.CoroutineScope
 
 /**
@@ -63,8 +62,8 @@ class UrlSessionUploadController(
     private val deviceIdentity: DeviceIdentity,
     private val host: String,
     private val log: Logger,
-    // The shared Darwin HTTP client — used for the in-cycle device-manifest PUT and the event-notify POST.
-    private val httpClient: HttpClient,
+    // The in-cycle device-manifest PUT: the app core's backend service, over its one authenticated backend.
+    private val manifestPublisher: ManifestPublisher,
     // The device token (capability `privacy-security`), read PER REQUEST so a background renewal is
     // picked up on the next retry. This tier uploads from the APP process, which is also the process that
     // can attest — so unlike the extension, it is never stuck with a token it cannot refresh.
@@ -152,10 +151,10 @@ class UrlSessionUploadController(
                 transfer = platform,
                 discovery = discovery,
                 selectionScope = graph.selectionScope,
-                // The device manifest PUT goes through the generic `HttpManifestPublisher` (the former
-                // app-local `IosEnrollment` copy is dead — one uploader serves all).
+                // The device manifest PUT goes through the app core's manifest service (the former app-local
+                // `IosEnrollment` copy is dead — one uploader serves all).
                 manifestStore = manifestStore,
-                manifestPublisher = HttpManifestPublisher(httpClient, host),
+                manifestPublisher = manifestPublisher,
                 suppression = suppression,
                 // Denylisted-album membership (capability `photo-sharing`), scoped by the
                 // cutoff — the SAME wrapper the own-device status total gets (admit-on-doubt).

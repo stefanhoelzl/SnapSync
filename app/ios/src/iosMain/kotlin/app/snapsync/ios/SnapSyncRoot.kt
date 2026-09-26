@@ -18,12 +18,10 @@ import app.snapsync.ports.Files
 import app.snapsync.services.config.ConfigService
 import app.snapsync.config.bakedApnsEnv
 import app.snapsync.config.bakedAppStoreUrl
-import app.snapsync.eventcreation.HttpEventCreation
-import app.snapsync.eventcreation.HttpEventRename
-import app.snapsync.attest.HttpAttestClient
-import app.snapsync.attest.IosAttestKey
-import app.snapsync.join.HttpEventJoin
-import app.snapsync.join.HttpEventDirectory
+import app.snapsync.attest.IosDeviceIntegrity
+import app.snapsync.http.HttpBackend
+import app.snapsync.logging.appMarketingVersion
+import app.snapsync.ports.Backend
 import app.snapsync.services.manifest.DeviceManifestService
 import app.snapsync.gallery.IosGallery
 import app.snapsync.gallery.IosGalleryReader
@@ -32,17 +30,13 @@ import app.snapsync.ports.UploadExtensionRegistry
 import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.StatusContainerHost
-import app.snapsync.push.HttpPushTokenPublisher
 import app.snapsync.push.IosPushRegistrationRecord
 import app.snapsync.time.SystemClock
 import app.snapsync.time.SystemTimeZone
 import app.snapsync.ports.PushTokenSource
-import app.snapsync.membership.HttpDeviceFilesSource
 import app.snapsync.metrics.MetricKitProcessMetricSource
 import app.snapsync.metrics.ProcessMetricHandler
-import app.snapsync.membership.HttpLeaveNotifier
 import app.snapsync.membership.darwinHttpClient
-import app.snapsync.download.HttpEventUnionSource
 import app.snapsync.download.IosDownloadTransport
 import app.snapsync.ports.AlbumMapStore
 import app.snapsync.preferences.IosPreferences
@@ -92,7 +86,6 @@ import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.logging.invocation
 import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
-import io.ktor.client.HttpClient
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.cValue
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -356,9 +349,6 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
      * composes the features. Every [AppCore] property is `by lazy`, so first-touch construction
      * timing matches the lazy web that used to live here — nothing resolves the device identity or
      * opens a protected store earlier than before (the locked-background-launch property).
-     *
-     * The attest client's own HTTP client is deliberately UNauthenticated: the three `/attest/…`
-     * routes are the ones that issue the token, so authenticating them would be a cycle.
      */
     // `internal`, not `private`, solely so the rig's contributed hook — compiled INTO this module under
     // `-Psnapsync.rig=true` — can pass it as a thunk without anything being widened to `public`.
@@ -403,30 +393,22 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
                 // Every photo-library read and write, the partial grant's selection observer (opened at host
                 // assembly only) and the import of foreign photos, whose markers the core's handlers write.
                 gallery = gallery,
-                // What this process knows about its own uploads: the ledger, and the per-device listing
-                // over the SAME authenticated client every other call uses. The app loads the ledger from
-                // the listing at a join and clears it at a leave, on every tier (capability
+                // What this process knows about its own uploads: the ledger. The app loads it from the backend's
+                // per-device listing at a join and clears it at a leave, on every tier (capability
                 // `photo-sharing`) — on >=26.1 as a non-writer, through the reset family.
-                uploadRecord = UploadRecordPorts(
-                    ledger = ledgerStore,
-                    files = HttpDeviceFilesSource(http, backendHost),
-                ),
+                uploadRecord = UploadRecordPorts(ledger = ledgerStore),
                 downloadStore = downloadStore,
                 // Names the App-Group staging directory and frees the files of settled rows
                 // (capability `receiving-photos`) — one port owns both halves.
                 stagedBytes = StagingService(files),
                 newDownloadTransport = { host -> IosDownloadTransport(host) },
-                union = HttpEventUnionSource(http, backendHost),
-                directory = detailsSource,
-                eventJoin = HttpEventJoin(http, backendHost),
+                // The backend: every need-shaped service is composed over it inside the core.
+                backend = backend,
                 // The App-Group file, so the record this app process invalidates at enroll is the same one
                 // the ≥26.1 tier's producer reads in the EXTENSION process. A per-process record would
                 // leave the extension believing the server still holds a projection the app just replaced.
                 manifestStore = manifestStore,
-                eventCreation = HttpEventCreation(http, backendHost),
-                eventRename = HttpEventRename(http, backendHost),
-                attestKey = IosAttestKey(),
-                attestClient = HttpAttestClient(darwinHttpClient(), backendHost),
+                integrity = IosDeviceIntegrity(),
                 attestStore = AttestState(secureStore),
                 deviceIdentity = deviceIdentity,
                 clock = SystemClock,
@@ -449,7 +431,6 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
                     inviteLinkHints = inviteLinkHints,
                 ),
                 albumMapStore = albumMapStore,
-                leaveNotifier = leaveNotifier,
                 // A minted event routes into the host's join gate, so create and a scanned QR take one gate.
                 onEventMinted = { eventId -> host.onEventCreated(eventId) },
                 // The trigger-time membership re-read (migration step 12): every flow re-reads the
@@ -463,7 +444,6 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
                 // The push registration's ports and token source (capability `receiving-photos`): `compose/`
                 // builds the registration, its delivery/credential collector and the on-join re-PUT.
                 push = PushPorts(
-                    publisher = HttpPushTokenPublisher(http, backendHost, deviceId = { deviceIdentity.deviceId() }),
                     tokens = pushTokenSource,
                     record = IosPushRegistrationRecord(),
                 ),
@@ -478,21 +458,11 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
     }
 
     /**
-     * The ONE authenticated HTTP client every backend call goes through — create, event fetch, join,
-     * manifest, union, device config, leave, notify. Built once and shared, so no call site can be
-     * forgotten and a future one inherits the token for free. The token is read per request, so a renewal
-     * in the background is picked up without rebuilding anything.
+     * The backend — ONE `HttpBackend` over the platform's HTTP client, declaring this bundle's version, which every
+     * backend call goes through. The credential and the backend's verdicts are the core's (`AppCore.backend`): this
+     * root supplies only the port, so no call site can be wired without them.
      */
-    private val http: HttpClient by lazy {
-        darwinHttpClient(
-            token = { app.attestation.token() },
-            // Rejected (not merely expired) → the core compare-and-clears the token the refused request carried
-            // and, if that cleared it, goes and gets a new one right now (`compose/CredentialComposition.kt`).
-            // The backend refuses this build as too old (capability `app-update-required`) → the read-model the screen
-            // observes; a served response clears it. One object for all three verdicts, so none can be left out.
-            verdicts = { app.backendVerdicts },
-        )
-    }
+    private val backend: Backend by lazy { HttpBackend(darwinHttpClient(), backendHost, appMarketingVersion()) }
 
     // The app-side handle on the shared App-Group ledger: the app's own uploader's `LedgerWriter` (built by
     // `uploadCore`), the composed counts source's reads, and the membership reset family. On iOS ≥26.1 the
@@ -509,32 +479,12 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
     // extension reads as its suppression set). The app is its one writer and the one process that migrates it.
     private val downloadStore: DownloadService by lazy { DownloadService(databases) }
 
-    // The `LeaveNotifier` port that tells the backend this device is leaving (DELETE
-    // /events/<id>/devices/<id>, capability `event-leave-endpoint`) — the backend renames the manifest
-    // to its departed `.left.json` sibling and reaps/GCs the event when the last member leaves.
-    // Best-effort (a failed call never blocks leaving). Used by BOTH the explicit Leave and a switch,
-    // through the effect `compose/` builds from it.
-    //
-    // The device id goes in as a THUNK, not a value: resolving it reads the Keychain, and this adapter
-    // is constructed while the graph is composed — which a locked background launch reaches before
-    // first unlock. It is read per call, exactly as the composition's former closure over `deviceId`
-    // did.
-    private val leaveNotifier: HttpLeaveNotifier by lazy { HttpLeaveNotifier(http, backendHost, deviceIdentity) }
-
-    // The device-facing backend host (baked at compile time); shared by every generic HTTP adapter
-    // handed to the composed graph and the event-metadata (name) fetch. Reads through
+    // The device-facing backend host (baked at compile time); shared by the backend port and the app's uploader.
+    // Reads through
     // `:adapter:ios:ext-safe`'s [bakedUploadBase] — the same call the boot diagnostic makes, so a
     // banner that disagreed with the host the adapters use is impossible, and the absent-key
     // defaulting decision stays out of this wiring-only shell.
     private val backendHost: String by lazy { bakedUploadBase() }
-
-    // The ONE GET /events/:id client (capability `join-event`): the join gate's details fetch and the
-    // best-effort scan-path/foreground name refresh both read through it — the latter via the
-    // `EventDirectory` port in [AppPorts] (`directory`), whose fetch effect `compose/` builds for the
-    // Foreground/Provision flows.
-    private val detailsSource: HttpEventDirectory by lazy {
-        HttpEventDirectory(http, backendHost)
-    }
 
     // --- Push notifications (capability `receiving-photos`) ---
     // The compile-time APNs environment (the generated Deployment.plist's `apnsEnv`): `sandbox` for
@@ -943,7 +893,7 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
             // success, so this is one read per process, as before.
             deviceIdentity = deviceIdentity,
             host = backendHost, log = log,
-            httpClient = http,
+            manifestPublisher = app.backend.manifest,
             // The app-driven tier performs its OWN uploads, so its request provider needs the token too.
             token = { app.attestation.token() },
             // A retry's request re-reads the store of record (the extension may have cleared a rejected token).

@@ -1,34 +1,30 @@
 package app.snapsync.world
 
-import app.snapsync.membership.HttpDeviceFilesSource
-import app.snapsync.download.HttpEventUnionSource
+import app.snapsync.model.APP_VERSION_HEADER
+import app.snapsync.model.CreateEventRequest
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.ManifestResource
-import app.snapsync.model.encodeToJson
-import app.snapsync.ports.UnionAsset
+import app.snapsync.model.Reply
+import app.snapsync.model.uploadKey
+import app.snapsync.model.UnionAsset
+import app.snapsync.ports.Backend
 import io.ktor.client.HttpClient
-import io.ktor.client.request.get
-import io.ktor.client.request.post
+import io.ktor.client.request.header
 import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
-import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.json.put
 
 /**
  * The world's **backend-neutral** reads, levers and seeding (`docs/testing.md`, "Neutral inspection
  * and minted event ids beside the mini-edge-only surface") — `World.neutral`.
  *
- * Everything the backend's public HTTP surface can carry goes over the world's own real clients ([client], the
- * listing and union seams), so it is written ONCE for both backends. What only the mini-edge's in-memory store can
+ * Everything the backend's public surface can carry goes over the world's [port] — the production `HttpBackend`,
+ * credential-free, as the backend's other members would call it — so it is written ONCE for both backends. Bytes
+ * are the OS transfer's route, not the port's, so their seeding goes over the bare [client]. What only the mini-edge's in-memory store can
  * answer is an explicit [Answer.Unavailable] on any other backend, never an empty value or a silent no-op.
  *
  * Its own class rather than more members on `World`, which is at its complexity ceiling (`docs/architecture.md`):
@@ -36,31 +32,30 @@ import kotlinx.serialization.json.put
  */
 class NeutralBackend internal constructor(
     private val backend: WorldBackend,
-    /** The world's shared client, carrying the production interceptor — so every call declares the app version. */
+    /** The world's bare backend client, for the one route the port does not carry: bytes. */
     private val client: HttpClient,
     private val host: String,
-    private val deviceFiles: HttpDeviceFilesSource,
-    private val unionSource: HttpEventUnionSource,
+    /** The world's backend port, declaring the world's app version. */
+    private val port: Backend,
+    /** The version the world's requests declare — the byte seeding declares it too, as the port does. */
+    private val appVersion: () -> String,
 ) {
 
     // ---- reads ----------------------------------------------------------------------------------
 
     /** The object keys the backend lists for [deviceId] — its per-device listing, over HTTP. */
     suspend fun objectsOf(deviceId: String): Answer<Set<String>> =
-        Answer.Available(deviceFiles.list(deviceId).getOrThrow().map { it.key }.toSet())
+        Answer.Available(read("the listing", port.deviceFiles(null, deviceId)).map { uploadKey(it.assetId, it.role, it.filename) }.toSet())
 
     /** The event-wide union the backend serves for [eventId], over HTTP. */
     suspend fun unionOf(eventId: String): Answer<List<UnionAsset>> =
-        Answer.Available(unionSource.union(eventId).getOrThrow())
+        Answer.Available(read("the union", port.eventFiles(eventId)))
 
     /** Whether the backend knows [eventId] — its details route answering `200` rather than `404`. */
-    suspend fun isRegistered(eventId: String): Answer<Boolean> {
-        val status = client.get("$host/events/$eventId").status
-        return when (status) {
-            HttpStatusCode.OK -> Answer.Available(true)
-            HttpStatusCode.NotFound -> Answer.Available(false)
-            else -> error("the event details route answered ${status.value} for $eventId")
-        }
+    suspend fun isRegistered(eventId: String): Answer<Boolean> = when (val reply = port.getEvent(eventId)) {
+        is Reply.Ok -> Answer.Available(true)
+        is Reply.Refused -> if (reply.status == NOT_FOUND) Answer.Available(false) else error("the event details route answered $reply for $eventId")
+        else -> error("the event details route answered $reply for $eventId")
     }
 
     /** The manifest the backend holds for [deviceId] in [eventId]. */
@@ -94,12 +89,10 @@ class NeutralBackend internal constructor(
         onMiniEdge("the device-config write counter", NOT_ON_THE_HTTP_SURFACE) { it.deviceConfigWritesOf(deviceId) }
 
     /** The name the backend serves for [eventId] — its details route, over HTTP; null when it has none. */
-    suspend fun eventNameOf(eventId: String): Answer<String?> {
-        val response = client.get("$host/events/$eventId")
-        if (response.status == HttpStatusCode.NotFound) return Answer.Available(null)
-        check(response.status.isSuccess()) { "the event details route answered ${response.status.value} for $eventId" }
-        val name = Json.parseToJsonElement(response.bodyAsText()).jsonObject["name"]
-        return Answer.Available(name?.takeUnless { it is kotlinx.serialization.json.JsonNull }?.jsonPrimitive?.content)
+    suspend fun eventNameOf(eventId: String): Answer<String?> = when (val reply = port.getEvent(eventId)) {
+        is Reply.Ok -> Answer.Available(reply.value.name)
+        is Reply.Refused -> if (reply.status == NOT_FOUND) Answer.Available(null) else error("the event details route answered $reply for $eventId")
+        else -> error("the event details route answered $reply for $eventId")
     }
 
     /** Every push the backend would have sent, in order — the APNs mock's record. */
@@ -176,25 +169,12 @@ class NeutralBackend internal constructor(
     // ---- seeding through the public surface (the world's minted-id helpers stand on these) -------------
 
     /** `POST /events` — the event id the backend mints, the only kind the real backend accepts. */
-    internal suspend fun createEvent(name: String, startsAt: String, endsAt: String?): String {
-        val body = buildJsonObject {
-            put("name", name)
-            put("startsAt", startsAt)
-            endsAt?.let { put("endsAt", it) }
-        }
-        val response = checked(
-            "create event",
-            client.post("$host/events") {
-                contentType(ContentType.Application.Json)
-                setBody(body.toString())
-            },
-        )
-        return Json.parseToJsonElement(response.bodyAsText()).jsonObject.getValue("eventId").jsonPrimitive.content
-    }
+    internal suspend fun createEvent(name: String, startsAt: String, endsAt: String?): String =
+        read("create event", port.createEvent(null, CreateEventRequest(name, startsAt, endsAt))).eventId
 
     /** The join, with no body. */
     internal suspend fun join(eventId: String, deviceId: String) {
-        checked("join $deviceId to $eventId", client.put("$host/events/$eventId/devices/$deviceId"))
+        read("join $deviceId to $eventId", port.joinEvent(null, eventId, deviceId))
     }
 
     /** One resource's bytes, where the app's uploader addresses them. */
@@ -202,6 +182,7 @@ class NeutralBackend internal constructor(
         checked(
             "upload ${resource.key} for $deviceId",
             client.put("$host/files/devices/$deviceId/$assetId/${resource.role.wire}?filename=${resource.filename}") {
+                header(APP_VERSION_HEADER, appVersion())
                 contentType(ContentType.Image.JPEG)
                 setBody(SEEDED_BYTES)
             },
@@ -210,14 +191,12 @@ class NeutralBackend internal constructor(
 
     /** A member's manifest publish. */
     internal suspend fun publish(eventId: String, manifest: DeviceManifest) {
-        checked(
-            "publish ${manifest.deviceId}'s manifest",
-            client.put("$host/events/$eventId/devices/${manifest.deviceId}/manifest") {
-                contentType(ContentType.Application.Json)
-                setBody(manifest.encodeToJson())
-            },
-        )
+        read("publish ${manifest.deviceId}'s manifest", port.publishManifest(null, eventId, manifest.deviceId, manifest))
     }
+
+    /** A served answer's value, or a failure naming the setup step and what the backend answered. */
+    private fun <T> read(step: String, reply: Reply<T>): T =
+        (reply as? Reply.Ok)?.value ?: error("world setup step '$step' was refused by the ${backend.name} backend: $reply")
 
     private suspend fun checked(step: String, response: HttpResponse): HttpResponse {
         check(response.status.isSuccess()) {
@@ -239,6 +218,7 @@ class NeutralBackend internal constructor(
             ?: Answer.unavailable(backend, operation, why)
 
     private companion object {
+        const val NOT_FOUND = 404
         const val NOT_ON_THE_HTTP_SURFACE = "the real edge keeps it in its database and serves no route that reads it"
         const val LEGACY_ID_DIGITS = 12
         const val NOT_RUNTIME_DRIVABLE = "the real edge runs it on its own schedule, and no route drives it at runtime"

@@ -1,16 +1,16 @@
 package app.snapsync.attest.contract
 
 import app.snapsync.attest.AppAttestApi
-import app.snapsync.attest.IosAttestKey
+import app.snapsync.attest.IosDeviceIntegrity
 import app.snapsync.contracts.AttestStoreContract
 import app.snapsync.contracts.AttestStoreState
-import app.snapsync.contracts.AttestKeyState
+import app.snapsync.contracts.DeviceIntegrityState
 import app.snapsync.contracts.Entered
 import app.snapsync.keychain.IosSecureStore
 import app.snapsync.model.SecureSlot
 import app.snapsync.services.identity.AttestState
 import app.snapsync.keychain.KeychainApi
-import app.snapsync.ports.AttestKey
+import app.snapsync.ports.DeviceIntegrity
 import app.snapsync.ports.AttestStore
 
 /*
@@ -20,19 +20,19 @@ import app.snapsync.ports.AttestStore
  */
 
 /** Why neither the device binding nor its replay can present UNSUPPORTED. */
-internal const val DEVICE_UNREACHABLE_UNSUPPORTED =
+internal const val DEVICE_UNREACHABLE_UNAVAILABLE =
     "the app process on a device has App Attest (the kexe host covers UNSUPPORTED)"
 
 /** Why neither the device binding nor its replay can present an unreadable store. */
 internal const val DEVICE_UNREACHABLE_INACCESSIBLE_STORE =
     "the entitled app runs unlocked: its Keychain is accessible (the kexe host covers INACCESSIBLE)"
 
-/** An [IosAttestKey] over [api], for the one state the entitled app presents. */
-internal fun attestKeyInState(api: AppAttestApi, state: AttestKeyState, afterDispose: () -> Unit = {}): Entered<AttestKey> =
-    if (state == AttestKeyState.UNSUPPORTED) {
-        Entered.Unreachable(DEVICE_UNREACHABLE_UNSUPPORTED)
+/** An [IosDeviceIntegrity] over [api], for the one state the entitled app presents. */
+internal fun integrityInState(api: AppAttestApi, state: DeviceIntegrityState, afterDispose: () -> Unit = {}): Entered<DeviceIntegrity> =
+    if (state == DeviceIntegrityState.UNAVAILABLE) {
+        Entered.Unreachable(DEVICE_UNREACHABLE_UNAVAILABLE)
     } else {
-        Entered.Ready(IosAttestKey(api), afterDispose)
+        Entered.Ready(IosDeviceIntegrity(api), afterDispose)
     }
 
 private const val SERVICE = "app.snapsync.contract.attest"

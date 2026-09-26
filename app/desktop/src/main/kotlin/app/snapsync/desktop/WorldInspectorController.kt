@@ -292,7 +292,7 @@ class WorldInspectorController(private val scope: CoroutineScope) {
     }
 
     /**
-     * Create an event through the REAL `HttpEventCreation` → mini-edge → marker, with a chosen
+     * Create an event through the REAL creation service → `HttpBackend` → mini-edge → marker, with a chosen
      * [startsAt]. The operator picks past or future so BOTH sides of the floor are drivable through the
      * real stack — a future start is what proves the theorem the design rests on: nothing uploads, not
      * because a gate refuses, but because the clamped cutoff admits no photo. The forge harness can only

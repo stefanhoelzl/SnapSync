@@ -5,7 +5,7 @@ import platform.Foundation.NSData
 import platform.Foundation.NSError
 
 /**
- * **The operating-system boundary of [IosAttestKey]**: the four `DCAppAttestService` calls it makes, and
+ * **The operating-system boundary of [IosDeviceIntegrity]**: the four `DCAppAttestService` calls it makes, and
  * nothing else (`docs/architecture.md`, "Hosts CI cannot reach are recorded at the operating-system
  * boundary and replayed on every build").
  *

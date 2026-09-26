@@ -1,7 +1,7 @@
 package app.snapsync.attest
 
-import app.snapsync.contracts.AttestKeyContract
-import app.snapsync.contracts.AttestKeyState
+import app.snapsync.contracts.DeviceIntegrityContract
+import app.snapsync.contracts.DeviceIntegrityState
 import app.snapsync.contracts.AttestStoreContract
 import app.snapsync.contracts.AttestStoreState
 import app.snapsync.contracts.Binding
@@ -10,7 +10,7 @@ import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.verify
 import app.snapsync.keychain.IosSecureStore
-import app.snapsync.ports.AttestKey
+import app.snapsync.ports.DeviceIntegrity
 import app.snapsync.ports.AttestStore
 import app.snapsync.services.identity.AttestState
 import kotlin.test.Test
@@ -27,21 +27,21 @@ import kotlin.test.Test
  */
 class AttestContractTest {
 
-    private val key = object : Binding<AttestKeyState, AttestKey> {
+    private val key = object : Binding<DeviceIntegrityState, DeviceIntegrity> {
         override val host = Host.IOS_SIM_KEXE
         override val kind = BindingKind.Live
-        override val reaches = setOf(AttestKeyState.UNSUPPORTED)
+        override val reaches = setOf(DeviceIntegrityState.UNAVAILABLE)
 
-        override fun create(state: AttestKeyState, clauseId: String): Entered<AttestKey> =
-            if (state == AttestKeyState.UNSUPPORTED) {
-                Entered.Ready(IosAttestKey())
+        override fun create(state: DeviceIntegrityState, clauseId: String): Entered<DeviceIntegrity> =
+            if (state == DeviceIntegrityState.UNAVAILABLE) {
+                Entered.Ready(IosDeviceIntegrity())
             } else {
                 Entered.Unreachable("a simulator has no App Attest: DCAppAttestService.isSupported is false")
             }
     }
 
     @Test
-    fun `App Attest satisfies the AttestKey contract on this host`() = verify(AttestKeyContract, key)
+    fun `App Attest satisfies the DeviceIntegrity contract on this host`() = verify(DeviceIntegrityContract, key)
 
     private val store = object : Binding<AttestStoreState, AttestStore> {
         override val host = Host.IOS_SIM_KEXE

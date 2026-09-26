@@ -11,8 +11,8 @@ import kotlin.test.assertTrue
  * **The client's ungated-path predicate is the backend's closed list** (capability `privacy-security`, "Only a
  * rejected credential is invalidated, and only that one"; decision record `harden-seam-bug-classes`, D10).
  *
- * The credential interceptor reads a `401` as a rejected token only from a route the token gate guards
- * ([isGatedRequest]). That predicate is a copy of the gate's closed list in `api/src/app.ts`, and a copy drifts: a
+ * A token is passed, and a `401` read as a rejected token, only on a route the token gate guards ([isGatedRequest];
+ * `HttpBackendTest` pins the `Backend` port's token-taking routes to it). That predicate is a copy of the gate's closed list in `api/src/app.ts`, and a copy drifts: a
  * route the backend opens but the client still thinks gated would have its own `401`s read as a revoked credential
  * again (B2). So this reads the backend's list out of `app.ts` and drives the REAL predicate against every entry —
  * and pins the list's size, so an entry added there fails here until the client learns it.

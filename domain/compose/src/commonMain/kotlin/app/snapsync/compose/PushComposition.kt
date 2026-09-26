@@ -3,20 +3,17 @@ package app.snapsync.compose
 import app.snapsync.model.ApnsPushToken
 import app.snapsync.feature.push.PushRegistration
 import app.snapsync.ports.PushRegistrationRecord
-import app.snapsync.ports.PushTokenPublisher
 import app.snapsync.ports.PushTokenSource
+import app.snapsync.services.backend.PushTokenPublisher
 
 /**
- * The push registration's three ports (capability `receiving-photos`), one [AppPorts] field because they are one
- * need: [publisher] writes this device's registration (the `PUT` of its APNs token — built into `PushRegistration`
- * here rather than by a shell, which once re-entered it through a `registerPush` lambda the world bound to a
- * counter), [tokens] is what the OS delivered and in which environment, and [record] is the last registration the
- * backend accepted, against which a delivered token is compared. [record] is required: a composition that
- * defaulted it to an empty record would publish at every launch — the cost it exists to remove — and nothing would
- * say so.
+ * The push registration's two ports (capability `receiving-photos`), one [AppPorts] field because they are one
+ * need: [tokens] is what the OS delivered and in which environment, and [record] is the last registration the
+ * backend accepted, against which a delivered token is compared. The publish itself is a backend service composed
+ * over the app's one authenticated backend. [record] is required: a composition that defaulted it to an empty
+ * record would publish at every launch — the cost it exists to remove — and nothing would say so.
  */
 class PushPorts(
-    val publisher: PushTokenPublisher,
     val tokens: PushTokenSource,
     val record: PushRegistrationRecord,
 )
@@ -29,8 +26,8 @@ class PushPorts(
  *
  * A top-level factory rather than an `AppCore` body because `AppCore` is measured (see [shareSetLoadFor]).
  */
-internal fun pushRegistrationFor(ports: AppPorts): PushRegistration =
-    PushRegistration(ports.push.publisher, ports.push.record, ports.deviceIdentity)
+internal fun pushRegistrationFor(ports: AppPorts, publisher: PushTokenPublisher): PushRegistration =
+    PushRegistration(publisher, ports.push.record, ports.deviceIdentity)
 
 /**
  * Re-PUT the delivered APNs token on join, whatever the last-registered record holds (capability

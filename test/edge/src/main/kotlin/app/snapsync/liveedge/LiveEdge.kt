@@ -1,12 +1,9 @@
 package app.snapsync.liveedge
 
-import app.snapsync.contracts.ClientIdentity
 import app.snapsync.contracts.EdgeSetup
 import app.snapsync.contracts.EdgeSubject
 import app.snapsync.contracts.Entered
-import app.snapsync.contracts.GateRecorder
 import app.snapsync.contracts.Seeded
-import app.snapsync.http.withCredentialInterceptor
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import java.io.File
@@ -54,20 +51,8 @@ object LiveEdge {
     fun setup(): Pair<EdgeSetup, HttpClient> = HttpClient(CIO).let { EdgeSetup(it, base) to it }
 
     /**
-     * The client the app ships, over a real socket: the production interceptor, declaring [identity], with the
-     * gate's callbacks recorded into [gate].
-     */
-    fun client(identity: ClientIdentity, gate: GateRecorder): HttpClient =
-        HttpClient(CIO).withCredentialInterceptor(
-            token = { identity.token },
-            onRejected = gate::onRejected,
-            appVersion = { identity.appVersion },
-            onVersionRefused = gate::onVersionRefused,
-        )
-
-    /**
-     * Enters one clause's state on the live edge through [seed], then builds the port under contract over the
-     * client the state calls for. Setup is blocking because `Binding.create` is; the clause itself suspends.
+     * Enters one clause's state on the live edge through [seed], then builds the port under contract over a client
+     * of its own. Setup is blocking because `Binding.create` is; the clause itself suspends.
      */
     fun <P> enter(
         seed: suspend (EdgeSetup) -> Seeded,
@@ -75,11 +60,10 @@ object LiveEdge {
     ): Entered<EdgeSubject<P>> = runBlocking {
         val (setup, setupClient) = setup()
         val seeded = seed(setup)
-        val gate = GateRecorder()
-        val client = client(seeded.identity, gate)
+        val client = HttpClient(CIO)
         // The setup client stays open for the clause: a clause may read another route through it.
         Entered.Ready(
-            EdgeSubject(port(client, base, seeded), seeded, gate, setup),
+            EdgeSubject(port(client, base, seeded), seeded, setup),
             dispose = { client.close(); setupClient.close() },
         )
     }

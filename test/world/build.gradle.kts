@@ -44,17 +44,18 @@ kotlin {
             api(project(":domain:host"))
             // `World.statusHost` is presentation's container host; the host zone no longer exports it.
             api(project(":domain:presentation"))
+            // The services: the backend services the core composes appear on the world's surface
+            // (`World.manifestPublisher`, the extension tier's cycle); the gallery services (discovery, album
+            // operations) are what the world's cycle reads the gallery through, as the phone's does; and the storage
+            // services over the real JVM `Databases` serve the test that forcing the composition opens no database.
+            api(project(":domain:services"))
             api(libs.orbit.core)
             // `api` (not `implementation`): the world's whole purpose is to hand the REAL stack's types
             // to its consumers (`:app:desktop`, `:test:integration`) — they appear across the world's
             // public API (composition helpers, honest fakes, wrappers), so they must leak transitively.
             api(project(":adapter:generic:fake"))
-            // The real Ktor clients the mini-edge serves (HttpDeviceFilesSource, HttpEventUnionSource,
-            // HttpEventCreation, HttpEnrollment, HttpLeaveNotifier, HttpEventDirectory).
+            // The production `HttpBackend` the mini-edge (or the real `api/`) serves.
             api(project(":adapter:generic:app"))
-            // The gallery services the device roots compose over the gallery (discovery, album operations), so
-            // the world's cycle reads the gallery through the same services the phone's does.
-            implementation(project(":domain:services"))
             implementation(libs.coroutines.core)
             implementation(libs.kermit)
             implementation(libs.kotlinx.datetime)
@@ -68,8 +69,6 @@ kotlin {
             implementation(project(":test:edge"))
             implementation(libs.ktor.client.cio)
         }
-        // The real storage services over the real JVM `Databases`, for the test that forcing the composition
-        // opens no database (`docs/architecture.md`).
         commonTest.dependencies {
             implementation(kotlin("test"))
             implementation(libs.coroutines.test)

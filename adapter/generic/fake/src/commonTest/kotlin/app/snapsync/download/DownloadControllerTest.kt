@@ -1,15 +1,15 @@
 package app.snapsync.download
 
 import app.snapsync.feature.download.DownloadController
-import app.snapsync.ports.EventUnionSource
+import app.snapsync.services.backend.EventUnionSource
 import app.snapsync.ports.ImportedAssetPresence
 import app.snapsync.model.ImportResult
 import app.snapsync.ports.DownloadStore
 import app.snapsync.ports.PhotoDownloadJobs
 import app.snapsync.model.ImportRequest
 import app.snapsync.ports.GalleryImport
-import app.snapsync.ports.UnionAsset
-import app.snapsync.ports.UnionResource
+import app.snapsync.model.UnionAsset
+import app.snapsync.model.UnionResource
 
 import app.snapsync.model.AssetPresence
 import app.snapsync.model.AssetRef

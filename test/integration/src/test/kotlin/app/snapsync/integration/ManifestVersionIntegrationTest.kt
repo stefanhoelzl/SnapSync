@@ -8,11 +8,12 @@ import kotlin.test.assertEquals
 /**
  * **Manifest publishes are ordered by the ledger's manifest version** (capabilities `photo-sharing`,
  * `docs/architecture.md`, `photo-sharing`), over the real stack: the composed `uploadCore`, the real
- * `DeviceManifestProducer` and `HttpManifestPublisher`, and the mini-edge modelling the real route's ordering.
+ * `DeviceManifestProducer`, the manifest service and `HttpBackend`, and the mini-edge modelling the real route's
+ * ordering.
  *
  * The crossed-pair races this ordering closes (an older publish landing last is refused; an equal version is
- * applied) are contracted at the publisher port — `ManifestPublisherContract`'s
- * `AN_OLDER_PUBLISH_LANDING_LAST_CHANGES_NOTHING` / `AN_EQUAL_VERSION_PUBLISH_IS_APPLIED`, bound to the mini-edge
+ * applied) are contracted at the backend port — `BackendContract`'s
+ * `MANIFEST_AN_OLDER_PUBLISH_LANDING_LAST_CHANGES_NOTHING` / `MANIFEST_AN_EQUAL_VERSION_PUBLISH_IS_APPLIED`, bound to the mini-edge
  * and the real `api/`. What stays here is the cost the ordering puts on the cycle, which only the composed stack
  * shows. Decision record: `changes/manifest-versions`.
  */

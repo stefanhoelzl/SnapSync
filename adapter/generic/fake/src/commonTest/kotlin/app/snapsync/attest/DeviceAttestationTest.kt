@@ -3,12 +3,24 @@
 package app.snapsync.attest
 
 import app.snapsync.fake.InMemoryAttestStore
-import app.snapsync.feature.trust.DeviceAttestation
-import app.snapsync.feature.trust.tokenExpirySeconds
-import app.snapsync.ports.AttestClient
-import app.snapsync.ports.AttestKey
-import app.snapsync.ports.AttestStore
+import app.snapsync.model.ApnsPushToken
+import app.snapsync.model.CreateEventRequest
+import app.snapsync.model.DeviceFile
+import app.snapsync.model.DeviceManifest
+import app.snapsync.model.EventCreated
+import app.snapsync.model.EventMeta
+import app.snapsync.model.EventRenamed
+import app.snapsync.model.MintRequest
+import app.snapsync.model.Proof
+import app.snapsync.model.RenewRequest
+import app.snapsync.model.Reply
 import app.snapsync.model.TokenOutcome
+import app.snapsync.model.UnionAsset
+import app.snapsync.ports.AttestStore
+import app.snapsync.ports.Backend
+import app.snapsync.ports.DeviceIntegrity
+import app.snapsync.services.trust.DeviceAttestation
+import app.snapsync.services.trust.tokenExpirySeconds
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -33,30 +45,32 @@ private fun token(expiresInDays: Long) = "$DEVICE.${NOW_SECONDS + expiresInDays 
 private class FakeKey(
     val supported: Boolean = true,
     var attestThrows: Boolean = false,
-) : AttestKey {
+    var assertThrows: Boolean = false,
+) : DeviceIntegrity {
     var generated = 0
     var attested = 0
     var asserted = 0
 
-    override fun isSupported(): Boolean = supported
-    override suspend fun generateKey(): String = "key-${++generated}"
-    override suspend fun attest(keyId: String, challenge: String): ByteArray {
+    override fun isAvailable(): Boolean = supported
+    override suspend fun prove(challenge: String, handle: String?): Proof {
+        if (handle != null) {
+            asserted++
+            if (assertThrows) throw IllegalStateException("the Secure Enclave key is gone")
+            return Proof(handle, byteArrayOf(4, 5, 6))
+        }
+        val key = "key-${++generated}"
         attested++
         if (attestThrows) throw IllegalStateException("Apple said no")
-        return byteArrayOf(1, 2, 3)
-    }
-
-    override suspend fun assert(keyId: String, challenge: String): ByteArray {
-        asserted++
-        return byteArrayOf(4, 5, 6)
+        return Proof(key, byteArrayOf(1, 2, 3))
     }
 }
 
+/** The backend's three `/attest/…` routes, scripted in the attestation's own vocabulary; every other route is unused. */
 private class FakeClient(
     var challenge: String? = "chal",
     var mint: String? = token(30),
     var renew: String? = token(30),
-) : AttestClient {
+) : Backend {
     var mintCalls = 0
     var renewCalls = 0
     var challengeCalls = 0
@@ -68,25 +82,43 @@ private class FakeClient(
     /** When set, `challenge()` suspends on it, so a test can observe a refresh while it is in flight. */
     var challengeGate: CompletableDeferred<Unit>? = null
 
-    override suspend fun challenge(): String? {
+    override suspend fun challenge(): Reply<String> {
         challengeGate?.await()
         challengeCalls++
-        return challenge
-    }
-    override suspend fun mintToken(
-        deviceId: String,
-        keyId: String,
-        attestation: ByteArray,
-        challenge: String,
-    ): TokenOutcome {
-        mintCalls++
-        return mintAnswers.removeFirstOrNull() ?: mint?.let(TokenOutcome::Minted) ?: TokenOutcome.Refused
+        return challenge?.let { Reply.Ok(it) } ?: Reply.Unreachable(IllegalStateException("no challenge"))
     }
 
-    override suspend fun renewToken(deviceId: String, assertion: ByteArray, challenge: String): TokenOutcome {
-        renewCalls++
-        return renewAnswers.removeFirstOrNull() ?: renew?.let(TokenOutcome::Minted) ?: TokenOutcome.Refused
+    override suspend fun mintToken(req: MintRequest): Reply<String> {
+        mintCalls++
+        return reply(mintAnswers.removeFirstOrNull() ?: mint?.let(TokenOutcome::Minted) ?: TokenOutcome.Refused)
     }
+
+    override suspend fun renewToken(req: RenewRequest): Reply<String> {
+        renewCalls++
+        return reply(renewAnswers.removeFirstOrNull() ?: renew?.let(TokenOutcome::Minted) ?: TokenOutcome.Refused)
+    }
+
+    /** What the backend answers for [outcome] — the statuses and bodies the attestation service classifies. */
+    private fun reply(outcome: TokenOutcome): Reply<String> = when (outcome) {
+        is TokenOutcome.Minted -> Reply.Ok(outcome.token)
+        TokenOutcome.ChallengeStale -> Reply.Refused(409, "stale challenge")
+        TokenOutcome.NotAttested -> Reply.Refused(401, "not attested")
+        TokenOutcome.Refused -> Reply.Refused(401, "attestation rejected")
+        TokenOutcome.Unreachable -> Reply.Unreachable(IllegalStateException("offline"))
+    }
+
+    override suspend fun createEvent(token: String?, req: CreateEventRequest): Reply<EventCreated> = unused()
+    override suspend fun getEvent(eventId: String): Reply<EventMeta> = unused()
+    override suspend fun renameEvent(token: String?, eventId: String, name: String): Reply<EventRenamed> = unused()
+    override suspend fun joinEvent(token: String?, eventId: String, deviceId: String): Reply<Unit> = unused()
+    override suspend fun publishManifest(token: String?, eventId: String, deviceId: String, manifest: DeviceManifest): Reply<Unit> =
+        unused()
+    override suspend fun leaveEvent(token: String?, eventId: String, deviceId: String): Reply<Unit> = unused()
+    override suspend fun eventFiles(eventId: String): Reply<List<UnionAsset>> = unused()
+    override suspend fun deviceFiles(token: String?, deviceId: String): Reply<List<DeviceFile>> = unused()
+    override suspend fun putDeviceConfig(token: String?, deviceId: String, push: ApnsPushToken): Reply<Unit> = unused()
+
+    private fun unused(): Nothing = error("attestation reaches only the /attest/… routes")
 }
 
 private fun attestation(
@@ -540,5 +572,122 @@ class DeviceAttestationTest {
         assertTrue(attest.ensureFresh())
 
         assertEquals(token(30), attest.token())
+    }
+
+    // ---- the app's credential: what the authenticated backend retries with ----
+
+    @Test
+    fun `a rejection drops the token and answers the renewed one to retry with`() = runTest {
+        val store = InMemoryAttestStore(token = token(29), keyId = "k")
+        val (attest, client, _) = attestation(store = store)
+
+        assertEquals(token(30), attest.rejected(token(29)), "the call is retried with what the renewal obtained")
+        assertEquals(1, client.renewCalls)
+        assertEquals(token(30), store.token())
+    }
+
+    @Test
+    fun `a burst of rejections of one token renews once and every call retries with the new token`() = runTest {
+        val store = InMemoryAttestStore(token = token(29), keyId = "k")
+        val (attest, client, _) = attestation(store = store)
+
+        val retries = List(3) { async { attest.rejected(token(29)) } }.awaitAll()
+
+        assertEquals(List(3) { token(30) }, retries, "only the first clears it, but all retry — not only the one that cleared")
+        assertEquals(1, client.renewCalls, "the refresh is a no-op on the fresh token the first one obtained")
+    }
+
+    @Test
+    fun `a rejection whose recovery obtains nothing offers no retry`() = runTest {
+        val store = InMemoryAttestStore(token = token(29), keyId = "k")
+        val client = FakeClient(challenge = null)
+        val (attest, _, _) = attestation(client = client, store = store)
+
+        assertNull(attest.rejected(token(29)), "no token to send is no reason to send the call again")
+        assertNull(store.token(), "the rejected token is still dropped, so the next wake renews")
+    }
+
+    @Test
+    fun `a refused build is reported from the attest routes too`() = runTest {
+        val gate = app.snapsync.services.version.AppVersionGate()
+        val refusing = object : Backend by FakeClient() {
+            override suspend fun challenge(): Reply<String> = Reply.Refused(426, """{"minAppVersion":"0.7"}""")
+        }
+        val attest = DeviceAttestation(
+            FakeKey(), refusing, InMemoryAttestStore(), { DEVICE },
+            clock = { kotlin.time.Instant.fromEpochSeconds(NOW_SECONDS) }, versionGate = gate,
+        )
+
+        attest.refresh()
+
+        assertEquals(app.snapsync.model.VersionRefusal("0.7"), gate.refusal.value, "an obsolete build learns it before it holds a token")
+    }
+
+    // ---- the failure paths a wake must survive ----
+
+    @Test
+    fun `an assertion the Secure Enclave cannot produce falls back to a full attestation`() = runTest {
+        val key = FakeKey(assertThrows = true)
+        val store = InMemoryAttestStore(token = token(1), keyId = "k")
+        val (attest, client, _) = attestation(key, store = store)
+
+        assertTrue(attest.ensureFresh())
+
+        assertEquals(0, client.renewCalls, "no request was sent for an assertion that was never produced")
+        assertEquals(1, key.attested)
+        assertEquals("key-1", store.keyId(), "the fresh key replaces the dead one")
+    }
+
+    @Test
+    fun `an unreadable device identity leaves the token in place and never attests`() = runTest {
+        val key = FakeKey()
+        val client = FakeClient()
+        val store = InMemoryAttestStore(token = token(1), keyId = "k")
+        val attest = DeviceAttestation(
+            key, client, store, { error("keychain locked") },
+            clock = { kotlin.time.Instant.fromEpochSeconds(NOW_SECONDS) },
+        )
+
+        assertFalse(attest.ensureFresh())
+
+        assertEquals(0, client.challengeCalls, "a locked Keychain is not a failed assertion")
+        assertEquals(token(1), store.token())
+    }
+
+    @Test
+    fun `a backend answer that names no token is no answer and keeps the token held`() = runTest {
+        val client = object : Backend by FakeClient() {
+            override suspend fun challenge(): Reply<String> = Reply.Ok("chal")
+            override suspend fun renewToken(req: RenewRequest): Reply<String> = Reply.Malformed("no token")
+        }
+        val store = InMemoryAttestStore(token = token(1), keyId = "k")
+        val attest = DeviceAttestation(
+            FakeKey(), client, store, { DEVICE },
+            clock = { kotlin.time.Instant.fromEpochSeconds(NOW_SECONDS) },
+        )
+
+        assertFalse(attest.ensureFresh())
+        assertEquals(token(1), store.token())
+    }
+
+    @Test
+    fun `a retry reads the store of record not this process's copy`() = runTest {
+        val store = InMemoryAttestStore(token = token(30))
+        val (attest, _, _) = attestation(store = store)
+        assertEquals(token(30), attest.token()) // cached
+
+        store.setToken(token(31)) // the other process renewed into the shared item
+
+        assertEquals(token(31), attest.freshToken())
+    }
+
+    @Test
+    fun `a rejection whose compare cannot be made is logged and recovers nothing it should not`() = runTest {
+        val store = object : AttestStore by InMemoryAttestStore(token = token(30), keyId = "k") {
+            override fun clearTokenIf(expected: String): Boolean = throw IllegalStateException("keychain locked")
+        }
+        val (attest, _, _) = attestation(store = store)
+
+        assertFalse(attest.onRejected(token(30)), "an unreadable store is never read as a cleared token")
     }
 }

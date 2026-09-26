@@ -4,7 +4,7 @@ import app.snapsync.model.ApnsPushToken
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.DeviceIdentity
 import app.snapsync.ports.PushRegistrationRecord
-import app.snapsync.ports.PushTokenPublisher
+import app.snapsync.services.backend.PushTokenPublisher
 import app.snapsync.ports.PushTokenSource
 
 import co.touchlab.kermit.Logger

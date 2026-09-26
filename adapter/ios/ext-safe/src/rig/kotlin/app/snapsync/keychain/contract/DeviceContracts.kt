@@ -2,10 +2,10 @@ package app.snapsync.keychain.contract
 
 import app.snapsync.attest.SystemAppAttestApi
 import app.snapsync.attest.contract.RecordingAppAttestApi
-import app.snapsync.attest.contract.attestKeyInState
+import app.snapsync.attest.contract.integrityInState
 import app.snapsync.attest.contract.attestStoreInState
-import app.snapsync.contracts.AttestKeyContract
-import app.snapsync.contracts.AttestKeyState
+import app.snapsync.contracts.DeviceIntegrityContract
+import app.snapsync.contracts.DeviceIntegrityState
 import app.snapsync.contracts.AttestStoreContract
 import app.snapsync.contracts.AttestStoreState
 import app.snapsync.contracts.Binding
@@ -22,7 +22,7 @@ import app.snapsync.contracts.render
 import app.snapsync.contracts.run
 import app.snapsync.keychain.SystemKeychainApi
 import app.snapsync.logging.deviceDiagnosticEnvironment
-import app.snapsync.ports.AttestKey
+import app.snapsync.ports.DeviceIntegrity
 import app.snapsync.ports.AttestStore
 import app.snapsync.ports.SecureStore
 import platform.Foundation.NSDate
@@ -53,19 +53,19 @@ internal class DeviceKeychainBinding(private val recorder: Recorder) : Binding<S
 }
 
 /**
- * The real [app.snapsync.attest.IosAttestKey] in the app process, recording every App Attest call and its
+ * The real [app.snapsync.attest.IosDeviceIntegrity] in the app process, recording every App Attest call and its
  * answer — credential bytes and minted key ids masked (`AppAttestTape.kt`). Replayed on every CI build by
- * `AttestReplayContractTest`, which reuses [attestKeyInState].
+ * `AttestReplayContractTest`, which reuses [integrityInState].
  */
-internal class DeviceAttestKeyBinding(private val recorder: Recorder) : Binding<AttestKeyState, AttestKey> {
+internal class DeviceIntegrityBinding(private val recorder: Recorder) : Binding<DeviceIntegrityState, DeviceIntegrity> {
     override val host = Host.IOS_DEVICE_APP
     override val kind = BindingKind.Live
-    override val reaches = setOf(AttestKeyState.SUPPORTED)
+    override val reaches = setOf(DeviceIntegrityState.AVAILABLE)
 
-    override fun create(state: AttestKeyState, clauseId: String): Entered<AttestKey> {
-        if (state !in reaches) return attestKeyInState(SystemAppAttestApi, state)
+    override fun create(state: DeviceIntegrityState, clauseId: String): Entered<DeviceIntegrity> {
+        if (state !in reaches) return integrityInState(SystemAppAttestApi, state)
         recorder.open(clauseId)
-        return attestKeyInState(RecordingAppAttestApi(SystemAppAttestApi, recorder), state)
+        return integrityInState(RecordingAppAttestApi(SystemAppAttestApi, recorder), state)
     }
 }
 
@@ -98,8 +98,8 @@ fun deviceContracts(): List<InAppContract> = listOf(
     InAppContract(SecureStoreContract.name, Host.IOS_DEVICE_APP) {
         recordOnDevice(SecureStoreContract) { DeviceKeychainBinding(it) }
     },
-    InAppContract(AttestKeyContract.name, Host.IOS_DEVICE_APP) {
-        recordOnDevice(AttestKeyContract) { DeviceAttestKeyBinding(it) }
+    InAppContract(DeviceIntegrityContract.name, Host.IOS_DEVICE_APP) {
+        recordOnDevice(DeviceIntegrityContract) { DeviceIntegrityBinding(it) }
     },
     InAppContract(AttestStoreContract.name, Host.IOS_DEVICE_APP) {
         recordOnDevice(AttestStoreContract) { DeviceAttestStoreBinding(it) }

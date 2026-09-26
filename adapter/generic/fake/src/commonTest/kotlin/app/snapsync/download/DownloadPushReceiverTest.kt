@@ -11,12 +11,12 @@ import app.snapsync.ports.ConfigSource
 import app.snapsync.model.MembershipRead
 import app.snapsync.feature.download.DownloadController
 import app.snapsync.feature.download.DownloadPushReceiver
-import app.snapsync.ports.EventUnionSource
+import app.snapsync.services.backend.EventUnionSource
 import app.snapsync.model.ImportResult
 import app.snapsync.ports.PhotoDownloadJobs
 import app.snapsync.model.ImportRequest
 import app.snapsync.ports.GalleryImport
-import app.snapsync.ports.UnionAsset
+import app.snapsync.model.UnionAsset
 
 import app.snapsync.model.AssetRef
 import app.snapsync.fake.InMemoryAssetPresence

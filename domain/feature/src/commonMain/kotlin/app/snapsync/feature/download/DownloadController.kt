@@ -1,7 +1,7 @@
 package app.snapsync.feature.download
 
 import app.snapsync.model.runCatchingCancellable
-import app.snapsync.ports.EventUnionSource
+import app.snapsync.services.backend.EventUnionSource
 import app.snapsync.model.AlbumId
 import app.snapsync.model.ImportRequest
 import app.snapsync.model.ImportResult

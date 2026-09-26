@@ -20,7 +20,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Instant
 import app.snapsync.model.Layer
-import app.snapsync.feature.version.readmodel.VersionRefusal
+import app.snapsync.model.VersionRefusal
 
 /**
  * The version gate on the SCREEN (capability `app-update-required`): a backend refusal of this build
@@ -31,7 +31,7 @@ import app.snapsync.feature.version.readmodel.VersionRefusal
  * exercise one read-model, one layer and one command, and share none of that class's join/create
  * fixtures.
  *
- * What each layer proves is asserted where it lives — `CredentialInterceptorTest` for the `426` branch,
+ * What each layer proves is asserted where it lives — `CredentialedBackendTest` for the `426` branch,
  * `VersionGateIntegrationTest` for the whole path over the real composed core. These are the reduction:
  * which layer wins, what it carries, and that it goes away again.
  */

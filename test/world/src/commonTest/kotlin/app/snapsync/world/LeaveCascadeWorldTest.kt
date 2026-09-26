@@ -1,6 +1,5 @@
 package app.snapsync.world
 
-import app.snapsync.membership.HttpLeaveNotifier
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -70,10 +69,10 @@ class LeaveCascadeWorldTest {
         w.addForeignDevice(x, e, listOf(World.foreignAsset("Q1")))
         w.addForeignDevice(x, f, listOf(World.foreignAsset("Q1")))
 
-        // X leaves E through the REAL DELETE seam over the mini-edge. The notifier is bound to X at
-        // construction because the port says "THIS device is leaving" — standing in for another member
-        // is a second instance, named here, rather than an argument at the call site.
-        HttpLeaveNotifier(w.client, w.host) { x }.notifyLeaving(e)
+        // X leaves E through the REAL leave service over the mini-edge. It is bound to X at construction because
+        // the service says "THIS device is leaving" — standing in for another member is a second instance, named
+        // here, rather than an argument at the call site.
+        miniEdgeServices(w.store, w.host, deviceId = x).leave.notifyLeaving(e)
 
         assertTrue(w.store.isRegistered(e)) // E NOT reaped — leaving is non-destructive now
         assertTrue(w.store.isDeparted(e, x)) // X is departed in E

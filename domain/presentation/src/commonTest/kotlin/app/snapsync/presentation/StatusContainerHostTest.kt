@@ -862,7 +862,7 @@ class StatusContainerHostTest {
     @Test
     fun `the gate defaults the cutoff to the event start rather than to now`() = runTest {
         // The seed-from-createdAt (and its fall-back-to-now) is GONE. `startsAt` is always present on a
-        // successful load — the backend synthesizes one for legacy markers and `HttpEventDirectory`
+        // successful load — the backend synthesizes one for legacy markers and `BackendEventDirectory`
         // fails the load rather than invent one — so the default is simply the event's start. Normalizing
         // a millisecond-bearing value is that source's job now, and is tested there.
         host(
@@ -1986,8 +1986,8 @@ class StatusContainerHostJoinGateTest {
     }
 
     /**
-     * The `Loading` twin. Unreachable through the production binding — `HttpEventDirectory.fetch` is
-     * `runCatching { … }.getOrDefault(Failed)` — but `loadJoinDetails` is a constructor seam, so the guard
+     * The `Loading` twin. Unreachable through the production binding — `BackendEventDirectory.fetch` maps
+     * every backend answer to an outcome — but `loadJoinDetails` is a constructor seam, so the guard
      * is covered directly rather than left to a mutation that would survive the suite.
      */
     @Test

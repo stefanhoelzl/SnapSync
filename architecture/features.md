@@ -43,18 +43,13 @@ on drift; regenerate instead.
 
 ## `feature/trust`
 
-- files: `CachedAttestStore.kt`, `DeviceAttestation.kt`
-- top-level types: `CachedAttestStore (class)`, `DeviceAttestation (class)`
+- files: —
+- top-level types: —
 
 ## `feature/upload`
 
 - files: `AppUploadMechanism.kt`, `LedgerWriter.kt`, `OsDrivenRegistration.kt`, `PushTailGuard.kt`, `SelectionScopedDiscovery.kt`, `StoredUploadSettle.kt`, `SyncEngine.kt`, `TailRunner.kt`, `UploadConfig.kt`, `UploadCycle.kt`, `UploadTransitions.kt`, `WalkMemo.kt`
 - top-level types: `AppUploadEngine (interface)`, `AppUploadEvents (interface)`, `AppUploadMechanism (interface)`, `CycleGate (interface)`, `ExtensionRegistration (interface)`, `JoinedMembership (class)`, `LedgerWriter (class)`, `OsDrivenRegistration (class)`, `PushTailGuard (class)`, `Rearm (class)`, `SelectionScopedDiscovery (class)`, `StoredUploadSettle (class)`, `SyncEngine (class)`, `TailOutcome (class)`, `TailRunner (class)`, `TailScope (class)`, `TailSignal (class)`, `TailTrigger (class)`, `UploadAdmission (class)`, `UploadConfig (class)`, `UploadCycle (class)`, `UploadTransitions (class)`, `WalkMemo (class)`, `WalkMemoUse (class)`, `WalkOutcome (interface)`
-
-## `feature/version`
-
-- files: `AppVersionGate.kt`, `VersionRefusal.kt`
-- top-level types: `AppVersionGate (class)`, `VersionRefusal (class)`
 
 ## Forge name→sources map (`SNAPSYNC_FORGE_STATE`)
 

@@ -1,6 +1,6 @@
 package app.snapsync.feature.membership
 
-import app.snapsync.ports.EventJoin
+import app.snapsync.services.backend.EventJoin
 import app.snapsync.model.JoinResult
 
 /**

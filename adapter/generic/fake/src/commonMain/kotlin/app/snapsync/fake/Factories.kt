@@ -3,9 +3,11 @@ package app.snapsync.fake
 import app.snapsync.model.DiagnosticDump
 import app.snapsync.model.EventConfig
 import app.snapsync.ports.AlbumMapStore
-import app.snapsync.ports.AttestClient
-import app.snapsync.ports.AttestKey
 import app.snapsync.ports.AttestStore
+import app.snapsync.ports.Backend
+import app.snapsync.ports.DeviceIntegrity
+import app.snapsync.model.DeviceFile
+import kotlin.time.Instant
 import app.snapsync.ports.ConfigReader
 import app.snapsync.ports.ConfigSource
 import app.snapsync.ports.ConfigStore
@@ -73,14 +75,18 @@ fun inMemoryPushRegistrationRecord(): PushRegistrationRecord = InMemoryPushRegis
 fun inMemoryAlbumMapStore(initial: Map<String, String> = emptyMap()): AlbumMapStore =
     InMemoryAlbumMapStore(initial)
 
-fun inMemoryAttestKey(supported: Boolean = true): AttestKey = InMemoryAttestKey(supported)
+fun inMemoryDeviceIntegrity(available: Boolean = true): DeviceIntegrity = InMemoryDeviceIntegrity(available)
 
-fun inMemoryAttestClient(
-    challengeValue: String? = "in-memory-challenge",
-    tokenExpiresAtEpochSeconds: Long = 90L * 24 * 60 * 60,
-    mints: Boolean = true,
-    renews: Boolean = false,
-): AttestClient = InMemoryAttestClient(challengeValue, tokenExpiresAtEpochSeconds, mints, renews)
+/**
+ * The in-memory backend (see [InMemoryBackend]). [storedFiles] is the byte store the OS's uploader writes — a cell
+ * the caller holds, keyed by device id; [minimumAppVersion] set is a backend refusing this build.
+ */
+fun inMemoryBackend(
+    storedFiles: MutableMap<String, MutableSet<DeviceFile>> = mutableMapOf(),
+    capacity: Int = 10,
+    minimumAppVersion: String? = null,
+    createdAt: Instant = Instant.fromEpochSeconds(0),
+): Backend = InMemoryBackend(storedFiles, capacity, minimumAppVersion, createdAt)
 
 fun inMemoryAttestStore(token: String? = null, keyId: String? = null): AttestStore =
     InMemoryAttestStore(token, keyId)

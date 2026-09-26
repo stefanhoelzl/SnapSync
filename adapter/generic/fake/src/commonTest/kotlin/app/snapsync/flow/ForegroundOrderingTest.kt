@@ -16,14 +16,14 @@ import app.snapsync.model.AssetRef
 import app.snapsync.ports.ConfigSource
 import app.snapsync.ports.DownloadStore
 import app.snapsync.ports.ConfigStore
-import app.snapsync.ports.EventUnionSource
+import app.snapsync.services.backend.EventUnionSource
 import app.snapsync.model.ImportResult
 import app.snapsync.model.PendingDownload
 import app.snapsync.ports.PhotoDownloadJobs
 import app.snapsync.model.ImportRequest
 import app.snapsync.ports.GalleryImport
 import app.snapsync.model.StagedResource
-import app.snapsync.ports.UnionAsset
+import app.snapsync.model.UnionAsset
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi

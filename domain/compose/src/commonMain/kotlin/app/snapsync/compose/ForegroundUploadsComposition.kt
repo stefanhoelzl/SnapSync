@@ -1,6 +1,7 @@
 package app.snapsync.compose
 
 import app.snapsync.feature.upload.StoredUploadSettle
+import app.snapsync.services.backend.DeviceFilesSource
 
 /**
  * The foreground settle (capability `photo-sharing`, "Foreground settles in-flight rows the backend
@@ -15,8 +16,8 @@ import app.snapsync.feature.upload.StoredUploadSettle
  * A top-level factory rather than an `AppCore` body for the same reason as `shareSetLoadFor`: `AppCore` is measured
  * by the `compose` tier's `LargeClass` ceiling.
  */
-internal fun storedUploadSettleFor(ports: AppPorts): StoredUploadSettle = StoredUploadSettle(
-    files = ports.uploadRecord.files,
+internal fun storedUploadSettleFor(ports: AppPorts, files: DeviceFilesSource): StoredUploadSettle = StoredUploadSettle(
+    files = files,
     ledger = ports.uploadRecord.ledger,
     identity = ports.deviceIdentity,
     log = ports.log,
