@@ -37,7 +37,7 @@ interface AlbumManager {
      * belongs to a **user album** whose title matches one of [titles], captured at or after [since].
      *
      * **Decision-free** (capability `photo-sharing`): the titles to look for are a *parameter*. The
-     * policy — which titles are denied — lives in `commonMain` ([DENYLISTED_ALBUM_TITLES]), never in this
+     * policy — which titles are denied — lives in `commonMain` ([app.snapsync.model.SelectionCalibration.denylistTitles]), never in this
      * untestable platform shell, per the same rule that keeps album *placement* decisions out of it.
      *
      * Matching is on **user albums by title only**. A smart album's title is system-localized ("Screenshots"

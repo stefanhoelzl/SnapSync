@@ -2,7 +2,7 @@ package app.snapsync.compose
 
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.CaptureCutoff
-import app.snapsync.model.DENYLISTED_ALBUM_TITLES
+import app.snapsync.model.SELECTION_CALIBRATION
 import app.snapsync.model.PermissionStatus
 import app.snapsync.ports.AlbumManager
 import co.touchlab.kermit.Logger
@@ -46,9 +46,9 @@ internal suspend fun denylistedAlbumMembers(
     log: Logger,
 ): Set<String> = when {
     grant != PermissionStatus.GRANTED -> emptySet()
-    onFailure == AlbumLookupFailure.FailCycle -> manager.assetIdsInAlbums(DENYLISTED_ALBUM_TITLES, cutoff.at.iso)
+    onFailure == AlbumLookupFailure.FailCycle -> manager.assetIdsInAlbums(SELECTION_CALIBRATION.denylistTitles, cutoff.at.iso)
     else ->
-        runCatchingCancellable { manager.assetIdsInAlbums(DENYLISTED_ALBUM_TITLES, cutoff.at.iso) }
+        runCatchingCancellable { manager.assetIdsInAlbums(SELECTION_CALIBRATION.denylistTitles, cutoff.at.iso) }
             .onFailure { log.w(it) { "denylisted-album lookup failed — admitting on doubt this cycle" } }
             .getOrDefault(emptySet())
 }

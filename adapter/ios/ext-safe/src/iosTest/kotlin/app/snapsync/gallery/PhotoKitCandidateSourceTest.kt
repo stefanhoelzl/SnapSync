@@ -3,8 +3,7 @@ package app.snapsync.gallery
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.selectionRulesFor
 import app.snapsync.model.CaptureCutoff
-import app.snapsync.model.MIN_IMAGE_PIXEL_AREA
-import app.snapsync.model.MIN_VIDEO_PIXEL_AREA
+import app.snapsync.model.SELECTION_CALIBRATION
 import app.snapsync.model.SelectionRule
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
@@ -111,8 +110,8 @@ class PhotoKitCandidateSourceTest {
                 SelectionRule.CaptureBefore(ceiling),
                 SelectionRule.ExcludeScreenshots,
                 SelectionRule.ExcludeScreenRecordings,
-                SelectionRule.MinImageArea(MIN_IMAGE_PIXEL_AREA),
-                SelectionRule.MinVideoArea(MIN_VIDEO_PIXEL_AREA),
+                SelectionRule.MinImageArea(SELECTION_CALIBRATION.imageFloor),
+                SelectionRule.MinVideoArea(SELECTION_CALIBRATION.videoFloor),
             ),
         )!!
         val format = predicate.predicateFormat
@@ -134,8 +133,8 @@ class PhotoKitCandidateSourceTest {
                 SelectionRule.CaptureBefore(ceiling),
                 SelectionRule.ExcludeScreenshots,
                 SelectionRule.ExcludeScreenRecordings,
-                SelectionRule.MinImageArea(MIN_IMAGE_PIXEL_AREA),
-                SelectionRule.MinVideoArea(MIN_VIDEO_PIXEL_AREA),
+                SelectionRule.MinImageArea(SELECTION_CALIBRATION.imageFloor),
+                SelectionRule.MinVideoArea(SELECTION_CALIBRATION.videoFloor),
             ),
         )!!
         // A day of slack on each side: the format carries the widened instants, not the exact bounds.

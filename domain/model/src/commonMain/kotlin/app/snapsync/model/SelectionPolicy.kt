@@ -158,8 +158,8 @@ suspend fun selectionRulesFor(
         if (ceiling != null) add(SelectionRule.CaptureBefore(ceiling))
         add(SelectionRule.ExcludeScreenshots)
         add(SelectionRule.ExcludeScreenRecordings)
-        add(SelectionRule.MinImageArea(MIN_IMAGE_PIXEL_AREA))
-        add(SelectionRule.MinVideoArea(MIN_VIDEO_PIXEL_AREA))
+        add(SelectionRule.MinImageArea(SELECTION_CALIBRATION.imageFloor))
+        add(SelectionRule.MinVideoArea(SELECTION_CALIBRATION.videoFloor))
         // The two effectful sets, read at the one moment whoever holds those ports can read them.
         suppressedAssetIds().takeIf { it.isNotEmpty() }?.let { add(SelectionRule.NotEcho(it)) }
         albumExcludedAssetIds(cutoff).takeIf { it.isNotEmpty() }
@@ -320,7 +320,7 @@ sealed interface SelectionRule {
      * The album denylist (capability `photo-sharing`): assets sitting in an album a
      * messaging/social app made. Album membership is the one origin fact that is **not** on the asset —
      * it needs a platform lookup — so the resolved id set is supplied to the policy rather than looked up
-     * by it. The titles stay in `model/` ([DENYLISTED_ALBUM_TITLES]); cost is O(albums), not O(assets).
+     * by it. The titles stay in `model/` ([SelectionCalibration.denylistTitles]); cost is O(albums), not O(assets).
      */
     data class NotInDenylistedAlbum(val excludedAssetIds: Set<String>) : SelectionRule {
         override fun admits(facts: AssetFacts): Boolean = facts.assetId !in excludedAssetIds
@@ -334,17 +334,3 @@ private fun admitsByArea(facts: AssetFacts, minArea: Long): Boolean {
     if (area <= 0L) return true
     return area >= minArea
 }
-
-/**
- * Images below **3 MP** are excluded. WhatsApp caps received images at a 1600 long edge (~1.9 MP, at
- * worst 2.6 MP square), Telegram ~1.2 MP, an Instagram save ~1.5 MP — while the *weakest* camera on the
- * oldest supported device (the SE2 front camera) is 3088×2320 = 7.2 MP. The floor sits >2× below that.
- *
- * **Fixed, not derived from `AVCaptureDevice` at runtime.** A device-derived floor is *tighter* on a
- * better camera, and tighter means more false drops — the opposite of admit-on-doubt. The device's real
- * camera resolution is information this policy deliberately declines to act on.
- */
-const val MIN_IMAGE_PIXEL_AREA: Long = 3_000_000
-
-/** See [SelectionRule.MinVideoArea] for why this floor is separate and lower. */
-const val MIN_VIDEO_PIXEL_AREA: Long = 1280L * 720L
