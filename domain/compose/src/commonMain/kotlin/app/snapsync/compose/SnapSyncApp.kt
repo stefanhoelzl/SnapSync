@@ -92,7 +92,6 @@ import app.snapsync.ports.DownloadTransport
 import app.snapsync.ports.DownloadTransportHost
 import app.snapsync.ports.DeviceManifestStore
 import app.snapsync.services.backend.BackendServices
-import app.snapsync.services.backend.CredentialedBackend
 import app.snapsync.services.backend.LeaveNotifier
 import app.snapsync.ports.LogScope
 import app.snapsync.ports.PhotoAccessRequester
@@ -298,16 +297,7 @@ class AppCore internal constructor(
      * attest (`DCAppAttestService.isSupported` is false in an app extension — measured), and the extension
      * reads the token this writes.
      */
-    val attestation: DeviceAttestation by lazy {
-        DeviceAttestation(
-            integrity = ports.integrity,
-            backend = ports.backend,
-            store = ports.attestStore,
-            identity = ports.deviceIdentity,
-            clock = ports.clock,
-            versionGate = versionGate,
-        )
-    }
+    val attestation: DeviceAttestation by lazy { attestationFor(ports, versionGate) }
 
     /** [versionGate]'s cell, for readers outside the core (the status host), which see no service type. */
     val versionRefusal: StateFlow<VersionRefusal?> get() = versionGate.refusal
@@ -321,9 +311,7 @@ class AppCore internal constructor(
      * and whose verdicts reach [versionGate]. Public for the app root's uploader, which publishes its manifest
      * through [BackendServices.manifest] like every other caller.
      */
-    val backend: BackendServices by lazy {
-        BackendServices(CredentialedBackend(ports.backend, attestation, versionGate), ports.deviceIdentity)
-    }
+    val backend: BackendServices by lazy { backendServicesFor(ports, attestation, versionGate) }
 
     // Own-device completeness AND in-flight, both from one consistent per-photo `assetProgress()` read
     // (capability `sync-status`), counted by the status source over the gallery's admitted set. Read-only;

@@ -41,11 +41,6 @@ on drift; regenerate instead.
 - files: `LedgerBackedSyncStatusSource.kt`, `LedgerCountsSource.kt`, `OwnDeviceGalleryStatusSource.kt`, `ShareableCount.kt`, `StatusCountsPoller.kt`, `StatusRefresh.kt`, `SyncStatusSource.kt`
 - top-level types: `LedgerCounts (class)`, `LedgerCountsSource (interface)`, `MutableLedgerCountsSource (class)`, `OwnDeviceGalleryStatusSource (class)`, `ReadingLedgerCountsSource (class)`, `ShareableCountSource (class)`, `StatusCountsPoller (class)`, `StatusRefresh (class)`, `SyncStatusSource (interface)`
 
-## `feature/trust`
-
-- files: —
-- top-level types: —
-
 ## `feature/upload`
 
 - files: `AppUploadMechanism.kt`, `LedgerWriter.kt`, `OsDrivenRegistration.kt`, `PushTailGuard.kt`, `SelectionScopedDiscovery.kt`, `StoredUploadSettle.kt`, `SyncEngine.kt`, `TailRunner.kt`, `UploadConfig.kt`, `UploadCycle.kt`, `UploadTransitions.kt`, `WalkMemo.kt`

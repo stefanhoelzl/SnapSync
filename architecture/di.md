@@ -30,19 +30,10 @@ Roots found:
 | `FileLogWriter` | x | x |
 | `GalleryAlbums` | | x |
 | `GalleryDiscovery` | | x |
-| `HttpAttestClient` | x | |
-| `HttpDeviceFilesSource` | x | |
-| `HttpEventCreation` | x | |
-| `HttpEventDirectory` | x | |
-| `HttpEventJoin` | x | |
-| `HttpEventRename` | x | |
-| `HttpEventUnionSource` | x | |
-| `HttpLeaveNotifier` | x | |
-| `HttpManifestPublisher` | | x |
-| `HttpPushTokenPublisher` | x | |
-| `IosAttestKey` | x | |
+| `HttpBackend` | x | x |
 | `IosBackgroundTime` | x | |
 | `IosDatabases` | x | x |
+| `IosDeviceIntegrity` | x | |
 | `IosDownloadTransport` | x | |
 | `IosFiles` | x | x |
 | `IosGallery` | x | |

@@ -29,7 +29,6 @@ class PortsNeverCallPortsTest {
 
     /** `Class.parameter` → the phase that removes it. */
     private val remaining = mapOf(
-        "InMemoryUploadDiscovery.source" to "11d (gallery): the fake discovery over the fake candidate source",
         "ProcessMetricHandler.reporter" to "11e (process ports): MetricKit reports forwarded to the diagnostics reporter",
         "IosPhotoKitUploadPlatform.ledger" to "11f (transfer): the PhotoKit tier's transfer record",
         "IosUrlSessionUploadPlatform.ledger" to "11f (transfer): the app's uploader's transfer record",
