@@ -34,8 +34,8 @@ Testing is moving with the thin-ports re-cut. The direction is §11.
 Both `build` and the simulator run gate merges. The simulator run is the **only** place Kotlin/Native-only
 breakage shows up: code the JVM accepts and Native rejects passes `build` and fails there.
 
-**Deno is a hard prerequisite of `build`.** `:adapter:generic:app:jvmTest` runs the backend clients'
-contracts against the real `api/`, started as `src/dev/serve.ts --ephemeral` (loopback only, filesystem
+**Deno is a hard prerequisite of `build`.** `:adapter:generic:app:jvmTest` runs the `Backend` port's
+contract against the real `api/`, started as `src/dev/serve.ts --ephemeral` (loopback only, filesystem
 store, no bunny zone reachable). Without Deno those tests **fail naming it**. They never turn into
 `NotRunHere`. `api/src` is declared as an input of that task, so a backend-only change re-runs them
 (`changes/archive/2026-09-23-contract-backend-clients`).
@@ -183,7 +183,14 @@ end of this section.
   delete what they seed.
 
 Where bindings live: beside their implementations.
-- Fakes: `:adapter:generic:fake` `commonTest`.
+- Fakes: `:adapter:generic:fake` `commonTest` — the in-memory `Backend` mock (`BackendContractBindingTest`) and
+  the in-memory `DeviceIntegrity` among them.
+- The `Backend` port is ONE contract (`BackendContract`, split into part files by route area for size), held by
+  three bindings: `HttpBackend` against the real `api/` (`Live`, the coverage), `HttpBackend` against the mini-edge
+  and the in-memory mock (both `Fake`). Its clauses state each route's answers in the backend's own vocabulary —
+  statuses and bodies — because what they MEAN is the services' decision above the port, tested beside those
+  services (`CredentialedBackendTest`, `BackendServicesTest`). A binding enters states through the backend's public
+  surface: `EdgeSetup` over HTTP, `PortSetup` through the port itself for a backend with no HTTP surface.
 - The live backend, and the JVM `Databases` adapter with the storage services bound through it: `:adapter:generic:app`
   `jvmTest`. The storage services live in `:domain:services`, but their contracts (`LedgerStore`, `DownloadStore`)
   are bound **through** the service over each platform's real `Databases` adapter, beside that adapter: a
@@ -368,12 +375,14 @@ Targets are `jvm()` and `iosSimulatorArm64` only. It never links into a shipped 
 ### The backend: one seam, two implementations
 
 - **Mini-edge (default, every target):** an in-memory backend store served through a Ktor `MockEngine`.
-  The real HTTP clients run unmodified against it. It serves both API versions (`/api/v1`, `/api/v2`,
+  The production `HttpBackend` runs unmodified against it. It serves both API versions (`/api/v1`, `/api/v2`,
   and no prefix means v1), because the backend does. Unmatched routes answer `404`.
 - **Real backend (JVM only):** `api/` via `:test:edge`, reached through its **public HTTP surface only**.
   The world never reads the process's storage directory.
 
-The mini-edge is the backend contracts' `Fake` binding (`MiniEdgeContractsTest`). On any **contracted**
+The mini-edge is the `Backend` contract's `Fake` binding (`MiniEdgeContractsTest`), reached through the production
+`HttpBackend`, and serves the three `/attest/…` routes so an attesting world obtains a token over the port like a
+device does. On any **contracted**
 route, drift from the real edge is a red build, and the fix goes in the mini-edge. It must not be fixed by
 declaring the clause's state unreachable. Drift on routes and fields no contract covers is accepted, with
 no golden fixture.
@@ -655,7 +664,7 @@ deno task schema:check   # the generated schema.sql is fresh
   `migrations.test.ts`. The rules themselves are in `docs/deployment.md`.
 - Every task resolves a deployment first (`deno task config`), and there is no default.
 
-**The Kotlin side also tests the backend.** The backend port contracts' Live bindings in `build` run the
+**The Kotlin side also tests the backend.** The `Backend` port contract's Live binding in `build` runs the
 real `api/` through `:test:edge` (`serve.ts --ephemeral`: loopback only, fresh filesystem store). The
 journeys run it too. A backend change that breaks a client contract therefore fails `./gradlew build`, not
 only `deno task test`.
@@ -730,9 +739,9 @@ not describe what runs today. Each phase moves its part into the sections above.
     (`simctl openurl/push/launch/terminate`, a BGTask simulation triggered by the rig, an XCUITest host).
   - Each port has a clause → host table. Anything unproven gets a probe first.
   - Behaviour of today's inbound ports is pinned by service tests over mocks.
-- **Fewer, thinner contracts.** For example, the ten backend contracts become one Backend contract.
+- **Fewer, thinner contracts.** The ten backend contracts became one `Backend` contract in 11c (section 4).
 - **Recordings.** When a phase converts a port whose device results are recorded, it re-records them in a device
-  session: 11b (SecureStore, AttestStore), 11c (AttestKey), 11e (LinkOpener), 11f (BackgroundScheduler,
+  session: 11b (SecureStore, AttestStore), 11c (AttestKey → DeviceIntegrity, done), 11e (LinkOpener), 11f (BackgroundScheduler,
   BackgroundTransfer on the extension, and UploadExtensionRegistry GRANTED + LIMITED, where an operator toggles
   the grant).
 - **PlatformDeviceId has no contract until an Android host exists.** Its only implementation is a constant null.

@@ -146,6 +146,10 @@ One line each. The authority is the named gate. Gates live in `:test:architectur
 | The photo library is one thin port: `GalleryReader` (both processes: assets by policy or id, resources by id, albums, album members, create, add) and `Gallery` (the app: plus the access request, the selection picker, the partial grant's selection observer, the import and the change token). It answers what the platform shows, and `NotReadable` — never an empty answer — when no grant lets the process read. Whether a walk is authoritative for deletion, which grant may say a photo is gone and which albums are denied are the gallery services' (`services/`). Asset ids cross in one form, opaque to the core | `GalleryReaderContract`, `GalleryContract`, `GalleryImportContract` (live on `IOS_SIM_APP`, the no-grant state on `IOS_SIM_KEXE`) + `GalleryServicesTest` |
 | The origin exclusions' tuning — the two resolution floors and the album denylist — is one `SelectionCalibration` value in `model/`, product policy rather than a platform fact: no composition supplies its own, so the app and the extension cannot disagree | **review** |
 | `SecureStore` writes answer a `WriteOutcome`; the identity and attestation services throw where the old throwing store did, so a refused write fails the operation (the device id is unavailable and never used unsaved; a token is not accepted; a keyId is refused). A write may replace by delete-then-add, so after a refused one the old value may be gone | `SecureStoreContract` (`INACCESSIBLE_WRITE_REFUSES`) + `PersistedDeviceIdentityTest`, `AttestStateTest` |
+| Ports never call ports: no adapter's constructor takes a port. Combining two external systems is a service's job (`services/`) or a feature's, so no decision hides inside an adapter where a mock cannot see it and a second platform would have to re-make it | `PortsNeverCallPortsTest` (every constructor parameter of the adapter modules' production source sets typed as a `ports/` interface; the rig's decorators are exempt). Its allowlist is exact both ways and only shrinks: the holdings 11d, 11e and 11f remove, each named with its phase |
+| The backend is ONE port, `Backend`: one method per route, answering a typed `Reply` (`Ok`, `Refused(status, body)`, `Malformed`, `Unreachable`), deciding nothing. A method takes a `token` exactly when its route is gated. `HttpBackend` is its one implementation on every platform, over the HTTP client each composition supplies | `BackendContract` (live against `api/`) + `HttpBackendTest` (the token-taking routes are exactly `isGatedRequest`'s) |
+| The backend's verdicts are `AuthenticatedBackend`'s, in `services/`, and nowhere else: it reads the credential per call; a `401` on a gated call that carried a token drops THAT token, recovers, and retries the call once with the recovered token; a `426` on any route refuses the build; a success clears the refusal. The app's credential re-attests; the extension's only drops the token and never retries. Every need-shaped backend service (directory, join, manifest, leave, union, device files, create, rename, push token) sits over it; attestation reaches the ungated `/attest/…` routes on the raw port, so recovery never re-enters itself | `CredentialedBackendTest`, `BackendServicesTest`, `CredentialRecoveryWorldTest` (the loop, composed) |
+| `DeviceIntegrity` only proves (`prove(challenge, handle?)`: a fresh key's attestation, or an assertion by an existing one). The attestation service decides when, and `AttestState` keeps the token and key handle | `DeviceIntegrityContract` (recorded on a device, replayed every build) + `DeviceAttestationTest` |
 | Paths are area-relative (`FileArea.SHARED`/`PRIVATE`); only an adapter resolves a platform path, and `locate` is the one exit, for a platform API that must be handed a file. No absolute container path is stored | **review** (the download store's staged paths: `DownloadStoreMigrationTest`) |
 | `Files` answers `NotFound` for a definite absence only: a present file that cannot be read is `Denied`, never absent — a config file read as absent is a false leave | `FilesContract` (`DENIED_IS_NEVER_NOT_FOUND`, live on JVM and `IOS_SIM_KEXE`) |
 | Building a composition opens no database: a storage service opens through `Databases` on first use and keeps only a successful open, so a locked launch's failure is retried on the next use | `CompositionOpensNoDatabaseTest` (`:test:world`) + `LedgerServiceOpenTest` |
@@ -207,7 +211,7 @@ One line each. The authority is the named gate. Gates live in `:test:architectur
 | Swift is a transcriber: decision keywords only at pinned occurrences, and every Swift shell function forwards to Kotlin | `SwiftShellGuardTest` |
 | A shell passes the status screen's shared tap factory (`statusActions`) and never binds taps itself | **review** |
 | The scene-mode resolver has one caller and the scene generation one writer | `SceneRecordCompletenessTest` |
-| The iOS root routes a rejected credential from the shared HTTP client into the trust feature (a cycle `compose/` cannot close) | `CredentialRejectionWiringTest` |
+| The credential-recovery loop is composed, never wired by a shell: `snapSyncApp` builds the authenticated backend over the `Backend` port a root supplies, with the attestation service as its credential. (It used to need a text pin on the iOS root, which handed the core's rejection hook to the HTTP client — a cycle `compose/` could not close) | `CredentialRecoveryWorldTest` (the world composes the phone's loop) |
 
 ### Concurrency and failure
 
@@ -836,7 +840,10 @@ re-sends a failed publish.
 
 **Device-token copies.** Each process may serve the device token from memory. Its own writes drop the copy.
 The app re-reads the Keychain at every attestation decision (every wake), the extension at every
-`process()`, and both after a `401`. A retry's request is minted through `provideForRetry`, which reads the
+`process()`, and both after a `401`. A `401` on a metadata call is recovered IN the call: the app's authenticated
+backend waits for the re-attestation and retries once, so the call's caller is answered by the retry (this costs
+the wake a challenge, an Apple attestation or a local assertion, and a mint — only when the backend has actually
+rejected the token). The extension drops the rejected token and defers to the app's next wake. A retry's request is minted through `provideForRetry`, which reads the
 store of record.
 
 **The upload extension has no cooperative stop.** Measured (SE2, iOS 26.6): its only end is assetsd's 60.0 s
@@ -854,7 +861,8 @@ lands moves its part into the sections above and trims this one.
 **Goal.** The app should be honest to test against mocks, and an Android build should need only new adapters.
 Both follow from one rule: **a port is what the core uses of ONE external system**, thin and platform-neutral.
 Every decision lives in `:domain:services` (shared capabilities) or `:domain:feature` (product behaviour that
-cannot see other features). Ports never call ports, and only services compose them.
+cannot see other features). Ports never call ports, and only services compose them — a gated law since 11c
+(section 2), with an allowlist the later phases empty.
 
 **Target zones.** Every edge between zones is `implementation()` only, pinned by ModuleSetTest:
 
@@ -865,11 +873,11 @@ model ← ports ← services ← feature ← flow ← compose
 ```
 
 **Ports:**
-- Backend: typed, one HTTP client per composition.
+- Backend: typed, one HTTP client per composition (11c, shipped — section 2).
 - Gallery and GalleryReader (shipped in 11d; `export` of a resource to a file waits for the transfer ports in 11f).
 - Upload, ExtensionRegistry, Download and Wake.
 - Files, Databases, Preferences, SecureStore and PlatformDeviceId.
-- DeviceIntegrity, CrashReporter, ProcessMetrics, SystemUi, Clock, ProcessInfo, LogSink and EntryContext.
+- DeviceIntegrity (11c, shipped), CrashReporter, ProcessMetrics, SystemUi, Clock, ProcessInfo, LogSink and EntryContext.
 - PushNotifications, Links, Lifecycle, ExtensionHost, Ui and DevControls.
 
 Event ports extend `Listenable<H> { fun listen(handlers: H) }` — the `Gallery` since 11d (section 2, "Events arrive
@@ -887,7 +895,7 @@ persisted inline on the delivering thread.
 - `SelectionCalibration` is one product-policy value in `model/` (11d), not supplied per composition: the floors and
   the denylist mean the same on every platform.
 
-**Phases.** 11a structure (shipped) → 11b storage and `:domain:services` → 11c backend and integrity, 11d gallery
-(shipped) and 11e process ports, in parallel → 11f transfer → 11g entry surface. 11i (raw asset ids) follows 11c,
-11d and 11f, then comes 11h (the mock mix chosen at launch). Phases 11e–11g are being designed again against §10's
-wake model.
+**Phases.** 11a structure (shipped) → 11b storage and `:domain:services` (shipped) → 11c backend and integrity
+(shipped), 11d gallery (shipped) and 11e process ports, in parallel → 11f transfer → 11g entry surface. 11i (raw asset
+ids) follows 11c, 11d and 11f, then comes 11h (the mock mix chosen at launch). Phases 11e–11g are being designed again
+against §10's wake model.
