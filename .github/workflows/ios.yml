@@ -683,11 +683,17 @@ jobs:
         # `snapsync.rig=true` would link the control channel into every shipped build.
         run: |
           mkdir -p ~/.gradle && printf "snapsync.rig=true\n" >> ~/.gradle/gradle.properties
+          # Spotlight indexes the build outputs on this 3-vCPU runner as they are written: measured ~26 s of CPU
+          # during the build and ~45 s while the simulator settled (run 36177197880). The runner is discarded after
+          # the job, so switching it off costs nothing. It is here rather than in the script, which also runs on
+          # developers' Macs.
+          sudo mdutil -a -i off >/dev/null || true
           scripts/sim-contracts
       - name: Keep the evidence
         if: always()
         uses: actions/upload-artifact@v7.0.1
         with:
-          name: ios-contracts-evidence
+          # One artifact per attempt: a re-run's evidence would otherwise replace the attempt it re-runs.
+          name: ios-contracts-evidence-${{ github.run_attempt }}
           path: build/sim-contracts/
           if-no-files-found: ignore

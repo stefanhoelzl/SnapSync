@@ -27,8 +27,9 @@
 #
 # Then the ALL-REAL JOURNEYS (`docs/testing.md`, "All-real journeys are the contracts' safety net"):
 # the same app, the real backend served locally on the address the `local` deployment bakes into the build
-# (127.0.0.1:8080), and `:test:integration:journeys` driving the app through the typed client while playing the
-# second member itself over the backend's public HTTP surface. Before any of that, the app's `GET /device` is read
+# (127.0.0.1:8080), and the journeys (`:test:integration`'s `journeys` source set, run by a bare JVM, not Gradle)
+# driving the app through the typed client while playing the second member itself over the backend's public HTTP
+# surface. Before any of that, the app's `GET /device` is read
 # once: a vocabulary entry the host leaves unclassified fails the run. It FAILS on a backend that never answers, an
 # incomplete advertisement, and any journey failure, printing the failing assertion.
 #
@@ -119,7 +120,7 @@ xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug 
 stage "xcodebuild: done"
 # The journeys compile now, on the daemon the xcodebuild's Gradle left running, so their run at the end compiles
 # nothing. Then every Gradle and Kotlin daemon goes: they hold gigabytes the simulator would otherwise swap against.
-./gradlew -q :test:integration:journeysClasses > "$OUT/journeys-compile.log" 2>&1 \
+./gradlew -q :test:integration:journeysClasses :test:integration:journeysClasspath > "$OUT/journeys-compile.log" 2>&1 \
     || { cat "$OUT/journeys-compile.log"; fail "the journeys did not compile"; }
 ./gradlew -q --stop >/dev/null 2>&1
 pkill -f 'org.jetbrains.kotlin.daemon.KotlinCompileDaemon' 2>/dev/null
@@ -142,9 +143,25 @@ stage "simulator: booting"
 xcrun simctl boot "$DEVICE" || fail "the simulator did not boot"
 xcrun simctl bootstatus "$DEVICE" -b >/dev/null || fail "the simulator did not finish booting"
 stage "simulator: booted"
+# `apsd`, the simulator's push daemon, loops reconnecting to sandbox.push.apple.com from the runner: ~5 300 TCP+TLS
+# attempts and 1.1 M log lines in six minutes, and serving that log cost `diagnosticd` ~170 s of CPU between boot and
+# the app's first photo write (runs 36181223846, 36185184684). Nothing here needs it: the app has no APNs
+# entitlement, and its registration fails before apsd is asked. Stopping it cut that CPU to 67–104 s (run
+# 36188792139, three attempts). Never fatal: a simulator that keeps apsd is only slower.
+{
+    xcrun simctl spawn "$DEVICE" launchctl disable system/com.apple.apsd
+    xcrun simctl spawn "$DEVICE" launchctl bootout system/com.apple.apsd
+} > "$OUT/apsd-stop.log" 2>&1
+# The app's first photo write waits until `assetsd` has built the library's compute cache and opened its search index
+# (74 s of `validate` in run 36181223846; 1:23–4:43 per run before this). Opening Photos now, while the app installs,
+# starts that preparation earlier: the first write then took 1–46 s (run 36188792139, three attempts). Photos stays
+# open in the background; it never touches the app's state.
+xcrun simctl launch "$DEVICE" com.apple.mobileslideshow > "$OUT/photos-warm.log" 2>&1
 xcrun simctl install "$DEVICE" "$APP" || fail "install on $DEVICE"
+stage "app: installed"
 applesimutils --byId "$DEVICE" --bundle app.snapsync --setPermissions "photos=YES" >/dev/null \
     || fail "could not grant photo access on $DEVICE"
+stage "app: granted"
 # The loopback peer the transfer contracts exchange bytes with (scripts/transfer-fixture.py). Started BEFORE the app, and
 # asked to answer, so a fixture that is not up fails here by name rather than as every transport clause's transfer error.
 FIXTURE_PORT="$(free_port)"
@@ -169,7 +186,6 @@ launch() {
     fi
     [ "$(cat "$data/Documents/rig.port")" = "$2" ] || fail "the app on $1 bound $(cat "$data/Documents/rig.port"), not $2"
 }
-stage "app: installed and granted"
 launch "$DEVICE" "$RIG_PORT"
 stage "app: launched"
 DATA="$(xcrun simctl get_app_container "$DEVICE" app.snapsync data)"
@@ -216,26 +232,19 @@ done
 echo "sim-contracts: every registered contract passed" | tee "$OUT/result"
 
 stage "journeys: starting"
-# The journeys, against the app and the backend; compiled before the boot. A failure is read first as a contract
-# clause nobody wrote.
-./gradlew -q :test:integration:journeys \
-    -Psnapsync.journey.appA="http://127.0.0.1:$RIG_PORT" \
-    -Psnapsync.journey.backend="$BACKEND" > "$OUT/journeys.log" 2>&1
+# The journeys, against the app and the backend. A bare JVM on the classpath written at compile time, NOT Gradle: a
+# Gradle daemon and a test JVM starting next to the live simulator pushed the runner into swap, and the app missed its
+# 5 s HTTP timeout on a request the backend had answered in 132 ms (run 36173548419). A failure is read first as a
+# contract clause nobody wrote.
+"${JAVA_HOME:+$JAVA_HOME/bin/}java" -Xmx512m -cp "$(cat test/integration/build/journeys-classpath.txt)" \
+    -Dsnapsync.journey.appA="http://127.0.0.1:$RIG_PORT" -Dsnapsync.journey.backend="$BACKEND" \
+    org.junit.runner.JUnitCore app.snapsync.journeys.Journeys > "$OUT/journeys.log" 2>&1
 journeys=$?
 stage "journeys: done"
-cp -R test/integration/build/test-results/journeys "$OUT/journeys-results" 2>/dev/null
 cp "$DATA/Documents/debug.log" "$OUT/debug.log" 2>/dev/null
 if [ $journeys -ne 0 ]; then
-    # The assertion itself, not only Gradle's summary: the message lives in the JUnit XML.
-    python3 - "$OUT/journeys-results" <<'PY'
-import glob, sys, xml.etree.ElementTree as ET
-for f in glob.glob(sys.argv[1] + "/*.xml"):
-    for case in ET.parse(f).getroot().iter("testcase"):
-        for bad in list(case.findall("failure")) + list(case.findall("error")):
-            print(f"=== journey failed: {case.get('name')}")
-            print(bad.get("message") or (bad.text or "").splitlines()[0])
-PY
-    tail -20 "$OUT/journeys.log"
+    # JUnit's own failure section: the test, and the assertion's message, without the stack frames.
+    sed -n '/^There w/,/^FAILURES/p' "$OUT/journeys.log" | grep -vE '^[[:space:]]+at ' | head -30
     fail "a journey failed (log in $OUT)"
 fi
 echo "sim-contracts: every registered contract passed, and the journeys passed" | tee "$OUT/result"

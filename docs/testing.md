@@ -558,8 +558,12 @@ fresh simulator's first-boot work swamped the hosted runner (it tripled the job 
 - Source set `journeys` in `:test:integration`, task `:test:integration:journeys`. It is **outside
   `build`**.
 - They run only in the `ios-contracts` CI job (`scripts/sim-contracts` boots the simulator and the
-  backend and passes `-Psnapsync.journey.appA|backend`). They gate merges. On a failure the job prints the
-  failing assertion's message in its log.
+  backend). There they run on a bare JVM, `java … org.junit.runner.JUnitCore app.snapsync.journeys.Journeys`
+  over the classpath `:test:integration:journeysClasspath` writes at compile time, with
+  `-Dsnapsync.journey.appA|backend`. No Gradle is alive next to the simulator: a Gradle daemon and a test JVM
+  starting there pushed the runner into swap, and the app timed out a response the backend had sent 9 s
+  earlier (run 36173548419). Locally, `:test:integration:journeys -Psnapsync.journey.appA|backend` runs the
+  same test. They gate merges. On a failure the job prints the failing assertion's message in its log.
 - They **fail, never skip**, when an address is missing.
 - **Read a journey failure first as a missing contract clause**: the mocks lack a behaviour. Add the
   clause, and the mocked suite then covers it.

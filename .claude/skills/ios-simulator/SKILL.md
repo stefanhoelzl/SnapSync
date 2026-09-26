@@ -235,9 +235,11 @@ confirmation that needs a finger. See `rig-channel` for the verb.
 The same script then runs the **all-real journeys** (`docs/testing.md`): it serves `api/` with
 `deno task dev:local` on `127.0.0.1:8080` — the address the `local` deployment bakes into the build, so it is
 started before the xcodebuild and warmed with one request (a cold deno exceeds the app's 5 s timeout) — reads the
-app's `GET /device` once (an unclassified vocabulary entry fails the job), and runs
-`./gradlew :test:integration:journeys -Psnapsync.journey.appA=… -Psnapsync.journey.backend=…` on the SAME
-simulator: A creates and joins, A's photos reach the event union, then the journey itself plays a second member
+app's `GET /device` once (an unclassified vocabulary entry fails the job), and runs the journeys on the SAME
+simulator (a bare `java … org.junit.runner.JUnitCore app.snapsync.journeys.Journeys` over the classpath
+`:test:integration:journeysClasspath` wrote, with `-Dsnapsync.journey.appA=…` and `-Dsnapsync.journey.backend=…`;
+locally, `./gradlew :test:integration:journeys -Psnapsync.journey.appA=… -Psnapsync.journey.backend=…` runs the
+same test): A creates and joins, A's photos reach the event union, then the journey itself plays a second member
 over the backend's public HTTP surface (joining through the id in A's invite link, uploading real JPEGs) and A
 receives them. It uses **one** simulator on purpose: a second fresh one's first-boot work swamped the hosted runner
 and made the job slow and flaky (`changes/archive/2026-09-25-one-simulator-journeys`). Nothing overlaps the build: the journeys
