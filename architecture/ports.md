@@ -58,6 +58,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `DownloadTransportHost` | `:domain:ports` | `:test:contracts` ClauseHost | yes |
 | `DumpResult` | `:domain:model` | `:domain:model` NotSent, Queued, Saved | no |
 | `Enter` | `:domain:feature` | `:domain:feature` Join, LeavePrevious | no |
+| `EntryContext` | `:domain:ports` | `:adapter:generic:fake` Entry; `:adapter:ios:ext-safe` IosEntryContext, IosThreadEntryContext; `:domain:ports` NoOp, RecordingScope | no |
 | `EventCreation` | `:domain:services` | `:domain:feature` FakeClient; `:domain:services` BackendEventCreation | yes |
 | `EventCreator` | `:domain:model` | `:domain:feature` CreateEvent; `:domain:model` NoOpEventCreator; `:domain:presentation` SpyCreator | no |
 | `EventDirectory` | `:domain:services` | `:domain:feature` FakeDetails; `:domain:services` BackendEventDirectory | yes |
@@ -89,12 +90,10 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `LedgerStore` | `:domain:ports` | `:adapter:generic:fake` InMemoryLedgerStore; `:domain:feature` FakeLedgerStore, InMemoryLedgerStore; `:domain:services` LedgerService | yes |
 | `LibraryChangeToken` | `:domain:ports` | `:adapter:generic:fake` Token; `:adapter:ios:app-only` PhotoKitLibraryChangeToken; `:domain:feature` Token | no |
 | `LibraryChangeTokenRead` | `:domain:ports` | — | no |
-| `LinkOpener` | `:domain:ports` | `:adapter:ios:app-only` IosLinkOpener | no |
 | `Listenable` | `:domain:ports` | — | no |
-| `LogScope` | `:domain:ports` | `:adapter:ios:ext-safe` IosLogScope, IosThreadLogScope; `:domain:ports` NoOp, RecordingScope | no |
+| `LogSink` | `:domain:ports` | `:adapter:generic:fake` Recording; `:adapter:ios:ext-safe` FileLogSink, PublicNSLogSink | no |
 | `ManifestPublisher` | `:domain:services` | `:domain:feature` FakeUploader; `:domain:services` BackendManifestPublisher | yes |
 | `MembershipRead` | `:domain:model` | `:domain:model` Member, NotMember, Unreadable | no |
-| `PhotoAccessRequester` | `:domain:ports` | `:adapter:generic:fake` InMemoryPhotoAccess; `:adapter:ios:app-only` PhotoLibraryPermission | yes |
 | `PhotoAccessStatusSource` | `:domain:ports` | `:adapter:generic:fake` FakePermissionSource, InMemoryPhotoAccess; `:adapter:ios:app-only` PhotoLibraryPermission; `:test:world` MutablePhotoAccessStatusSource | yes |
 | `PhotoDownloadJobs` | `:domain:ports` | `:adapter:generic:fake` NoopJobs, RecordingJobs; `:domain:feature` QueuedPhotoDownloadJobs | no |
 | `PhotoGrantRead` | `:domain:ports` | — | no |
@@ -123,7 +122,6 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `SelectionScope` | `:domain:model` | `:domain:model` Scoped, Unread, Unrestricted | no |
 | `Settled` | `:domain:feature` | `:domain:feature` Proceeding, Short | no |
 | `ShareCount` | `:domain:model` | `:domain:model` Counting, Ready, Unavailable | no |
-| `SharePresenter` | `:domain:ports` | `:adapter:ios:app-only` IosShareSheet | no |
 | `Slot` | `:domain:services` | `:domain:services` Held, Unread | no |
 | `StagedBytes` | `:domain:ports` | `:adapter:generic:fake` InMemoryStagedBytes, RecordingStagedBytes; `:domain:feature` RootedStaging; `:domain:services` StagingService | yes |
 | `SuppressionReadiness` | `:domain:model` | `:domain:model` OldSchema, Ready, Unavailable | no |
