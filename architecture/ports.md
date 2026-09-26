@@ -68,7 +68,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `EventRename` | `:domain:services` | `:domain:feature` FakeRename; `:domain:services` BackendEventRename | yes |
 | `EventRenamer` | `:domain:feature` | `:domain:feature` NoOpEventRenamer, RenameEvent | no |
 | `EventUnionSource` | `:domain:services` | `:adapter:generic:fake` EmptyUnion, FakeUnion, GateableUnion, RecordingUnion; `:domain:services` BackendEventUnionSource | yes |
-| `ExtensionEntries` | `:domain:ports` | `:app:ios:extension` UploadExtensionRoot | no |
+| `ExtensionHost` | `:domain:ports` | `:adapter:ios:ext-safe` ContractRunningExtensionHost, IosExtensionHost; `:test:world` WorldExtensionHost | yes |
 | `ExtensionRegistration` | `:domain:feature` | `:domain:feature` FakeRegistration, OsDrivenRegistration; `:test:architecture` PlatformRegistration | yes |
 | `ExtensionRegistry` | `:domain:ports` | `:adapter:generic:fake` InMemoryExtensionRegistry; `:adapter:ios:app-only` PhotoKitExtensionRegistry, SimulatorExtensionRegistry; `:domain:feature` RecordingRegistry | yes |
 | `FetchedJob` | `:domain:services` | `:domain:services` AcknowledgeToDrain, Emit | no |

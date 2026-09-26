@@ -4,7 +4,8 @@ import app.snapsync.feature.upload.UploadCycle
 import app.snapsync.model.CycleResult
 import app.snapsync.ports.Backend
 import app.snapsync.ports.DeviceIdentity
-import app.snapsync.ports.ExtensionEntries
+import app.snapsync.ports.ExtensionHandlers
+import app.snapsync.ports.ExtensionHost
 import app.snapsync.ports.EntryContext
 import app.snapsync.ports.invocation
 import app.snapsync.ports.runProcessCycle
@@ -14,17 +15,15 @@ import app.snapsync.services.trust.CachedAttestStore
 import app.snapsync.services.trust.ExtensionCredential
 
 /**
- * The core's implementation of the upload extension's inbound port (`docs/architecture.md`, "OS entry points
- * cross an inbound port") over the cycle [uploadCore] built from the same [ports].
+ * The upload extension's composition of its one entry port (`docs/architecture.md`, "Events arrive through
+ * `listen`"): the [ExtensionHost]'s handlers over the cycle [uploadCore] built from the same [ports], registered on
+ * [host] — here, because the extension has no host zone.
  *
- * Both are providers, resolved per call, so the root can delegate from its own initializer without building the
- * cycle before the operating system asks for one.
- *
- * The extension root implements [ExtensionEntries] by delegating to this. What stays in the root is what only the
- * root can do: block its thread on [ExtensionEntries.process] (the operating system invokes it synchronously and the
- * process does not outlive it) and hand Swift the platform's raw value for the result.
+ * [ports] and [cycle] are providers, resolved per invocation, so the root can register at its own initialization
+ * without building the cycle before the operating system asks for one.
  */
-fun extensionEntries(
+fun snapSyncExtension(
+    host: ExtensionHost,
     ports: () -> UploadPorts,
     cycle: () -> UploadCycle,
     entryContext: EntryContext = EntryContext.NoOp,
@@ -34,14 +33,22 @@ fun extensionEntries(
      * extension's copy cannot see; re-reading at every OS invocation bounds that copy's staleness to one.
      */
     rereadCredential: () -> Unit = {},
-): ExtensionEntries =
-    object : ExtensionEntries {
-        private val log get() = ports().log
+) {
+    host.listen(extensionHandlers(ports, cycle, entryContext, rereadCredential))
+}
 
-        // The cycle, the pending → PROCESSING requeue and the never-throw guard around both are `runProcessCycle`
-        // (`ports/`, tested beside the raw-value mapping): a throwable escaping here would cross the ObjC boundary
-        // and abort the extension process.
-        override suspend fun process(): CycleResult = log.invocation(entryContext, "process", result = { "$it" }) {
+/** The extension's handlers: one upload cycle per invocation, and the invocation's end recorded. */
+internal fun extensionHandlers(
+    ports: () -> UploadPorts,
+    cycle: () -> UploadCycle,
+    entryContext: EntryContext,
+    rereadCredential: () -> Unit,
+): ExtensionHandlers = ExtensionHandlers(
+    // The cycle, the pending → PROCESSING requeue and the never-throw guard around both are `runProcessCycle`: a
+    // throwable escaping here would cross the ObjC boundary and abort the extension process.
+    onProcess = {
+        val log = ports().log
+        log.invocation(entryContext, "process", result = { "$it" }) {
             runProcessCycle(
                 // Inside the guarded run, so nothing the re-read could raise escapes across the ObjC boundary.
                 run = {
@@ -55,18 +62,19 @@ fun extensionEntries(
                 onLateFailure = { log.e(it) { "process failed after the cycle — reporting FAILED" } },
             )
         }
-
-        // The OS's `notifyTermination` marks the END of an invocation, not a kill: measured on an SE2 (iOS 26.6,
-        // 2026-09-23), it arrives ~55 ms after every normal return of `process()`, and a call killed at its ~60 s
-        // budget receives nothing (capability `background-upload`, "How the operating system invokes the extension
-        // is recorded as measured"). So this records an ordinary end at `Info`. A KILLED call is the one that reads
-        // as a `→ process` with no `← process` and no line from here — which is how to tell the two apart.
-        override fun onTerminate() = log.invocation(entryContext, "onTerminate") {
+    },
+    // The OS's `notifyTermination` marks the END of an invocation, not a kill (see [ExtensionHandlers.onTerminate]).
+    // So this records an ordinary end at `Info`. A KILLED call is the one that reads as a `→ process` with no
+    // `← process` and no line from here — which is how to tell the two apart.
+    onTerminate = {
+        val log = ports().log
+        log.invocation(entryContext, "onTerminate") {
             log.i {
                 "the OS ended this invocation — notifyTermination follows a normal return; a killed call gets none"
             }
         }
-    }
+    },
+)
 
 /**
  * The upload extension's backend services (capability `privacy-security`): the same need-shaped services the app

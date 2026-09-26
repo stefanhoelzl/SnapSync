@@ -71,28 +71,6 @@ class PlatformUploadJob(
 )
 
 /**
- * The iOS 26.1 `PHBackgroundResourceUploadProcessingResult` raw value for this cycle result
- * (capability `background-upload`; settled forcing proof ① of migration step 12). The system type
- * is **Swift-only** — declared in the SDK's swiftinterface with no ObjC header — so its
- * *construction* cannot leave the Swift shell; but it is `RawRepresentable` over `Int`, so the
- * **decision** lives here: an exhaustive, compiler-checked mapping the shell forwards verbatim via
- * `init?(rawValue:)` (`nil` → `.failure`, the same visible-retry posture the shell's former
- * `default:` arm carried). A future Kotlin case cannot slip through untaught — this `when` has no
- * `else` and stops compiling instead.
- *
- * Raw values are derived from the swiftinterface's case order (`failure`, `processing`,
- * `completed`); Session D verifies them against the SDK on device. [CycleResult.SKIPPED] maps like
- * [CycleResult.COMPLETED]: nothing to do, the system rests. [CycleResult.Paused] maps like
- * [CycleResult.PROCESSING]: the cycle touched nothing and asks to be invoked again, until the process it
- * waits for (the app, migrating the download store) has run.
- */
-fun CycleResult.processingResultRawValue(): Int = when (this) {
-    CycleResult.COMPLETED, CycleResult.SKIPPED -> 2
-    CycleResult.PROCESSING, is CycleResult.Paused -> 1
-    CycleResult.FAILED -> 0
-}
-
-/**
  * The OS-driven tier's pending→re-invocation rule (capability `background-upload`; drained from
  * the untested extension root at the migration finale): the OS invokes the extension lazily (on
  * library changes), not when an upload quietly finishes — so a drained cycle that returns

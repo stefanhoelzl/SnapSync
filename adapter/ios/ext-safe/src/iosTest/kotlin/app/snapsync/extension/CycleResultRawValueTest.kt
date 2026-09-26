@@ -1,4 +1,4 @@
-package app.snapsync.ports
+package app.snapsync.extension
 
 import kotlin.test.Test
 import kotlin.test.assertEquals

@@ -36,6 +36,7 @@ Roots found:
 | `IosDatabases` | x | x |
 | `IosDeviceIntegrity` | x | |
 | `IosDownload` | x | |
+| `IosExtensionHost` | | x |
 | `IosFiles` | x | x |
 | `IosGallery` | x | |
 | `IosGalleryReader` | x | x |

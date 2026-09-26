@@ -89,13 +89,13 @@ class MainLaneContainmentTest {
 
     /**
      * `runBlocking` blocks whichever thread it is called on, which defeats the lane its caller was
-     * placed on. The extension's composition root is the one pinned use: `process()` is synchronous by
+     * placed on. The extension's entry-port adapter is the one pinned use: `process()` is synchronous by
      * the OS's own contract there, and the process does not outlive it.
      */
     private val runBlockingCallForms = listOf("runBlocking {", "runBlocking(")
 
     private val runBlockingAllowed =
-        "/app/ios/extension/src/iosMain/kotlin/app/snapsync/ios/upload/UploadExtensionRoot.kt"
+        "/adapter/ios/ext-safe/src/iosMain/kotlin/app/snapsync/extension/IosExtensionHost.kt"
 
     // Production source only: the spec exempts TEST SOURCE SETS, which a path names as `src/<name>Test/`
     // (`commonTest`, `jvmTest`, `iosSimulatorArm64Test`, …) or, for a JVM-only module, `src/test/`. A file-name
@@ -122,7 +122,7 @@ class MainLaneContainmentTest {
     }
 
     @Test
-    fun `runBlocking appears only in the extension composition root`() {
+    fun `runBlocking appears only in the extension entry-port adapter`() {
         // Code forms only. The bare word is legitimate in prose — `Reconciler` and `UploadCycle` both
         // explain the extension's OS-imposed `runBlocking` cap — and a gate that policed comments would
         // be answered by rewording rather than by fixing anything.

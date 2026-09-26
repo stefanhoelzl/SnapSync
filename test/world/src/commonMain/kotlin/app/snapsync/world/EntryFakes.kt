@@ -8,7 +8,11 @@ import app.snapsync.model.PushToken
 import app.snapsync.model.UiIntent
 import app.snapsync.model.UiState
 import app.snapsync.model.UploaderPin
+import app.snapsync.compose.snapSyncExtension
+import app.snapsync.model.CycleResult
 import app.snapsync.ports.Completion
+import app.snapsync.ports.ExtensionHandlers
+import app.snapsync.ports.ExtensionHost
 import app.snapsync.ports.DevControls
 import app.snapsync.ports.DevHandlers
 import app.snapsync.ports.Lifecycle
@@ -144,4 +148,31 @@ class WorldDevControls(private val hints: InviteLinkHints) : DevControls {
 
     /** Operator lever: the channel's `POST /device/reset`. */
     suspend fun reset() = handlers.registered("DevControls").onReset()
+}
+
+/**
+ * The operating system's invocations of the upload extension, played by the operator: a separate process's entry
+ * port, registered by the extension's own composition (`snapSyncExtension`) over the world's cycle.
+ */
+class WorldExtensionHost : ExtensionHost {
+    private var handlers: ExtensionHandlers? = null
+
+    override fun listen(handlers: ExtensionHandlers) {
+        this.handlers = handlers
+    }
+
+    /** Operator lever: the operating system invokes the extension's `process()`. */
+    suspend fun process(): CycleResult = handlers.registered("ExtensionHost").onProcess()
+
+    /** Operator lever: the operating system ends the invocation. */
+    fun terminate() = handlers.registered("ExtensionHost").onTerminate()
+}
+
+/**
+ * The upload extension's entry port, composed as its root composes it (`snapSyncExtension`) over this world's
+ * [World.cycle] and [World.uploadPorts]: the operator invokes it through [WorldExtensionHost.process].
+ * [rereadCredential] is the root's per-invocation re-read of the shared device token.
+ */
+fun World.composeExtension(rereadCredential: () -> Unit = {}): WorldExtensionHost = WorldExtensionHost().also { host ->
+    snapSyncExtension(host, ports = { uploadPorts }, cycle = { cycle }, rereadCredential = rereadCredential)
 }

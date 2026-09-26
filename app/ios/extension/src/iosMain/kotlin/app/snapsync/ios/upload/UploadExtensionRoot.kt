@@ -9,8 +9,8 @@ import app.snapsync.gallery.IosGalleryReader
 import app.snapsync.services.trust.CachedAttestStore
 import app.snapsync.compose.UploadPorts
 import app.snapsync.compose.uploadCore
-import app.snapsync.compose.extensionEntries
-import app.snapsync.ports.ExtensionEntries
+import app.snapsync.compose.snapSyncExtension
+import app.snapsync.extension.IosExtensionHost
 import app.snapsync.logging.IosEntryContext
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.model.PlatformEntry
@@ -40,7 +40,6 @@ import app.snapsync.compose.extensionBackend
 import app.snapsync.http.HttpBackend
 import app.snapsync.ports.Upload
 import app.snapsync.model.CycleResult
-import app.snapsync.ports.processingResultRawValue
 import app.snapsync.feature.upload.UploadCycle
 import app.snapsync.ports.LedgerStore
 import app.snapsync.services.ledger.LedgerService
@@ -65,7 +64,6 @@ import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.runBlocking
 
 /**
  * The extension process's composition root — WIRING ONLY: it constructs this process's adapters
@@ -87,7 +85,7 @@ import kotlinx.coroutines.runBlocking
  * ledger record-writer on its tier); the engine, which depends on config, is built per cycle
  * inside `uploadCore`.
  */
-object UploadExtensionRoot : ExtensionEntries by extensionRootEntries() {
+object UploadExtensionRoot {
 
     init {
         // First, before anything logs: a log line must never park a thread on an undrained stdout/stderr (see the KDoc).
@@ -316,32 +314,35 @@ object UploadExtensionRoot : ExtensionEntries by extensionRootEntries() {
     }
 
     /**
-     * [process] as the iOS 26.1 `PHBackgroundResourceUploadProcessingResult` **raw value** — what the Swift principal
-     * class forwards into `init?(rawValue:)` (settled forcing proof ① of migration step 12: the system type is
-     * Swift-only, so the construction stays in Swift, but the decision — which case each [CycleResult] means — is the
-     * tested `processingResultRawValue` mapping in `:domain` `ports/`).
-     *
-     * The one hand-written line this root keeps for the inbound port: the operating system invokes the cycle
-     * synchronously and the process does not outlive it, so this blocks on the delegated [process]. Wiring only — no
-     * branch here a second tier could answer differently. [process] and [onTerminate] themselves reach the core by
-     * delegation (`docs/architecture.md`, "OS entry points cross an inbound port").
+     * The operating system's invocations of this extension (`:adapter:ios:ext-safe`), and the port the composition
+     * registers on: the adapter itself on a production build, or — only under `-Psnapsync.rig=true` — the control
+     * channel's decorator over it, which runs a requested port contract in place of a cycle (`extensionHost()`, from
+     * `src/entries` or the rig's source, chosen at build time).
+     */
+    private val host: IosExtensionHost = IosExtensionHost(log)
+
+    init {
+        // The ONE registration, at this process's start and before the operating system's first `process()`: the
+        // extension has no host zone, so its composition listens (`snapSyncExtension`). Registering builds nothing —
+        // the cycle and its ports resolve on the first invocation.
+        snapSyncExtension(
+            host = extensionHost(host),
+            ports = { ports },
+            cycle = { cycle },
+            entryContext = IosEntryContext,
+            rereadCredential = { attestStore.reread() },
+        )
+    }
+
+    /**
+     * `process()`, forwarded from the Swift principal class: one invocation, answered as the iOS 26.1
+     * `PHBackgroundResourceUploadProcessingResult` **raw value** the Swift side constructs with `init?(rawValue:)`
+     * (the system type is Swift-only). The decision — which case each result means — is the adapter's tested mapping.
      */
     @PlatformEntry
-    fun processRawValue(): Int = runBlocking { process() }.processingResultRawValue()
-}
+    fun processRawValue(): Int = host.deliverProcess()
 
-/**
- * The core's implementation of the extension's inbound port over this root's cycle. A top-level function because a
- * delegation expression is evaluated before the object's body; both providers resolve on first call.
- *
- * The root delegates to `extensionRootEntries()`, which the build takes from one of two directories
- * (`docs/architecture.md`, "A build-time-only module is contained by compilation, not by a runtime
- * check"): `src/entries`, which answers exactly this, or — only under `-Psnapsync.rig=true` — the rig's, which
- * answers this wrapped so a requested port-contract run takes the place of a cycle.
- */
-internal fun productionExtensionEntries(): ExtensionEntries = extensionEntries(
-    ports = { UploadExtensionRoot.ports },
-    cycle = { UploadExtensionRoot.cycle },
-    entryContext = IosEntryContext,
-    rereadCredential = { UploadExtensionRoot.attestStore.reread() },
-)
+    /** `notifyTermination()`, forwarded from the Swift principal class: the end of an invocation, only recorded. */
+    @PlatformEntry
+    fun onTerminate() = host.deliverTerminate()
+}
