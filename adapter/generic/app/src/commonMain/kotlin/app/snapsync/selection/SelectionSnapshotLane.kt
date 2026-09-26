@@ -2,24 +2,24 @@ package app.snapsync.selection
 
 import app.snapsync.model.ConfinedTo
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.Resource
-import app.snapsync.ports.PhotoSelectionChangeSource
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlin.concurrent.Volatile
 
 /**
  * What a partial-grant selection source needs from its platform: observe the library, read the selection once,
- * follow a change pushed against a held read, and turn a read into resources. [F] is the platform's held read
- * (`PHFetchResult` on iOS) and [C] its change notification (`PHChange`).
+ * follow a change pushed against a held read, and turn a read into a snapshot. [F] is the platform's held read
+ * (`PHFetchResult` on iOS), [C] its change notification (`PHChange`) and [S] the snapshot it delivers.
  */
-interface SelectionPlatform<F : Any, C : Any> {
+interface SelectionPlatform<F : Any, C : Any, S> {
     /** Start delivering changes to [onChange], on any thread. */
     fun startObserving(onChange: (C) -> Unit)
 
@@ -31,16 +31,17 @@ interface SelectionPlatform<F : Any, C : Any> {
     /** [held] after [change], or `null` when the change does not touch it (nothing to emit). */
     fun after(held: F, change: C): F?
 
-    /** The selection [of] a read, as resources. */
-    suspend fun snapshot(of: F): List<Resource>
+    /** The selection [of] a read, as a snapshot. */
+    suspend fun snapshot(of: F): S
 }
 
 /**
- * The ordering core of the partial-grant [PhotoSelectionChangeSource] (capability `photo-access`; law
+ * The ordering core of a gallery's partial-grant selection observer (capability `photo-access`; law
  * "State reached from OS callbacks is confined", `docs/architecture.md`; decision record
  * `harden-seam-bug-classes`, D12).
  *
- * Observes only while the grant is [GalleryAccess.LIMITED]: a baseline snapshot when observation begins, and one
+ * Observes only while the grant is [GalleryAccess.LIMITED] **and** observation is switched on ([observe] — the
+ * gallery's `observeChanges`, called only from host assembly): a baseline snapshot when observation begins, and one
  * per change after it. Every piece of work — beginning, ending, the baseline, each change — goes through ONE channel
  * consumed on ONE serial [lane], so:
  *
@@ -59,13 +60,21 @@ interface SelectionPlatform<F : Any, C : Any> {
  * The held read, the observing flag and [observed] are touched only by the consumer, on [lane]; [generation] is
  * written only by the permission collector and read by the consumer.
  */
-class SelectionSnapshotLane<F : Any, C : Any>(
+class SelectionSnapshotLane<F : Any, C : Any, S>(
     permission: StateFlow<GalleryAccess>,
     scope: CoroutineScope,
     /** Serial: production passes `Dispatchers.Default.limitedParallelism(1)`. */
     lane: CoroutineDispatcher,
-    private val platform: SelectionPlatform<F, C>,
-) : PhotoSelectionChangeSource {
+    private val platform: SelectionPlatform<F, C, S>,
+) {
+
+    /** Whether observation is switched on — off until the gallery's owner asks. */
+    private val enabled = MutableStateFlow(false)
+
+    /** Switch observation on or off; while on, it still runs only under a partial grant. */
+    fun observe(enabled: Boolean) {
+        this.enabled.value = enabled
+    }
 
     private sealed interface LaneWork<out C> {
         class Begin(val generation: Int) : LaneWork<Nothing>
@@ -90,9 +99,10 @@ class SelectionSnapshotLane<F : Any, C : Any>(
     private var observed = 0
 
     // Snapshots conflate: each is the whole selection, so an unconsumed older one is superseded by construction,
-    // and emission never suspends the lane.
-    private val emitted = MutableSharedFlow<List<Resource>>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
-    override val snapshots: Flow<List<Resource>> = emitted
+    // and emission never suspends the lane. The latest is REPLAYED, so a consumer that subscribes after the baseline
+    // was read still receives it.
+    private val emitted = MutableSharedFlow<S>(replay = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    val snapshots: Flow<S> = emitted
 
     init {
         scope.launch(lane) {
@@ -106,8 +116,7 @@ class SelectionSnapshotLane<F : Any, C : Any>(
         }
         scope.launch {
             var limited = false
-            permission.collect { status ->
-                val nowLimited = status == GalleryAccess.LIMITED
+            combine(permission, enabled) { status, on -> on && status == GalleryAccess.LIMITED }.collect { nowLimited ->
                 if (nowLimited == limited) return@collect
                 limited = nowLimited
                 generation++

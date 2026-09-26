@@ -27,3 +27,25 @@ sealed interface GalleryRead<out T> {
 
 /** One user-created album: an album the member or another app made (never a system-made smart album). */
 data class AlbumRecord(val id: AlbumId, val title: String)
+
+/**
+ * The whole current selection under a **partial** grant (capability `photo-access`), every asset with its
+ * resources: a snapshot, never a delta — platform change details are unreliable for bulk changes (measured: a
+ * batched create reports no itemized inserts), so a consumer reloads and lets the ledger deduplicate. It carries the
+ * resources read with it because under a partial grant the core may read only on the cold-launch baseline and on an
+ * observer emission, never go back to the gallery on its own.
+ */
+class SelectionSnapshot(val assets: List<RawAsset>)
+
+/**
+ * One foreign asset to rebuild in the gallery from its staged [resources] (capability `receiving-photos`),
+ * identified by the [ref] it came from — the id every import handler is called with. [creationDate] (ISO-8601) is
+ * its original capture date, so it sorts by when it was taken; [album] the event album it is filed into in the same
+ * commit (`null`: the camera roll only), resolved by the caller before the import.
+ */
+class ImportRequest(
+    val ref: AssetRef,
+    val resources: List<StagedResource>,
+    val creationDate: String,
+    val album: AlbumId?,
+)

@@ -33,7 +33,7 @@ class ConfinementGateTest {
             "OsCompletions", // the OS's completion handlers, handed over and released on its own threads
         "adapter/generic/app/src/commonMain/kotlin/app/snapsync/selection/SelectionSnapshotLane.kt" to
             "SelectionSnapshotLane", // PhotoKit change notifications
-        "adapter/ios/app-only/src/iosMain/kotlin/app/snapsync/permission/PhotoSelectionSnapshotSource.kt" to
+        "adapter/ios/app-only/src/iosMain/kotlin/app/snapsync/permission/PhotoKitSelection.kt" to
             "PhotoKitSelection",
         "adapter/ios/app-only/src/iosMain/kotlin/app/snapsync/download/IosDownloadTransport.kt" to
             "IosDownloadTransport",

@@ -16,7 +16,8 @@ import app.snapsync.ports.EventUnionSource
 import app.snapsync.model.ImportResult
 import app.snapsync.model.PendingDownload
 import app.snapsync.ports.PhotoDownloadJobs
-import app.snapsync.ports.PhotoLibraryImporter
+import app.snapsync.model.ImportRequest
+import app.snapsync.ports.GalleryImport
 import app.snapsync.model.StagedResource
 import app.snapsync.ports.UnionAsset
 import kotlinx.coroutines.CompletableDeferred
@@ -233,12 +234,7 @@ class ProvisionTest {
         override suspend fun cancelAll() = Unit
     }
 
-    private object NoopImporter : PhotoLibraryImporter {
-        override suspend fun import(
-            ref: AssetRef,
-            resources: List<StagedResource>,
-            creationDate: String,
-            album: String?,
-        ): ImportResult = ImportResult.Failed("the provision test never imports")
+    private object NoopImporter : GalleryImport {
+        override suspend fun import(request: ImportRequest): ImportResult = ImportResult.Failed("the provision test never imports")
     }
 }

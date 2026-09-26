@@ -6,7 +6,8 @@ import app.snapsync.ports.ImportedAssetPresence
 import app.snapsync.model.ImportResult
 import app.snapsync.ports.DownloadStore
 import app.snapsync.ports.PhotoDownloadJobs
-import app.snapsync.ports.PhotoLibraryImporter
+import app.snapsync.model.ImportRequest
+import app.snapsync.ports.GalleryImport
 import app.snapsync.ports.UnionAsset
 import app.snapsync.ports.UnionResource
 
@@ -69,7 +70,7 @@ class DownloadControllerTest {
      * [hangFor] holds an import open forever — the shape a stalled photo library produces now that nothing
      * bounds the wait. A hung import never returns, so its ref stays claimed for the life of the process.
      */
-    private class FakeImporter : PhotoLibraryImporter {
+    private class FakeImporter : GalleryImport {
         val imported = mutableListOf<AssetRef>()
         val attempted = mutableListOf<AssetRef>()
         var failNext = false
@@ -107,7 +108,8 @@ class DownloadControllerTest {
 
         private val never = CompletableDeferred<Unit>()
 
-        override suspend fun import(ref: AssetRef, resources: List<StagedResource>, creationDate: String, album: String?): ImportResult {
+        override suspend fun import(request: ImportRequest): ImportResult {
+            val ref = request.ref
             attempted += ref
             val forThisRef = attempted.count { it == ref }
             check(forThisRef <= attemptCap) {

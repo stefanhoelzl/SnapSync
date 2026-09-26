@@ -1,7 +1,9 @@
 package app.snapsync.world
 
 import app.snapsync.model.AssetRef
+import app.snapsync.model.ImportRequest
 import app.snapsync.model.ImportResult
+import app.snapsync.ports.GalleryHandlers
 import app.snapsync.model.StagedResource
 import kotlin.test.Test
 import kotlin.test.assertNotEquals
@@ -31,20 +33,17 @@ class ImporterFixtureTest {
         stagedPath = "/stage/fq",
     )
 
-    private suspend fun FakePhotoLibraryImporter.importOnce(): ImportResult =
-        import(ref, listOf(resource()), "2026-06-30T10:00:00Z", album = null)
+    private suspend fun WorldGallery.importOnce(): ImportResult =
+        import(ImportRequest(ref, listOf(resource()), "2026-06-30T10:00:00Z", album = null))
 
     /**
-     * The marker writes are REQUIRED collaborators now, so every construction here supplies them — which
-     * is the point of removing their defaults: a fixture that silently records no marker looks exactly
-     * like a working one while every pass creates another asset (`docs/testing.md`).
+     * The marker writes are the registered handlers, so every gallery here is listened to first — an import before
+     * `listen` has nowhere to record its marker, and the honest fake refuses it rather than look like a working one
+     * while every pass creates another asset (`docs/testing.md`).
      */
-    private fun importer(gallery: WorldGallery = WorldGallery()) = FakePhotoLibraryImporter(
-        gallery = gallery,
-        recordCreatedLocalId = { _, _ -> true },
-        clearCreatedLocalId = { _, _ -> },
-        confirmCreatedLocalId = { _, _ -> },
-    )
+    private fun importer(gallery: WorldGallery = WorldGallery()) = gallery.apply {
+        listen(GalleryHandlers(onChanged = {}, onImportPlaceholder = { _, _ -> }, onImportSettled = { _, _ -> }))
+    }
 
     /** Every created asset gets its own identifier, exactly as PhotoKit mints a fresh one per request. */
     @Test
@@ -68,7 +67,7 @@ class ImporterFixtureTest {
     @Test
     fun a_failed_attempt_still_consumes_an_identifier() = runTest {
         val importer = importer()
-        importer.failNextImport = true
+        importer.imports.failNextImport = true
 
         assertTrue(importer.importOnce() is ImportResult.Failed)
         val afterFailure = importer.importOnce() as ImportResult.Imported

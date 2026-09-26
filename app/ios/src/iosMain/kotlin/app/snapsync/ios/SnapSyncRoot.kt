@@ -30,7 +30,6 @@ import app.snapsync.gallery.IosGalleryReader
 import app.snapsync.ios.registry.uploadExtensionRegistry
 import app.snapsync.ports.UploadExtensionRegistry
 import app.snapsync.permission.PhotoLibraryPermission
-import app.snapsync.permission.PhotoSelectionSnapshotSource
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.push.HttpPushTokenPublisher
@@ -48,7 +47,6 @@ import app.snapsync.download.IosDownloadTransport
 import app.snapsync.ports.AlbumMapStore
 import app.snapsync.preferences.IosPreferences
 import app.snapsync.services.album.AlbumMapService
-import app.snapsync.download.IosPhotoLibraryImporter
 import app.snapsync.services.staging.StagingService
 import app.snapsync.link.IosLinkOpener
 import app.snapsync.ports.PlatformHandoff
@@ -402,11 +400,9 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
                 // The platform half of the share command: a system sheet over the top view controller
                 // (:adapter:ios:app-only).
                 handoff = PlatformHandoff(share = IosShareSheet(), links = IosLinkOpener()),
+                // Every photo-library read and write, the partial grant's selection observer (opened at host
+                // assembly only) and the import of foreign photos, whose markers the core's handlers write.
                 gallery = gallery,
-                // Selection snapshots under a partial grant (capability `photo-access`):
-                // observes only while LIMITED; each emission is one in-flow read serving N and the
-                // cycle's discovery alike.
-                selectionChanges = selectionSource,
                 // What this process knows about its own uploads: the ledger, and the per-device listing
                 // over the SAME authenticated client every other call uses. The app loads the ledger from
                 // the listing at a join and clears it at a leave, on every tier (capability
@@ -416,23 +412,9 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
                     files = HttpDeviceFilesSource(http, backendHost),
                 ),
                 downloadStore = downloadStore,
-                // Full-access presence for the import guard; composition wraps it so a partial or
-                // revoked grant never reports an asset as absent (capability `receiving-photos`).
                 // Names the App-Group staging directory and frees the files of settled rows
                 // (capability `receiving-photos`) — one port owns both halves.
                 stagedBytes = StagingService(files),
-                // The importer writes createdLocalId synchronously from inside a PhotoKit change
-                // block (concrete store, not the port).
-                importer = IosPhotoLibraryImporter(
-                    recordCreatedLocalId = { ref, id -> downloadStore.recordCreatedLocalId(ref, id) },
-                    // The mirror, for a commit the library reports as failed (capability `receiving-photos`).
-                    // Guarded on the marker in the store's own write, so a report that arrives after the
-                    // row moved on clears nothing.
-                    clearCreatedLocalId = { ref, id -> downloadStore.clearCreatedLocalId(ref, id) },
-                    // The success mirror: the completion settles the row itself, so an import whose
-                    // requester is gone records its own outcome (capability `receiving-photos`).
-                    confirmCreatedLocalId = { ref, id -> downloadStore.confirmCreatedLocalId(ref, id) },
-                ),
                 newDownloadTransport = { host -> IosDownloadTransport(host) },
                 union = HttpEventUnionSource(http, backendHost),
                 directory = detailsSource,
@@ -948,13 +930,7 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
 
     // The ONE gallery this process holds: every photo-library read and album write the status total, the join
     // preview, the download guard, the event album and the app's uploader make.
-    private val gallery: IosGallery by lazy { IosGallery(IosGalleryReader(), permission) }
-
-    // The selection-change source (capability `photo-access`): registers the library observer
-    // only while permission is LIMITED; the app graph collects its snapshots.
-    private val selectionSource: PhotoSelectionSnapshotSource by lazy {
-        PhotoSelectionSnapshotSource(permission.permission, scope)
-    }
+    private val gallery: IosGallery by lazy { IosGallery(IosGalleryReader(), permission, scope) }
 
     // The app-driven mechanism's composition root. Built lazily; reached whenever resolution yields
     // URL_SESSION — every OS below 26.1, and ≥26.1 under a partial grant — plus the background-session
@@ -1020,7 +996,7 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
  * app CPU across the whole watchdog allowance — blocked, not busy (`IosGalleryReader`).
  *
  * **Why exactly one thread.** `Dispatchers.Main` is single-threaded and core code relies on that for
- * mutual exclusion — `PhotoSelectionSnapshotSource`'s lock-free register/unregister and
+ * mutual exclusion — the selection observer's lock-free register/unregister and
  * `SentryDiagnosticsReporter`'s plain init flag both say so, and whatever else assumes it cannot be
  * enumerated. One thread changes which thread and nothing else; a pool would silently turn every
  * un-enumerated assumption into a race.

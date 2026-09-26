@@ -64,6 +64,28 @@ class LambdaSeamShapeTest {
         )
     }
 
+    /**
+     * A `*Handlers` bundle is a slot of callbacks, so the slot rule reaches it too — with the one exception an event
+     * port needs: an adapter's `listen` stores what the composition registered. So a `var` of a `*Handlers` type is
+     * allowed only in a class that overrides `listen`, and nowhere else (`docs/architecture.md`, "Events arrive
+     * through `listen`").
+     */
+    @Test
+    fun `a Handlers-typed var lives only behind a listen`() {
+        val found = production.flatMap { source ->
+            val text = code(source)
+            KotlinDecls.varDecls(text).filter { HANDLERS_TYPE.matches(it.type.trim()) }.map { Triple(source, text, it) }
+        }
+        assertTrue(found.isNotEmpty(), "no adapter stores its handlers — the scan is broken, and this gate passes on nothing")
+        val slots = found.filterNot { (_, text, _) -> "override fun listen(" in text }
+            .map { (source, _, decl) -> "  ${source.path}:${decl.line} :: var ${decl.name}: ${decl.type}" }
+        assertTrue(
+            slots.isEmpty(),
+            "a `*Handlers` slot outside an event port's `listen` is a callback slot someone must remember to fill. " +
+                "Register handlers only through `Listenable.listen`.\n" + slots.joinToString("\n"),
+        )
+    }
+
     @Test
     fun `no production constructor parameter defaults a function type`() {
         val defaulted = production.flatMap { source ->
@@ -116,5 +138,9 @@ class LambdaSeamShapeTest {
 
         val vars = KotlinDecls.varDecls(sample).filter { KotlinDecls.isFunctionType(it.type) }.map { it.name }
         assertEquals(listOf("slot"), vars, "the slot rule flags the wrong vars (and must ignore a commented one)")
+    }
+
+    private companion object {
+        val HANDLERS_TYPE = Regex("""\w*Handlers\??""")
     }
 }

@@ -3,15 +3,10 @@ package app.snapsync.world
 import app.snapsync.ports.DownloadTask
 import app.snapsync.ports.DownloadTransport
 import app.snapsync.ports.DownloadTransportHost
-import app.snapsync.model.ImportResult
-import app.snapsync.ports.PhotoLibraryImporter
 import app.snapsync.fake.LibraryChangeAnswers
-import app.snapsync.fake.inMemoryPhotoLibraryImporter
 import kotlinx.coroutines.CompletableDeferred
 import app.snapsync.model.TransferOutcome
-import app.snapsync.model.AlbumId
 import app.snapsync.model.AssetRef
-import app.snapsync.model.StagedResource
 
 /**
  * The operator-driven download **execution edge** (`docs/testing.md`): a fake
@@ -82,33 +77,17 @@ class FakeDownloadTransport(
 }
 
 /**
- * The world's rigging around the honest `:adapter:generic:fake` [inMemoryPhotoLibraryImporter]: the import
- * itself — the two-phase marker, the fresh identifier per creation, the asset landing in the gallery — is the
- * honest fake's, the one `PhotoLibraryImporterContract` holds to `IosPhotoLibraryImporter`. What lives here
- * is the operator's script for how the library ANSWERS a change, supplied as the fake's
- * [LibraryChangeAnswers], plus the inspection a test reads.
+ * The world's import rigging, held by its [WorldGallery]: the import itself — the two-phase marker through the
+ * registered handlers, the fresh identifier per creation, the asset landing in the gallery — is the honest
+ * `:adapter:generic:fake` gallery's, the one `GalleryImportContract` holds to the PhotoKit adapter. What lives here
+ * is the operator's script for how the library ANSWERS a change, supplied as the fake's [LibraryChangeAnswers],
+ * plus the inspection a test reads.
  *
  * The levers ([failNextImport], [failNextImportAfterCreating], [suspendNextImport],
  * [suspendNextImportAfterCommit]) are what let a test reach each of the ways an import can end badly —
  * including the one that has no ending at all, where the transaction is held open while other triggers run.
  */
-class FakePhotoLibraryImporter(
-    gallery: WorldGallery,
-    /**
-     * The marker write, mirroring the real adapter's constructor lambda.
-     *
-     * **Required, with no default.** A no-op default makes an importer that never records a marker look
-     * like a working one: the row stays importable, so every later pass imports the asset AGAIN while
-     * reporting success — an unbounded duplicate generator presented as a healthy path. That is exactly
-     * the failure `DownloadStore.markImported` exists to absorb, and a fixture must not be the thing that
-     * hides it.
-     */
-    recordCreatedLocalId: (AssetRef, String) -> Boolean,
-    /** The mirror, invoked when a change is reported as failed *after* the marker was written. */
-    clearCreatedLocalId: (AssetRef, String) -> Unit,
-    /** The success mirror: the completion settles the row itself (capability `receiving-photos`). */
-    confirmCreatedLocalId: (AssetRef, String) -> Unit,
-) : PhotoLibraryImporter {
+class WorldImports {
 
     /** Inspection: the source refs imported, one entry per created asset (so a repeat shows up twice). */
     val imported = mutableListOf<AssetRef>()
@@ -195,8 +174,8 @@ class FakePhotoLibraryImporter(
         return if (gate.await()) null else "suspended import resumed as failed"
     }
 
-    /** The operator's script for how the library answers each change. */
-    private val answers = object : LibraryChangeAnswers {
+    /** The operator's script for how the library answers each change — the world gallery's honest fake reads it. */
+    internal val answers = object : LibraryChangeAnswers {
         override suspend fun beforeChange(ref: AssetRef): String? {
             if (!failNextImport) return null
             failNextImport = false
@@ -221,27 +200,14 @@ class FakePhotoLibraryImporter(
         }
     }
 
-    private val honest: PhotoLibraryImporter = inMemoryPhotoLibraryImporter(
-        library = gallery.cell,
-        recordCreatedLocalId = recordCreatedLocalId,
-        clearCreatedLocalId = clearCreatedLocalId,
-        confirmCreatedLocalId = confirmCreatedLocalId,
-        answers = answers,
-    )
-
-    override suspend fun import(
-        ref: AssetRef,
-        resources: List<StagedResource>,
-        creationDate: String,
-        album: AlbumId?,
-    ): ImportResult {
+    /** Counts an import of [ref] against [attemptCap], raising at the cap: a live-lock names itself instead of hanging. */
+    internal fun attempt(ref: AssetRef) {
         val attempt = attempts.getOrElse(ref) { 0 } + 1
         attempts[ref] = attempt
         check(attempt <= attemptCap) {
             "imported ${ref.sourceAssetId} $attempt times (cap $attemptCap) — the drain is live-locking " +
                 "on one ref instead of offering it once"
         }
-        return honest.import(ref, resources, creationDate, album)
     }
 }
 

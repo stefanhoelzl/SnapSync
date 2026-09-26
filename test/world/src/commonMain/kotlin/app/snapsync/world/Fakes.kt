@@ -10,6 +10,10 @@ import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.GalleryRead
 import app.snapsync.model.WriteOutcome
 import app.snapsync.ports.Gallery
+import app.snapsync.ports.GalleryHandlers
+import app.snapsync.model.ImportRequest
+import app.snapsync.model.ImportResult
+import app.snapsync.model.SelectionSnapshot
 import app.snapsync.ports.LibraryChangeToken
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.RawAsset
@@ -60,7 +64,11 @@ class MutablePhotoAccessStatusSource(
  *
  * [access] is the grant cell the world's permission source owns, so the gallery and the status source agree.
  */
-class WorldGallery(access: MutableStateFlow<GalleryAccess> = MutableStateFlow(GalleryAccess.GRANTED)) : Gallery {
+class WorldGallery(
+    access: MutableStateFlow<GalleryAccess> = MutableStateFlow(GalleryAccess.GRANTED),
+    /** The operator's import script and inspection (see [WorldImports]). */
+    val imports: WorldImports = WorldImports(),
+) : Gallery {
     private val state = MutableStateFlow<List<RawAsset>>(emptyList())
 
     /**
@@ -70,7 +78,25 @@ class WorldGallery(access: MutableStateFlow<GalleryAccess> = MutableStateFlow(Ga
      */
     private val userAlbums = MutableStateFlow<Map<String, Set<String>>>(emptyMap())
 
-    private val honest: Gallery = inMemoryGallery(state, access, userAlbums)
+    private val honest: Gallery = inMemoryGallery(state, access, userAlbums, answers = imports.answers)
+
+    /** The handlers the composition registered — how [changeSelection] reaches the core, as the observer would. */
+    private var handlers: GalleryHandlers? = null
+
+    /** Inspection: whether the selection observer is open (only host assembly opens it). */
+    var observing: Boolean = false
+        private set
+
+    /**
+     * Operator lever (capability `photo-access`): the member's selection under a partial grant is now [assets] —
+     * delivered whole, with its resources, through the registered `onChanged`, as the real observer delivers one.
+     * Only while the observer is open: a composition that never assembled its host would hear nothing, so the lever
+     * fails loudly rather than silently doing nothing.
+     */
+    fun changeSelection(assets: List<RawAsset>) {
+        check(observing) { "the selection observer is not open — only host assembly opens it" }
+        checkNotNull(handlers) { "no handlers registered — the host zone's listen never ran" }.onChanged(SelectionSnapshot(assets))
+    }
 
     // ---- the library ----------------------------------------------------------------------------
 
@@ -173,6 +199,21 @@ class WorldGallery(access: MutableStateFlow<GalleryAccess> = MutableStateFlow(Ga
     override suspend fun widenSelection(): GalleryAccess = honest.widenSelection()
 
     override suspend fun changeToken(): LibraryChangeToken? = honest.changeToken()
+
+    override fun listen(handlers: GalleryHandlers) {
+        this.handlers = handlers
+        honest.listen(handlers)
+    }
+
+    override fun observeChanges(enabled: Boolean) {
+        observing = enabled
+        honest.observeChanges(enabled)
+    }
+
+    override suspend fun import(request: ImportRequest): ImportResult {
+        imports.attempt(request.ref)
+        return honest.import(request)
+    }
 }
 
 /**

@@ -3,17 +3,10 @@ package app.snapsync.permission
 import app.snapsync.model.ConfinedTo
 import app.snapsync.gallery.photoKitRawAssets
 import app.snapsync.ios.qos.photoKitReadLane
-import app.snapsync.model.resourcesFrom
 import kotlinx.coroutines.withContext
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.Resource
-import app.snapsync.ports.PhotoSelectionChangeSource
+import app.snapsync.model.SelectionSnapshot
 import app.snapsync.selection.SelectionPlatform
-import app.snapsync.selection.SelectionSnapshotLane
-import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.StateFlow
 import platform.Foundation.NSSortDescriptor
 import platform.Photos.PHAsset
 import platform.Photos.PHChange
@@ -21,9 +14,9 @@ import platform.Photos.PHFetchOptions
 import platform.Photos.PHFetchResult
 
 /**
- * The iOS [PhotoSelectionChangeSource] (capability `photo-access`): observes the photo
- * library **only while permission is [GalleryAccess.LIMITED]** and emits the full current
- * selection as resources — once when observation begins (the cold-launch baseline read; opening the
+ * The PhotoKit binding of [IosGallery]'s selection observer (capability `photo-access`): observes the photo
+ * library **only while observation is on and permission is [GalleryAccess.LIMITED]** and delivers the full current
+ * selection with its resources — once when observation begins (the cold-launch baseline read; opening the
  * app is the user action that makes it in-flow) and after each change ([PhotoSelectionObserver] fires
  * for the in-app picker, Settings-side edits, and iCloud sync alike).
  *
@@ -49,24 +42,11 @@ import platform.Photos.PHFetchResult
  * arrive while it runs are folded into one more enumeration for the latest. The ordering and that folding —
  * one serial lane for the baseline, every change and every emission — are [SelectionSnapshotLane]'s,
  * platform-free and tested on the JVM; this file is only the PhotoKit binding.
+ *
+ * Every member runs on the lane, so [observer] needs no lock — PhotoKit holds observers weakly, which is why it is
+ * retained here at all.
  */
-class PhotoSelectionSnapshotSource(
-    permission: StateFlow<GalleryAccess>,
-    scope: CoroutineScope,
-    ioDispatcher: CoroutineDispatcher = Dispatchers.Default,
-) : PhotoSelectionChangeSource by SelectionSnapshotLane(
-    permission = permission,
-    scope = scope,
-    // ONE serial lane for every read, change and emission — the ordering the lane class exists for.
-    lane = ioDispatcher.limitedParallelism(1),
-    platform = PhotoKitSelection(),
-)
-
-/**
- * PhotoKit behind [SelectionSnapshotLane]. Every member runs on the lane, so [observer] needs no lock — PhotoKit
- * holds observers weakly, which is why it is retained here at all.
- */
-private class PhotoKitSelection : SelectionPlatform<PHFetchResult, PHChange> {
+internal class PhotoKitSelection : SelectionPlatform<PHFetchResult, PHChange, SelectionSnapshot> {
 
     @ConfinedTo("selection")
     private var observer: PhotoSelectionObserver? = null
@@ -100,6 +80,6 @@ private class PhotoKitSelection : SelectionPlatform<PHFetchResult, PHChange> {
     // consumer holding only identifiers, and reaching the assets again off-flow would be an autonomous library
     // fetch, which the read discipline forbids. The selection is hand-picked and small, so eagerness costs little.
     // On the PhotoKit read lane, at its pinned QoS, like every other resource read (see `IosGalleryReader`).
-    override suspend fun snapshot(of: PHFetchResult): List<Resource> =
-        withContext(photoKitReadLane) { resourcesFrom(photoKitRawAssets(of)) }
+    override suspend fun snapshot(of: PHFetchResult): SelectionSnapshot =
+        withContext(photoKitReadLane) { SelectionSnapshot(photoKitRawAssets(of)) }
 }
