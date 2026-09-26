@@ -12,7 +12,7 @@ import app.snapsync.ports.DevHandlers
 import app.snapsync.ports.EntryContext
 import app.snapsync.ports.LifecycleHandlers
 import app.snapsync.ports.PushHandlers
-import app.snapsync.ports.invocation
+import app.snapsync.model.invocation
 import app.snapsync.services.wake.OsCompletions
 import kotlinx.coroutines.launch
 

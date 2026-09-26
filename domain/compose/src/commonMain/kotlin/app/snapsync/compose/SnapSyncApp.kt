@@ -96,7 +96,7 @@ import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.model.Handoff
 import app.snapsync.ports.SystemUi
 import app.snapsync.ports.StagedBytes
-import app.snapsync.ports.invocation
+import app.snapsync.model.invocation
 import co.touchlab.kermit.Logger
 import app.snapsync.ports.ProcessInfo
 import app.snapsync.ports.Wake
@@ -146,7 +146,7 @@ class AppPorts(
     /** The platform's own UI, where this app hands something over and stops being involved — the share sheet
      *  for the invite URL, the URL opener for the store link, and the app's Settings page (see [SystemUi]).
      *  Inert off-device, so a composition with no platform to reach writes nothing about any of them. */
-    val systemUi: SystemUi = SystemUi.None,
+    val systemUi: SystemUi = NoSystemUi,
     /**
      * The **main lane** (`docs/architecture.md`, law "Dispatcher lanes are fixed by the
      * composition"): the dispatcher platform-UI commands run on — `share`, `requestAccess`,

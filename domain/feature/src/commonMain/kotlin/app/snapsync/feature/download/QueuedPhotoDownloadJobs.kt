@@ -12,9 +12,9 @@ import app.snapsync.ports.StagedBytes
 import app.snapsync.model.TransferOutcome
 
 import app.snapsync.model.AssetRef
-import app.snapsync.ports.EntryContext
+import app.snapsync.model.EntryScope
 import app.snapsync.model.PendingDownload
-import app.snapsync.ports.invocation
+import app.snapsync.model.invocation
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -117,7 +117,7 @@ class QueuedPhotoDownloadJobs(
     private val onStaged: suspend (AssetRef, resourceKey: String, stagedPath: String) -> Unit,
     private val log: Logger = Logger.withTag("PhotoDownloadJobs"),
     // The ambient entry-point prefix, so every line a background-events wake causes traces back to it.
-    private val entryContext: EntryContext = EntryContext.NoOp,
+    private val entryContext: EntryScope = EntryScope.None,
 ) : PhotoDownloadJobs {
 
     /**

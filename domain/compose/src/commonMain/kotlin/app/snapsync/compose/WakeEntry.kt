@@ -5,7 +5,7 @@ import app.snapsync.model.WakeId
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.Completion
 import app.snapsync.ports.WakeHandlers
-import app.snapsync.ports.invocation
+import app.snapsync.model.invocation
 import app.snapsync.services.wake.OsCompletions
 import kotlinx.coroutines.launch
 

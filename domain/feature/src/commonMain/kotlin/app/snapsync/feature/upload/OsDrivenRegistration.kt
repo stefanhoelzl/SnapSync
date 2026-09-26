@@ -3,8 +3,8 @@ package app.snapsync.feature.upload
 import app.snapsync.model.RegistrationState
 import app.snapsync.model.registrationOutcome
 import app.snapsync.ports.ExtensionRegistry
-import app.snapsync.ports.EntryContext
-import app.snapsync.ports.invocation
+import app.snapsync.model.EntryScope
+import app.snapsync.model.invocation
 import co.touchlab.kermit.Logger
 
 /**
@@ -43,7 +43,7 @@ interface ExtensionRegistration {
 class OsDrivenRegistration(
     private val registry: ExtensionRegistry,
     private val log: Logger = Logger.withTag("OsDrivenRegistration"),
-    private val entryContext: EntryContext = EntryContext.NoOp,
+    private val entryContext: EntryScope = EntryScope.None,
 ) : ExtensionRegistration {
     /**
      * Register the extension — a **disable→enable toggle**, not a bare enable.

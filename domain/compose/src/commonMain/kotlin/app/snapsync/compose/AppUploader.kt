@@ -6,7 +6,7 @@ import app.snapsync.feature.upload.WalkOutcome
 import app.snapsync.model.CycleResult
 import app.snapsync.ports.ConfigReader
 import app.snapsync.ports.PhotoGrantRead
-import app.snapsync.ports.invocation
+import app.snapsync.model.invocation
 import app.snapsync.services.gallery.GalleryAlbums
 import app.snapsync.services.gallery.GalleryDiscovery
 

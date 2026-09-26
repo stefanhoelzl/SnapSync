@@ -7,7 +7,7 @@ import app.snapsync.ports.DeviceIdentity
 import app.snapsync.ports.ExtensionHandlers
 import app.snapsync.ports.ExtensionHost
 import app.snapsync.ports.EntryContext
-import app.snapsync.ports.invocation
+import app.snapsync.model.invocation
 import app.snapsync.services.upload.runProcessCycle
 import app.snapsync.services.backend.BackendServices
 import app.snapsync.services.backend.CredentialedBackend
@@ -26,7 +26,7 @@ fun snapSyncExtension(
     host: ExtensionHost,
     ports: () -> UploadPorts,
     cycle: () -> UploadCycle,
-    entryContext: EntryContext = EntryContext.NoOp,
+    entryContext: EntryContext = NoEntryContext,
     /**
      * Drop this process's in-memory copy of the device token, so the invocation reads the one the app last
      * stored (capability `privacy-security`). The app renews into the shared Keychain item, which the

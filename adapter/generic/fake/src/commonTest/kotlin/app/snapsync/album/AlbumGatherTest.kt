@@ -1,5 +1,6 @@
 package app.snapsync.album
 
+import app.snapsync.compose.NoEntryContext
 import app.snapsync.model.AssetId
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.SelectionCalibration
@@ -97,7 +98,7 @@ class AlbumGatherTest {
             photoAccess = liveGrant { if (this.granted) GalleryAccess.GRANTED else GalleryAccess.DENIED },
             coordinator = AlbumCoordinator(manager, inMemoryAlbumMapStore(mapOf("E2" to "ALBUM-2"))),
             scope = scope,
-            entryContext = EntryContext.NoOp,
+            entryContext = NoEntryContext,
             batchSize = 2,
         )
 

@@ -1,4 +1,4 @@
-package app.snapsync.ports
+package app.snapsync.model
 
 import co.touchlab.kermit.LogWriter
 import co.touchlab.kermit.Logger

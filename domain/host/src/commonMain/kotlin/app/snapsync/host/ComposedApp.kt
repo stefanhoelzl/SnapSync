@@ -19,7 +19,7 @@ import app.snapsync.model.forwardEventLink
 import app.snapsync.model.userActivityParams
 import app.snapsync.ports.LinkHandlers
 import app.snapsync.ports.UiHandlers
-import app.snapsync.ports.invocation
+import app.snapsync.model.invocation
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 

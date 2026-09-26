@@ -7,7 +7,7 @@ import app.snapsync.model.flattenToDottedKeys
 import app.snapsync.objc.objcBoundary
 import app.snapsync.ports.MetricHandlers
 import app.snapsync.ports.ProcessMetrics
-import app.snapsync.ports.invocation
+import app.snapsync.model.invocation
 import co.touchlab.kermit.Logger
 import platform.MetricKit.MXDiagnosticPayload
 import platform.MetricKit.MXMetricManager
@@ -55,7 +55,7 @@ import platform.darwin.NSObject
  * against a real implementation on some host"). No host can enter a state for a clause: MetricKit delivers when
  * the OS decides — roughly daily, one-shot, and only on a device — so a binding cannot make a report arrive,
  * and a recording would replay only a payload we chose. Nor is there an in-memory double for a contract to
- * license: the app root constructs this class directly, and every other process binds `ProcessMetrics.None`. The
+ * license: the app root constructs this class directly, and every other process binds `NoProcessMetrics`. The
  * measured evidence lives in this comment (the seventeen payloads, the write-only field that silenced them, the
  * day-long hold); the rule over what arrives is `:domain:model`'s, tested there.
  *

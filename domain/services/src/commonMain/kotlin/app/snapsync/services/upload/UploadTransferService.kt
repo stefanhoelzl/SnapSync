@@ -16,14 +16,14 @@ import app.snapsync.model.UploadTarget
 import app.snapsync.model.WriteOutcome
 import app.snapsync.model.assetIdFromUploadKey
 import app.snapsync.ports.BackgroundTransfer
-import app.snapsync.ports.EntryContext
+import app.snapsync.model.EntryScope
 import app.snapsync.ports.Files
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.PlatformUploadJob
 import app.snapsync.ports.TransferRecord
 import app.snapsync.ports.Upload
 import app.snapsync.ports.UploadDiscovery
-import app.snapsync.ports.invocation
+import app.snapsync.model.invocation
 import co.touchlab.kermit.Logger
 
 /** Where a file uploader's exported bytes wait, in the shared area — runtime identity: devices hold files under it. */
@@ -60,7 +60,7 @@ class UploadTransferService(
     /** The shared area a file uploader's exported bytes wait in ([UPLOAD_STAGING_DIR]). */
     private val files: Files,
     private val log: Logger = Logger.withTag("UploadTransfer"),
-    private val entryContext: EntryContext = EntryContext.NoOp,
+    private val entryContext: EntryScope = EntryScope.None,
 ) : BackgroundTransfer {
 
     override suspend fun fetchRetryJobs(): List<PlatformUploadJob> =

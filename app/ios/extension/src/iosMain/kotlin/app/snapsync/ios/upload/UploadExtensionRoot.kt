@@ -1,5 +1,6 @@
 package app.snapsync.ios.upload
 
+import app.snapsync.compose.NoProcessMetrics
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.DeviceIdentity
 import app.snapsync.compose.UploaderProcess
@@ -53,7 +54,6 @@ import app.snapsync.config.bakedSentryDsn
 import app.snapsync.compose.ProcessPorts
 import app.snapsync.compose.ProcessServices
 import app.snapsync.compose.snapSyncProcess
-import app.snapsync.ports.ProcessMetrics
 import app.snapsync.time.SystemClock
 import app.snapsync.logging.appBuildVersion
 import app.snapsync.logging.appMarketingVersion
@@ -108,7 +108,7 @@ object UploadExtensionRoot {
     private val process: ProcessServices = snapSyncProcess(
         ProcessPorts(
             crashReporter = SentryCrashReporter(),
-            processMetrics = ProcessMetrics.None,
+            processMetrics = NoProcessMetrics,
             // A public NSLog sink AND a file sink: NSLog is redacted as `<private>` on current iOS (dynamic format
             // strings are private), so the file is the reliable channel for reading the extension's logs on device.
             logSinks = listOf(PublicNSLogSink(), FileLogSink(logDestination.path)),

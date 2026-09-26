@@ -34,16 +34,4 @@ interface SystemUi {
 
     /** Open this app's own Settings page. */
     fun openSettings()
-
-    companion object {
-        /**
-         * Hands nothing over — for compositions with no platform UI to reach (the desktop harnesses and the world).
-         * [share] and [openUrl] answer [Handoff.Refused], which is exactly what is true there.
-         */
-        val None: SystemUi = object : SystemUi {
-            override suspend fun share(text: String): Handoff = Handoff.Refused("no platform share surface")
-            override suspend fun openUrl(url: String): Handoff = Handoff.Refused("no platform to open a link in")
-            override fun openSettings() = Unit
-        }
-    }
 }

@@ -20,19 +20,11 @@ class MetricHandlers(val onReport: (ProcessMetricReport) -> Unit)
  * accessor for already-stored reports was measured to return nothing on a fresh process.
  *
  * **Always present.** A process with no provider — the upload extension, which exists only for one invocation while
- * reports are handed out roughly daily, and every JVM composition — binds [None], which never delivers.
+ * reports are handed out roughly daily, and every JVM composition — binds a no-provider one (`NoProcessMetrics`, `compose/`), which never delivers.
  *
  * ⚠️ **Listening is a commitment, not a query.** Delivery may be **one-shot**: a provider may hold a report
  * indefinitely while nobody listens, and hand it over exactly once thereafter. So the handlers must already be live
  * when [listen] is called, and [MetricHandlers.onReport] completes its work before returning — on whatever thread
  * the provider chose (the lane law's MetricKit exception, `docs/architecture.md`).
  */
-interface ProcessMetrics : Listenable<MetricHandlers> {
-
-    companion object {
-        /** Delivers nothing, ever: the binding for a process with no provider. */
-        val None: ProcessMetrics = object : ProcessMetrics {
-            override fun listen(handlers: MetricHandlers) = Unit
-        }
-    }
-}
+interface ProcessMetrics : Listenable<MetricHandlers>

@@ -14,11 +14,11 @@ import app.snapsync.model.AssetRef
 import app.snapsync.ports.DownloadStore
 import app.snapsync.model.PlannedAsset
 import app.snapsync.model.PlannedResource
-import app.snapsync.ports.EntryContext
+import app.snapsync.model.EntryScope
 import app.snapsync.ports.StagedBytes
 import app.snapsync.model.StagedResource
 import app.snapsync.model.UnconfirmedImport
-import app.snapsync.ports.invocation
+import app.snapsync.model.invocation
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -66,7 +66,7 @@ class DownloadController(
     // none: a permissive default on a safety gate is how a caller ships without one.
     private val downloadEnabled: () -> Boolean?,
     private val log: Logger = Logger.withTag("DownloadController"),
-    private val entryContext: EntryContext = EntryContext.NoOp,
+    private val entryContext: EntryScope = EntryScope.None,
 ) {
 
     // Serializes all store-mutating flows. Both join (`provisionEvent`) and foreground fire `reconcile`,

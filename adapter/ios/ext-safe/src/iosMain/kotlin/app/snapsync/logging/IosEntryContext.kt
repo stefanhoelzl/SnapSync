@@ -1,14 +1,14 @@
 package app.snapsync.logging
 
 import app.snapsync.ports.EntryContext
-import app.snapsync.ports.invocation
+import app.snapsync.model.invocation
 import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
 
 /**
  * The iOS binding of the `:domain` `EntryContext` port (capability `privacy-security`): drives the
  * process-global [LogContext] the device-log writers read. This is the ambient-context set/clear
- * seam every live iOS binary injects (world / tests inject `EntryContext.NoOp`), so the global mutable
+ * seam every live iOS binary injects (world / tests inject `NoEntryContext`), so the global mutable
  * stays in the adapter layer while `:domain` code drives it through the port.
  */
 object IosEntryContext : EntryContext {
@@ -36,7 +36,7 @@ object IosThreadEntryContext : EntryContext {
 }
 
 /**
- * The iOS convenience overload of [app.snapsync.ports.invocation]: an entry point or adapter that
+ * The iOS convenience overload of [app.snapsync.model.invocation]: an entry point or adapter that
  * links this module wraps itself with `log.invocation("name") { … }` and the ambient [LogContext] is
  * driven for it, no `EntryContext` in hand. It delegates to the single port-driven implementation over
  * [IosEntryContext], so there is exactly one enter/exit/log body. (`:domain` features that cannot link
