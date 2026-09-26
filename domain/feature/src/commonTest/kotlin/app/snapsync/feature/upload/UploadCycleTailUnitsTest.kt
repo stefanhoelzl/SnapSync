@@ -11,7 +11,7 @@ import app.snapsync.model.candidatesFromResources
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.selectionRulesFor
 import app.snapsync.ports.BackgroundTransfer
-import app.snapsync.model.CreateResult
+import app.snapsync.model.UploadCreateOutcome
 import app.snapsync.model.CycleResult
 import app.snapsync.model.PauseReason
 import app.snapsync.ports.Discovery
@@ -41,10 +41,10 @@ class UploadCycleTailUnitsTest {
         override suspend fun fetchRetryJobs(): List<PlatformUploadJob> = emptyList<PlatformUploadJob>().also { platformReads++ }
         override suspend fun drainTerminals(): List<PlatformUploadJob> = emptyList<PlatformUploadJob>().also { platformReads++ }
         override suspend fun retryJob(job: PlatformUploadJob, request: UploadRequest) = Unit
-        override suspend fun createJob(request: UploadRequest, resource: Resource): CreateResult {
-            if (created.size >= limit) return CreateResult.LIMIT_EXCEEDED
+        override suspend fun createJob(request: UploadRequest, resource: Resource): UploadCreateOutcome {
+            if (created.size >= limit) return UploadCreateOutcome.LIMIT_EXCEEDED
             created += resource.filename
-            return CreateResult.CREATED
+            return UploadCreateOutcome.CREATED
         }
 
         override suspend fun discover(policy: SelectionPolicy): Discovery {

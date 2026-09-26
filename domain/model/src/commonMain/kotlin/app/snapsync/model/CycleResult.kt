@@ -1,14 +1,6 @@
 package app.snapsync.model
 
 /**
- * Outcome of a create attempt. [CREATED] → the platform job exists (record `UploadStarted`);
- * [LIMIT_EXCEEDED] → the system's in-flight job cap (defer, request re-invocation); [FAILED] → the
- * job could not be created (e.g. a malformed destination or an unusable resource payload) and was
- * NOT created, so the caller must NOT record `REQUESTED` for a job that does not exist.
- */
-enum class CreateResult { CREATED, LIMIT_EXCEEDED, FAILED }
-
-/**
  * The terminal disposition of one cycle; the Swift shell maps it to the system result.
  *
  * [SKIPPED] is not a flavour of [COMPLETED]: a caller that re-arms background work must be able to tell

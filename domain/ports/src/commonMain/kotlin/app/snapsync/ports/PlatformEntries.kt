@@ -11,9 +11,9 @@ import app.snapsync.model.CycleResult
  * **core implements it** (`compose/`'s `platformEntries`) and the shell drives it. The composition root implements
  * it by Kotlin delegation, so the forwarding from the operating system's callback to the core is written by the
  * compiler and a crossed wire has nowhere to sit. The transcription that used to live in the untested shell — what own
- * work an entry runs, how its completion is held, when it hands the rest to the tail, how a transfer channel is
- * routed — is the implementation's, and `:test:contracts`' `PlatformEntriesContract` specifies it. A scheduled background task
- * is not an entry: it arrives through the `Wake` event port.
+ * work an entry runs, how its completion is held, when it hands the rest to the tail — is the implementation's, and
+ * `:test:contracts`' `PlatformEntriesContract` specifies it. A scheduled background task and a transfer session's
+ * events are not entries: they arrive through the `Wake`, `Upload` and `Download` event ports (phase 11f).
  *
  * Members are named for what the operating system is saying, never for the API that says it, and carry only
  * platform-independent values — an Android shell would drive the same port.
@@ -43,14 +43,6 @@ interface PlatformEntries {
      */
     @PlatformEntry
     fun onSilentPush(payload: Map<Any?, *>, completion: () -> Unit)
-
-    /**
-     * The operating system is handing back finished background transfers for [channel]. [completion] is
-     * released once that channel's session reports its events drained and the wake's own work — recording what they
-     * delivered — is done, or at once when the process's background time is up. The tail follows the release.
-     */
-    @PlatformEntry
-    fun onBackgroundTransfers(channel: String, completion: () -> Unit)
 }
 
 /**

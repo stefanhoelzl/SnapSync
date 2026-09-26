@@ -21,7 +21,9 @@ import app.snapsync.ports.AlbumManager
 import app.snapsync.ports.DeviceIdentity
 import app.snapsync.ports.PhotoGrantRead
 import app.snapsync.feature.upload.extensionAdmission
-import app.snapsync.ports.BackgroundTransfer
+import app.snapsync.ports.GalleryReader
+import app.snapsync.ports.Upload
+import app.snapsync.services.upload.UploadTransferService
 import app.snapsync.ports.UploadDiscovery
 import app.snapsync.model.ConfigRead
 import app.snapsync.ports.ConfigReader
@@ -77,7 +79,14 @@ class UploadPorts(
      */
     val host: String,
     val ledger: LedgerStore,
-    val transfer: BackgroundTransfer,
+    /**
+     * This tier's uploader (`docs/architecture.md`, "Background execution"): the PhotoKit upload-job queue in the
+     * extension, the background `URLSession` in the app. What its jobs mean for the ledger is the upload service's,
+     * composed over it here.
+     */
+    val upload: Upload,
+    /** The photo library — what exports a resource to a file for an uploader that sends files. */
+    val gallery: GalleryReader,
     /**
      * The cycle's photo-library reads (capability `background-upload`, "Ledger keys resolve to uploadable
      * resources"): bound once per root — `GalleryDiscovery` over the gallery on both device tiers — and never by a
@@ -146,9 +155,21 @@ class UploadPorts(
  */
 @Suppress("UNUSED_PARAMETER")
 fun uploadCore(scope: CoroutineScope, process: ProcessServices, ports: UploadPorts): UploadCycle {
-    // [process] is required and unread: it proves the process set up its crash reporting before this cycle was
-    // composed (`snapSyncProcess`, every root's first act).
+    // [process] proves the process set up its crash reporting before this cycle was composed (`snapSyncProcess`, every
+    // root's first act), and supplies the one `Files` a file uploader's staged bytes live in.
     val ledger = LedgerWriter(ports.ledger)
+    // The read-discipline gate (capability `photo-access`): the ONE shared assembly wraps the library reads, so every
+    // tier and the world get the same walk-vs-snapshot decision — the cycle's, and the transfer's live-resource lookup.
+    val library = SelectionScopedDiscovery(ports.discovery, ports.selectionScope)
+    val transfer = UploadTransferService(
+        upload = ports.upload,
+        record = ports.ledger,
+        resources = library,
+        gallery = ports.gallery,
+        files = process.files,
+        log = ports.log,
+        entryContext = process.entryContext,
+    )
     // Constructed lazily so the device id resolves on first in-cycle use — after the gate's probe
     // has succeeded — never at composition time, where a locked device would throw out of assembly.
     val manifestProducer by lazy {
@@ -176,10 +197,8 @@ fun uploadCore(scope: CoroutineScope, process: ProcessServices, ports: UploadPor
             )
         },
         ledger = ledger,
-        platform = ports.transfer,
-        // The read-discipline gate (capability `photo-access`): the ONE shared assembly wraps
-        // the library reads, so every tier and the world get the same walk-vs-snapshot decision.
-        library = SelectionScopedDiscovery(ports.discovery, ports.selectionScope),
+        platform = transfer,
+        library = library,
         log = ports.log,
         // Device manifest (capability `photo-sharing`) from the cycle's OWN discovery — no second
         // library enumeration. Catching a failed publish is the cycle's; nothing bounds it but the

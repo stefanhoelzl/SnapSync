@@ -5,8 +5,9 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSError
 
 /**
- * The app-driven tier's **outcome decisions** — the `URLSession` counterparts of
- * `PhotoKitJobMapping.kt`, extracted for the same reason and kept symmetric with it deliberately.
+ * The app-driven tier's **outcome vocabulary** — how a delivered `URLSession` completion reads as an upload job's
+ * terminal state, the counterpart of `PhotoKitJobMapping.kt`'s state mapping. What that state then means for the ledger
+ * is the upload services' (phase 11f).
  *
  * Tier asymmetry is this project's recurring failure mode: the rejoin reconciliation, the direction
  * gate and the membership read each shipped on one upload tier and not the other (see
@@ -21,7 +22,7 @@ import platform.Foundation.NSError
  * Decision record: `changes/archive/2026-08-09-extract-upload-platform-mappings` (design D3).
  */
 
-/** What a delivered `URLSession` task completion means for the ledger. */
+/** What a delivered `URLSession` task completion reports. */
 sealed interface TaskCompletion {
 
     /** The task carried its ledger key and reached a terminal outcome. */

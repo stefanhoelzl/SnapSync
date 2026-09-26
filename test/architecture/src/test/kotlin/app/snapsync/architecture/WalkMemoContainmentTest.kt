@@ -58,6 +58,6 @@ class WalkMemoContainmentTest {
 
     private companion object {
         const val APP_COMPOSITION = "/domain/compose/src/commonMain/kotlin/app/snapsync/compose/AppUploadDiscovery.kt"
-        const val APP_UPLOADER = "/app/ios/src/iosMain/kotlin/app/snapsync/ios/UrlSessionUploadController.kt"
+        const val APP_UPLOADER = "/domain/compose/src/commonMain/kotlin/app/snapsync/compose/AppUploader.kt"
     }
 }

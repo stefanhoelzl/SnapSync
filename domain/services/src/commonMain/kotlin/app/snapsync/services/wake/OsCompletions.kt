@@ -10,8 +10,6 @@ import kotlinx.coroutines.withContext
 import kotlin.concurrent.atomics.AtomicBoolean
 import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
-import kotlin.coroutines.CoroutineContext
-import kotlin.coroutines.EmptyCoroutineContext
 
 /**
  * The **OS-supplied completion handlers** of one kind of wake, held across that wake's **own work** and released
@@ -42,12 +40,10 @@ import kotlin.coroutines.EmptyCoroutineContext
  *    suspended (every unit is a safe retry). That is Apple's recipe: end the task promptly, never let the watchdog
  *    decide.
  *
- * **Where the release runs.** [releaseLane] is where [releaseAfter] releases — the release only, never the work. A
- * background-`URLSession` handler must be called on the main thread (*"Because the provided completion handler is part
- * of UIKit, you must call it on your main thread"*), and its drain signal arrives on a session-owned queue, so the
- * lane is what puts it there. An expiry release runs on the signal's own thread, which for that handler is the main
- * thread already: the background-time port's expiry is `beginBackgroundTask`'s expiration handler, which UIKit calls
- * on main. No thread requirement is stated for the other two handlers, and none is extended to them.
+ * **Where the release runs** is the [Completion]'s: it answers the operating system on the thread the platform
+ * requires. A background-`URLSession` handler must be called on the main thread (*"Because the provided completion
+ * handler is part of UIKit, you must call it on your main thread"*), and its drain signal arrives on a session-owned
+ * queue — so that adapter's completion hops to main itself (phase 11f; before it, this holder took a release lane).
  *
  * **Thread-safe by construction.** Handovers arrive on the main thread, drains on a session queue, expiries on the
  * operating system's queue: the outstanding set is one atomic reference replaced whole, and each handler's release is
@@ -56,8 +52,6 @@ import kotlin.coroutines.EmptyCoroutineContext
 class OsCompletions(
     /** The entry point these handlers belong to, for the diagnostic lines. */
     private val entryPoint: String,
-    /** Where [releaseAfter] releases — see the class KDoc. */
-    private val releaseLane: CoroutineContext = EmptyCoroutineContext,
     private val log: Logger = Logger.withTag("OsCompletions"),
 ) {
     private val outstanding = AtomicReference<List<Handover>>(emptyList())
@@ -77,7 +71,7 @@ class OsCompletions(
         } finally {
             // `NonCancellable`: a cancelled caller must still answer the operating system — an unanswered handler costs
             // the app its future background wakes, which is worse than whatever cancelled it.
-            withContext(NonCancellable + releaseLane) { window.forEach { it.release(expired = null) } }
+            withContext(NonCancellable) { window.forEach { it.release(expired = null) } }
         }
     }
 

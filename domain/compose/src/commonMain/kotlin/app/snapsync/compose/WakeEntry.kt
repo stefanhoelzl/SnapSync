@@ -18,7 +18,7 @@ import kotlinx.coroutines.launch
  * a grant of time — so its completion is held until that tail ends, or released at once on the operating system's
  * expiry ([Completion.onExpired]), which also stops the tail. The re-arm is the tail runner's.
  */
-internal fun wakeHandlers(core: AppCore): WakeHandlers =
+internal fun wakeHandlersOf(core: AppCore): WakeHandlers =
     WakeHandlers(onWake = { id, completion -> core.onWake(id, completion) })
 
 private fun AppCore.onWake(id: WakeId, completion: Completion) =

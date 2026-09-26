@@ -1,73 +1,95 @@
 package app.snapsync.world
 
-import app.snapsync.ports.DownloadTask
-import app.snapsync.ports.DownloadTransport
-import app.snapsync.ports.DownloadTransportHost
+import app.snapsync.model.StartResult
+import app.snapsync.ports.Completion
+import app.snapsync.ports.Download
+import app.snapsync.ports.DownloadHandlers
 import app.snapsync.fake.LibraryChangeAnswers
 import kotlinx.coroutines.CompletableDeferred
 import app.snapsync.model.TransferOutcome
 import app.snapsync.model.AssetRef
 
 /**
- * The operator-driven download **execution edge** (`docs/testing.md`): a fake
- * [DownloadTransport] the world composes the **real** [app.snapsync.feature.download.QueuedPhotoDownloadJobs] over.
+ * The operator-driven download **edge** (`docs/testing.md`): a fake [Download] the world composes the **real**
+ * [app.snapsync.feature.download.QueuedPhotoDownloadJobs] over — so the bounded window, the tag codec, the URL guard
+ * and the integrity judgement all run against it, and only the platform is played.
  *
- * Faking here rather than at `PhotoDownloadJobs` is the point. The layer above is the orchestration — the
- * bounded in-flight window, the transfer-description codec, the URL guard, and the transfer-integrity
- * check — and the world exists so the *real* stack runs against it, faking only the edge. Faking the jobs
- * instead left every one of those untested by the world and by `:test:integration`.
- *
- * [finish] mirrors the real `URLSession` delegate exactly, including the ordering the integrity check
- * depends on: ask whether the bytes may be staged, only then stage them, and report completion either way
- * (a download's completion callback follows its finish callback whether or not anything went wrong, which
- * is what frees the window slot).
+ * [finish] mirrors the real `URLSession` delegate, including the ordering the integrity check depends on: the finish
+ * callback hands the facts and a temporary file, and the completion follows it whether or not anything went wrong —
+ * which is what frees the window slot.
  */
-class FakeDownloadTransport(
-    private val host: DownloadTransportHost,
+class FakeDownload(
     /**
-     * The world's staging "disk". Staging a transfer puts its destination here, exactly as the real
-     * transport's `moveToStaging` puts bytes on disk — so a test can assert that a settled row's bytes
-     * were released and an unsettled row's were not.
-     */
-    private val disk: MutableSet<String> = mutableSetOf(),
-    /**
-     * The operating system's session: the transfers it holds for this app. Shared across a relaunch — a
-     * relaunched process's transport finds the transfers the dead one started, as a background `URLSession` does.
+     * The operating system's session: the transfers it holds for this app. Durable across a relaunch — a relaunched
+     * process finds the transfers the dead one started, and their completions arrive there, as a background
+     * `URLSession`'s do.
      */
     val started: MutableList<Started> = mutableListOf(),
-) : DownloadTransport {
+) : Download {
 
-    /** Inspection: a transfer the real jobs started through this transport. */
+    /** Inspection: a transfer started through this session. */
     class Started(val url: String, val description: String) {
         var cancelled: Boolean = false
     }
 
-    /** `null` for a URL that is not one, as the real transport answers — never a throw (`DownloadTransportContract`). */
-    override fun start(url: String, description: String): DownloadTask? {
-        if (url.isBlank()) return null
-        val s = Started(url, description)
-        started += s
-        return object : DownloadTask {
-            override fun cancel() {
-                s.cancelled = true
-                host.onCompleted(description, "cancelled")
-            }
+    private var handlers: DownloadHandlers? = null
+
+    /**
+     * Whether this launch's process has brought the session up — by starting, cancelling, or being handed the
+     * session's events. A relaunch ([relaunched]) is a new process that has brought up nothing.
+     */
+    var realized: Boolean = false
+        private set
+
+    override fun listen(handlers: DownloadHandlers) {
+        this.handlers = handlers
+    }
+
+    /** `NotStarted` for a URL that is not one, as the real session answers — never a throw (`DownloadContract`). */
+    override fun start(url: String, tag: String): StartResult {
+        realized = true
+        if (url.isBlank()) return StartResult.NotStarted
+        started += Started(url, tag)
+        return StartResult.Started
+    }
+
+    /** Cancels every transfer the session holds — ones a dead process started included — each completing with an error. */
+    override suspend fun cancelAll() {
+        realized = true
+        started.filterNot { it.cancelled }.forEach {
+            it.cancelled = true
+            registered().onCompleted(it.description, "cancelled")
         }
     }
 
-    /** The transfers still awaiting a finish, de-duplicated by description. */
+    /** The transfers still awaiting a finish, de-duplicated by tag. */
     fun inFlight(): List<Started> = started.filterNot { it.cancelled }.distinctBy { it.description }
 
     /**
-     * Deliver a finish for [description], exactly as the real delegate does. A rejected [outcome] leaves
-     * the resource un-staged — which *is* the world's pending-for-retry state, not a new terminal one.
+     * Deliver a finish for [description], exactly as the real delegate does: the facts and a temporary file, then the
+     * completion. A rejected [outcome] leaves the resource un-staged — the world's pending-for-retry state.
      */
     fun finish(description: String, outcome: TransferOutcome = HEALTHY) {
-        if (host.accepts(description, outcome)) {
-            host.destinationFor(description)?.let { disk += it; host.onStaged(description, it) }
-        }
-        host.onCompleted(description, null)
+        registered().onFinished(description, outcome, "temp:/$description")
+        registered().onCompleted(description, null)
     }
+
+    /** Operator lever: the operating system relaunches the app for this session's events, handing [completion]. */
+    fun handBack(completion: Completion) {
+        registered().onBackgroundEvents(completion)
+        realized = true
+    }
+
+    /** Operator lever: the session reports every event delivered (`urlSessionDidFinishEvents`). */
+    fun reportEventsDrained() = registered().onEventsDrained()
+
+    /** The process died: the next one has brought up nothing yet (the transfers themselves survive). */
+    fun relaunched() {
+        realized = false
+    }
+
+    private fun registered(): DownloadHandlers =
+        checkNotNull(handlers) { "no composition listened to the download session — nothing would receive this" }
 
     companion object {
         /** An ordinary healthy transfer: `200`, no declared length — what staging assumes by default. */

@@ -1,7 +1,7 @@
 package app.snapsync.feature.upload
 
 import app.snapsync.model.runCatchingCancellable
-import app.snapsync.model.CreateResult
+import app.snapsync.model.UploadCreateOutcome
 import app.snapsync.model.CycleResult
 import app.snapsync.model.PauseReason
 import app.snapsync.ports.Discovery
@@ -556,11 +556,11 @@ class UploadCycle(
             // still need a job, so the pass reports truncated.
             if (stopRequested()) return Enqueued(created, truncated = true)
             when (createOne(ready, row, walked)) {
-                CreateResult.CREATED -> created++
+                UploadCreateOutcome.CREATED -> created++
                 // Backpressure, not failure — and the only signal that work remains. The row stays as it was
                 // (it still needs a job), so the next cycle finds it in the same read.
-                CreateResult.LIMIT_EXCEEDED -> return Enqueued(created, truncated = true)
-                CreateResult.FAILED, null -> Unit
+                UploadCreateOutcome.LIMIT_EXCEEDED -> return Enqueued(created, truncated = true)
+                UploadCreateOutcome.FAILED, null -> Unit
             }
         }
         return Enqueued(created, truncated = false)
@@ -579,7 +579,7 @@ class UploadCycle(
      * miss there is evidence the asset is gone. The shape is unchanged: one row at a time, stopping at the first
      * refusal before the next row is looked up.
      */
-    private suspend fun createOne(ready: Ready, row: LedgerEntry, walked: Map<String, Resource>): CreateResult? {
+    private suspend fun createOne(ready: Ready, row: LedgerEntry, walked: Map<String, Resource>): UploadCreateOutcome? {
         val resource = walked[row.key]
             ?: library.resourcesFor(setOf(row.key)).firstOrNull { it.filename == row.key }
         if (resource == null) {
@@ -594,7 +594,7 @@ class UploadCycle(
         val decision = ready.engine.handle(SyncEvent.ResourceChanged(resource))
         if (decision !is SyncDecision.Work) return null
         return platform.createJob(decision.request, resource).also { result ->
-            if (result == CreateResult.CREATED) ready.engine.handle(SyncEvent.UploadStarted(decision.request))
+            if (result == UploadCreateOutcome.CREATED) ready.engine.handle(SyncEvent.UploadStarted(decision.request))
             // FAILED: not created → no UploadStarted; the row still needs a job.
         }
     }
@@ -953,9 +953,9 @@ class UploadCycle(
             val retry = adjudicateFailure(engine, job) ?: continue
             if (job.data == null || capHit) continue
             when (platform.createJob(retry.request, retry.request.resource)) {
-                CreateResult.CREATED -> engine.handle(SyncEvent.UploadStarted(retry.request))
-                CreateResult.LIMIT_EXCEEDED -> capHit = true // rediscovery retries this key
-                CreateResult.FAILED -> Unit // not created → no UploadStarted
+                UploadCreateOutcome.CREATED -> engine.handle(SyncEvent.UploadStarted(retry.request))
+                UploadCreateOutcome.LIMIT_EXCEEDED -> capHit = true // rediscovery retries this key
+                UploadCreateOutcome.FAILED -> Unit // not created → no UploadStarted
             }
         }
         return capHit

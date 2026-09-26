@@ -138,6 +138,46 @@ object FilesContract : Contract<FilesState, Files>("Files") {
             assertEquals(FileResult.AreaUnavailable, files.delete(FileArea.SHARED, p))
             assertEquals(FileResult.AreaUnavailable, files.exists(FileArea.SHARED, p))
             assertEquals(FileResult.AreaUnavailable, files.locate(FileArea.SHARED, p))
+            assertEquals(FileResult.AreaUnavailable, files.move(FileArea.SHARED, p, "$p.moved"))
+        }
+
+        clause("EMPTY_MOVE_REPLACES_AND_CREATES_ITS_DIRECTORIES", FilesState.EMPTY) { files ->
+            val id = "EMPTY_MOVE_REPLACES_AND_CREATES_ITS_DIRECTORIES"
+            val from = path(id)
+            val to = "contract/$id/nested/moved.bin"
+            FileArea.entries.forEach {
+                files.write(it, to, ByteArray(1))
+                files.write(it, from, seed(id))
+                assertEquals(FileResult.Ok(Unit), files.move(it, from, to), "$it")
+                assertContentEquals(seed(id), assertIs<FileResult.Ok<ByteArray>>(files.read(it, to)).value, "$it: replaced")
+                assertEquals(FileResult.Ok(false), files.exists(it, from), "$it: the source is gone")
+            }
+        }
+
+        clause("EMPTY_MOVE_OF_NOTHING_IS_NOT_FOUND", FilesState.EMPTY) { files ->
+            val id = "EMPTY_MOVE_OF_NOTHING_IS_NOT_FOUND"
+            FileArea.entries.forEach {
+                assertEquals(FileResult.NotFound, files.move(it, path(id), "contract/$id/moved.bin"), "$it")
+            }
+        }
+
+        clause("EMPTY_ADOPT_TAKES_OVER_A_PLATFORM_FILE", FilesState.EMPTY) { files ->
+            // A platform path the process was handed: this adapter's own located file stands for the OS's temp file.
+            val id = "EMPTY_ADOPT_TAKES_OVER_A_PLATFORM_FILE"
+            val handed = path(id)
+            val to = "contract/$id/staged/adopted.bin"
+            files.write(FileArea.PRIVATE, handed, seed(id))
+            val osPath = assertIs<FileResult.Ok<String>>(files.locate(FileArea.PRIVATE, handed)).value
+            files.write(FileArea.SHARED, to, ByteArray(1))
+            assertEquals(FileResult.Ok(Unit), files.adopt(osPath, FileArea.SHARED, to))
+            assertContentEquals(seed(id), assertIs<FileResult.Ok<ByteArray>>(files.read(FileArea.SHARED, to)).value)
+            assertEquals(FileResult.Ok(false), files.exists(FileArea.PRIVATE, handed), "the platform's file was moved")
+        }
+
+        clause("EMPTY_ADOPT_OF_NOTHING_IS_NOT_FOUND", FilesState.EMPTY) { files ->
+            val id = "EMPTY_ADOPT_OF_NOTHING_IS_NOT_FOUND"
+            val osPath = assertIs<FileResult.Ok<String>>(files.locate(FileArea.PRIVATE, path(id))).value
+            assertEquals(FileResult.NotFound, files.adopt(osPath, FileArea.SHARED, "contract/$id/adopted.bin"))
         }
     }
 }

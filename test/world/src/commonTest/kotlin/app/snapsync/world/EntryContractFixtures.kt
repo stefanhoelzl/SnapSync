@@ -4,7 +4,6 @@ import app.snapsync.compose.EntryHooks
 import app.snapsync.compose.extensionEntries
 import app.snapsync.compose.platformEntries
 import app.snapsync.contracts.Entered
-import app.snapsync.contracts.EntryIdentifiers
 import app.snapsync.contracts.ExtensionEntriesObservations
 import app.snapsync.contracts.ExtensionEntriesState
 import app.snapsync.contracts.ExtensionEntriesSubject
@@ -35,12 +34,6 @@ internal object EntryContractFixtures {
     private const val INVITED_EVENT = "11111111-1111-4111-8111-111111111111"
     private const val JOINED_EVENT = "22222222-2222-4222-8222-222222222222"
 
-    /** Stand-ins for the operating system's identifiers; the real ones are the iOS adapters' constants. */
-    private val identifiers = EntryIdentifiers(
-        uploadTransferChannel = "world.upload.session",
-        downloadTransferChannel = "world.download.session",
-    )
-
     suspend fun enter(state: PlatformEntriesState): Entered<PlatformEntriesSubject> {
         val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
         val w = World(scope)
@@ -63,11 +56,9 @@ internal object EntryContractFixtures {
                 openUrl = { url -> host().onOpenUrl(url) },
                 assembleHost = { host() },
                 deliverPushToken = { tokens += it },
-                uploadTransferChannel = identifiers.uploadTransferChannel,
             ),
         )
         val observe = object : PlatformEntriesObservations {
-            override val identifiers = EntryContractFixtures.identifiers
             override val inviteUrl = encodeEventUrl(EventLinkPayload(INVITED_EVENT))
             override val invitedEventId = INVITED_EVENT
             override val joinedEventId = JOINED_EVENT
@@ -79,8 +70,6 @@ internal object EntryContractFixtures {
             override fun deliveredPushTokens() = tokens.toList()
             override fun appUploaderTopUps() = w.operatorEngine.topUps
             override fun appUploaderWalks() = w.operatorEngine.walks
-            override fun appUploaderTransferHandbacks() = w.operatorEngine.transferHandbacks
-            override fun downloadSessionRealized() = w.downloadTransport != null
             override fun backgroundTimeHolds() = w.backgroundTimeHolds.value.size
             override fun expireBackgroundTime() = w.expireBackgroundTime()
             override fun parkNextUploadUnit(): () -> Unit {

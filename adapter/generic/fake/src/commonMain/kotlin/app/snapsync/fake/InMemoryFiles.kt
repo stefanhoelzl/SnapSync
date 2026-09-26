@@ -42,5 +42,31 @@ internal class InMemoryFiles(
         areas[area]?.let { FileResult.Ok(path in it) } ?: FileResult.AreaUnavailable
 
     override fun locate(area: FileArea, path: String): FileResult<String> =
-        if (areas[area] == null) FileResult.AreaUnavailable else FileResult.Ok("mem:/${area.name.lowercase()}/$path")
+        if (areas[area] == null) FileResult.AreaUnavailable else FileResult.Ok("$MEM${area.name.lowercase()}/$path")
+
+    override fun move(area: FileArea, from: String, to: String): FileResult<Unit> = at(area, to) { files ->
+        val bytes = files.remove(from) ?: return@at FileResult.NotFound
+        files[to] = bytes
+        FileResult.Ok(Unit)
+    }
+
+    /**
+     * The platform paths this double hands out are its own [locate] answers, so a file is adopted from wherever one
+     * of them points; any other path names nothing it holds.
+     */
+    override fun adopt(osPath: String, area: FileArea, to: String): FileResult<Unit> {
+        val source = FileArea.entries.firstOrNull { osPath.startsWith("$MEM${it.name.lowercase()}/") }
+            ?: return FileResult.NotFound
+        val sourcePath = osPath.removePrefix("$MEM${source.name.lowercase()}/")
+        val bytes = areas[source]?.get(sourcePath) ?: return FileResult.NotFound
+        return at(area, to) { files ->
+            areas[source]?.remove(sourcePath)
+            files[to] = bytes
+            FileResult.Ok(Unit)
+        }
+    }
+
+    private companion object {
+        const val MEM = "mem:/"
+    }
 }

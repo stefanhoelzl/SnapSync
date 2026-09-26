@@ -2,12 +2,10 @@
 
 package app.snapsync.contract
 
-import app.snapsync.contracts.BackgroundTransferContract
-import app.snapsync.contracts.BackgroundTransferState
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
-import app.snapsync.contracts.DownloadTransportContract
-import app.snapsync.contracts.DownloadTransportState
+import app.snapsync.contracts.DownloadContract
+import app.snapsync.contracts.DownloadState
 import app.snapsync.contracts.DownloadUnderTest
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.FixtureAnswer
@@ -16,17 +14,22 @@ import app.snapsync.contracts.Host
 import app.snapsync.contracts.Landed
 import app.snapsync.contracts.PhotoLibrary
 import app.snapsync.contracts.RunParameters
+import app.snapsync.contracts.UploadContract
+import app.snapsync.contracts.UploadState
+import app.snapsync.contracts.UploadUnderTest
 import app.snapsync.contracts.runEntry
-import app.snapsync.contracts.StagingDisk
-import app.snapsync.contracts.TransferUnderTest
-import app.snapsync.download.IosDownloadTransport
-import app.snapsync.engine.LEDGER_APP_GROUP
-import app.snapsync.databases.IosDatabases
-import app.snapsync.services.ledger.LedgerService
+import app.snapsync.download.IosDownload
+import app.snapsync.gallery.IosGalleryReader
 import app.snapsync.ios.urlsession.IosUrlSessionUploadPlatform
 import app.snapsync.model.Resource
-import app.snapsync.model.UploadRequest
+import app.snapsync.model.UploadCreateOutcome
+import app.snapsync.model.UploadJob
+import app.snapsync.model.UploadJobSet
+import app.snapsync.model.UploadSource
+import app.snapsync.model.UploadTarget
+import app.snapsync.model.WriteOutcome
 import app.snapsync.model.assetIdFromUploadKey
+import app.snapsync.ports.UploadHandlers
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -48,7 +51,6 @@ import platform.Foundation.NSUTF8StringEncoding
 import platform.Foundation.create
 import platform.Foundation.dataWithContentsOfFile
 import platform.Foundation.dataWithContentsOfURL
-import platform.Foundation.writeToFile
 import platform.Photos.PHAsset
 import platform.Photos.PHAssetCreationRequest
 import platform.Photos.PHAssetResource
@@ -129,54 +131,57 @@ private fun seedOne(contract: String, clauseId: String): PHAssetResource = memSc
         ?: error("the seeded photo has no resource")
 }
 
-class SimAppBackgroundTransferBinding : Binding<BackgroundTransferState, TransferUnderTest>, RunParameters {
+class SimAppUploadBinding : Binding<UploadState, UploadUnderTest>, RunParameters {
     override val host = Host.IOS_SIM_APP
     override val kind = BindingKind.Live
-    override val reaches = setOf(BackgroundTransferState.IDLE, BackgroundTransferState.AT_CAP)
+    override val reaches = setOf(UploadState.IDLE, UploadState.AT_CAP)
 
     private val fixture = FixtureAddress()
 
     override fun accept(params: Map<String, String>): String? = fixture.accept(params)
 
-    override fun create(state: BackgroundTransferState, clauseId: String): Entered<TransferUnderTest> {
-        if (state in BackgroundTransferContract.PRESENTED) return Entered.Unreachable(URL_SESSION_SETTLES_AT_ONCE)
+    override fun create(state: UploadState, clauseId: String): Entered<UploadUnderTest> {
+        if (state in UploadContract.PRESENTED) return Entered.Unreachable(URL_SESSION_SETTLES_AT_ONCE)
         val base = fixture.require()
-        val contract = BackgroundTransferContract.name
-        // A real SQLDelight ledger over a fresh directory — never the app's own, which lives in the App Group.
-        val ledger = LedgerService(IosDatabases(scratch("$contract-ledger", clauseId)))
+        val contract = UploadContract.name
         val platform = IosUrlSessionUploadPlatform(
             log = Logger.withTag("contract"),
-            appGroup = LEDGER_APP_GROUP,
             sessionIdentifier = "app.snapsync.contract.upload.$clauseId",
-            ledger = ledger,
             cap = CAP,
-            onTerminal = {},
-            onEventsFinished = {},
         )
-        val usable: suspend (String) -> Resource = { key ->
-            Resource(key, assetIdFromUploadKey(key), "image/jpeg", emptyMap(), seedOne(contract, clauseId))
+        val ended = mutableListOf<UploadJob>()
+        platform.listen(UploadHandlers(onFinished = { ended += it }, onBackgroundEvents = { it.complete() }, onEventsDrained = {}))
+        val files = scratch("$contract-files", clauseId)
+        // The file uploader sends a file: the seeded photo, exported by the photo library as the upload service does.
+        val usable: suspend (String) -> UploadSource = { key ->
+            val resource = seedOne(contract, clauseId)
+            val path = "$files/$key"
+            val exported = IosGalleryReader().export(Resource(key, assetIdFromUploadKey(key), "image/jpeg", emptyMap(), resource), path)
+            check(exported == WriteOutcome.Ok) { "exporting the seeded photo for $key failed: $exported" }
+            UploadSource.File(path)
         }
-        if (state == BackgroundTransferState.AT_CAP) {
+        if (state == UploadState.AT_CAP) {
             runEntry {
                 repeat(CAP) { n ->
-                    val resource = usable(BackgroundTransferContract.key(clauseId, n = n + 1))
-                    val url = base + BackgroundTransferContract.path(clauseId, FixtureAnswer.Hold, n = n + 1)
-                    val created = platform.createJob(UploadRequest(url, mapOf("Content-Type" to "image/jpeg"), resource), resource)
-                    check(created == app.snapsync.model.CreateResult.CREATED) { "filling the cap: transfer ${n + 1} was $created" }
+                    val key = UploadContract.key(clauseId, n = n + 1)
+                    val url = base + UploadContract.path(clauseId, FixtureAnswer.Hold, n = n + 1)
+                    val created = platform.create(usable(key), UploadTarget(url, mapOf("Content-Type" to "image/jpeg")), key)
+                    check(created == UploadCreateOutcome.CREATED) { "filling the cap: transfer ${n + 1} was $created" }
                 }
             }
         }
         return Entered.Ready(
-            TransferUnderTest(
-                transfer = platform,
+            UploadUnderTest(
+                upload = platform,
                 base = base,
                 usable = usable,
-                unusable = { key -> Resource(key, assetIdFromUploadKey(key), "image/jpeg", emptyMap(), Unit) },
-                ledger = ledger,
+                // A photo-library handle, which this uploader does not take: it sends files.
+                unusable = { UploadSource.Resource(Unit) },
+                ended = { ended.toList() },
                 objects = fixtureObjects(base),
             ),
             // Held transfers end with their clause, not with the fixture's hold timeout.
-            dispose = { runEntry { platform.cancelTransfers() } },
+            dispose = { runEntry { platform.jobs(UploadJobSet.IN_FLIGHT).forEach { platform.cancel(it) } } },
         )
     }
 
@@ -186,41 +191,24 @@ class SimAppBackgroundTransferBinding : Binding<BackgroundTransferState, Transfe
     }
 }
 
-class SimAppDownloadTransportBinding : Binding<DownloadTransportState, DownloadUnderTest>, RunParameters {
+class SimAppDownloadBinding : Binding<DownloadState, DownloadUnderTest>, RunParameters {
     override val host = Host.IOS_SIM_APP
     override val kind = BindingKind.Live
-    override val reaches = setOf(DownloadTransportState.READY)
+    override val reaches = setOf(DownloadState.READY)
 
     private val fixture = FixtureAddress()
 
     override fun accept(params: Map<String, String>): String? = fixture.accept(params)
 
-    override fun create(state: DownloadTransportState, clauseId: String): Entered<DownloadUnderTest> {
-        val disk = object : StagingDisk {
-            override fun read(path: String): ByteArray? = NSData.dataWithContentsOfFile(path)?.toByteArray()
-
-            override fun write(path: String, bytes: ByteArray) {
-                NSFileManager.defaultManager.createDirectoryAtPath(
-                    path.substringBeforeLast('/'),
-                    withIntermediateDirectories = true,
-                    attributes = null,
-                    error = null,
-                )
-                check(bytes.toNSData().writeToFile(path, atomically = true)) { "could not seed $path" }
-            }
-        }
-        return Entered.Ready(
-            DownloadUnderTest(
-                open = { host -> IosDownloadTransport(host, Logger.withTag("contract")) },
-                base = fixture.require(),
-                staging = scratch(DownloadTransportContract.name, clauseId),
-                disk = disk,
-            ),
-        )
-    }
+    override fun create(state: DownloadState, clauseId: String): Entered<DownloadUnderTest> = Entered.Ready(
+        DownloadUnderTest(
+            open = { IosDownload(Logger.withTag("contract")) },
+            base = fixture.require(),
+            readTemp = { path -> NSData.dataWithContentsOfFile(path)?.toByteArray() },
+        ),
+    )
 }
 
-/** Why the URLSession tier never reaches [BackgroundTransferContract.PRESENTED]. */
+/** Why the URLSession uploader never reaches [UploadContract.PRESENTED]. */
 internal const val URL_SESSION_SETTLES_AT_ONCE =
-    "the URLSession tier settles a transfer the moment it ends and offers no free retry; nothing is presented later"
-
+    "the URLSession uploader reports a transfer the moment it ends and offers no free retry; nothing is presented later"

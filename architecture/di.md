@@ -19,9 +19,10 @@ Roots found:
 |---|---|---|
 | `AlbumCoordinator` | | x |
 | `AlbumMapService` | x | x |
-| `AppGraphReads` | x | |
 | `AppPorts` | x | |
+| `AppUploaderPorts` | x | |
 | `AttestState` | x | x |
+| `BackgroundSessions` | x | |
 | `CachedAttestStore` | | x |
 | `ConfigService` | x | x |
 | `DeviceManifestService` | x | x |
@@ -34,7 +35,7 @@ Roots found:
 | `IosBackgroundTime` | x | |
 | `IosDatabases` | x | x |
 | `IosDeviceIntegrity` | x | |
-| `IosDownloadTransport` | x | |
+| `IosDownload` | x | |
 | `IosFiles` | x | x |
 | `IosGallery` | x | |
 | `IosGalleryReader` | x | x |
@@ -42,6 +43,7 @@ Roots found:
 | `IosProcessInfo` | x | |
 | `IosPushRegistrationRecord` | x | |
 | `IosSystemUi` | x | |
+| `IosUrlSessionUploadPlatform` | x | |
 | `IosWake` | x | |
 | `LedgerService` | x | x |
 | `LogTailService` | x | |
@@ -59,4 +61,3 @@ Roots found:
 | `SuppressionService` | | x |
 | `UploadPorts` | | x |
 | `UploadRecordPorts` | x | |
-| `UrlSessionUploadController` | x | |

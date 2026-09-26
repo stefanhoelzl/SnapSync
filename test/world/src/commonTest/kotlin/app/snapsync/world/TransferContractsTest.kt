@@ -1,48 +1,44 @@
 package app.snapsync.world
 
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.mock.MockEngine
-import io.ktor.client.engine.mock.respond
-import io.ktor.http.HttpStatusCode
-import app.snapsync.contracts.BackgroundTransferContract
-import app.snapsync.contracts.BackgroundTransferState
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
-import app.snapsync.contracts.DownloadTransportContract
-import app.snapsync.contracts.DownloadTransportState
+import app.snapsync.contracts.DownloadContract
+import app.snapsync.contracts.DownloadState
 import app.snapsync.contracts.DownloadUnderTest
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.FixtureAnswer
 import app.snapsync.contracts.FixtureObjects
 import app.snapsync.contracts.Landed
-import app.snapsync.contracts.StagingDisk
 import app.snapsync.contracts.TransferFixture
-import app.snapsync.contracts.TransferUnderTest
+import app.snapsync.contracts.UploadContract
+import app.snapsync.contracts.UploadState
+import app.snapsync.contracts.UploadUnderTest
 import app.snapsync.contracts.currentHost
 import app.snapsync.contracts.runEntry
 import app.snapsync.contracts.verify
-import app.snapsync.fake.inMemoryLedgerStore
-import app.snapsync.model.Resource
-import app.snapsync.model.UploadError
-import app.snapsync.model.UploadRequest
-import app.snapsync.model.assetIdFromUploadKey
-import app.snapsync.ports.BackgroundTransfer
-import app.snapsync.model.CreateResult
-import app.snapsync.ports.DownloadTask
-import app.snapsync.ports.DownloadTransport
-import app.snapsync.ports.DownloadTransportHost
+import app.snapsync.model.StartResult
 import app.snapsync.model.TransferOutcome
+import app.snapsync.model.UploadCreateOutcome
+import app.snapsync.model.UploadError
+import app.snapsync.model.UploadJob
+import app.snapsync.model.UploadSource
+import app.snapsync.model.UploadTarget
+import app.snapsync.ports.Download
+import app.snapsync.ports.Upload
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.mock.MockEngine
+import io.ktor.client.engine.mock.respond
+import io.ktor.http.HttpStatusCode
 import kotlin.test.Test
 
 /**
- * The world's two transfer doubles, held to the contracts the app's `URLSession` adapters satisfy (capability
- * `docs/testing.md`, "The world's transfer doubles are the transfer contracts' Fake bindings").
+ * The world's two transfer doubles, held to the contracts the app's `URLSession` adapters satisfy (`docs/testing.md`,
+ * "The world's transfer doubles are the transfer contracts' Fake bindings").
  *
  * The world has no network, so each binding PLAYS it — the role the loopback fixture server plays for the live
- * bindings. It answers every transfer the way the clause's route says, through the double's own operator actions:
- * an accepting upload is `completeJob`, a refusing one `failJob`, a download `finish` with the outcome the route
- * describes, and a held route is never answered. Every outcome a clause reads is read back from the double's own
- * state and the network it crossed: the bytes it transferred, the paths it staged.
+ * bindings. It answers every transfer the way the clause's route says, through the double's own operator actions: an
+ * accepting upload is `completeJob`, a refusing one `failJob`, a download `finish` with the outcome the route
+ * describes, and a held route is never answered.
  */
 class TransferContractsTest {
 
@@ -51,28 +47,24 @@ class TransferContractsTest {
     /** The route of a world URL — what the fixture server would have been asked for. */
     private fun routeOf(url: String) = url.removePrefix(base)
 
-    /** A resource the world's double can upload: the world's photos carry `Unit` as their platform handle. */
-    private fun worldResource(key: String, data: Any = Unit) =
-        Resource(key, assetIdFromUploadKey(key), "image/heic", emptyMap(), data)
-
     /** The world's upload double, with the binding answering each created job the way its route says. */
-    private class NetworkedTransfer(
-        val double: FakeBackgroundTransfer,
+    private class NetworkedUpload(
+        val double: FakeUpload,
         /** The routes the network received a transfer's bytes on — the double's [recordingNetwork]. */
         private val received: Set<String>,
         private val route: (String) -> String,
-    ) : BackgroundTransfer by double {
+    ) : Upload by double {
         private val keyAt = mutableMapOf<String, String>()
 
-        override suspend fun createJob(request: UploadRequest, resource: Resource): CreateResult =
-            double.createJob(request, resource).also { result ->
-                if (result != CreateResult.CREATED) return@also
-                val path = route(request.url)
-                keyAt[path] = resource.filename
+        override suspend fun create(source: UploadSource, target: UploadTarget, tag: String): UploadCreateOutcome =
+            double.create(source, target, tag).also { result ->
+                if (result != UploadCreateOutcome.CREATED) return@also
+                val path = route(target.url)
+                keyAt[path] = tag
                 when (val answer = TransferFixture.answerOf(path)) {
                     is FixtureAnswer.Respond ->
-                        if (answer.status in 200..299) double.completeJob(resource.filename)
-                        else double.failJob(resource.filename, UploadError.Http(answer.status))
+                        if (answer.status in 200..299) double.completeJob(tag)
+                        else double.failJob(tag, UploadError.Http(answer.status))
                     FixtureAnswer.Hold, null -> Unit
                 }
             }
@@ -87,8 +79,7 @@ class TransferContractsTest {
 
     /**
      * The network the upload double's transfers cross, as the binding plays it: every request reaches it and is
-     * accepted, and the route is recorded. The binding completes only jobs whose fixture route accepts, so an
-     * accepting network is the fixture's answer rather than a lever (`docs/testing.md`).
+     * accepted, and the route is recorded. The binding completes only jobs whose fixture route accepts.
      */
     private fun recordingNetwork(received: MutableSet<String>) = HttpClient(
         MockEngine { request ->
@@ -97,41 +88,36 @@ class TransferContractsTest {
         },
     )
 
-    private val upload = object : Binding<BackgroundTransferState, TransferUnderTest> {
+    private val upload = object : Binding<UploadState, UploadUnderTest> {
         override val host = currentHost
         override val kind = BindingKind.Fake
-        override val reaches = setOf(BackgroundTransferState.IDLE, BackgroundTransferState.AT_CAP)
+        override val reaches = setOf(UploadState.IDLE, UploadState.AT_CAP)
 
-        override fun create(state: BackgroundTransferState, clauseId: String): Entered<TransferUnderTest> {
-            if (state in BackgroundTransferContract.PRESENTED) {
-                return Entered.Unreachable("the world's transfer double settles a transfer at once and presents none later")
+        override fun create(state: UploadState, clauseId: String): Entered<UploadUnderTest> {
+            if (state in UploadContract.PRESENTED) {
+                return Entered.Unreachable("the world's upload double settles a transfer at once and presents none later")
             }
             val received = mutableSetOf<String>()
-            val ledger = inMemoryLedgerStore()
-            val networked = NetworkedTransfer(
-                FakeBackgroundTransfer(recordingNetwork(received), ledger),
-                received,
-                ::routeOf,
-            )
-            if (state == BackgroundTransferState.AT_CAP) {
+            val networked = NetworkedUpload(FakeUpload(recordingNetwork(received)), received, ::routeOf)
+            if (state == UploadState.AT_CAP) {
                 networked.double.jobLimit = CAP
                 // Fill the cap with transfers to routes that never answer.
                 runEntry {
                     repeat(CAP) { n ->
-                        val key = BackgroundTransferContract.key(clauseId, n = n + 1)
-                        val url = base + BackgroundTransferContract.path(clauseId, FixtureAnswer.Hold, n = n + 1)
-                        val resource = worldResource(key)
-                        check(networked.createJob(UploadRequest(url, emptyMap(), resource), resource) == CreateResult.CREATED)
+                        val key = UploadContract.key(clauseId, n = n + 1)
+                        val url = base + UploadContract.path(clauseId, FixtureAnswer.Hold, n = n + 1)
+                        check(networked.create(UploadSource.Resource(Unit), UploadTarget(url, emptyMap()), key) == UploadCreateOutcome.CREATED)
                     }
                 }
             }
             return Entered.Ready(
-                TransferUnderTest(
-                    transfer = networked,
+                UploadUnderTest(
+                    upload = networked,
                     base = base,
-                    usable = { key -> worldResource(key) },
-                    unusable = { key -> worldResource(key, data = NotAWorldHandle) },
-                    ledger = ledger,
+                    // The world's photos carry `Unit` as their platform handle, as a device's carry a `PHAssetResource`.
+                    usable = { UploadSource.Resource(Unit) },
+                    unusable = { UploadSource.Resource(NotAWorldHandle) },
+                    ended = { emptyList<UploadJob>() },
                     objects = networked.objects,
                 ),
             )
@@ -139,82 +125,54 @@ class TransferContractsTest {
     }
 
     /** The world's download double, with the binding answering each started transfer the way its route says. */
-    private inner class NetworkedDownloads(private val disk: WorldDisk) : (DownloadTransportHost) -> DownloadTransport {
-        override fun invoke(host: DownloadTransportHost): DownloadTransport {
-            val double = FakeDownloadTransport(disk.tracking(host), disk.paths)
-            return object : DownloadTransport {
-                override fun start(url: String, description: String): DownloadTask? {
-                    val task = double.start(url, description) ?: return null
-                    when (val answer = TransferFixture.answerOf(routeOf(url))) {
-                        is FixtureAnswer.Respond -> {
-                            val sent = if (answer.short) answer.length / 2 else answer.length
-                            disk.inFlight[description] = TransferFixture.body(answer.length).copyOf(sent)
-                            double.finish(
-                                description,
-                                TransferOutcome(
-                                    statusCode = answer.status,
-                                    expectedBytes = if (answer.declaresLength) answer.length.toLong() else -1L,
-                                    receivedBytes = sent.toLong(),
-                                ),
-                            )
-                        }
-                        FixtureAnswer.Hold, null -> Unit
-                    }
-                    return task
+    private inner class NetworkedDownload(private val double: FakeDownload, private val bodies: MutableMap<String, ByteArray>) :
+        Download by double {
+        override fun start(url: String, tag: String): StartResult {
+            val started = double.start(url, tag)
+            if (started != StartResult.Started) return started
+            when (val answer = TransferFixture.answerOf(routeOf(url))) {
+                is FixtureAnswer.Respond -> {
+                    val sent = if (answer.short) answer.length / 2 else answer.length
+                    bodies["temp:/$tag"] = TransferFixture.body(answer.length).copyOf(sent)
+                    double.finish(
+                        tag,
+                        TransferOutcome(
+                            statusCode = answer.status,
+                            expectedBytes = if (answer.declaresLength) answer.length.toLong() else -1L,
+                            receivedBytes = sent.toLong(),
+                        ),
+                    )
                 }
+                FixtureAnswer.Hold, null -> Unit
             }
+            return started
         }
     }
 
-    /**
-     * The world's staging disk as a clause reads it. The double's disk is the SET of staged paths — "staging a
-     * transfer puts its destination here, exactly as the real transport's move puts bytes on disk" — so a path's
-     * bytes are those of the transfer that last staged it, which this learns by watching the host be told.
-     */
-    private class WorldDisk : StagingDisk {
-        val paths = mutableSetOf<String>()
-        val inFlight = mutableMapOf<String, ByteArray>()
-        private val bytes = mutableMapOf<String, ByteArray>()
-
-        override fun read(path: String): ByteArray? = if (path in paths) bytes[path] else null
-
-        override fun write(path: String, bytes: ByteArray) {
-            paths += path
-            this.bytes[path] = bytes
-        }
-
-        fun tracking(host: DownloadTransportHost) = object : DownloadTransportHost by host {
-            override fun onStaged(description: String, stagedPath: String) {
-                inFlight[description]?.let { bytes[stagedPath] = it }
-                host.onStaged(description, stagedPath)
-            }
-        }
-    }
-
-    private val download = object : Binding<DownloadTransportState, DownloadUnderTest> {
+    private val download = object : Binding<DownloadState, DownloadUnderTest> {
         override val host = currentHost
         override val kind = BindingKind.Fake
-        override val reaches = setOf(DownloadTransportState.READY)
+        override val reaches = setOf(DownloadState.READY)
 
-        override fun create(state: DownloadTransportState, clauseId: String): Entered<DownloadUnderTest> {
-            val disk = WorldDisk()
-            return Entered.Ready(DownloadUnderTest(NetworkedDownloads(disk), base, "/staging", disk))
+        override fun create(state: DownloadState, clauseId: String): Entered<DownloadUnderTest> {
+            // The temporary files the double hands over, as the network the binding plays filled them.
+            val bodies = mutableMapOf<String, ByteArray>()
+            return Entered.Ready(
+                DownloadUnderTest(open = { NetworkedDownload(FakeDownload(), bodies) }, base = base, readTemp = { bodies[it] }),
+            )
         }
     }
 
     @Test
-    fun `the world's upload double satisfies the BackgroundTransfer contract`() =
-        verify(BackgroundTransferContract, upload)
+    fun `the world's upload double satisfies the Upload contract`() = verify(UploadContract, upload)
 
     @Test
-    fun `the world's download double satisfies the DownloadTransport contract`() =
-        verify(DownloadTransportContract, download)
+    fun `the world's download double satisfies the Download contract`() = verify(DownloadContract, download)
 
     /** A payload that is not the world's platform handle — what a device's `PHAssetResource` check refuses. */
     private object NotAWorldHandle
 
     private companion object {
-        const val OWN_DEVICE = "contract-own-device"
         const val CAP = 2
     }
 }

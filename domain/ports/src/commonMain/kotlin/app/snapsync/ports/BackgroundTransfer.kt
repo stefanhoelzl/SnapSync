@@ -3,7 +3,7 @@ package app.snapsync.ports
 import app.snapsync.model.Resource
 import app.snapsync.model.UploadError
 import app.snapsync.model.UploadRequest
-import app.snapsync.model.CreateResult
+import app.snapsync.model.UploadCreateOutcome
 import app.snapsync.model.CycleResult
 
 /**
@@ -44,7 +44,7 @@ interface BackgroundTransfer {
     suspend fun retryJob(job: PlatformUploadJob, request: UploadRequest)
 
     /** Create a system upload job for [resource] at [request]; distinguishes the in-flight cap. */
-    suspend fun createJob(request: UploadRequest, resource: Resource): CreateResult
+    suspend fun createJob(request: UploadRequest, resource: Resource): UploadCreateOutcome
 }
 
 /**

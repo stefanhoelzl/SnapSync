@@ -8,6 +8,7 @@ import app.snapsync.model.AssetRef
 import app.snapsync.model.ImportRequest
 import app.snapsync.model.ImportResult
 import app.snapsync.model.RawResource
+import app.snapsync.model.Resource
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.StagedResource
 import app.snapsync.model.importFilename
@@ -97,6 +98,18 @@ internal class InMemoryGallery(
     private val created = mutableMapOf<AlbumId, Album>()
 
     override fun access(): GalleryAccess = access.value
+
+    /**
+     * An in-memory library holds no bytes and there is no file to write, so an export of a resource it still holds is
+     * answered as done and one it no longer holds as failed — the platform's answers, with nothing on a disk. A file
+     * uploader over this double sends nothing real; the world's uploader takes resources, not files.
+     */
+    override suspend fun export(resource: Resource, to: String): WriteOutcome =
+        if (library.value.any { asset -> asset.assetId == resource.assetId }) {
+            WriteOutcome.Ok
+        } else {
+            WriteOutcome.Failed("${resource.filename} is no longer in the library")
+        }
 
     override suspend fun assets(policy: SelectionPolicy): GalleryRead<List<AssetFacts>> = readable {
         if (policy.rules.any { it.deniesEverything }) {

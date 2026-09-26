@@ -96,10 +96,11 @@ internal class InMemoryDownloadStore : DownloadStore {
         downloads.forEach { enqueued.getOrPut(it.ref) { linkedSetOf() }.add(it.resource.resourceKey) }
     }
 
-    override suspend fun markStaged(ref: AssetRef, resourceKey: String, stagedPath: String) = lock.withLock {
-        val byKey = resources[ref] ?: return@withLock
-        val planned = byKey[resourceKey]?.first ?: return@withLock
+    override suspend fun markStaged(ref: AssetRef, resourceKey: String, stagedPath: String): Boolean = lock.withLock {
+        val byKey = resources[ref] ?: return@withLock false
+        val planned = byKey[resourceKey]?.first ?: return@withLock false
         byKey[resourceKey] = planned to stagedPath
+        true
     }
 
     override suspend fun importableAssets(): List<ImportableAsset> = lock.withLock {

@@ -1,13 +1,13 @@
 package app.snapsync.ios.upload
 
-import app.snapsync.model.TerminalOutcome
+import app.snapsync.model.UploadCreateOutcome
 import app.snapsync.model.UploadError
-import app.snapsync.model.CreateResult
+import app.snapsync.model.UploadJobState
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSError
-import platform.Foundation.NSURL
 import platform.Foundation.NSMutableURLRequest
+import platform.Foundation.NSURL
 import platform.Foundation.NSURLRequest
 import platform.Foundation.setValue
 import platform.Photos.PHAssetResourceUploadJobStateCancelled
@@ -17,304 +17,100 @@ import platform.Photos.PHAssetResourceUploadJobStateRegistered
 import platform.Photos.PHAssetResourceUploadJobStateSucceeded
 import platform.Photos.PHPhotosErrorInvalidResource
 import platform.Photos.PHPhotosErrorLimitExceeded
-import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
-import kotlin.test.assertIs
 
 /**
- * The PhotoKit upload-job vocabulary mappings (capability `background-upload`).
+ * The PhotoKit upload-job vocabulary mappings (capability `background-upload`). What a job then MEANS for the ledger is
+ * the upload services', tested there (`UploadJobDecisionsTest`).
  *
  * Every assertion names the SDK's **own constants** rather than the integers behind them — the lesson
- * `PhotoKitResourceRoleTest` records: a table over Apple's ABI asserted as bare integers against bare
- * integers is indistinguishable from arithmetic, and no JVM run and no gate can disagree with it.
+ * `PhotoKitResourceRoleTest` records: a table over Apple's ABI asserted as bare integers against bare integers is
+ * indistinguishable from arithmetic.
  *
- * Two tests below pass `null` where cinterop declares the value non-null. **That is the point, not an
- * edge case.** `PHAssetResourceUploadJob.destination` and `.resource` are declared non-null and are nil
- * at runtime, and those nils cost two on-device bugs (`8c8dbe28`, `05435ff9`). Because these calls exist,
- * narrowing either parameter back to the type cinterop claims **stops compiling** — that compile error
- * is the real guard, and this file is what holds it in place.
+ * Two tests below pass `null` where cinterop declares the value non-null. **That is the point.** A job's `destination`
+ * is declared non-null and is nil at runtime, which cost an on-device bug (`8c8dbe28`). Because these calls exist,
+ * narrowing the parameters back to the type cinterop claims **stops compiling** — that compile error is the guard.
  */
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 class PhotoKitJobMappingTest {
 
-    private fun request(url: String): NSURLRequest =
-        NSURLRequest.requestWithURL(NSURL.URLWithString(url)!!)
+    private fun request(url: String): NSURLRequest = NSURLRequest.requestWithURL(NSURL.URLWithString(url)!!)
 
     private fun request(url: String, contentType: String): NSURLRequest =
-        NSMutableURLRequest(uRL = NSURL.URLWithString(url)!!).apply {
-            setValue(contentType, forHTTPHeaderField = "Content-Type")
-        }
+        NSMutableURLRequest(uRL = NSURL.URLWithString(url)!!).apply { setValue(contentType, forHTTPHeaderField = "Content-Type") }
 
-    private fun nsError(domain: String, code: Long): NSError =
-        NSError.errorWithDomain(domain, code, userInfo = null)
-
-    // ---- photoKitJobState: all five declared states, by name -------------------------------------
+    private fun nsError(domain: String, code: Long): NSError = NSError.errorWithDomain(domain, code, userInfo = null)
 
     @Test
-    fun `every declared job state maps to its platform state`() {
-        assertEquals(PhotoKitJobState.REGISTERED, photoKitJobState(PHAssetResourceUploadJobStateRegistered))
-        assertEquals(PhotoKitJobState.PENDING, photoKitJobState(PHAssetResourceUploadJobStatePending))
-        assertEquals(PhotoKitJobState.FAILED, photoKitJobState(PHAssetResourceUploadJobStateFailed))
-        assertEquals(PhotoKitJobState.SUCCEEDED, photoKitJobState(PHAssetResourceUploadJobStateSucceeded))
-        assertEquals(PhotoKitJobState.CANCELLED, photoKitJobState(PHAssetResourceUploadJobStateCancelled))
+    fun `every declared job state maps to its platform-neutral state`() {
+        assertEquals(UploadJobState.REGISTERED, photoKitJobState(PHAssetResourceUploadJobStateRegistered))
+        assertEquals(UploadJobState.PENDING, photoKitJobState(PHAssetResourceUploadJobStatePending))
+        assertEquals(UploadJobState.FAILED, photoKitJobState(PHAssetResourceUploadJobStateFailed))
+        assertEquals(UploadJobState.SUCCEEDED, photoKitJobState(PHAssetResourceUploadJobStateSucceeded))
+        assertEquals(UploadJobState.CANCELLED, photoKitJobState(PHAssetResourceUploadJobStateCancelled))
     }
 
-    /**
-     * `Pending` is named explicitly, so the fallback arm means exactly one thing: a value no SDK header
-     * carries. Both answer `PENDING` today, which is why this change is behaviour-preserving — but they
-     * are different questions, and the declared set is pinned at build time so the second one stays
-     * hypothetical.
-     */
+    /** A value no SDK header carries is UNKNOWN — kept apart from PENDING since phase 11f, so a guess reads as one. */
     @Test
-    fun `an undeclared state falls back to pending rather than being mistaken for a known state`() {
-        assertEquals(PhotoKitJobState.PENDING, photoKitJobState(PHAssetResourceUploadJobStatePending))
-        assertEquals(PhotoKitJobState.PENDING, photoKitJobState(9_999L))
+    fun `an undeclared state is unknown and never mistaken for pending`() {
+        assertEquals(UploadJobState.UNKNOWN, photoKitJobState(9_999L))
     }
 
-    // ---- classifyPhotoKitJob ---------------------------------------------------------------------
-
     @Test
-    fun `the destination path is what the row is resolved by`() {
-        val classified = classifyPhotoKitJob(
-            destination = request(
-                "https://edge.example/api/v2/files/devices/D/ABC-123/primary?filename=IMG_1.HEIC",
-            ),
-            state = PHAssetResourceUploadJobStateSucceeded,
-            error = null,
-        )
-        val emit = assertIs<FetchedJob.Emit>(classified)
-        assertEquals("/api/v2/files/devices/D/ABC-123/primary", emit.destinationPath)
-        assertEquals(PhotoKitJobState.SUCCEEDED, emit.state)
-        assertEquals(null, emit.error)
-    }
-
-    /**
-     * THE GUARD (see the class KDoc). `destination` is nil for some job states even though cinterop
-     * declares it non-null; a job whose key cannot be recovered must still be acknowledged, or the
-     * system reports error 50008 and the tier stalls — exactly what `8c8dbe28` fixed.
-     *
-     * If this call stops compiling because someone narrowed the parameter, the fix is to restore the
-     * nullable parameter, never to delete this test.
-     */
-    @Test
-    fun `a job with no destination is drained rather than dropped`() {
+    fun `a destination yields its path whatever its last segment`() {
+        // Under the v2 route the last segment is the ROLE; nothing is read out of it.
         assertEquals(
-            FetchedJob.AcknowledgeToDrain,
-            classifyPhotoKitJob(
-                destination = null,
-                state = PHAssetResourceUploadJobStateSucceeded,
-                error = null,
-            ),
+            "/api/v2/files/devices/D/ABC-123/primary",
+            photoKitDestinationPath(request("https://edge.example/api/v2/files/devices/D/ABC-123/primary?filename=IMG_1.HEIC")),
         )
     }
 
+    /** THE GUARD (see the class KDoc): if this stops compiling, restore the nullable parameter; never delete it. */
     @Test
-    fun `a failed job carries its error through to the cycle`() {
-        val classified = classifyPhotoKitJob(
-            destination = request("https://edge.example/api/v2/files/devices/D/k/primary"),
-            state = PHAssetResourceUploadJobStateFailed,
-            error = nsError("PHPhotosErrorDomain", 3164L),
-        )
-        val emit = assertIs<FetchedJob.Emit>(classified)
-        assertEquals(PhotoKitJobState.FAILED, emit.state)
-        assertEquals(UploadError.Unknown("PHPhotosErrorDomain:3164"), emit.error)
+    fun `a job with no destination yields no path`() {
+        assertNull(photoKitDestinationPath(null))
     }
 
-    // ---- photoKitContentType ---------------------------------------------------------------------
-
-    /**
-     * The type the job was created with, recovered from the destination the system stored — which is why
-     * a **retried** upload keeps it. Before this, the type came from `resource` alone, which is nil once
-     * a job succeeds, so every object that had ever failed once was stored `application/octet-stream`.
-     */
     @Test
     fun `the content type is the one the job's stored destination carries`() {
-        assertEquals(
-            "image/heic",
-            photoKitContentType(request("https://edge.example/f/k-primary.heic", "image/heic"), null),
-        )
+        assertEquals("image/heic", request("https://edge.example/f/k-primary.heic", "image/heic").contentTypeHeader())
     }
 
     /** HTTP header names are case-insensitive, and the OS returns them as it stored them, not as we spelled them. */
     @Test
     fun `the destination header is matched case-insensitively`() {
-        val destination = NSMutableURLRequest(
-            uRL = NSURL.URLWithString("https://edge.example/f/k-primary.heic")!!,
-        ).apply { setValue("image/jpeg", forHTTPHeaderField = "content-type") }
-        assertEquals("image/jpeg", photoKitContentType(destination, null))
+        val destination = NSMutableURLRequest(uRL = NSURL.URLWithString("https://edge.example/f/k-primary.heic")!!)
+            .apply { setValue("image/jpeg", forHTTPHeaderField = "content-type") }
+        assertEquals("image/jpeg", destination.contentTypeHeader())
     }
 
-    /**
-     * THE OTHER GUARD. `resource` is nil for every succeeded job (the system releases it after upload),
-     * and dereferencing it crash-looped the extension in `05435ff9`.
-     *
-     * Only this arm is reachable off-device: `PHAssetResource` has no public initializer, and an
-     * unauthorised simulator has no asset to fetch one from. The middle arm — `uniformTypeIdentifier`,
-     * which is honestly non-null — is verified on device.
-     */
     @Test
-    fun `a job with neither a typed destination nor a resource yields the octet-stream fallback`() {
-        assertEquals("application/octet-stream", photoKitContentType(null, null))
-        // A destination carrying no Content-Type, and one carrying a blank value, are both "no answer".
-        assertEquals(
-            "application/octet-stream",
-            photoKitContentType(request("https://edge.example/f/k-primary.heic"), null),
-        )
-        assertEquals(
-            "application/octet-stream",
-            photoKitContentType(request("https://edge.example/f/k-primary.heic", "  "), null),
-        )
+    fun `a missing or blank header is no answer`() {
+        val none: NSURLRequest? = null
+        assertNull(none.contentTypeHeader())
+        assertNull(request("https://edge.example/f/k-primary.heic").contentTypeHeader())
+        assertNull(request("https://edge.example/f/k-primary.heic", "  ").contentTypeHeader())
     }
-
-    // ---- createResultFor -------------------------------------------------------------------------
 
     @Test
     fun `no error means the job was created`() {
-        assertEquals(CreateResult.CREATED, createResultFor(null))
+        assertEquals(UploadCreateOutcome.CREATED, createResultFor(null))
     }
 
     @Test
     fun `the in-flight job cap is distinguished from an outright failure`() {
-        assertEquals(CreateResult.LIMIT_EXCEEDED, createResultFor(PHPhotosErrorLimitExceeded))
-        assertEquals(CreateResult.FAILED, createResultFor(PHPhotosErrorInvalidResource))
+        assertEquals(UploadCreateOutcome.LIMIT_EXCEEDED, createResultFor(PHPhotosErrorLimitExceeded))
+        assertEquals(UploadCreateOutcome.FAILED, createResultFor(PHPhotosErrorInvalidResource))
     }
 
-    // ---- photoKitUploadError ---------------------------------------------------------------------
-
-    /**
-     * The exact string is what the device log and the diagnostic dump carry, so it is pinned rather
-     * than left incidental. Deliberately flattened to [UploadError.Unknown]: v1 retries forever and
-     * nothing branches on the variant.
-     */
+    /** The exact string is what the device log and the diagnostic dump carry, so it is pinned. */
     @Test
     fun `an NSError flattens to its domain and code`() {
         assertEquals(
             UploadError.Unknown("PHPhotosErrorDomain:3307"),
             photoKitUploadError(nsError("PHPhotosErrorDomain", PHPhotosErrorLimitExceeded)),
         )
-    }
-    // ── terminalDisposition: what a terminal job means for the ledger ──────────────────────────────
-
-    /**
-     * A success is recorded settled: nothing a completion used to trigger is still owed, so no later pass
-     * reads the row — and a succeeded job, whose `resource` is nil, has nothing to re-create.
-     */
-    @Test
-    fun `a succeeded job is COMPLETED and is never re-created`() {
-        for (live in listOf(true, false)) {
-            val disposition = terminalDisposition(PhotoKitJobState.SUCCEEDED, resourceIsLive = live)
-            assertEquals(TerminalOutcome.COMPLETED, disposition.outcome, "resourceIsLive=$live")
-            assertEquals(false, disposition.reCreate, "a succeeded job has nothing to re-create (live=$live)")
-        }
-    }
-
-    /**
-     * Every non-success terminal state records the `FAILED` outcome, returning its row to `DISCOVERED`.
-     * Stated over the whole enum rather than over the three states seen in practice: `PENDING` is where an untaught SDK value lands, and `CANCELLED` and
-     * `REGISTERED` are states no device reliably produces — so a `when` growing an arm that quietly changed
-     * one of them is exactly the drift nothing else here would catch.
-     */
-    @Test
-    fun `every non-succeeded terminal state records FAILED`() {
-        for (state in PhotoKitJobState.entries.filter { it != PhotoKitJobState.SUCCEEDED }) {
-            assertEquals(
-                TerminalOutcome.FAILED,
-                terminalDisposition(state, resourceIsLive = true).outcome,
-                "state=$state",
-            )
-        }
-    }
-
-    /**
-     * Re-creation is gated on the resource, not on the state. This is the property a substituted job queue
-     * would break first: a queue that could not recover a resource from a key would always answer
-     * `resourceIsLive = false`, take the legal "resource no longer live" branch every time, and make the
-     * re-create path degrade **silently** — passing a scenario that asserted it.
-     */
-    @Test
-    fun `a failure is re-created only while its resource is live`() {
-        for (state in PhotoKitJobState.entries.filter { it != PhotoKitJobState.SUCCEEDED }) {
-            assertEquals(true, terminalDisposition(state, resourceIsLive = true).reCreate, "state=$state")
-            assertEquals(false, terminalDisposition(state, resourceIsLive = false).reCreate, "state=$state")
-        }
-    }
-
-
-    // ---- a destination yields its path, and nothing read out of it ------------------------------
-
-    @Test
-    fun `a destination yields its path whatever its last segment`() {
-        // Under the v2 route the last segment is the ROLE. Reading that as a key would collapse every job in a
-        // cycle onto `primary` — silently, with each row left REQUESTED forever.
-        val emit = assertIs<FetchedJob.Emit>(
-            classifyPhotoKitJob(
-                destination = request("https://edge.example/api/v2/files/devices/D/ABC-123/primary"),
-                state = PHAssetResourceUploadJobStateSucceeded,
-                error = null,
-            ),
-        )
-        assertEquals("/api/v2/files/devices/D/ABC-123/primary", emit.destinationPath)
-    }
-
-    // ---- which .retry job a retry re-points --------------------------------------------------------
-
-    private fun failed(url: String): FetchedJob =
-        classifyPhotoKitJob(destination = request(url), state = PHAssetResourceUploadJobStateFailed, error = null)
-
-    @Test
-    fun `a v2 retry finds its job by the recorded destination although the last segment is the role`() = runBlocking {
-        // The defect this pins: comparing the last segment (`primary`) to the key matched nothing, so every
-        // free retry was lost.
-        val recorded = mapOf("/api/v2/files/devices/D/ABC-123/primary" to "ABC-123-primary.heic")
-        val candidates = listOf(
-            "other" to failed("https://edge.example/api/v2/files/devices/D/XYZ-9/primary"),
-            "mine" to failed("https://edge.example/api/v2/files/devices/D/ABC-123/primary"),
-        )
-
-        val found = retryJobMatching(candidates, "ABC-123-primary.heic") { recorded[it.destinationPath] }
-
-        assertEquals("mine", found)
-    }
-
-    @Test
-    fun `no candidate resolving to the key yields none and a job with no destination never matches`() = runBlocking {
-        val candidates = listOf(
-            "drained" to FetchedJob.AcknowledgeToDrain,
-            "other" to failed("https://edge.example/api/v2/files/devices/D/XYZ-9/primary"),
-        )
-
-        assertNull(retryJobMatching(candidates, "ABC-123-primary.heic") { "XYZ-9-primary.heic" })
-    }
-
-    // ---- whose row a job belongs to, and whether it is gone (`changes/selection-is-the-walk`, D3) ------------
-
-    private val v2 = "/api/v2/files/devices/D/ABC-123/primary"
-    private val v1 = "/api/v1/files/devices/D/ABC-123-primary.heic"
-
-    @Test
-    fun `a job whose destination the ledger recorded belongs to that row`() {
-        assertEquals(JobRow.Found("ABC-123-primary.heic"), jobRowOf(v2, "ABC-123-primary.heic"))
-    }
-
-    @Test
-    fun `a byte-route job whose row the walk removed is pruned and not a fault`() {
-        // The photo left the library or the selection while its upload was in flight. Raising this at `Error`
-        // would file a crash-reporting event for every de-selection.
-        assertEquals(JobRow.Pruned, jobRowOf(v2, null))
-    }
-
-    @Test
-    fun `a v1 destination is unmappable and never resolved from its last segment`() {
-        // The v1 fallback is retired (`changes/retire-legacy-key-fallback`, D2). Its row may still exist and be
-        // REQUESTED, so a quiet prune would hide it: it is reported instead.
-        assertEquals(JobRow.Unmappable, jobRowOf(v1, null))
-    }
-
-    @Test
-    fun `a destination of no byte-route shape is unmappable`() {
-        assertEquals(JobRow.Unmappable, jobRowOf("/something/else", null))
-        assertEquals(JobRow.Unmappable, jobRowOf("/api/v2/files/devices/D/a/b/c", null))
     }
 }

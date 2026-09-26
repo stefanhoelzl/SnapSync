@@ -67,7 +67,10 @@ fun snapSyncHost(scope: CoroutineScope, process: ProcessServices, ports: AppPort
     ports.gallery.listen(core.galleryHandlers)
     // On iOS this registration IS the `BGTask` launch handler, which Apple requires before launch finishes — why the
     // root composes at launch. It starts nothing: the handlers run only when the operating system wakes the app.
-    ports.wake.listen(core.wakeHandlers)
+    ports.wake.listen(core.events.wakeHandlers)
+    // The transfer sessions' events — a background relaunch that hands back finished transfers must find these.
+    ports.download.listen(core.events.downloadHandlers)
+    ports.appUpload.listen(core.events.uploadHandlers)
     core.installPushRegistration()
     // The zone is read ONCE, here, from the process's one clock: a formatter whose zone moved under a
     // running screen would render one capture date two ways.

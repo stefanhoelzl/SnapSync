@@ -19,8 +19,6 @@ import kotlinx.coroutines.launch
  * are the honest shape. They are not [AppPorts] fields because the host is built *from* the [AppCore] these entries
  * belong to: the entries can only exist after it.
  *
- * The identifier is the upload adapter's own constant, handed in as data so the routing below compares strings and no
- * platform constant enters `:domain`.
  */
 class EntryHooks(
     /** Record that the app became active — the root's scene rule reads it (capability `sync-status`). */
@@ -35,8 +33,6 @@ class EntryHooks(
     val assembleHost: () -> Unit,
     /** Hand a push token to the source the registration collector observes. */
     val deliverPushToken: (hex: String) -> Unit,
-    /** The transfer channel whose handbacks belong to the app's uploader; every other channel is the downloads'. */
-    val uploadTransferChannel: String,
 )
 
 /**
@@ -57,22 +53,19 @@ fun platformEntries(core: () -> AppCore, hooks: EntryHooks): PlatformEntries = A
  * | wake | own work, after the prelude | handler released | then |
  * |---|---|---|---|
  * | silent push | union read, plan, enqueue (`SilentPush`) | after that own work | the tail, active event only |
- * | download-session relaunch | staging the delivered files | at the drain report | the tail |
- * | upload-session relaunch | recording the terminals | at the drain report | the tail |
  * | foreground | the `Foreground` flow | (no handler) | the tail |
  *
- * The prelude is the membership re-read and the attestation refresh. A push and a transfer wake take the process's
- * **background time** no later than their handler is handed over ([WakeHold]), and hold it across the own work, the
- * handler's release and the tail; its expiry — Apple's only "time is up" for those wakes — stops the tail, releases
- * the handler and ends the hold at once. The heartbeat is not an entry here: it arrives through the `Wake` event port,
- * whose handler ([wakeHandlers]) holds its completion until its tail ends. No clock of the app's own bounds anything
- * here.
+ * The prelude is the membership re-read and the attestation refresh. A push takes the process's **background time**
+ * no later than its handler is handed over ([WakeHold]), and holds it across the own work, the handler's release and
+ * the tail; its expiry — Apple's only "time is up" for that wake — stops the tail, releases the handler and ends the
+ * hold at once. The heartbeat and the transfer sessions' relaunches are not entries here: they arrive through the
+ * `Wake`, `Upload` and `Download` event ports, whose handlers ([AppEvents]) hold their completions the same way. No
+ * clock of the app's own bounds anything here.
  *
  * **The tail is requested here, after a flow returns — never from inside one** (`docs/architecture.md`, "A
  * trigger flow never outlives its own run"). Nothing here decides upload behaviour: the tail's units decide at the
- * upload cycle's own entry gate. The one comparison below routes by the identifier the operating system delivered;
- * it chooses a handler, not whether work happens. `PlatformEntriesContract` specifies all of it, bound over the
- * world on the JVM and in the simulator.
+ * upload cycle's own entry gate. `PlatformEntriesContract` specifies all of it, bound over the world on the JVM and in
+ * the simulator.
  */
 internal class AppEntries(
     private val core: () -> AppCore,
@@ -149,34 +142,6 @@ internal class AppEntries(
             }
             Unit
         }
-
-    override fun onBackgroundTransfers(channel: String, completion: () -> Unit) {
-        log.invocation(entry, "onBackgroundTransfers", params = "channel=$channel") {
-            // The background time first: no later than the handover, so the wait for the session's drain report is
-            // covered too, and a report that never comes ends in Apple's expiry rather than a handler held forever.
-            val wake = wake("onBackgroundTransfers($channel)")
-            // Routed synchronously: the handler must be adopted before its session can report its events drained.
-            val (handover, trigger) = when (channel) {
-                hooks.uploadTransferChannel -> app.tail.uploadCompletions.adopt(completionOf(completion)).also {
-                    ports.appDrivenUpload().reattach()
-                } to TailTrigger.UPLOAD_SESSION_EVENTS
-                else -> app.downloadJobs.adoptBackgroundEvents(completionOf(completion)) to
-                    TailTrigger.DOWNLOAD_SESSION_EVENTS
-            }
-            wake.guard(handover)
-            scope.launch {
-                // The protected-storage state for this wake (capability `sync-status`), recorded one dispatch
-                // later: the read may have to hop threads, and the routing above must not wait for it.
-                val protectedData = ports.processInfo.protectedDataAvailable()
-                log.i { "onBackgroundTransfers(channel=$channel): protectedData=$protectedData" }
-                app.prelude()
-                // The wake's own work is the session's: its deliveries, recorded as they arrive, and its drain report,
-                // which releases the handler. The rest is the tail's.
-                handover.awaitRelease()
-                wake.thenTail(trigger)
-            }
-        }
-    }
 
     private companion object {
         /** How much of a push token the entry line shows — enough to tell two apart, not the credential. */

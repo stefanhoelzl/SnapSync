@@ -3,16 +3,22 @@ package app.snapsync.world
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.Resource
 import app.snapsync.model.UploadError
-import app.snapsync.model.UploadRequest
-import app.snapsync.model.CreateResult
+import app.snapsync.model.ChangeOutcome
+import app.snapsync.model.UploadCreateOutcome
+import app.snapsync.model.UploadJob
+import app.snapsync.model.UploadJobSet
+import app.snapsync.model.UploadJobState
+import app.snapsync.model.UploadSource
+import app.snapsync.model.UploadSourceKind
+import app.snapsync.model.UploadTarget
+import app.snapsync.model.assetIdFromUploadKey
+import app.snapsync.model.destinationPathOf
 import app.snapsync.ports.Discovery
-import app.snapsync.ports.PlatformUploadJob
-import app.snapsync.ports.BackgroundTransfer
-import app.snapsync.ports.TransferRecord
+import app.snapsync.ports.Upload
+import app.snapsync.ports.UploadHandlers
 import app.snapsync.ports.UploadDiscovery
 import app.snapsync.ports.GalleryReader
 import app.snapsync.services.gallery.GalleryDiscovery
-import app.snapsync.model.TerminalOutcome
 import io.ktor.client.HttpClient
 import io.ktor.client.request.headers
 import io.ktor.client.request.put
@@ -20,147 +26,142 @@ import io.ktor.client.request.setBody
 import io.ktor.http.isSuccess
 import app.snapsync.model.runCatchingCancellable
 
+/** One job the world's uploader was asked to create: the upload key it was tagged with, and the type it declared. */
+class CreatedUpload(val filename: String, val contentType: String) {
+    /** The photo's id, recovered from the key (`<assetId>-<role>.<ext>`). */
+    val assetId: String get() = assetIdFromUploadKey(filename)
+}
+
 /**
- * An operator-driven, **inspectable** [BackgroundTransfer] (`docs/testing.md`): the
- * world's stand-in for the iOS `IosBackgroundTransfer`. It models the OS upload-job lifecycle as a
- * queue an operator drives between cycles:
+ * An operator-driven, **inspectable** [Upload] (`docs/testing.md`): the world's stand-in for the platform's upload-job
+ * queue, modelled on the PhotoKit tier — jobs the operator drives between cycles, presented in the platform's two
+ * sets. It decides nothing: which ledger row a job belongs to and what its end means are the REAL upload service's,
+ * composed over it exactly as over a device queue.
  *
- * - `createJob` enqueues a PENDING job and returns `CREATED`, unless the settable [jobLimit] in-flight
- *   cap is reached (`LIMIT_EXCEEDED`) or [failCreate] is set (`FAILED`).
- * - [completeJob] performs the job's own request — a real `PUT` to the URL, with the headers, the engine
- *   minted — over [network], the network an OS transfer crosses. A `2xx` moves the job to the terminal
- *   bucket, so the next `drainTerminals` records it `COMPLETED`; anything else fails it exactly as [failJob]
- *   would, with the status the backend answered (`docs/testing.md`). There is no
- *   store-direct deposit: a completed object is one the chosen backend itself accepted.
- * - [failJob] moves a job to the retry bucket carrying a chosen [UploadError], driving the real engine
- *   retry chain. A first failure surfaces via `fetchRetryJobs` (the system's single free retry); a
- *   second failure of the same job returns its row to `DISCOVERED` through [drainTerminals] and is handed
- *   back for the cycle to re-create.
+ * - `create` enqueues a PENDING job and answers `CREATED`, unless the settable [jobLimit] in-flight cap is reached
+ *   (`LIMIT_EXCEEDED`), [failCreate] is set, or the source is not the world's platform handle (`FAILED`) — its photos
+ *   carry `Unit`, as a device's carry a `PHAssetResource`.
+ * - [completeJob] performs the job's own request — a real `PUT` to the URL, with the headers, the engine minted — over
+ *   [network], the network an OS transfer crosses. A `2xx` makes it terminal-succeeded; anything else fails it exactly
+ *   as [failJob] would, with the status the backend answered. A completed object is one the chosen backend accepted.
+ * - [failJob] fails a job with a chosen [UploadError]. A first failure is offered for its single free retry
+ *   ([UploadJobSet.RETRY_OFFERED]); a failure after it is presented as terminal and handed back for re-creation.
  *
- * Like both real adapters, this one RECORDS terminal outcomes into the [ledger] itself rather than
- * handing them up — that is the seam's contract now, and a fake that returned them instead would let a
- * green suite hide the very defect this models.
- *
- * It serves no library read. The change feed and the key resolve are [FakeUploadDiscovery]'s, bound beside
- * this queue exactly as a device root binds `GalleryDiscovery` beside its transport.
+ * It serves no library read. The change feed and the key resolve are [FakeUploadDiscovery]'s.
  */
-class FakeBackgroundTransfer(
+class FakeUpload(
     /** The network an OS transfer crosses: the world's backend's bare client, or a binding's fixture engine. */
     private val network: HttpClient,
-    /** The same ledger the composed cycle writes — this adapter records terminal outcomes into it. */
-    private val ledger: TransferRecord,
-) : BackgroundTransfer {
+) : Upload {
 
-    /** Failure lever: the OS in-flight job cap. `createJob` returns `LIMIT_EXCEEDED` at/above it. */
+    /** Failure lever: the OS in-flight job cap. `create` answers `LIMIT_EXCEEDED` at/above it. */
     var jobLimit: Int = Int.MAX_VALUE
 
-    /** Failure lever: `createJob` returns `FAILED` (a malformed destination / unusable payload). */
+    /** Failure lever: `create` answers `FAILED` (an unusable payload). */
     var failCreate: Boolean = false
 
-    private var handleSeq = 0
     private val jobs = mutableListOf<FakeJob>()
 
-    /** Inspection: every resource a job was created for (retry chains visible via repeated keys). */
-    val created = mutableListOf<Resource>()
+    /** Inspection: every job created (retry chains visible via repeated keys). */
+    val created = mutableListOf<CreatedUpload>()
 
-    /**
-     * The OS job states this fake models. Private on purpose: the platform-neutral enum moved into the
-     * PhotoKit adapter when terminal facts stopped crossing the port, and a test harness has no business
-     * depending on one tier's technology vocabulary.
-     */
-    private enum class FakeJobState { PENDING, SUCCEEDED, FAILED }
+    override val accepts: UploadSourceKind = UploadSourceKind.RESOURCE
+
+    /** The queue raises no events: its terminal jobs are presented when asked, as PhotoKit's are. */
+    override fun listen(handlers: UploadHandlers) = Unit
 
     private class FakeJob(
         val key: String,
         val contentType: String,
         val data: Any,
-        val handle: Int,
         /** The request the OS would perform — replaced by the fresh one a retry hands in. */
-        var request: UploadRequest,
+        var target: UploadTarget,
     ) {
-        var state: FakeJobState = FakeJobState.PENDING
+        var state: UploadJobState = UploadJobState.PENDING
         var error: UploadError? = null
         var retriedOnce: Boolean = false
     }
 
-    private fun FakeJob.view() = PlatformUploadJob(key, contentType, error, data)
+    private fun FakeJob.view() = UploadJob(
+        handle = this,
+        tag = key,
+        destinationPath = destinationPathOf(target.url),
+        contentType = contentType,
+        state = state,
+        error = error,
+        source = UploadSource.Resource(data).takeIf { state != UploadJobState.SUCCEEDED },
+    )
 
-    override suspend fun fetchRetryJobs(): List<PlatformUploadJob> =
-        jobs.filter { it.state == FakeJobState.FAILED && !it.retriedOnce }.map { it.view() }
-
-    /**
-     * Record what the "OS" has finished, settle it, and hand back only the retry-spent failures.
-     *
-     * A succeeded job becomes `COMPLETED`, exactly as both adapters record it.
-     */
-    override suspend fun drainTerminals(): List<PlatformUploadJob> {
-        val terminal = jobs.filter {
-            it.state == FakeJobState.SUCCEEDED || (it.state == FakeJobState.FAILED && it.retriedOnce)
+    override suspend fun jobs(set: UploadJobSet): List<UploadJob> = when (set) {
+        UploadJobSet.RETRY_OFFERED -> jobs.filter { it.state == UploadJobState.FAILED && !it.retriedOnce }
+        UploadJobSet.TERMINAL -> jobs.filter {
+            it.state == UploadJobState.SUCCEEDED || (it.state == UploadJobState.FAILED && it.retriedOnce)
         }
-        val out = mutableListOf<PlatformUploadJob>()
-        for (j in terminal) {
-            val succeeded = j.state == FakeJobState.SUCCEEDED
-            ledger.markTerminal(j.key, if (succeeded) TerminalOutcome.COMPLETED else TerminalOutcome.FAILED)
-            if (!succeeded) out += j.view()
-        }
-        jobs.removeAll(terminal) // settled with the "OS", exactly as both adapters acknowledge in place
-        return out
-    }
+        UploadJobSet.IN_FLIGHT -> jobs.filter { it.state == UploadJobState.PENDING }
+    }.map { it.view() }
 
-    override suspend fun retryJob(job: PlatformUploadJob, request: UploadRequest) {
-        // Matched by key: the seam no longer carries an opaque system handle.
-        val j = jobs.firstOrNull { it.key == job.key && it.state == FakeJobState.FAILED } ?: return
+    override suspend fun retry(job: UploadJob, target: UploadTarget): ChangeOutcome {
+        val j = job.handle as? FakeJob ?: return ChangeOutcome.Refused(null, "not this queue's job")
         j.retriedOnce = true
-        j.request = request
-        j.state = FakeJobState.PENDING // in-flight again after the single free retry
+        j.target = target
+        j.state = UploadJobState.PENDING // in-flight again after the single free retry
         j.error = null
+        return ChangeOutcome.Applied
     }
 
-    /**
-     * Refuses what a real tier refuses before any job exists (`BackgroundTransferContract`): a payload that is not
-     * the world's platform handle — its photos carry `Unit`, as a device's carry a `PHAssetResource` — and a
-     * destination that is not a URL. Both answer `FAILED`, so the cycle records no `REQUESTED` for them.
-     */
-    override suspend fun createJob(request: UploadRequest, resource: Resource): CreateResult {
-        if (failCreate) return CreateResult.FAILED
-        if (resource.data != Unit || request.url.isBlank()) return CreateResult.FAILED
-        if (jobs.size >= jobLimit) return CreateResult.LIMIT_EXCEEDED
-        jobs.add(FakeJob(resource.filename, resource.contentType, resource.data, handleSeq++, request))
-        created.add(resource)
-        return CreateResult.CREATED
+    override suspend fun acknowledge(job: UploadJob): ChangeOutcome {
+        jobs.remove(job.handle)
+        return ChangeOutcome.Applied
+    }
+
+    override suspend fun cancel(job: UploadJob): ChangeOutcome {
+        jobs.remove(job.handle)
+        return ChangeOutcome.Applied
+    }
+
+    override suspend fun create(source: UploadSource, target: UploadTarget, tag: String): UploadCreateOutcome {
+        if (failCreate) return UploadCreateOutcome.FAILED
+        val data = (source as? UploadSource.Resource)?.handle ?: return UploadCreateOutcome.FAILED
+        if (data != Unit) return UploadCreateOutcome.FAILED
+        if (jobs.size >= jobLimit) return UploadCreateOutcome.LIMIT_EXCEEDED
+        val contentType = target.headers.entries.firstOrNull { it.key.equals("Content-Type", ignoreCase = true) }?.value
+            ?: "application/octet-stream"
+        jobs.add(FakeJob(tag, contentType, data, target))
+        created.add(CreatedUpload(tag, contentType))
+        return UploadCreateOutcome.CREATED
     }
 
     // ---- operator actions -----------------------------------------------------------------------
 
     /**
-     * Let the "OS" perform a created job: its request goes over [network], and the job settles on what the
-     * backend answered — acknowledged on a `2xx`, failed with that status otherwise, or with
-     * [UploadError.Network] when the request never got an answer.
+     * Let the "OS" perform a created job: its request goes over [network], and the job settles on what the backend
+     * answered — succeeded on a `2xx`, failed with that status otherwise, or with [UploadError.Network] when the request
+     * never got an answer.
      */
     suspend fun completeJob(key: String) {
-        val j = jobs.firstOrNull { it.key == key && it.state == FakeJobState.PENDING } ?: return
+        val j = jobs.firstOrNull { it.key == key && it.state == UploadJobState.PENDING } ?: return
         val status = runCatchingCancellable {
-            network.put(j.request.url) {
-                headers { j.request.headers.forEach { (name, value) -> append(name, value) } }
+            network.put(j.target.url) {
+                headers { j.target.headers.forEach { (name, value) -> append(name, value) } }
                 setBody(TRANSFERRED_BYTES)
             }.status
         }.getOrElse {
-            j.state = FakeJobState.FAILED
+            j.state = UploadJobState.FAILED
             j.error = UploadError.Network
             return
         }
         if (status.isSuccess()) {
-            j.state = FakeJobState.SUCCEEDED
+            j.state = UploadJobState.SUCCEEDED
         } else {
-            j.state = FakeJobState.FAILED
+            j.state = UploadJobState.FAILED
             j.error = UploadError.Http(status.value)
         }
     }
 
     /** Fail a created job with a chosen [error], driving the real retry chain next cycle. */
     fun failJob(key: String, error: UploadError) {
-        val j = jobs.firstOrNull { it.key == key && it.state == FakeJobState.PENDING } ?: return
-        j.state = FakeJobState.FAILED
+        val j = jobs.firstOrNull { it.key == key && it.state == UploadJobState.PENDING } ?: return
+        j.state = UploadJobState.FAILED
         j.error = error
     }
 

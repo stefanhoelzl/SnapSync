@@ -13,9 +13,9 @@ import app.snapsync.ports.GalleryReader
 import app.snapsync.background.IosBackgroundTime
 import app.snapsync.contracts.BackgroundTimeContract
 import app.snapsync.contracts.BackgroundTimeState
-import app.snapsync.contracts.BackgroundTransferContract
+import app.snapsync.contracts.UploadContract
 import app.snapsync.contracts.Binding
-import app.snapsync.contracts.DownloadTransportContract
+import app.snapsync.contracts.DownloadContract
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
@@ -95,8 +95,8 @@ fun simulatorAppContracts(): List<InAppContract> = listOf(
     simulatorAppContract(ProcessInfoContract, SimAppProcessInfoBinding(), ::hostRefusal),
     simulatorAppContract(LinkOpenerContract, SimAppLinkOpenerBinding(), ::hostRefusal),
     simulatorAppContract(SharePresenterContract, SimAppSharePresenterBinding(), ::hostRefusal),
-    simulatorAppContract(BackgroundTransferContract, SimAppBackgroundTransferBinding(), ::refusal),
-    simulatorAppContract(DownloadTransportContract, SimAppDownloadTransportBinding(), ::hostRefusal),
+    simulatorAppContract(UploadContract, SimAppUploadBinding(), ::refusal),
+    simulatorAppContract(DownloadContract, SimAppDownloadBinding(), ::hostRefusal),
     simulatorAppContract(BackgroundTimeContract, SimAppBackgroundTimeBinding(), ::hostRefusal),
 )
 

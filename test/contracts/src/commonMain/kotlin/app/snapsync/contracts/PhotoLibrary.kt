@@ -75,7 +75,7 @@ object PhotoLibrary {
             GalleryReaderContract,
             GalleryImportContract,
             // Its clauses seed the photos they upload.
-            BackgroundTransferContract,
+            UploadContract,
             // Its change clause seeds one photo to move the library's token.
             GalleryContract,
         )

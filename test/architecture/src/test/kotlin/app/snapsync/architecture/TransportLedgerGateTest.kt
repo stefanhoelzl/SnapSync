@@ -26,9 +26,13 @@ import kotlin.test.assertTrue
 class TransportLedgerGateTest {
 
     /** A class implementing the seam, or the factory that binds one. */
-    private val transportDeclaration = Regex("""\)\s*:\s*BackgroundTransfer\s*\{|\bfun\s+uploadJobQueue\s*\(""")
+    private val transportDeclaration = Regex("""\)\s*:\s*Upload\s*\{|\bfun\s+uploadJobQueue\s*\(""")
 
-    private val ledgerStore = Regex("""\bLedgerStore\b""")
+    /**
+     * The ledger, in either width: since the transfer re-cut (11f) a transport is a thin `Upload` port and records
+     * nothing — the upload services hold the narrow `TransferRecord` and write through it.
+     */
+    private val ledgerStore = Regex("""\b(?:LedgerStore|TransferRecord)\b""")
 
     /** The file's **code**, with KDoc and comments stripped — the same reading `UploadJobSubsystemBindingTest` uses. */
     private fun codeOf(text: String): String = text
@@ -52,10 +56,9 @@ class TransportLedgerGateTest {
         val offenders = scope.filter { ledgerStore.containsMatchIn(codeOf(it.text)) }.map { it.path }
         assertTrue(
             offenders.isEmpty(),
-            "these transport adapters reference LedgerStore:\n  ${offenders.joinToString("\n  ")}\n" +
-                "A transport receives a TransferRecord — the guarded terminal write and the destination read — " +
-                "and nothing wider. " +
-                "See `photo-sharing`, \"Reader and writer capability split\".",
+            "these transport adapters reference the ledger:\n  ${offenders.joinToString("\n  ")}\n" +
+                "A transport is a thin Upload port and records nothing: the upload services hold the TransferRecord " +
+                "and write through it (phase 11f). See `photo-sharing`, \"Reader and writer capability split\".",
         )
     }
 

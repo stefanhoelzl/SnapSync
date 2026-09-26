@@ -88,8 +88,6 @@ import app.snapsync.model.DiagnosticEnvironment
 import app.snapsync.ports.DeviceLogSource
 import app.snapsync.ports.ConfigStore
 import app.snapsync.ports.DownloadStore
-import app.snapsync.ports.DownloadTransport
-import app.snapsync.ports.DownloadTransportHost
 import app.snapsync.ports.DeviceManifestStore
 import app.snapsync.services.backend.BackendServices
 import app.snapsync.services.backend.LeaveNotifier
@@ -102,7 +100,8 @@ import app.snapsync.ports.invocation
 import co.touchlab.kermit.Logger
 import app.snapsync.ports.ProcessInfo
 import app.snapsync.ports.Wake
-import app.snapsync.ports.WakeHandlers
+import app.snapsync.ports.Download
+import app.snapsync.ports.Upload
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.ContinuationInterceptor
 import kotlinx.coroutines.CoroutineScope
@@ -170,7 +169,12 @@ class AppPorts(
      * bytes land must not be able to download at all.
      */
     val stagedBytes: StagedBytes,
-    val newDownloadTransport: (DownloadTransportHost) -> DownloadTransport,
+    /**
+     * The platform's background downloads (capability `receiving-photos`). An event port: the host zone registers
+     * this core's [AppEvents.downloadHandlers] on it as the graph is composed, so a background relaunch that delivers
+     * finished transfers finds them.
+     */
+    val download: Download,
     /**
      * The backend (`docs/architecture.md`, "Ports are the I/O boundary named for the need") — production passes
      * `:adapter:generic:app`'s `HttpBackend` over the platform's HTTP client. Every need-shaped backend service is
@@ -209,6 +213,12 @@ class AppPorts(
      *  lazily. Its two units are the process tail's ② and ③, and its cycle's entry gate withholds when this
      *  process may not create (`background-upload`). */
     val appDrivenUpload: () -> AppUploadMechanism,
+    /**
+     * The app's own uploader transport (a background `URLSession` on iOS) — what [appDrivenUpload]'s cycle creates jobs
+     * on, and an event port: the host zone registers this core's [AppEvents.uploadHandlers] on it as the graph is
+     * composed, so a relaunch that hands back finished uploads records them.
+     */
+    val appUpload: Upload,
     /** The process's background time (`docs/architecture.md`, "Background time is an outbound port named for
      *  the need"): what a push or a transfer wake holds across its own work and its tail, and the only "time is up"
      *  those wakes get. Required: a composition without it would hold nothing, and no expiry would ever stop a
@@ -389,30 +399,27 @@ class AppCore internal constructor(
     // lifecycle live in the tested feature; the transport is the shell's adapter thunk.
     val downloadJobs: QueuedPhotoDownloadJobs by lazy {
         // Staging is the port that also releases those bytes, so the two never name different directories
-        // (capability `receiving-photos`); the jobs record relative paths and locate them only for the transport.
+        // (capability `receiving-photos`); the jobs record relative paths.
         QueuedPhotoDownloadJobs(
             scope = scope,
             staging = ports.stagedBytes,
-            newTransport = ports.newDownloadTransport,
-            // Deliver each staged resource back to the controller — an adapter outbound callback satisfied
-            // by a compose-built lambda whose body is one call (law "Commands cross one door"). It reads the
-            // `downloadController` lazy when INVOKED, not here: the jobs are built on paths that build
-            // nothing else — a background-`URLSession` relaunch touches only `downloadJobs` — and the
-            // callback must reach the controller on those paths too (capability `receiving-photos`, "A staged
-            // resource reaches the controller on every entry point"). No launch here: the jobs own it, so
-            // they can join the imports before the session's OS handler is released.
+            download = ports.download,
+            // Deliver each staged resource back to the controller — a compose-built lambda whose body is one call (law
+            // "Commands cross one door"). It reads the `downloadController` lazy when INVOKED, not here: the jobs are
+            // built on paths that build nothing else — a background-`URLSession` relaunch touches only `downloadJobs` —
+            // and the callback must reach the controller on those paths too (capability `receiving-photos`, "A staged
+            // resource reaches the controller on every entry point"). No launch here: the jobs own it, so they can
+            // join the stagings before the session's OS handler is released.
             // Staging is recorded here and the import is the tail's: requested detached — a staging holds no OS
             // handler of its own, and a wake that delivered it requests (and holds) its own tail after its drain.
             onStaged = { ref, key, path ->
-                downloadController.onResourceStaged(ref, key, path)
-                tail.requestDetached(TailTrigger.DOWNLOAD_STAGED)
+                val recorded = downloadController.onResourceStaged(ref, key, path)
+                if (recorded) tail.requestDetached(TailTrigger.DOWNLOAD_STAGED)
             },
-            // UIKit owns this session's completion handler and requires the main thread for it
-            // (capability `sync-status`); the harness binds its own lane.
-            uiLane = ports.uiLane,
             entryContext = process.entryContext,
         )
     }
+
 
     // The download orchestrator: union → foreign selection → download → import → suppression.
     val downloadController: DownloadController by lazy {
@@ -670,8 +677,8 @@ class AppCore internal constructor(
     /** What the gallery tells this core — registered by the host zone's `listen` (see [galleryHandlers]). */
     val galleryHandlers: GalleryHandlers = galleryHandlers(ports.downloadStore, ports.log, selectionChanges)
 
-    /** What the operating system's scheduled wakes tell this core — registered by the host zone's `listen`. */
-    val wakeHandlers: WakeHandlers = wakeHandlers(this)
+    /** What the operating system's wakes and transfer sessions tell this core — see [AppEvents]. */
+    val events: AppEvents = AppEvents(this)
 
     /**
      * What upload discovery may read right now (consumed by the tier controllers' `uploadCore` ports).

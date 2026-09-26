@@ -39,9 +39,6 @@ enum class PlatformEntriesState {
  * flight, as a slow photo-library or network call would.
  */
 interface PlatformEntriesObservations {
-    /** The identifiers the operating system delivers, as the implementation under test was configured with them. */
-    val identifiers: EntryIdentifiers
-
     /** A valid invite to the event an [PlatformEntriesState.UNJOINED] app can join. */
     val inviteUrl: String
 
@@ -75,12 +72,6 @@ interface PlatformEntriesObservations {
     /** How many walks → manifest publishes (the tail's ③) the app's uploader has run. */
     fun appUploaderWalks(): Int
 
-    /** How many background-transfer handbacks reached the app uploader's session. */
-    fun appUploaderTransferHandbacks(): Int
-
-    /** Whether the download session has been brought up to receive handed-back transfers. */
-    fun downloadSessionRealized(): Boolean
-
     /** How many holds on the process's background time are outstanding. */
     fun backgroundTimeHolds(): Int
 
@@ -90,13 +81,6 @@ interface PlatformEntriesObservations {
     /** The operating system's lever: hold the app uploader's next unit in flight; the answer lets it finish. */
     fun parkNextUploadUnit(): () -> Unit
 }
-
-/** The operating system's identifiers for the entries that route by one. */
-class EntryIdentifiers(
-    val uploadTransferChannel: String,
-    /** Any transfer channel that is not [uploadTransferChannel] — the downloads'. */
-    val downloadTransferChannel: String,
-)
 
 /** What a clause is handed: the port under contract and the handle it observes outcomes through. */
 class PlatformEntriesSubject(val entries: PlatformEntries, val observe: PlatformEntriesObservations)
@@ -200,35 +184,6 @@ object PlatformEntriesContract : Contract<PlatformEntriesState, PlatformEntriesS
             assertEquals(0, observe.appUploaderWalks(), "the unit in flight completed, and no further unit started")
         }
 
-        clause("UPLOAD_TRANSFERS_RELEASE_AT_THE_DRAIN_THEN_RUN_THE_TAIL", PlatformEntriesState.JOINED_WITH_FOREIGN_PHOTO) {
-            (entries, observe) ->
-            val completion = Completion { observe.appUploaderTransferHandbacks() == 1 && observe.appUploaderTopUps() == 0 }
-            entries.onBackgroundTransfers(observe.identifiers.uploadTransferChannel, completion::release)
-            completion.assertReleasedOnceAfterTheWork()
-            assertTrue(eventually { observe.appUploaderTopUps() > 0 }, "the tail tops up after the release")
-            assertTrue(eventually { observe.backgroundTimeHolds() == 0 }, "and the wake's hold ends with it")
-        }
-
-        clause("OTHER_TRANSFERS_ARE_ADOPTED_BY_THE_DOWNLOADS", PlatformEntriesState.JOINED_WITH_FOREIGN_PHOTO) {
-            (entries, observe) ->
-            entries.onBackgroundTransfers(observe.identifiers.downloadTransferChannel) {}
-            assertTrue(eventually { observe.downloadSessionRealized() }, "the download session is brought up")
-            assertEquals(0, observe.appUploaderTransferHandbacks(), "and the app uploader is not handed them")
-        }
-
-        clause("A_DRAIN_REPORT_THAT_NEVER_COMES_RELEASES_ON_EXPIRY", PlatformEntriesState.JOINED_WITH_FOREIGN_PHOTO) {
-            (entries, observe) ->
-            val completion = Completion { true }
-            entries.onBackgroundTransfers(observe.identifiers.downloadTransferChannel, completion::release)
-            assertTrue(eventually { observe.downloadSessionRealized() }, "the download session is brought up")
-            settle()
-            completion.assertNotReleased("no clock of the app's own releases it")
-            observe.expireBackgroundTime()
-            completion.assertReleasedOnce()
-            assertTrue(eventually { observe.backgroundTimeHolds() == 0 }, "and the hold ends")
-            settle()
-            assertEquals(0, observe.appUploaderTopUps(), "a wake whose time is up requests no tail")
-        }
     }
 
     private const val TOKEN = "0a1b2c3d4e5f60718293a4b5c6d7e8f9"

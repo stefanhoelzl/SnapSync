@@ -249,23 +249,25 @@ class World(
     // as both device adapters do, so the world exercises the real two-phase completion.
     // It completes a transfer with a real PUT over the backend's bare client — the network an OS transfer
     // crosses — so a completed object is one the chosen backend itself accepted.
-    val platform: FakeBackgroundTransfer = FakeBackgroundTransfer(backend.newClient(), ledgerBackend)
+    val platform: FakeUpload = FakeUpload(backend.newClient())
     // The cycle's library reads — the change feed and the id-scoped key resolve — over the in-memory gallery,
     // bound once beside the job queue exactly as the device roots bind `GalleryDiscovery`.
     val discovery: FakeUploadDiscovery = FakeUploadDiscovery(gallery)
     /**
-     * The fake execution edge, captured when the real jobs first realize a transport (lazily, on the first
-     * transfer — exactly as production does). `null` until then.
+     * The operating system's background download session — the transfers it holds for this app. Durable across a
+     * [relaunch], as a background `URLSession` is: a relaunched app finds the transfers the dead process started, and
+     * their completions arrive there. Each launch's composition registers its own handlers on it.
      */
-    var downloadTransport: FakeDownloadTransport? = null
-        private set
+    val download: FakeDownload = FakeDownload()
+
+    /** [download], once this launch has brought the session up (a transfer, a cancel, or a handback) — else `null`. */
+    val downloadTransport: FakeDownload? get() = download.takeIf { it.realized }
 
     /**
-     * The operating system's background download session — the transfers it holds for this app. Durable across
-     * a [relaunch], as a background `URLSession` is: a relaunched app's transport finds the transfers the dead
-     * process started, and their completions arrive there.
+     * The app uploader's transfer session as the operating system plays it — the world's app uploader is the inert
+     * [operatorEngine], so this session holds no jobs; the operator hands its background events back through it.
      */
-    private val downloadSession: MutableList<FakeDownloadTransport.Started> = mutableListOf()
+    val appUpload: WorldAppUpload = WorldAppUpload()
 
     /**
      * The import rigging — the operator's script for how the library answers a change, and what was imported. The
@@ -541,7 +543,7 @@ class World(
      * process-lifetime session there): inert, and counting the tail units the composed runner asks of it. Its
      * session's drain report reaches the core of the launch that is current.
      */
-    val operatorEngine: OperatorUploadEngine = OperatorUploadEngine { core.tail.uploadEvents }
+    val operatorEngine: OperatorUploadEngine = OperatorUploadEngine()
 
     /**
      * The job the composed app runs under — a child of the caller's [scope], so the caller still owns its
@@ -643,9 +645,8 @@ class World(
         // Staging root AND release, one port: the world's staged paths are built from the same
         // root the fake reports, exactly as the App-Group container is on device.
         stagedBytes = stagedBytes,
-        newDownloadTransport = { transportHost ->
-            FakeDownloadTransport(transportHost, stagedFiles, downloadSession).also { downloadTransport = it }
-        },
+        download = download,
+        appUpload = appUpload,
         // The backend: the production `HttpBackend` over the mini-edge (or the real `api/`), every need-shaped
         // service composed over it inside the core, as on the phone.
         backend = backendPort,
@@ -699,7 +700,7 @@ class World(
         appJob.cancel()
         appJob = Job(scope.coroutineContext[Job])
         appScope = CoroutineScope(scope.coroutineContext + appJob)
-        downloadTransport = null
+        download.relaunched()
         cycleOfThisLaunch = null
         uploadPortsOfThisLaunch = null
         process = appProcess()
@@ -1119,7 +1120,8 @@ class World(
                 // test play an old build against the version gate.
                 appVersion = appVersion,
                 ledger = ledgerBackend,
-                transfer = platform,
+                upload = platform,
+                gallery = gallery,
                 discovery = discovery,
                 selectionScope = { core.selectionScope() },
                 manifestStore = manifestStore,
@@ -1163,7 +1165,7 @@ class World(
      * the bug end-to-end: a `502` arrives here as a *successful* transfer of an error body, and staging it
      * would make it the store's truth forever (capability `receiving-photos`).
      */
-    suspend fun stageAllDownloads(outcome: TransferOutcome = FakeDownloadTransport.HEALTHY) {
+    suspend fun stageAllDownloads(outcome: TransferOutcome = FakeDownload.HEALTHY) {
         val transport = downloadTransport ?: return
         transport.inFlight().forEach { transport.finish(it.description, outcome) }
         // Await the stagings the jobs launched, then the import the tail runs for them, so this action is complete

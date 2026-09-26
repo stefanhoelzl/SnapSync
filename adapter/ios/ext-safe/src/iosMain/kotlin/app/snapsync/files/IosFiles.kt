@@ -128,6 +128,29 @@ class IosFiles(private val sharedRoot: String?, private val privateRoot: String?
     override fun locate(area: FileArea, path: String): FileResult<String> =
         resolve(area, path)?.let { FileResult.Ok(it) } ?: FileResult.AreaUnavailable
 
+    override fun move(area: FileArea, from: String, to: String): FileResult<Unit> {
+        val source = resolve(area, from) ?: return FileResult.AreaUnavailable
+        return moveReplacing(source, resolve(area, to) ?: return FileResult.AreaUnavailable)
+    }
+
+    override fun adopt(osPath: String, area: FileArea, to: String): FileResult<Unit> =
+        moveReplacing(osPath, resolve(area, to) ?: return FileResult.AreaUnavailable)
+
+    /** Move [source] to [destination]: parents created, the previous destination removed; last write wins. */
+    private fun moveReplacing(source: String, destination: String): FileResult<Unit> {
+        if (!fm.fileExistsAtPath(source)) return FileResult.NotFound
+        checkedObjC("createDirectoryAtPath") {
+            fm.createDirectoryAtPath(destination.substringBeforeLast('/'), withIntermediateDirectories = true, attributes = null, error = it)
+        }.onFailure { return (it as ObjCFailure).toResult() }
+        checkedObjC("removeItemAtPath") { fm.removeItemAtPath(destination, error = it) }
+            .onFailure { failure ->
+                val result = (failure as ObjCFailure).toResult()
+                if (result != FileResult.NotFound) return result
+            }
+        return checkedObjC("moveItemAtPath") { fm.moveItemAtPath(source, toPath = destination, error = it) }
+            .fold(onSuccess = { FileResult.Ok(Unit) }, onFailure = { (it as ObjCFailure).toResult() })
+    }
+
     private fun ObjCFailure.toResult(): FileResult<Nothing> {
         val code = code
         val detail = "$call: ${description ?: "no error description"} (domain=$domain code=$code)"

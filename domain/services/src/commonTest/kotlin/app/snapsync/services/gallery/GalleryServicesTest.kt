@@ -66,6 +66,9 @@ class GalleryServicesTest {
             adds += album to assets
             return addOutcome
         }
+
+        override suspend fun export(resource: app.snapsync.model.Resource, to: String): WriteOutcome =
+            WriteOutcome.Failed("no export in this script")
     }
 
     private fun photo(id: String) = RawAsset(

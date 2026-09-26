@@ -1183,6 +1183,7 @@ class DownloadControllerTest {
         val released = mutableListOf<String>()
         override fun stagingRoot(): String = "staged:/"
         override fun locate(path: String): String = path
+        override fun stage(tempPath: String, path: String): Boolean = remaining.add(path).let { true }
         override suspend fun release(paths: List<String>) {
             failWith?.invoke()
             released += paths
