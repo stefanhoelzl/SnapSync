@@ -1,8 +1,8 @@
 package app.snapsync.ios.registry
 
-import app.snapsync.model.RegistrationOutcome
-import app.snapsync.model.registrationOutcome
-import app.snapsync.ports.UploadExtensionRegistry
+import app.snapsync.model.RegistrationAnswer
+import app.snapsync.model.RegistrationState
+import app.snapsync.ports.ExtensionRegistry
 import co.touchlab.kermit.Logger
 
 /**
@@ -14,7 +14,7 @@ import co.touchlab.kermit.Logger
  * destroying the "zero Error/Assert lines" health assertion that is the cheapest check a scripted scenario
  * has. Holding the record instead makes the tier's own contract drivable rather than merely quiet.
  */
-actual fun uploadExtensionRegistry(log: Logger): UploadExtensionRegistry = SimulatorExtensionRegistry(log)
+actual fun extensionRegistry(log: Logger): ExtensionRegistry = SimulatorExtensionRegistry(log)
 
 /**
  * The record, and the levers that make its failure modes reachable.
@@ -68,17 +68,16 @@ open class SimulatorRecord(registered: Boolean = false) {
 /**
  * A registry over one [SimulatorRecord] — the process-wide [SimulatorExtensionRecord] unless a binding passes its own.
  *
- * The outcomes are the **tested classifier's**, not this class's: it reports the same three raw facts the
- * PhotoKit adapter reports — did the write succeed, and if not, which domain and code — and renders what
- * [registrationOutcome] decides. So a scenario driven here and a device exercising the same code path
- * cannot disagree about what an outcome means, which is the one place a substitute could quietly lie.
+ * It answers the same three raw facts the PhotoKit adapter does — did the write succeed, and if not, which domain and
+ * code — so the tested classifier (`model/registrationOutcome`) judges a scenario driven here and a device exercising
+ * the same code path identically, which is the one place a substitute could quietly lie.
  */
 internal class SimulatorExtensionRegistry(
     private val log: Logger,
     private val record: SimulatorRecord = SimulatorExtensionRecord,
-) : UploadExtensionRegistry {
+) : ExtensionRegistry {
 
-    override suspend fun setEnabled(enabled: Boolean): RegistrationOutcome {
+    override suspend fun setEnabled(enabled: Boolean): RegistrationAnswer {
         val forced = record.consumeFailure()
         // A disable against no record is a genuine failure on a real device (`3201`), not a courtesy
         // success — and the ritual's leading disable relies on exactly that outcome being classified as
@@ -86,17 +85,12 @@ internal class SimulatorExtensionRegistry(
         val naturalFailure = if (!enabled && !record.registered) PHOTOS_IDENTIFIER_NOT_FOUND else null
         val code = forced ?: naturalFailure
         if (code == null) record.setRegistered(enabled)
-        val outcome = registrationOutcome(
-            enabling = enabled,
-            ok = code == null,
-            errorDomain = code?.let { PHOTOS_ERROR_DOMAIN },
-            errorCode = code,
-        )
-        log.log(outcome.severity, log.tag, null, outcome.message)
-        return outcome
+        log.d { "simulated registration write (enable=$enabled) -> ${code ?: "ok"}" }
+        return RegistrationAnswer.Answered(ok = code == null, domain = code?.let { PHOTOS_ERROR_DOMAIN }, code = code)
     }
 
-    override fun isEnabled(): Boolean? = record.registered
+    override fun isEnabled(): RegistrationState =
+        if (record.registered) RegistrationState.REGISTERED else RegistrationState.NOT_REGISTERED
 }
 
 /** Apple's own domain string, so a rendered outcome reads identically to a device's. */

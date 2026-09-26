@@ -1,6 +1,8 @@
 package app.snapsync.feature.upload
 
-import app.snapsync.ports.UploadExtensionRegistry
+import app.snapsync.model.RegistrationState
+import app.snapsync.model.registrationOutcome
+import app.snapsync.ports.ExtensionRegistry
 import app.snapsync.ports.EntryContext
 import app.snapsync.ports.invocation
 import co.touchlab.kermit.Logger
@@ -12,11 +14,11 @@ import co.touchlab.kermit.Logger
  * decision (capability `background-upload`); this class only performs them, correctly.
  *
  * Named for the need rather than the technology, because it lives in the platform-free core. It reaches the
- * platform through one port — [UploadExtensionRegistry] for the registration record — so it names no platform
+ * platform through one port — [ExtensionRegistry] for the registration record — so it names no platform
  * API at all, and the ritual is ordinary tested code.
  *
- * Constructed **only** where the OS carries this mechanism at all: below iOS 26.1 the registration selector does
- * not exist, and the adapter behind [UploadExtensionRegistry] would trap.
+ * Constructed on **every** platform: where the OS carries no such mechanism (below iOS 26.1, the JVM, Android) the
+ * port answers `Unsupported` and asks the operating system nothing, so no root holds an `if` around it.
  *
  * It receives no app-side trigger: triggers go to the app's own uploader, which runs beside the extension
  * (decision record `changes/both-uploaders-active`). It touches no ledger row: a registration spans the whole
@@ -39,7 +41,7 @@ interface ExtensionRegistration {
 
 /** [ExtensionRegistration] over the registration port. */
 class OsDrivenRegistration(
-    private val registry: UploadExtensionRegistry,
+    private val registry: ExtensionRegistry,
     private val log: Logger = Logger.withTag("OsDrivenRegistration"),
     private val entryContext: EntryContext = EntryContext.NoOp,
 ) : ExtensionRegistration {
@@ -64,7 +66,7 @@ class OsDrivenRegistration(
      * no-op.
      */
     override suspend fun register() = log.invocation(entryContext, "photokit.register") {
-        registry.setEnabled(false)
+        write(false)
         // The outcome IS the report. There used to be an `Info` line here claiming the extension had been
         // re-registered, logged unconditionally — so a device whose enable had just failed terminally at
         // `Error` also carried a plain statement that it had succeeded, in the one capability whose stated
@@ -74,8 +76,7 @@ class OsDrivenRegistration(
         // at `CyclomaticComplexMethod` threshold 2, so a branch on the outcome is a decision it may not
         // hold. `RegistrationOutcome` carries its own severity and message precisely so the shell renders
         // without deciding — a shell that asserts is a shell that decided.
-        registry.setEnabled(true)
-        Unit
+        write(true)
     }
 
     /**
@@ -84,9 +85,22 @@ class OsDrivenRegistration(
      * ledger is cleared right after, and on the rig path the wipe is the test's intent.
      */
     override suspend fun deregister() = log.invocation(entryContext, "photokit.deregister") {
-        registry.setEnabled(false)
-        Unit
+        write(false)
     }
 
-    override fun isRegistered(): Boolean? = registry.isEnabled()
+    override fun isRegistered(): Boolean? = when (registry.isEnabled()) {
+        RegistrationState.REGISTERED -> true
+        RegistrationState.NOT_REGISTERED -> false
+        RegistrationState.UNSUPPORTED -> null
+    }
+
+    /**
+     * One write, and its report: the classified outcome carries its own severity and message, so rendering it decides
+     * nothing — an `Error` here is what `privacy-security` carries onward as field telemetry. It used to be the
+     * adapter's line; the adapter reports raw answers now (phase 11f).
+     */
+    private suspend fun write(enabled: Boolean) {
+        val outcome = registrationOutcome(enabled, registry.setEnabled(enabled))
+        log.log(outcome.severity, log.tag, null, outcome.message)
+    }
 }

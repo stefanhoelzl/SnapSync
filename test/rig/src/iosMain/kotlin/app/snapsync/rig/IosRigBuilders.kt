@@ -8,7 +8,8 @@ import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.CaptureDate
 import app.snapsync.model.Direction
 import app.snapsync.permission.PhotoLibraryPermission
-import app.snapsync.ports.UploadExtensionRegistry
+import app.snapsync.model.RegistrationState
+import app.snapsync.ports.ExtensionRegistry
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Instant
@@ -163,14 +164,18 @@ fun galleryReader(core: () -> AppCore): suspend (String?, Boolean, Boolean) -> S
  * read returns `false` for a live configuration record whenever the app does not hold photo access, so a
  * `false` here means "no record **or** not allowed to look". Read it beside the reported permission.
  */
-fun osExtensionEnabled(registry: () -> UploadExtensionRegistry?): () -> Boolean? = {
+fun osExtensionEnabled(registry: () -> ExtensionRegistry): () -> Boolean? = {
     // Read through the PORT, never through PhotoKit directly. The adapter behind it is the repo's sole
     // caller of `isUploadJobExtensionEnabled`, and on a target whose host cannot hold a record it is the
     // substitute — so this answers what the app itself would read rather than a second opinion.
     //
-    // A null registry is the OS having no such notion at all: below 26.1 the selector does not exist, so
-    // the app composes no registry and `notApplicable` is the honest answer.
-    registry()?.isEnabled()
+    // `UNSUPPORTED` is the OS having no such notion at all: below 26.1 the selector does not exist, and
+    // `notApplicable` (null) is the honest answer.
+    when (registry().isEnabled()) {
+        RegistrationState.REGISTERED -> true
+        RegistrationState.NOT_REGISTERED -> false
+        RegistrationState.UNSUPPORTED -> null
+    }
 }
 
 /** A tiny object renderer for the source census — the only map this file emits. */

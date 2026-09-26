@@ -1,6 +1,6 @@
 package app.snapsync.ios.registry
 
-import app.snapsync.ports.UploadExtensionRegistry
+import app.snapsync.ports.ExtensionRegistry
 import co.touchlab.kermit.Logger
 
 /**
@@ -23,4 +23,4 @@ import co.touchlab.kermit.Logger
  *
  * ⏰ **Expiry:** re-measure at the next iOS major, alongside the other PhotoKit platform facts.
  */
-expect fun uploadExtensionRegistry(log: Logger): UploadExtensionRegistry
+expect fun extensionRegistry(log: Logger): ExtensionRegistry

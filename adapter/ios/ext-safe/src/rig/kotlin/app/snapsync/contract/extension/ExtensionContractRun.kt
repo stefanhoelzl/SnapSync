@@ -9,7 +9,9 @@ import app.snapsync.contracts.InAppContract
 import app.snapsync.gallery.currentPhotoPermission
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.RegistrationOutcome
-import app.snapsync.ports.UploadExtensionRegistry
+import app.snapsync.model.RegistrationState
+import app.snapsync.model.registrationOutcome
+import app.snapsync.ports.ExtensionRegistry
 import app.snapsync.contracts.runEntry
 import platform.Foundation.NSThread
 import platform.Foundation.NSProcessInfo
@@ -27,12 +29,12 @@ private val PER_CALL: Duration = 6.minutes
  * The app-side entries of the contracts that record inside the upload extension, on [Host.IOS_DEVICE_PHOTOKIT_EXT].
  * `POST /contract/<name>?host=IOS_DEVICE_PHOTOKIT_EXT` selects one.
  *
- * [membershipRefusal] is the rig's no-membership precondition; [registry] is the app's registration port, or `null` on
- * an OS below the one that carries the extension.
+ * [membershipRefusal] is the rig's no-membership precondition; [registry] is the app's registration port, which answers
+ * `Unsupported` on an OS below the one that carries the extension.
  */
 fun extensionContractEntries(
     membershipRefusal: () -> String?,
-    registry: () -> UploadExtensionRegistry?,
+    registry: () -> ExtensionRegistry,
 ): List<InAppContract> = listOf(
     InAppContract(BackgroundTransferContract.name, Host.IOS_DEVICE_PHOTOKIT_EXT) {
         runInExtension(BackgroundTransferContract.name, membershipRefusal, registry)
@@ -51,7 +53,7 @@ fun extensionContractEntries(
 private fun runInExtension(
     contract: String,
     membershipRefusal: () -> String?,
-    registry: () -> UploadExtensionRegistry?,
+    registry: () -> ExtensionRegistry,
 ): String {
     val refused = refusalFor(membershipRefusal, registry)
     if (refused != null) return "$CONTRACT_REFUSED$refused\n"
@@ -67,7 +69,7 @@ private fun runInExtension(
 }
 
 /** Writes the run request and re-registers the extension; answers why that failed, or `null`. */
-private fun requestRun(request: String, registry: () -> UploadExtensionRegistry?): String? {
+private fun requestRun(request: String, registry: () -> ExtensionRegistry): String? {
     val requestPath = contractRunFile(RUN_REQUEST_FILE) ?: return "this process has no App Group container"
     contractRunFile(RUN_RESULT_FILE)?.let(::deleteContractRunFile)
     clearRunProgress()
@@ -75,8 +77,8 @@ private fun requestRun(request: String, registry: () -> UploadExtensionRegistry?
     if (!writeContractRunFile(requestPath, request)) return "could not write the run request"
     var enabled: RegistrationOutcome? = null
     runEntry {
-        registry()?.setEnabled(false)
-        enabled = registry()?.setEnabled(true)
+        registry().setEnabled(false)
+        enabled = registrationOutcome(true, registry().setEnabled(true))
     }
     if (enabled == RegistrationOutcome.Applied(enabling = true)) return null
     deleteContractRunFile(requestPath)
@@ -115,11 +117,11 @@ private fun merge(bodies: List<String>): String {
     return Recording(provenance + live, runs.fold(emptyMap()) { all, run -> all + run.blocks }).render()
 }
 
-private fun refusalFor(membershipRefusal: () -> String?, registry: () -> UploadExtensionRegistry?): String? = when {
+private fun refusalFor(membershipRefusal: () -> String?, registry: () -> ExtensionRegistry): String? = when {
     NSProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] != null ->
         "this process is a simulator app; the upload extension is recorded on a device"
     currentPhotoPermission() != GalleryAccess.GRANTED ->
         "the upload-job contract records under a full photo grant; this process holds ${currentPhotoPermission()}"
-    registry() == null -> "this OS carries no upload extension (below iOS 26.1)"
+    registry().isEnabled() == RegistrationState.UNSUPPORTED -> "this OS carries no upload extension (below iOS 26.1)"
     else -> membershipRefusal()
 }

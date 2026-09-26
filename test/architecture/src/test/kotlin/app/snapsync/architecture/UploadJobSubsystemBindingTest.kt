@@ -52,7 +52,7 @@ class UploadJobSubsystemBindingTest {
         ),
         Seam(
             need = "extension registration",
-            path = "adapter/ios/app-only/src/%s/kotlin/app/snapsync/ios/registry/UploadExtensionRegistry.kt",
+            path = "adapter/ios/app-only/src/%s/kotlin/app/snapsync/ios/registry/ExtensionRegistry.kt",
             deviceToken = "PhotoKitExtensionRegistry",
         ),
     )

@@ -27,23 +27,30 @@ import kotlin.test.assertTrue
  */
 class UploadTransitionsTest {
 
-    /** A registration that refuses every write under a partial grant (3311), as the platform does. */
+    /**
+     * A registration that refuses every write under a partial grant (3311), as the platform does — or, where the OS
+     * carries no such mechanism ([supported] false), asks the operating system nothing and reads no record, as the
+     * port's `Unsupported` answer does.
+     */
     private class FakeRegistration(
         private val log: MutableList<String>,
         private val grant: () -> GalleryAccess,
+        private val supported: Boolean,
         var registered: Boolean = false,
     ) : ExtensionRegistration {
         override suspend fun register() {
+            if (!supported) return
             log += "register"
             if (grant() != GalleryAccess.LIMITED) registered = true
         }
 
         override suspend fun deregister() {
+            if (!supported) return
             log += "deregister"
             if (grant() != GalleryAccess.LIMITED) registered = false
         }
 
-        override fun isRegistered(): Boolean = registered
+        override fun isRegistered(): Boolean? = registered.takeIf { supported }
     }
 
     private class FakeEngine(private val log: MutableList<String>) : AppUploadEngine {
@@ -60,13 +67,13 @@ class UploadTransitionsTest {
     ) {
         val log = mutableListOf<String>()
         var pin: UploaderPin? = null
-        val registration = FakeRegistration(log, { grant })
+        val registration = FakeRegistration(log, { grant }, supported = osSupported)
         private val engine = FakeEngine(log)
         val transitions = UploadTransitions(
             configSource = liveMembership(unreadable = { unreadable }) { "E".takeIf { joined } },
             photoAccess = liveGrant { grant },
             extensionRegistrable = { extensionRegistrable(osSupported, grant, pin) },
-            registration = registration.takeIf { osSupported },
+            registration = registration,
             appEngine = { engine },
         )
 

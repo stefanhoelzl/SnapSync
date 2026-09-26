@@ -45,21 +45,29 @@ import kotlin.test.assertTrue
  */
 class ProducerExclusivityTest {
 
-    /** The platform's registration record as measured: unchangeable under a partial grant, unreadable without a full one. */
-    private class PlatformRegistration(var grant: GalleryAccess, var registered: Boolean) : ExtensionRegistration {
+    /**
+     * The platform's registration record as measured: unchangeable under a partial grant, unreadable without a full
+     * one — and, below iOS 26.1 ([supported] false), no record at all: the port answers `Unsupported` and asks the OS
+     * nothing, so [calls] (the operating-system calls) stays empty there.
+     */
+    private class PlatformRegistration(var grant: GalleryAccess, var registered: Boolean, val supported: Boolean) :
+        ExtensionRegistration {
         val calls = mutableListOf<String>()
 
         override suspend fun register() {
+            if (!supported) return
             calls += "register"
             if (grant != GalleryAccess.LIMITED) registered = true
         }
 
         override suspend fun deregister() {
+            if (!supported) return
             calls += "deregister"
             if (grant != GalleryAccess.LIMITED) registered = false
         }
 
-        override fun isRegistered(): Boolean {
+        override fun isRegistered(): Boolean? {
+            if (!supported) return null
             calls += "read"
             return grant == GalleryAccess.GRANTED && registered
         }
@@ -79,13 +87,13 @@ class ProducerExclusivityTest {
         var grant = GalleryAccess.NOT_DETERMINED
         var joined = false
         var pin: UploaderPin? = null
-        val registration = PlatformRegistration(grant, registered)
+        val registration = PlatformRegistration(grant, registered, supported = osSupported)
         val engine = Engine()
         val transitions = UploadTransitions(
             configSource = liveMembership { "E".takeIf { joined } },
             photoAccess = liveGrant { grant },
             extensionRegistrable = { extensionRegistrable(osSupported, grant, pin) },
-            registration = registration.takeIf { osSupported },
+            registration = registration,
             appEngine = { engine },
         )
     }

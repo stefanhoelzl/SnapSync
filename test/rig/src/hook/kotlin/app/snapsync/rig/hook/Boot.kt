@@ -170,7 +170,7 @@ private fun iosHooks() = RigHooks(
         handleReport = SnapSyncRoot.process.processAccount::handle,
     ),
     readGallery = galleryReader(core = { SnapSyncRoot.app }),
-    osExtensionEnabled = osExtensionEnabled(registry = SnapSyncRoot.osExtensionRegistryThunk),
+    osExtensionEnabled = osExtensionEnabled(registry = { SnapSyncRoot.extensionRegistry }),
     // The path decision (and its `null` case) lives in `:test:rig`; this side supplies only the write,
     // which has no branch to make. `Documents/` rather than the App Group deliberately: a simulator host
     // reads it with `xcrun simctl get_app_container <dev> app.snapsync data`, and the device tooling
@@ -179,7 +179,7 @@ private fun iosHooks() = RigHooks(
     contracts = deviceContracts() + appDeviceContracts(refusal = noMembershipRefusal { SnapSyncRoot.host }) +
         extensionContractEntries(
             membershipRefusal = noMembershipRefusal { SnapSyncRoot.host },
-            registry = SnapSyncRoot.osExtensionRegistryThunk,
+            registry = { SnapSyncRoot.extensionRegistry },
         ) +
         simulatorAppContracts(),
     // What this host refuses of the shared vocabulary, built in `:test:rig` (this file may hold no decisions).

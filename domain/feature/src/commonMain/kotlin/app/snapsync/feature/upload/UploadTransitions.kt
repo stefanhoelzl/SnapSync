@@ -72,8 +72,11 @@ class UploadTransitions(
     private val photoAccess: PhotoAccessStatusSource,
     /** The registration fact — `model/extensionRegistrable` over the OS fact, the grant and the rig's switch. */
     private val extensionRegistrable: () -> Boolean,
-    /** The OS-driven registration where this OS carries its selector; `null` below iOS 26.1. */
-    private val registration: ExtensionRegistration?,
+    /**
+     * The OS-driven registration — on every platform; where the OS carries no such mechanism its port answers
+     * `Unsupported` and asks nothing (and [extensionRegistrable] is never true there, so a join never forces it).
+     */
+    private val registration: ExtensionRegistration,
     /** The app-driven engine, obtained at first use (it owns a process-lifetime background session). */
     private val appEngine: () -> AppUploadEngine,
     private val log: Logger = Logger.withTag("UploadTransitions"),
@@ -86,7 +89,7 @@ class UploadTransitions(
      * (the membership entry is not run for it), so a re-scan can never wipe the extension's in-flight jobs.
      */
     suspend fun onJoin() = log.invocation(entryContext, "uploads.onJoin") {
-        if (extensionRegistrable()) registration?.register()
+        if (extensionRegistrable()) registration.register()
         armIfUsable()
     }
 
@@ -120,7 +123,7 @@ class UploadTransitions(
      * caller clears the upload ledger and the configured event afterwards (capability `manage-membership`).
      */
     suspend fun onLeave() = log.invocation(entryContext, "uploads.onLeave") {
-        registration?.deregister()
+        registration.deregister()
         val engine = appEngine()
         engine.disarm()
         engine.cancelTransfers()
@@ -133,15 +136,13 @@ class UploadTransitions(
      */
     private suspend fun compare(deregisterIfOff: Boolean) {
         if (!joined()) return
-        val registration = registration
-        if (registration != null) {
-            val registrable = extensionRegistrable()
-            // The OS's read is trusted only under a full grant; anything else changes nothing.
-            val observed = if (photoAccess.permission.value == GalleryAccess.GRANTED) registration.isRegistered() else null
-            when {
-                registrable && observed == false -> registration.register()
-                deregisterIfOff && !registrable && observed == true -> registration.deregister()
-            }
+        val registrable = extensionRegistrable()
+        // The OS's read is trusted only under a full grant; anything else changes nothing. A platform without the
+        // registration reads `null`, so it changes nothing either.
+        val observed = if (photoAccess.permission.value == GalleryAccess.GRANTED) registration.isRegistered() else null
+        when {
+            registrable && observed == false -> registration.register()
+            deregisterIfOff && !registrable && observed == true -> registration.deregister()
         }
         armIfUsable()
     }
