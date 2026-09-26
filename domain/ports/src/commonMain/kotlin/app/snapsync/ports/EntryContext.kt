@@ -12,7 +12,7 @@ import kotlin.time.TimeSource
  * It is a **port** because the holder it fronts is a process-global mutable — which may not live in
  * `:domain` (law "State and authority": no global mutable state in the core, ever). The concrete
  * holder therefore lives beside the writers that read it synchronously (`:adapter:ios:ext-safe`'s
- * `LogContext` / `IosLogScope`); world and tests inject [NoOp]. This repays the step-5
+ * `LogContext` / `IosEntryContext`); world and tests inject [NoOp]. This repays the step-5
  * violation-in-transit that parked the global in `model/`.
  *
  * "Outermost wins": the first [enter] within a synchronous execution span sets the context; nested
@@ -20,7 +20,7 @@ import kotlin.time.TimeSource
  * bodies run after their launcher returns, instrumentation sets the context *inside* the launched
  * coroutine so it spans the actual async work.
  */
-interface LogScope {
+interface EntryContext {
 
     /**
      * Set [name] as the current context only if none is set (outermost wins). Returns `true` when
@@ -39,7 +39,7 @@ interface LogScope {
     fun current(): String?
 
     /** The no-context implementation for world / tests (and any binary without device logging). */
-    object NoOp : LogScope {
+    object NoOp : EntryContext {
         override fun enter(name: String): Boolean = false
         override fun exit(owned: Boolean) {}
         override fun current(): String? = null
@@ -48,7 +48,7 @@ interface LogScope {
 
 /**
  * Wrap a platform invocation / app entry point / background trigger so it logs enter + exit with
- * its parameters, its result, and its elapsed duration, and sets the ambient [LogScope] for the
+ * its parameters, its result, and its elapsed duration, and sets the ambient [EntryContext] for the
  * duration so downstream lines trace back to it (capability `privacy-security`, D3).
  *
  * - `→ <name>(<params>)` on entry, `← <name> = <result> (<ms>ms)` on success, and a warn
@@ -68,7 +68,7 @@ interface LogScope {
  * synchronous launcher — otherwise the context is restored before the async work runs.
  */
 inline fun <T> Logger.invocation(
-    scope: LogScope,
+    scope: EntryContext,
     name: String,
     params: String = "",
     severity: Severity = Severity.Info,

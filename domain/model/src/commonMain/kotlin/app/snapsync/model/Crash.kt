@@ -33,7 +33,9 @@ data class Crumb(
  * Outbound (`CrashReporter.capture`, `sendDump`): a [message] or a [throwable], [tags] and [contexts].
  * Leaving (`CrashHandlers.onEvent`): the adapter fills in what the event carries by then — the SDK's [formatted]
  * rendering, [params], the [exceptionValues] (one per exception, in order) and the attached [breadcrumbs] — and
- * writes back what the handler returns. A handler reshapes those fields; it does not add or remove exceptions or
+ * writes back what the handler returns. A captured message's text arrives there as [formatted] (measured on the
+ * Sentry SDK: the contract's shaping clauses failed while they read [message] alone), so a handler reads and
+ * shapes both. A handler reshapes those fields; it does not add or remove exceptions or
  * breadcrumbs, and the adapter writes them back positionally.
  */
 data class CrashEvent(

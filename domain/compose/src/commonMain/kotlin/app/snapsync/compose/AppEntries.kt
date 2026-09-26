@@ -1,5 +1,6 @@
 package app.snapsync.compose
 
+import app.snapsync.ports.EntryContext
 import app.snapsync.feature.upload.TailTrigger
 import app.snapsync.model.pushEventId
 import app.snapsync.model.runCatchingCancellable
@@ -85,6 +86,7 @@ internal class AppEntries(
     // background launch must assemble no more of the graph than its wake needs (the `AppCore` contract).
     private val app: AppCore get() = core()
     private val ports: AppPorts get() = app.ports
+    private val entry: EntryContext get() = app.process.entryContext
     private val scope: CoroutineScope get() = app.scope
     private val log get() = ports.log
 
@@ -93,7 +95,7 @@ internal class AppEntries(
 
     private fun wake(label: String) = Wake(label, ports.backgroundTime, app.tail.runner, log)
 
-    override fun onForeground() = log.invocation(ports.logScope, "onForeground", params = app.foregroundParams()) {
+    override fun onForeground() = log.invocation(entry, "onForeground", params = app.foregroundParams()) {
         hooks.markActive()
         app.tail.foregrounded(true)
         // Held like a background wake's, so a tail the member leaves behind by switching away stops on Apple's signal
@@ -110,7 +112,7 @@ internal class AppEntries(
         Unit
     }
 
-    override fun onBackground() = log.invocation(ports.logScope, "onBackground") {
+    override fun onBackground() = log.invocation(entry, "onBackground") {
         app.tail.foregrounded(false)
         scope.launch {
             app.backgroundFlow.run()
@@ -120,17 +122,17 @@ internal class AppEntries(
     }
 
     override fun onOpenUrl(url: String) =
-        log.invocation(ports.logScope, "onOpenUrl", params = "url=$url") { hooks.openUrl(url) }
+        log.invocation(entry, "onOpenUrl", params = "url=$url") { hooks.openUrl(url) }
 
     override fun onPushToken(hex: String) =
         // No host assembly: the registration collector is installed as the graph is composed — which reaching
         // `ports` above has done — so a token delivered in a background wake installs no permission collector.
-        log.invocation(ports.logScope, "onPushToken", params = "hex=${hex.take(TOKEN_PREFIX)}…") {
+        log.invocation(entry, "onPushToken", params = "hex=${hex.take(TOKEN_PREFIX)}…") {
             hooks.deliverPushToken(hex)
         }
 
     override fun onSilentPush(payload: Map<Any?, *>, completion: () -> Unit) =
-        log.invocation(ports.logScope, "onSilentPush") {
+        log.invocation(entry, "onSilentPush") {
             // No host assembly (decision record `changes/own-work-per-wake`): everything the push's own work needs is
             // built by the composed graph, and a cold background start installs no permission-grant subscription.
             val wake = wake("onSilentPush")
@@ -139,9 +141,9 @@ internal class AppEntries(
             scope.launch {
                 completions.releaseAfter {
                     log.invocation(
-                        ports.logScope,
+                        entry,
                         "onSilentPush.run",
-                        params = "protectedData=${ports.protectedStorage.readable()}",
+                        params = "protectedData=${ports.processInfo.protectedDataAvailable()}",
                     ) {
                         app.silentPushFlow.run(payload)
                     }
@@ -155,7 +157,7 @@ internal class AppEntries(
         }
 
     override fun onBackgroundTask(identifier: String, completion: () -> Unit) =
-        log.invocation(ports.logScope, "onBackgroundTask", params = "identifier=$identifier") {
+        log.invocation(entry, "onBackgroundTask", params = "identifier=$identifier") {
             when (identifier) {
                 hooks.uploadHeartbeatTaskId -> runHeartbeat(identifier, completion)
                 // Registered in the shell but unknown here: complete it, and say so — a task held forever costs the
@@ -168,7 +170,7 @@ internal class AppEntries(
         }
 
     override fun onBackgroundTaskTimeUp(identifier: String) =
-        log.invocation(ports.logScope, "onBackgroundTaskTimeUp", params = "identifier=$identifier") {
+        log.invocation(entry, "onBackgroundTaskTimeUp", params = "identifier=$identifier") {
             // Answered here and nowhere else: the shell forwards the OS's expiration handler and completes nothing
             // (capability `sync-status`, "Background tasks are forwarded by the identifier the OS delivered").
             if (!taskExpiries.expire(identifier)) {
@@ -177,7 +179,7 @@ internal class AppEntries(
         }
 
     override fun onBackgroundTransfers(channel: String, completion: () -> Unit) {
-        log.invocation(ports.logScope, "onBackgroundTransfers", params = "channel=$channel") {
+        log.invocation(entry, "onBackgroundTransfers", params = "channel=$channel") {
             // The background time first: no later than the handover, so the wait for the session's drain report is
             // covered too, and a report that never comes ends in Apple's expiry rather than a handler held forever.
             val wake = wake("onBackgroundTransfers($channel)")
@@ -192,7 +194,8 @@ internal class AppEntries(
             scope.launch {
                 // The protected-storage state for this wake (capability `sync-status`), recorded one dispatch
                 // later: the read may have to hop threads, and the routing above must not wait for it.
-                log.i { "onBackgroundTransfers(channel=$channel): protectedData=${ports.protectedStorage.readable()}" }
+                val protectedData = ports.processInfo.protectedDataAvailable()
+                log.i { "onBackgroundTransfers(channel=$channel): protectedData=$protectedData" }
                 app.prelude()
                 // The wake's own work is the session's: its deliveries, recorded as they arrive, and its drain report,
                 // which releases the handler. The rest is the tail's.
@@ -219,7 +222,7 @@ internal class AppEntries(
         scope.launch {
             try {
                 completions.releaseAfter {
-                    log.invocation(ports.logScope, "runUploadHeartbeat") {
+                    log.invocation(entry, "runUploadHeartbeat") {
                         app.prelude()
                         // A task whose time is already up requests no tail: a stop while none runs is a no-op. A tail
                         // that fails is contained — the task is still completed, and the next wake retries.

@@ -15,7 +15,6 @@ import app.snapsync.model.deletesAt
 import app.snapsync.model.captureCutoff
 import app.snapsync.ports.ConfigSource
 import app.snapsync.ports.ConfigStore
-import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.model.GalleryAccess
 import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.model.Layer
@@ -42,7 +41,7 @@ import kotlinx.coroutines.flow.asStateFlow
  * The single mutation path for the harness's stand-in state: every display-override
  * button goes through a named method here, never an inline mutation in a composable.
  * Holds three cells (permission, config, sync) plus the armed request outcome, and implements
- * the stand-in sources and the fake [PhotoAccessRequester].
+ * the stand-in sources.
  */
 class PanelController {
     // The harness knows its truth synchronously, so it seeds Ready and never shows Loading.
@@ -119,14 +118,6 @@ class PanelController {
         configState.value = if (present) CANNED_CONFIG else null
     }
 
-    val requester: PhotoAccessRequester = object : PhotoAccessRequester {
-        override fun openSettings() {
-            // The fake can't open anything: play "the user in Settings" with the
-            // permission presets instead.
-            println("openSettings() — simulate the Settings visit via the Permission presets")
-        }
-    }
-
     /**
      * The forge's command bundle: every command stated. The forge renders forged state, so the domain
      * commands are inert and the platform ones print what a device would have done — except the
@@ -149,7 +140,8 @@ class PanelController {
         requestAccess = {
             permissionState.value = if (armedGrants.value) GalleryAccess.GRANTED else GalleryAccess.DENIED
         },
-        openSettings = requester::openSettings,
+        // The harness can't open anything: play "the user in Settings" with the permission presets instead.
+        openSettings = { println("openSettings() — simulate the Settings visit via the Permission presets") },
         openLink = { url -> println("openLink → $url") },
         // Same shape as openSettings: there is no limited-library picker off device. The forge renders state, so
         // the picker's only observable effect here is that the tap happened.

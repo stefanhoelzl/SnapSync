@@ -73,7 +73,7 @@ model  <-  ports  <-  services  <-  feature  <-  flow  <-  compose
 |---|---|---|
 | `model/` | vocabulary, pure domain services and codecs, `UserCommands`/`UserQueries` bundle types (and the `EventCreator` command), logging helpers, `UiState`, and **every pure-data type a port carries** | nothing project-internal |
 | `ports/` | every port interface, outbound and inbound (`PlatformEntries`, `ExtensionEntries`), plus port-adjacent logic not yet re-homed (`resolveOrMint`, `runProcessCycle`, the `CycleResult` raw-value mapping, …) | `model/` |
-| `services/` | the shared capabilities built over the thin ports: what a store holds, when it is opened, what a failure means. Today the storage services (`LedgerService`, `DownloadService`, `SuppressionService`) and their SQLDelight databases (the `.sq` files and generated code live here, so the zone's compile boundary covers them), and the gallery services (`GalleryDiscovery`, `GalleryAssetPresence`, `GalleryCandidateSource`, `GalleryAlbums`), and the process's crash reporting (`CrashReporting`: whether the build reports, the handlers that shape what leaves, the dump; `ProcessAccount`: what a process-metric report does). Each still implements its transitional interface in `ports/` | `model/`, `ports/` |
+| `services/` | the shared capabilities built over the thin ports: what a store holds, when it is opened, what a failure means. Today the storage services (`LedgerService`, `DownloadService`, `SuppressionService`) and their SQLDelight databases (the `.sq` files and generated code live here, so the zone's compile boundary covers them), and the gallery services (`GalleryDiscovery`, `GalleryAssetPresence`, `GalleryCandidateSource`, `GalleryAlbums`), and the process's crash reporting (`CrashReporting`: whether the build reports, the handlers that shape what leaves, the dump; `ProcessAccount`: what a process-metric report does), and the process's log writer (`SinkLogWriter`: one line format, every `LogSink`). Each still implements its transitional interface in `ports/` | `model/`, `ports/` |
 | `feature/` | business rules, one package per feature, mutually blind. A type consumed outside `feature/` lives in that feature's `readmodel` package (`feature/<feature>/readmodel/`) — the package is the definition of a read-model | `model/`, `ports/`, `services/` |
 | `presentation/` | the UI-state reduction (`StatusContainerHost`, reducing into `model/`'s `UiState`) | `model/`, and `feature/` read-model packages only |
 | `flow/` | the OS-callback trigger flows (`Foreground`, `Background`, `SilentPush`, `Provision`): ordering only | `model/`, `feature/` (never `ports/`) |
@@ -141,7 +141,7 @@ One line each. The authority is the named gate. Gates live in `:test:architectur
 
 | law | enforced by |
 |---|---|
-| Anything touching an external system (time, files, network, platform) goes through a port in `ports/`, named for the **need**, never the technology | **review** (partly the compiler: `ports/` cannot import Ktor, nor any of SQLDelight but its runtime interfaces, which `Databases` carries) |
+| Anything touching an external system (time, files, network, platform) goes through a port in `ports/`, named for the **need**, never the technology. The process-level ones are one external system each: `CrashReporter`, `ProcessMetrics`, `LogSink`, `Clock` (now and the device zone), `ProcessInfo` (protected-data availability, `UNKNOWN` where it cannot be asked), `SystemUi` (share sheet, open a URL, the app's Settings page) and `EntryContext` (the ambient entry-point seam; a thread-scoped variant for callbacks that must not label concurrent work) | **review** (partly the compiler: `ports/` cannot import Ktor, nor any of SQLDelight but its runtime interfaces, which `Databases` carries) |
 | A storage port is one external system and decides nothing (`Databases`: open by name, read-write or read-only; `Files`: read, tail, write, delete, exists, locate within an area; `Preferences`: get, set, remove). What a store holds, when it opens and what a failure means is a service's, in `services/` | **review** |
 | The photo library is one thin port: `GalleryReader` (both processes: assets by policy or id, resources by id, albums, album members, create, add) and `Gallery` (the app: plus the access request, the selection picker, the partial grant's selection observer, the import and the change token). It answers what the platform shows, and `NotReadable` — never an empty answer — when no grant lets the process read. Whether a walk is authoritative for deletion, which grant may say a photo is gone and which albums are denied are the gallery services' (`services/`). Asset ids cross in one form, opaque to the core | `GalleryReaderContract`, `GalleryContract`, `GalleryImportContract` (live on `IOS_SIM_APP`, the no-grant state on `IOS_SIM_KEXE`) + `GalleryServicesTest` |
 | The origin exclusions' tuning — the two resolution floors and the album denylist — is one `SelectionCalibration` value in `model/`, product policy rather than a platform fact: no composition supplies its own, so the app and the extension cannot disagree | **review** |
@@ -204,7 +204,7 @@ One line each. The authority is the named gate. Gates live in `:test:architectur
 
 | law | enforced by |
 |---|---|
-| One shared composition: every root calls `snapSyncProcess` first — one crash reporter and one process-metrics source per process, crash reporting started before any other wiring — and hands its `ProcessServices` to `snapSyncHost` (app) or `uploadCore` (extension), which require it. A root supplies ports only and never builds the status host or installs subscriptions; it installs the log writers the process services hand it, because Kermit's writer list is a process global | structural (one function) + **review**. The wiring graph is not unit-tested. It is smoke-tested by the world and the integration surface |
+| One shared composition: every root calls `snapSyncProcess` first — it installs the log writers and the boot banner, then starts crash reporting before any other wiring, then listens to the process metrics; one crash reporter, one process-metrics source, one `Files`, one `Clock` and one `EntryContext` per process — and hands its `ProcessServices` to `snapSyncHost` (app) or `uploadCore` (extension), which require it. A root supplies ports only and never builds the status host or installs subscriptions. Only a composition that owns the global logger installs writers (a root does; the JVM world, one of many in a JVM, does not) | structural (one function) + **review**. The wiring graph is not unit-tested. It is smoke-tested by the world and the integration surface |
 | A platform-mechanism decision (today: may the upload extension be registered, `extensionRegistrable`) is a pure, total, unit-tested function of runtime state, re-evaluated when an input changes. Target-fixed facts are not inputs | the compiler (exhaustive `when`) + `ProducerExclusivityTest` (no cell true below iOS 26.1) |
 | Upload transitions stop in-flight work only at a leave (no deregister or cancel on revoke/reconfigure/launch; no registration write under a partial grant; enable always goes disable→enable) | `ProducerExclusivityTest` |
 | Shells (`:app:ios`, `:app:ios:extension`, `:app:ios:forge`, the host `:domain:host` — a core zone, but wiring every root calls — rig-contributed shell source) hold zero decisions | `detektAppShell` (cyclomatic threshold 2, gating) + `KotlinShellGuardTest` (roots exist, `@Suppress` inventory exact both ways) |
@@ -878,12 +878,13 @@ model ← ports ← services ← feature ← flow ← compose
 - Gallery and GalleryReader (shipped in 11d; `export` of a resource to a file waits for the transfer ports in 11f).
 - Upload, ExtensionRegistry, Download and Wake.
 - Files, Databases, Preferences, SecureStore and PlatformDeviceId.
-- DeviceIntegrity (11c, shipped), CrashReporter, ProcessMetrics, SystemUi, Clock, ProcessInfo, LogSink and EntryContext.
+- DeviceIntegrity (11c, shipped). (The process ports — CrashReporter, ProcessMetrics, SystemUi, Clock, ProcessInfo,
+  LogSink and EntryContext — landed in 11e and are described above.)
 - PushNotifications, Links, Lifecycle, ExtensionHost, Ui and DevControls.
 
-Event ports extend `Listenable<H> { fun listen(handlers: H) }` — the `Gallery` since 11d (section 2, "Events arrive
-through `listen`"). Each composition calls `listen` once per adapter. It only registers the handlers: the core and the
-status host stay lazy. Once-only deliveries are
+Event ports extend `Listenable<H> { fun listen(handlers: H) }` — the `Gallery` since 11d, `CrashReporter` and
+`ProcessMetrics` since 11e (section 2, "Events arrive through `listen`"). Each composition calls `listen` once per
+adapter. It only registers the handlers: the core and the status host stay lazy. Once-only deliveries are
 persisted inline on the delivering thread.
 
 **Rules that land with the phases:**
@@ -897,6 +898,6 @@ persisted inline on the delivering thread.
   the denylist mean the same on every platform.
 
 **Phases.** 11a structure (shipped) → 11b storage and `:domain:services` (shipped) → 11c backend and integrity
-(shipped), 11d gallery (shipped) and 11e process ports, in parallel → 11f transfer → 11g entry surface. 11i (raw asset
-ids) follows 11c, 11d and 11f, then comes 11h (the mock mix chosen at launch). Phases 11e–11g are being designed again
-against §10's wake model.
+(shipped), 11d gallery (shipped) and 11e process ports (shipped), in parallel → 11f transfer → 11g entry surface. 11i
+(raw asset ids) follows 11c, 11d and 11f, then comes 11h (the mock mix chosen at launch). Phases 11f–11g are being
+designed again against §10's wake model.

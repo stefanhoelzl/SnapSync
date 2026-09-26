@@ -14,6 +14,7 @@ import app.snapsync.model.MintRequest
 import app.snapsync.model.Proof
 import app.snapsync.model.RenewRequest
 import app.snapsync.model.Reply
+import app.snapsync.fake.fixedClock
 import app.snapsync.model.TokenOutcome
 import app.snapsync.model.UnionAsset
 import app.snapsync.ports.AttestStore
@@ -126,7 +127,7 @@ private fun attestation(
     client: FakeClient = FakeClient(),
     store: AttestStore = InMemoryAttestStore(),
 ) = Triple(
-    DeviceAttestation(key, client, store, { DEVICE }, clock = { kotlin.time.Instant.fromEpochSeconds(NOW_SECONDS) }),
+    DeviceAttestation(key, client, store, { DEVICE }, clock = fixedClock(kotlin.time.Instant.fromEpochSeconds(NOW_SECONDS))),
     client,
     store,
 )
@@ -615,7 +616,7 @@ class DeviceAttestationTest {
         }
         val attest = DeviceAttestation(
             FakeKey(), refusing, InMemoryAttestStore(), { DEVICE },
-            clock = { kotlin.time.Instant.fromEpochSeconds(NOW_SECONDS) }, versionGate = gate,
+            clock = fixedClock(kotlin.time.Instant.fromEpochSeconds(NOW_SECONDS)), versionGate = gate,
         )
 
         attest.refresh()
@@ -645,7 +646,7 @@ class DeviceAttestationTest {
         val store = InMemoryAttestStore(token = token(1), keyId = "k")
         val attest = DeviceAttestation(
             key, client, store, { error("keychain locked") },
-            clock = { kotlin.time.Instant.fromEpochSeconds(NOW_SECONDS) },
+            clock = fixedClock(kotlin.time.Instant.fromEpochSeconds(NOW_SECONDS)),
         )
 
         assertFalse(attest.ensureFresh())
@@ -663,7 +664,7 @@ class DeviceAttestationTest {
         val store = InMemoryAttestStore(token = token(1), keyId = "k")
         val attest = DeviceAttestation(
             FakeKey(), client, store, { DEVICE },
-            clock = { kotlin.time.Instant.fromEpochSeconds(NOW_SECONDS) },
+            clock = fixedClock(kotlin.time.Instant.fromEpochSeconds(NOW_SECONDS)),
         )
 
         assertFalse(attest.ensureFresh())

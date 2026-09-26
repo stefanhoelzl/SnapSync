@@ -5,7 +5,7 @@ import app.snapsync.ports.ConfigSource
 import app.snapsync.model.MembershipRead
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.grantsPhotoAccess
-import app.snapsync.ports.LogScope
+import app.snapsync.ports.EntryContext
 import app.snapsync.ports.invocation
 import co.touchlab.kermit.Logger
 
@@ -77,7 +77,7 @@ class UploadTransitions(
     /** The app-driven engine, obtained at first use (it owns a process-lifetime background session). */
     private val appEngine: () -> AppUploadEngine,
     private val log: Logger = Logger.withTag("UploadTransitions"),
-    private val logScope: LogScope = LogScope.NoOp,
+    private val entryContext: EntryContext = EntryContext.NoOp,
 ) {
 
     /**
@@ -85,7 +85,7 @@ class UploadTransitions(
      * the one transition allowed to repair a stale record. A re-provision of the joined event never reaches here
      * (the membership entry is not run for it), so a re-scan can never wipe the extension's in-flight jobs.
      */
-    suspend fun onJoin() = log.invocation(logScope, "uploads.onJoin") {
+    suspend fun onJoin() = log.invocation(entryContext, "uploads.onJoin") {
         if (extensionRegistrable()) registration?.register()
         armIfUsable()
     }
@@ -94,32 +94,32 @@ class UploadTransitions(
      * A reconfigure, in any direction. The registration is not touched — it spans the membership — and the app
      * engine is kicked; the selection policy decides whether anything uploads (capability `manage-membership`).
      */
-    suspend fun onReconfigure() = log.invocation(logScope, "uploads.onReconfigure") {
+    suspend fun onReconfigure() = log.invocation(entryContext, "uploads.onReconfigure") {
         if (joined()) armIfUsable()
     }
 
     /** A real change of the photo grant — never the permission `StateFlow`'s replayed first value. */
     suspend fun onPermissionChanged() =
-        log.invocation(logScope, "uploads.onPermissionChanged") { compare(deregisterIfOff = false) }
+        log.invocation(entryContext, "uploads.onPermissionChanged") { compare(deregisterIfOff = false) }
 
     /**
      * The rig's uploader switch was set or cleared (rig builds only). Compared, and immediate: the extension
      * cannot read the switch, so turning it off must deregister it now.
      */
     suspend fun onOverrideChanged() =
-        log.invocation(logScope, "uploads.onOverrideChanged") { compare(deregisterIfOff = true) }
+        log.invocation(entryContext, "uploads.onOverrideChanged") { compare(deregisterIfOff = true) }
 
     /**
      * Host assembly — the app launched with its UI. Compared, so the extension's in-flight jobs survive a launch.
      * A cold background launch never reaches here.
      */
-    suspend fun onLaunch() = log.invocation(logScope, "uploads.onLaunch") { compare(deregisterIfOff = false) }
+    suspend fun onLaunch() = log.invocation(entryContext, "uploads.onLaunch") { compare(deregisterIfOff = false) }
 
     /**
      * A leave, or a switch leaving the previous membership: the one transition that stops in-flight work. The
      * caller clears the upload ledger and the configured event afterwards (capability `manage-membership`).
      */
-    suspend fun onLeave() = log.invocation(logScope, "uploads.onLeave") {
+    suspend fun onLeave() = log.invocation(entryContext, "uploads.onLeave") {
         registration?.deregister()
         val engine = appEngine()
         engine.disarm()

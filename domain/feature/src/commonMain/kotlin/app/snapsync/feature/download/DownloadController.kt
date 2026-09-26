@@ -14,7 +14,7 @@ import app.snapsync.model.AssetRef
 import app.snapsync.ports.DownloadStore
 import app.snapsync.model.PlannedAsset
 import app.snapsync.model.PlannedResource
-import app.snapsync.ports.LogScope
+import app.snapsync.ports.EntryContext
 import app.snapsync.ports.StagedBytes
 import app.snapsync.model.StagedResource
 import app.snapsync.model.UnconfirmedImport
@@ -66,7 +66,7 @@ class DownloadController(
     // none: a permissive default on a safety gate is how a caller ships without one.
     private val downloadEnabled: () -> Boolean?,
     private val log: Logger = Logger.withTag("DownloadController"),
-    private val logScope: LogScope = LogScope.NoOp,
+    private val entryContext: EntryContext = EntryContext.NoOp,
 ) {
 
     // Serializes all store-mutating flows. Both join (`provisionEvent`) and foreground fire `reconcile`,
@@ -143,7 +143,7 @@ class DownloadController(
      * tail's, running concurrently with it at foreground, which the single-flight tail exists to rule out (decision
      * record `changes/own-work-per-wake`, D1).
      */
-    suspend fun reconcile(eventId: String) = log.invocation(logScope, "reconcile", params = "eventId=$eventId") {
+    suspend fun reconcile(eventId: String) = log.invocation(entryContext, "reconcile", params = "eventId=$eventId") {
         // `!= true` covers BOTH non-answers: an upload-only membership (`false`) and no membership at all
         // (`null`). Neither enables the arm, and neither is inferred from the other.
         if (downloadEnabled() != true) {
@@ -199,7 +199,7 @@ class DownloadController(
      * staged by the wake, imported by the tail").
      */
     suspend fun onResourceStaged(ref: AssetRef, resourceKey: String, stagedPath: String) =
-        log.invocation(logScope, "onResourceStaged", params = "key=$resourceKey") {
+        log.invocation(entryContext, "onResourceStaged", params = "key=$resourceKey") {
             mutex.withLock { store.markStaged(ref, resourceKey, stagedPath) }
         }
 
@@ -220,7 +220,7 @@ class DownloadController(
     suspend fun importReady(
         stopRequested: () -> Boolean = { false },
         awaitImport: suspend (import: suspend () -> Unit) -> Unit = { it() },
-    ) = log.invocation(logScope, "importReady") {
+    ) = log.invocation(entryContext, "importReady") {
         drainImportable(stopRequested, awaitImport)
     }
 
@@ -235,7 +235,7 @@ class DownloadController(
      * Invoked once per process, from the composition's startup path, and from nowhere else — see
      * [adjudicateUnconfirmed] for why every other call site was removed.
      */
-    suspend fun sweepInterruptedImports() = log.invocation(logScope, "sweepInterruptedImports") {
+    suspend fun sweepInterruptedImports() = log.invocation(entryContext, "sweepInterruptedImports") {
         adjudicateUnconfirmed()
         drainImportable()
     }
@@ -474,7 +474,7 @@ class DownloadController(
      * revert-proofed at all.
      */
     private suspend fun importOne(claimed: ClaimedImport) =
-        log.invocation(logScope, "import", params = "asset=${claimed.ref.sourceAssetId}") {
+        log.invocation(entryContext, "import", params = "asset=${claimed.ref.sourceAssetId}") {
             val ref = claimed.ref
             // No try/catch: a throw leaves the ref claimed and propagates. See the KDoc above.
             val result = importer.import(ImportRequest(ref, claimed.resources, claimed.creationDate, eventAlbum()))
@@ -577,7 +577,7 @@ class DownloadController(
      * predates per-asset release kept its orphaned files. See the trigger's own note for why foreground
      * and not a background task.
      */
-    suspend fun releaseSettledBytes() = log.invocation(logScope, "releaseSettledBytes") {
+    suspend fun releaseSettledBytes() = log.invocation(entryContext, "releaseSettledBytes") {
         val paths = runCatchingCancellable { store.stagedPathsOfImportedAssets() }.getOrDefault(emptyList())
         if (paths.isEmpty()) return@invocation
         log.i { "releasing ${paths.size} staged file(s) of already-imported assets" }
@@ -596,7 +596,7 @@ class DownloadController(
      * one row can outlive it — and that is correct: the photo IS in the library, and the handle is the only
      * thing keeping it out of the upload universe.
      */
-    suspend fun onLeaveOrSwitch() = log.invocation(logScope, "onLeaveOrSwitch") {
+    suspend fun onLeaveOrSwitch() = log.invocation(entryContext, "onLeaveOrSwitch") {
         mutex.withLock {
             jobs.cancelAll()
             releaseAndPruneLocked()
@@ -613,7 +613,7 @@ class DownloadController(
      * write lands on nothing and the created asset is uploaded back into the event. The reset suspends
      * between its steps, so that window is wide.
      */
-    suspend fun onDurableStateReset() = log.invocation(logScope, "onDurableStateReset") {
+    suspend fun onDurableStateReset() = log.invocation(entryContext, "onDurableStateReset") {
         mutex.withLock { releaseAndPruneLocked() }
     }
 

@@ -102,8 +102,8 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `PlatformEntries` | `:domain:ports` | `:app:ios` SnapSyncRoot; `:domain:compose` AppEntries | no |
 | `PrefRead` | `:domain:model` | `:domain:model` Absent, Unavailable, Value | no |
 | `Preferences` | `:domain:ports` | `:adapter:generic:fake` InMemoryPreferences; `:adapter:ios:ext-safe` IosPreferences | yes |
+| `ProcessInfo` | `:domain:ports` | `:adapter:generic:fake` InMemoryProcessInfo; `:adapter:ios:app-only` IosProcessInfo | yes |
 | `ProcessMetrics` | `:domain:ports` | `:adapter:generic:fake` HeldReports; `:adapter:ios:app-only` MetricKitProcessMetrics | no |
-| `ProtectedStorage` | `:domain:ports` | `:adapter:generic:fake` InMemoryProtectedStorage; `:adapter:ios:app-only` IosProtectedStorage | yes |
 | `PushReceiver` | `:domain:ports` | `:domain:feature` DownloadPushReceiver | no |
 | `PushRegistrationRecord` | `:domain:ports` | `:adapter:generic:fake` InMemoryPushRegistrationRecord; `:adapter:ios:app-only` IosPushRegistrationRecord; `:domain:feature` FakeRecord | yes |
 | `PushTokenPublisher` | `:domain:services` | `:domain:feature` FakePushTokenPublisher; `:domain:services` BackendPushTokenPublisher | yes |
@@ -134,7 +134,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `SyncHealth` | `:domain:model` | `:domain:model` InSync, Loading, NeedsAccess, NotStarted, Syncing, Unattested | no |
 | `SyncStatus` | `:domain:model` | `:domain:model` Loading, Ready | no |
 | `SyncStatusSource` | `:domain:feature` | `:domain:presentation` ConstSyncStatusSource, FakeSync, FakeSyncStatusSource, IdleSync | yes |
-| `TimeZoneSource` | `:domain:ports` | `:adapter:generic:app` SystemTimeZone | no |
+| `SystemUi` | `:domain:ports` | `:adapter:ios:app-only` IosSystemUi | no |
 | `TokenOutcome` | `:domain:model` | `:domain:model` ChallengeStale, Minted, NotAttested, Refused, Unreachable | no |
 | `TransferRecord` | `:domain:ports` | — | no |
 | `UploadDiscovery` | `:domain:ports` | `:domain:feature` FakePlatform, Library, RecordingDelegate, SelectionScopedDiscovery, WalkMemo; `:domain:services` GalleryDiscovery; `:test:world` FakeUploadDiscovery | yes |

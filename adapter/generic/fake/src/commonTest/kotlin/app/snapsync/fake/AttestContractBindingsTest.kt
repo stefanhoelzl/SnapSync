@@ -7,14 +7,15 @@ import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.DeviceIntegrityContract
 import app.snapsync.contracts.DeviceIntegrityState
 import app.snapsync.contracts.Entered
-import app.snapsync.contracts.ProtectedStorageContract
-import app.snapsync.contracts.ProtectedStorageState
+import app.snapsync.contracts.ProcessInfoContract
+import app.snapsync.contracts.ProcessInfoState
 import app.snapsync.contracts.currentHost
 import app.snapsync.contracts.verify
 import app.snapsync.services.trust.CachedAttestStore
 import app.snapsync.ports.AttestStore
 import app.snapsync.ports.DeviceIntegrity
-import app.snapsync.ports.ProtectedStorage
+import app.snapsync.ports.ProcessInfo
+import app.snapsync.model.Availability
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlin.test.Test
 
@@ -75,16 +76,16 @@ class AttestContractBindingsTest {
     @Test
     fun `the in-memory token copy keeps the AttestStore contract`() = verify(AttestStoreContract, cachedStore)
 
-    private val protectedStorage = object : Binding<ProtectedStorageState, ProtectedStorage> {
+    private val processInfo = object : Binding<ProcessInfoState, ProcessInfo> {
         override val host = currentHost
         override val kind = BindingKind.Fake
-        override val reaches = setOf(ProtectedStorageState.UNLOCKED)
+        override val reaches = setOf(ProcessInfoState.UNLOCKED)
 
-        override fun create(state: ProtectedStorageState, clauseId: String): Entered<ProtectedStorage> =
-            Entered.Ready(inMemoryProtectedStorage(MutableStateFlow(true)))
+        override fun create(state: ProcessInfoState, clauseId: String): Entered<ProcessInfo> =
+            Entered.Ready(inMemoryProcessInfo(MutableStateFlow(Availability.AVAILABLE)))
     }
 
     @Test
-    fun `the in-memory protected storage satisfies the ProtectedStorage contract`() =
-        verify(ProtectedStorageContract, protectedStorage)
+    fun `the in-memory process info satisfies the ProcessInfo contract`() =
+        verify(ProcessInfoContract, processInfo)
 }

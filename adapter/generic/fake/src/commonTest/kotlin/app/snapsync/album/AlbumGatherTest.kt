@@ -20,7 +20,7 @@ import app.snapsync.model.AssetRef
 import app.snapsync.ports.ConfigSource
 import app.snapsync.ports.DownloadStore
 import app.snapsync.services.backend.EventUnionSource
-import app.snapsync.ports.LogScope
+import app.snapsync.ports.EntryContext
 import app.snapsync.model.PlannedResource
 import app.snapsync.model.UnionAsset
 import kotlinx.coroutines.CompletableDeferred
@@ -96,7 +96,7 @@ class AlbumGatherTest {
             photoAccess = liveGrant { if (this.granted) GalleryAccess.GRANTED else GalleryAccess.DENIED },
             coordinator = AlbumCoordinator(manager, inMemoryAlbumMapStore(mapOf("E2" to "ALBUM-2"))),
             scope = scope,
-            logScope = LogScope.NoOp,
+            entryContext = EntryContext.NoOp,
             batchSize = 2,
         )
 

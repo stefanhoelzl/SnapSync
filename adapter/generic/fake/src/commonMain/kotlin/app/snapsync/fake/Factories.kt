@@ -17,7 +17,8 @@ import app.snapsync.ports.CrashReporter
 import app.snapsync.ports.DownloadStore
 import app.snapsync.ports.GalleryStatusSource
 import app.snapsync.ports.LedgerStore
-import app.snapsync.ports.ProtectedStorage
+import app.snapsync.ports.ProcessInfo
+import app.snapsync.model.Availability
 import app.snapsync.ports.PushRegistrationRecord
 import app.snapsync.ports.StagedBytes
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -122,5 +123,6 @@ fun inMemoryStagedBytes(
 ): StagedBytes = InMemoryStagedBytes(files, root)
 
 /** [readable] is the caller's own cell: a device unlocked since boot by default. */
-fun inMemoryProtectedStorage(readable: MutableStateFlow<Boolean> = MutableStateFlow(true)): ProtectedStorage =
-    InMemoryProtectedStorage(readable)
+fun inMemoryProcessInfo(
+    protectedData: MutableStateFlow<Availability> = MutableStateFlow(Availability.AVAILABLE),
+): ProcessInfo = InMemoryProcessInfo(protectedData)

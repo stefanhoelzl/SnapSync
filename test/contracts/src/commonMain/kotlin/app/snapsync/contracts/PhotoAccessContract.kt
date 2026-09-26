@@ -1,7 +1,6 @@
 package app.snapsync.contracts
 
 import app.snapsync.model.GalleryAccess
-import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.ports.PhotoAccessStatusSource
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -15,17 +14,17 @@ enum class PhotoAccessState {
     GRANTED,
 }
 
-/** The photo-access adapter as a clause receives it: one adapter implements both ports on every platform. */
-class PhotoAccess(val status: PhotoAccessStatusSource, val requester: PhotoAccessRequester)
+/** The photo-access adapter as a clause receives it: the permission status. */
+class PhotoAccess(val status: PhotoAccessStatusSource)
 
 /**
  * What every photo-access adapter promises (`docs/architecture.md` — this list IS the specification of
  * the ports' obligations).
  *
- * Only the status is contracted: `openSettings` hands the user to another surface, and what the user chooses
- * there is read back only afterwards, through the status — no outcome a run can reach (`docs/architecture.md`,
- * "An authorization the process cannot give itself is a precondition of the run"). Asking for access is the
- * gallery's, contracted by `GalleryContract`.
+ * Only the status is contracted: `SystemUi.openSettings` hands the user to another surface, and what the user
+ * chooses there is read back only afterwards, through the status — no outcome a run can reach
+ * (`docs/architecture.md`, "An authorization the process cannot give itself is a precondition of the run").
+ * Asking for access is the gallery's, contracted by `GalleryContract`.
  */
 object PhotoAccessContract : Contract<PhotoAccessState, PhotoAccess>("PhotoAccess") {
 

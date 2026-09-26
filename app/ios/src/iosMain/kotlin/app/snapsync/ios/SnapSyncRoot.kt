@@ -32,7 +32,6 @@ import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.push.IosPushRegistrationRecord
 import app.snapsync.time.SystemClock
-import app.snapsync.time.SystemTimeZone
 import app.snapsync.ports.PushTokenSource
 import app.snapsync.metrics.MetricKitProcessMetrics
 import app.snapsync.membership.darwinHttpClient
@@ -41,13 +40,11 @@ import app.snapsync.ports.AlbumMapStore
 import app.snapsync.preferences.IosPreferences
 import app.snapsync.services.album.AlbumMapService
 import app.snapsync.services.staging.StagingService
-import app.snapsync.link.IosLinkOpener
-import app.snapsync.ports.PlatformHandoff
+import app.snapsync.systemui.IosSystemUi
 import app.snapsync.ports.PlatformEntries
 import app.snapsync.compose.EntryHooks
 import app.snapsync.compose.platformEntries
-import app.snapsync.protection.IosProtectedStorage
-import app.snapsync.share.IosShareSheet
+import app.snapsync.protection.IosProcessInfo
 import app.snapsync.databases.IosDatabases
 import app.snapsync.ports.Databases
 import app.snapsync.services.downloads.DownloadService
@@ -67,7 +64,7 @@ import app.snapsync.model.PlatformEntry
 import app.snapsync.link.isWebLinkActivity
 import app.snapsync.model.forwardEventLink
 import app.snapsync.model.userActivityParams
-import app.snapsync.logging.FileLogWriter
+import app.snapsync.logging.FileLogSink
 import app.snapsync.logging.appLogDestination
 import app.snapsync.services.logs.LogTailService
 import app.snapsync.logging.deviceDiagnosticEnvironment
@@ -77,8 +74,8 @@ import app.snapsync.compose.ProcessPorts
 import app.snapsync.compose.ProcessServices
 import app.snapsync.compose.snapSyncProcess
 import app.snapsync.logging.appBuildVersion
-import app.snapsync.logging.IosLogScope
-import app.snapsync.logging.PublicNSLogWriter
+import app.snapsync.logging.IosEntryContext
+import app.snapsync.logging.PublicNSLogSink
 import app.snapsync.logging.neverBlockOnStdio
 import app.snapsync.identity.NoPlatformDeviceId
 import app.snapsync.keychain.platformSecureStore
@@ -143,31 +140,7 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
         // First, before anything logs: a DVT- or Xcode-launched process writes NSLog's stderr copy (and Ktor's stdout)
         // into a pipe the host drains, and an undrained one used to wedge every logging thread (see the KDoc).
         neverBlockOnStdio()
-        // Route kermit through a public NSLog writer AND a file writer. NSLog is redacted as
-        // `<private>` on current iOS (dynamic format strings are private), so the file writer
-        // (Documents/debug.log, pulled via `pymobiledevice3 apps pull`) is the reliable channel.
-        // Both are consolidated in `:adapter:ios:ext-safe`; each line carries the ambient `[entryPoint]`.
-        // The app's log stays in its OWN Documents — it can read it without help, so relocating it
-        // would break every pull command and buy nothing (capability `privacy-security`).
-        Logger.setLogWriters(PublicNSLogWriter(), FileLogWriter(appLogDestination().path))
-        // Boot banner (capability `privacy-security`, D5) — names the process + build version so a
-        // reader who concatenates the app/extension files can tell runs apart. `log` isn't assigned
-        // yet in this init block, so use a fresh tagged logger.
-        Logger.withTag("SnapSyncRoot").i { "=== app process start build=${appBuildVersion()} ===" }
-        // The BAKED backend this build talks to. Cheap (one Info.plist read) and it names the one fact
-        // that makes an otherwise-silent failure legible: point a build at a different backend without
-        // a device reset and the ledger still says COMPLETED, so the device uploads nothing —
-        // no error, no failed request. Read together with the cycle's own
-        // `enumeration: N seen, X new, Y already-uploaded`, a changed host beside an unchanged ledger
-        // names the cause immediately. Diagnostic only: no behaviour, no state, no extra I/O.
-        Logger.withTag("SnapSyncRoot").i { "[boot] upload base = ${bakedUploadBase()}" }
-        // The retired join marker's orphaned App-Group key goes on every start — it is what keeps a revert
-        // of `join-loads-leave-clears` clean (see [removeOrphanedJoinMarker]). Idempotent, no bookkeeping. Its
-        // own adapter instance: the properties below are not initialised yet in this block.
-        removeOrphanedJoinMarker(IosPreferences())
     }
-
-    private val log = Logger.withTag("SnapSyncRoot")
 
     /**
      * The OS's own account of how this process has been behaving (capability `privacy-security`) — the MetricKit
@@ -190,8 +163,9 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
     private val processMetrics: MetricKitProcessMetrics = MetricKitProcessMetrics()
 
     /**
-     * This process's per-process services (`snapSyncProcess`, every root's first act): its ONE crash reporter —
-     * started here, before any other wiring can fail — its process metrics, its files and its entry-point seam.
+     * This process's per-process services (`snapSyncProcess`, every root's first act): its log writers and boot
+     * banner, its ONE crash reporter — started here, before any other wiring can fail — its process metrics, its
+     * files, its clock and its entry-point seam.
      *
      * `internal`, not `private`, for one further reader: the rig's contributed hook drives a synthetic process-metric
      * report through [ProcessServices.processAccount], THIS instance — exercising a copy would prove only that the
@@ -201,17 +175,38 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
         ProcessPorts(
             crashReporter = SentryCrashReporter(),
             processMetrics = processMetrics,
+            // A public NSLog sink AND a file sink. NSLog is redacted as `<private>` on current iOS (dynamic format
+            // strings are private), so the file (Documents/debug.log, pulled via `pymobiledevice3 apps pull`) is the
+            // reliable channel. The app's log stays in its OWN Documents — it can read it without help, so relocating
+            // it would break every pull command and buy nothing (capability `privacy-security`).
+            logSinks = listOf(PublicNSLogSink(), FileLogSink(appLogDestination().path)),
             files = IosFiles(),
-            entryContext = IosLogScope,
+            clock = SystemClock,
+            entryContext = IosEntryContext,
             dsn = bakedSentryDsn(),
+            bootLines = listOf(
+                // Names the process + build version so a reader who concatenates the app/extension files can tell
+                // runs apart (capability `privacy-security`, D5).
+                "=== app process start build=${appBuildVersion()} ===",
+                // The BAKED backend this build talks to. It names the one fact that makes an otherwise-silent
+                // failure legible: point a build at a different backend without a device reset and the ledger
+                // still says COMPLETED, so the device uploads nothing — no error, no failed request. Read beside
+                // the cycle's own `enumeration: N seen, X new, Y already-uploaded`, a changed host beside an
+                // unchanged ledger names the cause immediately.
+                "[boot] upload base = ${bakedUploadBase()}",
+            ),
+            ownsGlobalLogger = true,
         ),
     )
 
     init {
-        // The crash channel's log writer, beside the device-log writers the first init block installed — present only
-        // on a build that reports.
-        process.installLogWriters()
+        // The retired join marker's orphaned App-Group key goes on every start — it is what keeps a revert
+        // of `join-loads-leave-clears` clean (see [removeOrphanedJoinMarker]). Idempotent, no bookkeeping. Its
+        // own adapter instance: the properties below are not initialised yet in this block.
+        removeOrphanedJoinMarker(IosPreferences())
     }
+
+    private val log = Logger.withTag("SnapSyncRoot")
 
     // The app-scope error boundary. Without a handler, an uncaught throwable from any `scope.launch`
     // hits Kotlin/Native's default terminate → SIGABRT — a background failure (a platform-API call, an
@@ -310,7 +305,7 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
 
     /**
      * The one cutoff formatter every surface shares (capability `photo-sharing`) — the status host's
-     * own, built by the shared host composition over the `Clock`/`TimeZoneSource` ports' system adapters.
+     * own, built by the shared host composition over the `Clock` port's system adapter.
      */
     val cutoffFormatter: CutoffFormatter get() = composed.cutoffFormatter
 
@@ -377,7 +372,7 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
                 // nothing else does.
                 uiLane = Dispatchers.Main,
                 // Recorded by the background entry points; decides nothing (capability `sync-status`).
-                protectedStorage = IosProtectedStorage(),
+                processInfo = IosProcessInfo(),
                 // The diagnostic dump's two device-side inputs (capability `privacy-security`):
                 // the two log files (this process's own, and the extension's in the App Group) and
                 // the build/OS/device facts. Both are adapter-resolved; the shell only names them.
@@ -388,14 +383,8 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
                 configSource = config,
                 configStore = config,
                 photoAccess = permission,
-                // The same adapter serves the status source and the request/Settings/picker surface —
-                // the bundle's requestAccess/openSettings/choosePhotos commands bind to it in
-                // `compose/`. The limited-library picker (capability `photo-access`) is a
-                // member of that port now, not a separate lambda this shell had to remember to pass.
-                photoAccessRequester = permission,
-                // The platform half of the share command: a system sheet over the top view controller
-                // (:adapter:ios:app-only).
-                handoff = PlatformHandoff(share = IosShareSheet(), links = IosLinkOpener()),
+                // The platform's own UI — the share sheet, the store link, the Settings page (:adapter:ios:app-only).
+                systemUi = IosSystemUi(),
                 // Every photo-library read and write, the partial grant's selection observer (opened at host
                 // assembly only) and the import of foreign photos, whose markers the core's handlers write.
                 gallery = gallery,
@@ -417,10 +406,8 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
                 integrity = IosDeviceIntegrity(),
                 attestStore = AttestState(secureStore),
                 deviceIdentity = deviceIdentity,
-                clock = SystemClock,
                 // The screen reads the same clock the core does; only the world separates the two.
                 displayClock = SystemClock,
-                timeZone = SystemTimeZone,
                 // The update-required screen's one remedy (capability `app-update-required`).
                 appStoreUrl = bakedAppStoreUrl(),
                 // The mechanisms this OS carries. WHICH one runs is resolution's answer, re-evaluated on
@@ -456,9 +443,6 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
                 // The upload arm's push receiver on the app-driven tier (a thunk — the tier controller
                 // depends on this graph, so it must resolve lazily); null on iOS ≥26.1.
                 log = log,
-                // Drive the shared iOS ambient log context (the process-global the device-log writers
-                // read) so the tier-neutral features' lines carry the triggering entry point's prefix.
-                logScope = IosLogScope,
             ),
         )
     }
@@ -876,7 +860,7 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
     // lower system. Both run where both exist, each deciding at its own entry gate. (What each membership
     // transition does to them is composed in the app graph as `app.uploadTransitions`.)
     private val osDrivenRegistration: OsDrivenRegistration by lazy {
-        OsDrivenRegistration(extensionRegistry, log, IosLogScope)
+        OsDrivenRegistration(extensionRegistry, log, IosEntryContext)
     }
 
     // The registration port's adapter, chosen by compilation target (capability `background-upload`).

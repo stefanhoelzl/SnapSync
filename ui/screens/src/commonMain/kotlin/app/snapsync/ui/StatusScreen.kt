@@ -53,7 +53,7 @@ fun StatusScreen(
     // value the state carries, so no call site can supply the state and silently omit a rendered value.
     state: UiState,
     // Bridges the cutoff picker (local wall-clock) to the UTC `…Z` cutoff string. Required — with NO
-    // system-reading default (migration step 9): the host binds the `Clock`/`TimeZoneSource` ports
+    // system-reading default (migration step 9): the host binds the `Clock` port
     // (production) or a fixed instant/zone (tests); this screen holds no clock or timezone knowledge.
     cutoff: CutoffFormatter,
     // Everything this screen can ask for, bundled (see [StatusActions]). Required: every host builds it

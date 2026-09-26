@@ -740,10 +740,12 @@ not describe what runs today. Each phase moves its part into the sections above.
   - Each port has a clause → host table. Anything unproven gets a probe first.
   - Behaviour of today's inbound ports is pinned by service tests over mocks.
 - **Fewer, thinner contracts.** The ten backend contracts became one `Backend` contract in 11c (section 4).
-- **Recordings.** When a phase converts a port whose device results are recorded, it re-records them in a device
-  session: 11b (SecureStore, AttestStore), 11c (AttestKey → DeviceIntegrity, done), 11e (LinkOpener), 11f (BackgroundScheduler,
-  BackgroundTransfer on the extension, and UploadExtensionRegistry GRANTED + LIMITED, where an operator toggles
-  the grant).
+- **Recordings.** When a phase converts a port whose device results are recorded, it keeps the adapter's OS call
+  sequence identical and replays first; it re-records in a device session only if a replay diverges. 11b
+  (SecureStore, AttestStore) and 11e (`LinkOpener`, now a contract over `SystemUi.openUrl` under its recorded
+  name) replayed unedited; 11c re-recorded AttestKey as DeviceIntegrity. Still ahead: 11f (BackgroundScheduler,
+  BackgroundTransfer on the extension, and UploadExtensionRegistry GRANTED + LIMITED, where an operator toggles the
+  grant).
 - **PlatformDeviceId has no contract until an Android host exists.** Its only implementation is a constant null.
 - **Mocks, one per port.** Each lives in `:adapter:generic:mock` (renamed from `:adapter:generic:fake` in 11g)
   with durable state, a per-process face, and a separate operator-face type.

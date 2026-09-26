@@ -89,7 +89,7 @@ class StatusContainerHost(
     // Supplies "now" as a cutoff string and converts a local pick (capability `photo-sharing`).
     // Injected — with NO default (migration step 9): a default would have to read the system clock
     // here, which is exactly the through-ports law violation this parameter repays. Production wires
-    // the `Clock`/`TimeZoneSource` ports; tests pass a fixed instant and zone.
+    // the `Clock` port (now, and the zone read once); tests pass a fixed instant and zone.
     private val cutoffFormatter: CutoffFormatter,
     // The user-tap **command bundle** (`docs/architecture.md`, "Commands cross one door"):
     // leave / create / commitJoin / share / requestAccess / openSettings — `model/` vocabulary whose

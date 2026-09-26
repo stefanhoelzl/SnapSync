@@ -27,7 +27,6 @@ import app.snapsync.feature.creation.readmodel.CreationStatusSource
 import app.snapsync.feature.membership.readmodel.RenameStatusSource
 import app.snapsync.model.EventCreator
 import app.snapsync.feature.membership.JoinEvent
-import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.model.GalleryAccess
 import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.feature.membership.toJoinLoad
@@ -175,7 +174,7 @@ class WorldInspectorController(private val scope: CoroutineScope) {
             requestAccess = {
                 launchMutation { world.permission.set(if (armedGrants) GalleryAccess.GRANTED else GalleryAccess.DENIED) }
             },
-            openSettings = requester::openSettings,
+            openSettings = { appendConsole("openSettings() — use the Permission segment instead") },
             openLink = { url -> appendConsole("openLink → $url (the harness opens no browser)") },
             // No limited-library picker exists off device. The outcome a real picker produces — a new selection
             // snapshot — is the world's `changeSelection` lever, so the console says where to reach for it.
@@ -195,10 +194,6 @@ class WorldInspectorController(private val scope: CoroutineScope) {
     /** What the next gate-driven access request resolves to. */
     var armedGrants: Boolean by mutableStateOf(true)
         private set
-
-    val requester: PhotoAccessRequester = object : PhotoAccessRequester {
-        override fun openSettings() = appendConsole("openSettings() — use the Permission segment instead")
-    }
 
     // ---- engine console -------------------------------------------------------------------------
 

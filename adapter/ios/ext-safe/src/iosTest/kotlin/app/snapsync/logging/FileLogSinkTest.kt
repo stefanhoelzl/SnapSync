@@ -1,5 +1,6 @@
 package app.snapsync.logging
 
+import app.snapsync.model.logLineBody
 import app.snapsync.model.utcLogStamp
 import app.snapsync.testsupport.fileExists
 import app.snapsync.testsupport.removeDirectory
@@ -35,9 +36,9 @@ import kotlin.test.assertTrue
  * and so is the one identity check below — that the arithmetic stamp is the text `NSDate.description` used
  * to produce.
  */
-class FileLogWriterTest {
+class FileLogSinkTest {
 
-    private fun log(path: String?, maxBytes: Long = 10L * 1024 * 1024) = FileLogWriter(path, maxBytes)
+    private fun log(path: String?, maxBytes: Long = 10L * 1024 * 1024) = FileLogSink(path, maxBytes)
 
     @Test
     fun `a line carries its severity and tag and message`() {
@@ -254,7 +255,7 @@ class FileLogWriterTest {
         withTempDirectory { dir ->
             val path = "$dir/debug.log"
             var now = 1_790_172_309_123L
-            val writer = FileLogWriter(path, 10L * 1024 * 1024) { now }
+            val writer = FileLogSink(path, 10L * 1024 * 1024) { now }
             writer.log(Severity.Info, "before", "t", null)
             removeDirectory(path) // removes a plain file just the same
 
@@ -312,3 +313,7 @@ class FileLogWriterTest {
         }
     }
 }
+
+/** One line as the process's log writer hands it to the sink: formatted by `model/logLineBody`, no entry claimed. */
+internal fun FileLogSink.log(severity: Severity, message: String, tag: String, throwable: Throwable?) =
+    write(severity, tag, logLineBody(LogContext.current, severity.name, tag, message, throwable))

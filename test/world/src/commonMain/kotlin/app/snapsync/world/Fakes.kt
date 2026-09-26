@@ -29,7 +29,6 @@ import app.snapsync.ports.BackgroundScheduler
 import app.snapsync.model.CycleResult
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
-import app.snapsync.ports.PhotoAccessRequester
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
@@ -46,10 +45,7 @@ class MutablePhotoAccessStatusSource(
     internal val cell = MutableStateFlow(initial)
     private val honest = inMemoryPhotoAccess(cell)
 
-    override val permission: StateFlow<GalleryAccess> = honest.first.permission
-
-    /** The Settings surface over the same cell. */
-    val requester: PhotoAccessRequester = honest.second
+    override val permission: StateFlow<GalleryAccess> = honest.permission
 
     fun set(value: GalleryAccess) {
         cell.value = value

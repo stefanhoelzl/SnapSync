@@ -36,7 +36,7 @@ class InvocationTest {
     }
 
     /** Records the ambient-scope handshake; `enter` answers whether THIS call owns the scope. */
-    private class RecordingScope(private val owns: Boolean = true) : LogScope {
+    private class RecordingScope(private val owns: Boolean = true) : EntryContext {
         val entered = mutableListOf<String>()
         val exited = mutableListOf<Boolean>()
         override fun enter(name: String): Boolean {

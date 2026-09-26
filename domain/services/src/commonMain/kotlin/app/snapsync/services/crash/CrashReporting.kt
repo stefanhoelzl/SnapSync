@@ -12,7 +12,7 @@ import app.snapsync.model.loggedCrash
 import app.snapsync.model.scrubbedCrumb
 import app.snapsync.model.scrubbedEvent
 import app.snapsync.ports.CrashReporter
-import app.snapsync.ports.LogScope
+import app.snapsync.ports.EntryContext
 import co.touchlab.kermit.LogWriter
 import co.touchlab.kermit.Severity
 
@@ -33,7 +33,7 @@ class CrashReporting(
     /** Where this build reports to, or `null` for a build that reports nowhere — a constant of the build. */
     private val dsn: String?,
     /** The ambient entry point a log line belongs to, which rides an event as its `entry_point` tag. */
-    private val entry: LogScope,
+    private val entry: EntryContext,
 ) {
 
     /** Whether this build carries a reporting destination. Constant for the process. */
@@ -92,7 +92,7 @@ class CrashReporting(
 }
 
 /** The logging seam onto the channel: [loggedCrash] decides what each line becomes. */
-internal class CrashLogWriter(private val reporter: CrashReporter, private val entry: LogScope) : LogWriter() {
+internal class CrashLogWriter(private val reporter: CrashReporter, private val entry: EntryContext) : LogWriter() {
     override fun log(severity: Severity, message: String, tag: String, throwable: Throwable?) {
         val logged = loggedCrash(severity, message, tag, throwable, entry.current())
         reporter.breadcrumb(logged.crumb)

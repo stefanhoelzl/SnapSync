@@ -69,7 +69,6 @@ import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.DeviceIdentity
 import app.snapsync.ports.ConfigRefresh
 import app.snapsync.ports.Clock
-import app.snapsync.ports.TimeZoneSource
 import app.snapsync.ports.AlbumManager
 import app.snapsync.ports.CandidateSource
 import app.snapsync.ports.Gallery
@@ -92,15 +91,14 @@ import app.snapsync.ports.DownloadTransportHost
 import app.snapsync.ports.DeviceManifestStore
 import app.snapsync.services.backend.BackendServices
 import app.snapsync.services.backend.LeaveNotifier
-import app.snapsync.ports.LogScope
-import app.snapsync.ports.PhotoAccessRequester
+import app.snapsync.ports.EntryContext
 import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.model.Handoff
-import app.snapsync.ports.PlatformHandoff
+import app.snapsync.ports.SystemUi
 import app.snapsync.ports.StagedBytes
 import app.snapsync.ports.invocation
 import co.touchlab.kermit.Logger
-import app.snapsync.ports.ProtectedStorage
+import app.snapsync.ports.ProcessInfo
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.ContinuationInterceptor
 import kotlinx.coroutines.CoroutineScope
@@ -130,9 +128,6 @@ class AppPorts(
     val configSource: ConfigSource,
     val configStore: ConfigStore,
     val photoAccess: PhotoAccessStatusSource,
-    /** The platform's settings surface — the port behind the bundle's `openSettings` user-tap command
-     *  (presentation fires it through the bundle and never names the port). */
-    val photoAccessRequester: PhotoAccessRequester,
     /**
      * The device's photo library (`docs/architecture.md`): every read the status total, the join preview, the
      * download guard and the event album make, the album writes, and the `requestAccess` / `choosePhotos`
@@ -140,10 +135,10 @@ class AppPorts(
      * graph builds over it, never the gallery's.
      */
     val gallery: Gallery,
-    /** The two ways this app hands something to the platform and stops being involved — the share sheet
-     *  for the invite URL and the URL opener for the store link (see [PlatformHandoff]). Both inert
-     *  off-device, so a composition with no platform to reach writes nothing about either. */
-    val handoff: PlatformHandoff = PlatformHandoff(),
+    /** The platform's own UI, where this app hands something over and stops being involved — the share sheet
+     *  for the invite URL, the URL opener for the store link, and the app's Settings page (see [SystemUi]).
+     *  Inert off-device, so a composition with no platform to reach writes nothing about any of them. */
+    val systemUi: SystemUi = SystemUi.None,
     /**
      * The **main lane** (`docs/architecture.md`, law "Dispatcher lanes are fixed by the
      * composition"): the dispatcher platform-UI commands run on — `share`, `requestAccess`,
@@ -192,21 +187,14 @@ class AppPorts(
     /** The device identity (a port: its resolve reads the Keychain and throws while protected data is
      *  unavailable). Read per use, so no composition-time resolve can abort a locked background launch. */
     val deviceIdentity: DeviceIdentity,
-    /** Wall-clock now, through the port that has always existed for it (`ports/Time.kt`). This was a
-     *  `() -> Long` lambda the shell filled with an inline `NSDate()` call — a platform read supplied
-     *  to the core past a seam built for exactly this (`docs/architecture.md`). Two clocks were
-     *  therefore live in one composition: this one for the domain, `SystemClock` for the UI
-     *  formatter, and a test could pin one and leave the other running. */
-    val clock: Clock,
     /**
      * The clock the status screen reads — its "now" preset, the create screen's default and the
-     * not-started health. On a device it is the same system clock as [clock]. It is separate only because
-     * the world pins [clock] for the core's determinism while its screen shows the wall clock; a root
-     * states that deviation here, once, rather than re-making it where it builds a screen.
+     * not-started health. On a device it is the same system clock as the process's (`ProcessServices.clock`,
+     * which the core reads). It is separate only because the world pins the process clock for the core's
+     * determinism while its screen shows the wall clock; a root states that deviation here, once, rather than
+     * re-making it where it builds a screen. Only its [Clock.now] is read: the zone is the process clock's.
      */
     val displayClock: Clock,
-    /** The time zone the status screen renders capture dates in (the `TimeZoneSource` port). */
-    val timeZone: TimeZoneSource,
     /**
      * This build's App Store page, or `null` when it carries none — the one remedy the update-required
      * screen offers (capability `app-update-required`). **Required**: a root that omitted it would show the
@@ -236,10 +224,10 @@ class AppPorts(
     val onEventMinted: suspend (eventId: String) -> Unit,
     /** The push registration's ports (capability `receiving-photos`) — see [PushPorts]. */
     val push: PushPorts,
-    /** Whether protected storage is readable right now — recorded by the background entry points, deciding
-     *  nothing (capability `sync-status`). Required, like the reporter: an entry that logged no answer would
-     *  look, in a device log, exactly like one that ran on an unlocked device. */
-    val protectedStorage: ProtectedStorage,
+    /** What the OS says about this process — whether protected storage is readable right now, recorded by the
+     *  background entry points and deciding nothing (capability `sync-status`). Required: an entry that logged no
+     *  answer would look, in a device log, exactly like one that ran on an unlocked device. */
+    val processInfo: ProcessInfo,
     /** The device logs a diagnostic dump reads back (capability `privacy-security`). The default
      *  reads nothing: off-device compositions (world, harnesses) have no device logs, and a dump
      *  assembled there is honestly empty rather than fabricated. */
@@ -257,10 +245,6 @@ class AppPorts(
     val configRefresh: ConfigRefresh,
 
     val log: Logger,
-    /** The ambient-context seam the tier-neutral features drive so their device-log lines carry the
-     *  triggering entry point's `[<name>]` prefix (capability `privacy-security`). The app shell
-     *  injects `IosLogScope`; world / tests default to `LogScope.NoOp`. */
-    val logScope: LogScope = LogScope.NoOp,
 )
 
 /**
@@ -289,7 +273,7 @@ class AppCore internal constructor(
      * attest (`DCAppAttestService.isSupported` is false in an app extension — measured), and the extension
      * reads the token this writes.
      */
-    val attestation: DeviceAttestation by lazy { attestationFor(ports, versionGate) }
+    val attestation: DeviceAttestation by lazy { attestationFor(ports, process.clock, versionGate) }
 
     /** [versionGate]'s cell, for readers outside the core (the status host), which see no service type. */
     val versionRefusal: StateFlow<VersionRefusal?> get() = versionGate.refusal
@@ -415,7 +399,7 @@ class AppCore internal constructor(
             // UIKit owns this session's completion handler and requires the main thread for it
             // (capability `sync-status`); the harness binds its own lane.
             uiLane = ports.uiLane,
-            logScope = ports.logScope,
+            entryContext = process.entryContext,
         )
     }
 
@@ -436,7 +420,7 @@ class AppCore internal constructor(
             myDeviceId = ports.deviceIdentity.deviceId(),
             // Three-valued, no fallback (capability `receiving-photos`): no membership → `null` → no arm.
             downloadEnabled = { ports.configSource.config.value?.direction?.includesDownload },
-            logScope = ports.logScope,
+            entryContext = process.entryContext,
         )
     }
 
@@ -463,7 +447,7 @@ class AppCore internal constructor(
     // Built HERE and nowhere in the extension's graph, so "the extension never gathers" holds by
     // construction. Started, never awaited, by the act that triggered it.
     val albumGather: AlbumGather by lazy {
-        albumGather(ports, backend.union, albumCoordinator, scope, ::selectionPolicyForMembership)
+        albumGather(ports, backend.union, process.entryContext, albumCoordinator, scope, ::selectionPolicyForMembership)
     }
 
     /**
@@ -504,7 +488,7 @@ class AppCore internal constructor(
             registration = ports.extensionRegistration(),
             appEngine = { tail.appEngine },
             log = ports.log,
-            logScope = ports.logScope,
+            entryContext = process.entryContext,
         )
     }
 
@@ -568,7 +552,7 @@ class AppCore internal constructor(
             // Built HERE, not supplied by the shell: the world used to bind provision to a body of its own, so a
             // join in the world never ran `flow/Provision`. Labelled `provisionEvent` so the flow's steps carry it.
             provision = { cfg ->
-                ports.log.invocation(ports.logScope, "provisionEvent") { provisionFlow.run(cfg) }
+                ports.log.invocation(process.entryContext, "provisionEvent") { provisionFlow.run(cfg) }
                 albumGather.start("provision", cfg.eventId)
             },
         )
@@ -583,7 +567,7 @@ class AppCore internal constructor(
         MembershipRefresh(
             configSource = ports.configSource,
             store = ports.configStore,
-            clock = ports.clock,
+            clock = process.clock,
             leaveEvent = leaveEvent,
         )
     }
@@ -823,6 +807,7 @@ class AppCore internal constructor(
         AppTail(
             scope = scope,
             ports = ports,
+            entryContext = process.entryContext,
             downloads = { downloadController },
             mayCreate = appMayCreate,
             refreshCounts = { ledgerCounts.refresh() },
@@ -862,7 +847,7 @@ class AppCore internal constructor(
      * Wrap a user tap as a **platform entry point** (spec `privacy-security`; spec
      * `docs/architecture.md`, "Absence is never silent"). `compose/` is where this must live: it is
      * where the door law already says command instances are decorated, and it is the only place that
-     * *can* — `:domain:presentation` may not reference `ports/`, so it cannot reach a `LogScope`.
+     * *can* — `:domain:presentation` may not reference `ports/`, so it cannot reach a `EntryContext`.
      *
      * The `tap.` namespace is load-bearing, not cosmetic. Without it a device log cannot say whether
      * work was started by the platform or by the person holding the phone: on Bugsink `SNAPSYNC-3`,
@@ -914,7 +899,7 @@ class AppCore internal constructor(
         result: (T) -> String = { "" },
         block: suspend () -> T,
     ): T = withContext(coreLane) {
-        tapLog.invocation(ports.logScope, name, params, result = result) { block() }
+        tapLog.invocation(process.entryContext, name, params, result = result) { block() }
     }
 
     /**
@@ -927,7 +912,7 @@ class AppCore internal constructor(
      * handlers began to be held for their work (`hold-os-receipts-until-work-completes`, now `own-work-per-wake`).
      */
     private fun detachedOnCoreLane(name: String, params: String = "", block: suspend () -> Unit) {
-        scope.launch(coreLane) { tapLog.invocation(ports.logScope, name, params) { block() } }
+        scope.launch(coreLane) { tapLog.invocation(process.entryContext, name, params) { block() } }
     }
 
     /**
@@ -936,7 +921,7 @@ class AppCore internal constructor(
      * return value, and it is only rendered onto the tap's line by [result] — nothing acts on it.
      */
     private fun <T> onUiLane(name: String, result: (T) -> String = { "" }, block: suspend () -> T) {
-        scope.launch(ports.uiLane) { tapLog.invocation(ports.logScope, name, result = result) { block() } }
+        scope.launch(ports.uiLane) { tapLog.invocation(process.entryContext, name, result = result) { block() } }
     }
 
     /** The user-query bundle, lane-decorated beside the commands — see [userQueriesFor]. */
@@ -985,21 +970,21 @@ class AppCore internal constructor(
             // instrumentation exists to eliminate.
             share = { url ->
                 onUiLane("tap.share", result = { h: Handoff -> "$h" }) {
-                    tapLog.recordingRefusal("tap.share", ports.handoff.share.share(url))
+                    tapLog.recordingRefusal("tap.share", ports.systemUi.share(url))
                 }
             },
             // Leaving the app for the store page (capability `app-update-required`) — UI lane and
             // instrumented, like every other platform-surface command.
             openLink = { url ->
                 onUiLane("tap.openLink", result = { h: Handoff -> "$h" }) {
-                    tapLog.recordingRefusal("tap.openLink", ports.handoff.links.open(url))
+                    tapLog.recordingRefusal("tap.openLink", ports.systemUi.openUrl(url))
                 }
             },
             // The permission user-taps (capability `photo-access`), bound to the gallery here so presentation
             // never names it. Each tap is fire-and-forget: the screen follows the permission read-model StateFlow,
             // never the gallery's answer.
             requestAccess = { onUiLane("tap.requestAccess") { ports.gallery.requestAccess() } },
-            openSettings = { onUiLane("tap.openSettings") { ports.photoAccessRequester.openSettings() } },
+            openSettings = { onUiLane("tap.openSettings") { ports.systemUi.openSettings() } },
             // The picker presentation is platform surface; the selection outcome arrives only via
             // the selection-change seam.
             choosePhotos = { onUiLane("tap.choosePhotos") { ports.gallery.widenSelection() } },
@@ -1200,7 +1185,7 @@ fun snapSyncApp(
 ): AppCore = AppCore(scope, process, ports)
 
 /**
- * Records a hand-off to the platform ([PlatformHandoff]) that did not happen. Nothing acts on a [Handoff], but a
+ * Records a hand-off to the platform ([SystemUi]) that did not happen. Nothing acts on a [Handoff], but a
  * refusal is logged at `Error`, because the user then tapped and nothing happened — on the update-required screen,
  * to the only remedy the screen offers (`docs/architecture.md`, "Absence is never silent"). `Error` is what
  * reaches the operator from a production build (capability `privacy-security`).

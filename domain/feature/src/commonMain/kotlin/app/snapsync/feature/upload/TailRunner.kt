@@ -5,7 +5,7 @@ package app.snapsync.feature.upload
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.BackgroundScheduler
 import app.snapsync.model.CycleResult
-import app.snapsync.ports.LogScope
+import app.snapsync.ports.EntryContext
 import app.snapsync.ports.invocation
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CompletableDeferred
@@ -216,7 +216,7 @@ class TailRunner(
      */
     private val leftover: suspend () -> String,
     private val log: Logger = Logger.withTag("TailRunner"),
-    private val logScope: LogScope = LogScope.NoOp,
+    private val entryContext: EntryContext = EntryContext.NoOp,
 ) {
     private val mutex = Mutex()
 
@@ -232,7 +232,7 @@ class TailRunner(
      * A tail that fails rethrows here, in the caller that started it and in every joiner.
      */
     suspend fun request(trigger: TailTrigger): TailOutcome? =
-        log.invocation(logScope, "tail.request", params = "trigger=$trigger", result = { it?.toString() ?: "not requested" }) {
+        log.invocation(entryContext, "tail.request", params = "trigger=$trigger", result = { it?.toString() ?: "not requested" }) {
             check(currentCoroutineContext()[InsideTail]?.runner !== this) {
                 "a tail unit requested the tail it is running in — that join would wait on itself"
             }

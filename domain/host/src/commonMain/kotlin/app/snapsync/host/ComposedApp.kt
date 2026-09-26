@@ -65,7 +65,9 @@ fun snapSyncHost(scope: CoroutineScope, process: ProcessServices, ports: AppPort
     // as a foreground launch does. `listen` only registers: the selection observer opens at host assembly below.
     ports.gallery.listen(core.galleryHandlers)
     core.installPushRegistration()
-    val formatter = CutoffFormatter(now = ports.displayClock::now, zone = ports.timeZone.current())
+    // The zone is read ONCE, here, from the process's one clock: a formatter whose zone moved under a
+    // running screen would render one capture date two ways.
+    val formatter = CutoffFormatter(now = ports.displayClock::now, zone = process.clock.timeZone())
     return ComposedApp(core, ports, formatter) {
         // Host assembly: the permission-grant collectors install ONLY from here (see [ComposedApp]).
         core.installPermissionSubscriptions()

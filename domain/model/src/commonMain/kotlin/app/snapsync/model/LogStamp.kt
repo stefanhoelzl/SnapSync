@@ -13,7 +13,7 @@ package app.snapsync.model
  *
  * Pure and platform-free so its identity is pinned by a JVM-run test against known instants (leap years,
  * the non-leap century, day/month/year rollover); the one check only a Foundation host can make — that
- * this text equals `NSDate.description` with the milliseconds spliced in — is `FileLogWriterTest` on iOS.
+ * this text equals `NSDate.description` with the milliseconds spliced in — is `FileLogSinkTest` on iOS.
  *
  * ONE instant in, so the seconds and the milliseconds cannot come from two clock reads that straddle a
  * second boundary. Years are printed with at least four digits, as Foundation does for 1000–9999; nothing
@@ -62,3 +62,16 @@ private const val DAYS_FROM_CIVIL_EPOCH_TO_UNIX_EPOCH = 719_468L
 private const val DAYS_PER_ERA = 146_097L
 private const val YEARS_PER_ERA = 400L
 private const val STAMP_LENGTH = 29
+
+/**
+ * One device-log line, without its stamp (capability `privacy-security`): `[<entry>] [<Severity>/<tag>] <message>`,
+ * with ` | <stack trace>` when a throwable rides it. The `[<entry>]` prefix — the entry point that triggered the
+ * line — is what lets a reader trace an engine or HTTP line back to its trigger; it is absent when none is claimed.
+ * Every sink writes this same text.
+ */
+fun logLineBody(entry: String?, severity: String, tag: String, message: String, throwable: Throwable?): String =
+    buildString {
+        if (entry != null) append('[').append(entry).append("] ")
+        append('[').append(severity).append('/').append(tag).append("] ").append(message)
+        if (throwable != null) append(" | ").append(throwable.stackTraceToString())
+    }

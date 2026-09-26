@@ -5,7 +5,7 @@ import app.snapsync.model.CycleResult
 import app.snapsync.ports.Backend
 import app.snapsync.ports.DeviceIdentity
 import app.snapsync.ports.ExtensionEntries
-import app.snapsync.ports.LogScope
+import app.snapsync.ports.EntryContext
 import app.snapsync.ports.invocation
 import app.snapsync.ports.runProcessCycle
 import app.snapsync.services.backend.BackendServices
@@ -27,7 +27,7 @@ import app.snapsync.services.trust.ExtensionCredential
 fun extensionEntries(
     ports: () -> UploadPorts,
     cycle: () -> UploadCycle,
-    logScope: LogScope = LogScope.NoOp,
+    entryContext: EntryContext = EntryContext.NoOp,
     /**
      * Drop this process's in-memory copy of the device token, so the invocation reads the one the app last
      * stored (capability `privacy-security`). The app renews into the shared Keychain item, which the
@@ -41,7 +41,7 @@ fun extensionEntries(
         // The cycle, the pending → PROCESSING requeue and the never-throw guard around both are `runProcessCycle`
         // (`ports/`, tested beside the raw-value mapping): a throwable escaping here would cross the ObjC boundary
         // and abort the extension process.
-        override suspend fun process(): CycleResult = log.invocation(logScope, "process", result = { "$it" }) {
+        override suspend fun process(): CycleResult = log.invocation(entryContext, "process", result = { "$it" }) {
             runProcessCycle(
                 // Inside the guarded run, so nothing the re-read could raise escapes across the ObjC boundary.
                 run = {
@@ -61,7 +61,7 @@ fun extensionEntries(
         // budget receives nothing (capability `background-upload`, "How the operating system invokes the extension
         // is recorded as measured"). So this records an ordinary end at `Info`. A KILLED call is the one that reads
         // as a `→ process` with no `← process` and no line from here — which is how to tell the two apart.
-        override fun onTerminate() = log.invocation(logScope, "onTerminate") {
+        override fun onTerminate() = log.invocation(entryContext, "onTerminate") {
             log.i {
                 "the OS ended this invocation — notifyTermination follows a normal return; a killed call gets none"
             }

@@ -15,7 +15,7 @@ import platform.posix.fcntl
  * thread that writes it (capability `privacy-security`). Each composition root calls it first, before the
  * first line is logged.
  *
- * **Why.** [PublicNSLogWriter] calls `NSLog`. `NSLog` sends the line to the unified log, and ALSO to stderr
+ * **Why.** [PublicNSLogSink] calls `NSLog`. `NSLog` sends the line to the unified log, and ALSO to stderr
  * whenever stderr is a pipe, a tty or a file (CoreFoundation's `also_do_stderr`). It does that with one
  * `writev` inside a process-wide CoreFoundation lock. Ktor's server logger also `println`s to stdout. A
  * process launched by SpringBoard has both on `/dev/null`, so nothing blocks there. A process launched by
@@ -36,7 +36,7 @@ import platform.posix.fcntl
  * call in place the same run stays healthy through 15 foregrounds.
  *
  * **What it costs.** With `O_NONBLOCK`, a write to a full pipe returns `EAGAIN` instead of waiting, and
- * `NSLog`'s stderr copy of that line is dropped. The unified-log copy and the file log ([FileLogWriter], the
+ * `NSLog`'s stderr copy of that line is dropped. The unified-log copy and the file log ([FileLogSink], the
  * canonical channel) are unaffected. `/dev/null` never fills, so a shipped process loses nothing.
  */
 fun neverBlockOnStdio() {

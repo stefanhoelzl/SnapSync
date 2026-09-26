@@ -29,6 +29,8 @@ kotlin {
             api(project(":domain:feature"))
             api(project(":domain:flow"))
             api(libs.coroutines.core)
+            // The Clock double answers a zone (`TimeFactories.kt`).
+            implementation(libs.kotlinx.datetime)
         }
         // The stay-behind tests that drive `:domain` subjects through these fakes (re-homed from the
         // deleted `:domain:gallery` / `:domain:download-store` / `:capability:attest` modules at
