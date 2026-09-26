@@ -454,7 +454,7 @@ curl -s localhost:<port>/device            # honoured + refused (reasons) for TH
   On `deno`, a lever only an in-memory store can pull (`device/backend/offline`, …) answers `409`
   "unavailable on this backend".
 - Same `/os`, `/user`, `/device/state` shapes as the app. `os/app/onSceneContinueActivity?arg=<link>` reaches
-  the inbound port's open-URL entry, `os/photokit-ext/processRawValue` runs the world's upload cycle.
+  the `Links` port's handler, `os/photokit-ext/processRawValue` runs the world's upload cycle.
 - The **world levers** the app refuses: `device/jobs` (live keys), `device/jobs/complete[?key=]` (the "OS"
   finishes a transfer — a real PUT to the backend), `device/jobs/fail?key=&error=`, `device/jobs/limit?n=`,
   `device/backend/objects[?device=]`, `device/backend/offline?on=`, `device/permission?status=`,

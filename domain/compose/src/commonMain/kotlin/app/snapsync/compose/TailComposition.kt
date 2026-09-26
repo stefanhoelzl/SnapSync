@@ -26,7 +26,8 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
  * decision record `changes/own-work-per-wake`, D1, D2 and D11).
  *
  * One [runner] per process, over the three units: ① the download arm's staged-import drain, ② and ③ the app
- * uploader's top-up and walk. The inbound port's implementation ([AppEntries]) requests it after each wake's own work;
+ * uploader's top-up and walk. Each entry port's handler (`lifecycleHandlers`, `pushHandlers`, the wake's and the
+ * transfers') requests it after each wake's own work;
  * this class holds the requests that come from elsewhere — a membership transition's arm, an upload completion, a
  * staged download, a selection change — and the one fact only the entries know, whether the app is foregrounded.
  *

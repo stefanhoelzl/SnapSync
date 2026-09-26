@@ -10,11 +10,9 @@ package app.snapsync.model
  * read-model property presentation polls is not one, while the platform's request for the root view
  * is.
  *
- * Where a process's OS entries form an **inbound port** (`ports/PlatformEntries`, `ports/ExtensionEntries` —
- * `docs/architecture.md`, "OS entry points cross an inbound port"), the marker sits on the port's members,
- * and the obligation below falls on the core's implementation of them; the composition root reaches them by
- * delegation and holds no body to annotate. `onOpenUrl` is one of those members: the platform's link
- * deliveries reach it through the tested activity filter.
+ * The OS entries reach the core through **entry ports** (`docs/architecture.md`, "Events arrive through
+ * `listen`"): the marker sits on each adapter's `deliver…` methods and on the root's one-line forwarders, and the
+ * obligation below falls on the composition's handlers they deliver to.
  *
  * The marker is inert — Kotlin annotations execute nothing, so this cannot instrument anything by
  * itself — and **nothing checks it**. A guard once derived the entry-point population from source and

@@ -114,10 +114,10 @@ The reasons differ, so keep them separate:
 **Remaining risk, which must be stated wherever shell correctness is relied on:** the gates do not catch
 *mis-transcription*. A forwarding with no conditional that names the wrong collaborator passes every gate.
 Most of this risk has been removed by moving code:
-- OS callbacks cross an inbound port (`PlatformEntries` / `ExtensionEntries`). The core implements the
-  port, the shell delegates to it through compiler-generated delegation, and a port contract covers it on
-  JVM and the simulator.
-- The tap → intent table is one factory in `:ui:screens`, and it is click-tested there.
+- OS callbacks arrive through entry ports (`Lifecycle`, `Links`, `PushNotifications`, `Ui`, `DevControls`,
+  `ExtensionHost`). The shell forwards each Swift callback to its adapter in one line; what a delivery runs is the
+  composition's handler, and `EntryWorldTest` / `ExtensionEntryWorldTest` cover those on JVM and the simulator.
+- The tap → `UiIntent` table is one factory in `:ui:screens`, and it is click-tested there.
 
 What is still uncovered:
 - Swift argument-level forwarding: the right entry called with a wrong argument of the same type. (Since 11f the
@@ -139,7 +139,7 @@ module.** The one exception is a source set that a build script adds only under 
 
 | module | what it provides |
 |---|---|
-| `:test:world` | the controllable in-memory world that runs the real core (section 5). Consumed by `:app:desktop` and the JVM rig host. Hosts the inbound ports' contract bindings. |
+| `:test:world` | the controllable in-memory world that runs the real core (section 5). Consumed by `:app:desktop` and the JVM rig host. Plays the entry ports' platform (`WorldLifecycle`, `WorldLinks`, `WorldPushNotifications`, `WorldUi`, `WorldDevControls`, `WorldExtensionHost`). |
 | `:test:contracts` | the contract mechanism and every port contract (section 4). The only module whose **main** code depends on `kotlin-test`. Links into the app only under the rig property. |
 | `:test:rig` | the control channel: one HTTP protocol served by an iOS app host and a JVM host (section 6). The only module allowed `ktor-server-*`. |
 | `:test:control` | the typed JVM client of that protocol (`RigClient`), plus the JVM host's own tests. |
@@ -172,7 +172,7 @@ end of this section.
   already in that state, or `Unreachable(reason)`. Each clause gets a fresh instance. The runner checks
   the declaration: a declared state answered `Unreachable`, or an undeclared one answered, is `Failed`.
 - Where an outcome cannot be read through the port itself, the clause also gets an **observation
-  handle**. Examples: an inbound port that returns nothing, a refusal that reaches the app only through
+  handle**. Examples: a port method that returns nothing, a refusal that reaches the app only through
   the HTTP interceptor, or what a reporter transmitted to an endpoint. The handle reads **outcomes**
   (state reached, objects landed), never which collaborator was called.
 - A scenario that needs the implementation to change state mid-run is not a clause. It is an ordinary
@@ -468,8 +468,10 @@ untested when it is not. It holds:
 - feature tests over the composed world that involve no UI state (upload cycle, sync engine, leave
   cascade, manifest),
 - the mini-edge's fidelity tests,
-- the inbound ports' contract bindings (`PlatformEntriesContract`, `ExtensionEntriesContract`, on `JVM`
-  and `IOS_SIM_KEXE`).
+- the entry ports' handler tests (`EntryWorldTest`, `ExtensionEntryWorldTest`, and the wake and tail tests beside
+  them): each delivers through the world's double of the platform and asserts what happened in the app behind it —
+  which work ran, when a completion was released, whether the host was assembled. They run on `JVM` and in the
+  simulator's test executable.
 
 Decision record for its seam, failure, state and concurrency rules:
 `changes/archive/2026-09-23-harden-seam-bug-classes`.
@@ -487,9 +489,19 @@ Decision record for its seam, failure, state and concurrency rules:
 The hosts differ only in the hook they hand the server. They never differ in a route or in the state
 encoding. Both bind loopback only.
 
+**On the app host the rig is an adapter set, chosen at build time.** The root calls `platformAdapters()`, which a rig
+build compiles from `:test:rig`'s hook directory instead of the app's `src/prod`: the UI is decorated (`RigUi`, which
+forwards everything to the real Compose scene), the development controls are the channel's (`RigDevControls`: the
+per-uploader switch, invite-link hints honoured, the reset), and building the set starts the server. Nothing runs at
+image load and the root holds no rig field. The extension's rig build decorates its `ExtensionHost` the same way, so a
+requested contract runs in place of a cycle.
+
 Verbs:
-- `/os` for OS entry points,
-- `/user` for user commands at intent level,
+- `/os` for OS entry points — each an `EntryDriver` delivery (`:test:contracts`) under the name the iOS shell's
+  callback has always carried; the app host drives the iOS adapters' own `deliver…` methods, the JVM host the world's
+  entry doubles, so one table maps the names for both,
+- `/user` for user commands at intent level — each the `UiIntent`s a tap produces, handed to the UI port's
+  `onIntent` handler (through `RigUi` on a device, the world's UI on the JVM host),
 - `/device` for state, levers and reads,
 - `/health`.
 
@@ -503,7 +515,8 @@ There are **no click, semantics or pixel verbs**. Taps and pixels belong to the 
   host leaves unclassified makes `GET /device` fail naming it, and the JVM host's tests then fail in
   `build`.
 - The app host refuses world levers (for example backend-offline) with the shared world-lever reason.
-- `POST /device/reset` voids this device's durable sync state without telling any backend. Use it
+- `POST /device/reset` voids this device's durable sync state without telling any backend, through the
+  development controls' reset (`DevControls.onReset`). Use it
   **whenever a build crosses backends** (for example device ↔ local rig). Otherwise leftover `COMPLETED`
   rows make the device upload nothing, with no error anywhere. It clears the upload ledger, the membership
   config (locally), and prunable download rows. It keeps every row that carries an import handle, and it
@@ -737,7 +750,7 @@ not describe what runs today. Each phase moves its part into the sections above.
   - Every measurement becomes a clause with a host and a committed recording. External OS stimuli are allowed
     (`simctl openurl/push/launch/terminate`, a BGTask simulation triggered by the rig, an XCUITest host).
   - Each port has a clause → host table. Anything unproven gets a probe first.
-  - Behaviour of today's inbound ports is pinned by service tests over mocks.
+  - The entry ports' handlers are pinned by tests over the composition, not by contracts (since 11g1, section 5).
 - **Fewer, thinner contracts.** The ten backend contracts became one `Backend` contract in 11c (section 4).
 - **Recordings.** When a phase converts a port whose device results are recorded, it keeps the adapter's OS call
   sequence identical and replays first; it re-records in a device session only if a replay diverges. 11b
@@ -746,13 +759,14 @@ not describe what runs today. Each phase moves its part into the sections above.
   BackgroundTransfer on the extension, and UploadExtensionRegistry GRANTED + LIMITED, where an operator toggles the
   grant).
 - **PlatformDeviceId has no contract until an Android host exists.** Its only implementation is a constant null.
-- **Mocks, one per port.** Each lives in `:adapter:generic:mock` (renamed from `:adapter:generic:fake` in 11g)
-  with durable state, a per-process face, and a separate operator-face type.
-- **`:test:world` goes away** (11g). `:app:jvm` takes its place as a support module: it takes the adapter
+- **Mocks, one per port.** Each lives in `:adapter:generic:mock` (renamed from `:adapter:generic:fake` in 11g2)
+  with durable state, a per-process face, and a separate operator-face type. The world's entry-port doubles
+  (`EntryFakes.kt`) become mocks then.
+- **`:test:world` goes away** (11g2). `:app:jvm` takes its place as a support module: it takes the adapter
   factory and offers `relaunch()`.
-- **The rig becomes an adapter set.** It is chosen at build time, decorates the platform Ui
-  (`RigUi(inner)`), implements the per-platform drivers declared in `:test:contracts`, and reaches the app only
-  through ports.
+- **The rig reaches the app only through ports.** It is an adapter set since 11g1 (section 6), and its `/os`,
+  `/user` and `/device/reset` verbs cross ports; `/state` and the remaining `/device` reads and levers still read
+  the composed core, until `:app:jvm` (11g2) gives both hosts one port-level view.
 - **A launch-time mock mix** (11h) will let a simulator or device run with some systems mocked and others
   real, for interactive investigation.
 - **The forge and its marketing screenshots** are replaced by screenshots of the rig running on a simulator (12).

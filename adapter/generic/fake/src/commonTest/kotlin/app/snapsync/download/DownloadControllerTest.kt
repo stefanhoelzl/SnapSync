@@ -460,7 +460,7 @@ class DownloadControllerTest {
      * An import that never answers is not waited for by anything but its own drain, and leaves the photo importable
      * (capability `receiving-photos`). Nothing bounds the import: the wake's background time does, through the
      * operating system's expiry — which ends the wake at once and leaves this import claimed and running (the
-     * inbound port's contract, `PlatformEntriesContract`, pins that half).
+     * silent-push handler's world test, `EntryWorldTest`, pins that half).
      */
     @Test
     fun a_hung_import_leaves_the_asset_importable() = runTest {

@@ -17,14 +17,14 @@ import app.snapsync.feature.status.StatusCountsPoller
  *
  * **The imports, the upload top-up and the walk are not this flow's** (capability `sync-status`,
  * "Foreground status refresh is not sequenced behind the upload tail"). They are the process's one
- * opportunistic tail, which the inbound port's implementation requests **after** this flow returns (law
+ * opportunistic tail, which the foreground handler requests **after** this flow returns (law
  * "A trigger flow never outlives its own run"): a foreground entry arriving while another wake's tail is
  * still walking — outstanding for as long as the app was suspended, 774 s measured (`SNAPSYNC-16`) —
  * joins that tail rather than running a second upload path beside it, and nothing here waits on it, so
  * the status refresh never inherits the walk's latency. `run()` awaits every child it has.
  *
  * This flow **coordinates** (ordering + fan-out of the escaping launches); it **decides** nothing. The
- * stack-assembly touch and the entry-point log wrap stay with the inbound port's implementation; every
+ * stack-assembly touch and the entry-point log wrap stay with the foreground handler; every
  * step that touches a port ([reloadConfig] the membership re-read, [settleStored] the stored-upload
  * settle, [refreshStatus] the read-model refreshes, [fetchEventDetails] the directory fetch,
  * [activeEventId] the config read, [refreshAttestation] the token wake) arrives as a `model`-typed effect

@@ -266,7 +266,7 @@ object UploadExtensionRoot {
      */
     internal val cycle: UploadCycle by lazy { uploadCore(scope, process, ports) }
 
-    /** Everything the cycle is built over — held so the inbound port's implementation reads the same ledger and log. */
+    /** Everything the cycle is built over — held so the extension's handlers read the same ledger and log. */
     internal val ports: UploadPorts by lazy {
             UploadPorts(
                 appVersion = appMarketingVersion(),

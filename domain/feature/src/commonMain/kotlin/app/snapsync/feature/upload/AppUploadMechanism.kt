@@ -8,7 +8,7 @@ import app.snapsync.model.CycleResult
  *
  * It holds **no trigger, no OS completion handler and no heartbeat**. Which wake runs what, when the heartbeat — the
  * core's, over the `Wake` port — is re-armed and how a wake's handler is held are the core's: the tail runner and the
- * inbound port's implementation (decision record `changes/own-work-per-wake`, D1 and D5) — so a mechanism cannot
+ * entry ports' handlers (decision record `changes/own-work-per-wake`, D1 and D5) — so a mechanism cannot
  * fail to release a handler, and cannot run a unit the tail did not ask for. Both units pass through the shared upload
  * cycle's entry gate, which decides whether this
  * process may create (capability `background-upload`), so a unit a declining membership reaches still returns.

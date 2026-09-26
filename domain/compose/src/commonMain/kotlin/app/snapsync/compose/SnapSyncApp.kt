@@ -823,7 +823,7 @@ class AppCore internal constructor(
             refreshAttestation = { attestation.refresh() },
             // The push's own work: the download arm, with its own active-event and direction guards.
             // The upload arm is not a receiver any more: its work is the tail's, which the push's wake joins only for
-            // the active event — [pushTailGuard], asked by the inbound port's implementation after this flow returns.
+            // the active event — [pushTailGuard], asked by the push handler after this flow returns.
             downloadReceiver = downloadPushReceiver::onSilentPush,
         )
     }
