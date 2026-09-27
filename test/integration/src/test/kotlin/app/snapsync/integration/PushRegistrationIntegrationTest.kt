@@ -19,17 +19,6 @@ class PushRegistrationIntegrationTest {
     /** The registration the delivered token makes: the token, in the build's APNs environment. */
     private val REGISTERED = "DEADBEEF" to "sandbox"
 
-    /** How many registrations the backend stored for this device — the config is last-write-wins, the count is not. */
-    private suspend fun Rig.registrations(): Int =
-        deviceJson("backend/device-config").getValue("writes").jsonPrimitive.content.toInt()
-
-    /** The token and environment the backend holds for this device, or null when none was registered. */
-    private suspend fun Rig.deviceConfig(): Pair<String, String>? {
-        val config = deviceJson("backend/device-config")
-        val token = config["token"]?.takeUnless { it is JsonNull }?.jsonPrimitive?.content ?: return null
-        return token to config.getValue("env").jsonPrimitive.content
-    }
-
     /**
      * A JOIN re-registers the push token (capability `receiving-photos`): committing a join runs the real
      * `flow/Provision`, whose `registerPush` re-PUTs the delivered token — closing the warm-rejoin window the

@@ -82,17 +82,4 @@ class ReconfigureIntegrationTest {
         refresh()
         awaitInSync()
     }
-
-    // ---- helpers --------------------------------------------------------------------------------
-
-    private class Album(val name: String, val assets: List<String>)
-
-    /** Every album this app created, with the assets placed in it. */
-    private suspend fun Rig.albums(): List<Album> =
-        deviceJson("album/contents").getValue("albums").jsonArray.map { it.jsonObject.toAlbum() }
-
-    private fun JsonObject.toAlbum() = Album(
-        name = getValue("name").jsonPrimitive.content,
-        assets = getValue("assets").jsonArray.map { it.jsonPrimitive.content },
-    )
 }

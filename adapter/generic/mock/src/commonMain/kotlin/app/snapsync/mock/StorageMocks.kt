@@ -75,10 +75,17 @@ class FileSystemOperator internal constructor(private val disk: FileSystemMock) 
  * process opens what the last one wrote. [refusals] answers an open of that name with the refusal given.
  */
 class DatabasesMock(refusals: Map<String, DbOpen> = emptyMap()) {
-    private val held: Databases = InMemoryDatabases(refusals)
+    private val held = InMemoryDatabases(refusals)
 
     /** A process's face: the same databases, as every process on the device opens the same files. */
     fun port(): Databases = held
+
+    val operator: DatabasesOperator = DatabasesOperator(held)
+}
+
+class DatabasesOperator internal constructor(private val held: InMemoryDatabases) {
+    /** Every open the device saw, by name, in order — a process's opens and every later one's. */
+    val opened: List<String> get() = held.opened.toList()
 }
 
 /** The device's user defaults. */

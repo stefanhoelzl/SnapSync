@@ -151,6 +151,11 @@ private fun backendLevers(rig: JvmRig): Map<String, RigCommand> = mapOf(
         val event = operator.registerLegacyEvent(params["name"] ?: "Legacy")
         CommandResult.ok(buildJsonObject { put("event", event) }.toString())
     },
+    // The byte partition of a device is gone — an operator's storage wipe — while every record that names it stays.
+    "backend/wipe-bytes" to rig.onOperator("the byte wipe") { operator, params ->
+        operator.wipeBytes(params["device"] ?: rig.mocks.ownDeviceId)
+        OK
+    },
     "backend/refuse-credential" to rig.onOperator("the credential-refusal lever") { operator, _ ->
         operator.refuseNextCredential()
         OK
@@ -212,6 +217,12 @@ private fun osAndLibraryLevers(rig: JvmRig): Map<String, RigCommand> = mapOf(
         }
         rig.mocks.library.operator.add(asset)
         CommandResult.ok(buildJsonObject { put("added", id); put("date", date) }.toString())
+    },
+    // The person deletes an own photo from the library.
+    "gallery/remove" to RigCommand { params, _ ->
+        val id = params["id"] ?: return@RigCommand CommandResult.badRequest("id is required")
+        rig.mocks.library.operator.remove(AssetId(id))
+        CommandResult.ok(buildJsonObject { put("removed", id) }.toString())
     },
     "gallery/fail-next-enumeration" to RigCommand { _, _ ->
         rig.mocks.library.operator.failNextEnumeration = true

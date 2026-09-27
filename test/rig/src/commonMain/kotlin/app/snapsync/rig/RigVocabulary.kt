@@ -68,6 +68,8 @@ object RigVocabulary {
         "device/permission",
         "device/downloads/stage",
         "device/album/place",
+        "device/album/hold-adds",
+        "device/invite-link-hints",
         "device/foreign-device",
         // The integration surface's observable reads of the world's simulated systems (capability
         // `docs/testing.md`, "The seam-to-UI-state integration surface") — what the backend, the crash
@@ -94,11 +96,13 @@ object RigVocabulary {
         "device/backend/deposit",
         "device/backend/legacy-event",
         "device/backend/refuse-credential",
+        "device/backend/wipe-bytes",
         "device/clock/advance",
         "device/app-version",
         "device/relaunch",
         "device/selection/change",
         "device/gallery/add",
+        "device/gallery/remove",
         "device/gallery/fail-next-enumeration",
         "device/import/suspend-next",
         "device/import/resume",
