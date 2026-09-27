@@ -62,8 +62,9 @@ job now, on a build made with `-Psnapsync.rig=true` (load **`rig-channel`**):
 curl -X POST --max-time 180 localhost:18099/device/reset
 ```
 
-It answers with the ledger counts after the fact — `{"reset":true,"ledgerCompleted":0,"ledgerPending":0}`
-— so "it cleared" is verifiable rather than assumed. Needs `usbmux forward 18099`; see `rig-channel`.
+It answers `{"reset":true}` once the reset ran (the ledger counts it used to return left the protocol with the
+ledger, 11g2): confirm it took from the screen — the device shows the create/join screen again — and from the
+uploads that follow. Needs `usbmux forward 18099`; see `rig-channel`.
 
 ⚠️ Order matters and nothing enforces it: reset **before** leaving. After a reset the device is unjoined,
 so a leave becomes a no-op rather than a `DELETE` aimed at the backend you are departing.
