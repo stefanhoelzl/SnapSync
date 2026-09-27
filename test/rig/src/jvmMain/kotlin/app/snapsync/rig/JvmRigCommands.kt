@@ -5,6 +5,7 @@ import app.snapsync.mock.LibraryAssets
 import app.snapsync.model.ConfigRead
 import app.snapsync.model.FileArea
 import app.snapsync.model.GalleryAccess
+import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.Layer
 import app.snapsync.model.TransferOutcome
 import app.snapsync.model.UploadError
@@ -97,8 +98,9 @@ private fun inspectorLevers(rig: JvmRig): Map<String, RigCommand> = mapOf(
         }
     },
     // The operating system finishes every in-flight download — healthy, or answered `status` with `received` bytes of
-    // an error body. Answers at once: what the app makes of the transfers (staging, the import its tail runs) is
-    // observed, not awaited. Nothing is delivered while this launch has not brought its download session up.
+    // an error body — and, with `drained=true`, then reports the session's events delivered (`urlSessionDidFinishEvents`).
+    // Answers at once: what the app makes of the transfers (staging, the import its tail runs) is observed, not
+    // awaited. Nothing is delivered while this launch has not brought its download session up.
     "downloads/stage" to RigCommand { params, _ ->
         val status = params["status"]?.toIntOrNull()
         val outcome = if (status == null) {
@@ -107,7 +109,23 @@ private fun inspectorLevers(rig: JvmRig): Map<String, RigCommand> = mapOf(
             TransferOutcome(statusCode = status, expectedBytes = -1L, receivedBytes = params["received"]?.toLongOrNull() ?: 0L)
         }
         val finished = finishDownloads(rig, outcome)
+        if (params["drained"]?.toBoolean() == true && rig.mocks.downloads.operator.realized) {
+            rig.mocks.downloads.operator.reportEventsDrained()
+        }
         CommandResult.ok("""{"finished":${jsonList(finished)}}""")
+    },
+    // Every add to an album waits until released (`on=false`) — the photo library's change blocks held.
+    "album/hold-adds" to RigCommand { params, _ ->
+        val on = flag(params, "on")
+        if (on) rig.mocks.library.operator.holdAdds() else rig.mocks.library.operator.releaseAdds()
+        CommandResult.ok("""{"held":$on}""")
+    },
+    // How this build answers an invite link's dev/test hints: `honoured=false` plays a shipped build, which ignores
+    // them; the host starts as a rig build, which honours them.
+    "invite-link-hints" to RigCommand { params, _ ->
+        val honoured = flag(params, "honoured")
+        rig.mocks.devControls.operator.inviteLinkHints = if (honoured) InviteLinkHints.Honoured else InviteLinkHints.Ignored
+        CommandResult.ok("""{"honoured":$honoured}""")
     },
     "album/place" to RigCommand { params, _ ->
         val album = params["album"]

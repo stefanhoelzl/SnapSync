@@ -139,3 +139,33 @@ suspend fun Rig.refresh() = foreground()
 
 /** How many unchanged reads, [Rig.eventually]'s poll apart, count as settled. */
 private const val SETTLED_READS = 3
+
+/** An album this app created, and the assets placed in it, in order. */
+class Album(val name: String, val assets: List<String>) {
+    override fun toString() = "Album($name, $assets)"
+}
+
+/** Every album this app created, with the assets placed in it. */
+suspend fun Rig.albums(): List<Album> =
+    deviceJson("album/contents").getValue("albums").jsonArray.map { a ->
+        val o = a.jsonObject
+        Album(o.getValue("name").jsonPrimitive.content, o.getValue("assets").jsonArray.map { it.jsonPrimitive.content })
+    }
+
+/** How many push registrations the backend stored for this device — the config is last-write-wins, the count is not. */
+suspend fun Rig.registrations(): Int =
+    deviceJson("backend/device-config").getValue("writes").jsonPrimitive.content.toInt()
+
+/** The token and environment the backend holds for this device, or null when none was registered. */
+suspend fun Rig.deviceConfig(): Pair<String, String>? {
+    val config = deviceJson("backend/device-config")
+    val token = config["token"]?.takeUnless { it is JsonNull }?.jsonPrimitive?.content ?: return null
+    return token to config.getValue("env").jsonPrimitive.content
+}
+
+/** The pushes the backend sent, as (event, device, token). */
+suspend fun Rig.pushesSent(): List<Triple<String, String, String>> =
+    deviceJson("backend/pushes").getValue("pushes").jsonArray.map { p ->
+        val o = p.jsonObject
+        Triple(o.getValue("event").jsonPrimitive.content, o.getValue("device").jsonPrimitive.content, o.getValue("token").jsonPrimitive.content)
+    }

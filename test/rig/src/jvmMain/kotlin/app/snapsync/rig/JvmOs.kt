@@ -1,7 +1,9 @@
 package app.snapsync.rig
 
 import app.snapsync.jvm.JvmMocks
+import app.snapsync.model.FileArea
 import app.snapsync.ports.Completion
+import app.snapsync.services.staging.DOWNLOAD_STAGING_DIR
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -78,6 +80,9 @@ internal class JvmOs(private val mocks: JvmMocks) {
             put("inFlight", mocks.downloads.operator.inFlight().size)
         }
         put("uploadSessionHandbacks", mocks.uploadSession.operator.handbacks)
+        // The device's disk: every database any process opened, and the files in the download staging directory.
+        putJsonArray("databasesOpened") { mocks.databases.operator.opened.forEach { add(JsonPrimitive(it)) } }
+        put("stagedFiles", mocks.disk.operator.area(FileArea.SHARED).keys.count { it.startsWith("$DOWNLOAD_STAGING_DIR/") })
     }.toString()
 
     private inner class Handler(private val done: () -> Unit) : Completion {

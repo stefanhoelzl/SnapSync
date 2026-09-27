@@ -122,12 +122,19 @@ class PushServiceOperator internal constructor(private val mock: PushServiceMock
         mock.handlers.registered("PushNotifications").onMessage(PushMessage(payload), completion)
 }
 
-/** The platform's user interface: the screen keeps what it was last shown, and taps come back as intents. */
+/**
+ * The platform's user interface: the screen keeps what it was last shown, and taps come back as intents. A screen is a
+ * process's: a new process's face starts with nothing shown, as a dead process's scene goes with it.
+ */
 class ScreenMock {
     internal var handlers: UiHandlers? = null
     internal val shown = MutableStateFlow<UiState?>(null)
 
     fun port(): Ui = object : Ui {
+        init {
+            shown.value = null
+        }
+
         override fun listen(handlers: UiHandlers) {
             this@ScreenMock.handlers = handlers
         }
@@ -153,9 +160,9 @@ class ScreenOperator internal constructor(private val mock: ScreenMock) {
 
 /**
  * The build's development controls: the invite-link hints are fixed per build ([hints]) — a shipped build ignores
- * them — and the per-uploader pin is the channel's to set.
+ * them, and an operator playing another build sets them — and the per-uploader pin is the channel's to set.
  */
-class DevControlsMock(internal val hints: InviteLinkHints = InviteLinkHints.Ignored) {
+class DevControlsMock(internal var hints: InviteLinkHints = InviteLinkHints.Ignored) {
     internal var handlers: DevHandlers? = null
     internal var pin: UploaderPin? = null
 
@@ -177,6 +184,11 @@ class DevControlsOperator internal constructor(private val mock: DevControlsMock
     var pin: UploaderPin?
         get() = mock.pin
         set(value) { mock.pin = value }
+
+    /** How the build answers an invite link's hints — fixed per build; an operator plays another build with it. */
+    var inviteLinkHints: InviteLinkHints
+        get() = mock.hints
+        set(value) { mock.hints = value }
 
     /** The channel's reset. */
     suspend fun reset() = mock.handlers.registered("DevControls").onReset()

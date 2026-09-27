@@ -38,6 +38,12 @@ class OsRecord(json: JsonObject) {
     val downloadsInFlight: Int = downloads.int("inFlight")
     val uploadSessionHandbacks: Int = json.int("uploadSessionHandbacks")
 
+    /** Every database any process on the device opened, by name, in order. */
+    val databasesOpened: List<String> = json.getValue("databasesOpened").jsonArray.map { it.jsonPrimitive.content }
+
+    /** The files in the download staging directory. */
+    val stagedFiles: Int = json.int("stagedFiles")
+
     private val text = json.toString()
 
     override fun toString() = text
@@ -86,3 +92,6 @@ const val UPLOAD_SESSION = "app.snapsync.upload.session"
 
 /** Any transfer channel that is not the upload session's is the download session's. */
 const val DOWNLOAD_SESSION = "app.snapsync.download.session"
+
+/** Wait until the operating system's record satisfies [until]; answers it. */
+suspend fun Rig.awaitOs(until: (OsRecord) -> Boolean): OsRecord = eventually(read = { osRecord() }, until = until)

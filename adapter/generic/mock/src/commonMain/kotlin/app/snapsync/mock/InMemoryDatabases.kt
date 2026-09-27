@@ -22,7 +22,11 @@ internal class InMemoryDatabases(private val refusals: Map<String, DbOpen>) : Da
 
     private val held = mutableMapOf<String, SqlDriver>()
 
+    /** Every open asked for, by name, in order. */
+    val opened = mutableListOf<String>()
+
     override fun open(name: String, schema: SqlSchema<QueryResult.Value<Unit>>, readOnly: Boolean): DbOpen {
+        opened += name
         refusals[name]?.let { return it }
         return runCatchingCancellable { if (readOnly) openReadOnly(name, schema) else openReadWrite(name, schema) }
             .getOrElse { DbOpen.Failed("${it::class.simpleName}: ${it.message}") }
