@@ -134,6 +134,9 @@ val appShellSources = files(
     // The shared host composition (`snapSyncHost`): wiring every root calls, holding no decision. A shell by the
     // same definition, and listed for the same reason as the forge above — added with the module.
     "domain/host/src",
+    // The JVM root (`JvmApp`): the same composition as the iOS root, for the JVM test equipment. Wiring only by the
+    // same definition, so gated as a shell — the levers it must not grow are the mocks' operator faces.
+    "app/jvm/src",
     // Compiled INTO `:app:ios` under `-Psnapsync.rig=true`, so it is shell source for gate purposes
     // even though it lives in `:test:rig`'s tree (`docs/architecture.md`, "Source contributed
     // into a shell's source set is shell source for the gates"). Listed rather than exempted: the gates
@@ -233,6 +236,7 @@ val detektTierOf: Map<String, String> = mapOf(
     ":app:ios:extension" to "shell",
     ":app:ios:forge" to "shell",
     ":domain:host" to "shell",
+    ":app:jvm" to "shell",
 
     // The tested core and its adapters. `:domain:presentation` belongs here and not in `ui`: it is
     // Compose-free (a core zone with no Compose dependency), so none of Compose's structural inflation

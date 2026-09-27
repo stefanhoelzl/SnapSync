@@ -30,7 +30,8 @@ import kotlin.uuid.Uuid
  * minimum. What those mean is the services' business above the port, which is exactly what makes a test over this
  * double exercise the real decisions.
  *
- * - **Events** get UUID ids it mints, as the real backend does, with its window rules: a blank name is refused, an
+ * - **Events** get UUID ids it mints, as the real backend does, with its window rules: a blank name, or one longer than
+ *   100 characters, is refused, an
  *   end before the start or more than 30 days after it is refused, an absent end is `start + 30 days`, and an event
  *   lives 30 days from `max(createdAt, startsAt)`. A legacy event — registered before start dates existed — has its
  *   start synthesized from its creation time on read, as the real backend does.
@@ -72,7 +73,7 @@ internal class InMemoryBackend(
         val startsAt = parse(req.startsAt)
         val endsAt = req.endsAt?.let(::parse) ?: startsAt?.plus(WINDOW_DAYS.days)
         when {
-            name.isEmpty() -> Reply.Refused(BAD_REQUEST, "invalid name")
+            name.isEmpty() || name.length > MAX_NAME_LENGTH -> Reply.Refused(BAD_REQUEST, "invalid name")
             startsAt == null -> Reply.Refused(BAD_REQUEST, "invalid startsAt")
             endsAt == null || endsAt < startsAt || endsAt > startsAt + WINDOW_DAYS.days ->
                 Reply.Refused(BAD_REQUEST, "invalid endsAt")
@@ -102,7 +103,7 @@ internal class InMemoryBackend(
     override suspend fun renameEvent(token: String?, eventId: String, name: String): Reply<EventRenamed> = gated(token) {
         if (state.offline) return@gated offline()
         val trimmed = name.trim()
-        if (trimmed.isEmpty()) return@gated Reply.Refused(BAD_REQUEST, "invalid name")
+        if (trimmed.isEmpty() || trimmed.length > MAX_NAME_LENGTH) return@gated Reply.Refused(BAD_REQUEST, "invalid name")
         val event = state.events[eventId] ?: return@gated notFound()
         event.name = trimmed
         Reply.Ok(EventRenamed(trimmed))
@@ -196,6 +197,9 @@ internal class InMemoryBackend(
         const val UPGRADE_REQUIRED = 426
         const val BAD_GATEWAY = 502
         const val WINDOW_DAYS = 30
+
+        /** The longest event name the backend accepts, trimmed — the real backend's `MAX_EVENT_NAME_LENGTH`. */
+        const val MAX_NAME_LENGTH = 100
     }
 }
 

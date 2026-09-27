@@ -28,12 +28,12 @@ import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * One integration test's host: a fresh control-channel JVM host, in-process, over the mini-edge — closed when the
+ * One integration test's host: a fresh control-channel JVM host, in-process, over the backend mock — closed when the
  * test ends. The test drives it through [Rig] and nothing else (`docs/testing.md`, "The
- * seam-to-UI-state integration surface"), so a test body names no world, port or composition type.
+ * seam-to-UI-state integration surface"), so a test body names no mock, port or composition type.
  */
 fun rigTest(body: suspend Rig.() -> Unit): Unit = runBlocking {
-    val host = JvmRigHost.start("mini")
+    val host = JvmRigHost.start("mock")
     try {
         RigClient("http://127.0.0.1:${host.port}").use { Rig(it).body() }
     } finally {
@@ -48,7 +48,7 @@ fun rigTest(body: suspend Rig.() -> Unit): Unit = runBlocking {
  *
  * Every assertion a test makes reads through here — the reduced [RigState.ui], or what a system outside the app
  * recorded (the backend, the photo library, the operating system's jobs, the staging directory, the reporter, the
- * pushes sent). Never [RigState.ledger]: the ledger is the app's own bookkeeping.
+ * pushes sent). Never the ledger: it is the app's own bookkeeping, and the protocol no longer carries it.
  */
 class Rig(val client: RigClient) {
     suspend fun state(): RigState = client.state()

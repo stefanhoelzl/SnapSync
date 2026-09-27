@@ -134,7 +134,8 @@ class KotlinShellGuardTest {
             .toList()
         assertTrue(includes.isNotEmpty(), "settings.gradle.kts parsed to zero includes — the scan is broken")
 
-        val shellModules = includes.filter { it == ":app:ios" || it.startsWith(":app:ios:") }
+        // The JVM root is a shell by the same definition — it composes and forwards — so it is scanned too.
+        val shellModules = includes.filter { it == ":app:ios" || it.startsWith(":app:ios:") || it == ":app:jvm" }
         assertTrue(shellModules.isNotEmpty(), "no :app:ios* modules found — the shells have moved")
 
         val unscanned = shellModules.filterNot { module ->
@@ -143,7 +144,7 @@ class KotlinShellGuardTest {
         }
         assertTrue(
             unscanned.isEmpty(),
-            "iOS shell modules the shell gate does not scan: $unscanned. Add each one's `src` to " +
+            "shell modules the shell gate does not scan: $unscanned. Add each one's `src` to " +
                 "`appShellSources` in the root build file. A shell absent from that list is never " +
                 "measured for decisions, and nothing else would tell you \u2014 which is exactly how " +
                 "`:app:ios:forge` went unscanned until the tree was measured.",
