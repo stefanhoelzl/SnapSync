@@ -22,7 +22,7 @@ import kotlin.uuid.Uuid
 
 /**
  * The honest in-memory [Backend] — the backend's routes answered off a [BackendState], the mock the `Backend` port
- * contract holds to the real `api/` (`BackendContract`). One instance is one process's face of the backend: [appVersion]
+ * contract holds to the real `api/` (`BackendContract`). One instance is one process's face of the backend: [declared]
  * is the version that process's build declares on every call, as the HTTP adapter declares it on the wire.
  *
  * It answers in the backend's own vocabulary — statuses and bodies — and decides nothing on the app's behalf: a
@@ -50,7 +50,7 @@ import kotlin.uuid.Uuid
 @OptIn(ExperimentalUuidApi::class)
 internal class InMemoryBackend(
     private val state: BackendState,
-    private val appVersion: () -> String?,
+    private val declared: DeclaredVersion,
 ) : Backend {
 
     override suspend fun challenge(): Reply<String> = served {
@@ -167,7 +167,7 @@ internal class InMemoryBackend(
         }
 
     private inline fun <T> served(answer: () -> Reply<T>): Reply<T> =
-        state.refusalFor(appVersion())?.let { Reply.Refused(UPGRADE_REQUIRED, it) } ?: answer()
+        state.refusalFor(declared.value)?.let { Reply.Refused(UPGRADE_REQUIRED, it) } ?: answer()
 
     private inline fun <T> online(answer: () -> Reply<T>): Reply<T> = served { if (state.offline) offline() else answer() }
 

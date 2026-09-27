@@ -42,7 +42,7 @@ fun inMemoryBackend(
     createdAt: Instant = Instant.fromEpochSeconds(0),
 ): Backend = InMemoryBackend(
     BackendState(storedFiles, capacity, createdAt).also { it.minAppVersion = minimumAppVersion },
-    appVersion = { null },
+    declared = DeclaredVersion(null),
 )
 
 fun inMemoryAttestStore(token: String? = null, keyId: String? = null): AttestStore =

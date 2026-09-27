@@ -298,12 +298,11 @@ class World(
      * [relaunch], as a background `URLSession` is: a relaunched app finds the transfers the dead process started, and
      * their completions arrive there. Each launch's composition registers its own handlers on it.
      */
-    private val downloads: DownloadSessionMock = DownloadSessionMock(
-        // The OS's temporary file for a finished download: in the app's private area, where the platform leaves it.
-        leaveTempFile = { description ->
-            disk.operator.leaveTemporaryFile("download-tmp/${description.hashCode().toUInt()}", STAGED_BYTES)
-        },
-    )
+    /** The device's files, both areas — durable across [relaunch], as the disk is. */
+    private val disk: FileSystemMock = FileSystemMock()
+
+    // The OS's temporary file for a finished download lands in the app's private area, where the platform leaves it.
+    private val downloads: DownloadSessionMock = DownloadSessionMock(disk)
 
     /** The operating system's download session, played: it finishes transfers and hands events back. */
     val download: DownloadSessionOperator get() = downloads.operator
@@ -327,8 +326,6 @@ class World(
      */
     val importer: ImportScript get() = gallery.imports
 
-    /** The device's files, both areas — durable across [relaunch], as the disk is. */
-    private val disk: FileSystemMock = FileSystemMock()
 
     /**
      * The App-Group container's files (the SHARED area) — the membership, the manifest and push records, the staged

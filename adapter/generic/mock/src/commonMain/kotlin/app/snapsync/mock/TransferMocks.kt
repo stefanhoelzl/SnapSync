@@ -222,14 +222,13 @@ class UploadSessionOperator internal constructor(private val mock: UploadSession
 
 /**
  * The app's background download session: the transfers the operating system holds for it survive the process, and
- * their completions reach whichever process registered last. [leaveTempFile] is where the OS leaves a finished
- * transfer's bytes: given its description, it writes the temporary file and answers the platform path the finish hands
- * the app.
+ * their completions reach whichever process registered last. A finished transfer's bytes are left as a temporary file in
+ * [disk]'s private area, whose platform path the finish hands the app; with no disk, the path names nothing.
  *
  * The finish mirrors the real `URLSession` delegate, including the ordering the integrity check depends on: the facts
  * and a temporary file, then the completion, whether or not anything went wrong — which is what frees the window slot.
  */
-class DownloadSessionMock(internal val leaveTempFile: (description: String) -> String = { "temp:/$it" }) {
+class DownloadSessionMock(private val disk: FileSystemMock? = null) {
 
     /** A transfer the session holds. */
     class Started(val url: String, val description: String) {
@@ -271,12 +270,18 @@ class DownloadSessionMock(internal val leaveTempFile: (description: String) -> S
 
     val operator: DownloadSessionOperator = DownloadSessionOperator(this)
 
+    internal fun leaveTempFile(description: String): String =
+        disk?.operator?.leaveTemporaryFile("download-tmp/${description.hashCode().toUInt()}", TEMP_BYTES) ?: "temp:/$description"
+
     internal fun registered(): DownloadHandlers =
         checkNotNull(handlers) { "no process listened to the download session — nothing would receive this" }
 
     companion object {
         /** An ordinary healthy transfer: `200`, no declared length. */
         val HEALTHY: TransferOutcome = TransferOutcome(statusCode = 200, expectedBytes = -1L, receivedBytes = 1_024L)
+
+        /** What a mocked download's temporary file holds — the bytes are never read, only their presence. */
+        private val TEMP_BYTES = "staged".encodeToByteArray()
     }
 }
 
