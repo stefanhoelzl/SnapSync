@@ -213,21 +213,13 @@ class WorldInspectorController(private val scope: CoroutineScope) {
 
     // ---- downloads -------------------------------------------------------------------------------
 
-    fun stageAllDownloads() = launchMutation { finishDownloads() }
-
     /**
-     * Failure lever: the operator plays a bad network. Every in-flight transfer finishes with a `502` and an error body
-     * — which `URLSession` reports as a *successful* transfer, so this is what the shipped bug looked like (capability
-     * `receiving-photos`). The bytes are rejected, nothing stages, and the downloads stay pending.
+     * The OS finishes every in-flight transfer as [outcome]. The failure outcomes are the operator playing a bad
+     * network: a `502` with an error body — which `URLSession` reports as a *successful* transfer, the shape of the
+     * shipped bug (capability `receiving-photos`) — or a body short of its `Content-Length`. Either is rejected, nothing
+     * stages, and the downloads stay pending.
      */
-    fun stageAllDownloadsAs502() =
-        launchMutation { finishDownloads(TransferOutcome(statusCode = 502, expectedBytes = -1L, receivedBytes = 137L)) }
-
-    /** Failure lever: every in-flight transfer finishes truncated — a body short of its `Content-Length`. */
-    fun stageAllDownloadsShortRead() =
-        launchMutation { finishDownloads(TransferOutcome(statusCode = 200, expectedBytes = 5_000L, receivedBytes = 1_200L)) }
-
-    private fun finishDownloads(outcome: TransferOutcome = DownloadSessionMock.HEALTHY) {
+    fun stageAllDownloads(outcome: TransferOutcome = DownloadSessionMock.HEALTHY) = launchMutation {
         val session = mocks.downloads.operator
         session.inFlight().forEach { session.finish(it.description, outcome) }
     }
@@ -444,15 +436,21 @@ class WorldInspectorController(private val scope: CoroutineScope) {
         override fun onExpired(action: () -> Unit) = Unit
     }
 
-    private companion object {
-        const val CONSOLE_CAP = 200
-        val AWAIT = 10.seconds
-        const val BACKEND_BASE = "https://in-memory.backend/api/v2"
-        const val APP_VERSION = "99.0"
-        const val DSN = "in-memory://desktop"
-        const val APP_STORE_URL = "https://apps.apple.com/app/id0000000000"
-        const val PRESET_EVENT = "Anna's Birthday"
-        const val FOREIGN_FILENAME = "IMG.HEIC"
+    companion object {
+        /** A bad network's answer: a `502` and an error body. */
+        val BAD_GATEWAY: TransferOutcome = TransferOutcome(statusCode = 502, expectedBytes = -1L, receivedBytes = 137L)
+
+        /** A body short of its declared length. */
+        val SHORT_READ: TransferOutcome = TransferOutcome(statusCode = 200, expectedBytes = 5_000L, receivedBytes = 1_200L)
+
+        private const val CONSOLE_CAP = 200
+        private val AWAIT = 10.seconds
+        private const val BACKEND_BASE = "https://in-memory.backend/api/v2"
+        private const val APP_VERSION = "99.0"
+        private const val DSN = "in-memory://desktop"
+        private const val APP_STORE_URL = "https://apps.apple.com/app/id0000000000"
+        private const val PRESET_EVENT = "Anna's Birthday"
+        private const val FOREIGN_FILENAME = "IMG.HEIC"
     }
 }
 

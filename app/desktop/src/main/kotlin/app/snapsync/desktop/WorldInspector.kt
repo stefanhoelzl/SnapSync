@@ -171,13 +171,7 @@ fun WorldInspector(
                     }
                 }
             },
-            right = {
-                Button(enabled = snap.downloads.isNotEmpty(), onClick = { controller.stageAllDownloads() }) { Text("Stage all pending") }
-                Button(enabled = snap.downloads.isNotEmpty(), onClick = { controller.stageAllDownloadsAs502() }) { Text("Stage as 502") }
-                Button(enabled = snap.downloads.isNotEmpty(), onClick = { controller.stageAllDownloadsShortRead() }) { Text("Stage short read") }
-                if (snap.downloads.isEmpty()) Faint("(no pending downloads)")
-                snap.downloads.forEach { dl -> Faint(dl.url) }
-            },
+            right = { Downloads(controller, snap) },
         )
 
         // ---- Failure levers ---------------------------------------------------------------------
@@ -237,6 +231,22 @@ fun WorldInspector(
         OutlinedButton(onClick = { controller.clearConsole() }) { Text("Clear console") }
         Spacer(Modifier.height(8.dp))
     }
+}
+
+/** The download session's in-flight transfers, and the three ways the operator lets them finish. */
+@Composable
+private fun Downloads(controller: WorldInspectorController, snap: InspectorSnapshot) {
+    Button(enabled = snap.downloads.isNotEmpty(), onClick = { controller.stageAllDownloads() }) { Text("Stage all pending") }
+    Button(
+        enabled = snap.downloads.isNotEmpty(),
+        onClick = { controller.stageAllDownloads(WorldInspectorController.BAD_GATEWAY) },
+    ) { Text("Stage as 502") }
+    Button(
+        enabled = snap.downloads.isNotEmpty(),
+        onClick = { controller.stageAllDownloads(WorldInspectorController.SHORT_READ) },
+    ) { Text("Stage short read") }
+    if (snap.downloads.isEmpty()) Faint("(no pending downloads)")
+    snap.downloads.forEach { dl -> Faint(dl.url) }
 }
 
 @Composable
