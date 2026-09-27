@@ -50,7 +50,7 @@ class TailWorldTest {
     fun under_a_limited_grant_the_push_tail_tops_up_and_walks_nothing() = worldTest {
         val w = World(this)
         w.provision(joined)
-        w.permission.set(GalleryAccess.LIMITED)
+        w.gallery.access = GalleryAccess.LIMITED
         w.push(joined)
 
         assertEquals(1, w.operatorEngine.topUps, "② runs from the selection snapshot")
@@ -95,7 +95,7 @@ class TailWorldTest {
         assertEquals(0, w.operatorEngine.walks, "a freed slot never walks")
         assertEquals(0, w.heartbeatsScheduled, "and re-arms nothing")
 
-        w.permission.set(GalleryAccess.DENIED)
+        w.gallery.access = GalleryAccess.DENIED
         w.core.tail.uploadEvents.uploadCompleted()
         kotlinx.coroutines.delay(200)
         assertEquals(1, w.operatorEngine.topUps, "a late completion after a revoke requests nothing")

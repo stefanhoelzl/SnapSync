@@ -24,7 +24,7 @@ class AdmissionWorldTest {
         w.runUploadCycle()
         assertTrue(w.store.union(eventId)!!.any { it.deviceId == w.ownDeviceId && it.assetId == "A" })
 
-        w.permission.set(GalleryAccess.NOT_DETERMINED)
+        w.gallery.access = GalleryAccess.NOT_DETERMINED
         w.addOwnAsset("B")
 
         assertEquals(CycleResult.SKIPPED, w.runUploadCycle(), "no usable access: the engine is not the resolved one")
@@ -39,11 +39,11 @@ class AdmissionWorldTest {
     fun a_restored_grant_resumes_where_it_left_off() = worldTest {
         val w = World(this)
         w.provision("E")
-        w.permission.set(GalleryAccess.DENIED)
+        w.gallery.access = GalleryAccess.DENIED
         w.addOwnAsset("A")
         assertEquals(CycleResult.SKIPPED, w.runUploadCycle())
 
-        w.permission.set(GalleryAccess.GRANTED)
+        w.gallery.access = GalleryAccess.GRANTED
 
         assertEquals(CycleResult.COMPLETED, w.runUploadCycle())
         assertTrue(w.platform.created.any { it.filename == "A-primary.jpg" })

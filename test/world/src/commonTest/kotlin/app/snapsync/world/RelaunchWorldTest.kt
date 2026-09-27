@@ -21,7 +21,7 @@ class RelaunchWorldTest {
     @Test
     fun the_durable_state_survives_a_relaunch() = worldTest {
         val w = World(this)
-        w.permission.set(GalleryAccess.GRANTED)
+        w.gallery.access = GalleryAccess.GRANTED
         val event = w.provisionMinted()
         w.addOwnAsset("A")
         assertEquals(CycleResult.COMPLETED, w.runUploadCycle())
@@ -38,7 +38,7 @@ class RelaunchWorldTest {
         assertEquals(rows, w.ledger.manifestRows(), "the ledger (an App-Group database) survives")
         assertTrue(w.downloadStore.pendingDownloads().isNotEmpty(), "the download store survives")
         assertTrue(w.gallery.current().any { it.assetId == AssetId("A") }, "the photo library survives")
-        assertEquals(GalleryAccess.GRANTED, w.permission.permission.value, "the grant survives")
+        assertEquals(GalleryAccess.GRANTED, w.gallery.access, "the grant survives")
         val objects = w.neutral.objectsOf(w.ownDeviceId)
         assertTrue(objects is Answer.Available && objects.value.isNotEmpty(), "the backend survives")
 
