@@ -88,34 +88,40 @@ class JvmMocks(
     fun adapters(build: JvmBuild, attests: Boolean, backend: Backend = this.backend.port(build.appVersion)): JvmAdapters =
         JvmAdapters(
             build = build,
-            clock = clock.port(),
-            crashReporter = crashReporter.port(),
-            extensionCrashReporter = crashReporter.unobservedPort(),
-            files = disk.port(),
-            extensionFiles = disk.port(privateArea = false),
-            databases = databases.port(),
-            preferences = preferences.port(),
-            secureStore = keychain.port(),
-            integrity = enclave.port(available = attests),
-            processInfo = processInfo.port(),
-            backend = backend,
-            backgroundTime = backgroundTime.port(),
-            wake = wakes.port(),
-            extensionRegistry = extensionRegistry.port(),
-            lifecycle = lifecycle.port(),
-            links = links.port(),
-            pushNotifications = pushService.port(),
-            ui = screen.port(),
-            devControls = devControls.port(),
-            extensionHost = extensionHost.port(),
-            gallery = library.port(),
-            cycleGallery = library.port(),
-            photoAccess = library.photoAccess(),
-            appUpload = uploadSession.port(),
-            cycleUpload = uploadQueue.port(),
-            download = downloads.port(),
-            systemUi = systemUi.port(),
-            appDrivenUpload = OperatorDrivenUploads,
+            device = JvmDevice(
+                clock = clock.port(),
+                crashReporter = crashReporter.port(),
+                extensionCrashReporter = crashReporter.unobservedPort(),
+                files = disk.port(),
+                extensionFiles = disk.port(privateArea = false),
+                databases = databases.port(),
+                preferences = preferences.port(),
+                secureStore = keychain.port(),
+                integrity = enclave.port(available = attests),
+                processInfo = processInfo.port(),
+            ),
+            entries = JvmEntries(
+                lifecycle = lifecycle.port(),
+                links = links.port(),
+                pushNotifications = pushService.port(),
+                ui = screen.port(),
+                devControls = devControls.port(),
+                extensionHost = extensionHost.port(),
+            ),
+            systems = JvmSystems(
+                backend = backend,
+                backgroundTime = backgroundTime.port(),
+                wake = wakes.port(),
+                extensionRegistry = extensionRegistry.port(),
+                gallery = library.port(),
+                cycleGallery = library.port(),
+                photoAccess = library.photoAccess(),
+                appUpload = uploadSession.port(),
+                cycleUpload = uploadQueue.port(),
+                download = downloads.port(),
+                systemUi = systemUi.port(),
+                appDrivenUpload = OperatorDrivenUploads,
+            ),
         )
 
     companion object {
@@ -145,12 +151,17 @@ class VersionedHttpBackend(
         http().renameEvent(token, eventId, name)
     override suspend fun joinEvent(token: String?, eventId: String, deviceId: String): Reply<Unit> =
         http().joinEvent(token, eventId, deviceId)
-    override suspend fun publishManifest(token: String?, eventId: String, deviceId: String, manifest: DeviceManifest): Reply<Unit> =
-        http().publishManifest(token, eventId, deviceId, manifest)
+    override suspend fun publishManifest(
+        token: String?,
+        eventId: String,
+        deviceId: String,
+        manifest: DeviceManifest,
+    ): Reply<Unit> = http().publishManifest(token, eventId, deviceId, manifest)
     override suspend fun leaveEvent(token: String?, eventId: String, deviceId: String): Reply<Unit> =
         http().leaveEvent(token, eventId, deviceId)
     override suspend fun eventFiles(eventId: String): Reply<List<UnionAsset>> = http().eventFiles(eventId)
-    override suspend fun deviceFiles(token: String?, deviceId: String): Reply<List<DeviceFile>> = http().deviceFiles(token, deviceId)
+    override suspend fun deviceFiles(token: String?, deviceId: String): Reply<List<DeviceFile>> =
+        http().deviceFiles(token, deviceId)
     override suspend fun putDeviceConfig(token: String?, deviceId: String, push: ApnsPushToken): Reply<Unit> =
         http().putDeviceConfig(token, deviceId, push)
 }

@@ -54,7 +54,7 @@ import kotlin.time.Clock
  *   admission ([UploaderProcess.App]) and its album coordinator — the JVM carries no OS-driven mechanism, so its one
  *   cycle is the app tier's, invoked through the extension's entry port. Carried over from the world it replaces.
  * - **The push token survives a relaunch**, as the OS re-delivers it to every launch on a device.
- * - **The screen's "now" is the wall clock**, while the core reads the launch's [JvmAdapters.clock], so a status screen
+ * - **The screen's "now" is the wall clock**, while the core reads the launch's [JvmDevice.clock], so a status screen
  *   renders dates a person would see.
  */
 class JvmApp<D>(
@@ -103,18 +103,18 @@ class JvmApp<D>(
 
     /** One process's composition over [ports] — every service built anew, as a process builds them. */
     private inner class Launch(private val ports: JvmAdapters) {
-        val config = ConfigService(ports.files, ports.clock)
-        val ledger = LedgerService(ports.databases)
-        val downloadStore = DownloadService(ports.databases)
-        val manifestStore = DeviceManifestService(ports.files)
+        val config = ConfigService(ports.device.files, ports.device.clock)
+        val ledger = LedgerService(ports.device.databases)
+        val downloadStore = DownloadService(ports.device.databases)
+        val manifestStore = DeviceManifestService(ports.device.files)
 
         val process: ProcessServices = snapSyncProcess(
             ProcessPorts(
-                crashReporter = ports.crashReporter,
+                crashReporter = ports.device.crashReporter,
                 processMetrics = NoProcessMetrics,
                 logSinks = emptyList(),
-                files = ports.files,
-                clock = ports.clock,
+                files = ports.device.files,
+                clock = ports.device.clock,
                 entryContext = NoEntryContext,
                 dsn = ports.build.dsn,
                 bootLines = emptyList(),
@@ -131,18 +131,22 @@ class JvmApp<D>(
             UploadPorts(
                 process = UploaderProcess.App({ composed.core.appUploadAdmission() }, { composed.core.photoPermission.value }),
                 config = config,
-                deviceIdentity = PersistedDeviceIdentity(DeviceIdentityRole.READ_ONLY, ports.secureStore, NoPlatformDeviceId()),
+                deviceIdentity = PersistedDeviceIdentity(
+                    DeviceIdentityRole.READ_ONLY,
+                    ports.device.secureStore,
+                    NoPlatformDeviceId(),
+                ),
                 host = ports.build.host,
                 appVersion = ports.build.appVersion.value.orEmpty(),
                 ledger = ledger,
-                upload = ports.cycleUpload,
-                gallery = ports.cycleGallery,
-                discovery = GalleryDiscovery(ports.cycleGallery),
+                upload = ports.systems.cycleUpload,
+                gallery = ports.systems.cycleGallery,
+                discovery = GalleryDiscovery(ports.systems.cycleGallery),
                 selectionScope = { composed.core.selectionScope() },
                 manifestStore = manifestStore,
                 manifestPublisher = composed.core.backend.manifest,
                 suppression = downloadStore,
-                albumManager = GalleryAlbums(ports.cycleGallery),
+                albumManager = GalleryAlbums(ports.systems.cycleGallery),
                 albumLookupFailure = AlbumLookupFailure.AdmitOnDoubt,
                 albumCoordinator = composed.core.albumCoordinator,
                 token = { null },
@@ -152,46 +156,47 @@ class JvmApp<D>(
 
         init {
             // The extension's root registers its entry port on the OS's host; the thunks force nothing until invoked.
-            snapSyncExtension(ports.extensionHost, ports = { uploadPorts }, cycle = { cycle }, rereadCredential = {})
+            snapSyncExtension(ports.entries.extensionHost, ports = { uploadPorts }, cycle = { cycle }, rereadCredential = {})
         }
 
         private fun appPorts(): AppPorts = AppPorts(
             config = config,
-            photoAccess = ports.photoAccess,
-            gallery = ports.gallery,
-            systemUi = ports.systemUi,
+            photoAccess = ports.systems.photoAccess,
+            gallery = ports.systems.gallery,
+            systemUi = ports.systems.systemUi,
             // The in-memory platform has no main thread: platform-UI commands run on the composition's own lane.
             uiLane = scope.coroutineContext.minusKey(Job),
             uploadRecord = UploadRecordPorts(ledger = ledger),
             downloadStore = downloadStore,
-            stagedBytes = StagingService(ports.files),
-            download = ports.download,
-            backend = ports.backend,
+            stagedBytes = StagingService(ports.device.files),
+            download = ports.systems.download,
+            backend = ports.systems.backend,
             manifestStore = manifestStore,
-            integrity = ports.integrity,
-            attestStore = AttestState(ports.secureStore),
-            deviceIdentity = PersistedDeviceIdentity(DeviceIdentityRole.MINTING, ports.secureStore, NoPlatformDeviceId()),
+            integrity = ports.device.integrity,
+            attestStore = AttestState(ports.device.secureStore),
+            deviceIdentity = PersistedDeviceIdentity(DeviceIdentityRole.MINTING, ports.device.secureStore, NoPlatformDeviceId()),
             appStoreUrl = ports.build.appStoreUrl,
-            appDrivenUpload = { ports.appDrivenUpload },
-            appUpload = ports.appUpload,
-            backgroundTime = ports.backgroundTime,
-            wake = ports.wake,
-            extensionRegistry = ports.extensionRegistry,
-            devControls = ports.devControls,
-            pushNotifications = ports.pushNotifications,
-            lifecycle = ports.lifecycle,
-            links = ports.links,
-            ui = ports.ui,
-            albumMapStore = AlbumMapService(ports.preferences, ports.secureStore),
+            appDrivenUpload = { ports.systems.appDrivenUpload },
+            appUpload = ports.systems.appUpload,
+            backgroundTime = ports.systems.backgroundTime,
+            wake = ports.systems.wake,
+            extensionRegistry = ports.systems.extensionRegistry,
+            devControls = ports.entries.devControls,
+            pushNotifications = ports.entries.pushNotifications,
+            lifecycle = ports.entries.lifecycle,
+            links = ports.entries.links,
+            ui = ports.entries.ui,
+            albumMapStore = AlbumMapService(ports.device.preferences, ports.device.secureStore),
             // A minted event opens this app's join gate, as the iOS root routes it.
             onEventMinted = { eventId -> composed.host.onEventCreated(eventId) },
-            push = PushPorts(tokens = pushTokens, record = PushRegistrationRecord(ports.files)),
-            processInfo = ports.processInfo,
-            deviceLogs = LogTailService(ports.files),
+            push = PushPorts(tokens = pushTokens, record = PushRegistrationRecord(ports.device.files)),
+            processInfo = ports.device.processInfo,
+            deviceLogs = LogTailService(ports.device.files),
             log = ports.build.log,
         )
 
         /** The zone is read once from the launch's clock; "now" is the wall clock (see the class's deviations). */
-        private fun cutoffFormatter(): CutoffFormatter = CutoffFormatter(now = Clock.System::now, zone = ports.clock.timeZone())
+        private fun cutoffFormatter(): CutoffFormatter =
+            CutoffFormatter(now = Clock.System::now, zone = ports.device.clock.timeZone())
     }
 }

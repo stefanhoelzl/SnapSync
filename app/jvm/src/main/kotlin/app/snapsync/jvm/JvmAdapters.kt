@@ -33,11 +33,22 @@ import co.touchlab.kermit.Logger
  * root's caller. A launch gets a fresh set ([JvmApp.relaunch] asks for one), built over whatever durable state the
  * caller keeps: the mocks' ([JvmMocks.adapters]), real JVM storage, or the real `api/` behind the backend port.
  *
- * Two processes live in one JVM here, as on the phone: the app's faces, and the upload extension's where they differ
- * ([extensionFiles] reaches only the shared area; [extensionCrashReporter] is a channel nobody observes).
+ * Bundled by what they stand for: the [device] a process runs on, the operating system's [entries] into the app, and
+ * the external [systems] the app talks to.
  */
 class JvmAdapters(
     val build: JvmBuild,
+    val device: JvmDevice,
+    val entries: JvmEntries,
+    val systems: JvmSystems,
+)
+
+/**
+ * What a process finds on the device. Two processes live in one JVM here, as on the phone: the app's faces, and the
+ * upload extension's where they differ ([extensionFiles] reaches only the shared area; [extensionCrashReporter] is a
+ * channel nobody observes).
+ */
+class JvmDevice(
     val clock: Clock,
     val crashReporter: CrashReporter,
     val extensionCrashReporter: CrashReporter,
@@ -48,16 +59,24 @@ class JvmAdapters(
     val secureStore: SecureStore,
     val integrity: DeviceIntegrity,
     val processInfo: ProcessInfo,
-    val backend: Backend,
-    val backgroundTime: BackgroundTime,
-    val wake: Wake,
-    val extensionRegistry: ExtensionRegistry,
+)
+
+/** The operating system's entries into the app and its upload extension — the event ports. */
+class JvmEntries(
     val lifecycle: Lifecycle,
     val links: Links,
     val pushNotifications: PushNotifications,
     val ui: Ui,
     val devControls: DevControls,
     val extensionHost: ExtensionHost,
+)
+
+/** The external systems the app talks to: the backend, the photo library, and the OS's background machinery. */
+class JvmSystems(
+    val backend: Backend,
+    val backgroundTime: BackgroundTime,
+    val wake: Wake,
+    val extensionRegistry: ExtensionRegistry,
     /** The app process's photo library. */
     val gallery: Gallery,
     /** The upload cycle's own face of the library — the extension's reads. */
@@ -99,7 +118,7 @@ class JvmBuild(
  * wake the operator delivers, as on a device.
  *
  * The JVM root's one stated deviation from the phone, carried over from the world it replaces: the app process has
- * no transfer session of its own that creates jobs, so every upload goes through the cycle over [JvmAdapters.cycleUpload].
+ * no transfer session of its own that creates jobs, so every upload goes through the cycle over [JvmSystems.cycleUpload].
  */
 object OperatorDrivenUploads : AppUploadMechanism {
     override suspend fun topUp(stopRequested: () -> Boolean): CycleResult = CycleResult.COMPLETED
