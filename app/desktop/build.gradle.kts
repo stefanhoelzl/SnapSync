@@ -33,7 +33,7 @@ dependencies {
     // The production `HttpBackend` the world composes over its mini-edge.
     implementation(project(":adapter:generic:app"))
     // The full-stack harness: the controllable world (BackendStore + mini-edge + levers wrapping
-    // `:adapter:generic:fake`) whose `World.core` IS the shared `snapSyncApp` composition.
+    // `:adapter:generic:mock`) whose `World.core` IS the shared `snapSyncApp` composition.
     implementation(project(":test:world"))
     // The mirror: the control channel's typed client, whose wire `UiState` it re-composes.
     implementation(project(":test:control"))

@@ -9,7 +9,7 @@ a permanently-compiled seam. The shell's own production source SHALL gain no dec
 module, and any visibility widening it requires SHALL be the narrowest that compiles (`internal` before
 `public`, so no platform framework header changes).
 
-This is the inverse of `:adapter:generic:fake`, which never links into a shipped framework at all. It is
+This is the inverse of `:adapter:generic:mock`, which never links into a shipped framework at all. It is
 distinguished from a dev/test **launch trigger** (a `SNAPSYNC_*` environment variable), which ships in
 every binary and is inert only at runtime: a launch trigger's inertness is a testable runtime contract and
 belongs to the shell's capability, whereas compile-time containment is a property of the module graph and

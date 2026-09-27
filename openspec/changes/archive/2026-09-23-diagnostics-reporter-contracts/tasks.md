@@ -39,7 +39,7 @@
 
 - [x] 4.1 `InMemoryDiagnosticsReporter.start()` flips `started` only when `isConfigured`. Remove the
   `described` cell and its factory parameter.
-- [x] 4.2 `:adapter:generic:fake` commonTest: the fake binding (`currentHost`, `Fake`, reaching
+- [x] 4.2 `:adapter:generic:mock` commonTest: the fake binding (`currentHost`, `Fake`, reaching
   `UNCONFIGURED` and `CONFIGURED`), with the handle over the `started` and `sent` cells. Delete
   `DiagnosticsReporterContractTest`.
 - [x] 4.3 `./gradlew build`: the fake binding passes on JVM, and the world and integration tests that read
@@ -78,7 +78,7 @@
   - `:test:contracts` → `port-contracts`, with a delta.
   - `:adapter:ios:ext-safe` → `crash-reporting`, no delta: only `internal` seams changed, and behaviour is
     preserved.
-  - `:adapter:generic:fake` → no delta: the fake's unconfigured `start()` now matches the adapter, and no
+  - `:adapter:generic:mock` → no delta: the fake's unconfigured `start()` now matches the adapter, and no
     requirement states the fake's behaviour. The world builds it configured.
 - Dead types: `DiagnosticsReporterContractTest` is removed and named by no spec. `SentryDiagnosticsReporter`
   survives, and only its declaration line changed.

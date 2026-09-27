@@ -4,8 +4,8 @@ package app.snapsync.feature.push
 
 import app.snapsync.model.ApnsPushToken
 import app.snapsync.services.identity.PersistedDeviceIdentity
-import app.snapsync.fake.inMemoryFiles
-import app.snapsync.fake.inMemorySecureStore
+import app.snapsync.mock.inMemoryFiles
+import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.DeviceIdentityRole
 import app.snapsync.model.SecureSlot
 import app.snapsync.model.SecureSlots

@@ -1,6 +1,6 @@
 package app.snapsync.feature.download
 
-import app.snapsync.fake.inMemoryDatabases
+import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.feature.support.InMemoryAssetPresence
 import app.snapsync.feature.support.RecordingFiles
 import app.snapsync.feature.support.configService

@@ -1,6 +1,6 @@
 package app.snapsync.feature.download
 
-import app.snapsync.fake.inMemoryDatabases
+import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.feature.support.InMemoryAssetPresence
 import app.snapsync.feature.support.RecordingDatabases
 import app.snapsync.feature.support.RecordingDownload
@@ -125,7 +125,7 @@ class DownloadControllerTest {
 
     /**
      * Counts library lookups, so "how often did we ask?" is assertable rather than inferred from a log.
-     * Rigging, so it lives in the test and not in `:adapter:generic:fake` (`FakeHonestyTest`).
+     * Rigging, so it lives in the test and not in `:adapter:generic:mock` (`FakeHonestyTest`).
      */
     private class CountingPresence(
         private val delegate: ImportedAssetPresence = InMemoryAssetPresence(),

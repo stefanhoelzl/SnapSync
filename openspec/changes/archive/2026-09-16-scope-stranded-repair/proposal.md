@@ -73,7 +73,7 @@ _None._
   `deregister()` collapses into `stop()`.
 - `:domain` `compose/` — the relinquish binding (`relinquishOsRegistration`).
 - `:adapter:generic:app` — SQLDelight `demoteRequested` statement replacing `deleteRequested`.
-- `:adapter:generic:fake` — `InMemoryLedgerStore`.
+- `:adapter:generic:mock` — `InMemoryLedgerStore`.
 - `:adapter:ios:app-only` — `IosUrlSessionUploadPlatform` (`lostKeys`, `discard`; `sweepStaging` removed).
 - `:adapter:ios:ext-safe` — `IosPhotoKitUploadPlatform` and the simulator `UploadJobQueue` answer `null`.
 - `:app:ios` — `UrlSessionUploadController.start()` signals the restart instead of sweeping.

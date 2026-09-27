@@ -23,8 +23,8 @@ transaction; `deleteKeys` SHALL delete by primary key in chunks below every driv
 SQL round-trip (an `assetId`-grouped query). Every `LedgerStore` implementation SHALL satisfy the
 shared `LedgerStoreContract` (hosted in `:test:contracts`, capability `port-contracts`): the JVM/sqlite
 and native (simulator) driver bindings live in `:adapter:generic:app`'s test source sets, and
-`:adapter:generic:fake`'s honest `InMemoryLedgerStore` — the store the world harness runs on — is bound
-from `:adapter:generic:fake`'s own tests. Every other `LedgerStore` test double SHALL honour the record guard and
+`:adapter:generic:mock`'s honest `InMemoryLedgerStore` — the store the world harness runs on — is bound
+from `:adapter:generic:mock`'s own tests. Every other `LedgerStore` test double SHALL honour the record guard and
 `deleteKeys` the same way, so no test passes against a store that does something the device does not. The
 native (iOS) driver is wired by `:adapter:ios:ext-safe`'s
 factory over the App-Group container.
@@ -37,7 +37,7 @@ factory over the App-Group container.
 #### Scenario: Every backend satisfies one contract
 - **WHEN** the shared `LedgerStoreContract` scenarios run
 - **THEN** they pass unchanged against the SQLDelight store (JVM and native drivers) and against
-  `:adapter:generic:fake`'s in-memory store
+  `:adapter:generic:mock`'s in-memory store
 
 #### Scenario: The schema carries no retired column
 - **WHEN** the columns of `ledgerRow` are listed on a database created fresh or migrated to the current schema

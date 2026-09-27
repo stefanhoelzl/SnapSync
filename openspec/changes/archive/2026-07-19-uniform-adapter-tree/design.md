@@ -13,7 +13,7 @@ make the tree uniformly two-level.
 - Goal: `adapter:<platform-axis>:<linkage-leaf>` uniformly across all four adapter leaves;
   both prefixes are pure path groupings (`adapter/generic/` gets NO build file — same as
   `adapter/ios/`).
-- Non-goal: any Kotlin change. Packages stay (`app.snapsync.fake` et al.) — packages organize,
+- Non-goal: any Kotlin change. Packages stay (`app.snapsync.mock` et al.) — packages organize,
   modules withhold; only the module seats rename.
 - Non-goal: touching `:adapter:ios:ext-safe` / `:adapter:ios:app-only` — already on the target
   shape.
@@ -37,7 +37,7 @@ make the tree uniformly two-level.
   module would withhold nothing (the module-set law's own test) and would re-create the flat seat
   under a new name.
 - **D4 — gate scopes move in the same diff, not left to the non-vacuity twins.**
-  `FakeHonestyTest.fakeRoot` moves to `adapter/generic/fake` with the red-proof re-run (plant a
+  `FakeHonestyTest.fakeRoot` moves to `adapter/generic/mock` with the red-proof re-run (plant a
   public `var` in a fake → red → restore → green); `ModuleSetTest.targetModules` renames the two
   entries. Same-diff update is the only safe sequencing — a stale `fakeRoot` would report the
   gate "PENDING" forever (the directory no longer exists), which is precisely the fail-open the

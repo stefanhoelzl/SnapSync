@@ -171,7 +171,7 @@ older snapshot exercises more of the chain.
 ### D7 — Seed and fake construction
 
 `UploadReconciler`'s seed builds `LedgerEntry(key, assetIdFromUploadKey(key), COMPLETED)` with no provenance. This
-is the one edit to that file. `InMemoryLedgerStore` (in `:adapter:generic:fake`) and the two test-local copies in
+is the one edit to that file. `InMemoryLedgerStore` (in `:adapter:generic:mock`) and the two test-local copies in
 `domain/feature` commonTest lose the same fields, the provenance sweep and the mark sweep. `FakeHonestyTest` keeps
 the public surface honest.
 

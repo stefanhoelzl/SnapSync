@@ -2,7 +2,7 @@
 
 - [x] 1.1 Rename `ports/CrashReporting` to `ports/DiagnosticsReporter`, keeping `start()`'s contract
       (build-configured, idempotent, no-op when unconfigured) verbatim in its KDoc
-- [x] 1.2 Rename `:adapter:generic:fake`'s `InMemoryCrashReporting` to match, and update `:test:world`
+- [x] 1.2 Rename `:adapter:generic:mock`'s `InMemoryCrashReporting` to match, and update `:test:world`
       and every call site in `compose/`'s `snapSyncApp` / `uploadCore`
 - [x] 1.3 `./gradlew build` green on the rename alone (`FakeHonestyTest` still passes)
 
@@ -22,7 +22,7 @@
 - [x] 3.1 Add a `ports/` seam for a bounded, line-aligned tail read of a named process log
 - [x] 3.2 Implement it in `:adapter:ios:ext-safe` beside the writers — seek from the end, never read
       the whole file; current file only, never the `.1` sibling
-- [x] 3.3 Add the fake implementation in `:adapter:generic:fake` (port contract + initial-state
+- [x] 3.3 Add the fake implementation in `:adapter:generic:mock` (port contract + initial-state
       constructor only, per `FakeHonestyTest`)
 
 ## 4. Dump assembly (`:domain`, pure and tested)

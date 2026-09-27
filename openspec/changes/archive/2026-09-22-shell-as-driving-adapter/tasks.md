@@ -14,7 +14,7 @@
 ## 3. Inbound ports and the core's implementation (module-architecture)
 
 - [x] 3.1 Declare `PlatformEntries` and `ExtensionEntries` in `:domain:ports` with `@PlatformEntry` on their members
-- [x] 3.2 Add the `ProtectedStorage` port; its iOS adapter in `:adapter:ios:app-only`; its honest fake in `:adapter:generic:fake` (`FakeHonestyTest` green)
+- [x] 3.2 Add the `ProtectedStorage` port; its iOS adapter in `:adapter:ios:app-only`; its honest fake in `:adapter:generic:mock` (`FakeHonestyTest` green)
 - [x] 3.3 Widen `AppUploadEngine` with `onBackgroundTransfers(completion)`; rename `UrlSessionUploadController.onBackgroundSessionEvents` to implement it; update the world's fake engine
 - [x] 3.4 Implement `PlatformEntries` in `:domain:compose` (`AppCore.platformEntries(hooks)`): move `LiveShell`'s bodies verbatim, including the `OsReceipt` deadlines, the `log.invocation` wrapping, the protected-storage log field, and the backstop re-schedule in `finally`; route `onBackgroundTask`/`onBackgroundTransfers` by the identifiers the hooks carry, and release plus log an unknown one
 - [x] 3.5 Implement `ExtensionEntries` over `uploadCore` in `:domain:compose` (moving `runProcessCycle`'s call site and `onTerminate`'s log)

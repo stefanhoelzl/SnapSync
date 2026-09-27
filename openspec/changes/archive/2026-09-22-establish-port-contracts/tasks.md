@@ -12,7 +12,7 @@
 - [x] 2.1 Move `LedgerStoreContract` to `:test:contracts` as clause values, one clause per existing `@Test`, same names and assertions, single `Empty` state
 - [x] 2.2 Same for `DownloadStoreContract`
 - [x] 2.3 Repoint the SQLDelight (jvm) and native-driver (sim) tests in `:adapter:generic:app` to bindings over the moved contracts
-- [x] 2.4 Move the fake bindings from `:test:world` `commonTest` to `:adapter:generic:fake` `commonTest`
+- [x] 2.4 Move the fake bindings from `:test:world` `commonTest` to `:adapter:generic:mock` `commonTest`
 - [x] 2.5 Remove the contracts and the `commonMain` `kotlin-test` dependency from `:test:world`; confirm nothing else in its `commonMain` used it
 - [x] 2.6 Compare each of the four bindings' outcome tables with the pre-move test results — identical clause count, all `Passed`
 
@@ -20,8 +20,8 @@
 
 - [x] 3.1 Add `SecureStoreState` (`Inaccessible`, `Empty`, `Holding(value, protection)`) beside the contract in `:test:contracts`
 - [x] 3.2 Write the `SecureStore` contract clauses (design D13): inaccessible read is `Unavailable` with a diagnostic, never `Absent`; inaccessible write refuses with `SecureStoreUnavailable` and leaves nothing; empty read is `Absent`; write-then-read is `Found(value, BACKGROUND_READABLE)`; write replaces; delete of absent is a no-op; delete removes; `migrateProtection` preserves the value and yields `BACKGROUND_READABLE`; `resolveOrMint` never mints when inaccessible and mints exactly once when empty — all inputs deterministic, addresses derived from the clause id
-- [x] 3.3 Add the honest `InMemorySecureStore` to `:adapter:generic:fake` (`internal`, factory returning `SecureStore`, state only through the constructor — the module's honesty is the compiler's `internal`, not a text gate)
-- [x] 3.4 Bind the fake (`JVM` and `IOS_SIM_KEXE`, kind `Fake`, all states) in `:adapter:generic:fake` `commonTest`
+- [x] 3.3 Add the honest `InMemorySecureStore` to `:adapter:generic:mock` (`internal`, factory returning `SecureStore`, state only through the constructor — the module's honesty is the compiler's `internal`, not a text gate)
+- [x] 3.4 Bind the fake (`JVM` and `IOS_SIM_KEXE`, kind `Fake`, all states) in `:adapter:generic:mock` `commonTest`
 - [x] 3.5 Bind `IosKeychain` live on `IOS_SIM_KEXE` (reaches `Inaccessible`) in `:adapter:ios:ext-safe` `iosTest`
 - [x] 3.6 Bind `AppGroupFileSecureStore` live on `IOS_SIM_KEXE` (reaches `Empty`, `Holding(_, BACKGROUND_READABLE)`) in `:adapter:ios:ext-safe` `iosSimulatorArm64Test`
 - [x] 3.7 Run all three on the Mac; every clause `Passed` or `NotRunHere` with a stated reason

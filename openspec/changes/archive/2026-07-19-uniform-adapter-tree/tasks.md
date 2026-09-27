@@ -2,8 +2,8 @@
 
 ## 1. Rename
 
-- [x] 1.1 `git mv adapter/generic adapter/generic/app`; `git mv adapter/fake adapter/generic/fake`
-- [x] 1.2 `settings.gradle.kts` includes → `:adapter:generic:app`, `:adapter:generic:fake`
+- [x] 1.1 `git mv adapter/generic adapter/generic/app`; `git mv adapter/fake adapter/generic/mock`
+- [x] 1.2 `settings.gradle.kts` includes → `:adapter:generic:app`, `:adapter:generic:mock`
 
 ## 2. Ride-alongs (one diff, per the 13a-class playbook)
 
@@ -13,7 +13,7 @@
       (CutoffFormatter), `:test:world` (World/Fakes/InMemoryStoreContractTest), build-file
       headers (leaf vocabulary recorded), `ios.yml` comment
 - [x] 2.3 `ModuleSetTest.targetModules` — the two entries renamed
-- [x] 2.4 `FakeHonestyTest.fakeRoot` → `adapter/generic/fake` (coverage moved, not shrunk);
+- [x] 2.4 `FakeHonestyTest.fakeRoot` → `adapter/generic/mock` (coverage moved, not shrunk);
       red-proof re-run: planted public `var` → red naming the file → restored → green
 - [x] 2.5 CLAUDE.md module rows (both), `app/ios/CLAUDE.md` (2 mentions)
 - [x] 2.6 `./gradlew architectureDiagrams` regenerated (`architecture/`)

@@ -284,7 +284,7 @@ process with one `COMPLETED` row; a re-scan of the joined event leaves registrat
    `upload-lifecycle`, `sync-ledger`, `ios-photokit-upload`, `ios-url-session-upload`, `device-manifest`,
    `limited-photo-access` (task 9.1).
 2. **Delta completeness** — modules the diff touched, and the capability that accounts for each:
-   `:adapter:generic:app` (`SqlDelightLedgerStore`, `Ledger.sq`) → `sync-ledger`; `:adapter:generic:fake` →
+   `:adapter:generic:app` (`SqlDelightLedgerStore`, `Ledger.sq`) → `sync-ledger`; `:adapter:generic:mock` →
    `sync-ledger`, `diagnostic-logging`; `:adapter:ios:app-only` → `ios-url-session-upload`; `:adapter:ios:ext-safe`
    → `ios-photokit-upload`; `:app:ios` → `ios-app-shell`, `ios-url-session-upload`; `:domain:compose` →
    `upload-lifecycle`, `diagnostic-logging`; `:domain:feature` → `upload-lifecycle`, `join-event`,

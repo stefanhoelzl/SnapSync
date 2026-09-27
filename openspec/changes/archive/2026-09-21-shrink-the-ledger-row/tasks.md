@@ -49,7 +49,7 @@ green at the end of group 4 and at every group after it, not between groups 1 an
   callback still cannot write `REQUESTED`.
 - [x] 3.3 Update `SqlDelightLedgerStore`: `toEntry` loses its three parameters, the three writes stop binding
   them, `manifestRows` stops passing placeholders, and the two sweep implementations are deleted.
-- [x] 3.4 Update `:adapter:generic:fake`'s `InMemoryLedgerStore`: remove the fields, the provenance sweep, the mark
+- [x] 3.4 Update `:adapter:generic:mock`'s `InMemoryLedgerStore`: remove the fields, the provenance sweep, the mark
   sweep and the absent filters, and retarget its `demoteRequested` to `DISCOVERED`. Confirm that `FakeHonestyTest`
   passes.
 - [x] 3.5 In `PhotoKitJobMapping` and `IosUrlSessionUploadPlatform`, update KDoc and log text that says a failure
@@ -133,7 +133,7 @@ Modules the diff touched, each resolved to its capability:
   schema migration). Delta.
 - `:adapter:ios:ext-safe` (`PhotoKitJobMapping` KDoc, `IosLedgerStoreTest`) → `ios-photokit-upload`. Delta.
 - `:adapter:ios:app-only` (`IosUrlSessionUploadPlatform` KDoc) → `ios-url-session-upload`. Delta.
-- `:adapter:generic:fake` (`InMemoryLedgerStore`) → no capability of its own; it implements the `sync-ledger` port
+- `:adapter:generic:mock` (`InMemoryLedgerStore`) → no capability of its own; it implements the `sync-ledger` port
   contract, which carries the delta. It also now preserves `destinationPath` in `markTerminal` and
   `backfillManifestDetail`, as the SQL always did, so it matches the contract more closely.
 - `:test:world` (ledger contracts, `UploadFakes` KDoc) → `harness-world-model`. Delta.

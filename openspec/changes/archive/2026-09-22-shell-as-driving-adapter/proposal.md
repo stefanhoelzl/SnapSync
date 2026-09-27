@@ -80,7 +80,7 @@ covered like any other, and the shell rule stays exactly as written.
   - `:domain:compose` (their implementations, `AppCore` wiring)
   - `:domain:feature` (`AppUploadEngine` widened by one member)
   - `:adapter:ios:app-only` (`ProtectedStorage` adapter)
-  - `:adapter:generic:fake` (its fake)
+  - `:adapter:generic:mock` (its fake)
   - `:ui:screens` (the factory and its tests)
   - `:app:ios`, `:app:ios:extension`, `:app:ios:forge`, `:app:desktop` (the shells and panes shrink)
   - `iosApp/` Swift (the BGTask forwarding)

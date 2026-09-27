@@ -89,7 +89,7 @@ Not modified, checked:
 - `:adapter:ios:ext-safe` — `IosDiscovery` implements the port; the request builder moves out;
   `IosPhotoKitUploadPlatform`, the `uploadJobQueue` expect/actuals, and the simulator substitute.
 - `:adapter:ios:app-only` — `IosUrlSessionUploadPlatform`, `UrlSessionOutcome` (stranded rule leaves).
-- `:adapter:generic:app`, `:adapter:generic:fake` — none beyond `LedgerStore` now extending `TransferRecord`.
+- `:adapter:generic:app`, `:adapter:generic:mock` — none beyond `LedgerStore` now extending `TransferRecord`.
 - `:app:ios`, `:app:ios:extension` — each root binds `IosDiscovery` once and passes `TransferRecord`.
 - `:test:world` — `FakeBackgroundTransfer` splits; a fake `UploadDiscovery`; `World` exposes both.
 - `:test:integration` — tests reading discovery observability address the discovery fake.

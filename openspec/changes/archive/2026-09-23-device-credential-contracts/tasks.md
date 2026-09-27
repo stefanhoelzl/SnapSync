@@ -22,7 +22,7 @@
 
 - [x] 4.1 `InMemoryAttestKey`: refuse every operation when unsupported; refuse a `keyId` it never generated
 - [x] 4.2 `InMemoryAttestClient`: mint only for `attestation:<keyId>:<challenge>` over its issued challenge; KDoc on what `mints`/`renews = true` model and that no host reaches the latter
-- [x] 4.3 Bind the doubles (`AttestKey`, `AttestStore`, `AttestClient`, `ProtectedStorage`) in `:adapter:generic:fake` `commonTest`; run `:adapter:generic:fake`, `:test:world`, `:test:integration` tests — world outcomes unchanged
+- [x] 4.3 Bind the doubles (`AttestKey`, `AttestStore`, `AttestClient`, `ProtectedStorage`) in `:adapter:generic:mock` `commonTest`; run `:adapter:generic:mock`, `:test:world`, `:test:integration` tests — world outcomes unchanged
 
 ## 5. CI-reachable real bindings
 

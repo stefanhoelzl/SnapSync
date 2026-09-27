@@ -96,7 +96,7 @@ None.
 - `:domain` `feature/upload/` — `UploadCycle` (promotion pass, stranded pass), `LedgerWriter`
 - `:domain` `compose/` — `UploadPorts`/`uploadCore` wiring for the adapter's ledger access
 - `:adapter:generic:app` — `Ledger.sq`, `SqlDelightLedgerStore`
-- `:adapter:generic:fake` — `InMemoryLedgerStore`
+- `:adapter:generic:mock` — `InMemoryLedgerStore`
 - `:adapter:ios:app-only` — `IosUrlSessionUploadPlatform`, `SessionDelegate`
 - `:adapter:ios:ext-safe` — `IosPhotoKitUploadPlatform`
 - `:app:ios` — `UrlSessionUploadController` wiring

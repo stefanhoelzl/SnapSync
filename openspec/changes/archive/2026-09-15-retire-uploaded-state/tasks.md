@@ -17,7 +17,7 @@
       with a header comment stating it places nothing and the staged-revert stance (D3)
 - [x] 2.3 `SqlDelightLedgerStore`: map `TerminalOutcome` to the stored state in `markTerminal`; delete
       `uploadedRows` / `promoteUploaded`
-- [x] 2.4 Update every other `LedgerStore` implementation: `:adapter:generic:fake` `InMemoryLedgerStore`,
+- [x] 2.4 Update every other `LedgerStore` implementation: `:adapter:generic:mock` `InMemoryLedgerStore`,
       `:domain:feature` commonTest `InMemoryLedgerStore` and `FakeLedgerStore`, and the stub in
       `OsDrivenUploadMechanismTest`
 

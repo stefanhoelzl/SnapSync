@@ -1,7 +1,7 @@
 package app.snapsync.diagnostics
 
-import app.snapsync.fake.inMemoryDatabases
-import app.snapsync.fake.inMemoryFiles
+import app.snapsync.mock.inMemoryDatabases
+import app.snapsync.mock.inMemoryFiles
 import app.snapsync.feature.support.configService
 import app.snapsync.feature.support.galleryAccess
 import app.snapsync.model.APP_LOG_FILE_NAME

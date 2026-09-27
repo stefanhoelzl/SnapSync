@@ -327,7 +327,7 @@ this requirement will again be undiagnosable from a dump.
 
 ### Requirement: The fake-honesty gate
 
-**Reason**: Replaced by structure. With `:adapter:generic:fake`'s classes declared `internal` and exported
+**Reason**: Replaced by structure. With `:adapter:generic:mock`'s classes declared `internal` and exported
 through factories returning the port type, `:test:world` cannot reach a lever across the module boundary at
 all — honesty becomes unrepresentable rather than forbidden. The text gate had also missed a real lever:
 `val files: MutableSet<String>` in `InMemoryStagedBytes` is public mutable state its `var`-matching regex

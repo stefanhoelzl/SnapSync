@@ -75,7 +75,7 @@ None.
 - `:domain` — `feature/download` (`DownloadController`, `UnreportedImports` deleted),
   `feature/membership/ResetDeviceState`, `ports/DownloadStore`, `ports/DownloadSeams`, `compose/SnapSyncApp`.
 - `:adapter:generic:app` — `SqlDelightDownloadStore` and `DownloadStore.sq`.
-- `:adapter:generic:fake` — `InMemoryDownloadStore`.
+- `:adapter:generic:mock` — `InMemoryDownloadStore`.
 - `:adapter:ios:app-only` — `IosPhotoLibraryImporter` (deadline, `forgetUnreported`, the loud no-op).
 - `:app:ios` — `SnapSyncRoot` wiring only (the `UnreportedImports` instance it used to own is gone).
 - `:test:world` — `FakePhotoLibraryImporter`, `DownloadStoreContract`, `World`.

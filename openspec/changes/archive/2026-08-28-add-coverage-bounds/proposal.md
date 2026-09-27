@@ -29,7 +29,7 @@ is the pointer at the next thing to fix.
   `:tools:diagrams` are not instrumented and contribute no coverage, so a broad harness suite cannot
   stand in for a thin unit suite.
 - Distinguish **instrumented** (a module whose tests contribute coverage) from **bounded** (a module
-  whose classes are measured). `:adapter:generic:fake` is instrumented but not bounded: its tests are
+  whose classes are measured). `:adapter:generic:mock` is instrumented but not bounded: its tests are
   `:domain`'s feature tests, its fakes are test equipment.
 - Exclude `:domain`'s `compose/` zone from the bounded set, citing `module-architecture`'s
   **"One shared composition"**. A composition root is reachable only by composing it, so no unit test
@@ -52,7 +52,7 @@ is the pointer at the next thing to fix.
 
 - `architecture-diagrams`: the module dependency graph gains a stated rule about what it counts.
   Coverage crediting edges are declared on Kover's `kover` configuration, which the graph generator
-  read as architectural dependencies — rendering `:domain → :adapter:generic:fake` and
+  read as architectural dependencies — rendering `:domain → :adapter:generic:mock` and
   `:ui:components → :ui:screens`, every one pointing the opposite way to the real dependency. A new
   requirement excludes report-aggregation configurations and says where such an edge may be declared.
 
@@ -85,7 +85,7 @@ values so it lands green.
 
 **Modules bounded**: `:domain` (minus `compose/`), `:adapter:generic:app`, `:ui:presentation`,
 `:ui:screens`, `:ui:components`.
-**Instrumented but not bounded**: `:adapter:generic:fake`.
+**Instrumented but not bounded**: `:adapter:generic:mock`.
 **Neither**: `:test:integration`, `:test:world`, `:test:architecture`, `:tools:diagrams`,
 `:app:desktop`, `:test:harness-driver`, and every module without a JVM target.
 

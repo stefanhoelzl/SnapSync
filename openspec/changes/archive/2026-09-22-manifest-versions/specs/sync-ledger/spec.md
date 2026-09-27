@@ -33,7 +33,7 @@ leave, and a device reset therefore move it forward.
 
 `LedgerStore` SHALL declare `manifestVersion(): Long`, a single read, and `bumpManifestVersion()`, which
 advances it by one and signals no change (the ledger's rows did not change). Every `LedgerStore` implementation
-SHALL satisfy the version scenarios in the shared `LedgerStoreContract`, including `:adapter:generic:fake`'s
+SHALL satisfy the version scenarios in the shared `LedgerStoreContract`, including `:adapter:generic:mock`'s
 in-memory store, which SHALL apply the same advance rules without triggers.
 
 The migration that adds it (`11.sqm`, v11 → v12) SHALL be **row-preserving**: it creates the table and the

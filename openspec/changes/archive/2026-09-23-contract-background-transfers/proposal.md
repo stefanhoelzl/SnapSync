@@ -79,7 +79,7 @@ None.
 
 - **New:**
   - The three contracts, their state vocabularies and observation handles (`:test:contracts`).
-  - `inMemoryBackgroundScheduler` and its binding (`:adapter:generic:fake`); the world doubles' bindings
+  - `inMemoryBackgroundScheduler` and its binding (`:adapter:generic:mock`); the world doubles' bindings
     (`:test:world` `commonTest`).
   - The live bindings and registry entries in `:adapter:ios:app-only`'s rig source set.
   - The `BGTaskScheduler` seam, its device binding, and its replay test (`:adapter:ios:app-only`).

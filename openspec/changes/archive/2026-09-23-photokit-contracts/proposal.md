@@ -18,7 +18,7 @@ as soon as it runs without a grant. This is phase 6 of the testing-concept seque
   - `AlbumManager`
   - `PhotoLibraryImporter`
 
-  Each is bound by an honest fake in `:adapter:generic:fake` and by the real iOS adapter.
+  Each is bound by an honest fake in `:adapter:generic:mock` and by the real iOS adapter.
 - **A new host, `IOS_SIM_APP`**: the rig build of the app, ad-hoc signed, on a simulator. Photo access is
   granted before launch with `applesimutils`. This is the host where most of PhotoKit can be reached (reads
   under a full grant, asset creation, albums, imports). CI runs it **live**, so it is not recorded and
@@ -85,14 +85,14 @@ None.
 - `testing-architecture`: the simulator smoke tests no longer mark where the testable PhotoKit surface
   stops; the contracts' declared reach does.
 - `harness-world-model`: the world's photo-library doubles are wrappers over honest fakes in
-  `:adapter:generic:fake`, not levered fakes of their own.
+  `:adapter:generic:mock`, not levered fakes of their own.
 
 ## Impact
 
 - **New:**
   - The contracts above, plus their state vocabularies (`:test:contracts`).
-  - The four honest fakes (`:adapter:generic:fake`).
-  - Bindings in `:adapter:generic:fake` `commonTest`, `:adapter:ios:ext-safe` and `:adapter:ios:app-only`
+  - The four honest fakes (`:adapter:generic:mock`).
+  - Bindings in `:adapter:generic:mock` `commonTest`, `:adapter:ios:ext-safe` and `:adapter:ios:app-only`
     (`iosTest` for `IOS_SIM_KEXE`, the rig-gated source set for `IOS_SIM_APP`).
   - A rig-gated source set in `:adapter:ios:app-only`.
   - The `ios-contracts` job, with seed fixtures (a valid JPEG and an invalid resource file).

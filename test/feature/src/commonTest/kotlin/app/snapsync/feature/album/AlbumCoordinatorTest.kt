@@ -1,9 +1,9 @@
 package app.snapsync.feature.album
 
 import app.snapsync.model.AssetId
-import app.snapsync.fake.inMemoryGallery
-import app.snapsync.fake.inMemoryPreferences
-import app.snapsync.fake.inMemorySecureStore
+import app.snapsync.mock.inMemoryGallery
+import app.snapsync.mock.inMemoryPreferences
+import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.AlbumId
 import app.snapsync.model.AlbumRecord
 import app.snapsync.model.GalleryRead

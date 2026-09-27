@@ -1,7 +1,7 @@
 package app.snapsync.world
 
-import app.snapsync.fake.inMemoryGallery
-import app.snapsync.fake.inMemoryPhotoAccess
+import app.snapsync.mock.inMemoryGallery
+import app.snapsync.mock.inMemoryPhotoAccess
 import app.snapsync.model.AlbumId
 import app.snapsync.model.AlbumRecord
 import app.snapsync.model.AssetFacts
@@ -24,7 +24,7 @@ import app.snapsync.model.PendingDownload
 import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.feature.upload.AppUploadMechanism
 import app.snapsync.feature.upload.WalkOutcome
-import app.snapsync.fake.inMemoryWake
+import app.snapsync.mock.inMemoryWake
 import app.snapsync.model.ScheduleResult
 import app.snapsync.model.WakeId
 import app.snapsync.model.WakeTrigger
@@ -47,7 +47,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * The world's rigging around the honest `:adapter:generic:fake` [inMemoryPhotoAccess] status source: the
+ * The world's rigging around the honest `:adapter:generic:mock` [inMemoryPhotoAccess] status source: the
  * status is the honest fake's, over [cell], which this wrapper owns and the world's gallery shares, and [set] is
  * the operator's lever — the user changing the grant in Settings, which no port member can do. Drives the status
  * projection's `active` flag.
@@ -67,7 +67,7 @@ class MutablePhotoAccessStatusSource(
 }
 
 /**
- * The world's gallery: the operator rigging around the honest `:adapter:generic:fake` [inMemoryGallery]
+ * The world's gallery: the operator rigging around the honest `:adapter:generic:mock` [inMemoryGallery]
  * (`docs/architecture.md`, "The fake-honesty gate": the fake exposes only its port; the settable cells, the
  * levers and the inspection live HERE). Every answer is the honest fake's — the one the gallery contracts hold
  * to the PhotoKit adapters — except where a lever below says otherwise.

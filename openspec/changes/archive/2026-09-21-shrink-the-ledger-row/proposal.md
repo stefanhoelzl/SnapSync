@@ -89,7 +89,7 @@ None.
     `TransferRecord` KDoc); `feature/upload` (`SyncEngine`, `LedgerWriter`, `UploadCycle`, `Reconciler`,
     `StrandedKeys`, `DemoteRequested` KDoc); `feature/album` (`AlbumGather`); `compose/` (engine construction).
   - `:adapter:generic:app` (`Ledger.sq`, the new `10.sqm`, `SqlDelightLedgerStore`).
-  - `:adapter:generic:fake` (`InMemoryLedgerStore`).
+  - `:adapter:generic:mock` (`InMemoryLedgerStore`).
   - The iOS adapters (`PhotoKitJobMapping`, `IosUrlSessionUploadPlatform`), for KDoc and log text only; their
     `TerminalOutcome.FAILED` call sites keep compiling.
   - `:test:world` (the ledger contracts and seeds), `:test:integration`, `:app:desktop` (the world inspector), and

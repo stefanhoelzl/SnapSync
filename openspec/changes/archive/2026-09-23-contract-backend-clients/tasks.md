@@ -37,7 +37,7 @@
 - [x] 3.7 `LeaveNotifier` contract + live binding; write the unknown-event clause from what the real edge
       answers and what the app relies on (design, Open Questions)
 - [x] 3.8 `AttestClient` contract (`challenge()` only) + live binding; `InMemoryAttestClient` binding in
-      `:adapter:generic:fake` `commonTest`
+      `:adapter:generic:mock` `commonTest`
 - [x] 3.9 `HttpAttestClient`'s documentation states that mint/renew have no JVM host, with the evidence
       (`port-contracts`' stated destination for an uncontractable belief)
 

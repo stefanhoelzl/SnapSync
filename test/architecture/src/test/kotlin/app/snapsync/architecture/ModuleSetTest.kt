@@ -180,7 +180,7 @@ class ModuleSetTest {
             ":domain:presentation", ":domain:compose", ":domain:host",
             ":ui:screens", ":ui:components",
             ":adapter:ios:ext-safe", ":adapter:ios:app-only", ":adapter:ios:ui", ":adapter:generic:app",
-            ":adapter:generic:fake",
+            ":adapter:generic:mock",
             ":app:ios", ":app:ios:extension", ":app:desktop",
         )
 

@@ -4,7 +4,7 @@ import app.snapsync.model.StartResult
 import app.snapsync.ports.Completion
 import app.snapsync.ports.Download
 import app.snapsync.ports.DownloadHandlers
-import app.snapsync.fake.LibraryChangeAnswers
+import app.snapsync.mock.LibraryChangeAnswers
 import kotlinx.coroutines.CompletableDeferred
 import app.snapsync.model.TransferOutcome
 import app.snapsync.model.AssetRef
@@ -107,7 +107,7 @@ class FakeDownload(
 /**
  * The world's import rigging, held by its [WorldGallery]: the import itself — the two-phase marker through the
  * registered handlers, the fresh identifier per creation, the asset landing in the gallery — is the honest
- * `:adapter:generic:fake` gallery's, the one `GalleryImportContract` holds to the PhotoKit adapter. What lives here
+ * `:adapter:generic:mock` gallery's, the one `GalleryImportContract` holds to the PhotoKit adapter. What lives here
  * is the operator's script for how the library ANSWERS a change, supplied as the fake's [LibraryChangeAnswers],
  * plus the inspection a test reads.
  *

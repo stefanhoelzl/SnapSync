@@ -5,7 +5,7 @@
 - [x] 1.2 Replace the `deleteRequested` statement in `Ledger.sq` with `demoteRequested`
       (`UPDATE ledgerRow SET state = 'FAILED' WHERE state = 'REQUESTED'`) and implement it in
       `SqlDelightLedgerStore`, dinging once on success
-- [x] 1.3 Implement `demoteRequested()` in `:adapter:generic:fake` `InMemoryLedgerStore` and in the
+- [x] 1.3 Implement `demoteRequested()` in `:adapter:generic:mock` `InMemoryLedgerStore` and in the
       `feature/upload` `commonTest` stores (`InMemoryLedgerStore`, `FakeLedgerStore`)
 - [x] 1.4 In `:test:world` `LedgerStoreContract`, replace the two `clearRequested` cases with: only `REQUESTED` rows
       become `FAILED` with every other field unchanged (`DISCOVERED`/`COMPLETED`/`FAILED` untouched); one ding;

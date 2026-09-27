@@ -11,7 +11,7 @@ import app.snapsync.model.eventEnd
 import app.snapsync.model.eventStart
 import app.snapsync.model.EventConfig
 import app.snapsync.model.JoinLoad
-import app.snapsync.fake.fixedClock
+import app.snapsync.mock.fixedClock
 import app.snapsync.feature.support.ConfigWrites
 import app.snapsync.services.config.ConfigService
 import kotlinx.coroutines.flow.StateFlow

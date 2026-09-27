@@ -96,7 +96,7 @@ proves verification against a real Apple fixture.
 Three clauses in state `SERVING`, run on `JVM` against the live edge:
 `A_FORGED_ATTESTATION_IS_REFUSED` (a real challenge with garbage bytes gives null),
 `A_CHALLENGE_THE_EDGE_NEVER_ISSUED_IS_REFUSED`, and `AN_UNATTESTED_DEVICE_CANNOT_RENEW`. The in-memory
-double is bound in `:adapter:generic:fake` `commonTest`.
+double is bound in `:adapter:generic:mock` `commonTest`.
 The success paths cannot be replayed from a device recording. The challenge is
 `<expiry>.<HMAC>` with a 300 s TTL (`CHALLENGE_TTL_SECONDS`), and the certificate chain is verified at
 request time. A recorded attestation is therefore dead five minutes after it was taken. Making the
@@ -167,7 +167,7 @@ itself and restate the feature (phase 7's D7).
 | App Attest tape (recording/replaying `AppAttestApi`), device bindings, `deviceContracts()` entries | `:adapter:ios:ext-safe` `rig` |
 | `IOS_SIM_KEXE` live bindings + the two replay tests | `:adapter:ios:ext-safe` `iosTest` |
 | `ProtectedStorage` live binding on `IOS_SIM_APP` | `:adapter:ios:app-only` `rig` (`SimulatorAppContracts.kt`) |
-| Double bindings (`AttestKey`, `AttestStore`, `AttestClient`, `ProtectedStorage`) | `:adapter:generic:fake` `commonTest` |
+| Double bindings (`AttestKey`, `AttestStore`, `AttestClient`, `ProtectedStorage`) | `:adapter:generic:mock` `commonTest` |
 | Live-edge `AttestClient`/`PushTokenPublisher` bindings | `:adapter:generic:app` `jvmTest` (`LiveEdgeContractsTest`) |
 | Mini-edge `PushTokenPublisher` binding | `:test:world` `commonTest` |
 

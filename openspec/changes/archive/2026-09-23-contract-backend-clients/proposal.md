@@ -67,7 +67,7 @@ None. The contracts are code; `port-contracts` specifies the mechanism, and no s
 - **New code (test-only):** nine contracts plus state vocabularies in `:test:contracts`; the mini-edge
   binding in `:test:world` `commonTest`; the live-edge fixture and bindings in `:adapter:generic:app`
   `jvmTest` (adds a JVM Ktor client engine to that test set only); an `InMemoryAttestClient` binding in
-  `:adapter:generic:fake` `commonTest`.
+  `:adapter:generic:mock` `commonTest`.
 - **Changed:** `api/src/dev/serve.ts` (ephemeral mode; dev infrastructure, never bundled). `build.yml`
   (setup-deno). The `:adapter:generic:app` JVM test task declares `api/src` and `api/migrations` as
   inputs, so a backend change re-runs the contracts instead of being up-to-date.

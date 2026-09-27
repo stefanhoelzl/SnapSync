@@ -83,7 +83,7 @@
       installer from its host-assembly path only
 - [x] 8.3 Add a `:test:integration` test that a refused registration is re-sent once a new token is
       obtained — `a_new_credential_re_registers_the_push_token_with_no_new_delivery`. Needed honest
-      `InMemoryAttestKey`/`InMemoryAttestClient` in `:adapter:generic:fake` and a `World(attests = …)`
+      `InMemoryAttestKey`/`InMemoryAttestClient` in `:adapter:generic:mock` and a `World(attests = …)`
       lever (default off, so no existing world test moved). Verified to fail when the join is cut.
       Also closed the hop that started the loop: `DarwinHttpClientTest` asserted only that a transport
       failure does NOT fire `onRejected` — which would pass with the hook unwired — so the positive 401

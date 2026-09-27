@@ -96,7 +96,7 @@ _None._
   (`LeaveEvent`, `ResetDeviceState` KDoc, a new join-time ledger load), `feature/status` (counts over the
   admitted set), `flow/Provision` (switch clear + load effects), `compose/` (`UploadCore`, `UploadRecordPorts`,
   `SnapSyncApp`); `:adapter:ios:ext-safe` (`IosJoinedEventMarker` deleted, `IosLedgerStore` key cleanup);
-  `:adapter:generic:fake`; `:app:ios` (`SnapSyncRoot`, `UrlSessionUploadController`), `:app:ios:extension`
+  `:adapter:generic:mock`; `:app:ios` (`SnapSyncRoot`, `UrlSessionUploadController`), `:app:ios:extension`
   (`UploadExtensionRoot`).
 - **Tests:** `ReconcilerTest`, `UploadLedgerAuditTest` and `IosJoinedEventMarkerTest` are deleted.
   `UploadCycleTest`, `CycleGateTest`, `CycleEntryGateIntegrationTest` and `RuntimeIdentityTest` change. The

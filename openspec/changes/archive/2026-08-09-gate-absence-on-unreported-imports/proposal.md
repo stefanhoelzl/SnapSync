@@ -71,7 +71,7 @@ None.
 - `:domain` `feature/download` — a new in-memory record of unreported imports, one reader; `DownloadController`
   records on `TimedOut` and gates the absent branch on it.
 - `:domain` `ports/` — `DownloadStore` gains the guarded confirming write and the marker-scoped read.
-- `:adapter:generic:app` / `:adapter:generic:fake` — both store implementations, held to the shared contract.
+- `:adapter:generic:app` / `:adapter:generic:mock` — both store implementations, held to the shared contract.
 - `:adapter:ios:app-only` — `IosPhotoLibraryImporter`'s completion writes the terminal state and clears the
   unreported record; `IMPORT_DEADLINE` is re-set.
 - No schema migration: the confirming write and the marker-scoped read use existing columns.

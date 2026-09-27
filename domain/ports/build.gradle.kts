@@ -53,7 +53,7 @@ kotlin {
 
 // Coverage (`docs/architecture.md`). The report is filtered to this module's OWN classes, so a
 // zone is measured on what it contains rather than on its neighbours' test suites. The crediting edge
-// that lets `:adapter:generic:fake`'s tests count toward this module is declared in the ROOT build
+// that lets `:adapter:generic:mock`'s tests count toward this module is declared in the ROOT build
 // file, not here: `ModuleSetTest` asserts a `:domain:*` build file names no module at all, because
 // that absence is the precondition for the platform-free compile error.
 kover {

@@ -49,7 +49,7 @@ requirement, because an ungated SHALL contradicts this capability):
   in `ports/`, `flow/`, `compose/`), so the compiler can enforce the zone boundaries *totally* — including
   generated source and typealias re-exports the text gates cannot see. **BREAKING** to
   `module-architecture`: the new modules need a group and a justifying law.
-- **Make `:adapter:generic:fake` classes `internal`, exported through port-typed factories.** `internal`
+- **Make `:adapter:generic:mock` classes `internal`, exported through port-typed factories.** `internal`
   is module-scoped, so `:test:world` cannot reach a lever at all. Retires `FakeHonestyTest` — which had
   itself missed a real lever (`val files: MutableSet<String>` in `InMemoryStagedBytes`, public mutable
   state its `var`-matching regex cannot see).
@@ -92,7 +92,7 @@ None.
 - `diagnostic-logging`: "Uniform platform-invocation logging" loses its gate when `PlatformEntryLoggingTest`
   is retired, and must be removed or re-grounded rather than left ungated.
 - `testing-architecture`: "Fake-driven feature tests live in the fake module" cites the retired
-  fake-honesty gate as the reason `:adapter:generic:fake`'s `commonTest` sits outside the honesty
+  fake-honesty gate as the reason `:adapter:generic:mock`'s `commonTest` sits outside the honesty
   surface. With the fakes `internal` behind port-typed factories, that reason becomes a property of the
   module boundary — the test source set is inside the module and so sees the implementations, while no
   other consumer can name them at all.
@@ -100,7 +100,7 @@ None.
 ## Impact
 
 **Code** — `test/architecture/` (13 files deleted, 10 modified); `domain/` split into five Gradle modules
-plus `settings.gradle.kts` and every dependent module's build file; `adapter/generic/fake/` visibility and
+plus `settings.gradle.kts` and every dependent module's build file; `adapter/generic/mock/` visibility and
 factory surface; `CLAUDE.md` (laws digest removed, Runbooks section retained); `openspec/config.yaml`.
 
 **Build** — `:test:architecture:test` must keep `CLAUDE.md` as a declared input (`RunbookSkillsTest` still

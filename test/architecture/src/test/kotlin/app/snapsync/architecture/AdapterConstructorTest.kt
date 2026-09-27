@@ -14,7 +14,7 @@ import kotlin.test.assertTrue
  * ANY function type, on the primary constructor or a secondary one, of any class implementing a port interface.
  *
  * WHAT IT READS. Every class in the adapter modules' production AND rig source sets (a rig adapter is an adapter too)
- * — the honest in-memory doubles of `:adapter:generic:fake` included — whose supertypes name an interface
+ * — the honest in-memory doubles of `:adapter:generic:mock` included — whose supertypes name an interface
  * `domain/ports` declares. The port set is derived from the ports module, never listed. Heuristic in one respect,
  * stated: a secondary constructor is attributed to the nearest preceding class, which is right for every file today.
  *

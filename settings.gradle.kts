@@ -30,7 +30,7 @@ include(":app:ios:extension")
 // `ModuleSetTest` has one answer rather than a property-dependent one.
 include(":app:ios:forge")
 include(":adapter:generic:app")
-include(":adapter:generic:fake")
+include(":adapter:generic:mock")
 include(":adapter:ios:ext-safe")
 include(":adapter:ios:app-only")
 include(":adapter:ios:ui")

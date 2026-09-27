@@ -19,7 +19,7 @@ import kotlin.test.assertTrue
  * SNAPSYNC-6: `← onSilentPush (18ms)` against 41 s of real work.
  *
  * `SilentPush` is the subject because it is the one flow constructible from nothing — the others
- * need the full controller graph, whose fakes live in `:adapter:generic:fake`. The property is
+ * need the full controller graph, whose fakes live in `:adapter:generic:mock`. The property is
  * structural and shared: it follows from `run()` being `suspend` with no scope to launch into, which
  * the zone gate holds for every flow.
  */

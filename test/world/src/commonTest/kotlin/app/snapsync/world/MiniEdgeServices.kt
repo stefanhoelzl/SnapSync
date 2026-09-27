@@ -1,7 +1,7 @@
 package app.snapsync.world
 
 import app.snapsync.http.HttpBackend
-import app.snapsync.fake.inMemorySecureStore
+import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.DeviceIdentityRole
 import app.snapsync.ports.PlatformDeviceId
 import app.snapsync.services.identity.PersistedDeviceIdentity

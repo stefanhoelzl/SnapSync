@@ -5,7 +5,7 @@
       not-all-present, and that an empty set answers all-present carrying no evidence.
 - [x] 1.2 Implement it in `IosStagedBytes` (`:adapter:ios:app-only`) against `NSFileManager`, no dispatcher
       hop (a `stat` is not the thread-blocking library call the sweep already keeps off the lock).
-- [x] 1.3 Implement it in the in-memory `StagedBytes` (`:adapter:generic:fake`), keeping the fake honest —
+- [x] 1.3 Implement it in the in-memory `StagedBytes` (`:adapter:generic:mock`), keeping the fake honest —
       its surface stays the port contract plus initial state; the operator lever belongs in `:test:world`.
 - [x] 1.4 Update `StagedBytes.None` so the read answers consistently with "releases nothing", and state
       which answer it gives and why.

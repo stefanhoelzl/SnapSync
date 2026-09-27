@@ -4,7 +4,7 @@
 // own test source set: that set compiles against exactly what feature does. Here it can: this module sees feature,
 // services, ports and the mocks. A feature test that touches no port and no service stays in `:domain:feature`.
 //
-// Test-only: no main sources, never linked into anything. Targets mirror `:adapter:generic:fake` (jvm +
+// Test-only: no main sources, never linked into anything. Targets mirror `:adapter:generic:mock` (jvm +
 // iosSimulatorArm64) — the tests run on the JVM and on the simulator, as the feature module's own do.
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
@@ -28,7 +28,7 @@ kotlin {
             implementation(project(":domain:ports"))
             implementation(project(":domain:services"))
             implementation(project(":domain:feature"))
-            implementation(project(":adapter:generic:fake"))
+            implementation(project(":adapter:generic:mock"))
             implementation(kotlin("test"))
             implementation(libs.coroutines.test)
             implementation(libs.kermit)

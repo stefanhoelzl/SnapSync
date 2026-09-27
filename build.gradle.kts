@@ -70,7 +70,7 @@ subprojects {
 //
 // Without the edges the zones measure a fraction of their coverage: `docs/testing.md` ("Feature tests compose real
 // services over port mocks") places the feature tests that need a port's mock in `:test:feature`, and the flow and
-// mock-driven service tests in `:adapter:generic:fake` — modules a `:domain:*` build file may not name.
+// mock-driven service tests in `:adapter:generic:mock` — modules a `:domain:*` build file may not name.
 //
 // They all live here rather than in the consuming modules, for two reasons that are really one:
 // `ModuleSetTest` forbids `:domain` naming any module in its own build file, and `Zones.kt` reads
@@ -84,21 +84,21 @@ subprojects {
 // and `:domain:model:koverVerify` passed with `minValue = 100` over an empty report. Name the leaf
 // modules, never the container.
 listOf(
-    ":domain:model" to ":adapter:generic:fake",
-    ":domain:ports" to ":adapter:generic:fake",
+    ":domain:model" to ":adapter:generic:mock",
+    ":domain:ports" to ":adapter:generic:mock",
     // The storage services' SQLite and file behaviour is measured beside the JVM adapters (a `:domain:*` build
     // file names no module), their fake-driven tests beside the mocks, and their composition through the world.
     ":domain:services" to ":adapter:generic:app",
-    ":domain:services" to ":adapter:generic:fake",
+    ":domain:services" to ":adapter:generic:mock",
     ":domain:services" to ":test:world",
-    ":domain:feature" to ":adapter:generic:fake",
+    ":domain:feature" to ":adapter:generic:mock",
     // `:test:feature` holds the feature tests that compose real services over the ports' mocks (`docs/testing.md`):
     // they exercise the feature zone first, and the services, the model and the ports it reaches through them.
     ":domain:feature" to ":test:feature",
     ":domain:services" to ":test:feature",
     ":domain:model" to ":test:feature",
     ":domain:ports" to ":test:feature",
-    ":domain:flow" to ":adapter:generic:fake",
+    ":domain:flow" to ":adapter:generic:mock",
     ":ui:components" to ":ui:screens",
     ":domain:presentation" to ":ui:screens",
 ).forEach { (consumer, producer) ->
@@ -245,7 +245,7 @@ val detektTierOf: Map<String, String> = mapOf(
     ":domain:flow" to "core",
     ":domain:compose" to "core",
     ":adapter:generic:app" to "core",
-    ":adapter:generic:fake" to "core",
+    ":adapter:generic:mock" to "core",
     ":adapter:ios:app-only" to "core",
     ":adapter:ios:ext-safe" to "core",
     ":adapter:ios:ui" to "core",
@@ -431,7 +431,7 @@ val architectureModulesDiagram = tasks.register("architectureModulesDiagram") {
             // `docs/architecture.md`, "The module graph counts architectural dependencies only").
             // Kover's `kover` configuration merges another module's coverage DATA; it puts nothing on
             // a classpath. Left in, the coverage crediting edges required by `docs/architecture.md` render
-            // as `:domain -> :adapter:generic:fake` and `:ui:components -> :ui:screens` — every one
+            // as `:domain -> :adapter:generic:mock` and `:ui:components -> :ui:screens` — every one
             // pointing the opposite way to the real dependency, in the diagram that IS the record.
             p.configurations.filter { !it.name.startsWith("kover") }.forEach { c ->
                 c.dependencies.filterIsInstance<ProjectDependency>().forEach { d ->

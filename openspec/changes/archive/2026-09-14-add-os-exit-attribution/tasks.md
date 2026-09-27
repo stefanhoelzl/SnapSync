@@ -29,7 +29,7 @@
       the need rather than for the SDK's vocabulary, and a no-op when reporting is unconfigured.
 - [x] 3.2 Seat it in the reporter in `:adapter:ios:ext-safe`, attaching to the **global scope** so it
       survives onto fatal events, beside the existing process tag.
-- [x] 3.3 Extend the fake reporter in `:adapter:generic:fake` to record attached contexts, keeping it
+- [x] 3.3 Extend the fake reporter in `:adapter:generic:mock` to record attached contexts, keeping it
       honest per the fake-honesty gate.
 
 ## 4. The iOS adapter

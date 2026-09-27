@@ -58,7 +58,7 @@ filter, key derivation, or normalization of its own. The MIME content type SHALL
 (via `UTType.preferredMIMEType`, falling back to `application/octet-stream`) and carried as a raw fact —
 `commonMain` SHALL NOT reimplement the UTI→MIME table.
 
-The iOS implementation SHALL be PhotoKit-backed; `:adapter:generic:fake` SHALL provide the honest in-memory
+The iOS implementation SHALL be PhotoKit-backed; `:adapter:generic:mock` SHALL provide the honest in-memory
 implementation (state cell constructor-injected) so the mapping is driven on the JVM and the iOS simulator
 without PhotoKit. An opaque platform handle SHALL cross `commonMain` uninterpreted (a JVM stand-in is
 valid), exactly as `Resource.data` does.

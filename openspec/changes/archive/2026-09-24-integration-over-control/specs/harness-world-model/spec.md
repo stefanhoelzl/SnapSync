@@ -4,7 +4,7 @@
 
 **What the module is.** The system SHALL provide a test-infra Kotlin Multiplatform module `:test:world` that
 runs the **real** platform-agnostic stack against controllable in-memory infrastructure:
-- the honest in-memory port implementations SHALL live in `:adapter:generic:fake` (package `app.snapsync.fake`;
+- the honest in-memory port implementations SHALL live in `:adapter:generic:mock` (package `app.snapsync.mock`;
   spec `module-architecture`);
 - `:test:world` SHALL hold the **operator rigging** around them, per the fake-honesty gate
   (`architecture-guards`):
@@ -40,14 +40,14 @@ source sets SHALL depend on `:test:world`.
 #### Scenario: Consumed by the harness and the JVM host
 
 - **WHEN** the desktop harness and the control channel's JVM host each assemble a world
-- **THEN** both reach the same world class over the same `:adapter:generic:fake` doubles, the integration
+- **THEN** both reach the same world class over the same `:adapter:generic:mock` doubles, the integration
   suite reaches it only through the protocol, and no production main source set gains a dependency back into
   `:test:world`
 
 #### Scenario: Rigging cannot live in a fake
 
 - **WHEN** an operator lever (a settable cell, a failure switch, an inspection list) is needed on an
-  honest `:adapter:generic:fake` double
+  honest `:adapter:generic:mock` double
 - **THEN** it is expressed in a `:test:world` wrapper owning the fake's constructor-injected state,
   never as a public member of the fake (the fake-honesty gate fails otherwise)
 

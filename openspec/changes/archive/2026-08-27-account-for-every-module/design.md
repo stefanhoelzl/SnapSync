@@ -39,9 +39,9 @@ precisely what nothing watches.
   the spec describe what is already there.
 - Any production code, behaviour, or CI change.
 - Touching `LawsDigestTest` (D8).
-- Re-litigating `:adapter:generic:fake`'s place in the withholding group. It never ships, which makes
+- Re-litigating `:adapter:generic:mock`'s place in the withholding group. It never ships, which makes
   it look like a support module, but the spec deliberately enumerates it and discusses it by name
-  ("the inverse of `:adapter:generic:fake`, which never links into a shipped framework at all"). It
+  ("the inverse of `:adapter:generic:mock`, which never links into a shipped framework at all"). It
   stays where it is; moving it is a separate argument.
 
 ## Decisions
@@ -210,7 +210,7 @@ both land together.
 
 ## Open Questions
 
-- **`:adapter:generic:fake` sits oddly** in the withholding group: it never links into a shipped
+- **`:adapter:generic:mock` sits oddly** in the withholding group: it never links into a shipped
   framework, which is the support group's defining property, yet it holds port contracts the
   composition smoke test and every integration test stand on. Left as-is deliberately (Non-Goals). If
   a fourth group is ever wanted — *ships nothing but holds a production contract* — this is its first

@@ -222,7 +222,7 @@ staging directory holding bytes the backlog pass does not account for.
 | `ImportedAssetPresence` port — `suspend fun presence(localIds: Set<String>): Map<String, Presence>` | `:domain` `ports/` (named for the need) |
 | permission-aware impl (owns grant **and** the snapshot cell) | `:domain` `compose/`, mirroring `PermissionAwareCandidateSource` — the download feature gains no permission knowledge |
 | the `GRANTED` fetch impl | `:adapter:ios:app-only` — never linked by the extension |
-| honest in-memory impl | `:adapter:generic:fake` |
+| honest in-memory impl | `:adapter:generic:mock` |
 | `StagedBytes` port — `suspend fun release(paths: List<String>)` | `:domain` `ports/` |
 | its file-deleting impl | `:adapter:ios:app-only` — the extension never downloads, so it stays structurally un-linkable |
 | store reads `stagedPathsOfImportedAssets()` · `stagedPathsOfNonTerminalAssets()` · `deleteResourcesForAsset(ref)` | `DownloadStore` + `DownloadStore.sq` — **queries only, no schema change** |
@@ -252,7 +252,7 @@ One change, deltas on two capabilities:
 
 - **`DownloadStoreContract`** (`:test:world` commonMain, both impls): a `PENDING` row with a handle is
   in `suppressedLocalIds()`, and **survives `pruneNonTerminal()`**.
-- **`DownloadControllerTest`** (`:adapter:generic:fake` commonTest): the three guard outcomes;
+- **`DownloadControllerTest`** (`:adapter:generic:mock` commonTest): the three guard outcomes;
   `a_failed_import_stays_importable_for_retry` must still pass — it is the test that fails if the
   failure undo is missing.
 - **Staging lifetime** (`DownloadControllerTest` + `DownloadStoreContract`): bytes **survive**

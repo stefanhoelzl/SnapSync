@@ -24,7 +24,7 @@ import kotlin.time.Duration.Companion.seconds
  * nothing to notice.
  *
  * `Background` is constructible from `:domain` alone (a poller over a counts source), unlike its sibling flows whose
- * controller graphs need the fakes in `:adapter:generic:fake`.
+ * controller graphs need the fakes in `:adapter:generic:mock`.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class BackgroundTest {

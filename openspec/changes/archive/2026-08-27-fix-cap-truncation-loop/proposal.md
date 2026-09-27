@@ -111,7 +111,7 @@ None. Every change modifies the requirements of an existing capability.
 
 **Code.** `:domain` `model/` (`LedgerState`, the two classifications), `ports/` (`LedgerStore`,
 `BackgroundTransfer`), `feature/upload` (the restructure and every delta above);
-`:adapter:generic:app` (`Ledger.sq`, `LedgerWriter`); `:adapter:generic:fake`
+`:adapter:generic:app` (`Ledger.sq`, `LedgerWriter`); `:adapter:generic:mock`
 (`InMemoryLedgerStore`); `:adapter:ios:ext-safe` and `:adapter:ios:app-only` (the resolve verb on
 both tiers); `:test:world` (`LedgerStoreContract`, the levers); `:test:integration`.
 

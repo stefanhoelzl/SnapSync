@@ -103,7 +103,7 @@ None.
   `feature/upload` `UploadCycle`, `SelectionScopedDiscovery`, `LedgerWriter`, `Reconciler`;
   `feature/membership` `ReconfigureEvent`, `ResetDeviceState`; `compose/` `UploadCore`, `SnapSyncApp`),
   `:adapter:ios:ext-safe` (`IosDiscovery`, `IosDiscoveryStore`, `IosLedgerStore`'s token key),
-  `:adapter:generic:app` (`SqlDelightLedgerStore`, `Ledger.sq`), `:adapter:generic:fake`, `:app:ios` and
+  `:adapter:generic:app` (`SqlDelightLedgerStore`, `Ledger.sq`), `:adapter:generic:mock`, `:app:ios` and
   `:app:ios:extension` roots, `:test:world`, `:test:integration`, and `:test:architecture`
   (`RuntimeIdentityTest`, `CompositionSeamTest`). Generated `architecture/` diagrams change with the port
   set.

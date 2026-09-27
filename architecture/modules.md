@@ -10,7 +10,7 @@ Do not edit — the `:tools:diagrams` freshness test fails on drift; regenerate 
 ```mermaid
 flowchart LR
   adapter_generic_app[":adapter:generic:app"]
-  adapter_generic_fake[":adapter:generic:fake"]
+  adapter_generic_fake[":adapter:generic:mock"]
   adapter_ios_app_only[":adapter:ios:app-only"]
   adapter_ios_ext_safe[":adapter:ios:ext-safe"]
   adapter_ios_ui[":adapter:ios:ui"]

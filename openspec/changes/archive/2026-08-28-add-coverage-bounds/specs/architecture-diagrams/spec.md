@@ -10,7 +10,7 @@ so a reader is not misled about what the graph counts.
 Kover's `kover` configuration is such a configuration today. A `kover(project(...))` declaration
 merges another module's coverage **data**; it puts nothing on a classpath, creates no compile edge,
 and cannot hand a module a dependency it could call. Counting it produced three edges in this tree,
-and **every one pointed the opposite way to the real dependency**: `:domain → :adapter:generic:fake`,
+and **every one pointed the opposite way to the real dependency**: `:domain → :adapter:generic:mock`,
 `:ui:components → :ui:screens`, `:ui:presentation → :ui:screens` — the core appearing to depend on
 test fakes, and the design system on the screens that consume it. In a diagram that IS the record
 (`architecture-diagrams`, "Diagrams are derived, never drawn"), that is not noise; it is the record

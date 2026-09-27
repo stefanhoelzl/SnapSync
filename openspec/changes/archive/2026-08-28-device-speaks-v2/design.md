@@ -306,7 +306,7 @@ things this change deletes, all fixed here rather than left to rot: `KtorPushHtt
 | `:domain:model` | `edge-upload-provider`, `sync-ledger`, `min-app-version`, `join-event` |
 | `:domain:ports` | `join-event`, `event-rejoin-reconciliation`, `sync-ledger`, `min-app-version` |
 | `:adapter:generic:app` | `join-event`, `event-rejoin-reconciliation`, `min-app-version`, `sync-ledger` |
-| `:adapter:generic:fake` | `sync-ledger` — the in-memory store gains the same column |
+| `:adapter:generic:mock` | `sync-ledger` — the in-memory store gains the same column |
 | `:adapter:ios:ext-safe` | `ios-photokit-upload`, `min-app-version`, `deployment-configuration` |
 | `:adapter:ios:app-only` | `min-app-version` — the URL opener the update screen hands off to |
 | `:ui:presentation`, `:ui:screens` | `min-app-version`, `join-event` |

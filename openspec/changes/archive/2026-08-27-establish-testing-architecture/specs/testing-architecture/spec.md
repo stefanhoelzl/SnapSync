@@ -125,7 +125,7 @@ what may live in a shell, not a claim that shell code is untestable.
 
 `:test:integration` SHALL compose the **real** core — the same `snapSyncApp`/`uploadCore` the device
 shells call (`module-architecture`, "One shared composition") — over `:test:world`'s rigged
-`:adapter:generic:fake` ports, drive the real flows and commands, and assert **world outcomes**:
+`:adapter:generic:mock` ports, drive the real flows and commands, and assert **world outcomes**:
 objects landed in the backend store, ledger rows reaching `COMPLETED`, foreign photos imported into
 the in-memory gallery. Where the seam under test reaches presentation, it SHALL **also** assert the
 projected `UiState`.
@@ -148,8 +148,8 @@ What `:test:world` provides is owned by `harness-world-model`.
 ### Requirement: Fake-driven feature tests live in the fake module
 
 Feature tests that drive `:domain` subjects through the honest in-memory port implementations SHALL
-live in `:adapter:generic:fake`'s own `commonTest`. `:domain`'s test source set cannot reach those
-fakes: `:adapter:generic:fake` depends on `:domain`, so a test edge back from `:domain` is a project
+live in `:adapter:generic:mock`'s own `commonTest`. `:domain`'s test source set cannot reach those
+fakes: `:adapter:generic:mock` depends on `:domain`, so a test edge back from `:domain` is a project
 dependency cycle, and a test source set cannot be depended on across modules at all — which is the
 same constraint that puts the shared storage contracts in `:test:world`'s `commonMain`
 (`harness-world-model`).
@@ -158,18 +158,18 @@ same constraint that puts the shared storage contracts in `:test:world`'s `commo
 local doubles.
 
 Two consequences SHALL be stated rather than discovered: a feature's tests may be split across two
-modules, so a reader looking for them must look in both; and `:adapter:generic:fake`'s `commonTest`
+modules, so a reader looking for them must look in both; and `:adapter:generic:mock`'s `commonTest`
 is a **test host**, outside the fake-honesty surface — that gate scans main source sets only
 (`architecture-guards`, "The fake-honesty gate").
 
 #### Scenario: A feature test needs a fake
 
 - **WHEN** a `:domain` feature test requires an honest in-memory port implementation
-- **THEN** it is written in `:adapter:generic:fake`'s `commonTest`, not in `:domain`'s
+- **THEN** it is written in `:adapter:generic:mock`'s `commonTest`, not in `:domain`'s
 
 #### Scenario: A test-only helper is added to the fake module
 
-- **WHEN** a helper is added under `:adapter:generic:fake`'s `commonTest`
+- **WHEN** a helper is added under `:adapter:generic:mock`'s `commonTest`
 - **THEN** the fake-honesty gate does not scan it, because the gate's subject is what the fakes
   expose in their main source sets
 

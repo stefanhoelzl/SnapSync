@@ -325,7 +325,7 @@ The iOS adapter SHALL be `UIApplication.beginBackgroundTask(withName:expirationH
 `endBackgroundTask(_:)` — a refusal is `UIBackgroundTaskInvalid` — and SHALL live in `:adapter:ios:app-only`:
 `UIApplication` is unavailable to app extensions, and the upload extension has no such signal to offer (capability
 `ios-photokit-upload`), so this port SHALL NOT be linked into, bound in, or faked for the extension's composition.
-The honest in-memory double in `:adapter:generic:fake` SHALL let the world harness and tests fire the expiry. The
+The honest in-memory double in `:adapter:generic:mock` SHALL let the world harness and tests fire the expiry. The
 port SHALL be covered by a contract both bindings extend, whose clauses are the ones a real host can present: a hold
 is granted while time remains, holds do not refuse each other, and ending is safe to repeat. The contract carries
 **no** expiry clause — no host lets a binding enter "time is up", and a clause only the double could reach may not

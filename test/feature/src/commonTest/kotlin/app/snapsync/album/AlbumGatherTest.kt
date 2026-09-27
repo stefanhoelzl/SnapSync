@@ -3,10 +3,10 @@ package app.snapsync.album
 import app.snapsync.model.EntryScope
 import app.snapsync.model.AssetId
 import app.snapsync.model.GalleryAccess
-import app.snapsync.fake.inMemoryDatabases
-import app.snapsync.fake.inMemoryGallery
-import app.snapsync.fake.inMemoryPreferences
-import app.snapsync.fake.inMemorySecureStore
+import app.snapsync.mock.inMemoryDatabases
+import app.snapsync.mock.inMemoryGallery
+import app.snapsync.mock.inMemoryPreferences
+import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.feature.support.configService
 import app.snapsync.feature.support.galleryAccess
 import app.snapsync.feature.support.testIdentity

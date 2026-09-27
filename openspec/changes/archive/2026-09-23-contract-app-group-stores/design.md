@@ -206,7 +206,7 @@ caller's two cells. (The handoff and the old CLAUDE.md named a `FakeHonestyTest`
 
 | binding | source set |
 |---|---|
-| fakes (5) | `:adapter:generic:fake` `commonTest` — `JVM` and `IOS_SIM_KEXE` via `currentHost` |
+| fakes (5) | `:adapter:generic:mock` `commonTest` — `JVM` and `IOS_SIM_KEXE` via `currentHost` |
 | config, manifest, device log, album map | `:adapter:ios:ext-safe` `iosTest` |
 | staged bytes | `:adapter:ios:app-only` `iosTest`, which gains `implementation(project(":test:contracts"))` — allowed, since `testing-architecture` says `:test:contracts` is "consumed by the bindings' test source sets" |
 
@@ -264,7 +264,7 @@ Rollback is a revert.
 | module touched | owning capability | delta, or why none |
 |---|---|---|
 | `:test:contracts` | `port-contracts` | delta: the injected-location rule and the App-Group host column. The five contracts themselves are clause code, which `port-contracts` makes the specification; no spec restates them. |
-| `:adapter:generic:fake` | `harness-world-model` (the doubles the world stands on) | delta: the world's config ports are `InMemoryConfigStore`. Behaviour elsewhere: the manifest fake gained constructor state, and the empty-log answer moved from `""` to `null` to match the device, which the port's own KDoc already required. |
+| `:adapter:generic:mock` | `harness-world-model` (the doubles the world stands on) | delta: the world's config ports are `InMemoryConfigStore`. Behaviour elsewhere: the manifest fake gained constructor state, and the empty-log answer moved from `""` to `null` to match the device, which the port's own KDoc already required. |
 | `:adapter:ios:ext-safe` | `event-link` (config file) · `diagnostic-logging` (log reader) | `event-link` delta: a container input, and `clear` failing without a container. `diagnostic-logging`: none needed. It requires a tail "cut at a line boundary" from the current file, and the fix only stops discarding a first line that was never cut, which satisfies that more exactly. The manifest and album-map changes are test-only. |
 | `:adapter:ios:app-only` | `download-store` | none: `IosStagedBytes` gains a defaulted container provider, still resolved lazily, and the shell passes nothing. |
 | `:test:world` | `harness-world-model` | delta, as above. |

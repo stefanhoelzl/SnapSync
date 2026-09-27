@@ -75,7 +75,7 @@ None.
 
 **Code.** `:domain` — `ports/CandidateSource`, `model/EventPhotoSet`, `compose/PermissionAwareCandidateSource`,
 `compose/SnapSyncApp` (`refreshStatusSources`, `loadShareableCount`), `feature/status/OwnDeviceGalleryStatusSource`,
-`feature/status/ShareableCount`. `:adapter:generic:fake` — `InMemoryCandidateSource`. `:adapter:ios:ext-safe` —
+`feature/status/ShareableCount`. `:adapter:generic:mock` — `InMemoryCandidateSource`. `:adapter:ios:ext-safe` —
 `PhotoKitCandidateSource`, `IosDiscovery`. `:app:ios` — the denylisted-album lookup in `SnapSyncRoot`.
 `:test:world` — `Fakes`, `UploadFakes`. `:test:rig` — `GalleryReader`. `:app:desktop` — `WorldInspectorController`.
 Roughly 13 files carry real change; the remainder are unwraps.

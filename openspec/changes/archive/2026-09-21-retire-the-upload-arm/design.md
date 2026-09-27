@@ -250,7 +250,7 @@ extension.
 | `:domain:ports` (`BackgroundTransfer` KDoc) | `upload-lifecycle` | doc of `SKIPPED`'s widened meaning; the requirement is in the `upload-lifecycle` and `ios-url-session-upload` deltas |
 | `:adapter:ios:ext-safe` | `ios-photokit-upload` | delta ("The extension withholds its cycle without a full grant" — the shared grant read) |
 | `:adapter:ios:app-only` (`PhotoLibraryPermission`) | `limited-photo-access` | behaviour-preserving delegation to the same mapping — no delta |
-| `:adapter:generic:fake` (tests) | — | test-only rebinding |
+| `:adapter:generic:mock` (tests) | — | test-only rebinding |
 | `:app:ios` | `ios-app-shell`, `ios-url-session-upload` | deltas |
 | `:app:ios:extension` | `ios-photokit-upload` | delta |
 | `:test:world` | `harness-world-model` | no requirement names the world's upload stand-in; it takes the app's admission as the device app does — no delta |

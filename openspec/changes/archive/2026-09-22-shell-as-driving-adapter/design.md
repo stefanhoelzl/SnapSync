@@ -149,7 +149,7 @@ released and logged. The registration literals themselves stay where `RuntimeIde
 - `AppPorts.scheduleBackstop` is unchanged.
 - **New port `ProtectedStorage`** ("is protected storage readable now?"). Its iOS adapter reads
   `UIApplication.isProtectedDataAvailable` and lives in `:adapter:ios:app-only`, because UIKit is barred from
-  `ext-safe`. Its honest fake goes in `:adapter:generic:fake`. It feeds log lines only and decides nothing. The
+  `ext-safe`. Its honest fake goes in `:adapter:generic:mock`. It feeds log lines only and decides nothing. The
   Android analogue is `UserManager.isUserUnlocked`.
 - A pinned `AppPorts` lambda for protected storage was rejected: it reaches out of the process, and the seam law
   says such a field is a port. `UrlSessionUploadController` does not move.
@@ -228,7 +228,7 @@ No delta:
 | `:domain:model` | `diagnostic-logging` | delta (the `@PlatformEntry` placement); the file's change is KDoc only |
 | `:domain:feature` | `upload-lifecycle` | none: `AppUploadEngine` gained a member the app uploader already implemented under another name, and no trigger or transition rule moved |
 | `:adapter:ios:app-only` | `ios-app-shell` | delta (protected-data state through `ProtectedStorage`) |
-| `:adapter:generic:fake` | `port-contracts` / `architecture-guards` (fake honesty) | none: one more honest fake behind the existing factory rule |
+| `:adapter:generic:mock` | `port-contracts` / `architecture-guards` (fake honesty) | none: one more honest fake behind the existing factory rule |
 | `:ui:screens` | `sync-status-screen` | delta ("The screen's callback bundle is built in one place") |
 | `:app:ios`, iOS Swift shell | `ios-app-shell` | delta (five requirements) |
 | `:app:ios:extension` | `ios-photokit-upload` | delta ("Cap-aware creation and tri-state processing result") |

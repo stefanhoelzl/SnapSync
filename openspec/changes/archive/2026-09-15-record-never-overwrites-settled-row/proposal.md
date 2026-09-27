@@ -53,7 +53,7 @@ _None._
   `feature/upload/LedgerWriter`, `UploadCycle` (the update stage calls `markPresent`).
 - `:adapter:generic:app` — `Ledger.sq` (the guarded upsert replaces `put`; `resetTo` uses a plain insert; the
   absent-id read and un-mark), `SqlDelightLedgerStore`. No schema change, no `.sqm` migration.
-- `:adapter:generic:fake` `InMemoryLedgerStore`, plus the `domain/feature` `commonTest` doubles
+- `:adapter:generic:mock` `InMemoryLedgerStore`, plus the `domain/feature` `commonTest` doubles
   (`InMemoryLedgerStore`, `FakeLedgerStore`).
 - `:test:world` `LedgerStoreContract` and every test that seeds with `put`.
 - Runtime: the conditional upsert needs SQLite ≥ 3.24 — the JVM driver bundles 3.51.3, and iOS 18's system

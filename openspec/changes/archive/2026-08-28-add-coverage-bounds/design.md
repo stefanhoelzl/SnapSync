@@ -117,7 +117,7 @@ moves `feature/creation` by 17 points.
 A module is **instrumented** (its tests produce coverage), **bounded** (its classes are measured), or
 neither. The split matters because two modules need one role and not the other:
 
-- `:adapter:generic:fake` — instrumented, not bounded. Its `commonTest` holds `:domain`'s feature
+- `:adapter:generic:mock` — instrumented, not bounded. Its `commonTest` holds `:domain`'s feature
   tests, placed there only because a test source set cannot be depended on across modules
   (`testing-architecture`, "Fake-driven feature tests live in the fake module"). Its fakes are test
   equipment; bounding them ratchets the harness instead of the product.
@@ -177,7 +177,7 @@ per project, not per package, so "these tests count for these classes" is not ex
 A module's bound counts the unit tests written for its code, wherever a placement rule forced them to
 live. Two crediting edges exist, and both trace to a rule rather than to convenience:
 
-- `:domain` ← `:adapter:generic:fake`. `:domain` cannot reach those fakes itself — the fake module
+- `:domain` ← `:adapter:generic:mock`. `:domain` cannot reach those fakes itself — the fake module
   depends on `:domain`, so a test edge back is a project cycle — which is exactly why
   `testing-architecture` places those feature tests there under "Fake-driven feature tests live in
   the fake module". Without the edge `:domain` reads 56% instead of 91% and is punished for obeying

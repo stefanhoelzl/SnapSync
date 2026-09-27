@@ -54,7 +54,7 @@
 
 ## 5. Follow-ups, not to do here
 
-- [x] 5.1 Record the `:adapter:generic:fake` question: it never links into a shipped framework —
+- [x] 5.1 Record the `:adapter:generic:mock` question: it never links into a shipped framework —
       the support group's defining property — yet holds port contracts every integration test stands
       on, and the spec deliberately enumerates it as withholding. If a fourth group is ever wanted
       ("ships nothing but holds a production contract"), this is its first member.

@@ -27,7 +27,7 @@
 - [x] 2.3 Make `refreshOutcome()` private and expose a `suspend` refresh command that updates the flow
   (D3). The public surface becomes: `token()`, `onRejected()`, `ensureFresh()`, the refresh command, the
   health flow, `tokenChanged`
-- [x] 2.4 Extend `adapter/generic/fake/src/commonTest/.../DeviceAttestationTest.kt`:
+- [x] 2.4 Extend `adapter/generic/mock/src/commonTest/.../DeviceAttestationTest.kt`:
   - fix `refreshOutcome is false only when the device lacks a usable token AND could not get one` — it
     passes an **empty** `InMemoryAttestStore` today, so the "only" is asserted by the name alone
   - a token inside the margin (e.g. `token(3)`) with `challenge = null` ⇒ health stays `true`
@@ -117,7 +117,7 @@
   - `app/ios` (SnapSyncRoot) → `ios-app-shell` — **none needed**: the shell is wiring-only, the spec
     names "the attestation" generically, and its standing requirement that the host's read-model inputs
     are bare StateFlows is made *more* true by this change, not less
-  - `adapter/generic/fake` (DeviceAttestationTest) → **none needed**: test-only; `InMemoryAttestStore`'s
+  - `adapter/generic/mock` (DeviceAttestationTest) → **none needed**: test-only; `InMemoryAttestStore`'s
     port contract and the fake-honesty rules are untouched
   - `architecture/di.md` → `architecture-diagrams` — **none needed**: a generated artifact, regenerated
     and committed (§7.3)

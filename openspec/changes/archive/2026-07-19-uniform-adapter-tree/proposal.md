@@ -13,9 +13,9 @@ so both belong under one platform-axis prefix. The uniform shape is
 ## What Changes
 
 Pure mechanical rename — `:adapter:generic` → `:adapter:generic:app`, `:adapter:fake` →
-`:adapter:generic:fake` — with the verified ride-alongs in one diff (the 13a-class playbook):
+`:adapter:generic:mock` — with the verified ride-alongs in one diff (the 13a-class playbook):
 
-- `git mv adapter/generic adapter/generic/app`; `git mv adapter/fake adapter/generic/fake`;
+- `git mv adapter/generic adapter/generic/app`; `git mv adapter/fake adapter/generic/mock`;
   the two `settings.gradle.kts` includes. No Kotlin body, package, signature, or behavior change;
   packages keep their pre-migration names (D2 of `extract-adapter-modules` still governs).
 - Every `project(":adapter:generic")` / `project(":adapter:fake")` consumer declaration
@@ -23,7 +23,7 @@ Pure mechanical rename — `:adapter:generic` → `:adapter:generic:app`, `:adap
   `:test:integration`) plus doc-comment mentions across `:domain`, `:ui:presentation`,
   `:test:world`, and `ios.yml`.
 - `:test:architecture` `ModuleSetTest.targetModules` (the permanent module-set gate) and
-  `FakeHonestyTest.fakeRoot` (`adapter/fake` → `adapter/generic/fake`) — coverage moves, it does
+  `FakeHonestyTest.fakeRoot` (`adapter/fake` → `adapter/generic/mock`) — coverage moves, it does
   not shrink; the plant-a-lever red-proof re-run against the new scope.
 - `./gradlew architectureDiagrams` regenerated (`architecture/`).
 - CLAUDE.md module rows; `app/ios/CLAUDE.md` mentions.

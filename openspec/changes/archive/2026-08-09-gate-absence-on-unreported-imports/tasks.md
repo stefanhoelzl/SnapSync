@@ -57,7 +57,7 @@
 - [x] 5.5 Confirm 5.4 FAILS against the pre-change core, so it is a regression test rather than a
       restatement, and record how that was confirmed. **Confirmed by reverting the gate itself** — the
       `ABSENT` branch restored to its unconditional `mutex.withLock { clearCreatedLocalId(...) }` — and
-      running `:test:integration:jvmTest :adapter:generic:fake:jvmTest`. All three
+      running `:test:integration:jvmTest :adapter:generic:mock:jvmTest`. All three
       `UnreportedImportIntegrationTest` cases FAILED, including
       `the_downloaded_photo_is_never_uploaded_back_into_the_event`, which is the one that observes the
       reported harm (an upload job for the downloaded photo) rather than the bookkeeping. Restored, and

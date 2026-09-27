@@ -237,7 +237,7 @@ The world SHALL assemble its upload cycle through the **same shared composition 
 call** — `uploadCore` (`:domain` `compose/`, spec `module-architecture` "One shared composition") over
 the world's fakes — not through a world-local mirror of a composition root: the world supplies its
 in-memory ports (`ConfigReader` over the config cell and the `membershipUnreadable` lever, the fake
-`BackgroundTransfer`, the fake `UploadDiscovery`, the `:adapter:generic:fake`
+`BackgroundTransfer`, the fake `UploadDiscovery`, the `:adapter:generic:mock`
 ledger/discovery/manifest stores, the mini-edge HTTP seams) and `uploadCore` builds the real
 `SyncEngine` + `EdgeUploadRequestProvider` + `UploadCycle` + `DeviceManifestProducer`
 graph, exactly as it does for the device roots. The world composes **no** upload reconciler and **no**
