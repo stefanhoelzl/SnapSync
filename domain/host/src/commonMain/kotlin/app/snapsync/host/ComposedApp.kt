@@ -36,20 +36,11 @@ import kotlinx.coroutines.launch
  */
 class ComposedApp internal constructor(
     val core: AppCore,
-    private val ports: AppPorts,
     /** The one cutoff formatter the status host and the screen rendering it share. */
     val cutoffFormatter: CutoffFormatter,
     private val assembleHost: () -> StatusContainerHost,
 ) {
     val host: StatusContainerHost by lazy(assembleHost)
-
-    /**
-     * Every read-model [host] observes — for the one host not assembled here: the desktop world harness, which
-     * installs no host-assembly subscription (its operator plays the OS) and decorates its command bundle for the inspector,
-     * but observes exactly what the phone's host observes. [pending] is that harness's seam.
-     */
-    fun statusSources(pending: MutablePendingJoinSource = MutablePendingJoinSource()): StatusSources =
-        statusSourcesOf(core, ports, pending)
 }
 
 /**
@@ -93,7 +84,7 @@ fun snapSyncHost(
     ports.download.listen(core.events.downloadHandlers)
     ports.appUpload.listen(core.events.uploadHandlers)
     core.installPushRegistration()
-    val composed = ComposedApp(core, ports, cutoffFormatter) {
+    val composed = ComposedApp(core, cutoffFormatter) {
         // Host assembly: the permission-grant collectors install ONLY from here (see [ComposedApp]).
         core.installPermissionSubscriptions()
         val host = StatusContainerHost(
@@ -179,11 +170,7 @@ private fun onLink(delivery: LinkDelivery, process: ProcessServices, ports: AppP
  * Every read-model the status host reduces over, from the composed [core] and its [ports] — all of them, named
  * explicitly, so no host built from them can observe fewer than another.
  */
-private fun statusSourcesOf(
-    core: AppCore,
-    ports: AppPorts,
-    pending: MutablePendingJoinSource = MutablePendingJoinSource(),
-): StatusSources = StatusSources(
+private fun statusSourcesOf(core: AppCore, ports: AppPorts): StatusSources = StatusSources(
     sync = core.syncStatusSource,
     permission = core.photoPermission,
     config = core.membership,
@@ -191,7 +178,7 @@ private fun statusSourcesOf(
     rename = core.renameStatus,
     download = core.downloadStatusSource,
     attested = core.attested,
-    pending = pending,
+    pending = MutablePendingJoinSource(),
     versionRefusal = core.versionRefusal,
     appStoreUrl = ports.appStoreUrl,
 )

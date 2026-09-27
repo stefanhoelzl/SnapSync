@@ -1,68 +1,75 @@
 package app.snapsync.desktop
 
-import app.snapsync.world.downloadsInFlight
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
-import app.snapsync.model.EventLookup
-import app.snapsync.model.SelectionPolicy
-import app.snapsync.feature.download.readmodel.DownloadStatusSource
-import app.snapsync.model.runCatchingCancellable
-import java.awt.datatransfer.StringSelection
-import java.awt.Toolkit
-import app.snapsync.model.UserQueries
-import app.snapsync.model.UserCommands
-import app.snapsync.model.ReconfigureOutcome
-import app.snapsync.model.EventStart
-import app.snapsync.model.EventEnd
-import app.snapsync.model.DeletesAt
 import androidx.compose.runtime.mutableStateOf
-import app.snapsync.model.Direction
-import app.snapsync.model.JoinCommit
-import app.snapsync.model.EventConfig
-import app.snapsync.model.TransferOutcome
-import app.snapsync.feature.download.StoreDownloadStatusSource
-import app.snapsync.model.UploadError
-import app.snapsync.feature.creation.readmodel.CreationStatusSource
-import app.snapsync.feature.membership.readmodel.RenameStatusSource
-import app.snapsync.model.EventCreator
-import app.snapsync.feature.membership.JoinEvent
-import app.snapsync.model.GalleryAccess
-import app.snapsync.ports.PhotoAccessStatusSource
-import app.snapsync.feature.membership.toJoinLoad
-import app.snapsync.model.JoinLoad
-import app.snapsync.presentation.StatusContainerHost
-import app.snapsync.model.CaptureCeiling
-import app.snapsync.model.CaptureCutoff
+import androidx.compose.runtime.setValue
+import app.snapsync.jvm.JvmApp
+import app.snapsync.jvm.JvmBuild
+import app.snapsync.jvm.JvmMocks
+import app.snapsync.mock.DeclaredVersion
+import app.snapsync.mock.DownloadSessionMock
+import app.snapsync.mock.LibraryAssets
+import app.snapsync.model.RawAsset
+import app.snapsync.model.AssetId
+import app.snapsync.model.CandidateRead
+import app.snapsync.model.DeviceManifest
+import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.EventPhotoSet
+import app.snapsync.model.FileArea
+import app.snapsync.model.GalleryAccess
+import app.snapsync.model.Layer
+import app.snapsync.model.ManifestResource
+import app.snapsync.model.ResourceRole
+import app.snapsync.model.SELECTION_CALIBRATION
+import app.snapsync.model.TransferOutcome
+import app.snapsync.model.UiIntent
+import app.snapsync.model.UiState
+import app.snapsync.model.UploadError
+import app.snapsync.model.WakeId
 import app.snapsync.model.noContribution
 import app.snapsync.model.selectionPolicyFor
-import app.snapsync.model.captureCutoff
-import app.snapsync.feature.status.readmodel.SyncStatusSource
-import app.snapsync.world.World
+import app.snapsync.model.uploadKey
+import app.snapsync.model.runCatchingCancellable
+import app.snapsync.ports.Completion
+import app.snapsync.services.config.CONFIG_FILE_NAME
+import app.snapsync.services.gallery.GalleryAlbums
+import app.snapsync.services.gallery.GalleryCandidateSource
+import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.datetime.LocalDateTime
+import java.awt.Toolkit
+import java.awt.datatransfer.StringSelection
+import kotlin.time.Duration.Companion.seconds
 
 /**
- * The single mutation path for the full-stack world harness (test equipment — no tests, mirroring the
- * forge's `PanelController`): every inspector control goes through a named method here, never an inline
- * mutation in a composable. Each method drives `:test:world`'s public control surface / the
- * `process()`-shaped runner, then refreshes the real status + download sources so the LEFT pane's
- * counts **emerge** from the real projection (they are never forged), and recomputes the inspector
- * [snapshot].
+ * The single mutation path for the full-stack world harness (test equipment — no tests, mirroring the forge's
+ * `PanelController`): every inspector control goes through a named method here, never an inline mutation in a
+ * composable.
  *
- * The world is a **live stateful stack** (backend byte store, ledger, gallery) that cannot be
- * "un-deposited", so presets construct a **fresh** [World] and bump [generation]; the composition root
- * keys the left pane on [generation] so it re-binds its `StatusContainerHost` to the new sources.
- * Incremental controls mutate the current world in place.
+ * The app is the one the JVM root composes (`:app:jvm`'s [JvmApp] — the same `snapSyncHost` the iOS root calls) over
+ * the device as mocks ([JvmMocks]). The phone pane shows what the app showed on its `Ui` port — [shown] — and hands
+ * the screen's taps back to it as intents ([tap]): it builds no status host of its own. Every control plays a mock's
+ * operator face — the person holding the phone, the operating system, the backend, another member — and every
+ * mutation ends with the operating system's foreground entry, as the phone refreshes its status on foreground.
+ *
+ * The device is a **live stateful stack** that cannot be un-deposited, so presets build a **fresh** app over fresh
+ * mocks and bump [generation]; the root keys the phone pane on it.
  */
 class WorldInspectorController(private val scope: CoroutineScope) {
 
-    // ---- current world + per-world derived sources (rebuilt on preset) --------------------------
+    // ---- the current app + its device (rebuilt on preset) ------------------------------------------
 
-    var world: World = World(scope)
+    var app: JvmApp<JvmMocks> = compose()
         private set
 
-    /** Bumped only when [world] is replaced (presets); the left pane is keyed on this. */
+    private val mocks: JvmMocks get() = app.durable
+
+    /** Bumped only when [app] is replaced (presets); the phone pane is keyed on this. */
     var generation: Int by mutableStateOf(0)
         private set
 
@@ -70,112 +77,16 @@ class WorldInspectorController(private val scope: CoroutineScope) {
     var snapshot: InspectorSnapshot by mutableStateOf(InspectorSnapshot.EMPTY)
         private set
 
-    // Per-world sources — read inside the composition root's `key(generation)` block, so a preset's
-    // rebuild is picked up. Recreated by [rebuildSources].
-    lateinit var syncSource: SyncStatusSource
-        private set
-    lateinit var downloadSource: StoreDownloadStatusSource
-        private set
-    lateinit var creator: EventCreator
-        private set
+    /** What the app last showed on its screen — the phone pane renders this, and nothing else. */
+    val shown: StateFlow<UiState?> get() = mocks.screen.operator.shown
 
-    // The real join use-case over the current world (details load + enroll/provision), rebuilt per
-    // world. Backs the join gate so create AND scan reach the JoiningEvent surface (with the direction
-    // + cutoff rows), exactly like the iOS app — instead of the world's default create-provisions-directly.
-    private lateinit var joinEvent: JoinEvent
-
-    // The left pane's StatusContainerHost, captured via StatusPane's onHostReady. Create routes its
-    // minted event into THIS host's pending-join gate (onEventCreated), so the join screen shows.
-    var host: StatusContainerHost? = null
-
-    // Stable across worlds — they read the *current* [world], so no rebuild is needed.
-    val permissionSource: PhotoAccessStatusSource = object : PhotoAccessStatusSource {
-        override val permission get() = world.permission.permission
-    }
-    val creationStatusSource: CreationStatusSource = object : CreationStatusSource {
-        override val creationStatus get() = world.creationStatus.creationStatus
-    }
-
-    /** The world's REAL rename status (capability `manage-membership`) — never forged here. */
-    val renameStatusSource: RenameStatusSource = object : RenameStatusSource {
-        override val renameStatus get() = world.renameStatus.renameStatus
-    }
-
-    // The real rename edges: the world's own `UserCommands`, so the pen drives the actual use-case
-    // against the mini-edge's PATCH route rather than a harness stand-in.
-    // Fire-and-forget like the real command, so the inspector refresh rides its own launch: the rename
-    // completes asynchronously and an inline `afterMutation()` would snapshot the world BEFORE it landed.
-    val rename: (String, String) -> Unit = { eventId, name ->
-        world.userCommands.rename(eventId, name)
-        appendConsole("rename $eventId → \"$name\"")
+    /** A person's tap on the phone pane, handed to the app as the intent a tap produces. */
+    fun tap(intent: UiIntent) {
+        mocks.screen.operator.tap(intent)
         scope.launch { afterMutation() }
     }
-    val resetRename: suspend () -> Unit = { world.userCommands.resetRename() }
-    val leave: suspend () -> Unit = { world.leave(); afterMutation() }
 
-    // The real in-place reconfigure edge (capability `manage-membership`): drives the world's REAL
-    // `userCommands.reconfigure`, then recomputes the inspector snapshot so the changed direction/cutoff/
-    // album is reflected.
-    val reconfigure: suspend (String, Direction, CaptureCutoff, CaptureCeiling, Boolean) -> ReconfigureOutcome =
-        { eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum ->
-            world.userCommands.reconfigure(eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum)
-                .also { afterMutation() }
-        }
-
-    // The real bug-report edge (capability `privacy-security`): the world's REAL
-    // `userCommands.sendDiagnostics`, so the sheet assembles a genuine dump over world state and the
-    // world's reporter records it. Echoed to the console so a headless run can see that a report was
-    // sent, not just that a sheet closed.
-    // Stable across worlds, like the sources above: the lambda reads the CURRENT [world] on each send,
-    // so a preset rebuild does not leave the sheet reporting into the world it replaced.
-    val sendDiagnostics: suspend (note: String, screen: String) -> Unit =
-        { note, screen ->
-            world.userCommands.sendDiagnostics(note, screen)
-            appendConsole("bug report [$screen] → $note")
-            afterMutation()
-        }
-
-    /**
-     * The command bundle the status pane fires (`docs/architecture.md`, "Commands cross one door"): the
-     * world's REAL commands where the harness drives the real stack, decorated so the inspector refreshes,
-     * and harness stand-ins only where a platform surface does not exist off device. Every field stated —
-     * the pane used to rebuild this from loose defaulted edges and dropped "Choose more photos".
-     * A getter, so a preset's fresh world is the one the next pane binds.
-     */
-    val commands: UserCommands
-        get() = UserCommands(
-            leave = leave,
-            create = { name, startsAt, endsAt ->
-                scope.launch { creator.create(name, startsAt.at.iso, endsAt.at.iso) }
-            },
-            commitJoin = ::commitJoin,
-            // Harness share stub (test equipment): copy the invite URL to the clipboard and log it.
-            share = { url ->
-                runCatchingCancellable { Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(url), null) }
-                appendConsole("share invite → $url")
-            },
-            // The permission dialog, played: the armed answer becomes the grant.
-            requestAccess = {
-                launchMutation { world.permission.set(if (armedGrants) GalleryAccess.GRANTED else GalleryAccess.DENIED) }
-            },
-            openSettings = { appendConsole("openSettings() — use the Permission segment instead") },
-            openLink = { url -> appendConsole("openLink → $url (the harness opens no browser)") },
-            // No limited-library picker exists off device. The outcome a real picker produces — a new selection
-            // snapshot — is the world's `changeSelection` lever, so the console says where to reach for it.
-            choosePhotos = {
-                appendConsole("choosePhotos() — no picker off device; drive World.changeSelection(...) for the outcome")
-            },
-            reconfigure = reconfigure,
-            rename = rename,
-            resetRename = resetRename,
-            sendDiagnostics = sendDiagnostics,
-        )
-
-    /** The query bundle: the world's real details read and shareable count. */
-    val queries: UserQueries
-        get() = UserQueries(loadJoinDetails = ::loadJoinDetails, shareableCount = ::loadShareableCount)
-
-    /** What the next gate-driven access request resolves to. */
+    /** What the next permission dialog resolves to. */
     var armedGrants: Boolean by mutableStateOf(true)
         private set
 
@@ -199,235 +110,275 @@ class WorldInspectorController(private val scope: CoroutineScope) {
     private var foreignDeviceSeq = 0
     private val injectedDeviceIds = mutableListOf<String>()
 
+    /** The photos the operator put in the library — anything else in it arrived by import. */
+    private val ownAssetIds = mutableSetOf<String>()
+
+    /** The current app's own collectors (the share sheet's echo), cancelled when a preset replaces it. */
+    private var appWatchers: Job? = null
+
     init {
-        rebuildSources()
-        launchMutation { /* seed the initial snapshot + status refresh */ }
+        launchMutation { start() }
     }
 
-    private fun rebuildSources() {
-        // The composed graph's OWN read-models and use-cases (migration step 10: the world runs on
-        // `snapSyncApp`, so these are `AppCore`'s instances — never inspector-local rebuilds).
-        syncSource = world.syncStatusSource
-        downloadSource = world.downloadStatusSource
-        // The real join use-case, composed by `AppCore` over the world's ports (GET /events/:id
-        // details, enroll via an empty manifest PUT, then provision through the world's config cell).
-        joinEvent = world.joinEvent
-        // Route a minted event into the SAME pending-join gate a scan opens (not the world's default
-        // provide-directly), so create shows the JoiningEvent surface with the direction + cutoff rows.
-        // This is the shell's `onEventMinted` lambda — the world IS the shell here.
-        world.onEventMinted = { eventId ->
-            host?.onEventCreated(eventId)
-            afterMutation()
-        }
-        creator = world.core.eventCreator
-    }
+    // ---- the OS invocations -----------------------------------------------------------------------
 
-    /** Details load for the join gate (GET /events/:id over the mini-edge), mapped to the gate's
-     *  [JoinLoad] by the SAME `feature/membership` mapping the device shells use — never a second copy,
-     *  which is how the `NotFound` ↔ `Failed` distinction would drift out of the harness. */
-    suspend fun loadJoinDetails(eventId: String): JoinLoad = joinEvent.loadDetails(eventId).toJoinLoad()
-
-    /** The join-time shareable-count preview over the world gallery (capability `join-event`). */
-    suspend fun loadShareableCount(cutoff: CaptureCutoff, until: CaptureCeiling?): Int? =
-        world.core.loadShareableCount(cutoff, until)
-
-    /** Confirm the join through the composed command bundle (enroll then provision); refresh after. */
-    suspend fun commitJoin(
-        eventId: String,
-        name: String,
-        startsAt: EventStart,
-        endsAt: EventEnd,
-        deletesAt: DeletesAt,
-        cutoff: CaptureCutoff,
-        until: CaptureCeiling,
-        direction: Direction,
-        saveToAlbum: Boolean,
-    ): JoinCommit =
-        world.userCommands
-            .commitJoin(eventId, name, startsAt, endsAt, deletesAt, cutoff, until, direction, saveToAlbum)
-            .also { afterMutation() }
-
-    // ---- the OS invocation + token ---------------------------------------------------------------
-
-    /** One extension invocation: the upload `process()` cycle **and** a download reconcile. */
+    /**
+     * One extension invocation — the upload `process()` cycle — then the silent push a member's upload makes the
+     * backend send, whose receiver is the download reconcile.
+     */
     fun invokeExtension() = launchMutation {
-        val result = world.runUploadCycle()
+        val result = mocks.extensionHost.operator.process()
         appendConsole("invoke: upload cycle → $result")
-        world.config.config.value?.eventId?.let { world.downloadController.reconcile(it) }
+        joinedEventId()?.let { event ->
+            mocks.pushService.operator.deliverMessage(mapOf("eventId" to event), NoCompletion)
+            appendConsole("silent push → $event")
+        }
     }
 
-    // ---- enrollment ------------------------------------------------------------------------------
+    /** The operating system wakes the app for its heartbeat. */
+    fun fireHeartbeat() = launchMutation { mocks.wakes.operator.fire(WakeId.Heartbeat, NoCompletion) }
 
-    fun setPermission(status: GalleryAccess) = launchMutation { world.permission.set(status) }
+    // ---- membership -------------------------------------------------------------------------------
+
+    fun setPermission(status: GalleryAccess) = launchMutation { mocks.library.operator.access = status }
 
     fun armNextRequest(grants: Boolean) {
         armedGrants = grants
-    }
-
-    fun reprovision() = launchMutation {
-        val eventId = world.config.config.value?.eventId ?: return@launchMutation
-        world.provision(eventId)
-        appendConsole("re-provisioned $eventId (the joined event: nothing stopped, nothing loaded)")
+        mocks.library.operator.requestAnswer = if (grants) GalleryAccess.GRANTED else GalleryAccess.DENIED
     }
 
     /**
-     * Create an event through the REAL creation service → `HttpBackend` → mini-edge → marker, with a chosen
-     * [startsAt]. The operator picks past or future so BOTH sides of the floor are drivable through the
-     * real stack — a future start is what proves the theorem the design rests on: nothing uploads, not
-     * because a gate refuses, but because the clamped cutoff admits no photo. The forge harness can only
-     * show the status line; only this world can show the empty object store behind it.
+     * Create an event the way a person does — the create form's intent — with a chosen window. The create opens the
+     * app's join gate on the phone pane, exactly like the iOS app. The operator picks past or future so BOTH sides of
+     * the event-start floor are drivable through the real stack.
      */
-    fun createEvent(name: String, startsAt: String, endsAt: String) =
-        launchMutation { creator.create(name, startsAt, endsAt) }
+    fun createEvent(name: String, startsAt: String, endsAt: String) = launchMutation {
+        mocks.screen.operator.tap(UiIntent.CreateEvent(name, LocalDateTime.parse(startsAt), LocalDateTime.parse(endsAt)))
+    }
 
-    /** The inspector's Leave button — the same faithful edge as the phone-frame Leave affordance. */
-    fun leaveEvent() = launchMutation { world.leave() }
+    /** The inspector's Leave button — the phone's Leave, confirmed. */
+    fun leaveEvent() = launchMutation { mocks.screen.operator.tap(UiIntent.LeaveEvent) }
 
     // ---- gallery ---------------------------------------------------------------------------------
 
-    fun addAsset() = launchMutation { world.addOwnAsset("own-${ownAssetSeq++}") }
+    fun addAsset() = addOwn(LibraryAssets.photo("own-${ownAssetSeq++}"))
 
-    fun removeAsset(assetId: String) = launchMutation { world.removeAsset(assetId) }
+    fun removeAsset(assetId: String) = launchMutation { mocks.library.operator.remove(AssetId(assetId)) }
 
-    // ---- selection policy (capability `photo-sharing`) -----------------------------------
-    // Each button adds an asset the policy EXCLUDES, so the operator can watch it land in the gallery and
-    // then *not* upload and *not* enter the union — and can see that N does not inflate, which is the part
-    // a unit test cannot show at a glance.
+    // Selection policy (capability `photo-sharing`): each adds an asset the policy EXCLUDES, so the operator can watch
+    // it land in the gallery and then *not* upload and *not* enter the union — and see that N does not inflate.
 
-    /** A screenshot — excluded by media subtype. */
-    fun addScreenshot() = launchMutation { world.addScreenshot("shot-${ownAssetSeq++}") }
+    fun addScreenshot() = addOwn(LibraryAssets.screenshot("shot-${ownAssetSeq++}"))
 
-    /** A screen recording — excluded by media subtype. */
-    fun addScreenRecording() = launchMutation { world.addScreenRecording("rec-${ownAssetSeq++}") }
+    fun addScreenRecording() = addOwn(LibraryAssets.screenRecording("rec-${ownAssetSeq++}"))
 
-    /** A messenger-compressed image (1600×1200 ≈ 1.9 MP) — below the 3 MP image floor. */
-    fun addLowResPhoto() = launchMutation { world.addLowResPhoto("lowres-${ownAssetSeq++}") }
+    fun addLowResPhoto() = addOwn(LibraryAssets.lowResPhoto("lowres-${ownAssetSeq++}"))
 
-    /** A GIF — excluded by MIME. */
-    fun addGif() = launchMutation { world.addGif("gif-${ownAssetSeq++}") }
+    fun addGif() = addOwn(LibraryAssets.gif("gif-${ownAssetSeq++}"))
 
-    /**
-     * A 1080p recording. This one must **upload**: 2.07 MP is below the *image* floor but above the *video*
-     * floor. It is here precisely so a regression that collapses the two floors is visible as a video that
-     * silently stops appearing.
-     */
-    fun addHdVideo() = launchMutation { world.addHdVideo("video-${ownAssetSeq++}") }
+    /** A 1080p recording: below the IMAGE floor, above the VIDEO floor — so it must still upload. */
+    fun addHdVideo() = addOwn(LibraryAssets.hdVideo("video-${ownAssetSeq++}"))
 
     /** An ordinary photo that WhatsApp also saved into its album — excluded by the album denylist. */
     fun addWhatsAppAlbumPhoto() = launchMutation {
         val id = "wa-${ownAssetSeq++}"
-        world.addOwnAsset(id)
-        world.placeInAlbum("WhatsApp", id)
+        addToLibrary(LibraryAssets.photo(id))
+        mocks.library.operator.placeIn("WhatsApp", id)
+    }
+
+    private fun addOwn(asset: RawAsset) = launchMutation { addToLibrary(asset) }
+
+    private fun addToLibrary(asset: RawAsset) {
+        ownAssetIds += asset.assetId.value
+        mocks.library.operator.add(asset)
     }
 
     // ---- backend ---------------------------------------------------------------------------------
 
-    /** Inject one foreign device carrying a single complete asset into the joined event. */
+    /** Another member joins the joined event with one complete photo. */
     fun injectForeignDevice() = launchMutation {
-        val eventId = world.config.config.value?.eventId ?: return@launchMutation
+        val eventId = joinedEventId() ?: return@launchMutation
         val deviceId = "foreign-${foreignDeviceSeq++}"
-        world.addForeignDevice(deviceId, eventId, listOf(World.foreignAsset("$deviceId-a1")))
-        injectedDeviceIds += deviceId
+        injectMember(eventId, deviceId)
         appendConsole("injected $deviceId with one complete asset into $eventId")
     }
 
     // ---- upload jobs -----------------------------------------------------------------------------
 
-    fun completeJob(key: String) = launchMutation { world.platform.completeJob(key) }
+    fun completeJob(key: String) = launchMutation { mocks.uploadQueue.operator.completeJob(key) }
 
-    fun failJob(key: String, error: UploadError) = launchMutation { world.platform.failJob(key, error) }
+    fun failJob(key: String, error: UploadError) = launchMutation { mocks.uploadQueue.operator.failJob(key, error) }
 
-    fun setJobLimit(limit: Int) = launchMutation { world.jobLimit = limit.coerceAtLeast(0) }
+    fun setJobLimit(limit: Int) = launchMutation { mocks.uploadQueue.operator.jobLimit = limit.coerceAtLeast(0) }
 
     // ---- downloads -------------------------------------------------------------------------------
 
-    fun stageAllDownloads() = launchMutation { world.stageAllDownloads() }
+    fun stageAllDownloads() = launchMutation { finishDownloads() }
 
     /**
-     * Failure lever: the operator plays a bad network. Every in-flight transfer finishes with a `502` and
-     * an error body — which `URLSession` reports as a *successful* transfer, so this is what the shipped
-     * bug looked like (capability `receiving-photos`). The bytes are rejected, nothing stages, and the
-     * downloads stay pending: staging them would have made the error body the store's truth forever.
+     * Failure lever: the operator plays a bad network. Every in-flight transfer finishes with a `502` and an error body
+     * — which `URLSession` reports as a *successful* transfer, so this is what the shipped bug looked like (capability
+     * `receiving-photos`). The bytes are rejected, nothing stages, and the downloads stay pending.
      */
-    fun stageAllDownloadsAs502() = launchMutation {
-        world.stageAllDownloads(TransferOutcome(statusCode = 502, expectedBytes = -1L, receivedBytes = 137L))
-    }
+    fun stageAllDownloadsAs502() =
+        launchMutation { finishDownloads(TransferOutcome(statusCode = 502, expectedBytes = -1L, receivedBytes = 137L)) }
 
     /** Failure lever: every in-flight transfer finishes truncated — a body short of its `Content-Length`. */
-    fun stageAllDownloadsShortRead() = launchMutation {
-        world.stageAllDownloads(TransferOutcome(statusCode = 200, expectedBytes = 5_000L, receivedBytes = 1_200L))
+    fun stageAllDownloadsShortRead() =
+        launchMutation { finishDownloads(TransferOutcome(statusCode = 200, expectedBytes = 5_000L, receivedBytes = 1_200L)) }
+
+    private fun finishDownloads(outcome: TransferOutcome = DownloadSessionMock.HEALTHY) {
+        val session = mocks.downloads.operator
+        session.inFlight().forEach { session.finish(it.description, outcome) }
     }
 
     // ---- failure levers --------------------------------------------------------------------------
 
-    fun setBackendOffline(offline: Boolean) = launchMutation { world.backendOffline = offline }
+    fun setBackendOffline(offline: Boolean) = launchMutation { mocks.backend.operator.offline = offline }
 
     /**
-     * Force the membership to read as **unreadable** (capability `background-upload`) — the state a real
-     * device is in before its first unlock after a boot.
-     *
-     * It is a lever here because it is otherwise unreachable by a reviewer: the config cell can express
-     * only *joined* and *absent*, and the one dev device available reports `PasswordProtected: false`, so
-     * it has no data protection and cannot enter the state at all. Without this switch the outcome three
-     * shipped bugs turned on is the one nobody can look at.
+     * The membership made **unreadable** (capability `background-upload`) — the state a real device is in before its
+     * first unlock after a boot. A lever here because it is otherwise unreachable by a reviewer.
      */
-    fun setMembershipUnreadable(unreadable: Boolean) = launchMutation { world.membershipUnreadable = unreadable }
+    fun setMembershipUnreadable(unreadable: Boolean) =
+        launchMutation { mocks.disk.operator.deny(FileArea.SHARED, CONFIG_FILE_NAME, unreadable) }
 
     fun armImportFailure() = launchMutation {
-        world.failNextImport()
+        mocks.library.operator.imports.failNextImport = true
         appendConsole("armed: next foreign import will fail (non-terminal)")
     }
 
-    // ---- presets (rebuild a fresh world) ---------------------------------------------------------
+    // ---- presets (a fresh app over a fresh device) -----------------------------------------------
 
-    fun presetClean() = installFreshWorld("clean") { }
+    fun presetClean() = installFresh("clean") { }
 
-    fun presetEnrolled() = installFreshWorld("enrolled") {
-        provision(EVENT)
-        addOwnAsset("own-a1")
-        addOwnAsset("own-a2")
+    fun presetEnrolled() = installFresh("enrolled") {
+        joinNewEvent()
+        addToLibrary(LibraryAssets.photo("own-a1"))
+        addToLibrary(LibraryAssets.photo("own-a2"))
     }
 
-    fun presetFreshJoin() = installFreshWorld("fresh join") {
-        provision(EVENT)
-        addOwnAsset("own-a1")
+    fun presetFreshJoin() = installFresh("fresh join") {
+        joinNewEvent()
+        addToLibrary(LibraryAssets.photo("own-a1"))
     }
 
-    fun presetReprovisionDedup() = installFreshWorld("re-provision (dedup)") {
-        // Own asset already stored (as if previously uploaded), then provision: the join-time load seeds
-        // it COMPLETED, so a subsequent invoke uploads nothing new. Deposit exactly the enumerator-derived
-        // keys (uploadKey) so the completeness check matches — don't reconstruct the key by hand.
-        addOwnAsset("own-a1")
-        readCandidates(selectionPolicy())
-            .flatMap { it.resources() }
-            .forEach { store.deposit(ownDeviceId, it.filename) }
-        provision(EVENT)
+    /**
+     * An own photo whose bytes the backend already holds (as if uploaded by an earlier install), THEN a join: the
+     * join-time load finds them, so the next invoke uploads nothing new.
+     */
+    fun presetReprovisionDedup() = installFresh("re-provision (dedup)") {
+        val photo = LibraryAssets.photo("own-a1")
+        addToLibrary(photo)
+        photo.rawResources.forEach { raw ->
+            val role = raw.role ?: return@forEach
+            mocks.backend.operator.deposit(mocks.ownDeviceId, photo.assetId, role, raw.originalFilename)
+        }
+        joinNewEvent()
     }
 
-    fun presetForeignDownload() = installFreshWorld("foreign download") {
-        provision(EVENT)
-        val deviceId = "foreign-0"
-        addForeignDevice(deviceId, EVENT, listOf(World.foreignAsset("$deviceId-a1")))
+    fun presetForeignDownload() = installFresh("foreign download") {
+        val eventId = joinNewEvent() ?: return@installFresh
+        injectMember(eventId, "foreign-${foreignDeviceSeq++}")
     }
 
-    private fun installFreshWorld(label: String, setup: suspend World.() -> Unit) {
+    private fun installFresh(label: String, setup: suspend () -> Unit) {
         scope.launch {
-            world = World(scope)
-            rebuildSources()
+            app = compose()
             ownAssetSeq = 0
             foreignDeviceSeq = 0
             injectedDeviceIds.clear()
-            world.setup()
+            ownAssetIds.clear()
+            generation++ // re-bind the phone pane to the new app's screen
+            start()
+            setup()
             appendConsole("preset: $label")
-            refreshStatus()
-            snapshot = snapshotNow()
-            generation++ // re-bind the left pane to the new world's sources
+            afterMutation()
         }
     }
 
     // ---- shared plumbing -------------------------------------------------------------------------
 
-    /** Run a mutation, then refresh the real sources and recompute the snapshot (no world rebuild). */
+    /** A fresh app over a fresh device, as the JVM root composes it. */
+    private fun compose(): JvmApp<JvmMocks> {
+        val build = JvmBuild(
+            host = BACKEND_BASE,
+            appVersion = DeclaredVersion(APP_VERSION),
+            dsn = DSN,
+            appStoreUrl = APP_STORE_URL,
+            apnsEnvironment = "sandbox",
+            log = Logger.withTag("desktop"),
+        )
+        return JvmApp(scope, JvmMocks()) { device -> device.adapters(build, attests = true) }
+    }
+
+    /**
+     * The app's first moments on a phone the person is holding: the screen is built (host assembly, and every state it
+     * shows from then on), the app becomes active, and the share sheet's hand-offs are echoed to the clipboard.
+     */
+    private fun start() {
+        app.host
+        mocks.screen.operator.live()
+        mocks.lifecycle.operator.foreground()
+        mocks.library.operator.requestAnswer = if (armedGrants) GalleryAccess.GRANTED else GalleryAccess.DENIED
+        appWatchers?.cancel()
+        appWatchers = scope.launch {
+            launch {
+                mocks.systemUi.operator.shared.collect { shared ->
+                    shared.lastOrNull()?.let { url ->
+                        runCatchingCancellable { Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(url), null) }
+                        appendConsole("share invite → $url")
+                    }
+                }
+            }
+            // The snapshot follows what the app does on its own — an import landing, a screen change — as well as the
+            // operator's actions, so the inspector never shows a library the app has since changed.
+            launch { mocks.library.operator.contents.collect { snapshot = snapshotNow() } }
+            launch { shown.collect { snapshot = snapshotNow() } }
+        }
+    }
+
+    /**
+     * Create an event and confirm its join on the phone, as a person does — answers the joined event, or `null` when the
+     * app never reached it.
+     */
+    private suspend fun joinNewEvent(): String? {
+        mocks.screen.operator.tap(UiIntent.CreateEvent(PRESET_EVENT, LocalDateTime.parse(PAST_START), LocalDateTime.parse(PAST_END)))
+        withTimeoutOrNull(AWAIT) { shown.first { (it?.layer as? Layer.JoiningEvent)?.range != null } }
+            ?: return null.also { appendConsole("preset: the join gate never opened") }
+        mocks.screen.operator.tap(UiIntent.ConfirmJoin)
+        return withTimeoutOrNull(AWAIT) { shown.first { it?.layer is Layer.Joined } }
+            .let { (it?.layer as? Layer.Joined)?.membership?.eventId }
+    }
+
+    /** Another member, through the backend: it joins, its photo's bytes land, and it publishes its manifest. */
+    private suspend fun injectMember(eventId: String, deviceId: String) {
+        val backend = mocks.backend.port()
+        val asset = AssetId("$deviceId-a1")
+        val key = uploadKey(asset, ResourceRole.PRIMARY, FOREIGN_FILENAME)
+        backend.joinEvent(null, eventId, deviceId)
+        mocks.backend.operator.deposit(deviceId, asset, ResourceRole.PRIMARY, FOREIGN_FILENAME)
+        backend.publishManifest(
+            null,
+            eventId,
+            deviceId,
+            DeviceManifest(
+                deviceId,
+                listOf(
+                    DeviceManifestAsset(
+                        asset,
+                        LibraryAssets.DEFAULT_DATE,
+                        listOf(ManifestResource(ResourceRole.PRIMARY, "image/heic", key, FOREIGN_FILENAME)),
+                    ),
+                ),
+            ),
+        )
+        injectedDeviceIds += deviceId
+    }
+
+    private fun joinedEventId(): String? = (shown.value?.layer as? Layer.Joined)?.membership?.eventId
+
+    /** Run a mutation, then refresh and recompute the snapshot (no app rebuild). */
     private fun launchMutation(body: suspend () -> Unit) {
         scope.launch {
             body()
@@ -435,83 +386,73 @@ class WorldInspectorController(private val scope: CoroutineScope) {
         }
     }
 
+    /** The operating system's foreground entry — the phone's own status refresh — then the inspector's snapshot. */
     private suspend fun afterMutation() {
-        refreshStatus()
+        mocks.lifecycle.operator.foreground()
         snapshot = snapshotNow()
     }
 
-    /**
-     * The operator plays the OS foreground-refresh (and, since migration step 12, the foreground
-     * poll's tick): the real gallery/ledger-count/download sources update their `StateFlow`s only
-     * on `refresh()`, so the `LedgerBackedSyncStatusSource` projection re-emits only after we pull
-     * them.
-     */
-    private suspend fun refreshStatus() {
-        // The composed graph's own refresh (capability `sync-status`): gallery total scoped by the
-        // membership's Contribution, ledger counts, and the download line — exactly what the iOS
-        // shell's foreground entry pulls, because it IS the same `AppCore.refreshStatusSources`.
-        world.refreshStatus()
-    }
-
     private suspend fun snapshotNow(): InspectorSnapshot {
-        val suppressed = world.downloadStore.suppressedLocalIds()
-        // What the selection policy would exclude (capability `photo-sharing`) — computed with the
-        // REAL policy over the REAL enumeration, so the row badge cannot drift from what the cycle does.
-        // Without this the levers are mute: an operator would add a screenshot, watch it sit in the gallery,
-        // and have no way to tell "correctly excluded" from "silently broken".
-        val cutoff = world.config.config.value?.minPhotoDate ?: captureCutoff(World.DEFAULT_CUTOFF)
-        // One derivation (capability `photo-sharing`) — the same one the cycle uses. The echo set
-        // is deliberately empty here because the badge below reports echo separately; the album lookup is
-        // real, so an operator can watch the denylist actually bite.
-        val policy = world.config.config.value
-            ?.let { config ->
-                selectionPolicyFor(
-                    config = config,
-                    suppressedAssetIds = { emptySet() },
-                    albumExcludedAssetIds = {
-                        world.denylistedAlbumMembers(it)
-                    },
-                )
-            }
-            // Unjoined: nothing to contribute, said the way every non-contributor says it.
-            ?: noContribution()
-        val candidates = world.readCandidates(policy)
-        val admitted = EventPhotoSet(policy) { candidates }
-            .assets().mapTo(mutableSetOf()) { it.facts.assetId }
-        val policyExcluded = candidates.mapTo(mutableSetOf()) { it.facts.assetId } - admitted
-        val galleryRows = world.gallery.current()
-            .map {
-                GalleryRow(
-                    it.assetId.value,
-                    suppressed = it.assetId in suppressed,
-                    policyExcluded = it.assetId in policyExcluded,
-                )
-            }
-        val deviceIds = listOf(world.ownDeviceId) + injectedDeviceIds
-        val backend = deviceIds.map { id ->
-            DeviceObjects(deviceId = id, own = id == world.ownDeviceId, objects = world.store.objectsOf(id).toList())
+        val library = mocks.library.operator
+        val joined = (shown.value?.layer as? Layer.Joined)?.membership
+        // What the selection policy would exclude (capability `photo-sharing`) — the REAL policy over the REAL
+        // enumeration of the library, so the row badge cannot drift from what the cycle does. Echo is reported
+        // separately (an imported photo), so the echo set is empty here; the album lookup is real.
+        val reads = mocks.library.port()
+        val policy = joined?.let { config ->
+            selectionPolicyFor(
+                config = config,
+                suppressedAssetIds = { emptySet() },
+                albumExcludedAssetIds = { GalleryAlbums(reads).assetIdsInAlbums(SELECTION_CALIBRATION, it) },
+            )
+        } ?: noContribution()
+        val candidates = when (val read = GalleryCandidateSource(reads).candidates(policy)) {
+            is CandidateRead.Readable -> read.candidates
+            CandidateRead.NotReadable -> emptyList()
         }
-        val jobKeys = world.platform.liveJobKeys()
-        val jobs = jobKeys.map { key -> JobRow(key, attempts = world.platform.created.count { it.filename == key }) }
-        // What the download store holds as sent to the OS and not landed — read from its database, since the real
-        // jobs expose no inspection seam and their description codec is internal to the downloads service.
-        val downloads = world.downloadsInFlight()
-            .map { (device, asset, resourceKey) -> DownloadRow(device, asset, resourceKey) }
+        val admitted = EventPhotoSet(policy) { candidates }.assets().mapTo(mutableSetOf()) { it.facts.assetId }
+        val policyExcluded = candidates.mapTo(mutableSetOf()) { it.facts.assetId } - admitted
+        val galleryRows = library.current().map {
+            GalleryRow(
+                it.assetId.value,
+                imported = it.assetId.value !in ownAssetIds,
+                policyExcluded = it.assetId in policyExcluded,
+            )
+        }
+        val backend = (listOf(mocks.ownDeviceId) + injectedDeviceIds).map { id ->
+            DeviceObjects(deviceId = id, own = id == mocks.ownDeviceId, objects = mocks.backend.operator.objectsOf(id).sorted())
+        }
+        val queue = mocks.uploadQueue.operator
+        val jobs = queue.liveJobKeys().map { key -> JobRow(key, attempts = queue.created.count { it.filename == key }) }
+        val downloads = mocks.downloads.operator.inFlight().map { DownloadRow(url = it.url, description = it.description) }
         return InspectorSnapshot(
-            joinedEventId = world.config.config.value?.eventId,
+            joinedEventId = joined?.eventId,
             galleryRows = galleryRows,
             backend = backend,
             jobs = jobs,
             downloads = downloads,
-            jobLimit = world.jobLimit,
-            backendOffline = world.backendOffline,
-            membershipUnreadable = world.membershipUnreadable,
+            jobLimit = queue.jobLimit,
+            backendOffline = mocks.backend.operator.offline,
+            membershipUnreadable = mocks.disk.operator.isDenied(FileArea.SHARED, CONFIG_FILE_NAME),
         )
     }
 
+    /** A completion the harness hands the app for an OS entry it plays: nothing waits on its release. */
+    private object NoCompletion : Completion {
+        override fun complete() = Unit
+
+        override fun onExpired(action: () -> Unit) = Unit
+    }
+
     private companion object {
-        const val EVENT = "00000000-0000-4000-8000-0000000000e1"
         const val CONSOLE_CAP = 200
+        val AWAIT = 10.seconds
+        const val BACKEND_BASE = "https://in-memory.backend/api/v2"
+        const val APP_VERSION = "99.0"
+        const val DSN = "in-memory://desktop"
+        const val APP_STORE_URL = "https://apps.apple.com/app/id0000000000"
+        const val PRESET_EVENT = "Anna's Birthday"
+        const val FOREIGN_FILENAME = "IMG.HEIC"
     }
 }
 
@@ -532,7 +473,10 @@ data class InspectorSnapshot(
     }
 }
 
-data class GalleryRow(val assetId: String, val suppressed: Boolean, val policyExcluded: Boolean = false)
+/** A photo in the library: [imported] when it arrived by import (another member's) rather than from the operator. */
+data class GalleryRow(val assetId: String, val imported: Boolean, val policyExcluded: Boolean = false)
 data class DeviceObjects(val deviceId: String, val own: Boolean, val objects: List<String>)
 data class JobRow(val key: String, val attempts: Int)
-data class DownloadRow(val deviceId: String, val assetId: String, val resourceKey: String)
+
+/** A transfer the OS's download session holds: where it fetches from, and the app's tag for it. */
+data class DownloadRow(val url: String, val description: String)

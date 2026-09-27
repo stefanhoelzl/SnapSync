@@ -33,7 +33,7 @@ import app.snapsync.model.GalleryAccess
 /**
  * The world-inspector control panel (`docs/testing.md`): raw Material 3, **never** App*
  * (test equipment, like the forge's `ControlPanel`). Every control routes through the single
- * [WorldInspectorController]; no composable mutates world state inline. Two-column paired sections fill
+ * [WorldInspectorController]; no composable mutates the app or its mocks inline. Two-column paired sections fill
  * the width and cut scroll. The panel reads the controller's recomputed [InspectorSnapshot].
  */
 @OptIn(ExperimentalLayoutApi::class)
@@ -67,6 +67,7 @@ fun WorldInspector(
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = { controller.invokeExtension() }) { Text("▶ Invoke extension") }
+            OutlinedButton(onClick = { controller.fireHeartbeat() }) { Text("Heartbeat") }
         }
 
         // ---- Membership -------------------------------------------------------------------------
@@ -87,7 +88,6 @@ fun WorldInspector(
         }
         Text("Joined event: ${snap.joinedEventId ?: "— none —"}", maxLines = 1, overflow = TextOverflow.Ellipsis)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(enabled = snap.joinedEventId != null, onClick = { controller.reprovision() }) { Text("Re-provision") }
             // Both sides of the event-start FLOOR, drivable through the real stack (capability
             // `photo-sharing`). "started" is the ordinary case. "not started" is the interesting one:
             // the event's start is in the future, so the clamped cutoff admits NO photo — invoking the
@@ -133,7 +133,7 @@ fun WorldInspector(
                         Text(
                             buildString {
                                 append(row.assetId)
-                                if (row.suppressed) append("  ⛔ upload-suppressed")
+                                if (row.imported) append("  ⬇ imported (never uploads)")
                                 if (row.policyExcluded) append("  🚫 policy-excluded")
                             },
                             maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -176,9 +176,7 @@ fun WorldInspector(
                 Button(enabled = snap.downloads.isNotEmpty(), onClick = { controller.stageAllDownloadsAs502() }) { Text("Stage as 502") }
                 Button(enabled = snap.downloads.isNotEmpty(), onClick = { controller.stageAllDownloadsShortRead() }) { Text("Stage short read") }
                 if (snap.downloads.isEmpty()) Faint("(no pending downloads)")
-                snap.downloads.forEach { dl ->
-                    Faint("${dl.deviceId}/${dl.assetId} · ${dl.resourceKey}")
-                }
+                snap.downloads.forEach { dl -> Faint(dl.url) }
             },
         )
 
@@ -262,18 +260,14 @@ private fun TwoUp(left: @Composable () -> Unit, right: @Composable () -> Unit) {
 }
 
 /**
- * Event-start presets for the inspector's Create controls (`docs/testing.md`). Canonical
- * cutoff shape — the mini-edge 400s anything else, faithfully to the real backend.
+ * Event windows for the inspector's Create controls and presets (`docs/testing.md`), as the create form takes them:
+ * local date-times.
  *
- * [PAST_START] precedes `World.DEFAULT_DATE`, so a default-dated gallery asset is in scope and uploads
- * flow exactly as they did before start dates existed. [FUTURE_START] is far enough out that it stays in
- * the future for the life of the project — a fixed constant, so the harness needs no clock.
+ * [PAST_START]..[PAST_END] is a 30-day window around `LibraryAssets.DEFAULT_DATE`, so a default-dated photo is in scope
+ * and uploads. [FUTURE_START] is far enough out that it stays in the future for the life of the project — the event
+ * that has not begun, whose clamped cutoff admits no photo.
  */
-private const val PAST_START = "2026-01-01T00:00:00Z"
-private const val FUTURE_START = "2099-12-31T23:59:59Z"
-
-// The window ENDS (capability `event-lifetime`: creator-chosen). [PAST_END] is far future so the past-start
-// event stays LIVE with a wide window — a default-dated gallery asset is well inside `[PAST_START, PAST_END]`.
-// [FUTURE_END] follows [FUTURE_START] so the future event carries a valid `startsAt < endsAt` window.
-private const val PAST_END = "2099-12-31T23:59:59Z"
-private const val FUTURE_END = "2100-01-07T23:59:59Z"
+internal const val PAST_START = "2026-05-15T00:00:00"
+internal const val PAST_END = "2026-06-14T00:00:00"
+internal const val FUTURE_START = "2099-12-01T00:00:00"
+internal const val FUTURE_END = "2099-12-31T00:00:00"

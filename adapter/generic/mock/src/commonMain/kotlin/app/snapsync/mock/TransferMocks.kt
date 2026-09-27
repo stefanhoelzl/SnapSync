@@ -230,9 +230,10 @@ class UploadSessionOperator internal constructor(private val mock: UploadSession
  */
 class DownloadSessionMock(private val disk: FileSystemMock? = null) {
 
-    /** A transfer the session holds. */
+    /** A transfer the session holds, until it finishes or is cancelled. */
     class Started(val url: String, val description: String) {
         var cancelled: Boolean = false
+        var finished: Boolean = false
     }
 
     internal val started = mutableListOf<Started>()
@@ -294,13 +295,15 @@ class DownloadSessionOperator internal constructor(private val mock: DownloadSes
     val realized: Boolean get() = mock.current?.realized == true
 
     /** The transfers still awaiting a finish, de-duplicated by tag. */
-    fun inFlight(): List<DownloadSessionMock.Started> = mock.started.filterNot { it.cancelled }.distinctBy { it.description }
+    fun inFlight(): List<DownloadSessionMock.Started> =
+        mock.started.filterNot { it.cancelled || it.finished }.distinctBy { it.description }
 
     /**
      * A finish for [description], as the real delegate delivers one: the facts and a temporary file, then the
      * completion. A rejected [outcome] leaves the resource un-staged.
      */
     fun finish(description: String, outcome: TransferOutcome = DownloadSessionMock.HEALTHY) {
+        mock.started.filter { it.description == description }.forEach { it.finished = true }
         mock.registered().onFinished(description, outcome, mock.leaveTempFile(description))
         mock.registered().onCompleted(description, null)
     }

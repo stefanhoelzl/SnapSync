@@ -34,7 +34,9 @@ dependencies {
     implementation(project(":adapter:generic:app"))
     // The full-stack harness: the controllable world (BackendStore + mini-edge + levers wrapping
     // `:adapter:generic:mock`) whose `World.core` IS the shared `snapSyncApp` composition.
-    implementation(project(":test:world"))
+    implementation(project(":app:jvm"))
+    // The inspector's policy badge reads the library mock through the same gallery services the cycle composes.
+    implementation(project(":domain:services"))
     // The mirror: the control channel's typed client, whose wire `UiState` it re-composes.
     implementation(project(":test:control"))
     // The engine-console footer taps Kermit directly (transitive only via impl deps, so name it here).

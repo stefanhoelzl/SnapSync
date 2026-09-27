@@ -29,15 +29,10 @@ class ReadModelImportsTest {
         "ui/screens/src",
         "ui/components/src",
         "test/control/src",
+        // The desktop harnesses: the forge's panes and the world inspector, which plays the mocks' operator faces
+        // and renders the app's own screen — held to the rule since 11g2, when its last direct feature wiring went.
+        "app/desktop/src",
     )
-
-    /**
-     * Named, not silently absent: `:app:desktop`'s harness still wires feature behaviour directly (`JoinEvent`,
-     * `toJoinLoad`, `StoreDownloadStatusSource`). It is exempt until the entry-surface phase (11g) rewires it onto
-     * the protocol. [the desktop exemption is still needed] fails the day it is not, so the exemption cannot
-     * outlive its reason.
-     */
-    private val exempt = "app/desktop/src"
 
     private fun sources(roots: List<String> = scopes): List<File> = roots.flatMap { root ->
         val dir = File(ZoneGates.repoRoot, root)
@@ -78,16 +73,6 @@ class ReadModelImportsTest {
             seen > 0,
             "read-model gate: no `feature.*.readmodel.*` reference found in any scope — the package was renamed or " +
                 "the scan moved, and the gate above now passes on nothing",
-        )
-    }
-
-    @Test
-    fun `the desktop exemption is still needed`() {
-        val beyond = featureRefs(listOf(exempt)).count { (_, _, ref) -> "readmodel" !in ref.split('.') }
-        assertTrue(
-            beyond > 0,
-            "read-model gate: $exempt names no feature type outside a readmodel package any more — delete the " +
-                "exemption and add it to the scopes, so the harness is held to the rule it now keeps",
         )
     }
 }
