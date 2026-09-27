@@ -8,8 +8,8 @@ import app.snapsync.model.AssetRef
  *
  * It is the library's behaviour, so it is a constructor collaborator of the honest importer rather than a
  * lever on it. The default is the ordinary answer: the change runs, it lands, and the completion reports
- * success. `:test:world` scripts the other answers (a refusal, a hold, a failure reported after the commit)
- * by supplying its own. Each member answers `null` to proceed or a message to fail with.
+ * success. The photo-library mock's [ImportScript] scripts the other answers (a refusal, a hold, a failure reported
+ * after the commit). Each member answers `null` to proceed or a message to fail with.
  */
 interface LibraryChangeAnswers {
     /** Before the change block runs. A message refuses the change: no marker, no asset. */

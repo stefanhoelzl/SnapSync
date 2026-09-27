@@ -1,16 +1,16 @@
-// `:adapter:generic:mock` (`docs/architecture.md`): HONEST in-memory implementations of the `:domain`
-// ports — what the world harness, the composition smoke, and the integration tests stand on. An
-// adapter named for its technology ("fake", i.e. in-memory — platform-free, hence the `generic`
-// platform-axis prefix), placed by linkage: it links only into test equipment, never a shipped
-// binary — which is what the `fake` SHIPPABILITY leaf records (vs sibling `:adapter:generic:app`,
-// which ships in both processes). Honesty is mechanical, not an adjective: every public
-// type exposes its port contract plus a constructor taking initial state, and NOTHING else — the
-// `FakeHonestyTest` gate in `:test:architecture` enforces it. Operator rigging (failure levers,
-// inspection lists, settable cells) lives in `:test:world` wrappers around these fakes, physically
-// unable to creep in here (migration step 10; decision record: `establish-target-architecture`).
+// `:adapter:generic:mock` (`docs/architecture.md`, `docs/testing.md` "Mocks"): ONE mock per `:domain` port — what
+// the JVM root (`:app:jvm`), the world, the feature tests and every integration test stand on. An adapter named for
+// its technology (in-memory, platform-free — hence the `generic` platform-axis prefix), placed by linkage: it links
+// only into test equipment, never a shipped binary — which is what the `mock` SHIPPABILITY leaf records (vs sibling
+// `:adapter:generic:app`, which ships in both processes).
 //
-// Targets mirror `:test:world` (jvm + iosSimulatorArm64): fakes never link into a device
-// framework, so there is no `iosArm64` to pay for.
+// Each mock has three faces: its DURABLE state (what the real system keeps, which a relaunch does not touch), the
+// PORT face a process is handed (an `internal` class, typed as the port), and a separate OPERATOR face (the levers
+// and reads). Honesty is mechanical, not an adjective: the classes behind the port faces are all `internal` and
+// every face is port-typed, so an app can reach nothing a port does not declare — the compiler says so.
+//
+// Targets: jvm + iosSimulatorArm64. Mocks never link into a device framework, so there is no `iosArm64` to pay for
+// (11h's launch-time mock mix brings it).
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     // Coverage measurement (`docs/architecture.md`). Applied here rather than in a

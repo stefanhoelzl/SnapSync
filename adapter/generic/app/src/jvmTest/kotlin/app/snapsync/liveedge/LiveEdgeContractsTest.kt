@@ -15,8 +15,8 @@ import kotlin.test.Test
 /**
  * The `Backend` port contract against the REAL backend (`docs/testing.md`): the production [HttpBackend] over a
  * socket to `api/`, served locally by [LiveEdge]. This is the binding that makes every backend clause covered; the
- * mini-edge's binding in `:test:world` and the in-memory mock's in `:adapter:generic:mock` are the `Fake`s held to
- * it.
+ * mini-edge's binding in `:test:world` (until 11g2b) and the backend mock's in `:adapter:generic:mock` are the `Fake`s
+ * held to it.
  *
  * JVM only, and the coverage that forgoes is stated here (`docs/testing.md`, "Every test runs on every target its
  * module declares"): a Kotlin/Native test executable under `simctl` cannot launch the backend as a process. Nothing

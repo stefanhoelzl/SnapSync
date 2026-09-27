@@ -12,22 +12,18 @@ import app.snapsync.model.Availability
 import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
- * **The honest doubles' only public surface: a factory per port, returning the PORT type**
- * (`docs/architecture.md`; law `docs/architecture.md` "The module set withholds").
+ * **The port-typed factories** (`docs/architecture.md`; law "The module set withholds"): the contract bindings and
+ * the tests build a port's in-memory implementation here, over cells they hold — the same `internal` classes a mock's
+ * port face is (`docs/testing.md`, "Mocks").
  *
- * The implementations behind these functions are `internal`. `internal` is module-scoped, so
- * `:test:world` — a different module — cannot name them, cannot widen them, and cannot reach a
- * member the port does not declare. Honesty is therefore not a rule about what a fake may expose;
- * it is a property of what a consumer can express, enforced by the compiler.
+ * The implementations behind these functions are `internal`. `internal` is module-scoped, so a consumer in another
+ * module cannot name them, cannot widen them, and cannot reach a member the port does not declare. Honesty is
+ * therefore not a rule about what a double may expose; it is a property of what a consumer can express, enforced by
+ * the compiler. What an operator may do to a system is its mock's operator face — a separate type — never a member
+ * of the port's implementation.
  *
- * This replaced a text gate that policed the same property by matching `var` at the start of a
- * line. That gate could not see a `val` of a mutable type, and duly missed one:
- * `InMemoryStagedBytes.files` was public mutable state read directly by the world harness. The set
- * is now injected — the operator's rigging owns the cell it wants to observe and passes it in,
- * which is where a lever belongs (`:test:world`), rather than being exposed from the honest double.
- *
- * A fake needing operator-visible state takes that state as a **parameter**: the caller keeps its
- * own reference and observes it there.
+ * A factory needing operator-visible state takes that state as a **parameter**: the caller keeps its own reference
+ * and observes it there.
  */
 fun inMemoryDeviceIntegrity(available: Boolean = true): DeviceIntegrity = InMemoryDeviceIntegrity(available)
 
