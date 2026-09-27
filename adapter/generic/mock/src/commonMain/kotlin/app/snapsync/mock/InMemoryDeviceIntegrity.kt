@@ -21,11 +21,9 @@ import app.snapsync.ports.DeviceIntegrity
  */
 internal class InMemoryDeviceIntegrity(
     private val available: Boolean = true,
+    /** The keys the device's Secure Enclave holds — shared by every process face of one device. */
+    private val keys: EnclaveKeys = EnclaveKeys(),
 ) : DeviceIntegrity {
-
-    /** Distinct per call, like the real Secure Enclave — a fresh key each time one is created. */
-    private var generated = 0
-    private val keys = mutableSetOf<String>()
 
     override fun isAvailable(): Boolean = available
 
@@ -34,11 +32,19 @@ internal class InMemoryDeviceIntegrity(
     override suspend fun prove(challenge: String, handle: String?): Proof {
         if (handle == null) {
             check(available) { "App Attest attestKey failed: unsupported in this process" }
-            val key = "in-memory-key-${++generated}".also { keys += it }
+            val key = keys.create()
             return Proof(key, "attestation:$key:$challenge".encodeToByteArray())
         }
         check(available) { "App Attest generateAssertion failed: unsupported in this process" }
-        check(handle in keys) { "App Attest generateAssertion failed: no such key $handle" }
+        check(handle in keys.held) { "App Attest generateAssertion failed: no such key $handle" }
         return Proof(handle, "assertion:$handle:$challenge".encodeToByteArray())
     }
+}
+
+/** The keys a device's Secure Enclave holds: distinct per creation, and there for every process of the device. */
+internal class EnclaveKeys {
+    private var generated = 0
+    val held = mutableSetOf<String>()
+
+    fun create(): String = "in-memory-key-${++generated}".also { held += it }
 }
