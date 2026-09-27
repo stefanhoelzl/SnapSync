@@ -10,7 +10,7 @@ Do not edit — the `:tools:diagrams` freshness test fails on drift; regenerate 
 ```mermaid
 flowchart LR
   adapter_generic_app[":adapter:generic:app"]
-  adapter_generic_fake[":adapter:generic:mock"]
+  adapter_generic_mock[":adapter:generic:mock"]
   adapter_ios_app_only[":adapter:ios:app-only"]
   adapter_ios_ext_safe[":adapter:ios:ext-safe"]
   adapter_ios_ui[":adapter:ios:ui"]
@@ -18,6 +18,7 @@ flowchart LR
   app_ios[":app:ios"]
   app_ios_extension[":app:ios:extension"]
   app_ios_forge[":app:ios:forge"]
+  app_jvm[":app:jvm"]
   domain_compose[":domain:compose"]
   domain_feature[":domain:feature"]
   domain_flow[":domain:flow"]
@@ -43,13 +44,13 @@ flowchart LR
   adapter_generic_app --> domain_services
   adapter_generic_app --> test_contracts
   adapter_generic_app --> test_edge
-  adapter_generic_fake --> domain_compose
-  adapter_generic_fake --> domain_feature
-  adapter_generic_fake --> domain_flow
-  adapter_generic_fake --> domain_model
-  adapter_generic_fake --> domain_ports
-  adapter_generic_fake --> domain_services
-  adapter_generic_fake --> test_contracts
+  adapter_generic_mock --> domain_compose
+  adapter_generic_mock --> domain_feature
+  adapter_generic_mock --> domain_flow
+  adapter_generic_mock --> domain_model
+  adapter_generic_mock --> domain_ports
+  adapter_generic_mock --> domain_services
+  adapter_generic_mock --> test_contracts
   adapter_ios_app_only --> adapter_ios_ext_safe
   adapter_ios_app_only --> domain_compose
   adapter_ios_app_only --> domain_model
@@ -70,12 +71,13 @@ flowchart LR
   adapter_ios_ui --> ui_components
   adapter_ios_ui --> ui_screens
   app_desktop --> adapter_generic_app
+  app_desktop --> app_jvm
   app_desktop --> domain_feature
   app_desktop --> domain_model
   app_desktop --> domain_ports
   app_desktop --> domain_presentation
+  app_desktop --> domain_services
   app_desktop --> test_control
-  app_desktop --> test_world
   app_desktop --> ui_components
   app_desktop --> ui_screens
   app_ios --> adapter_generic_app
@@ -100,6 +102,15 @@ flowchart LR
   app_ios_forge --> domain_model
   app_ios_forge --> domain_presentation
   app_ios_forge --> ui_screens
+  app_jvm --> adapter_generic_app
+  app_jvm --> adapter_generic_mock
+  app_jvm --> domain_compose
+  app_jvm --> domain_feature
+  app_jvm --> domain_host
+  app_jvm --> domain_model
+  app_jvm --> domain_ports
+  app_jvm --> domain_presentation
+  app_jvm --> domain_services
   domain_compose --> domain_feature
   domain_compose --> domain_flow
   domain_compose --> domain_model
@@ -120,7 +131,7 @@ flowchart LR
   domain_services --> domain_model
   domain_services --> domain_ports
   test_architecture --> adapter_generic_app
-  test_architecture --> adapter_generic_fake
+  test_architecture --> adapter_generic_mock
   test_architecture --> domain_feature
   test_architecture --> domain_model
   test_architecture --> domain_ports
@@ -135,7 +146,7 @@ flowchart LR
   test_control --> test_rig
   test_edge --> adapter_generic_app
   test_edge --> test_contracts
-  test_feature --> adapter_generic_fake
+  test_feature --> adapter_generic_mock
   test_feature --> domain_feature
   test_feature --> domain_model
   test_feature --> domain_ports
@@ -145,8 +156,10 @@ flowchart LR
   test_integration --> domain_model
   test_integration --> domain_presentation
   test_integration --> test_control
+  test_rig --> adapter_generic_mock
   test_rig --> adapter_ios_app_only
   test_rig --> adapter_ios_ext_safe
+  test_rig --> app_jvm
   test_rig --> domain_compose
   test_rig --> domain_feature
   test_rig --> domain_model
@@ -154,9 +167,9 @@ flowchart LR
   test_rig --> domain_presentation
   test_rig --> domain_services
   test_rig --> test_contracts
-  test_rig --> test_world
+  test_rig --> test_edge
   test_world --> adapter_generic_app
-  test_world --> adapter_generic_fake
+  test_world --> adapter_generic_mock
   test_world --> domain_compose
   test_world --> domain_feature
   test_world --> domain_host

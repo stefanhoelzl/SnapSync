@@ -20,9 +20,10 @@ Two desktop harnesses exist, both in `:app:desktop`:
   display state**: permission presets, sync-state presets, the engine console. Review every UI state
   with no device.
 - **Full-stack world harness** (`./gradlew :app:desktop:run`, `docs/testing.md`) — the
-  same real status screen, but its counts **emerge** from the real `LedgerBackedSyncStatusSource`
-  composed by `snapSyncApp` over `:test:world` (never forged), plus a right-pane **world inspector**
-  driving the real stack: presets, **Invoke extension**, the gallery/backend, the upload-job queue and
+  same real status screen, but showing exactly what the app the JVM root (`:app:jvm`) composes over the
+  mocks showed on its screen (never forged); taps go back to that app as intents. Plus a right-pane **world
+  inspector** playing the mocks' operator faces: presets, **Invoke extension** (the extension's cycle, then the
+  silent push that reconciles downloads), **Heartbeat**, the gallery/backend, the upload-job queue and
   downloads, failure levers, an engine-console footer. The operator plays the OS — nothing auto-runs.
 
 Both `run` tasks open a real window and need a display — useless to an agent, which can neither see
@@ -86,9 +87,14 @@ curl -sS "$B/quit"
   shows no trace of it. An empty tree after opening a sheet is **not** evidence the sheet failed to
   open — address its contents by label instead, and read `/phone.png` to see it.
 - **The operator plays the OS — including acknowledgement.** `✓` on a job does *not* complete it: it
-  deposits the object store-direct and stages an ack that **the next `▶ Invoke extension` records as
-  `COMPLETED`**. Completing every job and expecting "In sync" without a second invoke will look like a
-  bug and isn't. A completed-but-unacked job stays listed, so `index=0` twice hits the *same* row.
+  lands the bytes on the backend mock (they show in the backend column at once) and leaves the job for the
+  app to acknowledge — **the next `▶ Invoke extension` records it as `COMPLETED`**. Completing every job and
+  expecting "In sync" without a second invoke will look like a bug and isn't. A completed-but-unacked job stays
+  listed, so `index=0` twice hits the *same* row.
+- **Presets join through the phone's own screen** (create, then the join gate's confirm), on the app's own lane —
+  a preset's `/click` can answer before the app is joined, so poll `/tree` for the joined screen before the next
+  step. Downloads show as the OS session's URLs; an imported photo shows
+  in the gallery column marked `⬇ imported`.
 
 ## The control panel is test equipment
 

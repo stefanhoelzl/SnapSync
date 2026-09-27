@@ -40,7 +40,7 @@ group, with the group's argument in the commit.
 |---|---|---|
 | **Withholding** | withholds a dependency (third-party, platform, or another core zone) from its consumers by compile error | `:domain:model` `:domain:ports` `:domain:services` `:domain:feature` `:domain:flow` `:domain:presentation` `:domain:compose` `:domain:host` · `:ui:screens` `:ui:components` · `:adapter:ios:ext-safe` `:adapter:ios:app-only` `:adapter:generic:app` `:adapter:generic:mock` · `:app:ios` `:app:ios:extension` `:app:desktop` |
 | **Contained** | exists so that something is **absent** from a production build, and is linked only under a build property | `:app:ios:forge` (`-Psnapsync.forge`) · `:test:rig`, `:test:contracts` (`-Psnapsync.rig`) |
-| **Support** | never linked into a shipped-format binary, exempt from production-module laws | `:test:world` `:test:integration` `:test:architecture` `:test:harness-driver` `:test:edge` `:test:control` `:tools:diagrams` |
+| **Support** | never linked into a shipped-format binary, exempt from production-module laws | `:app:jvm` `:test:world` `:test:integration` `:test:architecture` `:test:harness-driver` `:test:edge` `:test:control` `:tools:diagrams` |
 
 Key placements:
 
@@ -103,8 +103,10 @@ paths, not modules. Each axis names the question that separates its leaves:
   extension-side link unsafe. `ui` is app-only too and holds what needs Compose and UIKit's UI: the `Ui`
   adapter (the Compose scene SwiftUI pulls, and the scene rule), the `Lifecycle` adapter, and the
   main-confined `SceneRecord` they share.
-- **generic axis = shippability.** `app` ships in the app and extension binaries. `fake` never ships.
-  Its classes are all `internal` behind port-typed factories, so honesty is checked by the compiler.
+- **generic axis = shippability.** `app` ships in the app and extension binaries. `mock` never ships. Each mock
+  is a durable state, a per-process port face and a separate operator face (`docs/testing.md`, "Mocks"); the
+  classes behind the port faces are all `internal` and every face is port-typed, so honesty is checked by the
+  compiler: an app is only ever handed a port.
 
 Adapters are named for the technology and hold implementations only. Finer structure is packages.
 
@@ -115,7 +117,8 @@ Adapters are named for the technology and hold implementations only. Finer struc
 | iOS app (`SnapSyncKit`) | `:app:ios` `SnapSyncRoot` | `snapSyncProcess`, then `snapSyncHost` from `:domain:host` |
 | iOS upload extension, iOS 26.1 and later (`SnapSyncUploadKit`) | `:app:ios:extension` `UploadExtensionRoot` | `snapSyncProcess`, then `uploadCore` + `snapSyncExtension` |
 | forge (marketing screenshots) | `:app:ios:forge` | forged sources only, no live graph |
-| desktop harnesses, JVM rig host | `:app:desktop`, `:test:rig` over `:test:world` | the same `snapSyncProcess` and `snapSyncHost` (the world installs no log writer: Kermit's list is JVM-global) |
+| JVM root — the desktop world harness, the JVM rig host | `:app:jvm` `JvmApp`, over adapters its caller chooses (the mocks by default) | `snapSyncProcess`, then `snapSyncHost`; the extension's `uploadCore` + `snapSyncExtension` beside it (it installs no log writer: Kermit's list is JVM-global) |
+| the world (until 11g2b) | `:test:world` `World` | the same, over the mocks and the mini-edge |
 
 ---
 
@@ -165,7 +168,7 @@ One line each. The authority is the named gate. Gates live in `:test:architectur
 | No default on a function-typed constructor parameter (except `@Composable`) | `LambdaSeamShapeTest` |
 | What the operating system tells a process arrives through **entry ports**, each an event port named for one external system: the app's `Lifecycle` (became active / is leaving it), `Links` (a link delivered, raw), `PushNotifications` (the token, its failure, a silent push with its `Completion`), `Ui` (show a state; a person's `UiIntent`, a live screen) and `DevControls` (the build's switches and reset), and the extension's `ExtensionHost` (an invocation and its end). An adapter hands deliveries over raw and in platform-independent values; what one runs is the composition's handler. Each root keeps one-line forwarders for its Swift callbacks and holds no entry of its own | `EntryWorldTest` + `ExtensionEntryWorldTest` (`:test:world`, the handlers' promises over the real composition) + `ListenDoorTest` + shell gates. Naming is **review** |
 | **Host-first handlers**: only three handlers assemble the status host — `Lifecycle.onForeground` (on the composition lane, before the `Foreground` flow), `Links.onLink` and `Ui.onLive` — each a person reaching the app, and each assembles it before anything else. A push token, a silent push, a scheduled or transfer wake builds no host, so a cold background start installs no permission-grant subscription | `EntryWorldTest`, `TailWorldTest`, `SelectionObserverTimingTest` |
-| An adapter's constructor takes no function. What the platform says arrives through `listen`, what the core asks is a port method; a function on a constructor is a callback wired past both | `AdapterConstructorTest` (every class implementing a port interface in an adapter module's production and rig source sets, the fakes included). Its exemptions are exact: the two adapter-private bridges whose function IS the operating system's completion block |
+| An adapter's constructor takes no function. What the platform says arrives through `listen`, what the core asks is a port method; a function on a constructor is a callback wired past both | `AdapterConstructorTest` (every class implementing a port interface in an adapter module's production and rig source sets, the mocks included). Its exemptions are exact: the two adapter-private bridges whose function IS the operating system's completion block |
 | `ports/` holds interfaces only — plain, `fun` and sealed (with a sealed interface's cases) — and the `*Handlers` bundles its event ports are registered with. A decision or helper belongs in `services/` or `model/`, an implementation in an adapter, an inert binding (`NoEntryContext`, `NoProcessMetrics`, `NoSystemUi`) in `compose/` | `PortsHoldInterfacesOnlyTest` (no allowlist) |
 | **Events arrive through `listen`.** An event port extends `Listenable<H>`; its `*Handlers` bundle is built in `compose/` — or, for the link and UI handlers, which need the status host, in the host zone — and registered by the host zone, once per adapter, as the graph is composed — except the per-process event ports (`CrashReporter`, `ProcessMetrics`), which `snapSyncProcess` builds and registers, because every root sets them up before any composition, and the extension's `ExtensionHost`, which `snapSyncExtension` registers, because that process has no host zone — so a background wake's delivery finds it. A rig decorator's forwarding `listen` counts as the composition's single one. `listen` only registers: it runs no handler and builds no feature. Every handler is a flow command, a service call or a presentation intent (the table below). A `*Handlers`-typed `var` exists only behind an `override fun listen` | `ListenDoorTest` (both halves, non-vacuous) + `LambdaSeamShapeTest` + `CompositionOpensNoDatabaseTest` |
 | The partial grant's selection observer opens only from host assembly (`Gallery.observeChanges`), so a wake that never builds the screen reads nothing; the latest snapshot is kept for a consumer that attaches late | `SelectionObserverTimingTest` (`:test:world`) + `SelectionSnapshotLaneTest` |
@@ -225,10 +228,10 @@ One line each. The authority is the named gate. Gates live in `:test:architectur
 
 | law | enforced by |
 |---|---|
-| One shared composition: every root calls `snapSyncProcess` first — it installs the log writers and the boot banner, then starts crash reporting before any other wiring, then listens to the process metrics; one crash reporter, one process-metrics source, one `Files`, one `Clock` and one `EntryContext` per process — and hands its `ProcessServices` to `snapSyncHost` (app) or `uploadCore` and `snapSyncExtension` (extension), which require it. The app root builds the process's ONE `CutoffFormatter` (the zone read once) and hands the same instance to the UI adapter and to `snapSyncHost`. A root supplies ports only and never builds the status host or installs subscriptions. Only a composition that owns the global logger installs writers (a root does; the JVM world, one of many in a JVM, does not) | structural (one function) + **review**. The wiring graph is not unit-tested. It is smoke-tested by the world and the integration surface |
+| One shared composition: every root calls `snapSyncProcess` first — it installs the log writers and the boot banner, then starts crash reporting before any other wiring, then listens to the process metrics; one crash reporter, one process-metrics source, one `Files`, one `Clock` and one `EntryContext` per process — and hands its `ProcessServices` to `snapSyncHost` (app) or `uploadCore` and `snapSyncExtension` (extension), which require it. The app root builds the process's ONE `CutoffFormatter` (the zone read once) and hands the same instance to the UI adapter and to `snapSyncHost`. A root supplies ports only and never builds the status host or installs subscriptions. Only a composition that owns the global logger installs writers (a device root does; the JVM root and the world, each one of many in a JVM, do not) | structural (one function) + **review**. The wiring graph is not unit-tested. It is smoke-tested by the world and the integration surface |
 | A platform-mechanism decision (today: may the upload extension be registered, `extensionRegistrable`) is a pure, total, unit-tested function of runtime state, re-evaluated when an input changes. Target-fixed facts are not inputs | the compiler (exhaustive `when`) + `ProducerExclusivityTest` (no cell true below iOS 26.1) |
 | Upload transitions stop in-flight work only at a leave (no deregister or cancel on revoke/reconfigure/launch; no registration write under a partial grant; enable always goes disable→enable) | `ProducerExclusivityTest` |
-| Shells (`:app:ios`, `:app:ios:extension`, `:app:ios:forge`, the host `:domain:host` — a core zone, but wiring every root calls — rig-contributed shell source) hold zero decisions | `detektAppShell` (cyclomatic threshold 2, gating) + `KotlinShellGuardTest` (roots exist, `@Suppress` inventory exact both ways) |
+| Shells (`:app:ios`, `:app:ios:extension`, `:app:ios:forge`, the JVM root `:app:jvm`, the host `:domain:host` — a core zone, but wiring every root calls — rig-contributed shell source) hold zero decisions | `detektAppShell` (cyclomatic threshold 2, gating) + `KotlinShellGuardTest` (roots exist, `@Suppress` inventory exact both ways) |
 | The build's adapter set is chosen at build time: a root calls `platformAdapters()` (app) or `extensionHost()` (extension), compiled from the root's `src/prod`/`src/entries` or — only under `-Psnapsync.rig=true` — from the control channel's source, which decorates the UI (`RigUi`), supplies its own `DevControls` and runs a requested contract in the extension. No flag is read and no inert stub ships | the build scripts + `DevControlsContainmentTest` |
 | Source a build script contributes into a shell's source set is shell source for the gates | the root `build.gradle.kts` `appShellSources` list, mirrored in `KotlinShellGuardTest` |
 | Swift is a transcriber: decision keywords only at pinned occurrences, and every Swift shell function forwards to Kotlin | `SwiftShellGuardTest` |
@@ -318,7 +321,7 @@ These pin one feature's structural rule that no type can state:
 ## 4. Ports and contracts
 
 A port's obligations are stated once, as executable **clauses**, and run against every implementation:
-the honest fake and each real adapter. A double therefore cannot quietly answer differently from the
+the mock and each real adapter. A double therefore cannot quietly answer differently from the
 system it stands in for. The contract code **is** the specification of a port's clauses, and no
 `openspec/` spec restates them.
 
@@ -395,7 +398,7 @@ Decision record: `changes/archive/2026-08-27-add-repo-wide-complexity-gates`.
   package size).
 - **Unit tests only.** Instrumented: `:domain:*`, `:adapter:generic:app`, `:adapter:generic:mock`, `:test:feature`,
   `:domain:presentation`, `:ui:screens`, `:ui:components`. Bounded: all of those except
-  `:adapter:generic:mock` (its `commonTest` hosts the flow tests and the services' mock-driven tests, and the fakes
+  `:adapter:generic:mock` (its `commonTest` hosts the flow tests and the services' mock-driven tests, and the mocks
   themselves are test equipment) and `:test:feature` (the feature tests that compose real services over the ports'
   mocks; it holds no class of its own). `:test:world`, `:test:integration`, `:test:contracts` and the other
   test modules contribute nothing, so a thick harness cannot stand in for a thin unit suite.
@@ -945,5 +948,6 @@ Once-only deliveries are persisted inline on the delivering thread.
 **Phases.** 11a structure (shipped) → 11b storage and `:domain:services` (shipped) → 11c backend and integrity
 (shipped), 11d gallery (shipped) and 11e process ports (shipped), in parallel → 11f transfer (shipped) → 11g1 entry
 surface (shipped), with 11i (canonical asset ids, shipped — section 2) beside it → the feature → ports cut (shipped —
-section 2) → 11g2 (`:test:world` → `:app:jvm`, fake → mock, the desktop rewire), then 11h (the mock mix chosen at
-launch).
+section 2) → 11g2a (the three-face mocks, the JVM root `:app:jvm`, the rig's JVM host and the desktop on them — shipped,
+`docs/testing.md` "Mocks" and "The JVM root") → 11g2b (`:test:world` and the mini-edge deleted, the world's tests
+rewritten as rig tests or service tests), then 11h (the mock mix chosen at launch).

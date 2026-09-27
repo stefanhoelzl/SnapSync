@@ -9,7 +9,7 @@ not edit — the `:tools:diagrams` freshness test fails on drift; regenerate ins
 flowchart LR
   subgraph adapter
     adapter_generic_app[":adapter:generic:app"]
-    adapter_generic_fake[":adapter:generic:mock"]
+    adapter_generic_mock[":adapter:generic:mock"]
     adapter_ios_app_only[":adapter:ios:app-only"]
     adapter_ios_ext_safe[":adapter:ios:ext-safe"]
     adapter_ios_ui[":adapter:ios:ui"]
@@ -37,13 +37,13 @@ flowchart LR
   adapter_generic_app --> domain_services
   adapter_generic_app --> test_contracts
   adapter_generic_app --> test_edge
-  adapter_generic_fake --> domain_compose
-  adapter_generic_fake --> domain_feature
-  adapter_generic_fake --> domain_flow
-  adapter_generic_fake --> domain_model
-  adapter_generic_fake --> domain_ports
-  adapter_generic_fake --> domain_services
-  adapter_generic_fake --> test_contracts
+  adapter_generic_mock --> domain_compose
+  adapter_generic_mock --> domain_feature
+  adapter_generic_mock --> domain_flow
+  adapter_generic_mock --> domain_model
+  adapter_generic_mock --> domain_ports
+  adapter_generic_mock --> domain_services
+  adapter_generic_mock --> test_contracts
   adapter_ios_app_only --> adapter_ios_ext_safe
   adapter_ios_app_only --> domain_compose
   adapter_ios_app_only --> domain_model

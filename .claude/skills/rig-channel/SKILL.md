@@ -9,7 +9,7 @@ description: >-
   gallery", "reset the device", "make the app foreground / silent-push / run the
   background task", "why did no upload cycle run", "read the extension's log", or
   anything touching /os, /user, /device or usbmux forward 18099 — or the SAME
-  protocol served by the JVM host over a world (`:test:rig:runJvmHost`, no
+  protocol served by the JVM host over mocks (`:test:rig:runJvmHost`, no
   device, no lock). To install or launch a build first, load `snapsync-device`.
 ---
 
@@ -22,8 +22,8 @@ access granted and the tier armed will sit there running **no cycle at all**, an
 
 `:test:rig` is a Ktor CIO server that runs inside the app and lets you drive those entry points and
 read the state back. Its protocol is specified (`docs/testing.md`, "One control protocol,
-served by two hosts") and served by **two hosts**: this app host, and a JVM host over a `:test:world` world
-(see "The JVM host" below). Every surface is a projection of a contract specified elsewhere, so there is no
+served by two hosts") and served by **two hosts**: this app host, and a JVM host — the app the JVM root
+`:app:jvm` composes over the mocks (see "The JVM host" below). Every surface is a projection of a contract specified elsewhere, so there is no
 second way-to-drive that can rot or lie.
 
 To **build** the IPA, load `ssh-mac-build`. To install/launch it, load `snapsync-device` (which has
@@ -109,7 +109,7 @@ POST /os/<root>/<entry>?arg=…           the real @PlatformEntry member, invoke
                                         channel reaches two composition roots
 POST /user/<command>?…                  the real StatusContainerHost command, as a tap invokes it
 
-GET  /device/state                      the real UiState + readiness + ledger + downloads + build facts
+GET  /device/state                      the real UiState + readiness + download progress + build facts
 GET  /device/logs?process=app|extension pass-through to DeviceLogSource.tail, BOTH processes
 GET  /device/gallery[?cutoff=…][&resources=true]   the library, through the app's own policy
 POST /device/reset                      void durable sync state
@@ -125,12 +125,14 @@ POST /contract/<name>                   run a port contract in-app; answers its 
 There is **no inventory route** for excluded members: asking for one returns **the reason it is excluded**.
 What `GET /device` lists is different — the shared vocabulary both hosts speak — and a verb in it that this
 host cannot honour answers **`409` with the reason**, never `404` and never a success that did nothing. On
-this host the world levers are refused; on a device, the simulator-only upload-job verbs are too.
+this host the JVM host's levers are refused; on a device, the simulator-only upload-job verbs are too.
 
 **`/device/state` is the reduced state, not a mirror of it** — `UiState` is `@Serializable` where it is
-declared, so the encoder is compiler-generated. It also carries what `UiState` deliberately omits: the
-ledger aggregates (the only assertion that proves bytes landed), download progress, **readiness**, the
-build facts (which backend this build points at), and the OS's own view of the extension registration.
+declared, so the encoder is compiler-generated. Beside it: download progress, **readiness** (derived from
+`ui`), the build facts (which backend this build points at), and the OS's own view of the extension
+registration. It carries **no ledger counts** any more (dropped in 11g2 with `permission`, `inviteUrl`,
+`eventName` and `transientError`, the last four being inside `ui`): whether bytes landed is the backend's to say —
+on a device, read it from the backend (`snapsync-device`, "did the upload land"), not from the app's bookkeeping.
 
 📄 **`/device/logs?process=extension` needs no relaunch, no copy step and no `apps pull`.** An unreadable
 or absent log is a `404` with a stated reason, never an empty `200`. It reads the **current** file only —
@@ -366,7 +368,8 @@ curl -X POST localhost:18099/device/reset
 
 Voids the ledger, the discovery cursor, the membership config (**locally** — no backend is notified), and
 prunable download rows. **Keeps** every row carrying an import handle, so downloaded photos are not
-re-uploaded. Answers with the ledger counts after the fact, so "it cleared" is verifiable.
+re-uploaded. Answers `{"reset":true}` — the ledger counts it once returned went with the ledger's removal from the
+protocol; what cleared shows on the screen and in the uploads that follow.
 
 ⚠️ **Order matters and nothing enforces it any more.** Crossing backends, reset **before** leaving: after a
 reset the device is unjoined, so a leave is a no-op rather than a `DELETE` aimed at the backend you are
@@ -440,30 +443,34 @@ Note `/device/state`'s `build.uploadTier` is a **build fact** — which uploader
 
 ## The JVM host — the same protocol with no device
 
-`:test:rig` also has a `jvm()` target: `JvmRigHost` serves the **unchanged** server and routes over a
-`:test:world` `World`, whose `core` is the real `AppCore` from the same `snapSyncApp`. No phone, no lock, no
-build on a Mac:
+`:test:rig` also has a `jvm()` target: `JvmRigHost` serves the **unchanged** server and routes over the app
+the JVM root `:app:jvm` composes — the same `snapSyncHost` the iOS root calls — over the device as mocks
+(`JvmMocks`). No phone, no lock, no build on a Mac:
 
 ```bash
-./gradlew :test:rig:runJvmHost -Psnapsync.rigBackend=mini   # or deno: the REAL api/ via :test:edge
+./gradlew :test:rig:runJvmHost -Psnapsync.rigBackend=mock   # or deno: the REAL api/ via :test:edge
 # prints one line once bound:  RIG-JVM READY <port>
 curl -s localhost:<port>/device            # honoured + refused (reasons) for THIS host
 ```
 
-- `mini` is the in-memory mini-edge; `deno` starts the real `api/` (`serve.ts --ephemeral`, loopback-only).
-  On `deno`, a lever only an in-memory store can pull (`device/backend/offline`, …) answers `409`
-  "unavailable on this backend".
-- Same `/os`, `/user`, `/device/state` shapes as the app. `os/app/onSceneContinueActivity?arg=<link>` reaches
-  the `Links` port's handler, `os/photokit-ext/processRawValue` runs the world's upload cycle.
-- The **world levers** the app refuses: `device/jobs` (live keys), `device/jobs/complete[?key=]` (the "OS"
-  finishes a transfer — a real PUT to the backend), `device/jobs/fail?key=&error=`, `device/jobs/limit?n=`,
+- `mock` (the default) is the in-memory backend mock; `deno` starts the real `api/` (`serve.ts --ephemeral`,
+  loopback-only). On `deno`, a lever only the backend mock's operator can pull (`device/backend/offline`, …)
+  answers `409` "unavailable on this backend".
+- Same `/os`, `/user`, `/device/state` shapes as the app. `/os` drives the mocks' operator faces (the OS played);
+  `os/app/onSceneContinueActivity?arg=<link>` reaches the `Links` port's handler, `os/photokit-ext/processRawValue`
+  invokes the extension's entry port, whose cycle creates jobs on the upload-queue mock.
+- Every lever and read below is a mock's operator face, **except four that still reach the composed core** until
+  11g2b: `downloads/stage`'s await, `downloads/reconcile`, `status/refresh` and `/device/gallery`.
+- The **JVM host's levers** the app refuses: `device/jobs` (live keys), `device/jobs/complete[?key=]` (the "OS"
+  finishes a transfer — its bytes cross to the backend's byte route), `device/jobs/fail?key=&error=`, `device/jobs/limit?n=`,
   `device/backend/objects[?device=]`, `device/backend/offline?on=`, `device/permission?status=`,
   `device/import/fail-next`, `device/membership/unreadable?on=`, `device/downloads/stage|reconcile`,
   `device/album/place?album=&asset=`, `device/foreign-device?device=&assets=a,b[&event=][&filename=]`,
   `device/status/refresh`, `device/downloads/stage?wait=false` (returns while an import is parked).
-- The **integration surface's** world levers and reads (also refused by the app):
+- The **integration surface's** levers and reads (also refused by the app):
   - backend reads (`[event=]` defaults to the joined one, `[device=]` to this one): `backend/union`, `backend/manifest`,
-    `backend/device-config`, `backend/event`, `backend/departed`, `backend/publishes`, `backend/pushes`;
+    `backend/device-config` (`token`, `env`, `writes`), `backend/event`, `backend/departed`, `backend/publishes`,
+    `backend/pushes`;
     `diagnostics/sent` (the dumps the reporter received);
   - backend levers: `backend/min-app-version[?minimum=]`, `backend/sweep`, `backend/hold-leave`,
     `backend/release-leave`, `backend/fail-listing?on=`, `backend/deposit?asset=`, `backend/legacy-event?name=`,

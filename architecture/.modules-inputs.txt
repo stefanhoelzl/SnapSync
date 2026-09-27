@@ -10,6 +10,7 @@ module :app:desktop
 module :app:ios
 module :app:ios:extension
 module :app:ios:forge
+module :app:jvm
 module :domain:compose
 module :domain:feature
 module :domain:flow
@@ -62,12 +63,13 @@ edge :adapter:ios:ui :domain:presentation
 edge :adapter:ios:ui :ui:components
 edge :adapter:ios:ui :ui:screens
 edge :app:desktop :adapter:generic:app
+edge :app:desktop :app:jvm
 edge :app:desktop :domain:feature
 edge :app:desktop :domain:model
 edge :app:desktop :domain:ports
 edge :app:desktop :domain:presentation
+edge :app:desktop :domain:services
 edge :app:desktop :test:control
-edge :app:desktop :test:world
 edge :app:desktop :ui:components
 edge :app:desktop :ui:screens
 edge :app:ios :adapter:generic:app
@@ -92,6 +94,15 @@ edge :app:ios:extension :domain:services
 edge :app:ios:forge :domain:model
 edge :app:ios:forge :domain:presentation
 edge :app:ios:forge :ui:screens
+edge :app:jvm :adapter:generic:app
+edge :app:jvm :adapter:generic:mock
+edge :app:jvm :domain:compose
+edge :app:jvm :domain:feature
+edge :app:jvm :domain:host
+edge :app:jvm :domain:model
+edge :app:jvm :domain:ports
+edge :app:jvm :domain:presentation
+edge :app:jvm :domain:services
 edge :domain:compose :domain:feature
 edge :domain:compose :domain:flow
 edge :domain:compose :domain:model
@@ -137,8 +148,10 @@ edge :test:integration :domain:feature
 edge :test:integration :domain:model
 edge :test:integration :domain:presentation
 edge :test:integration :test:control
+edge :test:rig :adapter:generic:mock
 edge :test:rig :adapter:ios:app-only
 edge :test:rig :adapter:ios:ext-safe
+edge :test:rig :app:jvm
 edge :test:rig :domain:compose
 edge :test:rig :domain:feature
 edge :test:rig :domain:model
@@ -146,7 +159,7 @@ edge :test:rig :domain:ports
 edge :test:rig :domain:presentation
 edge :test:rig :domain:services
 edge :test:rig :test:contracts
-edge :test:rig :test:world
+edge :test:rig :test:edge
 edge :test:world :adapter:generic:app
 edge :test:world :adapter:generic:mock
 edge :test:world :domain:compose
