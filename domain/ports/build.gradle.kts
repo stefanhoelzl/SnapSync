@@ -90,13 +90,14 @@ kover {
                     // its test MOVED to `:domain:services` (services/wake), where they are covered and floored at 93;
                     // and the new event ports' handler bundles (`UploadHandlers`, `DownloadHandlers`) are constructed
                     // only by the composition — `ListenDoorTest` pins that — which no module credited here reaches
-                    // (their wiring runs in `:test:world`'s transfer-wake tests, credited to services). What stayed
+                    // (their wiring runs in the rig's `OsCompletionIntegrationTest`, which credits nothing).
+                    // What stayed
                     // here lost no test. Raise it again as the port-adjacent helpers re-home or gain tests.
                     // LOWERED 77 -> 74 by the entry surface (11g1), for the same reason as 11f's: the five new entry
                     // ports' handler bundles (`LifecycleHandlers`, `LinkHandlers`, `PushHandlers`, `UiHandlers`,
                     // `DevHandlers`) are constructed only by the composition and the host zone — `ListenDoorTest` pins
-                    // that — which no module credited here reaches; their wiring runs in `:test:world`'s
-                    // `EntryWorldTest`. What stayed here lost no test.
+                    // that — which no module credited here reaches; their wiring runs in the rig's
+                    // `EntryIntegrationTest`. What stayed here lost no test.
                     // LOWERED 74 -> 72 in the same phase: the extension's raw-value mapping
                     // (`processingResultRawValue`) MOVED to `:adapter:ios:ext-safe` with its test — the platform's
                     // magic values belong to the adapter that answers the platform — and the new
@@ -111,7 +112,7 @@ kover {
                     // (to `compose/`, `InertTest` with them) and the store interfaces' defaults (the stores are
                     // concrete services now). What remains countable is the event ports' `*Handlers` bundles, built
                     // only by the composition — `ListenDoorTest` pins that — which no module credited here reaches;
-                    // their wiring runs in `:test:world`'s entry tests. Nothing that stayed lost a test; the covered
+                    // their wiring runs in the rig's entry tests. Nothing that stayed lost a test; the covered
                     // code left.
                     bound {
                         minValue = 43

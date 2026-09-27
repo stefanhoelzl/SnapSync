@@ -70,7 +70,7 @@ class OsHandlerContainmentTest {
 
     /**
      * Kotlin production source. Two exclusions, and they are not the same one: `/test/` drops the
-     * test-only **modules** (`:test:architecture` — this file — `:test:world`, `:test:integration`), while
+     * test-only **modules** (`:test:architecture` — this file — `:test:integration`, `:test:rig`), while
      * `Test.kt` drops test classes inside product modules' `commonTest` source sets, which the path filter
      * does not reach.
      */

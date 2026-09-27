@@ -23,7 +23,7 @@ import kotlin.time.TimeSource
 
 /**
  * Seam ↔ UI-state integration for the join gate (capability `join-event`) over the real
- * `engine → status → presentation` stack, driven through the control protocol against the mini-edge: the deeplink
+ * `engine → status → presentation` stack, driven through the control protocol against the backend mock: the deeplink
  * decode, `GET /event/:id` details gate, register-only enrollment PUT, and the switch composition — asserting both
  * `UiState` (the membership the joined layer carries) and backend outcomes (the device manifest, the departure).
  */
@@ -32,7 +32,7 @@ class JoinGateIntegrationTest {
     @Test
     fun the_join_gate_normalizes_a_legacy_events_millisecond_startsAt_and_commits_what_it_showed() = rigTest {
         // A LEGACY event — registered with no `startsAt`, as every marker written before start dates
-        // existed. The mini-edge synthesizes one from `createdAt`, which (faithfully to the real backend's
+        // existed. The backend mock synthesizes one from `createdAt`, which (faithfully to the real backend's
         // `toISOString()`) carries MILLISECONDS. The loaded phase must therefore show a SECOND-PRECISION
         // value (the `photo-sharing` format invariant the iOS fetch predicate depends on), and
         // confirming must persist precisely what the surface displayed.

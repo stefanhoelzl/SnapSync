@@ -24,9 +24,10 @@ plugins {
 //
 // TWO HOSTS, ONE PROTOCOL (`docs/testing.md`, "One control protocol, served by two hosts").
 // `commonMain` is the server, the routes, the state projection, the closed verb vocabulary and every command
-// table both hosts share. `iosMain` + `src/hook/` are the app host (above). `jvmMain` is the JVM host: a
-// `World` from `:test:world` — whose `core` is the real `AppCore` from the same `snapSyncApp` — handed to the
-// unchanged server through its own hook. The JVM target links into no shipped-format binary; only test
+// table both hosts share. `iosMain` + `src/hook/` are the app host (above). `jvmMain` is the JVM host: the
+// app the JVM root (`:app:jvm`) composes over the mocks — the same `snapSyncHost` the iOS root calls — handed
+// to the unchanged server through its own hook, with the operating system played through the mocks'
+// operator faces. The JVM target links into no shipped-format binary; only test
 // equipment consumes it (`docs/architecture.md`, "The module set withholds; packages organize").
 //
 // TESTS. `commonMain` is tested now, through the JVM host, by `:test:control` (the protocol's typed client),

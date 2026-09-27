@@ -582,7 +582,7 @@ jobs:
           # Boots an iOS simulator (iOS 26 runtime on macos-26) and runs the iosSimulatorArm64 tests
           # of EVERY module that declares the target — ~140 test classes. That is the whole shared
           # commonTest surface (:domain, :domain:presentation, :ui:screens, :adapter:generic:app,
-          # :adapter:generic:mock, :test:world, :test:integration), which is the same logic build.yml
+          # :adapter:generic:mock, :test:feature), which is the same logic build.yml
           # runs as JVM bytecode, now compiled to Native. This is the ONLY place that difference is
           # checked, and it is not theoretical: it catches Native-only breakage the JVM accepts (e.g.
           # Kotlin/Native rejects a comma in a backticked test name).
@@ -592,8 +592,8 @@ jobs:
           # config — incl. IosKeychainTest and the PhotoKit contracts' no-grant bindings; PhotoKit under a
           # full grant runs in the simulator APP, in ios-contracts below, and the cloud-id + upload-job
           # subsystems are device-only and not exercised here),
-          # plus the native SQLDelight drivers behind the shared storage contracts hosted in
-          # :test:world (:adapter:generic:app's NativeLedgerStoreTest and NativeDownloadStoreTest).
+          # plus the native SQLDelight drivers behind the shared storage contracts
+          # (:adapter:generic:app's NativeLedgerStoreTest and NativeDownloadStoreTest).
           #
           # NOT covered here: :ui:components' Compose semantics tests and the SQLDelight JVM-driver
           # tests (jvmTest only), and :test:architecture (JVM-only Konsist, by design). :ui:screens'

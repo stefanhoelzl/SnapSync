@@ -18,9 +18,9 @@ kover {
 }
 
 // The seam-to-UI-state integration surface (`docs/testing.md`, "The seam-to-UI-state
-// integration surface"). Every test starts the control channel's JVM host in-process — a world composed by the
-// same shared host composition the iOS shell calls, over the mini-edge — and drives it through the protocol's
-// typed client (`:test:control`) ONLY. So a test names no world, port, flow or composition type, and one test
+// integration surface"). Every test starts the control channel's JVM host in-process — the app the JVM root composes
+// by the same shared host composition the iOS shell calls, over the mocks — and drives it through the protocol's
+// typed client (`:test:control`) ONLY. So a test names no mock, port, flow or composition type, and one test
 // body could target any host: the client's compile path carries only the wire types and the read-model types
 // (the rig declares its own dependencies `implementation`), which is what holds that rule.
 //

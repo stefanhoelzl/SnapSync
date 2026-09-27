@@ -35,7 +35,6 @@ flowchart LR
   test_harness_driver[":test:harness-driver"]
   test_integration[":test:integration"]
   test_rig[":test:rig"]
-  test_world[":test:world"]
   tools_diagrams[":tools:diagrams"]
   ui_components[":ui:components"]
   ui_screens[":ui:screens"]
@@ -168,17 +167,6 @@ flowchart LR
   test_rig --> domain_services
   test_rig --> test_contracts
   test_rig --> test_edge
-  test_world --> adapter_generic_app
-  test_world --> adapter_generic_mock
-  test_world --> domain_compose
-  test_world --> domain_feature
-  test_world --> domain_host
-  test_world --> domain_model
-  test_world --> domain_ports
-  test_world --> domain_presentation
-  test_world --> domain_services
-  test_world --> test_contracts
-  test_world --> test_edge
   ui_components --> domain_model
   ui_screens --> domain_feature
   ui_screens --> domain_model

@@ -30,8 +30,8 @@ import app.snapsync.model.UnionAsset
  * Implementations never throw (cancellation aside): a transport failure is [Reply.Unreachable], a success whose
  * body does not decode is [Reply.Malformed].
  *
- * Its promises are the port contract `BackendContract` (`docs/testing.md`), run against the real `api/`, the
- * world's mini-edge, and the in-memory mock.
+ * Its promises are the port contract `BackendContract` (`docs/testing.md`), run against the real `api/` and the
+ * in-memory mock.
  */
 interface Backend {
 

@@ -6,10 +6,10 @@ plugins {
 // run as `src/dev/serve.ts --ephemeral`, loopback-only, over a filesystem store). Support group
 // (`docs/architecture.md`, "The module set withholds; packages organize"): it never links into a shipped-format
 // binary, and it exists because two unrelated consumers need the same process — the backend contracts' live
-// bindings (`:adapter:generic:app`'s `jvmTest`) and the world's real-backend option (`:test:world`'s
-// `jvmMain`). Neither can host it for the other: in the world it would make the adapter's contract test
-// depend on the module a later change takes apart, and `:test:contracts` is contained and links into rig
-// builds, so it must not grow process spawning.
+// bindings (`:adapter:generic:app`'s `jvmTest`) and the rig's JVM host over the real backend (`:test:rig`'s
+// `jvmMain`, `-Psnapsync.rigBackend=deno`). Neither can host it for the other: in the rig it would make the adapter's
+// contract test depend on the control channel, and `:test:contracts` is contained and links into rig builds, so it
+// must not grow process spawning.
 //
 // JVM-only because a Kotlin/Native test executable under `simctl` cannot launch a process. No tests of its
 // own: every consumer's run is its test, and a start failure names Deno rather than failing a clause.

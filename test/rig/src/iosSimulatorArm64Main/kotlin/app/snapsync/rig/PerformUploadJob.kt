@@ -38,7 +38,7 @@ import kotlin.coroutines.resume
  * composed. Together they are the operator playing the system's own upload scheduler.
  *
  * **Why the transfer is real rather than declared.** Declaring a job succeeded without moving bytes is what
- * `:test:world` already does, in memory, faster, and on JVM too — it would add nothing here. A real
+ * the JVM host's mocked job queue already does, in memory, faster, and on JVM too — it would add nothing here. A real
  * transfer is the entire marginal value of this host: it is the only thing anywhere that demonstrates a URL
  * the edge-URL builder composed is one the backend accepts, carrying the bytes PhotoKit yields, under a
  * real attestation token. That builder is pinned only by `commonMain` tests on string composition.

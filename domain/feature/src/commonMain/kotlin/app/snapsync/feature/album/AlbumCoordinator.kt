@@ -9,7 +9,7 @@ import co.touchlab.kermit.Logger
 /**
  * The tested `commonMain` orchestration for the event album (capability `event-album`): resolve-or-create
  * the album (reuse across re-join, recreate a deleted one) and dispatch-or-skip an add. All album
- * *decisions* live here so `:test:world` can assert them without PhotoKit; the raw `PHAssetCollection`
+ * *decisions* live here so a test can assert them without PhotoKit; the raw `PHAssetCollection`
  * calls live behind [GalleryAlbums] and the shared map behind [AlbumMapService].
  *
  * Ownership: **the app is the sole creator** — only the app calls [ensureAlbum] (on the photo-permission

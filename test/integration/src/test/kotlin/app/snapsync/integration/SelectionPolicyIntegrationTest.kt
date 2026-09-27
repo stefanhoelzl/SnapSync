@@ -9,7 +9,7 @@ import kotlin.test.assertTrue
 
 /**
  * The selection policy over the **real** stack (capability `photo-sharing`): the real `UploadCycle`,
- * engine, ledger, device-manifest producer and mini-edge, with only PhotoKit faked — driven through the control
+ * engine, ledger and device-manifest producer over the backend mock, with only PhotoKit faked — driven through the control
  * protocol.
  *
  * Each test asserts the consequences an exclusion must have, because getting one and missing another is exactly

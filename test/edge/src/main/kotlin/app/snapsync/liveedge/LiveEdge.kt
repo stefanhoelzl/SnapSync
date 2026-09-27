@@ -31,9 +31,8 @@ import kotlinx.coroutines.runBlocking
  * naming it — it is never `Unreachable`, because a missing tool is not a state this host cannot reach, and
  * reading it as one would let a machine without Deno report the whole backend `NotRunHere`.
  *
- * Depends on nothing in `:test:world`: this fixture is the backend that outlives the mini-edge. It lives in
- * `:test:edge` so that both of its consumers — the backend contracts' live bindings and the world's
- * real-backend option — stand on the same process lifecycle rather than two copies of it.
+ * It lives in `:test:edge` so that both of its consumers — the backend contracts' live bindings and the rig's JVM
+ * host over the real backend — stand on the same process lifecycle rather than two copies of it.
  */
 object LiveEdge {
 

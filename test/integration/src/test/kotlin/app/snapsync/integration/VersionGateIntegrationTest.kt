@@ -10,10 +10,10 @@ import kotlin.test.assertNotNull
  * The version gate end to end (capability `app-update-required`), over the REAL composed core, driven through the
  * control protocol.
  *
- * Nothing here is simulated between the wire and the screen. The mini-edge answers a genuine `426`; the REAL
- * `HttpBackend` the device runs over carries it; the REAL authenticated backend composed in `AppCore` hands it to the
+ * Nothing here is simulated between the backend port and the screen. The backend mock answers a genuine `426`, as the
+ * real backend does; the REAL authenticated backend composed in `AppCore` hands it to the
  * REAL `AppVersionGate`, which records it; and the REAL container reduces it into `UiState`. What each of those steps
- * proves separately is asserted separately — `CredentialedBackendTest` for the branch, `MiniEdgeV2Test` for the
+ * proves separately is asserted separately — `CredentialedBackendTest` for the branch, `BackendContract` for the
  * refusal — and what only this can prove is
  * that they are CONNECTED, which is exactly the class of defect a device meets and no unit test sees.
  *

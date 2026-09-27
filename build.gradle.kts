@@ -87,10 +87,9 @@ listOf(
     ":domain:model" to ":adapter:generic:mock",
     ":domain:ports" to ":adapter:generic:mock",
     // The storage services' SQLite and file behaviour is measured beside the JVM adapters (a `:domain:*` build
-    // file names no module), their fake-driven tests beside the mocks, and their composition through the world.
+    // file names no module), and their fake-driven tests beside the mocks.
     ":domain:services" to ":adapter:generic:app",
     ":domain:services" to ":adapter:generic:mock",
-    ":domain:services" to ":test:world",
     ":domain:feature" to ":adapter:generic:mock",
     // `:test:feature` holds the feature tests that compose real services over the ports' mocks (`docs/testing.md`):
     // they exercise the feature zone first, and the services, the model and the ports it reaches through them.
@@ -262,12 +261,11 @@ val detektTierOf: Map<String, String> = mapOf(
     ":ui:components" to "ui",
     ":ui:screens" to "ui",
 
-    // Test equipment: harnesses, the control channel, the world, the diagram generators. Read once,
+    // Test equipment: harnesses, the control channel, the diagram generators. Read once,
     // never shipped. These ceilings exist to catch a regression, not to converge.
     ":app:desktop" to "harness",
     ":test:harness-driver" to "harness",
     ":test:rig" to "harness",
-    ":test:world" to "harness",
     ":test:contracts" to "harness",
     ":test:edge" to "harness",
     ":test:control" to "harness",
