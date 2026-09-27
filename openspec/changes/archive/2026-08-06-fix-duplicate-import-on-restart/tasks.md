@@ -16,7 +16,7 @@ test can fail for the right reason before the fix lands.
 - [x] 1.1 Give `:test:world`'s `FakePhotoLibraryImporter` the same two-phase seam as the real adapter:
       a `recordCreatedLocalId`-shaped callback invoked before it returns, so "marker written,
       confirmation never arrived" is a state the world can reach. (It lives in `:test:world`, outside
-      the honesty gate, so the lever belongs there — not in `:adapter:generic:fake`.) Wired in `World`
+      the honesty gate, so the lever belongs there — not in `:adapter:generic:mock`.) Wired in `World`
       to the download store, mirroring `SnapSyncRoot`.
 - [x] 1.2 Add the levers — three, not two, because an import can end badly in three distinct ways:
       `failNextImport` (fails **before** creating), `failNextImportAfterCreating` (marker written, asset
@@ -56,7 +56,7 @@ test can fail for the right reason before the fix lands.
 - [x] 3.2 `ports/` — `ImportedAssetPresence`, batched: ids in, per-id verdicts out. Named for the need.
 - [x] 3.3 `:adapter:ios:app-only` — the full-access implementation, owning its `Dispatchers.Default`
       hop (the call blocks its thread; `IosDiscovery` carries the forcing proof).
-- [x] 3.4 `:adapter:generic:fake` — the honest in-memory implementation.
+- [x] 3.4 `:adapter:generic:mock` — the honest in-memory implementation.
 - [x] 3.5 `compose/` — the grant-aware binding, mirroring `PermissionAwareCandidateSource`: full access
       queries the library; partial access answers from the selection snapshot and never reports absent;
       no usable grant answers unknown. The download feature gains no permission knowledge.
@@ -88,7 +88,7 @@ test can fail for the right reason before the fix lands.
 ## 6. Staged-byte release
 
 - [x] 6.1 `ports/StagedBytes` — `release(paths)`; implementation in `:adapter:ios:app-only`; fake in
-      `:adapter:generic:fake`.
+      `:adapter:generic:mock`.
 - [x] 6.2 Release after the confirming write commits — from a successful import **and** from a
       `present` verdict — and drop that asset's resource rows. Best-effort (`runCatching`).
 - [x] 6.3 Release before a prune, at **both** call sites: `DownloadController.onLeaveOrSwitch` and

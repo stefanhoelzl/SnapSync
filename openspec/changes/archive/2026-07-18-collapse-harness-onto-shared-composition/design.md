@@ -15,7 +15,7 @@ additively; the full app-graph collapse (`snapSyncApp`) was reserved for this st
   keep both harnesses operator-identical.
 - Non-Goals: behavior changes on device; the ledger-at-zero *promotion* (the beacon row's move into
   `:test:architecture` as a permanent gate happens at step 13b with every other gate — the row now
-  self-reports 0 and stays); package normalization beyond the new `app.snapsync.fake`.
+  self-reports 0 and stays); package normalization beyond the new `app.snapsync.mock`.
 
 ## Decisions
 
@@ -33,7 +33,7 @@ additively; the full app-graph collapse (`snapSyncApp`) was reserved for this st
   `MutableStateFlow` cell (with a convenience initial-state constructor), and `:test:world`'s
   `WorldGallery` wrapper owns the cell and re-hosts `set()`/`current()`. Rejected: keeping the
   levers and exempting "settable fakes" — that is the exact rot path the gate's doc names.
-- **D3 — one package `app.snapsync.fake`.** The step-4 pure-move precedent (keep packages) applied
+- **D3 — one package `app.snapsync.mock`.** The step-4 pure-move precedent (keep packages) applied
   to unchanged production adapters; these fakes change signature anyway (D2), the module is new,
   and one package makes the gate's subject legible. Import churn is confined to test/harness code.
 - **D4 — contracts seat in `:test:world` commonMain.** A test source set cannot be depended on

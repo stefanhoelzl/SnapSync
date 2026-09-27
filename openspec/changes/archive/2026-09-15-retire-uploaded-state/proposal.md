@@ -65,7 +65,7 @@ on" helper text stays true).
   `ports/` (`LedgerStore`, `BackgroundTransfer` KDoc), `feature/upload` (`UploadCycle`, `SyncEngine`,
   `LedgerWriter`), `feature/album` (`AlbumCoordinator` KDoc).
 - `:adapter:generic:app` — `Ledger.sq`, new `8.sqm`, `SqlDelightLedgerStore`.
-- `:adapter:generic:fake` — `InMemoryLedgerStore`.
+- `:adapter:generic:mock` — `InMemoryLedgerStore`.
 - `:adapter:ios:ext-safe` — `PhotoKitJobMapping`, `IosPhotoKitUploadPlatform`, the simulator job queue.
 - `:adapter:ios:app-only` — `IosUrlSessionUploadPlatform`.
 - `:test:world` — `UploadFakes`, `LedgerStoreContract`, a test-only completed-row seed helper;

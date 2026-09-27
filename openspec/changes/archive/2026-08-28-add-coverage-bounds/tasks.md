@@ -3,7 +3,7 @@
 - [x] 1.1 Add the Kover plugin to `gradle/libs.versions.toml` (version pinned like every other
       dependency) and declare it `apply false` in the root `build.gradle.kts` plugins block.
 - [x] 1.2 Apply Kover in the instrumented modules only — `:domain`, `:adapter:generic:app`,
-      `:adapter:generic:fake`, `:ui:presentation`, `:ui:screens`, `:ui:components` — by adding the
+      `:adapter:generic:mock`, `:ui:presentation`, `:ui:screens`, `:ui:components` — by adding the
       plugin to each module's own `build.gradle.kts` rather than to a `subprojects {}` block, so the
       set is readable per module and a new module is not silently instrumented.
 - [x] 1.3 In `:test:integration`, `:test:world`, `:test:architecture` and `:tools:diagrams`, apply
@@ -11,7 +11,7 @@
       test tasks produce no coverage data and are not triggered by report generation. Note the
       property is `disabledForAll`, not `disableForAll`.
 - [x] 1.4 Add the crediting edges so a module's bound counts the unit tests that exercise it:
-      `:domain` declares `kover(project(":adapter:generic:fake"))`, and `:ui:components` declares
+      `:domain` declares `kover(project(":adapter:generic:mock"))`, and `:ui:components` declares
       `kover(project(":ui:screens"))`. Verify each module's report then covers only its own classes
       (`reports.filters.includes.projects`), so a crediting edge adds coverage without adding classes.
 - [x] 1.5 Confirm `:app:desktop` and `:test:harness-driver` are neither instrumented nor bounded, and

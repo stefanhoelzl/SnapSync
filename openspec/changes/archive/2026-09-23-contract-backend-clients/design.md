@@ -162,7 +162,7 @@ it, which is a larger departure from the spec than widening the handle rule.
 | contracts, state enums, `GateObservation`, `EdgeSubject`, `EdgeSetup` | `:test:contracts` `commonMain` | every contract lives there, and both edges' bindings enter states through the same `EdgeSetup` |
 | mini-edge binding | `:test:world` `commonTest` | beside its implementation; runs on JVM and the simulator |
 | `LiveEdge` fixture + live bindings | `:adapter:generic:app` `jvmTest` | beside the clients; process launch is JVM-only |
-| `InMemoryAttestClient` binding | `:adapter:generic:fake` `commonTest` | the fake is `internal` there |
+| `InMemoryAttestClient` binding | `:adapter:generic:mock` `commonTest` | the fake is `internal` there |
 | ephemeral mode | `api/src/dev/serve.ts` | the rig entry point, never bundled (`main.ts` reaches nothing under `src/dev/`) |
 
 **`LiveEdge` depends on nothing in `:test:world`.** It holds only process lifecycle and the public-HTTP

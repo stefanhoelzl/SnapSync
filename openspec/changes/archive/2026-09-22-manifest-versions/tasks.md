@@ -13,7 +13,7 @@
 - [x] 2.1 `Ledger.sq`: the `manifestVersion` table (no seed; an absent row reads 0); the `AFTER INSERT` / `AFTER DELETE` / `AFTER UPDATE` (advancing only when a projected column changed) triggers on `ledgerRow`; the `selectManifestVersion` and `bumpManifestVersion` queries. Add a comment that a future column drop must recreate the triggers.
 - [x] 2.2 `11.sqm` (v11 → v12): the same table, seed and triggers, touching no row; the SQLDelight migration verify passes against the committed snapshot
 - [x] 2.3 `LedgerStore` port: `manifestVersion(): Long` and `bumpManifestVersion()`; implement in `SqlDelightLedgerStore`
-- [x] 2.4 `InMemoryLedgerStore` (`:adapter:generic:fake`): the same advance rules, without triggers (insert, delete, projected-field change, reset family; not `state`/`destinationPath`; a declined record does not advance)
+- [x] 2.4 `InMemoryLedgerStore` (`:adapter:generic:mock`): the same advance rules, without triggers (insert, delete, projected-field change, reset family; not `state`/`destinationPath`; a declined record does not advance)
 - [x] 2.5 `LedgerStoreContract` (`:test:world`): the sync-ledger version scenarios, which run against the SQLDelight (JVM + native) and in-memory stores
 - [x] 2.6 `SqlDelightLedgerStoreTest`: `11.sqm` preserves `COMPLETED` rows and seeds the version at `0`
 

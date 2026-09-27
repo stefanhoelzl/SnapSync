@@ -6,7 +6,7 @@
   channel before `start` had run.
 
 Both obligations live only in the port's KDoc. The only test named for the contract
-(`DiagnosticsReporterContractTest`, in `:adapter:generic:fake`) runs against the fake alone. `port-contracts`
+(`DiagnosticsReporterContractTest`, in `:adapter:generic:mock`) runs against the fake alone. `port-contracts`
 forbids exactly that: "A clause reachable only by a fake SHALL NOT exist".
 
 The fake has also drifted from the real adapter, and nothing notices. `InMemoryDiagnosticsReporter.start()`
@@ -38,7 +38,7 @@ simulator:
   - The configured states inject a DSN pointing at a **loopback ingest fixture** in the same test
     executable. The fixture is a minimal HTTP listener with no Ktor, so the `ktor-server-*` withholding in
     `module-architecture` is untouched.
-- **Fake binding** in `:adapter:generic:fake` `commonTest`, on `JVM` and `IOS_SIM_KEXE`. It reaches
+- **Fake binding** in `:adapter:generic:mock` `commonTest`, on `JVM` and `IOS_SIM_KEXE`. It reaches
   `UNCONFIGURED` and `CONFIGURED` and declares `CONFIGURED_ON_THE_WIRE` unreachable: the fake transmits
   nothing.
 - **`SentryDiagnosticsReporter` gains an `internal` constructor taking the DSN.** The public no-arg
@@ -89,7 +89,7 @@ inside a clause. `deployment-configuration` is deliberately untouched (see above
   - `:adapter:ios:ext-safe`:
     - iosMain: the internal DSN constructor and the start-flag reset.
     - iosTest: the ingest fixture and the live binding.
-  - `:adapter:generic:fake`:
+  - `:adapter:generic:mock`:
     - main: the `start()` fix and the `described` removal.
     - commonTest: the fake binding, replacing `DiagnosticsReporterContractTest`.
 - **Unchanged:** `:test:world`. It builds the fake configured, so its `diagnosticsStarted` observation keeps

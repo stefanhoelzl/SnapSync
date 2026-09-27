@@ -12,7 +12,7 @@ plugins {
     alias(libs.plugins.kover)
 }
 // Coverage (`docs/architecture.md`). The report is filtered to this module's OWN classes.
-// The crediting edge that lets `:adapter:generic:fake`'s feature tests count toward this module is
+// The crediting edge that lets `:adapter:generic:mock`'s feature tests count toward this module is
 // declared in the ROOT build file, not here: `ModuleSetTest` asserts this file names no module at
 // all, because that absence is the precondition for the platform-free compile error.
 kover {

@@ -13,7 +13,7 @@ existence; a module justified by no law is a package with a derived text gate in
     zones, each depending only along the permitted zone edge and only via `implementation()`, so no zone
     leaks transitively; no `iosMain` source directory anywhere in the tree;
   - `:ui:presentation`, `:ui:screens`, `:ui:components` (the only module that may depend on Material 3);
-  - `:adapter:ios:ext-safe`, `:adapter:ios:app-only`, `:adapter:generic:app`, `:adapter:generic:fake`;
+  - `:adapter:ios:ext-safe`, `:adapter:ios:app-only`, `:adapter:generic:app`, `:adapter:generic:mock`;
   - `:app:ios`, `:app:ios:extension`, `:app:desktop`;
   - `:app:composition` — the shared host composition ("One shared composition"). It is the one module that
     sees both the core's composition zone and the presentation module, so that neither gains the other: the

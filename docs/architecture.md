@@ -38,7 +38,7 @@ group, with the group's argument in the commit.
 
 | group | why it exists | members |
 |---|---|---|
-| **Withholding** | withholds a dependency (third-party, platform, or another core zone) from its consumers by compile error | `:domain:model` `:domain:ports` `:domain:services` `:domain:feature` `:domain:flow` `:domain:presentation` `:domain:compose` `:domain:host` · `:ui:screens` `:ui:components` · `:adapter:ios:ext-safe` `:adapter:ios:app-only` `:adapter:generic:app` `:adapter:generic:fake` · `:app:ios` `:app:ios:extension` `:app:desktop` |
+| **Withholding** | withholds a dependency (third-party, platform, or another core zone) from its consumers by compile error | `:domain:model` `:domain:ports` `:domain:services` `:domain:feature` `:domain:flow` `:domain:presentation` `:domain:compose` `:domain:host` · `:ui:screens` `:ui:components` · `:adapter:ios:ext-safe` `:adapter:ios:app-only` `:adapter:generic:app` `:adapter:generic:mock` · `:app:ios` `:app:ios:extension` `:app:desktop` |
 | **Contained** | exists so that something is **absent** from a production build, and is linked only under a build property | `:app:ios:forge` (`-Psnapsync.forge`) · `:test:rig`, `:test:contracts` (`-Psnapsync.rig`) |
 | **Support** | never linked into a shipped-format binary, exempt from production-module laws | `:test:world` `:test:integration` `:test:architecture` `:test:harness-driver` `:test:edge` `:test:control` `:tools:diagrams` |
 
@@ -393,14 +393,14 @@ Decision record: `changes/archive/2026-08-27-add-repo-wide-complexity-gates`.
   module carries an `INSTRUCTION` aggregate, a `BRANCH` aggregate, and an `INSTRUCTION` **package
   floor** (the worst package). `LINE` is not bounded, and `BRANCH` has no package floor (too noisy at
   package size).
-- **Unit tests only.** Instrumented: `:domain:*`, `:adapter:generic:app`, `:adapter:generic:fake`, `:test:feature`,
+- **Unit tests only.** Instrumented: `:domain:*`, `:adapter:generic:app`, `:adapter:generic:mock`, `:test:feature`,
   `:domain:presentation`, `:ui:screens`, `:ui:components`. Bounded: all of those except
-  `:adapter:generic:fake` (its `commonTest` hosts the flow tests and the services' mock-driven tests, and the fakes
+  `:adapter:generic:mock` (its `commonTest` hosts the flow tests and the services' mock-driven tests, and the fakes
   themselves are test equipment) and `:test:feature` (the feature tests that compose real services over the ports'
   mocks; it holds no class of its own). `:test:world`, `:test:integration`, `:test:contracts` and the other
   test modules contribute nothing, so a thick harness cannot stand in for a thin unit suite.
 - **Crediting edges** (root `build.gradle.kts`) let tests that a placement rule forced elsewhere credit
-  the module they test: the `:domain:*` zones from `:adapter:generic:fake` and from `:test:feature`, and `:ui:components` and
+  the module they test: the `:domain:*` zones from `:adapter:generic:mock` and from `:test:feature`, and `:ui:components` and
   `:domain:presentation` from `:ui:screens`. Always name leaf modules. `:domain` is an empty container, and
   a filter on it measures nothing. Incidental coverage is never credited.
 - `compose/` is **permanently unbounded**. The wiring graph is not unit-tested by law, so the gap

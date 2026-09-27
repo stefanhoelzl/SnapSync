@@ -6,7 +6,7 @@ import app.cash.sqldelight.db.SqlCursor
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlPreparedStatement
 import app.cash.sqldelight.db.SqlSchema
-import app.snapsync.fake.inMemoryDatabases
+import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetPresence
 import app.snapsync.model.AssetRef

@@ -1,10 +1,10 @@
 package app.snapsync.feature.support
 
-import app.snapsync.fake.fixedClock
-import app.snapsync.fake.inMemoryDatabases
-import app.snapsync.fake.inMemoryFiles
-import app.snapsync.fake.inMemoryPhotoAccess
-import app.snapsync.fake.inMemorySecureStore
+import app.snapsync.mock.fixedClock
+import app.snapsync.mock.inMemoryDatabases
+import app.snapsync.mock.inMemoryFiles
+import app.snapsync.mock.inMemoryPhotoAccess
+import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.ConfigFileDecode
 import app.snapsync.model.DeviceIdentityRole
 import app.snapsync.model.EventConfig

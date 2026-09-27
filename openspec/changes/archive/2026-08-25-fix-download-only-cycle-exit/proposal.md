@@ -93,7 +93,7 @@ None.
 
 **Code.** `:domain` `model/SelectionPolicy.kt` (the variant's shape, `from`, `excluding`, `walkFloor`
 deleted); `feature/upload/UploadCycle.kt` (both exit points); `feature/status/OwnDeviceGalleryStatusSource.kt`;
-`:adapter:generic:fake`'s `InMemoryCandidateSource`; `:adapter:ios:ext-safe`'s `SentryLogWriter`.
+`:adapter:generic:mock`'s `InMemoryCandidateSource`; `:adapter:ios:ext-safe`'s `SentryLogWriter`.
 `PhotoKitCandidateSource.predicateFor` iterates rules order-independently, so re-seating the floor rule
 needs no change there.
 

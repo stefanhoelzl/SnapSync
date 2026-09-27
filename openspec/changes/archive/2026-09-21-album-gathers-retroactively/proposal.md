@@ -56,7 +56,7 @@ None.
 - `:domain` `compose/SnapSyncApp.kt`: wiring for both triggers, plus the grant-transition trigger on the
   permission subscription.
 - `:domain` `ports/DownloadStore` + `:adapter:generic:app` (`DownloadStore.sq`, `SqlDelightDownloadStore`)
-  + `:adapter:generic:fake` (`InMemoryDownloadStore`) + `:test:world` (`DownloadStoreContract`).
+  + `:adapter:generic:mock` (`InMemoryDownloadStore`) + `:test:world` (`DownloadStoreContract`).
 - `:ui:screens`: the `ReconfigureScreen` album note and its `StatusScreenTest` assertion.
 - **Not touched**: `UploadCycle`, the ledger schema, the discovery walk, the upload lifecycle, and the
   upload extension.

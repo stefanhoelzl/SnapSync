@@ -21,14 +21,14 @@ current checkout:
 |---|---|---|
 | ① | "`jvmTest`/`iosTest` hold only driver/cinterop wiring behind a shared contract" | `ui/components/src/jvmTest` holds 5 Compose behaviour tests; `:test:architecture` and `:tools:diagrams` are JVM-only `src/test` |
 | ② | "integration tests assert `UiState` **and** world outcomes" | 9 of 15 `:test:integration` tests reference `UiState` zero times |
-| ③ | the `:adapter:generic:fake` test enumeration ("RawAssetMapping, status sources, download trio, DeviceAttestation") | 11 files; three fit none of the four names |
+| ③ | the `:adapter:generic:mock` test enumeration ("RawAssetMapping, status sources, download trio, DeviceAttestation") | 11 files; three fit none of the four names |
 | ④ | `:test:world` described as infra + contracts only | its `commonTest` holds 13 feature tests over the real stack — an undocumented tier |
 | ⑤ | CLAUDE.md's module list | omits `:app:ios:forge` and `:tools:diagrams`, both named by `ModuleSetTest` |
 | ⑥ | `ios.yml`'s `ios-test` step comment | cites `:domain:*`, `:capability:*`, `:domain:keychain`, `:domain:ui` — all pre-migration names |
 
 Two structural facts constrain any statement of the rules:
 
-1. **`:domain`'s `commonTest` cannot reach `:adapter:generic:fake`** — the fake module depends on
+1. **`:domain`'s `commonTest` cannot reach `:adapter:generic:mock`** — the fake module depends on
    `:domain`, so the reverse test edge is a project cycle. `harness-world-model:45` states the
    general form ("a test source set cannot be depended on across modules"), which is also why the
    storage contracts live in `:test:world`'s `commonMain`. Fake-driven feature tests therefore live
@@ -85,7 +85,7 @@ reasons found while examining it:
    doesn't *catch* them — it deletes the surface they lived on. That outcome is available without
    any guard.
 3. **The colocated copies were true where the central copy was false.** `ui/screens`,
-   `ui/components`, and `adapter/generic/fake`'s build files each state the testing rule accurately,
+   `ui/components`, and `adapter/generic/mock`'s build files each state the testing rule accurately,
    at the point of decision, with nothing holding them there. Distance is what rots a claim, not the
    absence of a tether.
 

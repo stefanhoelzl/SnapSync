@@ -12,7 +12,7 @@
 ## 3. Contracts
 
 - [x] 3.1 `:test:contracts`: `LinkOpenerContract` (`UNCLAIMED_URL_IS_REFUSED`, then `CLAIMED_URL_IS_ACCEPTED` last), `SharePresenterContract` (`PRESENTABLE_SHARE_IS_ACCEPTED`), and the real-clock `withinRealTime` bound
-- [x] 3.2 `:adapter:generic:fake` commonTest: bind `LinkOpener.None` as `Fake`, reaching `UNCLAIMED`
+- [x] 3.2 `:adapter:generic:mock` commonTest: bind `LinkOpener.None` as `Fake`, reaching `UNCLAIMED`
 - [x] 3.3 `:adapter:ios:app-only` rig source set: recorder/replayer for `UrlOpenerApi`, the device `LinkOpener` binding and registry, the simulator-app `LinkOpener` and `SharePresenter` bindings (disposal dismisses the sheet), registered in `simulatorAppContracts()`
 - [x] 3.4 `:adapter:ios:app-only`: embed the committed recordings into `iosTest`, and add `IosLinkOpenerReplayContractTest`
 - [x] 3.5 `:test:rig`: register the device registry in `Boot`, and look contracts up by the current host first

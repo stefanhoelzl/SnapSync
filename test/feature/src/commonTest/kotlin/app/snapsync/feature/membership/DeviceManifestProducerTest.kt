@@ -1,6 +1,6 @@
 package app.snapsync.feature.membership
 
-import app.snapsync.fake.inMemoryFiles
+import app.snapsync.mock.inMemoryFiles
 import app.snapsync.model.AssetId
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset

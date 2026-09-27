@@ -9,7 +9,7 @@ One PR, landed as the reviewable commits below (design D1). Every group leaves `
   bind-variable limit (reuse the `MARK_PRESENT_CHUNK` reasoning), `clearAbsenceMarks` as one
   `UPDATE ledgerRow SET absent = 0 WHERE absent = 1`; each dings `changes` only when it changed a row.
   **No `.sqm` is added.** `Schema.version` must not move (design D5).
-- [x] 1.3 Implement both in `:adapter:generic:fake`'s `InMemoryLedgerStore` and in the
+- [x] 1.3 Implement both in `:adapter:generic:mock`'s `InMemoryLedgerStore` and in the
   `domain/feature` commonTest doubles (`InMemoryLedgerStore`, `FakeLedgerStore`,
   `OsDrivenUploadMechanismTest`'s store).
 - [x] 1.4 Expose both on `LedgerWriter` only. Run `clearAbsenceMarks()` once per cycle in

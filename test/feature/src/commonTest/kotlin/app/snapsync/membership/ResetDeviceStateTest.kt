@@ -1,6 +1,6 @@
 package app.snapsync.membership
 
-import app.snapsync.fake.inMemoryDatabases
+import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.feature.support.RecordingFiles
 import app.snapsync.feature.support.configCleared
 import app.snapsync.feature.support.configService

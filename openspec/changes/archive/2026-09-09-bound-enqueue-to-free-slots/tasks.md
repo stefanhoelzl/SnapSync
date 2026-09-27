@@ -18,7 +18,7 @@
 ## 4. Test doubles and the world
 
 - [x] 4.1 The fake `BackgroundTransfer` in `test/world/.../UploadFakes.kt` answers the new member; its default keeps existing tests behaving as they do today
-- [x] 4.2 Give the world a lever to set free capacity, so an integration test can drive the zero-slot path; keep the lever in `:test:world`, never in `:adapter:generic:fake` (`FakeHonestyTest`)
+- [x] 4.2 Give the world a lever to set free capacity, so an integration test can drive the zero-slot path; keep the lever in `:test:world`, never in `:adapter:generic:mock` (`FakeHonestyTest`)
 
 ## 5. Tests
 

@@ -21,11 +21,11 @@
 - [x] 3.1 `:test:contracts` commonMain: `ConfigStoreState` (`INACCESSIBLE`, `ABSENT`, `JOINED`, `FOREIGN`,
   `UNUSABLE`, `FILE_UNREADABLE`), the subject holder over the three ports, and `ConfigStoreContract` with the
   D6 clauses. Seed configs and their file text derive from the clause id.
-- [x] 3.2 `:adapter:generic:fake`: `InMemoryConfigStore(persisted, readable)` implementing all three ports,
+- [x] 3.2 `:adapter:generic:mock`: `InMemoryConfigStore(persisted, readable)` implementing all three ports,
   plus port-typed factories (`inMemoryConfigSource`/`inMemoryConfigStore`/`inMemoryConfigReader`) over the
   caller's cells. The class stays `internal`: that, not a `FakeHonestyTest` (which no longer exists), is the
   honesty rule.
-- [x] 3.3 Fake binding in `:adapter:generic:fake` commonTest: `currentHost`, `Fake`, reaching `INACCESSIBLE`,
+- [x] 3.3 Fake binding in `:adapter:generic:mock` commonTest: `currentHost`, `Fake`, reaching `INACCESSIBLE`,
   `ABSENT` and `JOINED`.
 - [x] 3.4 Live binding in `:adapter:ios:ext-safe` iosTest on `IOS_SIM_KEXE`:
   - readable states use a fresh temporary directory with the seed written as the adapter would write it;
@@ -40,12 +40,12 @@
 ## 4. The other four contracts (one commit each: contract, fake binding, live binding)
 
 - [x] 4.1 `DeviceManifestStoreContract` (`UNAVAILABLE`, `EMPTY`, `HOLDING`):
-  - the fake binding is in `:adapter:generic:fake`;
+  - the fake binding is in `:adapter:generic:mock`;
   - the live binding is `IosDeviceManifestStore` in ext-safe iosTest, where `UNAVAILABLE` uses the default
     container.
 - [x] 4.2 `StagedBytesContract` (`UNAVAILABLE`, `EMPTY`, `STAGED`), with paths derived from `stagingRoot()`
   and the clause id:
-  - the fake binding is in `:adapter:generic:fake`;
+  - the fake binding is in `:adapter:generic:mock`;
   - add `implementation(project(":test:contracts"))` to `:adapter:ios:app-only`'s iosTest;
   - the live binding is `IosStagedBytes` there.
 - [x] 4.3 `DeviceLogSourceContract` (`NO_LOG`, `EMPTY_LOG`, `HOLDING`, `ROLLED_ONLY`):
@@ -54,7 +54,7 @@
   - finding: the live binding failed on CI because the reader dropped the first line of a log that fit its
     budget. Fix it to drop a partial line only on a mid-file read, and correct the test that pinned the drop.
 - [x] 4.4 `AlbumMapStoreContract` (`EMPTY`, `HOLDING`, `CORRUPT`):
-  - the fake binding is in `:adapter:generic:fake`;
+  - the fake binding is in `:adapter:generic:mock`;
   - the live binding is `IosAlbumMapStore` over a per-clause suite, or is moved out per 1.2.
 - [x] 4.5 `ContractCoverageTest` is green: every new clause has a `Live` binding on `IOS_SIM_KEXE` declaring
   its state.
@@ -71,12 +71,12 @@
 
 - [x] 6.1 CLAUDE.md module map:
   - drop `IosDiscoveryStore` / the "cursor store" from `:adapter:ios:ext-safe`, and the "discovery" store
-    from `:adapter:generic:fake`;
+    from `:adapter:generic:mock`;
   - add `InMemoryConfigStore` to the fake's list;
   - name the new contracts in `:test:contracts`' line.
 - [x] 6.2 `./gradlew architectureDiagrams`, and commit anything it changes.
 - [x] 6.3 `./gradlew build` is green on Linux. The `iosSimulatorArm64Test` suites of `:adapter:ios:ext-safe`,
-  `:adapter:ios:app-only` and `:adapter:generic:fake` are green on the macOS runner, and each contract's outcome
+  `:adapter:ios:app-only` and `:adapter:generic:mock` are green on the macOS runner, and each contract's outcome
   table has no `Failed`.
 - [x] 6.4 `npx --yes @fission-ai/openspec@1.5.0 validate --specs --strict` and `… validate
   contract-app-group-stores --strict` both pass.

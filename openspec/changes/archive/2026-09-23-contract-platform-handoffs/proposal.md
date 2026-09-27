@@ -62,7 +62,7 @@ No delta, with reasons:
   (`complexity-budgets`: the refusal helper is file-level).
 - `:adapter:ios:app-only` — `IosLinkOpener` (+ `UrlOpenerApi` seam), `IosShareSheet`; rig source set: the
   hand-off bindings, recorder and replayer; `iosTest`: the replay test; build script: embeds the recordings.
-- `:adapter:generic:fake` — the `LinkOpener.None` binding.
+- `:adapter:generic:mock` — the `LinkOpener.None` binding.
 - `:test:contracts` — the two contracts and the real-clock bound helper.
 - `:test:rig` — contract lookup by host; the device registry gains `LinkOpener`.
 - `:test:architecture` — `MainLaneContainmentTest` allowlists the rig binding that dismisses the sheet.

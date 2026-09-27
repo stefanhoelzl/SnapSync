@@ -162,7 +162,7 @@ A rejecting one is `failJob` with the `.retry` spent. A `GET` is `finish(descrip
 outcome built from the route. A held route is never answered. The subject the clause receives is the port, so
 none of this is visible to a clause.
 
-*Alternative, rejected:* extract honest fakes into `:adapter:generic:fake` and make the world doubles wrappers
+*Alternative, rejected:* extract honest fakes into `:adapter:generic:mock` and make the world doubles wrappers
 (the phase-6 pattern). For uploads, no honest fake can be licensed for the tier the world needs. The only real
 binding is the URLSession tier, while the world models the PhotoKit tier's single free `.retry` and
 drain-time recording, which about 90 call sites across the world tests, the integration tests and the desktop
@@ -171,7 +171,7 @@ would stand on a wrapper beside it rather than on the licensed thing. Binding th
 what the tests use. The world's PhotoKit-only behaviour stays uncontracted, as a tier fact with no real host
 (the same call 6b makes).
 
-`BackgroundScheduler` has no world double, so it gains `inMemoryBackgroundScheduler` in `:adapter:generic:fake`
+`BackgroundScheduler` has no world double, so it gains `inMemoryBackgroundScheduler` in `:adapter:generic:mock`
 (an `internal` class behind a port-typed factory), which replaces the two private `FakeScheduler`s where they
 only stand in.
 

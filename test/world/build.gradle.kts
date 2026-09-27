@@ -21,7 +21,7 @@ kover {
 
 // Shared test-infra: a controllable in-memory "world" the REAL app graph runs against — since
 // migration step 10 composed through the SAME `snapSyncApp`/`uploadCore` the device shells call,
-// over `:adapter:generic:fake`'s honest doubles; the world adds the backend store, the mini-edge, and the
+// over `:adapter:generic:mock`'s honest doubles; the world adds the backend store, the mini-edge, and the
 // operator levers/wrappers that rig them (`docs/testing.md`). Consumed by BOTH
 // `:app:desktop` (the full-stack harness) and `:test:integration`. Targets `jvm()` +
 // `iosSimulatorArm64` ONLY — it never links into a shipped framework, so no `iosArm64`; its
@@ -58,7 +58,7 @@ kotlin {
             // `api` (not `implementation`): the world's whole purpose is to hand the REAL stack's types
             // to its consumers (`:app:desktop`, `:test:integration`) — they appear across the world's
             // public API (composition helpers, honest fakes, wrappers), so they must leak transitively.
-            api(project(":adapter:generic:fake"))
+            api(project(":adapter:generic:mock"))
             // The production `HttpBackend` the mini-edge (or the real `api/`) serves.
             api(project(":adapter:generic:app"))
             implementation(libs.coroutines.core)

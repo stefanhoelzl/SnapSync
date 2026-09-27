@@ -50,7 +50,7 @@ None.
 - `:domain` `feature/upload` — `UploadCycle.enqueue` bounds its read and maps zero slots to truncated.
 - `:adapter:ios:app-only` — `IosUrlSessionUploadPlatform` reports `cap - live tasks`, clamped at zero.
 - `:adapter:ios:ext-safe` — `IosPhotoKitUploadPlatform` answers `null`.
-- `:adapter:generic:fake` + `:test:world` — the fake transfer answers the port's new member, and the
+- `:adapter:generic:mock` + `:test:world` — the fake transfer answers the port's new member, and the
   world gains a lever for it.
 - No schema migration, no wire change, no `:app:*` change.
 

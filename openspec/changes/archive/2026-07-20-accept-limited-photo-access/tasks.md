@@ -71,7 +71,7 @@ scaffolding out of the way first.
       adapter — holds the baseline `PHFetchResult` (sorted), emits the pushed
       `fetchResultAfterChanges` per change, registers only while permission is `LIMITED`
       (subscribes to the permission StateFlow), retained for adapter lifetime
-- [x] 4.3 Fake in `:adapter:generic:fake` (honest double) + operator lever in `:test:world`
+- [x] 4.3 Fake in `:adapter:generic:mock` (honest double) + operator lever in `:test:world`
       (`FakeHonestyTest` compliance: rigging lives in the world wrapper)
 - [x] 4.4 `compose/`: collect the port under `LIMITED` → drive one discovery+enqueue pass per emission;
       cold-launch baseline read wired as the launch-time pass (design D4)

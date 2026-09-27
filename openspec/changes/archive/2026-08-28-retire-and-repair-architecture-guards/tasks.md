@@ -36,7 +36,7 @@ Steps 3.4 and 3.5 land in the **same commit**, so there is never a window with n
 
 ## 4. Replace the fake-honesty gate with structure
 
-- [x] 4.1 Make every class in `:adapter:generic:fake` `internal`, exporting a factory that returns the port type
+- [x] 4.1 Make every class in `:adapter:generic:mock` `internal`, exporting a factory that returns the port type
 - [x] 4.2 Fix the lever the old gate missed: `InMemoryStagedBytes.files` (`val files: MutableSet<String>`) must not be reachable from outside the module
 - [x] 4.3 Re-point `:test:world`, `:test:integration` and the harnesses at the factories
 - [x] 4.4 Delete `FakeHonestyTest.kt`

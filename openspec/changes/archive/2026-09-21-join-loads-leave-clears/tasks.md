@@ -72,7 +72,7 @@ sites.
 ## 5. The marker goes
 
 - [x] 5.1 Delete `ports/JoinedEventMarker.kt`, `:adapter:ios:ext-safe`'s `IosJoinedEventMarker` and
-  `IosJoinedEventMarkerTest`, and the marker fakes in `:adapter:generic:fake` (`Factories.kt`,
+  `IosJoinedEventMarkerTest`, and the marker fakes in `:adapter:generic:mock` (`Factories.kt`,
   `InMemoryStores.kt`).
 - [x] 5.2 Remove the marker from `SnapSyncRoot`, `UploadExtensionRoot` and `UrlSessionUploadController`.
 - [x] 5.3 Design D8: on app process start, remove the App-Group `NSUserDefaults` key `rejoin.joinedEventId`.
@@ -96,7 +96,7 @@ sites.
 
 - [x] 7.1 Add `LedgerStore.assetProgress()`: one query over `ledgerRow` grouped by `assetId`, answering done
   or not-done per asset. Implement it in `Ledger.sq`/`SqlDelightLedgerStore` and in every in-memory store
-  (`:adapter:generic:fake`, `domain/feature` commonTest), and extend `:test:world`'s `LedgerStoreContract`.
+  (`:adapter:generic:mock`, `domain/feature` commonTest), and extend `:test:world`'s `LedgerStoreContract`.
   `aggregates()` is unchanged.
 - [x] 7.2 `OwnDeviceGalleryStatusSource` publishes the admitted own-asset set (normalized `assetId`s) beside
   `size`, with the same `null`-until-counted and never-withdraw rules. The `GalleryStatusSource` port and its
@@ -196,7 +196,7 @@ Modules the diff touched, each resolved to its capability:
   `upload-state-reconciliation`, `sync-ledger`. Deltas.
 - `:adapter:ios:ext-safe` (`IosJoinedEventMarker` deleted, `removeOrphanedJoinMarker`, config KDoc) →
   `ios-app-shell`, `architecture-guards`, `event-link`. Deltas.
-- `:adapter:generic:fake` (in-memory ledger/gallery stores, marker fake deleted) → no capability of its own; it
+- `:adapter:generic:mock` (in-memory ledger/gallery stores, marker fake deleted) → no capability of its own; it
   implements the `sync-ledger` / `gallery-status` port contracts, which carry the deltas.
 - `:app:ios` (`SnapSyncRoot`, `UrlSessionUploadController`) and `:app:ios:extension` (`UploadExtensionRoot`) →
   `ios-app-shell`, `ios-url-session-upload`, `ios-photokit-upload`. Deltas.

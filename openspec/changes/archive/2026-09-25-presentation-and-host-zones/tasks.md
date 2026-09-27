@@ -35,7 +35,7 @@
 - [x] 3.2 Rename ports' `EventDetails` → `EventLookup` (its adapters, fakes, mini-edge, contracts and feature users).
 - [x] 3.3 Move the port pure-data types listed in design D3 from `app.snapsync.ports` to `app.snapsync.model`. Leave
       the port-adjacent functions in `ports/` and add imports there.
-- [x] 3.4 Fix imports across `:domain:*`, the adapters, `:adapter:generic:fake`, `:test:*`, `:app:*` and
+- [x] 3.4 Fix imports across `:domain:*`, the adapters, `:adapter:generic:mock`, `:test:*`, `:app:*` and
       `:tools:diagrams` where needed.
 - [x] 3.5 Verify that no moved type retained logic or a port reference, by re-reading each moved file against the rule.
 

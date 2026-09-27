@@ -43,7 +43,7 @@
 - [x] 2.4 **Delete** `SelectionPolicy.walkFloor`, moving its "liveness, not correctness" rationale onto
       `Admitting.cutoff`'s KDoc (the doc explains why the lower bound alone is required in a platform
       predicate while every other narrowing is advisory)
-- [x] 2.5 Update `:adapter:generic:fake`'s `InMemoryCandidateSource` to read the bound via
+- [x] 2.5 Update `:adapter:generic:mock`'s `InMemoryCandidateSource` to read the bound via
       `(policy as? SelectionPolicy.Admitting)?.cutoff`, so which case it is handling is explicit
 - [x] 2.6 Update the `admitting(vararg rules)` helper in `:adapter:ios:ext-safe`'s
       `PhotoKitCandidateSourceTest` to supply a cutoff (`predicateFor` iterates rules order-independently,

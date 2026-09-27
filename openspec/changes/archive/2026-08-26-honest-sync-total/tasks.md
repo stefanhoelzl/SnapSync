@@ -6,7 +6,7 @@
 - [x] 1.2 `OwnDeviceGalleryStatusSource`: seed `_size` with `null`; keep the `SelectionPolicy.None`
   branch publishing an explicit **counted** `0` before any bound is read (design D3). Update the class
   KDoc, which currently documents the seeded `0`.
-- [x] 1.3 `InMemoryGalleryStatusSource` (`:adapter:generic:fake`): cell becomes `MutableStateFlow<Int?>`,
+- [x] 1.3 `InMemoryGalleryStatusSource` (`:adapter:generic:mock`): cell becomes `MutableStateFlow<Int?>`,
   secondary constructor defaults to `null` (design D6). Verify `FakeHonestyTest` still passes — the
   surface stays "port contract plus a constructor taking initial state".
 

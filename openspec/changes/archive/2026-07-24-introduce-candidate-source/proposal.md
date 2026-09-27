@@ -94,7 +94,7 @@ the sealed rules into `PHFetchOptions` (the three device-verified predicate cons
 the `NOT ((mediaSubtypes & N) != 0)` form, no predicate arithmetic, no `hasAdjustments` key). `IosDiscovery`
 builds candidates from its own full or id-scoped fetch.
 
-**`:adapter:generic:fake`** — `InMemoryRawAssetSource`/`InMemoryPhotoLibrary` collapse into one honest
+**`:adapter:generic:mock`** — `InMemoryRawAssetSource`/`InMemoryPhotoLibrary` collapse into one honest
 in-memory `CandidateSource`.
 
 **`:test:world`, `:app:desktop`, `:app:ios`** — wiring follows the port collapse; the world's gallery

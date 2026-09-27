@@ -7,7 +7,7 @@
 
 ## 2. Every `LedgerStore` double honours the guard
 
-- [x] 2.1 `:adapter:generic:fake` `InMemoryLedgerStore`: remove `put`, add the guarded record (declines over `isDone` rows, notifies only when applied) and `markPresent`
+- [x] 2.1 `:adapter:generic:mock` `InMemoryLedgerStore`: remove `put`, add the guarded record (declines over `isDone` rows, notifies only when applied) and `markPresent`
 - [x] 2.2 `domain/feature` commonTest `InMemoryLedgerStore` and `FakeLedgerStore`: the same; also make `InMemoryLedgerStore.markTerminal` preserve `absent`, as the other two already do
 - [x] 2.3 Grep for any other `LedgerStore` implementation or wrapper (`: LedgerStore`) across `test/` and `app/` and bring it to the same contract
 

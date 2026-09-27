@@ -4,9 +4,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.EventConfig
-import app.snapsync.fake.fixedClock
-import app.snapsync.fake.inMemoryFiles
-import app.snapsync.fake.inMemoryPhotoAccess
+import app.snapsync.mock.fixedClock
+import app.snapsync.mock.inMemoryFiles
+import app.snapsync.mock.inMemoryPhotoAccess
 import app.snapsync.services.gallery.GalleryAccessState
 import kotlin.time.Instant
 import app.snapsync.services.config.ConfigService

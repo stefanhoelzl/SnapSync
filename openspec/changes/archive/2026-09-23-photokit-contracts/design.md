@@ -198,7 +198,7 @@ device evidence. None becomes a clause.
 
 ### D6. Honest fakes are extracted from `:test:world`; the levers stay behind as wrappers
 
-Four new `internal` fakes go into `:adapter:generic:fake`. Each takes its state through its constructor,
+Four new `internal` fakes go into `:adapter:generic:mock`. Each takes its state through its constructor,
 and each has a factory, like the existing ones:
 
 | new fake | extracted from | lever that stays in the `:test:world` wrapper |
@@ -227,7 +227,7 @@ exists to forbid.
 | piece | home | why |
 |---|---|---|
 | contracts, state vocabularies, the importer's observation handle | `:test:contracts` `commonMain` | as `port-contracts` places every contract |
-| fake bindings | `:adapter:generic:fake` `commonTest` | the fakes are `internal` |
+| fake bindings | `:adapter:generic:mock` `commonTest` | the fakes are `internal` |
 | kexe bindings for the ext-safe adapters | `:adapter:ios:ext-safe` `iosTest` | beside the implementation |
 | kexe bindings for the app-only adapters | `:adapter:ios:app-only` `iosTest` | beside the implementation |
 | simulator-app bindings, for the adapters of both modules | `:adapter:ios:app-only`'s rig-gated source set | they must be non-test and app-linked, and in-app is the only place the grant exists. **Deviation found at implementation:** without the property a rig directory compiles into its own module's `iosTest`, and one module's tests cannot see another's, so shared seeding can live in only one module. App-only sees both modules' public adapters, so all simulator-app bindings live there |
@@ -364,7 +364,7 @@ Every module the change touched, and the capability that accounts for it:
 | module / path | accounted by |
 |---|---|
 | `:test:contracts` | `port-contracts` (host matrix + `IOS_SIM_APP`; grant precondition; composition bindings; in-app hosts run live) |
-| `:adapter:generic:fake`, `:test:world` | `harness-world-model` (the world wraps honest photo fakes); `port-contracts` (fake bindings) |
+| `:adapter:generic:mock`, `:test:world` | `harness-world-model` (the world wraps honest photo fakes); `port-contracts` (fake bindings) |
 | `:adapter:ios:app-only` | `module-architecture` (`:test:contracts` linked into its rig source set); `port-contracts` (bindings) |
 | `:adapter:ios:ext-safe` | `testing-architecture` (the smoke test's library half retired). `IosDiscovery`'s grant read needs **no delta**: its port's KDoc already required a non-authoritative walk for an unreadable library, and no shipped path reaches the changed branch, because both cycles withhold without a usable grant |
 | `:test:architecture` | `architecture-guards` (the contract-coverage gate) |

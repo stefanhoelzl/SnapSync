@@ -4,7 +4,7 @@
 
 The system SHALL provide a test-infra Kotlin Multiplatform module `:test:world` that runs the
 **real** platform-agnostic stack against controllable in-memory infrastructure: the honest
-in-memory port implementations SHALL live in `:adapter:generic:fake` (package `app.snapsync.fake`; spec
+in-memory port implementations SHALL live in `:adapter:generic:mock` (package `app.snapsync.mock`; spec
 `module-architecture`), and `:test:world` SHALL hold the **operator rigging** around them — the
 backend store, the mini-edge, the levered fakes (`FakeBackgroundTransfer`, `FakeUploadDiscovery`,
 `FakeDownloadTransport`, `FakePhotoLibraryImporter`, `FakeAlbumManager`,
@@ -30,13 +30,13 @@ the contracts are test compilations, so no production edge is introduced).
 #### Scenario: Consumed by both the harness and integration tests
 
 - **WHEN** the desktop harness and `:test:integration` each assemble a world
-- **THEN** both reach the same world class over the same `:adapter:generic:fake` doubles, and no production
+- **THEN** both reach the same world class over the same `:adapter:generic:mock` doubles, and no production
   main source set gains a dependency back into `:test:world`
 
 #### Scenario: Rigging cannot live in a fake
 
 - **WHEN** an operator lever (a settable cell, a failure switch, an inspection list) is needed on an
-  honest `:adapter:generic:fake` double
+  honest `:adapter:generic:mock` double
 - **THEN** it is expressed in a `:test:world` wrapper owning the fake's constructor-injected state,
   never as a public member of the fake (the fake-honesty gate fails otherwise)
 
@@ -161,7 +161,7 @@ The world SHALL assemble its upload cycle through the **same shared composition 
 call** — `uploadCore` (`:domain` `compose/`, spec `module-architecture` "One shared composition") over
 the world's fakes — not through a world-local mirror of a composition root: the world supplies its
 in-memory ports (`ConfigReader` over the config cell and the `membershipUnreadable` lever, the fake
-`BackgroundTransfer`, the fake `UploadDiscovery`, the `:adapter:generic:fake`
+`BackgroundTransfer`, the fake `UploadDiscovery`, the `:adapter:generic:mock`
 ledger/discovery/manifest/marker stores, the mini-edge HTTP seams) and `uploadCore` builds the real
 `SyncEngine` + `EdgeUploadRequestProvider` + `UploadCycle` + `UploadReconciler` + `DeviceManifestProducer`
 graph, exactly as it does for the device roots. The app-side graph — download, status, membership, creation,

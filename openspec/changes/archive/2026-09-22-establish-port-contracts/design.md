@@ -215,7 +215,7 @@ committed unedited and reviewed as a diff. Recordings are input, never expectati
 | piece | home | why |
 |---|---|---|
 | mechanism, all contracts, state types | new `:test:contracts` `commonMain` (jvm, iosSimulatorArm64, iosArm64) | a test source set cannot be depended on or linked; the device app must link it |
-| fake bindings | `:adapter:generic:fake` `commonTest` | the fakes are `internal`; their own test set can construct them with state |
+| fake bindings | `:adapter:generic:mock` `commonTest` | the fakes are `internal`; their own test set can construct them with state |
 | SQLDelight / native bindings | `:adapter:generic:app` `jvmTest` / `iosSimulatorArm64Test` | where they are today |
 | kexe live + replay bindings | `:adapter:ios:ext-safe` `iosTest` | `internal` access to the seam |
 | `AppGroupFileSecureStore` binding | `:adapter:ios:ext-safe` `iosSimulatorArm64Test` | the store is `internal` to that target |

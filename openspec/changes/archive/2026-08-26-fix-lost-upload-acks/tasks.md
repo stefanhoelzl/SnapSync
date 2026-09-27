@@ -38,7 +38,7 @@
       `DownloadStore.sq`'s three callback writes.
 - [x] 3.5 Implement both on `SqlDelightLedgerStore`, signalling `changes` once on an applied
       `markTerminal`. Confirm no `withContext` / dispatcher hop is introduced.
-- [x] 3.6 Implement both on `InMemoryLedgerStore` (`:adapter:generic:fake`), keeping the fake's public
+- [x] 3.6 Implement both on `InMemoryLedgerStore` (`:adapter:generic:mock`), keeping the fake's public
       surface exactly its port contract plus its initial-state constructor (`FakeHonestyTest`).
 - [x] 3.7 Extend `:test:world`'s `LedgerStoreContract` for: a guarded flip applies; a non-`REQUESTED` row is
       not clobbered; an absent key applies to nothing; the uploaded-row read returns whole entries; an

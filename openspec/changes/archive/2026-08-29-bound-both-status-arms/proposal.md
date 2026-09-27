@@ -75,7 +75,7 @@ None. This change bounds an existing surface; it introduces no new capability.
 - **`:domain ports`** — `DownloadStore` gains the combined counts read; the three single-count reads it replaces
   are removed.
 - **`:adapter:generic:app`** — `SqlDelightDownloadStore` and its `.sq` query.
-- **`:adapter:generic:fake`** — `InMemoryDownloadStore`, held to the same contract by `FakeHonestyTest`.
+- **`:adapter:generic:mock`** — `InMemoryDownloadStore`, held to the same contract by `FakeHonestyTest`.
 - **`:test:world`** — the `DownloadStore` contract both driver implementations extend.
 - **`:test:integration`** — the test that actually asserts the defect is gone: plan foreign assets, refresh
   nothing, and let the real poll at its real cadence correct the screen. `worldTest` runs on real time, so

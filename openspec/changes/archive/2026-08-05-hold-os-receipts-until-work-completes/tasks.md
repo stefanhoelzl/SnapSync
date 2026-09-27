@@ -124,7 +124,7 @@ receipt (design.md, *Migration Plan*).
 - [x] 9b.1 Gate 1 (placeholder Purpose): clean across the whole `openspec/specs/` tree.
 - [x] 9b.2 Gate 3 (dead types): the diff removes no type declaration.
 - [x] 9b.3 Gate 2 (delta completeness): every touched module accounted for. It caught `test/world`,
-      which had no capability — `harness-world-model` now carries a delta. `adapter/generic/fake` is
+      which had no capability — `harness-world-model` now carries a delta. `adapter/generic/mock` is
       test-only (fakes + tests, no contract change) and needs none.
 - [x] 9b.4 Each MODIFIED delta rebuilt from the current main spec and diffed. The first attempt at the
       `harness-world-model` delta silently dropped **6 scenarios** from one requirement and **1** from the

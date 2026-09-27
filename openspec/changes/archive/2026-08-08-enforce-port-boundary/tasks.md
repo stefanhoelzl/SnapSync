@@ -36,7 +36,7 @@
       delete `AppPorts.notifyLeave`
 - [x] 2.6 Declare a need-named share-presentation port; make `IosShareSheet` implement it and delete
       `AppPorts.share`
-- [x] 2.7 Update `:test:world` and `:adapter:generic:fake` for the new/extended ports, keeping fake
+- [x] 2.7 Update `:test:world` and `:adapter:generic:mock` for the new/extended ports, keeping fake
       honesty (port contract plus an initial-state constructor; rigging stays in `:test:world`)
 - [x] 2.8 Verify the desktop harnesses and `:test:integration` still compose — they call the same
       `snapSyncApp`/`uploadCore`, so a missed seam surfaces there first

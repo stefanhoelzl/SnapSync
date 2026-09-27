@@ -1,6 +1,6 @@
 package app.snapsync.feature.download
 
-import app.snapsync.fake.inMemoryDatabases
+import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.PlannedResource

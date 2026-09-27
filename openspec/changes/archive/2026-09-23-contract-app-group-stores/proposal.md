@@ -23,14 +23,14 @@ this change puts the App-Group-backed ports through it.
   - `DeviceLogSourceContract`
   - `AlbumMapStoreContract`: covers `AlbumMapStore` only. `AlbumManager`, in the same file, is PhotoKit and
     belongs to the PhotoKit phase.
-- **Fake bindings** in `:adapter:generic:fake` `commonTest`, on `JVM` and `IOS_SIM_KEXE`.
+- **Fake bindings** in `:adapter:generic:mock` `commonTest`, on `JVM` and `IOS_SIM_KEXE`.
 - **Live bindings on `IOS_SIM_KEXE`**, placed beside each adapter:
   - `:adapter:ios:ext-safe` `iosTest`: config, manifest, device log and album map.
   - `:adapter:ios:app-only` `iosTest`: staged bytes. That module's tests gain a dependency on
     `:test:contracts`.
   - Readable states use an injected temporary directory. The unavailable-container state uses the **real**
     container lookup, which answers nil in the unentitled test binary.
-- **A new honest fake, `InMemoryConfigStore`**, in `:adapter:generic:fake`. It implements the three config
+- **A new honest fake, `InMemoryConfigStore`**, in `:adapter:generic:mock`. It implements the three config
   ports, with its state (the persisted config and a readable flag) given at construction. `:test:world`
   moves onto it; its `membershipUnreadable` lever becomes a world-side wrapper over the fake's readable
   cell, and stops reporting the Keychain status `-25308`.
@@ -79,14 +79,14 @@ None.
   clear ordering. A failed-clear-leaves-the-user-joined guarantee now rests on `clear` failing whenever it
   cannot delete, the unresolvable container included.
 - `harness-world-model`: "Real-stack composition helpers" names the world's config ports as the
-  `:adapter:generic:fake` `InMemoryConfigStore` under a world lever, and drops the non-existent discovery
+  `:adapter:generic:mock` `InMemoryConfigStore` under a world lever, and drops the non-existent discovery
   store.
 
 ## Impact
 
 - **Code:**
   - `:test:contracts` commonMain: 5 contracts plus their state enums.
-  - `:adapter:generic:fake`: new `InMemoryConfigStore` and factory, the `InMemoryDeviceLogSource` fix, and
+  - `:adapter:generic:mock`: new `InMemoryConfigStore` and factory, the `InMemoryDeviceLogSource` fix, and
     5 fake bindings.
   - `:adapter:ios:ext-safe`: the `FileBackedConfigStore` parameter and `clear` change, plus 4 live bindings
     in `iosTest`.

@@ -97,7 +97,7 @@ which occurred.
 
 ### Requirement: Platform backing and a settable fake
 
-The iOS implementation SHALL back `size` with a PhotoKit count. `:adapter:generic:fake` SHALL provide the
+The iOS implementation SHALL back `size` with a PhotoKit count. `:adapter:generic:mock` SHALL provide the
 honest in-memory implementation (`InMemoryGalleryStatusSource`, re-homed from the deleted
 `:domain:gallery` at migration step 10), whose count is a **constructor-injected state cell** of the
 port's own nullable type — whoever owns the cell (a test, a `:test:world` wrapper) drives any total,

@@ -97,7 +97,7 @@ None.
 - `:domain` `flow/` — `Foreground`
 - `:domain` `compose/` — `SnapSyncApp.refreshStatusSources`
 - `:ui:presentation` — `StatusContainerHost.syncHealth`
-- `:adapter:generic:fake` — `InMemoryGalleryStatusSource`, `InMemoryDownloadStatusSource`
+- `:adapter:generic:mock` — `InMemoryGalleryStatusSource`, `InMemoryDownloadStatusSource`
 - `:app:desktop` — the forge presets and the world inspector pass a real count where they mean one
 - `:test:world`, `:test:integration` — the composed-core assertions
 

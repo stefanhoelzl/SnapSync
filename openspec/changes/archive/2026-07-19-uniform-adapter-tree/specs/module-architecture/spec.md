@@ -7,7 +7,7 @@ The system SHALL consist of exactly these production modules, each existing beca
 third-party or platform dependency by compile error: `:domain` (one module; zero `project()`
 dependencies; no `iosMain` source directory), `:ui:presentation`, `:ui:screens`,
 `:ui:components` (the only module that may depend on Material 3), `:adapter:ios:ext-safe`,
-`:adapter:ios:app-only`, `:adapter:generic:app`, `:adapter:generic:fake`, `:app:ios`,
+`:adapter:ios:app-only`, `:adapter:generic:app`, `:adapter:generic:mock`, `:app:ios`,
 `:app:ios:extension`, and `:app:desktop`. The adapter tree SHALL be uniformly two-level —
 `adapter:<platform-axis>:<linkage-leaf>` — with each platform-axis prefix (`adapter/ios/`,
 `adapter/generic/`) a pure path grouping that is not itself a module (no build file: a prefix

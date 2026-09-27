@@ -88,7 +88,7 @@ is lost and why**.
 ### Feature tests compose real services over port mocks
 
 Features see services only — `:domain:feature` does not depend on `ports/` — so a feature test that needs a service is
-built the way production builds it: the **real** service over the ports' in-memory mocks from `:adapter:generic:fake`
+built the way production builds it: the **real** service over the ports' in-memory mocks from `:adapter:generic:mock`
 (`inMemoryDatabases()`, `inMemoryFiles()`, `inMemoryPreferences()`, `inMemorySecureStore()`, the gallery and access
 mocks). There are no doubles of the services: what a test observes or forces, it observes or forces **at the port** —
 the rows in the in-memory database, the files in an area, a refusal the mock answers on demand
@@ -98,7 +98,7 @@ Those tests live in **`:test:feature`** (JVM and the iOS simulator), the one mod
 and the mocks together; its `support/` package holds the shared setups (`configService`, `TestLedger`, `testIdentity`,
 `RecordingFiles`, …). A feature test that touches no port and no service stays in `:domain:feature`'s own
 `commonTest`, and so does one that needs a feature `internal`. A service's own tests live in `:domain:services`
-(over hand-written port doubles) or, where they need the mocks, in `:adapter:generic:fake`'s `commonTest` — which also
+(over hand-written port doubles) or, where they need the mocks, in `:adapter:generic:mock`'s `commonTest` — which also
 holds the flow tests and the mocks' own contract bindings, because the mocks are `internal` and only their own module's
 tests can build one in a chosen state. **A feature's tests may be split across `:domain:feature` and `:test:feature`.
 Look in both.**
@@ -187,7 +187,7 @@ end of this section.
   delete what they seed.
 
 Where bindings live: beside their implementations.
-- Fakes: `:adapter:generic:fake` `commonTest` — the in-memory `Backend` mock (`BackendContractBindingTest`) and
+- Fakes: `:adapter:generic:mock` `commonTest` — the in-memory `Backend` mock (`BackendContractBindingTest`) and
   the in-memory `DeviceIntegrity` among them.
 - The `Backend` port is ONE contract (`BackendContract`, split into part files by route area for size), held by
   three bindings: `HttpBackend` against the real `api/` (`Live`, the coverage), `HttpBackend` against the mini-edge
@@ -206,7 +206,7 @@ Where bindings live: beside their implementations.
 - `PlatformDeviceId` has **no contract**, on purpose: its only implementation answers a constant `null`, and a
   clause must run against a real implementation somewhere (`ContractCoverageTest`). The identity service's test covers
   "`null` ⇒ random" with a stub. The contract lands with the first adapter that answers an id (Android).
-- The storage services' fake-driven tests (their answers to what no contract state enters): `:adapter:generic:fake`
+- The storage services' fake-driven tests (their answers to what no contract state enters): `:adapter:generic:mock`
   `commonTest`, over the storage mocks — where the services' contracts are bound over the mocks too
   (`StoreContractBindingsTest`, `AppGroupStoreContractBindingsTest`, `ConfigStoreContractBindingTest`), so the mocks
   every feature test stands on are held to the platform adapters' clauses.
@@ -370,7 +370,7 @@ Targets are `jvm()` and `iosSimulatorArm64` only. It never links into a shipped 
 - **Relaunch keeps exactly the durable state:** the in-memory databases, the shared and private file areas, the user
   defaults and the Keychain items are world-held cells; a relaunch builds new service instances over them, as a new
   process does.
-- **Honest fakes live in `:adapter:generic:fake`; levers live in `:test:world`.** A lever (a settable
+- **Honest fakes live in `:adapter:generic:mock`; levers live in `:test:world`.** A lever (a settable
   cell, a failure switch, an inspection list) goes on a world wrapper that owns the fake's
   constructor-injected state (`WorldGallery` — its import script is `WorldImports`), or reads the durable state the way
   an inspector of the device's files would (`downloadsInFlight`, reading the download database). It is
@@ -772,7 +772,7 @@ not describe what runs today. Each phase moves its part into the sections above.
   BackgroundTransfer on the extension, and UploadExtensionRegistry GRANTED + LIMITED, where an operator toggles the
   grant).
 - **PlatformDeviceId has no contract until an Android host exists.** Its only implementation is a constant null.
-- **Mocks, one per port.** Each lives in `:adapter:generic:mock` (renamed from `:adapter:generic:fake` in 11g2)
+- **Mocks, one per port.** Each lives in `:adapter:generic:mock` (renamed from `:adapter:generic:mock` in 11g2)
   with durable state, a per-process face, and a separate operator-face type. The world's entry-port doubles
   (`EntryFakes.kt`) become mocks then.
 - **`:test:world` goes away** (11g2). `:app:jvm` takes its place as a support module: it takes the adapter

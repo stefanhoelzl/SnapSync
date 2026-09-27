@@ -15,7 +15,7 @@ import kotlin.test.Test
 /**
  * The `Backend` port contract against the REAL backend (`docs/testing.md`): the production [HttpBackend] over a
  * socket to `api/`, served locally by [LiveEdge]. This is the binding that makes every backend clause covered; the
- * mini-edge's binding in `:test:world` and the in-memory mock's in `:adapter:generic:fake` are the `Fake`s held to
+ * mini-edge's binding in `:test:world` and the in-memory mock's in `:adapter:generic:mock` are the `Fake`s held to
  * it.
  *
  * JVM only, and the coverage that forgoes is stated here (`docs/testing.md`, "Every test runs on every target its

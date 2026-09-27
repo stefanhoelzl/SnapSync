@@ -2,7 +2,7 @@
 
 `DiagnosticsReporter` (`:domain` `ports/`) has one real seat, `SentryDiagnosticsReporter` in
 `:adapter:ios:ext-safe`, over sentry-kmp 0.27.0, which pins sentry-cocoa 8.58.2. Its one double is
-`InMemoryDiagnosticsReporter` in `:adapter:generic:fake`, which the world composes configured and observes
+`InMemoryDiagnosticsReporter` in `:adapter:generic:mock`, which the world composes configured and observes
 through `diagnosticsStarted` / `diagnosticsSent`.
 
 The port's obligations are stated in its KDoc and in `crash-reporting`:

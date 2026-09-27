@@ -58,7 +58,7 @@ capability that owns that log rather than minting a sibling that would have to k
 - `:ui:components` / `:ui:screens` — the gesture on the app-name label and the confirm dialog.
 - `:app:ios` — parses the new launch trigger and performs the export copy; `:app:ios:extension`
   points its writer at the App Group.
-- `:adapter:generic:fake`, `:test:world`, `:test:integration`, `:test:architecture` — the renamed
+- `:adapter:generic:mock`, `:test:world`, `:test:integration`, `:test:architecture` — the renamed
   fake, the new literal, and the coverage.
 - **Runbook**: CLAUDE.md's extension-log pull instructions.
 - No backend, API, storage, or entitlement change. Nothing new leaves the device without a

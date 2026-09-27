@@ -125,14 +125,14 @@ a thin unit suite.
 Three roles SHALL be distinguished, and a module SHALL be placed in each deliberately:
 
 - **Instrumented** — its test tasks produce coverage data. `:domain`, `:adapter:generic:app`,
-  `:adapter:generic:fake`, `:ui:presentation`, `:ui:screens`, `:ui:components`.
+  `:adapter:generic:mock`, `:ui:presentation`, `:ui:screens`, `:ui:components`.
 - **Bounded** — its own classes are measured against a bound. Every instrumented module except
-  `:adapter:generic:fake`.
+  `:adapter:generic:mock`.
 - **Neither** — not instrumented, so its tests contribute nothing and its classes are not measured:
   `:test:integration`, `:test:world`, `:test:architecture`, `:tools:diagrams`, and the modules with
   no test source set at all (`:app:desktop`, `:test:harness-driver`).
 
-`:adapter:generic:fake` is instrumented but **not** bounded, and the split is the point: the tests in
+`:adapter:generic:mock` is instrumented but **not** bounded, and the split is the point: the tests in
 its `commonTest` are `:domain`'s feature tests, hosted there only because a test source set cannot be
 depended on across modules (`testing-architecture`, "Fake-driven feature tests live in the fake
 module"), while the fakes themselves are test equipment and bounding them would ratchet the harness

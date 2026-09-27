@@ -74,7 +74,7 @@ function): `ports/CrashReporting { start() }`, a **required** member of both `Ap
 `UploadPorts` (same no-default posture as the reconciler, and for the same reason — a tier that
 forgot it would fail invisibly). `snapSyncApp` (in `AppCore`'s init) and `uploadCore` (first line)
 start it, so both tiers and both processes report by the One-shared-composition law, and the world
-harness passes an honest `InMemoryCrashReporting` fake (`:adapter:generic:fake`) whose cell makes the
+harness passes an honest `InMemoryCrashReporting` fake (`:adapter:generic:mock`) whose cell makes the
 start observable to integration tests. The contract is **idempotent**: the app process composes
 `snapSyncApp` AND (on the 18–26.0 tier) `uploadCore`, and the roots construct adapter instances
 independently, so `SentryCrashReporting` dedupes on a process-level flag — a second start must not

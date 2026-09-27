@@ -60,7 +60,7 @@ end-to-end on one small external system, the Keychain behind `SecureStore`.
   test-only module list gains `:test:contracts`.
 - `harness-world-model`: `:test:world` no longer hosts the storage-seam contracts.
 - `sync-ledger`: `LedgerStoreContract` is hosted in `:test:contracts`, and the fake's binding runs from
-  `:adapter:generic:fake`'s tests.
+  `:adapter:generic:mock`'s tests.
 - `module-architecture`: `:test:contracts` joins the contained group, withholding `kotlin-test` from
   every other main source set; the containment law admits a property-gated source set inside a
   withholding module.
@@ -69,15 +69,15 @@ end-to-end on one small external system, the Keychain behind `SecureStore`.
 
 ## Impact
 
-- **New:** `:test:contracts`; `InMemorySecureStore` (`:adapter:generic:fake`); contract bindings in
-  `:adapter:generic:fake`, `:adapter:generic:app` and `:adapter:ios:ext-safe` test source sets; the rig-gated
+- **New:** `:test:contracts`; `InMemorySecureStore` (`:adapter:generic:mock`); contract bindings in
+  `:adapter:generic:mock`, `:adapter:generic:app` and `:adapter:ios:ext-safe` test source sets; the rig-gated
   source set in `:adapter:ios:ext-safe`; a `/contract/<name>` rig verb (`:test:rig`, wired from
   `:app:ios`'s rig hook); the committed recording `SecureStore@IOS_DEVICE_APP.rec`.
 - **Changed:** `IosKeychain` calls the Keychain through an internal seam (behaviour-preserving);
   `AppGroupFileSecureStore.write` now refuses with `SecureStoreUnavailable` instead of a bare
   `IllegalStateException` — the first defect the `SecureStore` contract caught, on its first run;
   `:test:world` loses the two contracts and its `commonMain` `kotlin-test` dependency; the fake bindings of
-  the storage contracts move from `:test:world` to `:adapter:generic:fake`.
+  the storage contracts move from `:test:world` to `:adapter:generic:mock`.
 - **Build/CI:** the replay runs in the existing `iosSimulatorArm64Test` job; a device session (lease +
   rig build) is needed to record, not to verify.
 - **Docs:** CLAUDE.md's module list; the `rig-channel` skill (the new verb).

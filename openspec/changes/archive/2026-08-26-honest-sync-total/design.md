@@ -170,7 +170,7 @@ meaning is unchanged.
 
 - **A nullable port ripples through every consumer (all in-repo).** → The compiler enumerates them;
   there is no reflective or serialized access to this seam. The blast radius is `:domain` `feature/status`,
-  `:ui:presentation`, `:adapter:generic:fake`, `:app:desktop`, `:test:world`, `:test:integration`.
+  `:ui:presentation`, `:adapter:generic:mock`, `:app:desktop`, `:test:world`, `:test:integration`.
 
 - **A member who previously saw an instant "In sync" now sees "Syncing…" first.** → That is the point,
   and it is the only honest reading. The neutral line is existing, designed copy

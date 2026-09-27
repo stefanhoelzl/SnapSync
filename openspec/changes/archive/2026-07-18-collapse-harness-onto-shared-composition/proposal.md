@@ -13,7 +13,7 @@ of production code (`WorldLedgerStore`, `HttpEnrollment`) — the deletion ledge
 
 ## What Changes
 
-- **`:adapter:fake` is created** (jvm + iosSimulatorArm64; package `app.snapsync.fake`): the honest
+- **`:adapter:fake` is created** (jvm + iosSimulatorArm64; package `app.snapsync.mock`): the honest
   in-memory port implementations move in — `InMemoryLedgerStore` (from `:domain:engine`'s
   commonTest), `InMemoryDownloadStore`, `InMemoryAttestStore`, `InMemoryPhotoLibrary`,
   `InMemoryGalleryStatusSource`, `InMemoryRawAssetSource`, and the world's four lever-free doubles

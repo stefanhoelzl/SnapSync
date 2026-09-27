@@ -7,7 +7,7 @@
       separate reads cannot be reintroduced by a caller that did not need them.
 - [x] 1.3 Add the SQLDelight query behind it in `:adapter:generic:app` (`SqlDelightDownloadStore` + its `.sq`),
       as a single statement rather than three calls wrapped in one method.
-- [x] 1.4 Implement it in `:adapter:generic:fake`'s `InMemoryDownloadStore`, keeping the fake's public surface
+- [x] 1.4 Implement it in `:adapter:generic:mock`'s `InMemoryDownloadStore`, keeping the fake's public surface
       exactly its port contract (`FakeHonestyTest`).
 - [x] 1.5 Extend the `DownloadStore` contract in `:test:world` with the *"The projection's counts come from one
       read"* scenario, so both driver implementations are held to it from their own test source sets.

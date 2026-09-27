@@ -13,7 +13,7 @@ existence; a module justified by no law is a package with a derived text gate in
   and only via `implementation()`, so no zone leaks transitively; no `iosMain` source directory anywhere
   in the tree), `:ui:presentation`, `:ui:screens`, `:ui:components` (the only module
   that may depend on Material 3), `:adapter:ios:ext-safe`, `:adapter:ios:app-only`,
-  `:adapter:generic:app`, `:adapter:generic:fake`, `:app:ios`, `:app:ios:extension`, `:app:desktop`.
+  `:adapter:generic:app`, `:adapter:generic:mock`, `:app:ios`, `:app:ios:extension`, `:app:desktop`.
 - **Contained modules** — each exists so that something is absent from a production build, governed
   by "A build-time-only module is contained by compilation, not by a runtime check": `:app:ios:forge`
   (its own binary target, linked under `-Psnapsync.forge`), `:test:rig` (contributes its own call
@@ -105,7 +105,7 @@ the compile path, and with it the directory and the contained module arrive toge
 SHALL depend on nothing beyond the contained module, and no declaration SHALL be widened for it — reaching
 `internal` from inside the owning module is the reason it lives there.
 
-This is the inverse of `:adapter:generic:fake`, which never links into a shipped framework at all.
+This is the inverse of `:adapter:generic:mock`, which never links into a shipped framework at all.
 
 A dev/test control surface SHALL NOT rely on **runtime** inertness in a shipped binary. A launch-environment
 variable is inert only because a production launch supplies no environment — a property of how the app is

@@ -16,7 +16,7 @@ inert branch. A separate target linking neither the shell module nor the live gr
 property the binary cannot express, rather than one that a set of no-op members must each preserve
 correctly.
 
-This is the inverse of `:adapter:generic:fake`, which never links into a shipped framework at all.
+This is the inverse of `:adapter:generic:mock`, which never links into a shipped framework at all.
 
 A dev/test control surface SHALL NOT rely on **runtime** inertness in a shipped binary. A launch-environment
 variable is inert only because a production launch supplies no environment — a property of how the app is

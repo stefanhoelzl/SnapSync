@@ -62,9 +62,9 @@ None.
 
 - `:domain` — `ports/StagedBytes` (one read), `feature/download/DownloadController` (the *absent* branch).
 - `:adapter:ios:app-only` — `IosStagedBytes`.
-- `:adapter:generic:fake` — the in-memory `StagedBytes`.
+- `:adapter:generic:mock` — the in-memory `StagedBytes`.
 - `:test:world` — a lever that models bytes the library has consumed.
-- `:adapter:generic:fake` `commonTest` — `a_surviving_commit_still_in_flight_at_relaunch_is_the_accepted_residual`
+- `:adapter:generic:mock` `commonTest` — `a_surviving_commit_still_in_flight_at_relaunch_is_the_accepted_residual`
   currently asserts the harm and inverts to assert the handle survives.
 - No schema change, no migration, no change to the suppression projection. Nothing about how presence is
   asked, or how the photo-access grant answers it.

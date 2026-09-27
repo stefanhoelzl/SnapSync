@@ -3,7 +3,7 @@
 ## 1. `:adapter:fake`
 
 - [x] 1.1 Create the module (jvm + iosSimulatorArm64; `api(:domain)`); move the ten honest doubles
-  in under `app.snapsync.fake`; cell-inject the three gallery fakes' state (D2)
+  in under `app.snapsync.mock`; cell-inject the three gallery fakes' state (D2)
 - [x] 1.2 Arm `FakeHonestyTest`: deliberate-red proof (injected `var` + non-port `fun` → FAILED at
   the violations assert; reverted → green), non-vacuity (8 files scanned)
 

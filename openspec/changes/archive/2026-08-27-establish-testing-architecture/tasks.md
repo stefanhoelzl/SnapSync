@@ -7,7 +7,7 @@
       test source set; `:ui:components/jvmTest`, `:test:architecture/src/test` and
       `:tools:diagrams/src/test` are the only genuine target-forgoing sets; `:adapter:ios:*`'s
       `iosTest` sets run on `iosSimulatorArm64`; `:test:world`'s `commonTest` holds feature tests;
-      `:adapter:generic:fake`'s `commonTest` holds the fake-driven feature tests.
+      `:adapter:generic:mock`'s `commonTest` holds the fake-driven feature tests.
 - [x] 1.3 Confirm the spec contradicts no gated law — in particular `module-architecture`'s
       "a translation hoisted inward to reach the faster test loop is rejected" scenario, which
       requirement 2's second paragraph exists to honour.

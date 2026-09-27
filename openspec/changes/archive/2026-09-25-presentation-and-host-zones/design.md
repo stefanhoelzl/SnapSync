@@ -37,7 +37,7 @@ The whole change is a structural refactor. The shipped app's behaviour, every po
 - No change to the forge beyond import paths (phase 12 deletes it).
 - No `*Handlers` law text and no widened callback-slot gate. Those land with the first `*Handlers` class, and none
   exists in 11a.
-- `:adapter:generic:fake` keeps its name (11g renames it).
+- `:adapter:generic:mock` keeps its name (11g renames it).
 
 ## Decisions
 
@@ -273,7 +273,7 @@ Every module the diff touched, resolved to its capability, with its delta or the
 | `domain/model` tests (`UiStateSerializationTest` moved in and extended), root kover edge rename, presentation's kover rule names | `coverage-bounds` | delta: the instrumented-module path. The test move changes no bound and adds no crediting edge (design D7) |
 | `.github/workflows/build.yml` (forge test task path) | `testing-architecture` | delta: the forge test source set's path |
 | `domain/compose`, `domain/flow` | `module-architecture` (compose/flow zones) | no delta: import paths only, behaviour-preserving |
-| `adapter/generic/app`, `adapter/generic/fake`, `adapter/ios/ext-safe`, `adapter/ios/app-only` (incl. the `DownloadStore.sq` import) | `port-contracts` and each port's capability | no delta: import paths of the moved types only; no signature, behaviour or stored name changes (SQLDelight stores enum names) |
+| `adapter/generic/app`, `adapter/generic/mock`, `adapter/ios/ext-safe`, `adapter/ios/app-only` (incl. the `DownloadStore.sq` import) | `port-contracts` and each port's capability | no delta: import paths of the moved types only; no signature, behaviour or stored name changes (SQLDelight stores enum names) |
 | `test/contracts` | `port-contracts` | no delta: import paths only |
 | `test/world`, `test/rig`, `test/control`, `test/integration` | `harness-world-model`, `testing-architecture` | no delta: dependency declarations and import paths only; the wire discriminator prefix change is recorded in Risks |
 | `app/ios`, `app/ios/extension`, `app/ios/forge` | `ios-app-shell` | delta for the host path ("iOS live composition root"); otherwise import paths only |

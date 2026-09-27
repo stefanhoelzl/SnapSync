@@ -23,14 +23,14 @@ import app.snapsync.time.SystemClock
 import app.snapsync.presentation.CutoffFormatter
 import kotlinx.datetime.TimeZone
 import app.snapsync.compose.uploadCore
-import app.snapsync.fake.inMemoryProcessInfo
-import app.snapsync.fake.inMemoryDeviceIntegrity
-import app.snapsync.fake.inMemoryAttestStore
-import app.snapsync.fake.inMemoryCrashReporter
-import app.snapsync.fake.inMemoryFiles
-import app.snapsync.fake.inMemoryDatabases
-import app.snapsync.fake.inMemoryPreferences
-import app.snapsync.fake.inMemorySecureStore
+import app.snapsync.mock.inMemoryProcessInfo
+import app.snapsync.mock.inMemoryDeviceIntegrity
+import app.snapsync.mock.inMemoryAttestStore
+import app.snapsync.mock.inMemoryCrashReporter
+import app.snapsync.mock.inMemoryFiles
+import app.snapsync.mock.inMemoryDatabases
+import app.snapsync.mock.inMemoryPreferences
+import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.FileArea
 import app.snapsync.model.SecureSlots
 import app.snapsync.model.SecureStoreRead
@@ -51,9 +51,9 @@ import app.snapsync.compose.snapSyncProcess
 import app.snapsync.model.CrashEvent
 import app.snapsync.ports.ProcessMetrics
 import app.snapsync.ports.EntryContext
-import app.snapsync.fake.inMemoryBackgroundTime
-import app.snapsync.fake.inMemoryExtensionRegistry
-import app.snapsync.fake.HeldBackgroundTime
+import app.snapsync.mock.inMemoryBackgroundTime
+import app.snapsync.mock.inMemoryExtensionRegistry
+import app.snapsync.mock.HeldBackgroundTime
 import app.snapsync.feature.upload.TailTrigger
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.creation.readmodel.MutableCreationStatusSource
@@ -122,7 +122,7 @@ import kotlinx.coroutines.launch
 
 /**
  * The controllable in-memory **world** (`docs/testing.md`): the backend object store,
- * the mini-edge, and the operator levers — wrapped around `:adapter:generic:fake`'s honest doubles — that the
+ * the mini-edge, and the operator levers — wrapped around `:adapter:generic:mock`'s honest doubles — that the
  * REAL app graph runs against. Since migration step 10 the world composes that graph through the
  * **same** [snapSyncApp] the iOS shell calls (`docs/architecture.md`, "One shared composition"),
  * so [core] IS the production `AppCore` — features, flows, and the user-tap command bundle — over
@@ -515,7 +515,7 @@ class World(
     // 401 for a device the backend holds no attestation record for. Modelling either means teaching the
     // mini-edge to gate, which is a change to what this harness models rather than a lever on it.
     //
-    // The honest doubles come from `:adapter:generic:fake`; the LEVER is here, which is the split the
+    // The honest doubles come from `:adapter:generic:mock`; the LEVER is here, which is the split the
     // fake-honesty gate enforces. `renews = false` is the fake's own faithful default: a refresh falls
     // through to a full attestation, the path a device actually takes when the backend holds no record.
     //

@@ -2,7 +2,7 @@
 
 - [x] 1.1 Add `suspend fun importedLocalIds(refs: Collection<AssetRef>): Map<AssetRef, String>` to `DownloadStore` (`domain/ports/.../DownloadStore.kt`), NOT to `SuppressionSource`, with KDoc: IMPORTED only, event-blind, keyed by ref (design D2)
 - [x] 1.2 Add the `selectImportedLocalIds` query to `DownloadStore.sq` (`state = 'IMPORTED' AND createdLocalId IS NOT NULL`) and implement the read in `SqlDelightDownloadStore` by filtering on the asked refs; confirm no schema/migration file changes
-- [x] 1.3 Implement it in `InMemoryDownloadStore` (`:adapter:generic:fake`), keeping `FakeHonestyTest` green
+- [x] 1.3 Implement it in `InMemoryDownloadStore` (`:adapter:generic:mock`), keeping `FakeHonestyTest` green
 - [x] 1.4 Add contract cases to `DownloadStoreContract` (`:test:world`), one per `download-store` delta scenario: imported answers its id; pending, unconfirmed-with-marker, unimportable and unknown refs are absent; only asked refs are answered
 
 ## 2. The gather feature
@@ -61,7 +61,7 @@
 - **Delta completeness**, per touched module:
   - `:domain:feature` (`AlbumGather`, `ReconfigureEvent`) → `event-album` (the gather), `reconfigure-membership` (the Save effect)
   - `:domain:ports`, `:adapter:generic:app` (`importedLocalIds`, its SQL query) → `download-store`
-  - `:adapter:generic:fake` (`InMemoryDownloadStore`, `AlbumGatherTest`) → `download-store`, `event-album`
+  - `:adapter:generic:mock` (`InMemoryDownloadStore`, `AlbumGatherTest`) → `download-store`, `event-album`
   - `:domain:compose` (the triggers, `AlbumGatherComposition.kt`) → `event-album`, `reconfigure-membership`
   - `:ui:screens` (the album note) → `reconfigure-membership`
   - `:test:world`: `DownloadStoreContract` → `download-store`. The `FakeAlbumManager.holdAdds` lever needs **no delta**: it lives in a `:test:world` class (the rigging-placement rule is satisfied), and `harness-world-model`'s *Failure levers* states what the world SHALL expose and forbids nothing additional.

@@ -7,7 +7,7 @@
 
 ## 2. Fakes and world bindings
 
-- [x] 2.1 Add `inMemoryBackgroundScheduler` to `:adapter:generic:fake` (an `internal` class behind a port-typed factory), bind `BackgroundSchedulerContract` to it in `commonTest`, and make it green
+- [x] 2.1 Add `inMemoryBackgroundScheduler` to `:adapter:generic:mock` (an `internal` class behind a port-typed factory), bind `BackgroundSchedulerContract` to it in `commonTest`, and make it green
 - [x] 2.2 Bind `BackgroundTransferContract` and `DownloadTransportContract` to `FakeBackgroundTransfer` / `FakeDownloadTransport` in `:test:world` `commonTest`, with the binding playing the network through their operator actions
 - [x] 2.3 Fix the world doubles wherever a clause fails (commit red first), keeping their levers and inspection; `./gradlew :test:world:jvmTest :test:integration:jvmTest` and the desktop module still pass
 - [x] 2.4 Replace the two private `FakeScheduler`s in `:domain:feature` tests with the honest fake where they only stand in; keep a private one only where a test records calls on purpose — both do (they assert whether the pump re-armed), and `:domain:feature` cannot depend on the fake module, so both stay
@@ -38,6 +38,6 @@
 
 - [x] 6.1 `./gradlew build` is green, including `ContractCoverageTest`, which names every new clause as covered by a real host
 - [x] 6.2 `./gradlew compileIosMainKotlinMetadata` is green; `./gradlew architectureDiagrams`, commit any diff
-- [x] 6.3 Update CLAUDE.md's module entries (`:test:contracts` contract list, `:adapter:generic:fake` fakes, `:test:world` wrappers) and the `rig-channel` / `ios-simulator` skills (fixture flag, heartbeat cleared by a device run)
+- [x] 6.3 Update CLAUDE.md's module entries (`:test:contracts` contract list, `:adapter:generic:mock` fakes, `:test:world` wrappers) and the `rig-channel` / `ios-simulator` skills (fixture flag, heartbeat cleared by a device run)
 - [x] 6.4 Point `TransferSessions.kt`'s "does NOT evidence" section at the contracts for what IS evidenced
 - [x] 6.5 `npx --yes @fission-ai/openspec@1.5.0 validate --specs --strict` and `validate contract-background-transfers --strict` pass

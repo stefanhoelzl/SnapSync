@@ -3,7 +3,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: The fake-honesty gate
-Every public type in `:adapter:generic:fake` SHALL expose only members of the port interfaces it
+Every public type in `:adapter:generic:mock` SHALL expose only members of the port interfaces it
 implements plus a constructor taking initial state — no public mutable properties, no non-port
 public functions. Operator rigging lives in `:test:world` wrappers, never in fakes.
 

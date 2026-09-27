@@ -1,6 +1,6 @@
 ## 1. Honest fakes out of `:test:world` (D6)
 
-- [x] 1.1 Extract `InMemoryUploadDiscovery` into `:adapter:generic:fake`, with its state through the
+- [x] 1.1 Extract `InMemoryUploadDiscovery` into `:adapter:generic:mock`, with its state through the
       constructor and a factory. Rewrite `FakeUploadDiscovery` as a `:test:world` wrapper that keeps the
       `makeWalkUnreadable` lever. World and integration tests stay green.
 - [x] 1.2 Extract `InMemoryAlbumManager`, and rewrite `FakeAlbumManager` as a wrapper that keeps `holdAdds`,
@@ -19,7 +19,7 @@
       the clause id (D5).
 - [x] 2.2 Write `AlbumManagerContract`, plus `PhotoLibraryImporterContract` with its library observation
       handle (outcomes only: exists, capture date).
-- [x] 2.3 Add a fake binding for each of the six contracts in `:adapter:generic:fake` `commonTest`, on
+- [x] 2.3 Add a fake binding for each of the six contracts in `:adapter:generic:mock` `commonTest`, on
       `currentHost`.
 - [x] 2.4 Fix each fake divergence the fake bindings expose. Expected: `since` ignored, `add` not making
       assets findable by title, `add` to a missing album recorded. Use one commit per divergence, correcting

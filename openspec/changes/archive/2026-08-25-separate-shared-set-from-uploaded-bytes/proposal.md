@@ -121,7 +121,7 @@ None. This change redistributes responsibility across existing capabilities rath
 - `:domain` `ports/` — `LedgerStore`: `retainAssets` removed, `deleteByAssetId` becomes a mark.
 - Ledger schema migration for the absence fact, in the same family as the existing 4.sqm/5.sqm.
 - `:adapter:ios:ext-safe` — `PhotoKitCandidateSource.predicateFor` (new `DenyAll` arm).
-- `:adapter:generic:fake` — `InMemoryCandidateSource` (exhausts the sealed type today).
+- `:adapter:generic:mock` — `InMemoryCandidateSource` (exhausts the sealed type today).
 - `:ui:screens` / `:ui:presentation` — reconfigure surface helper text.
 - `:test:rig` — `GalleryReader` derives `admitted` by re-running the rule list instead of asking
   `policy.admits`; non-gating and test-only, so nothing catches it if missed.

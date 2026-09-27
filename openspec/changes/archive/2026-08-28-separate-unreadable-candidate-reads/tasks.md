@@ -28,7 +28,7 @@
 - [x] 3.2 `PermissionAwareCandidateSource`: `GRANTED` → readable walk; `LIMITED` with a captured snapshot →
       readable held candidates; `LIMITED` with **no** snapshot, `DENIED`, `NOT_DETERMINED` → not
       determinable. The `orEmpty()` goes.
-- [x] 3.3 `InMemoryCandidateSource` (`:adapter:generic:fake`) reports readable — it reads a cell and always
+- [x] 3.3 `InMemoryCandidateSource` (`:adapter:generic:mock`) reports readable — it reads a cell and always
       has an answer.
 - [x] 3.4 `PhotoKitCandidateSource` (`:adapter:ios:ext-safe`) reports readable; `candidatesFrom` is
       untouched (it is not the port method).
@@ -60,7 +60,7 @@
 - [x] 5.4 `GalleryReader` (`:test:rig`) unwraps; an un-answerable read is reported as such in the response
       rather than as an empty gallery.
 - [x] 5.5 `WorldInspectorController` (`:app:desktop`) — both call sites (`:390`, `:467`).
-- [x] 5.6 `RawAssetMappingTest` (`:adapter:generic:fake`) — two call sites.
+- [x] 5.6 `RawAssetMappingTest` (`:adapter:generic:mock`) — two call sites.
 
 ## 6. The album lookup answers without a fetch
 

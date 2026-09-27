@@ -72,10 +72,10 @@ None.
 - `domain/` `compose/SnapSyncApp.kt` — the single startup sweep, ordered after
   `installPermissionSubscriptions()`.
 - `domain/` `ports/DownloadStore.kt` + `adapter/generic/app` SQLDelight schema and queries — the terminal
-  state and its migration; `adapter/generic/fake` mirrors it.
+  state and its migration; `adapter/generic/mock` mirrors it.
 - `adapter/ios/app-only/IosPhotoLibraryImporter.kt` — `shouldMoveFile`, and the failure path that must
   no longer assume the staged file survives.
-- `test/integration`, `adapter/generic/fake` `commonTest` — the cadence, the terminal settlement, and the
+- `test/integration`, `adapter/generic/mock` `commonTest` — the cadence, the terminal settlement, and the
   ordering guarantee.
 - No change to `ImportedAssetPresence`, its permission-aware router, or the in-flight gate; the gate
   becomes structurally satisfied at the sweep rather than merely correct, and stays as defence in depth.

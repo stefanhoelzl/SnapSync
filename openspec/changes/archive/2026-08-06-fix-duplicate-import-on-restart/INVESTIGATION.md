@@ -238,7 +238,7 @@ today** — it returns `ImportResult.Imported(createdLocalId)` atomically and ha
 `recordCreatedLocalId`-shaped hook, so the "handle written, completion never ran" state is
 unreachable. The fake must gain that lambda to mirror the real seam (and per `FakeHonestyTest` the
 *lever* — `crashAfterCreate` / "record then never resume" — belongs in a `:test:world` wrapper, not
-in `:adapter:generic:fake`).
+in `:adapter:generic:mock`).
 
 It must assert, in one run:
 1. handle recorded, `markImported` never called (the simulated kill);
@@ -256,7 +256,7 @@ Supporting, cheaper pins:
   SQLDelight store): a `PENDING` row with `createdLocalId` set is (a) absent from
   `importableAssets()`, (b) present in `suppressedLocalIds()`, (c) still present after
   `pruneNonTerminal()`. This is the one that catches the SQL and the fake diverging.
-- **`DownloadControllerTest`** (`:adapter:generic:fake` `commonTest`): the existing
+- **`DownloadControllerTest`** (`:adapter:generic:mock` `commonTest`): the existing
   `a_failed_import_stays_importable_for_retry` **must keep passing** — it is precisely the test that
   fails if option 1 lands without clear-on-`Failed`. That is a feature, not a nuisance.
 

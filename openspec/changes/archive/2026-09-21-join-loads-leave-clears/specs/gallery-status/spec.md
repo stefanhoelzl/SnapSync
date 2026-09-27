@@ -158,7 +158,7 @@ source MUST NOT emit a count or a set it computed from stale library state.
 
 ### Requirement: Platform backing and a settable fake
 
-The iOS implementation SHALL back `size` with a PhotoKit count. `:adapter:generic:fake` SHALL provide the
+The iOS implementation SHALL back `size` with a PhotoKit count. `:adapter:generic:mock` SHALL provide the
 honest in-memory implementation (`InMemoryGalleryStatusSource`, re-homed from the deleted
 `:domain:gallery` at migration step 10), whose admitted set is a **constructor-injected state cell** of the
 port's own nullable type, and whose count is that set's size, so the fake cannot publish a count and a set
@@ -248,7 +248,7 @@ filter, key derivation, or normalization of its own. The MIME content type SHALL
 (via `UTType.preferredMIMEType`, falling back to `application/octet-stream`) and carried as a raw fact —
 `commonMain` SHALL NOT reimplement the UTI→MIME table.
 
-The iOS implementation SHALL be PhotoKit-backed; `:adapter:generic:fake` SHALL provide the honest in-memory
+The iOS implementation SHALL be PhotoKit-backed; `:adapter:generic:mock` SHALL provide the honest in-memory
 implementation (state cell constructor-injected) so the mapping is driven on the JVM and the iOS simulator
 without PhotoKit. An opaque platform handle SHALL cross `commonMain` uninterpreted (a JVM stand-in is
 valid), exactly as `Resource.data` does. Both of those implementations read what they are given and always

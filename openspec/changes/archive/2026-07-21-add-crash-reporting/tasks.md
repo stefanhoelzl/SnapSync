@@ -24,7 +24,7 @@
   (idempotent — the app process composes both). `SentryCrashReporting` in ext-safe: process-level
   dedupe, DSN/environment from the bundle, `sendDefaultPii` off, failed-request capture off,
   `beforeSend`/`beforeBreadcrumb` scrubbing, SDK-default `user.id` kept, `Logger.addLogWriter` on
-  start. `InMemoryCrashReporting` fake in `:adapter:generic:fake`; world passes it at both
+  start. `InMemoryCrashReporting` fake in `:adapter:generic:mock`; world passes it at both
   composition sites; the three iOS roots pass the Sentry adapter.
 - [x] 3.3 `./gradlew build` green: extension-safety, ports→model, FakeHonesty, MixedPortImpl, shell
   guards, and the diagrams gate (regenerated `architecture/di.md`).
