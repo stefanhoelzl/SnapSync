@@ -39,14 +39,12 @@ class SelectionIsTheWalkIntegrationTest {
         // The next cycle walks the read selection: the de-selected photos leave, in flight or not.
         cycle()
         assertEquals(setOf("A", "B"), manifest(event)?.keys, "the manifest lists only the selection")
-        // Still unacknowledged: the selected two are outstanding on the screen.
-        refresh()
+        // Still unacknowledged: the selected two are outstanding on the screen (a state read is the screen's pull).
         awaitHealth { it is SyncHealth.Syncing }
 
         // Foreground: the backend is asked, and the selected uploads whose bytes it holds settle — and the screen
         // reaches In sync over the selection, instead of Syncing until access returns.
-        os("app", "onForeground")
-        refresh()
+        foreground()
         awaitInSync()
         assertEquals(setOf("A", "B"), manifest(event)?.keys, "the settle lists no withdrawn photo")
     }

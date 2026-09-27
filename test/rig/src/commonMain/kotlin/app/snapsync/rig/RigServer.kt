@@ -466,17 +466,19 @@ class RigServer(
                 respondText(answer)
             }
             is RigTrigger.Receipted -> {
-                val released = CompletableDeferred<Unit>()
+                val released = CompletableDeferred<String?>()
                 val mark = TimeSource.Monotonic.markNow()
                 // `complete` is safe from any thread and is idempotent, so the OS handler's
                 // exactly-once guarantee (`OsCompletions.Handover`) needs no help here — and a second
                 // call is tolerated rather than thrown, since throwing inside an OS handler lambda has
-                // no good owner.
-                withContext(group.lane) { trigger.run(arg) { released.complete(Unit) } }
-                released.await()
+                // no good owner. What the operating system recorded is read AT the release, on the releasing
+                // thread: "released after the wake's own work" is a statement about that instant.
+                withContext(group.lane) { trigger.run(arg) { released.complete(hooks.osRecord?.invoke()) } }
+                val atRelease = released.await()
                 val held = mark.elapsedNow().inWholeMilliseconds
                 respondText(
                     "{\"trigger\":\"$root/$name\",\"heldMs\":$held," +
+                        (atRelease?.let { "\"osAtRelease\":$it," } ?: "") +
                         "\"transferBinding\":\"${hooks.transferBindingFact}\"," +
                         "\"note\":\"heldMs is a measured fact; whether the handler was released after the " +
                         "wake's own work or on the operating system's expiry is answered by the OsCompletions " +

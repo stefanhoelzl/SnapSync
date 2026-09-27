@@ -137,6 +137,11 @@ class RigHooks(
      * memory, reads it from the App Group. A verb for the same reason as [publishBoundPort].
      */
     val recordLanded: (route: String, contentType: String?) -> Unit = { _, _ -> },
+    /**
+     * What the operating system recorded of the app, as JSON — `null` on a host whose operating system is real and
+     * keeps its own counsel. A receipted entry's answer carries it as read at the release (`osAtRelease`).
+     */
+    val osRecord: (() -> String)? = null,
 ) {
 
     /**

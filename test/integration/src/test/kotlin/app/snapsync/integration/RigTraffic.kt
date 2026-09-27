@@ -89,14 +89,40 @@ suspend fun Rig.foreignDevice(device: String, vararg assets: String, event: Stri
     return deviceJson("foreign-device", *params).getValue("eventId").jsonPrimitive.content
 }
 
-/** The download controller reads the union and starts the transfers — the foreground's reconcile. */
-suspend fun Rig.reconcile() {
-    device("downloads/reconcile")
+/**
+ * The foreground's download reconcile — the union read, and the transfers it starts. Only the foreground entry does
+ * this, so that is what this plays; everything else the foreground does comes with it.
+ */
+suspend fun Rig.reconcile() = foreground()
+
+/**
+ * The operating system finishes every in-flight download — healthy, or answered [status] with an error body — and,
+ * unless [wait] is false, the app's answer settles: each transfer staged and the import its tail runs done. Settled is
+ * read off what the outside can see — no tail holding background time, the screen's download row, the staging
+ * directory and the library — unchanged across a few reads.
+ */
+suspend fun Rig.stage(wait: Boolean = true, status: Int? = null) {
+    val params = listOfNotNull(status?.let { "status" to it.toString() }, status?.let { "received" to "137" }).toTypedArray()
+    device("downloads/stage", *params)
+    if (wait) settleDownloads()
 }
 
-/** The OS delivers every in-flight download; the imports they start are awaited unless [wait] is false. */
-suspend fun Rig.stage(wait: Boolean = true) {
-    device("downloads/stage", "wait" to wait.toString())
+/** Wait until the downloads' outside-visible effects stop moving (see [stage]). */
+suspend fun Rig.settleDownloads() {
+    var last: String? = null
+    var steady = 0
+    eventually(read = {
+        val os = osRecord()
+        val now = listOf(
+            os.backgroundTimeHolds.filter { it.startsWith("tail(") }.toString(),
+            state().download.toString(),
+            deviceJson("staging").toString(),
+            gallery().census.total.toString(),
+        ).joinToString("|")
+        steady = if (now == last && os.backgroundTimeHolds.none { it.startsWith("tail(") }) steady + 1 else 0
+        last = now
+        steady
+    }) { it >= SETTLED_READS }
 }
 
 /** Download and import every foreign photo the union serves. */
@@ -108,7 +134,8 @@ suspend fun Rig.downloadAll() {
 /** How many photos the library holds, of every origin. */
 suspend fun Rig.libraryTotal(): Long = gallery().census.total
 
-/** The foreground's status read, as the operator plays it. */
-suspend fun Rig.refresh() {
-    device("status/refresh")
-}
+/** The status read the foreground makes, and everything else the foreground does. */
+suspend fun Rig.refresh() = foreground()
+
+/** How many unchanged reads, [Rig.eventually]'s poll apart, count as settled. */
+private const val SETTLED_READS = 3

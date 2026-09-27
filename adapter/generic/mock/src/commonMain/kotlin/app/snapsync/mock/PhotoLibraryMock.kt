@@ -70,6 +70,9 @@ class PhotoLibraryOperator internal constructor(private val state: LibraryState)
 
     // ---- the grant --------------------------------------------------------------------------------
 
+    /** The grant, as a cell. */
+    val grant: StateFlow<GalleryAccess> = state.access.asStateFlow()
+
     /** The grant, as the person set it in Settings. */
     var access: GalleryAccess
         get() = state.access.value
@@ -82,6 +85,12 @@ class PhotoLibraryOperator internal constructor(private val state: LibraryState)
 
     // ---- the selection observer -------------------------------------------------------------------
 
+    /**
+     * The person's selection under a partial grant, as they last picked it — `null` until they have. The operating
+     * system keeps it across a process; which of it a process has been told is that process's own business.
+     */
+    val selection: StateFlow<List<RawAsset>?> = state.selection.asStateFlow()
+
     /** Whether the running process's selection observer is open (host assembly opens it). */
     val observing: Boolean get() = state.listener?.observing == true
 
@@ -93,6 +102,7 @@ class PhotoLibraryOperator internal constructor(private val state: LibraryState)
     fun changeSelection(assets: List<RawAsset>) {
         val listener = checkNotNull(state.listener) { "no process registered with the photo library" }
         check(listener.observing) { "the selection observer is not open — only host assembly opens it" }
+        state.selection.value = assets
         listener.handlers.onChanged(SelectionSnapshot(assets))
     }
 
@@ -161,6 +171,7 @@ internal class LibraryState(
     }
 
     val imports = ImportScript()
+    val selection = MutableStateFlow<List<RawAsset>?>(null)
     val answers: LibraryChangeAnswers = answers ?: imports.answers
     var listener: Listener? = null
 
