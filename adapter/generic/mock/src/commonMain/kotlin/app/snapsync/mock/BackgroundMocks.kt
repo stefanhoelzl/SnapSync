@@ -34,7 +34,6 @@ class WakeMock(
 
         override fun listen(handlers: WakeHandlers) {
             this@WakeMock.handlers = handlers
-            queue.listen(handlers)
         }
 
         override fun schedule(id: WakeId, trigger: WakeTrigger): ScheduleResult =

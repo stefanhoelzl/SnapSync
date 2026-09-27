@@ -31,8 +31,8 @@ class BackendMock(
 ) {
     internal val state = BackendState(mutableMapOf(), capacity, createdAt)
 
-    /** One process's face: [appVersion] is the version its build declares, read per call. */
-    fun port(appVersion: () -> String? = { null }): Backend = InMemoryBackend(state, appVersion)
+    /** One process's face: [declared] is the version its build declares, read per call. */
+    fun port(declared: DeclaredVersion = DeclaredVersion(null)): Backend = InMemoryBackend(state, declared)
 
     /** The levers and reads — what the backend's operator, and a test, can do to it. */
     val operator: BackendOperator = BackendOperator(state)
@@ -42,6 +42,12 @@ class BackendMock(
         const val DEFAULT_CREATED_AT: String = "2026-01-01T00:00:00.000Z"
     }
 }
+
+/**
+ * The marketing version a build declares on every call — a cell rather than a constant so an operator can play the
+ * member updating the app in place. `null` declares none, which an armed gate refuses.
+ */
+class DeclaredVersion(var value: String?)
 
 /** A push the backend would have sent: the event it announces, and the member and token it was addressed to. */
 data class SentPush(val eventId: String, val deviceId: String, val token: String)
