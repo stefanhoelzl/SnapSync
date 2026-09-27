@@ -85,26 +85,31 @@ kotlin {
             implementation(project(":adapter:ios:ext-safe"))
         }
 
-        // The JVM host: the world it composes (and, through the world's own JVM half, the real backend).
+        // The JVM host: the JVM root it composes the app with, over the mocks it drives — and the real backend, served
+        // locally by `:test:edge`, as the second backend choice.
         jvmMain.dependencies {
-            implementation(project(":test:world"))
+            implementation(project(":app:jvm"))
+            implementation(project(":adapter:generic:mock"))
+            implementation(project(":test:edge"))
             implementation(project(":domain:feature"))
+            implementation(libs.ktor.client.core)
+            implementation(libs.ktor.client.cio)
         }
     }
 }
 
-// `./gradlew :test:rig:runJvmHost [-Psnapsync.rigBackend=mini|deno] [-Psnapsync.rigPort=N]` — the JVM host for
+// `./gradlew :test:rig:runJvmHost [-Psnapsync.rigBackend=mock|deno] [-Psnapsync.rigPort=N]` — the JVM host for
 // an agent to drive by hand. Prints one `RIG-JVM READY <port>` line once bound, then serves until killed.
 // Tests do not use this: they start a host in-process (`JvmRigHost.start`).
 val apiDir = rootProject.layout.projectDirectory.dir("api")
 tasks.register<JavaExec>("runJvmHost") {
     group = "application"
-    description = "Serves the rig control protocol over a World on loopback (the JVM host)."
+    description = "Serves the rig control protocol over the JVM root on loopback (the JVM host)."
     val jvmCompilation = kotlin.jvm().compilations.getByName("main")
     classpath = files(jvmCompilation.output.allOutputs, jvmCompilation.runtimeDependencyFiles)
     mainClass.set("app.snapsync.rig.JvmRigHostMainKt")
     dependsOn(":test:edge:resolveLocalDeployment")
-    systemProperty("snapsync.rigBackend", providers.gradleProperty("snapsync.rigBackend").getOrElse("mini"))
+    systemProperty("snapsync.rigBackend", providers.gradleProperty("snapsync.rigBackend").getOrElse("mock"))
     systemProperty("snapsync.rigPort", providers.gradleProperty("snapsync.rigPort").getOrElse("0"))
     systemProperty("snapsync.apiDir", apiDir.asFile.absolutePath)
     systemProperty("snapsync.liveEdgeStore", layout.buildDirectory.dir("live-edge").get().asFile.absolutePath)

@@ -23,6 +23,7 @@ dependencyResolutionManagement {
 rootProject.name = "snapsync"
 
 include(":app:desktop")
+include(":app:jvm")
 include(":app:ios")
 include(":domain:host")
 include(":app:ios:extension")

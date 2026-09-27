@@ -8,23 +8,27 @@ import kotlin.test.assertTrue
 
 /**
  * The REAL device-side push registration (`PushRegistration` + the push-token service over `HttpBackend`, installed by the host
- * assembly exactly as the iOS shell installs it) driven through the control protocol against the mini-edge,
- * asserting the backend outcome: the device config document (`backend/device-config`). The backend's own
+ * assembly exactly as the iOS shell installs it) driven through the control protocol against the backend mock,
+ * asserting the backend outcome: the registration it stored (`backend/device-config`). The backend's own
  * promise — a token is published, a rotated one overwrites — is `BackendContract`'s `DEVICE_CONFIG_*` clauses; the backend
  * notify fan-out is Deno-side logic, covered by `api/test/app.test.ts`. What stays here is the wiring: which
  * triggers make the composed app register at all.
  */
 class PushRegistrationIntegrationTest {
 
-    private val REGISTERED = """{"pushToken":{"kind":"apns","token":"DEADBEEF","env":"sandbox"}}"""
+    /** The registration the delivered token makes: the token, in the build's APNs environment. */
+    private val REGISTERED = "DEADBEEF" to "sandbox"
 
     /** How many registrations the backend stored for this device — the config is last-write-wins, the count is not. */
     private suspend fun Rig.registrations(): Int =
         deviceJson("backend/device-config").getValue("writes").jsonPrimitive.content.toInt()
 
-    /** The config document the backend holds for this device, or null when none was registered. */
-    private suspend fun Rig.deviceConfig(): String? =
-        deviceJson("backend/device-config")["config"]?.takeUnless { it is JsonNull }?.jsonPrimitive?.content
+    /** The token and environment the backend holds for this device, or null when none was registered. */
+    private suspend fun Rig.deviceConfig(): Pair<String, String>? {
+        val config = deviceJson("backend/device-config")
+        val token = config["token"]?.takeUnless { it is JsonNull }?.jsonPrimitive?.content ?: return null
+        return token to config.getValue("env").jsonPrimitive.content
+    }
 
     /**
      * A JOIN re-registers the push token (capability `receiving-photos`): committing a join runs the real

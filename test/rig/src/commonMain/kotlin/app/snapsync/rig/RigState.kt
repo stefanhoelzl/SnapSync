@@ -7,23 +7,23 @@ import app.snapsync.model.UiState
 import kotlinx.serialization.Serializable
 
 /**
- * `/state`'s body: the **real** reduced [UiState] plus the read-models the container exposes beside it.
+ * `/state`'s body: the **real** reduced [UiState] plus the one read-model the screen does not carry.
  *
- * Every field is a direct `.value` read of a flow the screen itself observes, or a direct read through
- * the same source the status screen uses. Aggregation, never transformation — the encoder for [ui] is
- * compiler-generated from the declaration in `:domain:presentation`, so there is no second rendering of the
- * state that could disagree with the screen. That is the property that lets this module carry no tests.
+ * Every field is a direct `.value` read of a flow the screen itself observes, or a fact of the build. Aggregation,
+ * never transformation — the encoder for [ui] is compiler-generated from the declaration in `:domain:presentation`, so
+ * there is no second rendering of the state that could disagree with the screen. That is the property that lets this
+ * module carry no tests.
+ *
+ * **Narrowed in 11g2** (`docs/testing.md`, "The control channel"): the ledger counts, the permission, the invite URL,
+ * the event name and the create error are gone. The last four are inside [ui], so a second copy of them could only
+ * disagree with it; the ledger is the app's own bookkeeping, which no assertion may read (bytes that landed are read
+ * from the backend instead).
  */
 @Serializable
 data class RigState(
     val ui: UiState,
     val ready: Readiness,
-    val ledger: LedgerView,
     val download: DownloadView,
-    val permission: String,
-    val inviteUrl: String?,
-    val eventName: String?,
-    val transientError: String?,
     /**
      * What this build IS — composition mode, upload tier, baked upload base. Moved here from `/health`,
      * which now answers only "is the channel up": a caller reading state should not need a second request
@@ -50,7 +50,7 @@ data class RigState(
  * delete-and-reinstall, then `true` for that same record once access was granted — one install, one
  * variable, minutes apart. So a `false` collapses "there is no record" with "I am not permitted to see one",
  * and [grantDependent] marks the answers where that collapse is live rather than leaving a reader to join
- * this field with `permission` themselves.
+ * this field with the grant themselves.
  *
  * ⏰ Two cells are unmeasured: `LIMITED` access, and a record left by a differently-signed build.
  */
@@ -78,27 +78,19 @@ data class Readiness(
     val maxPhotoDate: String?,
 )
 
-/**
- * Upload-ledger aggregates — the counts [UiState] deliberately omits ("the screen answers *is it
- * healthy?*, not *how many of N*"), and the only assertion that can prove bytes actually landed.
- */
-@Serializable
-data class LedgerView(val completed: Int, val pending: Int)
-
 /** Foreign-photo download progress, the container's screen-level indicator. */
 @Serializable
 data class DownloadView(val downloaded: Int, val total: Int, val inFlight: Int)
 
 /**
- * Read the whole snapshot.
+ * Read the whole snapshot: every field a flow's current value, or a fact of the build.
  *
- * Suspends only because the ledger read does: [AppCore.ledgerCounts] is a `ReadingLedgerCountsSource`,
- * whose `refresh()` performs the one consistent `aggregates()` read the status source performs — the
- * same seam, not a second query. Everything else is a flow's current value.
+ * Reading it is the screen's pull, as the phone's foreground poll pulls: the ledger-count read-model is refreshed first
+ * (`ReadingLedgerCountsSource.refresh()`, the one consistent read the status source performs), so the reduced [UiState]
+ * the next read returns reflects what the uploads did. The counts themselves are not reported.
  */
 internal suspend fun readState(core: AppCore, host: StatusContainerHost, hooks: RigHooks): RigState {
     core.ledgerCounts.refresh()
-    val counts = core.ledgerCounts.counts.value
     val progress = core.downloadStatus.progress.value
     // The membership, the invite URL and the inline create error all live INSIDE the UI state now
     // (capability `sync-status`), so the rig reports exactly what the screen is rendering rather
@@ -118,19 +110,13 @@ internal suspend fun readState(core: AppCore, host: StatusContainerHost, hooks: 
             minPhotoDate = config?.minPhotoDate?.at?.iso,
             maxPhotoDate = config?.maxPhotoDate?.at?.iso,
         ),
-        ledger = LedgerView(completed = counts.done.size, pending = counts.pending.size),
         download = DownloadView(
             downloaded = progress.downloaded,
             total = progress.total,
             inFlight = progress.inFlight,
         ),
-        permission = core.photoPermission.value.name,
-        inviteUrl = joined?.inviteUrl,
-        eventName = config?.name,
-        transientError = (ui.layer as? Layer.CreateEvent)?.error,
         build = hooks.buildFacts(),
-        // The grant is read from the same value reported above, so the two cannot disagree within one
-        // snapshot — which matters precisely because a `false` is only interpretable alongside it.
+        // The OS's answer is grant-dependent, so the grant it was read under travels with it (see [OsExtensionView]).
         osExtension = hooks.readOsExtension(core.photoPermission.value.name),
     )
 }

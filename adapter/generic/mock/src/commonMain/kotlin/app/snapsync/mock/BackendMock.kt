@@ -74,8 +74,12 @@ class BackendOperator internal constructor(private val state: BackendState) {
     /** The name the backend serves for [eventId]. */
     fun eventNameOf(eventId: String): String? = state.events[eventId]?.name
 
-    /** The manifest [deviceId] last published to [eventId], or null. */
-    fun manifestOf(eventId: String, deviceId: String): DeviceManifest? = state.memberships[eventId to deviceId]?.manifest
+    /**
+     * The manifest the backend holds for [deviceId] in [eventId] — an empty one for a member that has published nothing,
+     * as a joined device's membership declares no asset — or null when it holds no membership.
+     */
+    fun manifestOf(eventId: String, deviceId: String): DeviceManifest? =
+        state.memberships[eventId to deviceId]?.let { it.manifest ?: DeviceManifest(deviceId, emptyList()) }
 
     /** How many publishes the backend applied for this membership. */
     fun publishesOf(eventId: String, deviceId: String): Int = state.publishes[eventId to deviceId] ?: 0

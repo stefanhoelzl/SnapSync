@@ -15,8 +15,8 @@ import kotlin.test.assertTrue
  *
  * What this proves is the PROTOCOL's fidelity to the application — the routes, the compiler-generated state
  * encoding, the vocabulary's advertisement and refusals, the lanes entry points run on, the client — over both of
- * the world's backends. It proves no new app behaviour: the in-process integration surface remains the
- * behavioural suite.
+ * the host's backends (the in-memory backend mock and the real `api/`). It proves no new app behaviour: the
+ * in-process integration surface remains the behavioural suite.
  */
 class JvmHostProtocolTest {
 
@@ -57,7 +57,7 @@ class JvmHostProtocolTest {
 
     @Test
     fun a_user_command_the_build_cannot_honour_is_refused_not_accepted() = onHost { client ->
-        // The world's reporter is configured, so the send is honoured here; the refusal path is exercised by the
+        // The host's build reports, so the send is honoured here; the refusal path is exercised by the
         // rename that names no event while nothing is joined.
         val rename = assertIs<Reply.Refused>(client.user("rename", mapOf("name" to "x")))
         assertTrue("no joined event" in rename.reason, rename.reason)
@@ -89,7 +89,7 @@ class JvmHostProtocolTest {
     }
 
     @Test
-    fun create_join_upload_round_trip_over_the_mini_edge() = roundTrip("mini")
+    fun create_join_upload_round_trip_over_the_backend_mock() = roundTrip("mock")
 
     @Test
     fun create_join_upload_round_trip_over_the_real_backend() = roundTrip("deno")
@@ -122,13 +122,37 @@ class JvmHostProtocolTest {
         client.os("photokit-ext", "processRawValue").done()
         val objects = client.deviceVerb("backend/objects").done()
         assertTrue("-primary" in objects, "the backend lists the transferred object: $objects")
-        client.awaitState { it.ledger.completed == 1 }
+        val union = client.deviceVerb("backend/union").done()
+        assertTrue("\"primary\"" in union, "the second cycle published the photo, and the event serves it: $union")
     }
 
-    private fun onHost(backend: String = "mini", block: suspend (RigClient) -> Unit) =
+    /**
+     * A relaunch is process death (`docs/testing.md`, "The JVM root"): the new app finds exactly what the device keeps
+     * — the membership, the photo library, the operating system's upload jobs — and composes everything else anew.
+     */
+    @Test
+    fun a_relaunch_keeps_what_the_device_keeps() = onHost { client ->
+        client.user(
+            "create",
+            mapOf("name" to "Relaunch", "startsAt" to "2026-05-25T00:00:00", "endsAt" to "2026-06-20T00:00:00"),
+        ).done()
+        client.awaitState { (it.ui.layer as? Layer.JoiningEvent)?.range != null }
+        client.user("confirmJoin").done()
+        val event = client.awaitState { it.ready.configResolved }.ready.eventId
+        client.deviceVerb("gallery/seed", mapOf("n" to "1", "kind" to "policy")).done()
+        client.os("photokit-ext", "processRawValue").done()
+
+        client.deviceVerb("relaunch").done()
+
+        assertEquals(event, client.awaitState { it.ready.configResolved }.ready.eventId, "the membership survives")
+        assertEquals(1L, client.gallery(cutoff = "1970-01-01T00:00:00Z").census.total, "the library survives")
+        assertTrue("\"created\":1" in client.deviceVerb("jobs").done(), "the OS's upload job survives")
+    }
+
+    private fun onHost(backend: String = "mock", block: suspend (RigClient) -> Unit) =
         onHost(backend) { client, _ -> block(client) }
 
-    private fun onHost(backend: String = "mini", block: suspend (RigClient, JvmRigHost) -> Unit) = runBlocking {
+    private fun onHost(backend: String = "mock", block: suspend (RigClient, JvmRigHost) -> Unit) = runBlocking {
         val host = JvmRigHost.start(backend)
         try {
             RigClient("http://127.0.0.1:${host.port}").use { block(it, host) }

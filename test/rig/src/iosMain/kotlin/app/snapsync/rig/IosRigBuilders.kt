@@ -64,7 +64,7 @@ fun deviceCommands(
         permission = { photoAccess.permission.value },
         reconcile = { core().uploadTransitions.onOverrideChanged() },
     ),
-    "reset" to resetCommand(core = core, reset = controls::reset),
+    "reset" to resetCommand(reset = controls::reset),
     "gallery/seed" to seedCommand { n, kind -> seedPhotos(log, n, kind) },
     "gallery/wipe" to RigCommand { params, _ ->
         // A VALUE, not presence, and the only command here that refuses on one — because a wipe cannot be

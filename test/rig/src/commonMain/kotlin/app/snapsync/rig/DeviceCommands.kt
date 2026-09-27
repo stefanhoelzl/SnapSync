@@ -1,6 +1,5 @@
 package app.snapsync.rig
 
-import app.snapsync.compose.AppCore
 import app.snapsync.rig.gallery.SeedKind
 import app.snapsync.rig.gallery.SeedOutcome
 
@@ -8,16 +7,16 @@ import app.snapsync.rig.gallery.SeedOutcome
 // `docs/testing.md`, "One control protocol, served by two hosts"). Each host supplies only the act; the
 // parsing, the refusals and the rendering are here, so the two cannot drift into two dialects of one verb.
 
-/** `POST /device/reset` — void durable sync state through the app's own reset, and answer the counts AFTER it. */
-/** `/device/reset`: [reset] is the build's development controls' reset; the counts after it are read off [core]. */
-fun resetCommand(core: () -> AppCore, reset: suspend () -> Unit): RigCommand = RigCommand { _, _ ->
+/**
+ * `POST /device/reset` — void durable sync state through the build's development controls' [reset].
+ *
+ * It answers that the reset ran, and nothing about the ledger: the ledger is the app's own bookkeeping, which the
+ * channel no longer reads (`docs/testing.md`, "The control channel"). What a reset changed is observed where a person
+ * would see it — the screen, and the uploads that follow.
+ */
+fun resetCommand(reset: suspend () -> Unit): RigCommand = RigCommand { _, _ ->
     reset()
-    // The counts AFTER the reset, so "it cleared" is verifiable rather than asserted. An in-flight
-    // upload cycle can still write rows behind this read — stated in `docs/testing.md` rather than
-    // prevented, and visible right here when it happens.
-    core().ledgerCounts.refresh()
-    val counts = core().ledgerCounts.counts.value
-    CommandResult.ok("""{"reset":true,"ledgerCompleted":${counts.done.size},"ledgerPending":${counts.pending.size}}""")
+    CommandResult.ok("""{"reset":true}""")
 }
 
 /**

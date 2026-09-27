@@ -111,7 +111,7 @@ class Journeys {
      * arrive in A's library through the real download and PhotoKit import.
      */
     private suspend fun receive(a: RigClient, member: Member) {
-        val invite = a.state().inviteUrl ?: fail("A's joined screen carries no invite link")
+        val invite = (a.state().ui.layer as? Layer.Joined)?.inviteUrl ?: fail("A's joined screen carries no invite link")
         val event = when (val link = decodeEventUrl(invite)) {
             is ConfigDecodeResult.Success -> link.payload.eventId
             is ConfigDecodeResult.Failure -> fail("A's invite link does not decode (${link.reason}): $invite")
