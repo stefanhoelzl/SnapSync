@@ -78,6 +78,14 @@ class DeletionLedgerTest {
             declared(files, "fun load" + "Accumulator").forEach {
                 add("the device-manifest accumulator in $it (the manifest projects from the ledger)")
             }
+            // The world (`:test:world`) and its mini-edge: a second composition of the app, beside the JVM root, and a
+            // second backend, beside the real `api/` and the backend mock — each one more answer to keep in step with
+            // the first, and the world's operator faces reached past the protocol into the composed core. The JVM root
+            // (`:app:jvm`) over the mocks is the one off-device composition; its tests are rig tests (11g2b).
+            if (File(repoRoot, "test/world/build.gradle.kts").exists()) add("a :test:world module (the JVM root over the mocks replaced it — 11g2b)")
+            declared(files, """(class|object) (MiniEdge|BackendStore)\b""").forEach {
+                add("the mini-edge in $it (the backend mock and the real api/ are the two backends — 11g2b)")
+            }
             // PRODUCTION uploaders only. The retired item was a second *uploader*; the repo names a
             // test after its subject (`HttpEnrollmentTest`), so `class \w*Enrollment` matches the test
             // of the surviving uploader as surely as a resurrected one. Narrowed rather than the row

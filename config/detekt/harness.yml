@@ -1,4 +1,4 @@
-# Tier `harness` — test equipment (`:app:desktop`, `:test:rig`, `:test:world`, `:test:harness-driver`, `:tools:diagrams`)
+# Tier `harness` — test equipment (`:app:desktop`, `:test:rig`, `:test:harness-driver`, `:tools:diagrams`, …)
 #
 # A CEILING on complexity for this scope (`docs/architecture.md`). Every number below is a
 # ceiling that MAY ONLY FALL. Lowering one is ordinary work — do it in the change that makes it true.
@@ -33,12 +33,13 @@
 # stable, or at the first parse failure on newer syntax — whichever comes first.
 #
 # WHAT THIS TIER IS FOR. Code that is read once and never shipped: the two desktop harnesses, the
-# on-device control channel, the in-memory world, the diagram generators. These ceilings exist to
+# control channel, the contracts and the local backend fixture, the diagram generators. These ceilings exist to
 # CATCH A REGRESSION, not to converge — nothing here is expected to fall, and that is stated rather
 # than left to be inferred from numbers that never move.
 #
-# `miniEdgeClient` (`:test:world`) sets the cyclomatic number at 51 by itself, and `WorldInspector`
-# the cognitive one.
+# Lowered when `:test:world` and its mini-edge were deleted (11g2b), re-measured the same way: cyclomatic 51 -> 38
+# (`miniEdgeClient` set the old number alone; `:tools:diagrams`' `stripComments` sets it now, at 37), cognitive 64 -> 49 and
+# `LongMethod` 171 -> 162 (`WorldInspector`, at 48 and 161).
 #
 # `test/rig/src/hook` is excluded by the task: it is compiled INTO `:app:ios` and is held at cyclomatic
 # 2 by `detektAppShell`. Scanning it here too would subject shell source to a ceiling 25x looser.
@@ -51,13 +52,13 @@
 complexity:
   CyclomaticComplexMethod:
     active: true
-    threshold: 51
+    threshold: 38
   CognitiveComplexMethod:
     active: true
-    threshold: 64
+    threshold: 49
   LongMethod:
     active: true
-    threshold: 171
+    threshold: 162
   LongParameterList:
     active: true
     # 24, not the 17 a first pass read off detekt's finding message: that message truncates and its
@@ -106,13 +107,6 @@ empty-blocks:
     # REGISTER — 8 sites. Harness doubles legitimately implement a port method as a no-op.
     active: false
 naming:
-  FunctionNaming:
-    # REGISTER — 56 sites, all `snake_case` contract functions in `:test:world`'s `commonMain`.
-    # They are test-contract declarations that live in a main source set only because a test
-    # source set cannot be exported (see CLAUDE.md on the storage contracts). detekt's default
-    # `**/test/**` exclusion would have hidden them for the wrong reason — `test/` is a module
-    # prefix here, not a source-set marker — so the rule is switched off explicitly instead.
-    active: false
   MatchingDeclarationName:
     # REGISTER — 2 sites.
     active: false

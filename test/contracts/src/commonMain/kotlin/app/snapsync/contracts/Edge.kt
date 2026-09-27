@@ -34,8 +34,8 @@ import kotlinx.serialization.json.jsonPrimitive
 // ---- The Backend contract's shared vocabulary (`docs/testing.md`) ------------------------------------
 //
 // The contract is about the backend, seen through the port the app ships. A binding pairs an implementation of the
-// port — the production `HttpBackend` in front of the real `api/` (`Live`) or the mini-edge (`Fake`), or the
-// in-memory mock (`Fake`) — with a way to enter each clause's state: [BackendSetup], through the backend's PUBLIC
+// port — the production `HttpBackend` in front of the real `api/` (`Live`), or the in-memory mock (`Fake`) — with a
+// way to enter each clause's state: [BackendSetup], through the backend's PUBLIC
 // surface, never by writing a stand-in's store directly. A setup step one backend cannot follow is a state that
 // backend does not reach, and it says so with `Unreachable`.
 

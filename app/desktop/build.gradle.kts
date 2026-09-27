@@ -12,7 +12,7 @@ kotlin {
 //  - Shared pane: `PhoneFrame` + the `StatusPane` composition glue (construct `StatusContainerHost`
 //    from injected seams → render the real `StatusScreen` inside the frame).
 //  - **Full-stack world harness** — `:app:desktop:run` (`app.snapsync.desktop.FullStackHarnessKt`):
-//    the REAL app graph composed by `snapSyncApp` over `:test:world`'s fakes behind the phone frame,
+//    the app the JVM root (`:app:jvm`) composes over the mocks behind the phone frame,
 //    driven by a right-pane world inspector (`docs/testing.md`).
 //  - **Forge harness** — `:app:desktop:runForge` (`app.snapsync.desktop.MainKt`): the same phone
 //    frame over forge cells + a control panel that forges any UI state (capability
@@ -30,10 +30,9 @@ dependencies {
     // `StatusPane` provides the design-system's test-only `LocalDarkThemeOverride` around the phone
     // pane, so the components module is a direct dependency rather than transitive through `:ui:screens`.
     implementation(project(":ui:components"))
-    // The production `HttpBackend` the world composes over its mini-edge.
+    // The generic adapters (`HttpBackend`, the system clock) the JVM root composes the app over.
     implementation(project(":adapter:generic:app"))
-    // The full-stack harness: the controllable world (BackendStore + mini-edge + levers wrapping
-    // `:adapter:generic:mock`) whose `World.core` IS the shared `snapSyncApp` composition.
+    // The full-stack harness: the JVM root, whose app IS the shared `snapSyncHost` composition over the mocks.
     implementation(project(":app:jvm"))
     // The inspector's policy badge reads the library mock through the same gallery services the cycle composes.
     implementation(project(":domain:services"))

@@ -9,7 +9,7 @@ package app.snapsync.http
  * answer: the `/attest/…` issuers refuse a stale challenge, a rejected attestation or a device with no record with
  * `401`, and reading any of those as a rejected token dropped a perfectly good one (B2). So a token is passed — and a
  * `401` read as a verdict on it — only on a gated route: `HttpBackendTest` pins that the `Backend` methods taking a
- * token are exactly the routes this predicate calls gated, and the mini-edge's credential lever refuses only these.
+ * token are exactly the routes this predicate calls gated, and the backend mock's credential lever refuses only these.
  *
  * `path` is the request's path, `/api/vN` prefix included or not — the prefix is stripped exactly as the backend's
  * `splitVersion` strips it. The list is pinned to the backend's by `:test:architecture`'s `GatedPathPinTest`, which

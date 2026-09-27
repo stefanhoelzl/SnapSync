@@ -196,7 +196,7 @@ kotlin {
 // and no test reaches them meaningfully.
 //
 // A zero on a method can mean MISPLACED rather than untested. `SyncEngine.complete` read zero while
-// `SyncEngineTest` covered it from `:test:world`, whose instrumentation is off and which credits
+// `SyncEngineTest` covered it from a module whose instrumentation was off and which credited
 // nothing. Before writing a test for an uncovered method, grep for one - a duplicate written to move a
 // number is worse than the gap it closes.
 kover {

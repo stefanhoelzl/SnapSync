@@ -45,8 +45,8 @@ private val httpLog = Logger.withTag("Http")
  * The [Backend] port over HTTP — the device API's routes, their paths, methods and bodies, and nothing else.
  *
  * **One class for every platform.** It is written against Ktor's engine-neutral [HttpClient], which each composition
- * supplies: the Darwin engine on iOS (`darwinHttpClient`), a JVM engine where tests talk to the real backend, a
- * `MockEngine` in front of the world's mini-edge. A second platform supplies its engine, not a second copy of the
+ * supplies: the Darwin engine on iOS (`darwinHttpClient`), a JVM engine where tests talk to the real backend. A
+ * second platform supplies its engine, not a second copy of the
  * API.
  *
  * What it owns is wire: the `Authorization: Bearer` header on the calls that take a token, the calling build's

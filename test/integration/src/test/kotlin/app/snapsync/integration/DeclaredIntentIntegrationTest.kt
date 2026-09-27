@@ -9,7 +9,7 @@ import kotlin.test.assertTrue
  * **The manifest declares intent** (capability `photo-sharing`), over the real stack.
  *
  * The unit tests assert the projection over a list of rows. This asserts the consequence the change exists for,
- * through the composed core the device shells actually run and the faithful mini-edge, driven through the control
+ * through the composed core the device shells actually run and the backend mock, driven through the control
  * protocol: a device declares what it will provide, and the backend — not the device — is what keeps a
  * half-uploaded asset out of the event union until every declared role has arrived.
  *

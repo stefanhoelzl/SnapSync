@@ -20,7 +20,7 @@ import app.snapsync.databases.IosDatabases
  * container says (capability `photo-sharing`).
  *
  * The store's row semantics are the shared `LedgerService`'s, exercised by the storage
- * contract in `:test:world`. What is only true on this target, and only in this factory, is the
+ * contract bound beside the mocks and the JVM adapter. What is only true on this target, and only in this factory, is the
  * plumbing: the base path travels through `NativeSqliteDriver`'s `onConfiguration` into
  * `extendedConfig.basePath`, a nested copy whose failure mode is not an error but a database opened
  * **somewhere else** — the driver's own default location, inside the process's private sandbox rather

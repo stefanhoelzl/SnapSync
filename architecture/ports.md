@@ -11,10 +11,10 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `AlbumMapSource` | `:domain:services` | `:domain:services` Current, Migrate, Retry | no |
 | `AppUploadEngine` | `:domain:feature` | `:test:architecture` Engine; `:test:feature` FakeEngine | yes |
 | `AppUploadEvents` | `:domain:feature` | — | no |
-| `AppUploadMechanism` | `:domain:feature` | `:app:jvm` OperatorDrivenUploads; `:domain:compose` ComposedAppUploader; `:test:world` OperatorUploadEngine | yes |
+| `AppUploadMechanism` | `:domain:feature` | `:app:jvm` OperatorDrivenUploads; `:domain:compose` ComposedAppUploader | no |
 | `AttestStore` | `:domain:ports` | `:adapter:generic:mock` InMemoryAttestStore; `:domain:services` AttestState, CachedAttestStore, Item, SharedItem | yes |
 | `AuthenticatedBackend` | `:domain:services` | `:domain:services` CredentialedBackend | no |
-| `Backend` | `:domain:ports` | `:adapter:generic:app` HttpBackend; `:adapter:generic:mock` FakeClient, InMemoryBackend; `:app:jvm` VersionedHttpBackend; `:domain:services` ScriptedBackend; `:test:architecture` Probe; `:test:world` WorldBackendPort | yes |
+| `Backend` | `:domain:ports` | `:adapter:generic:app` HttpBackend; `:adapter:generic:mock` FakeClient, InMemoryBackend; `:app:jvm` VersionedHttpBackend; `:domain:services` ScriptedBackend; `:test:architecture` Probe | yes |
 | `BackgroundTime` | `:domain:ports` | `:adapter:generic:mock` InMemoryBackgroundTime; `:adapter:ios:app-only` IosBackgroundTime | yes |
 | `BackgroundTimeHold` | `:domain:ports` | `:adapter:generic:mock` Hold; `:adapter:ios:app-only` Held, Refused | no |
 | `BackgroundTransfer` | `:domain:services` | `:domain:services` UploadTransferService; `:test:feature` FakePlatform, Library | yes |
@@ -23,7 +23,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `CandidateSource` | `:domain:services` | `:adapter:generic:mock` Blowing, RecordingEnumerator, ResourceCandidates, Switchable; `:domain:feature` FactsSource, UnreadableSource; `:domain:services` GalleryCandidateSource, PermissionAwareCandidateSource, RecordingWalk; `:test:feature` OneAsset | yes |
 | `ChangeOutcome` | `:domain:model` | `:domain:model` Applied, Refused | no |
 | `Clock` | `:domain:ports` | `:adapter:generic:app` SystemClock; `:domain:presentation` MovableClock; `:ui:screens` MovableClock | no |
-| `Completion` | `:domain:ports` | `:adapter:ios:app-only` PushCompletion, Released, SessionCompletion, TaskCompletion; `:app:desktop` NoCompletion; `:test:world` CountingCompletion, OsCompletion | yes |
+| `Completion` | `:domain:ports` | `:adapter:ios:app-only` PushCompletion, Released, SessionCompletion, TaskCompletion; `:app:desktop` NoCompletion; `:test:rig` Handler | yes |
 | `ConfigDecodeResult` | `:domain:model` | `:domain:model` Failure, Success | no |
 | `ConfigFileDecode` | `:domain:model` | `:domain:model` Foreign, Unusable, Valid | no |
 | `ConfigFileRead` | `:domain:model` | `:domain:model` Content, Failed, Missing | no |
@@ -32,11 +32,11 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `CreateOutcome` | `:domain:model` | `:domain:model` Created, InvalidName, InvalidWindow, Transient | no |
 | `CreationStatus` | `:domain:feature` | `:domain:feature` Failed, Idle, InFlight | no |
 | `CreationStatusSource` | `:domain:feature` | `:domain:feature` MutableCreationStatusSource | no |
-| `Credential` | `:domain:services` | `:domain:services` DeviceAttestation, ExtensionCredential, ScriptedCredential; `:test:world` NoCredential | yes |
+| `Credential` | `:domain:services` | `:domain:services` DeviceAttestation, ExtensionCredential, ScriptedCredential | no |
 | `CycleGate` | `:domain:feature` | `:domain:feature` NotJoined, Paused, Run, Skip, Withheld | no |
 | `CycleOutcome` | `:domain:feature` | `:domain:feature` Declined, Drained, NotJoined, Paused, Truncated, Unreadable, Withheld | no |
 | `CycleResult` | `:domain:model` | `:domain:model` COMPLETED, FAILED, PROCESSING, Paused, SKIPPED | no |
-| `Databases` | `:domain:ports` | `:adapter:generic:app` JdbcDatabases; `:adapter:generic:mock` InMemoryDatabases; `:adapter:ios:ext-safe` IosDatabases; `:domain:services` Failing, Scripted; `:test:feature` RecordingDatabases; `:test:world` Counting | yes |
+| `Databases` | `:domain:ports` | `:adapter:generic:app` JdbcDatabases; `:adapter:generic:mock` InMemoryDatabases; `:adapter:ios:ext-safe` IosDatabases; `:domain:services` Failing, Scripted; `:test:feature` RecordingDatabases | yes |
 | `DbOpen` | `:domain:ports` | `:domain:ports` Failed, Missing, OldSchema, Opened | no |
 | `Decided` | `:domain:feature` | `:domain:feature` Planned, Short | no |
 | `DevControls` | `:domain:ports` | `:adapter:generic:app` InertDevControls; `:test:rig` RigDevControls | yes |
@@ -116,7 +116,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `ShareCount` | `:domain:model` | `:domain:model` Counting, Ready, Unavailable | no |
 | `Slot` | `:domain:services` | `:domain:services` Held, Unread | no |
 | `SuppressionReadiness` | `:domain:model` | `:domain:model` OldSchema, Ready, Unavailable | no |
-| `SuppressionSource` | `:domain:services` | `:domain:services` DownloadService, SuppressionService; `:test:world` ScriptedSuppression | yes |
+| `SuppressionSource` | `:domain:services` | `:domain:services` DownloadService, SuppressionService | no |
 | `SwitchDecision` | `:domain:feature` | `:domain:feature` Stay | no |
 | `SyncDecision` | `:domain:model` | `:domain:model` AlreadyUploaded | no |
 | `SyncEvent` | `:domain:model` | `:domain:model` ResourceChanged, UploadFailed, UploadStarted | no |
@@ -129,7 +129,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `Ui` | `:domain:ports` | `:adapter:ios:ui` IosUi; `:test:rig` RigUi | yes |
 | `UiIntent` | `:domain:model` | `:domain:model` AcknowledgeAccess, CancelJoin, CancelReconfigure, CancelSwitch, ChoosePhotos, ConfirmJoin, ConfirmLeaveDismiss, ConfirmLeaveOpen, ConfirmSwitch, CreateEvent, FromCustom, FromPreset, LeaveEvent, OpenAppStore, OpenReconfigure, OpenSettings, ReceiveOn, Reconfigure, RenameDismiss, RenameEvent, RenameOpen, RenameStatusConsumed, ReportBugDismiss, ReportBugOpen, RequestPermission, RetryJoin, RetryLoad, SaveToAlbum, SendDiagnostics, ShareInvite, ShareOn, UntilCustom, UntilPreset | no |
 | `Upload` | `:domain:ports` | `:adapter:generic:mock` NetworkedUpload; `:adapter:ios:app-only` IosUrlSessionUploadPlatform; `:adapter:ios:ext-safe` IosPhotoKitUploadPlatform, PlayedOs, SimulatorUploadJobQueue; `:domain:services` ScriptedUpload | no |
-| `UploadDiscovery` | `:domain:services` | `:domain:feature` RecordingDelegate, SelectionScopedDiscovery; `:domain:services` GalleryDiscovery, Library, Resources, WalkMemo; `:test:feature` FakePlatform, Library; `:test:world` FakeUploadDiscovery | yes |
+| `UploadDiscovery` | `:domain:services` | `:domain:feature` RecordingDelegate, SelectionScopedDiscovery; `:domain:services` GalleryDiscovery, Library, Resources, WalkMemo; `:test:feature` FakePlatform, Library | yes |
 | `UploadError` | `:domain:model` | `:domain:model` Cancelled, Http, Network, Unknown | no |
 | `UploadRequestProvider` | `:domain:model` | `:domain:model` EdgeUploadRequestProvider; `:test:feature` Provider, RecordingUploadRequestProvider, StubUploadRequestProvider | yes |
 | `UploadSource` | `:domain:model` | `:domain:model` File, Resource | no |

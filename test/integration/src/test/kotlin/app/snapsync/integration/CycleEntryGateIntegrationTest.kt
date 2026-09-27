@@ -8,7 +8,7 @@ import kotlin.test.assertTrue
 
 /**
  * The cycle's **entry gate** over the real stack (capability `background-upload`, and `join-event`'s
- * *An unreadable config is not an absent config*): the real `UploadCycle`, ledger and mini-edge, driven through the
+ * *An unreadable config is not an absent config*): the real `UploadCycle` and ledger over the backend mock, driven through the
  * control protocol, with only the membership read forced (`membership/unreadable`).
  *
  * These assertions could not be made before the gate moved into the shared core, in either of the two senses that

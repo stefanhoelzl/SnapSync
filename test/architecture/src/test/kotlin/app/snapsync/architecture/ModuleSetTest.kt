@@ -190,7 +190,7 @@ class ModuleSetTest {
         /** Never linked into any shipped-format binary; exempt from the production-module laws. */
         val SUPPORT = setOf(
             ":app:jvm",
-            ":test:world", ":test:integration", ":test:architecture", ":test:harness-driver",
+            ":test:integration", ":test:architecture", ":test:harness-driver",
             ":tools:diagrams", ":test:edge", ":test:control", ":test:feature",
         )
     }

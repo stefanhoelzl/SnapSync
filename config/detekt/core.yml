@@ -108,7 +108,7 @@ naming:
     active: true
     # `excludes: []` overrides detekt's default `**/test/**` path exclusions. In this repo `test/`
     # is a MODULE prefix, not a source-set marker, so the default would silently switch this rule
-    # off for `:test:world` and friends — the vacuous pass this capability exists to prevent.
+    # off for `:test:rig` and friends — the vacuous pass this capability exists to prevent.
     excludes: ['**/feature/status/LedgerBackedSyncStatusSource.kt']
     ignoreAnnotated: ['Composable']
   MatchingDeclarationName:

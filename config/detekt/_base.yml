@@ -46,7 +46,7 @@ naming:
     ignoreAnnotated: ['Composable']
 
     # detekt's default excludes every `**/test/**` path from this rule. In THIS repo `test/` is a MODULE
-    # prefix (`:test:world`, `:test:rig`, `:test:architecture`), not a source-set marker, so the default
+    # prefix (`:test:contracts`, `:test:rig`, `:test:architecture`), not a source-set marker, so the default
     # would silently switch the rule off for production source in those modules — the vacuous pass the
     # complexity budgets exist to prevent. Scope is decided by which tier scans a file, never by a path
     # heuristic that means something different here than it does upstream.
@@ -60,13 +60,13 @@ complexity:
     # reached only by a runner. Counting them makes the rule measure how many behaviours a suite pins,
     # which points the ratchet the wrong way — the gate then resists exactly what it should invite.
     #
-    # Measured: `LedgerStoreContract` (`:test:world`) is 46 functions, 44 of them `@Test` and the other
+    # Measured: `LedgerStoreContract` (then in `:test:world`, `:test:contracts` since) is 46 functions, 44 of them `@Test` and the other
     # two private builders. Its real surface is two. It crossed the `harness` ceiling by growing four
     # test cases, and every future test would have cost another ceiling bump justified by this same
     # paragraph — a ratchet that has to be re-argued on a schedule is not one.
     #
     # A reading and not a ceiling, by the test at the top of this file: if a test case is not surface in
-    # `:test:world`, it is not surface in `:domain`'s `commonTest` either.
+    # `:test:contracts`, it is not surface in `:domain`'s `commonTest` either.
     #
     # This is NOT detekt's own `**/test/**` path default, which the `FunctionNaming` note above rejects
     # for this repo and which is rejected here for the same reason: `test/` is a module prefix, so that
@@ -77,7 +77,7 @@ complexity:
 
     # The same path argument the `FunctionNaming` note above makes, and it was standing in all eight
     # tier files before it stood here: detekt's default excludes `**/test/**`, which in this repo is a
-    # MODULE prefix, so the default hides `:test:world`'s harness and `:test:rig`'s control channel —
+    # MODULE prefix, so the default hides `:test:contracts`' clauses and `:test:rig`'s control channel —
     # production-shaped code — along with every `test/*/build.gradle.kts`. Eight copies of one argument
     # is exactly the drift this file exists to prevent.
     excludes: []

@@ -73,7 +73,7 @@ fun StatusPane(
 
     PhoneFrame {
         // `leave` is the injected edge: the forge leaves it defaulted (Confirm reviewable but inert),
-        // the full-stack world harness binds it to `World.leave()`. Share is a clipboard/log stub; the
+        // the full-stack world harness hands the tap back to the app as its intent. Share is a clipboard/log stub; the
         // QR renders from the canned invite URL. Download progress now folds into the status line's
         // arrows via the reduction, so no separate download line is passed.
         //

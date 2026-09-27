@@ -47,7 +47,7 @@ class RenameIntegrationTest {
     fun a_rejected_name_fails_and_changes_nothing() = rigTest {
         val event = createAndJoin(name = "Weekend")
 
-        // Over the mini-edge's (and the real backend's) 100-character bound.
+        // Over the backend mock's (and the real backend's) 100-character bound.
         user("rename", "name" to "x".repeat(101))
         val status = awaitRename { it is RenameState.Failed }
 

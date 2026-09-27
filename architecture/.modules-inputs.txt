@@ -27,7 +27,6 @@ module :test:feature
 module :test:harness-driver
 module :test:integration
 module :test:rig
-module :test:world
 module :tools:diagrams
 module :ui:components
 module :ui:screens
@@ -160,17 +159,6 @@ edge :test:rig :domain:presentation
 edge :test:rig :domain:services
 edge :test:rig :test:contracts
 edge :test:rig :test:edge
-edge :test:world :adapter:generic:app
-edge :test:world :adapter:generic:mock
-edge :test:world :domain:compose
-edge :test:world :domain:feature
-edge :test:world :domain:host
-edge :test:world :domain:model
-edge :test:world :domain:ports
-edge :test:world :domain:presentation
-edge :test:world :domain:services
-edge :test:world :test:contracts
-edge :test:world :test:edge
 edge :ui:components :domain:model
 edge :ui:screens :domain:feature
 edge :ui:screens :domain:model
