@@ -1,9 +1,10 @@
-package app.snapsync.world
+package app.snapsync.mock
 
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.ImportRequest
 import app.snapsync.model.ImportResult
+import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryHandlers
 import app.snapsync.model.StagedResource
 import kotlin.test.Test
@@ -12,7 +13,7 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 
 /**
- * The world importer's own fixture properties — the ones every download test silently depends on.
+ * The photo-library mock's import properties — the ones every download test silently depends on.
  *
  * This file exists because of a specific failure. The predecessor branch's flagship duplicate-download
  * test passed **while the duplicate was being created**: its fake reused one created-asset identifier
@@ -22,7 +23,7 @@ import kotlinx.coroutines.test.runTest
  *
  * A property that load-bearing may not rest on a comment. It is asserted here.
  */
-class ImporterFixtureTest {
+class PhotoLibraryImportTest {
 
     private val ref = AssetRef("DEV-F", AssetId("FQ"))
 
@@ -34,15 +35,15 @@ class ImporterFixtureTest {
         stagedPath = "/stage/fq",
     )
 
-    private suspend fun WorldGallery.importOnce(): ImportResult =
+    private suspend fun Gallery.importOnce(): ImportResult =
         import(ImportRequest(ref, listOf(resource()), "2026-06-30T10:00:00Z", album = null))
 
     /**
      * The marker writes are the registered handlers, so every gallery here is listened to first — an import before
-     * `listen` has nowhere to record its marker, and the honest fake refuses it rather than look like a working one
-     * while every pass creates another asset (`docs/testing.md`).
+     * `listen` has nowhere to record its marker, and the mock refuses it rather than look like a working one while
+     * every pass creates another asset (`docs/testing.md`).
      */
-    private fun importer(gallery: WorldGallery = WorldGallery()) = gallery.apply {
+    private fun importer(library: PhotoLibraryMock = PhotoLibraryMock()) = library.port().apply {
         listen(GalleryHandlers(onChanged = {}, onImportPlaceholder = { _, _ -> }, onImportSettled = { _, _ -> }))
     }
 
@@ -67,8 +68,9 @@ class ImporterFixtureTest {
      */
     @Test
     fun a_failed_attempt_still_consumes_an_identifier() = runTest {
-        val importer = importer()
-        importer.imports.failNextImport = true
+        val library = PhotoLibraryMock()
+        val importer = importer(library)
+        library.operator.imports.failNextImport = true
 
         assertTrue(importer.importOnce() is ImportResult.Failed)
         val afterFailure = importer.importOnce() as ImportResult.Imported
@@ -83,14 +85,14 @@ class ImporterFixtureTest {
     /** Each created asset lands in the gallery under its own identifier, so a duplicate is countable. */
     @Test
     fun each_created_asset_is_separately_visible_in_the_gallery() = runTest {
-        val gallery = WorldGallery()
-        val importer = importer(gallery)
+        val library = PhotoLibraryMock()
+        val importer = importer(library)
 
         importer.importOnce()
         importer.importOnce()
 
         assertTrue(
-            gallery.current().map { it.assetId }.toSet().size == 2,
+            library.operator.current().map { it.assetId }.toSet().size == 2,
             "two created assets, two distinct identifiers in the library",
         )
     }

@@ -24,13 +24,45 @@ import app.snapsync.presentation.CutoffFormatter
 import kotlinx.datetime.TimeZone
 import app.snapsync.compose.uploadCore
 import app.snapsync.mock.inMemoryProcessInfo
-import app.snapsync.mock.inMemoryDeviceIntegrity
 import app.snapsync.mock.inMemoryAttestStore
-import app.snapsync.mock.inMemoryCrashReporter
-import app.snapsync.mock.inMemoryFiles
-import app.snapsync.mock.inMemoryDatabases
-import app.snapsync.mock.inMemoryPreferences
-import app.snapsync.mock.inMemorySecureStore
+import app.snapsync.mock.BackgroundTimeMock
+import app.snapsync.mock.CrashReporterMock
+import app.snapsync.mock.DatabasesMock
+import app.snapsync.mock.DeviceIntegrityMock
+import app.snapsync.mock.DevControlsMock
+import app.snapsync.mock.DevControlsOperator
+import app.snapsync.mock.DownloadSessionMock
+import app.snapsync.mock.DownloadSessionOperator
+import app.snapsync.mock.ExtensionHostMock
+import app.snapsync.mock.ExtensionHostOperator
+import app.snapsync.mock.FileSystemMock
+import app.snapsync.mock.ImportScript
+import app.snapsync.mock.LibraryAssets
+import app.snapsync.mock.LifecycleMock
+import app.snapsync.mock.LifecycleOperator
+import app.snapsync.mock.LinksMock
+import app.snapsync.mock.LinksOperator
+import app.snapsync.mock.PhotoLibraryMock
+import app.snapsync.mock.PhotoLibraryOperator
+import app.snapsync.mock.PreferencesMock
+import app.snapsync.mock.PushServiceMock
+import app.snapsync.mock.PushServiceOperator
+import app.snapsync.mock.ScreenMock
+import app.snapsync.mock.ScreenOperator
+import app.snapsync.mock.SecureStoreMock
+import app.snapsync.mock.UploadNetwork
+import app.snapsync.mock.UploadQueueMock
+import app.snapsync.mock.UploadQueueOperator
+import app.snapsync.mock.UploadSessionMock
+import app.snapsync.mock.UploadSessionOperator
+import app.snapsync.mock.WakeMock
+import app.snapsync.mock.WakeOperator
+import app.snapsync.model.runCatchingCancellable
+import app.snapsync.ports.Gallery
+import io.ktor.client.request.headers
+import io.ktor.client.request.put
+import io.ktor.client.request.setBody
+import kotlinx.coroutines.flow.StateFlow
 import app.snapsync.model.FileArea
 import app.snapsync.model.SecureSlots
 import app.snapsync.model.SecureStoreRead
@@ -51,7 +83,6 @@ import app.snapsync.compose.snapSyncProcess
 import app.snapsync.model.CrashEvent
 import app.snapsync.ports.ProcessMetrics
 import app.snapsync.ports.EntryContext
-import app.snapsync.mock.inMemoryBackgroundTime
 import app.snapsync.mock.inMemoryExtensionRegistry
 import app.snapsync.mock.HeldBackgroundTime
 import app.snapsync.feature.upload.TailTrigger
@@ -159,7 +190,7 @@ class World(
      * the storage services run their own SQL over them, and they are durable across a [relaunch] as the App-Group
      * files are. Injectable so a test can hand in its own (the "composition opens no database" test counts opens).
      */
-    val databases: Databases = inMemoryDatabases(),
+    val databases: Databases = DatabasesMock().port(),
     /**
      * Whether this world can ATTEST (capability `privacy-security`). **Off by default**, which is the
      * world as it has always been: attestation is composed because `AppPorts` requires the seams, and
@@ -216,14 +247,20 @@ class World(
      */
     val logs: WorldLog = WorldLog()
 
-    /** The world's gallery rigging around the honest raw-asset fake (see [WorldGallery]). */
-    val permission: MutablePhotoAccessStatusSource = MutablePhotoAccessStatusSource()
+    /**
+     * The device's photo library — its assets, grant, albums and import script, durable across a [relaunch]
+     * (`docs/testing.md`, "Mocks"). The app holds a per-launch face of it; the world pulls levers through [gallery].
+     */
+    val library: PhotoLibraryMock = PhotoLibraryMock()
 
-    /** The world's gallery, over the same grant cell as [permission] (see [WorldGallery]). */
-    val gallery: WorldGallery = WorldGallery(permission.cell)
+    /** The photo library's operator face: the person holding the phone, and the library's own answers. */
+    val gallery: PhotoLibraryOperator get() = library.operator
+
+    /** A read-only face of the library for the world's own reads — never the app's. */
+    private val libraryReads: Gallery = library.port()
 
     /** The raw library read over the world's gallery — the same service the app composes, without the grant wrapper. */
-    val enumerator: CandidateSource = GalleryCandidateSource(gallery)
+    val enumerator: CandidateSource = GalleryCandidateSource(libraryReads)
 
     /**
      * Operator read: the seam's candidates for [policy].
@@ -238,7 +275,7 @@ class World(
      * album service and calibration the policy derivation uses, so the inspector shows what a cycle would subtract.
      */
     suspend fun denylistedAlbumMembers(cutoff: CaptureCutoff): Set<AssetId> =
-        GalleryAlbums(gallery).assetIdsInAlbums(SELECTION_CALIBRATION, cutoff)
+        GalleryAlbums(libraryReads).assetIdsInAlbums(SELECTION_CALIBRATION, cutoff)
 
     suspend fun readCandidates(policy: SelectionPolicy): List<Candidate> =
         when (val read = enumerator.candidates(policy)) {
@@ -249,32 +286,38 @@ class World(
     // as both device adapters do, so the world exercises the real two-phase completion.
     // It completes a transfer with a real PUT over the backend's bare client — the network an OS transfer
     // crosses — so a completed object is one the chosen backend itself accepted.
-    val platform: FakeUpload = FakeUpload(backend.newClient())
+    private val uploadQueue: UploadQueueMock = UploadQueueMock(httpNetwork(backend.newClient()))
+
+    /** The operating system's upload-job queue, played: jobs created, completed, failed and capped. */
+    val platform: UploadQueueOperator get() = uploadQueue.operator
     // The cycle's library reads — the change feed and the id-scoped key resolve — over the in-memory gallery,
     // bound once beside the job queue exactly as the device roots bind `GalleryDiscovery`.
-    val discovery: FakeUploadDiscovery = FakeUploadDiscovery(gallery)
+    val discovery: FakeUploadDiscovery = FakeUploadDiscovery(libraryReads)
     /**
      * The operating system's background download session — the transfers it holds for this app. Durable across a
      * [relaunch], as a background `URLSession` is: a relaunched app finds the transfers the dead process started, and
      * their completions arrive there. Each launch's composition registers its own handlers on it.
      */
-    val download: FakeDownload = FakeDownload(
+    private val downloads: DownloadSessionMock = DownloadSessionMock(
         // The OS's temporary file for a finished download: in the app's private area, where the platform leaves it.
         leaveTempFile = { description ->
-            val path = "download-tmp/${description.hashCode().toUInt()}"
-            privateFiles[path] = STAGED_BYTES
-            (files.locate(FileArea.PRIVATE, path) as app.snapsync.model.FileResult.Ok).value
+            disk.operator.leaveTemporaryFile("download-tmp/${description.hashCode().toUInt()}", STAGED_BYTES)
         },
     )
 
+    /** The operating system's download session, played: it finishes transfers and hands events back. */
+    val download: DownloadSessionOperator get() = downloads.operator
+
     /** [download], once this launch has brought the session up (a transfer, a cancel, or a handback) — else `null`. */
-    val downloadTransport: FakeDownload? get() = download.takeIf { it.realized }
+    val downloadTransport: DownloadSessionOperator? get() = download.takeIf { it.realized }
+
+    private val uploadSession: UploadSessionMock = UploadSessionMock()
 
     /**
      * The app uploader's transfer session as the operating system plays it — the world's app uploader is the inert
      * [operatorEngine], so this session holds no jobs; the operator hands its background events back through it.
      */
-    val appUpload: WorldAppUpload = WorldAppUpload()
+    val appUpload: UploadSessionOperator get() = uploadSession.operator
 
     /**
      * The import rigging — the operator's script for how the library answers a change, and what was imported. The
@@ -282,16 +325,16 @@ class World(
      * inside the "change block", before the created asset is observable. Without that the world could not reach an
      * unconfirmed row — the state the duplicate-import defect lives in (capability `receiving-photos`).
      */
-    val importer: WorldImports get() = gallery.imports
+    val importer: ImportScript get() = gallery.imports
+
+    /** The device's files, both areas — durable across [relaunch], as the disk is. */
+    private val disk: FileSystemMock = FileSystemMock()
+
     /**
      * The App-Group container's files (the SHARED area) — the membership, the manifest and push records, the staged
-     * download bytes and the extension's log. Durable across [relaunch], as the container is. The operator's own
-     * cell: the rigging owns what it observes (`docs/architecture.md`).
+     * download bytes and the extension's log. Durable across [relaunch], as the container is.
      */
-    val sharedFiles: MutableMap<String, ByteArray> = mutableMapOf()
-
-    /** The files the operator made unreadable — a lever cell (see [membershipUnreadable]). */
-    private val deniedFiles: MutableSet<Pair<FileArea, String>> = mutableSetOf()
+    val sharedFiles: MutableMap<String, ByteArray> get() = disk.operator.area(FileArea.SHARED)
 
     /**
      * The world's "disk" for staged download bytes (capability `receiving-photos`): the staged files in [sharedFiles].
@@ -322,9 +365,12 @@ class World(
 
     /**
      * The operating system's scheduled wakes — the queue the heartbeat lands in, durable across [relaunch]. The
-     * operator delivers a wake through [WorldWake.fire]; nothing fires one on its own.
+     * operator delivers a wake through [WakeOperator.fire]; nothing fires one on its own.
      */
-    val wake: WorldWake = WorldWake()
+    private val wakes: WakeMock = WakeMock()
+
+    /** The operating system's scheduled wakes, played: the operator delivers one through [WakeOperator.fire]. */
+    val wake: WakeOperator get() = wakes.operator
 
     /** How many times the tail runner re-armed the app uploader's heartbeat — counted, never run. */
     val heartbeatsScheduled: Int get() = wake.heartbeatsScheduled
@@ -335,52 +381,56 @@ class World(
      * and expired through [expireBackgroundTime]. Durable across [relaunch] only in the sense a real table is not:
      * a relaunch is a new process, so the operator clears nothing and the dead process's holds simply never end.
      */
-    val backgroundTimeHolds: MutableStateFlow<List<HeldBackgroundTime>> = MutableStateFlow(emptyList())
+    val backgroundTimeHolds: StateFlow<List<HeldBackgroundTime>> get() = backgroundTime.operator.holds
+
+    private val backgroundTime: BackgroundTimeMock = BackgroundTimeMock()
 
     /** Operator lever: the operating system says every outstanding background-time hold's time is up. */
-    fun expireBackgroundTime() {
-        backgroundTimeHolds.value.forEach { it.expire() }
-    }
+    fun expireBackgroundTime() = backgroundTime.operator.expireAll()
+
+    private val lifecycleMock = LifecycleMock()
+    private val linksMock = LinksMock()
+    private val pushService = PushServiceMock()
+    private val screen = ScreenMock()
+    private val devControlsMock = DevControlsMock(inviteLinkHints)
+    internal val extensionHost = ExtensionHostMock()
 
     /** The app's foreground life — the operator activates and backgrounds the app through it. */
-    val lifecycle: WorldLifecycle = WorldLifecycle()
+    val lifecycle: LifecycleOperator get() = lifecycleMock.operator
 
     /** The links the platform opens the app with — the operator opens one through it. */
-    val links: WorldLinks = WorldLinks()
+    val links: LinksOperator get() = linksMock.operator
 
     /** The platform's push service — the operator delivers tokens and silent pushes through it. */
-    val pushNotifications: WorldPushNotifications = WorldPushNotifications()
+    val pushNotifications: PushServiceOperator get() = pushService.operator
 
     /** The platform's user interface — what the core last showed, and the operator's taps. */
-    val ui: WorldUi = WorldUi()
+    val ui: ScreenOperator get() = screen.operator
 
-    /** The build's development controls — see [WorldDevControls]. */
-    val devControls: WorldDevControls = WorldDevControls(inviteLinkHints)
+    /** The build's development controls: the invite-link hints fixed per world, the uploader pin and the reset. */
+    val devControls: DevControlsOperator get() = devControlsMock.operator
 
     /** The OS-delivered APNs token, as the world's shell delivers it (none until a test delivers one). */
     val pushTokens: PushTokenSource = PushTokenSource("sandbox")
+    private val crash: CrashReporterMock = CrashReporterMock()
+
     /** Whether the process started reporting — the `CrashReporter.start` observation. */
-    val diagnosticsStarted: MutableStateFlow<Boolean> = MutableStateFlow(false)
+    val diagnosticsStarted: StateFlow<Boolean> get() = crash.operator.started
 
     /** Every diagnostic dump the process transmitted, in order, as it left (capability `privacy-security`). */
-    val diagnosticsSent: MutableStateFlow<List<CrashEvent>> = MutableStateFlow(emptyList())
+    val diagnosticsSent: StateFlow<List<CrashEvent>> get() = crash.operator.sent
 
-    /**
-     * The app process's own files (the PRIVATE area) — durable across [relaunch], as a device's are. The App-Group
-     * (SHARED) area the other stores model is not held here.
-     */
-    val privateFiles: MutableMap<String, ByteArray> = mutableMapOf()
+    /** The app process's own files (the PRIVATE area) — durable across [relaunch], as a device's are. */
+    val privateFiles: MutableMap<String, ByteArray> get() = disk.operator.area(FileArea.PRIVATE)
 
     /** The App-Group user defaults (the album map lives there) — durable across [relaunch]. */
-    private val preferenceValues: MutableMap<String, String> = mutableMapOf()
+    private val preferences: PreferencesMock = PreferencesMock()
 
     /**
-     * The Keychain items — the device id and the attestation record — durable across [relaunch]. The device id is
-     * seeded: the world plays a device whose app has launched before, so both processes read [ownDeviceId].
+     * The Keychain — the device id and the attestation record — durable across [relaunch]. The device id is seeded:
+     * the world plays a device whose app has launched before, so both processes read [ownDeviceId].
      */
-    private val secureItems: MutableMap<app.snapsync.model.SecureSlot, SecureStoreRead.Found> = mutableMapOf(
-        SecureSlots.DEVICE_ID to SecureStoreRead.Found(ownDeviceId, StoredProtection.BACKGROUND_READABLE),
-    )
+    private val keychain: SecureStoreMock = SecureStoreMock(mapOf(SecureSlots.DEVICE_ID to ownDeviceId))
 
     /**
      * The world's backend client — bare: it carries nothing but the engine. The credential, the declared version
@@ -479,10 +529,8 @@ class World(
      * bugs turned on was the one no test could reach. Set it and a cycle takes [CycleGate.Skip].
      */
     var membershipUnreadable: Boolean
-        get() = (FileArea.SHARED to CONFIG_FILE_NAME) in deniedFiles
-        set(value) {
-            if (value) deniedFiles += FileArea.SHARED to CONFIG_FILE_NAME else deniedFiles -= FileArea.SHARED to CONFIG_FILE_NAME
-        }
+        get() = disk.operator.isDenied(FileArea.SHARED, CONFIG_FILE_NAME)
+        set(value) = disk.operator.deny(FileArea.SHARED, CONFIG_FILE_NAME, value)
 
     // ---- the composed APP graph (the REAL snapSyncApp, over the fakes) --------------------------
 
@@ -526,7 +574,7 @@ class World(
     // Attesting goes through the backend port like every other call: the mini-edge serves the three `/attest/…`
     // routes and mints for the in-memory integrity's attestations (`MiniEdgeAttest.kt`). The real `api/` verifies a
     // genuine App Attest attestation, which nothing off a device produces, so an attesting world needs the mini-edge.
-    private val integrity: DeviceIntegrity = inMemoryDeviceIntegrity(available = attests)
+    private val integrity: DeviceIntegrity = DeviceIntegrityMock().port(available = attests)
     // The Keychain's attestation record: durable across a relaunch, as on a device.
     private val attestStore = inMemoryAttestStore()
 
@@ -565,8 +613,8 @@ class World(
     private var appJob: Job = Job(scope.coroutineContext[Job])
     private var appScope: CoroutineScope = CoroutineScope(scope.coroutineContext + appJob)
 
-    /** The one [Files] of the device — both areas, over the operator's cells; the denied set is a lever. */
-    private val files: Files = inMemoryFiles(shared = sharedFiles, private = privateFiles, denied = deniedFiles)
+    /** The app process's [Files] — both areas of the device's disk. */
+    private val files: Files = disk.port()
 
     // ---- the storage services of this launch ---------------------------------------------------
     //
@@ -594,7 +642,7 @@ class World(
         private set
 
     /** The event albums the app created, by event — in the App-Group user defaults. */
-    var albumMapStore: AlbumMapService = albumMapOver(preferenceValues, secureItems)
+    var albumMapStore: AlbumMapService = AlbumMapService(preferences.port(), keychain.port())
         private set
 
     /**
@@ -622,7 +670,7 @@ class World(
      */
     private fun appProcess(): ProcessServices = snapSyncProcess(
         ProcessPorts(
-            crashReporter = inMemoryCrashReporter(started = diagnosticsStarted, dumps = diagnosticsSent),
+            crashReporter = crash.port(),
             processMetrics = NoProcessMetrics,
             logSinks = emptyList(),
             files = files,
@@ -640,10 +688,10 @@ class World(
      */
     fun extensionProcess(): ProcessServices = snapSyncProcess(
         ProcessPorts(
-            crashReporter = inMemoryCrashReporter(),
+            crashReporter = crash.unobservedPort(),
             processMetrics = NoProcessMetrics,
             logSinks = emptyList(),
-            files = inMemoryFiles(shared = sharedFiles, private = null, denied = deniedFiles),
+            files = disk.port(privateArea = false),
             clock = worldClock,
             entryContext = NoEntryContext,
             dsn = WORLD_DSN,
@@ -669,20 +717,20 @@ class World(
         deviceLogs = LogTailService(files),
         config = config,
         // The operator's table of holds: a wake's hold is visible there until it ends, and the operator expires it.
-        backgroundTime = inMemoryBackgroundTime(backgroundTimeHolds),
-        wake = wake,
+        backgroundTime = backgroundTime.port(),
+        wake = wakes.port(),
         // The world composes an OS without the OS-driven mechanism, and no rig switch: both stated.
         extensionRegistry = inMemoryExtensionRegistry(),
-        devControls = devControls,
-        pushNotifications = pushNotifications,
-        lifecycle = lifecycle,
-        links = links,
-        ui = ui,
-        photoAccess = permission,
+        devControls = devControlsMock.port(),
+        pushNotifications = pushService.port(),
+        lifecycle = lifecycleMock.port(),
+        links = linksMock.port(),
+        ui = screen.port(),
+        photoAccess = library.photoAccess(),
         // The operator plays the OS: nothing uploads on its own. A selection change updates the cell + N and
         // reaches the world uploader's inert units (`OperatorUploadEngine`), counted; the operator invokes the
         // cycle by hand, exactly like every other world trigger.
-        gallery = gallery,
+        gallery = library.port(),
         // The SAME ledger the composed cycle writes, and the mini-edge's per-device listing the join-time
         // load seeds it from (capability `photo-sharing`).
         uploadRecord = UploadRecordPorts(ledger = ledger),
@@ -690,15 +738,15 @@ class World(
         // Staging root AND release, one port: the world's staged paths are built from the same
         // root the fake reports, exactly as the App-Group container is on device.
         stagedBytes = stagedBytes,
-        download = download,
-        appUpload = appUpload,
+        download = downloads.port(),
+        appUpload = uploadSession.port(),
         // The backend: the production `HttpBackend` over the mini-edge (or the real `api/`), every need-shaped
         // service composed over it inside the core, as on the phone.
         backend = backendPort,
         manifestStore = manifestStore,
         integrity = integrity,
         attestStore = inMemoryAttestStore(),
-        deviceIdentity = identityOver(secureItems, DeviceIdentityRole.MINTING),
+        deviceIdentity = identityOver(keychain, DeviceIdentityRole.MINTING),
         appStoreUrl = WORLD_APP_STORE_URL,
         // The operator IS the engine: nothing auto-runs; a cycle happens when invoked by hand.
         appDrivenUpload = { operatorEngine },
@@ -750,13 +798,12 @@ class World(
         appJob.cancel()
         appJob = Job(scope.coroutineContext[Job])
         appScope = CoroutineScope(scope.coroutineContext + appJob)
-        download.relaunched()
         config = ConfigService(files, worldClock)
         ledger = LedgerService(databases)
         downloadStore = DownloadService(databases)
         stagedBytes = StagingService(files)
         manifestStore = DeviceManifestService(files)
-        albumMapStore = albumMapOver(preferenceValues, secureItems)
+        albumMapStore = AlbumMapService(preferences.port(), keychain.port())
         cycleOfThisLaunch = null
         uploadPortsOfThisLaunch = null
         process = appProcess()
@@ -818,22 +865,10 @@ class World(
         pixelHeight: Long = 3024,
         isEdited: Boolean = false,
     ) {
-        gallery.set(
-            gallery.current() + RawAsset(
-                assetId = AssetId(assetId),
-                creationDate = creationDate,
-                rawResources = resources,
-                // NEUTRAL facts — the world forges what the platform would have interpreted, never a
-                // PhotoKit bitmask (capability `sync-status`).
-                facts = AssetFacts(
-                    assetId = AssetId(assetId),
-                    creationDate = CaptureDate(creationDate),
-                    isScreenshot = isScreenshot,
-                    isScreenRecording = isScreenRecording,
-                    isVideo = isVideo,
-                    isEdited = isEdited,
-                    pixelArea = pixelWidth * pixelHeight,
-                ),
+        // NEUTRAL facts — the world forges what the platform would have interpreted, never a PhotoKit bitmask.
+        gallery.add(
+            LibraryAssets.photo(
+                assetId, creationDate, resources, isScreenshot, isScreenRecording, isVideo, pixelWidth, pixelHeight, isEdited,
             ),
         )
     }
@@ -958,7 +993,7 @@ class World(
 
     /** Remove an own asset from the gallery (absent from the next cycle's walk, which deletes its in-window rows). */
     suspend fun removeAsset(assetId: String) {
-        gallery.set(gallery.current().filterNot { it.assetId == AssetId(assetId) })
+        gallery.remove(AssetId(assetId))
     }
 
     /**
@@ -1173,15 +1208,15 @@ class World(
                 // takes the app process's admission — the same resolution the device app engine gates on.
                 process = UploaderProcess.App({ core.appUploadAdmission() }, { core.photoPermission.value }),
                 config = config,
-                deviceIdentity = identityOver(secureItems, DeviceIdentityRole.READ_ONLY),
+                deviceIdentity = identityOver(keychain, DeviceIdentityRole.READ_ONLY),
                 host = host,
                 // A constant of the running build, as on device: read once, when the cycle is composed. The
                 // metadata client above reads the [appVersion] lever per request instead, which is what lets a
                 // test play an old build against the version gate.
                 appVersion = appVersion,
                 ledger = ledger,
-                upload = platform,
-                gallery = gallery,
+                upload = uploadQueue.port(),
+                gallery = library.port(),
                 discovery = discovery,
                 selectionScope = { core.selectionScope() },
                 manifestStore = manifestStore,
@@ -1189,7 +1224,7 @@ class World(
                 suppression = downloadStore,
                 // The app tier's cycle: the same port and the same declared answer as the app graph's status
                 // total (capability `photo-sharing`) — admit on doubt.
-                albumManager = GalleryAlbums(gallery),
+                albumManager = GalleryAlbums(library.port()),
                 albumLookupFailure = AlbumLookupFailure.AdmitOnDoubt,
                 // Shared with the app graph, as the world's single-process stand-in for the App-Group map.
                 albumCoordinator = core.albumCoordinator,
@@ -1225,7 +1260,7 @@ class World(
      * the bug end-to-end: a `502` arrives here as a *successful* transfer of an error body, and staging it
      * would make it the store's truth forever (capability `receiving-photos`).
      */
-    suspend fun stageAllDownloads(outcome: TransferOutcome = FakeDownload.HEALTHY) {
+    suspend fun stageAllDownloads(outcome: TransferOutcome = DownloadSessionMock.HEALTHY) {
         val transport = downloadTransport ?: return
         transport.inFlight().forEach { transport.finish(it.description, outcome) }
         // Await the stagings the jobs launched, then the import the tail runs for them, so this action is complete
@@ -1305,15 +1340,22 @@ class World(
 /** What an operator-staged file holds — the bytes are never read, only their presence. */
 internal val STAGED_BYTES: ByteArray = "staged".encodeToByteArray()
 
-/** The album map over the world's user-defaults and Keychain cells, as a process builds it. */
-private fun albumMapOver(
-    preferences: MutableMap<String, String>,
-    secure: MutableMap<app.snapsync.model.SecureSlot, SecureStoreRead.Found>,
-) = AlbumMapService(inMemoryPreferences(preferences), inMemorySecureStore(secure))
+/** A process's device identity over the device's Keychain, in [role]: the app mints, the extension only reads. */
+private fun identityOver(keychain: SecureStoreMock, role: DeviceIdentityRole) =
+    PersistedDeviceIdentity(role, keychain.port(), PlatformDeviceId { null })
 
-/** A process's device identity over the world's Keychain cell, in [role]: the app mints, the extension only reads. */
-private fun identityOver(secure: MutableMap<app.snapsync.model.SecureSlot, SecureStoreRead.Found>, role: DeviceIdentityRole) =
-    PersistedDeviceIdentity(role, inMemorySecureStore(secure), PlatformDeviceId { null })
+/**
+ * The network an OS upload crosses to the world's backend: the job's own request, a real `PUT` over the backend's
+ * bare [client] — so a completed object is one the chosen backend itself accepted. No answer is `null`.
+ */
+private fun httpNetwork(client: io.ktor.client.HttpClient) = UploadNetwork { url, headers, bytes ->
+    runCatchingCancellable {
+        client.put(url) {
+            headers { headers.forEach { (name, value) -> append(name, value) } }
+            setBody(bytes)
+        }.status.value
+    }.getOrNull()
+}
 
 /** The reporting destination a world's processes carry: a world plays a distributed build, which reports. */
 private const val WORLD_DSN: String = "in-memory://world"

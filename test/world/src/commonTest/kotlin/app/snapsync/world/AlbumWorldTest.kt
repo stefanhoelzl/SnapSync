@@ -206,13 +206,13 @@ class AlbumWorldTest {
     @Test
     fun a_grant_while_running_ensures_the_album_and_gathers() = worldTest {
         val w = World(this)
-        w.permission.set(GalleryAccess.NOT_DETERMINED)
+        w.gallery.access = GalleryAccess.NOT_DETERMINED
         w.provision("E", saveToAlbum = true)
         w.seedCompletedOwnRow("A")
         w.core.installPermissionSubscriptions()
         yield() // the collector observes NOT_DETERMINED first
 
-        w.permission.set(GalleryAccess.GRANTED)
+        w.gallery.access = GalleryAccess.GRANTED
         w.settleGrant()
 
         assertEquals(listOf(AssetId("A")), w.gallery.assetsIn(w.gallery.created.single().first))

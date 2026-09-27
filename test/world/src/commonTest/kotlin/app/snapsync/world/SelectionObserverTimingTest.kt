@@ -21,7 +21,7 @@ class SelectionObserverTimingTest {
     @Test
     fun background_transfer_and_push_wakes_open_no_observer_and_host_assembly_does() = worldTest {
         val w = World(this)
-        w.permission.set(GalleryAccess.LIMITED)
+        w.gallery.access = GalleryAccess.LIMITED
         suspend fun wake(start: (() -> Unit) -> Unit) {
             val released = CompletableDeferred<Unit>()
             start { released.complete(Unit) }

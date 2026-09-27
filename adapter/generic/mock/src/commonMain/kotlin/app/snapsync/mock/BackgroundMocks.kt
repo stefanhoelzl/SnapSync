@@ -9,6 +9,8 @@ import app.snapsync.ports.ExtensionRegistry
 import app.snapsync.ports.Wake
 import app.snapsync.ports.WakeHandlers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 // The mocks of the operating system's background execution (`docs/testing.md`, "Mocks"): when it wakes the app, how
 // long it keeps it awake, and whether it runs the upload extension. Nothing here fires on its own — the operator plays
@@ -76,8 +78,8 @@ class BackgroundTimeMock {
 }
 
 class BackgroundTimeOperator internal constructor(private val mock: BackgroundTimeMock) {
-    /** The holds outstanding right now. */
-    val outstanding: List<HeldBackgroundTime> get() = mock.held.value
+    /** The holds outstanding, as a cell. */
+    val holds: StateFlow<List<HeldBackgroundTime>> = mock.held.asStateFlow()
 
     /** The operating system says every outstanding hold's time is up. */
     fun expireAll() {
