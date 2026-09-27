@@ -30,15 +30,15 @@ import kotlinx.coroutines.newSingleThreadContext
 
 /**
  * The **full-stack world harness** (`:app:desktop:run`, `docs/testing.md`): the real
- * `StatusScreen` in a phone frame on the left — its counts **emerge** from the world's real
- * `LedgerBackedSyncStatusSource`, never forged — and a **world inspector** on the right that drives
- * `:test:world`'s control surface through a single [WorldInspectorController]. The operator plays the
- * OS: nothing auto-runs; **Invoke extension** runs one `process()`-shaped cycle by hand.
+ * `StatusScreen` in a phone frame on the left — rendering exactly what the app the JVM root composed showed on its
+ * screen, never forged — and a **world inspector** on the right that plays the device's mocks through a single
+ * [WorldInspectorController]. The operator plays the OS: nothing auto-runs; **Invoke extension** runs one
+ * `process()`-shaped cycle by hand.
  *
  * This file compiles to `app.snapsync.desktop.FullStackHarnessKt` — deliberately distinct from the
  * forge harness's `app.snapsync.desktop.MainKt`, which shares this module since the migration
  * step-10 fold (`:app:desktop:run` = world, `:app:desktop:runForge` = forge). Thin wiring + Compose
- * only; all testable logic lives in `:test:world` and the presentation/status modules.
+ * only; the app is `:app:jvm`'s, the levers are the mocks' operator faces.
  */
 fun main() = application {
     // `-Psnapsync.attach=<url>` mirrors a remote control-channel host instead of composing a world (see
@@ -60,7 +60,7 @@ const val WORLD_HEIGHT: Int = 950
 /**
  * The harness's whole content, lifted out of the `Window` lambda so it can also be composed **without**
  * a window — `:test:harness-driver` renders exactly this into an offscreen scene, where the real stack
- * turns identically: the world's `scope.launch` work runs, and **Invoke extension** completes a real
+ * turns identically: the app's `scope.launch` work runs, and **Invoke extension** completes a real
  * upload cycle. Keeping it one composable is what makes the driver drive the *shipped* harness rather
  * than a copy of it.
  */
@@ -78,33 +78,23 @@ fun WorldHarnessRoot() {
     }
     val controller = remember { WorldInspectorController(scope) }
     // Phone-pane theme override (test equipment): default Light, and held OUTSIDE the
-    // `key(generation)` block below so a preset (fresh world) does not reset it.
+    // `key(generation)` block below so a preset (fresh app) does not reset it.
     var dark by remember { mutableStateOf(false) }
 
     // Engine console tap: funnel the real stack's Kermit output into the inspector footer. Installed
-    // once; a pure read of existing log output (no change to :test:world / production).
+    // once; a pure read of existing log output (no change to the app).
     remember { Logger.setLogWriters(ConsoleLogWriter(controller::appendConsole)); Unit }
 
     MaterialTheme {
         Surface {
             Row(modifier = Modifier.padding(16.dp)) {
-                // The shared left pane (in :app:desktop): the real StatusScreen in a phone frame,
-                // driven by the world's REAL sources. Keyed on the world generation so a preset
-                // (fresh world) re-binds the StatusContainerHost to the new sources.
+                // The phone: what the app showed on its screen, and the taps it gets back. Keyed on the
+                // generation so a preset (fresh app) re-binds the pane to the new app's screen.
                 key(controller.generation) {
-                    StatusPane(
-                        // Exactly the read-models the phone's host observes, from the world's composition —
-                        // this pane builds its own host only because it decorates the commands below and
-                        // installs no subscription (the operator plays the OS).
-                        sources = controller.world.composed.statusSources(),
-                        // The world's REAL command and query bundles (join gate, leave, reconfigure,
-                        // rename, bug report, shareable count), decorated for the inspector.
-                        commands = controller.commands,
-                        queries = controller.queries,
-                        // Capture the constructed host so a minted event routes into ITS pending-join
-                        // gate (onEventCreated); re-fires on each preset rebind (keyed on generation).
-                        onHostReady = { controller.host = it },
-                        scope = scope,
+                    ScreenPane(
+                        shown = controller.shown,
+                        cutoffFormatter = controller.app.composed.cutoffFormatter,
+                        onIntent = controller::tap,
                         darkThemeOverride = dark,
                     )
                 }
