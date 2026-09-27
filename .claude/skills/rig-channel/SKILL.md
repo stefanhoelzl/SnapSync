@@ -459,14 +459,27 @@ curl -s localhost:<port>/device            # honoured + refused (reasons) for TH
 - Same `/os`, `/user`, `/device/state` shapes as the app. `/os` drives the mocks' operator faces (the OS played);
   `os/app/onSceneContinueActivity?arg=<link>` reaches the `Links` port's handler, `os/photokit-ext/processRawValue`
   invokes the extension's entry port, whose cycle creates jobs on the upload-queue mock.
-- Every lever and read below is a mock's operator face, **except four that still reach the composed core** until
-  11g2b: `downloads/stage`'s await, `downloads/reconcile`, `status/refresh` and `/device/gallery`.
+- Every lever and read below is a mock's operator face — what the OS, the photo library or the backend does or
+  recorded, never the composed app. A lever answers at once; what the app makes of it is **observed, not awaited**
+  (poll `/device/state`, the backend, the library, `device/os-record`). The download reconcile and the status read are
+  the foreground's: `os/app/onForeground`. `/device/gallery` is the library's answer under the person's grant.
+- **The OS is played, its expiry and its record included** (the app refuses both):
+  - `os/app/onExpiry` — time is up for every held completion handler and background-time hold; `?arg=next` hands the
+    next handler over already expired. Hold a receipted entry open (a second request) and expire it.
+  - `device/os-record` — handlers handed/released/`releasedAgain`/held, `screenShown`, `selectionObserved`,
+    `heartbeatsScheduled`, `backgroundTimeHolds` (by name: `onForeground`, `onSilentPush`, `tail(…)`, …),
+    `pushRegistrations`, the download session (`up`, `started`, `inFlight`), `uploadSessionHandbacks`,
+    `databasesOpened`, `stagedFiles`. A receipted `/os` answer carries it as read at the release (`osAtRelease`).
+  - `device/relaunch?scene=false` — a cold background launch: no screen is built. Read only `device/os-record`
+    until an `os/app/onForeground`: `/device/state` and `/user` read the screen and would assemble it.
 - The **JVM host's levers** the app refuses: `device/jobs` (live keys), `device/jobs/complete[?key=]` (the "OS"
   finishes a transfer — its bytes cross to the backend's byte route), `device/jobs/fail?key=&error=`, `device/jobs/limit?n=`,
   `device/backend/objects[?device=]`, `device/backend/offline?on=`, `device/permission?status=`,
-  `device/import/fail-next`, `device/membership/unreadable?on=`, `device/downloads/stage|reconcile`,
-  `device/album/place?album=&asset=`, `device/foreign-device?device=&assets=a,b[&event=][&filename=]`,
-  `device/status/refresh`, `device/downloads/stage?wait=false` (returns while an import is parked).
+  `device/import/fail-next`, `device/membership/unreadable?on=`,
+  `device/downloads/stage[?status=502][&drained=true]` (the OS finishes every in-flight download, then optionally
+  reports the session's events drained), `device/album/place?album=&asset=`, `device/album/hold-adds?on=`,
+  `device/foreign-device?device=&assets=a,b[&event=][&filename=]`,
+  `device/invite-link-hints?honoured=false` (play a shipped build; relaunch to be sure the new answer is read).
 - The **integration surface's** levers and reads (also refused by the app):
   - backend reads (`[event=]` defaults to the joined one, `[device=]` to this one): `backend/union`, `backend/manifest`,
     `backend/device-config` (`token`, `env`, `writes`), `backend/event`, `backend/departed`, `backend/publishes`,
@@ -474,10 +487,10 @@ curl -s localhost:<port>/device            # honoured + refused (reasons) for TH
     `diagnostics/sent` (the dumps the reporter received);
   - backend levers: `backend/min-app-version[?minimum=]`, `backend/sweep`, `backend/hold-leave`,
     `backend/release-leave`, `backend/fail-listing?on=`, `backend/deposit?asset=`, `backend/legacy-event?name=`,
-    `backend/refuse-credential`;
-  - OS and library: `clock/advance?to=<instant>`, `app-version?version=`, `relaunch`, `selection/change?assets=a,b`,
+    `backend/refuse-credential`, `backend/wipe-bytes[?device=]`;
+  - OS and library: `clock/advance?to=<instant>`, `app-version?version=`, `relaunch[?scene=false]`, `selection/change?assets=a,b`,
     `gallery/add?id=&date=&kind=photo|low-res|screenshot|screen-recording|hd-video|live-photo|gif`,
-    `gallery/fail-next-enumeration`, `import/suspend-next[?afterCommit=true]`, `import/await-parked`,
+    `gallery/remove?id=`, `gallery/fail-next-enumeration`, `import/suspend-next[?afterCommit=true]`, `import/await-parked`,
     `import/resume?succeeded=`, `logs/append?process=app|extension` (body = text),
     `staging/seed-legacy-backlog` (the one lever that writes app-private state: an upgraded install's leftovers).
 - Device facts the JVM host reads and the app host does not wire yet: `device/staging`, `device/album/contents`.

@@ -124,7 +124,9 @@ The reasons differ, so keep them separate:
 Most of this risk has been removed by moving code:
 - OS callbacks arrive through entry ports (`Lifecycle`, `Links`, `PushNotifications`, `Ui`, `DevControls`,
   `ExtensionHost`). The shell forwards each Swift callback to its adapter in one line; what a delivery runs is the
-  composition's handler, and `EntryWorldTest` / `ExtensionEntryWorldTest` cover those on JVM and the simulator.
+  composition's handler. The rig's entry tests (`EntryIntegrationTest`, `OsCompletionIntegrationTest`) deliver each
+  entry to the JVM root and read what it did; `ExtensionEntryTest`, beside the mocks, pins the extension's re-read on
+  JVM and the simulator.
 - The tap → `UiIntent` table is one factory in `:ui:screens`, and it is click-tested there.
 
 What is still uncovered:
@@ -147,12 +149,11 @@ module.** The one exception is a source set that a build script adds only under 
 
 | module | what it provides |
 |---|---|
-| `:test:world` | the controllable in-memory world that runs the real core (section 5), over the mocks. Its own tests are its only consumer now; 11g2b rewrites them as rig tests and deletes it. |
 | `:test:contracts` | the contract mechanism and every port contract (section 4). The only module whose **main** code depends on `kotlin-test`. Links into the app only under the rig property. |
 | `:test:rig` | the control channel: one HTTP protocol served by an iOS app host and a JVM host (section 6). The only module allowed `ktor-server-*`. |
 | `:test:control` | the typed JVM client of that protocol (`RigClient`), plus the JVM host's own tests. |
 | `:test:integration` | the seam → UI-state integration suite, driven only over the protocol (section 7). Also the `journeys` source set. |
-| `:test:edge` | `LiveEdge`: the real `api/` as a local Deno process, one per test JVM. Used by the backend contracts' Live bindings, the rig's JVM host's second backend and the world's real-backend option. |
+| `:test:edge` | `LiveEdge`: the real `api/` as a local Deno process, one per test JVM. Used by the backend contracts' Live bindings and the rig's JVM host's second backend. |
 | `:test:architecture` | JVM guards over the repository's text. What each guard checks: `docs/architecture.md`. |
 | `:test:harness-driver` | serves either desktop harness headlessly over HTTP. Dev infra, not a gate (section 8). |
 
@@ -197,8 +198,7 @@ Where bindings live: beside their implementations.
   in-memory `DeviceIntegrity`, and the upload-job queue and download session mocks (`TransferContractBindingsTest`)
   among them.
 - The `Backend` port is ONE contract (`BackendContract`, split into part files by route area for size), held by
-  three bindings: `HttpBackend` against the real `api/` (`Live`, the coverage), `HttpBackend` against the mini-edge
-  and the in-memory mock (both `Fake`). Its clauses state each route's answers in the backend's own vocabulary —
+  two bindings: `HttpBackend` against the real `api/` (`Live`, the coverage) and the in-memory mock (`Fake`). Its clauses state each route's answers in the backend's own vocabulary —
   statuses and bodies — because what they MEAN is the services' decision above the port, tested beside those
   services (`CredentialedBackendTest`, `BackendServicesTest`). A binding enters states through the backend's public
   surface: `EdgeSetup` over HTTP, `PortSetup` through the port itself for a backend with no HTTP surface.
@@ -217,7 +217,6 @@ Where bindings live: beside their implementations.
   `commonTest`, over the storage mocks — where the services' contracts are bound over the mocks too
   (`StoreContractBindingsTest`, `AppGroupStoreContractBindingsTest`, `ConfigStoreContractBindingTest`), so the mocks
   every feature test stands on are held to the platform adapters' clauses.
-- The mini-edge: `:test:world` `commonTest` (until 11g2b deletes it).
 - Keychain and App-Group stores: `:adapter:ios:ext-safe` tests.
 - Simulator-app PhotoKit and URLSession: `:adapter:ios:app-only` `src/rig`.
 
@@ -277,7 +276,7 @@ holding a different one.
 | `IOS_DEVICE_PHOTOKIT_EXT` | the upload extension on a device, launched by the OS | about 60 s per `process()` call, then killed; 6–11 min back-off after a kill |
 
 A backend a binding launches is **not a host**. It is part of the implementation. The real `api/` makes a
-binding `Live`, and the mini-edge makes it `Fake`, even though the client code is the same. An endpoint
+binding `Live`, and the in-memory mock makes it `Fake`. An endpoint
 the binding stands up only to *receive* (the Sentry ingest), or to *answer with a status the clause chose*
 (the transfer fixture `scripts/transfer-fixture.py`, an upload receiver answering 200/403/500), is a clause
 input or observer. It does not change the binding's kind. A receiving endpoint must not be more lenient
@@ -351,7 +350,7 @@ are under `openspec/changes/archive/`.
 
 ---
 
-## 5. Mocks, the JVM root and the world
+## 5. Mocks and the JVM root
 
 ### Mocks
 
@@ -365,8 +364,8 @@ are under `openspec/changes/archive/`.
   background time, take the backend offline, play another member) and the reads (the library, the jobs, the objects
   and the pushes the backend would send).
 
-A mock with nothing to pull (`DatabasesMock`, `PreferencesMock`, `SecureStoreMock`, `DeviceIntegrityMock`) has no
-operator face. The port-typed factories the contract bindings use (`inMemoryBackend()`, `inMemoryGallery()`, ...)
+A mock with nothing to pull (`PreferencesMock`, `SecureStoreMock`, `DeviceIntegrityMock`) has no operator face;
+`DatabasesMock`'s answers only which databases the device saw opened. The port-typed factories the contract bindings use (`inMemoryBackend()`, `inMemoryGallery()`, ...)
 build the same classes over caller-held cells.
 
 - **The backend mock** (`BackendMock`) is the JVM default backend. Its port face answers in the backend's own
@@ -393,161 +392,26 @@ port instead (`VersionedHttpBackend`). **`relaunch()` is process death**: the ru
 end, and a new app is composed over a fresh set of port faces over the same durable state. It is wiring only — no
 lever, no test DSL — and gated as a shell.
 
-Its stated deviations from the phone, carried over from the world it replaces:
+Its stated deviations from the phone:
 - the upload extension's cycle is composed beside the app, over the app's admission, and invoked through the
-  extension's entry port (`ExtensionHost`); the app-driven uploader is inert (`OperatorDrivenUploads`) — the operator
-  is the engine;
+  extension's entry port (`ExtensionHost`); it is unauthenticated, so it re-reads no credential; the app-driven
+  uploader is inert (`OperatorDrivenUploads`) — the operator is the engine, and the tail's top-up and walk move
+  nothing a protocol could read (which unit ran is `TailRunnerTest`'s);
 - the push token survives a relaunch, as the OS re-delivers it to every launch;
 - the screen's "now" is the wall clock, while the core reads the launch's `Clock`.
 
 Its callers are the rig's JVM host (section 6) and the desktop world harness (section 8).
 
-### The world (`:test:world`, until 11g2b)
+### The JVM root boots cold
 
-The world runs the **real** platform-agnostic stack (upload cycle, sync engine, join-time share-set load,
-manifest producer, download orchestration, status sources, creation) against controllable in-memory
-infrastructure. The whole system, upload *and* download, can then be observed on JVM and
-`iosSimulatorArm64` with no device. The code that most needs coverage used to run only inside an iOS
-extension. The world fakes the *execution edge* instead of the logic, so that code runs anywhere
-(`changes/archive/2026-07-03-add-harness-world-model`).
+Constructing a launch of the JVM root forces nothing the iOS root does not force at process start, so a path that
+works only because something else was built first fails over the JVM root as it would on a device — and every rig
+test on the JVM host runs over it. A gate (`JvmRootBootsColdTest` in `:test:architecture`) fails if `JvmApp.kt` — its
+own members or its launch's — reads a member of the composed core eagerly (in `init` or an eager property). Defer it
+with `by lazy`, `get()`, or the function that needs it. Decision record: `changes/archive/2026-09-23-harden-seam-bug-classes`.
 
-Targets are `jvm()` and `iosSimulatorArm64` only. It never links into a shipped framework.
-
-**It is on its way out.** Since 11g2a its only consumer is its own test suite, which keeps running here so no test
-goes dark; 11g2b rewrites those tests as rig tests (or, where the rig cannot observe the assertion, as service and
-feature tests) and deletes the world and the mini-edge. **Nothing new may depend on either**: new test equipment
-composes through the JVM root, over the mocks.
-
-#### What is real and what is doubled
-
-- **The composition is production's.** `World.core` and `World.statusHost` come from the same
-  `snapSyncHost(scope, AppPorts)` the iOS shell calls. The upload cycle comes from the same `uploadCore`
-  the device tiers call. The world wires no status host, subscription, HTTP callback or feature of its
-  own. It binds **no port to a body that stands in for core machinery**: the provision, the attestation
-  refresh and push registration all run for real. A mirror of a composition root drifts silently, and a
-  mirror that is *more* correct than production stays green while the defect ships.
-- **Only the edges are doubles:** the transfer ports (`Upload`, `Download`), the `Gallery`, the storage ports
-  (`Databases` as real in-memory SQLite, `Files`, `Preferences`, `SecureStore`) and the HTTP client. Every service
-  over them — the ledger, the download store, the membership, staging, the manifest and push records, the album map,
-  the device identity, the gallery's discovery, presence and albums — is the real one.
-- **Relaunch keeps exactly the durable state:** the in-memory databases, the shared and private file areas, the user
-  defaults and the Keychain items are world-held cells; a relaunch builds new service instances over them, as a new
-  process does.
-- **The doubles are the mocks, and so are the levers.** The world composes over the mocks' per-launch port faces
-  (above) and hands a test their operator faces under the names its tests always used — `gallery`,
-  `platform`, `download`, `appUpload`, `wake`, `lifecycle`, `links`, `pushNotifications`, `ui`, `devControls`. Its own
-  wrappers are gone. What is not a port stays the world's: the inert `OperatorUploadEngine`, `FakeUploadDiscovery`'s
-  inspection, and the mini-edge. An inspector read of the device's files (`downloadsInFlight`, reading the download
-  database) is still the world's own.
-- **Attestation is inert by default** (`isSupported()` false, as on a simulator and in the extension). An
-  opt-in lever turns it on. The world does not model the token gate or the `401` for an unattested
-  device-scoped write.
-
-#### The backend: one seam, two implementations
-
-- **Mini-edge (default, every target):** an in-memory backend store served through a Ktor `MockEngine`.
-  The production `HttpBackend` runs unmodified against it. It serves both API versions (`/api/v1`, `/api/v2`,
-  and no prefix means v1), because the backend does. Unmatched routes answer `404`.
-- **Real backend (JVM only):** `api/` via `:test:edge`, reached through its **public HTTP surface only**.
-  The world never reads the process's storage directory.
-
-The mini-edge is the `Backend` contract's `Fake` binding (`MiniEdgeContractsTest`), reached through the production
-`HttpBackend`, and serves the three `/attest/…` routes so an attesting world obtains a token over the port like a
-device does. On any **contracted**
-route, drift from the real edge is a red build, and the fix goes in the mini-edge. It must not be fixed by
-declaring the clause's state unreachable. Drift on routes and fields no contract covers is accepted, with
-no golden fixture.
-
-Everything the world does to its backend goes through the seam: the shared client, the upload double's
-byte `PUT`, operator seeding, and inspection. **`World.neutral`** holds the backend-neutral reads and
-levers. Each answers a value or `Answer.Unavailable(reason)`, never an empty value or a silent no-op. On
-the real backend these are unavailable: the manifest read, publish counters and the stored manifest
-version, backend-offline, the minimum-version lever, the sweep, and the byte wipe/collect.
-`provisionMinted` / `addForeignDeviceMinted` return backend-minted ids. `World.store` and the helpers
-that take a caller-chosen id are **mini-edge-only**, and on the real backend they fail with a stated error
-(`changes/archive/2026-09-23-add-rig-jvm-host`).
-
-Mini-edge fidelity rules that are easy to break:
-- Membership is **one record with an active/departed state**. A leave sets `departed`, keeps the assets in
-  the union, drops the member from push fan-out, and deletes nothing. Reclamation belongs to the nightly
-  sweep alone. Do not model leave-time GC.
-- The union includes an asset only when **every** resource it names is uploaded. It spans departed
-  members, and an unknown event is *absent*, not empty.
-- v2 separates joining (bodyless `PUT …/devices/<id>`, the only route that refuses at capacity) from
-  contributing (`PUT …/manifest`, which is refused for a non-member and never enrols). The v2 manifest is
-  **ordered by version**: an older version is a no-op that still answers success, and the world counts
-  applied and refused publishes separately.
-- The v2 per-device listing answers in identity terms and mints no URL.
-- Validation mirrors the real routes, including the order of checks (a bad name for a missing event is
-  `400` in both). `startsAt` must be canonical. The canned `createdAt` deliberately carries milliseconds,
-  so the world is not "cleaner than production".
-- The version gate (`426`) is **off until armed**.
-- The mini-edge **records the pushes it would send**. It delivers none: the operator fires the
-  silent-push entry.
-
-#### Operator levers
-
-Nothing auto-runs. **The operator plays the OS.**
-- **The tail is real.** The app uploader's units are inert, but every OS entry the world delivers drives them
-  through the **real** composed tail runner, and they count what the runner asked (top-ups, walks, transfer
-  handbacks), so a test reads which units a wake reached and in what order. A lever parks the next unit, so a
-  test can hold a tail in flight and deliver an expiry or a join meanwhile. The tail's import unit is the real
-  download drain. The heartbeat the runner re-arms is counted, never run.
-- **Background time** is an operator-expirable table of outstanding holds over the honest in-memory
-  `BackgroundTime` double: a wake's hold is visible until it ends, and the operator fires "time is up" on every
-  outstanding hold (`changes/archive/2026-09-25-own-work-per-wake`).
-- **Upload jobs:** create, **complete** (a real `PUT` to the backend's upload route; it suspends until the
-  backend answers, and it never deposits store-direct), **fail** with a chosen `UploadError` (drives the
-  real retry chain), a settable job-limit (`LIMIT_EXCEEDED`), and inspectable pending/retry/ack buckets
-  with per-key creation counts.
-- **Downloads:** the real `DownloadJobs` over the world's `Download` double, which leaves each finished transfer's
-  temporary file in the private area for the real staging service to adopt. **Stage** delivers a
-  chosen `TransferOutcome`. An unstaged or rejected transfer just stays pending, because there is no
-  terminal download error. A stage action is complete when it returns: it awaits the feature's own tracked
-  stagings (`awaitOutstandingStagings`), then requests the import of the **composed** tail runner the way a
-  staged download does, and awaits it. The fake importer names files through the same shared rule the iOS importer uses, and mints a
-  new id per import, so a duplicate is visible.
-- **Failure levers:** backend-offline (`502` on listings, union and rename), import failure, one-shot
-  gallery-enumeration failure (the total stays *not counted*, never `0`), unreadable walk (no candidates,
-  not a full enumeration, so nothing is deleted), unreadable membership (distinct from absent), an import
-  that **suspends before or after its commit** and resumes with a chosen outcome, and an **attempt cap**
-  that turns a live-lock into a failing assertion instead of a hang.
-- **Discovery** is a full enumeration of the in-memory gallery, narrowed only as far as a device's fetch
-  predicate can narrow it. It is not narrowed by the full admission. Otherwise an excluded but present
-  asset would look absent and have its rows deleted, which is a false deletion that happens only in the
-  harness.
-- **Devices:** exactly one own device, plus any number of injected foreign devices.
-- **Operator `provision()`** performs the join-time ledger load through the same composed share-set load a
-  real join runs, **before** setting config. Operator `leave()` runs the real leave edge. It is the one
-  permitted synchronous deviation beside the bundle's fire-and-forget leave.
-- **`relaunch()`** models process death. The durable state survives: ledger, download store, config,
-  secure store, the last-registered push record, staged files, gallery, album map, backend, and both transfer
-  doubles' OS-held sessions. Every other cell starts fresh. The relaunched app installs nothing but its push
-  registration until its host is touched (as a background relaunch on a device), and that registration
-  publishes only a token that differs from the last one the backend accepted. The durable/memory classification sits in **one place** and a world test
-  pins it.
-
-#### The world boots cold
-
-Constructing the world forces nothing the iOS root does not force at process start. A path that works only
-because something else was built first fails in the world as it would on a device. A gate (`WorldBootsColdTest` in `:test:architecture`) fails if
-`World.kt` reads a member of the composed core eagerly (in `init` or an eager property). Defer it with
-`by lazy`, `get()`, or the function that needs it.
-
-#### Tests over the world
-
-`:test:world`'s own `commonTest` is a test tier of its own. It is easy to miss, so a feature can look
-untested when it is not. It holds:
-- feature tests over the composed world that involve no UI state (upload cycle, sync engine, leave
-  cascade, manifest),
-- the mini-edge's fidelity tests,
-- the entry ports' handler tests (`EntryWorldTest`, `ExtensionEntryWorldTest`, and the wake and tail tests beside
-  them): each delivers through the world's double of the platform and asserts what happened in the app behind it —
-  which work ran, when a completion was released, whether the host was assembled. They run on `JVM` and in the
-  simulator's test executable.
-
-Decision record for its seam, failure, state and concurrency rules:
-`changes/archive/2026-09-23-harden-seam-bug-classes`.
+The world (`:test:world`) and its mini-edge, which the JVM root and the mocks replaced, were deleted in 11g2b; their
+tests are rig tests now (section 7). `DeletionLedgerTest` keeps them deleted.
 
 ---
 
@@ -586,11 +450,26 @@ app's own bookkeeping, and bytes that landed are read from the backend. 11g2 dro
 `inviteUrl`, `eventName` and `transientError` (the last four are inside `ui`); `/device/reset` answers `{"reset":true}`.
 
 **On the JVM host every lever and read is a mock's operator face** — the backend's, the photo library's, the upload
-queue's, the download session's, the disk's, the clock's, the reporter's — **except four, which still reach the
-composed core** and are rewritten with the tests that use them in 11g2b: `downloads/stage` (it awaits the stagings and
-the import it causes), `downloads/reconcile`, `status/refresh`, and the gallery read (`/device/gallery`, the app's own
-candidate seam, as on the app host). Over the real backend, a lever or read only the backend mock's operator has
-answers `409` with the reason.
+queue's, the download session's, the disk's, the clock's, the reporter's, the screen's — never the composed core
+(11g2b). What the app makes of a lever is observed, not awaited: `downloads/stage` finishes the OS's transfers and
+answers; the staging and the import its tail runs are read off the staging directory and the library. The reconcile
+and the status read are the foreground entry's (`/os/app/onForeground`), so the protocol has no verb for either. The
+gallery read is the library's own answer under the person's grant, through the selection policy — the whole library
+under a full grant, the person's selection under a partial one. Over the real backend, a lever or read only the
+backend mock's operator has answers `409` with the reason.
+
+**The JVM host plays the operating system, its expiry and its record included:**
+- `os/app/onExpiry` is the OS saying time is up: every completion handler it holds and every background-time hold is
+  told so; `?arg=next` hands the next handler over already expired. The app host refuses it — a real OS's expiry is
+  its own.
+- `device/os-record` is what the OS recorded of the app: the completion handlers handed over, released and released
+  a second time; whether a screen was shown; whether the selection observer is open; the heartbeat requests; the
+  background-time holds, by the name each was begun under; the push registrations; the transfer sessions; the
+  databases opened and the files staged. A receipted entry's answer carries it **as read at the release**
+  (`osAtRelease`), because "released after the wake's own work" is a statement about that instant.
+- `device/relaunch?scene=false` is a cold **background** launch: the process starts with no scene, so nothing builds
+  a screen. A test about what a wake must not build starts there and reads only the OS record — `/device/state` and
+  `/user` read the screen, and asking would assemble it.
 
 There are **no click, semantics or pixel verbs**. Taps and pixels belong to the UI tier (section 8).
 
@@ -640,6 +519,9 @@ mocks, and the journeys exercise the real systems.
     departed members, publish counts,
   - the photo library (census, albums, original filenames),
   - OS upload jobs,
+  - the operating system's record of the app (`device/os-record`): completion handlers released, heartbeat requests,
+    background-time holds, the screen, the selection observer, push registrations, the transfer sessions, the
+    databases opened,
   - the download staging directory,
   - reporter dumps,
   - pushes sent,
@@ -648,7 +530,9 @@ mocks, and the journeys exercise the real systems.
 **Never assert** ledger or download-store content (the protocol no longer carries the ledger), in-memory feature
 state, or call counts on a mock whose real system records nothing
 a person could read. If the only possible assertion is internal, the test belongs elsewhere, as a unit test
-or a contract clause. A seam with no presentation effect is fully covered by its outside outcomes: a
+in its zone or a contract clause — which tail unit ran is `TailRunnerTest`'s, what a ledger row holds is
+`UploadCycleTest`'s, the extension's per-invocation credential re-read is `ExtensionEntryTest`'s (`:adapter:generic:mock`,
+over the composition). A seam with no presentation effect is fully covered by its outside outcomes: a
 selection-policy exclusion is proved by missing bytes and a missing manifest entry.
 
 A test that needs a missing lever or read adds it **to the vocabulary, classified on both hosts**. It
@@ -660,7 +544,7 @@ A few end-to-end runs with **everything real**: the rig build on **one** simulat
 and the real photo library. They cover creating and joining an event, the app's own photos reaching the
 backend and the union, and the app receiving another member's photos into its library. That other member is
 played by the journey itself (`Member`), over the backend's **public HTTP surface only**, with real JPEG bytes,
-so the app's download ends in a real photo-library import. It is never a world lever or a private route,
+so the app's download ends in a real photo-library import. It is never a JVM-host lever or a private route,
 because a member the backend could tell apart from a device is not a member. One simulator, because a second
 fresh simulator's first-boot work swamped the hosted runner (it tripled the job and made the journeys flaky).
 
@@ -844,7 +728,7 @@ not describe what runs today. Each phase moves its part into the sections above.
   - Every measurement becomes a clause with a host and a committed recording. External OS stimuli are allowed
     (`simctl openurl/push/launch/terminate`, a BGTask simulation triggered by the rig, an XCUITest host).
   - Each port has a clause → host table. Anything unproven gets a probe first.
-  - The entry ports' handlers are pinned by tests over the composition, not by contracts (since 11g1, section 5).
+  - The entry ports' handlers are pinned by rig tests over the JVM root, not by contracts (since 11g1; section 7).
 - **Fewer, thinner contracts.** The ten backend contracts became one `Backend` contract in 11c (section 4).
 - **Recordings.** When a phase converts a port whose device results are recorded, it keeps the adapter's OS call
   sequence identical and replays first; it re-records in a device session only if a replay diverges. 11b
@@ -853,13 +737,12 @@ not describe what runs today. Each phase moves its part into the sections above.
   BackgroundTransfer on the extension, and UploadExtensionRegistry GRANTED + LIMITED, where an operator toggles the
   grant).
 - **PlatformDeviceId has no contract until an Android host exists.** Its only implementation is a constant null.
-- **`:test:world` and the mini-edge go away** (11g2b). The mocks and the JVM root that replace them shipped in 11g2a
-  (section 5); what remains is rewriting the world's own tests as rig tests — or, where the rig cannot observe an
-  assertion, as service and feature tests — and deleting the world.
-- **The rig reaches the app only through ports.** On the JVM host every `/device` verb but four is a mock's operator
-  face (section 6); those four — `downloads/stage`'s await, `downloads/reconcile`, `status/refresh` and the gallery
-  read — go with the tests that use them in 11g2b. The app host's `/device` reads and levers still read the composed
-  core until the launch-time mock mix (11h) gives it the same operator faces.
+- **`:test:world` and the mini-edge are gone** (11g2b). The mocks and the JVM root replaced them in 11g2a (section 5);
+  their tests are rig tests (section 7), and the few assertions no process outside the app can see live in their
+  zone.
+- **The rig reaches the app only through ports.** On the JVM host every `/device` verb is a mock's operator face
+  (section 6). The app host's `/device` reads and levers still read the composed core until the launch-time mock mix
+  (11h) gives it the same operator faces.
 - **A launch-time mock mix** (11h) will let a simulator or device run with some systems mocked and others
   real, for interactive investigation.
 - **The forge and its marketing screenshots** are replaced by screenshots of the rig running on a simulator (12).
