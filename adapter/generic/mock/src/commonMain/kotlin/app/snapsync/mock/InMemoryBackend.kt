@@ -21,8 +21,9 @@ import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
 /**
- * The honest in-memory [Backend] — the backend's routes answered off in-memory state, the mock the `Backend` port
- * contract holds to the real `api/` (`BackendContract`).
+ * The honest in-memory [Backend] — the backend's routes answered off a [BackendState], the mock the `Backend` port
+ * contract holds to the real `api/` (`BackendContract`). One instance is one process's face of the backend: [appVersion]
+ * is the version that process's build declares on every call, as the HTTP adapter declares it on the wire.
  *
  * It answers in the backend's own vocabulary — statuses and bodies — and decides nothing on the app's behalf: a
  * rejected credential is a `401`, a full event a `409`, a gone event a `404`, a refused build a `426` naming the
@@ -31,48 +32,35 @@ import kotlin.uuid.Uuid
  *
  * - **Events** get UUID ids it mints, as the real backend does, with its window rules: a blank name is refused, an
  *   end before the start or more than 30 days after it is refused, an absent end is `start + 30 days`, and an event
- *   lives 30 days from `max(createdAt, startsAt)`.
- * - **Credentials:** a call carrying no token is served — the local rig's enrolment fallback, the only way a host
- *   without App Attest is ever served — as is one carrying a token this backend minted; any other token is `401`.
+ *   lives 30 days from `max(createdAt, startsAt)`. A legacy event — registered before start dates existed — has its
+ *   start synthesized from its creation time on read, as the real backend does.
+ * - **Membership** is one record per device with an active/departed state. A join creates or reactivates it and
+ *   clears its stored manifest version; capacity counts every device ever enrolled, active or departed — leaving
+ *   frees no slot. A leave marks the record departed and nothing else: the member's photos stay in the union.
+ * - **The manifest** replaces the member's asset set, active or departed, and reactivates nobody; a strictly older
+ *   version is answered as a success and changes nothing.
+ * - **Credentials:** a call carrying no token is served — the local rig's enrolment fallback — as is one carrying a
+ *   token this backend minted; any other token is `401`.
  * - **Attestation** mints only for a proof the in-memory integrity produced (`attestation:<keyId>:<challenge>`),
- *   over a challenge this backend issued, and never renews: it holds no enrolment, which is the faithful default
- *   (a restore, or a record the sweep collected) and sends a device down a full attestation.
- * - **Bytes** are not a backend route here — the OS's uploader writes them — so the store they land in is initial
- *   state: [storedFiles] is a cell the caller holds, as the gallery fakes take theirs, and a binding "uploads" by
- *   writing it. The per-device listing and the union read it.
- *
- * [createdAt] is the moment every event it mints is stamped with — initial state, not a clock: a port holding another
- * port would be one external system reaching through another (`docs/architecture.md`, "Ports never call ports").
- *
- * [minimumAppVersion] set is a backend that refuses THIS build: every route answers `426` naming it. The version a
- * build declares is the HTTP adapter's wire concern, so here the refusal is the backend's state, not a comparison.
+ *   over a challenge this backend issued, and never renews.
+ * - **Bytes** are not a backend-port route — the OS's uploader writes them ([BackendState.receive]).
+ * - **The version gate** is off until [BackendState.minAppVersion] is set; then a build declaring an older version,
+ *   or none, is answered `426` on every route.
  */
 @OptIn(ExperimentalUuidApi::class)
 internal class InMemoryBackend(
-    private val storedFiles: MutableMap<String, MutableSet<DeviceFile>>,
-    private val capacity: Int,
-    private val minimumAppVersion: String?,
-    private val createdAt: Instant,
+    private val state: BackendState,
+    private val appVersion: () -> String?,
 ) : Backend {
 
-    private class Event(var name: String, val createdAt: Instant, val startsAt: Instant, val endsAt: Instant)
-
-    private class Membership(var departed: Boolean = false, var manifest: DeviceManifest? = null)
-
-    private val events = mutableMapOf<String, Event>()
-    private val memberships = mutableMapOf<Pair<String, String>, Membership>()
-    private val deviceConfigs = mutableMapOf<String, ApnsPushToken>()
-    private val challenges = mutableSetOf<String>()
-    private val minted = mutableSetOf<String>()
-
     override suspend fun challenge(): Reply<String> = served {
-        Reply.Ok("in-memory-challenge-${challenges.size + 1}".also { challenges += it })
+        Reply.Ok(state.issueChallenge())
     }
 
     override suspend fun mintToken(req: MintRequest): Reply<String> = served {
-        val genuine = req.challenge in challenges &&
+        val genuine = req.challenge in state.challenges &&
             req.attestation.contentEquals("attestation:${req.keyId}:${req.challenge}".encodeToByteArray())
-        if (genuine) Reply.Ok(mint(req.deviceId, req.challenge)) else Reply.Refused(UNAUTHORIZED, "attestation rejected")
+        if (genuine) Reply.Ok(state.mint(req.deviceId, req.challenge)) else Reply.Refused(UNAUTHORIZED, "attestation rejected")
     }
 
     override suspend fun renewToken(req: RenewRequest): Reply<String> = served {
@@ -90,45 +78,43 @@ internal class InMemoryBackend(
                 Reply.Refused(BAD_REQUEST, "invalid endsAt")
             else -> {
                 val eventId = Uuid.random().toString()
-                events[eventId] = Event(name, createdAt, startsAt, endsAt)
+                state.events[eventId] = BackendState.Event(name, state.createdAt, startsAt, endsAt)
                 Reply.Ok(EventCreated(eventId, name))
             }
         }
     }
 
-    override suspend fun getEvent(eventId: String): Reply<EventMeta> = served {
-        val event = events[eventId] ?: return@served notFound()
+    override suspend fun getEvent(eventId: String): Reply<EventMeta> = online {
+        val event = state.events[eventId] ?: return@online notFound()
+        val startsAt = event.startsAt ?: event.createdAt
         Reply.Ok(
             EventMeta(
                 eventId = eventId,
                 name = event.name,
                 createdAt = event.createdAt.toString(),
-                startsAt = event.startsAt.toString(),
-                endsAt = event.endsAt.toString(),
-                deletesAt = (maxOf(event.createdAt, event.startsAt) + WINDOW_DAYS.days).toString(),
+                startsAt = startsAt.toString(),
+                endsAt = (event.endsAt ?: (startsAt + WINDOW_DAYS.days)).toString(),
+                deletesAt = (maxOf(event.createdAt, startsAt) + WINDOW_DAYS.days).toString(),
             ),
         )
     }
 
     override suspend fun renameEvent(token: String?, eventId: String, name: String): Reply<EventRenamed> = gated(token) {
-        val event = events[eventId] ?: return@gated notFound()
+        if (state.offline) return@gated offline()
         val trimmed = name.trim()
         if (trimmed.isEmpty()) return@gated Reply.Refused(BAD_REQUEST, "invalid name")
+        val event = state.events[eventId] ?: return@gated notFound()
         event.name = trimmed
         Reply.Ok(EventRenamed(trimmed))
     }
 
     override suspend fun joinEvent(token: String?, eventId: String, deviceId: String): Reply<Unit> = gated(token) {
-        if (eventId !in events) return@gated notFound()
-        val key = eventId to deviceId
-        val existing = memberships[key]
-        when {
-            existing != null -> existing.departed = false
-            memberships.count { it.key.first == eventId && !it.value.departed } >= capacity ->
-                return@gated Reply.Refused(CONFLICT, "event full")
-            else -> memberships[key] = Membership()
+        if (state.offline) return@gated offline()
+        when (state.join(eventId, deviceId)) {
+            BackendState.JoinOutcome.NO_SUCH_EVENT -> notFound()
+            BackendState.JoinOutcome.FULL -> Reply.Refused(CONFLICT, "event full")
+            BackendState.JoinOutcome.ENROLLED -> Reply.Ok(Unit)
         }
-        Reply.Ok(Unit)
     }
 
     override suspend fun publishManifest(
@@ -137,68 +123,68 @@ internal class InMemoryBackend(
         deviceId: String,
         manifest: DeviceManifest,
     ): Reply<Unit> = gated(token) {
-        if (eventId !in events) return@gated notFound()
-        val membership = memberships[eventId to deviceId]?.takeUnless { it.departed }
-            ?: return@gated Reply.Refused(CONFLICT, "not a member")
-        val held = membership.manifest?.version
-        val incoming = manifest.version
-        // An older snapshot landing last is answered, and changes nothing: one at least as new is already there.
-        if (held == null || incoming == null || incoming >= held) membership.manifest = manifest
-        Reply.Ok(Unit)
+        if (state.offline) return@gated offline()
+        when (state.publish(eventId, deviceId, manifest)) {
+            BackendState.PublishOutcome.NO_SUCH_EVENT -> notFound()
+            BackendState.PublishOutcome.NOT_A_MEMBER -> Reply.Refused(CONFLICT, "not a member")
+            BackendState.PublishOutcome.APPLIED, BackendState.PublishOutcome.OLDER -> Reply.Ok(Unit)
+        }
     }
 
     override suspend fun leaveEvent(token: String?, eventId: String, deviceId: String): Reply<Unit> = gated(token) {
-        if (eventId !in events) return@gated notFound()
-        memberships[eventId to deviceId]?.departed = true
+        state.leaveHold?.await()
+        if (eventId !in state.events) return@gated notFound()
+        state.memberships[eventId to deviceId]?.departed = true
         Reply.Ok(Unit)
     }
 
-    override suspend fun eventFiles(eventId: String): Reply<List<UnionAsset>> = served {
-        if (eventId !in events) return@served notFound()
+    override suspend fun eventFiles(eventId: String): Reply<List<UnionAsset>> = online {
+        val union = state.union(eventId) ?: return@online notFound()
         Reply.Ok(
-            memberships.filter { it.key.first == eventId && !it.value.departed }.flatMap { (key, membership) ->
-                val deviceId = key.second
-                val stored = storedFiles[deviceId].orEmpty().map { uploadKey(it.assetId, it.role, it.filename) }.toSet()
-                membership.manifest?.assets.orEmpty()
-                    // Never half a photo: an asset is served once every resource it declares has landed.
-                    .filter { asset -> asset.resources.all { it.key in stored } }
-                    .map { asset ->
-                        UnionAsset(
-                            deviceId = deviceId,
-                            assetId = asset.assetId,
-                            creationDate = asset.creationDate,
-                            resources = asset.resources.map {
-                                UnionResource(it.key, "https://in-memory.store/$deviceId/${it.key}", it.role.wire, it.contentType, it.filename)
-                            },
-                        )
-                    }
+            union.map { (deviceId, asset) ->
+                UnionAsset(
+                    deviceId = deviceId,
+                    assetId = asset.assetId,
+                    creationDate = asset.creationDate,
+                    resources = asset.resources.map {
+                        UnionResource(it.key, BackendState.syntheticUrl(deviceId, it.key), it.role.wire, it.contentType, it.filename)
+                    },
+                )
             },
         )
     }
 
     override suspend fun deviceFiles(token: String?, deviceId: String): Reply<List<DeviceFile>> = gated(token) {
-        Reply.Ok(storedFiles[deviceId].orEmpty().toList())
+        if (state.offline || state.failDeviceListing) return@gated offline()
+        Reply.Ok(state.storedFiles[deviceId].orEmpty().toList())
     }
 
     override suspend fun putDeviceConfig(token: String?, deviceId: String, push: ApnsPushToken): Reply<Unit> =
         gated(token) {
-            deviceConfigs[deviceId] = push
+            state.deviceConfigs[deviceId] = push
+            state.deviceConfigWrites[deviceId] = (state.deviceConfigWrites[deviceId] ?: 0) + 1
             Reply.Ok(Unit)
         }
 
-    /** A well-formed token, distinct per mint: its signature is the challenge it was minted over. */
-    private fun mint(deviceId: String, challenge: String): String =
-        "$deviceId.$TOKEN_EXPIRES_AT_EPOCH_SECONDS.$challenge".also { minted += it }
-
     private inline fun <T> served(answer: () -> Reply<T>): Reply<T> =
-        minimumAppVersion?.let { Reply.Refused(UPGRADE_REQUIRED, """{"error":"app too old","minAppVersion":"$it"}""") }
-            ?: answer()
+        state.refusalFor(appVersion())?.let { Reply.Refused(UPGRADE_REQUIRED, it) } ?: answer()
+
+    private inline fun <T> online(answer: () -> Reply<T>): Reply<T> = served { if (state.offline) offline() else answer() }
 
     private inline fun <T> gated(token: String?, answer: () -> Reply<T>): Reply<T> = served {
-        if (token != null && token !in minted) Reply.Refused(UNAUTHORIZED, "invalid token") else answer()
+        when {
+            token != null && state.refuseNextCredential -> {
+                state.refuseNextCredential = false
+                Reply.Refused(UNAUTHORIZED, "credential rejected")
+            }
+            token != null && token !in state.minted -> Reply.Refused(UNAUTHORIZED, "invalid token")
+            else -> answer()
+        }
     }
 
     private fun <T> notFound(): Reply<T> = Reply.Refused(NOT_FOUND, "not found")
+
+    private fun <T> offline(): Reply<T> = Reply.Refused(BAD_GATEWAY, "offline")
 
     private fun parse(raw: String): Instant? = runCatchingCancellable { Instant.parse(raw) }.getOrNull()
 
@@ -208,9 +194,10 @@ internal class InMemoryBackend(
         const val NOT_FOUND = 404
         const val CONFLICT = 409
         const val UPGRADE_REQUIRED = 426
+        const val BAD_GATEWAY = 502
         const val WINDOW_DAYS = 30
-
-        /** Epoch seconds a minted token expires at: 90 days, which outlives any test's pinned clock. */
-        const val TOKEN_EXPIRES_AT_EPOCH_SECONDS: Long = 90L * 24 * 60 * 60
     }
 }
+
+/** A manifest resource's upload key — the name the byte route stores it under. */
+internal fun storedKey(file: DeviceFile): String = uploadKey(file.assetId, file.role, file.filename)

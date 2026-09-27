@@ -24,7 +24,7 @@ fun inMemoryGallery(
     userAlbums: StateFlow<Map<String, Set<AssetId>>> = MutableStateFlow(emptyMap()),
     answer: GalleryAccess = GalleryAccess.GRANTED,
     answers: LibraryChangeAnswers = LibraryChangeAnswers.Ordinary,
-): Gallery = InMemoryGallery(library, access, userAlbums, answer, answers)
+): Gallery = InMemoryGallery(LibraryState(library, access, userAlbums, answer, answers))
 
 /** The photo-permission status over the caller's own [status] cell. */
 fun inMemoryPhotoAccess(
