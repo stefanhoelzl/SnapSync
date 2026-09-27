@@ -24,6 +24,19 @@ object RigVocabulary {
         "onSilentPush", "onBackgroundTask", "onBackgroundTransfers",
     ).map { "os/app/$it" }
 
+    /**
+     * What only an operating system that is PLAYED can deliver: its expiry — every completion handler it holds and every
+     * background-time hold told their time is up (`os/app/onExpiry`; `?arg=next` hands the next handler over already
+     * expired). A real operating system's expiry is its own, so the app host refuses it.
+     */
+    val playedOsEntries: List<String> = listOf("os/app/onExpiry")
+
+    /** Why the app host refuses every [playedOsEntries] entry. */
+    val playedOsRefusals: Map<String, String> = playedOsEntries.associateWith {
+        "a real operating system's expiry is its own — the rig cannot tell iOS that time is up; the JVM host, " +
+            "which plays the operating system, delivers it"
+    }
+
     /** The upload extension root's entry points. */
     val extensionEntries: List<String> = listOf("processRawValue", "onTerminate").map { "os/photokit-ext/$it" }
 
@@ -54,10 +67,8 @@ object RigVocabulary {
         "device/membership/unreadable",
         "device/permission",
         "device/downloads/stage",
-        "device/downloads/reconcile",
         "device/album/place",
         "device/foreign-device",
-        "device/status/refresh",
         // The integration surface's observable reads of the world's simulated systems (capability
         // `docs/testing.md`, "The seam-to-UI-state integration surface") — what the backend, the crash
         // reporter and the push service recorded.
@@ -69,6 +80,10 @@ object RigVocabulary {
         "device/backend/publishes",
         "device/backend/pushes",
         "device/diagnostics/sent",
+        // What the operating system recorded of the app: the completion handlers it handed over and got back, the
+        // screen, the selection observer, the heartbeat requests, the background-time holds, the push registrations
+        // and the transfer sessions.
+        "device/os-record",
         // ...and the levers that put those systems, the photo library and the operating system into the states a
         // test starts from.
         "device/backend/min-app-version",
@@ -108,7 +123,7 @@ object RigVocabulary {
     const val CONTRACT: String = "contract"
 
     val entries: Set<String> =
-        (appEntries + extensionEntries + reads + sharedCommands + appHostCommands + worldLevers + deviceFacts + CONTRACT)
+        (appEntries + playedOsEntries + extensionEntries + reads + sharedCommands + appHostCommands + worldLevers + deviceFacts + CONTRACT)
             .toSet()
 
     /** Why the app host refuses every world lever — one reason, because they share one cause. */

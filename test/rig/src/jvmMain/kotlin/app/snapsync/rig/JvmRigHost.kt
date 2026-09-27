@@ -111,7 +111,10 @@ class JvmRigHost private constructor(
                 device.adapters(build, attests = backend.attests, backend = backend.port(device, version))
             }
             val network = backend.network ?: UploadNetwork { url, headers, _ -> mocks.backend.operator.receive(url, headers) }
-            val rig = JvmRig(app, backend, version, log, lane, scope, BackendReach(backend, backend.port(mocks, version), network, version))
+            val rig = JvmRig(
+                app, backend, version, log, lane, scope, BackendReach(backend, backend.port(mocks, version), network, version),
+                JvmOs(mocks),
+            )
             rig.showScreen()
             return rig
         }
@@ -131,7 +134,13 @@ class JvmRigHost private constructor(
                     }
                 },
                 triggerGroups = mapOf(
-                    "app" to TriggerGroup(lane = rig.lane, wired = appTriggers(MockEntryDriver(mocks)), excluded = emptyMap()),
+                    "app" to TriggerGroup(
+                        lane = rig.lane,
+                        wired = appTriggers(MockEntryDriver(mocks, rig.os)) + (
+                            "onExpiry" to RigTrigger.Fire { arg -> if (arg == "next") rig.os.expireNext() else rig.os.expire() }
+                            ),
+                        excluded = emptyMap(),
+                    ),
                     "photokit-ext" to TriggerGroup(
                         // The extension process has no main lane: its root runs on the OS-invoked thread.
                         lane = Dispatchers.Default,
@@ -161,6 +170,7 @@ class JvmRigHost private constructor(
                 publishBoundPort = publishBoundPort,
                 contracts = emptyList(),
                 refusals = jvmRefusals(),
+                osRecord = rig.os::record,
                 osExtensionNotApplicable =
                     "the JVM root composes an operating system without the OS-driven upload mechanism, so there is " +
                         "no extension registration to report",
@@ -194,6 +204,8 @@ internal class JvmRig(
     /** The host's scope, for work a verb starts and does not wait for. */
     val scope: CoroutineScope,
     val reach: BackendReach,
+    /** The operating system's side of the completion handlers it hands the app, and its expiry. */
+    val os: JvmOs,
 ) {
     val mocks: JvmMocks get() = app.durable
 
@@ -214,7 +226,7 @@ internal class JvmRig(
  * at once, unknown. The app uploader's session hands its events back through the upload session, every other identifier
  * through the download session — the iOS adapter's routing.
  */
-internal class MockEntryDriver(private val mocks: JvmMocks) : EntryDriver {
+internal class MockEntryDriver(private val mocks: JvmMocks, private val os: JvmOs) : EntryDriver {
     override fun foreground() = mocks.lifecycle.operator.foreground()
 
     override fun background() = mocks.lifecycle.operator.background()
@@ -224,19 +236,19 @@ internal class MockEntryDriver(private val mocks: JvmMocks) : EntryDriver {
     override fun pushTokenFailure(description: String) = mocks.pushService.operator.deliverTokenFailure(description)
 
     override fun silentPush(eventId: String?, done: () -> Unit) =
-        mocks.pushService.operator.deliverMessage(mapOf("eventId" to eventId), rigCompletion(done))
+        mocks.pushService.operator.deliverMessage(mapOf("eventId" to eventId), os.completion(done))
 
     override fun continueLink(url: String) = mocks.links.operator.open(url)
 
     override fun backgroundTask(identifier: String, done: () -> Unit) {
-        if (identifier == JvmRigHost.UPLOAD_HEARTBEAT_TASK) mocks.wakes.operator.fire(WakeId.Heartbeat, rigCompletion(done)) else done()
+        if (identifier == JvmRigHost.UPLOAD_HEARTBEAT_TASK) mocks.wakes.operator.fire(WakeId.Heartbeat, os.completion(done)) else done()
     }
 
     override fun backgroundTransfers(identifier: String, done: () -> Unit) {
         if (identifier == JvmRigHost.UPLOAD_TRANSFER_CHANNEL) {
-            mocks.uploadSession.operator.handBack(rigCompletion(done))
+            mocks.uploadSession.operator.handBack(os.completion(done))
         } else {
-            mocks.downloads.operator.handBack(rigCompletion(done))
+            mocks.downloads.operator.handBack(os.completion(done))
         }
     }
 }

@@ -1,6 +1,5 @@
 package app.snapsync.rig
 
-import app.snapsync.feature.upload.TailTrigger
 import app.snapsync.mock.DownloadSessionMock
 import app.snapsync.mock.LibraryAssets
 import app.snapsync.model.ConfigRead
@@ -14,7 +13,10 @@ import app.snapsync.rig.gallery.SeedKind
 import app.snapsync.rig.gallery.SeedOutcome
 import app.snapsync.services.config.CONFIG_FILE_NAME
 import app.snapsync.services.config.ConfigService
-import kotlinx.coroutines.launch
+import app.snapsync.model.resourcesFrom
+import app.snapsync.services.gallery.GalleryCandidateSource
+import app.snapsync.services.gallery.PermissionAwareCandidateSource
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.serialization.json.Json
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -22,8 +24,8 @@ import kotlin.uuid.Uuid
 // The JVM host's `/device` writes, its gallery read, and what it refuses of the shared vocabulary (`docs/testing.md`,
 // "One control protocol, served by two hosts"). The shared commands take the same parameters and answer the same shape
 // as on the app host — their parsing and rendering are `commonMain`'s. Every lever and read here is a mock's operator
-// face, save the four that still reach the composed core — named where they are defined, and rewritten with the tests
-// that use them (11g2b): `downloads/stage`'s await, `downloads/reconcile`, `status/refresh` and the gallery read.
+// face: what the operating system, the photo library or the backend does or recorded — never the composed app's own
+// state. What the app does in answer is observed through the screen and those same records.
 
 private val json = Json { encodeDefaults = true; prettyPrint = true }
 
@@ -94,25 +96,18 @@ private fun inspectorLevers(rig: JvmRig): Map<String, RigCommand> = mapOf(
             CommandResult.ok("""{"permission":"${status.name}"}""")
         }
     },
-    // `wait=false` returns at once, so a caller can drive other triggers while an import it started is parked.
+    // The operating system finishes every in-flight download — healthy, or answered `status` with `received` bytes of
+    // an error body. Answers at once: what the app makes of the transfers (staging, the import its tail runs) is
+    // observed, not awaited. Nothing is delivered while this launch has not brought its download session up.
     "downloads/stage" to RigCommand { params, _ ->
-        if (params["wait"]?.toBoolean() == false) {
-            rig.scope.launch { stageAllDownloads(rig) }
-            CommandResult.ok("""{"staged":true,"waited":false}""")
+        val status = params["status"]?.toIntOrNull()
+        val outcome = if (status == null) {
+            DownloadSessionMock.HEALTHY
         } else {
-            stageAllDownloads(rig)
-            CommandResult.ok("""{"staged":true}""")
+            TransferOutcome(statusCode = status, expectedBytes = -1L, receivedBytes = params["received"]?.toLongOrNull() ?: 0L)
         }
-    },
-    // Reaches the composed core: the foreground's download reconcile, as the operator plays it (see the header).
-    "downloads/reconcile" to RigCommand { _, _ ->
-        val eventId = joinedEventId(rig)
-        if (eventId == null) {
-            CommandResult.badRequest("no membership to reconcile downloads for")
-        } else {
-            rig.app.core.downloadController.reconcile(eventId)
-            CommandResult.ok("""{"reconciled":${jsonString(eventId)}}""")
-        }
+        val finished = finishDownloads(rig, outcome)
+        CommandResult.ok("""{"finished":${jsonList(finished)}}""")
     },
     "album/place" to RigCommand { params, _ ->
         val album = params["album"]
@@ -145,43 +140,42 @@ private fun inspectorLevers(rig: JvmRig): Map<String, RigCommand> = mapOf(
         val device = params["device"] ?: rig.mocks.ownDeviceId
         CommandResult.ok("""{"device":${jsonString(device)},"objects":${jsonList(rig.reach.objectsOf(device).sorted())}}""")
     },
-    // Reaches the composed core: the foreground's status read, as the operator plays it (see the header).
-    "status/refresh" to RigCommand { _, _ ->
-        rig.app.core.refreshStatusSources()
-        CommandResult.ok("""{"refreshed":true}""")
-    },
+    "os-record" to RigCommand { _, _ -> CommandResult.ok(rig.os.record()) },
 )
 
-/**
- * The operating system delivers every in-flight download ([outcome] each), then — reaching the composed core, as the
- * world did before this host — awaits the stagings the jobs launched and the import the tail runs for them, so the verb
- * is complete on return. Nothing happens while this launch has not brought its download session up.
- */
-internal suspend fun stageAllDownloads(rig: JvmRig, outcome: TransferOutcome = DownloadSessionMock.HEALTHY) {
+/** The operating system finishes every in-flight download with [outcome]; answers their descriptions. */
+private fun finishDownloads(rig: JvmRig, outcome: TransferOutcome): List<String> {
     val session = rig.mocks.downloads.operator
-    if (!session.realized) return
-    session.inFlight().forEach { session.finish(it.description, outcome) }
-    rig.app.core.downloadJobs.awaitOutstandingStagings()
-    rig.app.core.tail.runner.request(TailTrigger.DOWNLOAD_STAGED)
+    if (!session.realized) return emptyList()
+    return session.inFlight().map { it.description }.onEach { session.finish(it, outcome) }
 }
 
 /**
- * The joined event: the one the screen shows, or — before a screen shows it — the one the membership file on the
- * device's disk names. `null` when neither does.
+ * The joined event: the one the platform's screen was last shown, or — where no screen shows one — the one the
+ * membership file on the device's disk names. `null` when neither does. Both are read as the device holds them, so
+ * asking assembles no screen a background launch never built.
  */
 internal fun joinedEventId(rig: JvmRig): String? =
-    (rig.app.host.container.stateFlow.value.layer as? Layer.Joined)?.membership?.eventId
+    (rig.mocks.screen.operator.shown.value?.layer as? Layer.Joined)?.membership?.eventId
         ?: (ConfigService(rig.mocks.disk.port(), rig.mocks.clock.port()).read() as? ConfigRead.Joined)?.config?.eventId
 
 /**
- * The gallery read — the photo library through the app's own candidate seam and policy, as on the app host. It reaches
- * the composed core (see the header); the census is the library mock's.
+ * The gallery read — what the photo library answers a reader under the person's grant, through the selection policy:
+ * the library under a full grant, the person's selection under a partial one, nothing without a grant. Read off the
+ * library mock, never the composed app — the same candidate reads and policy the app uses, over the operating
+ * system's own state.
  */
 internal fun jvmGalleryReader(rig: JvmRig): suspend (String?, Boolean, Boolean) -> String =
     { cutoff, resources, includesUpload ->
+        val library = rig.mocks.library
         val reader = GalleryReport(
-            candidates = rig.app.core.candidates,
-            grant = { rig.app.core.photoPermission.value.name },
+            candidates = PermissionAwareCandidateSource(
+                permission = library.operator.grant,
+                walk = GalleryCandidateSource(library.port()),
+                // Read per request, as the rest of this reader is.
+                selection = MutableStateFlow(library.operator.selection.value?.let(::resourcesFrom)),
+            ),
+            grant = { library.operator.access.name },
             census = {
                 val facts = rig.mocks.library.operator.current().map { it.facts }
                 CensusView(
@@ -256,3 +250,4 @@ private fun uploadError(raw: String?): UploadError? = when {
 }
 
 internal fun jsonList(values: List<String>): String = values.joinToString(prefix = "[", postfix = "]") { jsonString(it) }
+

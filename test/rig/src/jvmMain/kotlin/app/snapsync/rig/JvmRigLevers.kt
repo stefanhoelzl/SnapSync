@@ -172,11 +172,14 @@ private fun osAndLibraryLevers(rig: JvmRig): Map<String, RigCommand> = mapOf(
         CommandResult.ok(buildJsonObject { put("appVersion", version) }.toString())
     },
     // Process death and a cold foreground launch: the new app's host is assembled — its subscriptions installed, the
-    // startup sweep among them — and shown, as a phone brings a scene up.
-    "relaunch" to RigCommand { _, _ ->
+    // startup sweep among them — and shown, as a phone brings a scene up. `scene=false` is a cold BACKGROUND launch
+    // instead — the operating system starting the process for a wake, with no scene: nothing builds a screen, and
+    // nothing that reads the screen (`/device/state`, `/user`) may be asked before an `onForeground` brings one up.
+    "relaunch" to RigCommand { params, _ ->
+        val scene = params["scene"]?.toBoolean() ?: true
         rig.app.relaunch()
-        rig.showScreen()
-        CommandResult.ok("""{"relaunched":true}""")
+        if (scene) rig.showScreen()
+        CommandResult.ok("""{"relaunched":true,"scene":$scene}""")
     },
     // The limited selection, as the picker's outcome delivers it: exactly `assets` (comma-separated; empty allowed).
     "selection/change" to RigCommand { params, _ ->
