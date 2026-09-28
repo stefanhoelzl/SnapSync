@@ -200,6 +200,12 @@ private fun MockWorld.backendLevers(op: (suspend MockWorld.(Map<String, String>)
         device.backend.operator.minAppVersion = params["minimum"]
         OK
     },
+    // The id the next created event is minted with, once — so a screen that renders it renders the same every run.
+    "backend/next-event-id" to op { params ->
+        val id = params["id"]?.takeIf { it.isNotBlank() } ?: return@op CommandResult.badRequest("id is required")
+        device.backend.operator.nextEventId = id
+        CommandResult.ok(buildJsonObject { put("next", id) }.toString())
+    },
     "backend/sweep" to op { params -> withEvent(params) { event -> device.backend.operator.sweepEvent(event); OK } },
     // Every `call` (event|create|join|leave) waits until released (`on=false`) — the backend that has not answered yet,
     // which is the only time the app shows the screen that waits on it.

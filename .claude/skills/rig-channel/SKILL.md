@@ -531,7 +531,8 @@ curl -s localhost:<port>/device            # honoured + refused (reasons) for TH
     `diagnostics/sent` (the dumps the reporter received);
   - backend levers: `backend/min-app-version[?minimum=]`, `backend/sweep`,
     `backend/hold?call=event|create|join|leave&on=` (the call waits unanswered until `on=false` — the only way to
-    catch a screen the app shows while it waits), `backend/fail-listing?on=`, `backend/deposit?asset=`, `backend/legacy-event?name=`,
+    catch a screen the app shows while it waits), `backend/next-event-id?id=` (the next create mints this id, once),
+    `backend/fail-listing?on=`, `backend/deposit?asset=`, `backend/legacy-event?name=`,
     `backend/refuse-credential`, `backend/wipe-bytes[?device=]`;
   - OS and library: `clock/advance?to=<instant>`, `app-version?version=`, `relaunch[?scene=false]`, `selection/change?assets=a,b`,
     `gallery/add?id=&date=&kind=photo|low-res|screenshot|screen-recording|hd-video|live-photo|gif`,
