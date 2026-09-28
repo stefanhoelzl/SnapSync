@@ -78,14 +78,15 @@ jobs:
       # at CONFIGURATION time — "could not find included file". This workflow once failed there for a month
       # unnoticed, because it is dispatch-only and NON-GATING; keep this step ahead of any xcodebuild.
       #
-      # `local`, as `scripts/sim-contracts` does, and through GRADLE_OPTS so the Gradle that Xcode's build phase
-      # launches renders the same one. The backend is MOCKED on every launch that drives a shot, so no request leaves
-      # the app; `local` makes that doubly true — a launch that reached a real backend would find nothing on the
-      # loopback, never the shared zone real users' photos live in.
+      # `prod`, and through GRADLE_OPTS so the Gradle that Xcode's build phase launches renders the same one. The one
+      # thing the deployment puts on screen is the invite link's ORIGIN, which `in_sync`'s QR encodes — a `local` build
+      # showed `https://127.0.0.1:8080/join#…` there, which the listing must never carry. Nothing reaches `prod`'s
+      # backend: every launch that drives a shot mocks it, and the launch adapters' coherence rules keep a mocked
+      # backend's transfers, pushes and attestation mocked too, while the channel never reaches a real backend.
       - name: Resolve the deployment
         run: |
-          python3 scripts/resolve-deployment.py local
-          echo "GRADLE_OPTS=-Dorg.gradle.project.snapsync.deployment=local" >> "$GITHUB_ENV"
+          python3 scripts/resolve-deployment.py prod
+          echo "GRADLE_OPTS=-Dorg.gradle.project.snapsync.deployment=prod" >> "$GITHUB_ENV"
 
       # The RIG build of the real app for the simulator SDK (`-Psnapsync.rig=true`, in ~/.gradle and never in the
       # repo's gradle.properties — exactly as ios-contracts builds it). Debug so the Kotlin/Native framework link

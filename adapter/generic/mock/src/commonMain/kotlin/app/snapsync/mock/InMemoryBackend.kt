@@ -79,7 +79,7 @@ internal class InMemoryBackend(
             endsAt == null || endsAt < startsAt || endsAt > startsAt + WINDOW_DAYS.days ->
                 Reply.Refused(BAD_REQUEST, "invalid endsAt")
             else -> {
-                val eventId = Uuid.random().toString()
+                val eventId = state.nextEventId?.also { state.nextEventId = null } ?: Uuid.random().toString()
                 state.events[eventId] = BackendState.Event(name, state.createdAt, startsAt, endsAt)
                 Reply.Ok(EventCreated(eventId, name))
             }

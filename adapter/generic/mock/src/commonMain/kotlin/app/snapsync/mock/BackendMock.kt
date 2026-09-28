@@ -149,6 +149,14 @@ class BackendOperator internal constructor(private val state: BackendState) {
         state.refuseNextCredential = true
     }
 
+    /**
+     * The id the next created event is minted with, once — so a screen that renders it (the invite QR) renders the same
+     * every run. `null` mints a random one, as the real backend does.
+     */
+    var nextEventId: String?
+        get() = state.nextEventId
+        set(value) { state.nextEventId = value }
+
     /** Every [call] waits until [release]: the backend that has not answered yet. */
     fun hold(call: BackendCall) {
         if (call !in state.holds) state.holds[call] = CompletableDeferred()
@@ -229,6 +237,7 @@ internal class BackendState(
     var failDeviceListing = false
     var refuseNextCredential = false
     val holds = mutableMapOf<BackendCall, CompletableDeferred<Unit>>()
+    var nextEventId: String? = null
     var minAppVersion: String? = null
     internal var legacyCounter = 0L
 

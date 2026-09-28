@@ -37,6 +37,9 @@ enum class Shot(val id: String, val settled: (RigState) -> Boolean) {
 
         const val EVENT_NAME = "Anna's Birthday"
 
+        /** The event's id: the invite QR `in_sync` renders encodes it, so it is fixed, never minted at random. */
+        const val EVENT_ID = "00000000-0000-4000-8000-000000000000"
+
         /** The event's range, as the create form takes it: local date-times, five days. */
         const val EVENT_START = "2026-07-20T18:00:00"
         const val EVENT_END = "2026-07-25T18:00:00"
@@ -66,6 +69,7 @@ suspend fun Rig.reach(shot: Shot, relaunch: suspend Rig.() -> Unit): RigState {
         }
         Shot.IN_SYNC -> {
             takePhotos()
+            device("backend/next-event-id", "id" to Shot.EVENT_ID)
             createAndJoin(name = Shot.EVENT_NAME, startsAt = Shot.EVENT_START, endsAt = Shot.EVENT_END)
             uploadAll()
             foreignDevice("GUEST", *Array(Shot.THEIR_PHOTOS) { "GUEST-${it + 1}" })
