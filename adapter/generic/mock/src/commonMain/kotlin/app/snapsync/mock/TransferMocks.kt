@@ -14,11 +14,16 @@ import app.snapsync.model.UploadSourceKind
 import app.snapsync.model.UploadTarget
 import app.snapsync.model.assetIdFromUploadKey
 import app.snapsync.model.destinationPathOf
+import app.snapsync.model.FileArea
+import app.snapsync.model.FileResult
 import app.snapsync.ports.Completion
 import app.snapsync.ports.Download
 import app.snapsync.ports.DownloadHandlers
+import app.snapsync.ports.Files
 import app.snapsync.ports.Upload
 import app.snapsync.ports.UploadHandlers
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 
 // The operating system's background transfers (`docs/testing.md`, "Mocks"): what it holds for the app survives the
 // app's process — the upload jobs, the download session's transfers — and the operator plays the network by finishing
@@ -44,13 +49,15 @@ class CreatedUpload(val filename: String, val contentType: String) {
  *
  * - `create` enqueues a PENDING job and answers `CREATED`, unless the in-flight cap is reached (`LIMIT_EXCEEDED`), the
  *   create is set to fail, or the source is not this platform's handle (`FAILED`) — its photos carry `Unit`, as a
- *   device's carry a `PHAssetResource`.
+ *   device's carry a `PHAssetResource`. [acceptsAnyHandle] is the launch-time mix's queue on a device whose photo
+ *   library is REAL: it takes the `PHAssetResource` a real library hands over and moves no bytes of it — a mocked
+ *   queue's request carries placeholder bytes to the mocked backend.
  * - The operator's `completeJob` performs the job's own request over [network]: a `2xx` makes it terminal-succeeded,
  *   any other status fails it with that status, and no answer fails it with [UploadError.Network].
  * - `failJob` fails a job with a chosen error. A first failure is offered for its single free retry; a failure after
  *   it is presented as terminal and handed back for re-creation.
  */
-class UploadQueueMock(internal val network: UploadNetwork) {
+class UploadQueueMock(internal val network: UploadNetwork, private val acceptsAnyHandle: Boolean = false) {
     internal class Job(val key: String, val contentType: String, val data: Any, var target: UploadTarget) {
         var state: UploadJobState = UploadJobState.PENDING
         var error: UploadError? = null
@@ -98,7 +105,7 @@ class UploadQueueMock(internal val network: UploadNetwork) {
         override suspend fun create(source: UploadSource, target: UploadTarget, tag: String): UploadCreateOutcome {
             if (failCreate) return UploadCreateOutcome.FAILED
             val data = (source as? UploadSource.Resource)?.handle ?: return UploadCreateOutcome.FAILED
-            if (data != Unit) return UploadCreateOutcome.FAILED
+            if (data != Unit && !acceptsAnyHandle) return UploadCreateOutcome.FAILED
             if (jobs.size >= jobLimit) return UploadCreateOutcome.LIMIT_EXCEEDED
             val contentType = target.headers.entries.firstOrNull { it.key.equals("Content-Type", ignoreCase = true) }?.value
                 ?: "application/octet-stream"
@@ -221,14 +228,30 @@ class UploadSessionOperator internal constructor(private val mock: UploadSession
 }
 
 /**
+ * Where the operating system leaves a finished transfer's bytes: writes [bytes] as a temporary file at [path] in the
+ * app's private area and answers the platform path the finish hands the app, which the app adopts from.
+ */
+fun interface TemporaryFiles {
+    fun leave(path: String, bytes: ByteArray): String
+
+    companion object {
+        /** Temporary files on [files]' private area — the device's own disk, real or mocked. */
+        fun on(files: Files): TemporaryFiles = TemporaryFiles { path, bytes ->
+            files.write(FileArea.PRIVATE, path, bytes)
+            (files.locate(FileArea.PRIVATE, path) as? FileResult.Ok)?.value ?: "temp:/$path"
+        }
+    }
+}
+
+/**
  * The app's background download session: the transfers the operating system holds for it survive the process, and
- * their completions reach whichever process registered last. A finished transfer's bytes are left as a temporary file in
- * [disk]'s private area, whose platform path the finish hands the app; with no disk, the path names nothing.
+ * their completions reach whichever process registered last. A finished transfer's bytes are left as a temporary file
+ * through [temporaryFiles], whose platform path the finish hands the app; with none, the path names nothing.
  *
  * The finish mirrors the real `URLSession` delegate, including the ordering the integrity check depends on: the facts
  * and a temporary file, then the completion, whether or not anything went wrong — which is what frees the window slot.
  */
-class DownloadSessionMock(private val disk: FileSystemMock? = null) {
+class DownloadSessionMock(private val temporaryFiles: TemporaryFiles? = null) {
 
     /** A transfer the session holds, until it finishes or is cancelled. */
     class Started(val url: String, val description: String) {
@@ -272,7 +295,7 @@ class DownloadSessionMock(private val disk: FileSystemMock? = null) {
     val operator: DownloadSessionOperator = DownloadSessionOperator(this)
 
     internal fun leaveTempFile(description: String): String =
-        disk?.operator?.leaveTemporaryFile("download-tmp/${description.hashCode().toUInt()}", TEMP_BYTES) ?: "temp:/$description"
+        temporaryFiles?.leave("download-tmp/${description.hashCode().toUInt()}", TEMP_BYTES) ?: "temp:/$description"
 
     internal fun registered(): DownloadHandlers =
         checkNotNull(handlers) { "no process listened to the download session — nothing would receive this" }
@@ -281,8 +304,18 @@ class DownloadSessionMock(private val disk: FileSystemMock? = null) {
         /** An ordinary healthy transfer: `200`, no declared length. */
         val HEALTHY: TransferOutcome = TransferOutcome(statusCode = 200, expectedBytes = -1L, receivedBytes = 1_024L)
 
-        /** What a mocked download's temporary file holds — the bytes are never read, only their presence. */
-        private val TEMP_BYTES = "staged".encodeToByteArray()
+        /**
+         * What a mocked download's temporary file holds: a 16×16 JPEG — real image bytes, so a launch-time mix with a
+         * REAL photo library imports a mocked event photo as it imports any other (`docs/testing.md`, "The launch-time
+         * mock mix"). The in-memory library reads only their presence.
+         */
+        @OptIn(ExperimentalEncodingApi::class)
+        private val TEMP_BYTES = Base64.decode(
+            "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDABALDA4MChAODQ4SERATGCgaGBYWGDEjJR0oOjM9PDkzODdASFxOQERXRTc4UG1RV19iZ2hn" +
+                "Pk1xeXBkeFxlZ2P/2wBDARESEhgVGC8aGi9jQjhCY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2Nj" +
+                "Y2NjY2P/wAARCAAQABADASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAP/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFAEB" +
+                "AAAAAAAAAAAAAAAAAAAABf/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/AKABiz//2Q==",
+        )
     }
 }
 

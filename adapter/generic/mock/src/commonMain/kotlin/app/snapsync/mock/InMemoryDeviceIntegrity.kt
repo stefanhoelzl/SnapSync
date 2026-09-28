@@ -43,7 +43,7 @@ internal class InMemoryDeviceIntegrity(
 
 /** The keys a device's Secure Enclave holds: distinct per creation, and there for every process of the device. */
 internal class EnclaveKeys {
-    private var generated = 0
+    internal var generated = 0
     val held = mutableSetOf<String>()
 
     fun create(): String = "in-memory-key-${++generated}".also { held += it }

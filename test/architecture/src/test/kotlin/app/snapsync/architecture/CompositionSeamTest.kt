@@ -62,6 +62,7 @@ class CompositionSeamTest {
         "PushPorts" to "domain/compose/src/commonMain/kotlin/app/snapsync/compose/PushComposition.kt",
         "ProcessPorts" to "domain/compose/src/commonMain/kotlin/app/snapsync/compose/ProcessComposition.kt",
         "AppUploaderPorts" to "domain/compose/src/commonMain/kotlin/app/snapsync/compose/AppUploader.kt",
+        "DevicePorts" to "domain/compose/src/commonMain/kotlin/app/snapsync/compose/DevicePorts.kt",
     )
 
     /**
@@ -120,6 +121,10 @@ class CompositionSeamTest {
         "ProcessPorts" to emptyMap(),
         // Empty for the same reason: the app uploader's own reads and constants, beside the core it serves.
         "AppUploaderPorts" to emptyMap(),
+        // Empty for the same reason: an iOS root's real adapters, one `Lazy` PORT each — the bundle its build's adapter
+        // set hands back, a launch-time mix's on a rig build (`docs/testing.md`). A lazy is a port built on first use,
+        // not a lambda the core calls.
+        "DevicePorts" to emptyMap(),
     )
 
     /**
@@ -415,7 +420,7 @@ class CompositionSeamTest {
         // UploadRecordPorts: the join marker, then the device listing (now a backend service) left it; PushPorts: the publisher did.
         val floors = mapOf(
             "AppPorts" to 30, "UploadPorts" to 10, "UploadRecordPorts" to 1, "PushPorts" to 2, "ProcessPorts" to 5,
-            "AppUploaderPorts" to 4,
+            "AppUploaderPorts" to 4, "DevicePorts" to 20,
         )
         floors.forEach { (bundle, floor) ->
             assertTrue(

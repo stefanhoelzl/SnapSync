@@ -127,11 +127,6 @@ internal expect fun uploadJobDeviceCommands(): Map<String, RigCommand>
  */
 internal expect fun uploadJobRefusals(): Map<String, String>
 
-/** The app host's refusals of the shared vocabulary (`docs/testing.md`). */
-fun iosRefusals(): Map<String, String> =
-    RigVocabulary.worldLeverRefusals + RigVocabulary.playedOsRefusals + RigVocabulary.appHostUnwiredRefusals +
-        uploadJobRefusals()
-
 /**
  * Hand this invocation's job sets to the target's upload-job subsystem, or answer with the reason this
  * target will not take them.

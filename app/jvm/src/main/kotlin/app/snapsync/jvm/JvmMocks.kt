@@ -1,31 +1,10 @@
 package app.snapsync.jvm
 
 import app.snapsync.http.HttpBackend
-import app.snapsync.mock.BackendMock
-import app.snapsync.mock.BackgroundTimeMock
-import app.snapsync.mock.ClockMock
-import app.snapsync.mock.CrashReporterMock
-import app.snapsync.mock.DatabasesMock
 import app.snapsync.mock.DeclaredVersion
-import app.snapsync.mock.DevControlsMock
-import app.snapsync.mock.DeviceIntegrityMock
-import app.snapsync.mock.DownloadSessionMock
-import app.snapsync.mock.ExtensionHostMock
-import app.snapsync.mock.ExtensionRegistryMock
-import app.snapsync.mock.FileSystemMock
-import app.snapsync.mock.LifecycleMock
-import app.snapsync.mock.LinksMock
-import app.snapsync.mock.PhotoLibraryMock
-import app.snapsync.mock.PreferencesMock
-import app.snapsync.mock.ProcessInfoMock
-import app.snapsync.mock.PushServiceMock
-import app.snapsync.mock.ScreenMock
-import app.snapsync.mock.SecureStoreMock
-import app.snapsync.mock.SystemUiMock
+import app.snapsync.mock.MockDevice
+import app.snapsync.mock.OperatorDrivenUploads
 import app.snapsync.mock.UploadNetwork
-import app.snapsync.mock.UploadQueueMock
-import app.snapsync.mock.UploadSessionMock
-import app.snapsync.mock.WakeMock
 import app.snapsync.model.ApnsPushToken
 import app.snapsync.model.CreateEventRequest
 import app.snapsync.model.DeviceFile
@@ -37,49 +16,19 @@ import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.MintRequest
 import app.snapsync.model.RenewRequest
 import app.snapsync.model.Reply
-import app.snapsync.model.SecureSlots
 import app.snapsync.model.UnionAsset
 import app.snapsync.ports.Backend
 import io.ktor.client.HttpClient
 
 /**
- * **The device as mocks** — the durable state a [JvmApp] over mocks keeps across a relaunch: one mock per external
- * system (`docs/testing.md`, "Mocks"), each holding what that system keeps, each handing a launch its port face
- * ([adapters]) and its operator face to whoever plays it.
- *
- * [network] is what an OS upload crosses: by default the backend mock's own byte route, so a completed job's bytes land
- * in [backend]; a caller that puts the real `api/` behind the backend port passes a network that reaches it.
+ * **The device as mocks**, for the JVM root — the durable state a [JvmApp] over mocks keeps across a relaunch: the
+ * common [MockDevice] (`docs/testing.md`, "Mocks"), plus the one launch's adapters over it ([adapters]).
  */
 class JvmMocks(
-    /** This device's id, already in its Keychain — a device whose app has launched before. */
-    val ownDeviceId: String = DEFAULT_DEVICE_ID,
-    /** Whether this build honours an invite link's dev/test hints — a shipped build ignores them. */
+    ownDeviceId: String = DEFAULT_DEVICE_ID,
     inviteLinkHints: InviteLinkHints = InviteLinkHints.Ignored,
     network: UploadNetwork? = null,
-) {
-    val backend = BackendMock()
-    val library = PhotoLibraryMock()
-    val disk = FileSystemMock()
-    val databases = DatabasesMock()
-    val preferences = PreferencesMock()
-    val keychain = SecureStoreMock(mapOf(SecureSlots.DEVICE_ID to ownDeviceId))
-    val enclave = DeviceIntegrityMock()
-    val crashReporter = CrashReporterMock()
-    val processInfo = ProcessInfoMock()
-    val clock = ClockMock()
-    val wakes = WakeMock()
-    val backgroundTime = BackgroundTimeMock()
-    val extensionRegistry = ExtensionRegistryMock()
-    val uploadQueue = UploadQueueMock(network ?: UploadNetwork { url, headers, _ -> backend.operator.receive(url, headers) })
-    val uploadSession = UploadSessionMock()
-    val downloads = DownloadSessionMock(disk)
-    val lifecycle = LifecycleMock()
-    val links = LinksMock()
-    val pushService = PushServiceMock()
-    val screen = ScreenMock()
-    val devControls = DevControlsMock(inviteLinkHints)
-    val extensionHost = ExtensionHostMock()
-    val systemUi = SystemUiMock()
+) : MockDevice(ownDeviceId, inviteLinkHints, network) {
 
     /**
      * One launch's adapters over these mocks. [attests] is whether the app process has App Attest (a simulator has
@@ -126,7 +75,7 @@ class JvmMocks(
 
     companion object {
         /** The device id a mocked device carries unless told otherwise. */
-        const val DEFAULT_DEVICE_ID: String = "00000000-0000-4000-9000-0000000000a1"
+        const val DEFAULT_DEVICE_ID: String = MockDevice.DEFAULT_DEVICE_ID
     }
 }
 

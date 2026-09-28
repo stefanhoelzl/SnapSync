@@ -2,14 +2,12 @@
 
 package app.snapsync.rig
 
-import app.snapsync.contracts.EntryDriver
 import app.snapsync.jvm.JvmApp
 import app.snapsync.jvm.JvmBuild
 import app.snapsync.jvm.JvmMocks
 import app.snapsync.mock.DeclaredVersion
 import app.snapsync.mock.UploadNetwork
 import app.snapsync.model.InviteLinkHints
-import app.snapsync.model.WakeId
 import app.snapsync.services.logs.LogTailService
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -112,8 +110,9 @@ class JvmRigHost private constructor(
             }
             val network = backend.network ?: UploadNetwork { url, headers, _ -> mocks.backend.operator.receive(url, headers) }
             val rig = JvmRig(
-                app, backend, version, log, lane, scope, BackendReach(backend, backend.port(mocks, version), network, version),
-                JvmOs(mocks),
+                app, backend, version, log, lane, scope,
+                BackendReach(backend.base, backend.name, backend.port(mocks, version), network, version),
+                PlayedOs(mocks),
             )
             rig.showScreen()
             return rig
@@ -165,20 +164,17 @@ class JvmRigHost private constructor(
                 ),
                 excludedUserCommands = excludedUserCommands(),
                 deviceCommands = jvmDeviceCommands(rig),
-                readGallery = jvmGalleryReader(rig),
+                readGallery = rig.world.mockGalleryReader(),
                 osExtensionEnabled = { null },
                 publishBoundPort = publishBoundPort,
                 contracts = emptyList(),
-                refusals = jvmRefusals(),
+                refusals = jvmRefusals(rig),
                 osRecord = rig.os::record,
                 osExtensionNotApplicable =
                     "the JVM root composes an operating system without the OS-driven upload mechanism, so there is " +
                         "no extension registration to report",
             )
         }
-
-        const val UPLOAD_HEARTBEAT_TASK = "app.snapsync.upload.heartbeat"
-        const val UPLOAD_TRANSFER_CHANNEL = "app.snapsync.upload.session"
 
         /** The version this host's build declares until a caller plays another — high, so the gate serves it. */
         private const val SERVED_VERSION = "99.0"
@@ -205,9 +201,12 @@ internal class JvmRig(
     val scope: CoroutineScope,
     val reach: BackendReach,
     /** The operating system's side of the completion handlers it hands the app, and its expiry. */
-    val os: JvmOs,
+    val os: PlayedOs,
 ) {
     val mocks: JvmMocks get() = app.durable
+
+    /** What the operator levers act on: every mock of the device (`MockLevers.kt`). */
+    val world: MockWorld by lazy { jvmWorld(this, os) }
 
     /**
      * What the phone's UI does that nothing else here does: it builds a live screen, whose `onLive` assembles the status
@@ -217,38 +216,5 @@ internal class JvmRig(
     fun showScreen() {
         app.host
         mocks.screen.operator.live()
-    }
-}
-
-/**
- * The operating system, driven through the mocks' operator faces (`docs/testing.md`, "The control channel"), as the
- * iOS adapters deliver. The heartbeat's task wakes the app through the wake mock; any other task identifier is answered
- * at once, unknown. The app uploader's session hands its events back through the upload session, every other identifier
- * through the download session — the iOS adapter's routing.
- */
-internal class MockEntryDriver(private val mocks: JvmMocks, private val os: JvmOs) : EntryDriver {
-    override fun foreground() = mocks.lifecycle.operator.foreground()
-
-    override fun background() = mocks.lifecycle.operator.background()
-
-    override fun pushToken(hex: String) = mocks.pushService.operator.deliverToken(hex)
-
-    override fun pushTokenFailure(description: String) = mocks.pushService.operator.deliverTokenFailure(description)
-
-    override fun silentPush(eventId: String?, done: () -> Unit) =
-        mocks.pushService.operator.deliverMessage(mapOf("eventId" to eventId), os.completion(done))
-
-    override fun continueLink(url: String) = mocks.links.operator.open(url)
-
-    override fun backgroundTask(identifier: String, done: () -> Unit) {
-        if (identifier == JvmRigHost.UPLOAD_HEARTBEAT_TASK) mocks.wakes.operator.fire(WakeId.Heartbeat, os.completion(done)) else done()
-    }
-
-    override fun backgroundTransfers(identifier: String, done: () -> Unit) {
-        if (identifier == JvmRigHost.UPLOAD_TRANSFER_CHANNEL) {
-            mocks.uploadSession.operator.handBack(os.completion(done))
-        } else {
-            mocks.downloads.operator.handBack(os.completion(done))
-        }
     }
 }

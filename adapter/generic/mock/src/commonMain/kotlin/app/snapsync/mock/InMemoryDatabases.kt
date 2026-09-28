@@ -17,8 +17,15 @@ import app.snapsync.ports.DbOpen
  *
  * Durable across a composition's death: an instance holds its databases until it is dropped, and a second
  * composition over the same instance opens what the first wrote — which is how the world expresses a relaunch.
+ *
+ * With a [directory] each database is a FILE there instead — the launch-time mix's persisted mock (`mix/`), whose
+ * databases outlive the process and are shared, as files are, by every process of the device. Everything else is the
+ * same: the same opens, the same versions, the same refusals.
  */
-internal class InMemoryDatabases(private val refusals: Map<String, DbOpen>) : Databases {
+internal class InMemoryDatabases(
+    private val refusals: Map<String, DbOpen>,
+    private val directory: String? = null,
+) : Databases {
 
     private val held = mutableMapOf<String, SqlDriver>()
 
@@ -33,7 +40,7 @@ internal class InMemoryDatabases(private val refusals: Map<String, DbOpen>) : Da
     }
 
     private fun openReadOnly(name: String, schema: SqlSchema<QueryResult.Value<Unit>>): DbOpen {
-        val driver = held[name] ?: return DbOpen.Missing
+        val driver = held[name] ?: onDisk(name) ?: return DbOpen.Missing
         val version = userVersion(driver)
         return when {
             version < schema.version -> DbOpen.OldSchema
@@ -43,8 +50,8 @@ internal class InMemoryDatabases(private val refusals: Map<String, DbOpen>) : Da
     }
 
     private fun openReadWrite(name: String, schema: SqlSchema<QueryResult.Value<Unit>>): DbOpen {
-        val existing = held[name]
-        val driver = existing ?: Kept(newInMemoryDriver()).also { held[name] = it }
+        val existing = held[name] ?: onDisk(name)
+        val driver = existing ?: Kept(newDriver(name)).also { held[name] = it }
         val version = if (existing == null) 0L else userVersion(driver)
         when {
             existing == null -> schema.create(driver)
@@ -55,6 +62,13 @@ internal class InMemoryDatabases(private val refusals: Map<String, DbOpen>) : Da
         driver.execute(null, "PRAGMA user_version = ${schema.version}", 0)
         return DbOpen.Opened(driver)
     }
+
+    /** A database a file already holds — another process's, or an earlier launch's — opened and kept. */
+    private fun onDisk(name: String): SqlDriver? = directory
+        ?.takeIf { databaseFileExists(it, name) }
+        ?.let { Kept(newFileDriver(it, name)).also { driver -> held[name] = driver } }
+
+    private fun newDriver(name: String): SqlDriver = directory?.let { newFileDriver(it, name) } ?: newInMemoryDriver()
 
     private fun userVersion(driver: SqlDriver): Long =
         driver.executeQuery(null, "PRAGMA user_version", { cursor ->
@@ -72,3 +86,9 @@ private class Kept(private val driver: SqlDriver) : SqlDriver by driver {
 
 /** A new, empty in-memory SQLite database — the platform's own SQLite, one connection's worth of memory. */
 internal expect fun newInMemoryDriver(): SqlDriver
+
+/** The SQLite database file [name] under [directory], created (with the directory) when absent. */
+internal expect fun newFileDriver(directory: String, name: String): SqlDriver
+
+/** Whether [directory] holds the database file [name]. */
+internal expect fun databaseFileExists(directory: String, name: String): Boolean

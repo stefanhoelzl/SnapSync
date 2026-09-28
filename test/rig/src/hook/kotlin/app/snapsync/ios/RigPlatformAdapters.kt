@@ -11,13 +11,14 @@ import app.snapsync.rig.RigHooks
 import app.snapsync.rig.RigServer
 import app.snapsync.ios.upload.UploadExtensionRoot
 import app.snapsync.rig.rigCompletion
-import app.snapsync.rig.RigDevControls
-import app.snapsync.rig.RigUi
-import app.snapsync.rig.appTriggers
+import app.snapsync.rig.RigLaunch
+import app.snapsync.rig.rigLaunch
+import app.snapsync.rig.startWhenReady
+import app.snapsync.rig.appTriggerGroup
+import app.snapsync.rig.osRecord
+import app.snapsync.compose.DevicePorts
 import app.snapsync.contracts.EntryDriver
-import app.snapsync.scene.IosUi
 import app.snapsync.rig.extensionTriggerGroup
-import app.snapsync.rig.TriggerGroup
 import app.snapsync.rig.deviceCommands
 import app.snapsync.contract.extension.extensionContractEntries
 import app.snapsync.rig.noMembershipRefusal
@@ -53,30 +54,39 @@ import platform.Foundation.NSUserActivityTypeBrowsingWeb
  * answers the same [platformAdapters] with the production set — and adds the `:test:rig` dependency, ONLY under
  * `-Psnapsync.rig=true`. A production build contains none of it: not a stub, not an inert branch, not a flag.
  *
- * The set differs from production in exactly two adapters: the UI is decorated ([RigUi] — the channel's `/user` verbs
+ * The set differs from production in the launch-time mix (`docs/testing.md`, "The launch-time mock mix"): the ports the
+ * app composes over are [real] with every system the mix file mocks swapped for its mock ([rigLaunch], which reads it),
+ * and a mix the process refuses composes nothing. Besides, the UI is decorated ([RigUi] — the channel's `/user` verbs
  * reach the core as the intents a tap produces, through the same handlers) and the development controls are the
- * channel's ([RigDevControls] — the uploader switch, invite-link hints honoured, the reset). Building it starts the
- * channel's server. The `/os` verbs deliver through the platform's own adapters ([IosEntryDriver]).
+ * channel's ([RigDevControls] — the uploader switch, invite-link hints honoured, the reset). The `/os` verbs deliver
+ * through the platform's own adapters ([IosEntryDriver]) — or a mocked system's operator face.
  *
  * Being compiled INTO `:app:ios` is what lets this file reach the root's adapters without widening anything to
  * `public` — and it means this directory is in the shell gate's scanned roots (`appShellSources`), so this file may
  * hold **no decisions**. Every default, cast, fallback and rendering lives in `:test:rig`, where it is ordinary code.
  *
  * ## Nothing is forced here
- * `SnapSyncRoot.app` and `.host` are passed as **thunks**: this is called while the root composes its graph, so it
- * captures lambdas and binds a socket, and the first request that needs the graph finds it composed.
+ * This is called while `SnapSyncRoot` initializes — before its process services exist — so it builds only the launch
+ * and leaves the channel's server to start once the root is up ([startWhenReady]); `SnapSyncRoot.app` and `.host` are
+ * passed as **thunks**, and the first request that needs the graph finds it composed.
  */
-internal fun platformAdapters(ui: IosUi): PlatformAdapters {
-    val rigUi = RigUi(ui)
-    val controls = RigDevControls()
-    startRig(rigUi, controls)
-    return PlatformAdapters(devControls = controls, ui = rigUi)
+internal fun platformAdapters(real: DevicePorts): PlatformAdapters {
+    val launch = rigLaunch(real)
+    startWhenReady { startRig(launch) }
+    return PlatformAdapters(
+        devControls = launch.controls,
+        ui = lazyOf(launch.ui),
+        ports = launch.ports,
+        launch = launch::launch,
+        appDrivenUpload = launch::appDrivenUpload,
+        bootLines = launch.bootLines,
+    )
 }
 
-private fun startRig(rigUi: RigUi, controls: RigDevControls) = RigServer(
+private fun startRig(launch: RigLaunch) = RigServer(
     core = { SnapSyncRoot.app },
     host = { SnapSyncRoot.host },
-    hooks = iosHooks(rigUi, controls),
+    hooks = iosHooks(launch),
     port = rigPort(NSProcessInfo.processInfo.environment["SNAPSYNC_RIG_PORT"]),
 ).start()
 
@@ -90,7 +100,7 @@ private fun startRig(rigUi: RigUi, controls: RigDevControls) = RigServer(
  * a production build — so it is inert by construction rather than by a runtime check, and the one typed
  * surface every production launch parses stays free of rig configuration.
  */
-private fun iosHooks(rigUi: RigUi, controls: RigDevControls) = RigHooks(
+private fun iosHooks(launch: RigLaunch) = RigHooks(
     bootedAt = NSDate().description,
     // Which uploaders this OS carries — a build constant. What each may do now varies with the grant.
     uploadTier = uploadersCarried(SnapSyncRoot.osSupportsOsDrivenUpload),
@@ -106,7 +116,7 @@ private fun iosHooks(rigUi: RigUi, controls: RigDevControls) = RigHooks(
     // invokes. `app` is `SnapSyncRoot`'s. A second group joins it when the channel reaches a second root.
     triggerGroups = mapOf(
         // Swift calls this root's entry points from the main thread, so the rig does too.
-        "app" to TriggerGroup(lane = Dispatchers.Main, wired = appTriggers(IosEntryDriver), excluded = excludedTriggers()),
+        "app" to appTriggerGroup(launch, IosEntryDriver, excludedTriggers()),
         "photokit-ext" to extensionTriggerGroup(
             // THUNKS, never method references. `UploadExtensionRoot` is an `object` whose `init` calls
             // `Logger.setLogWriters(…)`, and a bound method reference FORCES that object where it is
@@ -126,17 +136,18 @@ private fun iosHooks(rigUi: RigUi, controls: RigDevControls) = RigHooks(
     // The `/user` maps and the `/device` verbs are built in `:test:rig`, not here. Same reason every
     // default and cast already lives there: this file is compiled INTO `:app:ios` and is scanned by the
     // shell gate, which permits no decisions — and a command map's bodies are full of them.
-    userCommands = userCommands(dispatch = rigUi::dispatch, state = { SnapSyncRoot.host.container.stateFlow.value }),
+    userCommands = userCommands(dispatch = launch.ui::dispatch, state = { SnapSyncRoot.host.container.stateFlow.value }),
     excludedUserCommands = excludedUserCommands(),
     deviceCommands = deviceCommands(
+        launch = launch,
         core = { SnapSyncRoot.app },
-        controls = controls,
         photoAccess = SnapSyncRoot.permission,
         osSupportsOsDrivenUpload = SnapSyncRoot.osSupportsOsDrivenUpload,
         handleReport = SnapSyncRoot.process.processAccount::handle,
     ),
-    readGallery = galleryReader(core = { SnapSyncRoot.app }),
-    osExtensionEnabled = osExtensionEnabled(registry = { SnapSyncRoot.extensionRegistry }),
+    readGallery = galleryReader(launch, core = { SnapSyncRoot.app }),
+    // The registration the app runs over — the mix's, where it mocks it.
+    osExtensionEnabled = osExtensionEnabled(registry = { SnapSyncRoot.ports.extensionRegistry }),
     // The path decision (and its `null` case) lives in `:test:rig`; this side supplies only the write,
     // which has no branch to make. `Documents/` rather than the App Group deliberately: a simulator host
     // reads it with `xcrun simctl get_app_container <dev> app.snapsync data`, and the device tooling
@@ -149,8 +160,11 @@ private fun iosHooks(rigUi: RigUi, controls: RigDevControls) = RigHooks(
         ) +
         simulatorAppContracts(),
     // What this host refuses of the shared vocabulary, built in `:test:rig` (this file may hold no decisions).
-    refusals = iosRefusals(),
+    refusals = iosRefusals(launch),
     recordLanded = ::recordLanded,
+    osRecord = osRecord(launch),
+    mix = launch.description,
+    uncomposed = launch.uncomposed,
 )
 
 /**

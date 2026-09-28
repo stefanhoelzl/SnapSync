@@ -266,6 +266,7 @@ val detektTierOf: Map<String, String> = mapOf(
     ":app:desktop" to "harness",
     ":test:harness-driver" to "harness",
     ":test:rig" to "harness",
+    ":test:mix" to "harness",
     ":test:contracts" to "harness",
     ":test:edge" to "harness",
     ":test:control" to "harness",

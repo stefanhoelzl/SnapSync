@@ -116,6 +116,9 @@ POST /device/reset                      void durable sync state
 POST /device/gallery/seed?n=&kind=bulk|policy
 POST /device/gallery/wipe?scope=all|assets|albums[&limit=&offset=]
 POST /device/uploaders?app=&extension= switch one uploader off/on (see below)
+POST /device/mix                        body = the next launch mix; checks it, writes it, EXITS the app
+POST /device/mix/current                the mix this launch runs (and why it was refused, if it was)
+POST /device/mix/clear                  delete the mix and every mocked system's state; EXITS the app
 
 GET  /contract                          the contracts registered for THIS host, one name per line
 POST /contract/<name>                   run a port contract in-app; answers its RECORDING (device) or its
@@ -125,7 +128,8 @@ POST /contract/<name>                   run a port contract in-app; answers its 
 There is **no inventory route** for excluded members: asking for one returns **the reason it is excluded**.
 What `GET /device` lists is different — the shared vocabulary both hosts speak — and a verb in it that this
 host cannot honour answers **`409` with the reason**, never `404` and never a success that did nothing. On
-this host the JVM host's levers are refused; on a device, the simulator-only upload-job verbs are too.
+this host an operator lever is honoured only for a system the launch mix mocks (below) and refused, naming the
+real system, otherwise; on a device, the simulator-only upload-job verbs are refused too.
 
 **`/device/state` is the reduced state, not a mirror of it** — `UiState` is `@Serializable` where it is
 declared, so the encoder is compiler-generated. Beside it: download progress, **readiness** (derived from
@@ -375,6 +379,46 @@ protocol; what cleared shows on the screen and in the uploads that follow.
 reset the device is unjoined, so a leave is a no-op rather than a `DELETE` aimed at the backend you are
 leaving behind. There is no coordinator imposing that order now that each command is its own request.
 
+## Mixing mocks into the real app — the launch-time mix
+
+A rig build can run with **some systems mocked and the rest real**, chosen at launch (`docs/testing.md`, "The
+launch-time mock mix"). The systems: `backend library files databases preferences keychain integrity crash-reporter
+process-info clock wake background-time extension-registry upload-queue upload-session downloads lifecycle links push
+screen system-ui`. The mix file is `rig/mix` in the App Group, one `system=mock|real` per line, a missing one real.
+
+```bash
+# REAL photos, a MOCKED backend (the shared zone is never touched) — the smallest coherent such mix:
+curl -s -X POST localhost:18099/device/mix --data-binary $'backend=mock
+upload-queue=mock
+upload-session=mock
+downloads=mock
+push=mock
+integrity=mock
+extension-registry=mock
+'
+# → 200 {"written":…,"exiting":true}  — the app EXITS. Launch it again (simulator: `xcrun simctl launch`;
+#   phone: the `snapsync-device` launch step). Every start of any process reads the mix from then on.
+curl -s localhost:18099/health                  # mix=mocked: backend,…   (or mix=REFUSED …)
+curl -s -X POST localhost:18099/device/mix/current
+curl -s -X POST localhost:18099/device/mix/clear   # back to all real; exits
+```
+
+- **Coherence is checked** (`409` with every broken rule): a mocked backend needs mocked transfers, push service and
+  Secure Enclave; a mocked library needs mocked uploads; a REAL extension registration keeps every system the
+  extension writes real — so mock `extension-registry` with anything shared, and drive the extension with
+  `/os/photokit-ext/processRawValue`. A mix that does not parse is a `400`.
+- **Refused while joined** (`409`): leave or `POST /device/reset` first, so no membership is carried into another set
+  of systems.
+- **An invalid mix file composes NOTHING** (a script wrote a bad one, or a state file is unreadable): `/health` says
+  `mix=REFUSED …`, every other route answers `409` naming why, the mix verbs still work. Never a fall-back to real.
+- **Mocked means operator-driven**: nothing a mock plays happens on its own. The levers of the JVM host section below
+  are honoured here for exactly the systems the mix mocks (`GET /device` lists which); `/os` entries go through the
+  mock where the system is mocked. With `upload-session` mocked the app's own uploader is the operator-driven one:
+  run cycles with `/os/photokit-ext/processRawValue`, finish jobs with `device/jobs/complete`.
+- Mock state persists across relaunches (`rig/state/`, `rig/databases/` in the App Group), written by the app.
+- On the phone only the verb can write the mix (the App Group is not USB-reachable); on a simulator a script may write
+  `$(xcrun simctl get_app_container <udid> app.snapsync group.app.snapsync)/rig/mix` before a launch.
+
 ## Triggers return what the PLATFORM returns
 
 ⚠️ **`onForeground` returns `202` and does NOT wait** — and it is the trigger you will reach for most.
@@ -463,7 +507,8 @@ curl -s localhost:<port>/device            # honoured + refused (reasons) for TH
   recorded, never the composed app. A lever answers at once; what the app makes of it is **observed, not awaited**
   (poll `/device/state`, the backend, the library, `device/os-record`). The download reconcile and the status read are
   the foreground's: `os/app/onForeground`. `/device/gallery` is the library's answer under the person's grant.
-- **The OS is played, its expiry and its record included** (the app refuses both):
+- **The OS is played, its expiry and its record included** (the app host only for what its launch mix mocks —
+  `onExpiry` needs `background-time` mocked):
   - `os/app/onExpiry` — time is up for every held completion handler and background-time hold; `?arg=next` hands the
     next handler over already expired. Hold a receipted entry open (a second request) and expire it.
   - `device/os-record` — handlers handed/released/`releasedAgain`/held, `screenShown`, `selectionObserved`,
@@ -472,7 +517,7 @@ curl -s localhost:<port>/device            # honoured + refused (reasons) for TH
     `databasesOpened`, `stagedFiles`. A receipted `/os` answer carries it as read at the release (`osAtRelease`).
   - `device/relaunch?scene=false` — a cold background launch: no screen is built. Read only `device/os-record`
     until an `os/app/onForeground`: `/device/state` and `/user` read the screen and would assemble it.
-- The **JVM host's levers** the app refuses: `device/jobs` (live keys), `device/jobs/complete[?key=]` (the "OS"
+- The **operator levers** (on the app host, only for the systems its launch mix mocks): `device/jobs` (live keys), `device/jobs/complete[?key=]` (the "OS"
   finishes a transfer — its bytes cross to the backend's byte route), `device/jobs/fail?key=&error=`, `device/jobs/limit?n=`,
   `device/backend/objects[?device=]`, `device/backend/offline?on=`, `device/permission?status=`,
   `device/import/fail-next`, `device/membership/unreadable?on=`,
@@ -480,7 +525,7 @@ curl -s localhost:<port>/device            # honoured + refused (reasons) for TH
   reports the session's events drained), `device/album/place?album=&asset=`, `device/album/hold-adds?on=`,
   `device/foreign-device?device=&assets=a,b[&event=][&filename=]`,
   `device/invite-link-hints?honoured=false` (play a shipped build; relaunch to be sure the new answer is read).
-- The **integration surface's** levers and reads (also refused by the app):
+- The **integration surface's** levers and reads (the same rule on the app host):
   - backend reads (`[event=]` defaults to the joined one, `[device=]` to this one): `backend/union`, `backend/manifest`,
     `backend/device-config` (`token`, `env`, `writes`), `backend/event`, `backend/departed`, `backend/publishes`,
     `backend/pushes`;
@@ -493,7 +538,7 @@ curl -s localhost:<port>/device            # honoured + refused (reasons) for TH
     `gallery/remove?id=`, `gallery/fail-next-enumeration`, `import/suspend-next[?afterCommit=true]`, `import/await-parked`,
     `import/resume?succeeded=`, `logs/append?process=app|extension` (body = text),
     `staging/seed-legacy-backlog` (the one lever that writes app-private state: an upgraded install's leftovers).
-- Device facts the JVM host reads and the app host does not wire yet: `device/staging`, `device/album/contents`.
+- Device facts off the mocked disk and library: `device/staging`, `device/album/contents`.
 - `/contract` refuses on this host (`409`, naming `JVM`): JVM contract bindings run under Gradle.
 - Typed client for tests: `:test:control`'s `RigClient` (a `409` is a `Reply.Refused`, never an exception).
 - Stop it by killing the JavaExec process. Don't `pkill -f runJvmHost` from a shell whose own command line

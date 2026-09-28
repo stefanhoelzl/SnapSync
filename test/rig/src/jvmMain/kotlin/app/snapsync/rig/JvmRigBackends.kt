@@ -6,15 +6,7 @@ import app.snapsync.liveedge.LiveEdge
 import app.snapsync.mock.BackendOperator
 import app.snapsync.mock.DeclaredVersion
 import app.snapsync.mock.UploadNetwork
-import app.snapsync.model.APP_VERSION_HEADER
-import app.snapsync.model.AssetId
-import app.snapsync.model.CreateEventRequest
-import app.snapsync.model.DeviceManifest
-import app.snapsync.model.ManifestResource
-import app.snapsync.model.Reply
-import app.snapsync.model.UnionAsset
 import app.snapsync.model.runCatchingCancellable
-import app.snapsync.model.uploadKey
 import app.snapsync.ports.Backend
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.HttpClientEngine
@@ -99,59 +91,4 @@ private fun httpNetwork(client: () -> HttpClient) = UploadNetwork { url, headers
             setBody(bytes)
         }.status.value
     }.getOrNull()
-}
-
-/**
- * The backend as another member, or its operator's seeding, reaches it: its public surface only — the port, credential
- * free, and the byte route an OS upload crosses. Written once for both backends.
- */
-internal class BackendReach(
-    private val backend: RigBackend,
-    private val port: Backend,
-    private val network: UploadNetwork,
-    private val declared: DeclaredVersion,
-) {
-    /** The object keys the backend lists for [deviceId]. */
-    suspend fun objectsOf(deviceId: String): Set<String> =
-        read("the listing", port.deviceFiles(null, deviceId)).mapTo(mutableSetOf()) { uploadKey(it.assetId, it.role, it.filename) }
-
-    /** The union the backend serves for [eventId]. */
-    suspend fun unionOf(eventId: String): List<UnionAsset> = read("the union", port.eventFiles(eventId))
-
-    /** The event's name, or `null` for an event the backend does not hold (a `404`). */
-    suspend fun eventOf(eventId: String): Pair<Boolean, String?> = when (val reply = port.getEvent(eventId)) {
-        is Reply.Ok -> true to reply.value.name
-        is Reply.Refused -> if (reply.status == NOT_FOUND) false to null else error("the event details route answered $reply")
-        else -> error("the event details route answered $reply for $eventId")
-    }
-
-    /** `POST /events` — an event the backend mints. */
-    suspend fun createEvent(name: String, startsAt: String): String =
-        read("create event", port.createEvent(null, CreateEventRequest(name, startsAt, null))).eventId
-
-    suspend fun join(eventId: String, deviceId: String) {
-        read("join $deviceId to $eventId", port.joinEvent(null, eventId, deviceId))
-    }
-
-    suspend fun publish(eventId: String, manifest: DeviceManifest) {
-        read("publish ${manifest.deviceId}'s manifest", port.publishManifest(null, eventId, manifest.deviceId, manifest))
-    }
-
-    /** One resource's bytes, where the app's uploader addresses them. */
-    suspend fun upload(deviceId: String, assetId: AssetId, resource: ManifestResource) {
-        val url = "${backend.base}/files/devices/$deviceId/$assetId/${resource.role.wire}?filename=${resource.filename}"
-        val status = network.put(url, mapOf(APP_VERSION_HEADER to declared.value.orEmpty(), CONTENT_TYPE to JPEG), SEEDED_BYTES)
-        check(status != null && status in SUCCESS) { "upload ${resource.key} for $deviceId was answered $status by the ${backend.name} backend" }
-    }
-
-    private fun <T> read(step: String, reply: Reply<T>): T =
-        (reply as? Reply.Ok)?.value ?: error("step '$step' was refused by the ${backend.name} backend: $reply")
-
-    private companion object {
-        const val NOT_FOUND = 404
-        const val CONTENT_TYPE = "Content-Type"
-        const val JPEG = "image/jpeg"
-        val SUCCESS = 200..299
-        val SEEDED_BYTES = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xD9.toByte())
-    }
 }
