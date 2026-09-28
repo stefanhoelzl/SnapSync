@@ -417,7 +417,7 @@ curl -s -X POST localhost:18099/device/mix/clear   # back to all real; exits
   run cycles with `/os/photokit-ext/processRawValue`, finish jobs with `device/jobs/complete`.
 - Mock state persists across relaunches (`rig/state/`, `rig/databases/` in the App Group), written by the app.
 - On the phone only the verb can write the mix (the App Group is not USB-reachable); on a simulator a script may write
-  `$(xcrun simctl get_app_container <udid> app.snapsync group.app.snapsync)/rig/mix` before a launch.
+  it before a launch into the `folder` that `POST /device/mix/current` names (`ios-simulator`).
 
 ## Triggers return what the PLATFORM returns
 

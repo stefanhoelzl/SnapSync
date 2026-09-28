@@ -153,7 +153,8 @@ private fun keepSaving(mixed: LaunchMix.Mixed) {
 /**
  * The mix verbs (`docs/testing.md`, "The launch-time mock mix"):
  *
- * - `POST /device/mix/current` — the mix this launch runs, the file behind it, and why it was refused if it was.
+ * - `POST /device/mix/current` — the mix this launch runs, the file behind it and the folder it lives in, and why it
+ *   was refused if it was.
  * - `POST /device/mix` — the body is the next mix, as the mix file holds it. A mix that does not parse answers `400`,
  *   an incoherent one `409` with every broken rule, and one written while the device is a member of an event `409`:
  *   a membership would be carried from one set of systems into another — a real event's into a mocked backend, or the
@@ -209,6 +210,9 @@ private fun currentMix(launch: RigLaunch): String = buildJsonObject {
     putJsonArray("mocked") { launch.world.mocked.sortedBy { it.ordinal }.forEach { add(JsonPrimitive(it.key)) } }
     putJsonArray("refusedBecause") { (launch.launch as? LaunchMix.Refused)?.reasons.orEmpty().forEach { add(JsonPrimitive(it)) } }
     put("file", (launch.files.read(FileArea.SHARED, MixFiles.MIX) as? FileResult.Ok)?.value?.decodeToString())
+    // Where the mix lives, as a platform path: `simctl` does not list an ad-hoc-signed app's App Group, so this is how a
+    // simulator script finds the folder to write a mix into before a launch.
+    put("folder", (launch.files.locate(FileArea.SHARED, MixFiles.FOLDER) as? FileResult.Ok)?.value)
     putJsonArray("systems") { MockedSystem.entries.forEach { add(JsonPrimitive("${it.key}: ${it.what}")) } }
 }.toString()
 

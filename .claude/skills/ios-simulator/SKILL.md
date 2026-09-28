@@ -398,11 +398,18 @@ no local `api/` at all. On a simulator the mix file is reachable from the Mac, s
 first launch instead of going through the verb (which writes and exits the app):
 
 ```
-G=$(xcrun simctl get_app_container "$DEVICE" app.snapsync group.app.snapsync)
-mkdir -p "$G/rig" && printf 'backend=mock\nupload-queue=mock\nupload-session=mock\ndownloads=mock\npush=mock\nintegrity=mock\nextension-registry=mock\n' > "$G/rig/mix"
-xcrun simctl launch "$DEVICE" app.snapsync            # reads it; /health says mix=mocked: …
-rm -rf "$G/rig"                                        # back to all real (or POST /device/mix/clear)
+# `simctl get_app_container … groups` lists NOTHING for this ad-hoc-signed app (measured 2026-09-28), so ask the
+# app once where its mix folder is — any launch will do:
+F=$(curl -s -X POST "localhost:$PORT/device/mix/current" | python3 -c 'import json,sys; print(json.load(sys.stdin)["folder"])')
+xcrun simctl terminate "$DEVICE" app.snapsync
+mkdir -p "$F" && printf 'backend=mock\nupload-queue=mock\nupload-session=mock\ndownloads=mock\npush=mock\nintegrity=mock\nextension-registry=mock\n' > "$F/mix"
+SIMCTL_CHILD_SNAPSYNC_RIG_PORT=$PORT xcrun simctl launch "$DEVICE" app.snapsync   # /health: mix=mocked: …
+rm -rf "$F"                                            # back to all real (or POST /device/mix/clear)
 ```
+
+Measured 2026-09-28 (iOS 26 simulator): real photos + a mocked backend — create, join, a cycle through the mocked
+queue, `jobs/complete`, the objects in the mocked backend, all surviving a relaunch; an ALL-mock launch creates an
+event over the mocked backend; a misspelt mix file composes nothing and every app route answers `409`.
 
 A mix the process cannot use — a typo, an incoherent pair, a state file that does not restore — composes **nothing**
 and `/health` says `mix=REFUSED …`; fix the file (or clear it) and launch again. Mock state lives beside the mix
