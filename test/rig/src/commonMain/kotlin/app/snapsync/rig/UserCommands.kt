@@ -1,8 +1,7 @@
 package app.snapsync.rig
 
 import app.snapsync.model.Direction
-import app.snapsync.model.FromChoice
-import app.snapsync.model.UntilChoice
+import app.snapsync.model.RangeChoice
 import app.snapsync.model.Layer
 import app.snapsync.model.UiIntent
 import app.snapsync.model.UiState
@@ -62,15 +61,11 @@ fun userCommands(dispatch: (UiIntent) -> Unit, state: () -> UiState): Map<String
         dispatch(UiIntent.Reconfigure)
     },
     // The form, set without committing: what a member does before they confirm, and what the join gate's
-    // shareable-count preview answers (capability `join-event`). `until=eventEnd` and `from=eventStart|now`
-    // pick the presets; a `cutoff`/`until` instant picks a custom bound, as `confirmJoin` does.
+    // shareable-count preview answers (capability `join-event`). `range=wholeEvent|fromNow` picks a preset;
+    // a `cutoff`/`until` instant picks a custom range, as `confirmJoin` does.
     "setRange" to RigUserCommand { params ->
-        params["from"]?.let { dispatch(UiIntent.FromPreset(fromPreset(it))) }
-        params["until"]?.takeIf { it.equals("eventEnd", ignoreCase = true) }?.let {
-            dispatch(UiIntent.UntilPreset(UntilChoice.EVENT_END))
-        }
-        rangeChoices(params.filterNot { (k, v) -> k == "until" && v.equals("eventEnd", ignoreCase = true) })
-            .forEach(dispatch)
+        params["range"]?.let { dispatch(UiIntent.RangePreset(rangePreset(it))) }
+        rangeChoices(params).forEach(dispatch)
     },
     // Rename the joined event (capability `manage-membership`). `event` defaults to the joined one — naming another is
     // how a caller reproduces a rename the dialog opened for an event a switch has since replaced.
@@ -92,10 +87,12 @@ fun userCommands(dispatch: (UiIntent) -> Unit, state: () -> UiState): Map<String
 
 private fun joinedEventId(state: UiState): String? = (state.layer as? Layer.Joined)?.membership?.eventId
 
-private fun fromPreset(raw: String): FromChoice = when {
-    raw.equals("eventStart", ignoreCase = true) -> FromChoice.EVENT_START
-    raw.equals("now", ignoreCase = true) -> FromChoice.NOW
-    else -> throw IllegalArgumentException("from must be eventStart|now, was '$raw' — a custom bound is `cutoff`")
+private fun rangePreset(raw: String): RangeChoice = when {
+    raw.equals("wholeEvent", ignoreCase = true) -> RangeChoice.WHOLE_EVENT
+    raw.equals("fromNow", ignoreCase = true) -> RangeChoice.FROM_NOW
+    else -> throw IllegalArgumentException(
+        "range must be wholeEvent|fromNow, was '$raw' — a custom range is `cutoff` and/or `until`",
+    )
 }
 
 /** The form choices [params] name, as the taps that set them. */
@@ -106,8 +103,11 @@ private fun rangeChoices(params: Map<String, String>): List<UiIntent> = buildLis
         add(UiIntent.ReceiveOn(d.includesDownload))
     }
     params["saveToAlbum"]?.let { add(UiIntent.SaveToAlbum(it.toBoolean())) }
-    params["cutoff"]?.let { add(UiIntent.FromCustom(toLocalWallClock(it))) }
-    params["until"]?.let { add(UiIntent.UntilCustom(toLocalWallClock(it))) }
+    // A custom range: either bound may be named alone, and the one left out keeps what was already picked
+    // (or the event's own bound, if nothing was).
+    val from = params["cutoff"]?.let(::toLocalWallClock)
+    val until = params["until"]?.let(::toLocalWallClock)
+    if (from != null || until != null) add(UiIntent.RangeCustom(from, until))
 }
 
 private fun toLocalWallClock(iso: String): LocalDateTime =
@@ -132,13 +132,11 @@ fun excludedUserCommands(): Map<String, String> = mapOf(
     // ---- the range form (capability `photo-sharing`) ------------------------------------
     //
     // The channel drives the form through `confirmJoin`/`reconfigure`, which set the values a caller
-    // names and then commit. The PRESET taps are the two it does not need: a preset is a shorthand for a
+    // names and then commit. The PRESET tap is the one it does not need: a preset is a shorthand for a
     // bound the caller can state outright, and `applyRangeChoices` states it — offering both would give
     // the channel two ways to say one thing, and they could disagree.
-    "onFromPreset" to
-        "reached through `setRange?from=eventStart|now`, which names the preset rather than a second command for it.",
-    "onUntilPreset" to
-        "reached through `setRange?until=eventEnd`, for the same reason.",
+    "onRangePreset" to
+        "reached through `setRange?range=wholeEvent|fromNow`, which names the preset rather than a second command for it.",
     // ---- what is drawn OVER the layer (capability `sync-status`) ---------------------------
     //
     // Every one of these opens or dismisses a confirmation. None reaches a port, so driving them would
@@ -169,9 +167,6 @@ fun excludedUserCommands(): Map<String, String> = mapOf(
     "onOpenUrl" to
         "the join-link entry, reachable with full fidelity as POST /os/onSceneContinueActivity, which " +
         "additionally exercises the real NSUserActivity decode and activity-type filter.",
-    "onAcknowledgeAccess" to
-        "dismisses the access explainer, a purely presentational transition with no effect outside the " +
-        "container.",
     "onCancelSwitch" to
         "dismisses the switch dialog and touches no port; the switch itself is wired as `/user/confirmSwitch`.",
 )

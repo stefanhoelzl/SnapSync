@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Rule
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.Event
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.LinkOff
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.PhotoLibrary
@@ -23,10 +24,16 @@ import androidx.compose.material.icons.outlined.SyncProblem
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -113,9 +120,8 @@ fun AppJoinProgress(message: String) {
 
 /**
  * One informed-consent point in the access explainer: a small brand-tinted [icon], a short [title], and the
- * consequence [body] beneath. Stacked inside an [AppSummaryCard] with a hairline between each, so the three
- * facts a guest must understand before the system dialog read as a scannable list rather than a wall of
- * centered prose.
+ * consequence [body] beneath. Stacked in the photo-access explanation ([AppInfoSheet]) with a hairline
+ * between each, so the facts a guest should understand before iOS asks read as a scannable list.
  */
 @Composable
 fun AppAccessPoint(icon: ImageVector, title: String, body: String, divider: Boolean = true) {
@@ -147,6 +153,51 @@ fun AppAccessPoint(icon: ImageVector, title: String, body: String, divider: Bool
                 style = MaterialTheme.typography.bodySmall,
                 color = scheme.onSurfaceVariant,
             )
+        }
+    }
+}
+
+/**
+ * The one-line notice above the join confirm that iOS will ask for photo access next (capability
+ * `join-event`), with an info affordance ([infoDescription] names it for assistive tech) that opens the
+ * explanation — an [AppInfoSheet] titled [sheetTitle] holding [explanation]. Small and centred — it is a
+ * heads-up about the tap below it, not a section of the screen.
+ *
+ * Whether the sheet is open is this component's own state, as a dialog's visibility is: opening it changes
+ * nothing a reduction needs to know, and it raises nothing.
+ */
+@Composable
+fun AppAccessNotice(
+    text: String,
+    infoDescription: String,
+    sheetTitle: String,
+    dismissLabel: String,
+    explanation: @Composable ColumnScope.() -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    var explaining by remember { mutableStateOf(false) }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodySmall,
+            color = scheme.onSurfaceVariant,
+        )
+        IconButton(onClick = { explaining = true }) {
+            Icon(
+                imageVector = Icons.Outlined.Info,
+                contentDescription = infoDescription,
+                tint = scheme.primary,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+    }
+    if (explaining) {
+        AppInfoSheet(title = sheetTitle, dismissLabel = dismissLabel, onDismiss = { explaining = false }) {
+            Column(content = explanation)
         }
     }
 }

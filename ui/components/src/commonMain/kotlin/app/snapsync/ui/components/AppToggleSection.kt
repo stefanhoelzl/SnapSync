@@ -3,7 +3,6 @@ package app.snapsync.ui.components
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.offset
@@ -17,6 +16,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -67,6 +67,20 @@ fun AppToggleSection(
     onCheckedChange: (Boolean) -> Unit,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    AppToggleCard {
+        AppToggleRow(title = title, checked = checked, onCheckedChange = onCheckedChange)
+        Column(modifier = Modifier.fillMaxWidth(), content = content)
+    }
+}
+
+/**
+ * The card frame of an [AppToggleSection], for a card holding **more than one** switch section — the join
+ * and settings surfaces' Share and Receive, which are two consent decisions about one membership and read
+ * as one card (decision record `simplify-join-screen`, D4). Its content is a sequence of [AppToggleRow]s,
+ * each followed by its consequence lines, separated by [AppToggleDivider].
+ */
+@Composable
+fun AppToggleCard(content: @Composable ColumnScope.() -> Unit) {
     val scheme = MaterialTheme.colorScheme
     Surface(
         color = scheme.surface,
@@ -74,69 +88,45 @@ fun AppToggleSection(
         border = BorderStroke(1.dp, scheme.outlineVariant),
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .toggleable(
-                        value = checked,
-                        role = Role.Switch,
-                        onValueChange = onCheckedChange,
-                    )
-                    .heightIn(min = 56.dp)
-                    .padding(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                    color = scheme.onSurface,
-                    modifier = Modifier.weight(1f),
-                )
-                // The row owns the gesture and the semantics; the switch is drawing only.
-                SectionSwitch(checked = checked)
-            }
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                content = content,
-            )
-        }
+        Column(modifier = Modifier.fillMaxWidth(), content = content)
     }
 }
 
 /**
- * The **second level** of a section: a recessed well inside an [AppToggleSection] holding **a group of**
- * the section's checkmark rows. Every section reads the same two-level grammar — the switch turns the
- * section on, the checkmark rows inside the well configure it — so the screen's two idioms are a
- * hierarchy, not a mix.
- *
- * A section may compose **more than one** well when its rows fall into distinct groups (the range preset
- * selector's From and Until handles are two such groups, each with its own caption above its own well).
- * Several wells stay the **same** second level: a group caption is a heading, never a third level of
- * control, and the section's switch remains its only first-level one.
- *
- * Recessed by using the app *background* against the card's *surface*: the sub-level sits visually
- * "into" the card in both themes (lighter card, darker well in light; darker card, darker-still well in
- * dark) without introducing any new colour — the palette stays frozen.
+ * A switch section's header: the [title] and its switch as ONE toggleable row ([Role.Switch]) — see
+ * [AppToggleSection] for why the switch itself is inert.
  */
 @Composable
-fun AppSubSection(content: @Composable ColumnScope.() -> Unit) {
+fun AppToggleRow(title: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     val scheme = MaterialTheme.colorScheme
-    val shape = RoundedCornerShape(12.dp)
-    // The well recesses by contrast against the card's `surface`. In dark the app `background` (darker than
-    // the card) already reads clearly; in light `background` (#F4F6F8 on #FFFFFF ≈ 1.08:1) was nearly
-    // invisible, so the light well uses the deeper `surfaceVariant` (≈1.19:1). A faint `outlineVariant`
-    // inner border then defines the edge in BOTH themes, so the two-level grammar reads equally.
-    val wellFill = if (appIsDark()) scheme.background else scheme.surfaceVariant
-    Column(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 14.dp, end = 14.dp, bottom = 12.dp)
-            .background(color = wellFill, shape = shape)
-            .border(width = 1.dp, color = scheme.outlineVariant, shape = shape),
-        content = content,
-    )
+            .toggleable(
+                value = checked,
+                role = Role.Switch,
+                onValueChange = onCheckedChange,
+            )
+            .heightIn(min = 56.dp)
+            .padding(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+            color = scheme.onSurface,
+            modifier = Modifier.weight(1f),
+        )
+        // The row owns the gesture and the semantics; the switch is drawing only.
+        SectionSwitch(checked = checked)
+    }
+}
+
+/** The full-width seam between two switch sections sharing an [AppToggleCard]. */
+@Composable
+fun AppToggleDivider() {
+    HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outlineVariant)
 }
 
 /**
@@ -181,29 +171,6 @@ private fun SectionSwitch(checked: Boolean) {
 }
 
 /**
- * A **minor section**: the same card frame as [AppToggleSection] but with no switch header — its content
- * is a second-level row (a checkmark toggle) standing alone. For the preferences that rank below the
- * switch sections but belong to neither of them: the album opt-in feeds from BOTH share and receive
- * (capability `event-album`), so nesting it under either switch would be a false statement, while a
- * switch section of its own gave a minor preference the same weight as a consent decision. A minor
- * section is the rank in between: present, honest, quiet.
- */
-@Composable
-fun AppMinorSection(content: @Composable ColumnScope.() -> Unit) {
-    Surface(
-        color = MaterialTheme.colorScheme.surface,
-        shape = RoundedCornerShape(16.dp),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-            content = content,
-        )
-    }
-}
-
-/**
  * A plain consequence sentence inside an [AppToggleSection] — muted, small, the surface's quiet voice.
  * Used for "nothing of yours leaves this phone", the origin-exclusions note, and where arriving photos
  * land. Owns its own left/right padding so it aligns with the section header above it.
@@ -217,21 +184,5 @@ fun AppSectionNote(text: String) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(start = 14.dp, end = 14.dp, top = 2.dp, bottom = 10.dp),
-    )
-}
-
-/**
- * The **cutoff instant** as the section's boldest statement — the one line that decides which photos
- * leave the phone, so it is rendered in the heaviest type the surface carries. Shown only when sharing.
- */
-@Composable
-fun AppSectionValue(text: String) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-        color = MaterialTheme.colorScheme.onSurface,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 14.dp, end = 14.dp, top = 0.dp, bottom = 12.dp),
     )
 }

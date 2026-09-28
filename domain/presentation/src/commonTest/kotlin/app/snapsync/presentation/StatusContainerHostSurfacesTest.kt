@@ -7,11 +7,10 @@ import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
-import app.snapsync.model.FromChoice
+import app.snapsync.model.RangeChoice
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
-import app.snapsync.model.UntilChoice
 import app.snapsync.model.UserCommands
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
@@ -226,15 +225,15 @@ class StatusContainerHostSurfacesTest {
     @Test
     fun `the container counts the range the surface resolves and recounts when it changes`() {
         // The count is reduced state now: the container asks the query bundle, keyed by the resolved range,
-        // and the screen renders what comes back. Event start reaches back to 5 photos; Now shares 1.
+        // and the screen renders what comes back. The whole event reaches back to 5 photos; From now shares 1.
         val eventStart = CONFIG.startsAt.at
         val asked = mutableListOf<CaptureCutoff>()
         return onHost(queries = counting { from, _ -> asked += from; if (from.at == eventStart) 5 else 1 }) { host ->
             host.surfaces.onOpenReconfigure()
             host.stateWhere("the event-start count") { it.reconfigureCount() == ShareCount.Ready(5) }
 
-            host.form.onFromPreset(FromChoice.NOW)
-            host.stateWhere("the recount for Now") { it.reconfigureCount() == ShareCount.Ready(1) }
+            host.form.onRangePreset(RangeChoice.FROM_NOW)
+            host.stateWhere("the recount for From now") { it.reconfigureCount() == ShareCount.Ready(1) }
             assertEquals(2, asked.distinct().size, "each distinct range is counted, and nothing else")
         }
     }
@@ -262,9 +261,9 @@ class StatusContainerHostSurfacesTest {
             host.stateWhere("sharing off") {
                 ((it.layer as? Layer.Joined)?.surface as? JoinedSurface.Reconfigure)?.form?.shareOn == false
             }
-            host.form.onFromPreset(FromChoice.NOW)
+            host.form.onRangePreset(RangeChoice.FROM_NOW)
             host.stateWhere("the new range") {
-                ((it.layer as? Layer.Joined)?.surface as? JoinedSurface.Reconfigure)?.form?.fromPreset == FromChoice.NOW
+                ((it.layer as? Layer.Joined)?.surface as? JoinedSurface.Reconfigure)?.form?.preset == RangeChoice.FROM_NOW
             }
             assertEquals(1, asked, "a hidden row must not cost a photo-library read")
         }
@@ -354,11 +353,10 @@ class StatusContainerHostSurfacesTest {
         host.surfaces.onOpenReconfigure()
 
         val form = host.reconfigureForm()
-        // Cutoff on the floor and ceiling on the event end → both presets, no custom values.
-        assertEquals(FromChoice.EVENT_START, form.fromPreset)
-        assertEquals(UntilChoice.EVENT_END, form.untilPreset)
-        assertNull(form.fromCustom)
-        assertNull(form.untilCustom)
+        // Cutoff on the floor and ceiling on the event end → the whole event, no custom values.
+        assertEquals(RangeChoice.WHOLE_EVENT, form.preset)
+        assertNull(form.customFrom)
+        assertNull(form.customUntil)
         assertTrue(form.shareOn)
         assertTrue(form.receiveOn)
     }
@@ -469,43 +467,56 @@ class StatusContainerHostSurfacesTest {
     // ---- the form edits ----------------------------------------------------------------------------
 
     @Test
-    fun `a custom date implies its own preset on both ends of the range`() = onHost { host ->
-        // The coupling is the point: a member who picks a date has chosen CUSTOM by that act, so the
-        // preset cannot be left on EVENT_START with a custom value sitting beside it unused.
+    fun `a custom range implies the custom preset`() = onHost { host ->
+        // The coupling is the point: a member who picks dates has chosen CUSTOM by that act, so the preset
+        // cannot be left on WHOLE_EVENT with a custom value sitting beside it unused.
         val from = LocalDateTime(2026, 7, 8, 9, 0)
         val until = LocalDateTime(2026, 7, 12, 21, 0)
         host.surfaces.onOpenReconfigure()
         host.reconfigureForm()
-        host.form.onFromCustom(from)
-        host.form.onUntilCustom(until)
+        host.form.onRangeCustom(from, until)
 
-        host.stateWhere("both custom dates") {
+        host.stateWhere("the custom range") {
             val form = ((it.layer as? Layer.Joined)?.surface as? JoinedSurface.Reconfigure)?.form
-            form?.fromCustom == from && form.untilCustom == until
+            form?.customFrom == from && form.customUntil == until
         }
-        val form = host.reconfigureForm()
-        assertEquals(FromChoice.CUSTOM, form.fromPreset)
-        assertEquals(UntilChoice.CUSTOM, form.untilPreset)
+        assertEquals(RangeChoice.CUSTOM, host.reconfigureForm().preset)
     }
 
     @Test
-    fun `a preset tap replaces a custom choice without clearing the value behind it`() = onHost { host ->
+    fun `a custom range with one bound keeps the other one already picked`() = onHost { host ->
+        val from = LocalDateTime(2026, 7, 8, 9, 0)
+        val until = LocalDateTime(2026, 7, 12, 21, 0)
+        host.surfaces.onOpenReconfigure()
+        host.reconfigureForm()
+        host.form.onRangeCustom(from, until)
+        host.form.onRangeCustom(null, LocalDateTime(2026, 7, 11, 21, 0))
+
+        host.stateWhere("the new end") {
+            ((it.layer as? Layer.Joined)?.surface as? JoinedSurface.Reconfigure)
+                ?.form?.customUntil == LocalDateTime(2026, 7, 11, 21, 0)
+        }
+        assertEquals(from, host.reconfigureForm().customFrom)
+    }
+
+    @Test
+    fun `a preset tap replaces a custom choice without clearing the values behind it`() = onHost { host ->
         val from = LocalDateTime(2026, 7, 8, 9, 0)
         host.surfaces.onOpenReconfigure()
         host.reconfigureForm()
-        host.form.onFromCustom(from)
+        host.form.onRangeCustom(from, null)
         host.stateWhere("the custom date") {
-            ((it.layer as? Layer.Joined)?.surface as? JoinedSurface.Reconfigure)?.form?.fromCustom == from
+            ((it.layer as? Layer.Joined)?.surface as? JoinedSurface.Reconfigure)?.form?.customFrom == from
         }
 
-        host.form.onFromPreset(FromChoice.EVENT_START)
+        host.form.onRangePreset(RangeChoice.WHOLE_EVENT)
         host.stateWhere("the preset back") {
             ((it.layer as? Layer.Joined)?.surface as? JoinedSurface.Reconfigure)
-                ?.form?.fromPreset == FromChoice.EVENT_START
+                ?.form?.preset == RangeChoice.WHOLE_EVENT
         }
 
-        // Kept, so switching back to CUSTOM restores what the member picked rather than an empty field.
-        assertEquals(from, host.reconfigureForm().fromCustom)
+        // Kept, so the calendar reopens on what the member picked rather than on an empty range.
+        assertEquals(from, host.reconfigureForm().customFrom)
     }
 
     // ---- rename and diagnostics --------------------------------------------------------------------

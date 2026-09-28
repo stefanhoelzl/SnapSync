@@ -32,7 +32,9 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
-import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onLast
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -43,8 +45,7 @@ import app.snapsync.model.ResolvedRange
 import app.snapsync.model.details
 import app.snapsync.model.CaptureDate
 import kotlinx.datetime.LocalDateTime
-import app.snapsync.model.FromChoice
-import app.snapsync.model.UntilChoice
+import app.snapsync.model.RangeChoice
 import app.snapsync.ui.components.RangeChoiceActions
 import app.snapsync.model.Layer
 import app.snapsync.model.EventDetails
@@ -133,14 +134,14 @@ class JoinScreenTest {
         val f = fixedCutoff()
         val windowStart = f.toLocal(event.startsAt.at)!!
         val windowEnd = f.toLocal(event.endsAt.at)!!
-        val from = when (form.fromPreset) {
-            FromChoice.EVENT_START -> windowStart
-            FromChoice.NOW -> f.nowLocal()
-            FromChoice.CUSTOM -> form.fromCustom ?: windowStart
+        val from = when (form.preset) {
+            RangeChoice.WHOLE_EVENT -> windowStart
+            RangeChoice.FROM_NOW -> f.nowLocal()
+            RangeChoice.CUSTOM -> form.customFrom ?: windowStart
         }
-        val until = when (form.untilPreset) {
-            UntilChoice.EVENT_END -> windowEnd
-            UntilChoice.CUSTOM -> form.untilCustom ?: windowEnd
+        val until = when (form.preset) {
+            RangeChoice.CUSTOM -> form.customUntil ?: windowEnd
+            else -> windowEnd
         }
         return ResolvedRange(
             windowStart = windowStart,
@@ -152,7 +153,6 @@ class JoinScreenTest {
             direction = directionFor(form),
             commitEnabled = form.shareOn || form.receiveOn,
             nowAvailable = f.nowCutoff() >= event.startsAt.at && f.nowCutoff() <= event.endsAt.at,
-            deletesLocal = f.toLocal(event.deletesAt.at),
         )
     }
 
@@ -340,171 +340,117 @@ class JoinScreenTest {
         assertEquals(0, confirmed)
     }
 
-    // ---- the From/Until range selector (capability `photo-sharing`) ---------------------------
+    // ---- the range row (capability `photo-sharing`) --------------------------------------------------
 
     @Test
-    fun `ready shows the From and Until groups defaulting to the full event window`() = runComposeUiTest {
+    fun `ready shows the whole event window as the default range`() = runComposeUiTest {
         setScreen { TestStatusScreen(joining(ready()), cutoff = fixedCutoff()) }
-        onNodeWithTag("from-event-start").assertIsRadio().assertIsSelected()
-        onNodeWithTag("from-now").assertIsRadio().assertIsNotSelected()
-        onNodeWithTag("from-custom").assertIsRadio().assertIsNotSelected()
-        onNodeWithTag("until-event-end").assertIsRadio().assertIsSelected()
-        onNodeWithTag("until-custom").assertIsRadio().assertIsNotSelected()
-        // The value line defaults to the full window [event start, event end], NOT now.
-        onNodeWithText("Sharing 4 Jul 18:00 – 20 Jul 18:00").assertExists()
+        // The event's window (4 Jul 18:00 – 20 Jul 18:00), stated once, with the preset named beneath it.
+        onNodeWithText("4 Jul 18:00 – 20 Jul 18:00").assertExists()
+        onNodeWithText("The whole event").assertExists()
+        // The old two-list selector is gone.
+        onNodeWithText("Share from").assertDoesNotExist()
+        onNodeWithText("Share until").assertDoesNotExist()
     }
 
-    // Each control below is two questions now, and they are answered in different places: does the TAP
-    // reach the form, and does the resolved state RENDER. What the tap resolves TO is the reduction's
-    // answer, checked directly in `RangeResolutionTest` — asserting it through pixels would only restate
-    // the rules in the one place that cannot notice when they change.
+    @Test
+    fun `the edit opens the calendar with both presets while the event runs`() = runComposeUiTest {
+        setScreen { TestStatusScreen(joining(ready()), cutoff = fixedCutoff()) }
+        onNodeWithContentDescription("Change which photos are shared").performClick()
+        onNodeWithText("Which photos to share").assertExists()
+        onNodeWithText("Whole event").assertIsRadio().assertIsSelected()
+        onNodeWithText("From now").assertIsRadio().assertIsNotSelected()
+    }
 
     @Test
-    fun `tapping Now reports the choice`() = runComposeUiTest {
-        var picked: FromChoice? = null
+    fun `before the event starts From now is not offered`() = runComposeUiTest {
+        // Now (2026-07-06 12:00) is before this window opens, so "from now" would clamp to a bound the member
+        // did not choose.
+        setScreen {
+            TestStatusScreen(joining(ready(start = eventStart("2026-07-10T00:00:00Z"))), cutoff = fixedCutoff())
+        }
+        onNodeWithContentDescription("Change which photos are shared").performClick()
+        onNodeWithText("Whole event").assertExists()
+        onNodeWithText("From now").assertDoesNotExist()
+    }
+
+    @Test
+    fun `tapping From now reports the preset and closes the calendar`() = runComposeUiTest {
+        var preset: RangeChoice? = null
         setScreen {
             TestStatusScreen(
                 joining(ready()),
                 cutoff = fixedCutoff(),
                 actions = testActions(
-                    participation = participationActions(choices = testRangeChoiceActions(onFromPreset = { picked = it })),
+                    participation = participationActions(choices = testRangeChoiceActions(onPreset = { preset = it })),
                 ),
             )
         }
-        onNodeWithTag("from-now").performClick()
-        assertEquals(FromChoice.NOW, picked)
+        onNodeWithContentDescription("Change which photos are shared").performClick()
+        onNodeWithText("From now").performClick()
+        assertEquals(RangeChoice.FROM_NOW, preset)
+        onNodeWithText("Which photos to share").assertDoesNotExist()
     }
 
     @Test
-    fun `a range resolved from Now renders selected with its label`() = runComposeUiTest {
-        setScreen {
-            TestStatusScreen(joining(ready(), form = RangeForm(fromPreset = FromChoice.NOW)), cutoff = fixedCutoff())
-        }
-        onNodeWithTag("from-now").assertIsSelected()
-        onNodeWithText("Sharing 6 Jul 12:00 – 20 Jul 18:00").assertExists()
-    }
-
-    @Test
-    fun `tapping Event start reports the choice`() = runComposeUiTest {
-        var picked: FromChoice? = null
-        setScreen {
-            TestStatusScreen(
-                joining(ready(), form = RangeForm(fromPreset = FromChoice.NOW)),
-                cutoff = fixedCutoff(),
-                actions = testActions(
-                    participation = participationActions(choices = testRangeChoiceActions(onFromPreset = { picked = it })),
-                ),
-            )
-        }
-        onNodeWithTag("from-event-start").performClick()
-        assertEquals(FromChoice.EVENT_START, picked)
-    }
-
-    @Test
-    fun `the default range renders the full event window`() = runComposeUiTest {
-        // The default seed is all-on over `[event start, event end]` — narrow, never widen.
-        setScreen { TestStatusScreen(joining(ready()), cutoff = fixedCutoff()) }
-        onNodeWithTag("from-event-start").assertIsSelected()
-        onNodeWithTag("until-event-end").assertIsSelected()
-        onNodeWithText("Sharing 4 Jul 18:00 – 20 Jul 18:00").assertExists()
-    }
-
-    @Test
-    fun `before the event starts the Now row is disabled`() = runComposeUiTest {
-        setScreen { TestStatusScreen(joining(ready(start = FUTURE_START)), cutoff = fixedCutoff()) }
-        onNodeWithTag("from-now").assertIsNotEnabled()
-        onNodeWithTag("from-event-start").assertIsEnabled()
-        onNodeWithText("Sharing 9 Jul 18:00 – 20 Jul 18:00").assertExists()
-    }
-
-    @Test
-    fun `after the event has started the Now row is enabled`() = runComposeUiTest {
-        setScreen { TestStatusScreen(joining(ready()), cutoff = fixedCutoff()) }
-        onNodeWithTag("from-now").assertIsEnabled()
-    }
-
-    @Test
-    fun `tapping the From Custom opens the picker and OK reports the picked value`() = runComposeUiTest {
-        var picked: LocalDateTime? = null
+    fun `OK reports the calendar's span as a custom range inside the window`() = runComposeUiTest {
+        var picked: Pair<LocalDateTime, LocalDateTime>? = null
         setScreen {
             TestStatusScreen(
                 joining(ready()),
                 cutoff = fixedCutoff(),
                 actions = testActions(
-                    participation = participationActions(choices = testRangeChoiceActions(onFromCustom = { picked = it })),
+                    participation = participationActions(
+                        choices = testRangeChoiceActions(onCustom = { f, u -> picked = f to u }),
+                    ),
                 ),
             )
         }
-        onNodeWithText("Date & time").assertDoesNotExist()
-
-        onNodeWithTag("from-custom").performClick()
-        onNodeWithText("Date & time").assertExists()
-
-        // OK at the seed (the window start = event start). Whether that value is then coerced up to the
-        // floor is `resolveFrom`'s answer, not this surface's.
+        onNodeWithContentDescription("Change which photos are shared").performClick()
         onNodeWithText("OK").performClick()
-        assertEquals(LocalDateTime(2026, 7, 4, 18, 0), picked)
+        // Opened on the chosen range and confirmed unchanged: the window itself, as a custom range.
+        assertEquals(LocalDateTime(2026, 7, 4, 18, 0) to LocalDateTime(2026, 7, 20, 18, 0), picked)
     }
 
     @Test
-    fun `a custom lower bound renders selected with the floor stated`() = runComposeUiTest {
-        setScreen {
-            TestStatusScreen(
-                joining(ready(), form = RangeForm(fromPreset = FromChoice.CUSTOM, fromCustom = LocalDateTime(2026, 7, 4, 18, 0))),
-                cutoff = fixedCutoff(),
-            )
-        }
-        onNodeWithTag("from-custom").assertIsSelected()
-        onNodeWithText("Can't be earlier than the event started, 4 Jul 2026, 18:00.").assertExists()
-    }
-
-    @Test
-    fun `tapping the Until Custom opens the picker and OK reports the picked value`() = runComposeUiTest {
-        var picked: LocalDateTime? = null
+    fun `cancelling the calendar reports nothing`() = runComposeUiTest {
+        var edits = 0
         setScreen {
             TestStatusScreen(
                 joining(ready()),
                 cutoff = fixedCutoff(),
                 actions = testActions(
-                    participation = participationActions(choices = testRangeChoiceActions(onUntilCustom = { picked = it })),
+                    participation = participationActions(
+                        choices = testRangeChoiceActions(onPreset = { edits++ }, onCustom = { _, _ -> edits++ }),
+                    ),
                 ),
             )
         }
-        onNodeWithTag("until-custom").performClick()
-        onNodeWithText("Date & time").assertExists()
-        onNodeWithText("OK").performClick()
-        assertEquals(LocalDateTime(2026, 7, 20, 18, 0), picked)
+        onNodeWithContentDescription("Change which photos are shared").performClick()
+        // The screen pins its own Cancel too; the dialog's is the later root.
+        onAllNodesWithText("Cancel").onLast().performClick()
+        assertEquals(0, edits)
     }
 
     @Test
-    fun `a custom upper bound renders selected`() = runComposeUiTest {
-        setScreen {
-            TestStatusScreen(
-                joining(ready(), form = RangeForm(untilPreset = UntilChoice.CUSTOM, untilCustom = LocalDateTime(2026, 7, 20, 18, 0))),
-                cutoff = fixedCutoff(),
-            )
-        }
-        onNodeWithTag("until-custom").assertIsSelected()
+    fun `a custom range renders its bounds and names itself custom`() = runComposeUiTest {
+        val form = RangeForm(
+            preset = RangeChoice.CUSTOM,
+            customFrom = LocalDateTime(2026, 7, 6, 9, 0),
+            customUntil = LocalDateTime(2026, 7, 8, 21, 0),
+        )
+        setScreen { TestStatusScreen(joining(ready(), form = form), cutoff = fixedCutoff()) }
+        onNodeWithText("6 Jul 09:00 – 8 Jul 21:00").assertExists()
+        onNodeWithText("Custom range").assertExists()
     }
 
-    // ---- the retention statement (capability `event-lifetime`) ------------------------------------------
+    // ---- no retention statement (capability `join-event`) ----------------------------------------------
 
     @Test
-    fun `the join surface states the retention deadline and the fixed ceiling`() = runComposeUiTest {
-        // The ONE place the app states retention. The creator passes through this same gate right after
-        // minting, so a single line serves the host and every guest.
-        setScreen {
-            TestStatusScreen(
-                joining(phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES)),
-                cutoff = fixedCutoff(),
-            )
-        }
-        // The DATE comes from the server-supplied deadline — never derived on the device, because a
-        // client-side copy of the retention rule would promise a date the backend will not honour.
-        onNodeWithText("Shared photos are deleted on 3 Aug 2026.", substring = true).assertExists()
-        // …and the fixed ceiling, stated unconditionally: an event may be reclaimed sooner, but that is
-        // not assured, so it is never presented as a qualification on the date.
-        onNodeWithText("kept for at most 30 days", substring = true).assertExists()
+    fun `the join surface does not state the deletion date`() = runComposeUiTest {
+        setScreen { TestStatusScreen(joining(phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES)), cutoff = fixedCutoff()) }
+        onNodeWithText("deleted on", substring = true).assertDoesNotExist()
+        onNodeWithText("30 days", substring = true).assertDoesNotExist()
     }
 
     // ---- the shareable-count row (capability `join-event`) ---------------------------------------
@@ -517,7 +463,7 @@ class JoinScreenTest {
                 cutoff = fixedCutoff(),
             )
         }
-        onNodeWithText("34 photos from your gallery will be shared").assertExists()
+        onNodeWithText("The whole event · 34 photos from your gallery").assertExists()
     }
 
     @Test
@@ -528,8 +474,8 @@ class JoinScreenTest {
                 cutoff = fixedCutoff(),
             )
         }
-        onNodeWithText("0 photos from your gallery will be shared").assertExists()
-        onNodeWithText("New photos you take will be shared as you go").assertExists()
+        onNodeWithText("The whole event · 0 photos from your gallery").assertExists()
+        onNodeWithText("New photos you take will be shared as you go.").assertExists()
     }
 
     @Test
@@ -541,8 +487,9 @@ class JoinScreenTest {
                 cutoff = fixedCutoff(),
             )
         }
-        onNodeWithText("from your gallery will be shared", substring = true).assertDoesNotExist()
-        onNodeWithText("Counting your photos…").assertDoesNotExist()
+        onNodeWithText("from your gallery", substring = true).assertDoesNotExist()
+        onNodeWithText("counting your photos", substring = true).assertDoesNotExist()
+        onNodeWithText("The whole event").assertExists()
     }
 
     @Test
@@ -553,7 +500,7 @@ class JoinScreenTest {
                 cutoff = fixedCutoff(),
             )
         }
-        onNodeWithText("Counting your photos…").assertExists()
+        onNodeWithText("The whole event · counting your photos…").assertExists()
     }
 
     @Test
@@ -570,7 +517,7 @@ class JoinScreenTest {
                 cutoff = fixedCutoff(),
             )
         }
-        onNodeWithText("from your gallery will be shared", substring = true).assertDoesNotExist()
+        onNodeWithText("from your gallery", substring = true).assertDoesNotExist()
     }
 
     @Test
@@ -583,33 +530,33 @@ class JoinScreenTest {
                 cutoff = fixedCutoff(),
             )
         }
-        onNodeWithText("5 photos from your gallery will be shared").assertExists()
+        onNodeWithText("The whole event · 5 photos from your gallery").assertExists()
     }
 
     @Test
     fun `the count follows the resolved range singular at one`() = runComposeUiTest {
-        // A range resolved from Now shares just the one photo — and the row says "photo", not "photos".
+        // A range resolved from From now shares just the one photo — and the row says "photo", not "photos".
         setScreen {
             TestStatusScreen(
                 joining(
                     phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES),
-                    form = RangeForm(fromPreset = FromChoice.NOW),
+                    form = RangeForm(preset = RangeChoice.FROM_NOW),
                     count = ShareCount.Ready(1),
                 ),
                 cutoff = fixedCutoff(),
             )
         }
-        onNodeWithText("1 photo from your gallery will be shared").assertExists()
+        onNodeWithText("From now · 1 photo from your gallery").assertExists()
     }
 
-    // ---- the standalone album minor section (capability `event-album`) ---------------------------------
+    // ---- the album switch (capability `event-album`) ---------------------------------
 
     @Test
-    fun `the album row is a checkbox — on by default — stating what is collected`() = runComposeUiTest {
+    fun `the album is a switch — on by default — stating what is collected`() = runComposeUiTest {
         // The default is what an UNTOUCHED gate commits: the album is the only on-device statement
         // that a set of photos belongs to this event, so deciding nothing gets you the grouping.
         setScreen { TestStatusScreen(joining(ready()), cutoff = fixedCutoff()) }
-        onNodeWithText("Create an album").assertIsCheckbox().assertToggle(ToggleableState.On)
+        onNodeWithText("Create an album").performScrollTo().assertIsSwitch().assertToggle(ToggleableState.On)
         onNodeWithText(
             "Photos you share and photos you receive are collected in an album named after the event.",
         ).assertExists()
@@ -661,7 +608,6 @@ class JoinScreenTest {
                 actions = testActions(participation = participationActions(onSaveToAlbum = { saveToAlbum = it })),
             )
         }
-        // The album row is at the bottom, below the expanded range selector — scroll it into view first.
         onNodeWithText("Create an album").performScrollTo().performClick()
         assertEquals(true, saveToAlbum)
     }
@@ -680,68 +626,70 @@ class JoinScreenTest {
         assertEquals(false, saveToAlbum, "a tap from the on-by-default row declines the album")
     }
 
-    // ---- the photo-access explainer names the event (capability `join-event`) -------------------------
+    // ---- photo access asked on Join (capability `join-event`) -----------------------------------------
+
+    private fun asking() = joining(ready()).let {
+        it.copy(layer = (it.layer as Layer.JoiningEvent).copy(asksAccessOnJoin = true))
+    }
 
     @Test
-    fun `explain-access names the event and states the three consent facts`() = runComposeUiTest {
+    fun `a never-asked guest sees the notice and Join and allow photos beside the choices`() = runComposeUiTest {
+        setScreen { TestStatusScreen(asking(), cutoff = fixedCutoff()) }
+        onNodeWithText("Anna's Wedding").assertExists()
+        onNodeWithText("Share my photos").assertExists()
+        onNodeWithText("iOS asks for access to your photos next").assertExists()
+        onNodeWithText("Join & allow photos").assertExists()
+        onNodeWithText("Join").assertDoesNotExist()
+    }
+
+    @Test
+    fun `a guest iOS already asked sees plain Join and no notice`() = runComposeUiTest {
+        setScreen { TestStatusScreen(joining(ready()), cutoff = fixedCutoff()) }
+        onNodeWithText("iOS asks for access to your photos next").assertDoesNotExist()
+        onNodeWithText("Join & allow photos").assertDoesNotExist()
+        onNodeWithText("Join").assertExists()
+    }
+
+    @Test
+    fun `the info opens the explanation and closing it confirms nothing`() = runComposeUiTest {
+        var confirmed = 0
         setScreen {
             TestStatusScreen(
-                joining(phaseAt(JoinPhase.Detailed.Step.ExplainAccess, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES)),
+                asking(),
                 cutoff = fixedCutoff(),
+                actions = testActions(join = testJoinGateActions(onConfirmJoin = { confirmed++ })),
             )
         }
-        onNodeWithText("Anna's Wedding").assertExists()
-        onNodeWithText("WHAT JOINING DOES").assertExists()
+        onNodeWithContentDescription("What joining does with your photos").performClick()
+        onNodeWithText("What joining does").assertExists()
         onNodeWithText("Your photos are shared automatically").assertExists()
         onNodeWithText("SnapSync needs your photo library").assertExists()
-        onNodeWithText("Only photos after the date you choose").assertExists()
-        onNodeWithText("I understand").assertExists()
-        onNodeWithText("Cancel").assertExists()
-        onNodeWithText("Join").assertDoesNotExist()
-        onNodeWithText("Share my photos").assertDoesNotExist()
+        onNodeWithText("Allow all photos, or pick which to share").assertExists()
+        onNodeWithText("Only photos in the range you chose").assertExists()
+        onNodeWithText("Got it").performClick()
+        onNodeWithText("What joining does").assertDoesNotExist()
+        assertEquals(0, confirmed)
     }
 
     @Test
-    fun `I understand acknowledges the explainer`() = runComposeUiTest {
-        var acknowledged = 0
+    fun `Join and allow photos confirms the join`() = runComposeUiTest {
+        var confirmed = 0
         setScreen {
             TestStatusScreen(
-                joining(phaseAt(JoinPhase.Detailed.Step.ExplainAccess, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES)),
+                asking(),
                 cutoff = fixedCutoff(),
-                actions = testActions(
-                    join = testJoinGateActions(
-                        onAcknowledgeAccess = { acknowledged++ },
-                    ),
-                )
+                actions = testActions(join = testJoinGateActions(onConfirmJoin = { confirmed++ })),
             )
         }
-        onNodeWithText("I understand").performClick()
-        assertEquals(1, acknowledged)
-    }
-
-    @Test
-    fun `cancelling the explainer abandons the join`() = runComposeUiTest {
-        var cancelled = 0
-        setScreen {
-            TestStatusScreen(
-                joining(phaseAt(JoinPhase.Detailed.Step.ExplainAccess, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES)),
-                cutoff = fixedCutoff(),
-                actions = testActions(
-                    join = testJoinGateActions(
-                        onCancelJoin = { cancelled++ },
-                    ),
-                )
-            )
-        }
-        onNodeWithText("Cancel").performClick()
-        assertEquals(1, cancelled)
+        onNodeWithText("Join & allow photos").performClick()
+        assertEquals(1, confirmed)
     }
 
     // ---- regressions the redesign must preserve -------------------------------------------------------
 
     /**
      * The range must derive from the loaded window across the real phase sequence
-     * (`Loading` → `ExplainAccess` → `Ready`), never from a stale first-composition seed — the screen mounts
+     * (`Loading` → `Ready`), never from a stale first-composition seed — the screen mounts
      * at `Loading`, before any phase carries a window.
      */
     @Test
@@ -750,14 +698,10 @@ class JoinScreenTest {
         setScreen { TestStatusScreen(joining(phase), cutoff = fixedCutoff()) }
         onNodeWithText("Loading event details …").assertExists()
 
-        phase = phaseAt(JoinPhase.Detailed.Step.ExplainAccess, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES)
-        waitForIdle()
-        onNodeWithText("I understand").assertExists()
-
         phase = ready()
         waitForIdle()
         // The event's window (4 Jul 18:00 – 20 Jul 18:00), NOT "now" — derived from the phase every composition.
-        onNodeWithText("Sharing 4 Jul 18:00 – 20 Jul 18:00").assertExists()
+        onNodeWithText("4 Jul 18:00 – 20 Jul 18:00").assertExists()
     }
 
     @Test
@@ -808,7 +752,7 @@ class JoinScreenTest {
         onNodeWithText("You'll leave \"Summer Trip\" and join \"New Event\".").assertExists()
         // No participation promise, and no count for a range the member has not chosen.
         onNodeWithText("You'll share photos you take and receive everyone's.").assertDoesNotExist()
-        onNodeWithText("from your gallery will be shared", substring = true).assertDoesNotExist()
+        onNodeWithText("from your gallery", substring = true).assertDoesNotExist()
 
         onNodeWithText("Switch").performClick()
         assertEquals(1, confirms)
@@ -875,9 +819,6 @@ class JoinScreenTest {
 
 private fun androidx.compose.ui.test.SemanticsNodeInteraction.assertIsSwitch() =
     assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Switch))
-
-private fun androidx.compose.ui.test.SemanticsNodeInteraction.assertIsCheckbox() =
-    assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Checkbox))
 
 private fun androidx.compose.ui.test.SemanticsNodeInteraction.assertIsRadio() =
     assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.RadioButton))

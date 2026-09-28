@@ -4,36 +4,24 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import app.snapsync.model.Direction
 import app.snapsync.model.EventDetails
 import app.snapsync.model.Layer
 import app.snapsync.model.JoinPhase
-import app.snapsync.ui.components.AppAccessPoint
 import app.snapsync.ui.components.AppErrorBanner
 import app.snapsync.ui.components.AppInvitationHeaderLoading
 import app.snapsync.ui.components.AppJoinProgress
 import app.snapsync.ui.components.AppNoticeCard
-import app.snapsync.ui.components.AppSummaryCard
 import app.snapsync.ui.components.JOIN_HERO_SUBTITLE
-import app.snapsync.ui.components.JoinAccessChoose
-import app.snapsync.ui.components.JoinAccessCutoff
-import app.snapsync.ui.components.JoinAccessLibrary
-import app.snapsync.ui.components.JoinAccessShare
 import app.snapsync.ui.components.JoinNoticeFailed
 import app.snapsync.ui.components.JoinNoticeInvalid
 import app.snapsync.ui.components.JoinNoticeOffline
-import kotlinx.datetime.plus
 import app.snapsync.ui.components.AppEventHeaderCompact
-import app.snapsync.ui.components.appDateLabel
-import app.snapsync.ui.components.appDateTimeLabel
 import app.snapsync.ui.components.appRangeLabel
 import app.snapsync.ui.components.PrimaryButton
 import app.snapsync.ui.components.SecondaryButton
@@ -45,18 +33,13 @@ import app.snapsync.ui.components.SecondaryButton
 
 
 /**
- * The full-screen "Join event" surface (capability `join-event`): the event summary is the hero, with
- * the participation-direction row, the capture-date cutoff row (capability `photo-sharing`), and the
- * save-to-album opt-in (capability `event-album`), with Join / Cancel pinned to the bottom. Further future
- * options slot in as more rows in this same column. Renders each [JoinPhase]: loading details,
- * ready-to-join, blocked (invalid invite), a retryable load/commit failure.
+ * The full-screen "Join event" surface (capability `join-event`): the event summary is the hero, the
+ * participation choices beneath it (share and receive, which photos, the album), with Join / Cancel pinned
+ * to the bottom. Renders each [JoinPhase]: loading details, ready-to-join, blocked (invalid invite, full
+ * event), a retryable load/commit failure.
  *
- * The chosen direction and cutoff are held in local state: the direction defaults to [Direction.Both];
- * the cutoff is seeded once, **non-null**, from the loaded default (`createdAt`, already resolved to now by
- * the host when the marker carried none), editable via the date/time picker or snapped to "now", and
- * converted to the UTC `…Z` string on confirm/retry. Both survive Ready → Committing → CommitFailed (the
- * composable stays mounted), so a retry reuses them. The cutoff row is disabled under
- * [Direction.DownloadOnly] (it scopes uploads only).
+ * Nothing is held here: the choices are reduced state ([Layer.JoiningEvent.form]) and survive
+ * Ready → Committing → CommitFailed, so a retry commits what the member picked.
  */
 @Composable
 internal fun JoiningEventScreen(
@@ -87,11 +70,6 @@ internal fun JoiningEventScreen(
                             onJoin = actions.onConfirm,
                             onCancel = actions.onCancel,
                         ),
-                    )
-                    JoinPhase.Detailed.Step.ExplainAccess -> ExplainAccessPhase(
-                        name = phase.event.name,
-                        onAcknowledge = actions.onAcknowledgeAccess,
-                        onCancel = actions.onCancel,
                     )
                     JoinPhase.Detailed.Step.Committing -> CommittingPhase(name = phase.event.name)
                     // The two ways a commit can end badly, on ONE surface distinguished by its copy and by
@@ -141,71 +119,14 @@ private fun PhaseScaffold(
 
 /**
  * Optimistic loading: the invitation hero with the name still a placeholder, and a calm spinner filling
- * the space below. Resolves into ExplainAccess/Ready with no header jump — the badge and eyebrow never
- * move across Loading -> ExplainAccess -> Ready -> Committing, only the name resolves.
+ * the space below. Resolves into Ready with no header jump — the badge and eyebrow never move across
+ * Loading -> Ready -> Committing, only the name resolves.
  */
 @Composable
 private fun LoadingPhase() = PhaseScaffold(
     body = {
         AppInvitationHeaderLoading(subtitle = JOIN_HERO_SUBTITLE)
         CenteredBody { AppJoinProgress("Loading event details …") }
-    },
-)
-
-/**
- * The photo-access explainer, ahead of the confirm and ahead of the system dialog (capability
- * `join-event`). It names the event it is inviting you to (the hero) and states the consent facts as a
- * scannable card, top-anchored beneath it: share-first (the automatic sharing is the half that deserves
- * informed consent, so it leads), then that full access is genuinely needed for BOTH halves, then that
- * limited ("pick which photos") is a first-class choice (capability `photo-access`, not a
- * degraded one), then the cutoff.
- *
- * "I understand" is the ONLY path from the join gate to the system dialog (CTA-only priming). Cancel is
- * the same cancel every other phase pins — it abandons the join.
- */
-@Composable
-private fun ExplainAccessPhase(
-    name: String,
-    onAcknowledge: () -> Unit,
-    onCancel: () -> Unit,
-) = PhaseScaffold(
-    body = {
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            AppEventHeaderCompact(title = name, subtitle = JOIN_HERO_SUBTITLE)
-            AppSummaryCard(title = "What joining does") {
-                AppAccessPoint(
-                    icon = JoinAccessShare,
-                    title = "Your photos are shared automatically",
-                    body = "The photos you take show up for everyone in the event.",
-                    divider = false,
-                )
-                AppAccessPoint(
-                    icon = JoinAccessLibrary,
-                    title = "SnapSync needs your photo library",
-                    body = "To share yours, and to save the photos other members send you.",
-                )
-                AppAccessPoint(
-                    icon = JoinAccessChoose,
-                    title = "Allow all photos, or pick which to share",
-                    body = "Choosing specific photos works too — and you can add more anytime.",
-                )
-                AppAccessPoint(
-                    icon = JoinAccessCutoff,
-                    title = "Only photos after the date you choose",
-                    body = "You pick that date on the next screen — nothing older is shared.",
-                )
-            }
-        }
-    },
-    actions = {
-        PrimaryButton(label = "I understand", onClick = onAcknowledge)
-        SecondaryButton(label = "Cancel", onClick = onCancel)
     },
 )
 
@@ -324,28 +245,21 @@ private fun readyState(
     // window, and this surface renders only where there is one.
     val range = layer.range ?: error("a loaded join phase always resolves a range")
     return ReadyState(
-    eventName = event.name,
-    // The switches come off the FORM, never back off `range.direction`: `directionOf` collapses both-off
-    // to `DownloadOnly` as an inert placeholder, so deriving them there would render the receive switch
-    // ON for a member who had turned both off.
-    participation = ParticipationState(
-        form = layer.form,
-        range = range,
-        rangeLabel = appRangeLabel(range.from, range.until),
-    ),
-    labels = ReadyLabels(
-        floor = appDateTimeLabel(range.windowStart),
-        ceiling = appDateTimeLabel(range.windowEnd),
-        // The retention deadline, rendered as a plain date. A loaded phase always carries one now — it
-        // is a field of the details, not something a phase could have lost — so the only absence left is
-        // an unparseable instant, which the section renders as the fixed ceiling alone.
-        deletes = appDateLabel(range.deletesLocal ?: range.windowEnd),
-    ),
+        eventName = event.name,
+        // The switches come off the FORM, never back off `range.direction`: `directionOf` collapses both-off
+        // to `DownloadOnly` as an inert placeholder, so deriving them there would render the receive switch
+        // ON for a member who had turned both off.
+        participation = ParticipationState(
+            form = layer.form,
+            range = range,
+            rangeLabel = appRangeLabel(range.from, range.until),
+        ),
+        asksAccessOnJoin = layer.asksAccessOnJoin,
     )
 }
 
 /**
- * Everything the join gate can ask for: the two ways to commit, the three ways out, and the count query.
+ * Everything the join gate can ask for: the two ways to commit, the ways out, and the member's edits.
  *
  * The five callbacks were loose parameters interleaved with the two values the screen renders from, which
  * is the shape `ReadyLayout` was cured of — a surface's inputs and its outputs read better separated than
@@ -359,7 +273,6 @@ internal class JoinActions(
     // handing values back from the render path would be a second answer to a settled question.
     val onConfirm: () -> Unit,
     val onRetryJoin: () -> Unit,
-    val onAcknowledgeAccess: () -> Unit,
     val onCancel: () -> Unit,
     val onRetryLoad: () -> Unit,
     /** The member's edits to the range form, bound to the container's intents. */

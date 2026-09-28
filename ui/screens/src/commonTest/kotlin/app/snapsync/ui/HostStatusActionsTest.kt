@@ -12,7 +12,6 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.doubleClick
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onNodeWithContentDescription
-import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -25,12 +24,11 @@ import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.EventConfig
 import app.snapsync.model.EventLinkPayload
-import app.snapsync.model.FromChoice
+import app.snapsync.model.RangeChoice
 import app.snapsync.model.JoinCommit
 import app.snapsync.model.JoinLoad
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.SyncStatus
-import app.snapsync.model.UntilChoice
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.deletesAt
@@ -329,18 +327,18 @@ class HostStatusActionsTest {
         rig.host.onOpenUrl(linkTo(OTHER_ID))
         awaitState(rig, ready)
 
-        // Each range handle, so a From binding crossed with an Until one — or a preset with a custom pick —
-        // lands in the wrong field.
-        onNodeWithTag("from-now").performClick()
-        awaitState(rig) { it.joining?.form?.fromPreset == FromChoice.NOW }
-        onNodeWithTag("from-custom").performClick()
+        // Each range edit, so a preset crossed with a custom pick lands in the wrong field.
+        onNodeWithContentDescription("Change which photos are shared").performClick()
+        onNodeWithText("From now").performClick()
+        awaitState(rig) { it.joining?.form?.preset == RangeChoice.FROM_NOW }
+        onNodeWithContentDescription("Change which photos are shared").performClick()
         onNodeWithText("OK").performClick()
-        awaitState(rig) { it.joining?.form?.let { f -> f.fromPreset == FromChoice.CUSTOM && f.fromCustom != null } == true }
-        onNodeWithTag("until-custom").performClick()
-        onNodeWithText("OK").performClick()
-        awaitState(rig) { it.joining?.form?.let { f -> f.untilPreset == UntilChoice.CUSTOM && f.untilCustom != null } == true }
-        onNodeWithTag("until-event-end").performClick()
-        awaitState(rig) { it.joining?.form?.untilPreset == UntilChoice.EVENT_END }
+        awaitState(rig) {
+            it.joining?.form?.let { f -> f.preset == RangeChoice.CUSTOM && f.customFrom != null && f.customUntil != null } == true
+        }
+        onNodeWithContentDescription("Change which photos are shared").performClick()
+        onNodeWithText("Whole event").performClick()
+        awaitState(rig) { it.joining?.form?.preset == RangeChoice.WHOLE_EVENT }
         // The participation switches, likewise one field each.
         onNodeWithText("Share my photos").performScrollTo().performClick()
         awaitState(rig) { it.joining?.form?.shareOn == false }
@@ -372,13 +370,17 @@ class HostStatusActionsTest {
     }
 
     @Test
-    fun `the access explainer requests access and advances to the confirm`() =
+    fun `a never-asked guest's Join and allow photos requests access and commits`() =
         rigTest(rig(permission = GalleryAccess.NOT_DETERMINED)) { rig ->
             rig.host.onOpenUrl(linkTo(OTHER_ID))
-            awaitState(rig) { (it.joining?.phase as? JoinPhase.Detailed)?.step == JoinPhase.Detailed.Step.ExplainAccess }
-            onNodeWithText("I understand").performClick()
             awaitState(rig, ready)
-            assertEquals(listOf("requestAccess"), rig.fired)
+            // The explanation is on request, and reading it raises nothing.
+            onNodeWithContentDescription("What joining does with your photos").performClick()
+            onNodeWithText("Got it").performClick()
+            assertEquals(emptyList(), rig.fired)
+            onNodeWithText("Join & allow photos").performClick()
+            waitUntil(timeoutMillis = 5_000) { rig.fired.any { it.startsWith("commitJoin:") } }
+            assertEquals("requestAccess", rig.fired.first())
         }
 
     @Test

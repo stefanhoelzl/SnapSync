@@ -32,10 +32,8 @@ import app.snapsync.model.VersionRefusal
 class StatusSources(
     val sync: SyncStatusSource,
     /**
-     * The photo-permission read-model. Observed for the health rung, and additionally READ at its
-     * current value the moment a details load resolves, to decide whether the join gate shows the
-     * photo-access explainer (capability `join-event`). That read is a snapshot, not an observation —
-     * the phase advances only by user action.
+     * The photo-permission read-model. Observed for the health rung, and for whether confirming a join
+     * also raises iOS's photo-access dialog (capability `join-event`).
      */
     val permission: StateFlow<GalleryAccess>,
     /** The persisted membership. Config presence is the reduction's top rung. */

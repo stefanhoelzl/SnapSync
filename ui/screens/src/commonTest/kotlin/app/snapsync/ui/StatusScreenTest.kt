@@ -39,8 +39,7 @@ import app.snapsync.model.Arrow
 import app.snapsync.model.RangeForm
 import app.snapsync.model.ResolvedRange
 import app.snapsync.model.JoinedSurface
-import app.snapsync.model.FromChoice
-import app.snapsync.model.UntilChoice
+import app.snapsync.model.RangeChoice
 import app.snapsync.model.Overlays
 import app.snapsync.model.RenameState
 import app.snapsync.model.Layer
@@ -115,8 +114,8 @@ private fun reconfigureResolved(membership: EventConfig, form: RangeForm): Resol
     val f = fixedCutoff()
     val windowStart = f.toLocal(membership.startsAt.at)!!
     val windowEnd = f.toLocal(membership.endsAt?.at ?: membership.maxPhotoDate.at)!!
-    val from = if (form.fromPreset == FromChoice.CUSTOM) form.fromCustom ?: windowStart else windowStart
-    val until = if (form.untilPreset == UntilChoice.CUSTOM) form.untilCustom ?: windowEnd else windowEnd
+    val from = if (form.preset == RangeChoice.CUSTOM) form.customFrom ?: windowStart else windowStart
+    val until = if (form.preset == RangeChoice.CUSTOM) form.customUntil ?: windowEnd else windowEnd
     return ResolvedRange(
         windowStart = windowStart,
         windowEnd = windowEnd,
@@ -1062,31 +1061,30 @@ class StatusScreenTest {
     }
 
     @Test
-    fun `the reconfigure surface seeds the Event-start lower bound when the cutoff is at the floor`() = runComposeUiTest {
-        // minPhotoDate == startsAt → Event-start preset; maxPhotoDate == endsAt → Event-end preset. The
-        // value line states the full window as the compact adaptive range.
+    fun `the reconfigure surface shows the whole event when the range spans the window`() = runComposeUiTest {
+        // minPhotoDate == startsAt and maxPhotoDate == endsAt → the whole event. The row states the full window
+        // as the compact adaptive range.
         setContent { TestStatusScreen(reconfiguring(), cutoff = fixedCutoff()) }
-        onNodeWithTag("from-event-start").assertIsSelected()
-        onNodeWithTag("until-event-end").assertIsSelected()
-        onNodeWithText("Sharing 6 Jul 12:00 – 10 Jul 12:00").assertExists()
+        onNodeWithText("6 Jul 12:00 – 10 Jul 12:00").assertExists()
+        onNodeWithText("The whole event", substring = true).assertExists()
     }
 
     @Test
-    fun `the reconfigure surface seeds a Custom lower bound when the cutoff is above the floor`() = runComposeUiTest {
+    fun `the reconfigure surface shows a custom range when the cutoff is above the floor`() = runComposeUiTest {
         val above = MEMBERSHIP.copy(minPhotoDate = captureCutoff("2026-07-06T18:00:00Z"))
-        val form = RangeForm(fromPreset = FromChoice.CUSTOM, fromCustom = LocalDateTime(2026, 7, 6, 18, 0))
+        val form = RangeForm(preset = RangeChoice.CUSTOM, customFrom = LocalDateTime(2026, 7, 6, 18, 0))
         setContent { TestStatusScreen(reconfiguring(above, form), cutoff = fixedCutoff()) }
-        onNodeWithTag("from-custom").assertIsSelected()
-        onNodeWithText("Sharing 6 Jul 18:00 – 10 Jul 12:00").assertExists()
+        onNodeWithText("6 Jul 18:00 – 10 Jul 12:00").assertExists()
+        onNodeWithText("Custom range", substring = true).assertExists()
     }
 
     @Test
-    fun `the reconfigure surface seeds a Custom upper bound when the ceiling is below the event end`() = runComposeUiTest {
+    fun `the reconfigure surface shows a custom range when the ceiling is below the event end`() = runComposeUiTest {
         val below = MEMBERSHIP.copy(maxPhotoDate = captureCeiling("2026-07-09T12:00:00Z"))
-        val form = RangeForm(untilPreset = UntilChoice.CUSTOM, untilCustom = LocalDateTime(2026, 7, 9, 12, 0))
+        val form = RangeForm(preset = RangeChoice.CUSTOM, customUntil = LocalDateTime(2026, 7, 9, 12, 0))
         setContent { TestStatusScreen(reconfiguring(below, form), cutoff = fixedCutoff()) }
-        onNodeWithTag("until-custom").assertIsSelected()
-        onNodeWithText("Sharing 6 Jul 12:00 – 9 Jul 12:00").assertExists()
+        onNodeWithText("6 Jul 12:00 – 9 Jul 12:00").assertExists()
+        onNodeWithText("Custom range", substring = true).assertExists()
     }
 
     @Test

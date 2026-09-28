@@ -19,9 +19,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.snapsync.control.RigClient
-import app.snapsync.model.FromChoice
+import app.snapsync.model.RangeChoice
 import app.snapsync.model.runCatchingCancellable
-import app.snapsync.model.UntilChoice
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.model.Layer
 import app.snapsync.model.RangeForm
@@ -133,7 +132,6 @@ private fun mirrorActions(
         join = JoinGateActions(
             onConfirmJoin = post("confirmJoin"),
             onRetryJoin = post("retryJoin"),
-            onAcknowledgeAccess = inert("acknowledge access"),
             onCancelJoin = post("cancelJoin"),
             onRetryLoad = post("retryLoad"),
         ),
@@ -166,21 +164,16 @@ private fun mirrorActions(
         onOpenLink = { url -> note("open link $url: the mirror opens no browser") },
         participation = ParticipationActions(
             choices = RangeChoiceActions(
-                onFromPreset = { preset ->
+                onPreset = { preset ->
                     when (preset) {
-                        FromChoice.EVENT_START -> post("setRange", "from" to "eventStart")()
-                        FromChoice.NOW -> post("setRange", "from" to "now")()
-                        FromChoice.CUSTOM -> note("a custom start is set by picking a date")
+                        RangeChoice.WHOLE_EVENT -> post("setRange", "range" to "wholeEvent")()
+                        RangeChoice.FROM_NOW -> post("setRange", "range" to "fromNow")()
+                        RangeChoice.CUSTOM -> note("a custom range is set by picking dates")
                     }
                 },
-                onFromCustom = { local -> post("setRange", "cutoff" to instant(local))() },
-                onUntilPreset = { preset ->
-                    when (preset) {
-                        UntilChoice.EVENT_END -> post("setRange", "until" to "eventEnd")()
-                        UntilChoice.CUSTOM -> note("a custom end is set by picking a date")
-                    }
+                onCustom = { from, until ->
+                    post("setRange", "cutoff" to instant(from), "until" to instant(until))()
                 },
-                onUntilCustom = { local -> post("setRange", "until" to instant(local))() },
             ),
             onShareOn = { on -> form()?.let { setDirection(on, it.receiveOn) } ?: note("no join form open") },
             onReceiveOn = { on -> form()?.let { setDirection(it.shareOn, on) } ?: note("no join form open") },

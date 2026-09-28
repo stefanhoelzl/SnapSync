@@ -376,7 +376,6 @@ private fun ColumnScope.CurrentLayer(
                 actions = JoinActions(
                     onConfirm = actions.join.onConfirmJoin,
                     onRetryJoin = actions.join.onRetryJoin,
-                    onAcknowledgeAccess = actions.join.onAcknowledgeAccess,
                     onCancel = actions.join.onCancelJoin,
                     onRetryLoad = actions.join.onRetryLoad,
                     participation = actions.participation,

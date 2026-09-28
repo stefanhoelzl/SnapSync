@@ -5,14 +5,14 @@ import kotlinx.serialization.Serializable
 
 /**
  * A member's **uncommitted choices** on a decision surface — the join gate and the in-place reconfigure
- * ask for the same seven (capability `photo-sharing`, `join-event`, `manage-membership`).
+ * ask for the same six (capability `photo-sharing`, `join-event`, `manage-membership`).
  *
  * These used to be seven `mutableStateOf`s held by each screen, declared twice with different seeds. That
  * gave them Compose's lifetime rather than the surface's, which is the wrong one: the join gate advances
  * `Ready → Committing → CommitFailed` beneath them, and a value tied to composition has already caused a
  * seeding bug there. Reduced state gives them a lifetime the type states.
  *
- * What is remembered is the PRESETS, and the picked wall-clock value behind a `CUSTOM` pick — never a
+ * What is remembered is the PRESET, and the picked wall-clock values behind a `CUSTOM` pick — never a
  * resolved instant. Resolution happens against the event window on every reduction ([resolve]), so a
  * window that arrives late (the details fetch resolving after the surface mounts) is picked up rather
  * than baked in.
@@ -28,10 +28,11 @@ data class RangeForm(
     val shareOn: Boolean = true,
     val receiveOn: Boolean = true,
     val saveToAlbum: Boolean = true,
-    val fromPreset: FromChoice = FromChoice.EVENT_START,
-    val fromCustom: LocalDateTime? = null,
-    val untilPreset: UntilChoice = UntilChoice.EVENT_END,
-    val untilCustom: LocalDateTime? = null,
+    val preset: RangeChoice = RangeChoice.WHOLE_EVENT,
+    /** The picked start behind [RangeChoice.CUSTOM]; `null` resolves to the window's start. */
+    val customFrom: LocalDateTime? = null,
+    /** The picked end behind [RangeChoice.CUSTOM]; `null` resolves to the window's end. */
+    val customUntil: LocalDateTime? = null,
 )
 
 /**
@@ -54,7 +55,7 @@ data class ResolvedRange(
     val direction: Direction,
     /** Both switches off is representable and does nothing, so the commit action is disabled with a reason. */
     val commitEnabled: Boolean,
-    /** "Now" is offered only while the present is inside the event window. */
+    /** "From now" is offered only while the present is inside the event window. */
     val nowAvailable: Boolean,
     /**
      * How many of the member's own photos the chosen range would share (capability `join-event`).
@@ -63,12 +64,6 @@ data class ResolvedRange(
      * range admits none of their photos.
      */
     val shareCount: ShareCount = ShareCount.Counting,
-    /**
-     * The event's retention deadline in wall-clock terms (capability `event-lifetime`), or `null` when the
-     * surface has no event to state one for. Converted here for the same reason the bounds are: the
-     * reduction holds the zone, and the design system formats what it is given.
-     */
-    val deletesLocal: LocalDateTime? = null,
 )
 
 /** The live shareable count (capability `join-event`), as the row renders it. */

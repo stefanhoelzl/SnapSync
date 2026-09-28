@@ -117,7 +117,7 @@ sealed interface Layer {
      * configured** — which covers a first join and, equally, a **switch after its leave**: the switch's
      * confirmation ([Joined.pendingSwitch]) runs only the leave, and the same pending join lands here the
      * moment the config clears, so the member configures the new membership on this surface like any
-     * other joiner. [phase] drives it (loading details → explain/ready/blocked/retry → committing →
+     * other joiner. [phase] drives it (loading details → ready/blocked/retry → committing →
      * commit-failed).
      */
     @Serializable
@@ -138,6 +138,13 @@ sealed interface Layer {
          * link is rejected wherever it arrives, so the message reaches whichever layer is showing.
          */
         val notice: String? = null,
+        /**
+         * Confirming this join also raises iOS's photo-access dialog (capability `join-event`,
+         * `photo-access`): no event is configured and access was never asked — the sole state from which
+         * iOS can still raise it (from a refusal a request is a silent no-op, so promising a dialog would
+         * be false). The surface says so beside its confirm and names the confirm for it.
+         */
+        val asksAccessOnJoin: Boolean = false,
     ) : Layer
 
     /**
@@ -274,15 +281,14 @@ data class PendingSwitch(val eventId: String, val phase: JoinPhase)
  * [startsAt] is the event's **start date** — already a canonical UTC `…Z` string (`BackendEventDirectory`
  * normalizes it and fails the load rather than invent one). It is both the range row's lower **default**
  * and its **floor** (capability `photo-sharing`): the row cannot be empty and the confirm cannot
- * join below it, so joining at whole-library scope is unrepresentable. It also decides the range
- * selector's shape — when it is in the **future**, the "Now" preset would clamp to this same instant, so
- * it is offered disabled rather than as a button that visibly does nothing.
+ * join below it, so joining at whole-library scope is unrepresentable. It also decides whether "From
+ * now" is offered — when it is in the **future**, that preset would clamp to this same instant.
  *
  * [endsAt] is the event's **end date** — the range row's upper **default** and its **ceiling**
- * (capability `photo-sharing`), and the seed for the "Event end" preset.
+ * (capability `photo-sharing`).
  *
  * [deletesAt] is the event's **retention deadline** (capability `event-lifetime`) — **server-derived** and
- * carried verbatim. The gate states it before the confirm, and the commit persists it as the offline
+ * carried verbatim. The commit persists it as the offline
  * witness of the self-leave (capability `manage-membership`). It is never computed on the device: a
  * client-side copy of the retention constant would promise a date the backend will not honour, silently.
  */
@@ -330,12 +336,6 @@ sealed interface JoinPhase {
         /**
          * Where a loaded confirmation stands.
          *
-         * - [ExplainAccess] — the photo-access explainer, shown **before** the system permission dialog
-         *   is ever raised. Chosen instead of [Ready] when **no event is configured** and permission is
-         *   `NOT_DETERMINED` (the sole state from which iOS can still raise the dialog; from `DENIED` a
-         *   request is a silent no-op, so an explainer promising a dialog would be false). Its confirm
-         *   requests permission and advances to [Ready]; its cancel discards the pending join. It renders
-         *   none of the event's dates — it carries them only because the step it advances to needs them.
          * - [Ready] — the confirm (Join/Switch) is offered.
          * - [Committing] — the confirm was taken; enroll + provision are in flight.
          * - [CommitFailed] — the commit failed for a reason that may not hold next time (the network,
@@ -350,7 +350,7 @@ sealed interface JoinPhase {
          *   join and returns to the front door.
          */
         @Serializable
-        enum class Step { ExplainAccess, Ready, Committing, CommitFailed, EventFull }
+        enum class Step { Ready, Committing, CommitFailed, EventFull }
     }
 }
 
