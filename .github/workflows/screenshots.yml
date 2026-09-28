@@ -2,20 +2,19 @@
 # it posts no status check and never blocks a merge. It changes no product behavior. Its
 # rationale (why it exists at all, and every knob below) lives here so there is no separate capability.
 # The one product-facing PROPERTY — that a committed raw depicts the real screen in a state the real
-# reduction can reach — is spec'd in `docs/deployment.md`, beside the requirement making those raws
+# reduction reached — is spec'd in `docs/deployment.md`, beside the requirement making those raws
 # the source of truth for the listing.
 #
-# WHAT IT DOES: builds the SnapSyncForge target for the iOS simulator, boots a 6.9" iPhone, and launches
-# it once per (appearance, marketing state) with SNAPSYNC_FORGE_STATE, capturing each with
-# `simctl io screenshot`.
+# WHAT IT DOES: builds the RIG build of the real app for the iOS simulator, boots a 6.9" iPhone, and runs
+# `:test:integration`'s screenshot capture (`CaptureShots`): it sets the app's launch adapters — every system
+# mocked but the screen and the app's foreground life — drives the app to each marketing state through the
+# control channel (the scenarios in `Shots.kt`, which `ShotsTest` runs on the JVM host on every build), and
+# captures each with `simctl io screenshot`, light and dark.
 #
-# WHY A SEPARATE TARGET: forge used to be a MODE of the shipped app, selected by a launch variable that
-# every binary read. That meant the preset table and a ~15-member inert shell delegate shipped to users.
-# `SnapSyncForge` is its own binary that links neither `:app:ios` nor any adapter, so it has no
-# SnapSyncRoot, no live graph, no backend client and no photo access — not because a delegate declines,
-# but because none of that code is in it (verified: 0 forge symbols in the shipped framework, 35 in this
-# one). SNAPSYNC_FORGE_STATE survives here because this binary's source does not exist in a production
-# build, which is the same footing SNAPSYNC_RIG_PORT stands on.
+# WHY THE REAL APP: these raws used to come from a separate forge binary that fed canned inputs to the status
+# screen. That could show a frame the app never reached (its joining shot had no photo count; its in_sync shot
+# no downloads), and it rotted between dispatches because nothing ran it. Now each state is one the real
+# reduction reached over the mocks, and the scenario that reaches it gates every build on the JVM host.
 # It uploads **6 RAW captures** (3 states x light/dark) as a workflow ARTIFACT and stops there.
 #
 # RAW ONLY, BY DESIGN. An operator commits these to `screenshots/` and they become the SINGLE SOURCE OF
@@ -26,10 +25,9 @@
 #
 # WHY COMMIT simctl'S OUTPUT: `simctl` stamps no timestamp — its only PNG metadata is an `eXIf` chunk of
 # dimensions + colour space, byte-identical across captures. So a re-run with an unchanged UI produces an
-# unchanged file and `git status` stays clean; a diff means the UI really moved. (Every PNG ImageMagick
-# writes carries `tIME`/`date:*`, so committing composites would churn on every regeneration — another
-# reason composition belongs downstream.) NB the `create` shot is the exception: it renders the wall clock,
-# so it re-diffs every run until that is fixed (see the change's design D3).
+# unchanged file and `git status` stays clean; a diff means the UI really moved. The clock is MOCKED at a fixed
+# instant (`Shot.NOW`) and the status bar overridden, so no shot renders the wall clock — `create`, which
+# re-diffed every run under the forge, is as stable as the others.
 #
 # WHY 6.9" ONLY: it is Apple's single REQUIRED iPhone screenshot class (iPhone 16 Pro Max, 1320x2868)
 # and App Store Connect auto-scales it down to the 6.5"/6.7" listings. Older classes and iPad are not
@@ -76,39 +74,29 @@ jobs:
             konan-${{ runner.os }}-
 
       # Render the deployment BEFORE xcodebuild reads it. `Config.xcconfig` hard-`#include`s the
-      # GENERATED, gitignored `Deployment.xcconfig` (`docs/deployment.md`), so a build
-      # without this step fails at CONFIGURATION time — "could not find included file" — rather than
-      # falling through to stale values. Every iOS-building workflow resolves first for that reason; this
-      # one never did. The include landed in 3a93f5f4, two days after this workflow's last green run, and
-      # because this workflow is dispatch-only and NON-GATING nothing reported it: every dispatch for the
-      # following month failed here. Keep this step ahead of any xcodebuild added below.
+      # GENERATED, gitignored `Deployment.xcconfig` (`docs/deployment.md`), so a build without this step fails
+      # at CONFIGURATION time — "could not find included file". This workflow once failed there for a month
+      # unnoticed, because it is dispatch-only and NON-GATING; keep this step ahead of any xcodebuild.
       #
-      # WHICH deployment does not matter here — this target needs the file to EXIST, nothing more. The
-      # forge binary links no adapters and no backend client, and its bundle substitutes none of the
-      # resolved values (`SnapSyncForge` pins `PRODUCT_BUNDLE_IDENTIFIER = app.snapsync.forge` literally
-      # rather than reading `$(BUNDLE_ID)`, and its Info.plist references no other). `prod` is used anyway
-      # so that "which deployment did CI resolve?" has one answer across every workflow.
+      # `local`, as `scripts/sim-contracts` does, and through GRADLE_OPTS so the Gradle that Xcode's build phase
+      # launches renders the same one. The backend is MOCKED on every launch that drives a shot, so no request leaves
+      # the app; `local` makes that doubly true — a launch that reached a real backend would find nothing on the
+      # loopback, never the shared zone real users' photos live in.
       - name: Resolve the deployment
-        run: python3 scripts/resolve-deployment.py prod
-
-      # Build the app for the simulator SDK. UNSIGNED (a simulator .app needs no code signing —
-      # ios-app-shell "No code signing required for the simulator build"). Debug so the Kotlin/Native
-      # framework link skips the LLVM optimizer — a screenshot needs no optimization.
-      #
-      # This used to build the whole `iosApp` scheme, dragging the PhotoKit BackgroundUploadExtension into
-      # the closure — irrelevant to a UI screenshot and ~78s of the ~368s build (21%). The comment here
-      # recorded that dropping it was NOT a one-word swap (`-target` is rejected alongside
-      # `-derivedDataPath`) and would need a dedicated scheme in the Xcode project.
-      #
-      # There is one now, for an unrelated reason: forge stopped being a mode of the shipped app and became
-      # its own target. So this builds a binary that contains no extension, no live graph and no adapters —
-      # the saving falls out of the containment rather than having been engineered for. What remains is the
-      # Compose/Skiko framework link, which is not cacheable and genuinely needed.
-      - name: Build the forge binary for the iOS simulator
         run: |
+          python3 scripts/resolve-deployment.py local
+          echo "GRADLE_OPTS=-Dorg.gradle.project.snapsync.deployment=local" >> "$GITHUB_ENV"
+
+      # The RIG build of the real app for the simulator SDK (`-Psnapsync.rig=true`, in ~/.gradle and never in the
+      # repo's gradle.properties — exactly as ios-contracts builds it). Debug so the Kotlin/Native framework link
+      # skips the LLVM optimizer. Built unsigned, then AD-HOC signed: an unsigned simulator app has no App Group,
+      # and the launch adapters' choice and the mocked systems' state live there (`scripts/sim-sign`).
+      - name: Build the rig app for the iOS simulator
+        run: |
+          mkdir -p ~/.gradle && printf "snapsync.rig=true\n" >> ~/.gradle/gradle.properties
           xcodebuild \
             -project iosApp/iosApp.xcodeproj \
-            -scheme SnapSyncForge \
+            -scheme iosApp \
             -configuration Debug \
             -sdk iphonesimulator \
             -destination 'generic/platform=iOS Simulator' \
@@ -117,7 +105,16 @@ jobs:
             build
           APP="$(find build/ios/Build/Products -maxdepth 2 -name '*.app' -path '*-iphonesimulator*' | head -1)"
           if [ -z "$APP" ]; then echo "::error::no simulator .app produced"; exit 1; fi
+          scripts/sim-sign "$APP"
           echo "APP_PATH=$APP" >> "$GITHUB_ENV"
+
+      # The capture compiles now, and every Gradle and Kotlin daemon stops before the simulator boots: they hold
+      # gigabytes the simulator would swap against (the reason ios-contracts runs its journeys as a bare JVM too).
+      - name: Compile the capture
+        run: |
+          ./gradlew -q :test:integration:screenshotsClasses :test:integration:screenshotsClasspath
+          ./gradlew -q --stop
+          pkill -f 'org.jetbrains.kotlin.daemon.KotlinCompileDaemon' || true
 
       # Boot a 6.9" iPhone and install. REUSE the runner image's pre-created device rather than
       # `simctl create`: a brand-new device pays a first-boot data-container migration that measured
@@ -148,82 +145,32 @@ jobs:
             --batteryState charged --batteryLevel 100 \
             --cellularBars 4 --wifiBars 3
 
-      # Launch once per (appearance, state) with the forge env var (SIMCTL_CHILD_ passes it to the app
-      # process), let it render, capture, then terminate before the next launch (a fresh process per shot).
-      #
-      # The APPEARANCE pass drives the app's REAL dark theme: `AppTheme` selects on
-      # `isSystemInDarkTheme()`, which Compose/iOS resolves from the UIKit trait collection
-      # (`LocalSystemTheme` -> `userInterfaceStyle`) — exactly what `simctl ui appearance` sets. So no
-      # app change, no theme override, and the dark shot is a frame the production app genuinely
-      # renders. Verified: the captures come back with backgrounds #F4F6F8 / #0C0E12, the literal
-      # `AppTheme` LightColors/DarkColors constants.
-      - name: Capture each forged state, light and dark
+      # Drive the real app to each state and capture it, light and dark (`CaptureShots`). One launch per state;
+      # the appearance flips on the running app — `AppTheme` selects on `isSystemInDarkTheme()`, which
+      # Compose/iOS resolves from the UIKit trait collection that `simctl ui appearance` sets — and a settled
+      # frame is two byte-identical consecutive captures. A bare JVM on the classpath the compile step wrote.
+      - name: Capture each state, light and dark
         run: |
-          mkdir -p shots tmp
+          "${JAVA_HOME:+$JAVA_HOME/bin/}java" -Xmx512m -cp "$(cat test/integration/build/screenshots-classpath.txt)" \
+            app.snapsync.screenshots.CaptureShotsKt "$DEVICE" 18099 shots
 
-          # Wait until the app is GONE. SnapSync ignores SIGTERM (Skiko runloop), so a relaunch that
-          # LAYERS over a still-alive instance yields a black launch screen. Polling beats a blind sleep:
-          # it is both faster in the common case and actually correct in the slow one.
-          wait_gone() {
-            for _ in $(seq 1 40); do
-              xcrun simctl spawn "$DEVICE" launchctl list 2>/dev/null | grep -q app.snapsync.forge || return 0
-              sleep 0.5
-            done
-            echo "::warning::app still running after terminate"
-          }
-
-          # Wait until the screen STOPS CHANGING, then leave the settled frame at $1.
-          #
-          # This is a real readiness signal rather than `sleep 8`'s guess: `simctl io screenshot` writes no
-          # timestamp (its only metadata is an eXIf of dimensions + colour space), so two byte-identical
-          # consecutive captures mean the pixels are genuinely static — Compose has finished its cold init
-          # and any launch animation is over. Safe because every forged state is static; the animated
-          # `Syncing` state is deliberately not in the marketing set (its pulsing arrow would never settle).
-          wait_stable() {
-            local out="$1" prev=tmp/prev.png cur=tmp/cur.png
-            xcrun simctl io "$DEVICE" screenshot "$prev" >/dev/null 2>&1
-            for _ in $(seq 1 25); do
-              sleep 1
-              xcrun simctl io "$DEVICE" screenshot "$cur" >/dev/null 2>&1
-              if cmp -s "$prev" "$cur"; then cp "$cur" "$out"; return 0; fi
-              mv "$cur" "$prev"
-            done
-            echo "::error::screen never settled for $out"; exit 1
-          }
-
-          # ONE launch per STATE, not per (state, appearance): SNAPSYNC_FORGE_STATE is read once per
-          # process so each state needs its own launch, but the appearance does not — `AppTheme` selects on
-          # `isSystemInDarkTheme()`, which Compose/iOS resolves from the UIKit trait collection, and the
-          # framework observes `traitCollectionDidChange`. So a running app re-themes when `simctl ui
-          # appearance` flips. Halves the launches, and wait_stable proves the re-theme actually landed.
-          for STATE in create joining in_sync; do
-            xcrun simctl terminate "$DEVICE" app.snapsync.forge 2>/dev/null || true
-            wait_gone
-            xcrun simctl ui "$DEVICE" appearance light
-            SIMCTL_CHILD_SNAPSYNC_FORGE_STATE="$STATE" \
-              xcrun simctl launch "$DEVICE" app.snapsync.forge
-            wait_stable "shots/$STATE-light.png"
-
-            xcrun simctl ui "$DEVICE" appearance dark
-            wait_stable "shots/$STATE-dark.png"
-
-            # The flip must actually have changed the frame. If the two are identical the app did not
-            # re-theme, and we would silently ship six light screenshots — half of them mislabelled.
-            if cmp -s "shots/$STATE-light.png" "shots/$STATE-dark.png"; then
-              echo "::error::$STATE did not re-theme on the appearance flip (light == dark)"; exit 1
-            fi
-            echo "captured $STATE (light + dark)"
-          done
-          xcrun simctl terminate "$DEVICE" app.snapsync.forge 2>/dev/null || true
-          rm -rf tmp
-          # Diagnostics: dump any crash reports so a launch-into-Joined crash is attributable, not guessed.
-          echo "=== crash reports ==="
-          CR="$HOME/Library/Developer/CoreSimulator/Devices/$DEVICE/data/Library/Logs/DiagnosticReports"
-          if ls "$CR"/*.ips >/dev/null 2>&1; then
-            for f in "$CR"/*.ips; do echo "--- $f ---"; head -50 "$f"; done
-          else
-            echo "no crash reports"
-          fi
+      # Diagnostics on a failed capture: the app's own log, what the screen showed, and any crash report — so a
+      # launch that never answered or a state never reached is attributable, not guessed.
+      - name: Keep the evidence
+        if: failure()
+        run: |
+          mkdir -p evidence
+          DATA="$(xcrun simctl get_app_container "$DEVICE" app.snapsync data 2>/dev/null || true)"
+          [ -n "$DATA" ] && cp "$DATA/Documents/debug.log" evidence/ 2>/dev/null || true
+          xcrun simctl io "$DEVICE" screenshot evidence/screen.png >/dev/null 2>&1 || true
+          cp "$HOME/Library/Developer/CoreSimulator/Devices/$DEVICE/data/Library/Logs/DiagnosticReports/"*.ips evidence/ 2>/dev/null || true
+      - name: Upload the evidence
+        if: failure()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: screenshots-evidence
+          path: evidence/
+          if-no-files-found: ignore
 
       # Fail loudly rather than upload a short set: a missing shot means a launch or capture failed, and
       # the operator is about to commit these as the source of truth for two surfaces.

@@ -1,5 +1,6 @@
 package app.snapsync.rig
 
+import app.snapsync.mock.BackendCall
 import app.snapsync.mock.DownloadSessionMock
 import app.snapsync.mock.LibraryAssets
 import app.snapsync.mock.MockedSystem
@@ -200,8 +201,17 @@ private fun MockWorld.backendLevers(op: (suspend MockWorld.(Map<String, String>)
         OK
     },
     "backend/sweep" to op { params -> withEvent(params) { event -> device.backend.operator.sweepEvent(event); OK } },
-    "backend/hold-leave" to op { _ -> device.backend.operator.holdLeave(); OK },
-    "backend/release-leave" to op { _ -> device.backend.operator.releaseLeave(); OK },
+    // Every `call` (event|create|join|leave) waits until released (`on=false`) — the backend that has not answered yet,
+    // which is the only time the app shows the screen that waits on it.
+    "backend/hold" to op { params ->
+        val call = BackendCall.ofKey(params["call"])
+            ?: return@op CommandResult.badRequest(
+                "call must be one of ${BackendCall.entries.joinToString("|") { it.key }}, was '${params["call"]}'",
+            )
+        val on = flag(params, "on")
+        if (on) device.backend.operator.hold(call) else device.backend.operator.release(call)
+        CommandResult.ok("""{"call":"${call.key}","held":$on}""")
+    },
     "backend/fail-listing" to op { params ->
         device.backend.operator.failDeviceListing = flag(params, "on")
         OK
@@ -369,6 +379,12 @@ private fun MockWorld.libraryLevers(): Map<String, Lever> = mapOf(
         val id = params["id"] ?: return@RigCommand CommandResult.badRequest("id is required")
         device.library.operator.remove(AssetId(id))
         CommandResult.ok(buildJsonObject { put("removed", id) }.toString())
+    }),
+    // Every walk of the library waits until released (`on=false`) — a library not yet enumerated, so nothing is counted.
+    "gallery/hold-enumeration" to mocked(MockedSystem.LIBRARY, RigCommand { params, _ ->
+        val on = flag(params, "on")
+        if (on) device.library.operator.holdEnumeration() else device.library.operator.releaseEnumeration()
+        CommandResult.ok("""{"held":$on}""")
     }),
     "gallery/fail-next-enumeration" to mocked(MockedSystem.LIBRARY, RigCommand { _, _ ->
         device.library.operator.failNextEnumeration = true

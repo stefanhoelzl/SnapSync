@@ -152,6 +152,20 @@ class PhotoLibraryOperator internal constructor(private val state: LibraryState)
         state.addsHeld?.complete(Unit)
         state.addsHeld = null
     }
+
+    /** Every walk waits until [releaseEnumeration] — a library that has not been enumerated yet. */
+    fun holdEnumeration() {
+        state.enumerationHeld = CompletableDeferred()
+    }
+
+    /** Whether walks are held. */
+    val enumerationHeld: Boolean get() = state.enumerationHeld != null
+
+    /** A held walk, and every later one, reads. */
+    fun releaseEnumeration() {
+        state.enumerationHeld?.complete(Unit)
+        state.enumerationHeld = null
+    }
 }
 
 /** The photo library's durable state: everything the device keeps, and the one process currently registered with it. */
@@ -182,6 +196,7 @@ internal class LibraryState(
     val addedLog = mutableListOf<Pair<String, List<AssetId>>>()
     val deletedAlbums = mutableSetOf<String>()
     var addsHeld: CompletableDeferred<Unit>? = null
+    var enumerationHeld: CompletableDeferred<Unit>? = null
     var failNextEnumeration = false
     var byIdReadable = true
 

@@ -309,7 +309,7 @@ class FullStackIntegrationTest {
     fun leaving_flips_the_screen_before_the_backend_delete_completes() = rigTest {
         val event = createAndJoin()
         // The backend holds the leave's DELETE open: the backend that has not answered yet.
-        device("backend/hold-leave")
+        device("backend/hold", "call" to "leave", "on" to "true")
 
         user("leave")
 
@@ -322,7 +322,7 @@ class FullStackIntegrationTest {
         )
 
         // Once the backend answers, the departure lands.
-        device("backend/release-leave")
+        device("backend/hold", "call" to "leave", "on" to "false")
         eventually(read = { deviceJson("backend/departed", "event" to event) }) {
             it.getValue("departed").jsonPrimitive.boolean
         }

@@ -92,6 +92,26 @@ val journeysClasspath by tasks.registering {
     doLast { out.get().asFile.writeText(classpath.asPath) }
 }
 
+// ---- The marketing screenshots ----
+// (`docs/deployment.md`, "Screenshots")
+//
+// The capture of the six raws from the REAL app: the rig build on a simulator over launch adapters, driven to each shot by
+// the scenarios in the test source set (`Shots.kt`, which `ShotsTest` runs on the JVM host on every build), and
+// captured with `simctl`. Run ONLY by `screenshots.yml` on a macOS runner, as a bare JVM on the classpath below — the
+// same reason the journeys are. Never a dependency of `check`.
+val screenshots: SourceSet by sourceSets.creating {
+    compileClasspath += sourceSets.test.get().output + sourceSets.test.get().compileClasspath
+    runtimeClasspath += output + compileClasspath + sourceSets.test.get().runtimeClasspath
+}
+val screenshotsClasspath by tasks.registering {
+    description = "Writes the screenshot capture's runtime classpath to build/screenshots-classpath.txt (screenshots.yml only)."
+    val classpath = screenshots.runtimeClasspath
+    val out = layout.buildDirectory.file("screenshots-classpath.txt")
+    inputs.files(classpath)
+    outputs.file(out)
+    doLast { out.get().asFile.writeText(classpath.asPath) }
+}
+
 tasks.test {
     // JUnit 4: the contracts module (on the runtime path through the rig) binds kotlin-test to JUnit 4 in its main
     // code, and two kotlin-test framework bindings cannot coexist (the same reason `:test:control` gives).

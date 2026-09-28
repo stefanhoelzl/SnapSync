@@ -69,6 +69,7 @@ internal class InMemoryBackend(
     }
 
     override suspend fun createEvent(token: String?, req: CreateEventRequest): Reply<EventCreated> = gated(token) {
+        state.awaitRelease(BackendCall.CREATE)
         val name = req.name.trim()
         val startsAt = parse(req.startsAt)
         val endsAt = req.endsAt?.let(::parse) ?: startsAt?.plus(WINDOW_DAYS.days)
@@ -86,6 +87,7 @@ internal class InMemoryBackend(
     }
 
     override suspend fun getEvent(eventId: String): Reply<EventMeta> = online {
+        state.awaitRelease(BackendCall.EVENT)
         val event = state.events[eventId] ?: return@online notFound()
         val startsAt = event.startsAt ?: event.createdAt
         Reply.Ok(
@@ -110,6 +112,7 @@ internal class InMemoryBackend(
     }
 
     override suspend fun joinEvent(token: String?, eventId: String, deviceId: String): Reply<Unit> = gated(token) {
+        state.awaitRelease(BackendCall.JOIN)
         if (state.offline) return@gated offline()
         when (state.join(eventId, deviceId)) {
             BackendState.JoinOutcome.NO_SUCH_EVENT -> notFound()
@@ -133,7 +136,7 @@ internal class InMemoryBackend(
     }
 
     override suspend fun leaveEvent(token: String?, eventId: String, deviceId: String): Reply<Unit> = gated(token) {
-        state.leaveHold?.await()
+        state.awaitRelease(BackendCall.LEAVE)
         if (eventId !in state.events) return@gated notFound()
         state.memberships[eventId to deviceId]?.departed = true
         Reply.Ok(Unit)
