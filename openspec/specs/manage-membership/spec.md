@@ -89,9 +89,8 @@ that finds the event missing SHALL NOT end it.
 ### Requirement: A member changes what they share and receive without leaving
 The joined screen SHALL offer a settings action that opens the same choices as the join screen —
 share and receive switches, the capture range, and the album — pre-filled with the membership's current
-settings under the event's name. A range start that equals the event's start SHALL show as Event start
-and any other as a custom time; an end that equals the event's end SHALL show as Event end and any other
-as a custom time. Save SHALL apply all changes at once, without a confirmation dialog; Cancel SHALL
+settings under the event's name. A saved range equal to the event's whole window
+SHALL show as the whole event, and any other as a custom range. Save SHALL apply all changes at once, without a confirmation dialog; Cancel SHALL
 discard them. Both switches off SHALL disable Save with the reason stated. Changed range bounds SHALL
 stay within the event's start and end. Changing settings SHALL keep the member in the event and SHALL
 work offline.
@@ -103,6 +102,10 @@ work offline.
 #### Scenario: Cancel discards changes
 - **WHEN** the member changes several settings and taps Cancel
 - **THEN** their settings are exactly as before
+
+#### Scenario: A range narrower than the event shows as custom
+- **WHEN** a member who joined sharing from a time after the event's start opens settings
+- **THEN** the range shows as a custom range with that start and the event's end
 
 #### Scenario: A widened start is held to the event's start
 - **WHEN** the member picks a start before the event's start and saves
