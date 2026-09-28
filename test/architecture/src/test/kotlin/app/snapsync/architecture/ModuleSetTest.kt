@@ -28,7 +28,7 @@ import kotlin.test.fail
  *   zone that sees both the core's composition zone and presentation, so neither gains the other.
  * - **Contained** — each exists so that something is ABSENT from a production build, linked only under
  *   a build property (a build-time-only module is contained by compilation, not by a runtime check):
- *   `:app:ios:forge` under `-Psnapsync.forge`; `:test:rig` and `:test:contracts` under `-Psnapsync.rig`
+ *   `:app:ios:forge` under `-Psnapsync.forge`; `:test:rig`, `:test:contracts` and `:test:mix` under `-Psnapsync.rig`
  *   (`:test:contracts` is also the only module whose main code may assert). Grouped by the law that
  *   governs them, not by name prefix.
  * - **Support** — never linked into any shipped-format binary, and exempt from the production-module
@@ -185,7 +185,7 @@ class ModuleSetTest {
         )
 
         /** Each exists so something is absent from a production build; linked only under a build property. */
-        val CONTAINED = setOf(":app:ios:forge", ":test:rig", ":test:contracts")
+        val CONTAINED = setOf(":app:ios:forge", ":test:rig", ":test:contracts", ":test:mix")
 
         /** Never linked into any shipped-format binary; exempt from the production-module laws. */
         val SUPPORT = setOf(

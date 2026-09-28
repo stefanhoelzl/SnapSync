@@ -27,15 +27,10 @@ object RigVocabulary {
     /**
      * What only an operating system that is PLAYED can deliver: its expiry — every completion handler it holds and every
      * background-time hold told their time is up (`os/app/onExpiry`; `?arg=next` hands the next handler over already
-     * expired). A real operating system's expiry is its own, so the app host refuses it.
+     * expired). A real operating system's expiry is its own, so a host honours it only where the background-time holds
+     * are mocked — always on the JVM host, and on the app host when its launch mix mocks them.
      */
     val playedOsEntries: List<String> = listOf("os/app/onExpiry")
-
-    /** Why the app host refuses every [playedOsEntries] entry. */
-    val playedOsRefusals: Map<String, String> = playedOsEntries.associateWith {
-        "a real operating system's expiry is its own — the rig cannot tell iOS that time is up; the JVM host, " +
-            "which plays the operating system, delivers it"
-    }
 
     /** The upload extension root's entry points. */
     val extensionEntries: List<String> = listOf("processRawValue", "onTerminate").map { "os/photokit-ext/$it" }
@@ -52,9 +47,11 @@ object RigVocabulary {
     )
 
     /**
-     * The world's operator levers (`docs/testing.md`'s inspector set) — what only a host whose
-     * backend, OS and other members are simulated can pull. Named for what they do, not for the world, so a test
-     * that pulls one does not name its host; the app host refuses them.
+     * The operator levers over the mocked systems (`docs/testing.md`'s inspector set) — what only a host whose
+     * backend, OS and other members are mocked can pull. Named for what they do, not for the host, so a test that pulls
+     * one does not name its host. Each is honoured wherever the systems it moves are mocks (`MockLevers.kt`): always on
+     * the JVM host, and on the app host for the systems its launch mix mocks (`docs/testing.md`, "The launch-time mock
+     * mix") — refused, naming the real system, everywhere else.
      */
     val worldLevers: List<String> = listOf(
         "device/backend/offline",
@@ -112,29 +109,33 @@ object RigVocabulary {
     )
 
     /**
-     * Device facts both kinds of host have — the staging directory's files, the photo library's albums — that the
-     * app host does not wire yet. The JVM host reads them off its world; the app host refuses each with
-     * [appHostUnwiredRefusals], which says exactly that.
+     * Device facts — the staging directory's files, the photo library's albums — read off the mocked disk and library,
+     * so honoured like [worldLevers] wherever those are mocks.
      */
     val deviceFacts: List<String> = listOf("device/staging", "device/album/contents")
 
-    /** Why the app host refuses each [deviceFacts] entry. */
-    val appHostUnwiredRefusals: Map<String, String> = deviceFacts.associateWith {
-        "the app host has this fact but does not wire a read of it yet; the JVM host reads it off its world"
+    /**
+     * The launch-time mix (`docs/testing.md`, "The launch-time mock mix"): read the one this launch runs
+     * (`device/mix/current`), write the next one and exit (`device/mix`), or delete it with every mocked system's state
+     * and exit (`device/mix/clear`). The app host's alone: the JVM root's caller chooses real or mock per port as it
+     * composes.
+     */
+    val mixCommands: List<String> = listOf("device/mix", "device/mix/current", "device/mix/clear")
+
+    /** Why the JVM host refuses every [mixCommands] entry. */
+    val mixRefusals: Map<String, String> = mixCommands.associateWith {
+        "the JVM root's caller chooses real or mock per port when it composes the app (JvmApp), so there is no launch " +
+            "mix to read or write; the app host's rig build reads one at every start"
     }
 
     /** The port-contract verb (`GET /contract`, `POST /contract/<name>`). */
     const val CONTRACT: String = "contract"
 
     val entries: Set<String> =
-        (appEntries + playedOsEntries + extensionEntries + reads + sharedCommands + appHostCommands + worldLevers + deviceFacts + CONTRACT)
+        (appEntries + playedOsEntries + extensionEntries + reads + sharedCommands + appHostCommands + worldLevers + deviceFacts +
+            mixCommands + CONTRACT)
             .toSet()
 
-    /** Why the app host refuses every world lever — one reason, because they share one cause. */
-    val worldLeverRefusals: Map<String, String> = worldLevers.associateWith {
-        "a real device's backend, operating system and fellow members are not simulated, so there is nothing " +
-            "for this lever to move; it is served by the JVM host, whose world simulates all three"
-    }
 }
 
 /** `GET /device`'s body: what this host honours and refuses, and anything it failed to classify. */

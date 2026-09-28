@@ -2,6 +2,7 @@ package app.snapsync.ios
 
 import app.snapsync.compose.AppCore
 import app.snapsync.compose.AppPorts
+import app.snapsync.compose.DevicePorts
 import app.snapsync.compose.PushPorts
 import app.snapsync.compose.UploadRecordPorts
 import app.snapsync.host.ComposedApp
@@ -147,65 +148,7 @@ object SnapSyncRoot {
      */
     private val processMetrics: MetricKitProcessMetrics = MetricKitProcessMetrics()
 
-    /**
-     * This process's per-process services (`snapSyncProcess`, every root's first act): its log writers and boot
-     * banner, its ONE crash reporter — started here, before any other wiring can fail — its process metrics, its
-     * files, its clock and its entry-point seam.
-     *
-     * `internal`, not `private`, for one further reader: the rig's contributed hook drives a synthetic process-metric
-     * report through [ProcessServices.processAccount], THIS instance — exercising a copy would prove only that the
-     * copy works. `internal` is module-wide and is not exported to the `SnapSyncKit` ObjC header.
-     */
-    internal val process: ProcessServices = snapSyncProcess(
-        ProcessPorts(
-            crashReporter = SentryCrashReporter(),
-            processMetrics = processMetrics,
-            // A public NSLog sink AND a file sink. NSLog is redacted as `<private>` on current iOS (dynamic format
-            // strings are private), so the file (Documents/debug.log, pulled via `pymobiledevice3 apps pull`) is the
-            // reliable channel. The app's log stays in its OWN Documents — it can read it without help, so relocating
-            // it would break every pull command and buy nothing (capability `privacy-security`).
-            logSinks = listOf(PublicNSLogSink(), FileLogSink(appLogDestination().path)),
-            files = IosFiles(),
-            clock = SystemClock,
-            entryContext = IosEntryContext,
-            dsn = bakedSentryDsn(),
-            bootLines = listOf(
-                // Names the process + build version so a reader who concatenates the app/extension files can tell
-                // runs apart (capability `privacy-security`, D5).
-                "=== app process start build=${appBuildVersion()} ===",
-                // The BAKED backend this build talks to. It names the one fact that makes an otherwise-silent
-                // failure legible: point a build at a different backend without a device reset and the ledger
-                // still says COMPLETED, so the device uploads nothing — no error, no failed request. Read beside
-                // the cycle's own `enumeration: N seen, X new, Y already-uploaded`, a changed host beside an
-                // unchanged ledger names the cause immediately.
-                "[boot] upload base = ${bakedUploadBase()}",
-            ),
-            ownsGlobalLogger = true,
-        ),
-    )
-
-    init {
-        // The retired join marker's orphaned App-Group key goes on every start — it is what keeps a revert
-        // of `join-loads-leave-clears` clean (see [removeOrphanedJoinMarker]). Idempotent, no bookkeeping. Its
-        // own adapter instance: the properties below are not initialised yet in this block.
-        removeOrphanedJoinMarker(IosPreferences())
-    }
-
     private val log = Logger.withTag("SnapSyncRoot")
-
-    // The app-scope error boundary. Without a handler, an uncaught throwable from any `scope.launch`
-    // hits Kotlin/Native's default terminate → SIGABRT — a background failure (a platform-API call, an
-    // App-Group read, a deprecated PhotoKit selector on a newer iOS) takes the whole app down at launch.
-    // The `SupervisorJob` already isolates SIBLING coroutines from each other's failures; this makes an
-    // otherwise-unhandled failure land in `debug.log` (the un-redacted channel) instead of aborting the
-    // process, honouring the rule that errors reduce into state and never crash the shell. Every feature
-    // reduces its own domain errors into `UiState`; this catches only what nothing else did.
-    private val scope = CoroutineScope(
-        SupervisorJob() + compositionLane +
-            CoroutineExceptionHandler { _, t ->
-                log.e(t) { "uncaught in app scope — logged, not fatal" }
-            },
-    )
 
     // ── The OS fact → upload-mechanism PRESENCE (`docs/architecture.md`, "One shared composition") ──
 
@@ -222,6 +165,190 @@ object SnapSyncRoot {
      * the app's uploader runs on every OS, beside the extension.
      */
     internal val osSupportsOsDrivenUpload: Boolean = backgroundUploadSupported()
+
+    // ── This process's REAL adapters. Declared ahead of [real] and [adapters]: a rig build's adapter set may touch one
+    // while this object initializes (it quiets the real wake a launch mix mocks), and a property further down would
+    // not be initialized yet. Every one is `by lazy`, so declaring it builds nothing. ──
+
+    // The photo-library permission adapter, hoisted so the grant collector and a (re)provision share one
+    // instance (both enable the extension; a provision must re-enable a producer a prior leave disabled).
+    // `internal`, not `private`, for the same single reason as [app] and [host]: the rig's contributed hook
+    // needs the photo-access port to drive the gallery wipe, which must ask for access before fetching or
+    // its empty result is indistinguishable from an empty library. Module-wide, not exported to the ObjC
+    // header, and absent from any build without `-Psnapsync.rig=true`.
+    internal val permission: PhotoLibraryPermission by lazy { PhotoLibraryPermission() }
+
+    /**
+     * The process's ONE cutoff formatter (capability `sync-status`): the device zone read once, here, from the
+     * process's one clock — a formatter whose zone moved under a running screen would render one capture date two
+     * ways. The status host reduces with it and the screen renders with it: the same instance. Its "now" is the same
+     * clock's: the system's own on every production build, and a launch mix's mocked clock wherever one fixes it.
+     */
+    private val cutoffFormatter: CutoffFormatter by lazy {
+        CutoffFormatter(now = process.clock::now, zone = process.clock.timeZone())
+    }
+
+    /** What this process knows about its scenes — shared by the UI and the lifecycle adapters, on the main thread. */
+    private val sceneRecord: SceneRecord by lazy { SceneRecord() }
+
+    /** The Compose scene SwiftUI hosts (`:adapter:ios:ui`). */
+    internal val ui: IosUi by lazy { IosUi(sceneRecord, cutoffFormatter, log) }
+
+    /** The app's foreground life: `didBecomeActive` / `willResignActive`, observed once the graph registers. */
+    internal val lifecycle: IosLifecycle by lazy { IosLifecycle(sceneRecord, log) }
+
+    /** Both halves of Universal-Link delivery and SwiftUI's `onOpenURL`. */
+    internal val links: IosLinks by lazy { IosLinks(log) }
+
+    /** APNs: the token request, the token and its failure, and every silent push. */
+    internal val pushNotifications: IosPushNotifications by lazy { IosPushNotifications(log) }
+
+    /**
+     * The operating system's scheduled wakes — one per process, since its `listen` registers the `BGTask` launch
+     * handler and a second registration raises. `internal` so the control channel can deliver a task it plays the OS
+     * for (`/os onBackgroundTask`) until the entry surface becomes event ports (11g).
+     */
+    internal val wakeAdapter: IosWake by lazy { IosWake(log) }
+
+    /**
+     * The registration port's adapter, chosen by compilation target (capability `background-upload`), on every OS.
+     * `internal` so the control channel reads the registration through the very port the app registers through,
+     * rather than asking PhotoKit a second time and possibly getting a different answer. Not exported to the ObjC
+     * framework header.
+     */
+    internal val extensionRegistry: ExtensionRegistry by lazy { platformExtensionRegistry(log) }
+
+    // The ONE gallery this process holds: every photo-library read and album write the status total, the join
+    // preview, the download guard, the event album and the app's uploader make.
+    private val gallery: IosGallery by lazy { IosGallery(IosGalleryReader(), permission, scope) }
+
+    /** The app's uploader transport — one per process, since it owns the upload session's delegate. */
+    private val uploadAdapter: IosUrlSessionUploadPlatform by lazy { IosUrlSessionUploadPlatform(log, UPLOAD_SESSION_ID) }
+
+    /** The platform's background downloads — one per process, since it owns the download session's delegate. */
+    private val downloadAdapter: IosDownload by lazy { IosDownload() }
+
+    // The device-facing backend host (baked at compile time); shared by the backend port and the app's uploader.
+    // Reads through
+    // `:adapter:ios:ext-safe`'s [bakedUploadBase] — the same call the boot diagnostic makes, so a
+    // banner that disagreed with the host the adapters use is impossible, and the absent-key
+    // defaulting decision stays out of this wiring-only shell.
+    private val backendHost: String by lazy { bakedUploadBase() }
+
+    /**
+     * This process's ports onto the device's systems, as its REAL adapters (`DevicePorts`): each built on first use.
+     * What the graph composes over is what the build's adapter set hands back ([adapters]) — these on a production
+     * build, and on a rig build the launch-time mix's, where a mocked system's are its mock's (`docs/testing.md`,
+     * "The launch-time mock mix").
+     */
+    private val real: DevicePorts = DevicePorts(
+        clock = lazyOf(SystemClock),
+        crashReporter = lazy { SentryCrashReporter() },
+        files = lazy { IosFiles() },
+        // This process's SQLite databases, in the App-Group container. The stores open them on first use, never at
+        // construction: building the composition opens no database (`docs/architecture.md`).
+        databases = lazy { IosDatabases() },
+        preferences = lazy { IosPreferences() },
+        // This process's protected small-value store: the device id, the attestation token and key id, and the legacy
+        // album map's last seat — one instance, every item addressed by its slot, chosen by COMPILATION TARGET
+        // (capability `photo-sharing`): the Keychain on `iosArm64`, the device-id slot in an App-Group file on
+        // `iosSimulatorArm64`, where the shared group cannot exist.
+        secureStore = lazy { platformSecureStore() },
+        integrity = lazy { IosDeviceIntegrity() },
+        // Recorded by the background entry points; decides nothing (capability `sync-status`).
+        processInfo = lazy { IosProcessInfo() },
+        // The backend — ONE `HttpBackend` over the platform's HTTP client, declaring this bundle's version, which every
+        // backend call goes through. The credential and the backend's verdicts are the core's (`AppCore.backend`).
+        backend = lazy { HttpBackend(darwinHttpClient(), backendHost, appMarketingVersion()) },
+        // The process's background time (`beginBackgroundTask`): what a push or a transfer wake holds across its own
+        // work and its tail, and the only "time is up" those wakes get (capability `sync-status`).
+        backgroundTime = lazy { IosBackgroundTime(log) },
+        wake = lazy { wakeAdapter },
+        extensionRegistry = lazy { extensionRegistry },
+        gallery = lazy { gallery },
+        photoAccess = lazy { permission },
+        appUpload = lazy { uploadAdapter },
+        download = lazy { downloadAdapter },
+        // The platform's own UI — the share sheet, the store link, the Settings page (:adapter:ios:app-only).
+        systemUi = lazy { IosSystemUi() },
+        lifecycle = lazy { lifecycle },
+        links = lazy { links },
+        pushNotifications = lazy { pushNotifications },
+        ui = lazy { ui },
+    )
+
+    /**
+     * The adapters that differ between a production and a rig build — chosen at BUILD time: `platformAdapters()` is
+     * compiled from this module's `src/prod` or, only under `-Psnapsync.rig=true`, from the control channel's
+     * (`docs/architecture.md`, "A build-time-only module is contained by compilation"). No flag is read here. Built
+     * before [process], because the clock, the files and the crash reporter the process starts with are its ports.
+     */
+    private val adapters: PlatformAdapters = platformAdapters(real)
+
+    /**
+     * What this launch composes over. `internal` for the rig's contributed hook, which reads the registration and the
+     * files the app actually runs over — a launch mix's, where it mocks them. Not exported to the ObjC header.
+     */
+    internal val ports: DevicePorts get() = adapters.ports
+
+
+    /**
+     * This process's per-process services (`snapSyncProcess`, every root's first act): its log writers and boot
+     * banner, its ONE crash reporter — started here, before any other wiring can fail — its process metrics, its
+     * files, its clock and its entry-point seam.
+     *
+     * `internal`, not `private`, for one further reader: the rig's contributed hook drives a synthetic process-metric
+     * report through [ProcessServices.processAccount], THIS instance — exercising a copy would prove only that the
+     * copy works. `internal` is module-wide and is not exported to the `SnapSyncKit` ObjC header.
+     */
+    internal val process: ProcessServices = snapSyncProcess(
+        ProcessPorts(
+            crashReporter = ports.crashReporter,
+            processMetrics = processMetrics,
+            // A public NSLog sink AND a file sink. NSLog is redacted as `<private>` on current iOS (dynamic format
+            // strings are private), so the file (Documents/debug.log, pulled via `pymobiledevice3 apps pull`) is the
+            // reliable channel. The app's log stays in its OWN Documents — it can read it without help, so relocating
+            // it would break every pull command and buy nothing (capability `privacy-security`).
+            logSinks = listOf(PublicNSLogSink(), FileLogSink(appLogDestination().path)),
+            files = ports.files,
+            clock = ports.clock,
+            entryContext = IosEntryContext,
+            dsn = bakedSentryDsn(),
+            bootLines = listOf(
+                // Names the process + build version so a reader who concatenates the app/extension files can tell
+                // runs apart (capability `privacy-security`, D5).
+                "=== app process start build=${appBuildVersion()} ===",
+                // The BAKED backend this build talks to. It names the one fact that makes an otherwise-silent
+                // failure legible: point a build at a different backend without a device reset and the ledger
+                // still says COMPLETED, so the device uploads nothing — no error, no failed request. Read beside
+                // the cycle's own `enumeration: N seen, X new, Y already-uploaded`, a changed host beside an
+                // unchanged ledger names the cause immediately.
+                "[boot] upload base = ${bakedUploadBase()}",
+            ) + adapters.bootLines,
+            ownsGlobalLogger = true,
+        ),
+    )
+
+    init {
+        // The retired join marker's orphaned App-Group key goes on every start — it is what keeps a revert
+        // of `join-loads-leave-clears` clean (see [removeOrphanedJoinMarker]). Idempotent, no bookkeeping. On this
+        // launch's preferences — the mix's, where it mocks them.
+        removeOrphanedJoinMarker(ports.preferences)
+    }
+
+    // The app-scope error boundary. Without a handler, an uncaught throwable from any `scope.launch`
+    // hits Kotlin/Native's default terminate → SIGABRT — a background failure (a platform-API call, an
+    // App-Group read, a deprecated PhotoKit selector on a newer iOS) takes the whole app down at launch.
+    // The `SupervisorJob` already isolates SIBLING coroutines from each other's failures; this makes an
+    // otherwise-unhandled failure land in `debug.log` (the un-redacted channel) instead of aborting the
+    // process, honouring the rule that errors reduce into state and never crash the shell. Every feature
+    // reduces its own domain errors into `UiState`; this catches only what nothing else did.
+    private val scope = CoroutineScope(
+        SupervisorJob() + compositionLane +
+            CoroutineExceptionHandler { _, t ->
+                log.e(t) { "uncaught in app scope — logged, not fatal" }
+            },
+    )
 
     // This process's files, by area: the App-Group container and its own Documents. One instance; the file-backed
     // services below are built over it (`docs/architecture.md`).
@@ -241,16 +368,8 @@ object SnapSyncRoot {
 
     // Event album (capability `event-album`): the shared leave-surviving `eventId → albumLocalId` map the composed
     // coordinator (`app.albumCoordinator`) sits on.
-    private val albumMapStore: AlbumMapService by lazy { AlbumMapService(IosPreferences(), secureStore) }
+    private val albumMapStore: AlbumMapService by lazy { AlbumMapService(ports.preferences, secureStore) }
 
-
-    // The photo-library permission adapter, hoisted so the grant collector and a (re)provision share one
-    // instance (both enable the extension; a provision must re-enable a producer a prior leave disabled).
-    // `internal`, not `private`, for the same single reason as [app] and [host]: the rig's contributed hook
-    // needs the photo-access port to drive the gallery wipe, which must ask for access before fetching or
-    // its empty result is indistinguishable from an empty library. Module-wide, not exported to the ObjC
-    // header, and absent from any build without `-Psnapsync.rig=true`.
-    internal val permission: PhotoLibraryPermission by lazy { PhotoLibraryPermission() }
 
     // The stable per-install device id (the shared Keychain access group, addressed by name — the SAME
     // item the extension reads): the `/files/devices/<deviceId>/` partition the app's status lists.
@@ -270,9 +389,8 @@ object SnapSyncRoot {
         PersistedDeviceIdentity(DeviceIdentityRole.MINTING, secureStore, NoPlatformDeviceId())
     }
 
-    // This process's protected small-value store: the device id, the attestation token and key id, and the legacy
-    // album map's last seat — one instance, every item addressed by its slot.
-    private val secureStore: SecureStore by lazy { platformSecureStore() }
+    private val secureStore: SecureStore get() = ports.secureStore
+
 
     /**
      * The composed app graph (`docs/architecture.md`, "One shared composition"): this root
@@ -302,8 +420,7 @@ object SnapSyncRoot {
                 // the only place in the app process that may name it: platform UI runs here, and
                 // nothing else does.
                 uiLane = Dispatchers.Main,
-                // Recorded by the background entry points; decides nothing (capability `sync-status`).
-                processInfo = IosProcessInfo(),
+                processInfo = ports.processInfo,
                 // The diagnostic dump's two device-side inputs (capability `privacy-security`):
                 // the two log files (this process's own, and the extension's in the App Group) and
                 // the build/OS/device facts. Both are adapter-resolved; the shell only names them.
@@ -315,12 +432,11 @@ object SnapSyncRoot {
                 // cross-process writes and a pre-first-unlock seed never notify this process's StateFlow, and the
                 // reload retains the last good value on an unreadable read (the pure `configAfterReload` rule).
                 config = config,
-                photoAccess = permission,
-                // The platform's own UI — the share sheet, the store link, the Settings page (:adapter:ios:app-only).
-                systemUi = IosSystemUi(),
+                photoAccess = ports.photoAccess,
+                systemUi = ports.systemUi,
                 // Every photo-library read and write, the partial grant's selection observer (opened at host
                 // assembly only) and the import of foreign photos, whose markers the core's handlers write.
-                gallery = gallery,
+                gallery = ports.gallery,
                 // What this process knows about its own uploads: the ledger. The app loads it from the backend's
                 // per-device listing at a join and clears it at a leave, on every tier (capability
                 // `photo-sharing`) — on >=26.1 as a non-writer, through the reset family.
@@ -330,14 +446,14 @@ object SnapSyncRoot {
                 // (capability `receiving-photos`) — one port owns both halves.
                 stagedBytes = StagingService(files),
                 // The platform's background downloads — an event port the host zone listens to.
-                download = downloadAdapter,
+                download = ports.download,
                 // The backend: every need-shaped service is composed over it inside the core.
-                backend = backend,
+                backend = ports.backend,
                 // The App-Group file, so the record this app process invalidates at enroll is the same one
                 // the ≥26.1 tier's producer reads in the EXTENSION process. A per-process record would
                 // leave the extension believing the server still holds a projection the app just replaced.
                 manifestStore = manifestStore,
-                integrity = IosDeviceIntegrity(),
+                integrity = ports.integrity,
                 attestStore = AttestState(secureStore),
                 deviceIdentity = deviceIdentity,
                 // The update-required screen's one remedy (capability `app-update-required`).
@@ -345,41 +461,41 @@ object SnapSyncRoot {
                 // The mechanisms this OS carries. WHICH one runs is resolution's answer, re-evaluated on
                 // every transition (capability `background-upload`) — this root supplies only facts.
                 appDrivenUpload = {
-                    appUploader(
-                        app,
-                        AppUploaderPorts(
-                            // The THREE-state membership read, never the core's StateFlow (capability `join-event`).
-                            config = config,
-                            grant = PhotoGrantRead(::currentPhotoPermission),
-                            host = backendHost,
-                            appVersion = appMarketingVersion(),
-                        ),
-                    )
+                    adapters.appDrivenUpload {
+                        appUploader(
+                            app,
+                            AppUploaderPorts(
+                                // The THREE-state membership read, never the core's StateFlow (capability `join-event`).
+                                config = config,
+                                grant = PhotoGrantRead(::currentPhotoPermission),
+                                host = backendHost,
+                                appVersion = appMarketingVersion(),
+                            ),
+                        )
+                    }
                 },
                 // The app's uploader transport: a background `URLSession` on every iOS version.
-                appUpload = uploadAdapter,
+                appUpload = ports.appUpload,
                 // The upload extension's registration record, on every OS: below iOS 26.1 the adapter answers
                 // `Unsupported` itself (the version check is its own), so the root holds no `if` around it.
-                extensionRegistry = extensionRegistry,
+                extensionRegistry = ports.extensionRegistry,
                 osSupportsOsDrivenUpload = osSupportsOsDrivenUpload,
                 // The build's development controls, from this build's adapter set: inert on every production
                 // build, the control channel's on a rig build (`platformAdapters()`).
                 devControls = adapters.devControls,
                 // The entry ports: each registered by the host zone as this graph is composed, so a delivery in a
                 // background wake finds its handler. The Swift shell forwards each callback to one of them.
-                pushNotifications = pushNotifications,
-                lifecycle = lifecycle,
-                links = links,
-                ui = adapters.ui,
+                pushNotifications = ports.pushNotifications,
+                lifecycle = ports.lifecycle,
+                links = ports.links,
+                ui = adapters.ui.value,
                 albumMapStore = albumMapStore,
                 // A minted event routes into the host's join gate, so create and a scanned QR take one gate.
                 onEventMinted = { eventId -> host.onEventCreated(eventId) },
-                // The process's background time (`beginBackgroundTask`): what a push or a transfer wake holds across
-                // its own work and its tail, and the only "time is up" those wakes get (capability `sync-status`).
-                backgroundTime = IosBackgroundTime(log),
+                backgroundTime = ports.backgroundTime,
                 // The operating system's scheduled wakes (`BGTaskScheduler`): the heartbeat the tail re-arms, and — by
                 // the host zone's `listen`, as this graph is composed from `onLaunch` — its launch handler.
-                wake = wakeAdapter,
+                wake = ports.wake,
                 // The push registration's ports and token source (capability `receiving-photos`): `compose/`
                 // builds the registration, its delivery/credential collector and the on-join re-PUT.
                 push = PushPorts(
@@ -393,34 +509,19 @@ object SnapSyncRoot {
         )
     }
 
-    /**
-     * The backend — ONE `HttpBackend` over the platform's HTTP client, declaring this bundle's version, which every
-     * backend call goes through. The credential and the backend's verdicts are the core's (`AppCore.backend`): this
-     * root supplies only the port, so no call site can be wired without them.
-     */
-    private val backend: Backend by lazy { HttpBackend(darwinHttpClient(), backendHost, appMarketingVersion()) }
-
     // The app-side handle on the shared App-Group ledger: the app's own uploader's `LedgerWriter` (built by
     // `uploadCore`), the composed counts source's reads, and the membership reset family. On iOS ≥26.1 the
     // extension writes the same ledger from its own process; every write is one guarded transaction owned by
     // named code (capability `photo-sharing`; decision record `changes/both-uploaders-active`).
     private val ledgerStore: LedgerService by lazy { LedgerService(databases) }
 
-    // This process's SQLite databases, in the App-Group container. The stores open them on first use, never at
-    // construction: building the composition opens no database (`docs/architecture.md`).
-    private val databases: Databases by lazy { IosDatabases() }
+    private val databases: Databases get() = ports.databases
+
 
     // --- Photo download / import (capability `receiving-photos`) ---
     // The app-written download store (idempotency + per-resource staging + the createdLocalId the
     // extension reads as its suppression set). The app is its one writer and the one process that migrates it.
     private val downloadStore: DownloadService by lazy { DownloadService(databases) }
-
-    // The device-facing backend host (baked at compile time); shared by the backend port and the app's uploader.
-    // Reads through
-    // `:adapter:ios:ext-safe`'s [bakedUploadBase] — the same call the boot diagnostic makes, so a
-    // banner that disagreed with the host the adapters use is impossible, and the absent-key
-    // defaulting decision stays out of this wiring-only shell.
-    private val backendHost: String by lazy { bakedUploadBase() }
 
     // --- Push notifications (capability `receiving-photos`) ---
     // The compile-time APNs environment (the generated Deployment.plist's `apnsEnv`): `sandbox` for
@@ -441,37 +542,6 @@ object SnapSyncRoot {
     internal val host: StatusContainerHost get() = composed.host
 
     /**
-     * The process's ONE cutoff formatter (capability `sync-status`): the device zone read once, here, from the
-     * process's one clock — a formatter whose zone moved under a running screen would render one capture date two
-     * ways. The status host reduces with it and the screen renders with it: the same instance.
-     */
-    private val cutoffFormatter: CutoffFormatter by lazy {
-        CutoffFormatter(now = SystemClock::now, zone = process.clock.timeZone())
-    }
-
-    /** What this process knows about its scenes — shared by the UI and the lifecycle adapters, on the main thread. */
-    private val sceneRecord: SceneRecord by lazy { SceneRecord() }
-
-    /** The Compose scene SwiftUI hosts (`:adapter:ios:ui`). */
-    internal val ui: IosUi by lazy { IosUi(sceneRecord, cutoffFormatter, log) }
-
-    /** The app's foreground life: `didBecomeActive` / `willResignActive`, observed once the graph registers. */
-    internal val lifecycle: IosLifecycle by lazy { IosLifecycle(sceneRecord, log) }
-
-    /** Both halves of Universal-Link delivery and SwiftUI's `onOpenURL`. */
-    internal val links: IosLinks by lazy { IosLinks(log) }
-
-    /** APNs: the token request, the token and its failure, and every silent push. */
-    internal val pushNotifications: IosPushNotifications by lazy { IosPushNotifications(log) }
-
-    /**
-     * The adapters that differ between a production and a rig build — chosen at BUILD time: `platformAdapters()` is
-     * compiled from this module's `src/prod` or, only under `-Psnapsync.rig=true`, from the control channel's
-     * (`docs/architecture.md`, "A build-time-only module is contained by compilation"). No flag is read here.
-     */
-    private val adapters: PlatformAdapters by lazy { platformAdapters(ui) }
-
-    /**
      * Realize this object and **compose the graph** — called by the Swift `AppDelegate` from
      * `didFinishLaunchingWithOptions` (a plain statement, no decision). Composing registers every entry port's
      * handlers while Apple still accepts them: the wake adapter's `listen` is the heartbeat's `BGTask` launch-handler
@@ -482,8 +552,7 @@ object SnapSyncRoot {
      */
     @PlatformEntry
     fun onLaunch() = log.invocation("onLaunch") {
-        composed
-        Unit
+        adapters.launch { composed }
     }
 
     /** The app became active, as SwiftUI observes it — the scene generation SwiftUI binds to `.id(…)` ([IosUi]). */
@@ -703,36 +772,11 @@ object SnapSyncRoot {
     // that case.
 
     /**
-     * The operating system's scheduled wakes — one per process, since its `listen` registers the `BGTask` launch
-     * handler and a second registration raises. `internal` so the control channel can deliver a task it plays the OS
-     * for (`/os onBackgroundTask`) until the entry surface becomes event ports (11g).
-     */
-    internal val wakeAdapter: IosWake by lazy { IosWake(log) }
-
-    /**
-     * The registration port's adapter, chosen by compilation target (capability `background-upload`), on every OS.
-     * `internal` so the control channel reads the registration through the very port the app registers through,
-     * rather than asking PhotoKit a second time and possibly getting a different answer. Not exported to the ObjC
-     * framework header.
-     */
-    internal val extensionRegistry: ExtensionRegistry by lazy { platformExtensionRegistry(log) }
-
-    // The ONE gallery this process holds: every photo-library read and album write the status total, the join
-    // preview, the download guard, the event album and the app's uploader make.
-    private val gallery: IosGallery by lazy { IosGallery(IosGalleryReader(), permission, scope) }
-
-    /** The app's uploader transport — one per process, since it owns the upload session's delegate. */
-    private val uploadAdapter: IosUrlSessionUploadPlatform by lazy { IosUrlSessionUploadPlatform(log, UPLOAD_SESSION_ID) }
-
-    /** The platform's background downloads — one per process, since it owns the download session's delegate. */
-    private val downloadAdapter: IosDownload by lazy { IosDownload() }
-
-    /**
      * Where `handleEventsForBackgroundURLSession` goes: routed by the identifier the OS named, in the adapter module.
      * Composes the graph first, so the sessions' handlers are registered before the session they bring up delivers.
      */
     private val backgroundSessions: BackgroundSessions by lazy {
-        composed
+        adapters.launch { composed }
         BackgroundSessions(uploadAdapter, downloadAdapter)
     }
 

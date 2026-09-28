@@ -1,0 +1,599 @@
+@file:OptIn(ExperimentalEncodingApi::class)
+
+package app.snapsync.mock
+
+import app.snapsync.model.ApnsPushToken
+import app.snapsync.model.AssetFacts
+import app.snapsync.model.AssetId
+import app.snapsync.model.AssetRef
+import app.snapsync.model.Availability
+import app.snapsync.model.CaptureDate
+import app.snapsync.model.CrashEvent
+import app.snapsync.model.CrashLevel
+import app.snapsync.model.Crumb
+import app.snapsync.model.DeviceFile
+import app.snapsync.model.FileArea
+import app.snapsync.model.GalleryAccess
+import app.snapsync.model.RawAsset
+import app.snapsync.model.RawResource
+import app.snapsync.model.ResourceRole
+import app.snapsync.model.SecureSlot
+import app.snapsync.model.SecureSlots
+import app.snapsync.model.SecureStoreRead
+import app.snapsync.model.StoredProtection
+import app.snapsync.model.UploadError
+import app.snapsync.model.UploadJobState
+import app.snapsync.model.UploadTarget
+import app.snapsync.model.WakeId
+import app.snapsync.model.WakeTrigger
+import app.snapsync.model.deviceManifestFromJson
+import app.snapsync.model.encodeToJson
+import kotlinx.datetime.TimeZone
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Instant
+
+/**
+ * **What a mocked system keeps, as text** (`docs/testing.md`, "The launch-time mock mix") — the durable state each mock
+ * of a [MockDevice] holds, encoded one system at a time so a process restores only the systems its mix mocks.
+ *
+ * Durable means what the real system keeps across the app's process — the backend's events, the library's photos, the
+ * operating system's queued jobs — and nothing a process holds: registered handlers, open observers, background-time
+ * holds (a dead process's never end), a held-open deferred. Those start empty in every process, as on a device.
+ *
+ * The databases are not here: a persisted mix's databases are FILES ([app.snapsync.mock.DatabasesMock]'s directory),
+ * which persist themselves and are shared across processes as files are.
+ */
+object MockState {
+    /** [system]'s durable state on [device], or `null` for a system that keeps none. */
+    fun encode(device: MockDevice, system: MockedSystem): String? = CODECS[system]?.encode?.invoke(device)
+
+    /** Put [text] — an [encode] of [system] — back into [device]'s mock of it. */
+    fun restore(device: MockDevice, system: MockedSystem, text: String) {
+        CODECS[system]?.restore?.invoke(device, text)
+    }
+}
+
+private val json = Json { encodeDefaults = true; ignoreUnknownKeys = true }
+
+/** One system's text: how its durable state is written, and how it is put back. */
+private class Codec(val encode: (MockDevice) -> String?, val restore: (MockDevice, String) -> Unit)
+
+/** A system whose whole state is a few named scalars. */
+private fun scalars(write: (MockDevice) -> Map<String, String>, read: (MockDevice, Map<String, String>) -> Unit) = Codec(
+    encode = { json.encodeToString(StringsDto.serializer(), StringsDto(write(it))) },
+    restore = { device, text -> read(device, json.decodeFromString(StringsDto.serializer(), text).values) },
+)
+
+/**
+ * Every system that keeps something — the databases (files), the background-time holds, the links and the screen (a
+ * process's own) keep nothing here.
+ */
+private val CODECS: Map<MockedSystem, Codec> = mapOf(
+    MockedSystem.BACKEND to Codec(
+        encode = { json.encodeToString(BackendDto.serializer(), BackendDto.of(it.backend.state)) },
+        restore = { device, text -> json.decodeFromString(BackendDto.serializer(), text).into(device.backend.state) },
+    ),
+    MockedSystem.LIBRARY to Codec(
+        encode = { json.encodeToString(LibraryDto.serializer(), LibraryDto.of(it.library.state)) },
+        restore = { device, text -> json.decodeFromString(LibraryDto.serializer(), text).into(device.library.state) },
+    ),
+    MockedSystem.FILES to Codec(
+        encode = { json.encodeToString(FilesDto.serializer(), FilesDto.of(it.disk)) },
+        restore = { device, text -> json.decodeFromString(FilesDto.serializer(), text).into(device.disk) },
+    ),
+    MockedSystem.PREFERENCES to scalars({ it.preferences.values.toMap() }, { device, values -> device.preferences.values.putAll(values) }),
+    MockedSystem.KEYCHAIN to Codec(
+        encode = { json.encodeToString(KeychainDto.serializer(), KeychainDto.of(it.keychain.items)) },
+        restore = { device, text -> json.decodeFromString(KeychainDto.serializer(), text).into(device.keychain.items) },
+    ),
+    MockedSystem.INTEGRITY to Codec(
+        encode = { json.encodeToString(EnclaveDto.serializer(), EnclaveDto(it.enclave.keys.generated, it.enclave.keys.held.toList())) },
+        restore = { device, text ->
+            val keys = json.decodeFromString(EnclaveDto.serializer(), text)
+            device.enclave.keys.generated = keys.generated
+            device.enclave.keys.held.addAll(keys.held)
+        },
+    ),
+    MockedSystem.CRASH_REPORTER to Codec(
+        encode = { json.encodeToString(CrashDumpsDto.serializer(), CrashDumpsDto(it.crashReporter.dumps.value.map(CrashDto::of))) },
+        restore = { device, text ->
+            device.crashReporter.dumps.value = json.decodeFromString(CrashDumpsDto.serializer(), text).dumps.map { it.event() }
+        },
+    ),
+    MockedSystem.PROCESS_INFO to scalars(
+        { mapOf(PROTECTED to it.processInfo.cell.value.name) },
+        { device, values -> values[PROTECTED]?.let { device.processInfo.cell.value = Availability.valueOf(it) } },
+    ),
+    MockedSystem.CLOCK to Codec(
+        encode = { json.encodeToString(ClockDto.serializer(), ClockDto(it.clock.now.toEpochMilliseconds(), it.clock.zone.id)) },
+        restore = { device, text ->
+            val clock = json.decodeFromString(ClockDto.serializer(), text)
+            device.clock.now = Instant.fromEpochMilliseconds(clock.nowEpochMillis)
+            device.clock.zone = TimeZone.of(clock.zone)
+        },
+    ),
+    MockedSystem.WAKE to Codec(
+        encode = { json.encodeToString(WakeDto.serializer(), WakeDto.of(it.wakes)) },
+        restore = { device, text -> json.decodeFromString(WakeDto.serializer(), text).into(device.wakes) },
+    ),
+    MockedSystem.EXTENSION_REGISTRY to scalars(
+        { device -> device.extensionRegistry.record?.let { mapOf(REGISTERED to it.value.toString()) }.orEmpty() },
+        { device, values -> values[REGISTERED]?.let { device.extensionRegistry.record?.value = it.toBoolean() } },
+    ),
+    MockedSystem.UPLOAD_QUEUE to Codec(
+        encode = { json.encodeToString(QueueDto.serializer(), QueueDto.of(it.uploadQueue)) },
+        restore = { device, text -> json.decodeFromString(QueueDto.serializer(), text).into(device.uploadQueue) },
+    ),
+    MockedSystem.UPLOAD_SESSION to scalars(
+        { mapOf(HANDBACKS to it.uploadSession.handbacks.toString()) },
+        { device, values -> values[HANDBACKS]?.let { device.uploadSession.handbacks = it.toInt() } },
+    ),
+    MockedSystem.DOWNLOADS to Codec(
+        encode = {
+            json.encodeToString(
+                DownloadsDto.serializer(),
+                DownloadsDto(it.downloads.started.map { s -> StartedDto(s.url, s.description, s.cancelled, s.finished) }),
+            )
+        },
+        restore = { device, text ->
+            json.decodeFromString(DownloadsDto.serializer(), text).started.forEach {
+                device.downloads.started += DownloadSessionMock.Started(it.url, it.description).apply {
+                    cancelled = it.cancelled
+                    finished = it.finished
+                }
+            }
+        },
+    ),
+    MockedSystem.LIFECYCLE to scalars(
+        { mapOf(EVER_ACTIVE to it.lifecycle.everActive.toString()) },
+        { device, values -> values[EVER_ACTIVE]?.let { device.lifecycle.everActive = it.toBoolean() } },
+    ),
+    MockedSystem.PUSH to scalars(
+        { mapOf(REGISTRATIONS to it.pushService.registrations.toString()) },
+        { device, values -> values[REGISTRATIONS]?.let { device.pushService.registrations = it.toInt() } },
+    ),
+    MockedSystem.SYSTEM_UI to Codec(
+        encode = {
+            val ui = it.systemUi
+            json.encodeToString(SystemUiDto.serializer(), SystemUiDto(ui.shared.value, ui.opened.value, ui.settings.value))
+        },
+        restore = { device, text ->
+            val ui = json.decodeFromString(SystemUiDto.serializer(), text)
+            device.systemUi.shared.value = ui.shared
+            device.systemUi.opened.value = ui.opened
+            device.systemUi.settings.value = ui.settings
+        },
+    ),
+)
+
+private const val PROTECTED = "protectedData"
+private const val REGISTERED = "registered"
+private const val HANDBACKS = "handbacks"
+private const val EVER_ACTIVE = "everActive"
+private const val REGISTRATIONS = "registrations"
+
+@Serializable
+private class StringsDto(val values: Map<String, String>)
+
+@Serializable
+private class FilesDto(val shared: Map<String, String>, val private: Map<String, String>, val denied: List<Pair<String, String>>) {
+    fun into(disk: FileSystemMock) {
+        disk.shared.putAll(shared.mapValues { Base64.decode(it.value) })
+        disk.private.putAll(private.mapValues { Base64.decode(it.value) })
+        disk.denied.addAll(denied.map { FileArea.valueOf(it.first) to it.second })
+    }
+
+    companion object {
+        fun of(disk: FileSystemMock) = FilesDto(
+            shared = disk.shared.mapValues { Base64.encode(it.value) },
+            private = disk.private.mapValues { Base64.encode(it.value) },
+            denied = disk.denied.map { it.first.name to it.second },
+        )
+    }
+}
+
+@Serializable
+private class SlotDto(val service: String, val account: String, val shared: Boolean, val value: String, val protection: String)
+
+@Serializable
+private class KeychainDto(val slots: List<SlotDto>) {
+    /**
+     * Back into [items], each at the slot the app addresses it by — the slots are the app's own (`SecureSlots`), so a
+     * stored item names one of them; an item that names none is one no build of the app would read, and stays behind.
+     */
+    fun into(items: MutableMap<SecureSlot, SecureStoreRead.Found>) {
+        slots.forEach { dto ->
+            KNOWN_SLOTS.firstOrNull { it.service == dto.service && it.account == dto.account && it.shared == dto.shared }
+                ?.let { items[it] = SecureStoreRead.Found(dto.value, StoredProtection.valueOf(dto.protection)) }
+        }
+    }
+
+    companion object {
+        private val KNOWN_SLOTS = listOf(
+            SecureSlots.DEVICE_ID, SecureSlots.DEVICE_ID_LEGACY, SecureSlots.ATTEST_TOKEN, SecureSlots.ATTEST_KEY_ID,
+            SecureSlots.ALBUM_MAP_LEGACY,
+        )
+
+        fun of(items: Map<SecureSlot, SecureStoreRead.Found>) = KeychainDto(
+            items.map { (slot, found) -> SlotDto(slot.service, slot.account, slot.shared, found.value, found.protection.name) },
+        )
+    }
+}
+
+@Serializable
+private class EnclaveDto(val generated: Int, val held: List<String>)
+
+@Serializable
+private class ClockDto(val nowEpochMillis: Long, val zone: String)
+
+@Serializable
+private class SystemUiDto(val shared: List<String>, val opened: List<String>, val settings: Int)
+
+@Serializable
+private class StartedDto(val url: String, val description: String, val cancelled: Boolean, val finished: Boolean)
+
+@Serializable
+private class DownloadsDto(val started: List<StartedDto>)
+
+@Serializable
+private class TriggerDto(
+    val id: String,
+    val kind: String,
+    val earliestMillis: Long? = null,
+    val requiresNetwork: Boolean? = null,
+    val maxDelayMillis: Long? = null,
+) {
+    fun trigger(): WakeTrigger = when (kind) {
+        LIBRARY_CHANGE -> WakeTrigger.LibraryChange(maxDelayMillis!!.milliseconds)
+        else -> WakeTrigger.After(earliestMillis!!.milliseconds, requiresNetwork == true)
+    }
+
+    companion object {
+        private const val AFTER = "after"
+        private const val LIBRARY_CHANGE = "libraryChange"
+
+        fun of(id: WakeId, trigger: WakeTrigger): TriggerDto = when (trigger) {
+            is WakeTrigger.After -> TriggerDto(id.name, AFTER, trigger.earliest.inWholeMilliseconds, trigger.requiresNetwork)
+            is WakeTrigger.LibraryChange -> TriggerDto(id.name, LIBRARY_CHANGE, maxDelayMillis = trigger.maxDelay.inWholeMilliseconds)
+        }
+    }
+}
+
+@Serializable
+private class WakeDto(val pending: List<TriggerDto>, val scheduled: Int, val cancelled: Int) {
+    fun into(wakes: WakeMock) {
+        wakes.pending.value = pending.associate { WakeId.valueOf(it.id) to it.trigger() }
+        wakes.scheduled = scheduled
+        wakes.cancelled = cancelled
+    }
+
+    companion object {
+        fun of(wakes: WakeMock) = WakeDto(
+            pending = wakes.pending.value.map { (id, trigger) -> TriggerDto.of(id, trigger) },
+            scheduled = wakes.scheduled,
+            cancelled = wakes.cancelled,
+        )
+    }
+}
+
+@Serializable
+private class CrumbDto(val level: String, val message: String?, val category: String?, val data: Map<String, String>)
+
+@Serializable
+private class CrashDto(
+    val message: String?,
+    val formatted: String?,
+    val params: List<String>?,
+    val exceptionValues: List<String?>,
+    val breadcrumbs: List<CrumbDto>,
+    val tags: Map<String, String>,
+    val contexts: Map<String, Map<String, String>>,
+) {
+    /** The event as it left — its throwable is the process's, and stays behind. */
+    fun event() = CrashEvent(
+        message = message,
+        formatted = formatted,
+        params = params,
+        exceptionValues = exceptionValues,
+        breadcrumbs = breadcrumbs.map { Crumb(CrashLevel.valueOf(it.level), it.message, it.category, it.data) },
+        tags = tags,
+        contexts = contexts,
+    )
+
+    companion object {
+        fun of(event: CrashEvent) = CrashDto(
+            event.message, event.formatted, event.params, event.exceptionValues,
+            event.breadcrumbs.map { CrumbDto(it.level.name, it.message, it.category, it.data) },
+            event.tags, event.contexts,
+        )
+    }
+}
+
+@Serializable
+private class CrashDumpsDto(val dumps: List<CrashDto>)
+
+@Serializable
+private class ErrorDto(val kind: String, val status: Int? = null, val detail: String? = null) {
+    fun error(): UploadError = when (kind) {
+        HTTP -> UploadError.Http(status ?: 0)
+        CANCELLED -> UploadError.Cancelled
+        UNKNOWN -> UploadError.Unknown(detail.orEmpty())
+        else -> UploadError.Network
+    }
+
+    companion object {
+        private const val NETWORK = "network"
+        private const val HTTP = "http"
+        private const val CANCELLED = "cancelled"
+        private const val UNKNOWN = "unknown"
+
+        fun of(error: UploadError): ErrorDto = when (error) {
+            UploadError.Network -> ErrorDto(NETWORK)
+            is UploadError.Http -> ErrorDto(HTTP, status = error.status)
+            UploadError.Cancelled -> ErrorDto(CANCELLED)
+            is UploadError.Unknown -> ErrorDto(UNKNOWN, detail = error.detail)
+        }
+    }
+}
+
+@Serializable
+private class JobDto(
+    val key: String,
+    val contentType: String,
+    val url: String,
+    val headers: Map<String, String>,
+    val state: String,
+    val error: ErrorDto?,
+    val retriedOnce: Boolean,
+)
+
+@Serializable
+private class QueueDto(
+    val jobs: List<JobDto>,
+    val created: List<Pair<String, String>>,
+    val jobLimit: Int,
+    val failCreate: Boolean,
+) {
+    fun into(queue: UploadQueueMock) {
+        // A job's payload is the platform resource the process that created it held; what the queue keeps across the
+        // process is the request. A restored job carries this platform's placeholder handle.
+        jobs.forEach {
+            queue.jobs += UploadQueueMock.Job(it.key, it.contentType, Unit, UploadTarget(it.url, it.headers)).apply {
+                state = UploadJobState.valueOf(it.state)
+                error = it.error?.error()
+                retriedOnce = it.retriedOnce
+            }
+        }
+        created.forEach { queue.created += CreatedUpload(it.first, it.second) }
+        queue.jobLimit = jobLimit
+        queue.failCreate = failCreate
+    }
+
+    companion object {
+        fun of(queue: UploadQueueMock) = QueueDto(
+            jobs = queue.jobs.map {
+                JobDto(it.key, it.contentType, it.target.url, it.target.headers, it.state.name, it.error?.let(ErrorDto::of), it.retriedOnce)
+            },
+            created = queue.created.map { it.filename to it.contentType },
+            jobLimit = queue.jobLimit,
+            failCreate = queue.failCreate,
+        )
+    }
+}
+
+@Serializable
+private class EventDto(val name: String, val createdAtMillis: Long, val startsAtMillis: Long?, val endsAtMillis: Long?)
+
+@Serializable
+private class MembershipDto(
+    val event: String,
+    val device: String,
+    val departed: Boolean,
+    val manifest: String?,
+    val manifestVersion: Long?,
+)
+
+@Serializable
+private class CountDto(val event: String, val device: String, val count: Int)
+
+@Serializable
+private class StoredFileDto(val asset: String, val role: String, val filename: String)
+
+/** The backend's operator-set levers and counters. */
+@Serializable
+private class BackendLeversDto(
+    val capacity: Int,
+    val offline: Boolean,
+    val failDeviceListing: Boolean,
+    val refuseNextCredential: Boolean,
+    val minAppVersion: String?,
+    val legacyCounter: Long,
+) {
+    fun into(state: BackendState) {
+        state.capacity = capacity
+        state.offline = offline
+        state.failDeviceListing = failDeviceListing
+        state.refuseNextCredential = refuseNextCredential
+        state.minAppVersion = minAppVersion
+        state.legacyCounter = legacyCounter
+    }
+}
+
+@Serializable
+private class BackendDto(
+    val storedFiles: Map<String, List<StoredFileDto>>,
+    val events: Map<String, EventDto>,
+    val memberships: List<MembershipDto>,
+    val deviceConfigs: Map<String, Pair<String, String>>,
+    val deviceConfigWrites: Map<String, Int>,
+    val publishes: List<CountDto>,
+    val refused: List<CountDto>,
+    val pushes: List<Triple<String, String, String>>,
+    val challenges: List<String>,
+    val minted: List<String>,
+    val levers: BackendLeversDto,
+) {
+    fun into(state: BackendState) {
+        storedFiles.forEach { (device, files) ->
+            state.storedFiles[device] = files.mapTo(mutableSetOf()) {
+                DeviceFile(AssetId(it.asset), ResourceRole.entries.first { role -> role.wire == it.role }, it.filename)
+            }
+        }
+        levers.into(state)
+        events.forEach { (id, e) ->
+            state.events[id] = BackendState.Event(
+                e.name,
+                Instant.fromEpochMilliseconds(e.createdAtMillis),
+                e.startsAtMillis?.let(Instant::fromEpochMilliseconds),
+                e.endsAtMillis?.let(Instant::fromEpochMilliseconds),
+            )
+        }
+        memberships.forEach {
+            state.memberships[it.event to it.device] =
+                BackendState.Membership(it.departed, it.manifest?.let(::deviceManifestFromJson), it.manifestVersion)
+        }
+        deviceConfigs.forEach { (device, config) -> state.deviceConfigs[device] = ApnsPushToken(config.first, config.second) }
+        state.deviceConfigWrites.putAll(deviceConfigWrites)
+        publishes.forEach { state.publishes[it.event to it.device] = it.count }
+        refused.forEach { state.refused[it.event to it.device] = it.count }
+        pushes.forEach { state.pushes += SentPush(it.first, it.second, it.third) }
+        state.challenges.addAll(challenges)
+        state.minted.addAll(minted)
+    }
+
+    companion object {
+        fun of(state: BackendState) = BackendDto(
+            storedFiles = state.storedFiles.mapValues { (_, files) -> files.map { StoredFileDto(it.assetId.value, it.role.wire, it.filename) } },
+            events = state.events.mapValues { (_, e) ->
+                EventDto(e.name, e.createdAt.toEpochMilliseconds(), e.startsAt?.toEpochMilliseconds(), e.endsAt?.toEpochMilliseconds())
+            },
+            memberships = state.memberships.map { (key, m) ->
+                MembershipDto(key.first, key.second, m.departed, m.manifest?.encodeToJson(), m.manifestVersion)
+            },
+            deviceConfigs = state.deviceConfigs.mapValues { it.value.token to it.value.env },
+            deviceConfigWrites = state.deviceConfigWrites.toMap(),
+            publishes = state.publishes.map { CountDto(it.key.first, it.key.second, it.value) },
+            refused = state.refused.map { CountDto(it.key.first, it.key.second, it.value) },
+            pushes = state.pushes.map { Triple(it.eventId, it.deviceId, it.token) },
+            challenges = state.challenges.toList(),
+            minted = state.minted.toList(),
+            levers = BackendLeversDto(
+                capacity = state.capacity,
+                offline = state.offline,
+                failDeviceListing = state.failDeviceListing,
+                refuseNextCredential = state.refuseNextCredential,
+                minAppVersion = state.minAppVersion,
+                legacyCounter = state.legacyCounter,
+            ),
+        )
+    }
+}
+
+@Serializable
+private class ResourceDto(val role: String?, val contentType: String, val filename: String)
+
+@Serializable
+private class AssetDto(
+    val id: String,
+    val creationDate: String,
+    val resources: List<ResourceDto>,
+    val captureDate: String,
+    val isScreenshot: Boolean,
+    val isScreenRecording: Boolean,
+    val isVideo: Boolean,
+    val isEdited: Boolean,
+    val pixelArea: Long?,
+) {
+    /** The photo as the library holds it — its resources carrying this platform's placeholder handle. */
+    fun asset() = RawAsset(
+        assetId = AssetId(id),
+        creationDate = creationDate,
+        rawResources = resources.map { r ->
+            RawResource(r.role?.let { w -> ResourceRole.entries.first { it.wire == w } }, r.contentType, r.filename, Unit)
+        },
+        facts = AssetFacts(AssetId(id), CaptureDate(captureDate), isScreenshot, isScreenRecording, isVideo, isEdited, pixelArea),
+    )
+
+    companion object {
+        fun of(asset: RawAsset) = AssetDto(
+            id = asset.assetId.value,
+            creationDate = asset.creationDate,
+            resources = asset.rawResources.map { ResourceDto(it.role?.wire, it.mimeContentType, it.originalFilename) },
+            captureDate = asset.facts.creationDate.iso,
+            isScreenshot = asset.facts.isScreenshot,
+            isScreenRecording = asset.facts.isScreenRecording,
+            isVideo = asset.facts.isVideo,
+            isEdited = asset.facts.isEdited,
+            pixelArea = asset.facts.pixelArea,
+        )
+    }
+}
+
+@Serializable
+private class RefDto(val device: String, val asset: String) {
+    fun ref() = AssetRef(device, AssetId(asset))
+
+    companion object {
+        fun of(ref: AssetRef) = RefDto(ref.sourceDeviceId, ref.sourceAssetId.value)
+    }
+}
+
+@Serializable
+private class LibraryDto(
+    val library: List<AssetDto>,
+    val access: String,
+    val answer: String,
+    val userAlbums: Map<String, List<String>>,
+    val selection: List<AssetDto>?,
+    val attempts: List<Pair<RefDto, Int>>,
+    val albumCounter: Int,
+    val created: Map<String, Pair<String, List<String>>>,
+    val createdLog: List<Pair<String, String>>,
+    val addedLog: List<Pair<String, List<String>>>,
+    val deletedAlbums: List<String>,
+    val failNextEnumeration: Boolean,
+    val byIdReadable: Boolean,
+    val imported: List<RefDto>,
+) {
+    fun into(state: LibraryState) {
+        state.library.value = library.map { it.asset() }
+        state.access.value = GalleryAccess.valueOf(access)
+        state.answer = GalleryAccess.valueOf(answer)
+        state.writableAlbums?.value = userAlbums.mapValues { (_, ids) -> ids.mapTo(mutableSetOf(), ::AssetId) }
+        state.selection.value = selection?.map { it.asset() }
+        attempts.forEach { (ref, n) -> state.attempts[ref.ref()] = n }
+        state.albumCounter = albumCounter
+        created.forEach { (id, album) ->
+            state.created[id] = LibraryState.Album(album.first, album.second.mapTo(mutableSetOf(), ::AssetId))
+        }
+        state.createdLog.addAll(createdLog)
+        addedLog.forEach { (album, ids) -> state.addedLog += album to ids.map(::AssetId) }
+        state.deletedAlbums.addAll(deletedAlbums)
+        state.failNextEnumeration = failNextEnumeration
+        state.byIdReadable = byIdReadable
+        state.imports.imported.addAll(imported.map { it.ref() })
+    }
+
+    companion object {
+        fun of(state: LibraryState) = LibraryDto(
+            library = state.library.value.map(AssetDto::of),
+            access = state.access.value.name,
+            answer = state.answer.name,
+            userAlbums = state.userAlbums.value.mapValues { (_, ids) -> ids.map { it.value } },
+            selection = state.selection.value?.map(AssetDto::of),
+            attempts = state.attempts.map { (ref, n) -> RefDto.of(ref) to n },
+            albumCounter = state.albumCounter,
+            created = state.created.mapValues { (_, album) -> album.title to album.members.map { it.value } },
+            createdLog = state.createdLog.toList(),
+            addedLog = state.addedLog.map { (album, ids) -> album to ids.map { it.value } },
+            deletedAlbums = state.deletedAlbums.toList(),
+            failNextEnumeration = state.failNextEnumeration,
+            byIdReadable = state.byIdReadable,
+            imported = state.imports.imported.map(RefDto::of),
+        )
+    }
+}

@@ -27,6 +27,7 @@ Roots found:
 | `ConfigService` | x | x |
 | `CutoffFormatter` | x | |
 | `DeviceManifestService` | x | x |
+| `DevicePorts` | x | x |
 | `DownloadService` | x | |
 | `FileLogSink` | x | x |
 | `GalleryAlbums` | | x |

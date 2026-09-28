@@ -48,6 +48,7 @@ import app.snapsync.logging.extensionLogDestination
 import app.snapsync.logging.removeStaleExtensionDocumentsLog
 import app.snapsync.logging.SentryCrashReporter
 import app.snapsync.config.bakedSentryDsn
+import app.snapsync.compose.DevicePorts
 import app.snapsync.compose.ProcessPorts
 import app.snapsync.compose.ProcessServices
 import app.snapsync.compose.snapSyncProcess
@@ -96,6 +97,41 @@ object UploadExtensionRoot {
      */
     private val logDestination = extensionLogDestination()
 
+    private val log = Logger.withTag("UploadExtension")
+
+    /**
+     * This process's ports onto the device's systems, as its REAL adapters (`DevicePorts`), each built on first use —
+     * and [device], what its cycle composes over: these on a production build, and on a rig build the launch-time mix's,
+     * where a mocked system's are its mock's (`extensionPorts()`, from `src/entries` or the rig's source;
+     * `docs/testing.md`, "The launch-time mock mix").
+     */
+    private val real: DevicePorts = DevicePorts(
+        clock = lazyOf(SystemClock),
+        crashReporter = lazy { SentryCrashReporter() },
+        files = lazy { IosFiles() },
+        // This process's SQLite databases, in the App-Group container. The services open them on first use, never at
+        // construction: building the composition opens no database (`docs/architecture.md`).
+        databases = lazy { IosDatabases() },
+        preferences = lazy { IosPreferences() },
+        // This process's protected small-value store, every item addressed by its slot (chosen by compilation target).
+        secureStore = lazy { platformSecureStore() },
+        // The extension's gallery: reads and album adds only — no access request, no change token, no memo.
+        galleryReader = lazy { IosGalleryReader() },
+        // The upload-job queue, thin: the shared composition's upload service records terminal outcomes into the
+        // ledger and acknowledges every presented job.
+        //
+        // WHICH adapter is chosen by the COMPILATION TARGET, not here (capability `background-upload`,
+        // "The upload-job subsystem binding is fixed by the compilation target"). Every shipped binary is
+        // `iosArm64` and binds the PhotoKit queue; `iosSimulatorArm64` binds a substitute, because on that
+        // host job creation does not fail — it raises an uncaught ObjC exception inside PhotoKit and kills
+        // the process. This root is unchanged either way: it names the need, and the target answers it.
+        cycleUpload = lazy { uploadJobQueue(log) },
+        // The same `HttpBackend` the app runs, over this process's own Darwin client.
+        backend = lazy { HttpBackend(darwinHttpClient(), bakedUploadBase(), appMarketingVersion()) },
+    )
+
+    private val device: DevicePorts = extensionPorts(real)
+
     /**
      * This process's per-process services (`snapSyncProcess`, every root's first act): its log writers and boot
      * banner, its ONE crash reporter — started here before any other wiring can fail — its files, clock and
@@ -104,13 +140,13 @@ object UploadExtensionRoot {
      */
     private val process: ProcessServices = snapSyncProcess(
         ProcessPorts(
-            crashReporter = SentryCrashReporter(),
+            crashReporter = device.crashReporter,
             processMetrics = NoProcessMetrics,
             // A public NSLog sink AND a file sink: NSLog is redacted as `<private>` on current iOS (dynamic format
             // strings are private), so the file is the reliable channel for reading the extension's logs on device.
             logSinks = listOf(PublicNSLogSink(), FileLogSink(logDestination.path)),
-            files = IosFiles(),
-            clock = SystemClock,
+            files = device.files,
+            clock = device.clock,
             entryContext = IosEntryContext,
             dsn = bakedSentryDsn(),
             bootLines = listOf(
@@ -136,28 +172,13 @@ object UploadExtensionRoot {
         removeStaleExtensionDocumentsLog(logDestination)
     }
 
-    private val log = Logger.withTag("UploadExtension")
-
-    // This process's SQLite databases, in the App-Group container. The services below open them on first use,
-    // never at construction: building the composition opens no database (`docs/architecture.md`).
-    private val databases: Databases by lazy { IosDatabases() }
+    private val databases: Databases get() = device.databases
 
     // The ledger: shared with the app; either process may open it read-write and migrate it.
     private val ledgerStore: LedgerService by lazy { LedgerService(databases) }
-    // The extension's gallery: reads and album adds only — no access request, no change token, no memo.
-    private val gallery: GalleryReader by lazy { IosGalleryReader() }
+    private val gallery: GalleryReader get() = device.galleryReader
     private val discovery: UploadDiscovery by lazy { GalleryDiscovery(gallery) }
-    private val platform: Upload by lazy {
-        // The upload-job queue, thin: the shared composition's upload service records terminal outcomes into the
-        // ledger and acknowledges every presented job.
-        //
-        // WHICH adapter is chosen by the COMPILATION TARGET, not here (capability `background-upload`,
-        // "The upload-job subsystem binding is fixed by the compilation target"). Every shipped binary is
-        // `iosArm64` and binds the PhotoKit queue; `iosSimulatorArm64` binds a substitute, because on that
-        // host job creation does not fail — it raises an uncaught ObjC exception inside PhotoKit and kills
-        // the process. This root is unchanged either way: it names the need, and the target answers it.
-        uploadJobQueue(log)
-    }
+    private val platform: Upload get() = device.cycleUpload
 
     // The app-written download store, opened READ-ONLY through the NARROWED SuppressionSource type
     // (capability `receiving-photos`): only which downloaded-then-imported assets must not be re-uploaded,
@@ -172,7 +193,7 @@ object UploadExtensionRoot {
     // Hoisted because the selection policy also reads it (denylisted-album membership).
     private val albumManager: GalleryAlbums by lazy { GalleryAlbums(gallery) }
     private val albumCoordinator: AlbumCoordinator by lazy {
-        AlbumCoordinator(albumManager, AlbumMapService(IosPreferences(), secureStore))
+        AlbumCoordinator(albumManager, AlbumMapService(device.preferences, secureStore))
     }
 
     // The stable per-install device id (shared Keychain access group, addressed by name): the
@@ -188,8 +209,7 @@ object UploadExtensionRoot {
         PersistedDeviceIdentity(DeviceIdentityRole.READ_ONLY, secureStore, NoPlatformDeviceId())
     }
 
-    // This process's protected small-value store, every item addressed by its slot (chosen by compilation target).
-    private val secureStore: SecureStore by lazy { platformSecureStore() }
+    private val secureStore: SecureStore get() = device.secureStore
 
     // One shared Darwin (NSURLSession) HTTP client for both in-cycle network calls (the reconcile
     // listing GET and the device.json PUT) — a single client avoids running two NSURLSession-backed
@@ -242,7 +262,7 @@ object UploadExtensionRoot {
      * forever. Only if the shared item still holds the token that was refused: the app may have renewed it meanwhile.
      */
     private val backend by lazy {
-        extensionBackend(HttpBackend(darwinHttpClient(), bakedUploadBase(), appMarketingVersion()), attestStore, deviceIdentity)
+        extensionBackend(device.backend, attestStore, deviceIdentity)
     }
 
     // The extension's process scope, handed to the shared composition per its contract (`module-

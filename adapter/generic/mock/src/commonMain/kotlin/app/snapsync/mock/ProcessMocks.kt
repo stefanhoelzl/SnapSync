@@ -60,7 +60,8 @@ class ProcessInfoOperator internal constructor(private val mock: ProcessInfoMock
 }
 
 /** The device's wall clock and zone — stopped wherever the operator sets it, read at every call. */
-class ClockMock(now: Instant = Instant.fromEpochMilliseconds(0), internal val zone: TimeZone = TimeZone.UTC) {
+class ClockMock(now: Instant = Instant.fromEpochMilliseconds(0), zone: TimeZone = TimeZone.UTC) {
+    internal var zone: TimeZone = zone
     internal var now: Instant = now
 
     fun port(): Clock = object : Clock {
@@ -80,7 +81,7 @@ class ClockOperator internal constructor(private val mock: ClockMock) {
 
 /** The device's Secure Enclave: its keys outlive a process. Nothing to pull, so no operator face. */
 class DeviceIntegrityMock {
-    private val keys = EnclaveKeys()
+    internal val keys = EnclaveKeys()
 
     /** A process's face; the upload extension, and a simulator, have no App Attest: `available = false`. */
     fun port(available: Boolean): DeviceIntegrity = InMemoryDeviceIntegrity(available, keys)

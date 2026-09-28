@@ -226,6 +226,20 @@ class RigServer(
         respondText(json.encodeToString(DeviceAdvertisement.serializer(), ad), status = status)
     }
 
+    /**
+     * `409` when this launch composed nothing (a refused mix, [RigHooks.uncomposed]) — every route that would reach the
+     * composed app — or `false` to let the route proceed.
+     */
+    private suspend fun ApplicationCall.respondIfUncomposed(): Boolean {
+        val why = hooks.uncomposed ?: return false
+        respondText(
+            "{\"refused\":${jsonString("this launch composed nothing — its mix was refused: $why. Write a coherent one " +
+                "(POST /device/mix) or clear it (POST /device/mix/clear); either exits the app for its next start")}}\n",
+            status = HttpStatusCode.Conflict,
+        )
+        return true
+    }
+
     /** `409` with the host's reason when it refuses [verb], or `false` to let the route proceed. */
     private suspend fun ApplicationCall.respondIfRefused(verb: String, marker: String = ""): Boolean {
         val reason = hooks.refusals[verb] ?: return false
@@ -251,8 +265,10 @@ class RigServer(
         }
     }
 
-    private suspend fun ApplicationCall.respondState() =
+    private suspend fun ApplicationCall.respondState() {
+        if (respondIfUncomposed()) return
         respondText(json.encodeToString(RigState.serializer(), readState(core(), host(), hooks)))
+    }
 
     /**
      * `/logs?process=app|extension&bytes=N` — a pass-through to [LogTailService.tail].
@@ -311,6 +327,7 @@ class RigServer(
      * completion signal here would be inventing one the UI does not have.
      */
     private suspend fun ApplicationCall.respondUserCommand() {
+        if (respondIfUncomposed()) return
         val name = routeName("/user")
         val command = hooks.userCommands[name]
             ?: return respondText(
@@ -396,6 +413,7 @@ class RigServer(
     private suspend fun ApplicationCall.respondDeviceCommand() {
         val name = routeName("/device")
         if (respondIfRefused("device/$name")) return
+        if ("device/$name" !in RigVocabulary.mixCommands && respondIfUncomposed()) return
         val command = hooks.deviceCommands[name]
             ?: return respondText(
                 excludedOrUnknown(name, emptyMap(), "device command"),
@@ -416,6 +434,7 @@ class RigServer(
      */
     private suspend fun ApplicationCall.respondGallery() {
         if (respondIfRefused("device/gallery")) return
+        if (respondIfUncomposed()) return
         val cutoff = request.queryParameters["cutoff"]
         val resources = request.queryParameters["resources"].toBoolean()
         // `direction=download` reads the library through a NON-contributing policy — the deny-everything
@@ -438,6 +457,7 @@ class RigServer(
         val name = route.substringAfter('/', missingDelimiterValue = "")
         val arg = request.queryParameters["arg"]
         if (respondIfRefused("os/$root/$name")) return
+        if (respondIfUncomposed()) return
         val group = hooks.triggerGroups[root]
             ?: return respondText(
                 "unknown entry-point root '$root' — expected one of " +

@@ -26,6 +26,7 @@ module :test:edge
 module :test:feature
 module :test:harness-driver
 module :test:integration
+module :test:mix
 module :test:rig
 module :tools:diagrams
 module :ui:components
@@ -147,6 +148,10 @@ edge :test:integration :domain:feature
 edge :test:integration :domain:model
 edge :test:integration :domain:presentation
 edge :test:integration :test:control
+edge :test:mix :adapter:generic:mock
+edge :test:mix :domain:compose
+edge :test:mix :domain:model
+edge :test:mix :domain:ports
 edge :test:rig :adapter:generic:mock
 edge :test:rig :adapter:ios:app-only
 edge :test:rig :adapter:ios:ext-safe
@@ -159,6 +164,7 @@ edge :test:rig :domain:presentation
 edge :test:rig :domain:services
 edge :test:rig :test:contracts
 edge :test:rig :test:edge
+edge :test:rig :test:mix
 edge :ui:components :domain:model
 edge :ui:screens :domain:feature
 edge :ui:screens :domain:model

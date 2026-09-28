@@ -27,8 +27,8 @@ class JvmHostProtocolTest {
         assertEquals(emptyList(), ad.unclassified, "every vocabulary entry is honoured or refused")
         assertEquals(emptyList(), ad.outsideVocabulary, "every wired verb is in the vocabulary")
         assertEquals(RigVocabulary.entries, (ad.honoured + ad.refused.keys).toSet())
-        assertTrue(RigVocabulary.worldLevers.all { it in ad.honoured }, "the JVM host honours every world lever")
-        assertTrue(RigVocabulary.deviceFacts.all { it in ad.honoured }, "the JVM host reads every device fact")
+        assertEquals(emptyList(), RigVocabulary.worldLevers.filterNot { it in ad.honoured }, "the JVM host honours every world lever")
+        assertEquals(emptyList(), RigVocabulary.deviceFacts.filterNot { it in ad.honoured }, "the JVM host reads every device fact")
     }
 
     /**

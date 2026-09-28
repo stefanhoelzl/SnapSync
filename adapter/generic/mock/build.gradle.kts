@@ -9,10 +9,15 @@
 // and reads). Honesty is mechanical, not an adjective: the classes behind the port faces are all `internal` and
 // every face is port-typed, so an app can reach nothing a port does not declare — the compiler says so.
 //
-// Targets: jvm + iosSimulatorArm64. Mocks never link into a device framework, so there is no `iosArm64` to pay for
-// (11h's launch-time mock mix brings it).
+// Targets: jvm + iosSimulatorArm64 + iosArm64. The device target exists for the launch-time mock mix only
+// (`docs/testing.md`, "The launch-time mock mix"): a RIG build of the app on a phone links this module so a mixed
+// launch can hand some ports their mocks. A production build never links it — `:app:ios` and `:app:ios:extension`
+// name it only under `-Psnapsync.rig=true`, and `MockContainmentTest` fails the build the day either names it outside
+// that switch — so "mocks never link into a shipped framework" stays true of every binary that ships.
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
+    // The persisted mock state (`mix/`): each mocked system's durable state as JSON in the App Group.
+    alias(libs.plugins.kotlin.serialization)
     // Coverage measurement (`docs/architecture.md`). Applied here rather than in a
     // `subprojects {}` block so the instrumented set is readable per module.
     alias(libs.plugins.kover)
@@ -21,6 +26,7 @@ plugins {
 kotlin {
     jvmToolchain(libs.versions.jdk.get().toInt())
     jvm()
+    iosArm64()
     iosSimulatorArm64().binaries.all {
         // `-lsqlite3`: `inMemoryDatabases()` runs SQLDelight's native driver, whose sqliter cinterop declares the
         // system library only for a compilation that depends on the driver directly — not for this test executable's
@@ -33,16 +39,20 @@ kotlin {
             api(project(":domain:ports"))
             api(project(":domain:feature"))
             api(project(":domain:flow"))
+            // The launch-time mix hands a root back its `DevicePorts`, some swapped for mocks (`mix/`).
+            api(project(":domain:compose"))
             api(libs.coroutines.core)
             // The Clock double answers a zone (`TimeFactories.kt`).
             implementation(libs.kotlinx.datetime)
             // `inMemoryDatabases()`: real SQLite, in memory — the platform's driver per target, below.
             api(libs.sqldelight.runtime)
+            // The launch-time mix's persisted state (`mix/MockState.kt`).
+            implementation(libs.kotlinx.serialization.json)
         }
         jvmMain.dependencies {
             implementation(libs.sqldelight.driver.sqlite)
         }
-        iosSimulatorArm64Main.dependencies {
+        iosMain.dependencies {
             implementation(libs.sqldelight.driver.native)
         }
         // The stay-behind tests that drive `:domain` subjects through these fakes (re-homed from the
@@ -54,9 +64,6 @@ kotlin {
             // The fakes' own contract bindings (`docs/architecture.md`): only this module's test
             // source set can construct an `internal` fake in a chosen state.
             implementation(project(":test:contracts"))
-            // The photo-library contracts bind the grant-aware composition production calls, over the fake
-            // just as over the platform read (`docs/architecture.md`).
-            implementation(project(":domain:compose"))
             // The storage services' fake-driven tests: the services over the storage mocks (`docs/testing.md`).
             implementation(project(":domain:services"))
             // The process services hand the root a Kermit writer to install (`ProcessServices.logWriters`).

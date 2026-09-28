@@ -15,19 +15,21 @@ import app.snapsync.ports.UiHandlers
 
 /**
  * The platform's UI, decorated for the channel: everything [inner] is shown it is still shown, and the channel's
- * `/user` verbs reach the core as the [UiIntent]s a tap would produce, through the same handlers. Forwarding
+ * `/user` verbs reach the core as the [UiIntent]s a tap would produce, through the same handlers. [inner] is lazy — the
+ * root builds this set before the scene it decorates can be built — and is a launch mix's screen mock where one mocks
+ * it (`docs/testing.md`, "The launch-time mock mix"). Forwarding
  * [listen] to [inner] is the one registration the composition makes (a rig decorator's forwarding `listen` counts as
  * the composition's single `listen`).
  */
-class RigUi(private val inner: Ui) : Ui {
+class RigUi(private val inner: Lazy<Ui>) : Ui {
     private var handlers: UiHandlers? = null
 
     override fun listen(handlers: UiHandlers) {
         this.handlers = handlers
-        inner.listen(handlers)
+        inner.value.listen(handlers)
     }
 
-    override fun show(state: UiState) = inner.show(state)
+    override fun show(state: UiState) = inner.value.show(state)
 
     /** A `/user` verb: [intent], as the screen would have handed it over. */
     fun dispatch(intent: UiIntent) =
@@ -37,8 +39,8 @@ class RigUi(private val inner: Ui) : Ui {
 
 /**
  * A rig build's development controls: the per-uploader switch `/device/uploaders` sets, invite-link hints
- * **honoured** — the channel's callers join headlessly with `autoJoin` (capability `join-event`) — and the reset
- * `/device/reset` delivers.
+ * **honoured** — the channel's callers join headlessly with `autoJoin` (capability `join-event`) — unless
+ * `/device/invite-link-hints` plays a shipped build that ignores them, and the reset `/device/reset` delivers.
  */
 class RigDevControls : DevControls {
     private var handlers: DevHandlers? = null
@@ -46,13 +48,16 @@ class RigDevControls : DevControls {
     /** The per-uploader switch; `null` (both uploaders, as a shipped build runs) until the channel sets one. */
     var pin: UploaderPin? = null
 
+    /** How this build answers an invite link's dev/test hints. */
+    var hints: InviteLinkHints = InviteLinkHints.Honoured
+
     override fun listen(handlers: DevHandlers) {
         this.handlers = handlers
     }
 
     override fun uploaderPin(): UploaderPin? = pin
 
-    override fun inviteLinkHints(): InviteLinkHints = InviteLinkHints.Honoured
+    override fun inviteLinkHints(): InviteLinkHints = hints
 
     /** `/device/reset`: void this device's durable sync state. */
     suspend fun reset() =

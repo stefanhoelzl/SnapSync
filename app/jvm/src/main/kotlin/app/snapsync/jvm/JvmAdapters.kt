@@ -1,8 +1,6 @@
 package app.snapsync.jvm
 
 import app.snapsync.feature.upload.AppUploadMechanism
-import app.snapsync.feature.upload.WalkOutcome
-import app.snapsync.model.CycleResult
 import app.snapsync.ports.Backend
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.Clock
@@ -88,7 +86,7 @@ class JvmSystems(
     val cycleUpload: Upload,
     val download: Download,
     val systemUi: SystemUi,
-    /** The app-driven uploader's mechanism — [OperatorDrivenUploads] where the operator invokes every cycle. */
+    /** The app-driven uploader's mechanism — `OperatorDrivenUploads` where the operator invokes every cycle. */
     val appDrivenUpload: AppUploadMechanism,
 )
 
@@ -111,20 +109,3 @@ class JvmBuild(
     /** Where the composed app's own log lines go. */
     val log: Logger,
 )
-
-/**
- * The app-driven uploader of a JVM where **the operator is the engine**: its units do nothing, so nothing uploads on
- * its own, and a cycle runs when the operator invokes the upload extension. The tail runner still reaches it from every
- * wake the operator delivers, as on a device.
- *
- * The JVM root's one stated deviation from the phone, carried over from the world it replaces: the app process has
- * no transfer session of its own that creates jobs, so every upload goes through the cycle over [JvmSystems.cycleUpload].
- */
-object OperatorDrivenUploads : AppUploadMechanism {
-    override suspend fun topUp(stopRequested: () -> Boolean): CycleResult = CycleResult.COMPLETED
-
-    override suspend fun walkAndPublish(stopRequested: () -> Boolean): WalkOutcome =
-        WalkOutcome.Walked(CycleResult.COMPLETED, addedRows = false)
-
-    override suspend fun cancelTransfers() = Unit
-}

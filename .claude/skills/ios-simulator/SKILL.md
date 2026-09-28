@@ -389,3 +389,21 @@ second launch). `xcrun simctl erase` discards it, which is the intended way to g
 Nothing plants it. The store is chosen by compilation target, so on this host the app simply mints into a
 file the way it would mint into the Keychain on a device. If the app reports its identity as unavailable,
 the build is not signed — the store's message says so and names `scripts/sim-sign`.
+
+## Some systems mocked — the launch-time mix
+
+A rig build here can run with **some systems mocked and the rest real** (`rig-channel`, "Mixing mocks into the real
+app"; `docs/testing.md`, "The launch-time mock mix") — e.g. a mocked backend under a real, seeded photo library, with
+no local `api/` at all. On a simulator the mix file is reachable from the Mac, so a script may write it **before** the
+first launch instead of going through the verb (which writes and exits the app):
+
+```
+G=$(xcrun simctl get_app_container "$DEVICE" app.snapsync group.app.snapsync)
+mkdir -p "$G/rig" && printf 'backend=mock\nupload-queue=mock\nupload-session=mock\ndownloads=mock\npush=mock\nintegrity=mock\nextension-registry=mock\n' > "$G/rig/mix"
+xcrun simctl launch "$DEVICE" app.snapsync            # reads it; /health says mix=mocked: …
+rm -rf "$G/rig"                                        # back to all real (or POST /device/mix/clear)
+```
+
+A mix the process cannot use — a typo, an incoherent pair, a state file that does not restore — composes **nothing**
+and `/health` says `mix=REFUSED …`; fix the file (or clear it) and launch again. Mock state lives beside the mix
+(`rig/state/`, `rig/databases/`), so it survives a relaunch and `xcrun simctl erase` discards it with the rest.

@@ -2,6 +2,8 @@ package app.snapsync.rig
 
 import app.snapsync.compose.AppCore
 import app.snapsync.model.ProcessMetricReport
+import app.snapsync.mock.MockedSystem
+import app.snapsync.contracts.EntryDriver
 import app.snapsync.model.processMetricEmissions
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
@@ -48,61 +50,24 @@ private val log = Logger.withTag("rig")
  * library, empties one, or voids durable sync state, so this set exists only because a test rig exists.
  */
 fun deviceCommands(
+    launch: RigLaunch,
     core: () -> AppCore,
-    controls: RigDevControls,
     photoAccess: PhotoLibraryPermission,
     osSupportsOsDrivenUpload: Boolean,
     /** The app's OWN process-metric handler, so a synthetic report drives the path the OS drives. */
     handleReport: (ProcessMetricReport) -> Unit,
-): Map<String, RigCommand> = uploadJobDeviceCommands() + mapOf(
+): Map<String, RigCommand> = uploadJobDeviceCommands() + photoKitCommands(launch, photoAccess) +
+    launch.world.honouredLevers() + mixCommands(launch) + mapOf(
     // The development switch per uploader (capability `background-upload`). Reports the switch AND the
     // registration fact it produces, because the extension is never registrable below 26.1 or without a full
-    // grant, whatever the switch says.
+    // grant, whatever the switch says. The grant is the app's own — the mocked library's, where the mix mocks it.
     "uploaders" to uploadersCommand(
-        controls = controls,
+        controls = launch.controls,
         osSupportsOsDrivenUpload = { osSupportsOsDrivenUpload },
-        permission = { photoAccess.permission.value },
+        permission = { core().photoPermission.value },
         reconcile = { core().uploadTransitions.onOverrideChanged() },
     ),
-    "reset" to resetCommand(reset = controls::reset),
-    "gallery/seed" to seedCommand { n, kind -> seedPhotos(log, n, kind) },
-    "gallery/wipe" to RigCommand { params, _ ->
-        // A VALUE, not presence, and the only command here that refuses on one — because a wipe cannot be
-        // undone, so a stale or mistyped scope must refuse rather than delete something. `limit`/`offset`
-        // are held to the same standard for the same reason: a mistyped `limit=al` must NOT fall back to
-        // "no window" and delete the whole library, which is what a plain `toLongOrNull()` would do.
-        val scope = WipeScope.parse(params["scope"])
-        val limitRaw = params["limit"]
-        val offsetRaw = params["offset"]
-        val limit = limitRaw?.toLongOrNull()?.takeIf { it >= 0L }
-        val offset = offsetRaw?.toLongOrNull()?.takeIf { it >= 0L }
-        when {
-            scope == null -> CommandResult.badRequest(
-                "scope must be one of ${WipeScope.entries.joinToString("|") { it.name.lowercase() }}, " +
-                    "was '${params["scope"]}' — refusing rather than guessing, because this cannot be undone",
-            )
-            limitRaw != null && limit == null ->
-                CommandResult.badRequest("limit must be a non-negative integer, was '$limitRaw'")
-            offsetRaw != null && offset == null ->
-                CommandResult.badRequest("offset must be a non-negative integer, was '$offsetRaw'")
-            else -> {
-                val window =
-                    if (limit == null && offset == null) null else WipeWindow(offset ?: 0L, limit)
-                val o = wipeGallery(log, scope, photoAccess::requestAccess, window = window)
-                val windowJson =
-                    o.window?.let { """{"offset":${it.offset},"limit":${it.limit}}""" } ?: "null"
-                CommandResult.ok(
-                    """{"scope":"${o.scope.name.lowercase()}","grant":"${o.grant}",""" +
-                        """"matched":{"assets":${o.matchedAssets},"albums":${o.matchedAlbums},""" +
-                        """"folders":${o.matchedFolders}},"deletable":${o.deletable},""" +
-                        """"bySource":${jsonMap(o.bySource)},"selected":${o.selected},""" +
-                        """"window":$windowJson,""" +
-                        """"committed":${o.committed},"errorCode":${o.errorCode},""" +
-                        """"errorDescription":${quoted(o.errorDescription)}}""",
-                )
-            }
-        }
-    },
+    "reset" to resetCommand(reset = launch.controls::reset),
     // Drive a synthetic process-metric report through the app's OWN handler (capability
     // `privacy-security`). Real reports arrive on the OS's cadence — roughly daily, and only after a
     // period has closed — so without this the only way to exercise the three channels is to wait a
@@ -129,6 +94,56 @@ fun deviceCommands(
 )
 
 /**
+ * The photo library's seed and wipe: PhotoKit's where the library is real, the mocked library's seed where the launch
+ * mix mocks it — and no wipe there, which `iosRefusals` says.
+ */
+private fun photoKitCommands(launch: RigLaunch, photoAccess: PhotoLibraryPermission): Map<String, RigCommand> =
+    if (launch.world.isMocked(MockedSystem.LIBRARY)) {
+        mapOf("gallery/seed" to seedCommand { n, kind -> launch.world.seedMockLibrary(n, kind) })
+    } else {
+        mapOf(
+            "gallery/seed" to seedCommand { n, kind -> seedPhotos(log, n, kind) },
+            "gallery/wipe" to RigCommand { params, _ ->
+                // A VALUE, not presence, and the only command here that refuses on one — because a wipe cannot be
+                // undone, so a stale or mistyped scope must refuse rather than delete something. `limit`/`offset`
+                // are held to the same standard for the same reason: a mistyped `limit=al` must NOT fall back to
+                // "no window" and delete the whole library, which is what a plain `toLongOrNull()` would do.
+                val scope = WipeScope.parse(params["scope"])
+                val limitRaw = params["limit"]
+                val offsetRaw = params["offset"]
+                val limit = limitRaw?.toLongOrNull()?.takeIf { it >= 0L }
+                val offset = offsetRaw?.toLongOrNull()?.takeIf { it >= 0L }
+                when {
+                    scope == null -> CommandResult.badRequest(
+                        "scope must be one of ${WipeScope.entries.joinToString("|") { it.name.lowercase() }}, " +
+                            "was '${params["scope"]}' — refusing rather than guessing, because this cannot be undone",
+                    )
+                    limitRaw != null && limit == null ->
+                        CommandResult.badRequest("limit must be a non-negative integer, was '$limitRaw'")
+                    offsetRaw != null && offset == null ->
+                        CommandResult.badRequest("offset must be a non-negative integer, was '$offsetRaw'")
+                    else -> {
+                        val window =
+                            if (limit == null && offset == null) null else WipeWindow(offset ?: 0L, limit)
+                        val o = wipeGallery(log, scope, photoAccess::requestAccess, window = window)
+                        val windowJson =
+                            o.window?.let { """{"offset":${it.offset},"limit":${it.limit}}""" } ?: "null"
+                        CommandResult.ok(
+                            """{"scope":"${o.scope.name.lowercase()}","grant":"${o.grant}",""" +
+                                """"matched":{"assets":${o.matchedAssets},"albums":${o.matchedAlbums},""" +
+                                """"folders":${o.matchedFolders}},"deletable":${o.deletable},""" +
+                                """"bySource":${jsonMap(o.bySource)},"selected":${o.selected},""" +
+                                """"window":$windowJson,""" +
+                                """"committed":${o.committed},"errorCode":${o.errorCode},""" +
+                                """"errorDescription":${quoted(o.errorDescription)}}""",
+                        )
+                    }
+                }
+            },
+        )
+    }
+
+/**
  * A JSON object of scalars as the flat field map a report carries, or `null` when it is not one.
  *
  * Refusing rather than guessing: a mistyped body that silently became an empty report would exercise
@@ -143,8 +158,14 @@ private fun parseFields(body: String?): Map<String, String>? {
 private fun jsonArray(values: List<String>): String =
     values.joinToString(prefix = "[", postfix = "]") { "\"$it\"" }
 
-/** The gallery read, bound to the app's own permission-aware candidate seam rather than a second walk. */
-fun galleryReader(core: () -> AppCore): suspend (String?, Boolean, Boolean) -> String =
+/**
+ * The gallery read, bound to the app's own permission-aware candidate seam rather than a second walk — or, where the
+ * launch mix mocks the library, read off the mock as the JVM host reads it.
+ */
+fun galleryReader(launch: RigLaunch, core: () -> AppCore): suspend (String?, Boolean, Boolean) -> String =
+    if (launch.world.isMocked(MockedSystem.LIBRARY)) launch.world.mockGalleryReader() else photoKitGalleryReader(core)
+
+private fun photoKitGalleryReader(core: () -> AppCore): suspend (String?, Boolean, Boolean) -> String =
     { cutoff, resources, includesUpload ->
     val reader = GalleryReport(
         candidates = core().candidates,
@@ -199,3 +220,22 @@ fun noMembershipRefusal(host: () -> StatusContainerHost): () -> String? = {
     }
 }
 
+
+/**
+ * The app root's `/os` group for this launch: each delivery through the system that makes it — the mock's operator face
+ * where the launch mix mocks it, the platform's own adapter ([real]) otherwise — and the played operating system's
+ * expiry, which `iosRefusals` refuses unless the background-time holds are mocked.
+ */
+fun appTriggerGroup(launch: RigLaunch, real: EntryDriver, excluded: Map<String, String>): TriggerGroup {
+    val world = launch.world
+    return TriggerGroup(
+        // Swift calls this root's entry points from the main thread, so the rig does too.
+        lane = kotlinx.coroutines.Dispatchers.Main,
+        wired = appTriggers(MixedEntryDriver(world::isMocked, MockEntryDriver(world.device, world.os), real)) +
+            ("onExpiry" to RigTrigger.Fire { arg -> if (arg == "next") world.os.expireNext() else world.os.expire() }),
+        excluded = excluded,
+    )
+}
+
+/** What the operating system recorded of the app, where this launch plays any of it — `null` where it plays none. */
+fun osRecord(launch: RigLaunch): (() -> String)? = launch.world.takeIf { it.mocked.isNotEmpty() }?.os?.let { os -> os::record }

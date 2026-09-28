@@ -208,7 +208,7 @@ internal class BackendState(
     var refuseNextCredential = false
     var leaveHold: CompletableDeferred<Unit>? = null
     var minAppVersion: String? = null
-    private var legacyCounter = 0L
+    internal var legacyCounter = 0L
 
     fun issueChallenge(): String = "in-memory-challenge-${challenges.size + 1}".also { challenges += it }
 
