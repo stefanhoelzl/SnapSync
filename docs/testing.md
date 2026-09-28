@@ -40,14 +40,11 @@ store, no bunny zone reachable). Without Deno those tests **fail naming it**. Th
 `NotRunHere`. `api/src` is declared as an input of that task, so a backend-only change re-runs them
 (`changes/archive/2026-09-23-contract-backend-clients`).
 
-**Build-property-gated source sets are compiled and run by CI.** Code built only under
-`-Psnapsync.rig=true` or `-Psnapsync.forge=true` is invisible to `build`. That is what compile-time
-containment means, and it is also a blind spot. `build.yml` therefore runs
-`compileIosMainKotlinMetadata :domain:presentation:jvmTest -Psnapsync.rig=true -Psnapsync.forge=true` on every
-push. The gated **tests** run too, not only the main code. The forge test set once stopped compiling and
-stayed broken for weeks while a main-only compile step stayed green beside it. `ForgeStatusHostTest`
-checks that each marketing preset reaches its frame through the real reduction, and the honesty of the
-App Store screenshots depends on that. Do not narrow that step back to a compile.
+**Build-property-gated source sets are compiled by CI.** Code built only under `-Psnapsync.rig=true` is invisible
+to `build`. That is what compile-time containment means, and it is also a blind spot. `build.yml` therefore runs
+`compileIosMainKotlinMetadata -Psnapsync.rig=true` on every push. A gated tree that carries **tests** must have them
+RUN there too, not only compiled: the forge's gated test set once stopped compiling and stayed broken for weeks while
+a main-only compile step stayed green beside it. No gated tree carries tests today.
 
 ---
 
@@ -105,7 +102,7 @@ Look in both.**
 
 ### No `:app:*` module has a test source set
 
-`:app:ios`, `:app:ios:extension`, `:app:ios:forge`, `:app:jvm` and `:app:desktop` declare no tests. If behaviour
+`:app:ios`, `:app:ios:extension`, `:app:jvm` and `:app:desktop` declare no tests. If behaviour
 there needs coverage, **move it** into `:domain` or an adapter and test it there.
 
 The reasons differ, so keep them separate:
@@ -115,7 +112,6 @@ The reasons differ, so keep them separate:
 - `:app:jvm` is **wiring-only by the same gate** (`detektAppShell`, `KotlinShellGuardTest`). What it composes is
   exercised by every test that drives the rig's JVM host: `:test:control`'s protocol tests (a relaunch among them)
   and the whole `:test:integration` suite.
-- `:app:ios:forge` links no live graph at all.
 - `:app:desktop` is test equipment. It is exempt from the shell laws and is exercised, without gating,
   through `:test:harness-driver`.
 
@@ -626,36 +622,19 @@ Decision records: `changes/archive/2026-09-24-integration-over-control`,
 
 ---
 
-## 8. Desktop harnesses (`:app:desktop`)
+## 8. The desktop harness (`:app:desktop`)
 
-Two Compose Desktop windows in the one `:app:desktop` module. They are **test equipment, not a product**.
-Both mount the real `:ui:screens` `StatusScreen` in a phone frame (about 390×844) through the shared pane
-library (`PhoneFrame`; `StatusPane` over forged sources, `ScreenPane` over a running app's screen), so they cannot
-drift in how they mount it. The control panes are raw
-Material 3, never `App*`, hold no logic, and carry no tests. The windows have different titles on purpose.
-Only the title tells a forged pane from a real one, and mistaking them means mistaking a drawing for a
-measurement.
+A Compose Desktop window, `./gradlew :app:desktop:run`: **test equipment, not a product**, and the one place every UI
+state is reviewed without a device. It mounts the real `:ui:screens` `StatusScreen` in a phone frame (about 390×844,
+`PhoneFrame`, through `ScreenPane`). The control pane is raw Material 3, never `App*`, holds no logic, and carries no
+tests.
 
-| | forge | world |
-|---|---|---|
-| run | `./gradlew :app:desktop:runForge` (a `JavaExec`) | `./gradlew :app:desktop:run` (the Compose `application`) |
-| title | `SnapSync` | `SnapSync — full-stack world` |
-| what the screen shows | **forged**: any display state typed in through `PanelController` | **emergent**: what the app `:app:jvm` composes over the mocks showed on its `Ui` port |
-| use it for | reviewing every UI state | watching the real stack behave |
-
-**Forge.** The control panel forges permission (all four states, `LIMITED` included), sync, download,
-creation, join-gate, switch-confirmation, not-started and unattested states, plus a Light/Dark toggle for
-the phone pane. Rules:
-- No preset forges a `SyncHealth` directly. It forges the underlying `SyncStatus`/counts, and the real
-  reduction derives the mood. That is what makes a preset a preset rather than a forged answer.
-- A sync preset also forces its preconditions (grant, config, attested), so the screen always shows what
-  was asked for.
-- A permission preset touches only the permission cell, so a forged sync state survives a
-  revoke-and-restore walk.
-- Affordances that need the live core (leave, invite, rename, bug report) are **rendered but inert**
-  here.
-- `:app:ios:forge` is the iOS counterpart for the marketing screenshots, built only under
-  `-Psnapsync.forge=true`.
+**No UI state is forged.** The forge — a harness and an iOS binary that fed the status screen canned inputs — was
+deleted in 12: it could show a frame the app never reached. Every state is reached here through the mocks' levers,
+including the screens the app shows only while it waits. The mocks answer at once, so those exist for a moment no
+reviewer can catch; the inspector's **Hold** switches keep the backend's event-details load, create, join or leave —
+or the library's enumeration — unanswered until released (the same levers are `/device/backend/hold` and
+`/device/gallery/hold-enumeration` over the rig, `HeldScreenIntegrationTest`).
 
 **World.** The app is the one the JVM root composes (section 5) over a fresh set of mocks. The phone pane
 (`ScreenPane`) renders exactly what the app showed on its `Ui` port and hands every tap back as its `UiIntent`: the
@@ -682,8 +661,8 @@ simulator or phone). It renders `StatusScreen` from the host's wire `UiState` an
 intents. A tap with no intent is inert and logged. Forward the port first, because hosts bind loopback
 only.
 
-**Headless:** to click or screenshot either harness without a display, load `.claude/skills/ui-harness`
-(`:test:harness-driver`, `driveForge` / `driveWorld`). **Never** use `java.awt.Robot`, and never capture
+**Headless:** to click or screenshot the harness without a display, load `.claude/skills/ui-harness`
+(`:test:harness-driver`, `driveWorld`). **Never** use `java.awt.Robot`, and never capture
 the real screen `:0`. It raises a portal consent prompt and blocks until someone answers.
 
 Decision records: `changes/archive/2026-07-03-add-full-stack-harness`,
@@ -802,4 +781,6 @@ not describe what runs today. Each phase moves its part into the sections above.
   zone.
 - **The rig reaches the app only through ports.** On both hosts every operator lever is a mock's operator face
   (section 6); the app host has one for each system its launch-time adapters mocks (11h, section 6).
-- **The forge and its marketing screenshots** are replaced by screenshots of the rig running on a simulator (12).
+- **The forge is gone** (12). The marketing screenshots are the real app on a simulator over launch adapters, driven
+  by the scenarios `ShotsTest` runs on the JVM host (`docs/deployment.md`, "Screenshots"); UI review is the world
+  harness's (section 8). `DeletionLedgerTest` keeps the forge deleted.

@@ -517,11 +517,15 @@ Operator rules:
 
 ### Screenshots
 
-Six committed raws in `screenshots/` (3 forge states × light/dark) feed **both** the App Store listing
+Six committed raws in `screenshots/` (3 states × light/dark) feed **both** the App Store listing
 (uploaded at promote time only) and the `site/` landing page (on merge). A merge that changes them
-changes **no** listing. Each capture is the real status screen rendered by the forge binary over forged
-inputs, with no backend, no attestation and no photo library, so no real member's content can reach the
-listing.
+changes **no** listing. Each capture is the **real app** — the rig build on a simulator — in a state its real
+reduction reached: `screenshots.yml` sets its launch adapters to mock every system but the screen and the app's
+foreground life, and `:test:integration`'s capture drives it to each state through the control channel (`Shots.kt`:
+`create`, `joining`, `in_sync`) and captures it light and dark. The backend, the photo library, the Keychain and App
+Attest are all mocks, so no real member's content can reach the listing. The clock is mocked at a fixed instant and the
+status bar overridden, so an unchanged UI captures byte-identically. `ShotsTest` runs the same scenarios on the JVM
+host inside `build`, so they cannot rot between dispatches.
 
 ```
 gh workflow run screenshots.yml --ref <branch>          # ~11-19 min
@@ -531,8 +535,9 @@ gh run download "$RID" -n screenshots-raw -D screenshots
 ```
 
 ⚠️ **Looking at them is the only check there is.** A system notification ("Ready for Apple
-Intelligence") landed in 1 of 2 runs. Re-dispatch if one does. Only `create` should differ on an
-unchanged UI, and only in the 90×32 px wall clock. A headline or size change needs no re-capture.
+Intelligence") landed in 1 of 2 runs under the forge; the rig path reuses the same pre-booted simulator, so the risk
+is unchanged. Re-dispatch if one does. On an unchanged UI every raw comes back byte-identical, `create` included. A
+headline or size change needs no re-capture.
 
 Decision records: `changes/archive/2026-07-19-promote-appstore-builds`,
 `changes/archive/2026-07-16-dispatch-driven-release-and-submission`,

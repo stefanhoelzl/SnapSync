@@ -1,32 +1,31 @@
 ---
 name: ui-harness
 description: >-
-  See and click SnapSync's real UI with no device and no display — serve either
-  desktop harness (forge or full-stack world) over HTTP as an offscreen Compose
-  scene, read back the semantics tree, click real buttons, type into fields, and
+  See and click SnapSync's real UI with no device and no display — serve the
+  full-stack world harness over HTTP as an offscreen Compose scene, read back the semantics tree, click real buttons, type into fields, and
   capture real pixels. Use whenever the task means looking at or driving the app's
   screens without a phone: "show me the status screen", "screenshot the UI",
   "click that button", "review every UI state", "drive the world harness", or any
-  harness-driver / driveForge / driveWorld work. NEVER use java.awt.Robot or
+  harness-driver / driveWorld work. NEVER use java.awt.Robot or
   capture the real screen instead.
 ---
 
-# ui-harness — driving the desktop harnesses headlessly
+# ui-harness — driving the desktop harness headlessly
 
-Two desktop harnesses exist, both in `:app:desktop`:
+The **full-stack world harness** (`./gradlew :app:desktop:run`, `docs/testing.md`) — the real `:ui:screens`
+status screen in a phone-sized frame, showing exactly what the app the JVM root (`:app:jvm`) composes over the
+mocks showed on its screen; taps go back to that app as intents. Plus a right-pane **world inspector** playing the
+mocks' operator faces: presets, **Invoke extension** (the extension's cycle, then the silent push that reconciles
+downloads), **Heartbeat**, the gallery/backend, the upload-job queue and downloads, failure levers, **Hold**
+switches, an engine-console footer. The operator plays the OS — nothing auto-runs.
 
-- **Forge harness** (`./gradlew :app:desktop:runForge`, `docs/testing.md`) — the real
-  `:ui:screens` status screen in a phone-sized frame, plus a **control panel** that **forges any
-  display state**: permission presets, sync-state presets, the engine console. Review every UI state
-  with no device.
-- **Full-stack world harness** (`./gradlew :app:desktop:run`, `docs/testing.md`) — the
-  same real status screen, but showing exactly what the app the JVM root (`:app:jvm`) composes over the
-  mocks showed on its screen (never forged); taps go back to that app as intents. Plus a right-pane **world
-  inspector** playing the mocks' operator faces: presets, **Invoke extension** (the extension's cycle, then the
-  silent push that reconciles downloads), **Heartbeat**, the gallery/backend, the upload-job queue and
-  downloads, failure levers, an engine-console footer. The operator plays the OS — nothing auto-runs.
+**It is where every UI state is reviewed.** No state is forged — the forge harness was deleted in phase 12 — so
+each is reached through a lever. The screens the app shows only while it waits (the join gate loading or
+committing, a create in flight, the status screen before anything is counted) would flash past, because the mocks
+answer at once: flip the matching **Hold** switch (`tag=hold-event|hold-create|hold-join|hold-leave|
+hold-enumeration`) first, act, look, then flip it back to release.
 
-Both `run` tasks open a real window and need a display — useless to an agent, which can neither see
+The `run` task opens a real window and needs a display — useless to an agent, which can neither see
 nor click one. Use the driver below instead.
 
 ## 🚫 Never screenshot the real screen
@@ -38,13 +37,12 @@ server** and never raises the screen-capture consent prompt.
 
 ## The driver
 
-`:test:harness-driver` serves **either harness over HTTP with no window at all**. It is **dev
+`:test:harness-driver` serves **the harness over HTTP with no window at all**. It is **dev
 infrastructure, non-gating, no spec** (rationale in `Driver.kt`).
 Clicks go through the **real** buttons of the real panel, so there is no second way-to-drive that can
 rot or lie.
 
 ```
-ch bg ./gradlew :test:harness-driver:driveForge   # forge harness, 800x950
 ch bg ./gradlew :test:harness-driver:driveWorld   # full-stack world, 1240x950
 ```
 
@@ -79,7 +77,7 @@ curl -sS "$B/quit"
   `index=` and `substring=true`. `index=` is **required** for the world inspector's per-job `✓` `✕`
   `Net` `Http` `Cxl` `Unk` — one row per job, so those labels are ambiguous by construction.
 - **`/click` settles before answering** (`waitForIdle()`), so a `200` means the state is stable. It
-  also `performScrollTo()`s first, since both panels scroll and off-viewport controls are otherwise
+  also `performScrollTo()`s first, since the panel scrolls and off-viewport controls are otherwise
   unclickable.
 - ⚠️ **`/tree` prints `onRoot()` — ONE root — so a popup is INVISIBLE in it.** A `ModalBottomSheet` or
   dialog renders into its own root: the bug-report sheet is fully open and driveable (`/input`,
@@ -98,5 +96,5 @@ curl -sS "$B/quit"
 
 ## The control panel is test equipment
 
-Both right-hand panels are raw Material 3 — never `App*` components. That is deliberate: the panel is
+The right-hand panel is raw Material 3 — never `App*` components. That is deliberate: the panel is
 test equipment, not product UI, so it must not be able to pass a design-system review by accident.

@@ -51,19 +51,13 @@ class KotlinShellGuardTest {
      * `-Psnapsync.rig=true`, so it is shell source and is gated as such rather than exempted
      * (`docs/architecture.md`, "Source contributed into a shell's source set is shell
      * source for the gates").
-     *
-     * `app/ios/forge/src` is the forge shell, built under `-Psnapsync.forge=true`. It was missing
-     * from BOTH this list and the build's — the mirror was faithful and both copies were wrong,
-     * which is the argument recorded in `docs/architecture.md` for deriving the wider gate's coverage
-     * from the Gradle model instead of mirroring a list. This gate keeps the list because one of its
-     * roots (`test/rig/src/hook`) is not a module and the project model cannot express it.
      */
     /**
      * DERIVED from `appShellSources` in the root build file — the same list the `detektAppShell` task
      * scans — rather than a second copy of it.
      *
      * It used to be a copy, and the duplication had already failed once: `build.gradle.kts` records that
-     * `app/ios/forge/src` was absent from BOTH this list and `appShellSources` until the
+     * the (since deleted) forge shell's root was absent from BOTH this list and `appShellSources` until the
      * complexity-budgets change measured the tree. Its own comment draws the conclusion — "a
      * hand-maintained list of roots stops being true the moment a module is added, and nothing tells
      * you" — so the fix is to stop maintaining a second one. `DetektTierCoverageTest` reads
@@ -76,7 +70,7 @@ class KotlinShellGuardTest {
         val build = File(repoRoot, "build.gradle.kts").readText()
         // Comments are stripped BEFORE the block is delimited. A `[^)]*` match truncated at the first
         // `)` inside a comment — "(it constructs and forwards, it decides nothing)" — silently dropping
-        // every root declared after it, `app/ios/forge/src` included. The declaration ends at the first
+        // every root declared after it. The declaration ends at the first
         // line that is a lone `)`.
         val code = build.lines().joinToString("\n") { it.substringBefore("//") }
         val block = code.substringAfter("val appShellSources = files(", missingDelimiterValue = "")
@@ -119,7 +113,7 @@ class KotlinShellGuardTest {
      * Deriving this guard's roots from the build file removes drift between the two lists, but it cannot
      * notice that the one remaining list is incomplete — if a shell module is missing from
      * `appShellSources`, the guard now agrees with it and both are silently wrong. That is precisely the
-     * failure on record: `app/ios/forge/src` was absent from both until the tree was measured.
+     * failure on record: the (since deleted) forge shell's root was absent from both until the tree was measured.
      *
      * So the expected set is derived from a THIRD place neither list controls — the build's own include
      * set. Every `:app:ios*` module SHALL have its source root scanned. `:app:desktop` is excluded
@@ -147,7 +141,7 @@ class KotlinShellGuardTest {
             "shell modules the shell gate does not scan: $unscanned. Add each one's `src` to " +
                 "`appShellSources` in the root build file. A shell absent from that list is never " +
                 "measured for decisions, and nothing else would tell you \u2014 which is exactly how " +
-                "`:app:ios:forge` went unscanned until the tree was measured.",
+                "the forge shell went unscanned until the tree was measured.",
         )
     }
 

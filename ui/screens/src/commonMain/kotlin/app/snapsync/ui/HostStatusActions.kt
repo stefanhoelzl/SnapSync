@@ -7,8 +7,8 @@ import app.snapsync.ui.components.RangeChoiceActions
  * The status screen's callback bundle — **the one tap → [UiIntent] table** (spec `sync-status`, "The screen's
  * callback bundle is built in one place").
  *
- * Every screen that renders the status screen builds its bundle here: the iOS UI adapter, the forge binary, the
- * desktop pane. Each tap becomes the one [UiIntent] naming it, handed to [dispatch] — the `Ui` port's `onIntent`
+ * Every screen that renders the status screen builds its bundle here: the iOS UI adapter and the
+ * desktop panes. Each tap becomes the one [UiIntent] naming it, handed to [dispatch] — the `Ui` port's `onIntent`
  * handler on a device, the container's own `onIntent` in a harness. What an intent MEANS is the container's table,
  * never this one: this binds taps to names, and nothing else. It is clicked (`HostStatusActionsTest`), and the table
  * clicked is the table that ships.

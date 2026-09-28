@@ -1,7 +1,7 @@
 {
   "_comment": [
     "Per-locale headline copy baked onto the App Store screenshots by appstore.yml, keyed by the",
-    "forge state each raw capture in screenshots/ was taken from. Version-controlled here, next to the",
+    "marketing state (test/integration's Shots.kt) each raw in screenshots/ shows. Version-controlled next to the",
     "rest of the listing, so the copy is reviewable in a PR rather than living only in a CI script.",
     "",
     "This file is DELIBERATELY outside the metadata tool's schema. `asc metadata validate` decodes only",

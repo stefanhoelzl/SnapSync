@@ -39,7 +39,7 @@ group, with the group's argument in the commit.
 | group | why it exists | members |
 |---|---|---|
 | **Withholding** | withholds a dependency (third-party, platform, or another core zone) from its consumers by compile error | `:domain:model` `:domain:ports` `:domain:services` `:domain:feature` `:domain:flow` `:domain:presentation` `:domain:compose` `:domain:host` · `:ui:screens` `:ui:components` · `:adapter:ios:ext-safe` `:adapter:ios:app-only` `:adapter:generic:app` `:adapter:generic:mock` · `:app:ios` `:app:ios:extension` `:app:desktop` |
-| **Contained** | exists so that something is **absent** from a production build, and is linked only under a build property | `:app:ios:forge` (`-Psnapsync.forge`) · `:test:rig`, `:test:contracts` (`-Psnapsync.rig`) |
+| **Contained** | exists so that something is **absent** from a production build, and is linked only under a build property | `:test:rig`, `:test:contracts`, `:test:launch-adapters` (`-Psnapsync.rig`) |
 | **Support** | never linked into a shipped-format binary, exempt from production-module laws | `:app:jvm` `:test:integration` `:test:architecture` `:test:harness-driver` `:test:edge` `:test:control` `:tools:diagrams` |
 
 Key placements:
@@ -116,7 +116,6 @@ Adapters are named for the technology and hold implementations only. Finer struc
 |---|---|---|
 | iOS app (`SnapSyncKit`) | `:app:ios` `SnapSyncRoot` | `snapSyncProcess`, then `snapSyncHost` from `:domain:host` |
 | iOS upload extension, iOS 26.1 and later (`SnapSyncUploadKit`) | `:app:ios:extension` `UploadExtensionRoot` | `snapSyncProcess`, then `uploadCore` + `snapSyncExtension` |
-| forge (marketing screenshots) | `:app:ios:forge` | forged sources only, no live graph |
 | JVM root — the desktop world harness, the JVM rig host | `:app:jvm` `JvmApp`, over adapters its caller chooses (the mocks by default) | `snapSyncProcess`, then `snapSyncHost`; the extension's `uploadCore` + `snapSyncExtension` beside it (it installs no log writer: Kermit's list is JVM-global) |
 
 ---
@@ -230,7 +229,7 @@ One line each. The authority is the named gate. Gates live in `:test:architectur
 | One shared composition: every root calls `snapSyncProcess` first — it installs the log writers and the boot banner, then starts crash reporting before any other wiring, then listens to the process metrics; one crash reporter, one process-metrics source, one `Files`, one `Clock` and one `EntryContext` per process — and hands its `ProcessServices` to `snapSyncHost` (app) or `uploadCore` and `snapSyncExtension` (extension), which require it. The app root builds the process's ONE `CutoffFormatter` (the zone read once) and hands the same instance to the UI adapter and to `snapSyncHost`. A root supplies ports only and never builds the status host or installs subscriptions. Only a composition that owns the global logger installs writers (a device root does; the JVM root, one of many in a JVM, does not) | structural (one function) + **review**. The wiring graph is not unit-tested. It is smoke-tested by the integration surface, over the JVM root |
 | A platform-mechanism decision (today: may the upload extension be registered, `extensionRegistrable`) is a pure, total, unit-tested function of runtime state, re-evaluated when an input changes. Target-fixed facts are not inputs | the compiler (exhaustive `when`) + `ProducerExclusivityTest` (no cell true below iOS 26.1) |
 | Upload transitions stop in-flight work only at a leave (no deregister or cancel on revoke/reconfigure/launch; no registration write under a partial grant; enable always goes disable→enable) | `ProducerExclusivityTest` |
-| Shells (`:app:ios`, `:app:ios:extension`, `:app:ios:forge`, the JVM root `:app:jvm`, the host `:domain:host` — a core zone, but wiring every root calls — rig-contributed shell source) hold zero decisions | `detektAppShell` (cyclomatic threshold 2, gating) + `KotlinShellGuardTest` (roots exist, `@Suppress` inventory exact both ways) |
+| Shells (`:app:ios`, `:app:ios:extension`, the JVM root `:app:jvm`, the host `:domain:host` — a core zone, but wiring every root calls — rig-contributed shell source) hold zero decisions | `detektAppShell` (cyclomatic threshold 2, gating) + `KotlinShellGuardTest` (roots exist, `@Suppress` inventory exact both ways) |
 | The build's adapter set is chosen at build time: a root builds its real adapters as one lazy `DevicePorts` and calls `platformAdapters()` (app) or `extensionPorts()`/`extensionHost()` (extension), compiled from the root's `src/prod`/`src/entries` or — only under `-Psnapsync.rig=true` — from the control channel's source, which hands back the launch-time adapters' ports (`docs/testing.md`), decorates the UI (`RigUi`), supplies its own `DevControls` and runs a requested contract in the extension. No flag is read, no inert stub ships and no shipped binary links a mock | the build scripts + `DevControlsContainmentTest` + `MockContainmentTest` |
 | Source a build script contributes into a shell's source set is shell source for the gates | the root `build.gradle.kts` `appShellSources` list, mirrored in `KotlinShellGuardTest` |
 | Swift is a transcriber: decision keywords only at pinned occurrences, and every Swift shell function forwards to Kotlin | `SwiftShellGuardTest` |
@@ -427,7 +426,7 @@ byte-deterministic (code-point sort, `\n`, UTF-8, no timestamps or absolute path
 | `zones.md` | zone/feature graph (derived from `build.gradle.kts` text, so never declare a report-aggregation edge in a scanned module's build script; the root build is the place) |
 | `flows/<Flow>.md` | one sequence diagram per trigger flow |
 | `ports.md` | port × adapter matrix, including a fake-and-contract column |
-| `features.md` | feature cards, including the forge name→sources map |
+| `features.md` | feature cards |
 | `di.md` | DI wiring graphs and the binary × port matrix |
 
 - The flow transcriber accepts a **closed grammar**: straight-line calls; the awaited `fanOut { child
@@ -468,7 +467,7 @@ Cupertino) or a swap of the QR library changes one module.
 - **Palette**: the skin meets measured AA contrast in both themes over a frozen palette, with no new
   colour token per component. Skin-local, no signature change.
 - The inventory grows only when a screen needs it. KDoc on each component is its reference.
-  `./gradlew :app:desktop:runForge` shows every state.
+  `./gradlew :app:desktop:run` reaches every state through the world inspector's levers.
 
 ---
 

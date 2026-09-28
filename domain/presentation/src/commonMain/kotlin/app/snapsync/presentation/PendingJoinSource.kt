@@ -19,9 +19,7 @@ data class PendingJoin(val eventId: String, val phase: JoinPhase)
  * Unlike those, the container both **reads and writes** this: its gate methods
  * (`onOpenUrl → startPending → loadInto`, `onConfirmJoin`, `onCancelJoin`, …) advance the [phase], and
  * the `combine`/first-frame reduction reads it. So the seam is a single concrete mutable holder rather
- * than an interface + impl pair: production and the full-stack harness accept the default instance
- * (the gate drives it as before), while the forge harness injects its own and calls [set] to forge any
- * `JoinPhase` directly — forging the *input* cell, never fabricating a `UiState`.
+ * than an interface + impl pair, which a test may inject to start the gate at any `JoinPhase`.
  */
 class MutablePendingJoinSource(initial: PendingJoin? = null) {
     private val cell = MutableStateFlow(initial)

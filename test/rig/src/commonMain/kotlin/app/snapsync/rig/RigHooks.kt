@@ -27,7 +27,7 @@ class RigHooks(
      * with permission and is deliberately not reported here.
      *
      * There used to be a `compositionMode` beside this, rendering the sealed mode the shell resolved. With
-     * forge moved to its own binary that mode has one case, so the two were the same fact twice.
+     * the forge moved to its own binary (since deleted) that mode had one case, so the two were the same fact twice.
      */
     private val uploadTier: String,
     /** The baked `uploadBase` — the oracle for "which backend is this build pointed at". */

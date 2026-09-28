@@ -122,16 +122,10 @@ dependencyAnalysis {
 val appShellSources = files(
     "app/ios/src",
     "app/ios/extension/src",
-    // The forge shell — `ForgeViewController.kt`, the iOS entry point built under
-    // `-Psnapsync.forge=true`. It is a shell by the same definition as the two above (it constructs
-    // and forwards, it decides nothing), and it was absent from this list and from
-    // `KotlinShellGuardTest.shellSourceRoots` until the complexity-budgets change measured the tree
-    // and found it. That is precisely the failure the comment below warns about, so it is recorded
-    // here rather than quietly fixed: a hand-maintained list of roots stops being true the moment a
-    // module is added, and nothing tells you.
-    "app/ios/forge/src",
     // The shared host composition (`snapSyncHost`): wiring every root calls, holding no decision. A shell by the
-    // same definition, and listed for the same reason as the forge above — added with the module.
+    // same definition as the two above (it constructs and forwards, it decides nothing). A hand-maintained list of
+    // roots stops being true the moment a module is added, and nothing tells you — the forge shell was missing from
+    // it, and from `KotlinShellGuardTest.shellSourceRoots`, until the complexity-budgets change measured the tree.
     "domain/host/src",
     // The JVM root (`JvmApp`): the same composition as the iOS root, for the JVM test equipment. Wiring only by the
     // same definition, so gated as a shell — the levers it must not grow are the mocks' operator faces.
@@ -209,14 +203,14 @@ tasks.named("check") { dependsOn("detektAppShell") }
 // `settings.gradle.kts` is scanned without touching this file — or, if it is in no tier,
 // `DetektTierCoverageTest` (`:test:architecture`) fails naming it. That is a deliberate departure
 // from `appShellSources` above, which is a hand list mirrored in a test. The mirror was faithful and
-// BOTH copies were wrong: `:app:ios:forge` was missing from each until this change measured the tree.
+// BOTH copies were wrong: the (since deleted) forge shell was missing from each until this change measured the tree.
 // A mechanism whose known failure has already occurred is not the one to reuse at eight times the
 // scale. The shell gate keeps its list because one of its roots (`test/rig/src/hook`) is not a module
 // and the project model cannot express it.
 
 /** Kotlin source-set directory names that hold TESTS. Everything else under `src/` is production. */
 val testSourceSetDirs = listOf(
-    "commonTest", "iosTest", "iosSimulatorArm64Test", "jvmTest", "forgeTest", "appleTest",
+    "commonTest", "iosTest", "iosSimulatorArm64Test", "jvmTest", "appleTest",
     "nativeTest", "test",
 )
 
@@ -233,7 +227,6 @@ val detektTierOf: Map<String, String> = mapOf(
     // parameter counts, naming); their DECISIONS are the shell proof's business, at threshold 2.
     ":app:ios" to "shell",
     ":app:ios:extension" to "shell",
-    ":app:ios:forge" to "shell",
     ":domain:host" to "shell",
     ":app:jvm" to "shell",
 

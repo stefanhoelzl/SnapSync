@@ -14,7 +14,3 @@ interface EventCreator {
     suspend fun create(name: String, startsAt: String, endsAt: String)
 }
 
-/** A no-op [EventCreator] for hosts/tests that forge [CreationStatus] directly (e.g. the harness). */
-object NoOpEventCreator : EventCreator {
-    override suspend fun create(name: String, startsAt: String, endsAt: String) = Unit
-}

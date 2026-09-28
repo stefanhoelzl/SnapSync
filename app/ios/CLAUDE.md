@@ -16,15 +16,10 @@ module exporting its own **static** framework that the Xcode project links:
 ```
 :app:ios            → framework "SnapSyncKit"        ← app process (UI + ledger reader)
 :app:ios:extension  → framework "SnapSyncUploadKit"  ← extension process (discover→upload)
-:app:ios:forge      → framework "SnapSyncForgeKit"   ← marketing-screenshot binary, build-gated
 ```
 
-The third is **built only under `-Psnapsync.forge=true`** and links neither `:app:ios` nor any adapter: it
-renders the real `StatusScreen` over forged sources and has no `SnapSyncRoot`, no live graph, no backend
-client. Forge used to be a *mode* of the app — a `CompositionMode.Forge` case and a `ForgeShell`
-implementing ~15 `Shell` members whose only job was to keep every entry point inert — and all of that
-shipped. Now the inertness is a property of which binary is running rather than something a delegate has to
-keep performing correctly.
+(A third, the forge binary for the marketing screenshots, was deleted in phase 12: the raws come from the rig build
+of the real app on a simulator — `screenshots.yml`.)
 
 Two frameworks, not one, for two real reasons: the **extension-safety line** (app-only API —
 UIKit/BGTask/URLSession adapters — must be structurally un-linkable from the appex, and
@@ -273,8 +268,7 @@ reinstall. To exercise the app's uploader alone on a ≥26.1 device, switch the 
   its entry points with `Logger.invocation`, so every line carries a `[<entryPoint>]` prefix. Keep new
   entry points wrapped, or their downstream lines lose the trigger prefix.
 - **`-lsqlite3`:** required in each target's `OTHER_LDFLAGS` (above) for any target linking SQLDelight's
-  native driver. The forge target does **not** link it (no ledger, no download store), so it does not need
-  the flag — but check before assuming that of any other new target; the symbol resolves at link time, not
+  native driver — check any new target; the symbol resolves at link time, not
   at call time, so the failure is a link error rather than a crash.
 - **In-memory SQLite on Native:** `NativeSqliteDriver` shares an in-memory DB across connections via
   shared-cache — give each backend a **unique db name** to avoid cross-test/instance leakage.

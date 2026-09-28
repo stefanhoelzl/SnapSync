@@ -6,8 +6,8 @@ plugins {
 
 // Test-only dev infrastructure (no spec — rationale in `Driver.kt`).
 //
-// Serves the two desktop harnesses over HTTP to a headless caller (an agent). It composes the SHIPPED
-// harness roots — `ForgeHarnessRoot()` / `WorldHarnessRoot()` — into an OFFSCREEN Compose scene, so
+// Serves the desktop world harness over HTTP to a headless caller (an agent). It composes the SHIPPED
+// harness root — `WorldHarnessRoot()`, or its mirror of a remote host — into an OFFSCREEN Compose scene, so
 // there is no window, no X server, and no Wayland screen-capture portal prompt. Clicks go through the
 // real buttons; pixels come out of the real render.
 //
@@ -19,8 +19,7 @@ kotlin {
 }
 
 dependencies {
-    // The two harness roots this drives — ForgeHarnessRoot AND WorldHarnessRoot both live in
-    // `:app:desktop` since the migration step-10 fold.
+    // The harness roots this drives, in `:app:desktop`.
     implementation(project(":app:desktop"))
     implementation(libs.compose.runtime)
     // `runDesktopComposeUiTest` + `captureToImage` — an `implementation` dep (not `testImplementation`):
@@ -58,7 +57,6 @@ fun registerDrive(taskName: String, harness: String, blurb: String) =
         outputs.upToDateWhen { false }
     }
 
-registerDrive("driveForge", "forge", "Serve the forge harness (:app:desktop:runForge) headlessly over HTTP.")
 registerDrive("driveWorld", "world", "Serve the full-stack world harness (:app:desktop:run) headlessly over HTTP.")
 registerDrive(
     "driveMirror",

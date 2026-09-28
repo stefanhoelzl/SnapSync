@@ -48,14 +48,13 @@ Build with **`snapsync.rig=true`** in the runner's `~/.gradle` when you intend t
 declares no `SNAPSYNC_*` variable, and a guard fails the build if one returns. You can still install and
 launch a release build and watch it; you just cannot make it do anything.
 
-Two variables survive, and neither is read by shipped code:
+One variable survives, and it is not read by shipped code:
 
 | variable | read by | what it does |
 |---|---|---|
 | `SNAPSYNC_RIG_PORT` | `:test:rig`'s hook | overrides the channel's bind port (needed per-instance on a simulator, which shares the host's loopback) |
-| `SNAPSYNC_FORGE_STATE` | the `SnapSyncForge` target | which forged state that binary renders, for a marketing screenshot |
 
-Both live in build-property-gated source, so a production build contains neither the file nor the read.
+It lives in build-property-gated source, so a production build contains neither the file nor the read.
 
 **Exercising one uploader alone is a channel call:** `POST /device/uploaders?app=on|off&extension=on|off`
 (load `rig-channel`). Both uploaders run by default on ≥26.1 under a full grant; `extension=off` deregisters

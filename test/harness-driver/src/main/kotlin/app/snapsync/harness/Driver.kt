@@ -20,9 +20,6 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.doubleClick
 import androidx.compose.ui.test.printToString
 import androidx.compose.ui.test.v2.runDesktopComposeUiTest
-import app.snapsync.desktop.FORGE_HEIGHT
-import app.snapsync.desktop.FORGE_WIDTH
-import app.snapsync.desktop.ForgeHarnessRoot
 import app.snapsync.desktop.PHONE_TAG
 import app.snapsync.desktop.WORLD_HEIGHT
 import app.snapsync.desktop.MirrorHarnessRoot
@@ -43,7 +40,7 @@ import kotlin.system.exitProcess
 /**
  * Serves a desktop harness **headlessly** over HTTP so an agent can drive it turn by turn.
  *
- * It composes the shipped harness root — [ForgeHarnessRoot] or [WorldHarnessRoot] — into an offscreen
+ * It composes the shipped harness root — [WorldHarnessRoot] (or its mirror of a remote host) — into an offscreen
  * Compose scene. That scene is a CPU raster Skia surface: **no window, no AWT peer, no `Robot`**, so it
  * needs no X server and never raises the desktop's screen-capture consent prompt. Clicks land on the
  * real buttons of the real control panel, and pixels come out of the real render — the caller sees what
@@ -129,14 +126,13 @@ private fun DesktopComposeUiTest.rootNode(q: Map<String, String>): SemanticsNode
 }
 
 fun main() {
-    val name = System.getProperty("harness.name") ?: "forge"
+    val name = System.getProperty("harness.name") ?: "world"
     val portFile = File(System.getProperty("harness.portFile") ?: "harness-driver.port")
     val (width, height) = when (name) {
         // Match each harness's real window size. The scene default is 1024x768, which would clip the
         // world inspector (1240 wide) and silently truncate captures.
-        "forge" -> FORGE_WIDTH to FORGE_HEIGHT
         "world", "mirror" -> WORLD_WIDTH to WORLD_HEIGHT
-        else -> error("unknown harness '$name' (expected: forge | world | mirror)")
+        else -> error("unknown harness '$name' (expected: world | mirror)")
     }
 
     val queue = LinkedBlockingQueue<Command>()
@@ -214,7 +210,6 @@ fun main() {
     runDesktopComposeUiTest(width, height) {
         setContent {
             when (name) {
-                "forge" -> ForgeHarnessRoot()
                 // The world harness attached to a remote control-channel host (`-Psnapsync.attach=<url>`).
                 "mirror" -> MirrorHarnessRoot(requireNotNull(System.getProperty("snapsync.attach")) { "mirror needs -Psnapsync.attach=<url>" })
                 else -> WorldHarnessRoot()

@@ -27,9 +27,6 @@ include(":app:jvm")
 include(":app:ios")
 include(":domain:host")
 include(":app:ios:extension")
-// Built only under `-Psnapsync.forge=true`; included unconditionally so the module set is stable and
-// `ModuleSetTest` has one answer rather than a property-dependent one.
-include(":app:ios:forge")
 include(":adapter:generic:app")
 include(":adapter:generic:mock")
 include(":adapter:ios:ext-safe")

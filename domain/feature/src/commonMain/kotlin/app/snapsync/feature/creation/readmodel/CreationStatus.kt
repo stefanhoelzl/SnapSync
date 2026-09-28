@@ -46,7 +46,7 @@ interface CreationStatusSource {
     val creationStatus: StateFlow<CreationStatus>
 }
 
-/** Settable [CreationStatusSource] the create use-case drives and the harness/tests forge. */
+/** Settable [CreationStatusSource] the create use-case drives and tests set. */
 class MutableCreationStatusSource(initial: CreationStatus = CreationStatus.Idle) : CreationStatusSource {
     private val _status = MutableStateFlow(initial)
     override val creationStatus: StateFlow<CreationStatus> = _status.asStateFlow()
