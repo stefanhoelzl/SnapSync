@@ -171,6 +171,14 @@ jobs:
           name: screenshots-evidence
           path: evidence/
           if-no-files-found: ignore
+      # Whatever was captured before the failure, so a partial run is still something to look at — never to commit.
+      - name: Upload the partial captures
+        if: failure()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: screenshots-partial
+          path: shots/
+          if-no-files-found: ignore
 
       # Fail loudly rather than upload a short set: a missing shot means a launch or capture failed, and
       # the operator is about to commit these as the source of truth for two surfaces.

@@ -13,36 +13,38 @@ import kotlinx.serialization.json.jsonPrimitive
 // requests, the background-time holds, the push registrations and the transfer sessions.
 
 /** What the operating system recorded of the app (`/device/os-record`). */
-class OsRecord(json: JsonObject) {
-    private val completions = json.getValue("completions").jsonObject
-    private val downloads = json.getValue("downloadSession").jsonObject
+class OsRecord(private val json: JsonObject) {
+    // Each field is read when asked: a host reports only the systems it plays (the app host, only its mocked ones),
+    // so a missing key fails the reader that needs it, not every reader of the record.
+    private val completions get() = json.getValue("completions").jsonObject
+    private val downloads get() = json.getValue("downloadSession").jsonObject
 
     /** Completion handlers the OS handed the app, released by it, released a second time, and still held. */
-    val handed: Int = completions.int("handed")
-    val released: Int = completions.int("released")
-    val releasedAgain: Int = completions.int("releasedAgain")
-    val held: Int = completions.int("held")
+    val handed: Int get() = completions.int("handed")
+    val released: Int get() = completions.int("released")
+    val releasedAgain: Int get() = completions.int("releasedAgain")
+    val held: Int get() = completions.int("held")
 
     /** Whether the app has shown the platform's screen anything — a screen exists only once the host is assembled. */
-    val screenShown: Boolean = json.getValue("screenShown").jsonPrimitive.boolean
+    val screenShown: Boolean get() = json.getValue("screenShown").jsonPrimitive.boolean
 
     /** Whether the app has the photo library's selection observer open. */
-    val selectionObserved: Boolean = json.getValue("selectionObserved").jsonPrimitive.boolean
-    val heartbeatsScheduled: Int = json.int("heartbeatsScheduled")
+    val selectionObserved: Boolean get() = json.getValue("selectionObserved").jsonPrimitive.boolean
+    val heartbeatsScheduled: Int get() = json.int("heartbeatsScheduled")
 
     /** The background-time holds outstanding, by the name the app began each under. */
-    val backgroundTimeHolds: List<String> = json.getValue("backgroundTimeHolds").jsonArray.map { it.jsonPrimitive.content }
-    val pushRegistrations: Int = json.int("pushRegistrations")
-    val downloadSessionUp: Boolean = downloads.getValue("up").jsonPrimitive.boolean
-    val downloadsStarted: Int = downloads.int("started")
-    val downloadsInFlight: Int = downloads.int("inFlight")
-    val uploadSessionHandbacks: Int = json.int("uploadSessionHandbacks")
+    val backgroundTimeHolds: List<String> get() = json.getValue("backgroundTimeHolds").jsonArray.map { it.jsonPrimitive.content }
+    val pushRegistrations: Int get() = json.int("pushRegistrations")
+    val downloadSessionUp: Boolean get() = downloads.getValue("up").jsonPrimitive.boolean
+    val downloadsStarted: Int get() = downloads.int("started")
+    val downloadsInFlight: Int get() = downloads.int("inFlight")
+    val uploadSessionHandbacks: Int get() = json.int("uploadSessionHandbacks")
 
     /** Every database any process on the device opened, by name, in order. */
-    val databasesOpened: List<String> = json.getValue("databasesOpened").jsonArray.map { it.jsonPrimitive.content }
+    val databasesOpened: List<String> get() = json.getValue("databasesOpened").jsonArray.map { it.jsonPrimitive.content }
 
     /** The files in the download staging directory. */
-    val stagedFiles: Int = json.int("stagedFiles")
+    val stagedFiles: Int get() = json.int("stagedFiles")
 
     private val text = json.toString()
 
