@@ -32,15 +32,14 @@ sealed interface UiIntent {
     data class ShareOn(val on: Boolean) : UiIntent
     data class ReceiveOn(val on: Boolean) : UiIntent
     data class SaveToAlbum(val on: Boolean) : UiIntent
-    data class FromPreset(val preset: FromChoice) : UiIntent
-    data class FromCustom(val value: LocalDateTime) : UiIntent
-    data class UntilPreset(val preset: UntilChoice) : UiIntent
-    data class UntilCustom(val value: LocalDateTime) : UiIntent
+    data class RangePreset(val preset: RangeChoice) : UiIntent
+
+    /** A custom range; a `null` bound keeps the one already picked (or the window's, if none was). */
+    data class RangeCustom(val from: LocalDateTime?, val until: LocalDateTime?) : UiIntent
     data object RetryLoad : UiIntent
     data object ConfirmJoin : UiIntent
     data object ConfirmSwitch : UiIntent
     data object RetryJoin : UiIntent
-    data object AcknowledgeAccess : UiIntent
     data object CancelJoin : UiIntent
     data object CancelSwitch : UiIntent
 

@@ -2,6 +2,7 @@
 
 package app.snapsync.presentation
 
+import app.snapsync.model.step
 import app.snapsync.model.eventStart
 import app.snapsync.model.eventEnd
 import app.snapsync.model.deletesAt
@@ -37,6 +38,7 @@ import app.snapsync.model.SyncProgress
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.test.assertIs
 import kotlin.test.assertNull
@@ -127,6 +129,10 @@ private fun screen(layer: Layer) = UiState(layer)
  * resolved from the form, and restating that here would assert the resolution rules a second time, in the
  * one place that cannot notice when they change. `RangeResolutionTest` owns those.
  */
+private fun UiState.joinStep(): JoinPhase.Detailed.Step? = (layer as? Layer.JoiningEvent)?.phase?.step
+
+private fun UiState.asksAccessOnJoin(): Boolean = (layer as Layer.JoiningEvent).asksAccessOnJoin
+
 private fun assertJoining(state: UiState, eventId: String, phase: JoinPhase) {
     val layer = state.layer
     assertTrue(layer is Layer.JoiningEvent, "expected the join surface, got $layer")
@@ -1249,10 +1255,8 @@ class StatusContainerHostTest {
     }
 
     /**
-     * `LeaveEvent` is best-effort: a failing `ConfigStore.clear()` is logged and swallowed. The phase is
-     * therefore re-derived only once the config is confirmed gone, so a failed clear leaves the
-     * confirmation exactly as it was and the member can simply confirm again. (Deriving BEFORE the leave
-     * would strand `Joined(pendingSwitch = ExplainAccess)`, whose dialog branch renders nothing.)
+     * `LeaveEvent` is best-effort: a failing `ConfigStore.clear()` is logged and swallowed. A failed clear
+     * leaves the confirmation exactly as it was, so the member can simply confirm again.
      */
     @Test
     fun `a switch whose config clear fails keeps the confirmation presented`() = runTest {
@@ -1661,93 +1665,84 @@ class StatusContainerHostTest {
         assertEquals(0, requester.requests)
     }
 
-    // ---- the photo-access explainer (capability `join-event`) -----------------------------------------
-
+    // ---- photo access asked on Join (capability `join-event`, `photo-access`) --------------------------
 
     @Test
-    fun `a first join with permission never asked explains before the dialog`() = runTest {
+    fun `a first join with permission never asked says the confirm will ask and asks nothing yet`() = runTest {
         val requester = SpyRequester()
         firstJoinGate(GalleryAccess.NOT_DETERMINED, requester).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
-            assertJoining(awaitState(), EVENT_ID, phaseAt(JoinPhase.Detailed.Step.ExplainAccess, "My Party", eventStart("2026-07-06T00:00:00Z"), ENDS_AT, DELETES_AT))
+            val state = awaitState()
+            assertJoining(state, EVENT_ID, phaseAt(JoinPhase.Detailed.Step.Ready, "My Party", eventStart("2026-07-06T00:00:00Z"), ENDS_AT, DELETES_AT))
+            assertTrue(state.asksAccessOnJoin(), "a never-asked first join must say its confirm asks for access")
             cancelAndIgnoreRemainingItems()
         }
-        // CTA-only priming: rendering the explainer must not have raised the system dialog.
+        // Deliberate-tap only: rendering the join surface must not have raised the system dialog.
         assertEquals(0, requester.requests)
     }
 
     @Test
-    fun `acknowledging the explainer requests permission and advances to the confirm surface`() = runTest {
+    fun `confirming a never-asked join raises the dialog and joins`() = runTest {
         val requester = SpyRequester()
-        firstJoinGate(GalleryAccess.NOT_DETERMINED, requester).test(this) {
+        var commits = 0
+        firstJoinGate(
+            GalleryAccess.NOT_DETERMINED, requester,
+            commitJoin = { _, _, _, _, _, _, _, _, _ -> commits++; JoinCommit.Failed },
+        ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
-            assertJoining(awaitState(), EVENT_ID, phaseAt(JoinPhase.Detailed.Step.ExplainAccess, "My Party", eventStart("2026-07-06T00:00:00Z"), ENDS_AT, DELETES_AT))
-            containerHost.onAcknowledgeAccess()
-            // The same name and cutoff cross over — ExplainAccess carries them solely to hand off to Ready.
-            assertJoining(awaitState(), EVENT_ID, phaseAt(JoinPhase.Detailed.Step.Ready, "My Party", eventStart("2026-07-06T00:00:00Z"), ENDS_AT, DELETES_AT))
+            skipItems(1)
+            containerHost.onConfirmJoin()
+            do { val s = awaitState() } while (s.joinStep() != JoinPhase.Detailed.Step.CommitFailed)
             cancelAndIgnoreRemainingItems()
         }
+        // The join does not wait on the answer: one request, and the commit ran.
         assertEquals(1, requester.requests)
+        assertEquals(1, commits)
     }
 
     @Test
-    fun `already-granted access skips the explainer`() = runTest {
-        val requester = SpyRequester()
-        firstJoinGate(GalleryAccess.GRANTED, requester).test(this) {
-            runOnCreate()
-            containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
-            assertJoining(awaitState(), EVENT_ID, phaseAt(JoinPhase.Detailed.Step.Ready, "My Party", eventStart("2026-07-06T00:00:00Z"), ENDS_AT, DELETES_AT))
-            cancelAndIgnoreRemainingItems()
-        }
-        assertEquals(0, requester.requests)
-    }
+    fun `a granted user joins without a request`() = runTest { answeredJoin(GalleryAccess.GRANTED) }
 
     @Test
-    fun `a limited grant skips the explainer`() = runTest {
-        // The grant exists — there is no dialog to explain (capability `join-event`): LIMITED goes
-        // straight to the confirm surface like GRANTED.
+    fun `a limited user joins without a request`() = runTest { answeredJoin(GalleryAccess.LIMITED) }
+
+    /** From DENIED a request is a silent no-op, so announcing a dialog there would be false. */
+    @Test
+    fun `a refused user joins without a request`() = runTest { answeredJoin(GalleryAccess.DENIED) }
+
+    private suspend fun TestScope.answeredJoin(answered: GalleryAccess) {
         val requester = SpyRequester()
-        firstJoinGate(GalleryAccess.LIMITED, requester).test(this) {
+        var commits = 0
+        firstJoinGate(
+            answered, requester,
+            commitJoin = { _, _, _, _, _, _, _, _, _ -> commits++; JoinCommit.Failed },
+        ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
-            assertJoining(awaitState(), EVENT_ID, phaseAt(JoinPhase.Detailed.Step.Ready, "My Party", eventStart("2026-07-06T00:00:00Z"), ENDS_AT, DELETES_AT))
+            val state = awaitState()
+            assertJoining(state, EVENT_ID, phaseAt(JoinPhase.Detailed.Step.Ready, "My Party", eventStart("2026-07-06T00:00:00Z"), ENDS_AT, DELETES_AT))
+            assertFalse(state.asksAccessOnJoin(), "$answered must not announce a dialog")
+            containerHost.onConfirmJoin()
+            do { val s = awaitState() } while (s.joinStep() != JoinPhase.Detailed.Step.CommitFailed)
             cancelAndIgnoreRemainingItems()
         }
-        assertEquals(0, requester.requests)
+        assertEquals(0, requester.requests, "$answered must join without a request")
+        assertEquals(1, commits, "$answered must still join")
     }
 
     /**
-     * iOS raises the photo dialog at most once — from `DENIED`, `request()` is a silent no-op. An explainer
-     * whose confirm produced no dialog would be a lie, so `DENIED` goes straight to the confirm surface and
-     * meets the joined layer's Settings affordance after the join.
+     * While the switch confirmation is up the previous event is still configured, so the rule does not
+     * speak for the new join yet — nothing is announced and nothing is asked.
      */
     @Test
-    fun `previously-denied access skips the explainer`() = runTest {
-        val requester = SpyRequester()
-        firstJoinGate(GalleryAccess.DENIED, requester).test(this) {
-            runOnCreate()
-            containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
-            assertJoining(awaitState(), EVENT_ID, phaseAt(JoinPhase.Detailed.Step.Ready, "My Party", eventStart("2026-07-06T00:00:00Z"), ENDS_AT, DELETES_AT))
-            cancelAndIgnoreRemainingItems()
-        }
-        assertEquals(0, requester.requests)
-    }
-
-    /**
-     * THE BRANCH-KEEPER, first half. The loaded-phase derivation selects the explainer only when NO event
-     * is configured, so while the switch confirmation is up — the previous event still configured — it
-     * yields the confirm phase. This is what makes `SwitchDialog`'s `JoinPhase.Detailed && phase.step == JoinPhase.Detailed.Step.ExplainAccess -> Unit`
-     * branch provably dead rather than merely unreached.
-     */
-    @Test
-    fun `a switch does not explain before its leave`() = runTest {
+    fun `a switch asks nothing before its leave`() = runTest {
         val other = "22222222-2222-4222-8222-222222222222"
         val requester = SpyRequester()
         firstJoinGate(
             GalleryAccess.NOT_DETERMINED, requester,
-            configFake = FakeConfig(SAMPLE_CONFIG), // still in the old event → the confirmation, not the explainer
+            configFake = FakeConfig(SAMPLE_CONFIG),
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(other)))
@@ -1763,13 +1758,11 @@ class StatusContainerHostTest {
     }
 
     /**
-     * THE BRANCH-KEEPER, second half — and the reason the derivation runs at two points. Once the leave
-     * clears the config, the SAME rule over the SAME already-loaded details now sees no event configured,
-     * so a member who never granted photo access meets the explainer exactly as a first joiner would. No
-     * re-fetch happens: the details come from the load the confirmation already did.
+     * Once the leave clears the config, the join surface for the new event announces the dialog exactly as
+     * a first joiner's would — read live, from the details the confirmation already loaded.
      */
     @Test
-    fun `a switch explains after its leave when permission was never asked`() = runTest {
+    fun `a switch announces the dialog after its leave when permission was never asked`() = runTest {
         val other = "22222222-2222-4222-8222-222222222222"
         val requester = SpyRequester()
         val configFake = FakeConfig(SAMPLE_CONFIG)
@@ -1784,41 +1777,18 @@ class StatusContainerHostTest {
             containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(other)))
             skipItems(1)
             containerHost.onConfirmSwitch()
-            assertJoining(awaitState(), other, phaseAt(JoinPhase.Detailed.Step.ExplainAccess, "My Party", eventStart("2026-07-06T00:00:00Z"), ENDS_AT, DELETES_AT))
+            val state = awaitState()
+            assertJoining(state, other, phaseAt(JoinPhase.Detailed.Step.Ready, "My Party", eventStart("2026-07-06T00:00:00Z"), ENDS_AT, DELETES_AT))
+            assertTrue(state.asksAccessOnJoin())
             cancelAndIgnoreRemainingItems()
         }
-        // Still CTA-only: reaching the explainer raises no system dialog on its own.
         assertEquals(0, requester.requests)
-        // One fetch total — the post-leave derivation re-uses the details, it does not re-load them.
+        // One fetch total — the join surface re-uses the details, it does not re-load them.
         assertEquals(1, loads)
     }
 
-    /**
-     * The second derivation is a no-op for every permission except `NOT_DETERMINED`: with access already
-     * granted, the post-leave phase is the same confirm phase the confirmation was showing.
-     */
     @Test
-    fun `a granted switch re-derives to the same confirm phase`() = runTest {
-        val other = "22222222-2222-4222-8222-222222222222"
-        val configFake = FakeConfig(SAMPLE_CONFIG)
-        val ready = phaseAt(JoinPhase.Detailed.Step.Ready, "New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT)
-        host(
-            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED), configFake = configFake,
-            loadJoinDetails = { JoinLoad.Found("New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
-            leave = { configFake.clear() },
-        ).test(this) {
-            runOnCreate()
-            containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(other)))
-            expectState(joined(SyncHealth.Loading, PendingSwitch(other, ready)))
-            containerHost.onConfirmSwitch()
-            assertJoining(awaitState(), other, ready)
-            cancelAndIgnoreRemainingItems()
-        }
-    }
-
-    @Test
-    fun `cancelling the explainer enrolls nothing and saves no config`() = runTest {
+    fun `cancelling a never-asked join asks nothing and enrolls nothing and saves no config`() = runTest {
         val requester = SpyRequester()
         val configFake = FakeConfig(null)
         var commits = 0
@@ -1828,13 +1798,14 @@ class StatusContainerHostTest {
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
-            assertJoining(awaitState(), EVENT_ID, phaseAt(JoinPhase.Detailed.Step.ExplainAccess, "My Party", eventStart("2026-07-06T00:00:00Z"), ENDS_AT, DELETES_AT))
+            skipItems(1)
             containerHost.onCancelJoin()
             expectState(screen(Layer.CreateEvent()))
             cancelAndIgnoreRemainingItems()
         }
-        assertEquals(0, commits, "cancelling the explainer must not commit a join")
-        assertEquals(null, configFake.config.value, "cancelling the explainer must not save a config")
+        assertEquals(0, requester.requests)
+        assertEquals(0, commits, "cancelling must not commit a join")
+        assertEquals(null, configFake.config.value, "cancelling must not save a config")
     }
 
     @Test

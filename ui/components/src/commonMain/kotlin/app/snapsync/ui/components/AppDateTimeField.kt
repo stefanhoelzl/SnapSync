@@ -1,6 +1,7 @@
 package app.snapsync.ui.components
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
@@ -20,6 +22,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -70,8 +73,8 @@ internal const val WHEEL_DISTANT_ALPHA = 0.25f
  * The popup card, heading, month header and weekday strip come from [PickerDialogShell], which this and
  * the range variant both fill in — see there for why it is a `Popup` and not an `AlertDialog`.
  *
- * Used by [AppRangePresetChoices]' per-handle Custom rows (each a single instant within the event window);
- * the range span itself is picked by [DateTimeRangePickerDialog]. The dialog stays internal to this module.
+ * A single instant; the range span is picked by [DateTimeRangePickerDialog]. The dialog stays internal to
+ * this module.
  */
 @Composable
 internal fun DateTimePickerDialog(
@@ -145,6 +148,10 @@ internal fun DateTimePickerDialog(
  * time can still move after the end day is tapped, the confirmed end is coerced to it as well — so a
  * too-long range is unreachable, never merely refused. The caller owns the arithmetic (it knows the zone
  * and the limit; this module knows neither).
+ *
+ * Optional [presets] render as chips above the calendar (the join and settings surfaces' "Whole event" /
+ * "From now"); a chip is a complete choice the caller commits on tap, so it bypasses OK. The create surface
+ * passes none. [title] names what is being picked.
  */
 @Composable
 internal fun DateTimeRangePickerDialog(
@@ -155,6 +162,8 @@ internal fun DateTimeRangePickerDialog(
     onDismiss: () -> Unit,
     onConfirm: (from: LocalDateTime, until: LocalDateTime) -> Unit,
     latestUntil: ((from: LocalDateTime) -> LocalDateTime)? = null,
+    title: String = "Date & time",
+    presets: List<RangePresetChip> = emptyList(),
 ) {
     val today = remember { Clock.System.todayIn(TimeZone.currentSystemDefault()) }
 
@@ -186,6 +195,8 @@ internal fun DateTimeRangePickerDialog(
 
     PickerDialogShell(
         seedMonth = initialFrom.date,
+        title = title,
+        header = { if (presets.isNotEmpty()) PresetChips(presets) },
         onDismiss = onDismiss,
         onConfirm = {
             var from = LocalDateTime(startDate, LocalTime(fromHour, fromMinute))
@@ -234,6 +245,43 @@ internal fun DateTimeRangePickerDialog(
     )
 }
 
+/**
+ * A one-tap shortcut above the range calendar (capability `join-event`: the whole event, from now): a
+ * [label], whether it is the range currently chosen, and what choosing it does. Tapping one is a complete
+ * choice — the caller commits it and closes the dialog — so a chip never half-edits the calendar beneath.
+ */
+class RangePresetChip(val label: String, val selected: Boolean, val onClick: () -> Unit)
+
+/**
+ * The preset chips as one wrapping row: a selected chip is filled in the brand's container tone, the rest are
+ * outlined. Each is one `selectable` target ([Role.RadioButton]) — the presets are mutually exclusive, and
+ * with a custom range chosen none is selected.
+ */
+@Composable
+private fun PresetChips(presets: List<RangePresetChip>) {
+    val scheme = MaterialTheme.colorScheme
+    val shape = CircleShape // 50% corners: a pill on a wider-than-tall chip
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        presets.forEach { chip ->
+            Box(
+                modifier = Modifier
+                    .border(1.dp, if (chip.selected) scheme.primary else scheme.outlineVariant, shape)
+                    .background(if (chip.selected) scheme.primaryContainer else scheme.surface, shape)
+                    .selectable(selected = chip.selected, role = Role.RadioButton, onClick = chip.onClick)
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+            ) {
+                Text(
+                    text = chip.label,
+                    style = MaterialTheme.typography.labelLarge.copy(
+                        fontWeight = if (chip.selected) FontWeight.Bold else FontWeight.Medium,
+                    ),
+                    color = if (chip.selected) scheme.onPrimaryContainer else scheme.onSurface,
+                )
+            }
+        }
+    }
+}
+
 /** The earlier of two optional day ceilings — a null one is unbounded. */
 private fun latestEndDay(window: LocalDate?, span: LocalDate?): LocalDate? = when {
     window == null -> span
@@ -262,9 +310,11 @@ private fun latestEndDay(window: LocalDate?, span: LocalDate?): LocalDate? = whe
 private fun PickerDialogShell(
     seedMonth: LocalDate,
     onDismiss: () -> Unit,
+    title: String = "Date & time",
     onConfirm: () -> Unit,
     calendar: @Composable (visibleMonth: LocalDate) -> Unit,
     wheels: @Composable () -> Unit,
+    header: @Composable () -> Unit = {},
 ) {
     val scheme = MaterialTheme.colorScheme
     var visibleMonth by remember {
@@ -293,12 +343,13 @@ private fun PickerDialogShell(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     Text(
-                        text = "Date & time",
+                        text = title,
                         style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                         color = scheme.onSurface,
                         // Announce the dialog's title as a heading so VoiceOver states what opened.
                         modifier = Modifier.semantics { heading() },
                     )
+                    header()
                     MonthHeader(
                         month = visibleMonth,
                         // visibleMonth is always a first-of-month, so month arithmetic keeps day == 1.

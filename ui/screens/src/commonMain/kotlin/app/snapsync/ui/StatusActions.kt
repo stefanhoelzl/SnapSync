@@ -77,9 +77,6 @@ class StatusActions(
 class JoinGateActions(
     val onConfirmJoin: () -> Unit,
     val onRetryJoin: () -> Unit,
-    // The photo-access explainer's confirm: requests permission, then advances to the confirm surface.
-    // The only route from the join gate to the system dialog.
-    val onAcknowledgeAccess: () -> Unit,
     val onCancelJoin: () -> Unit,
     val onRetryLoad: () -> Unit,
 )

@@ -27,10 +27,9 @@ internal fun testActions(
 internal fun testJoinGateActions(
     onConfirmJoin: () -> Unit = {},
     onRetryJoin: () -> Unit = {},
-    onAcknowledgeAccess: () -> Unit = {},
     onCancelJoin: () -> Unit = {},
     onRetryLoad: () -> Unit = {},
-) = JoinGateActions(onConfirmJoin, onRetryJoin, onAcknowledgeAccess, onCancelJoin, onRetryLoad)
+) = JoinGateActions(onConfirmJoin, onRetryJoin, onCancelJoin, onRetryLoad)
 
 internal fun testJoinedActions(
     onLeaveEvent: () -> Unit = {},
@@ -73,11 +72,9 @@ internal fun testParticipationActions(
 ) = ParticipationActions(choices, onShareOn, onReceiveOn, onSaveToAlbum)
 
 internal fun testRangeChoiceActions(
-    onFromPreset: (app.snapsync.model.FromChoice) -> Unit = {},
-    onFromCustom: (LocalDateTime) -> Unit = {},
-    onUntilPreset: (app.snapsync.model.UntilChoice) -> Unit = {},
-    onUntilCustom: (LocalDateTime) -> Unit = {},
-) = RangeChoiceActions(onFromPreset, onFromCustom, onUntilPreset, onUntilCustom)
+    onPreset: (app.snapsync.model.RangeChoice) -> Unit = {},
+    onCustom: (LocalDateTime, LocalDateTime) -> Unit = { _, _ -> },
+) = RangeChoiceActions(onPreset, onCustom)
 
 /** The status screen with inert actions unless a test supplies its own. */
 @Composable

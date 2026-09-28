@@ -11,7 +11,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.snapsync.model.EventConfig
 import app.snapsync.model.JoinedSurface
-import app.snapsync.model.ResolvedRange
 import app.snapsync.ui.components.appRangeLabel
 import app.snapsync.model.Layer
 import app.snapsync.model.JoinPhase
@@ -19,12 +18,7 @@ import app.snapsync.model.PendingSwitch
 import app.snapsync.model.UiState
 import app.snapsync.ui.components.AppConfirmDialog
 import app.snapsync.ui.components.AppDestructiveConfirmDialog
-import kotlinx.datetime.plus
-import app.snapsync.ui.components.AppRangePresetChoices
 import app.snapsync.ui.components.AppEventHeaderCompact
-import app.snapsync.ui.components.AppMinorSection
-import app.snapsync.ui.components.AppToggleSection
-import app.snapsync.ui.components.appDateTimeLabel
 import app.snapsync.ui.components.PrimaryButton
 import app.snapsync.ui.components.SecondaryButton
 import app.snapsync.ui.components.StatusHint
@@ -39,15 +33,14 @@ import app.snapsync.ui.components.DialogCopy
  * participation settings they picked at join — the two switches (Share / Receive → direction), the
  * capture-date cutoff, and the album opt-in — and changes them **in place**, without leaving.
  *
- * It reuses the exact join controls ([AppToggleSection], [AppRangePresetChoices], [AppMinorSection]) so there
- * is one decision surface, differing only in that it is **pre-filled** from the current [membership] and
- * commits with **Save** (not Join) beneath a read-only event-name header.
+ * It renders the same [ParticipationSections] as the join gate, so there is one decision surface,
+ * differing only in that it is **pre-filled** from the current [membership] and commits with **Save** (not
+ * Join) beneath a read-only event-name header.
  *
- * The cutoff preset is **reconstructed** from the persisted value, which is lossy by construction: the
- * join UI's presets are not persisted, only the resulting instant, so `minPhotoDate == startsAt` seeds
- * **Event start** and anything above it seeds **Custom** — the original "Now" pick is unrecoverable
- * (design decision "cutoff pre-fill reconstruction"). The chosen cutoff is re-clamped to the `startsAt`
- * floor on the far side, in `ReconfigureEvent`.
+ * The range preset is **reconstructed** from the persisted bounds, which is lossy by construction: a range
+ * spanning the whole window seeds **Whole event** and anything narrower seeds a **custom** range — an
+ * original "From now" pick is unrecoverable (decision record `simplify-join-screen`, D1). The chosen cutoff
+ * is re-clamped to the `startsAt` floor on the far side, in `ReconfigureEvent`.
  *
  * Consequences are surfaced as **inline helper text**, never a blocking dialog (Save is the confirmation):
  * turning the album on states that it also collects the photos already synced, and a standing line states
@@ -90,7 +83,7 @@ internal fun ReconfigureScreen(
                     rangeLabel = appRangeLabel(range.from, range.until),
                 ),
                 actions = participation,
-                notes = reconfigureNotes(membership, range, surface.form.saveToAlbum),
+                albumNote = reconfigureAlbumNote(surface.form.saveToAlbum),
             )
         }
         SaveActions(enabled = range.commitEnabled, onSave = onSave, onCancel = onCancel)
@@ -147,12 +140,9 @@ internal fun SwitchDialog(
         // Only the Ready step opens a confirmation here. The others are unreachable in this overlay and
         // are collapsed deliberately below, each with the reason it cannot occur.
         is JoinPhase.Detailed -> if (phase.step != JoinPhase.Detailed.Step.Ready) {
-            // ExplainAccess is chosen by the gate's loaded-phase derivation only when NO event is
-            // configured — and while this dialog is up the previous event still is. A switch does reach
-            // the explainer, but only AFTER its leave, by which point the state is a full-screen
-            // `JoiningEvent` and not this overlay (capability `join-event`). CommitFailed cannot occur
-            // either: this dialog's confirm runs only the leave, so no commit can fail while the previous
-            // event is still configured. Committing is transient — no dialog while a commit runs.
+            // CommitFailed cannot occur: this dialog's confirm runs only the leave, so no commit can fail
+            // while the previous event is still configured. Committing is transient — no dialog while a
+            // commit runs.
         } else {
             AppDestructiveConfirmDialog(
                 // The names carry the whole weight of the decision, so they are the whole body; the title
@@ -198,34 +188,16 @@ internal fun SwitchDialog(
 }
 
 /**
- * The three sentences this surface says differently from the join gate, derived from the persisted
- * membership rather than a phase.
- *
- * A plain function and not a composable: it reads nothing but its arguments, which is what makes the two
- * surfaces' divergence reviewable in one place instead of buried among layout.
+ * The one sentence this surface says differently from the join gate. Turning the album on gathers what the
+ * device already holds (capabilities `manage-membership`, `event-album`), so the on-note says the
+ * already-synced photos are included. "Synced", not "shared and received": this note does not vary with the
+ * switches, and must not name a feed the membership lacks.
  */
-private fun reconfigureNotes(
-    membership: EventConfig,
-    range: ResolvedRange,
-    saveToAlbum: Boolean,
-) = ParticipationNotes(
-    fromFloor = "Can't be earlier than the event started, ${appDateTimeLabel(range.windowStart)}.",
-    untilCeiling = if (membership.endsAt != null) {
-        "Can't be later than the event ends, ${appDateTimeLabel(range.windowEnd)}."
-    } else {
-        // A legacy membership whose event `endsAt` has not been backfilled yet: the picker still bounds
-        // against the member's own ceiling, but naming an event end we do not know would be a guess.
-        "Pick when to stop sharing."
-    },
-    // Turning the album on gathers what the device already holds (capabilities `manage-membership`,
-    // `event-album`), so the on-note says the already-synced photos are included. "Synced", not "shared and
-    // received": this note does not vary with the switches, and must not name a feed the membership lacks.
-    album = if (saveToAlbum) {
-        "Photos are collected in an album named after the event, including the ones already synced."
-    } else {
-        "No album is created."
-    },
-)
+private fun reconfigureAlbumNote(saveToAlbum: Boolean): String = if (saveToAlbum) {
+    "Photos are collected in an album named after the event, including the ones already synced."
+} else {
+    "No album is created."
+}
 
 /**
  * Save and Cancel, over the standing statement of what changing these settings does.

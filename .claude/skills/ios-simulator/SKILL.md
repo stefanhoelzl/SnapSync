@@ -274,10 +274,10 @@ xcrun simctl launch "$DEVICE" app.snapsync           # reads GRANTED on this lau
 Verified end to end: the app reads `GRANTED`, the join gate clears, and the simulator reaches
 `configResolved: true`.
 
-**Why this matters more than it looks.** Without granted access the join parks in `ExplainAccess`
-(`StatusContainerHost.kt:560`), whose only exit is `onRequestPermission` — deliberately **not** wired into
-the channel, because on a device it raises an alert only a finger can answer. A simulator has no finger,
-so `applesimutils` is what makes a headless join possible at all.
+**Why this matters more than it looks.** With access never asked, `confirmJoin` still joins — but the same
+tap raises iOS's photo-access alert first (the join screen's "Join & allow photos"), and on a simulator no
+finger answers it: the alert stays up over the joined screen and blocks later launches (see the next
+warning). Granting with `applesimutils` first is what keeps a headless join alert-free.
 
 ⚠️ **On any `mode=deferred` stall, SCREENSHOT FIRST.** A pending system alert blocks every subsequent
 launch and is instantly visible in a screenshot while being invisible in every log.

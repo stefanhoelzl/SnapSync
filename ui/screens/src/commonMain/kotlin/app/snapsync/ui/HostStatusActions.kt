@@ -16,7 +16,6 @@ import app.snapsync.ui.components.RangeChoiceActions
 fun statusActions(dispatch: (UiIntent) -> Unit): StatusActions = StatusActions(
     join = JoinGateActions(
         onConfirmJoin = { dispatch(UiIntent.ConfirmJoin) },
-        onAcknowledgeAccess = { dispatch(UiIntent.AcknowledgeAccess) },
         onCancelJoin = { dispatch(UiIntent.CancelJoin) },
         onRetryLoad = { dispatch(UiIntent.RetryLoad) },
         onRetryJoin = { dispatch(UiIntent.RetryJoin) },
@@ -55,10 +54,8 @@ fun statusActions(dispatch: (UiIntent) -> Unit): StatusActions = StatusActions(
     onOpenLink = { dispatch(UiIntent.OpenAppStore) },
     participation = ParticipationActions(
         choices = RangeChoiceActions(
-            onFromPreset = { dispatch(UiIntent.FromPreset(it)) },
-            onFromCustom = { dispatch(UiIntent.FromCustom(it)) },
-            onUntilPreset = { dispatch(UiIntent.UntilPreset(it)) },
-            onUntilCustom = { dispatch(UiIntent.UntilCustom(it)) },
+            onPreset = { dispatch(UiIntent.RangePreset(it)) },
+            onCustom = { from, until -> dispatch(UiIntent.RangeCustom(from, until)) },
         ),
         onShareOn = { dispatch(UiIntent.ShareOn(it)) },
         onReceiveOn = { dispatch(UiIntent.ReceiveOn(it)) },

@@ -74,6 +74,7 @@ class UiStateSerializationTest {
             roundTrip(UiState(Layer.JoiningEvent(eventId = "E", phase = phase)))
         }
         roundTrip(UiState(Layer.JoiningEvent(eventId = "E", phase = JoinPhase.Loading, notice = "That QR code wasn't valid.")))
+        roundTrip(UiState(Layer.JoiningEvent(eventId = "E", phase = JoinPhase.Loading, asksAccessOnJoin = true)))
     }
 
     @Test
@@ -121,7 +122,6 @@ class UiStateSerializationTest {
         commitEnabled = true,
         nowAvailable = false,
         shareCount = count,
-        deletesLocal = LocalDateTime(2026, 8, 5, 2, 0),
     )
 
     /** A form that is NOT the untouched default: custom picks on both ends, receiving and the album off. */
@@ -129,10 +129,9 @@ class UiStateSerializationTest {
         shareOn = true,
         receiveOn = false,
         saveToAlbum = false,
-        fromPreset = FromChoice.CUSTOM,
-        fromCustom = LocalDateTime(2026, 7, 7, 9, 30),
-        untilPreset = UntilChoice.CUSTOM,
-        untilCustom = LocalDateTime(2026, 7, 12, 18, 0),
+        preset = RangeChoice.CUSTOM,
+        customFrom = LocalDateTime(2026, 7, 7, 9, 30),
+        customUntil = LocalDateTime(2026, 7, 12, 18, 0),
     )
 
     @Test
@@ -200,10 +199,10 @@ class UiStateSerializationTest {
             RangeForm(shareOn = false),
             RangeForm(receiveOn = false),
             RangeForm(saveToAlbum = false),
-            RangeForm(fromPreset = FromChoice.NOW),
-            RangeForm(fromCustom = LocalDateTime(2026, 7, 7, 9, 30)),
-            RangeForm(untilPreset = UntilChoice.CUSTOM),
-            RangeForm(untilCustom = LocalDateTime(2026, 7, 12, 18, 0)),
+            RangeForm(preset = RangeChoice.FROM_NOW),
+            RangeForm(preset = RangeChoice.CUSTOM),
+            RangeForm(customFrom = LocalDateTime(2026, 7, 7, 9, 30)),
+            RangeForm(customUntil = LocalDateTime(2026, 7, 12, 18, 0)),
         )
         for (form in one) {
             roundTrip(UiState(Layer.JoiningEvent(eventId = "E", phase = JoinPhase.Loading, form = form)))
@@ -212,13 +211,13 @@ class UiStateSerializationTest {
         for (overlay in overlays) {
             roundTrip(UiState(Layer.CreateEvent(), overlay))
         }
-        // The range's two defaulted fields, at their defaults.
+        // The range's defaulted count, at its default.
         roundTrip(
             UiState(
                 Layer.JoiningEvent(
                     eventId = "E",
-                    phase = joinPhase(JoinPhase.Detailed.Step.ExplainAccess, details),
-                    range = range(ShareCount.Counting).copy(deletesLocal = null),
+                    phase = joinPhase(JoinPhase.Detailed.Step.Ready, details),
+                    range = range(ShareCount.Counting),
                 ),
             ),
         )

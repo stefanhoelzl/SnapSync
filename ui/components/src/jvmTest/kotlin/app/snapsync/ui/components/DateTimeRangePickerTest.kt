@@ -6,6 +6,8 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -108,6 +110,48 @@ class DateTimeRangePickerTest {
         assertEquals(LocalDateTime(2026, 3, 20, 9, 0), until)
     }
 
+    @Test
+    fun `a window spanning two months bounds both months`() {
+        // A late-March event running into April: the calendar opens on March, and the April days past the
+        // event's end are as unreachable as the March days before its start.
+        setPicker(
+            from = LocalDateTime(2026, 3, 28, 18, 0),
+            until = LocalDateTime(2026, 4, 3, 18, 0),
+            minimum = LocalDateTime(2026, 3, 28, 18, 0),
+            maximum = LocalDateTime(2026, 4, 3, 18, 0),
+        )
+        rule.onNodeWithContentDescription("Friday 27 March 2026").assertIsNotEnabled()
+        rule.onNodeWithContentDescription("Monday 30 March 2026").assertIsEnabled()
+        rule.onNodeWithContentDescription("Next month").performClick()
+        rule.onNodeWithContentDescription("Thursday 2 April 2026").assertIsEnabled()
+        rule.onNodeWithContentDescription("Saturday 4 April 2026").assertIsNotEnabled()
+    }
+
+    @Test
+    fun `a preset chip reports its choice and never the calendar's span`() {
+        val tapped = mutableListOf<String>()
+        var confirmed = 0
+        setPicker(
+            from = LocalDateTime(2026, 3, 10, 9, 0),
+            until = LocalDateTime(2026, 3, 12, 17, 0),
+            onConfirm = { _, _ -> confirmed++ },
+            presets = listOf(
+                RangePresetChip("Whole event", selected = true) { tapped += "whole" },
+                RangePresetChip("From now", selected = false) { tapped += "now" },
+            ),
+        )
+        rule.onNodeWithText("Whole event").assertIsSelected()
+        rule.onNodeWithText("From now").assertIsNotSelected().performClick()
+        assertEquals(listOf("now"), tapped)
+        assertEquals(0, confirmed, "a chip is a complete choice; it does not confirm the calendar")
+    }
+
+    @Test
+    fun `without presets no chip is drawn`() {
+        setPicker(from = LocalDateTime(2026, 3, 10, 9, 0), until = LocalDateTime(2026, 3, 12, 17, 0))
+        rule.onNodeWithText("Whole event").assertDoesNotExist()
+    }
+
     private fun setPicker(
         from: LocalDateTime,
         until: LocalDateTime,
@@ -115,6 +159,7 @@ class DateTimeRangePickerTest {
         maximum: LocalDateTime? = null,
         onConfirm: (LocalDateTime, LocalDateTime) -> Unit = { _, _ -> },
         latestUntil: ((LocalDateTime) -> LocalDateTime)? = null,
+        presets: List<RangePresetChip> = emptyList(),
     ) {
         rule.setContent {
             // Snap the wheels instantly so nothing animates under the assertions.
@@ -127,6 +172,7 @@ class DateTimeRangePickerTest {
                     onDismiss = {},
                     onConfirm = onConfirm,
                     latestUntil = latestUntil,
+                    presets = presets,
                 )
             }
         }

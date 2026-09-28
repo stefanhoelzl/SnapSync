@@ -278,7 +278,7 @@ curl -X POST "localhost:18099/user/cancelJoin"
 curl -X POST localhost:18099/user/leave
 
 # THE REST OF /user (both hosts): rename[?event=]&name=, renameStatusConsumed, confirmSwitch, retryLoad, retryJoin,
-# setRange?[from=eventStart|now][&until=eventEnd][&cutoff=…Z][&until=…Z]  (sets the form, commits nothing),
+# setRange?[range=wholeEvent|fromNow][&cutoff=…Z][&until=…Z]  (sets the form, commits nothing; cutoff/until = a custom range),
 # sendDiagnostics?note=&screen=  (a rig build of the app carries no DSN: it SAVES the report to Documents/diagnostic-report.json, sends nothing)
 ```
 

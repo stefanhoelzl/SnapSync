@@ -7,7 +7,6 @@ import app.snapsync.model.captureCutoff
 import app.snapsync.model.CaptureDate
 import app.snapsync.model.EventStart
 import app.snapsync.model.EventEnd
-import app.snapsync.model.DeletesAt
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.Arrow
@@ -15,8 +14,7 @@ import app.snapsync.model.ConfigDecodeResult
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
 import app.snapsync.model.JoinCommit
-import app.snapsync.model.FromChoice
-import app.snapsync.model.UntilChoice
+import app.snapsync.model.RangeChoice
 import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.JoinLoad
@@ -187,7 +185,6 @@ class StatusContainerHost(
         startsAt: EventStart,
         endsAt: EventEnd?,
         ownCeiling: CaptureCeiling?,
-        deletesAt: DeletesAt? = null,
     ): ResolvedRange {
         val windowStart = cutoffFormatter.toLocal(startsAt.at) ?: cutoffFormatter.nowLocal()
         // A membership always carries its own ceiling; the join gate falls back to a far-future sentinel,
@@ -202,7 +199,6 @@ class StatusContainerHost(
             nowAvailable = nowWithinWindow(cutoffFormatter.nowCutoff(), startsAt.at, endsAt?.at),
             toCutoff = cutoffFormatter::toCutoff,
             shareCount = shareCountState.value,
-            deletesLocal = deletesAt?.let { cutoffFormatter.toLocal(it.at) },
         )
     }
 
@@ -571,16 +567,16 @@ class StatusContainerHost(
 
         fun onSaveToAlbum(on: Boolean) = intent { formState.value = formState.value.copy(saveToAlbum = on) }
 
-        fun onFromPreset(preset: FromChoice) = intent { formState.value = formState.value.copy(fromPreset = preset) }
+        fun onRangePreset(preset: RangeChoice) = intent { formState.value = formState.value.copy(preset = preset) }
 
-        fun onFromCustom(value: LocalDateTime) = intent {
-            formState.value = formState.value.copy(fromPreset = FromChoice.CUSTOM, fromCustom = value)
-        }
-
-        fun onUntilPreset(preset: UntilChoice) = intent { formState.value = formState.value.copy(untilPreset = preset) }
-
-        fun onUntilCustom(value: LocalDateTime) = intent {
-            formState.value = formState.value.copy(untilPreset = UntilChoice.CUSTOM, untilCustom = value)
+        /** A custom range from the calendar; a `null` bound keeps the one already picked. */
+        fun onRangeCustom(from: LocalDateTime?, until: LocalDateTime?) = intent {
+            val f = formState.value
+            formState.value = f.copy(
+                preset = RangeChoice.CUSTOM,
+                customFrom = from ?: f.customFrom,
+                customUntil = until ?: f.customUntil,
+            )
         }
     }
 
@@ -662,8 +658,18 @@ class StatusContainerHost(
     /**
      * Confirm a first join with the chosen capture-date [cutoff], participation [direction], and album
      * choice [saveToAlbum] (capability `event-album`): enroll → provision (no leave).
+     *
+     * Where the surface said so ([asksAccessOnJoin]), the same tap first raises iOS's photo-access dialog —
+     * the one deliberate action the join gate has that may (capability `photo-access`). The join does not
+     * wait for the answer: `request()` returns nothing and cannot suspend, the grant arrives only through the
+     * permission source, and the join goes ahead whatever it is — so the dialog lands over Committing or the
+     * joined screen, and a later grant starts sharing through the existing subscription (decision record
+     * `simplify-join-screen`, D3). A retry never re-requests: by then iOS has an answer.
      */
-    fun onConfirmJoin() = intent { commit() }
+    fun onConfirmJoin() = intent {
+        if (asksAccessOnJoin(config.value, permission.value)) commands.requestAccess()
+        commit()
+    }
 
     /**
      * Confirm a switch (capability `join-event`): run the **leave and nothing else**, and choose nothing
@@ -677,23 +683,14 @@ class StatusContainerHost(
      * downloads are cancelled and non-terminal rows pruned before `LeaveEvent` stops the producer and
      * clears the config.
      *
-     * The phase is re-derived **after** the leave and only once the config is confirmed gone. `LeaveEvent`
-     * is best-effort — a failing `ConfigStore.clear()` is logged and swallowed — and on that path the
-     * phase must stay put so the confirmation re-renders and the member can simply confirm again.
-     * Deriving *before* the leave would avoid a possible one-frame Ready render, but a failed clear would
-     * then leave `Joined(pendingSwitch = ExplainAccess)`, whose dialog branch renders nothing: the
-     * confirmation would vanish with an invisible pending join behind it.
+     * Nothing is re-derived after the leave: the loaded phase is always the confirm surface, and whether
+     * its confirm also asks for photo access is read live once the config is gone ([asksAccessOnJoin]).
      */
     fun onConfirmSwitch() = guardedIntent(Guarded.SwitchLeave) {
         val p = pending.state.value ?: return@guardedIntent
-        val ph = p.phase.takeIf { it.step == JoinPhase.Detailed.Step.Ready } as? JoinPhase.Detailed ?: return@guardedIntent
+        if (p.phase.step != JoinPhase.Detailed.Step.Ready) return@guardedIntent
         overlaysState.value = Overlays() // every overlay belongs to the layer being left
         commands.leave()
-        // Only onto the pending join this switch started from: a member who cancelled while the leave ran keeps
-        // their cancel, rather than having the join surface reappear once the leave finishes (B13).
-        if (config.value == null && pending.state.value === p) {
-            pending.set(p.copy(phase = deriveLoadedPhase(ph.event)))
-        }
     }
 
     /**
@@ -715,25 +712,6 @@ class StatusContainerHost(
 
     /** Retry a failed commit — the leave (if any) already succeeded, so this re-runs only the join. */
     fun onRetryJoin() = intent { commit() }
-
-    /**
-     * The photo-access explainer was acknowledged ("I understand") — the **only** way the join gate
-     * reaches the system permission dialog (capability `join-event`: CTA-only priming; no phase
-     * auto-requests).
-     *
-     * Requests permission and advances to the confirm phase in one action. It does **not** await the
-     * outcome: `request()` returns nothing and cannot suspend (capability `photo-access`) — the grant
-     * arrives only via `PhotoAccessStatusSource` — so the phase advances immediately and the system dialog
-     * lands modally over the confirm surface, with the cutoff row already behind it. A no-op on any other
-     * phase.
-     */
-    fun onAcknowledgeAccess() = intent {
-        val p = pending.state.value ?: return@intent
-        val ph = p.phase as? JoinPhase.Detailed ?: return@intent
-        if (ph.step != JoinPhase.Detailed.Step.ExplainAccess) return@intent
-        commands.requestAccess()
-        pending.set(p.copy(phase = JoinPhase.Detailed(ph.event, JoinPhase.Detailed.Step.Ready)))
-    }
 
     /**
      * Discard the pending join, returning to the base screen — the create layer when no event is
@@ -831,39 +809,13 @@ class StatusContainerHost(
     }
 
     /**
-     * The gate's **loaded-phase derivation** (capability `join-event`): the single rule deciding, for
-     * loaded event details, whether the gate presents the confirm surface or the **photo-access
-     * explainer** ahead of it. The explainer is chosen on exactly two conditions:
-     *
-     * - **no event configured** — `config == null`. While a *switch*'s previous event is still
-     *   configured this yields the confirm phase, which is what the switch confirmation renders over the
-     *   joined layer; the explainer comes later, if at all.
-     * - **permission never asked** — `NOT_DETERMINED`, the only state from which iOS will still raise the
-     *   dialog. From `DENIED` a request is a silent no-op, so explaining and then producing no dialog
-     *   would be a lie; `DENIED` goes straight to the confirm and meets the Settings affordance after
-     *   joining. `GRANTED` needs no explanation.
-     *
-     * It runs at **every** point the gate resolves to a loaded phase, so no entry path can reach the
-     * confirm surface without having been offered the explainer. There are two such points: [loadInto]
-     * when the details fetch resolves, and [onConfirmSwitch] once a switch's leave has cleared the config
-     * — the second re-deriving from the details the first already loaded, never re-fetching them. That is
-     * why permission is a **snapshot at the moment the phase is chosen** rather than an observation: the
-     * phase advances only by user action, so a permission change while the explainer is on screen does
-     * not move it.
-     *
-     * For every permission except `NOT_DETERMINED` the second derivation is a no-op — `GRANTED`,
-     * `LIMITED` and `DENIED` all yield [JoinPhase.Ready] at both points.
+     * The gate's **loaded-phase derivation** (capability `join-event`): loaded details always open the
+     * confirm surface. Whether that confirm also raises the access dialog is not a phase — it is read live
+     * from the config and the permission ([asksAccessOnJoin]), so a switch whose leave has just cleared the
+     * config needs no re-derivation to learn it.
      */
-    private fun deriveLoadedPhase(event: EventDetails): JoinPhase {
-        val noEventConfigured = config.value == null
-        val neverAsked = permission.value == GalleryAccess.NOT_DETERMINED
-        val step = if (noEventConfigured && neverAsked) {
-            JoinPhase.Detailed.Step.ExplainAccess
-        } else {
-            JoinPhase.Detailed.Step.Ready
-        }
-        return JoinPhase.Detailed(event, step)
-    }
+    private fun deriveLoadedPhase(event: EventDetails): JoinPhase =
+        JoinPhase.Detailed(event, JoinPhase.Detailed.Step.Ready)
 
     private suspend fun commit() {
         val p = pending.state.value ?: return
@@ -871,7 +823,7 @@ class StatusContainerHost(
         // screen used to hand these back, which meant the clamping rules ran in a Composable and the
         // committed range was only as correct as the render path that produced it.
         val event = p.phase.details ?: return
-        val range = resolveRange(formState.value, event.startsAt, event.endsAt, null, event.deletesAt)
+        val range = resolveRange(formState.value, event.startsAt, event.endsAt, null)
         val cutoff = range.chosenFrom
         val until = range.chosenUntil
         val direction = range.direction
@@ -1037,12 +989,22 @@ private fun updateLayerFor(refusal: VersionRefusal?, appStoreUrl: String?): Laye
  * joined); this one decides what the unjoined world looks like, and nothing in it consults the health,
  * the permission or the clock.
  */
+/**
+ * Whether confirming a join also raises iOS's photo-access dialog (capability `join-event`): no event is
+ * configured, and access was never asked — the only state from which iOS can still raise it. From a
+ * refusal a request is a silent no-op, so announcing a dialog there would be false; a switch's previous
+ * event, while still configured, is not yet a join this rule speaks for.
+ */
+internal fun asksAccessOnJoin(config: EventConfig?, permission: GalleryAccess): Boolean =
+    config == null && permission == GalleryAccess.NOT_DETERMINED
+
 private fun unjoinedLayer(
     pending: PendingJoin?,
     creation: CreationStatus,
     transient: String?,
     form: RangeForm,
-    resolveAgainst: (RangeForm, EventStart, EventEnd?, CaptureCeiling?, DeletesAt?) -> ResolvedRange,
+    permission: GalleryAccess,
+    resolveAgainst: (RangeForm, EventStart, EventEnd?, CaptureCeiling?) -> ResolvedRange,
 ): Layer {
     // A pending interactive join outranks the create layer (a switch whose leave already ran also
     // lands here — a transient no-event, shown full-screen with a Retry).
@@ -1054,10 +1016,12 @@ private fun unjoinedLayer(
             form = form,
             // Resolved only where there IS a window: the three detail-less phases render no range row,
             // so an absent resolution is the honest answer rather than one invented from `now`.
-            range = event?.let { resolveAgainst(form, it.startsAt, it.endsAt, null, it.deletesAt) },
+            range = event?.let { resolveAgainst(form, it.startsAt, it.endsAt, null) },
             // The same transient cell the create and joined layers read: a rejected link is rejected
             // wherever it arrives, including over an open join surface, and it touches the join not at all.
             notice = transient,
+            // This rung is reached only with no event configured, so the permission alone decides.
+            asksAccessOnJoin = asksAccessOnJoin(null, permission),
         )
     }
     // One banner, one value. The TRANSIENT wins while it is showing: a create failure is sticky
@@ -1091,7 +1055,7 @@ private fun reduceFrom(
     // The backend's refusal of this build (capability `app-update-required`), already carrying its remedy,
     // or null while this build is served. Arrives composed — see `updateLayerFor`.
     updateRequired: Layer.UpdateRequired?,
-    resolveAgainst: (RangeForm, EventStart, EventEnd?, CaptureCeiling?, DeletesAt?) -> ResolvedRange,
+    resolveAgainst: (RangeForm, EventStart, EventEnd?, CaptureCeiling?) -> ResolvedRange,
 ): Layer {
     // Surface state belongs to the membership it was opened in; another membership reads it as closed / idle.
     val rename = ownedRename.forMembership(config?.eventId, RenameStatus.Idle)
@@ -1101,7 +1065,7 @@ private fun reduceFrom(
     // create that cannot succeed, a join that cannot commit. There is exactly one thing to say and one
     // thing to do.
     if (updateRequired != null) return updateRequired
-    if (config == null) return unjoinedLayer(pending, creation, transient, form, resolveAgainst)
+    if (config == null) return unjoinedLayer(pending, creation, transient, form, permission, resolveAgainst)
     val health = when {
         // Missing permission is the sole attention state — the only reason contribution cannot run. It
         // outranks NotStarted because it is the only ACTIONABLE state, and the member must resolve it
@@ -1163,7 +1127,7 @@ private fun joinedLayer(
     reconfiguring: SettingsSurface,
     transient: String?,
     form: RangeForm,
-    resolveAgainst: (RangeForm, EventStart, EventEnd?, CaptureCeiling?, DeletesAt?) -> ResolvedRange,
+    resolveAgainst: (RangeForm, EventStart, EventEnd?, CaptureCeiling?) -> ResolvedRange,
 ): Layer.Joined {
     return Layer.Joined(
         membership = config,
@@ -1186,7 +1150,7 @@ private fun joinedLayer(
         surface = if (reconfiguring != SettingsSurface.Closed) {
             JoinedSurface.Reconfigure(
                 form = form,
-                range = resolveAgainst(form, config.startsAt, config.endsAt, config.maxPhotoDate, null),
+                range = resolveAgainst(form, config.startsAt, config.endsAt, config.maxPhotoDate),
                 saveFailed = reconfiguring == SettingsSurface.SaveFailed,
             )
         } else {
