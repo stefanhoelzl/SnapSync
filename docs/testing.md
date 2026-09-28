@@ -516,9 +516,10 @@ feeds the real handler).
 - **The mix file** is `rig/mix` in the App Group: one `system=mock|real` per line, `#` comments, a missing system
   real. `POST /device/mix` takes it as the body, checks it, writes it and **exits the app**; the next start of any
   process — a manual launch, a BGTask, a URLSession relaunch, a silent push, the upload extension — reads it, and the
-  app and the extension compose over ONE mix. `POST /device/mix/current` reads it; `POST /device/mix/clear` deletes
-  the `rig/` folder — the mix and every mocked system's state — and exits. On a simulator a script may write the file
-  itself: `$(xcrun simctl get_app_container <udid> app.snapsync group.app.snapsync)/rig/mix`. On the phone the App
+  app and the extension compose over ONE mix. `POST /device/mix/current` reads it (and names the folder it lives in);
+  `POST /device/mix/clear` deletes the `rig/` folder — the mix and every mocked system's state — and exits. On a
+  simulator a script may write the file itself, into the `folder` that verb names (`simctl` does not list an
+  ad-hoc-signed app's App Group). On the phone the App
   Group is not reachable over USB, so only the verb writes it, and the relaunch is the `snapsync-device` launch step.
   The verb refuses while the device is a member of an event: the membership would be carried into another set of
   systems — reset first.
