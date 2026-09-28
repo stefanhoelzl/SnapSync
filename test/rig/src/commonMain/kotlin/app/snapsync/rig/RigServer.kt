@@ -16,6 +16,7 @@ import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.EmbeddedServer
+import io.ktor.server.engine.connector
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.request.httpMethod
 import io.ktor.server.request.path
@@ -121,7 +122,19 @@ class RigServer(
     fun start() {
         scope.launch {
             try {
-                val server = embeddedServer(CIO, port = port, host = LOOPBACK) { routes() }
+                // `reuseAddress`: an instance that just exited leaves its connections in TIME_WAIT, and without it the next
+                // launch's bind is refused (EADDRINUSE) for up to half a minute — measured on the screenshot capture's
+                // exit-and-relaunch. It still refuses a second LIVE listener, so a colliding instance fails as before.
+                val server = embeddedServer(
+                    CIO,
+                    configure = {
+                        connector {
+                            this.port = this@RigServer.port
+                            this.host = LOOPBACK
+                        }
+                        reuseAddress = true
+                    },
+                ) { routes() }
                 this@RigServer.server = server
                 // `wait = false` and then `resolvedConnectors()`, rather than a blocking `wait = true`:
                 // the suspend point is what makes "did it actually bind" answerable. A blocking start
