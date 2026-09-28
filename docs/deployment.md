@@ -524,7 +524,8 @@ reduction reached: `screenshots.yml` sets its launch adapters to mock every syst
 foreground life, and `:test:integration`'s capture drives it to each state through the control channel (`Shots.kt`:
 `create`, `joining`, `in_sync`) and captures it light and dark. The backend, the photo library, the Keychain and App
 Attest are all mocks, so no real member's content can reach the listing. The clock is mocked at a fixed instant and the
-status bar overridden, so an unchanged UI captures byte-identically. `ShotsTest` runs the same scenarios on the JVM
+status bar overridden, and the event id the `in_sync` QR encodes is fixed, so an unchanged UI captures identically —
+save the simulator's anti-aliasing of the Dynamic Island's rim (≤~120 pixels, each ≤2/255), which is noise. `ShotsTest` runs the same scenarios on the JVM
 host inside `build`, so they cannot rot between dispatches.
 
 ```
@@ -536,7 +537,8 @@ gh run download "$RID" -n screenshots-raw -D screenshots
 
 ⚠️ **Looking at them is the only check there is.** A system notification ("Ready for Apple
 Intelligence") landed in 1 of 2 runs under the forge; the rig path reuses the same pre-booted simulator, so the risk
-is unchanged. Re-dispatch if one does. On an unchanged UI every raw comes back byte-identical, `create` included. A
+is unchanged. Re-dispatch if one does. On an unchanged UI every raw comes back identical, `create` included, bar
+that Dynamic Island noise. A
 headline or size change needs no re-capture.
 
 Decision records: `changes/archive/2026-07-19-promote-appstore-builds`,

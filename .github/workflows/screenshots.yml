@@ -26,8 +26,10 @@
 # WHY COMMIT simctl'S OUTPUT: `simctl` stamps no timestamp — its only PNG metadata is an `eXIf` chunk of
 # dimensions + colour space, byte-identical across captures. So a re-run with an unchanged UI produces an
 # unchanged file and `git status` stays clean; a diff means the UI really moved. The clock is MOCKED at a fixed
-# instant (`Shot.NOW`) and the status bar overridden, so no shot renders the wall clock — `create`, which
-# re-diffed every run under the forge, is as stable as the others.
+# instant (`Shot.NOW`), the event id the `in_sync` QR encodes is fixed (`Shot.EVENT_ID`) and the status bar
+# overridden, so no shot renders the wall clock — `create`, which re-diffed every run under the forge, is as stable
+# as the others. The one residue is the simulator's anti-aliasing of the Dynamic Island's rim (≤~120 pixels, each
+# ≤2/255), which is noise: never commit a raw whose only diff is that.
 #
 # WHY 6.9" ONLY: it is Apple's single REQUIRED iPhone screenshot class (iPhone 16 Pro Max, 1320x2868)
 # and App Store Connect auto-scales it down to the 6.5"/6.7" listings. Older classes and iPad are not
