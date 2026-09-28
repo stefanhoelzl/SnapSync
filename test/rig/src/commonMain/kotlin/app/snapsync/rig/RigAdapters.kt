@@ -16,8 +16,8 @@ import app.snapsync.ports.UiHandlers
 /**
  * The platform's UI, decorated for the channel: everything [inner] is shown it is still shown, and the channel's
  * `/user` verbs reach the core as the [UiIntent]s a tap would produce, through the same handlers. [inner] is lazy — the
- * root builds this set before the scene it decorates can be built — and is a launch mix's screen mock where one mocks
- * it (`docs/testing.md`, "The launch-time mock mix"). Forwarding
+ * root builds this set before the scene it decorates can be built — and is an adapter choice's screen mock where one mocks
+ * it (`docs/testing.md`, "Launch-time adapters"). Forwarding
  * [listen] to [inner] is the one registration the composition makes (a rig decorator's forwarding `listen` counts as
  * the composition's single `listen`).
  */

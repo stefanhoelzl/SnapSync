@@ -9,9 +9,9 @@ import app.snapsync.model.CycleResult
  * and a cycle runs when the operator invokes the upload extension. The tail runner still reaches it from every wake the
  * operator delivers, as on a device.
  *
- * What the JVM root's app composes, and what a launch-time mix composes wherever the app's transfer session is the
+ * What the JVM root's app composes, and what a launch-time adapters composes wherever the app's transfer session is the
  * upload-session MOCK — a session that creates nothing, so an uploader over it would only fail (`docs/testing.md`,
- * "The launch-time mock mix"). Every upload then goes through the cycle over the upload-job queue.
+ * "Launch-time adapters"). Every upload then goes through the cycle over the upload-job queue.
  */
 object OperatorDrivenUploads : AppUploadMechanism {
     override suspend fun topUp(stopRequested: () -> Boolean): CycleResult = CycleResult.COMPLETED

@@ -31,7 +31,7 @@ import kotlin.time.Duration.Companion.hours
 import kotlin.time.Instant
 
 /**
- * Every mocked system's durable state survives its text (`docs/testing.md`, "The launch-time mock mix"): a device
+ * Every mocked system's durable state survives its text (`docs/testing.md`, "Launch-time adapters"): a device
  * driven through its ports and levers, encoded and restored into a fresh device, encodes to the same text — and the
  * restored mocks answer as the originals did.
  */

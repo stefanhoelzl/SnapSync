@@ -7,7 +7,7 @@ import app.snapsync.model.SecureSlots
  * **The device as mocks** (`docs/testing.md`, "Mocks"): one mock per external system, each holding what that system
  * keeps and handing a process its port face and its operator face to whoever plays it. The JVM root keeps one as the
  * durable state a launch composes over (`JvmMocks`); a rig build of the iOS app keeps one for the systems its launch
- * mix mocks (`mix/`).
+ * adapters mock (`:test:launch-adapters`).
  *
  * [network] is what an OS upload crosses: by default the backend mock's own byte route, so a completed job's bytes land
  * in [backend]; a caller that puts the real `api/` behind the backend port passes a network that reaches it.

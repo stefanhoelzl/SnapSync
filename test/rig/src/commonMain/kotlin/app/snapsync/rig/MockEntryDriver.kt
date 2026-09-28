@@ -45,12 +45,12 @@ class MockEntryDriver(private val device: MockDevice, private val os: PlayedOs) 
 }
 
 /**
- * The `/os` deliveries of a launch that mixes (`docs/testing.md`, "The launch-time mock mix"): each through the system
- * that delivers it — its mock's operator face where [mocked] says the mix mocks it, the platform's own adapter
+ * The `/os` deliveries of a launch with mocked systems (`docs/testing.md`, "Launch-time adapters"): each through the system
+ * that delivers it — its mock's operator face where [mocked] says the adapter choice mocks it, the platform's own adapter
  * ([real]) where the system is real. A delivery a mocked system would make never reaches the real adapter, whose
  * composition is not listening; and the reverse.
  */
-class MixedEntryDriver(
+class ChosenEntryDriver(
     private val mocked: (MockedSystem) -> Boolean,
     private val mock: EntryDriver,
     private val real: EntryDriver,

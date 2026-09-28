@@ -57,10 +57,10 @@ fun deviceCommands(
     /** The app's OWN process-metric handler, so a synthetic report drives the path the OS drives. */
     handleReport: (ProcessMetricReport) -> Unit,
 ): Map<String, RigCommand> = uploadJobDeviceCommands() + photoKitCommands(launch, photoAccess) +
-    launch.world.honouredLevers() + mixCommands(launch) + mapOf(
+    launch.world.honouredLevers() + adapterCommands(launch) + mapOf(
     // The development switch per uploader (capability `background-upload`). Reports the switch AND the
     // registration fact it produces, because the extension is never registrable below 26.1 or without a full
-    // grant, whatever the switch says. The grant is the app's own — the mocked library's, where the mix mocks it.
+    // grant, whatever the switch says. The grant is the app's own — the mocked library's, where the adapter choice mocks it.
     "uploaders" to uploadersCommand(
         controls = launch.controls,
         osSupportsOsDrivenUpload = { osSupportsOsDrivenUpload },
@@ -95,7 +95,7 @@ fun deviceCommands(
 
 /**
  * The photo library's seed and wipe: PhotoKit's where the library is real, the mocked library's seed where the launch
- * mix mocks it — and no wipe there, which `iosRefusals` says.
+ * adapters mock it — and no wipe there, which `iosRefusals` says.
  */
 private fun photoKitCommands(launch: RigLaunch, photoAccess: PhotoLibraryPermission): Map<String, RigCommand> =
     if (launch.world.isMocked(MockedSystem.LIBRARY)) {
@@ -160,7 +160,7 @@ private fun jsonArray(values: List<String>): String =
 
 /**
  * The gallery read, bound to the app's own permission-aware candidate seam rather than a second walk — or, where the
- * launch mix mocks the library, read off the mock as the JVM host reads it.
+ * adapter choice mocks the library, read off the mock as the JVM host reads it.
  */
 fun galleryReader(launch: RigLaunch, core: () -> AppCore): suspend (String?, Boolean, Boolean) -> String =
     if (launch.world.isMocked(MockedSystem.LIBRARY)) launch.world.mockGalleryReader() else photoKitGalleryReader(core)
@@ -223,7 +223,7 @@ fun noMembershipRefusal(host: () -> StatusContainerHost): () -> String? = {
 
 /**
  * The app root's `/os` group for this launch: each delivery through the system that makes it — the mock's operator face
- * where the launch mix mocks it, the platform's own adapter ([real]) otherwise — and the played operating system's
+ * where the adapter choice mocks it, the platform's own adapter ([real]) otherwise — and the played operating system's
  * expiry, which `iosRefusals` refuses unless the background-time holds are mocked.
  */
 fun appTriggerGroup(launch: RigLaunch, real: EntryDriver, excluded: Map<String, String>): TriggerGroup {
@@ -231,7 +231,7 @@ fun appTriggerGroup(launch: RigLaunch, real: EntryDriver, excluded: Map<String, 
     return TriggerGroup(
         // Swift calls this root's entry points from the main thread, so the rig does too.
         lane = kotlinx.coroutines.Dispatchers.Main,
-        wired = appTriggers(MixedEntryDriver(world::isMocked, MockEntryDriver(world.device, world.os), real)) +
+        wired = appTriggers(ChosenEntryDriver(world::isMocked, MockEntryDriver(world.device, world.os), real)) +
             ("onExpiry" to RigTrigger.Fire { arg -> if (arg == "next") world.os.expireNext() else world.os.expire() }),
         excluded = excluded,
     )

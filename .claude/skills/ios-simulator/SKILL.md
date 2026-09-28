@@ -390,27 +390,27 @@ Nothing plants it. The store is chosen by compilation target, so on this host th
 file the way it would mint into the Keychain on a device. If the app reports its identity as unavailable,
 the build is not signed — the store's message says so and names `scripts/sim-sign`.
 
-## Some systems mocked — the launch-time mix
+## Some systems mocked — the launch-time adapters
 
-A rig build here can run with **some systems mocked and the rest real** (`rig-channel`, "Mixing mocks into the real
-app"; `docs/testing.md`, "The launch-time mock mix") — e.g. a mocked backend under a real, seeded photo library, with
-no local `api/` at all. On a simulator the mix file is reachable from the Mac, so a script may write it **before** the
+A rig build here can run with **some systems mocked and the rest real** (`rig-channel`, "Some systems mocked in the real
+app"; `docs/testing.md`, "Launch-time adapters") — e.g. a mocked backend under a real, seeded photo library, with
+no local `api/` at all. On a simulator the adapters file is reachable from the Mac, so a script may write it **before** the
 first launch instead of going through the verb (which writes and exits the app):
 
 ```
 # `simctl get_app_container … groups` lists NOTHING for this ad-hoc-signed app (measured 2026-09-28), so ask the
-# app once where its mix folder is — any launch will do:
-F=$(curl -s -X POST "localhost:$PORT/device/mix/current" | python3 -c 'import json,sys; print(json.load(sys.stdin)["folder"])')
+# app once where its adapter choice folder is — any launch will do:
+F=$(curl -s -X POST "localhost:$PORT/device/adapters/current" | python3 -c 'import json,sys; print(json.load(sys.stdin)["folder"])')
 xcrun simctl terminate "$DEVICE" app.snapsync
-mkdir -p "$F" && printf 'backend=mock\nupload-queue=mock\nupload-session=mock\ndownloads=mock\npush=mock\nintegrity=mock\nextension-registry=mock\n' > "$F/mix"
-SIMCTL_CHILD_SNAPSYNC_RIG_PORT=$PORT xcrun simctl launch "$DEVICE" app.snapsync   # /health: mix=mocked: …
-rm -rf "$F"                                            # back to all real (or POST /device/mix/clear)
+mkdir -p "$F" && printf 'backend=mock\nupload-queue=mock\nupload-session=mock\ndownloads=mock\npush=mock\nintegrity=mock\nextension-registry=mock\n' > "$F/adapters"
+SIMCTL_CHILD_SNAPSYNC_RIG_PORT=$PORT xcrun simctl launch "$DEVICE" app.snapsync   # /health: adapters=mocked: …
+rm -rf "$F"                                            # back to all real (or POST /device/adapters/clear)
 ```
 
 Measured 2026-09-28 (iOS 26 simulator): real photos + a mocked backend — create, join, a cycle through the mocked
 queue, `jobs/complete`, the objects in the mocked backend, all surviving a relaunch; an ALL-mock launch creates an
-event over the mocked backend; a misspelt mix file composes nothing and every app route answers `409`.
+event over the mocked backend; a misspelt adapters file composes nothing and every app route answers `409`.
 
-A mix the process cannot use — a typo, an incoherent pair, a state file that does not restore — composes **nothing**
-and `/health` says `mix=REFUSED …`; fix the file (or clear it) and launch again. Mock state lives beside the mix
+An adapter choice the process cannot use — a typo, an incoherent pair, a state file that does not restore — composes **nothing**
+and `/health` says `adapters=REFUSED …`; fix the file (or clear it) and launch again. Mock state lives beside the adapter choice
 (`rig/state/`, `rig/databases/`), so it survives a relaunch and `xcrun simctl erase` discards it with the rest.

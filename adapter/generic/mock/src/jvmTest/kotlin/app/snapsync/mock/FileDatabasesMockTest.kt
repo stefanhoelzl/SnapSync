@@ -15,8 +15,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 
 /**
- * The databases mock with a directory — the launch-time mix's persisted databases (`docs/testing.md`, "The launch-time
- * mock mix") — holds to the same contract as the in-memory one, and a second mock over the same directory (the next
+ * The databases mock with a directory — the launch-time adapters' persisted databases (`docs/testing.md`, "Launch-time
+ * adapters") — holds to the same contract as the in-memory one, and a second mock over the same directory (the next
  * launch, or the other process) opens what the first wrote.
  */
 class FileDatabasesMockTest {

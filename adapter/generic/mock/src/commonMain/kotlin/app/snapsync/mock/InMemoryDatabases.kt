@@ -18,7 +18,7 @@ import app.snapsync.ports.DbOpen
  * Durable across a composition's death: an instance holds its databases until it is dropped, and a second
  * composition over the same instance opens what the first wrote — which is how the world expresses a relaunch.
  *
- * With a [directory] each database is a FILE there instead — the launch-time mix's persisted mock (`mix/`), whose
+ * With a [directory] each database is a FILE there instead — the launch-time adapters' persisted mock (`:test:launch-adapters`), whose
  * databases outlive the process and are shared, as files are, by every process of the device. Everything else is the
  * same: the same opens, the same versions, the same refusals.
  */

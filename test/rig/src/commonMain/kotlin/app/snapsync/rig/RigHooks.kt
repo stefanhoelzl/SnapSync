@@ -143,14 +143,14 @@ class RigHooks(
      */
     val osRecord: (() -> String)? = null,
     /**
-     * This launch's mix, in one line — `/health` reports it (`docs/testing.md`, "The launch-time mock mix"): `all real`
+     * This launch's adapter choice, in one line — `/health` reports it (`docs/testing.md`, "Launch-time adapters"): `all real`
      * for an ordinary rig build, the mocked systems otherwise.
      */
-    private val mix: String = "all real",
+    private val adapters: String = "all real",
     /**
-     * Why this launch composed NOTHING — a mix the process refused to compose over — or `null` for a launch that
+     * Why this launch composed NOTHING — an adapter choice the process refused to compose over — or `null` for a launch that
      * composed. When set, every route that would reach the composed app answers `409` with it, and only `/health`,
-     * `/device`, the logs and the mix verbs are served: nothing is composed, so nothing real can be reached by a run
+     * `/device`, the logs and the adapter verbs are served: nothing is composed, so nothing real can be reached by a run
      * that believed itself mocked.
      */
     val uncomposed: String? = null,
@@ -168,7 +168,7 @@ class RigHooks(
     internal fun health(boundPort: Int?): String = buildString {
         append("rig=up port=").append(boundPort ?: "binding").append('\n')
         append("bootedAt=").append(bootedAt ?: "never").append('\n')
-        append("mix=").append(uncomposed?.let { "REFUSED, nothing composed: $it" } ?: mix).append('\n')
+        append("adapters=").append(uncomposed?.let { "REFUSED, nothing composed: $it" } ?: adapters).append('\n')
     }
 
     /**

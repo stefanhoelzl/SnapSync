@@ -8,14 +8,14 @@ import kotlin.test.fail
 
 /**
  * **No shipped binary links a mock** (`docs/architecture.md`, "A build-time-only module is contained by compilation";
- * `docs/testing.md`, "The launch-time mock mix").
+ * `docs/testing.md`, "Launch-time adapters").
  *
- * `:adapter:generic:mock` compiles for `iosArm64` so a RIG build of the app can hand a launch-time mix's mocked
+ * `:adapter:generic:mock` compiles for `iosArm64` so a RIG build of the app can hand a launch-time adapters' mocked
  * systems their mocks on a phone. Before that target existed, a device framework could not link it — the missing
  * target was the containment. Now the containment is the build-time switch alone, and this pins it:
  *
  *  - the two shipped iOS roots, `:app:ios` and `:app:ios:extension`, name the rig-only modules — the mocks, the launch
- *    mix that loads them (`:test:mix`), the control channel and its contracts — only on a line that is itself under
+ *    adapters that load them (`:test:launch-adapters`), the control channel and its contracts — only on a line that is itself under
  *    `-Psnapsync.rig=true` (`if (rigEnabled)`);
  *  - nothing else a shipped root links — the closure of their main project dependencies, rig lines excluded — reaches
  *    any of them;
@@ -108,8 +108,8 @@ class MockContainmentTest {
     }
 
     private companion object {
-        /** What only a rig build links: the mocks, the launch mix, the control channel and its in-app contracts. */
-        val RIG_ONLY = listOf(":adapter:generic:mock", ":test:mix", ":test:rig", ":test:contracts")
+        /** What only a rig build links: the mocks, the launch choice, the control channel and its in-app contracts. */
+        val RIG_ONLY = listOf(":adapter:generic:mock", ":test:launch-adapters", ":test:rig", ":test:contracts")
 
         /** The two roots whose frameworks ship: the app's `SnapSyncKit` and the extension's `SnapSyncUploadKit`. */
         val SHIPPED_ROOTS = listOf(":app:ios", ":app:ios:extension")

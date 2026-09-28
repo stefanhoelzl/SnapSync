@@ -227,14 +227,14 @@ class RigServer(
     }
 
     /**
-     * `409` when this launch composed nothing (a refused mix, [RigHooks.uncomposed]) — every route that would reach the
+     * `409` when this launch composed nothing (a refused choice, [RigHooks.uncomposed]) — every route that would reach the
      * composed app — or `false` to let the route proceed.
      */
     private suspend fun ApplicationCall.respondIfUncomposed(): Boolean {
         val why = hooks.uncomposed ?: return false
         respondText(
-            "{\"refused\":${jsonString("this launch composed nothing — its mix was refused: $why. Write a coherent one " +
-                "(POST /device/mix) or clear it (POST /device/mix/clear); either exits the app for its next start")}}\n",
+            "{\"refused\":${jsonString("this launch composed nothing — its adapter choice was refused: $why. Write a coherent one " +
+                "(POST /device/adapters) or clear it (POST /device/adapters/clear); either exits the app for its next start")}}\n",
             status = HttpStatusCode.Conflict,
         )
         return true
@@ -413,7 +413,7 @@ class RigServer(
     private suspend fun ApplicationCall.respondDeviceCommand() {
         val name = routeName("/device")
         if (respondIfRefused("device/$name")) return
-        if ("device/$name" !in RigVocabulary.mixCommands && respondIfUncomposed()) return
+        if ("device/$name" !in RigVocabulary.adapterCommands && respondIfUncomposed()) return
         val command = hooks.deviceCommands[name]
             ?: return respondText(
                 excludedOrUnknown(name, emptyMap(), "device command"),

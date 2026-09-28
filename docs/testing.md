@@ -382,9 +382,9 @@ build the same classes over caller-held cells.
 - **`LibraryAssets`** builds the photos an operator adds — an ordinary 12 MP photo by default, and the kinds the
   selection policy excludes (or must not).
 - **`MockDevice`** is the device as mocks — one of each, in common code. The JVM root's `JvmMocks` is one; a rig build
-  of the iOS app keeps one for the systems its launch-time mix mocks (section 6). Each mock's durable state encodes to
-  text system by system (`mix/MockState`), and `DatabasesMock` takes a directory, where its databases are files that
-  outlive the process. The module compiles for `iosArm64` for the mix alone: only a rig build links it, and
+  of the iOS app keeps one for the systems its launch-time adapters mocks (section 6). Each mock's durable state encodes to
+  text system by system (`MockState`), and `DatabasesMock` takes a directory, where its databases are files that
+  outlive the process. The module compiles for `iosArm64` for the adapter choice alone: only a rig build links it, and
   `MockContainmentTest` fails the build the day a shipped root names it outside that switch.
 
 ### The JVM root (`:app:jvm`)
@@ -434,11 +434,11 @@ encoding. Both bind loopback only.
 
 **On the app host the rig is an adapter set, chosen at build time.** The root builds its real adapters as one lazy
 bundle (`DevicePorts`, `:domain:compose`) and calls `platformAdapters(real, …)`, which a rig build compiles from
-`:test:rig`'s hook directory instead of the app's `src/prod`: the ports are the launch-time mix's (below), the UI is
+`:test:rig`'s hook directory instead of the app's `src/prod`: the ports are the launch-time adapters' (below), the UI is
 decorated (`RigUi`, which forwards everything to the screen it wraps), the development controls are the channel's
 (`RigDevControls`: the per-uploader switch, invite-link hints, the reset), and the server starts once the root has
 finished initializing. Nothing runs at image load and the root holds no rig field. The extension's rig build hands its
-root the mix's ports too, and decorates its `ExtensionHost` so a requested contract runs in place of a cycle.
+root the adapter choice's ports too, and decorates its `ExtensionHost` so a requested contract runs in place of a cycle.
 
 Verbs:
 - `/os` for OS entry points — each an `EntryDriver` delivery (`:test:contracts`) under the name the iOS shell's
@@ -466,7 +466,7 @@ backend mock's operator has answers `409` with the reason.
 
 **The JVM host plays the operating system, its expiry and its record included:**
 - `os/app/onExpiry` is the OS saying time is up: every completion handler it holds and every background-time hold is
-  told so; `?arg=next` hands the next handler over already expired. The app host honours it only when its mix mocks
+  told so; `?arg=next` hands the next handler over already expired. The app host honours it only when its adapter choice mocks
   the background-time holds — a real OS's expiry is its own.
 - `device/os-record` is what the OS recorded of the app: the completion handlers handed over, released and released
   a second time; whether a screen was shown; whether the selection observer is open; the heartbeat requests; the
@@ -489,7 +489,7 @@ There are **no click, semantics or pixel verbs**. Taps and pixels belong to the 
 - The operator levers are ONE table (`MockLevers.kt`), each naming what it needs: a mocked system, the backend mock's
   operator, a reachable backend or a changeable build version. A host honours a lever exactly when its needs are met
   — the JVM host all of them (the backend mock's operator aside over the real `api/`), the app host those over the
-  systems its launch mix mocks — and refuses the rest naming the real system.
+  systems its adapter choice mocks — and refuses the rest naming the real system.
 - `POST /device/reset` voids this device's durable sync state without telling any backend, through the
   development controls' reset (`DevControls.onReset`). Use it
   **whenever a build crosses backends** (for example device ↔ local rig). Otherwise leftover `COMPLETED`
@@ -503,53 +503,56 @@ There are **no click, semantics or pixel verbs**. Taps and pixels belong to the 
   encoding, the vocabulary advertisement, refusals. The only untested code in the channel is the iOS
   gallery seeder and wiper, for the reason its build file gives.
 
-### The launch-time mock mix
+### Launch-time adapters
 
 **A rig build of the real iOS app — on a simulator or the phone — runs with some systems mocked and the rest real,
-chosen at launch** (11h). The systems are the mocks of `MockDevice`, one key each (`MockedSystem`): `backend`,
-`library`, `files`, `databases`, `preferences`, `keychain`, `integrity`, `crash-reporter`, `process-info`, `clock`,
-`wake`, `background-time`, `extension-registry`, `upload-queue`, `upload-session`, `downloads`, `lifecycle`, `links`,
-`push`, `screen`, `system-ui`. Not in the mix: the development controls (always the channel's), the extension's entry
-port (the channel already plays its invocations through the real adapter) and MetricKit (`/device/process-metrics`
-feeds the real handler).
+chosen at launch** (11h): its launch adapters. The systems are the mocks of `MockDevice`, one key each
+(`MockedSystem`): `backend`, `library`, `files`, `databases`, `preferences`, `keychain`, `integrity`, `crash-reporter`,
+`process-info`, `clock`, `wake`, `background-time`, `extension-registry`, `upload-queue`, `upload-session`,
+`downloads`, `lifecycle`, `links`, `push`, `screen`, `system-ui`. Not among them: the development controls (always the
+channel's), the extension's entry port (the channel already plays its invocations through the real adapter) and
+MetricKit (`/device/process-metrics` feeds the real handler). Code: `:test:launch-adapters`.
 
-- **The mix file** is `rig/mix` in the App Group: one `system=mock|real` per line, `#` comments, a missing system
-  real. `POST /device/mix` takes it as the body, checks it, writes it and **exits the app**; the next start of any
-  process — a manual launch, a BGTask, a URLSession relaunch, a silent push, the upload extension — reads it, and the
-  app and the extension compose over ONE mix. `POST /device/mix/current` reads it (and names the folder it lives in);
-  `POST /device/mix/clear` deletes the `rig/` folder — the mix and every mocked system's state — and exits. On a
-  simulator a script may write the file itself, into the `folder` that verb names (`simctl` does not list an
-  ad-hoc-signed app's App Group). On the phone the App
-  Group is not reachable over USB, so only the verb writes it, and the relaunch is the `snapsync-device` launch step.
-  The verb refuses while the device is a member of an event: the membership would be carried into another set of
-  systems — reset first.
+- **The adapters file** is `rig/adapters` in the App Group — the adapter choice: one `system=mock|real` per line, `#`
+  comments, a missing system real. `POST /device/adapters` takes it as the body, checks it, writes it and **exits the
+  app**; the next start of any process — a manual launch, a BGTask, a URLSession relaunch, a silent push, the upload
+  extension — reads it, and the app and the extension compose over ONE adapter choice. `POST /device/adapters/current`
+  reads it (and names the folder it lives in); `POST /device/adapters/clear` deletes the `rig/` folder — the choice
+  and every mocked system's state — and exits. On a simulator a script may write the file itself, into the `folder`
+  that verb names (`simctl` does not list an ad-hoc-signed app's App Group). On the phone the App Group is not
+  reachable over USB, so only the verb writes it, and the relaunch is the `snapsync-device` launch step. The verb
+  refuses while the device is a member of an event: the membership would be carried into another set of systems —
+  reset first.
 - **Only the rig build reads it.** The rig variants of `platformAdapters()` and the extension's `extensionPorts()` read
-  it through a real files adapter of their own (never a port the mix may have mocked) and hand each root its ports;
+  it through a real files adapter of their own (never a port the choice may have mocked) and hand each root its ports;
   production has no code for it and links no mock (`MockContainmentTest`).
-- **Coherence** (`Mix.incoherence`, JVM-tested beside it) — a mix that breaks a rule is refused, one reason per rule:
-  a mocked backend needs mocked transfers (upload queue, upload session, downloads), push service and Secure Enclave;
-  a mocked Secure Enclave or upload queue needs the mocked backend (placeholder proofs and bytes never reach the real
-  one); a mocked library needs mocked uploads (a mocked photo has no bytes); and a REAL extension registration keeps
-  every system the extension writes real (backend, library, upload queue, files, databases, preferences, keychain) —
-  the operating system runs a real registration in the extension's own process, and a mocked system would then have
-  two writers. Mock the registration and the channel invokes the extension inside the app
-  (`/os/photokit-ext/processRawValue`). Anything no rule names mixes freely — real photos with a mocked backend
+- **Coherence** (`AdapterChoice.incoherence`, JVM-tested beside it) — a choice that breaks a rule is refused, one
+  reason per rule: a mocked backend needs mocked transfers (upload queue, upload session, downloads), push service and
+  Secure Enclave; a mocked Secure Enclave or upload queue needs the mocked backend (placeholder proofs and bytes never
+  reach the real one); a mocked library needs mocked uploads (a mocked photo has no bytes); and a REAL extension
+  registration keeps every system the extension writes real (backend, library, upload queue, files, databases,
+  preferences, keychain) — the operating system runs a real registration in the extension's own process, and a mocked
+  system would then have two writers. Mock the registration and the channel invokes the extension inside the app
+  (`/os/photokit-ext/processRawValue`). Anything no rule names may be chosen freely — real photos with a mocked backend
   included.
-- **Refused means nothing composes.** A mix that does not parse, is incoherent, or whose state does not restore makes
+- **Refused means nothing composes.** A choice that does not parse, is incoherent, or whose state does not restore makes
   the launch compose NOTHING: every entry point still reaches its real adapter, which completes the OS's handler at
-  once; the channel's server starts, `/health` says `mix=REFUSED …` and every route that would reach the app answers
-  `409` naming why, the mix verbs aside. Never a fall-back to real: a run believed mocked that reached a real system
-  could write to the shared `snap-sync-dev` zone.
+  once; the channel's server starts, `/health` says `adapters=REFUSED …` and every route that would reach the app
+  answers `409` naming why, the adapter verbs aside. Never a fall-back to real: a run believed mocked that reached a
+  real system could write to the shared `snap-sync-dev` zone.
 - **Mock state persists** in `rig/state/<system>.json` (the app writes each changed system every 500 ms and before an
   exit) and `rig/databases/` (a mocked database is a file). The extension, in its own process, never writes: the
   coherence rules keep every system it would write real there. A relaunch finds what the last launch left.
 - **Everything mocked is operator-driven**: nothing a mock plays happens on its own. A mocked wake cancels the real
   heartbeat and answers a real one at once; a mocked upload session makes the app's uploader the operator-driven one,
   as on the JVM root, and every upload is a cycle the channel invokes. `/os` delivers through each system's mock where
-  it is mocked (`MixedEntryDriver`) and through the iOS adapter otherwise; `device/os-record` reports the mocked
+  it is mocked (`ChosenEntryDriver`) and through the iOS adapter otherwise; `device/os-record` reports the mocked
   systems' part. A mocked download stages a 16×16 JPEG, which a real library imports.
-- **Memory**: the extension, in its own process, restores only the systems its mix mocks — under the rules above, none
-  that hold photos or bytes — so a mixed run adds no photo state to its 32 MB.
+- **Memory**: the extension, in its own process, restores only the systems its choice mocks — under the rules above,
+  none that hold photos or bytes — so a launch with mocked systems adds no photo state to its 32 MB.
+- **Measured** 2026-09-28 on an iOS 26 simulator and the SE2 (iOS 26.6.2): real photos with a mocked backend —
+  create, join, a cycle through the mocked queue, the objects in the mocked backend, all surviving a relaunch (a
+  SIGKILL on the phone); an all-mock launch on the simulator; a misspelt file composing nothing.
 
 The client compiles against `model/`, presentation and `feature/`, never `ports/`, `flow/`, `compose/` or
 the host, and `ReadModelImportsTest` confines its `feature/` references to the `readmodel` packages. **That
@@ -798,5 +801,5 @@ not describe what runs today. Each phase moves its part into the sections above.
   their tests are rig tests (section 7), and the few assertions no process outside the app can see live in their
   zone.
 - **The rig reaches the app only through ports.** On both hosts every operator lever is a mock's operator face
-  (section 6); the app host has one for each system its launch-time mix mocks (11h, section 6).
+  (section 6); the app host has one for each system its launch-time adapters mocks (11h, section 6).
 - **The forge and its marketing screenshots** are replaced by screenshots of the rig running on a simulator (12).

@@ -51,7 +51,7 @@ internal fun joinedEventId(rig: JvmRig): String? =
         ?: (ConfigService(rig.mocks.disk.port(), rig.mocks.clock.port()).read() as? ConfigRead.Joined)?.config?.eventId
 
 /** What the JVM host refuses of the shared vocabulary, each with its reason. */
-internal fun jvmRefusals(rig: JvmRig): Map<String, String> = rig.world.leverRefusals() + RigVocabulary.mixRefusals + buildMap {
+internal fun jvmRefusals(rig: JvmRig): Map<String, String> = rig.world.leverRefusals() + RigVocabulary.adapterRefusals + buildMap {
     put(
         "device/gallery/wipe",
         "a mocked photo library is fresh for every host, so there is nothing to wipe; the wipe's answer is PhotoKit's " +

@@ -46,7 +46,7 @@ import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
 // The operator levers and reads over the mocked systems (`docs/testing.md`, "The seam-to-UI-state integration surface"
-// and "The launch-time mock mix"): what the backend, the crash reporter's backend, the push service, the staging
+// and "Launch-time adapters"): what the backend, the crash reporter's backend, the push service, the staging
 // directory and the photo library recorded, and the levers that put them, the operating system and the photo library
 // into the states a test starts from. Each is a mock's operator face, and each names what it needs — a lever over a
 // system this host runs REAL is refused, with that reason, in the advertisement and at the call.
