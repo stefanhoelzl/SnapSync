@@ -101,9 +101,9 @@ object UploadExtensionRoot {
 
     /**
      * This process's ports onto the device's systems, as its REAL adapters (`DevicePorts`), each built on first use —
-     * and [device], what its cycle composes over: these on a production build, and on a rig build the launch-time mix's,
+     * and [device], what its cycle composes over: these on a production build, and on a rig build the launch-time adapters',
      * where a mocked system's are its mock's (`extensionPorts()`, from `src/entries` or the rig's source;
-     * `docs/testing.md`, "The launch-time mock mix").
+     * `docs/testing.md`, "Launch-time adapters").
      */
     private val real: DevicePorts = DevicePorts(
         clock = lazyOf(SystemClock),

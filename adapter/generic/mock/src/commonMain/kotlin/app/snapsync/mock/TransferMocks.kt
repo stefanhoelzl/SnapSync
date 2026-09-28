@@ -49,7 +49,7 @@ class CreatedUpload(val filename: String, val contentType: String) {
  *
  * - `create` enqueues a PENDING job and answers `CREATED`, unless the in-flight cap is reached (`LIMIT_EXCEEDED`), the
  *   create is set to fail, or the source is not this platform's handle (`FAILED`) — its photos carry `Unit`, as a
- *   device's carry a `PHAssetResource`. [acceptsAnyHandle] is the launch-time mix's queue on a device whose photo
+ *   device's carry a `PHAssetResource`. [acceptsAnyHandle] is the launch-time adapters' queue on a device whose photo
  *   library is REAL: it takes the `PHAssetResource` a real library hands over and moves no bytes of it — a mocked
  *   queue's request carries placeholder bytes to the mocked backend.
  * - The operator's `completeJob` performs the job's own request over [network]: a `2xx` makes it terminal-succeeded,
@@ -305,9 +305,9 @@ class DownloadSessionMock(private val temporaryFiles: TemporaryFiles? = null) {
         val HEALTHY: TransferOutcome = TransferOutcome(statusCode = 200, expectedBytes = -1L, receivedBytes = 1_024L)
 
         /**
-         * What a mocked download's temporary file holds: a 16×16 JPEG — real image bytes, so a launch-time mix with a
-         * REAL photo library imports a mocked event photo as it imports any other (`docs/testing.md`, "The launch-time
-         * mock mix"). The in-memory library reads only their presence.
+         * What a mocked download's temporary file holds: a 16×16 JPEG — real image bytes, so a launch whose adapters
+         * keep the REAL photo library imports a mocked event photo as it imports any other (`docs/testing.md`, "Launch-time
+         * adapters"). The in-memory library reads only their presence.
          */
         @OptIn(ExperimentalEncodingApi::class)
         private val TEMP_BYTES = Base64.decode(

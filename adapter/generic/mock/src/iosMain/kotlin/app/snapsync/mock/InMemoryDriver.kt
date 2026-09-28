@@ -28,7 +28,7 @@ internal actual fun newInMemoryDriver(): SqlDriver = NativeSqliteDriver(
     maxReaderConnections = 1,
 )
 
-// A file under [directory]: the persisted mock's databases (`mix/`). The version is the mock's own business
+// A file under [directory]: the persisted mock's databases (`:test:launch-adapters`). The version is the mock's own business
 // (`PRAGMA user_version`, as for the in-memory ones), so SQLiter is told not to check it.
 @OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
 internal actual fun newFileDriver(directory: String, name: String): SqlDriver {

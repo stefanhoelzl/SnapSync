@@ -58,7 +58,7 @@ kotlin {
             // (`docs/architecture.md`, "The module set withholds; packages organize").
             implementation(project(":test:contracts"))
             // The mocks the operator levers move (`MockLevers.kt`) — every system's on the JVM host, and on the app
-            // host the ones its launch-time mix mocks (`docs/testing.md`, "The launch-time mock mix"). Contained with
+            // host the ones its launch-time adapters mocks (`docs/testing.md`, "Launch-time adapters"). Contained with
             // this module: a production build links neither.
             implementation(project(":adapter:generic:mock"))
             implementation(project(":domain:model"))
@@ -88,8 +88,8 @@ kotlin {
         iosMain.dependencies {
             implementation(project(":adapter:ios:app-only"))
             implementation(project(":adapter:ios:ext-safe"))
-            // The launch-time mix the app host's launch reads (`IosMix.kt`, `docs/testing.md`).
-            implementation(project(":test:mix"))
+            // The launch-time adapters the app host's launch reads (`IosLaunchAdapters.kt`, `docs/testing.md`).
+            implementation(project(":test:launch-adapters"))
         }
 
         // The JVM host: the JVM root it composes the app with, over the mocks it drives — and the real backend, served

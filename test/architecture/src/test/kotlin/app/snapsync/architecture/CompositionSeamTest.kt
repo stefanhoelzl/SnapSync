@@ -122,7 +122,7 @@ class CompositionSeamTest {
         // Empty for the same reason: the app uploader's own reads and constants, beside the core it serves.
         "AppUploaderPorts" to emptyMap(),
         // Empty for the same reason: an iOS root's real adapters, one `Lazy` PORT each — the bundle its build's adapter
-        // set hands back, a launch-time mix's on a rig build (`docs/testing.md`). A lazy is a port built on first use,
+        // set hands back, a launch-time adapters' on a rig build (`docs/testing.md`). A lazy is a port built on first use,
         // not a lambda the core calls.
         "DevicePorts" to emptyMap(),
     )

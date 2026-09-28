@@ -73,7 +73,7 @@ class FileSystemOperator internal constructor(private val disk: FileSystemMock) 
 /**
  * The device's SQLite databases: real in-memory SQLite, one per name, held for the mock's lifetime — so a relaunched
  * process opens what the last one wrote. [refusals] answers an open of that name with the refusal given. With a
- * [directory], each is a file there instead, which outlives the process — the launch-time mix's persisted state.
+ * [directory], each is a file there instead, which outlives the process — the launch-time adapters' persisted state.
  */
 class DatabasesMock(refusals: Map<String, DbOpen> = emptyMap(), directory: String? = null) {
     private val held = InMemoryDatabases(refusals, directory)

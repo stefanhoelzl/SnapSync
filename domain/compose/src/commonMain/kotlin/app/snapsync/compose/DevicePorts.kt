@@ -26,8 +26,8 @@ import app.snapsync.ports.Wake
 /**
  * **One process's ports onto the device's systems** — what an iOS root composes over, each resolved on first use: the
  * root hands its REAL adapters in as `lazy { … }` and composes over what its build's adapter set hands back — the same
- * bundle on a production build, and on a rig build the launch-time mix's, a mocked system's ports swapped for its
- * mock's faces (`docs/testing.md`, "The launch-time mock mix"). Nothing is built until it is asked for, so a mocked
+ * bundle on a production build, and on a rig build the launch-time adapters', a mocked system's ports swapped for its
+ * mock's faces (`docs/testing.md`, "Launch-time adapters"). Nothing is built until it is asked for, so a mocked
  * system's real adapter is never constructed.
  *
  * A process supplies only the ports it has: the upload extension has no screen, no lifecycle and no transfer session of
@@ -62,7 +62,7 @@ class DevicePorts(
     pushNotifications: Lazy<PushNotifications> = absent("pushNotifications"),
     ui: Lazy<Ui> = absent("ui"),
 ) {
-    /** The constructor's lazies, so a mix can hand the real ones through untouched. */
+    /** The constructor's lazies, so an adapter choice can hand the real ones through untouched. */
     val lazies: Lazies = Lazies(
         clock, crashReporter, files, databases, preferences, secureStore, integrity, processInfo, backend,
         backgroundTime, wake, extensionRegistry, gallery, galleryReader, photoAccess, appUpload, cycleUpload, download,

@@ -1,10 +1,10 @@
-// `:test:mix` — THE LAUNCH-TIME MOCK MIX (`docs/testing.md`, "The launch-time mock mix"): which systems a rig build of
-// the iOS app runs as mocks, read once at every process start from the App Group, checked against the coherence rules,
-// and turned into the ports each root composes over. Test equipment, and CONTAINED: `:test:rig` links it into the app
-// and `:app:ios:extension` into its extension ONLY under `-Psnapsync.rig=true`, so a production build carries none of
-// it (`MockContainmentTest`). Its own module rather than a package of `:adapter:generic:mock` because it is not a
-// mock: it is the rig's loader of them — it reads files, decorates an entry port and holds the mocked device a process
-// shares.
+// `:test:launch-adapters` — THE LAUNCH-TIME ADAPTERS (`docs/testing.md`, "Launch-time adapters"): which systems a
+// rig build of the iOS app runs as mocks, read once at every process start from the App Group, checked against the
+// coherence rules, and turned into the ports each root composes over. Test equipment, and CONTAINED: `:test:rig` links
+// it into the app and `:app:ios:extension` into its extension ONLY under `-Psnapsync.rig=true`, so a production build
+// carries none of it (`MockContainmentTest`). Its own module rather than a package of `:adapter:generic:mock` because
+// it is not a mock: it is the rig's loader of them — it reads files, decorates an entry port and holds the mocked
+// device a process shares.
 //
 // Targets: jvm (where its tests run in `build`) + the two iOS targets its hooks compile for.
 plugins {

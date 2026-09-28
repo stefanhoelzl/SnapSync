@@ -21,8 +21,8 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
  * about them — how many it handed over, how many the app released, and how many releases arrived for a handler already
  * released — and the one thing only an OS can do to them, **expire** them (`/os/app/onExpiry`).
  *
- * Played wherever the system is mocked: always on the JVM host, and on the app host for the systems a launch mix mocks
- * (`docs/testing.md`, "The launch-time mock mix"). A real operating system's expiry is its own, so the verb needs the
+ * Played wherever the system is mocked: always on the JVM host, and on the app host for the systems an adapter choice mocks
+ * (`docs/testing.md`, "Launch-time adapters"). A real operating system's expiry is its own, so the verb needs the
  * background-time holds mocked — the same signal a `BGTask`'s expiration handler and `UIApplication`'s background-time
  * expiry deliver, through the same `onExpired` registration and the background-time mock.
  */

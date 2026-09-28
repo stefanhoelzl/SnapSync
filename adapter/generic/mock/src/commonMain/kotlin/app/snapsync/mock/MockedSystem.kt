@@ -1,11 +1,11 @@
 package app.snapsync.mock
 
 /**
- * One system a launch-time mix may hand its mock (`docs/testing.md`, "The launch-time mock mix") — one per mock of
- * [MockDevice], named by [key] in the mix file. Every port a system's mock has a face for is REAL or
+ * One system a launch-time adapters may hand its mock (`docs/testing.md`, "Launch-time adapters") — one per mock of
+ * [MockDevice], named by [key] in the adapters file. Every port a system's mock has a face for is REAL or
  * MOCK together: a mocked photo library is both the gallery and the grant.
  *
- * Not systems of the mix: the build's development controls (a rig build's are always the control channel's own), the
+ * Not systems of the choice: the build's development controls (a rig build's are always the control channel's own), the
  * upload extension's entry port (the channel already plays the operating system's invocations of it, through the real
  * adapter), and MetricKit's process metrics (the channel feeds synthetic reports through the real handler).
  */

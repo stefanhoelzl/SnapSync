@@ -167,7 +167,7 @@ object SnapSyncRoot {
     internal val osSupportsOsDrivenUpload: Boolean = backgroundUploadSupported()
 
     // ── This process's REAL adapters. Declared ahead of [real] and [adapters]: a rig build's adapter set may touch one
-    // while this object initializes (it quiets the real wake a launch mix mocks), and a property further down would
+    // while this object initializes (it quiets the real wake an adapter choice mocks), and a property further down would
     // not be initialized yet. Every one is `by lazy`, so declaring it builds nothing. ──
 
     // The photo-library permission adapter, hoisted so the grant collector and a (re)provision share one
@@ -182,7 +182,7 @@ object SnapSyncRoot {
      * The process's ONE cutoff formatter (capability `sync-status`): the device zone read once, here, from the
      * process's one clock — a formatter whose zone moved under a running screen would render one capture date two
      * ways. The status host reduces with it and the screen renders with it: the same instance. Its "now" is the same
-     * clock's: the system's own on every production build, and a launch mix's mocked clock wherever one fixes it.
+     * clock's: the system's own on every production build, and an adapter choice's mocked clock wherever one fixes it.
      */
     private val cutoffFormatter: CutoffFormatter by lazy {
         CutoffFormatter(now = process.clock::now, zone = process.clock.timeZone())
@@ -238,8 +238,8 @@ object SnapSyncRoot {
     /**
      * This process's ports onto the device's systems, as its REAL adapters (`DevicePorts`): each built on first use.
      * What the graph composes over is what the build's adapter set hands back ([adapters]) — these on a production
-     * build, and on a rig build the launch-time mix's, where a mocked system's are its mock's (`docs/testing.md`,
-     * "The launch-time mock mix").
+     * build, and on a rig build the launch-time adapters', where a mocked system's are its mock's (`docs/testing.md`,
+     * "Launch-time adapters").
      */
     private val real: DevicePorts = DevicePorts(
         clock = lazyOf(SystemClock),
@@ -287,7 +287,7 @@ object SnapSyncRoot {
 
     /**
      * What this launch composes over. `internal` for the rig's contributed hook, which reads the registration and the
-     * files the app actually runs over — a launch mix's, where it mocks them. Not exported to the ObjC header.
+     * files the app actually runs over — an adapter choice's, where it mocks them. Not exported to the ObjC header.
      */
     internal val ports: DevicePorts get() = adapters.ports
 
@@ -332,7 +332,7 @@ object SnapSyncRoot {
     init {
         // The retired join marker's orphaned App-Group key goes on every start — it is what keeps a revert
         // of `join-loads-leave-clears` clean (see [removeOrphanedJoinMarker]). Idempotent, no bookkeeping. On this
-        // launch's preferences — the mix's, where it mocks them.
+        // launch's preferences — the adapter choice's, where it mocks them.
         removeOrphanedJoinMarker(ports.preferences)
     }
 

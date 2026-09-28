@@ -37,14 +37,14 @@ import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Instant
 
 /**
- * **What a mocked system keeps, as text** (`docs/testing.md`, "The launch-time mock mix") — the durable state each mock
- * of a [MockDevice] holds, encoded one system at a time so a process restores only the systems its mix mocks.
+ * **What a mocked system keeps, as text** (`docs/testing.md`, "Launch-time adapters") — the durable state each mock
+ * of a [MockDevice] holds, encoded one system at a time so a process restores only the systems its adapter choice mocks.
  *
  * Durable means what the real system keeps across the app's process — the backend's events, the library's photos, the
  * operating system's queued jobs — and nothing a process holds: registered handlers, open observers, background-time
  * holds (a dead process's never end), a held-open deferred. Those start empty in every process, as on a device.
  *
- * The databases are not here: a persisted mix's databases are FILES ([app.snapsync.mock.DatabasesMock]'s directory),
+ * The databases are not here: a persisted adapter choice's databases are FILES ([app.snapsync.mock.DatabasesMock]'s directory),
  * which persist themselves and are shared across processes as files are.
  */
 object MockState {

@@ -59,7 +59,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `EventRename` | `:domain:services` | `:domain:services` BackendEventRename; `:test:feature` FakeRename | yes |
 | `EventRenamer` | `:domain:feature` | `:domain:feature` NoOpEventRenamer, RenameEvent | no |
 | `EventUnionSource` | `:domain:services` | `:adapter:generic:mock` EmptyUnion, RecordingUnion; `:domain:services` BackendEventUnionSource; `:test:feature` FakeUnion, GateableUnion, RecordingUnion | yes |
-| `ExtensionHost` | `:domain:ports` | `:adapter:ios:ext-safe` ContractRunningExtensionHost, IosExtensionHost; `:test:mix` UncomposedExtensionHost | yes |
+| `ExtensionHost` | `:domain:ports` | `:adapter:ios:ext-safe` ContractRunningExtensionHost, IosExtensionHost; `:test:launch-adapters` UncomposedExtensionHost | yes |
 | `ExtensionRegistration` | `:domain:services` | `:domain:services` OsDrivenRegistration; `:test:architecture` PlatformRegistration; `:test:feature` FakeRegistration | yes |
 | `ExtensionRegistry` | `:domain:ports` | `:adapter:generic:mock` InMemoryExtensionRegistry; `:adapter:ios:app-only` PhotoKitExtensionRegistry, SimulatorExtensionRegistry; `:domain:services` RecordingRegistry | yes |
 | `FetchedJob` | `:domain:services` | `:domain:services` AcknowledgeToDrain, Emit | no |

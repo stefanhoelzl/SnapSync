@@ -116,9 +116,9 @@ POST /device/reset                      void durable sync state
 POST /device/gallery/seed?n=&kind=bulk|policy
 POST /device/gallery/wipe?scope=all|assets|albums[&limit=&offset=]
 POST /device/uploaders?app=&extension= switch one uploader off/on (see below)
-POST /device/mix                        body = the next launch mix; checks it, writes it, EXITS the app
-POST /device/mix/current                the mix this launch runs (and why it was refused, if it was)
-POST /device/mix/clear                  delete the mix and every mocked system's state; EXITS the app
+POST /device/adapters                        body = the next adapter choice; checks it, writes it, EXITS the app
+POST /device/adapters/current                the adapter choice this launch runs (and why it was refused, if it was)
+POST /device/adapters/clear                  delete the adapter choice and every mocked system's state; EXITS the app
 
 GET  /contract                          the contracts registered for THIS host, one name per line
 POST /contract/<name>                   run a port contract in-app; answers its RECORDING (device) or its
@@ -128,7 +128,7 @@ POST /contract/<name>                   run a port contract in-app; answers its 
 There is **no inventory route** for excluded members: asking for one returns **the reason it is excluded**.
 What `GET /device` lists is different — the shared vocabulary both hosts speak — and a verb in it that this
 host cannot honour answers **`409` with the reason**, never `404` and never a success that did nothing. On
-this host an operator lever is honoured only for a system the launch mix mocks (below) and refused, naming the
+this host an operator lever is honoured only for a system the adapter choice mocks (below) and refused, naming the
 real system, otherwise; on a device, the simulator-only upload-job verbs are refused too.
 
 **`/device/state` is the reduced state, not a mirror of it** — `UiState` is `@Serializable` where it is
@@ -379,49 +379,44 @@ protocol; what cleared shows on the screen and in the uploads that follow.
 reset the device is unjoined, so a leave is a no-op rather than a `DELETE` aimed at the backend you are
 leaving behind. There is no coordinator imposing that order now that each command is its own request.
 
-## Mixing mocks into the real app — the launch-time mix
+## Some systems mocked in the real app — launch-time adapters
 
-A rig build can run with **some systems mocked and the rest real**, chosen at launch (`docs/testing.md`, "The
-launch-time mock mix"). The systems: `backend library files databases preferences keychain integrity crash-reporter
-process-info clock wake background-time extension-registry upload-queue upload-session downloads lifecycle links push
-screen system-ui`. The mix file is `rig/mix` in the App Group, one `system=mock|real` per line, a missing one real.
+A rig build can run with **some systems mocked and the rest real**, chosen at launch (`docs/testing.md`, "Launch-time
+adapters"). The systems: `backend library files databases preferences keychain integrity crash-reporter process-info
+clock wake background-time extension-registry upload-queue upload-session downloads lifecycle links push screen
+system-ui`. The adapter choice is the file `rig/adapters` in the App Group: one `system=mock|real` per line, a missing
+one real.
 
 ```bash
-# REAL photos, a MOCKED backend (the shared zone is never touched) — the smallest coherent such mix:
-curl -s -X POST localhost:18099/device/mix --data-binary $'backend=mock
-upload-queue=mock
-upload-session=mock
-downloads=mock
-push=mock
-integrity=mock
-extension-registry=mock
-'
+# REAL photos, a MOCKED backend (the shared zone is never touched) — the smallest coherent such choice:
+curl -s -X POST localhost:18099/device/adapters --data-binary $'backend=mock\nupload-queue=mock\nupload-session=mock\ndownloads=mock\npush=mock\nintegrity=mock\nextension-registry=mock\n'
 # → 200 {"written":…,"exiting":true}  — the app EXITS. Launch it again (simulator: `xcrun simctl launch`;
-#   phone: the `snapsync-device` launch step). Every start of any process reads the mix from then on.
-curl -s localhost:18099/health                  # mix=mocked: backend,…   (or mix=REFUSED …)
-curl -s -X POST localhost:18099/device/mix/current
-curl -s -X POST localhost:18099/device/mix/clear   # back to all real; exits
+#   phone: the `snapsync-device` launch step). Every start of any process reads the choice from then on.
+curl -s localhost:18099/health                        # adapters=mocked: backend,…   (or adapters=REFUSED …)
+curl -s -X POST localhost:18099/device/adapters/current
+curl -s -X POST localhost:18099/device/adapters/clear  # back to all real; exits
 ```
 
 - **Coherence is checked** (`409` with every broken rule): a mocked backend needs mocked transfers, push service and
   Secure Enclave; a mocked library needs mocked uploads; a REAL extension registration keeps every system the
   extension writes real — so mock `extension-registry` with anything shared, and drive the extension with
-  `/os/photokit-ext/processRawValue`. A mix that does not parse is a `400`.
+  `/os/photokit-ext/processRawValue`. A choice that does not parse is a `400`.
 - **Refused while joined** (`409`): leave or `POST /device/reset` first, so no membership is carried into another set
   of systems.
-- **An invalid mix file composes NOTHING** (a script wrote a bad one, or a state file is unreadable): `/health` says
-  `mix=REFUSED …`, every other route answers `409` naming why, the mix verbs still work. Never a fall-back to real.
+- **An invalid adapters file composes NOTHING** (a script wrote a bad one, or a state file is unreadable): `/health`
+  says `adapters=REFUSED …`, every other route answers `409` naming why, the adapter verbs still work. Never a
+  fall-back to real.
 - **Mocked means operator-driven**: nothing a mock plays happens on its own. The levers of the JVM host section below
-  are honoured here for exactly the systems the mix mocks (`GET /device` lists which); `/os` entries go through the
+  are honoured here for exactly the systems the choice mocks (`GET /device` lists which); `/os` entries go through the
   mock where the system is mocked. With `upload-session` mocked the app's own uploader is the operator-driven one:
   run cycles with `/os/photokit-ext/processRawValue`, finish jobs with `device/jobs/complete`.
 - Mock state persists across relaunches (`rig/state/`, `rig/databases/` in the App Group), written by the app.
-- Measured 2026-09-28 on the SE2 (iOS 26.6.2): the mix above over the phone's REAL library — 55 resources (Live
+- Measured 2026-09-28 on the SE2 (iOS 26.6.2): the choice above over the phone's REAL library — 55 resources (Live
   Photo motion included) through the mocked queue into the mocked backend, all still there after a SIGKILL and
-  relaunch; `mix/clear` returned the app to all real. The real extension registration is never touched by a mix that
-  mocks it.
-- On the phone only the verb can write the mix (the App Group is not USB-reachable); on a simulator a script may write
-  it before a launch into the `folder` that `POST /device/mix/current` names (`ios-simulator`).
+  relaunch; `adapters/clear` returned the app to all real. A choice that mocks the extension registration never
+  touches the real one.
+- On the phone only the verb can write the choice (the App Group is not USB-reachable); on a simulator a script may
+  write it before a launch into the `folder` that `POST /device/adapters/current` names (`ios-simulator`).
 
 ## Triggers return what the PLATFORM returns
 
@@ -511,7 +506,7 @@ curl -s localhost:<port>/device            # honoured + refused (reasons) for TH
   recorded, never the composed app. A lever answers at once; what the app makes of it is **observed, not awaited**
   (poll `/device/state`, the backend, the library, `device/os-record`). The download reconcile and the status read are
   the foreground's: `os/app/onForeground`. `/device/gallery` is the library's answer under the person's grant.
-- **The OS is played, its expiry and its record included** (the app host only for what its launch mix mocks —
+- **The OS is played, its expiry and its record included** (the app host only for what its adapter choice mocks —
   `onExpiry` needs `background-time` mocked):
   - `os/app/onExpiry` — time is up for every held completion handler and background-time hold; `?arg=next` hands the
     next handler over already expired. Hold a receipted entry open (a second request) and expire it.
@@ -521,7 +516,7 @@ curl -s localhost:<port>/device            # honoured + refused (reasons) for TH
     `databasesOpened`, `stagedFiles`. A receipted `/os` answer carries it as read at the release (`osAtRelease`).
   - `device/relaunch?scene=false` — a cold background launch: no screen is built. Read only `device/os-record`
     until an `os/app/onForeground`: `/device/state` and `/user` read the screen and would assemble it.
-- The **operator levers** (on the app host, only for the systems its launch mix mocks): `device/jobs` (live keys), `device/jobs/complete[?key=]` (the "OS"
+- The **operator levers** (on the app host, only for the systems its adapter choice mocks): `device/jobs` (live keys), `device/jobs/complete[?key=]` (the "OS"
   finishes a transfer — its bytes cross to the backend's byte route), `device/jobs/fail?key=&error=`, `device/jobs/limit?n=`,
   `device/backend/objects[?device=]`, `device/backend/offline?on=`, `device/permission?status=`,
   `device/import/fail-next`, `device/membership/unreadable?on=`,

@@ -54,9 +54,9 @@ import platform.Foundation.NSUserActivityTypeBrowsingWeb
  * answers the same [platformAdapters] with the production set — and adds the `:test:rig` dependency, ONLY under
  * `-Psnapsync.rig=true`. A production build contains none of it: not a stub, not an inert branch, not a flag.
  *
- * The set differs from production in the launch-time mix (`docs/testing.md`, "The launch-time mock mix"): the ports the
- * app composes over are [real] with every system the mix file mocks swapped for its mock ([rigLaunch], which reads it),
- * and a mix the process refuses composes nothing. Besides, the UI is decorated ([RigUi] — the channel's `/user` verbs
+ * The set differs from production in the launch-time adapters (`docs/testing.md`, "Launch-time adapters"): the ports the
+ * app composes over are [real] with every system the adapters file mocks swapped for its mock ([rigLaunch], which reads it),
+ * and an adapter choice the process refuses composes nothing. Besides, the UI is decorated ([RigUi] — the channel's `/user` verbs
  * reach the core as the intents a tap produces, through the same handlers) and the development controls are the
  * channel's ([RigDevControls] — the uploader switch, invite-link hints honoured, the reset). The `/os` verbs deliver
  * through the platform's own adapters ([IosEntryDriver]) — or a mocked system's operator face.
@@ -146,7 +146,7 @@ private fun iosHooks(launch: RigLaunch) = RigHooks(
         handleReport = SnapSyncRoot.process.processAccount::handle,
     ),
     readGallery = galleryReader(launch, core = { SnapSyncRoot.app }),
-    // The registration the app runs over — the mix's, where it mocks it.
+    // The registration the app runs over — the adapter choice's, where it mocks it.
     osExtensionEnabled = osExtensionEnabled(registry = { SnapSyncRoot.ports.extensionRegistry }),
     // The path decision (and its `null` case) lives in `:test:rig`; this side supplies only the write,
     // which has no branch to make. `Documents/` rather than the App Group deliberately: a simulator host
@@ -163,7 +163,7 @@ private fun iosHooks(launch: RigLaunch) = RigHooks(
     refusals = iosRefusals(launch),
     recordLanded = ::recordLanded,
     osRecord = osRecord(launch),
-    mix = launch.description,
+    adapters = launch.description,
     uncomposed = launch.uncomposed,
 )
 

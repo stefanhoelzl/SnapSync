@@ -22,7 +22,7 @@ import app.snapsync.ports.Backend
  * silent success on an idle mock the app is not listening to.
  *
  * The JVM host runs over every mock (the backend aside, when it serves the real `api/`); the app host over the systems
- * its launch mix mocks (`docs/testing.md`, "The launch-time mock mix") — none, for an ordinary rig build.
+ * its adapter choice mocks (`docs/testing.md`, "Launch-time adapters") — none, for an ordinary rig build.
  */
 class MockWorld(
     val device: MockDevice,
@@ -55,7 +55,7 @@ class MockWorld(
         null
     } else {
         "${system.what} is REAL on this host, so there is no mock of it for this lever to move — mock `${system.key}` " +
-            "(POST /device/mix on the app host) and relaunch"
+            "(POST /device/adapters on the app host) and relaunch"
     }
 }
 

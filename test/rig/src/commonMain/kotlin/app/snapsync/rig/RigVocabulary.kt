@@ -28,7 +28,7 @@ object RigVocabulary {
      * What only an operating system that is PLAYED can deliver: its expiry — every completion handler it holds and every
      * background-time hold told their time is up (`os/app/onExpiry`; `?arg=next` hands the next handler over already
      * expired). A real operating system's expiry is its own, so a host honours it only where the background-time holds
-     * are mocked — always on the JVM host, and on the app host when its launch mix mocks them.
+     * are mocked — always on the JVM host, and on the app host when its adapter choice mocks them.
      */
     val playedOsEntries: List<String> = listOf("os/app/onExpiry")
 
@@ -50,8 +50,8 @@ object RigVocabulary {
      * The operator levers over the mocked systems (`docs/testing.md`'s inspector set) — what only a host whose
      * backend, OS and other members are mocked can pull. Named for what they do, not for the host, so a test that pulls
      * one does not name its host. Each is honoured wherever the systems it moves are mocks (`MockLevers.kt`): always on
-     * the JVM host, and on the app host for the systems its launch mix mocks (`docs/testing.md`, "The launch-time mock
-     * mix") — refused, naming the real system, everywhere else.
+     * the JVM host, and on the app host for the systems its adapter choice mocks (`docs/testing.md`, "Launch-time
+     * adapters") — refused, naming the real system, everywhere else.
      */
     val worldLevers: List<String> = listOf(
         "device/backend/offline",
@@ -115,17 +115,17 @@ object RigVocabulary {
     val deviceFacts: List<String> = listOf("device/staging", "device/album/contents")
 
     /**
-     * The launch-time mix (`docs/testing.md`, "The launch-time mock mix"): read the one this launch runs
-     * (`device/mix/current`), write the next one and exit (`device/mix`), or delete it with every mocked system's state
-     * and exit (`device/mix/clear`). The app host's alone: the JVM root's caller chooses real or mock per port as it
+     * The launch-time adapters (`docs/testing.md`, "Launch-time adapters"): read the choice this launch runs
+     * (`device/adapters/current`), write the next one and exit (`device/adapters`), or delete it with every mocked system's state
+     * and exit (`device/adapters/clear`). The app host's alone: the JVM root's caller chooses real or mock per port as it
      * composes.
      */
-    val mixCommands: List<String> = listOf("device/mix", "device/mix/current", "device/mix/clear")
+    val adapterCommands: List<String> = listOf("device/adapters", "device/adapters/current", "device/adapters/clear")
 
-    /** Why the JVM host refuses every [mixCommands] entry. */
-    val mixRefusals: Map<String, String> = mixCommands.associateWith {
+    /** Why the JVM host refuses every [adapterCommands] entry. */
+    val adapterRefusals: Map<String, String> = adapterCommands.associateWith {
         "the JVM root's caller chooses real or mock per port when it composes the app (JvmApp), so there is no launch " +
-            "mix to read or write; the app host's rig build reads one at every start"
+            "adapter choice to read or write; the app host's rig build reads one at every start"
     }
 
     /** The port-contract verb (`GET /contract`, `POST /contract/<name>`). */
@@ -133,7 +133,7 @@ object RigVocabulary {
 
     val entries: Set<String> =
         (appEntries + playedOsEntries + extensionEntries + reads + sharedCommands + appHostCommands + worldLevers + deviceFacts +
-            mixCommands + CONTRACT)
+            adapterCommands + CONTRACT)
             .toSet()
 
 }

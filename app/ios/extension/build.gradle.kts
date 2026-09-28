@@ -55,10 +55,10 @@ kotlin {
             // platform-free technology impls (:adapter:generic:app — the Ktor clients).
             implementation(project(":adapter:generic:app"))
             implementation(project(":adapter:ios:ext-safe"))
-            // The rig's extension hook reads the launch-time mix and composes its mocks (`docs/testing.md`, "The
-            // launch-time mock mix") — only under the same switch as its source directory, never in a shipped
+            // The rig's extension hook reads the launch-time adapters and composes its mocks (`docs/testing.md`, "The
+            // launch-time adapters") — only under the same switch as its source directory, never in a shipped
             // extension (`MockContainmentTest`).
-            if (rigEnabled) implementation(project(":test:mix"))
+            if (rigEnabled) implementation(project(":test:launch-adapters"))
             // The storage services the root builds over the thin storage adapters (`docs/architecture.md`).
             implementation(project(":domain:services"))
             // The event-notify sender (capability `receiving-photos`): a bodyless POST to

@@ -8,7 +8,7 @@ import java.io.File
 // driver does.
 internal actual fun newInMemoryDriver(): SqlDriver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
 
-// A file under [directory]: the persisted mock's databases (`mix/`).
+// A file under [directory]: the persisted mock's databases (`:test:launch-adapters`).
 internal actual fun newFileDriver(directory: String, name: String): SqlDriver {
     File(directory).mkdirs()
     return JdbcSqliteDriver("jdbc:sqlite:${File(directory, name).path}")
