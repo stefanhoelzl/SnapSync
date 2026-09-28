@@ -416,6 +416,10 @@ curl -s -X POST localhost:18099/device/mix/clear   # back to all real; exits
   mock where the system is mocked. With `upload-session` mocked the app's own uploader is the operator-driven one:
   run cycles with `/os/photokit-ext/processRawValue`, finish jobs with `device/jobs/complete`.
 - Mock state persists across relaunches (`rig/state/`, `rig/databases/` in the App Group), written by the app.
+- Measured 2026-09-28 on the SE2 (iOS 26.6.2): the mix above over the phone's REAL library — 55 resources (Live
+  Photo motion included) through the mocked queue into the mocked backend, all still there after a SIGKILL and
+  relaunch; `mix/clear` returned the app to all real. The real extension registration is never touched by a mix that
+  mocks it.
 - On the phone only the verb can write the mix (the App Group is not USB-reachable); on a simulator a script may write
   it before a launch into the `folder` that `POST /device/mix/current` names (`ios-simulator`).
 
