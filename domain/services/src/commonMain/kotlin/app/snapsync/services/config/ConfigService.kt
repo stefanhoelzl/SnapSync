@@ -10,6 +10,7 @@ import app.snapsync.model.encodeConfigFile
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.DeletesAt
 import app.snapsync.model.confirmedGone
+import app.snapsync.model.hasEnded
 import app.snapsync.model.instantToCutoff
 import app.snapsync.ports.Clock
 import app.snapsync.ports.Files
@@ -121,6 +122,12 @@ class ConfigService(
      * OFFLINE witness — see [confirmedGone] for why it is exact, and why a `null` deadline is never reached.
      */
     fun isPastDeletion(deletesAt: DeletesAt?): Boolean = confirmedGone(deletesAt, instantToCutoff(clock.now()))
+
+    /**
+     * Has [config]'s event range ended (capability `event-lifetime`)? Read on the same clock as [isPastDeletion]; an
+     * end not yet learned has not passed — see [hasEnded].
+     */
+    fun hasEnded(config: EventConfig): Boolean = config.hasEnded(instantToCutoff(clock.now()))
 
     /** `null` for both *absent* and *unreadable* — acceptable for the UI-facing [config], never for the reconciler. */
     private fun ConfigRead.joinedOrNull(): EventConfig? = (this as? ConfigRead.Joined)?.config

@@ -26,6 +26,8 @@ import app.snapsync.ports.Upload
 import app.snapsync.services.upload.UploadTransferService
 import app.snapsync.services.gallery.UploadDiscovery
 import app.snapsync.model.ConfigRead
+import app.snapsync.model.hasEnded
+import app.snapsync.model.instantToCutoff
 import app.snapsync.services.config.ConfigService
 import app.snapsync.model.DeviceIdentityAbsent
 import app.snapsync.services.manifest.DeviceManifestService
@@ -215,6 +217,10 @@ fun uploadCore(scope: CoroutineScope, process: ProcessServices, ports: UploadPor
                 // Read by the gate BEFORE the membership, so every change the rows or the policy miss
                 // carries a higher version (capability `photo-sharing`).
                 manifestVersion = manifestVersion,
+                // Settled once the event's range has ended: the discovery this hook follows ran just now, after the
+                // end, so every in-range photo is declared (capability `photo-sharing`). One fresh read, like the gate.
+                settled = (ports.config.read() as? ConfigRead.Joined)?.config
+                    ?.hasEnded(instantToCutoff(process.clock.now())) == true,
             )
         },
         // The cycle applies the membership's opt-in (it arrived with the gate).

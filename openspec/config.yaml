@@ -102,11 +102,15 @@ context: |
   lets joined users easily share the photos they take during an event. Events are
   short-lived — days/weeks: celebrations, holidays, trips — with a host-declared
   date range (creator-chosen start AND end, at most 30 days apart). The end is the
-  capture-date ceiling ONLY: it bounds which photos may be uploaded and closes
-  nothing, so a guest who scans days late still joins and contributes their
-  in-window photos. How long the event LIVES is a separate, stamped lifetime
-  (30 days from max(createdAt, startsAt)); the nightly sweep deletes it then, or
-  sooner once every member has left, and that IS how an event ends. A member
+  capture-date ceiling: it bounds which photos may be uploaded and does not by
+  itself close the event, so a guest who scans days late still joins and
+  contributes their in-window photos — until the event CLOSES. After the end
+  each member's device settles its share; once every member has, or 3 days
+  after the later of the end and the last photo's arrival, the event closes
+  (nobody joins, nothing changes), each member leaves on its own once it has
+  everything, and the nightly sweep then deletes the photos (decision record:
+  changes/early-event-completion). The stamped lifetime (30 days from
+  max(createdAt, startsAt)) stays the latest an event can live. A member
   shares photos taken within a chosen sub-range of the event window. Photos sync directly
   between device galleries: members never care how photos arrive, they just look
   at their own gallery. No accounts — a device UUID plus platform attestation is

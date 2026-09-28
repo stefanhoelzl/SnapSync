@@ -52,6 +52,10 @@ const val FOREIGN_TOKEN = "foreign.0.not-a-signature-this-edge-issued"
 const val SEEDED_STARTS_AT = "2030-01-01T00:00:00Z"
 const val SEEDED_ENDS_AT = "2030-01-08T00:00:00Z"
 
+/** The range of an event whose range has already ENDED (capability `event-lifetime`) — a back-dated event. */
+const val SEEDED_ENDED_STARTS_AT = "2026-01-01T00:00:00Z"
+const val SEEDED_ENDED_ENDS_AT = "2026-01-05T00:00:00Z"
+
 /**
  * What the app declares about itself in a clause's state: the build version (the HTTP adapter's constructor value)
  * and the token the clause passes to the port's gated routes.
@@ -97,7 +101,9 @@ class EdgeSubject<P>(
 /** How a binding enters backend states: through the backend's public surface, whatever that backend is. */
 interface BackendSetup {
     fun freshId(): String
-    suspend fun createEvent(name: String): CreatedEvent
+
+    /** Create an event — one whose range has already [ended] when asked (capability `event-lifetime`). */
+    suspend fun createEvent(name: String, ended: Boolean = false): CreatedEvent
     suspend fun join(eventId: String, deviceId: String)
 
     /** Joins fresh devices until the backend answers `409` — capacity without restating the backend's configured one. */
@@ -122,11 +128,11 @@ class EdgeSetup(private val client: HttpClient, base: String) : BackendSetup {
     @OptIn(ExperimentalUuidApi::class)
     override fun freshId(): String = Uuid.random().toString()
 
-    override suspend fun createEvent(name: String): CreatedEvent {
+    override suspend fun createEvent(name: String, ended: Boolean): CreatedEvent {
         val body = buildJsonObject {
             put("name", JsonPrimitive(name))
-            put("startsAt", JsonPrimitive(SEEDED_STARTS_AT))
-            put("endsAt", JsonPrimitive(SEEDED_ENDS_AT))
+            put("startsAt", JsonPrimitive(if (ended) SEEDED_ENDED_STARTS_AT else SEEDED_STARTS_AT))
+            put("endsAt", JsonPrimitive(if (ended) SEEDED_ENDED_ENDS_AT else SEEDED_ENDS_AT))
         }
         val response = client.post("$base/events") {
             header(APP_VERSION_HEADER, SERVED_APP_VERSION)

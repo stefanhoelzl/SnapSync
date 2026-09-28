@@ -6,6 +6,7 @@ import app.snapsync.model.AssetId
 import app.snapsync.model.CreateEventRequest
 import app.snapsync.model.DeviceFile
 import app.snapsync.model.DeviceManifest
+import app.snapsync.model.MemberCounts
 import app.snapsync.model.MintRequest
 import app.snapsync.model.RenewRequest
 import app.snapsync.model.Reply
@@ -172,6 +173,25 @@ class HttpBackendTest {
         assertEquals("s", value.startsAt)
         assertNull(value.deletesAt, "absent is absent — whether that is usable is the reader's decision")
         assertEquals("GET /api/v2/events/E", "${sent[0].method} ${sent[0].path}")
+    }
+
+    @Test
+    fun the_event_read_carries_its_completion_state_and_member_counts() = runTest {
+        val closed = (
+            backend(body = """{"name":"N","closedAt":"c","completedAt":null,"members":{"active":5,"final":3}}""")
+                .getEvent("E") as Reply.Ok
+            ).value
+        assertEquals("c", closed.closedAt)
+        assertNull(closed.completedAt)
+        assertEquals(MemberCounts(active = 5, settled = 3), closed.members)
+        // A backend predating completion sends none of it; a malformed count object is no counts, never a guess.
+        val older = (backend(body = """{"name":"N"}""").getEvent("E") as Reply.Ok).value
+        assertNull(older.closedAt)
+        assertNull(older.members)
+        val partial = (backend(body = """{"name":"N","members":{"active":5}}""").getEvent("E") as Reply.Ok).value
+        assertNull(partial.members)
+        val wrongShape = (backend(body = """{"name":"N","members":{"active":"x","final":1}}""").getEvent("E") as Reply.Ok).value
+        assertNull(wrongShape.members)
     }
 
     @Test

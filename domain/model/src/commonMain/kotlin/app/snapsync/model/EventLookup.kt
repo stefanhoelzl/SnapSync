@@ -38,6 +38,11 @@ sealed interface EventLookup {
         val startsAt: EventStart,
         val endsAt: EventEnd,
         val deletesAt: DeletesAt,
+        /**
+         * The event's completion state (capability `event-lifetime`) — see [EventCompletionState]. Defaults to
+         * open: a backend predating it never closes an event.
+         */
+        val completion: EventCompletionState = EventCompletionState.OPEN,
     ) : EventLookup
     data object NotFound : EventLookup
     data object Failed : EventLookup

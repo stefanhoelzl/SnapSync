@@ -9,6 +9,7 @@ import app.snapsync.model.DeviceManifest
 import app.snapsync.model.EventCreated
 import app.snapsync.model.EventMeta
 import app.snapsync.model.EventRenamed
+import app.snapsync.model.MemberCounts
 import app.snapsync.model.MintRequest
 import app.snapsync.model.RenewRequest
 import app.snapsync.model.Reply
@@ -38,6 +39,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
 
 private val httpLog = Logger.withTag("Http")
 
@@ -127,6 +129,13 @@ class HttpBackend(
                 startsAt = meta.optional("startsAt"),
                 endsAt = meta.optional("endsAt"),
                 deletesAt = meta.optional("deletesAt"),
+                closedAt = meta.optional("closedAt"),
+                completedAt = meta.optional("completedAt"),
+                members = (meta["members"] as? JsonObject)?.let { m ->
+                    val active = (m["active"] as? JsonPrimitive)?.intOrNull
+                    val final = (m["final"] as? JsonPrimitive)?.intOrNull
+                    if (active != null && final != null) MemberCounts(active, final) else null
+                },
             )
         }
 

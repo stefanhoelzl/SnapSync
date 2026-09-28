@@ -89,6 +89,7 @@ object RigVocabulary {
         "device/backend/sweep",
         "device/backend/hold",
         "device/backend/next-event-id",
+        "device/backend/complete",
         "device/backend/fail-listing",
         "device/backend/deposit",
         "device/backend/legacy-event",

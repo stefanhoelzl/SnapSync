@@ -15,9 +15,9 @@ import app.snapsync.model.JoinResult
 class JoinSeamsTest {
 
     @Test
-    fun a_join_has_exactly_four_answers() {
+    fun a_join_has_exactly_five_answers() {
         assertEquals(
-            listOf("JOINED", "EVENT_FULL", "EVENT_NOT_FOUND", "FAILED"),
+            listOf("JOINED", "EVENT_FULL", "EVENT_CLOSED", "EVENT_NOT_FOUND", "FAILED"),
             JoinResult.entries.map { it.name },
             "the join surface renders one screen per answer; adding one silently leaves it unrendered",
         )

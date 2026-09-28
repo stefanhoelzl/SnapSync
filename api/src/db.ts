@@ -90,6 +90,16 @@ export type EventRow = {
   endsAt: string;
   capacity: number;
   lifetimeSeconds: number;
+  /**
+   * When the event CLOSED (capability `event-lifetime`): no join, no rename, no change to a member's
+   * asset set from then on. Final — nothing clears it. Absent/null on a row that never closed, and on
+   * every row a caller builds before inserting (the columns are written only by the transitions below).
+   */
+  closedAt?: string | null;
+  /** When the sweep COMPLETED the event: memberships and assets gone, the row kept until the deadline. */
+  completedAt?: string | null;
+  /** The last time a byte landing completed an asset of this event — the clock's second anchor. */
+  lastLandedAt?: string | null;
 };
 
 function toEventRow(r: Row): EventRow {
@@ -101,6 +111,9 @@ function toEventRow(r: Row): EventRow {
     endsAt: String(r.ends_at),
     capacity: Number(r.capacity),
     lifetimeSeconds: Number(r.lifetime_seconds),
+    closedAt: r.closed_at == null ? null : String(r.closed_at),
+    completedAt: r.completed_at == null ? null : String(r.completed_at),
+    lastLandedAt: r.last_landed_at == null ? null : String(r.last_landed_at),
   };
 }
 
@@ -149,11 +162,13 @@ export type MembershipState = "active" | "departed";
  * overshoot: measured, ten devices racing for three slots enrolled TEN under read-then-write and exactly
  * THREE here, in 158 ms (`PROBE-FINDINGS.md` §4.4).
  *
- * ⚠️ `rowsAffected === 0` CONFLATES TWO ANSWERS — at capacity (`409`) and no such event (`404`) — because
- * the capacity subquery yields NULL for a missing event and the `WHERE` is then false. Callers MUST
- * disambiguate with `readEvent` rather than pick one; see `enroll`.
+ * ⚠️ `rowsAffected === 0` CONFLATES THREE ANSWERS — at capacity (`409`), closed (`410`) and no such event
+ * (`404`) — because the existence test also requires the event to be open and the capacity subquery yields
+ * NULL for a missing event. Callers MUST disambiguate with `readEvent` rather than pick one; see `enroll`.
+ * A CLOSED event admits nobody, a returning device included (capability `event-lifetime`).
  *
- * A (re)join CLEARS `manifest_version` — the one column the join writes that the manifest publish owns, and
+ * A (re)join CLEARS `manifest_version` and `final`. `final` because a rejoined device has settled nothing
+ * yet for its new membership. `manifest_version` — the one column the join writes that the manifest publish owns, and
  * the named one-writer exception in `database`. A join starts a new sequence of manifests: the device's
  * version counter lives in its local ledger database while its identity (a Keychain item) outlives that
  * database, so a re-joined device whose counter restarted would otherwise have every publish refused as
@@ -163,16 +178,19 @@ export type MembershipState = "active" | "departed";
 const ENROLL = `
   INSERT INTO memberships (event_id, device_id, state, joined_at)
   SELECT ?, ?, 'active', ?
-  WHERE EXISTS (SELECT 1 FROM events WHERE id = ?)
+  WHERE EXISTS (SELECT 1 FROM events WHERE id = ? AND closed_at IS NULL)
     AND (
       EXISTS (SELECT 1 FROM memberships WHERE event_id = ? AND device_id = ?)
       OR (SELECT COUNT(*) FROM memberships WHERE event_id = ?)
          < (SELECT capacity FROM events WHERE id = ?)
     )
-  ON CONFLICT (event_id, device_id) DO UPDATE SET state = 'active', manifest_version = NULL`;
+  ON CONFLICT (event_id, device_id) DO UPDATE SET state = 'active', manifest_version = NULL, final = NULL`;
 
-/** What an enrollment attempt resolved to — the three answers a route must tell apart. */
-export type EnrollOutcome = "enrolled" | "full" | "no-such-event";
+/**
+ * What an enrollment attempt resolved to — the four answers a route must tell apart. `closed` covers a
+ * completed event too: its row carries `closed_at` (capability `event-lifetime`).
+ */
+export type EnrollOutcome = "enrolled" | "full" | "closed" | "no-such-event";
 
 /**
  * Enroll (or re-enroll) a device, exactly. Absence is never silent here: a zero-row outcome is resolved
@@ -195,7 +213,9 @@ export async function enroll(
     eventId,
   ]);
   if (rowsAffected > 0) return "enrolled";
-  return (await readEvent(db, eventId)) === null ? "no-such-event" : "full";
+  const event = await readEvent(db, eventId);
+  if (event === null) return "no-such-event";
+  return event.closedAt ? "closed" : "full";
 }
 
 /**
@@ -284,7 +304,19 @@ export function publishStatements(
   eventId: string,
   deviceId: string,
   assets: ManifestAssetEntry[],
-  opts: { legacy: true } | { legacy: false; version: number | null },
+  opts:
+    | { legacy: true }
+    | {
+      legacy: false;
+      version: number | null;
+      /** The device declares its asset set settled (capability `photo-sharing`). */
+      final?: boolean;
+      /**
+       * Set only once the event's range has ended: the instant a publish that leaves every active
+       * membership final stamps as the event's close. `null` → the publish cannot close the event.
+       */
+      closeAt?: string | null;
+    },
 ): Statement[] {
   const out: Statement[] = [];
   // The v2 gate appended to every statement after the first; empty for v1 and for a versionless publish.
@@ -310,6 +342,13 @@ export function publishStatements(
     gate = ` AND EXISTS (SELECT 1 FROM memberships
                          WHERE event_id = ? AND device_id = ? AND manifest_version = ?)`;
     gateArgs = [eventId, deviceId, opts.version];
+  }
+  if (!opts.legacy) {
+    // A CLOSED event's asset sets are fixed (capability `photo-sharing`). The route refuses a changed set
+    // before it gets here; this gate closes the race with a close stamped between that check and this
+    // batch, so no statement below can rewrite a closed event's assets.
+    gate += ` AND NOT EXISTS (SELECT 1 FROM events WHERE id = ? AND closed_at IS NOT NULL)`;
+    gateArgs = [...gateArgs, eventId];
   }
   out.push({
     sql: `DELETE FROM event_assets WHERE event_id = ? AND device_id = ?${gate}`,
@@ -346,7 +385,70 @@ export function publishStatements(
       });
     }
   }
+  if (!opts.legacy) {
+    // The device's own declaration, gated like the asset set so a refused (older) publish cannot flip it.
+    out.push({
+      sql: `UPDATE memberships SET final = ? WHERE event_id = ? AND device_id = ?${gate}`,
+      args: [opts.final ? 1 : 0, eventId, deviceId, ...gateArgs],
+    });
+    // LAST, so it sees this publish's flag: the publish that leaves every ACTIVE membership final closes
+    // the event. Its count is the route's "just closed" verdict — it fires the one close wake. An event
+    // with no active membership is not closed here; the sweep completes it instead.
+    if (opts.closeAt) {
+      out.push({
+        sql: `UPDATE events SET closed_at = ?
+               WHERE id = ? AND closed_at IS NULL
+                 AND EXISTS (SELECT 1 FROM memberships WHERE event_id = ? AND state = 'active')
+                 AND NOT EXISTS (SELECT 1 FROM memberships
+                                  WHERE event_id = ? AND state = 'active' AND COALESCE(final, 0) = 0)`,
+        args: [opts.closeAt, eventId, eventId, eventId],
+      });
+    }
+  }
   return out;
+}
+
+/**
+ * The asset set a membership currently declares, as `assetId → sorted roles` — what a publish to a CLOSED
+ * event is compared against: an identical set is a harmless no-op, a different one is refused (capability
+ * `photo-sharing`, "What a member shares is fixed once the event has closed").
+ */
+export async function declaredAssets(
+  db: Db,
+  eventId: string,
+  deviceId: string,
+): Promise<Map<string, string>> {
+  const { rows } = await db.execute(
+    `SELECT asset_id, roles FROM event_assets WHERE event_id = ? AND device_id = ?`,
+    [eventId, deviceId],
+  );
+  return new Map(
+    rows.map((
+      r,
+    ) => [String(r.asset_id), (JSON.parse(String(r.roles)) as string[]).sort().join(",")]),
+  );
+}
+
+/** Stamp the clock's landing anchor on every event a byte landing completed an asset of. */
+export async function stampLanded(db: Db, eventIds: readonly string[], at: string): Promise<void> {
+  if (eventIds.length === 0) return;
+  await db.execute(
+    `UPDATE events SET last_landed_at = ? WHERE id IN (${eventIds.map(() => "?").join(", ")})`,
+    [at, ...eventIds],
+  );
+}
+
+/** An event's active membership counts — `final` of `active` (capability `sync-status`, the waiting line). */
+export async function memberCounts(
+  db: Db,
+  eventId: string,
+): Promise<{ active: number; final: number }> {
+  const { rows } = await db.execute(
+    `SELECT COUNT(*) AS active, COALESCE(SUM(COALESCE(final, 0)), 0) AS final
+       FROM memberships WHERE event_id = ? AND state = 'active'`,
+    [eventId],
+  );
+  return { active: Number(rows[0].active), final: Number(rows[0].final) };
 }
 
 /**
@@ -752,6 +854,22 @@ export async function eventsWithCounts(
  */
 export async function deleteEvent(db: Db, eventId: string): Promise<void> {
   await db.execute(`DELETE FROM events WHERE id = ?`, [eventId]);
+}
+
+/**
+ * COMPLETE one event (capability `event-lifetime`): close it if it had not closed, stamp it completed,
+ * and delete every membership — the cascade takes their assets, and the asset phase then collects the
+ * bytes exactly as for a deleted event. The ROW stays, name and range included, until the deadline drops
+ * it, so a device still joined is told "completed" rather than a "not found" it would disbelieve.
+ */
+export async function completeEvent(tx: Db, eventId: string, at: string): Promise<void> {
+  // Two statements, not a batch: the sweep calls this INSIDE its interactive transaction (which already
+  // makes the pair atomic), and a batch there would try to open a second one.
+  await tx.execute(
+    `UPDATE events SET closed_at = COALESCE(closed_at, ?), completed_at = ? WHERE id = ?`,
+    [at, at, eventId],
+  );
+  await tx.execute(`DELETE FROM memberships WHERE event_id = ?`, [eventId]);
 }
 
 /**

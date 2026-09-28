@@ -2,6 +2,7 @@ package app.snapsync.services.backend
 
 import app.snapsync.model.CaptureDate
 import app.snapsync.model.DeletesAt
+import app.snapsync.model.EventCompletionState
 import app.snapsync.model.EventEnd
 import app.snapsync.model.EventLookup
 import app.snapsync.model.EventStart
@@ -53,6 +54,12 @@ class BackendEventDirectory(private val backend: AuthenticatedBackend) : EventDi
                     startsAt = EventStart(startsAt),
                     endsAt = EventEnd(endsAt),
                     deletesAt = DeletesAt(deletesAt),
+                    // Presence is the fact (capability `event-lifetime`); the instants are the backend's record.
+                    completion = EventCompletionState(
+                        closed = meta.closedAt != null || meta.completedAt != null,
+                        completed = meta.completedAt != null,
+                        members = meta.members,
+                    ),
                 )
             } else {
                 EventLookup.Failed

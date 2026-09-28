@@ -386,7 +386,14 @@ private class QueueDto(
 }
 
 @Serializable
-private class EventDto(val name: String, val createdAtMillis: Long, val startsAtMillis: Long?, val endsAtMillis: Long?)
+private class EventDto(
+    val name: String,
+    val createdAtMillis: Long,
+    val startsAtMillis: Long?,
+    val endsAtMillis: Long?,
+    val closed: Boolean = false,
+    val completed: Boolean = false,
+)
 
 @Serializable
 private class MembershipDto(
@@ -450,6 +457,8 @@ private class BackendDto(
                 Instant.fromEpochMilliseconds(e.createdAtMillis),
                 e.startsAtMillis?.let(Instant::fromEpochMilliseconds),
                 e.endsAtMillis?.let(Instant::fromEpochMilliseconds),
+                e.closed,
+                e.completed,
             )
         }
         memberships.forEach {
@@ -469,7 +478,14 @@ private class BackendDto(
         fun of(state: BackendState) = BackendDto(
             storedFiles = state.storedFiles.mapValues { (_, files) -> files.map { StoredFileDto(it.assetId.value, it.role.wire, it.filename) } },
             events = state.events.mapValues { (_, e) ->
-                EventDto(e.name, e.createdAt.toEpochMilliseconds(), e.startsAt?.toEpochMilliseconds(), e.endsAt?.toEpochMilliseconds())
+                EventDto(
+                    e.name,
+                    e.createdAt.toEpochMilliseconds(),
+                    e.startsAt?.toEpochMilliseconds(),
+                    e.endsAt?.toEpochMilliseconds(),
+                    e.closed,
+                    e.completed,
+                )
             },
             memberships = state.memberships.map { (key, m) ->
                 MembershipDto(key.first, key.second, m.departed, m.manifest?.encodeToJson(), m.manifestVersion)

@@ -128,7 +128,9 @@ class BackendServicesTest {
     @Test
     fun leaving_is_best_effort_and_never_throws() = runTest {
         assertTrue(servicesAnswering(Reply.Ok(Unit)).leave.notifyLeaving("E").isSuccess)
-        assertTrue(servicesAnswering(Reply.Refused(404, "")).leave.notifyLeaving("E").isFailure)
+        // An event the backend no longer holds has nothing left to leave: done, so a recorded leave stops retrying.
+        assertTrue(servicesAnswering(Reply.Refused(404, "")).leave.notifyLeaving("E").isSuccess)
+        assertTrue(servicesAnswering(Reply.Refused(502, "")).leave.notifyLeaving("E").isFailure)
         assertTrue(servicesAnswering(offline).leave.notifyLeaving("E").isFailure)
     }
 

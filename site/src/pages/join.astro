@@ -189,7 +189,14 @@ import AppStoreButton from "../components/AppStoreButton.astro";
           return;
         }
         if (!markerRes.ok) throw new Error("marker " + markerRes.status);
-        name = (await markerRes.json()).name;
+        const marker = await markerRes.json();
+        // A finished event keeps its record until its deletion date, but its photos are gone: the link is
+        // expired (capability `event-site`).
+        if (marker.completedAt) {
+          showInvalid();
+          return;
+        }
+        name = marker.name;
         const unionRes = await fetch("/api/v1/events/" + eventId + "/files");
         if (!unionRes.ok) throw new Error("union " + unionRes.status);
         union = await unionRes.json();

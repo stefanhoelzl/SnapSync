@@ -221,6 +221,14 @@ class CompositionSeamTest {
             "deferred construction: a cold background wake builds no more of the graph than it reaches",
         "AppTail.mayCreate" to "this core's own app admission (AppCore.appMayCreate), read fresh at each completion",
         "AppTail.refreshCounts" to "this core's own ledger-counts refresh (AppCore.ledgerCounts.refresh)",
+        "AppTail.finish" to
+            "this core's own EventCompletion.finish — the end-of-wake step, run after the tail rather than inside it",
+        "WakeHold.finish" to "AppTail.finish, forwarded to each wake's hold — the same end-of-wake step",
+        "EventCompletion.publishFinal" to
+            "the sibling uploader's walkAndPublish (its discovery and publish are ports) — feature-blindness",
+        "EventCompletion.everythingReceived" to
+            "the sibling DownloadController.everythingReceived (its union read is the EventUnionSource service) — " +
+            "feature-blindness",
         "SelectionScopedDiscovery.selectionScope" to "UploadPorts.selectionScope, forwarded — a pure core read",
         "JoinedMembership.policy" to "the membership's ONE selection-policy derivation, built by the entry gate",
         "UploadCycle.readGate" to "uploadCore's own entry-gate translation over the ports (readGate in UploadCore.kt)",

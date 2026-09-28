@@ -43,6 +43,7 @@ class LiveEdgeContractsTest {
             BackendState.DEVICE_UPLOADED,
             BackendState.VERSION_REFUSED,
             BackendState.FOREIGN_TOKEN,
+            BackendState.ENDED_MEMBER,
         )
 
         override fun create(state: BackendState, clauseId: String): Entered<EdgeSubject<Backend>> =

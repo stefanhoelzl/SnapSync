@@ -83,6 +83,9 @@ enum class JoinCommit {
     /** The event is at capacity; no retry can change that. */
     Full,
 
+    /** The event has closed (capability `event-lifetime`); no retry can change that either. */
+    Closed,
+
     /** The commit did not land, for a reason that may not hold next time. */
     Failed,
 }

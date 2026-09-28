@@ -133,6 +133,24 @@ class DownloadController(
     private val importing = mutableSetOf<AssetRef>()
 
     /**
+     * Whether this device holds every photo of the others it receives (capability `manage-membership`, "The app leaves
+     * on its own once the event is finished for it"): every foreign asset the event serves is SETTLED here — imported,
+     * or deleted by the member, or judged unimportable — and nothing is still waiting to download or to import. A
+     * membership that does not receive has nothing to wait for. A union that cannot be read answers `false`: the doubt
+     * keeps the member.
+     */
+    suspend fun everythingReceived(eventId: String): Boolean {
+        if (downloadEnabled() != true) return true
+        val assets = union.union(eventId).getOrElse { return false }
+        val foreign = assets.filter { it.deviceId != myDeviceId }.map { AssetRef(it.deviceId, it.assetId) }
+        return mutex.withLock {
+            store.settledAmong(foreign).size == foreign.size &&
+                store.pendingDownloads().isEmpty() &&
+                store.importableAssets().isEmpty()
+        }
+    }
+
+    /**
      * Discover + plan + enqueue, idempotently. Safe to call on join and on every foreground: already-imported and
      * already-planned assets are no-ops, and only not-yet-staged resources enqueue.
      *

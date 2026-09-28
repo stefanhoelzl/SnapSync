@@ -41,8 +41,7 @@ private fun AppCore.runWake(id: WakeId, completion: Completion) {
                 // A wake whose time is already up requests no tail: a stop while none runs is a no-op. A tail that
                 // fails is contained — the completion is still released, and the next wake retries.
                 if (!handover.isReleased) {
-                    runCatchingCancellable { tail.runner.request(TailTrigger.HEARTBEAT) }
-                        .onFailure { ports.log.w(it) { "runWake($id): its tail failed" } }
+                    tail.heartbeatThenFinish("$id")
                 }
             }
         }

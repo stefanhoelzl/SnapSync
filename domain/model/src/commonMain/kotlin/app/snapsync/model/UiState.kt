@@ -208,6 +208,17 @@ sealed interface Layer {
          * (`docs/architecture.md`, "Absence is never silent").
          */
         val notice: String? = null,
+        /**
+         * The event has CLOSED (capability `event-lifetime`): the joined layer offers only Leave — no invite, share,
+         * settings or rename — while its last photos arrive; the membership then ends on its own.
+         */
+        val closed: Boolean = false,
+        /**
+         * The ended event's waiting line (capability `sync-status`): shown only while the range has ended, the
+         * event has not closed and this member's own part is in sync — how many of the event's current members it
+         * is still waiting for to finish sharing. `null` hides it.
+         */
+        val waiting: MemberCounts? = null,
     ) : Layer
 }
 
@@ -304,8 +315,8 @@ data class EventDetails(
  * The phase of a join/switch confirmation surface (capability `join-event`). The details fetch gates the
  * confirm; the commit (enroll → provision) follows on confirm.
  *
- * Three phases carry no event: the fetch has not resolved ([Loading]), or there is nothing to be invited
- * to ([NotFound] / [LoadFailed]). Every other phase is a [Detailed] — details plus which step of the
+ * Four phases carry no event: the fetch has not resolved ([Loading]), or there is nothing to be invited
+ * to ([NotFound] / [LoadFailed] / [Closed]). Every other phase is a [Detailed] — details plus which step of the
  * confirmation is showing — so **a step that renders or commits the event's facts cannot be constructed
  * without them.** A flat nullable field would have removed the same duplication while making
  * `Ready`-without-details representable; that trades a type guarantee for tidiness, which is the wrong
@@ -324,6 +335,14 @@ sealed interface JoinPhase {
     /** The details fetch failed transiently (network/5xx); a Retry re-runs it. */
     @Serializable
     data object LoadFailed : JoinPhase
+
+    /**
+     * The event has closed, or finished and its photos were deleted (capability `join-event`, "A closed or finished
+     * event cannot be joined") — at load, or refused at the commit. Like [NotFound] it offers only Cancel: closing is
+     * final, so a Retry could never succeed.
+     */
+    @Serializable
+    data object Closed : JoinPhase
 
     /**
      * Details loaded: [event] is what was fetched, [step] is where in the confirmation the member is.

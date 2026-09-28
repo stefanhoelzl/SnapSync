@@ -799,8 +799,12 @@ class StatusContainerHost(
             // successful load (the backend synthesizes one for legacy markers, and the details source
             // fails the load rather than invent one), so the default is simply the event's start. The
             // first of the derivation's two points (the other is `onConfirmSwitch`, after the leave).
-            is JoinLoad.Found ->
+            // A closed (or finished) event is refused before any choice is offered (capability `join-event`).
+            is JoinLoad.Found -> if (load.completion.closed) {
+                JoinPhase.Closed
+            } else {
                 deriveLoadedPhase(EventDetails(load.name, load.startsAt, load.endsAt, load.deletesAt))
+            }
             JoinLoad.NotFound -> JoinPhase.NotFound
             JoinLoad.Failed -> JoinPhase.LoadFailed
         }
@@ -879,11 +883,8 @@ class StatusContainerHost(
             // The two failures land on DIFFERENT steps, because one is retryable and one is not
             // (capability `join-event`). A full event given the CommitFailed surface would offer a Retry
             // that fails identically every time, with nothing saying why.
-            val step = when (commit) {
-                JoinCommit.Full -> JoinPhase.Detailed.Step.EventFull
-                else -> JoinPhase.Detailed.Step.CommitFailed
-            }
-            pending.set(p.copy(phase = JoinPhase.Detailed(detailed.event, step)))
+            // A CLOSED event is final too, and carries no event facts worth keeping: its own phase, no Retry.
+            pending.set(p.copy(phase = failedPhase(commit, detailed.event)))
         }
     }
 
@@ -1140,6 +1141,10 @@ private fun joinedLayer(
         // partial grant's joined layer always offers the picker, whatever the health.
         canChoosePhotos = permission == GalleryAccess.LIMITED,
         ended = ended,
+        closed = config.closed,
+        // Only once this member is in sync is "who are we waiting for" the member's question (capability
+        // `sync-status`); only while the event is open is anyone still settling.
+        waiting = config.members?.takeIf { ended && !config.closed && health == SyncHealth.InSync && it.waitingFor > 0 },
         renameState = rename.toRenameState(),
         // The same transient cell the create layer's banner reads. A rejected link is rejected wherever
         // it arrives, so the message reaches whichever layer is showing rather than only one of them.
@@ -1147,7 +1152,9 @@ private fun joinedLayer(
         // The settings surface, pre-filled and resolved against the MEMBERSHIP's own window — which is
         // the one deliberate divergence from the join gate: a legacy membership carrying no event end
         // bounds against its own ceiling, so a no-edit Save is idempotent rather than silently widening.
-        surface = if (reconfiguring != SettingsSurface.Closed) {
+        // A closed event's settings are fixed (capability `manage-membership`): a surface left open when the close
+        // lands gives way to the status.
+        surface = if (reconfiguring != SettingsSurface.Closed && !config.closed) {
             JoinedSurface.Reconfigure(
                 form = form,
                 range = resolveAgainst(form, config.startsAt, config.endsAt, config.maxPhotoDate),
@@ -1251,4 +1258,14 @@ private enum class Guarded { Create, Rename, SwitchLeave }
 internal data class Owned<T>(val eventId: String?, val value: T) {
     /** [value] while [eventId] is the [joined] event — or names none (a latch set from outside, e.g. forged). */
     fun forMembership(joined: String?, otherwise: T): T = if (eventId == null || eventId == joined) value else otherwise
+}
+
+/**
+ * The phase a commit that did not land shows (capability `join-event`): a full event and a closed one are walls no
+ * retry moves, so neither offers one; anything else may heal and keeps the Retry.
+ */
+private fun failedPhase(commit: JoinCommit, event: EventDetails): JoinPhase = when (commit) {
+    JoinCommit.Closed -> JoinPhase.Closed
+    JoinCommit.Full -> JoinPhase.Detailed(event, JoinPhase.Detailed.Step.EventFull)
+    else -> JoinPhase.Detailed(event, JoinPhase.Detailed.Step.CommitFailed)
 }

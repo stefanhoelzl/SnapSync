@@ -109,7 +109,13 @@ private const val STATIC_ALPHA = 0.38f
  * opacity; a `Static` arrow is shown dimmed without motion. No counts are shown.
  */
 @Composable
-fun AppStatusLine(status: AppSyncStatus, ended: Boolean = false, onAttentionClick: () -> Unit = {}) {
+fun AppStatusLine(
+    status: AppSyncStatus,
+    ended: Boolean = false,
+    /** What the ended marker adds after "Event ended" — the waiting line (capability `sync-status`). */
+    endedDetail: String? = null,
+    onAttentionClick: () -> Unit = {},
+) {
     // The event's declared end has passed (capability `sync-status`): an informational "Event ended"
     // marker sits on its OWN line ABOVE the regular status. Purely a marker: it changes no arrow, count,
     // or health value, and sync continues.
@@ -126,7 +132,7 @@ fun AppStatusLine(status: AppSyncStatus, ended: Boolean = false, onAttentionClic
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Text(
-                text = "Event ended",
+                text = endedDetail?.let { "Event ended · $it" } ?: "Event ended",
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

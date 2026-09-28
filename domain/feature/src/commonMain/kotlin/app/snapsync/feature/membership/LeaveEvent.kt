@@ -1,6 +1,7 @@
 package app.snapsync.feature.membership
 
 import app.snapsync.services.config.ConfigService
+import app.snapsync.services.leave.PendingLeaves
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -57,6 +58,12 @@ class LeaveEvent(
     private val clearLedger: suspend () -> Unit,
     private val notifyLeave: suspend (eventId: String) -> Unit,
     private val scope: CoroutineScope,
+    /**
+     * Where the leave is recorded as owed to the backend BEFORE anything is torn down (capability `event-lifetime`,
+     * "A leave made offline still counts"): a kill between the teardown and [notifyLeave] then loses nothing — the
+     * next wake delivers it.
+     */
+    private val pendingLeaves: PendingLeaves,
 ) {
     private val steps = Steps(Logger.withTag("LeaveEvent"), "leave")
 
@@ -64,6 +71,7 @@ class LeaveEvent(
         // Snapshot the eventId synchronously BEFORE the clears so the backgrounded notify targets the
         // right event even though the config is gone by the time it runs (no race on the cleared cell).
         val eventId = config.config.value?.eventId
+        if (eventId != null) steps.bestEffort("record the leave") { pendingLeaves.record(eventId) }
         steps.bestEffort("stop uploads") { stopUploads() }
         steps.bestEffort("clear upload ledger") { clearLedger() }
         steps.bestEffort("clear config") { config.clear() }

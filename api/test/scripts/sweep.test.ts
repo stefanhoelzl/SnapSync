@@ -185,7 +185,7 @@ Deno.test("event phase → an event past its deadline is deleted; one within it 
   await member(d, LIVE, D, []);
 
   const { summary } = await run(d, fake({}));
-  assertEquals(summary.events, { deleted: 1, kept: 1 });
+  assertEquals(summary.events, { deleted: 1, completed: 0, kept: 1 });
   assertEquals(await eventIds(d), [LIVE]);
   d.close();
 });
@@ -206,15 +206,102 @@ Deno.test("event phase → deleting an event CASCADES to its memberships and ass
   d.close();
 });
 
-Deno.test("event phase → an EMPTIED event is deleted early, before its deadline", async () => {
+Deno.test("event phase → an EMPTIED event is COMPLETED early: memberships gone, the row kept", async () => {
   const d = await db();
   const E = "cccccccc-0000-4000-8000-000000000003";
   await insertEvent(d, event(E, LIVE_STARTS));
-  await member(d, E, D, [], "departed");
+  await member(d, E, D, [`files/devices/${D}/a.heic`], "departed");
   await member(d, E, D2, [], "departed");
   const { summary } = await run(d, fake({}));
-  assertEquals(summary.events, { deleted: 1, kept: 0 });
-  assertEquals(await eventIds(d), []);
+  assertEquals(summary.events, { deleted: 0, completed: 1, kept: 0 });
+  // The row stays until its deadline so a device still joined is told "completed", not "not found".
+  assertEquals(await eventIds(d), [E]);
+  const row = (await d.execute(`SELECT closed_at, completed_at FROM events`)).rows[0];
+  assertEquals(row.completed_at, new Date(NOW).toISOString());
+  assertEquals(row.closed_at, new Date(NOW).toISOString());
+  assertEquals((await d.execute(`SELECT * FROM memberships`)).rows.length, 0);
+  assertEquals((await d.execute(`SELECT * FROM event_assets`)).rows.length, 0);
+  d.close();
+});
+
+Deno.test("event phase → a COMPLETED event is left alone until its deadline drops the row", async () => {
+  const d = await db();
+  const DONE = "cccccccc-0000-4000-8000-000000000003";
+  const EXPIRED = "aaaaaaaa-0000-4000-8000-000000000001";
+  await insertEvent(d, event(DONE, LIVE_STARTS));
+  await insertEvent(d, event(EXPIRED, STALE_STARTS));
+  await d.execute(`UPDATE events SET closed_at = ?, completed_at = ?`, [
+    "2026-07-12T00:00:00.000Z",
+    "2026-07-12T00:00:00.000Z",
+  ]);
+  const { summary } = await run(d, fake({}));
+  assertEquals(summary.events, { deleted: 1, completed: 0, kept: 1 });
+  assertEquals(await eventIds(d), [DONE]);
+  d.close();
+});
+
+Deno.test("event phase → the CLOCK completes an ended event with a silent member 3 days after its end", async () => {
+  const d = await db();
+  const DUE = "cccccccc-0000-4000-8000-000000000003";
+  const NOT_YET = "dddddddd-0000-4000-8000-000000000004";
+  // Ended 2026-07-11T11:00 → clock 07-14T11:00, one hour before NOW.
+  await insertEvent(d, event(DUE, LIVE_STARTS, { endsAt: "2026-07-11T11:00:00Z" }));
+  // Ended 2026-07-11T13:00 → clock 07-14T13:00, one hour after NOW.
+  await insertEvent(d, event(NOT_YET, LIVE_STARTS, { endsAt: "2026-07-11T13:00:00Z" }));
+  await member(d, DUE, D, []);
+  await member(d, NOT_YET, D, []);
+  const { summary } = await run(d, fake({}));
+  assertEquals(summary.events, { deleted: 0, completed: 1, kept: 1 });
+  const completed = (await d.execute(`SELECT id FROM events WHERE completed_at IS NOT NULL`)).rows;
+  assertEquals(completed.map((r) => String(r.id)), [DUE]);
+  d.close();
+});
+
+Deno.test("event phase → a late LANDING moves the clock: 3 days after the last arrival, not the end", async () => {
+  const d = await db();
+  const E = "cccccccc-0000-4000-8000-000000000003";
+  await insertEvent(d, event(E, LIVE_STARTS, { endsAt: "2026-07-05T00:00:00Z" }));
+  await d.execute(`UPDATE events SET last_landed_at = ?`, ["2026-07-12T00:00:00.000Z"]);
+  await member(d, E, D, []);
+  const { summary } = await run(d, fake({}));
+  assertEquals(summary.events, { deleted: 0, completed: 0, kept: 1 });
+  d.close();
+});
+
+Deno.test("event phase → the clock never applies to a NEVER-JOINED event", async () => {
+  const d = await db();
+  const E = "cccccccc-0000-4000-8000-000000000003";
+  await insertEvent(d, event(E, LIVE_STARTS, { endsAt: "2026-07-02T00:00:00Z" }));
+  const { summary } = await run(d, fake({}));
+  assertEquals(summary.events, { deleted: 0, completed: 0, kept: 1 });
+  d.close();
+});
+
+Deno.test("asset phase → a COMPLETED event's bytes are collected like a deleted event's", async () => {
+  const d = await db();
+  const E = "cccccccc-0000-4000-8000-000000000003";
+  await insertEvent(d, event(E, LIVE_STARTS));
+  await member(d, E, D, [`files/devices/${D}/a.heic`], "departed");
+  const store = fake({ [`files/devices/${D}/a.heic`]: { lc: "2026-07-02T00:00:00.000Z", len: 4 } });
+  const { summary } = await run(d, store);
+  assertEquals(summary.events.completed, 1);
+  assertEquals(summary.files.deleted, { count: 1, bytes: 4 });
+  assertEquals(store.deletes, [`files/devices/${D}/a.heic`]);
+  d.close();
+});
+
+Deno.test("dry-run → a completion is counted and nothing is written", async () => {
+  const d = await db();
+  const E = "cccccccc-0000-4000-8000-000000000003";
+  await insertEvent(d, event(E, LIVE_STARTS));
+  await member(d, E, D, [`files/devices/${D}/a.heic`], "departed");
+  const store = fake({ [`files/devices/${D}/a.heic`]: { lc: "2026-07-02T00:00:00.000Z", len: 4 } });
+  const { summary } = await run(d, store, true);
+  assertEquals(summary.events.completed, 1);
+  assertEquals(summary.files.deleted, { count: 1, bytes: 4 });
+  assertEquals(store.deletes, []);
+  assertEquals((await d.execute(`SELECT * FROM memberships`)).rows.length, 1);
+  assertEquals((await d.execute(`SELECT completed_at FROM events`)).rows[0].completed_at, null);
   d.close();
 });
 
@@ -225,7 +312,7 @@ Deno.test("event phase → ONE active member keeps a within-deadline event alive
   await member(d, E, D, [], "departed");
   await member(d, E, D2, []);
   const { summary } = await run(d, fake({}));
-  assertEquals(summary.events, { deleted: 0, kept: 1 });
+  assertEquals(summary.events, { deleted: 0, completed: 0, kept: 1 });
   d.close();
 });
 
@@ -237,7 +324,7 @@ Deno.test("event phase → a MINTED-BUT-NEVER-JOINED event is not empty and surv
   const E = "cccccccc-0000-4000-8000-000000000003";
   await insertEvent(d, event(E, LIVE_STARTS));
   const { summary } = await run(d, fake({}));
-  assertEquals(summary.events, { deleted: 0, kept: 1 });
+  assertEquals(summary.events, { deleted: 0, completed: 0, kept: 1 });
   d.close();
 });
 
@@ -254,14 +341,14 @@ Deno.test("event phase → the deadline anchors at max(createdAt, startsAt), bot
   d.close();
 });
 
-Deno.test("event phase → an event past its WINDOW but within its lifetime is untouched", async () => {
-  // `endsAt` bounds uploads and closes nothing — the window passing must change no lifecycle answer.
+Deno.test("event phase → an event past its WINDOW but within 3 days of it is untouched", async () => {
+  // `endsAt` alone closes nothing — the window passing changes no lifecycle answer until the clock.
   const d = await db();
   const E = "cccccccc-0000-4000-8000-000000000003";
-  await insertEvent(d, event(E, LIVE_STARTS, { endsAt: "2026-07-10T00:00:00Z" }));
+  await insertEvent(d, event(E, LIVE_STARTS, { endsAt: "2026-07-12T00:00:00Z" }));
   await member(d, E, D, []);
   const { summary } = await run(d, fake({}));
-  assertEquals(summary.events, { deleted: 0, kept: 1 });
+  assertEquals(summary.events, { deleted: 0, completed: 0, kept: 1 });
   d.close();
 });
 
@@ -496,7 +583,7 @@ Deno.test("humanBytes → renders IEC-ish sizes; < 1024 stays bytes", () => {
 
 Deno.test("formatSummary → one line per tier, files show count and reclaimed size, dry-run flagged", () => {
   const s: SweepSummary = {
-    events: { deleted: 40, kept: 1 },
+    events: { deleted: 40, completed: 5, kept: 1 },
     devices: { deleted: 20, kept: 2 },
     files: { deleted: { count: 107, bytes: 12_900_000 }, kept: { count: 10, bytes: 3_100_000 } },
     errors: 0,
@@ -504,7 +591,7 @@ Deno.test("formatSummary → one line per tier, files show count and reclaimed s
   };
   const out = formatSummary(s);
   assertStringIncludes(out, "sweep summary (dry-run):");
-  assertStringIncludes(out, "events    40 deleted   1 kept");
+  assertStringIncludes(out, "events    40 deleted   5 completed   1 kept");
   assertStringIncludes(out, "devices   20 deleted   2 kept");
   assertStringIncludes(out, "files     107 (12.3 MB) deleted   10 (3.0 MB) kept");
   assertStringIncludes(out, "errors    0");
@@ -514,7 +601,7 @@ Deno.test("formatSummary → one line per tier, files show count and reclaimed s
 
 Deno.test("markdownSummary → a GFM table with a row per tier and an errors line", () => {
   const s: SweepSummary = {
-    events: { deleted: 40, kept: 1 },
+    events: { deleted: 40, completed: 5, kept: 1 },
     devices: { deleted: 20, kept: 2 },
     files: { deleted: { count: 107, bytes: 12_900_000 }, kept: { count: 10, bytes: 3_100_000 } },
     errors: 3,
@@ -522,10 +609,10 @@ Deno.test("markdownSummary → a GFM table with a row per tier and an errors lin
   };
   const md = markdownSummary(s);
   assertStringIncludes(md, "## Nightly cleanup sweep");
-  assertStringIncludes(md, "| tier | deleted | kept |");
-  assertStringIncludes(md, "| events | 40 | 1 |");
-  assertStringIncludes(md, "| devices | 20 | 2 |");
-  assertStringIncludes(md, "| files | 107 (12.3 MB) | 10 (3.0 MB) |");
+  assertStringIncludes(md, "| tier | deleted | completed | kept |");
+  assertStringIncludes(md, "| events | 40 | 5 | 1 |");
+  assertStringIncludes(md, "| devices | 20 | — | 2 |");
+  assertStringIncludes(md, "| files | 107 (12.3 MB) | — | 10 (3.0 MB) |");
   assertStringIncludes(md, "**errors:** 3");
   // Dry-run is flagged in the heading.
   assertStringIncludes(markdownSummary({ ...s, dryRun: true }), "(dry-run — nothing deleted)");

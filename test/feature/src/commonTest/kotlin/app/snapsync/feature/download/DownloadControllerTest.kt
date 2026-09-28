@@ -268,6 +268,30 @@ class DownloadControllerTest {
         assertEquals(1, store.counts().imported)
     }
 
+    // ── everythingReceived (capability `manage-membership`, "The app leaves on its own …") ──────────
+
+    @Test
+    fun everything_is_received_only_once_every_foreign_asset_is_settled() = runTest {
+        val store = DownloadService(inMemoryDatabases())
+        val c = controller(FakeUnion(listOf(asset(myDevice, "MINE"), asset("DEVICE-A", "Q"))), store = store)
+        val ref = AssetRef("DEVICE-A", AssetId("Q"))
+
+        assertFalse(c.everythingReceived("event"), "a foreign photo not even planned is missing")
+        c.reconcile("event")
+        c.onResourceStaged(ref, "Q-primary.heic", "/stage/p")
+        c.onResourceStaged(ref, "Q-live.mov", "/stage/l")
+        assertFalse(c.everythingReceived("event"), "staged but not imported is not received")
+        c.importReady()
+        assertTrue(c.everythingReceived("event"), "own photos never count; the one foreign photo is in the library")
+    }
+
+    @Test
+    fun a_membership_that_does_not_receive_has_nothing_to_wait_for_and_an_unreadable_union_keeps_it() = runTest {
+        val union = FakeUnion(listOf(asset("DEVICE-A", "Q")))
+        assertTrue(controller(union, downloadEnabled = { false }).everythingReceived("event"))
+        assertFalse(controller(FakeUnion(emptyList(), ok = false)).everythingReceived("event"))
+    }
+
     @Test
     fun a_failed_import_stays_importable_for_retry() = runTest {
         val store = DownloadService(inMemoryDatabases())

@@ -95,7 +95,7 @@ internal fun ClauseList<BackendState, EdgeSubject<Backend>>.membershipClauses() 
     }
 }
 
-private fun manifest(deviceId: String) =
+internal fun manifest(deviceId: String) =
     DeviceManifest(deviceId, listOf(SeededAsset(AssetId("asset-1"), listOf(app.snapsync.model.ResourceRole.PRIMARY)).manifestEntry()))
 
 /** A manifest declaring exactly [asset], projected under manifest [version]. */

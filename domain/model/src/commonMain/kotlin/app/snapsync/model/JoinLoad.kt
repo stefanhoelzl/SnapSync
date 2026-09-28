@@ -29,6 +29,11 @@ sealed interface JoinLoad {
         val startsAt: EventStart,
         val endsAt: EventEnd,
         val deletesAt: DeletesAt,
+        /**
+         * The event's completion state (capability `event-lifetime`) — see [EventCompletionState]. Defaults to
+         * open: a backend predating it never closes an event.
+         */
+        val completion: EventCompletionState = EventCompletionState.OPEN,
     ) : JoinLoad
     data object NotFound : JoinLoad
     data object Failed : JoinLoad

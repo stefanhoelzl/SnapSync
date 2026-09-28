@@ -23,8 +23,13 @@ class PortSetup(
     @OptIn(ExperimentalUuidApi::class)
     override fun freshId(): String = Uuid.random().toString()
 
-    override suspend fun createEvent(name: String): CreatedEvent {
-        val created = checked("create event", backend.createEvent(null, CreateEventRequest(name, SEEDED_STARTS_AT, SEEDED_ENDS_AT)))
+    override suspend fun createEvent(name: String, ended: Boolean): CreatedEvent {
+        val request = if (ended) {
+            CreateEventRequest(name, SEEDED_ENDED_STARTS_AT, SEEDED_ENDED_ENDS_AT)
+        } else {
+            CreateEventRequest(name, SEEDED_STARTS_AT, SEEDED_ENDS_AT)
+        }
+        val created = checked("create event", backend.createEvent(null, request))
         return CreatedEvent(created.eventId, created.name ?: name, createdAt = "")
     }
 

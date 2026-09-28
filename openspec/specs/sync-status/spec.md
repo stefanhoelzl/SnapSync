@@ -3,22 +3,22 @@
 ## Purpose
 
 Serves a joined member who wants one answer at a glance: is my part of the event getting there? The
-joined screen shows the event and its invite with a single status line — no numbers — that is honest
-in every direction: it never claims "In sync" before the app has actually looked, never hides work in
-a direction the member uses, and says plainly when the event has not started, when access is missing,
-or when the device cannot be verified. The same promise covers how the app behaves as an iPhone app:
+joined screen shows the event, its invite while it is open, and a single status line — no photo counts —
+that is honest in every direction: it never claims "In sync" before the app has actually looked, never
+hides work in a direction the member uses, and says plainly when the event has not started, when it has
+ended and whom it still waits for, when access is missing, or when the device cannot be verified. The same promise covers how the app behaves as an iPhone app:
 it opens on a truthful first frame, keeps its place across backgrounding, does its background work
 without showing anything, and guides the member through its controls without alarming them.
 Decision record: changes/archive/2026-06-27-permission-on-status-screen
-
 ## Requirements
-
 ### Requirement: The joined screen is whole in every state
 
 Once an event is joined, the app SHALL show one joined screen carrying the event's name, its invite
 (capability `manage-membership`), a single status line, and the membership actions — settings, share,
 leave and rename. Every one of those SHALL be present whatever the status line says, including without
-photo access, before the event starts, and while the device cannot be verified.
+photo access, before the event starts, and while the device cannot be verified. Once the event has closed
+(capability `event-lifetime`), the joined screen SHALL carry only the event's name, the status line and
+Leave.
 
 #### Scenario: No access still shows everything
 - **WHEN** a joined member has no photo access
@@ -28,6 +28,11 @@ photo access, before the event starts, and while the device cannot be verified.
 #### Scenario: Before the start everything is available
 - **WHEN** a joined event has not started yet
 - **THEN** the member can already share the invite, change settings, rename and leave
+
+#### Scenario: A closed event keeps only Leave
+- **WHEN** a member opens the joined screen of an event that has closed and is still receiving its last
+  photos
+- **THEN** the event name, the status line and Leave are shown, and no invite, share, settings or rename
 
 ### Requirement: One status line, no numbers, in a fixed priority
 
@@ -200,7 +205,9 @@ changing it.
 
 After the end of the event's date range, the joined screen SHALL show "Event ended" on its own line
 above the status line — never merged into the status text — and SHALL gain it within a minute of the end
-passing while the app is open. The marker SHALL change nothing else: arrows, status and syncing continue
+passing while the app is open. While the event has not closed and the status line reads "In sync", that
+line SHALL also say how many of the event's current members it is still waiting for to finish sharing
+(capability `event-lifetime`). The marker SHALL change nothing else: arrows, status and syncing continue
 exactly as before (the end bounds only which photos may be shared — capability `event-lifetime`).
 
 #### Scenario: Ended and still syncing
@@ -210,6 +217,11 @@ exactly as before (the end bounds only which photos may be shared — capability
 #### Scenario: The marker appears while open
 - **WHEN** the app is open and the event's end passes
 - **THEN** within a minute "Event ended" appears
+
+#### Scenario: Waiting for the others
+- **WHEN** the range has ended, this member is in sync, and two of the event's five members have not yet
+  finished sharing
+- **THEN** the ended line says the event is waiting for 2 of 5 members
 
 ### Requirement: The app is a portrait iPhone app that follows the system appearance
 
@@ -227,7 +239,9 @@ light or dark appearance, with no white flash when opening in dark mode.
 ### Requirement: The app keeps its place across backgrounding
 
 Returning to the app from the background SHALL show the same screen the member left, with any open
-surface and any half-typed text intact, and SHALL never present a blank or corrupted screen.
+surface and any half-typed text intact, and SHALL never present a blank or corrupted screen — unless the
+membership ended on its own meanwhile (capability `manage-membership`), in which case it SHALL show the
+create screen.
 
 #### Scenario: Returning to an open settings surface
 - **WHEN** the member opens settings, switches to another app, and comes back later
@@ -236,6 +250,11 @@ surface and any half-typed text intact, and SHALL never present a blank or corru
 #### Scenario: Returning after hours in the background
 - **WHEN** the app was woken in the background several times and the member opens it hours later
 - **THEN** it renders normally, never blank
+
+#### Scenario: Returning after the event finished
+- **WHEN** the member left the joined screen open, the event finished and the app left it in the
+  background, and the member returns
+- **THEN** the create screen is shown
 
 ### Requirement: Background wakes do their work without showing anything
 
@@ -357,3 +376,4 @@ dismissal.
 #### Scenario: A running sheet cannot be dismissed
 - **WHEN** the member has confirmed and the action is still running
 - **THEN** the sheet stays open showing progress, and neither cancel nor swiping it away closes it
+

@@ -9,11 +9,13 @@ app is test equipment, not a product.
 `changes/archive/2026-07-21-align-specs-with-mission`): joined users easily share the photos they take during a
 **short-lived event** (days/weeks — celebrations, holidays, trips), synced gallery-to-gallery; you never
 care how photos arrive, you just look at your own gallery. No accounts; simple setup; the host picks the
-event's **date range** at creation (at most **30 days** long), and that **end** is the capture-date ceiling
-**only** — it bounds which photos may be uploaded and closes nothing, so a guest who scans days late still
-joins and contributes their in-window photos. How long the event **lives** is a separate stamped lifetime
-(30 days from `max(createdAt, startsAt)`); the nightly sweep deletes it then — or sooner, once every member
-has left — and that IS how an event ends. Named futures (don't build for them; don't deepen assumptions
+event's **date range** at creation (at most **30 days** long), and that **end** is the capture-date ceiling —
+it bounds which photos may be uploaded and does not by itself close anything, so a guest who scans days late
+still joins and contributes their in-window photos **until the event closes**. After the end each device
+settles its share; once every member has (or 3 days after the later of the end and the last photo's arrival)
+the event **closes** — nobody joins, nothing changes — each member leaves on its own once it has everything,
+and the nightly sweep deletes the photos (`changes/early-event-completion`). The stamped lifetime (30 days from
+`max(createdAt, startsAt)`) stays the latest an event can live. Named futures (don't build for them; don't deepen assumptions
 against them unnamed): Android · paid events (device count is the only lever) · concurrent multi-event
 membership (single active membership is the *current* contract).
 

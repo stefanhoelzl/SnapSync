@@ -147,6 +147,13 @@ internal fun EventLinkPayload.sameAs(other: EventLinkPayload): Boolean =
  * (capability `event-album`), **defaulting to `false`** so a config persisted before this field existed
  * decodes to today's no-album behavior. All fields flow whole-object through serialization.
  */
+/**
+ * Whether the event's range has ended at [now] (capability `event-lifetime`): strictly after its end. An end not yet
+ * learned ([EventConfig.endsAt] `null`) has not passed — the safe reading, since an ended range is what lets a device
+ * settle its share and an event close.
+ */
+fun EventConfig.hasEnded(now: CaptureDate): Boolean = endsAt?.let { now > it.at } == true
+
 @Serializable
 data class EventConfig(
     val eventId: String,
@@ -158,4 +165,16 @@ data class EventConfig(
     val deletesAt: DeletesAt? = null,
     val direction: Direction = Direction.Both,
     val saveToAlbum: Boolean = false,
+    /**
+     * Whether the event has CLOSED (capability `event-lifetime`) — learned from its details, never computed here.
+     * Once closed the joined screen offers no invite, settings or rename, and the membership ends on its own once it
+     * has everything. Defaults to `false`, so a config persisted before it existed decodes as open — the safe
+     * direction: an open event is only one that keeps its member.
+     */
+    val closed: Boolean = false,
+    /**
+     * The event's active members and how many have settled what they share, as last served — the ended event's
+     * waiting line (capability `sync-status`). `null` until the details first carry them.
+     */
+    val members: MemberCounts? = null,
 )
