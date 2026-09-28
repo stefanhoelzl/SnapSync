@@ -153,7 +153,7 @@ class JoinGateIntegrationTest {
         val current = createAndJoin(name = "Summer Trip") // already joined to E
 
         // The backend holds E's DELETE open, so it never completes while the switch runs.
-        device("backend/hold-leave")
+        device("backend/hold", "call" to "leave", "on" to "true")
 
         openLink(inviteLink(next))
         awaitSwitchReady()
@@ -169,7 +169,7 @@ class JoinGateIntegrationTest {
         assertNotNull(manifest(next), "enrolled in the new event")
         assertFalse(departed(current), "E's DELETE never gated either step")
 
-        device("backend/release-leave")
+        device("backend/hold", "call" to "leave", "on" to "false")
         eventually<Boolean>(read = { departed(current) }) { it }
     }
 

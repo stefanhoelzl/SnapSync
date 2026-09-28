@@ -6,6 +6,7 @@ import androidx.compose.runtime.setValue
 import app.snapsync.jvm.JvmApp
 import app.snapsync.jvm.JvmBuild
 import app.snapsync.jvm.JvmMocks
+import app.snapsync.mock.BackendCall
 import app.snapsync.mock.DeclaredVersion
 import app.snapsync.mock.DownloadSessionMock
 import app.snapsync.mock.LibraryAssets
@@ -235,6 +236,19 @@ class WorldInspectorController(private val scope: CoroutineScope) {
     fun setMembershipUnreadable(unreadable: Boolean) =
         launchMutation { mocks.disk.operator.deny(FileArea.SHARED, CONFIG_FILE_NAME, unreadable) }
 
+    /**
+     * Hold a backend [call] unanswered, or answer it — the only way to review a screen the app shows only while it waits
+     * (the join gate loading or committing, the create in flight).
+     */
+    fun setBackendHeld(call: BackendCall, held: Boolean) = launchMutation {
+        if (held) mocks.backend.operator.hold(call) else mocks.backend.operator.release(call)
+    }
+
+    /** Hold every walk of the library, or let them read — the status screen before anything is counted. */
+    fun setEnumerationHeld(held: Boolean) = launchMutation {
+        if (held) mocks.library.operator.holdEnumeration() else mocks.library.operator.releaseEnumeration()
+    }
+
     fun armImportFailure() = launchMutation {
         mocks.library.operator.imports.failNextImport = true
         appendConsole("armed: next foreign import will fail (non-terminal)")
@@ -426,6 +440,8 @@ class WorldInspectorController(private val scope: CoroutineScope) {
             jobLimit = queue.jobLimit,
             backendOffline = mocks.backend.operator.offline,
             membershipUnreadable = mocks.disk.operator.isDenied(FileArea.SHARED, CONFIG_FILE_NAME),
+            heldCalls = BackendCall.entries.filterTo(mutableSetOf()) { mocks.backend.operator.isHeld(it) },
+            enumerationHeld = mocks.library.operator.enumerationHeld,
         )
     }
 
@@ -464,10 +480,12 @@ data class InspectorSnapshot(
     val jobLimit: Int,
     val backendOffline: Boolean,
     val membershipUnreadable: Boolean,
+    val heldCalls: Set<BackendCall>,
+    val enumerationHeld: Boolean,
 ) {
     companion object {
         val EMPTY =
-            InspectorSnapshot(null, emptyList(), emptyList(), emptyList(), emptyList(), Int.MAX_VALUE, false, false)
+            InspectorSnapshot(null, emptyList(), emptyList(), emptyList(), emptyList(), Int.MAX_VALUE, false, false, emptySet(), false)
     }
 }
 

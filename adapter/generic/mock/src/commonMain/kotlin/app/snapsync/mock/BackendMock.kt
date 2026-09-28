@@ -49,6 +49,26 @@ class BackendMock(
  */
 class DeclaredVersion(var value: String?)
 
+/** The backend calls an operator can hold unanswered — each one a screen the app shows only while it waits. */
+enum class BackendCall(val key: String) {
+    /** The event's details, which the join gate loads. */
+    EVENT("event"),
+
+    /** Creating an event. */
+    CREATE("create"),
+
+    /** A device's enrolment in an event. */
+    JOIN("join"),
+
+    /** A device leaving an event. */
+    LEAVE("leave"),
+    ;
+
+    companion object {
+        fun ofKey(key: String?): BackendCall? = entries.firstOrNull { it.key == key }
+    }
+}
+
 /** A push the backend would have sent: the event it announces, and the member and token it was addressed to. */
 data class SentPush(val eventId: String, val deviceId: String, val token: String)
 
@@ -129,15 +149,17 @@ class BackendOperator internal constructor(private val state: BackendState) {
         state.refuseNextCredential = true
     }
 
-    /** Every leave waits until [releaseLeave]: the backend that has not answered yet. */
-    fun holdLeave() {
-        state.leaveHold = CompletableDeferred()
+    /** Every [call] waits until [release]: the backend that has not answered yet. */
+    fun hold(call: BackendCall) {
+        if (call !in state.holds) state.holds[call] = CompletableDeferred()
     }
 
-    /** A held leave, and every later one, is answered. */
-    fun releaseLeave() {
-        state.leaveHold?.complete(Unit)
-        state.leaveHold = null
+    /** Whether [call] is held. */
+    fun isHeld(call: BackendCall): Boolean = call in state.holds
+
+    /** A held [call], and every later one, is answered. */
+    fun release(call: BackendCall) {
+        state.holds.remove(call)?.complete(Unit)
     }
 
     /** The nightly sweep deleting [eventId]: every later read of it is `404`. */
@@ -206,9 +228,14 @@ internal class BackendState(
     var offline = false
     var failDeviceListing = false
     var refuseNextCredential = false
-    var leaveHold: CompletableDeferred<Unit>? = null
+    val holds = mutableMapOf<BackendCall, CompletableDeferred<Unit>>()
     var minAppVersion: String? = null
     internal var legacyCounter = 0L
+
+    /** Wait while an operator holds [call]. */
+    suspend fun awaitRelease(call: BackendCall) {
+        holds[call]?.await()
+    }
 
     fun issueChallenge(): String = "in-memory-challenge-${challenges.size + 1}".also { challenges += it }
 

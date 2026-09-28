@@ -87,8 +87,7 @@ object RigVocabulary {
         // test starts from.
         "device/backend/min-app-version",
         "device/backend/sweep",
-        "device/backend/hold-leave",
-        "device/backend/release-leave",
+        "device/backend/hold",
         "device/backend/fail-listing",
         "device/backend/deposit",
         "device/backend/legacy-event",
@@ -101,6 +100,7 @@ object RigVocabulary {
         "device/gallery/add",
         "device/gallery/remove",
         "device/gallery/fail-next-enumeration",
+        "device/gallery/hold-enumeration",
         "device/import/suspend-next",
         "device/import/resume",
         "device/import/await-parked",

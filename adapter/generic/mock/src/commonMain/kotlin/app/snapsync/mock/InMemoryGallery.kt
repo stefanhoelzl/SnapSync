@@ -96,6 +96,7 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
         }
 
     override suspend fun assets(policy: SelectionPolicy): GalleryRead<List<AssetFacts>> {
+        state.enumerationHeld?.await()
         if (state.failNextEnumeration) {
             state.failNextEnumeration = false
             // A platform walk that fails is a failure, not a successful read with no answer (`NotReadable`).

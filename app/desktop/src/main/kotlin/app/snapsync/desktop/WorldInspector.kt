@@ -27,6 +27,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import app.snapsync.mock.BackendCall
 import app.snapsync.model.UploadError
 import app.snapsync.model.GalleryAccess
 
@@ -213,6 +214,12 @@ fun WorldInspector(
                     OutlinedButton(onClick = { controller.setJobLimit(2) }) { Text("2") }
                     OutlinedButton(onClick = { controller.setJobLimit(Int.MAX_VALUE) }) { Text("∞") }
                 }
+                // The screens the app shows only while it waits: hold what it waits on, release to move on.
+                Text("Hold (the app waits)")
+                BackendCall.entries.forEach { call ->
+                    HoldRow("hold-${call.key}", "backend: ${call.key}", call in snap.heldCalls) { controller.setBackendHeld(call, it) }
+                }
+                HoldRow("hold-enumeration", "library enumeration", snap.enumerationHeld) { controller.setEnumerationHeld(it) }
             },
         )
 
@@ -281,3 +288,12 @@ internal const val PAST_START = "2026-05-15T00:00:00"
 internal const val PAST_END = "2026-06-14T00:00:00"
 internal const val FUTURE_START = "2099-12-01T00:00:00"
 internal const val FUTURE_END = "2099-12-31T00:00:00"
+
+/** One hold switch, tagged so `:test:harness-driver` can reach it (a Switch carries no text of its own). */
+@Composable
+private fun HoldRow(tag: String, label: String, held: Boolean, onChange: (Boolean) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Switch(modifier = Modifier.testTag(tag), checked = held, onCheckedChange = onChange)
+        Text(if (held) "$label HELD" else label)
+    }
+}
