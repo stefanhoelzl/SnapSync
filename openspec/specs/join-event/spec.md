@@ -3,9 +3,8 @@
 ## Purpose
 Serves the guest (and the host, who joins the event they just created the same way): scanning an
 event's QR code or tapping its invite link opens SnapSync on a join screen where they see which event
-they are invited to, decide whether to share and whether to receive, choose the capture-date range
-they share from, and learn how long the event's photos are kept — and nothing is shared or joined until
-they confirm. It promises that an invite printed or sent today keeps opening in every future version,
+they are invited to, decide whether to share and whether to receive, and choose the capture-date range
+they share from — and nothing is shared or joined until they confirm. It promises that an invite printed or sent today keeps opening in every future version,
 that a guest who arrives late can still join, that a membership always has a bounded capture range so a
 guest's whole camera roll is never uploaded, and that the invite's secret never reaches a web server. A
 device is in at most one event at a time; opening another event's invite is a switch. What a chosen
@@ -143,24 +142,28 @@ switches would collect.
 
 ### Requirement: The shared capture range always has a lower bound inside the event window
 With sharing on, the join screen SHALL let the user choose the range of capture dates they share,
-defaulting to the whole event window. The start SHALL offer Event start, Now, and a custom time; the end
-SHALL offer Event end and a custom time. Now SHALL be offered only while the event's window is running.
-Custom times SHALL be limited to the event's window, and the joined range SHALL always lie within the
-event's start and end, whichever way the range reached the app. A membership SHALL never exist without a
-lower bound: if the app cannot tell a membership's range, it SHALL share nothing rather than the whole
-library.
+defaulting to the whole event window. The choice SHALL be one of: the whole event; from now until the
+event's end; or a custom range, picked on a calendar with a time for its start and its end. From now
+SHALL be offered only while the event's window is running. A custom range SHALL be limited to the event's
+window, and the joined range SHALL always lie within the event's start and end, whichever way the range
+reached the app. A membership SHALL never exist without a lower bound: if the app cannot tell a
+membership's range, it SHALL share nothing rather than the whole library.
 
 #### Scenario: The default is the whole event window
 - **WHEN** the join screen loads an event running from Friday 18:00 to Sunday 23:00
-- **THEN** the shared range reads from Friday 18:00 until Sunday 23:00
+- **THEN** the shared range reads from Friday 18:00 until Sunday 23:00, as the whole event
+
+#### Scenario: From now shares from this moment to the event's end
+- **WHEN** the event is running and the user chooses from now
+- **THEN** the shared range reads from the current time until the event's end
 
 #### Scenario: Now is unavailable outside the window
 - **WHEN** the event has not started yet, or has already ended
-- **THEN** the Now option cannot be chosen and the default remains the whole event window
+- **THEN** from now cannot be chosen and the default remains the whole event window
 
 #### Scenario: A custom time cannot leave the window
-- **WHEN** the user tries to pick a custom start before the event's start or a custom end after its end
-- **THEN** the picker holds the choice to the event's start or end
+- **WHEN** the user tries to pick a custom range starting before the event's start or ending after its end
+- **THEN** the calendar holds the choice to the event's start or end
 
 #### Scenario: A guest's older camera roll is never shared
 - **WHEN** a guest with years of photos joins an event that started yesterday
@@ -171,7 +174,7 @@ library.
 - **THEN** no photo is shared until the user joins again
 
 #### Scenario: A choice survives a failed join
-- **WHEN** the user picks custom start and end times, taps Join, the join fails, and they tap Retry
+- **WHEN** the user picks a custom range, taps Join, the join fails, and they tap Retry
 - **THEN** the retry joins with the range they picked, not a default
 
 ### Requirement: The join screen shows how many photos will be shared
@@ -194,41 +197,37 @@ allow counting or the count cannot be computed.
 - **WHEN** photo access was denied or has not been asked yet
 - **THEN** the join screen shows no count row
 
-### Requirement: The join screen states when the event's photos are deleted
-Before Join, the join screen SHALL state the date on which the event's shared photos are deleted, as
-given by the event, together with the fixed rule that an event's photos are kept for at most 30 days from
-the day it starts (capability `event-lifetime`). It SHALL state that date unconditionally, never as
-depending on other members leaving. This is the only place the app states retention, and the host sees
-it too.
-
-#### Scenario: A guest sees the deletion date before joining
-- **WHEN** the join screen loads an event
-- **THEN** it shows the date its shared photos are deleted and that photos are kept for at most 30 days from the event's start
-
 ### Requirement: Photo access is explained before iOS ever asks
-The app SHALL show an explanation first to a user who is in no event and has never been asked for photo
-access, once the join screen has loaded the event — naming the event and stating that photos they take are shared
-automatically, that the photo library is needed both to share and to save others' photos, that choosing
-specific photos also works, and that only photos from the date they choose next are shared. iOS's photo
-access dialog SHALL be raised only by the user confirming this explanation, after which the join
-choices are shown. Cancel SHALL abandon the join. A user who has already granted, limited, or denied
-access SHALL NOT see the explanation (capability `photo-access`).
+To a user who is in no event and has never been asked for photo access, the join screen SHALL state,
+once it has loaded the event, that iOS will ask for photo access next, and SHALL offer on request an
+explanation stating that photos they take are shared automatically, that the photo library is needed
+both to share and to save others' photos, that choosing specific photos also works, and that only photos
+in the range they chose are shared. Viewing the explanation SHALL raise nothing. For this user the
+confirm action SHALL say that it also allows photo access, and tapping it SHALL raise iOS's photo access
+dialog and join the event whatever they answer (without access, capability `photo-access`). iOS's dialog
+SHALL NOT be raised before that tap. A user who has already granted, limited, or denied access SHALL see
+neither the notice nor the changed confirm action, and no dialog is raised when they join (capability
+`photo-access`).
 
 #### Scenario: A first-time guest is told before iOS asks
 - **WHEN** a guest who has never been asked for photo access opens an invite and the event loads
-- **THEN** an explanation naming the event is shown, and no iOS dialog appears until they tap "I understand"
+- **THEN** the join screen, with all its choices, says iOS will ask for photo access next, the confirm action says it also allows photo access, and no iOS dialog appears
 
-#### Scenario: Confirming raises iOS's dialog and continues
-- **WHEN** the guest taps "I understand"
-- **THEN** iOS's photo access dialog appears over the join choices for that event
+#### Scenario: The explanation is available on request
+- **WHEN** that guest asks for the explanation
+- **THEN** it names what joining does with their photos, and closing it leaves them on the join screen with no dialog raised
 
-#### Scenario: Cancelling the explanation abandons the join
-- **WHEN** the guest taps Cancel on the explanation
-- **THEN** the device is in no event and the create screen is shown
+#### Scenario: Confirming raises iOS's dialog and joins
+- **WHEN** the guest taps the confirm action
+- **THEN** iOS's photo access dialog appears and the device joins the event with the choices they made, whether they then allow, limit or refuse access
 
-#### Scenario: A user who already answered iOS goes straight to the choices
-- **WHEN** a user who previously denied or granted photo access opens an invite
-- **THEN** the join choices are shown directly and no dialog is raised
+#### Scenario: Cancelling abandons the join without asking
+- **WHEN** the guest taps Cancel
+- **THEN** the device is in no event, the create screen is shown, and no iOS dialog was raised
+
+#### Scenario: A user who already answered iOS joins without a dialog
+- **WHEN** a user who previously denied or granted photo access opens an invite and joins
+- **THEN** no notice about access is shown, the confirm action is the plain Join, and no dialog is raised
 
 ### Requirement: Joining happens only on confirmation and needs a connection
 Nothing SHALL be shared, received, or joined before the user taps Join. No invite link, however it is

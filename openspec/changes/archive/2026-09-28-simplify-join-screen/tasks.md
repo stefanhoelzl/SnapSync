@@ -37,5 +37,5 @@
 
 ## 6. Specs
 
-- [ ] 6.1 At sync/archive, update `join-event`'s Purpose: it no longer promises the guest "learns how long the event's photos are kept"
-- [ ] 6.2 Run both archive gates from `openspec/config.yaml` and `validate --specs --strict`
+- [x] 6.1 At sync/archive, update `join-event`'s Purpose: it no longer promises the guest "learns how long the event's photos are kept"
+- [x] 6.2 Run both archive gates from `openspec/config.yaml` and `validate --specs --strict`
