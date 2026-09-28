@@ -499,8 +499,10 @@ a lost `resources` row is repaired only by a re-upload, which happens only if th
 believe the upload landed.
 
 ```
-events        id, name, created_at, starts_at, ends_at, capacity, lifetime_seconds
-memberships   (event_id -> events CASCADE, device_id), state in {active, departed}, joined_at, manifest_version?
+events        id, name, created_at, starts_at, ends_at, capacity, lifetime_seconds,
+              closed_at?, completed_at?, last_landed_at?
+memberships   (event_id -> events CASCADE, device_id), state in {active, departed}, joined_at, manifest_version?,
+              final?
 event_assets  (event_id, device_id -> memberships CASCADE), asset_id, creation_date, roles (JSON array)
               + index (device_id, asset_id)
 resources     (device_id, asset_id, role) PK, key UNIQUE per device, content_type, filename
@@ -511,7 +513,19 @@ The generated snapshot is `api/schema.sql` (section "Database" below).
 
 - **Existence is a row.** An event exists iff its `events` row does. No route deletes on touch, and
   only the nightly sweep deletes. So a `404` is a real deletion, and a client may use it as a witness
-  for self-leave.
+  for self-leave. A **completed** event (below) keeps its row until its deadline precisely so it can
+  answer "completed" instead of `404`.
+- **Early completion** (`changes/early-event-completion`). After `ends_at` each device publishes its
+  manifest with `final: true` — its share is settled; the bytes may still be uploading. The publish
+  that leaves every **active** membership final stamps `closed_at` in the same batch and wakes the
+  members once (no landing would, when every byte is already there). `closed_at` is final: a closed
+  event refuses join and rename `410 {error:"closed"}`, and a manifest whose asset set differs from
+  the stored one `409 {error:"closed"}` (the identical set is a `200` no-op, and the batch itself is
+  gated on the close). Each device then leaves on its own once it holds everything
+  (`EventCompletion`, run after every full-scope tail), and a leave is recorded before it is sent
+  (`PendingLeaves`) and re-sent by every wake until the backend confirms it — which is what makes
+  EMPTY dependable. The byte route stamps `last_landed_at`; the **clock** is
+  `max(ends_at, last_landed_at) + 3 days`.
 - **Membership is a column** (`active`/`departed`), never inferred from objects. A departed member's
   assets stay in the union.
 - **`resources` sits outside the event cascade** and is device-scoped. This is forced: the byte
@@ -526,8 +540,10 @@ The generated snapshot is `api/schema.sql` (section "Database" below).
   (`src/lifecycle.ts`, shared with the sweep). `capacity = 10` ever-enrolled devices (active ∪
   departed; leaving frees nothing, rejoin reuses the slot) is the only refusal, `409`.
 - The **nightly sweep** (`src/scripts/sweep.ts`, a GitHub Actions workflow, since Edge caps requests at
-  50 subrequests / 30 s CPU) deletes events past their delete-by or empty (joined, no active member),
-  then unreferenced bytes, and collects a `devices` row only once no token minted for it can still
+  50 subrequests / 30 s CPU) gives each event one `sweepVerdict` (`src/lifecycle.ts`): **drop** the row
+  past its delete-by; **complete** an ever-joined event that is empty (no active member) or past its
+  clock — memberships (and so `event_assets`) deleted, `closed_at`/`completed_at` stamped, the row
+  kept — then collects unreferenced bytes, and collects a `devices` row only once no token minted for it can still
   verify. Its delete decision runs in an interactive transaction (primary), not an ordinary read.
   Details are in `docs/deployment.md`.
 - **Legacy storage objects** (`events/<id>/metadata.json`, `events/<id>/devices/<id>.json[.left]`,
@@ -578,11 +594,11 @@ not listed is `404` (no `405`) and makes no upstream request.
 | `POST` | `/attest/token` `{deviceId, keyId, attestation, challenge}` | verifies chain to Apple root, nonce, app-id hash, counter, aaguid; **persists the device row, then mints** | `201 {token}` · `401` failed check · `409` stale challenge · `502` write failed |
 | `POST` | `/attest/renew` `{deviceId, assertion, challenge}` | verifies a Secure Enclave assertion against the stored key (no Apple call); advances expiry, then mints | `201 {token}` · `401` no attestation / refused · `409` stale challenge · `502` read/write failure (never `401`: that would force a throttled re-attestation) |
 | `POST` | `/events` `{name, startsAt, endsAt?}` | name trimmed, non-empty, ≤100 chars; window rules; backend mints the id | `201 {eventId, name, createdAt, startsAt, endsAt, capacity, deletesAt}` · `400` · `502` |
-| `GET`/`HEAD` | `/events/<eventId>` (ungated) | metadata; `deletesAt` derived per response | `200` · `404` sealed absence · `502` read failure |
-| `PATCH` | `/events/<eventId>` `{name}` | the only write to an existing event row; last-write-wins; no ownership check | `200` (metadata shape) · `400` · `404` · `502` |
-| `PUT` | `/events/<eventId>/devices/<deviceId>` | **join**: the only route that creates or reactivates a membership; one conditional capacity insert; clears `manifest_version`; idempotent | `200` · `404` · `409` at capacity · `502` |
-| `DELETE` | `/events/<eventId>/devices/<deviceId>` | **leave**: `state = departed`; idempotent; assets retained; frees no slot | `200` · `404` · `502` |
-| `PUT` | `/events/<eventId>/devices/<deviceId>/manifest` | **contribution**: full-state replace of the membership's asset set in one transaction, ordered by `version`; writes no resource rows; enrols nobody | `200` (applied, or refused as older with nothing written) · `400` · `404` · `409` not a member · `502` |
+| `GET`/`HEAD` | `/events/<eventId>` (ungated) | metadata; `deletesAt` derived per response; `closedAt`, `completedAt`, `members {active, final}` | `200` (a completed event too, with `completedAt`) · `404` sealed absence · `502` read failure |
+| `PATCH` | `/events/<eventId>` `{name}` | the only write to an existing event row; last-write-wins; no ownership check | `200` (metadata shape) · `400` · `404` · `410` closed · `502` |
+| `PUT` | `/events/<eventId>/devices/<deviceId>` | **join**: the only route that creates or reactivates a membership; one conditional capacity insert; clears `manifest_version` and `final`; idempotent | `200` · `404` · `409` at capacity · `410` closed · `502` |
+| `DELETE` | `/events/<eventId>/devices/<deviceId>` | **leave**: `state = departed`; idempotent (a completed event answers `200` too); assets retained; frees no slot | `200` · `404` · `502` |
+| `PUT` | `/events/<eventId>/devices/<deviceId>/manifest` | **contribution**: full-state replace of the membership's asset set in one transaction, ordered by `version`; `final` stored only after `endsAt`; the publish leaving every active member final closes the event and wakes its members; writes no resource rows; enrols nobody | `200` (applied, or refused as older with nothing written, or the same set to a closed event) · `400` · `404` · `409` not a member · `409 {error:"closed"}` changed set to a closed event · `410` completed · `502` |
 | `PUT` | `/files/devices/<deviceId>/<assetId>/<role>?filename=<name>` | streams bytes to storage (never buffered), then records the `resources` row. **A failed record fails the request.** If this completed an asset, wakes the declaring events' other members | `201` · `400` bad role / missing filename · `502` (`OPTIONS` → `204`) |
 | `GET` | `/files/devices/<deviceId>` | what the backend holds for me, from the DB | `200 [{assetId, role, filename}]` · `502` |
 | `GET`/`HEAD` | `/events/<eventId>/files` (ungated) | the event union: one query over active and departed members; an asset is included only when **every declared role** has a resource (a set comparison, not a count) | `200 [{deviceId, assetId, creationDate, resources:[{role, contentType, key, filename, url}]}]` · `404` · `502` |
@@ -642,10 +658,12 @@ its wire tests (`v1.test.ts`) must pass **unmodified** across any schema migrati
   are `STRICT`.
 - **Foreign keys are trusted**: the platform defaults `PRAGMA foreign_keys = 1`, as measured. If the
   store is re-provisioned or its engine changes, re-measure.
-- **One writer per table** on the current version: `events` by create (and rename, name only),
-  `memberships` by join/leave (the publish writes only `manifest_version`, and join only clears it),
+- **One writer per table** on the current version: `events` by create (and rename, name only; the
+  publish stamps only `closed_at`, the byte route only `last_landed_at`, the sweep `closed_at` and
+  `completed_at`), `memberships` by join/leave (the publish writes only `manifest_version` and
+  `final`, and join only clears them),
   `event_assets` by the manifest publish, `resources` by the byte upload, and `devices` by attestation
-  and the config write, each naming only its own column group. The sweep only deletes. v1's extra writes
+  and the config write, each naming only its own column group. The sweep otherwise only deletes. v1's extra writes
   are a bounded, named exemption, and no new version gets one. **review** (plus route tests).
 - **Capacity is one conditional insert**, never read-then-write. Measured: 10 racing devices for 3
   slots gave 10 under read-then-write and exactly 3 here.
@@ -683,7 +701,7 @@ src/db-libsql.ts   the deployed `Db` (bunny Database)
 src/storage.ts     byte-store and site-prefix key builders + LIST/GET/PUT/DELETE, shared with the sweep
 src/attest.ts      App Attest verification, the stateless challenge, the device token (mint, verify, the
                    one expiry derivation)
-src/lifecycle.ts   deleteByMs / eventIsStale, shared with the sweep
+src/lifecycle.ts   deleteByMs / clockMs / sweepVerdict, shared with the sweep
 src/apns.ts        ES256 provider JWT + silent push per token, per-token best-effort
 src/validators.ts  UUID / filename / event name / instants (MAX_EVENT_NAME_LENGTH)
 src/legacy-v1.ts   v1-only identity parse + the object-name composer v2 also uses; deleted with v1

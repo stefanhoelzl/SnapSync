@@ -5,12 +5,11 @@ Serves the guest (and the host, who joins the event they just created the same w
 event's QR code or tapping its invite link opens SnapSync on a join screen where they see which event
 they are invited to, decide whether to share and whether to receive, and choose the capture-date range
 they share from — and nothing is shared or joined until they confirm. It promises that an invite printed or sent today keeps opening in every future version,
-that a guest who arrives late can still join, that a membership always has a bounded capture range so a
+that a guest who arrives late can still join until the event closes, that a membership always has a bounded capture range so a
 guest's whole camera roll is never uploaded, and that the invite's secret never reaches a web server. A
 device is in at most one event at a time; opening another event's invite is a switch. What a chosen
 range admits is capability `photo-sharing`; the album choice is capability `event-album`.
 Decision record: changes/archive/2026-07-06-add-event-join-confirmation
-
 ## Requirements
 ### Requirement: The invite link format stays openable forever
 An invite SHALL be the HTTPS link `https://snapsync.stho.net/join#v=3&d=<payload>`, where `<payload>` is
@@ -106,12 +105,13 @@ or joining ends, however it ends, the user SHALL be offered at least a way out.
 - **THEN** the screen moves to one that offers at least Cancel, never an endless spinner
 
 ### Requirement: A late guest can still join
-Joining SHALL NOT be refused because the event's date range has passed. A guest who opens the invite
-after the event's end SHALL join like anyone else and share the photos they took within the event's
-range.
+Joining SHALL NOT be refused because the event's date range has passed. Until the event closes
+(capability `event-lifetime`), a guest who opens the invite after the event's end SHALL join like anyone
+else and share the photos they took within the event's range.
 
 #### Scenario: A guest scans days after the party
-- **WHEN** a guest opens the invite three days after the event's date range ended
+- **WHEN** a guest opens the invite three days after the event's date range ended, before the event has
+  closed
 - **THEN** the join screen offers Join with the full event window preselected, and after joining their photos from the event's dates are shared
 
 ### Requirement: The member decides separately whether to share and whether to receive
@@ -300,3 +300,22 @@ load SHALL offer Retry.
 #### Scenario: A switch to a vanished event does not leave
 - **WHEN** a member opens the invite of a different event that no longer exists
 - **THEN** they are told the invite is invalid or the event no longer exists, and remain in their current event
+
+### Requirement: A closed or finished event cannot be joined
+The join screen SHALL say, when the invite's event has closed or has finished and its photos were deleted
+(capability `event-lifetime`), that the event can no longer be joined, and offer only Cancel, never Join or
+Retry. A device switching from another event SHALL remain in its current event. A lost connection SHALL
+NOT be reported as closed.
+
+#### Scenario: A guest scans after the close
+- **WHEN** a guest opens the invite of an event that has closed
+- **THEN** the join screen says the event can no longer be joined and offers only Cancel
+
+#### Scenario: The event closes while the join screen is open
+- **WHEN** a guest taps Join on an event that closed after the join screen loaded
+- **THEN** they are not joined, and the screen says the event can no longer be joined
+
+#### Scenario: A member does not lose their event to a closed invite
+- **WHEN** a member opens the invite of a different event that has closed
+- **THEN** they are told it can no longer be joined, and remain in their current event
+

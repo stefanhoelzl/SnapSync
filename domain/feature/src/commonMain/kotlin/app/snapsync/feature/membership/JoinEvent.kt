@@ -27,7 +27,7 @@ import app.snapsync.model.clampToFloor
  *   say which (`docs/architecture.md`, "Absence is never silent"). Nothing is persisted either way.
  * - [EnrollFailed]: the join request failed or the event is gone — nothing persisted, no producer enabled.
  */
-enum class JoinOutcome { Committed, AlreadyJoined, EventFull, EnrollFailed }
+enum class JoinOutcome { Committed, AlreadyJoined, EventFull, EventClosed, EnrollFailed }
 
 /**
  * What the join surface should show for this outcome (capability `join-event`).
@@ -40,6 +40,7 @@ enum class JoinOutcome { Committed, AlreadyJoined, EventFull, EnrollFailed }
 fun JoinOutcome.toCommit(): JoinCommit = when (this) {
     JoinOutcome.Committed, JoinOutcome.AlreadyJoined -> JoinCommit.Committed
     JoinOutcome.EventFull -> JoinCommit.Full
+    JoinOutcome.EventClosed -> JoinCommit.Closed
     JoinOutcome.EnrollFailed -> JoinCommit.Failed
 }
 
@@ -104,6 +105,7 @@ class JoinEvent(
         when (enroller.enroll(eventId, identity.deviceId())) {
             JoinResult.JOINED -> Unit
             JoinResult.EVENT_FULL -> return JoinOutcome.EventFull
+            JoinResult.EVENT_CLOSED -> return JoinOutcome.EventClosed
             JoinResult.EVENT_NOT_FOUND, JoinResult.FAILED -> return JoinOutcome.EnrollFailed
         }
         provision(

@@ -53,12 +53,17 @@ internal fun JoiningEventScreen(
         // joined layer's reason — it is about what the user JUST DID — and it changes nothing below.
         layer.notice?.let { AppErrorBanner(it) }
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            // Two levels, and the nesting IS the type: the three phases that carry no event, then the loaded
+            // Two levels, and the nesting IS the type: the four phases that carry no event, then the loaded
             // one dispatched on its step. Both `when`s are exhaustive, so a new phase or a new step fails the
             // compile rather than falling through — and no branch reaches for details a phase might not have.
             when (phase) {
                 JoinPhase.Loading -> LoadingPhase()
-                JoinPhase.NotFound -> NotFoundPhase(onCancel = actions.onCancel)
+                JoinPhase.NotFound -> WallPhase(
+                    title = "Invalid invite",
+                    body = "This invite is invalid or the event no longer exists.",
+                    onCancel = actions.onCancel,
+                )
+                JoinPhase.Closed -> WallPhase("Event closed", "This event can no longer be joined.", actions.onCancel)
                 JoinPhase.LoadFailed -> LoadFailedPhase(onRetry = actions.onRetryLoad, onCancel = actions.onCancel)
                 is JoinPhase.Detailed -> when (phase.step) {
                     // The one step that is a *decision surface* rather than a status-plus-actions surface, so it
@@ -131,17 +136,18 @@ private fun LoadingPhase() = PhaseScaffold(
 )
 
 /**
- * A dead end — the event does not exist, so no invitation hero, just an honest notice. There is nothing
- * to be invited to, so this never shows a false invitation; Cancel is the only way out.
+ * A dead end — the event does not exist, or has closed (capability `join-event`) — so no invitation hero, just an
+ * honest notice. There is nothing to be invited to, so this never shows a false invitation; Cancel is the only way
+ * out, because no retry moves either wall.
  */
 @Composable
-private fun NotFoundPhase(onCancel: () -> Unit) = PhaseScaffold(
+private fun WallPhase(title: String, body: String, onCancel: () -> Unit) = PhaseScaffold(
     body = {
         CenteredBody {
             AppNoticeCard(
                 icon = JoinNoticeInvalid,
-                title = "Invalid invite",
-                body = "This invite is invalid or the event no longer exists.",
+                title = title,
+                body = body,
             )
         }
     },

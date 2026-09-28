@@ -59,13 +59,13 @@ CREATE TABLE events (
   ends_at          TEXT NOT NULL,
   capacity         INTEGER NOT NULL,
   lifetime_seconds INTEGER NOT NULL
-) STRICT;
+, closed_at TEXT, completed_at TEXT, last_landed_at TEXT) STRICT;
 
 CREATE TABLE memberships (
   event_id  TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
   device_id TEXT NOT NULL,
   state     TEXT NOT NULL,
-  joined_at TEXT NOT NULL, manifest_version INTEGER,
+  joined_at TEXT NOT NULL, manifest_version INTEGER, final INTEGER,
   PRIMARY KEY (event_id, device_id)
 ) STRICT;
 

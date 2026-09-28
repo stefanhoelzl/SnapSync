@@ -28,6 +28,7 @@ import app.snapsync.feature.creation.readmodel.CreationFailureReason
 import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.model.EventCreator
 import app.snapsync.model.JoinLoad
+import app.snapsync.model.EventCompletionState
 import app.snapsync.model.UserCommands
 import app.snapsync.feature.creation.readmodel.MutableCreationStatusSource
 import app.snapsync.model.GalleryAccess
@@ -2049,3 +2050,51 @@ private fun phaseAt(
     endsAt: EventEnd,
     deletesAt: DeletesAt,
 ) = JoinPhase.Detailed(EventDetails(name, startsAt, endsAt, deletesAt), step)
+
+/**
+ * The join gate against an event that has CLOSED (capability `join-event`, "A closed or finished event cannot be
+ * joined") — its own class beside [StatusContainerHostTest], sharing this file's fixtures, because that class is at its
+ * size ceiling.
+ */
+class ClosedEventJoinTest {
+
+    @Test
+    fun `a closed event is refused at load with no commit`() = runTest {
+        var commits = 0
+        host(
+            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
+            permission = FakePermissionSource(GalleryAccess.GRANTED), configFake = FakeConfig(null),
+            loadJoinDetails = {
+                JoinLoad.Found(
+                    "Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT,
+                    EventCompletionState(closed = true, completed = false),
+                )
+            },
+            commitJoin = { _, _, _, _, _, _, _, _, _ -> commits++; JoinCommit.Committed },
+        ).test(this) {
+            runOnCreate()
+            containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
+            assertJoining(awaitState(), EVENT_ID, JoinPhase.Closed)
+            containerHost.confirmJoinAs() // inert when not Ready
+            cancelAndIgnoreRemainingItems()
+        }
+        assertEquals(0, commits)
+    }
+
+    @Test
+    fun `an event that closes before the confirm lands on the closed phase`() = runTest {
+        host(
+            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
+            permission = FakePermissionSource(GalleryAccess.GRANTED), configFake = FakeConfig(null),
+            loadJoinDetails = { JoinLoad.Found("Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
+            commitJoin = { _, _, _, _, _, _, _, _, _ -> JoinCommit.Closed },
+        ).test(this) {
+            runOnCreate()
+            containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
+            assertJoining(awaitState(), EVENT_ID, phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT))
+            containerHost.confirmJoinAs()
+            assertJoining(awaitState(), EVENT_ID, JoinPhase.Closed)
+            cancelAndIgnoreRemainingItems()
+        }
+    }
+}

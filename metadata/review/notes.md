@@ -26,6 +26,7 @@ discovery, no search and no browsing of content from strangers — people only
 ever see photos from an event whose invite a member chose to give them. Only
 photos taken within the event's dates are shared, screenshots and pictures saved
 from chat apps are excluded, a member can leave the event at any time (which
-stops all sharing), every event is deleted with its photos 30 days after it is
-created or starts (whichever is later), and any concern can be reported to the
+stops all sharing), every event's photos are deleted once everyone has them —
+and never later than 30 days after the event is created or starts (whichever is
+later) — and any concern can be reported to the
 published support contact on this listing.

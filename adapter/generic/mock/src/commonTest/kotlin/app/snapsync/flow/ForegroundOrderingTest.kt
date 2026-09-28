@@ -1,5 +1,8 @@
 package app.snapsync.flow
 
+import app.snapsync.mock.inMemoryFiles
+import app.snapsync.services.leave.PendingLeaves
+
 import kotlinx.coroutines.async
 import app.snapsync.feature.membership.LeaveEvent
 import app.snapsync.feature.membership.MembershipRefresh
@@ -118,6 +121,7 @@ class ForegroundOrderingTest {
                     clearLedger = {},
                     notifyLeave = {},
                     scope = this,
+                    pendingLeaves = PendingLeaves(inMemoryFiles(), { Result.success(Unit) }),
                 ),
             ),
             statusPoller = statusPoller,

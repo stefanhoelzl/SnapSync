@@ -183,6 +183,7 @@ import { byteKey, type FetchLike, storageReachable } from "./storage.ts";
 // resources and device records, shared with the nightly sweep.
 import {
   type Db,
+  declaredAssets,
   departMembership,
   deviceFiles,
   deviceResources,
@@ -193,6 +194,7 @@ import {
   insertEvent,
   isMember,
   type ManifestAssetEntry,
+  memberCounts,
   membersOf,
   publishAddsFetchableAsset,
   publishStatements,
@@ -204,6 +206,7 @@ import {
   readEvent,
   recordResource,
   renameEvent,
+  stampLanded,
   touchTokenExpiry,
   unionRows,
 } from "./db.ts";
@@ -366,6 +369,34 @@ function parseManifestAssets(body: { assets?: unknown }): ManifestAssetEntry[] |
  * any number because the comparison is exact: a value past 2^53 would already have been rounded by the
  * JSON parse, and two distinct device versions could compare equal.
  */
+/**
+ * The manifest's `final` declaration (capability `photo-sharing`): absent → `false` (every build that
+ * predates it); anything but a boolean → `undefined`, which the route answers `400`.
+ */
+function parseManifestFinal(body: { final?: unknown }): boolean | undefined {
+  if (body.final === undefined || body.final === null) return false;
+  return typeof body.final === "boolean" ? body.final : undefined;
+}
+
+/**
+ * The whole v2 manifest body, or the `400` text naming what is wrong with it. One place, so the route
+ * reads as its gates rather than its parsing.
+ */
+function parseManifestBody(
+  body: unknown,
+):
+  | { assets: ManifestAssetEntry[]; version: number | null; final: boolean }
+  | { invalid: string } {
+  const b = (body ?? {}) as { version?: unknown; final?: unknown };
+  const assets = parseManifestAssets(b as Parameters<typeof parseManifestAssets>[0]);
+  if (assets === null) return { invalid: "invalid manifest" };
+  const version = parseManifestVersion(b);
+  if (version === undefined) return { invalid: "invalid version" };
+  const final = parseManifestFinal(b);
+  if (final === undefined) return { invalid: "invalid final" };
+  return { assets, version, final };
+}
+
 function parseManifestVersion(body: { version?: unknown }): number | null | undefined {
   if (body.version === undefined || body.version === null) return null;
   const v = body.version;
@@ -583,8 +614,81 @@ export function createApp(
    * and the drift would be silent.
    */
   function publicEvent(event: EventRow) {
-    const { lifetimeSeconds: _stamped, ...wire } = event;
-    return { ...wire, deletesAt: canonicalFromMs(deleteByMs(event)) };
+    const { lifetimeSeconds: _stamped, lastLandedAt: _landed, ...wire } = event;
+    return {
+      ...wire,
+      closedAt: event.closedAt ?? null,
+      completedAt: event.completedAt ?? null,
+      deletesAt: canonicalFromMs(deleteByMs(event)),
+    };
+  }
+
+  /**
+   * A publish to a CLOSED event (capability `photo-sharing`, "What a member shares is fixed once the event
+   * has closed"): the set it already declared is answered as published and changes nothing, so a device
+   * whose publish raced the close is not left retrying; any other set is refused `409 closed`.
+   */
+  async function publishToClosed(
+    c: Context,
+    eventId: string,
+    deviceId: string,
+    assets: ManifestAssetEntry[],
+  ): Promise<Response> {
+    try {
+      const stored = await declaredAssets(db, eventId, deviceId);
+      const same = stored.size === assets.length &&
+        assets.every((a) =>
+          stored.get(a.assetId) === a.resources.map((r) => r.role).sort().join(",")
+        );
+      return same ? c.body(null, 200) : c.json({ error: "closed" }, 409);
+    } catch (e) {
+      console.error(`v2 manifest: declared-set read failed for ${eventId}/${deviceId}: ${e}`);
+      return c.text("upstream error", 502);
+    }
+  }
+
+  /**
+   * Apply a v2 publish as ONE batch (see `publishStatements`) and read its two verdicts: `won` — the first
+   * statement's count, whether the version comparison admitted it — and `closed` — the close stamp's
+   * count, whether THIS publish left every active membership final and so closed the event.
+   *
+   * Only after the range has ended may a publish settle anything, or close the event: before it, the
+   * device may still take photos that belong in the event (capability `photo-sharing`).
+   */
+  async function applyPublish(
+    c: Context,
+    event: EventRow,
+    deviceId: string,
+    assets: ManifestAssetEntry[],
+    version: number | null,
+    final: boolean,
+  ): Promise<{ won: boolean; closed: boolean } | Response> {
+    const nowMs = now();
+    const ended = nowMs > Date.parse(event.endsAt);
+    const closeAt = ended ? new Date(nowMs).toISOString() : null;
+    try {
+      const results = await db.batch(
+        publishStatements(event.eventId, deviceId, assets, {
+          legacy: false,
+          version,
+          final: final && ended,
+          closeAt,
+        }),
+      );
+      return {
+        won: results[0].rowsAffected > 0,
+        // The close stamp is the batch's last statement when present.
+        closed: closeAt !== null && results[results.length - 1].rowsAffected > 0,
+      };
+    } catch (e) {
+      console.error(`v2 manifest: publish failed for ${event.eventId}/${deviceId}: ${e}`);
+      return c.text("upstream error", 502);
+    }
+  }
+
+  /** The refusal every write to a closed (or completed) event answers (capability `event-lifetime`). */
+  function closedRefusal(c: Context) {
+    return c.json({ error: "closed" }, 410);
   }
 
   // Per-device byte WRITE route (`docs/architecture.md`). Mounted under
@@ -1205,7 +1309,9 @@ export function createApp(
     try {
       const gate = await gateEvent(eventId);
       if (gate.kind === "absent") return c.text("event not found", 404);
-      return c.json(publicEvent(gate.event));
+      // `members` feeds the ended event's waiting line (capability `sync-status`): how many of the active
+      // members have settled what they share. A completed event has none left.
+      return c.json({ ...publicEvent(gate.event), members: await memberCounts(db, eventId) });
     } catch (e) {
       console.error(`metadata: event read failed for ${eventId}: ${e}`);
       return c.text("upstream error", 502);
@@ -1255,6 +1361,8 @@ export function createApp(
       const gate = await gateEvent(eventId);
       if (gate.kind === "absent") return c.text("event not found", 404);
       current = gate.event;
+      // A closed event does not change any more, its name included (capability `event-lifetime`).
+      if (current.closedAt) return closedRefusal(c);
     } catch (e) {
       console.error(`rename: event read failed for ${eventId}: ${e}`);
       return c.text("upstream error", 502);
@@ -1323,6 +1431,7 @@ export function createApp(
       return c.text("upstream error", 502);
     }
     if (outcome === "no-such-event") return c.text("event not found", 404);
+    if (outcome === "closed") return closedRefusal(c);
     if (outcome === "full") return c.text("event full", 409);
 
     // ONE atomic unit: the membership becomes active, the event's asset set for this device is REPLACED
@@ -1700,6 +1809,14 @@ export function createApp(
     // woken to come and fetch it (capability `receiving-photos`). The manifest publish cannot
     // announce this — a declaration and its later completion project identical manifest fields, so the
     // publish does not change when the bytes land. A byte that completed nothing wakes nobody.
+    // The clock's landing anchor (capability `event-lifetime`): an event is completed 3 days after its
+    // last arrival at the latest. Best-effort like the wake — the bytes are stored and recorded, and a
+    // lost stamp only lets the clock run from an earlier arrival or the range end.
+    try {
+      await stampLanded(db, completed, new Date(now()).toISOString());
+    } catch (e) {
+      console.error(`v2 upload: could not stamp the landing for ${completed.join(",")}: ${e}`);
+    }
     for (const eventId of completed) await notifyMembers(eventId, deviceId);
     return c.body(null, 201);
   });
@@ -1745,6 +1862,7 @@ export function createApp(
     // `database`): at capacity is a `409` the user can act on, absent is a `404` that means something
     // else entirely.
     if (outcome === "no-such-event") return c.text("event not found", 404);
+    if (outcome === "closed") return closedRefusal(c);
     if (outcome === "full") return c.text("event full", 409);
     return c.body(null, 200);
   });
@@ -1756,32 +1874,39 @@ export function createApp(
     const deviceId = c.req.param("deviceId");
     if (!validateUUID(eventId) || !validateUUID(deviceId)) return c.text("invalid id", 400);
     if (!actsFor(c, deviceId)) return notThisDevice(c);
-    let assets: ManifestAssetEntry[] | null;
-    let version: number | null | undefined;
+    let parsed: ReturnType<typeof parseManifestBody>;
     try {
-      const body = await c.req.json();
-      assets = parseManifestAssets(body);
-      version = parseManifestVersion(body);
+      parsed = parseManifestBody(await c.req.json());
     } catch {
       return c.text("invalid body", 400);
     }
-    if (assets === null) return c.text("invalid manifest", 400);
-    if (version === undefined) return c.text("invalid version", 400);
+    if ("invalid" in parsed) return c.text(parsed.invalid, 400);
+    const { assets, version, final } = parsed;
+    let event: EventRow;
     try {
       const gate = await gateEvent(eventId);
       if (gate.kind === "absent") return c.text("event not found", 404);
+      event = gate.event;
     } catch (e) {
       console.error(`v2 manifest: event read failed for ${eventId}: ${e}`);
       return c.text("upstream error", 502);
     }
     // A manifest from a NON-MEMBER is refused rather than silently joining — the inverse of v1, where
     // publishing was enrolling.
+    // A completed event has no members left; its devices are told so, and leave (capability
+    // `manage-membership`).
+    if (event.completedAt) return closedRefusal(c);
     try {
       if (!await isMember(db, eventId, deviceId)) return c.text("not a member", 409);
     } catch (e) {
       console.error(`v2 manifest: membership read failed for ${eventId}/${deviceId}: ${e}`);
       return c.text("upstream error", 502);
     }
+    // A CLOSED event's asset sets are fixed (capability `photo-sharing`, "What a member shares is fixed
+    // once the event has closed"): a publish naming the set it already declared changes nothing and is
+    // answered as published, so a device whose publish raced the close is not left retrying; any other set
+    // is refused. `publishStatements` gates the batch on the close too, for the race after this check.
+    if (event.closedAt) return await publishToClosed(c, eventId, deviceId, assets);
     // Does this publish make anything FETCHABLE that was not before? Asked before the replace, for the
     // same reason the byte route asks before its write. Under a manifest that declares intent most
     // publishes name assets whose bytes have not arrived, and waking members for those would announce a
@@ -1803,26 +1928,22 @@ export function createApp(
     // first statement's count is the verdict. A refused publish is an ORDINARY outcome of the app and the
     // upload extension publishing at once — a snapshot at least as new is already stored — so it answers
     // `200` like a won one, and the device treats it as published.
-    let won: boolean;
-    try {
-      const results = await db.batch(
-        publishStatements(eventId, deviceId, assets, { legacy: false, version }),
-      );
-      won = results[0].rowsAffected > 0;
-    } catch (e) {
-      console.error(`v2 manifest: publish failed for ${eventId}/${deviceId}: ${e}`);
-      return c.text("upstream error", 502);
-    }
+    const applied = await applyPublish(c, event, deviceId, assets, version, final);
+    if (applied instanceof Response) return applied;
+    const { won, closed } = applied;
     if (!won) {
       console.log(`v2 manifest: older version ${version} refused for ${eventId}/${deviceId}`);
-      return c.body(null, 200);
     }
     // AFTER THE COMMIT, never inside it: a recipient woken before the write is visible would read the
     // union and find the very state the notification announced to be missing. Best-effort — the response
     // is the transaction's outcome and is never changed by a push that failed, the same split the byte
     // route already draws for its database write. Only a publish that WON wakes anyone: a refused one
     // changed nothing the union serves.
-    if (addsFetchable) await notifyMembers(eventId, deviceId);
+    // The close wakes every member once (capability `receiving-photos`): every byte may already have
+    // landed, so no landing would wake anyone, and each device must learn the close to finish and leave.
+    // The publisher is skipped like any fan-out — it made the close and learns it from its own next read.
+    if ((won && addsFetchable) || closed) await notifyMembers(eventId, deviceId);
+    if (closed) console.info(`v2 manifest: event ${eventId} closed by ${deviceId}`);
     return c.body(null, 200);
   });
 

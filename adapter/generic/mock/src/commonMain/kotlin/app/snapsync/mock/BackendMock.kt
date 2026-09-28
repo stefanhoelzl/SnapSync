@@ -6,6 +6,8 @@ import app.snapsync.model.AssetId
 import app.snapsync.model.DeviceFile
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
+import app.snapsync.model.MemberCounts
+import app.snapsync.model.withFinal
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.UnionAsset
 import app.snapsync.model.isCanonicalAssetId
@@ -124,10 +126,22 @@ class BackendOperator internal constructor(private val state: BackendState) {
 
     // ---- levers ----------------------------------------------------------------------------------
 
-    /** Listing, union, event details, rename, join, publish and bytes answer `502`. */
+    /** Listing, union, event details, rename, join, publish, leave and bytes answer `502`. */
     var offline: Boolean
         get() = state.offline
         set(value) { state.offline = value }
+
+    /**
+     * Play the nightly sweep's COMPLETION of [eventId] (capability `event-lifetime`): its memberships and assets go,
+     * its record stays and answers "completed".
+     */
+    fun complete(eventId: String) = state.complete(eventId)
+
+    /** Whether [eventId] has closed. */
+    fun isClosed(eventId: String): Boolean = state.events[eventId]?.closed == true
+
+    /** Whether [eventId] was completed. */
+    fun isCompleted(eventId: String): Boolean = state.events[eventId]?.completed == true
 
     /** Only the per-device listing answers `502`. */
     var failDeviceListing: Boolean
@@ -215,13 +229,22 @@ internal class BackendState(
     var capacity: Int,
     val createdAt: Instant,
 ) {
-    class Event(var name: String, val createdAt: Instant, val startsAt: Instant?, val endsAt: Instant?)
+    class Event(
+        var name: String,
+        val createdAt: Instant,
+        val startsAt: Instant?,
+        val endsAt: Instant?,
+        /** Closed (capability `event-lifetime`): no join, no rename, no change to a member's asset set. */
+        var closed: Boolean = false,
+        /** Completed — the sweep's verdict: memberships and assets gone, the record kept. */
+        var completed: Boolean = false,
+    )
 
     class Membership(var departed: Boolean = false, var manifest: DeviceManifest? = null, var manifestVersion: Long? = null)
 
-    enum class JoinOutcome { ENROLLED, FULL, NO_SUCH_EVENT }
+    enum class JoinOutcome { ENROLLED, FULL, CLOSED, NO_SUCH_EVENT }
 
-    enum class PublishOutcome { APPLIED, OLDER, NOT_A_MEMBER, NO_SUCH_EVENT }
+    enum class PublishOutcome { APPLIED, OLDER, NOT_A_MEMBER, NO_SUCH_EVENT, CLOSED, COMPLETED }
 
     val events = mutableMapOf<String, Event>()
     val memberships = mutableMapOf<Pair<String, String>, Membership>()
@@ -260,13 +283,17 @@ internal class BackendState(
     }
 
     fun join(eventId: String, deviceId: String): JoinOutcome {
-        if (eventId !in events) return JoinOutcome.NO_SUCH_EVENT
+        val event = events[eventId] ?: return JoinOutcome.NO_SUCH_EVENT
+        // A closed event admits nobody, a returning device included — as the real enrolment's existence test.
+        if (event.closed) return JoinOutcome.CLOSED
         val existing = memberships[eventId to deviceId]
         if (existing != null) {
             // A rejoin clears the stored version, as the real enrolment does: a device whose counter restarted must
             // not have every publish refused as older.
             existing.departed = false
             existing.manifestVersion = null
+            // A rejoined device has settled nothing yet for its new membership.
+            existing.manifest = existing.manifest?.withFinal(false)
             return JoinOutcome.ENROLLED
         }
         // Every membership ever enrolled counts, active or departed — leaving frees no slot.
@@ -276,8 +303,16 @@ internal class BackendState(
     }
 
     fun publish(eventId: String, deviceId: String, manifest: DeviceManifest): PublishOutcome {
-        if (eventId !in events) return PublishOutcome.NO_SUCH_EVENT
+        val event = events[eventId] ?: return PublishOutcome.NO_SUCH_EVENT
+        if (event.completed) return PublishOutcome.COMPLETED
         val membership = memberships[eventId to deviceId] ?: return PublishOutcome.NOT_A_MEMBER
+        // A closed event's asset sets are fixed: the set already declared is answered and changes nothing, any other
+        // is refused (capability `photo-sharing`).
+        if (event.closed) {
+            val held = membership.manifest?.assets.orEmpty().associate { a -> a.assetId to a.resources.map { it.role }.toSet() }
+            val incomingSet = manifest.assets.associate { a -> a.assetId to a.resources.map { it.role }.toSet() }
+            return if (held == incomingSet) PublishOutcome.APPLIED else PublishOutcome.CLOSED
+        }
         val held = membership.manifestVersion
         val incoming = manifest.version
         // An older snapshot landing last is answered, and changes nothing: one at least as new is already there.
@@ -289,9 +324,33 @@ internal class BackendState(
         membership.manifest = manifest
         membership.manifestVersion = incoming
         publishes[eventId to deviceId] = (publishes[eventId to deviceId] ?: 0) + 1
-        // Only a publish that made something newly servable wakes anyone, as on the real route.
-        if (!before.containsAll(servable(eventId, deviceId))) notifyMembers(eventId, deviceId)
+        // The publish that leaves every active member settled closes the event, and wakes its members once. The mock
+        // does not judge the range's end: a device declares itself settled only after it (the real route also
+        // ignores an earlier declaration, which the Backend contract pins against the real api/).
+        val closes = closesNow(eventId)
+        if (closes) event.closed = true
+        // Only a publish that made something newly servable wakes anyone, as on the real route — or one that closed it.
+        if (closes || !before.containsAll(servable(eventId, deviceId))) notifyMembers(eventId, deviceId)
         return PublishOutcome.APPLIED
+    }
+
+    private fun closesNow(eventId: String): Boolean {
+        val active = memberships.filter { (key, m) -> key.first == eventId && !m.departed }.values
+        return active.isNotEmpty() && active.all { it.manifest?.final == true }
+    }
+
+    /** The event's active members and how many of them have settled what they share. */
+    fun members(eventId: String): MemberCounts {
+        val active = memberships.filter { (key, m) -> key.first == eventId && !m.departed }.values
+        return MemberCounts(active.size, active.count { it.manifest?.final == true })
+    }
+
+    /** The sweep's completion: memberships and their assets go, the record stays (capability `event-lifetime`). */
+    fun complete(eventId: String) {
+        val event = events[eventId] ?: return
+        event.closed = true
+        event.completed = true
+        memberships.keys.filter { it.first == eventId }.forEach { memberships.remove(it) }
     }
 
     /** Every member's complete assets — an asset is served once every resource it declares has landed. */

@@ -1,5 +1,7 @@
 package app.snapsync.feature.support
 
+import app.snapsync.services.leave.PendingLeaves
+import app.snapsync.mock.inMemoryFiles
 import app.snapsync.model.EventConfig
 import app.snapsync.services.config.ConfigService
 import app.snapsync.ports.Clock
@@ -16,3 +18,9 @@ class ConfigWrites(val files: RecordingFiles = RecordingFiles()) {
     /** The real membership service over these files, seeded with [initial]. */
     fun service(initial: EventConfig?, clock: Clock = testClock()): ConfigService = configService(initial, files, clock)
 }
+
+/**
+ * A [PendingLeaves] over fresh in-memory files whose backend confirms every leave — for a test whose subject leaves
+ * but does not assert what reaches the backend.
+ */
+fun inertPendingLeaves(): PendingLeaves = PendingLeaves(inMemoryFiles(), { Result.success(Unit) })

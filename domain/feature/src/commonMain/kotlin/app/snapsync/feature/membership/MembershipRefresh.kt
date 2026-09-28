@@ -81,6 +81,13 @@ class MembershipRefresh(
                 } else {
                     RefreshOutcome.INCONCLUSIVE
                 }
+            // The backend's POSITIVE word that the event finished and its photos are gone (capability
+            // `manage-membership`): unlike a bare "not found" it cannot be manufactured by a missing row or a
+            // misconfigured zone, so it needs no second witness — the membership ends at once, from any wake.
+            is JoinLoad.Found if fetched.completion.completed -> {
+                leaveEvent.leave()
+                RefreshOutcome.COMPLETED
+            }
             is JoinLoad.Found -> {
                 var next = current
                 // Name CONVERGENCE on the served name — not a fill for a membership that lacks one:
@@ -102,6 +109,10 @@ class MembershipRefresh(
                 // reached" and the self-leave cannot fire — the safe direction, mirroring the unbounded
                 // ceiling above.
                 if (current.deletesAt == null) next = next.copy(deletesAt = fetched.deletesAt)
+                // The completion state (capability `event-lifetime`). Closing is final, so a stale answer can never
+                // reopen a membership's closed event; the counts are the waiting line's and simply follow the server.
+                if (fetched.completion.closed && !current.closed) next = next.copy(closed = true)
+                fetched.completion.members?.let { if (it != current.members) next = next.copy(members = it) }
                 if (next != current) configSource.save(next)
                 RefreshOutcome.REFRESHED
             }
@@ -124,4 +135,7 @@ enum class RefreshOutcome {
 
     /** Definitively gone AND past this membership's own deadline — the membership WAS torn down. */
     ABSENT,
+
+    /** The backend said the event COMPLETED (its photos deleted) — the membership WAS torn down. */
+    COMPLETED,
 }

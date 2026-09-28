@@ -54,14 +54,17 @@ internal fun JoinedLayer(
         // So the caption may name NO noun the reader could be: "guests" fails as badly, because host and
         // guest see this identical screen and the confused member WAS a guest. Hence "someone else", and
         // hence "let" — permission the member grants, not a task they owe. Capability `manage-membership`.
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            AppEyebrow("Share this event", EyebrowTone.Accent)
-            // Always rendered: the joined state carries the invite URL non-null, so there is no longer a
-            // "joined but no link yet" frame for the hero to be missing in.
-            AppQrCode(content = state.inviteUrl, caption = "Let someone else scan this to join")
+        // A closed event admits nobody, so it offers no invite (capability `manage-membership`).
+        if (!state.closed) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                AppEyebrow("Share this event", EyebrowTone.Accent)
+                // Rendered whenever the event is open: the joined state carries the invite URL non-null, so there is no
+                // "joined but no link yet" frame for the hero to be missing in.
+                AppQrCode(content = state.inviteUrl, caption = "Let someone else scan this to join")
+            }
         }
         // The one sync-health line — bare, no card. It briefly wore a surface-filled panel, but a white
         // card under a white QR card read as a second competing surface; the screen's second fixation
@@ -72,6 +75,7 @@ internal fun JoinedLayer(
         AppStatusLine(
             status = health.toAppSyncStatus(cutoff),
             ended = state.ended,
+            endedDetail = state.waiting?.let { "waiting for ${it.waitingFor} of ${it.active} members" },
             onAttentionClick = {
                 if (health is SyncHealth.NeedsAccess) {
                     if (health.permission == GalleryAccess.NOT_DETERMINED) {

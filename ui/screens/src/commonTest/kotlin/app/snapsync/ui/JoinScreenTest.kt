@@ -202,6 +202,16 @@ class JoinScreenTest {
     }
 
     @Test
+    fun `closed phase refuses the join with no Retry`() = runComposeUiTest {
+        setScreen { TestStatusScreen(joining(JoinPhase.Closed), cutoff = fixedCutoff()) }
+        onNodeWithText("Event closed").assertExists()
+        onNodeWithText("This event can no longer be joined.").assertExists()
+        onNodeWithText("Join").assertDoesNotExist()
+        onNodeWithText("Retry").assertDoesNotExist()
+        onNodeWithText("Cancel").assertExists()
+    }
+
+    @Test
     fun `load-failed phase offers Retry`() = runComposeUiTest {
         var retried = 0
         setScreen { TestStatusScreen(joining(JoinPhase.LoadFailed), cutoff = fixedCutoff(), actions = testActions(join = testJoinGateActions(onRetryLoad = { retried++ }))) }

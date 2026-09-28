@@ -8,7 +8,6 @@ all of its photos in one download, with no app and no account, alongside a way t
 invite link reaches the app where it is installed, and what to do after installing, is capability
 `join-event`; what this page may reveal or record is capability `privacy-security`.
 Decision record: changes/archive/2026-07-21-web-event-download
-
 ## Requirements
 ### Requirement: An invite link without the app opens the event's page
 Opening an event's invite link in a browser where SnapSync does not claim it SHALL show a page naming the
@@ -73,8 +72,9 @@ Following "Get SnapSync" while a download is in progress SHALL NOT cancel or res
 
 ### Requirement: An invalid or expired link says so
 The page SHALL say the link is invalid or expired when the link is malformed or its event no longer
-exists — including an event deleted at the end of its lifetime (capability `event-lifetime`). It SHALL then
-suggest asking the host for a fresh link, still offer "Get SnapSync", and offer no download.
+exists — including an event whose photos were deleted because it finished or reached the end of its
+lifetime (capability `event-lifetime`). It SHALL then suggest asking the host for a fresh link, still
+offer "Get SnapSync", and offer no download.
 
 #### Scenario: A truncated link
 - **WHEN** a visitor opens an invite link whose event part is cut off or corrupted
@@ -82,6 +82,11 @@ suggest asking the host for a fresh link, still offer "Get SnapSync", and offer 
 
 #### Scenario: An event that has been deleted
 - **WHEN** a visitor opens the invite link of an event that has been deleted
+- **THEN** the page says the link is invalid or expired and offers no download
+
+#### Scenario: A finished event
+- **WHEN** a visitor opens the invite link of an event whose members all received its photos and whose
+  photos were then deleted, before its 30 days are up
 - **THEN** the page says the link is invalid or expired and offers no download
 
 ### Requirement: An empty or unreachable event is explained
@@ -96,3 +101,4 @@ visitor to check their connection and reload, and SHALL NOT claim the link is in
 #### Scenario: Offline visitor
 - **WHEN** a visitor opens a valid invite link and the event cannot be loaded because the connection fails
 - **THEN** the page asks them to check their connection and reload, and does not call the link invalid
+

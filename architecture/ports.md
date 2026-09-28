@@ -75,7 +75,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `ImportedAssetPresence` | `:domain:services` | `:adapter:generic:mock` UnknownPresence; `:domain:services` GalleryAssetPresence, PermissionAwareAssetPresence, RecordingLibrary; `:test:feature` CountingPresence, InMemoryAssetPresence | yes |
 | `JobRow` | `:domain:services` | `:domain:services` Found, Pruned, Unmappable | no |
 | `JoinLoad` | `:domain:model` | `:domain:model` Failed, Found, NotFound | no |
-| `JoinPhase` | `:domain:model` | `:domain:model` Detailed, LoadFailed, Loading, NotFound | no |
+| `JoinPhase` | `:domain:model` | `:domain:model` Closed, Detailed, LoadFailed, Loading, NotFound | no |
 | `JoinedSurface` | `:domain:model` | `:domain:model` Reconfigure, Status | no |
 | `Layer` | `:domain:model` | `:domain:model` CreateEvent, CreatingEvent, Joined, JoiningEvent, UpdateRequired | no |
 | `LeaveNotifier` | `:domain:services` | `:domain:services` BackendLeaveNotifier | no |

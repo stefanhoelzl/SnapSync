@@ -218,6 +218,8 @@ private fun MockWorld.backendLevers(op: (suspend MockWorld.(Map<String, String>)
         if (on) device.backend.operator.hold(call) else device.backend.operator.release(call)
         CommandResult.ok("""{"call":"${call.key}","held":$on}""")
     },
+    // The sweep's early completion (capability `event-lifetime`): memberships and photos gone, the record kept.
+    "backend/complete" to op { params -> withEvent(params) { event -> device.backend.operator.complete(event); OK } },
     "backend/fail-listing" to op { params ->
         device.backend.operator.failDeviceListing = flag(params, "on")
         OK

@@ -54,10 +54,22 @@ class DeviceManifest(
      * (a build that predates it), which the backend applies unconditionally.
      */
     val version: Long? = null,
+    /**
+     * Whether this device declares its share SETTLED (capability `photo-sharing`, "A member's share is settled
+     * only after the event has ended"): the event's range has ended and the discovery this snapshot came from ran
+     * after the end, so every in-range photo is listed. Bytes may still be uploading. The backend ignores it before
+     * the end, and closes the event once every active member has declared it.
+     *
+     * Like [version], stamped by the producer rather than projected.
+     */
+    val final: Boolean = false,
 )
 
 /** This snapshot, stamped with the manifest [version] it was projected under. */
-fun DeviceManifest.withVersion(version: Long): DeviceManifest = DeviceManifest(deviceId, assets, version)
+fun DeviceManifest.withVersion(version: Long): DeviceManifest = DeviceManifest(deviceId, assets, version, final)
+
+/** This snapshot, declaring whether this device's share is settled — see [DeviceManifest.final]. */
+fun DeviceManifest.withFinal(final: Boolean): DeviceManifest = DeviceManifest(deviceId, assets, version, final)
 
 /** Strict JSON for the device manifest — declared fields only. */
 private val deviceManifestJson = Json { encodeDefaults = true }

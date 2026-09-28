@@ -43,6 +43,7 @@ import app.snapsync.model.RangeChoice
 import app.snapsync.model.Overlays
 import app.snapsync.model.RenameState
 import app.snapsync.model.Layer
+import app.snapsync.model.MemberCounts
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.model.EventDetails
 import app.snapsync.model.EventStart
@@ -137,7 +138,11 @@ private fun joined(
     membership: EventConfig = MEMBERSHIP,
     inviteUrl: String = SAMPLE_INVITE,
     renameState: RenameState = RenameState.Idle,
-) = UiState(Layer.Joined(membership, inviteUrl, health, pendingSwitch, canChoosePhotos, ended, renameState))
+    closed: Boolean = false,
+    waiting: MemberCounts? = null,
+) = UiState(
+    Layer.Joined(membership, inviteUrl, health, pendingSwitch, canChoosePhotos, ended, renameState, closed = closed, waiting = waiting),
+)
 private val inSync = joined(SyncHealth.InSync)
 private val syncing = joined(SyncHealth.Syncing(Arrow.PULSING, Arrow.HIDDEN))
 private val syncPending = joined(SyncHealth.Syncing(Arrow.STATIC, Arrow.HIDDEN))
@@ -1158,6 +1163,28 @@ class StatusScreenTest {
             ) }
         onNodeWithText("Event ended").assertExists()
         onNodeWithText("Event ended ·", substring = true).assertDoesNotExist()
+    }
+
+    // ---- joined layer: early completion (capabilities `sync-status`, `manage-membership`) ----
+
+    @Test
+    fun `an ended open event says who it is still waiting for on the marker line`() = runComposeUiTest {
+        setContent {
+            TestStatusScreen(joined(SyncHealth.InSync, ended = true, waiting = MemberCounts(5, 3)), cutoff = fixedCutoff())
+        }
+        onNodeWithText("Event ended · waiting for 2 of 5 members").assertExists()
+        onNodeWithText("In sync").assertExists()
+    }
+
+    @Test
+    fun `a closed event offers only Leave`() = runComposeUiTest {
+        setContent { TestStatusScreen(joined(SyncHealth.InSync, ended = true, closed = true), cutoff = fixedCutoff()) }
+        onNodeWithContentDescription("Share invite link").assertDoesNotExist()
+        onNodeWithContentDescription("Event settings").assertDoesNotExist()
+        onNodeWithContentDescription("Rename event").assertDoesNotExist()
+        onNodeWithText("Let someone else scan this to join").assertDoesNotExist()
+        onNodeWithContentDescription("Leave event").assertExists()
+        onNodeWithText("In sync").assertExists()
     }
 
     @Test

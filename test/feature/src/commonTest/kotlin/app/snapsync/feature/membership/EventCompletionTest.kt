@@ -1,0 +1,240 @@
+package app.snapsync.feature.membership
+
+import app.snapsync.feature.support.ConfigWrites
+import app.snapsync.feature.support.TestLedger
+import app.snapsync.feature.support.inertPendingLeaves
+import app.snapsync.mock.inMemoryFiles
+import app.snapsync.model.EventLookup
+import app.snapsync.model.LedgerEntry
+import app.snapsync.model.LedgerState
+import app.snapsync.services.backend.EventDirectory
+import app.snapsync.services.leave.PendingLeaves
+import app.snapsync.services.manifest.DeviceManifestService
+import app.snapsync.mock.fixedClock
+import app.snapsync.model.AssetId
+import app.snapsync.model.DeviceManifest
+import app.snapsync.model.DeviceManifestAsset
+import app.snapsync.model.EventCompletionState
+import app.snapsync.model.EventConfig
+import app.snapsync.model.ManifestResource
+import app.snapsync.model.ResourceRole
+import app.snapsync.model.captureCeiling
+import app.snapsync.model.captureCutoff
+import app.snapsync.model.deletesAt
+import app.snapsync.model.encodeToJson
+import app.snapsync.model.eventEnd
+import app.snapsync.model.eventStart
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.runTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+import kotlin.time.Instant
+
+/**
+ * The end-of-wake step (capability `manage-membership`, "The app leaves on its own once the event is finished for
+ * it"): over the REAL config service and the REAL [MembershipRefresh] and [LeaveEvent], with the backend, the ledger
+ * and the downloads played by the fields below.
+ */
+class EventCompletionTest {
+
+    private val asset = AssetId("A_L0_1")
+    private val ends = eventEnd("2026-07-13T12:00:00Z")
+    private val joined = EventConfig(
+        eventId = "E",
+        name = "Party",
+        minPhotoDate = captureCutoff("2026-07-06T12:00:00Z"),
+        startsAt = eventStart("2026-07-06T12:00:00Z"),
+        endsAt = ends,
+        maxPhotoDate = captureCeiling("2026-07-13T12:00:00Z"),
+        deletesAt = deletesAt("2026-08-05T12:00:00Z"),
+    )
+
+    private fun details(closed: Boolean = false, completed: Boolean = false) = EventLookup.Found(
+        joined.name,
+        joined.startsAt,
+        ends,
+        joined.deletesAt!!,
+        EventCompletionState(closed, completed),
+    )
+
+    private fun manifest(final: Boolean) = "E " + DeviceManifest(
+        deviceId = "D",
+        assets = listOf(
+            DeviceManifestAsset(
+                asset,
+                "2026-07-10T00:00:00Z",
+                listOf(ManifestResource(ResourceRole.PRIMARY, "image/heic", "k", "IMG.HEIC")),
+            ),
+        ),
+        version = 1,
+        final = final,
+    ).encodeToJson()
+
+    /** One scenario's world, over the real services: what the backend answers, what was published, what is pending. */
+    private inner class World(private val now: String, initial: EventConfig? = joined) {
+        val writes = ConfigWrites()
+        val config = writes.service(initial, fixedClock(Instant.parse(now)))
+        var answer: EventLookup = details()
+        val manifestRecord = DeviceManifestService(inMemoryFiles()).apply { saveLastUploaded(manifest(final = true)) }
+        val ledger = TestLedger().service
+        var received = true
+        var fetches = 0
+        var finalPublishes = 0
+        val leavesSent = mutableListOf<String>()
+        val pendingLeaves = PendingLeaves(inMemoryFiles(), { id -> leavesSent += id; Result.success(Unit) })
+
+        suspend fun pending(asset: AssetId) =
+            ledger.resetTo(listOf(LedgerEntry("${asset.value}-primary.heic", asset, LedgerState.REQUESTED)))
+
+        fun TestScope.completion() = EventCompletion(
+            config = config,
+            refresh = MembershipRefresh(config, leave()),
+            leaveEvent = leave(),
+            directory = EventDirectory { fetches++; answer },
+            manifestRecord = manifestRecord,
+            ledger = ledger,
+            pendingLeaves = pendingLeaves,
+            publishFinal = { finalPublishes++ },
+            everythingReceived = { received },
+        )
+
+        fun TestScope.leave() = LeaveEvent(
+            config = config,
+            stopUploads = {},
+            clearLedger = {},
+            notifyLeave = {},
+            scope = this,
+            pendingLeaves = inertPendingLeaves(),
+        )
+    }
+
+    @Test
+    fun `before the range has ended nothing is fetched and outstanding leaves are still delivered`() = runTest {
+        val w = World(now = "2026-07-12T00:00:00Z")
+        w.pendingLeaves.record("OLD")
+        val outcome = with(w) { completion() }.finish()
+        assertEquals(CompletionOutcome.NOT_ENDED, outcome)
+        assertEquals(0, w.fetches)
+        assertEquals(listOf("OLD"), w.leavesSent)
+    }
+
+    @Test
+    fun `after the end an unsettled share is settled once more`() = runTest {
+        val w = World(now = "2026-07-14T00:00:00Z").apply { manifestRecord.saveLastUploaded(manifest(final = false)) }
+        with(w) { completion() }.finish()
+        assertEquals(1, w.finalPublishes)
+    }
+
+    @Test
+    fun `an open event keeps the member`() = runTest {
+        val w = World(now = "2026-07-14T00:00:00Z")
+        assertEquals(CompletionOutcome.WAITING, with(w) { completion() }.finish())
+        assertEquals("E", w.config.config.value?.eventId)
+    }
+
+    @Test
+    fun `a closed event with everything here is left`() = runTest {
+        val w = World(now = "2026-07-14T00:00:00Z").apply { answer = details(closed = true) }
+        assertEquals(CompletionOutcome.LEFT, with(w) { completion() }.finish())
+        assertNull(w.config.config.value)
+    }
+
+    @Test
+    fun `a closed event keeps a member whose own photo is still uploading`() = runTest {
+        val w = World(now = "2026-07-14T00:00:00Z").apply {
+            answer = details(closed = true)
+            pending(asset)
+        }
+        assertEquals(CompletionOutcome.WAITING, with(w) { completion() }.finish())
+        assertEquals(true, w.config.config.value?.closed)
+    }
+
+    @Test
+    fun `a closed event keeps a member still missing another member's photo`() = runTest {
+        val w = World(now = "2026-07-14T00:00:00Z").apply {
+            answer = details(closed = true)
+            received = false
+        }
+        assertEquals(CompletionOutcome.WAITING, with(w) { completion() }.finish())
+    }
+
+    @Test
+    fun `a closed event keeps a member whose share was never published as settled`() = runTest {
+        val w = World(now = "2026-07-14T00:00:00Z").apply {
+            answer = details(closed = true)
+            manifestRecord.saveLastUploaded(manifest(final = false))
+        }
+        assertEquals(CompletionOutcome.WAITING, with(w) { completion() }.finish())
+    }
+
+    @Test
+    fun `a completed event is left whatever is outstanding`() = runTest {
+        val w = World(now = "2026-07-14T00:00:00Z").apply {
+            answer = details(closed = true, completed = true)
+            pending(asset)
+            received = false
+        }
+        assertEquals(CompletionOutcome.LEFT, with(w) { completion() }.finish())
+        assertNull(w.config.config.value)
+    }
+
+    @Test
+    fun `a failed read keeps the member`() = runTest {
+        val w = World(now = "2026-07-14T00:00:00Z").apply { answer = EventLookup.Failed }
+        assertEquals(CompletionOutcome.WAITING, with(w) { completion() }.finish())
+        assertTrue(w.config.config.value != null)
+    }
+
+    @Test
+    fun `no membership is nothing to finish`() = runTest {
+        val w = World(now = "2026-07-14T00:00:00Z", initial = null)
+        assertEquals(CompletionOutcome.NOT_JOINED, with(w) { completion() }.finish())
+        assertEquals(0, w.fetches)
+    }
+
+    @Test
+    fun `a gone event past its deadline is left through the refresh rule`() = runTest {
+        val w = World(now = "2026-08-06T00:00:00Z").apply { answer = EventLookup.NotFound }
+        assertEquals(CompletionOutcome.LEFT, with(w) { completion() }.finish())
+    }
+
+    @Test
+    fun `a record of another event's manifest is no settled share here`() = runTest {
+        val w = World(now = "2026-07-14T00:00:00Z").apply {
+            answer = details(closed = true)
+            manifestRecord.saveLastUploaded(manifest(final = true).replaceFirst("E ", "OTHER "))
+        }
+        assertEquals(CompletionOutcome.WAITING, with(w) { completion() }.finish())
+        assertEquals(1, w.finalPublishes, "a share not settled for this event is settled once more")
+    }
+
+    @Test
+    fun `an unreadable manifest record keeps the member`() = runTest {
+        val w = World(now = "2026-07-14T00:00:00Z").apply {
+            answer = details(closed = true)
+            manifestRecord.saveLastUploaded("E not json")
+        }
+        assertEquals(CompletionOutcome.WAITING, with(w) { completion() }.finish())
+    }
+
+    @Test
+    fun `a failing download answer keeps the member`() = runTest {
+        val w = World(now = "2026-07-14T00:00:00Z").apply { answer = details(closed = true) }
+        val completion = with(w) {
+            EventCompletion(
+                config = config,
+                refresh = MembershipRefresh(config, leave()),
+                leaveEvent = leave(),
+                directory = EventDirectory { answer },
+                manifestRecord = manifestRecord,
+                ledger = ledger,
+                pendingLeaves = pendingLeaves,
+                publishFinal = {},
+                everythingReceived = { error("the union read failed") },
+            )
+        }
+        assertEquals(CompletionOutcome.WAITING, completion.finish())
+    }
+}

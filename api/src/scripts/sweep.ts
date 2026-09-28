@@ -14,15 +14,16 @@
 // event phase deletes, what remains in the store IS the surviving set — which is why no phase threads
 // an id list to the other.
 //
-//   EVENT phase — delete every STALE event row. Stale means past its derived delete-by
-//     (`max(createdAt, startsAt) + lifetimeSeconds` — the GUARANTEE), or EMPTY (ever joined, nobody
-//     active left — OPPORTUNISTIC: a leave whose backend DELETE never landed keeps a membership active,
-//     so an abandoned event may never empty). One `DELETE`; the cascade takes memberships and assets.
-//     No notification is sent — see the delete site for why.
+//   EVENT phase — each event gets one `sweepVerdict` (`lifecycle.ts`). DROP past its derived delete-by
+//     (`max(createdAt, startsAt) + lifetimeSeconds` — the GUARANTEE): one `DELETE`, the cascade takes
+//     memberships and assets. COMPLETE once it is finished — EMPTY (ever joined, nobody active left;
+//     dependable now that devices retry a leave until it lands) or past the CLOCK (`max(endsAt,
+//     lastLandedAt) + 3 days`, ever joined): memberships and assets go, the row stays until DROP so a
+//     device still joined is told "completed". No notification is sent — see the delete site for why.
 //
 //     ⚠️ THE DECISION RUNS INSIDE AN INTERACTIVE TRANSACTION, which executes against the PRIMARY. The
 //     emptiness rule is the exposed one: a stale replica that had not yet observed a REJOIN would see a
-//     fully-departed event and delete a live one. The deadline rule reads immutable columns and is
+//     fully-departed event and complete a live one. The deadline rule reads immutable columns and is
 //     stale-safe by contrast. Read-your-writes held in every trial measured, but from a workstation
 //     against a test database — NOT from the edge (`PROBE-FINDINGS.md` §4.2) — and `config.ts` already
 //     records the matching hazard for storage: "a stale replica read is the one failure mode that would
@@ -53,6 +54,7 @@ import { decodeObjectName, deleteObject, deviceDir, type FetchLike, listDir } fr
 import {
   activeFloors,
   collectableDevices,
+  completeEvent,
   countDevices,
   type Db,
   deleteDevice,
@@ -61,7 +63,7 @@ import {
   eventsWithCounts,
   referencedKeys,
 } from "../db.ts";
-import { eventIsStale } from "../lifecycle.ts";
+import { sweepVerdict } from "../lifecycle.ts";
 import type { Config } from "../config.ts";
 
 /** A count of storage objects plus their total size in bytes (summed from each entry's `Length`). */
@@ -79,7 +81,7 @@ export type Tally = { count: number; bytes: number };
  * left to disambiguate.
  */
 export type SweepSummary = {
-  events: { deleted: number; kept: number };
+  events: { deleted: number; completed: number; kept: number };
   devices: { deleted: number; kept: number };
   files: { deleted: Tally; kept: Tally };
   errors: number;
@@ -115,7 +117,7 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
   const { fetch: f, config, db, now, dryRun } = deps;
   const log = deps.log ?? console.log;
   const summary: SweepSummary = {
-    events: { deleted: 0, kept: 0 },
+    events: { deleted: 0, completed: 0, kept: 0 },
     devices: { deleted: 0, kept: 0 },
     files: { deleted: { count: 0, bytes: 0 }, kept: { count: 0, bytes: 0 } },
     errors: 0,
@@ -129,11 +131,27 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
   const stale: string[] = [];
   await db.transaction(async (tx) => {
     for (const { event, total, active } of await eventsWithCounts(tx)) {
-      if (!eventIsStale(event, { total, active }, now())) {
+      const verdict = sweepVerdict(event, { total, active }, now());
+      if (verdict === "keep") {
         summary.events.kept++;
         continue;
       }
+      // A completed event keeps its row but contributes no reference and no floor: the asset phase
+      // below treats it exactly like a deleted one (its memberships are gone in a real run; in a dry run
+      // the id set stands in for that).
       stale.push(event.eventId);
+      if (verdict === "complete") {
+        if (dryRun) {
+          log(`[dry-run] would complete event ${event.eventId} (${active}/${total} active)`);
+        } else {
+          // No notification, for the same reason as a delete below: a device still joined learns the
+          // event completed from its own next read, and leaves on it (capability `manage-membership`).
+          await completeEvent(tx, event.eventId, new Date(now()).toISOString());
+          log(`completed event ${event.eventId} (${active}/${total} active)`);
+        }
+        summary.events.completed++;
+        continue;
+      }
       if (dryRun) {
         log(`[dry-run] would delete event ${event.eventId} (${total} membership(s))`);
         summary.events.deleted++;
@@ -253,7 +271,7 @@ export function formatSummary(s: SweepSummary): string {
   const file = (t: Tally) => `${t.count} (${humanBytes(t.bytes)})`;
   return [
     `sweep summary${s.dryRun ? " (dry-run)" : ""}:`,
-    `  events    ${s.events.deleted} deleted   ${s.events.kept} kept`,
+    `  events    ${s.events.deleted} deleted   ${s.events.completed} completed   ${s.events.kept} kept`,
     `  devices   ${s.devices.deleted} deleted   ${s.devices.kept} kept`,
     `  files     ${file(s.files.deleted)} deleted   ${file(s.files.kept)} kept`,
     `  errors    ${s.errors}`,
@@ -270,11 +288,11 @@ export function markdownSummary(s: SweepSummary): string {
   return [
     `## Nightly cleanup sweep${s.dryRun ? " (dry-run — nothing deleted)" : ""}`,
     ``,
-    `| tier | deleted | kept |`,
-    `| --- | --- | --- |`,
-    `| events | ${s.events.deleted} | ${s.events.kept} |`,
-    `| devices | ${s.devices.deleted} | ${s.devices.kept} |`,
-    `| files | ${file(s.files.deleted)} | ${file(s.files.kept)} |`,
+    `| tier | deleted | completed | kept |`,
+    `| --- | --- | --- | --- |`,
+    `| events | ${s.events.deleted} | ${s.events.completed} | ${s.events.kept} |`,
+    `| devices | ${s.devices.deleted} | — | ${s.devices.kept} |`,
+    `| files | ${file(s.files.deleted)} | — | ${file(s.files.kept)} |`,
     ``,
     `**errors:** ${s.errors}`,
     ``,

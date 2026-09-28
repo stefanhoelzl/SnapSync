@@ -1,5 +1,7 @@
 package app.snapsync.model
 
+import kotlinx.serialization.Serializable
+
 /**
  * One answer from the backend, as the backend gave it — the vocabulary the `Backend` port speaks
  * (`docs/architecture.md`, "Ports are the I/O boundary named for the need").
@@ -59,7 +61,23 @@ data class EventMeta(
     val startsAt: String?,
     val endsAt: String?,
     val deletesAt: String?,
+    /** When the event CLOSED (capability `event-lifetime`); `null` while open, and from a backend predating it. */
+    val closedAt: String? = null,
+    /** When the event COMPLETED — its photos deleted, its record kept until [deletesAt]. */
+    val completedAt: String? = null,
+    /** The event's active members, and how many of them have settled what they share. */
+    val members: MemberCounts? = null,
 )
+
+/**
+ * An event's active members and how many of them have settled what they share (capability `sync-status`,
+ * the ended event's waiting line).
+ */
+@Serializable
+data class MemberCounts(val active: Int, val settled: Int) {
+    /** How many active members the event is still waiting for. */
+    val waitingFor: Int get() = (active - settled).coerceAtLeast(0)
+}
 
 /** What `PATCH /events/<id>` answered: the stored name, when the echo carried one. */
 data class EventRenamed(val name: String?)

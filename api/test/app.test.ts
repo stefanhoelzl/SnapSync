@@ -6,7 +6,7 @@
 // `/api/*` deliberately, so its tests name versions to prove the prefix covers an unshipped one.
 
 import { assert, assertEquals } from "@std/assert";
-import { deleteByMs } from "../src/lifecycle.ts";
+import { clockMs, deleteByMs, sweepVerdict } from "../src/lifecycle.ts";
 import type { Deps, FetchLike } from "../src/app.ts";
 import {
   type Db,
@@ -327,4 +327,42 @@ Deno.test("devices → readAttestation tells absence from a stored key", async (
   await putAttestation(db, D, { publicKey: "k", environment: "development" }, "t0", "e0");
   assertEquals(await readAttestation(db, D), { publicKey: "k", environment: "development" });
   db.close();
+});
+
+// ── The clock and the sweep verdict (capability `event-lifetime`) ────────────────────────────────────
+
+const DAY = 24 * 60 * 60 * 1000;
+const ROW = {
+  eventId: "e",
+  name: "e",
+  createdAt: "2026-06-01T00:00:00.000Z",
+  startsAt: "2026-06-01T00:00:00Z",
+  endsAt: "2026-06-05T00:00:00Z",
+  capacity: 10,
+  lifetimeSeconds: 30 * 24 * 60 * 60,
+};
+const ENDS = Date.parse(ROW.endsAt);
+
+Deno.test("clockMs → 3 days after the end, or after a later landing; an earlier landing does not pull it in", () => {
+  assertEquals(clockMs(ROW), ENDS + 3 * DAY);
+  assertEquals(clockMs({ ...ROW, lastLandedAt: "2026-06-07T00:00:00.000Z" }), ENDS + 5 * DAY);
+  assertEquals(clockMs({ ...ROW, lastLandedAt: "2026-06-03T00:00:00.000Z" }), ENDS + 3 * DAY);
+  assertEquals(clockMs({ ...ROW, lastLandedAt: "garbage" }), ENDS + 3 * DAY);
+  assert(Number.isNaN(clockMs({ ...ROW, endsAt: "nope" })));
+});
+
+Deno.test("sweepVerdict → deadline drops; emptiness or the clock completes; the rest keeps", () => {
+  const joined = { total: 2, active: 1 };
+  assertEquals(sweepVerdict(ROW, joined, ENDS + DAY), "keep");
+  assertEquals(sweepVerdict(ROW, joined, ENDS + 3 * DAY + 1), "complete");
+  assertEquals(sweepVerdict(ROW, { total: 2, active: 0 }, ENDS - DAY), "complete");
+  // Never joined: neither emptiness nor the clock applies — it lives to its deadline.
+  assertEquals(sweepVerdict(ROW, { total: 0, active: 0 }, ENDS + 10 * DAY), "keep");
+  // Already completed: waits for the deadline.
+  assertEquals(
+    sweepVerdict({ ...ROW, completedAt: "x" }, { total: 0, active: 0 }, ENDS + 10 * DAY),
+    "keep",
+  );
+  assertEquals(sweepVerdict(ROW, joined, Date.parse(ROW.createdAt) + 31 * DAY), "drop");
+  assertEquals(sweepVerdict({ ...ROW, createdAt: "x", startsAt: "y" }, joined, ENDS), "drop");
 });

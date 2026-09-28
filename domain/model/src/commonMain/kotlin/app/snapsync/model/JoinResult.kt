@@ -9,4 +9,4 @@ package app.snapsync.model
  * failure that a retry may heal. Collapsing them into one boolean is what made "the event is full" and
  * "the network blipped" the same sentence on the join surface.
  */
-enum class JoinResult { JOINED, EVENT_FULL, EVENT_NOT_FOUND, FAILED }
+enum class JoinResult { JOINED, EVENT_FULL, EVENT_CLOSED, EVENT_NOT_FOUND, FAILED }

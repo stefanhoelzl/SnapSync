@@ -71,7 +71,7 @@ fun StatusScreen(
         // each is shown when it is). Null everywhere else, so the create layer and the join gate keep
         // their own bottom edge.
         val bottomActions: (@Composable () -> Unit)? = if (chrome.showsJoinedChrome) {
-            { JoinedBottomActions(actions) }
+            { JoinedBottomActions(actions, closed = chrome.closed) }
         } else {
             null
         }
@@ -124,6 +124,8 @@ private class StatusChrome(
     val showsJoinedChrome: Boolean,
     val canRename: Boolean,
     val pinsActionCluster: Boolean,
+    /** The joined event has closed: only Leave remains (capability `manage-membership`). */
+    val closed: Boolean,
 )
 
 /**
@@ -143,7 +145,8 @@ private fun statusChrome(state: UiState): StatusChrome {
         reconfiguring = reconfiguring,
         membership = membership,
         showsJoinedChrome = showsJoinedChrome,
-        canRename = showsJoinedChrome,
+        canRename = showsJoinedChrome && !joinedLayer.closed,
+        closed = joinedLayer?.closed == true,
         // Every join phase pins Cancel (and, on Ready, Join) as its own full-width bottom cluster; the
         // reconfigure surface likewise pins its own Save/Cancel — so both take the safe-area-anchored
         // bottom edge with no jump.
@@ -325,12 +328,15 @@ private fun BugReportSheet(
         // joined, which is not a switch), so this gear vanished from the joined screen for as long as
         // provisioning took: the reported symptom in `SNAPSYNC-26`.
 @Composable
-private fun JoinedBottomActions(actions: StatusActions) {
+private fun JoinedBottomActions(actions: StatusActions, closed: Boolean) {
     // Settings and share used to be guarded on a nullable membership and a nullable invite URL. The
     // joined state carries both non-null, so the guards have nothing left to test: reaching this cluster
-    // IS having a membership, and the invite URL is derived from it.
-    SettingsButton(description = "Event settings", onClick = actions.surfaces.onOpenReconfigure)
-    ShareButton(description = "Share invite link", onClick = actions.joined.onShareInvite)
+    // IS having a membership, and the invite URL is derived from it. A CLOSED event admits nobody and changes
+    // nothing any more, so it offers neither (capability `manage-membership`).
+    if (!closed) {
+        SettingsButton(description = "Event settings", onClick = actions.surfaces.onOpenReconfigure)
+        ShareButton(description = "Share invite link", onClick = actions.joined.onShareInvite)
+    }
     LeaveButton(description = "Leave event", onClick = actions.surfaces.onConfirmLeaveOpen)
 }
 

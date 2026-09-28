@@ -91,6 +91,8 @@ class JoinEventTest {
         // Already a member IS a member — re-confirming is a no-op, never a failure.
         assertEquals(JoinCommit.Committed, JoinOutcome.AlreadyJoined.toCommit())
         assertEquals(JoinCommit.Full, JoinOutcome.EventFull.toCommit())
+        // A closed event is a wall like a full one (capability `event-lifetime`).
+        assertEquals(JoinCommit.Closed, JoinOutcome.EventClosed.toCommit())
         assertEquals(JoinCommit.Failed, JoinOutcome.EnrollFailed.toCommit())
     }
 
@@ -158,6 +160,16 @@ fun `loadDetails surfaces found not-found and failed distinctly`() = runTest {
         joinEvent(config = null, provisioned = provisioned).join(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false)
         assertEquals("Anna's Wedding", provisioned.single().name)
     }
+
+@Test
+fun `a closed event is reported apart from a full one and provisions nothing`() = runTest {
+    val provisioned = mutableListOf<EventConfig>()
+    val outcome = joinEvent(config = null, enrollResult = JoinResult.EVENT_CLOSED, provisioned = provisioned)
+        .join(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false)
+
+    assertEquals(JoinOutcome.EventClosed, outcome)
+    assertTrue(provisioned.isEmpty())
+}
 
 @Test
 fun `a full event is reported apart from a failure`() = runTest {

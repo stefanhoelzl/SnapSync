@@ -2,6 +2,8 @@
 
 package app.snapsync.feature.membership
 
+import app.snapsync.feature.support.inertPendingLeaves
+
 import app.snapsync.feature.support.RecordingFiles
 import app.snapsync.feature.support.configCleared
 import app.snapsync.feature.support.configService
@@ -45,6 +47,7 @@ class LeaveEventTest {
             clearLedger = { order += "ledger" },
             notifyLeave = { id -> order += "notify"; notifiedWith = id },
             scope = backgroundScope,
+            pendingLeaves = inertPendingLeaves(),
         ).leave()
         runCurrent() // let the fire-and-forget notify run
 
@@ -68,6 +71,7 @@ class LeaveEventTest {
             clearLedger = { throw RuntimeException("sqlite busy") },
             notifyLeave = { order += "notify" },
             scope = backgroundScope,
+            pendingLeaves = inertPendingLeaves(),
         ).leave()
         runCurrent()
 
@@ -89,6 +93,7 @@ class LeaveEventTest {
             clearLedger = {},
             notifyLeave = { id -> notifyStartedWith = id; neverCompletes.await() /* hangs */ },
             scope = backgroundScope,
+            pendingLeaves = inertPendingLeaves(),
         ).leave() // returns promptly despite the notify below never completing
         runCurrent() // let the backgrounded notify start (and then hang)
 
@@ -112,6 +117,7 @@ class LeaveEventTest {
             clearLedger = {},
             notifyLeave = { notified = true },
             scope = backgroundScope,
+            pendingLeaves = inertPendingLeaves(),
         ).leave()
         runCurrent()
 
@@ -132,6 +138,7 @@ class LeaveEventTest {
             clearLedger = {},
             notifyLeave = { throw RuntimeException("offline") },
             scope = backgroundScope,
+            pendingLeaves = inertPendingLeaves(),
         ).leave()
         runCurrent()
 
@@ -152,6 +159,7 @@ class LeaveEventTest {
             clearLedger = {},
             notifyLeave = {},
             scope = backgroundScope,
+            pendingLeaves = inertPendingLeaves(),
         ).leave()
 
         assertTrue(files.configCleared)
@@ -169,6 +177,7 @@ class LeaveEventTest {
             clearLedger = {},
             notifyLeave = { notified = true },
             scope = backgroundScope,
+            pendingLeaves = inertPendingLeaves(),
         ).leave()
         runCurrent()
 

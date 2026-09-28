@@ -530,25 +530,14 @@ class AppCore internal constructor(
     }
 
     /**
-     * The backend-leave effect the leave use-case and the switch path both fire (capability
-     * `manage-membership`) — the [LeaveNotifier] service wrapped as the `suspend (eventId) -> Unit` its two
-     * consumers take. Built here because `flow/Provision` may not name a port at all (law "flow/ never
-     * references ports/"), and `LeaveEvent` takes the same shape so the two paths cannot diverge.
-     *
-     * The service's failed [Result] is **logged, not propagated**: leaving is best-effort by contract and
-     * the local teardown has already completed by the time this runs, so there is nothing to roll back.
-     * Logging it is what keeps the accepted abandon-leak (a backend membership left in place) from being
-     * silent — the drop used to be invisible at every layer (`docs/architecture.md`, "Absence is
-     * never silent").
+     * The backend-leave effect the leave use-case and the switch path both fire (capability `manage-membership`),
+     * recorded and delivered through [PendingLeaves] — see [membershipEnd]. Built here because `flow/Provision` may
+     * not name a port or a service at all (law "flow/ never references ports/").
      */
-    private val notifyLeave: suspend (eventId: String) -> Unit = { eventId ->
-        backend.leave.notifyLeaving(eventId).onFailure { failure ->
-            ports.log.w(failure) {
-                "leave notify failed for $eventId — this device is gone locally; the backend membership " +
-                    "remains until the sweep (the accepted abandon-leak)"
-            }
-        }
-    }
+    private val notifyLeave: suspend (eventId: String) -> Unit = { eventId -> membershipEnd.notifyLeave(eventId) }
+
+    /** How a membership ends on its own, and how a leave reaches the backend — see [MembershipEnd]. */
+    val membershipEnd: MembershipEnd by lazy { MembershipEnd(this) }
 
     // The leave use-case: stop the producer, clear the upload ledger (the ledger is the current
     // membership's share set — capability `photo-sharing`), clear the config (which flips the screen off the
@@ -560,6 +549,7 @@ class AppCore internal constructor(
             clearLedger = { ports.uploadRecord.ledger.clear() },
             scope = scope,
             notifyLeave = notifyLeave,
+            pendingLeaves = membershipEnd.pendingLeaves,
         )
     }
 
@@ -847,6 +837,7 @@ class AppCore internal constructor(
             downloads = { downloadController },
             mayCreate = appMayCreate,
             refreshCounts = { ledgerCounts.refresh() },
+            finish = { membershipEnd.completion.finish() },
         )
     }
 

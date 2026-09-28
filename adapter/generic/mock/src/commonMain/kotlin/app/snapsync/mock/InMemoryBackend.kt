@@ -98,6 +98,10 @@ internal class InMemoryBackend(
                 startsAt = startsAt.toString(),
                 endsAt = (event.endsAt ?: (startsAt + WINDOW_DAYS.days)).toString(),
                 deletesAt = (maxOf(event.createdAt, startsAt) + WINDOW_DAYS.days).toString(),
+                // The mock stamps no instants; the real route serves the moment. Presence is what a reader acts on.
+                closedAt = if (event.closed) state.createdAt.toString() else null,
+                completedAt = if (event.completed) state.createdAt.toString() else null,
+                members = state.members(eventId),
             ),
         )
     }
@@ -107,6 +111,7 @@ internal class InMemoryBackend(
         val trimmed = name.trim()
         if (trimmed.isEmpty() || trimmed.length > MAX_NAME_LENGTH) return@gated Reply.Refused(BAD_REQUEST, "invalid name")
         val event = state.events[eventId] ?: return@gated notFound()
+        if (event.closed) return@gated closed()
         event.name = trimmed
         Reply.Ok(EventRenamed(trimmed))
     }
@@ -117,6 +122,7 @@ internal class InMemoryBackend(
         when (state.join(eventId, deviceId)) {
             BackendState.JoinOutcome.NO_SUCH_EVENT -> notFound()
             BackendState.JoinOutcome.FULL -> Reply.Refused(CONFLICT, "event full")
+            BackendState.JoinOutcome.CLOSED -> closed()
             BackendState.JoinOutcome.ENROLLED -> Reply.Ok(Unit)
         }
     }
@@ -131,12 +137,15 @@ internal class InMemoryBackend(
         when (state.publish(eventId, deviceId, manifest)) {
             BackendState.PublishOutcome.NO_SUCH_EVENT -> notFound()
             BackendState.PublishOutcome.NOT_A_MEMBER -> Reply.Refused(CONFLICT, "not a member")
+            BackendState.PublishOutcome.CLOSED -> Reply.Refused(CONFLICT, CLOSED_BODY)
+            BackendState.PublishOutcome.COMPLETED -> closed()
             BackendState.PublishOutcome.APPLIED, BackendState.PublishOutcome.OLDER -> Reply.Ok(Unit)
         }
     }
 
     override suspend fun leaveEvent(token: String?, eventId: String, deviceId: String): Reply<Unit> = gated(token) {
         state.awaitRelease(BackendCall.LEAVE)
+        if (state.offline) return@gated offline()
         if (eventId !in state.events) return@gated notFound()
         state.memberships[eventId to deviceId]?.departed = true
         Reply.Ok(Unit)
@@ -188,6 +197,8 @@ internal class InMemoryBackend(
 
     private fun <T> notFound(): Reply<T> = Reply.Refused(NOT_FOUND, "not found")
 
+    private fun <T> closed(): Reply<T> = Reply.Refused(GONE, CLOSED_BODY)
+
     private fun <T> offline(): Reply<T> = Reply.Refused(BAD_GATEWAY, "offline")
 
     private fun parse(raw: String): Instant? = runCatchingCancellable { Instant.parse(raw) }.getOrNull()
@@ -197,6 +208,8 @@ internal class InMemoryBackend(
         const val UNAUTHORIZED = 401
         const val NOT_FOUND = 404
         const val CONFLICT = 409
+        const val GONE = 410
+        const val CLOSED_BODY = "{\"error\":\"closed\"}"
         const val UPGRADE_REQUIRED = 426
         const val BAD_GATEWAY = 502
         const val WINDOW_DAYS = 30

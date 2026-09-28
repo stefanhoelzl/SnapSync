@@ -171,6 +171,18 @@ internal fun SwitchDialog(
                 onConfirm = onCancelSwitch,
                 onDismiss = onCancelSwitch,
             )
+        // A member opening a closed event's invite stays in their own event (capability `join-event`).
+        JoinPhase.Closed ->
+            AppConfirmDialog(
+                copy = DialogCopy(
+                    title = "Event closed",
+                    body = "This event can no longer be joined.",
+                    confirmLabel = "OK",
+                    cancelLabel = "Cancel",
+                ),
+                onConfirm = onCancelSwitch,
+                onDismiss = onCancelSwitch,
+            )
         JoinPhase.LoadFailed ->
             AppConfirmDialog(
                 copy = DialogCopy(

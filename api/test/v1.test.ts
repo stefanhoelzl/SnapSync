@@ -565,6 +565,8 @@ Deno.test("POST /events → 201 with the event, and one row written", async () =
   const body = await res.json() as Record<string, unknown>;
   assertEquals(Object.keys(body).sort(), [
     "capacity",
+    "closedAt",
+    "completedAt",
     "createdAt",
     "deletesAt",
     "endsAt",
@@ -572,6 +574,9 @@ Deno.test("POST /events → 201 with the event, and one row written", async () =
     "name",
     "startsAt",
   ]);
+  // A fresh event is neither closed nor completed (capability `event-lifetime`).
+  assertEquals(body.closedAt, null);
+  assertEquals(body.completedAt, null);
   assertEquals(body.name, "Party");
   assertEquals(body.startsAt, STARTS_AT);
   assertEquals(body.capacity, 10);

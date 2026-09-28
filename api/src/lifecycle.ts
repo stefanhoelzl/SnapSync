@@ -2,6 +2,10 @@
 // the Edge Script AND the out-of-edge nightly sweep (capability `event-lifetime`) decide an event's
 // fate by the SAME rules. Depends only on the row shape in db.ts — never on Hono, never on storage.
 //
+// Three facts decide an event's fate: its DEADLINE (`deleteByMs`, the guarantee), its CLOCK (`clockMs`,
+// 3 days after the later of its range end and its last landing), and its memberships. `sweepVerdict`
+// combines them (decision record `changes/early-event-completion`).
+//
 // WHAT LEFT THIS MODULE WHEN THE RELATIONAL STORE ARRIVED, and why none of it is missed:
 //
 //   `resolveMembership` + `parseManifestObjectName` — membership was two sibling objects
@@ -55,33 +59,53 @@ export function deleteByMs(event: LifecycleFields): number {
 export type MembershipCounts = { total: number; active: number };
 
 /**
- * Is an event STALE — should the nightly sweep delete it (capability `event-lifetime`)? Two
- * independent reasons, either of which suffices:
- *
- *   DEADLINE    now is past the derived delete-by — the GUARANTEE, nothing can prevent it
- *   EMPTY       every enrolled device has departed — OPPORTUNISTIC, see below
- *
- * (The third reason, INCOMPLETE, is gone: it described a marker missing fields that are now `NOT NULL`
- * columns. A row that cannot be classified cannot exist.)
- *
- * An event with NO memberships at all is NOT empty — it has been minted but never joined, which is the
- * normal state of every fresh event (`POST /events` always produces a zero-device event, because the
- * creator confirms through the same join gate a scanned QR uses). Deleting on an empty membership set
- * would reap a mint before the host confirms.
- *
- * Emptiness is OPPORTUNISTIC RECLAMATION, NOT A GUARANTEE. `LeaveEvent` clears the device's local config
- * and then dispatches the backend `DELETE` fire-and-forget, best-effort, never retried — so a leave that
- * never reaches the backend leaves an active membership behind and the event never empties. The deadline
- * is the only bound that always holds; nothing (spec, client behaviour, or user-facing copy) may be
- * written as if emptiness were assured.
+ * How long after the later of its range's end and its last landing an event that someone joined is
+ * completed regardless of who is still in it (capability `event-lifetime`, "A finished event closes").
  */
-export function eventIsStale(
+export const COMPLETION_GRACE_MS = 3 * 24 * 60 * 60 * 1000;
+
+/**
+ * The CLOCK (decision record `changes/early-event-completion` D4): `max(endsAt, lastLandedAt) + 3 days`,
+ * in epoch ms. The last landing woke every receiver, so a member that has not finished 3 days after it is
+ * silent — the clock is what keeps such a member from holding the photos on the server to the deadline.
+ * `NaN` when `endsAt` cannot be parsed; an unparseable landing time is ignored (the end still anchors).
+ */
+export function clockMs(event: Pick<EventRow, "endsAt" | "lastLandedAt">): number {
+  const endsAtMs = Date.parse(event.endsAt ?? "");
+  if (Number.isNaN(endsAtMs)) return Number.NaN;
+  const landedMs = Date.parse(event.lastLandedAt ?? "");
+  return Math.max(endsAtMs, Number.isNaN(landedMs) ? endsAtMs : landedMs) + COMPLETION_GRACE_MS;
+}
+
+/**
+ * What the nightly sweep does with an event (capability `event-lifetime`):
+ *
+ *   DROP      now is past the derived delete-by — the GUARANTEE: the row goes, and with it anything left
+ *   COMPLETE  the event is finished: its memberships, assets and so bytes go, the ROW stays until DROP so
+ *             a device still joined is told "completed" rather than a "not found" it would disbelieve.
+ *             Two reasons, both only for an event someone has joined:
+ *               EMPTY  every enrolled device has departed — by its own leave, or on its own once the
+ *                      event closed and it had everything. Dependable now: a leave that fails to reach
+ *                      the server is retried by the device until it lands.
+ *               CLOCK  now is past `clockMs` — the members still in it are left behind.
+ *   KEEP      otherwise, and for an event already completed (it waits for DROP).
+ *
+ * An event with NO memberships at all is not empty — it was minted and never joined, the normal state of
+ * every fresh event (`POST /events` produces a zero-device event, and the creator confirms through the
+ * same join gate a scanned QR uses) — and the clock does not apply to it either: it lives to its deadline.
+ */
+export type SweepVerdict = "drop" | "complete" | "keep";
+
+export function sweepVerdict(
   event: EventRow,
   counts: MembershipCounts,
   nowMs: number,
-): boolean {
+): SweepVerdict {
   const deleteBy = deleteByMs(event);
-  if (Number.isNaN(deleteBy)) return true; // corrupt anchors — fail toward reclamation
-  if (nowMs > deleteBy) return true;
-  return counts.total > 0 && counts.active === 0;
+  if (Number.isNaN(deleteBy)) return "drop"; // corrupt anchors — fail toward reclamation
+  if (nowMs > deleteBy) return "drop";
+  if (event.completedAt || counts.total === 0) return "keep";
+  if (counts.active === 0) return "complete";
+  const clock = clockMs(event);
+  return Number.isNaN(clock) || nowMs > clock ? "complete" : "keep";
 }

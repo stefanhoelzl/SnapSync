@@ -9,7 +9,6 @@ it, nothing tracks a visitor, automatic failure reports carry no identifiers, an
 leaves the phone only when the user writes and sends one. How long an event and its photos are kept is
 capability `event-lifetime`; which of a member's photos are shared at all is capability `photo-sharing`.
 Decision record: changes/archive/2026-07-14-add-device-attestation
-
 ## Requirements
 ### Requirement: No account and no personal identity
 SnapSync SHALL NOT ask for or store a name, email address, phone number, password or contacts. Each install
@@ -166,11 +165,15 @@ user sends, or, stripped of identifiers, as the recent activity attached to an a
 
 ### Requirement: The notification token is used only to deliver new photos
 The token Apple gives the app for waking it SHALL be used only to tell that device that new photos are
-ready in its event.
+ready in its event, or, once, that its event has closed (capability `event-lifetime`).
 
 #### Scenario: Another member shares a photo
 - **WHEN** another member's photo arrives in the event
 - **THEN** the token is used to wake this device for it, and for nothing else
+
+#### Scenario: The event closes
+- **WHEN** the device's event closes
+- **THEN** the token is used once to wake the device for it
 
 ### Requirement: The Privacy Policy states what leaves the device
 The Privacy Policy published on the site (capability `web-site`) SHALL accurately describe every kind of
@@ -183,3 +186,4 @@ leaves the device.
 #### Scenario: A new kind of data starts leaving the device
 - **WHEN** a release begins sending a kind of data the policy does not describe
 - **THEN** the policy published with that release describes it and names the provider that receives it
+

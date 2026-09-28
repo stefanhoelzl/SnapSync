@@ -60,6 +60,8 @@ class BackendEventJoin(private val backend: AuthenticatedBackend) : EventJoin {
             is Reply.Ok -> JoinResult.JOINED
             is Reply.Refused -> when (reply.status) {
                 CONFLICT -> JoinResult.EVENT_FULL
+                // A closed (or completed) event admits nobody (capability `event-lifetime`).
+                GONE -> JoinResult.EVENT_CLOSED
                 NOT_FOUND -> JoinResult.EVENT_NOT_FOUND
                 else -> JoinResult.FAILED
             }
@@ -68,18 +70,33 @@ class BackendEventJoin(private val backend: AuthenticatedBackend) : EventJoin {
 
     private companion object {
         const val CONFLICT = 409
+        const val GONE = 410
         const val NOT_FOUND = 404
     }
 }
 
 /**
- * [ManifestPublisher] over the backend: `true` exactly when the backend served the write. A publish from a device
- * holding no membership is refused (`409`) rather than silently creating one.
+ * [ManifestPublisher] over the backend: `true` exactly when the backend served the write — or refused it for good
+ * because the event has closed. A publish from a device holding no membership is refused (`409`) rather than
+ * silently creating one.
  */
 class BackendManifestPublisher(private val backend: AuthenticatedBackend) : ManifestPublisher {
 
     override suspend fun publish(eventId: String, deviceId: String, manifest: DeviceManifest): Boolean =
-        backend.publishManifest(eventId, deviceId, manifest) is Reply.Ok
+        when (val reply = backend.publishManifest(eventId, deviceId, manifest)) {
+            is Reply.Ok -> true
+            // A CLOSED event's asset sets are fixed and a COMPLETED one holds none (capability `photo-sharing`): the
+            // refusal is final, so it is recorded like a publish — re-sending the same snapshot every cycle could
+            // never change the answer.
+            is Reply.Refused -> reply.status == GONE || (reply.status == CONFLICT && CLOSED_MARK in reply.body)
+            is Reply.Malformed, is Reply.Unreachable -> false
+        }
+
+    private companion object {
+        const val CONFLICT = 409
+        const val GONE = 410
+        const val CLOSED_MARK = "\"closed\""
+    }
 }
 
 /**
@@ -96,6 +113,11 @@ class BackendLeaveNotifier(
 
     override suspend fun notifyLeaving(eventId: String): Result<Unit> {
         val id = runCatchingCancellable { identity.deviceId() }.getOrElse { return Result.failure(it) }
-        return backend.leaveEvent(eventId, id).toResult("leave $eventId/$id")
+        val reply = backend.leaveEvent(eventId, id)
+        // An event the backend no longer holds has nothing left to leave: the leave is as done as it will ever be.
+        if (reply is Reply.Refused && reply.status == LEAVE_NOT_FOUND) return Result.success(Unit)
+        return reply.toResult("leave $eventId/$id")
     }
 }
+
+private const val LEAVE_NOT_FOUND = 404

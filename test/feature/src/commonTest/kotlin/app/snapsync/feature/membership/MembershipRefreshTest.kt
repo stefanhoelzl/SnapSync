@@ -1,5 +1,7 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.feature.support.inertPendingLeaves
+
 import kotlin.time.Instant
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureDate
@@ -11,6 +13,8 @@ import app.snapsync.model.eventEnd
 import app.snapsync.model.eventStart
 import app.snapsync.model.EventConfig
 import app.snapsync.model.JoinLoad
+import app.snapsync.model.EventCompletionState
+import app.snapsync.model.MemberCounts
 import app.snapsync.mock.fixedClock
 import app.snapsync.feature.support.ConfigWrites
 import app.snapsync.services.config.ConfigService
@@ -78,6 +82,7 @@ class MembershipRefreshTest {
                 clearLedger = {},
                 notifyLeave = {},
                 scope = this,
+                pendingLeaves = inertPendingLeaves(),
             ),
         )
 
@@ -235,5 +240,44 @@ class MembershipRefreshTest {
         val config = Membership(legacy)
         assertEquals(RefreshOutcome.REFRESHED, refresh(config).refresh("E", found("Anna's Birthday")))
         assertEquals(legacy.copy(deletesAt = DELETES), config.saved)
+    }
+
+    // ── Early completion (capability `event-lifetime`) ─────────────────────────────────────────────────
+
+    @Test
+    fun `a COMPLETED event ends the membership before its deadline`() = runTest {
+        val config = Membership(joined)
+        val completed = JoinLoad.Found(joined.name, STARTS, ENDS, DELETES, EventCompletionState(closed = true, completed = true))
+        assertEquals(RefreshOutcome.COMPLETED, refresh(config).refresh("E", completed))
+        assertNull(config.config.value)
+    }
+
+    @Test
+    fun `a CLOSED event is recorded with its member counts`() = runTest {
+        val config = Membership(joined)
+        val closed = JoinLoad.Found(
+            joined.name, STARTS, ENDS, DELETES,
+            EventCompletionState(closed = true, completed = false, members = MemberCounts(active = 4, settled = 4)),
+        )
+        assertEquals(RefreshOutcome.REFRESHED, refresh(config).refresh("E", closed))
+        assertEquals(joined.copy(closed = true, members = MemberCounts(4, 4)), config.saved)
+    }
+
+    @Test
+    fun `a stale OPEN answer never reopens a closed membership`() = runTest {
+        val config = Membership(joined.copy(closed = true))
+        refresh(config).refresh("E", found(joined.name))
+        assertEquals(true, config.config.value?.closed)
+    }
+
+    @Test
+    fun `unchanged member counts save nothing`() = runTest {
+        val counted = joined.copy(members = MemberCounts(3, 1))
+        val config = Membership(counted)
+        refresh(config).refresh(
+            "E",
+            JoinLoad.Found(counted.name, STARTS, ENDS, DELETES, EventCompletionState(false, false, MemberCounts(3, 1))),
+        )
+        assertNull(config.saved)
     }
 }

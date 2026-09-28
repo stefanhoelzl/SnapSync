@@ -3,6 +3,7 @@
 package app.snapsync.compose
 
 import app.snapsync.feature.upload.TailRunner
+import app.snapsync.feature.upload.TailScope
 import app.snapsync.feature.upload.TailTrigger
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.BackgroundTime
@@ -41,6 +42,8 @@ internal class WakeHold(
     time: BackgroundTime,
     private val tail: TailRunner,
     private val log: Logger,
+    /** The end-of-wake step, run once this wake's tail has ended — see `AppTail`'s `finish`. */
+    private val finish: suspend () -> Unit,
 ) {
     private val expired = AtomicBoolean(false)
     private val guarded = AtomicReference<List<OsCompletions.Handover>>(emptyList())
@@ -76,9 +79,23 @@ internal class WakeHold(
             } else {
                 runCatchingCancellable { tail.request(trigger) }
                     .onFailure { log.w(it) { "$label: its tail ($trigger) failed" } }
+                finishAfter(trigger)
             }
         } finally {
             end()
+        }
+    }
+
+    /**
+     * The end-of-wake step, once the tail has ended. Only a wake whose tail covered the whole pass reads the event's
+     * state — a freed upload slot or a single staged import is too narrow a moment to spend a request on — and only
+     * while its time is not up.
+     */
+    private suspend fun finishAfter(trigger: TailTrigger) {
+        val due = trigger.scope == TailScope.FULL
+        if (due && !expired.load()) {
+            runCatchingCancellable { finish() }
+                .onFailure { log.w(it) { "$label: the end-of-wake step failed; the next wake runs it again" } }
         }
     }
 

@@ -44,6 +44,12 @@ class AppTail internal constructor(
     private val mayCreate: () -> Boolean,
     /** The in-process ledger-counts re-read, run after a tail unit only while foregrounded. */
     private val refreshCounts: suspend () -> Unit,
+    /**
+     * The end of every wake that handed its rest to the tail: the event-completion step (capability
+     * `manage-membership`), run once the tail has ended, outside it — it may leave the event, and a leave must never
+     * run inside the tail it would stop.
+     */
+    private val finish: suspend () -> Unit,
 ) {
     private val foreground = AtomicBoolean(false)
 
@@ -99,7 +105,18 @@ class AppTail internal constructor(
     }
 
     /** A hold on the process's background time for [label], whose expiry stops this tail. */
-    internal fun hold(label: String): WakeHold = WakeHold(label, ports.backgroundTime, runner, ports.log)
+    internal fun hold(label: String): WakeHold = WakeHold(label, ports.backgroundTime, runner, ports.log, finish)
+
+    /**
+     * The heartbeat wake's hand-over — it holds no [WakeHold] of its own: its tail, then the end-of-wake step. A tail
+     * that fails is contained, and so is the step; the next wake runs both again.
+     */
+    internal suspend fun heartbeatThenFinish(id: String) {
+        runCatchingCancellable { runner.request(TailTrigger.HEARTBEAT) }
+            .onFailure { ports.log.w(it) { "runWake($id): its tail failed" } }
+        runCatchingCancellable { finish() }
+            .onFailure { ports.log.w(it) { "runWake($id): the end-of-wake step failed; the next wake runs it again" } }
+    }
 
     /**
      * The seam the membership transitions drive (capability `background-upload`): an arm requests the tail — detached,

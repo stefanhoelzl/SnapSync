@@ -4,6 +4,7 @@ import app.snapsync.model.LedgerEntry
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.encodeToJson
 import app.snapsync.model.projectDeviceManifest
+import app.snapsync.model.withFinal
 import app.snapsync.model.withVersion
 import app.snapsync.services.manifest.DeviceManifestService
 import app.snapsync.services.backend.ManifestPublisher
@@ -64,8 +65,14 @@ class DeviceManifestProducer(
         policy: SelectionPolicy,
         rows: List<LedgerEntry>,
         manifestVersion: Long,
+        /**
+         * Whether this snapshot declares the share SETTLED (capability `photo-sharing`, "A member's share is settled
+         * only after the event has ended"): true once the event's range has ended, since the discovery this hook
+         * follows then ran after the end. The flag rides the marker, so its flip is published once.
+         */
+        settled: Boolean = false,
     ): Boolean {
-        val manifest = projectDeviceManifest(deviceId, rows, policy).withVersion(manifestVersion)
+        val manifest = projectDeviceManifest(deviceId, rows, policy).withVersion(manifestVersion).withFinal(settled)
         val json = manifest.encodeToJson()
         // Skip-if-unchanged, keyed by EVENT. The projected JSON is event-independent (`{deviceId,
         // assets, version}`), so without the event id in the marker a **switch** to a new event would compare
