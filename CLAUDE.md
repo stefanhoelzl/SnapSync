@@ -346,8 +346,11 @@ git add screenshots/ && git commit
   **1 of 2** runs under the forge, on the same pre-booted simulator the rig path reuses. Re-dispatch if
   one does. This is **not** automatable by asserting the top band is
   flat: `in_sync` legitimately renders the event name there, so a colour check false-positives.
-- **An unchanged UI comes back byte-identical** — all six: the clock is mocked at a fixed instant
-  (`Shot.NOW`) and the status bar overridden. A diff means the UI, or a scenario, really moved.
+- **An unchanged UI comes back identical** — all six: the clock is mocked at a fixed instant (`Shot.NOW`), the
+  event id is fixed (`Shot.EVENT_ID`, which the `in_sync` QR encodes) and the status bar overridden. The one
+  residue is the simulator's own anti-aliasing of the Dynamic Island's rim — at most ~120 pixels, each off by
+  ≤2/255 (measured 2026-09-28) — which is noise, not a change: don't commit a raw whose only diff is that. A diff
+  anywhere else means the UI, or a scenario, really moved.
 - **A headline or size change needs NO re-capture** — both consumers derive from the committed raws.
   Edit `metadata/screenshots/en-US.json` or the `site/` landing page and push.
 ## Modules
