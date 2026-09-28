@@ -27,13 +27,12 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import app.snapsync.mock.BackendCall
 import app.snapsync.model.UploadError
 import app.snapsync.model.GalleryAccess
 
 /**
  * The world-inspector control panel (`docs/testing.md`): raw Material 3, **never** App*
- * (test equipment, like the forge's `ControlPanel`). Every control routes through the single
+ * (test equipment). Every control routes through the single
  * [WorldInspectorController]; no composable mutates the app or its mocks inline. Two-column paired sections fill
  * the width and cut scroll. The panel reads the controller's recomputed [InspectorSnapshot].
  */
@@ -112,19 +111,11 @@ fun WorldInspector(
                 // enter the union, and never inflate N. "+ 1080p video" is the control: it is BELOW the
                 // image floor but above the video floor, so it must still upload.
                 Faint("selection policy — these must NOT upload (except the video):")
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedButton(onClick = { controller.addScreenshot() }) { Text("+ Screenshot") }
-                    Spacer(Modifier.width(6.dp))
-                    OutlinedButton(onClick = { controller.addScreenRecording() }) { Text("+ Screen rec") }
-                    Spacer(Modifier.width(6.dp))
-                    OutlinedButton(onClick = { controller.addGif() }) { Text("+ GIF") }
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedButton(onClick = { controller.addLowResPhoto() }) { Text("+ Low-res") }
-                    Spacer(Modifier.width(6.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    PolicyAsset.entries.forEach { kind ->
+                        OutlinedButton(onClick = { controller.addPolicyAsset(kind) }) { Text(kind.label) }
+                    }
                     OutlinedButton(onClick = { controller.addWhatsAppAlbumPhoto() }) { Text("+ WhatsApp album") }
-                    Spacer(Modifier.width(6.dp))
-                    OutlinedButton(onClick = { controller.addHdVideo() }) { Text("+ 1080p video") }
                 }
                 if (snap.galleryRows.isEmpty()) Faint("(empty gallery)")
                 snap.galleryRows.forEach { row ->
@@ -214,12 +205,7 @@ fun WorldInspector(
                     OutlinedButton(onClick = { controller.setJobLimit(2) }) { Text("2") }
                     OutlinedButton(onClick = { controller.setJobLimit(Int.MAX_VALUE) }) { Text("∞") }
                 }
-                // The screens the app shows only while it waits: hold what it waits on, release to move on.
-                Text("Hold (the app waits)")
-                BackendCall.entries.forEach { call ->
-                    HoldRow("hold-${call.key}", "backend: ${call.key}", call in snap.heldCalls) { controller.setBackendHeld(call, it) }
-                }
-                HoldRow("hold-enumeration", "library enumeration", snap.enumerationHeld) { controller.setEnumerationHeld(it) }
+                Holds(snap.held, controller::setHeld)
             },
         )
 
@@ -289,11 +275,17 @@ internal const val PAST_END = "2026-06-14T00:00:00"
 internal const val FUTURE_START = "2099-12-01T00:00:00"
 internal const val FUTURE_END = "2099-12-31T00:00:00"
 
-/** One hold switch, tagged so `:test:harness-driver` can reach it (a Switch carries no text of its own). */
+/**
+ * The screens the app shows only while it waits: hold what it waits on, release to move on. Each switch is tagged
+ * `hold-<name>` so `:test:harness-driver` can reach it (a Switch carries no text of its own).
+ */
 @Composable
-private fun HoldRow(tag: String, label: String, held: Boolean, onChange: (Boolean) -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Switch(modifier = Modifier.testTag(tag), checked = held, onCheckedChange = onChange)
-        Text(if (held) "$label HELD" else label)
+private fun Holds(held: Set<String>, onChange: (String, Boolean) -> Unit) {
+    Text("Hold (the app waits)")
+    HOLDS.forEach { hold ->
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Switch(modifier = Modifier.testTag("hold-$hold"), checked = hold in held, onCheckedChange = { onChange(hold, it) })
+            Text(if (hold in held) "$hold HELD" else hold)
+        }
     }
 }

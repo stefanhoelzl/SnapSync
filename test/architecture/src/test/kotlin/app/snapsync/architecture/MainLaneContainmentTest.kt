@@ -72,11 +72,6 @@ class MainLaneContainmentTest {
         // UIKit posts them and where the scene record they write is confined.
         "/adapter/ios/ui/src/iosMain/kotlin/app/snapsync/scene/IosLifecycle.kt" to
             "observes UIApplication's lifecycle notifications on the main queue",
-        // The forge binary's entry point. It composes a UI and nothing else — there is no live core in
-        // that binary to keep off the main lane, because it does not link `:app:ios`. The lane it names is
-        // the scope its forged container runs on, which IS platform UI.
-        "/app/ios/forge/src/iosMain/kotlin/app/snapsync/ios/forge/ForgeViewController.kt" to
-            "the forged container's scope; this binary composes UI and holds no live core",
     )
 
     private val mainLaneForms = listOf(

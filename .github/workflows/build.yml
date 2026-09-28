@@ -43,25 +43,16 @@ jobs:
       # "time is up"), from the commit that introduced it until this one, and nothing noticed because
       # nothing ever compiled it.
       #
-      # IT THEN DID IT AGAIN, BESIDE THIS STEP. `compileIosMainKotlinMetadata` compiles the MAIN half of a
-      # gated tree and nothing else, so presentation's forge TEST source set (then at `ui/presentation`) —
-      # gated with the presets it asserts — stopped compiling when the presentation state changed shape (93e8eb4f, 2026-08-28)
-      # and stayed broken for weeks with this step green beside it. `screenshots.yml` did not catch it
-      # either: it builds the `SnapSyncForge` Xcode scheme, which is forge main, not JVM tests.
-      #
-      # So the gated TESTS are compiled and RUN here too. Running rather than only compiling is the point:
-      # a compile would have caught that particular rot, but the value of `ForgeStatusHostTest` is its
-      # assertion — that each marketing preset reaches its frame THROUGH THE REAL REDUCTION, which is what
-      # the App Store listing's honesty rests on (`docs/deployment.md`). A gate that compiles an
-      # assertion without evaluating it is the same shape of check as a verify task with nothing to
-      # compare. It is seconds on this runner; do not narrow it back to a compile.
+      # IT THEN DID IT AGAIN, BESIDE THIS STEP: the forge's gated test source set stopped compiling when the
+      # presentation state changed shape (93e8eb4f, 2026-08-28) and stayed broken for weeks with this step green,
+      # because a metadata compile compiles the MAIN half of a gated tree only. The forge is gone (the marketing
+      # shots are scenarios `ShotsTest` runs inside `build` above), so no gated tree carries tests any more; a new
+      # one that does must be RUN here, not only compiled.
       #
       # `compileIosMainKotlinMetadata` stays metadata-only, deliberately: it is the Linux-runnable proxy,
-      # and its point is to catch a reference that stopped resolving, not to produce an artifact. Neither
-      # property may reach a shipped build, and neither does — a release archive is built without them.
-      - run: >
-          ./gradlew compileIosMainKotlinMetadata :domain:presentation:jvmTest
-          -Psnapsync.rig=true -Psnapsync.forge=true
+      # and its point is to catch a reference that stopped resolving, not to produce an artifact. The
+      # property may not reach a shipped build, and does not — a release archive is built without it.
+      - run: ./gradlew compileIosMainKotlinMetadata -Psnapsync.rig=true
 
   spec-validate:
     # This display name is the status-check context required by `main`'s branch ruleset,

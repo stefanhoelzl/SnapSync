@@ -13,7 +13,7 @@ import kotlin.test.fail
  *
  * This guard exists because the alternative already failed. `detektAppShell`'s roots are a hand list
  * mirrored in [KotlinShellGuardTest]; the mirror was faithful and BOTH copies were wrong, missing
- * `:app:ios:forge` until the change that added these tiers measured the tree and found it. The tier
+ * the (since deleted) forge shell `:app:ios:forge` until the change that added these tiers measured the tree and found it. The tier
  * tasks therefore read each mapped subproject's own `src` directory out of the live Gradle project
  * model — this test guards the one thing the model cannot supply, which is the mapping itself.
  *

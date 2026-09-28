@@ -1,4 +1,4 @@
-# Tier `shell` — the iOS app shells (`:app:ios`, `:app:ios:extension`, `:app:ios:forge`)
+# Tier `shell` — the app shells (`:app:ios`, `:app:ios:extension`, `:domain:host`, `:app:jvm`)
 #
 # A CEILING on complexity for this scope (`docs/architecture.md`). Every number below is a
 # ceiling that MAY ONLY FALL. Lowering one is ordinary work — do it in the change that makes it true.

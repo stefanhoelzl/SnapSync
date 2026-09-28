@@ -86,6 +86,14 @@ class DeletionLedgerTest {
             declared(files, """(class|object) (MiniEdge|BackendStore)\b""").forEach {
                 add("the mini-edge in $it (the backend mock and the real api/ are the two backends — 11g2b)")
             }
+            // The forge: a status screen over canned inputs, as a binary for the marketing screenshots and a desktop
+            // harness for review. It could show a frame the app never reached, and it rotted between dispatches. The
+            // raws come from the real app over launch adapters, and review is the world harness's (12).
+            if (File(repoRoot, "app/ios/forge").exists()) add("an :app:ios:forge module (the raws come from the real app — 12)")
+            if (File(repoRoot, "iosApp/SnapSyncForge").exists()) add("a SnapSyncForge Xcode target (the raws come from the real app — 12)")
+            declared(files, """fun (forgeStatusHost|ForgeHarnessRoot)\b""").forEach {
+                add("a forged status host in $it (every UI state is reached through the world harness's levers — 12)")
+            }
             // PRODUCTION uploaders only. The retired item was a second *uploader*; the repo names a
             // test after its subject (`HttpEnrollmentTest`), so `class \w*Enrollment` matches the test
             // of the surviving uploader as surely as a resurrected one. Narrowed rather than the row

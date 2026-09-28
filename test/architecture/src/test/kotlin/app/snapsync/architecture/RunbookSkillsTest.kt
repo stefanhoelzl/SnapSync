@@ -119,8 +119,7 @@ class RunbookSkillsTest {
      *
      * The gated trees are excluded, and that is not a loophole — it is the whole distinction. A file under
      * `test/` is absent from a build without its build property, so a variable it reads is inert **by
-     * construction** rather than by a runtime check. `SNAPSYNC_RIG_PORT` and the forge target's state
-     * selector both live there.
+     * construction** rather than by a runtime check. `SNAPSYNC_RIG_PORT` lives there.
      */
     private val sourceTriggers: Map<String, String> = run {
         val roots = listOf("domain", "app", "adapter", "ui").map { File(repoRoot, it) }
@@ -131,12 +130,8 @@ class RunbookSkillsTest {
             .filterNot { it.path.contains("/build/") }
             .filterNot { it.path.contains("/commonTest/") || it.path.contains("/jvmTest/") }
             .filterNot { it.path.contains("Test/") || it.path.contains("/test/") }
-            // The build-property-gated trees. Not a loophole — it is the whole distinction: these files
-            // are absent from a build without their property, so a variable read there is inert BY
-            // CONSTRUCTION rather than by a runtime check. `SNAPSYNC_RIG_PORT` lives in the first;
-            // `SNAPSYNC_FORGE_STATE` lives in the second, whose binary is a separate Xcode target that
-            // does not link `:app:ios` at all.
-            .filterNot { it.path.contains("/app/ios/forge/") }
+            // The build-property-gated tree is under `test/`, outside these roots: absent from a build without
+            // its property, so a variable read there (`SNAPSYNC_RIG_PORT`) is inert BY CONSTRUCTION.
             .toList()
         scannedFileCount = files.size
         files.flatMap { file ->

@@ -173,8 +173,9 @@ State these before writing a scenario against this host, or you will write one t
 ## Build, sign, install
 
 The signature is not optional. An **unsigned** simulator build has no App-Group container —
-`App Group container 'group.app.snapsync' unavailable` — so no ledger, no config, no live stack. That
-is why `screenshots.yml` gets away with `CODE_SIGNING_ALLOWED=NO`: forge boots no live stack.
+`App Group container 'group.app.snapsync' unavailable` — so no ledger, no config, no live stack, and no
+launch adapters (their choice and mocked state live there). `screenshots.yml` and ios-contracts both build
+unsigned and then run `scripts/sim-sign`.
 
 ```
 # on the Mac, in the rsync'd repo

@@ -95,16 +95,16 @@ val journeysClasspath by tasks.registering {
 // ---- The marketing screenshots ----
 // (`docs/deployment.md`, "Screenshots")
 //
-// The capture of the six raws from the REAL app: the rig build on a simulator over launch adapters, driven to each shot by
-// the scenarios in the test source set (`Shots.kt`, which `ShotsTest` runs on the JVM host on every build), and
-// captured with `simctl`. Run ONLY by `screenshots.yml` on a macOS runner, as a bare JVM on the classpath below — the
-// same reason the journeys are. Never a dependency of `check`.
+// The capture of the six raws from the REAL app: the rig build on a simulator over launch adapters, driven to each
+// shot by the scenarios in the test source set (`Shots.kt`, which `ShotsTest` runs on the JVM host on every build),
+// and captured with `simctl`. Run ONLY by `screenshots.yml` on a macOS runner, as a bare JVM on the classpath
+// below — the same reason the journeys are. Never a dependency of `check`.
 val screenshots: SourceSet by sourceSets.creating {
     compileClasspath += sourceSets.test.get().output + sourceSets.test.get().compileClasspath
     runtimeClasspath += output + compileClasspath + sourceSets.test.get().runtimeClasspath
 }
 val screenshotsClasspath by tasks.registering {
-    description = "Writes the screenshot capture's runtime classpath to build/screenshots-classpath.txt (screenshots.yml only)."
+    description = "Writes the screenshot capture's runtime classpath to build/screenshots-classpath.txt."
     val classpath = screenshots.runtimeClasspath
     val out = layout.buildDirectory.file("screenshots-classpath.txt")
     inputs.files(classpath)

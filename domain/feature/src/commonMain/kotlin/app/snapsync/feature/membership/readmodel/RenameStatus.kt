@@ -55,7 +55,7 @@ interface RenameStatusSource {
     val renameStatus: StateFlow<RenameStatus>
 }
 
-/** Settable [RenameStatusSource] the rename use-case drives and the harness/tests forge. */
+/** Settable [RenameStatusSource] the rename use-case drives and tests set. */
 class MutableRenameStatusSource(initial: RenameStatus = RenameStatus.Idle) : RenameStatusSource {
     private val _status = MutableStateFlow(initial)
     override val renameStatus: StateFlow<RenameStatus> = _status.asStateFlow()

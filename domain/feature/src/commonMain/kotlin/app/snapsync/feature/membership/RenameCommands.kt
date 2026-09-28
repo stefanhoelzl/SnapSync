@@ -19,10 +19,6 @@ interface ResetRename {
     fun reset()
 }
 
-/** A no-op [EventRenamer] for hosts/tests that forge [RenameStatus] directly (e.g. the harness). */
-object NoOpEventRenamer : EventRenamer {
-    override suspend fun rename(eventId: String, name: String) = Unit
-}
 
 /** A no-op [ResetRename], the twin of [NoOpEventRenamer]. */
 object NoOpResetRename : ResetRename {

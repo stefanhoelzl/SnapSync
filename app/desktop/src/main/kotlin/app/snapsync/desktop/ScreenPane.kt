@@ -16,15 +16,14 @@ import kotlinx.coroutines.flow.StateFlow
 /**
  * The phone pane of an app that is running: the real `StatusScreen` rendering exactly what the app [shown] on its
  * screen, with every tap handed back as the intent it produces ([onIntent]) — the one tap → intent table the shipped
- * app binds. It builds no status host: the app's own is the one reducing. The forge, which has no app, keeps
- * [StatusPane].
+ * app binds. It builds no status host: the app's own is the one reducing.
  */
 @Composable
 fun ScreenPane(
     shown: StateFlow<UiState?>,
     cutoffFormatter: CutoffFormatter,
     onIntent: (UiIntent) -> Unit,
-    // Test-only theme override for the phone pane, as [StatusPane] takes it.
+    // Test-only theme override for the phone pane, as the design system takes it.
     darkThemeOverride: Boolean? = null,
 ) {
     val state by shown.collectAsState()

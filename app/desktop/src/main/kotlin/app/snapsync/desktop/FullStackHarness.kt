@@ -35,9 +35,8 @@ import kotlinx.coroutines.newSingleThreadContext
  * [WorldInspectorController]. The operator plays the OS: nothing auto-runs; **Invoke extension** runs one
  * `process()`-shaped cycle by hand.
  *
- * This file compiles to `app.snapsync.desktop.FullStackHarnessKt` — deliberately distinct from the
- * forge harness's `app.snapsync.desktop.MainKt`, which shares this module since the migration
- * step-10 fold (`:app:desktop:run` = world, `:app:desktop:runForge` = forge). Thin wiring + Compose
+ * It is where every UI state is reviewed without a device: each is reachable through the inspector's levers — the
+ * screens the app shows only while it waits by holding what it waits on — and none is forged. Thin wiring + Compose
  * only; the app is `:app:jvm`'s, the levers are the mocks' operator faces.
  */
 fun main() = application {

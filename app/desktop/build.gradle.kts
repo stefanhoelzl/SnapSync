@@ -8,23 +8,16 @@ kotlin {
     jvmToolchain(libs.versions.jdk.get().toInt())
 }
 
-// The ONE desktop module (migration step 10: `:app:desktop:ui` folded in), hosting BOTH harnesses:
-//  - Shared pane: `PhoneFrame` + the `StatusPane` composition glue (construct `StatusContainerHost`
-//    from injected seams → render the real `StatusScreen` inside the frame).
-//  - **Full-stack world harness** — `:app:desktop:run` (`app.snapsync.desktop.FullStackHarnessKt`):
-//    the app the JVM root (`:app:jvm`) composes over the mocks behind the phone frame,
-//    driven by a right-pane world inspector (`docs/testing.md`).
-//  - **Forge harness** — `:app:desktop:runForge` (`app.snapsync.desktop.MainKt`): the same phone
-//    frame over forge cells + a control panel that forges any UI state (capability
-//    `docs/testing.md`). Registered as a plain JavaExec below because the Compose Desktop
-//    plugin models exactly one `application {}` main class per module.
+// The ONE desktop module: the full-stack world harness — `:app:desktop:run`
+// (`app.snapsync.desktop.FullStackHarnessKt`): the app the JVM root (`:app:jvm`) composes over the mocks, its screen
+// in a `PhoneFrame`, driven by a right-pane world inspector (`docs/testing.md`). It is also where every UI state is
+// reviewed without a device: each one is reachable through the inspector's levers, none is forged.
 dependencies {
     implementation(libs.ktor.client.core)
     api(project(":domain:model"))
     api(project(":domain:ports"))
     api(project(":domain:feature"))
-    // The forge `PanelController` constructs its stand-in cells from `:domain:presentation`'s forge
-    // seams (MutableAttestedSource, MutablePendingJoinSource); `StatusPane` names the host.
+    // The screen pane and the mirror take the screen's `CutoffFormatter`.
     implementation(project(":domain:presentation"))
     implementation(project(":ui:screens"))
     // `StatusPane` provides the design-system's test-only `LocalDarkThemeOverride` around the phone
@@ -70,15 +63,4 @@ compose.desktop {
         // `./gradlew :app:desktop:run -Psnapsync.attach=http://127.0.0.1:<port>` attaches to a control-channel host.
         (project.findProperty("snapsync.attach") as String?)?.let { jvmArgs += "-Dsnapsync.attach=$it" }
     }
-}
-
-// The forge harness's window entry — the fold's replacement for the deleted `:app:desktop:ui:run`.
-tasks.register<JavaExec>("runForge") {
-    group = "compose desktop"
-    description = "Run the forge harness (phone frame + control panel forging any UI state)."
-    mainClass.set("app.snapsync.desktop.MainKt")
-    classpath = sourceSets["main"].runtimeClasspath
-    javaLauncher.set(toolchainLauncher)
-    jvmArgs("--enable-native-access=ALL-UNNAMED")
-    jvmArgs("-Dsun.java2d.uiScale=$uiScale")
 }

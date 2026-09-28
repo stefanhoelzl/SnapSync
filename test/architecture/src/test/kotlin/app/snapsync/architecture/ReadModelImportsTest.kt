@@ -29,7 +29,7 @@ class ReadModelImportsTest {
         "ui/screens/src",
         "ui/components/src",
         "test/control/src",
-        // The desktop harnesses: the forge's panes and the world inspector, which plays the mocks' operator faces
+        // The desktop harness: the world inspector, which plays the mocks' operator faces
         // and renders the app's own screen — held to the rule since 11g2, when its last direct feature wiring went.
         "app/desktop/src",
     )

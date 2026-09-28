@@ -48,9 +48,8 @@ import java.awt.datatransfer.StringSelection
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * The single mutation path for the full-stack world harness (test equipment — no tests, mirroring the forge's
- * `PanelController`): every inspector control goes through a named method here, never an inline mutation in a
- * composable.
+ * The single mutation path for the full-stack world harness (test equipment — no tests): every inspector control
+ * goes through a named method here, never an inline mutation in a composable.
  *
  * The app is the one the JVM root composes (`:app:jvm`'s [JvmApp] — the same `snapSyncHost` the iOS root calls) over
  * the device as mocks ([JvmMocks]). The phone pane shows what the app showed on its `Ui` port — [shown] — and hands
@@ -166,19 +165,9 @@ class WorldInspectorController(private val scope: CoroutineScope) {
 
     fun removeAsset(assetId: String) = launchMutation { mocks.library.operator.remove(AssetId(assetId)) }
 
-    // Selection policy (capability `photo-sharing`): each adds an asset the policy EXCLUDES, so the operator can watch
-    // it land in the gallery and then *not* upload and *not* enter the union — and see that N does not inflate.
-
-    fun addScreenshot() = addOwn(LibraryAssets.screenshot("shot-${ownAssetSeq++}"))
-
-    fun addScreenRecording() = addOwn(LibraryAssets.screenRecording("rec-${ownAssetSeq++}"))
-
-    fun addLowResPhoto() = addOwn(LibraryAssets.lowResPhoto("lowres-${ownAssetSeq++}"))
-
-    fun addGif() = addOwn(LibraryAssets.gif("gif-${ownAssetSeq++}"))
-
-    /** A 1080p recording: below the IMAGE floor, above the VIDEO floor — so it must still upload. */
-    fun addHdVideo() = addOwn(LibraryAssets.hdVideo("video-${ownAssetSeq++}"))
+    // Selection policy (capability `photo-sharing`): an asset the policy decides on — most it EXCLUDES, so the operator
+    // can watch it land in the gallery and then *not* upload and *not* enter the union, and see that N does not inflate.
+    fun addPolicyAsset(kind: PolicyAsset) = addOwn(kind.build("${kind.prefix}-${ownAssetSeq++}"))
 
     /** An ordinary photo that WhatsApp also saved into its album — excluded by the album denylist. */
     fun addWhatsAppAlbumPhoto() = launchMutation {
@@ -237,16 +226,18 @@ class WorldInspectorController(private val scope: CoroutineScope) {
         launchMutation { mocks.disk.operator.deny(FileArea.SHARED, CONFIG_FILE_NAME, unreadable) }
 
     /**
-     * Hold a backend [call] unanswered, or answer it — the only way to review a screen the app shows only while it waits
-     * (the join gate loading or committing, the create in flight).
+     * Hold one of [HOLDS] unanswered, or answer it — the only way to review a screen the app shows only while it waits:
+     * a backend call (the join gate loading or committing, the create in flight), or the library's enumeration (the
+     * status screen before anything is counted).
      */
-    fun setBackendHeld(call: BackendCall, held: Boolean) = launchMutation {
-        if (held) mocks.backend.operator.hold(call) else mocks.backend.operator.release(call)
-    }
-
-    /** Hold every walk of the library, or let them read — the status screen before anything is counted. */
-    fun setEnumerationHeld(held: Boolean) = launchMutation {
-        if (held) mocks.library.operator.holdEnumeration() else mocks.library.operator.releaseEnumeration()
+    fun setHeld(hold: String, held: Boolean) = launchMutation {
+        val call = BackendCall.ofKey(hold)
+        when {
+            call != null && held -> mocks.backend.operator.hold(call)
+            call != null -> mocks.backend.operator.release(call)
+            held -> mocks.library.operator.holdEnumeration()
+            else -> mocks.library.operator.releaseEnumeration()
+        }
     }
 
     fun armImportFailure() = launchMutation {
@@ -440,8 +431,8 @@ class WorldInspectorController(private val scope: CoroutineScope) {
             jobLimit = queue.jobLimit,
             backendOffline = mocks.backend.operator.offline,
             membershipUnreadable = mocks.disk.operator.isDenied(FileArea.SHARED, CONFIG_FILE_NAME),
-            heldCalls = BackendCall.entries.filterTo(mutableSetOf()) { mocks.backend.operator.isHeld(it) },
-            enumerationHeld = mocks.library.operator.enumerationHeld,
+            held = BackendCall.entries.filter { mocks.backend.operator.isHeld(it) }.mapTo(mutableSetOf()) { it.key } +
+                listOfNotNull(ENUMERATION.takeIf { mocks.library.operator.enumerationHeld }),
         )
     }
 
@@ -480,12 +471,12 @@ data class InspectorSnapshot(
     val jobLimit: Int,
     val backendOffline: Boolean,
     val membershipUnreadable: Boolean,
-    val heldCalls: Set<BackendCall>,
-    val enumerationHeld: Boolean,
+    /** Which of [HOLDS] are held. */
+    val held: Set<String>,
 ) {
     companion object {
         val EMPTY =
-            InspectorSnapshot(null, emptyList(), emptyList(), emptyList(), emptyList(), Int.MAX_VALUE, false, false, emptySet(), false)
+            InspectorSnapshot(null, emptyList(), emptyList(), emptyList(), emptyList(), Int.MAX_VALUE, false, false, emptySet())
     }
 }
 
@@ -496,3 +487,20 @@ data class JobRow(val key: String, val attempts: Int)
 
 /** A transfer the OS's download session holds: where it fetches from, and the app's tag for it. */
 data class DownloadRow(val url: String, val description: String)
+
+/** The library's enumeration, as a hold beside the backend's calls. */
+private const val ENUMERATION = "enumeration"
+
+/** What an operator can hold unanswered: each backend call, by its key, and the library's enumeration. */
+val HOLDS: List<String> = BackendCall.entries.map { it.key } + ENUMERATION
+
+/** The assets the selection policy decides on, as the inspector adds them. */
+enum class PolicyAsset(val label: String, val prefix: String, val build: (String) -> RawAsset) {
+    SCREENSHOT("+ Screenshot", "shot", { LibraryAssets.screenshot(it) }),
+    SCREEN_RECORDING("+ Screen rec", "rec", { LibraryAssets.screenRecording(it) }),
+    GIF("+ GIF", "gif", { LibraryAssets.gif(it) }),
+    LOW_RES("+ Low-res", "lowres", { LibraryAssets.lowResPhoto(it) }),
+
+    /** A 1080p recording: below the IMAGE floor, above the VIDEO floor — so it must still upload. */
+    HD_VIDEO("+ 1080p video", "video", { LibraryAssets.hdVideo(it) }),
+}

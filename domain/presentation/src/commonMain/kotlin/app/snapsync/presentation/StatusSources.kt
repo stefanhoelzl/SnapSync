@@ -72,9 +72,7 @@ class StatusSources(
     /**
      * The in-progress join/switch confirmation (capability `join-event`). Event-driven rather than
      * level-triggered: the gate sets it on a decoded interactive event link and clears it on
-     * commit/cancel. Injected — defaulting to a fresh instance — so the forge harness can forge any
-     * `JoinPhase` by writing this cell directly; production and the full-stack harness accept the
-     * default and let the gate drive it.
+     * commit/cancel. Injected — defaulting to a fresh instance, which the gate drives.
      */
     val pending: MutablePendingJoinSource = MutablePendingJoinSource(),
     /**
@@ -83,7 +81,7 @@ class StatusSources(
      *
      * An OBSERVATION, like every field here, so it does not cross `flow/` (`docs/architecture.md`,
      * "Commands cross one door": reads do not). Defaults to never-refused, so a host with no backend —
-     * the forge, and every test that does not exercise it — constructs unchanged.
+     * every test that does not exercise it — constructs unchanged.
      */
     val versionRefusal: StateFlow<VersionRefusal?> = MutableStateFlow(null),
     /**

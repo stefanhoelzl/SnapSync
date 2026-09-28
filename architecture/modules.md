@@ -17,7 +17,6 @@ flowchart LR
   app_desktop[":app:desktop"]
   app_ios[":app:ios"]
   app_ios_extension[":app:ios:extension"]
-  app_ios_forge[":app:ios:forge"]
   app_jvm[":app:jvm"]
   domain_compose[":domain:compose"]
   domain_feature[":domain:feature"]
@@ -99,9 +98,6 @@ flowchart LR
   app_ios_extension --> domain_model
   app_ios_extension --> domain_ports
   app_ios_extension --> domain_services
-  app_ios_forge --> domain_model
-  app_ios_forge --> domain_presentation
-  app_ios_forge --> ui_screens
   app_jvm --> adapter_generic_app
   app_jvm --> adapter_generic_mock
   app_jvm --> domain_compose

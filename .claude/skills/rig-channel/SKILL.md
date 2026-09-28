@@ -529,12 +529,14 @@ curl -s localhost:<port>/device            # honoured + refused (reasons) for TH
     `backend/device-config` (`token`, `env`, `writes`), `backend/event`, `backend/departed`, `backend/publishes`,
     `backend/pushes`;
     `diagnostics/sent` (the dumps the reporter received);
-  - backend levers: `backend/min-app-version[?minimum=]`, `backend/sweep`, `backend/hold-leave`,
-    `backend/release-leave`, `backend/fail-listing?on=`, `backend/deposit?asset=`, `backend/legacy-event?name=`,
+  - backend levers: `backend/min-app-version[?minimum=]`, `backend/sweep`,
+    `backend/hold?call=event|create|join|leave&on=` (the call waits unanswered until `on=false` — the only way to
+    catch a screen the app shows while it waits), `backend/fail-listing?on=`, `backend/deposit?asset=`, `backend/legacy-event?name=`,
     `backend/refuse-credential`, `backend/wipe-bytes[?device=]`;
   - OS and library: `clock/advance?to=<instant>`, `app-version?version=`, `relaunch[?scene=false]`, `selection/change?assets=a,b`,
     `gallery/add?id=&date=&kind=photo|low-res|screenshot|screen-recording|hd-video|live-photo|gif`,
-    `gallery/remove?id=`, `gallery/fail-next-enumeration`, `import/suspend-next[?afterCommit=true]`, `import/await-parked`,
+    `gallery/remove?id=`, `gallery/fail-next-enumeration`, `gallery/hold-enumeration?on=` (every walk waits — the
+    status screen before anything is counted), `import/suspend-next[?afterCommit=true]`, `import/await-parked`,
     `import/resume?succeeded=`, `logs/append?process=app|extension` (body = text),
     `staging/seed-legacy-backlog` (the one lever that writes app-private state: an upgraded install's leftovers).
 - Device facts off the mocked disk and library: `device/staging`, `device/album/contents`.

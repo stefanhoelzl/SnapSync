@@ -16,7 +16,7 @@
 #   resolver-test                  scripts/resolve_deployment_test.py
 #   appstore-metadata-validate     needs the pinned `asc` binary fetched over the network
 #   build.yml's second step        ./gradlew compileIosMainKotlinMetadata -Psnapsync.rig=true
-#                                  -Psnapsync.forge=true (the property-gated trees)
+#                                  (the property-gated tree)
 #
 # Order is cheapest-first, so a failure arrives as early as it can.
 set -euo pipefail

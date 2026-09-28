@@ -9,7 +9,6 @@ module :adapter:ios:ui
 module :app:desktop
 module :app:ios
 module :app:ios:extension
-module :app:ios:forge
 module :app:jvm
 module :domain:compose
 module :domain:feature
@@ -91,9 +90,6 @@ edge :app:ios:extension :domain:feature
 edge :app:ios:extension :domain:model
 edge :app:ios:extension :domain:ports
 edge :app:ios:extension :domain:services
-edge :app:ios:forge :domain:model
-edge :app:ios:forge :domain:presentation
-edge :app:ios:forge :ui:screens
 edge :app:jvm :adapter:generic:app
 edge :app:jvm :adapter:generic:mock
 edge :app:jvm :domain:compose
