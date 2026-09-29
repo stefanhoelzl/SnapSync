@@ -369,7 +369,7 @@ class DeviceAttestation(
     private suspend fun mint(deviceId: String): TokenOutcome = withFreshChallenge { challenge ->
         runCatchingCancellable {
             val proof = integrity.prove(challenge)
-            val outcome = tokenOutcome(backend.mintToken(MintRequest(deviceId, proof.handle, proof.bytes, challenge)))
+            val outcome = tokenOutcome(backend.mintToken(MintRequest(deviceId, proof.handle, proof.format, proof.bytes, challenge)))
             if (outcome is TokenOutcome.Minted) store.setKeyId(proof.handle)
             outcome
         }.getOrElse {

@@ -11,6 +11,7 @@ import app.snapsync.model.EventMeta
 import app.snapsync.model.EventRenamed
 import app.snapsync.model.MemberCounts
 import app.snapsync.model.MintRequest
+import app.snapsync.model.ProofFormat
 import app.snapsync.model.RenewRequest
 import app.snapsync.model.Reply
 import app.snapsync.model.ResourceRole
@@ -35,6 +36,7 @@ import kotlin.time.TimeSource
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
@@ -83,12 +85,28 @@ class HttpBackend(
         body = JsonObject(
             mapOf(
                 "deviceId" to JsonPrimitive(req.deviceId),
-                "keyId" to JsonPrimitive(req.keyId),
-                "attestation" to JsonPrimitive(Base64.encode(req.attestation)),
                 "challenge" to JsonPrimitive(req.challenge),
+                "proof" to proofOf(req),
             ),
         ).toString(),
     ) { field(it, "token") }
+
+    // The typed proof v2's mint takes: its `format` names the verifier the backend runs.
+    private fun proofOf(req: MintRequest): JsonObject = when (req.format) {
+        ProofFormat.APP_ATTEST -> JsonObject(
+            mapOf(
+                "format" to JsonPrimitive("apple-appattest"),
+                "keyId" to JsonPrimitive(req.keyId),
+                "attestation" to JsonPrimitive(Base64.encode(req.attestation)),
+            ),
+        )
+        ProofFormat.ANDROID_KEY -> JsonObject(
+            mapOf(
+                "format" to JsonPrimitive("android-key"),
+                "chain" to JsonArray(derElements(req.attestation).map { JsonPrimitive(Base64.encode(it)) }),
+            ),
+        )
+    }
 
     override suspend fun renewToken(req: RenewRequest): Reply<String> = exchange(
         HttpMethod.Post,

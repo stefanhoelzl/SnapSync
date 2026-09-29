@@ -684,8 +684,14 @@ export async function deviceFiles(db: Db, deviceId: string): Promise<{ key: stri
 export type DeviceAttestation = {
   /** The attested public key, base64 — a raw uncompressed EC point. */
   publicKey: string;
+  /** Which verifier accepted the attestation — what renewal verifies the device's signature by. */
+  platform: AttestPlatform;
+  /** App Attest's environment on `ios`; the Keystore's security level on `android`. */
   environment: string;
 };
+
+/** The platforms a device can have attested on (`attest_platform`). */
+export type AttestPlatform = "ios" | "android";
 
 /**
  * Record an attestation. Creates the row, or replaces the attestation on a device that already has one
@@ -703,15 +709,24 @@ export async function putAttestation(
   tokenExpiresAt: string,
 ): Promise<void> {
   await db.execute(
-    `INSERT INTO devices (device_id, created_at, attest_key, attest_env, attested_at,
+    `INSERT INTO devices (device_id, created_at, attest_key, attest_platform, attest_env, attested_at,
                           attest_token_expires_at)
-     VALUES (?, ?, ?, ?, ?, ?)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (device_id) DO UPDATE SET
        attest_key              = excluded.attest_key,
+       attest_platform         = excluded.attest_platform,
        attest_env              = excluded.attest_env,
        attested_at             = excluded.attested_at,
        attest_token_expires_at = excluded.attest_token_expires_at`,
-    [deviceId, at, attestation.publicKey, attestation.environment, at, tokenExpiresAt],
+    [
+      deviceId,
+      at,
+      attestation.publicKey,
+      attestation.platform,
+      attestation.environment,
+      at,
+      tokenExpiresAt,
+    ],
   );
 }
 
@@ -728,7 +743,7 @@ export async function readAttestation(
   deviceId: string,
 ): Promise<DeviceAttestation | null> {
   const { rows } = await db.execute(
-    `SELECT attest_key, attest_env FROM devices WHERE device_id = ?`,
+    `SELECT attest_key, attest_platform, attest_env FROM devices WHERE device_id = ?`,
     [deviceId],
   );
   if (rows.length === 0) return null;
@@ -742,8 +757,11 @@ export async function readAttestation(
   // the literal "null", which fails to verify and reads as a REFUSED ASSERTION blaming the device's
   // Secure Enclave for something the backend never had. v3 tightened the columns and the cutover is long
   // finished; the guard outlived the state it was written for.
-  const { attest_key: key, attest_env: env } = rows[0];
-  return { publicKey: String(key), environment: String(env) };
+  const { attest_key: key, attest_platform: platform, attest_env: env } = rows[0];
+  if (platform !== "ios" && platform !== "android") {
+    throw new Error(`device ${deviceId} has an attestation of unknown platform '${platform}'`);
+  }
+  return { publicKey: String(key), platform, environment: String(env) };
 }
 
 /**

@@ -50,6 +50,10 @@ const CONFIG: Config = {
   databaseUrl: "",
   databaseToken: "",
   appAttestRootCa: APPLE_ROOT_CA,
+  androidPackageName: "app.snapsync",
+  androidSigningCertDigests: [],
+  androidAttestationRoots: [],
+  androidAttestationTrust: "hardware" as const,
   attestTokenTtlSeconds: 30 * DAY / 1000,
   attestAppId: "E9Z8BADH58.app.snapsync",
   linkDomain: "snapsync.stho.net",
@@ -532,9 +536,12 @@ Deno.test("attest: under v2 a stale challenge is 409, never the 401 that means '
     headers: V2,
     body: JSON.stringify({
       deviceId: D,
-      keyId: SAMPLE.keyIdBase64,
-      attestation: SAMPLE.attestationBase64,
       challenge: stale,
+      proof: {
+        format: "apple-appattest",
+        keyId: SAMPLE.keyIdBase64,
+        attestation: SAMPLE.attestationBase64,
+      },
     }),
   });
   assertEquals(res.status, 409);
@@ -564,12 +571,37 @@ Deno.test("attest: v2 answers a rejected attestation 401, exactly as v1 does", a
     headers: V2,
     body: JSON.stringify({
       deviceId: D,
-      keyId: SAMPLE.keyIdBase64,
-      attestation: SAMPLE.attestationBase64,
       challenge: await mintChallenge(CONFIG, NOW),
+      proof: {
+        format: "apple-appattest",
+        keyId: SAMPLE.keyIdBase64,
+        attestation: SAMPLE.attestationBase64,
+      },
     }),
   });
   assertEquals(res.status, 401);
+});
+
+Deno.test("attest: v2 takes only the typed proof — the flat v1 body, or an unknown format, is a 400", async () => {
+  const challenge = await mintChallenge(CONFIG, NOW);
+  const flat = {
+    deviceId: D,
+    keyId: SAMPLE.keyIdBase64,
+    attestation: SAMPLE.attestationBase64,
+    challenge,
+  };
+  const unknown = { deviceId: D, challenge, proof: { format: "tpm", attestation: "AA==" } };
+  const noChain = { deviceId: D, challenge, proof: { format: "android-key", chain: [] } };
+  for (const body of [flat, unknown, noChain]) {
+    const { calls, app: a } = app();
+    const res = await a.request("/api/v2/attest/token", {
+      method: "POST",
+      headers: V2,
+      body: JSON.stringify(body),
+    });
+    assertEquals(res.status, 400, JSON.stringify(body));
+    assertEquals(calls.length, 0);
+  }
 });
 
 Deno.test("attest: a rejected attestation mints no token and stores no key", async () => {

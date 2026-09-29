@@ -1,6 +1,7 @@
 package app.snapsync.contracts
 
 import app.snapsync.model.MintRequest
+import app.snapsync.model.ProofFormat
 import app.snapsync.model.Reply
 import app.snapsync.model.RenewRequest
 import app.snapsync.ports.Backend
@@ -30,14 +31,24 @@ internal fun ClauseList<BackendState, EdgeSubject<Backend>>.attestClauses() {
     clause("ATTEST_A_FORGED_ATTESTATION_IS_REFUSED", BackendState.SERVING) { s ->
         val challenge = assertOk(s.port.challenge())
         val forged = "not an attestation".encodeToByteArray()
-        assertIs<Reply.Refused>(s.port.mintToken(MintRequest(s.seeded.deviceId, KEY_ID, forged, challenge)), "no token for a forgery")
+        assertIs<Reply.Refused>(s.port.mintToken(MintRequest(s.seeded.deviceId, KEY_ID, ProofFormat.APP_ATTEST, forged, challenge)), "no token for a forgery")
+    }
+
+    clause("ATTEST_A_FORGED_ANDROID_KEY_ATTESTATION_IS_REFUSED", BackendState.SERVING) { s ->
+        val challenge = assertOk(s.port.challenge())
+        // Shaped as a chain of one DER certificate, and not one: the Android verifier, not a body check, refuses it.
+        val forged = byteArrayOf(0x30, 0x03, 0x02, 0x01, 0x00)
+        assertIs<Reply.Refused>(
+            s.port.mintToken(MintRequest(s.seeded.deviceId, KEY_ID, ProofFormat.ANDROID_KEY, forged, challenge)),
+            "no token for a forged key attestation",
+        )
     }
 
     clause("ATTEST_A_CHALLENGE_THE_BACKEND_NEVER_ISSUED_IS_REFUSED", BackendState.SERVING) { s ->
         val notIssued = "a-challenge-no-edge-issued"
         val overIt = "attestation:$KEY_ID:$notIssued".encodeToByteArray()
         assertIs<Reply.Refused>(
-            s.port.mintToken(MintRequest(s.seeded.deviceId, KEY_ID, overIt, notIssued)),
+            s.port.mintToken(MintRequest(s.seeded.deviceId, KEY_ID, ProofFormat.APP_ATTEST, overIt, notIssued)),
             "no replay against another nonce",
         )
     }

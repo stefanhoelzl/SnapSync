@@ -82,6 +82,20 @@ export type Config = {
   databaseToken: string;
   /** Apple's App Attest root CA (PEM) — the trust anchor for every attestation chain. */
   appAttestRootCa: string;
+  /** The Android app's package name — what an Android key attestation must name (`android-attest.ts`). */
+  androidPackageName: string;
+  /**
+   * The signing-certificate SHA-256 digests an Android attestation may name, `AA:BB:…`. Empty on every
+   * deployed backend until the app is on Play: an empty list accepts no Android device.
+   */
+  androidSigningCertDigests: readonly string[];
+  /** The PEM roots an Android attestation chain must end at, matched by public key. */
+  androidAttestationRoots: readonly string[];
+  /**
+   * `hardware`, or `any` — which accepts the emulator's software attestation and exists for the local rig
+   * alone (the resolver refuses it for any deployed backend).
+   */
+  androidAttestationTrust: "hardware" | "any";
   /** Device-token lifetime, in seconds. */
   attestTokenTtlSeconds: number;
   /**
@@ -212,6 +226,7 @@ function publicFields(
     apnsTopic: d.bundleId,
     attestAppId: `${d.teamId}.${d.bundleId}`,
     appAttestRootCa: d.appAttestRootCa,
+    ...androidFields(d),
     attestTokenTtlSeconds: d.attestTokenTtlSeconds,
     linkDomain: d.domain,
     appStoreUrl: d.appStoreUrl,
@@ -220,6 +235,28 @@ function publicFields(
     eventLifetimeSeconds: d.eventLifetimeSeconds,
     maintenance: d.maintenance,
     minAppVersion: MIN_APP_VERSION,
+  };
+}
+
+/** The Android attestation fields, shared by every Config builder (the dev rig's included). */
+export function androidFields(
+  d: ResolvedDeployment,
+): Pick<
+  Config,
+  | "androidPackageName"
+  | "androidSigningCertDigests"
+  | "androidAttestationRoots"
+  | "androidAttestationTrust"
+> {
+  const trust = d.androidAttestationTrust;
+  if (trust !== "hardware" && trust !== "any") {
+    throw new Error(`androidAttestationTrust '${trust}' is neither 'hardware' nor 'any'`);
+  }
+  return {
+    androidPackageName: d.androidPackageName,
+    androidSigningCertDigests: d.androidSigningCertDigests,
+    androidAttestationRoots: d.androidAttestationRoots,
+    androidAttestationTrust: trust,
   };
 }
 

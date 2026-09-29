@@ -41,6 +41,11 @@ Deno.test("readConfig: the secrets → Config, with every non-secret from the re
     databaseUrl: "libsql://example.invalid",
     databaseToken: "dbt",
     appAttestRootCa: D.appAttestRootCa,
+    // The Android attestation policy, as resolved: `hardware` for this (prod) deployment.
+    androidPackageName: D.androidPackageName,
+    androidSigningCertDigests: D.androidSigningCertDigests,
+    androidAttestationRoots: D.androidAttestationRoots,
+    androidAttestationTrust: "hardware",
     attestTokenTtlSeconds: D.attestTokenTtlSeconds,
     // Derived from the team + bundle ids, so the gate's app id and the push topic cannot drift apart.
     attestAppId: `${D.teamId}.${D.bundleId}`,

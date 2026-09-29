@@ -26,7 +26,7 @@
 // the running process (`serve.ts`), after every static import has been evaluated, and is random per
 // session. No schema can source a value that does not exist yet — which is why it stays a parameter.
 
-import { DEPLOYMENT, MIN_APP_VERSION } from "../config.ts";
+import { androidFields, DEPLOYMENT, MIN_APP_VERSION } from "../config.ts";
 import type { Config } from "../config.ts";
 import { isFilesystemDeployment } from "../deployment.ts";
 
@@ -97,6 +97,7 @@ export function devConfig(publicHost: string, s3Scheme: string): Config {
     databaseUrl: "",
     databaseToken: "",
     appAttestRootCa: d.appAttestRootCa,
+    ...androidFields(d),
     attestTokenTtlSeconds: d.attestTokenTtlSeconds,
     attestAppId: `${d.teamId}.${d.bundleId}`,
     linkDomain: d.domain,

@@ -1,0 +1,18 @@
+-- ═══════════════════════════════════════════════════════════════════════════════════════════════════
+-- 0005 — WHICH PLATFORM ATTESTED A DEVICE (capabilities `database`, `privacy-security`)
+--
+-- ⚠️ FROZEN ONCE APPLIED, like every migration here: the runner records a checksum of these bytes, so
+-- editing this file makes every later apply refuse as `modified` history. A correction is a NEW file.
+--
+-- WHY: renewal verifies a signature against the key the device attested, and an Android Keystore key
+-- signs differently from an App Attest key (a bare ECDSA signature over the challenge, not an assertion
+-- over authenticator data). So the row records which verifier accepted the attestation, and renewal
+-- dispatches on it — on what was PROVEN, never on anything the renewing request claims. `attest_env`
+-- keeps one meaning per platform: App Attest's environment for `ios`, the Keystore's security level for
+-- `android`.
+--
+-- ADDITIVE AND DERIVES NOTHING WRONG. Every existing row lands `ios`, and that is the truth rather than a
+-- guess: until this migration App Attest was the only verifier, on v1 and v2 alike, so every row there was
+-- proven by it. No copy, no rebuild — the column is inert under the previous bundle, which never names it,
+-- so a code rollback needs no schema rollback.
+ALTER TABLE devices ADD COLUMN attest_platform TEXT NOT NULL DEFAULT 'ios';

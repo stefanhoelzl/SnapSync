@@ -519,7 +519,8 @@ memberships   (event_id -> events CASCADE, device_id), state in {active, departe
 event_assets  (event_id, device_id -> memberships CASCADE), asset_id, creation_date, roles (JSON array)
               + index (device_id, asset_id)
 resources     (device_id, asset_id, role) PK, key UNIQUE per device, content_type, filename
-devices       device_id, created_at, attest_* (NOT NULL), push_* (nullable together)
+devices       device_id, created_at, attest_* (NOT NULL; attest_platform ios|android, what proved the
+              key), push_* (nullable together)
 ```
 
 The generated snapshot is `api/schema.sql` (section "Database" below).
@@ -604,8 +605,8 @@ not listed is `404` (no `405`) and makes no upstream request.
 | method | path | does | answers |
 |---|---|---|---|
 | `GET` | `/attest/challenge` | stateless HMAC-signed, time-bounded nonce, writes nothing | `200 {challenge}` |
-| `POST` | `/attest/token` `{deviceId, keyId, attestation, challenge}` | verifies chain to Apple root, nonce, app-id hash, counter, aaguid; **persists the device row, then mints** | `201 {token}` · `401` failed check · `409` stale challenge · `502` write failed |
-| `POST` | `/attest/renew` `{deviceId, assertion, challenge}` | verifies a Secure Enclave assertion against the stored key (no Apple call); advances expiry, then mints | `201 {token}` · `401` no attestation / refused · `409` stale challenge · `502` read/write failure (never `401`: that would force a throttled re-attestation) |
+| `POST` | `/attest/token` `{deviceId, challenge, proof}`, `proof` = `{format:"apple-appattest", keyId, attestation}` or `{format:"android-key", chain:[DER b64, leaf first]}` | the format only CHOOSES the verifier. App Attest: chain to Apple root, nonce, app-id hash, counter, aaguid. Android key attestation (`src/android-attest.ts`): chain to a pinned Google root (by key), its provisioning shape, one extension in the leaf, validity (expiry ignored on factory chains), revocation (Google's public status list, cached per `max-age`), the challenge's SHA-256, the package and signing digest, TEE/StrongBox and a locked, verified boot — the last three per `androidAttestationTrust`. **Persists the device row with the platform that proved it, then mints** | `201 {token}` · `400` body (a flat v1 body too) · `401` failed check · `409` stale challenge · `502` write failed, or Android's status list unreachable |
+| `POST` | `/attest/renew` `{deviceId, assertion, challenge}` | verifies by the STORED row's `attest_platform`: an App Attest assertion, or an Android ECDSA-P256 signature over the challenge's UTF-8 bytes, against the stored key (no vendor call); advances expiry, then mints | `201 {token}` · `401` no attestation / refused · `409` stale challenge · `502` read/write failure (never `401`: that would force a throttled re-attestation) |
 | `POST` | `/events` `{name, startsAt, endsAt?}` | name trimmed, non-empty, ≤100 chars; window rules; backend mints the id | `201 {eventId, name, createdAt, startsAt, endsAt, capacity, deletesAt}` · `400` · `502` |
 | `GET`/`HEAD` | `/events/<eventId>` (ungated) | metadata; `deletesAt` derived per response; `closedAt`, `completedAt`, `members {active, final}` | `200` (a completed event too, with `completedAt`) · `404` sealed absence · `502` read failure |
 | `PATCH` | `/events/<eventId>` `{name}` | the only write to an existing event row; last-write-wins; no ownership check | `200` (metadata shape) · `400` · `404` · `410` closed · `502` |
@@ -660,6 +661,7 @@ its wire tests (`v1.test.ts`) must pass **unmodified** across any schema migrati
 - `POST /events/<eventId>/notify` exists (`202`, best-effort fan-out to active members).
 - `GET /files/devices/<deviceId>` returns `[{filename, url}]`.
 - A stale attest challenge is `401` (v2: `409`). There is no version gate.
+- `/attest/token`'s body is flat, `{deviceId, keyId, attestation, challenge}`, and App Attest only.
 
 ### Database
 
@@ -714,6 +716,9 @@ src/db-libsql.ts   the deployed `Db` (bunny Database)
 src/storage.ts     byte-store and site-prefix key builders + LIST/GET/PUT/DELETE, shared with the sweep
 src/attest.ts      App Attest verification, the stateless challenge, the device token (mint, verify, the
                    one expiry derivation)
+src/android-attest.ts  Android Keystore key attestation (Google's verifier's rules, pinned roots, the
+                   cached revocation list) and the renewal signature check
+src/attest-proofs.ts   the mint/renew proofs the routes accept and which verifier each goes to
 src/lifecycle.ts   deleteByMs / clockMs / sweepVerdict, shared with the sweep
 src/apns.ts        ES256 provider JWT + silent push per token, per-token best-effort
 src/validators.ts  UUID / filename / event name / instants (MAX_EVENT_NAME_LENGTH)

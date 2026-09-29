@@ -271,10 +271,22 @@ Deno.test("health → a mutating method is not served by this route", async () =
 
 Deno.test("devices → attestation creates the row; a re-attestation leaves the push registration alone", async () => {
   const db = await store();
-  await putAttestation(db, D, { publicKey: "k1", environment: "development" }, "t0", "e0");
+  await putAttestation(
+    db,
+    D,
+    { publicKey: "k1", platform: "ios", environment: "development" },
+    "t0",
+    "e0",
+  );
   await putDeviceRecord(db, D, { kind: "apns", token: "tok", env: "sandbox" }, "t1");
 
-  await putAttestation(db, D, { publicKey: "k2", environment: "production" }, "t2", "e2");
+  await putAttestation(
+    db,
+    D,
+    { publicKey: "k2", platform: "ios", environment: "production" },
+    "t2",
+    "e2",
+  );
 
   const [row] = await rows(db, `SELECT * FROM devices WHERE device_id=?`, [D]);
   assertEquals(row.attest_key, "k2");
@@ -287,7 +299,13 @@ Deno.test("devices → attestation creates the row; a re-attestation leaves the 
 
 Deno.test("devices → a push registration leaves the attestation alone", async () => {
   const db = await store();
-  await putAttestation(db, D, { publicKey: "k1", environment: "development" }, "t0", "e0");
+  await putAttestation(
+    db,
+    D,
+    { publicKey: "k1", platform: "ios", environment: "development" },
+    "t0",
+    "e0",
+  );
   await putDeviceRecord(db, D, { kind: "apns", token: "tok", env: "sandbox" }, "t1");
 
   const [row] = await rows(db, `SELECT * FROM devices WHERE device_id=?`, [D]);
@@ -312,7 +330,13 @@ Deno.test("devices → the expiry bump reports a vanished row rather than recrea
   // record that is gone would hand out a credential nothing knows about.
   const db = await store();
   assertEquals((await touchTokenExpiry(db, D, "e9")).rowsAffected, 0);
-  await putAttestation(db, D, { publicKey: "k", environment: "production" }, "t0", "e0");
+  await putAttestation(
+    db,
+    D,
+    { publicKey: "k", platform: "ios", environment: "production" },
+    "t0",
+    "e0",
+  );
   assertEquals((await touchTokenExpiry(db, D, "e9")).rowsAffected, 1);
   assertEquals(
     (await rows(db, `SELECT attest_token_expires_at FROM devices WHERE device_id=?`, [D]))[0],
@@ -324,8 +348,18 @@ Deno.test("devices → the expiry bump reports a vanished row rather than recrea
 Deno.test("devices → readAttestation tells absence from a stored key", async () => {
   const db = await store();
   assertEquals(await readAttestation(db, D), null);
-  await putAttestation(db, D, { publicKey: "k", environment: "development" }, "t0", "e0");
-  assertEquals(await readAttestation(db, D), { publicKey: "k", environment: "development" });
+  await putAttestation(
+    db,
+    D,
+    { publicKey: "k", platform: "ios", environment: "development" },
+    "t0",
+    "e0",
+  );
+  assertEquals(await readAttestation(db, D), {
+    publicKey: "k",
+    platform: "ios",
+    environment: "development",
+  });
   db.close();
 });
 

@@ -1,6 +1,7 @@
 package app.snapsync.mock
 
 import app.snapsync.model.Proof
+import app.snapsync.model.ProofFormat
 import app.snapsync.ports.DeviceIntegrity
 
 /**
@@ -33,11 +34,11 @@ internal class InMemoryDeviceIntegrity(
         if (handle == null) {
             check(available) { "App Attest attestKey failed: unsupported in this process" }
             val key = keys.create()
-            return Proof(key, "attestation:$key:$challenge".encodeToByteArray())
+            return Proof(key, ProofFormat.APP_ATTEST, "attestation:$key:$challenge".encodeToByteArray())
         }
         check(available) { "App Attest generateAssertion failed: unsupported in this process" }
         check(handle in keys.held) { "App Attest generateAssertion failed: no such key $handle" }
-        return Proof(handle, "assertion:$handle:$challenge".encodeToByteArray())
+        return Proof(handle, ProofFormat.APP_ATTEST, "assertion:$handle:$challenge".encodeToByteArray())
     }
 }
 
