@@ -40,7 +40,7 @@ class GatedPathPinTest {
         val prefixes = Regex("""path\.startsWith\("([^"]+)"\)""").findAll(gate).map { it.groupValues[1] }.toList()
         // Pinned sizes: an entry added to the backend's list fails here until the client's copy learns it.
         assertEquals(
-            listOf("/", "/join", "/health", "/.well-known/apple-app-site-association"),
+            listOf("/", "/join", "/health", "/.well-known/apple-app-site-association", "/.well-known/assetlinks.json"),
             exact,
             "the backend's exact-path public GETs changed — update `isGatedRequest` (adapter/generic/app) and this pin",
         )

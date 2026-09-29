@@ -620,7 +620,8 @@ not listed is `404` (no `405`) and makes no upstream request.
 
 Served at the root under no version: `OPTIONS` on any path (`204`, no resumable upload advertised, so
 the iOS uploader uses a plain `PUT`); `GET`/`HEAD` `/`, `/join`, `/_astro/*` (the Astro build proxied
-from the storage `site/` prefix) and the AASA; `GET /health` (`200 {sha, maintenance?}` after
+from the storage `site/` prefix), the AASA and `/.well-known/assetlinks.json` (Android's: the package and the
+`androidSigningCertDigests` the attestation policy accepts, `[]` while none is named or under trust `any`); `GET /health` (`200 {sha, maintenance?}` after
 `SELECT 1` and a storage listing succeed, `503` otherwise; `maintenance` absent means closed).
 
 **Conventions that hold on every route:**
@@ -708,7 +709,8 @@ Decision records: `changes/archive/2026-08-25-record-uploads-in-database`,
 ### Layout
 
 ```
-src/app.ts         createApp({config, db, fetch}): the three gates, v1 + v2 routers, site proxy + AASA,
+src/app.ts         createApp({config, db, fetch}): the three gates, v1 + v2 routers, site proxy + AASA
+                   + assetlinks.json,
                    presignDownloadUrl()
 src/db.ts          the one narrow `Db` port and every statement (capacity insert, atomic publish, union,
                    sweep queries). No schema here

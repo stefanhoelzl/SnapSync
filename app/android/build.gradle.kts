@@ -39,6 +39,9 @@ android {
         val uploadBase = requireNotNull(deployment["uploadBase"]) { "the resolved deployment rendered no uploadBase" }
         buildConfigField("String", "UPLOAD_BASE", "\"$uploadBase\"")
         buildConfigField("String", "APP_VERSION", "\"$marketingVersionFloor\"")
+        // The event link's host — the resolved deployment's domain without a port (an intent filter with no port
+        // matches any, and LINK_ORIGIN carries the local rig's).
+        manifestPlaceholders["linkHost"] = requireNotNull(deployment["domain"]).substringBefore(':')
     }
     buildFeatures { buildConfig = true }
     compileOptions {
