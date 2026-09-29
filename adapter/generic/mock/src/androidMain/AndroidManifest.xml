@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- The mocks' SQLite needs the application context (MockAndroidDatabases); this hands it over at process start.
+             Merged only where the mocks link: the rig build and the device-test APKs. -->
+        <provider
+            android:name="app.snapsync.mock.MockAndroidContext"
+            android:authorities="${applicationId}.snapsync-mock-context"
+            android:exported="false" />
+    </application>
+</manifest>

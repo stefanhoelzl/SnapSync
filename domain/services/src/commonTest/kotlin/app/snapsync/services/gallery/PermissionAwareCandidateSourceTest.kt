@@ -129,7 +129,7 @@ class PermissionAwareCandidateSourceTest {
     }
 
     @Test
-    fun `the snapshot's candidates already carry their resources`() = runTest {
+    fun `the snapshot’s candidates already carry their resources`() = runTest {
         // The snapshot arrives already read, WITH resources, from the sanctioned read points. Asking a
         // candidate for them must therefore issue nothing: a deferred read here would have to reach the
         // assets again later, off-flow — an autonomous library fetch the read discipline forbids

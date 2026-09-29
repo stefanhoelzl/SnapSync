@@ -103,7 +103,7 @@ class CycleGateTest {
     }
 
     @Test
-    fun `the skip carries the root's forensics verbatim`() {
+    fun `the skip carries the root’s forensics verbatim`() {
         // The decision is made in shared code that cannot see WHY the read failed; the root supplies it
         // so the device log keeps one line rather than two across two files.
         val detail = "config status=-25308, deviceId readable=false"

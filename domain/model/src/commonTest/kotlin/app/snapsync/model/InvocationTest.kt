@@ -87,7 +87,7 @@ class InvocationTest {
     }
 
     @Test
-    fun `a per-item entry point's Debug severity carries through to both routine lines`() {
+    fun `a per-item entry point’s Debug severity carries through to both routine lines`() {
         // `Debug` is what keeps a large import from flushing the breadcrumb window and rolling the log.
         val captured = Capturing()
 

@@ -87,7 +87,7 @@ class CachedAttestStoreTest {
     }
 
     @Test
-    fun `the other process's write is seen once re-read - and not before`() {
+    fun `the other process’s write is seen once re-read - and not before`() {
         val item = SharedItem(held = "T1")
         val cached = CachedAttestStore(item)
         assertEquals("T1", cached.token())

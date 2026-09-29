@@ -40,7 +40,7 @@ class RunnerTest {
     }
 
     @Test
-    fun `an undeclared unreachable state is NotRunHere with the binding's reason`() {
+    fun `an undeclared unreachable state is NotRunHere with the binding’s reason`() {
         val off = run(ToyContract, honest(setOf(Toy.ON))).single { it.clauseId == "OFF_READS_OFF" }
         assertEquals(Outcome.NotRunHere("toy cannot be OFF"), off.outcome)
     }

@@ -45,6 +45,13 @@ enum class Host {
      * there, replayed in CI. Named for the extension TYPE, so another extension kind is another host.
      */
     IOS_DEVICE_PHOTOKIT_EXT,
+
+    /**
+     * A device-test APK on the Android emulator (`connectedAndroidDeviceTest`, the `android-emulator` CI job) — and the
+     * Android rig build of the app there, which answers the same host. No Keystore state is bound yet: today only the
+     * fakes' shared bindings run here; the Android adapters' bindings name it as they are written.
+     */
+    ANDROID_EMU,
 }
 
 /** Whether a binding is the honest fake, a real implementation run live, or a recording replayed. */

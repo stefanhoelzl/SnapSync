@@ -145,8 +145,11 @@ class ContractCoverageTest {
         val declared = HOST_ENUM.find(read(HOST_FILE))?.groupValues?.get(1)
             ?.lines()?.mapNotNull { HOST_ENTRY.matchEntire(it)?.groupValues?.get(1) }.orEmpty()
         assertTrue(declared.isNotEmpty(), "found no entries in the Host enum at $HOST_FILE")
-        val named = bindings.mapNotNull { it.host?.takeIf { h -> h.startsWith("Host.") }?.removePrefix("Host.") }.toSet()
-        val unused = declared - named
+        val literal = bindings.mapNotNull { it.host?.takeIf { h -> h.startsWith("Host.") }?.removePrefix("Host.") }.toSet()
+        // A shared binding (`override val host = currentHost`, the fakes' in `commonTest`) runs on every host a
+        // `currentHost` actual answers — the Android emulator's, whose only bindings so far are those fakes.
+        val shared = if (bindings.any { it.host == "currentHost" }) currentHostActuals() else emptySet()
+        val unused = declared - literal - shared
         assertTrue(unused.isEmpty(), "Host values no binding names — the enum holds only bound hosts: $unused")
     }
 
@@ -203,6 +206,13 @@ class ContractCoverageTest {
     private fun recordingKey(contract: String, b: BindingDecl): String =
         "$contract@${b.host?.removePrefix("Host.")}" + (b.grant?.let { ".$it" } ?: "")
 
+    /** Every host a platform's `currentHost` actual can answer, read off its source. */
+    private fun currentHostActuals(): Set<String> =
+        File(SourceScan.repoRoot, "test/contracts/src").walkTopDown()
+            .filter { it.isFile && it.name == "CurrentHost.kt" && "/commonMain/" !in it.path }
+            .flatMap { HOST_REF.findAll(it.readText()).map { m -> m.groupValues[1] } }
+            .toSet()
+
     private fun recordingsDir() = File(SourceScan.repoRoot, "test/contracts/recordings")
 
     private fun read(path: String) = File(SourceScan.repoRoot, path).readText()
@@ -224,5 +234,6 @@ class ContractCoverageTest {
         val BLOCK = Regex("""\[(.+)]""")
         val HOST_ENUM = Regex("""enum class Host \{(.*?)\n}""", RegexOption.DOT_MATCHES_ALL)
         val HOST_ENTRY = Regex("""\s*([A-Z][A-Z0-9_]*),?\s*""")
+        val HOST_REF = Regex("""Host\.([A-Z][A-Z0-9_]*)""")
     }
 }

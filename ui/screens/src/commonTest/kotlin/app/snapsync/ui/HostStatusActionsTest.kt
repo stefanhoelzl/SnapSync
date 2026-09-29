@@ -282,7 +282,7 @@ class HostStatusActionsTest {
     // ---- the access prompts (capabilities `photo-access`, `photo-access`) ----
 
     @Test
-    fun `a never-asked grant's prompt requests access`() =
+    fun `a never-asked grant’s prompt requests access`() =
         rigTest(rig(config = MEMBERSHIP, permission = GalleryAccess.NOT_DETERMINED)) { rig ->
             awaitState(rig) { it.joined != null }
             onNodeWithText("Allow photo access").performClick()
@@ -291,7 +291,7 @@ class HostStatusActionsTest {
         }
 
     @Test
-    fun `a denied grant's prompt opens Settings`() =
+    fun `a denied grant’s prompt opens Settings`() =
         rigTest(rig(config = MEMBERSHIP, permission = GalleryAccess.DENIED)) { rig ->
             awaitState(rig) { it.joined != null }
             onNodeWithText("Turn on full access in Settings").performClick()
@@ -324,7 +324,7 @@ class HostStatusActionsTest {
     // ---- the join gate (capability `join-event`) ----
 
     @Test
-    fun `an opened link's gate edits its form and Join commits the choice`() = rigTest(rig()) { rig ->
+    fun `an opened link’s gate edits its form and Join commits the choice`() = rigTest(rig()) { rig ->
         rig.host.onOpenUrl(linkTo(OTHER_ID))
         awaitState(rig, ready)
 
@@ -371,7 +371,7 @@ class HostStatusActionsTest {
     }
 
     @Test
-    fun `a never-asked guest's Join and allow photos requests access and commits`() =
+    fun `a never-asked guest’s Join and allow photos requests access and commits`() =
         rigTest(rig(permission = GalleryAccess.NOT_DETERMINED)) { rig ->
             rig.host.onOpenUrl(linkTo(OTHER_ID))
             awaitState(rig, ready)
@@ -409,7 +409,7 @@ class HostStatusActionsTest {
     // ---- the switch confirmation (a different event scanned while joined) ----
 
     @Test
-    fun `the switch confirmation's Cancel keeps the membership and Switch leaves it`() =
+    fun `the switch confirmation’s Cancel keeps the membership and Switch leaves it`() =
         rigTest(rig(config = MEMBERSHIP)) { rig ->
             rig.host.onOpenUrl(linkTo(OTHER_ID))
             awaitState(rig) { it.joined?.pendingSwitch != null }

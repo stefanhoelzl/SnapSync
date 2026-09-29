@@ -221,7 +221,7 @@ class TailRunnerTest {
     }
 
     @Test
-    fun `a joiner applies its own re-arm to the tail's outcome`() = runTest {
+    fun `a joiner applies its own re-arm to the tail’s outcome`() = runTest {
         for ((result, expected) in listOf(CycleResult.PROCESSING to 1, CycleResult.COMPLETED to 0)) {
             val units = Units().apply { topUpGate = CompletableDeferred(); topUp = { result } }
             val scheduler = Scheduler()

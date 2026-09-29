@@ -549,7 +549,7 @@ class StatusContainerHostSurfacesTest {
     }
 
     @Test
-    fun `every state says where this build's bug report goes`() =
+    fun `every state says where this build’s bug report goes`() =
         onHost(reportDestination = ReportDestination.THIS_DEVICE) { host ->
             withTimeout(5.seconds) {
                 while (host.container.stateFlow.value.reportDestination != ReportDestination.THIS_DEVICE) {

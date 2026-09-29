@@ -26,8 +26,11 @@ android {
     }
     buildTypes {
         release {
-            // R8 over the whole app, as a store build will run it — the dexing half of the JDK-toolchain question.
-            isMinifyEnabled = true
+            // R8 over the whole app, as a store build will run it — on the rig build, which links the whole graph
+            // (the `android-emulator` job builds it). The plain release refuses at start, so R8 would strip it to
+            // nothing and prove nothing; the store build switches it on with the adapters that give it something
+            // to keep.
+            isMinifyEnabled = rigEnabled
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }

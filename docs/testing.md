@@ -278,6 +278,7 @@ holding a different one.
 | `IOS_SIM_APP` | rig build of the app on a simulator, ad-hoc signed (`scripts/sim-sign`) | App Group available; photo grant via `applesimutils` (`simctl privacy grant` does not work for PhotoKit); no Keychain group; no partial grant exists |
 | `IOS_DEVICE_APP` | entitled app on a device | Keychain, App Group, any grant a person sets. The **only** place a partial grant exists |
 | `IOS_DEVICE_PHOTOKIT_EXT` | the upload extension on a device, launched by the OS | about 60 s per `process()` call, then killed; 6–11 min back-off after a kill |
+| `ANDROID_EMU` | a device-test APK (or the rig app) on the Android emulator | app-private storage only; only the fakes' shared bindings run here so far |
 
 A backend a binding launches is **not a host**. It is part of the implementation. The real `api/` makes a
 binding `Live`, and the in-memory mock makes it `Fake`. An endpoint
@@ -297,6 +298,7 @@ state is reached on `IOS_SIM_KEXE`, where every `SecItem*` call answers `-25291`
 ### How each host is run
 
 - **JVM, `IOS_SIM_KEXE`:** ordinary test tasks in `build` and `iosSimulatorArm64Test`.
+- **`ANDROID_EMU`:** `connectedAndroidDeviceTest` in the `android-emulator` job (`android.yml`).
 - **`IOS_SIM_APP`: live on every push.** The `ios-contracts` job in `ios.yml` builds the app under
   `-Psnapsync.rig=true`, applies the declared grant, launches it, and `scripts/sim-contracts` runs every
   entry of the host's in-app registry (`GET /contract`) through the rig's contract verb. It fails on any
@@ -569,10 +571,17 @@ The Android rig build (`:app:android` under `-Psnapsync.rig=true`) serves the sa
 emulator, reached over `adb forward tcp:18099 tcp:18099` (load `android-emulator`). Its adapter choice is **fixed**, not
 read from a file: every system mocked but the screen and its foreground life, the two Android has real adapters for
 (`AndroidRig.kt` composes it through the same `chosenPorts` a read choice uses). So it refuses `device/adapters*`,
-`device/relaunch` and the upload extension's `/os` verbs (Android has none), and names itself `ANDROID_EMU` in
-`GET /device` — a name, not yet a contract `Host`, since no binding runs there. `scripts/android-smoke` — install,
+`device/relaunch` and the upload extension's `/os` verbs (Android has none), and is contract host `ANDROID_EMU` in
+`GET /device` — the host the device tests run on too. `scripts/android-smoke` — install,
 launch, `/health`, `GET /device`, an event created and joined over the mocked backend — is the `android-emulator` CI
 job (`android.yml`), on a Linux KVM runner. A build without the property refuses at start: it has no adapters yet.
+
+The same job runs every module's `commonTest` on the emulator (`connectedAndroidDeviceTest`), for the reason `ios-test`
+runs it on the simulator: the code ships on ART after D8, over the platform's SQLite and Compose renderer. It is a
+device test, never a host test (that is the JVM again), and it runs with `-Psnapsync.androidDeviceTests=true`, which
+raises the libraries' minSdk to 30 for the run — D8 writes a backtick name's spaces only from DEX 040, and an ASCII
+apostrophe in one never (write `’`). The fakes' shared contract bindings run there as host `ANDROID_EMU`. The mocks'
+SQLite reaches the platform through a context their AAR's `MockAndroidContext` provider takes at process start.
 
 The client compiles against `model/`, presentation and `feature/`, never `ports/`, `flow/`, `compose/` or
 the host, and `ReadModelImportsTest` confines its `feature/` references to the `readmodel` packages. **That

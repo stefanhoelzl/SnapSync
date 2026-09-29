@@ -1,6 +1,10 @@
 package app.snapsync.mock
 
+import android.content.ContentProvider
+import android.content.ContentValues
 import android.content.Context
+import android.database.Cursor
+import android.net.Uri
 import app.cash.sqldelight.db.AfterVersion
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
@@ -9,20 +13,40 @@ import app.cash.sqldelight.driver.android.AndroidSqliteDriver
 import java.io.File
 
 /**
- * The Android process the mocks' databases open in. The platform's SQLite is reached through an open helper, and an
- * open helper needs the application's [Context] even for an in-memory database — so the one root that links the mocks
- * on Android (the rig build's) hands it over before it composes anything. A database opened before that fails naming
- * this, rather than guessing a context.
+ * The Android process the mocks' databases open in. The platform's SQLite is reached through an open helper, and an open
+ * helper needs the application's [Context] even for an in-memory database, which no port hands a mock. So this module's
+ * manifest registers [MockAndroidContext], which the platform creates at the start of every process that links the
+ * mocks — the rig build's app and each device-test APK, and nothing that ships — before any of its code runs.
  */
-object MockAndroidDatabases {
+internal object MockAndroidDatabases {
+    @Volatile
     private var context: Context? = null
 
     fun install(context: Context) {
-        this.context = context.applicationContext
+        this.context = context.applicationContext ?: context
     }
 
-    internal fun context(): Context =
-        checkNotNull(context) { "the mocks' databases were opened before MockAndroidDatabases.install(context)" }
+    fun context(): Context =
+        checkNotNull(context) { "the mocks' databases were opened before the process created MockAndroidContext" }
+}
+
+/** Hands [MockAndroidDatabases] the process's context as the platform starts it; serves nothing. */
+class MockAndroidContext : ContentProvider() {
+    override fun onCreate(): Boolean {
+        MockAndroidDatabases.install(checkNotNull(context) { "a provider is created with its context" })
+        return true
+    }
+
+    override fun query(uri: Uri, projection: Array<String>?, selection: String?, args: Array<String>?, sort: String?): Cursor? =
+        null
+
+    override fun getType(uri: Uri): String? = null
+
+    override fun insert(uri: Uri, values: ContentValues?): Uri? = null
+
+    override fun delete(uri: Uri, selection: String?, args: Array<String>?): Int = 0
+
+    override fun update(uri: Uri, values: ContentValues?, selection: String?, args: Array<String>?): Int = 0
 }
 
 // The version is the mock's own business (`PRAGMA user_version`, as on every other target), so the schema the driver's

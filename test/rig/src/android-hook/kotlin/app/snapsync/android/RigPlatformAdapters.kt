@@ -17,7 +17,7 @@ import app.snapsync.rig.start
  * composed.
  */
 internal fun platformAdapters(root: SnapSyncRoot, real: DevicePorts): PlatformAdapters {
-    val launch = androidRigLaunch(real, root.application)
+    val launch = androidRigLaunch(real)
     return PlatformAdapters(
         devControls = launch.controls,
         ui = lazyOf(launch.ui),

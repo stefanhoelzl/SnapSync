@@ -23,6 +23,10 @@ kotlin {
         }
     }
     sourceSets {
+        // On the emulator, `runComposeUiTest` launches the empty activity this manifest merges into the test APK.
+        getByName("androidDeviceTest").dependencies {
+            implementation(libs.compose.ui.test.manifest)
+        }
         commonMain.dependencies {
             api(project(":domain:model"))
             api(project(":domain:feature"))

@@ -237,7 +237,7 @@ class UploadTransferServiceTest {
     }
 
     @Test
-    fun `a transfer's end is recorded inline and its staged file goes with it`() {
+    fun `a transfer’s end is recorded inline and its staged file goes with it`() {
         val record = Record(mutableMapOf(destination to row("A-primary.jpg")))
         val files = SharedArea().apply { this.files += "upload-staging/A-primary.jpg" }
         val transfer = service(ScriptedUpload(accepts = UploadSourceKind.FILE), record, files = files)

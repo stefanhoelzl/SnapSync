@@ -123,7 +123,7 @@ class ProvisionTest {
     }
 
     @Test
-    fun `the album call carries the access fact rather than a caller's guess`() = runTest {
+    fun `the album call carries the access fact rather than a caller’s guess`() = runTest {
         // Same membership, same opt-in — only the grant differs, and the coordinator's own leading
         // guard is what turns that into "no album". The flow's job is to pass it through honestly.
         val albums = AlbumMapService(inMemoryPreferences(), inMemorySecureStore())
