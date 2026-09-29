@@ -90,7 +90,7 @@ runtime, say). Adding a target is an edit to the plugin and this list, not to an
 The `android` target is its own plugin, `snapsync.android` (AGP's `com.android.kotlin.multiplatform.library`), which
 `snapsync.targets` applies and which every other multiplatform module the Android app links applies beside its own
 `jvm`/iOS list (`:adapter:generic:*`, and the rig's `:test:rig`, `:test:launch-adapters`, `:test:contracts`). It
-reads the SDK levels from `libs.versions.toml` (minSdk 29 — one scoped-storage code path) and **lowers the bytecode
+reads the SDK levels from `libs.versions.toml` (minSdk 30 — scoped storage enforced, one code path, and the level the device tests run at too) and **lowers the bytecode
 to `android-jvmTarget` (17)** while the toolchain stays JDK 25: D8/R8 dexes what the Android compilations emit, and
 R8 over the whole rig graph is built on every push (`android.yml`). It declares no host tests — `commonTest`
 already runs on the JVM and the iOS simulator. The Android app itself is ONE process with ONE composition
