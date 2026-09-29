@@ -506,14 +506,14 @@ their hosts, and why some coverage is measured on hardware rather than asserted.
   workaround, docs — touches no spec and skips OpenSpec (the swap test in `openspec/config.yaml`): branch → PR → `/ship`. Classify honestly and **ask when unsure**; a wrong "mechanical"
   guess is exactly how behavior-changing work gets built with no spec behind it.
 - **The `openspec` CLI is not installed** — there is no global binary and no `package.json`. Invoke
-  it via npx, pinned to the version CI uses: `npx --yes @fission-ai/openspec@1.5.0 <cmd>` (e.g.
+  it via npx, pinned to the version CI uses: `npx --yes @fission-ai/openspec@1.13.2 <cmd>` (e.g.
   `… validate --specs --strict`, matching `.github/workflows/build.yml`). Do not run a bare
   `openspec …`; it will fail with "command not found". The generated skills below say bare
   `openspec …` — translate each call to the pinned npx form.
 - **The `.claude/opsx` skills and commands are generated**, not hand-written. They assume the
-  machine-global profile in `~/.config/openspec/config.json` is `core` (workflows propose ·
+  machine-global profile in `~/.config/openspec/config.json` is `core` (workflows propose · update ·
   explore · apply · sync · archive) with `delivery: both`. Regenerate with
-  `npx --yes @fission-ai/openspec@1.5.0 config profile core` then `… update`, and commit the
+  `npx --yes @fission-ai/openspec@1.13.2 config profile core` then `… update`, and commit the
   output verbatim — hand-edits are overwritten on the next update. On a default profile, `update`
   emits only four workflows and **deletes** the `sync` skill/command.
   **Regenerating is a no-op today, and must stay one**: `.claude/` is byte-identical to generated

@@ -25,7 +25,7 @@ step() { printf '\n=== %s ===\n' "$1"; }
 
 # `openspec list` PRINTS un-archived changes and exits 0 either way, so the assertion has to be
 # explicit — a command that reports a problem without failing gates nothing. Two traps, both
-# measured against 1.5.0 on 2026-09-08:
+# measured against 1.5.0 on 2026-09-08 (the `--json` shape re-checked on 1.13.2, 2026-09-29):
 #   * `--json` returns an OBJECT — {"changes": [...], "root": {...}} — not an array. `jq -e
 #     'length == 0'` counts the object's KEYS (2) and so fails on a clean tree. It must read
 #     `.changes`.
@@ -34,7 +34,7 @@ step() { printf '\n=== %s ===\n' "$1"; }
 # Pinned to the version CI runs (.github/workflows/build.yml); there is no global `openspec`
 # binary and there should not be one.
 step "no un-archived openspec changes"
-changes="$(npx --yes @fission-ai/openspec@1.5.0 list --json)"
+changes="$(npx --yes @fission-ai/openspec@1.13.2 list --json)"
 if ! printf '%s' "$changes" | jq -e '.changes | length == 0' > /dev/null; then
 	echo "Cannot ship with un-archived openspec changes:"
 	printf '%s' "$changes" | jq -r '.changes[] | "  - " + .name'
@@ -44,7 +44,7 @@ if ! printf '%s' "$changes" | jq -e '.changes | length == 0' > /dev/null; then
 fi
 
 step "spec-validate"
-npx --yes @fission-ai/openspec@1.5.0 validate --specs --strict
+npx --yes @fission-ai/openspec@1.13.2 validate --specs --strict
 
 # `deno task check` and `deno task test` chain `deno task config` themselves, so the resolved
 # deployment exists before anything reads it — no separate resolve step is needed. Every output
