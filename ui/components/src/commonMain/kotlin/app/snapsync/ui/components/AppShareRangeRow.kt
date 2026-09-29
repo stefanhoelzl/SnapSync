@@ -62,10 +62,10 @@ class RangeWindow(
  * start rows, two end rows) that alone filled the first view of the join screen (decision record
  * `simplify-join-screen`, D2).
  *
- * A chip commits its preset and closes; OK commits the calendar's span as a custom range, coerced into the
- * window (the calendar greys days outside it, but a boundary day's hour can still fall outside); Cancel
- * changes nothing. The calendar opens on the range currently chosen, so narrowing one end is a tap on that
- * end's day.
+ * The calendar is the create screen's range picker in a dialog ([RangePickerDialog]), held to the event's
+ * window. A chip commits its preset and closes; OK commits the calendar's span as a custom range; Cancel
+ * changes nothing. The calendar opens on the range currently chosen, complete, so the first tap on a day
+ * starts a new range and narrowing one end is a drag of that end.
  *
  * It is **not** a card of its own: it sits inside the Share section, because "do I share" and "which
  * photos" are one decision. Appearance-free: the choices, the actions, the window, and two strings cross
@@ -111,11 +111,9 @@ fun AppShareRangeRow(
     }
 
     if (picking) {
-        DateTimeRangePickerDialog(
-            initialFrom = choices.from,
-            initialUntil = choices.until,
-            minimum = window.start,
-            maximum = window.end,
+        RangePickerDialog(
+            initial = EventRange(choices.from, choices.until.date, choices.until.time, endPending = false),
+            bounds = RangeBounds.within(window.start, window.end),
             title = "Which photos to share",
             presets = buildList {
                 add(presetChip("Whole event", RangeChoice.WHOLE_EVENT, choices, actions) { picking = false })

@@ -19,7 +19,7 @@ import kotlinx.datetime.LocalDate
 import kotlinx.datetime.daysUntil
 import kotlinx.datetime.plus
 
-// Dragging on the create screen's calendar (capability `create-event`): a range endpoint is dragged straight
+// Dragging on the range calendar (capabilities `create-event`, `join-event`): a range endpoint is dragged straight
 // away, and a sweep across days selects a new range after a LONG PRESS. The long press is deliberate — the
 // calendar fills most of a small phone's form, so a drag that started anywhere on it and selected days would
 // leave the host no place to scroll the form from.
@@ -35,7 +35,7 @@ private enum class Handle { START, END }
 internal fun Modifier.rangeDrags(
     visibleMonth: LocalDate,
     range: EventRange,
-    latest: LatestUntil,
+    bounds: RangeBounds,
     onChange: (EventRange) -> Unit,
 ): Modifier {
     val current by rememberUpdatedState(range)
@@ -47,12 +47,12 @@ internal fun Modifier.rangeDrags(
             val pressed = month.dayAt(down.position, size) ?: return@awaitEachGesture
             val onEndpoint = pressed == current.from.date || pressed == current.endDay
             if (onEndpoint) {
-                dragEndpoint(down.id, pressed, month, size, latest, { current }) { emit(it) }
+                dragEndpoint(down.id, pressed, month, size, bounds, { current }) { emit(it) }
             } else {
                 awaitLongPressOrCancellation(down.id)?.let { press ->
-                    emit(current.sweep(pressed, pressed, latest))
+                    emit(current.sweep(pressed, pressed, bounds))
                     drag(press.id) { change ->
-                        month.dayAt(change.position, size)?.let { emit(current.sweep(pressed, it, latest)) }
+                        month.dayAt(change.position, size)?.let { emit(current.sweep(pressed, it, bounds)) }
                         change.consume()
                     }
                 }
@@ -70,7 +70,7 @@ private suspend fun AwaitPointerEventScope.dragEndpoint(
     pressed: LocalDate,
     month: MonthLayout,
     size: IntSize,
-    latest: LatestUntil,
+    bounds: RangeBounds,
     current: () -> EventRange,
     emit: (EventRange) -> Unit,
 ) {
@@ -82,7 +82,7 @@ private suspend fun AwaitPointerEventScope.dragEndpoint(
     val held = handle ?: return
     drag(moved.id) { change ->
         month.dayAt(change.position, size)?.let { day ->
-            emit(if (held == Handle.START) current().dragStartTo(day, latest) else current().dragEndTo(day, latest))
+            emit(if (held == Handle.START) current().dragStartTo(day, bounds) else current().dragEndTo(day, bounds))
         }
         change.consume()
     }

@@ -23,7 +23,11 @@ class EventRangeTest {
         val SUNDAY = LocalDate(2026, 7, 8)
 
         /** The event window's length: 30 days from the start, as the app's formatter answers it. */
-        val THIRTY_DAYS = LatestUntil { from -> LocalDateTime(from.date.plus(30, DateTimeUnit.DAY), from.time) }
+        val THIRTY_DAYS = RangeBounds.lastingAtMost { from -> LocalDateTime(from.date.plus(30, DateTimeUnit.DAY), from.time) }
+
+        /** A join's window: the event, 20 Jul 18:00 – 25 Jul 18:00, its end time always set. */
+        val EVENT = RangeBounds.within(LocalDateTime(2026, 7, 20, 18, 0), LocalDateTime(2026, 7, 25, 18, 0))
+        val WHOLE_EVENT = EventRange(LocalDateTime(2026, 7, 20, 18, 0), LocalDate(2026, 7, 25), LocalTime(18, 0), endPending = false)
     }
 
     private val fresh = EventRange(from = START)
@@ -159,5 +163,48 @@ class EventRangeTest {
     fun `with no valid end on a same-day range the end stays blank`() {
         val late = EventRange(from = LocalDateTime(2026, 7, 6, 23, 59))
         assertNull(late.settleUntilHour(23, THIRTY_DAYS).untilTime)
+    }
+
+    // ---- inside an event's window (join and settings) ----
+
+    @Test
+    fun `a join range opens complete and valid`() {
+        assertTrue(WHOLE_EVENT.isValid(EVENT))
+    }
+
+    @Test
+    fun `a first tap starts a new range and keeps the end time`() {
+        val restarted = WHOLE_EVENT.pickDay(LocalDate(2026, 7, 22), EVENT)
+        assertEquals(LocalDateTime(2026, 7, 22, 18, 0), restarted.from)
+        assertEquals(LocalTime(18, 0), restarted.untilTime, "the end time is never blanked on join")
+        assertFalse(restarted.isValid(EVENT), "until the last day is placed the range ends where it starts")
+        val placed = restarted.pickDay(LocalDate(2026, 7, 23), EVENT)
+        assertEquals(LocalDateTime(2026, 7, 23, 18, 0), placed.until)
+        assertTrue(placed.isValid(EVENT))
+    }
+
+    @Test
+    fun `a same-day join range moves the end time to the nearest valid one`() {
+        val sameDay = WHOLE_EVENT.pickDay(LocalDate(2026, 7, 22), EVENT).pickDay(LocalDate(2026, 7, 22), EVENT)
+        assertEquals(LocalDateTime(2026, 7, 22, 18, 1), sameDay.until)
+    }
+
+    @Test
+    fun `dragging an end narrows the range and never leaves the window`() {
+        assertEquals(LocalDate(2026, 7, 23), WHOLE_EVENT.dragEndTo(LocalDate(2026, 7, 23), EVENT).endDay)
+        assertEquals(LocalDate(2026, 7, 25), WHOLE_EVENT.dragEndTo(LocalDate(2026, 7, 30), EVENT).endDay)
+        val start = WHOLE_EVENT.dragStartTo(LocalDate(2026, 7, 10), EVENT)
+        assertEquals(LocalDateTime(2026, 7, 20, 18, 0), start.from, "never before the event's start")
+    }
+
+    @Test
+    fun `on the window's first day a start before the event cannot be settled`() {
+        assertFalse(WHOLE_EVENT.fromAllowed(LocalTime(17, 59), EVENT))
+        assertEquals(LocalDateTime(2026, 7, 20, 18, 0), WHOLE_EVENT.settleFromHour(9, EVENT).from)
+    }
+
+    @Test
+    fun `days past the event are never offered`() {
+        assertEquals(LocalDate(2026, 7, 25), WHOLE_EVENT.lastPickableDay(EVENT))
     }
 }

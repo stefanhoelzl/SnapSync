@@ -103,6 +103,28 @@ channel over mocks at a fixed clock (`Shots.kt`). The draft is composition state
 at the mocked instant, which is stable across runs. Showing a completed form would need the draft in
 `UiState` and a `/user` intent to fill it; that is left for a later change if the listing wants it.
 
+### D8 — One range picker: the join and settings surfaces use the create screen's
+While this change was in flight, `main`'s join rework adopted the old range dialog for the Custom range, so the
+app briefly had two pickers sharing only the month grid. They are unified (operator decision, interview
+2026-09-29): the picker is ONE component — `RangeEditor` (both ends in words, the calendar with its taps,
+endpoint drags and long-press sweep, the four settling wheels) and its rules — framed two ways: inline in a
+card on the create screen, and in the existing popup (title, Whole event / From now chips, Cancel / OK) behind
+the range row on join and settings.
+- **One difference, the bounds** (`RangeBounds`): create has no window and a 30-day length; join is held to
+  the event's `[start, end]`, days outside it always greyed, times outside it struck through.
+- **The end time is always set on join** — the event's end or the current custom end. The blank end time is a
+  create-only rule (it prevents a silent default; on join the whole event IS the right default). Where a day
+  moves make the end time invalid, it moves to the nearest valid time instead of blanking.
+- **Join opens on the chosen range, complete**: the first tap on a day starts a new range; narrowing an end is
+  a drag of that end. OK is enabled only while the range is valid; Cancel changes nothing.
+- **Deleted**: the old dialog's own calendar and `TimeWheels`, and the single-date `DateTimePickerDialog` with
+  its `CalendarGrid` (no caller since the join rework). Their tests moved to the unified picker.
+- **No spec delta**: `join-event` promises a custom range "picked on a calendar with a time for its start and
+  its end", which stays true; dragging and sweeping are interaction detail (the swap test).
+*Rejected:* the picker inline in the join screen (long on an SE2, no Cancel); a bottom sheet; identical rules
+with the last day pending on open (narrowing the end would be one tap, but a first tap starting a new range is
+what a complete range should do).
+
 ## Risks / Trade-offs
 
 - [A host with no fixed end still has to pick one] → Intended: the window is a promise to every guest, and
@@ -124,4 +146,4 @@ changes shape (the draft is composition state, never persisted).
 
 ## Open Questions
 
-- Whether the join/reconfigure surface should adopt the inline calendar and wheels (deferred).
+- None open. (The join/settings unification, deferred at first, is D8.)

@@ -1,6 +1,10 @@
 package app.snapsync.ui.components
 
 import androidx.compose.foundation.clickable
+import kotlin.math.roundToInt
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.foundation.gestures.ScrollableDefaults
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.interaction.DragInteraction
@@ -13,6 +17,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -46,17 +51,62 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import kotlinx.datetime.LocalTime
 
-// The create screen's inline time wheels (capability `create-event`). Unlike [TimeWheels], which report
-// every row that passes the reading line, these are CONTROLLED: the value lives with the caller, a wheel
-// reports only where the HOST made it come to rest, and it follows the value when the caller moves it (a
-// settle the rules pulled back, a start that moved under a blank end). That is what lets an end time stay
-// blank until touched, and what makes a disallowed time unreachable instead of refused.
+// The range picker's time wheels (capabilities `create-event`, `join-event`). They are CONTROLLED: the value
+// lives with the caller, a wheel reports only where the HOST made it come to rest, and it follows the value
+// when the caller moves it (a settle the rules pulled back, a start that moved under a blank end). That is
+// what lets an end time stay blank until touched, and what makes a disallowed time unreachable instead of
+// refused.
 
 private const val HOURS_PER_DAY = 24
 private const val MINUTES_PER_HOUR = 60
 private const val BLOCKED_ALPHA = 0.18f
 private const val BLANK_LABEL = "--"
 private const val BLANK_STATE = "not set"
+
+/** The wheel row geometry: three visible rows keeps the dialog compact under the calendar. */
+internal val WheelRowHeight = 38.dp
+internal const val WHEEL_VISIBLE_ROWS = 3
+
+/**
+ * The centre reading line: a one-row-tall `surfaceVariant` bar between two `outlineVariant` hairlines.
+ */
+@Composable
+internal fun SelectionBand() {
+    val scheme = MaterialTheme.colorScheme
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.Center,
+    ) {
+        HorizontalDivider(thickness = 1.dp, color = scheme.outlineVariant)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(WheelRowHeight)
+                .padding(horizontal = 8.dp)
+                .background(scheme.surfaceVariant.copy(alpha = 0.55f), RoundedCornerShape(9.dp)),
+        )
+        HorizontalDivider(thickness = 1.dp, color = scheme.outlineVariant)
+    }
+}
+
+/**
+ * Which row is on the centre reading line, derived from the scroll position.
+ *
+ * Its own function because it is the wheel's one piece of arithmetic — the pixel offset a partially
+ * scrolled list reports, converted to whole rows — and it answers a different question from everything
+ * around it: that code moves the list, this reads where the list came to rest.
+ */
+@Composable
+internal fun rememberCenteredRow(listState: LazyListState, count: Int): Int {
+    val rowPx = with(LocalDensity.current) { WheelRowHeight.toPx() }
+    val centerIndex by remember {
+        derivedStateOf {
+            val settled = listState.firstVisibleItemScrollOffset / rowPx
+            (listState.firstVisibleItemIndex + settled.roundToInt()).coerceIn(0, count - 1)
+        }
+    }
+    return centerIndex
+}
 
 /**
  * One end's time: its caption over an hour wheel and a minute wheel that scroll and settle independently.
