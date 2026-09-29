@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.Dp
@@ -77,7 +78,15 @@ fun ScreenLayout(
         ) {
             NavTitle(title, onTitleDoubleTap, bottomPadding = if (heading == null) 12.dp else 4.dp)
             if (heading != null) {
-                Heading(heading.text, heading.onEdit, heading.editDescription)
+                Heading(heading, bottomPadding = if (heading.details == null) 12.dp else 4.dp)
+                heading.details?.let { details ->
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                        content = details,
+                    )
+                }
             }
             Column(
                 modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -139,26 +148,41 @@ private fun NavTitle(title: String, onDoubleTap: (() -> Unit)?, bottomPadding: D
  * is an `IconButton` and not a gesture.
  */
 @Composable
-private fun Heading(text: String, onEdit: (() -> Unit)?, editDescription: String) {
+private fun Heading(heading: ScreenHeading, bottomPadding: Dp) {
+    val text = heading.text
+    val onEdit = heading.onEdit
     val style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold)
+    // At most two lines, then an ellipsis: a name may run to 100 characters, and wrapped in full it took four
+    // lines and pushed the invite down the screen. The whole name stays one tap away in the rename dialog.
     if (onEdit == null) {
         Text(
             text = text,
             style = style,
             textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+            maxLines = HEADING_MAX_LINES,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.fillMaxWidth().padding(bottom = bottomPadding),
         )
     } else {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+            modifier = Modifier.fillMaxWidth().padding(bottom = bottomPadding),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(text = text, style = style, textAlign = TextAlign.Center)
+            // `fill = false`: a short name keeps its natural width (and so its centering), while a long one
+            // yields the space the edit control needs rather than pushing it off the screen.
+            Text(
+                text = text,
+                style = style,
+                textAlign = TextAlign.Center,
+                maxLines = HEADING_MAX_LINES,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
             IconButton(onClick = onEdit, modifier = Modifier.size(40.dp)) {
                 Icon(
                     imageVector = Icons.Filled.Edit,
-                    contentDescription = editDescription,
+                    contentDescription = heading.editDescription,
                     modifier = Modifier.size(20.dp),
                 )
             }
@@ -179,4 +203,9 @@ class ScreenHeading(
     /** `null` for a heading with no edit control — stated at the construction site, never defaulted. */
     val onEdit: (() -> Unit)?,
     val editDescription: String = "",
+    /** Short lines about the heading, centered beneath it (the joined event's "joined" and dates lines). */
+    val details: (@Composable ColumnScope.() -> Unit)? = null,
 )
+
+/** How many lines the heading may wrap to before it is cut with an ellipsis. */
+private const val HEADING_MAX_LINES = 2

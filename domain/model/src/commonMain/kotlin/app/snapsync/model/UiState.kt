@@ -174,11 +174,18 @@ sealed interface Layer {
         /** The joined layer offers "Choose more photos" — true exactly under a partial grant
          *  (capability `photo-access`): a resting affordance, never an attention state. */
         val canChoosePhotos: Boolean = false,
-        /** The event's declared end has passed (`now > endsAt`, capability `sync-status`): the
-         *  status line shows an "Event ended" marker prefixing the regular [health]. Informational only —
-         *  sync continues during the backend grace window; joining is closed server-side. `false` when the
-         *  membership has no stored `endsAt` (a legacy config before its reconcile backfill). */
-        val ended: Boolean = false,
+        /**
+         * Where the event is in its life — the dates line's "starts in …" / "ends in …" / "ended" (capability
+         * `sync-status`). The range itself is [membership]'s `startsAt`/`endsAt`; this is only the part that
+         * needs a clock, reduced from the host's minute tick so the screen never reads one.
+         */
+        val timing: EventTiming = EventTiming.Running(remaining = null),
+        /**
+         * The counts line (capability `sync-status`): what was shared and received. Non-null exactly while
+         * [health] is [SyncHealth.InSync] or [SyncHealth.Syncing] — in every other status the numbers are
+         * unknown or zero, and the one status line is the thing to read.
+         */
+        val counts: SyncCounts? = null,
         /**
          * The rename lifecycle (capability `manage-membership`) for the heading's dialog. A field, never a
          * family and never a health rung: a rename changes one string and one dialog's state, so it adds
@@ -219,7 +226,10 @@ sealed interface Layer {
          * is still waiting for to finish sharing. `null` hides it.
          */
         val waiting: MemberCounts? = null,
-    ) : Layer
+    ) : Layer {
+        /** The event's declared end has passed (`now > endsAt`). Informational only: sync continues. */
+        val ended: Boolean get() = timing == EventTiming.Ended
+    }
 }
 
 /**
@@ -400,8 +410,8 @@ sealed interface SyncHealth {
 
     /**
      * The event has not begun: the membership's `startsAt` is still in the future (capability
-     * `sync-status`). Carries the start instant so the screen can say *when* — a bare "not started
-     * yet" invites exactly the question it fails to answer.
+     * `sync-status`). Carries nothing: *when* it starts is the dates line's to say ([Layer.Joined.timing]),
+     * so the status line says only what the wait means — sharing starts with the event.
      *
      * It ranks **below** [NeedsAccess] and **above** the snapshot-derived values. Permission outranks it
      * because permission is the only **actionable** state, and a member must resolve it *before* the event
@@ -414,7 +424,7 @@ sealed interface SyncHealth {
      * snapshot emission retires it — `StatusContainerHost` runs a foreground tick for that.
      */
     @Serializable
-    data class NotStarted(val startsAt: EventStart) : SyncHealth
+    data object NotStarted : SyncHealth
 
     /**
      * Uploads are blocked: this device holds no valid attestation token, and the attempt to obtain one

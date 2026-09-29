@@ -85,6 +85,8 @@ class UiStateSerializationTest {
                     membership = membership,
                     inviteUrl = "https://snapsync.stho.net/join#v=3&d=x",
                     health = SyncHealth.InSync,
+                    timing = EventTiming.Upcoming(TimeLeft.Hours(5)),
+                    counts = SyncCounts(DirectionCount.Off, DirectionCount.Progress(40, 52)),
                 ),
                 Overlays(confirmingLeave = true, renaming = true, reportingBug = true),
             ),
@@ -95,7 +97,7 @@ class UiStateSerializationTest {
                     membership = membership,
                     inviteUrl = "https://snapsync.stho.net/join#v=3&d=x",
                     health = SyncHealth.NeedsAccess(GalleryAccess.DENIED),
-                    ended = true,
+                    timing = EventTiming.Ended,
                     canChoosePhotos = true,
                     notice = "something worth saying",
                 ),
@@ -169,7 +171,7 @@ class UiStateSerializationTest {
     @Test
     fun every_health_and_rename_state_round_trips() {
         val healths = listOf(
-            SyncHealth.NotStarted(eventStart("2026-07-06T00:00:00Z")),
+            SyncHealth.NotStarted,
             SyncHealth.Unattested,
             SyncHealth.Loading,
             SyncHealth.Syncing(upload = Arrow.HIDDEN, download = Arrow.PULSING),

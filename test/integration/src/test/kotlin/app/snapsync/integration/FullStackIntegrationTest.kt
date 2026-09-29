@@ -1,6 +1,9 @@
 package app.snapsync.integration
 
 import app.snapsync.model.Arrow
+import app.snapsync.model.DirectionCount
+import app.snapsync.model.EventTiming
+import app.snapsync.model.SyncCounts
 import app.snapsync.model.Layer
 import app.snapsync.model.SyncHealth
 import kotlinx.serialization.json.boolean
@@ -8,6 +11,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -51,6 +55,39 @@ class FullStackIntegrationTest {
 
         assertTrue(primaryKey("A") in objects())
         awaitInSync()
+    }
+
+    @Test
+    fun the_counts_line_tracks_what_was_shared_and_received() = rigTest {
+        // Capability `sync-status`, "The joined screen counts what was shared and received": the same numbers the
+        // arrows derive from, through the real stack — own photos out, the other members' photos in.
+        createAndJoin()
+        addPhoto("A")
+        addPhoto("B")
+        refresh()
+        awaitState { it.joined?.counts == SyncCounts(progress(0, 2), progress(0, 0)) }
+
+        uploadAll()
+        foreignDevice("GUEST", "G-1", "G-2", "G-3")
+        downloadAll()
+        refresh()
+        val settled = awaitState { it.health == SyncHealth.InSync }
+        assertEquals(SyncCounts(progress(2, 2), progress(3, 3)), settled.joined?.counts)
+
+        // Without access the numbers are unknown: only the status line, which asks for access.
+        permission("DENIED")
+        refresh()
+        val blocked = awaitState { it.health is SyncHealth.NeedsAccess }
+        assertNull(blocked.joined?.counts)
+    }
+
+    @Test
+    fun a_future_event_says_how_long_until_it_starts_and_shows_no_counts() = rigTest {
+        createAndJoin(startsAt = "2099-12-01T00:00:00", endsAt = "2099-12-31T00:00:00")
+        refresh()
+        val waiting = awaitState { it.health == SyncHealth.NotStarted }
+        assertIs<EventTiming.Upcoming>(waiting.joined?.timing)
+        assertNull(waiting.joined?.counts)
     }
 
     @Test
@@ -329,3 +366,5 @@ class FullStackIntegrationTest {
         assertIs<Layer.CreateEvent>(state().ui.layer)
     }
 }
+
+private fun progress(done: Int, total: Int) = DirectionCount.Progress(done, total)
