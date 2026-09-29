@@ -33,9 +33,17 @@
 - [x] 5.0.2 Drag an endpoint to move it; long press then sweep to select a new range; tests for both
 - [x] 5.0.3 Update the spec delta, design (D1, D2, D3, D5, D7) and proposal
 
-## 6. Verify
+## 6. One range picker (join and settings)
 
-- [x] 6.1 `./gradlew build` green, including the `detekt*Tier` ceilings (no ceiling raised without a stated forcing proof)
-- [x] 6.2 `./gradlew compileIosMainKotlinMetadata` green
-- [x] 6.3 On the SE2: create an event end to end (name → last day → flick Until → Create), and confirm the form fits or scrolls cleanly with Create pinned
-- [x] 6.4 `npx --yes @fission-ai/openspec@1.5.0 validate --specs --strict` and validate this change
+- [x] 6.0.1 `RangeBounds`: an optional window [earliest, ceiling] + a length limit + whether the end time may be blank; the rules take it
+- [x] 6.0.2 `RangeEditor` shared by the create card and `RangePickerDialog` (popup: title, chips, Cancel / OK enabled only when valid); join opens complete, end time always set
+- [x] 6.0.3 `AppShareRangeRow` opens it bounded to the event; delete the old dialog body, `TimeWheels`, `DateTimePickerDialog`, `CalendarGrid`
+- [x] 6.0.4 Tests: join bounds in `EventRangeTest`, `RangePickerDialogTest` (heading, window, OK unchanged, restart then last day, drag narrows, chip); day semantics in `AppEventRangePickerTest`
+- [x] 6.0.5 Design D8, proposal
+
+## 7. Verify
+
+- [x] 7.1 `./gradlew build` green, including the `detekt*Tier` ceilings (no ceiling raised without a stated forcing proof)
+- [x] 7.2 `./gradlew compileIosMainKotlinMetadata` green
+- [x] 7.3 On the SE2: create an event end to end (name → last day → flick Until → Create), and confirm the form fits or scrolls cleanly with Create pinned
+- [x] 7.4 `npx --yes @fission-ai/openspec@1.5.0 validate --specs --strict` and validate this change

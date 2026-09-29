@@ -20,7 +20,7 @@ import app.snapsync.model.UiState
 import app.snapsync.ui.components.AppEventHeaderHost
 import app.snapsync.ui.components.AppIdentityHeader
 import app.snapsync.ui.components.AppEventRangePicker
-import app.snapsync.ui.components.LatestUntil
+import app.snapsync.ui.components.RangeBounds
 import kotlinx.datetime.LocalDateTime
 import app.snapsync.ui.components.AppQuestionHeading
 import app.snapsync.ui.components.AppTextField
@@ -83,7 +83,7 @@ internal fun CreateEventScreen(
             CreateQuestion("When is it?") {
                 AppEventRangePicker(
                     range = draft.range,
-                    latest = LatestUntil(cutoff::latestEnd),
+                    bounds = RangeBounds.lastingAtMost(cutoff::latestEnd),
                     // The truthfulness line: this window is the event's capture-date bound (capability
                     // `photo-sharing`) — stated once, where it is set — and the one limit on it.
                     note = "Only photos taken during this window are shared — the range every guest starts " +

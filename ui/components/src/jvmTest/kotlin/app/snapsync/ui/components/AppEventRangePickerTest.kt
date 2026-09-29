@@ -9,6 +9,8 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
@@ -38,7 +40,7 @@ import org.junit.Rule
 class AppEventRangePickerTest {
 
     private companion object {
-        val TEN_DAYS = LatestUntil { from -> LocalDateTime(from.date.plus(10, DateTimeUnit.DAY), from.time) }
+        val TEN_DAYS = RangeBounds.lastingAtMost { from -> LocalDateTime(from.date.plus(10, DateTimeUnit.DAY), from.time) }
     }
 
     @get:Rule
@@ -120,10 +122,17 @@ class AppEventRangePickerTest {
         assertNull(range.untilTime)
     }
 
+    @Test
+    fun `each day cell announces its full date and the ends report selected`() {
+        setPicker()
+        rule.onNodeWithContentDescription("Tuesday 10 March 2026").assertIsSelected()
+        rule.onNodeWithContentDescription("Monday 9 March 2026").assertIsNotSelected()
+    }
+
     private fun setPicker() {
         rule.setContent {
             CompositionLocalProvider(LocalReduceMotion provides true) {
-                AppEventRangePicker(range = range, latest = TEN_DAYS, note = "note", onChange = { range = it })
+                AppEventRangePicker(range = range, bounds = TEN_DAYS, note = "note", onChange = { range = it })
             }
         }
     }

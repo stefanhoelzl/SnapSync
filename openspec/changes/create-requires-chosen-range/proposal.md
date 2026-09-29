@@ -20,6 +20,9 @@ Creating must therefore require the host to choose where the event ends.
   cannot be submitted). The 30-day limit is unchanged.
 - One line above Create always tells the host what is missing next: the name, then the end time. Once the
   form is complete, that line shows how long the event lasts.
+- The join and settings screens' Custom range uses the same picker, inside the existing popup: held to the
+  event's window, opened on the chosen range, its end time always set. The old range dialog and the unused
+  single-date picker are removed.
 - A failed create, and the transient "QR code was not valid" notice, now show **below** Create, in place of
   the scan-to-join hint, instead of as a banner above Create. That way the action area never grows over the
   range controls. What was entered is still kept, and the message still stays until the next attempt.
@@ -41,10 +44,10 @@ _None._
 
 ## Impact
 
-- **UI (`:ui:screens`, `:ui:components`):** the create screen's form and its draft, a new inline range
-  control (calendar, start and end hour/minute wheels, and a blank "not yet set" end), the next-step and
-  duration line, and the message slot below Create. The dialog range picker has no other caller and is
-  retired, along with its test.
+- **UI (`:ui:screens`, `:ui:components`):** the create screen's form and its draft, a new range picker
+  (calendar with drags, start and end hour/minute wheels, a blank "not yet set" end on create), the next-step
+  and duration line, and the message slot below Create. The join and settings range row opens the same
+  picker in its popup; the old range dialog, its wheels, and the dead single-date picker are removed.
 - **Presentation (`:domain:presentation`):** the window arithmetic (`latestEnd`, `fitsEventWindow`,
   `humanizedDuration`) is reused unchanged. The reduction of create errors into the create layer is
   unchanged; only where the screen renders the message moves.
@@ -53,4 +56,4 @@ _None._
 - **`join-event` needs no delta:** its invalid-QR scenario only says the create screen shows the
   notice, never where, so moving the notice below Create keeps it true.
 - **Unaffected:** the backend, the create request, the rig's `/user` create intent (it already carries
-  explicit dates), and the join screen's range surface.
+  explicit dates), and the join screen's layout (only its Custom-range popup changes inside).

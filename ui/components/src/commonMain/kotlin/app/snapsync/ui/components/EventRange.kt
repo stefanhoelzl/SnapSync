@@ -29,29 +29,28 @@ data class EventRange(
         get() = untilTime?.let { LocalDateTime(endDay, it) }
 }
 
-/**
- * What a range is bounded by: the latest end the caller accepts for a given start (the event window's
- * length). The caller owns that arithmetic — it knows the zone and the limit; this module knows neither.
- */
-fun interface LatestUntil {
-    fun of(from: LocalDateTime): LocalDateTime
-}
-
 /** Whether [time] on the chosen last day would be a valid end: after the start and within the window. */
-internal fun EventRange.untilAllowed(time: LocalTime, latest: LatestUntil): Boolean {
+internal fun EventRange.untilAllowed(time: LocalTime, bounds: RangeBounds): Boolean {
     val until = LocalDateTime(endDay, time)
-    return until > from && until <= latest.of(from)
+    return until > from && until <= bounds.latestEnd(from)
 }
 
 /** Whether [time] on the start's day would be a valid start, given whatever end is already chosen. */
-internal fun EventRange.fromAllowed(time: LocalTime, latest: LatestUntil): Boolean {
+internal fun EventRange.fromAllowed(time: LocalTime, bounds: RangeBounds): Boolean {
     val candidate = LocalDateTime(from.date, time)
     val chosenEnd = until
-    return if (chosenEnd != null) {
-        chosenEnd > candidate && chosenEnd <= latest.of(candidate)
+    val reachesEnd = if (chosenEnd != null) {
+        chosenEnd > candidate && chosenEnd <= bounds.latestEnd(candidate)
     } else {
-        endDay <= latest.of(candidate).date
+        endDay <= bounds.latestEnd(candidate).date
     }
+    return reachesEnd && bounds.earliest.let { it == null || candidate >= it }
+}
+
+/** Whether the range is complete and inside [bounds] — what a surface that confirms a range asks. */
+internal fun EventRange.isValid(bounds: RangeBounds): Boolean {
+    val end = until
+    return end != null && untilAllowed(end.time, bounds) && fromAllowed(from.time, bounds)
 }
 
 /**
@@ -59,23 +58,23 @@ internal fun EventRange.fromAllowed(time: LocalTime, latest: LatestUntil): Boole
  * kept. A value that is not a valid end moves to the nearest one that is (an hour with no valid minute to
  * the nearest hour that has one), so a bad range is unreachable rather than refused.
  */
-internal fun EventRange.settleUntilHour(hour: Int, latest: LatestUntil): EventRange =
-    settleUntil(hour, untilTime?.minute ?: 0, latest)
+internal fun EventRange.settleUntilHour(hour: Int, bounds: RangeBounds): EventRange =
+    settleUntil(hour, untilTime?.minute ?: 0, bounds)
 
 /** The Until minute wheel settled on [minute]; from a blank end the hour is the one the wheel sat over. */
-internal fun EventRange.settleUntilMinute(minute: Int, latest: LatestUntil): EventRange =
-    settleUntil(untilTime?.hour ?: from.hour, minute, latest)
+internal fun EventRange.settleUntilMinute(minute: Int, bounds: RangeBounds): EventRange =
+    settleUntil(untilTime?.hour ?: from.hour, minute, bounds)
 
-private fun EventRange.settleUntil(hour: Int, minute: Int, latest: LatestUntil): EventRange =
-    nearestTime(hour, minute) { untilAllowed(it, latest) }?.let { copy(untilTime = it) } ?: this
+private fun EventRange.settleUntil(hour: Int, minute: Int, bounds: RangeBounds): EventRange =
+    nearestTime(hour, minute) { untilAllowed(it, bounds) }?.let { copy(untilTime = it) } ?: this
 
 /** The From hour wheel settled on [hour]; the minutes are kept where they stay valid. */
-internal fun EventRange.settleFromHour(hour: Int, latest: LatestUntil): EventRange =
-    settleFrom(hour, from.minute, latest)
+internal fun EventRange.settleFromHour(hour: Int, bounds: RangeBounds): EventRange =
+    settleFrom(hour, from.minute, bounds)
 
 /** The From minute wheel settled on [minute]. */
-internal fun EventRange.settleFromMinute(minute: Int, latest: LatestUntil): EventRange =
-    settleFrom(from.hour, minute, latest)
+internal fun EventRange.settleFromMinute(minute: Int, bounds: RangeBounds): EventRange =
+    settleFrom(from.hour, minute, bounds)
 
-private fun EventRange.settleFrom(hour: Int, minute: Int, latest: LatestUntil): EventRange =
-    nearestTime(hour, minute) { fromAllowed(it, latest) }?.let { copy(from = LocalDateTime(from.date, it)) } ?: this
+private fun EventRange.settleFrom(hour: Int, minute: Int, bounds: RangeBounds): EventRange =
+    nearestTime(hour, minute) { fromAllowed(it, bounds) }?.let { copy(from = LocalDateTime(from.date, it)) } ?: this

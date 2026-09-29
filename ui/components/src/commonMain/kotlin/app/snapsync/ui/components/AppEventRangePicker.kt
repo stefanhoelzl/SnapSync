@@ -38,14 +38,13 @@ import kotlinx.datetime.todayIn
  *
  * The last day starts on the start's day and its time starts BLANK: settling either Until wheel sets the
  * time. The first tap on a later day places the last day there; after that a tap starts a new range. An
- * endpoint can also be dragged, and a long press then a sweep selects a new range. [latest] bounds the
- * window's length — days past it are greyed while the last day is pending, and times past it cannot be
- * settled on.
+ * endpoint can also be dragged, and a long press then a sweep selects a new range. [bounds] limit the
+ * range — days outside them are greyed, and times outside them cannot be settled on.
  *
  * Appearance-free like the rest of the design system's API: the caller hands over values and callbacks only.
  */
 @Composable
-fun AppEventRangePicker(range: EventRange, latest: LatestUntil, note: String, onChange: (EventRange) -> Unit) {
+fun AppEventRangePicker(range: EventRange, bounds: RangeBounds, note: String, onChange: (EventRange) -> Unit) {
     val scheme = MaterialTheme.colorScheme
     Surface(
         color = scheme.surface,
@@ -54,12 +53,22 @@ fun AppEventRangePicker(range: EventRange, latest: LatestUntil, note: String, on
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            RangeEnds(range)
-            RangeCalendar(range, latest, onChange)
-            RangeTimes(range, latest, onChange)
+            RangeEditor(range, bounds, onChange)
             Text(text = note, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
         }
     }
+}
+
+/**
+ * The range picker itself — both ends in words, the calendar, the From / Until wheels — without a frame, so
+ * the create screen's card and the join surfaces' dialog ([RangePickerDialog]) are the same component and
+ * differ only in their [bounds].
+ */
+@Composable
+internal fun RangeEditor(range: EventRange, bounds: RangeBounds, onChange: (EventRange) -> Unit) {
+    RangeEnds(range)
+    RangeCalendar(range, bounds, onChange)
+    RangeTimes(range, bounds, onChange)
 }
 
 /** Both ends in words: the start as set, the end as set or as the next thing to do. */
@@ -97,7 +106,7 @@ private fun RowScope.RangeEnd(
 }
 
 @Composable
-private fun RangeCalendar(range: EventRange, latest: LatestUntil, onChange: (EventRange) -> Unit) {
+private fun RangeCalendar(range: EventRange, bounds: RangeBounds, onChange: (EventRange) -> Unit) {
     val today = remember { Clock.System.todayIn(TimeZone.currentSystemDefault()) }
     var visibleMonth by remember {
         mutableStateOf(LocalDate(range.from.year, range.from.month.ordinal.plus(1), 1))
@@ -108,35 +117,35 @@ private fun RangeCalendar(range: EventRange, latest: LatestUntil, onChange: (Eve
         onNext = { visibleMonth = visibleMonth.plus(1L, DateTimeUnit.MONTH) },
     )
     WeekdayHeader()
-    Box(modifier = Modifier.rangeDrags(visibleMonth, range, latest, onChange)) {
+    Box(modifier = Modifier.rangeDrags(visibleMonth, range, bounds, onChange)) {
         RangeCalendarGrid(
             visibleMonth = visibleMonth,
             rangeStart = range.from.date,
             rangeEnd = range.endDay,
-            bounds = CalendarBounds(today, ceiling = range.lastPickableDay(latest)),
-            onPick = { onChange(range.pickDay(it, latest)) },
+            bounds = CalendarBounds(today, floor = bounds.earliest?.date, ceiling = range.lastPickableDay(bounds)),
+            onPick = { onChange(range.pickDay(it, bounds)) },
         )
     }
 }
 
 @Composable
-private fun RangeTimes(range: EventRange, latest: LatestUntil, onChange: (EventRange) -> Unit) {
+private fun RangeTimes(range: EventRange, bounds: RangeBounds, onChange: (EventRange) -> Unit) {
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         SettlingTimeWheels(
             caption = "From",
             time = range.from.time,
             anchor = range.from.time,
-            allowed = { range.fromAllowed(it, latest) },
-            onHour = { onChange(range.settleFromHour(it, latest)) },
-            onMinute = { onChange(range.settleFromMinute(it, latest)) },
+            allowed = { range.fromAllowed(it, bounds) },
+            onHour = { onChange(range.settleFromHour(it, bounds)) },
+            onMinute = { onChange(range.settleFromMinute(it, bounds)) },
         )
         SettlingTimeWheels(
             caption = "Until",
             time = range.untilTime,
             anchor = range.from.time,
-            allowed = { range.untilAllowed(it, latest) },
-            onHour = { onChange(range.settleUntilHour(it, latest)) },
-            onMinute = { onChange(range.settleUntilMinute(it, latest)) },
+            allowed = { range.untilAllowed(it, bounds) },
+            onHour = { onChange(range.settleUntilHour(it, bounds)) },
+            onMinute = { onChange(range.settleUntilMinute(it, bounds)) },
         )
     }
 }

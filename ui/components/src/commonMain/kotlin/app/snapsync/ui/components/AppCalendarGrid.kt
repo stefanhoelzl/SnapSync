@@ -48,13 +48,13 @@ import kotlinx.datetime.plus
 // widget was split out of an 887-line file. Everything another split file reaches is widened to module
 // scope and no further — `:ui:components` is the design system, the same audience these had before.
 //
-// The calendar grids the date pickers open onto (capability `create-event`): a range-aware grid
-// with its day cell, a single-date grid with its own, and the month/weekday chrome both share.
+// The range calendar (capabilities `create-event`, `join-event`): the range-aware grid with its day cell,
+// and the month/weekday chrome above it.
 
 /**
  * The month grid in **range mode**: the two endpoint days are filled with the brand-green circle, the days
  * strictly between them wear a lighter `primaryContainer` band, and days outside the `[floor, ceiling]`
- * window are greyed and inert. Layout mirrors [CalendarGrid]; only the per-day treatment differs.
+ * window are greyed and inert: a 7-column Monday-start grid of whole weeks.
  */
 @Composable
 internal fun RangeCalendarGrid(
@@ -252,139 +252,12 @@ internal fun WeekdayHeader() {
 }
 
 /**
- * The month grid. Leading blanks come from the first-of-month's weekday (Monday = ordinal 0), the row
- * count from the month's real length — both from kotlinx-datetime, so leap years and month boundaries are
- * never hand-counted. Weeks are laid out as `Row`s of seven weight-1 cells, so the grid fits any dialog
- * width (this is why it does not clip on a 390pt pane the way the M3 `DatePicker` did).
- */
-@Composable
-internal fun CalendarGrid(
-    visibleMonth: LocalDate,
-    selected: LocalDate,
-    bounds: CalendarBounds,
-    onPick: (LocalDate) -> Unit,
-) {
-    val firstOfMonth = LocalDate(visibleMonth.year, visibleMonth.month.ordinal.plus(1), 1)
-    val leadingBlanks = firstOfMonth.dayOfWeek.ordinal // Monday == 0
-    val daysInMonth = firstOfMonth.daysUntil(firstOfMonth.plus(1L, DateTimeUnit.MONTH))
-
-    val totalCells = leadingBlanks + daysInMonth
-    val rows = (totalCells + ROUND_UP_TO_WHOLE_WEEK) / DAYS_PER_WEEK
-
-    // selectableGroup marks the days as one single-selection set, so assistive tech announces each day as
-    // "one of N" within the grid rather than as isolated buttons.
-    Column(
-        modifier = Modifier.selectableGroup(),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-        for (row in 0 until rows) {
-            Row(modifier = Modifier.fillMaxWidth()) {
-                for (col in 0 until DAYS_PER_WEEK) {
-                    val cellIndex = row * DAYS_PER_WEEK + col
-                    val dayNumber = cellIndex - leadingBlanks + 1
-                    Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                        if (dayNumber in 1..daysInMonth) {
-                            val date = LocalDate(firstOfMonth.year, firstOfMonth.month.ordinal.plus(1), dayNumber)
-                            DayCell(
-                                date = date,
-                                selected = date == selected,
-                                isToday = date == bounds.today,
-                                // A day is selectable only inside the supplied window (either bound may be
-                                // absent): at or after the bounds.floor AND at or before the bounds.ceiling.
-                                enabled = bounds.allows(date),
-                                onClick = { onPick(date) },
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-/**
- * One day: a 40dp circle target. Selected → the brand-green fill with `onPrimary` text; today (unselected)
- * → a hairline brand ring; a day below the floor → muted and inert. Undrawn otherwise, so the grid reads
- * as numbers on the card, not a table of buttons.
- *
- * **Semantics.** The whole cell is one [selectable] ([Role.Button]) carrying the FULL date as its
- * contentDescription ("Monday 20 July 2026") — VoiceOver would otherwise hear a bare "20". The chosen day
- * reports `selected`; today folds "today" into its description; a below-floor day stays in the tree as a
- * **disabled** button (present, not silent) so a guest hears why it can't be picked. The [selectable] sits
- * on an outer box that fills the grid slot, so the hit area spans the whole cell (the visual circle stays
- * 38dp) — the standard "extend the touch target, not the paint" pattern. A literal 44dp cell is impossible
- * here: seven of them overflow the 340dp dialog, and growing the row would move the resting grid.
- */
-@Composable
-private fun DayCell(
-    date: LocalDate,
-    selected: Boolean,
-    isToday: Boolean,
-    enabled: Boolean,
-    onClick: () -> Unit,
-) {
-    val scheme = MaterialTheme.colorScheme
-    val fill = if (selected) scheme.primary else Color.Transparent
-    val ring = if (isToday && !selected) scheme.primary else Color.Transparent
-    val textColor = when {
-        selected -> scheme.onPrimary
-        !enabled -> scheme.onSurfaceVariant.copy(alpha = 0.35f)
-        else -> scheme.onSurface
-    }
-    val label = buildString {
-        append(weekdayName(date))
-        append(' ')
-        append(date.day)
-        append(' ')
-        append(monthName(date.month.ordinal.plus(1)))
-        append(' ')
-        append(date.year)
-        if (isToday) append(", today")
-    }
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .selectable(
-                selected = selected,
-                enabled = enabled,
-                role = Role.Button,
-                onClick = onClick,
-            )
-            .semantics { contentDescription = label },
-        contentAlignment = Alignment.Center,
-    ) {
-        Box(
-            modifier = Modifier
-                .padding(1.dp)
-                .size(38.dp)
-                .clip(CircleShape)
-                .background(fill)
-                .border(
-                    width = if (ring != Color.Transparent) 1.5.dp else 0.dp,
-                    color = ring,
-                    shape = CircleShape,
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = date.day.toString(),
-                style = MaterialTheme.typography.bodyMedium.copy(
-                    fontWeight = if (selected || isToday) FontWeight.Bold else FontWeight.Normal,
-                ),
-                color = textColor,
-            )
-        }
-    }
-}
-
-/**
  * What a calendar month is bounded by: today (ringed), and the selectable window's ends.
  *
- * The three travel together — both grids took all three and neither ever varies one without the others —
- * and a `floor`/`ceiling` pair separated from the `today` it is compared against is easy to hand over in
- * the wrong order, since all three are `LocalDate`.
+ * The three travel together: a `floor`/`ceiling` pair separated from the `today` it is compared against is
+ * easy to hand over in the wrong order, since all three are `LocalDate`.
  *
- * A null bound means unbounded on that side, not "unknown": the create surface passes no window at all.
+ * A null bound means unbounded on that side, not "unknown": the create surface has no window at all.
  */
 internal class CalendarBounds(
     val today: LocalDate,
@@ -392,8 +265,7 @@ internal class CalendarBounds(
     val ceiling: LocalDate? = null,
 ) {
     /**
-     * Whether a day is selectable. Both grids spelled this comparison out separately, which is two places
-     * to get an inclusive bound wrong; a null bound is unbounded, so it admits.
+     * Whether a day is selectable; a null bound is unbounded, so it admits.
      */
     fun allows(date: LocalDate): Boolean =
         (floor == null || date >= floor) && (ceiling == null || date <= ceiling)

@@ -61,188 +61,35 @@ internal const val WHEEL_NEIGHBOUR_ALPHA = 0.5f
 internal const val WHEEL_DISTANT_ALPHA = 0.25f
 
 /**
- * The one-dialog date+time picker: a **hand-drawn** month calendar on top, an inline `HH:MM` time stepper
- * beneath. Both are visible at once — changing the time never hides the calendar, and vice versa — so the
- * value being edited is never behind a mode swap.
+ * The range picker as a dialog (capabilities `join-event`, `manage-membership`): the same [RangeEditor] the
+ * create screen shows inline — calendar, gestures, wheels, rules — inside a pane-centred card with a [title],
+ * optional [presets] as chips on top, and Cancel / OK. The join and settings surfaces open it on the range
+ * already chosen ([initial], complete), so the first tap on a day starts a new range and narrowing an end is
+ * a drag of that end. [bounds] hold it to the event's window.
  *
- * Drawn entirely from `Box`/`Text` on the frozen scheme tokens (no Material `DatePicker`/`TimePicker`): a
- * 7-column Monday-start grid, the selected day filled with the brand-green circle, today ringed, and every
- * day before [minimum] greyed and inert. All date arithmetic (month lengths, leap years, first weekday)
- * comes from kotlinx-datetime — never hand-rolled day counting.
- *
- * The popup card, heading, month header and weekday strip come from [PickerDialogShell], which this and
- * the range variant both fill in — see there for why it is a `Popup` and not an `AlertDialog`.
- *
- * A single instant; the range span is picked by [DateTimeRangePickerDialog]. The dialog stays internal to
- * this module.
+ * Nothing leaves the dialog until OK, which is enabled only while the range is valid; a chip is a complete
+ * choice the caller commits on tap, so it bypasses OK; Cancel changes nothing.
  */
 @Composable
-internal fun DateTimePickerDialog(
-    initial: LocalDateTime?,
-    onDismiss: () -> Unit,
-    onConfirm: (LocalDateTime) -> Unit,
-    minimum: LocalDateTime? = null,
-    maximum: LocalDateTime? = null,
-) {
-    val today = remember { Clock.System.todayIn(TimeZone.currentSystemDefault()) }
-
-    // Seed from the current value, else the floor, else today — never an empty calendar.
-    val seed = initial?.date ?: minimum?.date ?: today
-    var selectedDate by remember { mutableStateOf(seed) }
-    var hour by remember { mutableStateOf(initial?.hour ?: 0) }
-    var minute by remember { mutableStateOf(initial?.minute ?: 0) }
-
-    PickerDialogShell(
-        seedMonth = seed,
-        onDismiss = onDismiss,
-        onConfirm = {
-            onConfirm(
-                LocalDateTime(
-                    selectedDate.year,
-                    selectedDate.month.ordinal.plus(1),
-                    selectedDate.day,
-                    hour,
-                    minute,
-                ),
-            )
-        },
-        calendar = { visibleMonth ->
-            CalendarGrid(
-                visibleMonth = visibleMonth,
-                selected = selectedDate,
-                bounds = CalendarBounds(today, minimum?.date, maximum?.date),
-                onPick = { selectedDate = it },
-            )
-        },
-        wheels = {
-            TimeWheels(
-                hour = hour,
-                minute = minute,
-                onHour = { hour = it },
-                onMinute = { minute = it },
-            )
-        },
-    )
-}
-
-/**
- * The **dual-handle range** variant of the one-dialog picker (`docs/architecture.md`): the same
- * hand-drawn single-month calendar, but the user taps a **start day** then an **end day** to select an
- * inclusive `[from, until]` span, with **two** time-wheel pairs — a **From time** and an **Until time** —
- * beneath it. One confirmation commits the whole span.
- *
- * Selection is a three-tap cycle: with a complete range showing, the next tap **resets** to a new start
- * (span cleared); the tap after that sets the end (a same-day range is that same day tapped twice). A tap
- * **earlier** than the pending start moves the start earlier rather than forming an inverted range — so an
- * `until` before `from` is unreachable. Tapping a new day span changes **only the dates**; the two wheel
- * times are preserved (they are independent state).
- *
- * The optional `[minimum, maximum]` **window** (either bound absent) greys days outside it and constrains
- * the picker; the create surface passes **no** window, so any day/time is selectable and only `start < end`
- * is required (the caller enforces that). A day-grain calendar cannot forbid an out-of-window *hour* on a
- * boundary day, so the confirmed instants are additionally coerced into the window here.
- *
- * The optional [latestUntil] bounds the span's LENGTH rather than its position (capability `create-event`:
- * no range longer than the backend's event window): given the chosen start, it answers the latest end the
- * caller accepts. While the end is being picked, days past it are greyed and inert; and because the start's
- * time can still move after the end day is tapped, the confirmed end is coerced to it as well — so a
- * too-long range is unreachable, never merely refused. The caller owns the arithmetic (it knows the zone
- * and the limit; this module knows neither).
- *
- * Optional [presets] render as chips above the calendar (the join and settings surfaces' "Whole event" /
- * "From now"); a chip is a complete choice the caller commits on tap, so it bypasses OK. The create surface
- * passes none. [title] names what is being picked.
- */
-@Composable
-internal fun DateTimeRangePickerDialog(
-    initialFrom: LocalDateTime,
-    initialUntil: LocalDateTime,
-    minimum: LocalDateTime?,
-    maximum: LocalDateTime?,
+internal fun RangePickerDialog(
+    initial: EventRange,
+    bounds: RangeBounds,
+    title: String,
+    presets: List<RangePresetChip>,
     onDismiss: () -> Unit,
     onConfirm: (from: LocalDateTime, until: LocalDateTime) -> Unit,
-    latestUntil: ((from: LocalDateTime) -> LocalDateTime)? = null,
-    title: String = "Date & time",
-    presets: List<RangePresetChip> = emptyList(),
 ) {
-    val today = remember { Clock.System.todayIn(TimeZone.currentSystemDefault()) }
-
-    // The span. `endDate == null` means mid-selection (only the start is placed); it resolves to the start
-    // for both the highlight and the confirmed value, so a single-tap day is a valid same-day range.
-    var startDate by remember { mutableStateOf(initialFrom.date) }
-    var endDate by remember { mutableStateOf<LocalDate?>(initialUntil.date) }
-    var fromHour by remember { mutableStateOf(initialFrom.hour) }
-    var fromMinute by remember { mutableStateOf(initialFrom.minute) }
-    var untilHour by remember { mutableStateOf(initialUntil.hour) }
-    var untilMinute by remember { mutableStateOf(initialUntil.minute) }
-
-    fun onPick(picked: LocalDate) {
-        if (endDate != null) {
-            // A complete range is showing → begin a fresh selection at the tapped day.
-            startDate = picked
-            endDate = null
-        } else if (picked < startDate) {
-            // Mid-selection, tapped before the start → move the start earlier (never an inverted range).
-            startDate = picked
-        } else {
-            // Mid-selection, tapped on/after the start → close the span.
-            endDate = picked
-        }
-    }
-
-    val spanEndDay = latestUntil?.takeIf { endDate == null }
-        ?.invoke(LocalDateTime(startDate, LocalTime(fromHour, fromMinute)))?.date
-
+    var range by remember { mutableStateOf(initial) }
+    val end = range.until?.takeIf { range.isValid(bounds) }
     PickerDialogShell(
-        seedMonth = initialFrom.date,
         title = title,
-        header = { if (presets.isNotEmpty()) PresetChips(presets) },
         onDismiss = onDismiss,
-        onConfirm = {
-            var from = LocalDateTime(startDate, LocalTime(fromHour, fromMinute))
-            var until = LocalDateTime(endDate ?: startDate, LocalTime(untilHour, untilMinute))
-            // Coerce each bound into the window (the calendar cannot forbid a boundary-day hour outside it).
-            if (minimum != null && from < minimum) from = minimum
-            if (maximum != null && until > maximum) until = maximum
-            // And the end into the longest span the caller accepts, measured from the start just confirmed.
-            latestUntil?.invoke(from)?.let { latest -> if (until > latest) until = latest }
-            onConfirm(from, until)
-        },
-        calendar = { visibleMonth ->
-            RangeCalendarGrid(
-                visibleMonth = visibleMonth,
-                rangeStart = startDate,
-                rangeEnd = endDate ?: startDate,
-                // Mid-selection the END is being picked, so the span limit greys every day past the latest
-                // end the current start allows. With a complete range showing, the next tap starts afresh,
-                // so only the window applies.
-                bounds = CalendarBounds(today, minimum?.date, latestEndDay(maximum?.date, spanEndDay)),
-                onPick = { onPick(it) },
-            )
-        },
-        // From and Until times sit side by side — two captioned wheel pairs sharing the row.
-        wheels = {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                CaptionedTimeWheels(
-                    caption = "From",
-                    hour = fromHour,
-                    minute = fromMinute,
-                    onHour = { fromHour = it },
-                    onMinute = { fromMinute = it },
-                )
-                CaptionedTimeWheels(
-                    caption = "Until",
-                    hour = untilHour,
-                    minute = untilMinute,
-                    onHour = { untilHour = it },
-                    onMinute = { untilMinute = it },
-                )
-            }
-        },
-    )
+        onConfirm = { end?.let { onConfirm(range.from, it) } },
+        confirmEnabled = end != null,
+    ) {
+        if (presets.isNotEmpty()) PresetChips(presets)
+        RangeEditor(range, bounds) { range = it }
+    }
 }
 
 /**
@@ -282,22 +129,8 @@ private fun PresetChips(presets: List<RangePresetChip>) {
     }
 }
 
-/** The earlier of two optional day ceilings — a null one is unbounded. */
-private fun latestEndDay(window: LocalDate?, span: LocalDate?): LocalDate? = when {
-    window == null -> span
-    span == null -> window
-    else -> minOf(window, span)
-}
-
 /**
- * The frame both pickers are: the pane-centred popup card, its heading, the month header and weekday
- * strip, then the caller's calendar and wheels, then Cancel / OK. Only those two slots ever differed —
- * everything around them was written out twice, once per dialog, down to the `340.dp` and the `24.dp`
- * corner.
- *
- * [visibleMonth] lives here rather than in either caller because it belongs to the header that scrolls it,
- * not to what the calendar does with it; both dialogs wired an identical pair of month-stepping lambdas to
- * reach it. The calendar slot receives it as a parameter, so a caller reads the month without owning it.
+ * The dialog's frame: the pane-centred popup card, its heading, the caller's content, then Cancel / OK.
  *
  * **Why a `Popup`, not an `AlertDialog`.** An M3 dialog is a *window-centered* overlay: on a real phone the
  * window IS the 390pt screen, so it centers fine, but the multi-pane desktop harness embeds the phone pane
@@ -308,19 +141,13 @@ private fun latestEndDay(window: LocalDate?, span: LocalDate?): LocalDate? = whe
  */
 @Composable
 private fun PickerDialogShell(
-    seedMonth: LocalDate,
+    title: String,
     onDismiss: () -> Unit,
-    title: String = "Date & time",
     onConfirm: () -> Unit,
-    calendar: @Composable (visibleMonth: LocalDate) -> Unit,
-    wheels: @Composable () -> Unit,
-    header: @Composable () -> Unit = {},
+    confirmEnabled: Boolean,
+    content: @Composable () -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
-    var visibleMonth by remember {
-        mutableStateOf(LocalDate(seedMonth.year, seedMonth.month.ordinal.plus(1), 1))
-    }
-
     // The full-width anchor: its bounds ARE the pane content width, so the position provider can centre the
     // card within the pane rather than within the (wider, in the harness) host window.
     Box(modifier = Modifier.fillMaxWidth()) {
@@ -349,64 +176,20 @@ private fun PickerDialogShell(
                         // Announce the dialog's title as a heading so VoiceOver states what opened.
                         modifier = Modifier.semantics { heading() },
                     )
-                    header()
-                    MonthHeader(
-                        month = visibleMonth,
-                        // visibleMonth is always a first-of-month, so month arithmetic keeps day == 1.
-                        onPrev = { visibleMonth = visibleMonth.plus(-1L, DateTimeUnit.MONTH) },
-                        onNext = { visibleMonth = visibleMonth.plus(1L, DateTimeUnit.MONTH) },
-                    )
-                    WeekdayHeader()
-                    calendar(visibleMonth)
-                    wheels()
+                    content()
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         Box(Modifier.weight(1f)) { SecondaryButton(label = "Cancel", onClick = onDismiss) }
-                        Box(Modifier.weight(1f)) { PrimaryButton(label = "OK", onClick = onConfirm) }
+                        Box(Modifier.weight(1f)) {
+                            PrimaryButton(label = "OK", onClick = onConfirm, enabled = confirmEnabled)
+                        }
                     }
                 }
             }
         }
     }
-}
-
-/**
- * One bound of the range: its caption over its hour/minute wheels, sharing the row with the other.
- *
- * The caption names the bound once and the accessibility descriptions derive from it, so "From" and
- * "Until" are each written in exactly one place rather than three (caption, hour label, minute label).
- */
-@Composable
-private fun RowScope.CaptionedTimeWheels(
-    caption: String,
-    hour: Int,
-    minute: Int,
-    onHour: (Int) -> Unit,
-    onMinute: (Int) -> Unit,
-) {
-    Column(modifier = Modifier.weight(1f)) {
-        WheelCaption("$caption time")
-        TimeWheels(
-            hour = hour,
-            minute = minute,
-            onHour = onHour,
-            onMinute = onMinute,
-            hourDescription = "$caption hour",
-            minuteDescription = "$caption minute",
-        )
-    }
-}
-
-/** The small caption above each of the range dialog's two wheel pairs. */
-@Composable
-private fun WheelCaption(text: String) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
 }
 
 /** Full weekday names for a day cell's spoken date. `dayOfWeek.ordinal` is Monday = 0. */
