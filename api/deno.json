@@ -39,16 +39,17 @@
     "fmt": "deno fmt"
   },
   "imports": {
-    "@bunny.net/edgescript-sdk": "npm:@bunny.net/edgescript-sdk@^0.12.1",
-    "@libsql/client/web": "npm:@libsql/client@^0.15/web",
-    "hono": "npm:hono@^4.12",
-    "aws4fetch": "npm:aws4fetch@^1",
-    "jose": "npm:jose@^5",
-    "@std/assert": "jsr:@std/assert@^1",
-    "@std/encoding": "jsr:@std/encoding@^1",
-    "@std/path": "jsr:@std/path@^1",
-    "@levischuck/tiny-cbor": "jsr:@levischuck/tiny-cbor@^0.2",
-    "@peculiar/x509": "npm:@peculiar/x509@^1.12"
+    "@bunny.net/edgescript-sdk": "npm:@bunny.net/edgescript-sdk@^0.13.0",
+    "@libsql/client/web": "npm:@libsql/client@^0.18.0/web",
+    "hono": "npm:hono@^4.13.10",
+    "aws4fetch": "npm:aws4fetch@^1.0.20",
+    "jose": "npm:jose@^6.2.12",
+    "@std/assert": "jsr:@std/assert@^1.0.19",
+    "@std/encoding": "jsr:@std/encoding@^1.0.11",
+    "@std/path": "jsr:@std/path@^1.1.6",
+    "@levischuck/tiny-cbor": "jsr:@levischuck/tiny-cbor@^0.3.6",
+    "@peculiar/x509": "npm:@peculiar/x509@^2.1.0",
+    "reflect-metadata": "npm:reflect-metadata@^0.2.2"
   },
   "fmt": {
     "lineWidth": 100
