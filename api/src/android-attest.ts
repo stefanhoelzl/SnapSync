@@ -32,6 +32,9 @@
 // CA, O=Google Test LLC" root minted with the AVD, valid for ~10 weeks, its intermediate for ~2 — so every
 // fresh AVD, and every CI run, brings a new one. Every other check still runs.
 
+// Before x509: its 2.x build resolves its dependency injection through tsyringe, which throws at load without the
+// Reflect metadata polyfill. ES modules evaluate in import order, so it must come first (as in `attest.ts`).
+import "reflect-metadata";
 import * as x509 from "@peculiar/x509";
 import { bytesEqual, derSignatureToRaw } from "./attest.ts";
 import type { Config } from "./config.ts";

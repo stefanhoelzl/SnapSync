@@ -3,6 +3,7 @@
 // the two routes that take it. The emulator's own recorded proof, through the routes, is
 // `android-emulator-proof.test.ts`.
 
+import "reflect-metadata"; // before x509, which needs it at load (see src/android-attest.ts)
 import { X509Certificate } from "@peculiar/x509";
 import { assert, assertEquals, assertRejects } from "@std/assert";
 import { decodeBase64, encodeBase64 } from "@std/encoding";
