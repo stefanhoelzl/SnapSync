@@ -163,11 +163,13 @@ class HostStatusActionsTest {
         setContent {
             CompositionLocalProvider(LocalReduceMotion provides true) {
                 val state by rig.host.container.stateFlow.collectAsState()
-                StatusScreen(
-                    state = state,
-                    cutoff = CutoffFormatter(now = { Instant.parse("2026-07-06T12:00:00Z") }, zone = TimeZone.UTC),
-                    actions = statusActions(rig.host::onIntent),
-                )
+                WithoutKeyboardInsets {
+                    StatusScreen(
+                        state = state,
+                        cutoff = CutoffFormatter(now = { Instant.parse("2026-07-06T12:00:00Z") }, zone = TimeZone.UTC),
+                        actions = statusActions(rig.host::onIntent),
+                    )
+                }
             }
         }
     }
