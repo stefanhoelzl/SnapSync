@@ -51,6 +51,9 @@ import kotlinx.datetime.plus
 // The range calendar (capabilities `create-event`, `join-event`): the range-aware grid with its day cell,
 // and the month/weekday chrome above it.
 
+/** A day's circle: small enough for six weeks and the wheels beneath to fit a small phone's form. */
+private val DAY_CIRCLE = 32.dp
+
 /**
  * The month grid in **range mode**: the two endpoint days are filled with the brand-green circle, the days
  * strictly between them wear a lighter `primaryContainer` band, and days outside the `[floor, ceiling]`
@@ -71,7 +74,9 @@ internal fun RangeCalendarGrid(
 
     Column(
         modifier = Modifier.selectableGroup(),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
+        // Rows touch: the circles' own inset is the gap, which keeps six weeks short enough to leave the time
+        // wheels in view on a small phone.
+        verticalArrangement = Arrangement.spacedBy(0.dp),
     ) {
         for (row in 0 until rows) {
             Row(modifier = Modifier.fillMaxWidth()) {
@@ -149,7 +154,7 @@ private fun RangeDayCell(
         Box(
             modifier = Modifier
                 .padding(1.dp)
-                .size(38.dp)
+                .size(DAY_CIRCLE)
                 .clip(CircleShape)
                 .background(fill)
                 .border(
@@ -210,7 +215,7 @@ internal fun MonthHeader(month: LocalDate, onPrev: () -> Unit, onNext: () -> Uni
     }
 }
 
-/** A 36dp square chevron tap target — muted tint, the calendar's quiet navigation. */
+/** A square chevron tap target the height of a day row — muted tint, the calendar's quiet navigation. */
 @Composable
 private fun ChevronButton(
     icon: ImageVector,
@@ -219,7 +224,7 @@ private fun ChevronButton(
 ) {
     Box(
         modifier = Modifier
-            .size(36.dp)
+            .size(DAY_CIRCLE)
             .clip(CircleShape)
             .clickable(role = Role.Button, onClick = onClick)
             .semantics { contentDescription = description },
