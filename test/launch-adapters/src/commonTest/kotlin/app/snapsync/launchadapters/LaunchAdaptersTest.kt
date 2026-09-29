@@ -38,6 +38,40 @@ class LaunchAdaptersTest {
         assertSame(LaunchAdapters.AllReal, launch())
     }
 
+    // A platform that does not have every real adapter (Android) names the ones it has, and what no file means.
+    private val partial = AdapterFacts(
+        osDrivenUpload = false,
+        appVersion = "9.9",
+        freshDeviceId = { FRESH },
+        realAdapters = setOf(MockedSystem.SCREEN, MockedSystem.LIFECYCLE, MockedSystem.FILES),
+        whenAbsent = AdapterChoice(MockedSystem.entries.toSet() - setOf(MockedSystem.SCREEN, MockedSystem.LIFECYCLE)),
+    )
+
+    @Test
+    fun without_every_real_adapter_no_file_is_the_platforms_default_choice_and_restores_nothing() {
+        // A state file an earlier file-chosen launch left is not the default launch's to restore.
+        write(AdapterFiles.state(MockedSystem.CLOCK), "{not json")
+        val chosen = assertIs<LaunchAdapters.Chosen>(LaunchAdapters.read(files, AdapterProcess.APP, partial))
+        assertEquals(partial.whenAbsent, chosen.choice)
+    }
+
+    @Test
+    fun without_every_real_adapter_a_choice_leaving_another_real_is_refused_naming_each() {
+        // `files=real` is allowed; every system omitted is read as real, and the two named ones have no adapter.
+        write(AdapterFiles.CHOICE, "files=real\nbackend=real\nclock=real\n")
+        val refused = assertIs<LaunchAdapters.Refused>(LaunchAdapters.read(files, AdapterProcess.APP, partial))
+        assertTrue(refused.reasons.any { it.startsWith("backend=real") }, refused.reasons.toString())
+        assertTrue(refused.reasons.any { it.startsWith("clock=real") }, refused.reasons.toString())
+        assertTrue(refused.reasons.none { it.startsWith("files=real") }, refused.reasons.toString())
+    }
+
+    @Test
+    fun without_every_real_adapter_a_choice_within_them_is_chosen() {
+        val choice = AdapterChoice(MockedSystem.entries.toSet() - setOf(MockedSystem.SCREEN, MockedSystem.LIFECYCLE, MockedSystem.FILES))
+        write(AdapterFiles.CHOICE, choice.render())
+        assertEquals(choice, assertIs<LaunchAdapters.Chosen>(LaunchAdapters.read(files, AdapterProcess.APP, partial)).choice)
+    }
+
     @Test
     fun a_choice_that_does_not_parse_is_refused_naming_the_line() {
         write(AdapterFiles.CHOICE, "clock=mock\nbakend=mock\n")

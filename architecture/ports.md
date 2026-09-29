@@ -36,7 +36,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `CycleGate` | `:domain:feature` | `:domain:feature` NotJoined, Paused, Run, Skip, Withheld | no |
 | `CycleOutcome` | `:domain:feature` | `:domain:feature` Declined, Drained, NotJoined, Paused, Truncated, Unreadable, Withheld | no |
 | `CycleResult` | `:domain:model` | `:domain:model` COMPLETED, FAILED, PROCESSING, Paused, SKIPPED | no |
-| `Databases` | `:domain:ports` | `:adapter:generic:app` JdbcDatabases; `:adapter:generic:mock` InMemoryDatabases; `:adapter:ios:ext-safe` IosDatabases; `:domain:services` Failing, Scripted; `:test:feature` RecordingDatabases | yes |
+| `Databases` | `:domain:ports` | `:adapter:android` AndroidDatabases; `:adapter:generic:app` JdbcDatabases; `:adapter:generic:mock` InMemoryDatabases; `:adapter:ios:ext-safe` IosDatabases; `:domain:services` Failing, Scripted; `:test:feature` RecordingDatabases | yes |
 | `DbOpen` | `:domain:ports` | `:domain:ports` Failed, Missing, OldSchema, Opened | no |
 | `Decided` | `:domain:feature` | `:domain:feature` Planned, Short | no |
 | `DevControls` | `:domain:ports` | `:adapter:generic:app` InertDevControls; `:test:rig` RigDevControls | yes |
@@ -66,7 +66,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `ExtensionRegistry` | `:domain:ports` | `:adapter:generic:mock` InMemoryExtensionRegistry; `:adapter:ios:app-only` PhotoKitExtensionRegistry, SimulatorExtensionRegistry; `:domain:services` RecordingRegistry | yes |
 | `FetchedJob` | `:domain:services` | `:domain:services` AcknowledgeToDrain, Emit | no |
 | `FileResult` | `:domain:model` | `:domain:model` AreaUnavailable, Denied, Failed, NotFound, Ok | no |
-| `Files` | `:domain:ports` | `:adapter:generic:app` JvmFiles; `:adapter:generic:mock` Answering, InMemoryFiles; `:adapter:ios:ext-safe` IosFiles; `:domain:services` AcceptingFiles, Adopting, SharedArea; `:test:feature` RecordingFiles, ThrowingDeletes | yes |
+| `Files` | `:domain:ports` | `:adapter:android` AndroidFiles; `:adapter:generic:app` JvmFiles; `:adapter:generic:mock` Answering, InMemoryFiles; `:adapter:ios:ext-safe` IosFiles; `:domain:services` AcceptingFiles, Adopting, SharedArea; `:test:feature` RecordingFiles, ThrowingDeletes | yes |
 | `Found` | `:domain:services` | `:domain:services` Failed, Missing, OldSchema, Open | no |
 | `Gallery` | `:domain:ports` | `:adapter:generic:mock` InMemoryGallery; `:adapter:ios:app-only` IosGallery | yes |
 | `GalleryImport` | `:domain:ports` | `:adapter:generic:mock` NoImports; `:test:feature` FakeImporter, NoopImporter | yes |
@@ -92,9 +92,9 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `MembershipRead` | `:domain:model` | `:domain:model` Member, NotMember, Unreadable | no |
 | `PhotoAccessStatusSource` | `:domain:ports` | `:adapter:generic:mock` InMemoryPhotoAccess; `:adapter:ios:app-only` PhotoLibraryPermission | yes |
 | `PhotoGrantRead` | `:domain:ports` | — | no |
-| `PlatformDeviceId` | `:domain:ports` | `:adapter:generic:app` NoPlatformDeviceId | no |
+| `PlatformDeviceId` | `:domain:ports` | `:adapter:android` AndroidPlatformDeviceId; `:adapter:generic:app` NoPlatformDeviceId | no |
 | `PrefRead` | `:domain:model` | `:domain:model` Absent, Unavailable, Value | no |
-| `Preferences` | `:domain:ports` | `:adapter:generic:mock` InMemoryPreferences; `:adapter:ios:ext-safe` IosPreferences | yes |
+| `Preferences` | `:domain:ports` | `:adapter:android` AndroidPreferences; `:adapter:generic:mock` InMemoryPreferences; `:adapter:ios:ext-safe` IosPreferences | yes |
 | `ProcessInfo` | `:domain:ports` | `:adapter:generic:mock` InMemoryProcessInfo; `:adapter:ios:app-only` IosProcessInfo | yes |
 | `ProcessMetrics` | `:domain:ports` | `:adapter:generic:mock` HeldReports; `:adapter:ios:app-only` MetricKitProcessMetrics; `:domain:compose` NoProcessMetrics | no |
 | `PushNotifications` | `:domain:ports` | `:adapter:ios:app-only` IosPushNotifications | no |
@@ -109,7 +109,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `ResetRename` | `:domain:feature` | `:domain:feature` NoOpResetRename, RenameEvent | no |
 | `ResourceBatch` | `:domain:model` | — | no |
 | `ScheduleResult` | `:domain:model` | `:domain:model` Refused, Scheduled, Unsupported | no |
-| `SecureStore` | `:domain:ports` | `:adapter:generic:mock` InMemorySecureStore, Legacy, RecordingSecureStore; `:adapter:ios:ext-safe` AppGroupFileSecureStore, IosSecureStore, NoLegacyMap, Recording, SimulatorSecureStore; `:domain:services` MapSecureStore; `:test:feature` LockableSecureStore | yes |
+| `SecureStore` | `:domain:ports` | `:adapter:android` AndroidSecureStore; `:adapter:generic:mock` InMemorySecureStore, Legacy, RecordingSecureStore; `:adapter:ios:ext-safe` AppGroupFileSecureStore, IosSecureStore, NoLegacyMap, Recording, SimulatorSecureStore; `:domain:services` MapSecureStore; `:test:feature` LockableSecureStore | yes |
 | `SecureStoreRead` | `:domain:model` | `:domain:model` Absent, Found, Unavailable | no |
 | `SecureStoreResolution` | `:domain:model` | `:domain:model` Adopted, Found, Minted | no |
 | `SelectionRule` | `:domain:model` | `:domain:model` CaptureAfter, CaptureBefore, DenyAll, ExcludeScreenRecordings, ExcludeScreenshots, MinImageArea, MinVideoArea, NotEcho, NotInDenylistedAlbum | no |

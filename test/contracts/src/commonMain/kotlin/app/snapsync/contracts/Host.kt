@@ -48,8 +48,9 @@ enum class Host {
 
     /**
      * A device-test APK on the Android emulator (`connectedAndroidDeviceTest`, the `android-emulator` CI job) — and the
-     * Android rig build of the app there, which answers the same host. No Keystore state is bound yet: today only the
-     * fakes' shared bindings run here; the Android adapters' bindings name it as they are written.
+     * Android rig build of the app there, which answers the same host. The fakes' shared bindings run here, and the
+     * Android adapters' own (`:adapter:android`'s device tests); the emulator's Keystore is software-backed, so nothing
+     * here proves hardware attestation.
      */
     ANDROID_EMU,
 }

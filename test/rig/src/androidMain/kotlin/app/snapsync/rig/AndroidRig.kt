@@ -6,48 +6,74 @@ import app.snapsync.compose.DevicePorts
 import app.snapsync.contracts.EntryDriver
 import app.snapsync.feature.upload.AppUploadMechanism
 import app.snapsync.launchadapters.AdapterChoice
+import app.snapsync.launchadapters.AdapterFacts
+import app.snapsync.launchadapters.AdapterFiles
+import app.snapsync.launchadapters.AdapterParse
 import app.snapsync.launchadapters.AdapterProcess
-import app.snapsync.launchadapters.chosenPorts
+import app.snapsync.launchadapters.LaunchAdapters
 import app.snapsync.launchadapters.randomDeviceId
 import app.snapsync.mock.MockDevice
 import app.snapsync.mock.MockedSystem
 import app.snapsync.mock.OperatorDrivenUploads
 import app.snapsync.mock.UploadNetwork
 import app.snapsync.model.ConfigRead
+import app.snapsync.model.FileArea
+import app.snapsync.model.FileResult
+import app.snapsync.ports.Files
 import app.snapsync.model.SecureSlots
 import app.snapsync.model.SecureStoreRead
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.logs.LogTailService
+import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
 import java.io.File
+import kotlin.system.exitProcess
 import kotlin.time.Clock
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
- * **The Android rig build's launch** (`docs/testing.md`, "One control protocol, served by two hosts"): the app composed
- * over the device as mocks, bar the two systems Android has real adapters for — the screen and its foreground life
- * ([ANDROID_CHOICE]). The choice is FIXED rather than read from an adapters file, as the iOS app host reads one: there is
- * nothing real to choose for any other system yet, and a choice that could name one would compose over an adapter
- * nobody wrote. The mocks live in the process's memory, so an exit forgets them.
+ * **The Android rig build's launch** (`docs/testing.md`, "Launch-time adapters"): the app composed over the adapter choice
+ * read once at the process's start from the adapters file, as the iOS app host reads one — with two differences that
+ * both come from Android not having every real adapter yet. **No file is not "all real"**: it is [ANDROID_DEFAULT],
+ * every system mocked but the screen and its foreground life, which is what every launch without a file has always
+ * composed. And **a choice may leave real only the systems Android has an adapter for** ([ANDROID_REAL_ADAPTERS]) —
+ * naming another `real`, or omitting it (which the file's grammar reads as real), refuses the launch: it would compose
+ * over an adapter nobody wrote. A refused launch composes nothing; the process stops at start naming why.
+ *
+ * A launch read from an adapters file keeps its mocked systems' state, as the iOS host does — saved beside the file and
+ * restored at the next start — because a real system then outlives the process and the mocks must too: a real config
+ * file saying "joined" over a backend mock that forgot the event is a device no real phone can be. The default launch
+ * saves nothing: every system that holds state is mocked there, so an exit forgets them all, together.
  *
  * Built while the root initializes, before its process services exist; the channel's server starts once the root has
  * composed ([start]).
  */
 class AndroidRigLaunch internal constructor(
-    /** What the app composes over: the root's real screen and lifecycle, every other system its mock. */
+    val launch: LaunchAdapters.Chosen,
+    /** What the app composes over: the root's real adapters, with the choice's mocked systems swapped in. */
     val ports: DevicePorts,
     val controls: RigDevControls,
     val ui: RigUi,
     /** What the operator levers move: the mocked device. */
     val world: MockWorld,
+    /** The real files adapter the adapter choice lives on. */
+    internal val files: Files,
 ) {
     /** This launch's choice, in one line — `/health` reports it. */
-    val description: String = ANDROID_CHOICE.toString()
+    val description: String = launch.choice.toString()
 
     /** The line this launch adds to the app's boot banner. */
-    val bootLines: List<String> = listOf("[boot] adapters = $description (fixed: the Android rig build)")
+    val bootLines: List<String> = listOf("[boot] adapters = $description")
 
     /** The app uploader's mechanism: the mocked transfer session creates nothing, so the operator is the engine. */
     val appDrivenUpload: AppUploadMechanism = OperatorDrivenUploads
@@ -55,29 +81,124 @@ class AndroidRigLaunch internal constructor(
 
 /** Build the launch over the root's [real] adapters. */
 fun androidRigLaunch(real: DevicePorts): AndroidRigLaunch {
-    val device = MockDevice(ownDeviceId = randomDeviceId())
-    device.declaredVersion.value = SERVED_VERSION
-    val ports = chosenPorts(real.lazies, ANDROID_CHOICE, device, AdapterProcess.APP)
+    val facts = AdapterFacts(
+        osDrivenUpload = false,
+        appVersion = SERVED_VERSION,
+        freshDeviceId = ::randomDeviceId,
+        realAdapters = ANDROID_REAL_ADAPTERS,
+        whenAbsent = ANDROID_DEFAULT,
+    )
+    val launch = when (val read = LaunchAdapters.load(real.files, AdapterProcess.APP, facts)) {
+        is LaunchAdapters.Chosen -> read
+        is LaunchAdapters.Refused -> error("the adapter choice was refused, so nothing is composed: " + read.reasons.joinToString("; "))
+        LaunchAdapters.AllReal -> error("an Android launch always has a choice: no adapters file is $ANDROID_DEFAULT")
+    }
+    if (real.files.exists(FileArea.SHARED, AdapterFiles.CHOICE) == FileResult.Ok(true)) keepSaving(launch)
+    val device = launch.device
+    val mocked = launch.choice.mocked
+    val ports = launch.portsFor(real, AdapterProcess.APP)
     val controls = RigDevControls()
     val world = MockWorld(
         device = device,
-        mocked = ANDROID_CHOICE.mocked,
+        mocked = mocked,
         reach = BackendReach(
             base = MOCK_BASE,
             name = "mock",
             port = device.backend.port(device.declaredVersion),
             network = UploadNetwork { url, headers, _ -> device.backend.operator.receive(url, headers) },
             declared = device.declaredVersion,
-        ),
-        reachRefusal = "",
-        operatorRefusal = { "" },
-        version = device.declaredVersion,
-        os = PlayedOs(device) { it in ANDROID_CHOICE.mocked },
+        ).takeIf { MockedSystem.BACKEND in mocked },
+        reachRefusal = REAL_BACKEND,
+        operatorRefusal = { REAL_BACKEND },
+        version = device.declaredVersion.takeIf { MockedSystem.BACKEND in mocked },
+        os = PlayedOs(device) { it in mocked },
         ownDeviceId = { (ports.secureStore.read(SecureSlots.DEVICE_ID) as? SecureStoreRead.Found)?.value.orEmpty() },
         joinedEventId = { (ConfigService(ports.files, ports.clock).read() as? ConfigRead.Joined)?.config?.eventId },
         setInviteLinkHints = { controls.hints = it },
     )
-    return AndroidRigLaunch(ports, controls, RigUi(ports.lazies.ui), world)
+    return AndroidRigLaunch(launch, ports, controls, RigUi(ports.lazies.ui), world, real.files)
+}
+
+/**
+ * The adapter choice verbs, as the iOS app host serves them (`docs/testing.md`, "Launch-time adapters"):
+ *
+ * - `POST /device/adapters/current` — the choice this launch runs, the file behind it, and the systems Android can make real.
+ * - `POST /device/adapters` — the body is the next choice, as the adapters file holds it. One that does not parse answers
+ *   `400`; an incoherent one, one leaving a system without an Android adapter real, or one written while the device is
+ *   a member of an event `409`. Written, the app EXITS; the next start reads it.
+ * - `POST /device/adapters/clear` — delete the choice; the app exits, and its next start is [ANDROID_DEFAULT].
+ */
+private fun adapterCommands(launch: AndroidRigLaunch): Map<String, RigCommand> = mapOf(
+    "adapters/current" to RigCommand { _, _ -> CommandResult.ok(currentAdapters(launch)) },
+    "adapters" to RigCommand { _, body ->
+        val text = body?.takeIf { it.isNotBlank() }
+            ?: return@RigCommand CommandResult.badRequest("the body is the choice: one `system=mock|real` per line")
+        when (val parsed = AdapterChoice.parse(text)) {
+            is AdapterParse.Invalid -> CommandResult.badRequest(parsed.problems.joinToString("; "))
+            is AdapterParse.Parsed -> {
+                val broken = parsed.choice.incoherence() +
+                    MockedSystem.entries.filter { it !in ANDROID_REAL_ADAPTERS && !parsed.choice.isMocked(it) }
+                        .map { "${it.key}=real: Android has no real ${it.key} adapter yet" }
+                val joined = launch.world.joinedEventId()
+                when {
+                    broken.isNotEmpty() -> CommandResult.refused("the adapter choice cannot compose: " + broken.joinToString("; "))
+                    joined != null -> CommandResult.refused(
+                        "this device is a member of event $joined; an adapter choice change would carry the membership into another " +
+                            "set of systems. Leave, or reset (POST /device/reset), first",
+                    )
+                    else -> {
+                        launch.launch.save()
+                        val written = launch.files.write(FileArea.SHARED, AdapterFiles.CHOICE, parsed.choice.render().encodeToByteArray())
+                        if (written !is FileResult.Ok) {
+                            CommandResult(status = 500, body = """{"error":${jsonString("not written: $written")}}""")
+                        } else {
+                            exitSoon()
+                            CommandResult.ok(
+                                """{"written":${jsonString(parsed.choice.toString())},"exiting":true,""" +
+                                    """"next":"launch the app again: its next start composes over this adapter choice"}""",
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "adapters/clear" to RigCommand { _, _ ->
+        when (val deleted = launch.files.delete(FileArea.SHARED, AdapterFiles.CHOICE)) {
+            is FileResult.Ok, FileResult.NotFound -> {
+                exitSoon()
+                CommandResult.ok("""{"cleared":${jsonString(AdapterFiles.CHOICE)},"exiting":true}""")
+            }
+            else -> CommandResult(status = 500, body = """{"error":${jsonString("not cleared: $deleted")}}""")
+        }
+    },
+)
+
+private fun currentAdapters(launch: AndroidRigLaunch): String = buildJsonObject {
+    put("launch", launch.description)
+    putJsonArray("mocked") { launch.world.mocked.sortedBy { it.ordinal }.forEach { add(JsonPrimitive(it.key)) } }
+    putJsonArray("realAdapters") { ANDROID_REAL_ADAPTERS.sortedBy { it.ordinal }.forEach { add(JsonPrimitive(it.key)) } }
+    put("file", (launch.files.read(FileArea.SHARED, AdapterFiles.CHOICE) as? FileResult.Ok)?.value?.decodeToString())
+    put("folder", (launch.files.locate(FileArea.SHARED, AdapterFiles.FOLDER) as? FileResult.Ok)?.value)
+    putJsonArray("systems") { MockedSystem.entries.forEach { add(JsonPrimitive("${it.key}: ${it.what}")) } }
+}.toString()
+
+/** Write the mocked systems' state every [SAVE_INTERVAL], for the life of the process — see [AndroidRigLaunch]. */
+private fun keepSaving(chosen: LaunchAdapters.Chosen) {
+    CoroutineScope(SupervisorJob() + Dispatchers.Default).launch {
+        while (isActive) {
+            delay(SAVE_INTERVAL)
+            runCatching { chosen.save() }.onFailure { log.w(it) { "the mocked systems' state was not saved this time" } }
+        }
+    }
+}
+
+/** Exit the app once the answer has left — the next start reads what was written. */
+private fun exitSoon() {
+    CoroutineScope(Dispatchers.Default).launch {
+        delay(EXIT_DELAY)
+        exitProcess(0)
+    }
 }
 
 /**
@@ -119,7 +240,7 @@ private fun AndroidRigLaunch.hooks(
     ),
     userCommands = userCommands(dispatch = ui::dispatch, state = { host().container.stateFlow.value }),
     excludedUserCommands = excludedUserCommands(),
-    deviceCommands = world.honouredLevers() + mapOf(
+    deviceCommands = world.honouredLevers() + adapterCommands(this) + mapOf(
         "reset" to resetCommand(reset = controls::reset),
         "gallery/seed" to seedCommand { n, kind -> world.seedMockLibrary(n, kind) },
     ),
@@ -164,9 +285,6 @@ private fun androidRefusals(world: MockWorld): Map<String, String> = world.lever
     RigVocabulary.extensionEntries.forEach {
         put(it, "Android has no upload extension: its uploader runs in the app's own process, and none is composed yet")
     }
-    RigVocabulary.adapterCommands.forEach {
-        put(it, "the Android rig build's adapter choice is fixed (${ANDROID_CHOICE}): no other system has a real adapter yet")
-    }
     put(
         "device/relaunch",
         "process death is the app's exit followed by a launch (`adb shell am force-stop`, then start it); the channel " +
@@ -178,11 +296,33 @@ private fun androidRefusals(world: MockWorld): Map<String, String> = world.lever
     RigVocabulary.appHostCommands.filter { it.startsWith("device/upload-") }.forEach {
         put(it, "the mocked upload-job queue is operated by the jobs verbs, not by an operating system to play")
     }
-    put(RigVocabulary.CONTRACT, "no port-contract binding runs on Android yet")
+    put(RigVocabulary.CONTRACT, "Android's port-contract bindings run as device tests (connectedAndroidDeviceTest), not in the app")
 }
 
-/** Every system mocked but the two Android has real adapters for: the screen and its foreground life. */
-private val ANDROID_CHOICE = AdapterChoice(MockedSystem.entries.toSet() - setOf(MockedSystem.SCREEN, MockedSystem.LIFECYCLE))
+/** The systems Android has a real adapter for — the only ones an adapter choice may leave real. */
+private val ANDROID_REAL_ADAPTERS: Set<MockedSystem> = setOf(
+    MockedSystem.SCREEN,
+    MockedSystem.LIFECYCLE,
+    MockedSystem.CLOCK,
+    MockedSystem.FILES,
+    MockedSystem.DATABASES,
+    MockedSystem.PREFERENCES,
+    MockedSystem.KEYCHAIN,
+)
+
+/** What a launch with no adapters file composes: every system mocked but the screen and its foreground life. */
+private val ANDROID_DEFAULT = AdapterChoice(MockedSystem.entries.toSet() - setOf(MockedSystem.SCREEN, MockedSystem.LIFECYCLE))
+
+/** Why a mock lever over a real backend is refused. */
+private const val REAL_BACKEND = "the backend is real on this launch; its state is the real api's, not a mock's"
+
+/** How often a launch read from an adapters file saves its mocked systems' state. */
+private val SAVE_INTERVAL = 500.milliseconds
+
+/** Long enough for the answer to leave before the process does. */
+private val EXIT_DELAY = 500.milliseconds
+
+private val log = Logger.withTag("rig")
 
 /** The device-facing base the mocked backend is addressed at, carrying exactly one version prefix. */
 private const val MOCK_BASE = "https://in-memory.backend/api/v2"

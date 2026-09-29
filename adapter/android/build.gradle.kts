@@ -3,8 +3,10 @@
 // of its own; on Android the workers, the push service and the activity all run in the app's one process, so there is
 // no second binary for a linkage line to protect.
 //
-// Today it holds what the screen and its foreground life need — the two systems an Android build does not mock yet —
-// and the platform log. Every other system's adapter arrives with the phase that needs it.
+// Today it holds what the screen and its foreground life need, the storage adapters (files, databases, preferences,
+// the Keystore-sealed secure store, the platform device id) and the platform log. Every other system's adapter arrives
+// with the phase that needs it. Its contract bindings are device tests (`src/androidDeviceTest`): they need ART and the
+// platform's SQLite and Keystore, so they run on the emulator (`connectedAndroidDeviceTest`).
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     // The `android` target (`docs/architecture.md`, "Zones inside the core") — this module's only one.
@@ -29,6 +31,15 @@ kotlin {
             implementation(libs.compose.ui)
             // The process's foreground life (`ProcessLifecycleOwner`).
             implementation(libs.androidx.lifecycle.process)
+            // The `Databases` adapter: SQLDelight over the platform's SQLite, and the open helper it is handed.
+            implementation(libs.sqldelight.driver.android)
+            implementation(libs.androidx.sqlite.framework)
+        }
+        getByName("androidDeviceTest").dependencies {
+            implementation(project(":test:contracts"))
+            // The storage services' contracts run through the services over these adapters.
+            implementation(project(":domain:services"))
+            implementation(libs.kotlinx.datetime)
         }
     }
 }

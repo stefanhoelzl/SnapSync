@@ -35,6 +35,8 @@ module :ui:screens
 edge :adapter:android :domain:model
 edge :adapter:android :domain:ports
 edge :adapter:android :domain:presentation
+edge :adapter:android :domain:services
+edge :adapter:android :test:contracts
 edge :adapter:android :ui:components
 edge :adapter:android :ui:screens
 edge :adapter:generic:app :domain:model

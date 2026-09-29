@@ -18,13 +18,29 @@ nothing here touches the iPhone. There is no Android phone; real-device measurem
 ## What the app is here
 
 Only the **rig build** (`-Psnapsync.rig=true`) runs. It composes the real app (`snapSyncProcess`, then
-`snapSyncHost`, in `SnapSyncRoot`, built in `Application.onCreate`) over the **mocks**, bar the two systems Android has
-real adapters for: the **screen** and its **foreground life**. The choice is fixed — there is no `POST
-/device/adapters` here (it answers 409) — and the mocks live in memory, so an exit forgets them. The mocked clock stands
-at the **epoch**: an event window you create is a 1970 one.
+`snapSyncHost`, in `SnapSyncRoot`, built in `Application.onCreate`) over an **adapter choice**, read at every start
+from the adapters file (`rig-channel`'s `device/adapters*`, as on the iOS app host):
+
+- **No file** (a fresh install, or after `POST /device/adapters/clear`): every system mocked but the **screen** and its
+  **foreground life**, fresh in memory — an exit forgets them. The mocked clock stands at the **epoch**: an event window
+  you create is a 1970 one.
+- **A file** may make real only what Android has a real adapter for — today `screen`, `lifecycle`, `clock`, `files`,
+  `databases`, `preferences`, `keychain` (the Keystore-sealed secure store). Every other system must be named `mock`: an
+  omitted system reads as `real`, and a choice leaving one real is refused. Write it while not joined; the app exits,
+  and you start it again (`am start`). A file-chosen launch saves its mocks' state, so it survives a force-stop.
+
+```bash
+curl -sS -X POST localhost:18099/device/adapters/current      # what this launch runs, and what may be real
+printf 'screen=real\nlifecycle=real\nclock=real\nfiles=real\ndatabases=real\npreferences=real\nkeychain=real\n' > choice
+for s in backend library integrity crash-reporter process-info wake background-time extension-registry \
+         upload-queue upload-session downloads links push system-ui; do echo "$s=mock"; done >> choice
+curl -sS -X POST --data-binary @choice localhost:18099/device/adapters
+adb shell am start -W -n app.snapsync/app.snapsync.android.MainActivity
+adb shell run-as app.snapsync find files databases -type f   # the real stores (run-as: debuggable build)
+```
 
 A build **without** the property compiles, links and **refuses at start** (`app/android/src/prod`): Android has no
-adapters for the backend, storage, gallery or push yet. Do not "fix" that by composing mocks into it —
+adapters for the backend, gallery or push yet. Do not "fix" that by composing mocks into it —
 `MockContainmentTest` fails the build.
 
 ## One-time setup (already done on this box — check before redoing)

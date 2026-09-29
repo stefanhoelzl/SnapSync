@@ -101,7 +101,7 @@ class KotlinShellGuardTest {
             .filter { it.isFile && it.extension == "kt" }
             .filterNot { file ->
                 val p = file.path.replace('\\', '/')
-                "/build/" in p || listOf("commonTest", "iosTest", "jvmTest", "appleTest", "nativeTest")
+                "/build/" in p || listOf("commonTest", "iosTest", "jvmTest", "appleTest", "nativeTest", "androidDeviceTest")
                     .any { "/$it/" in p }
             }
             .toList()
