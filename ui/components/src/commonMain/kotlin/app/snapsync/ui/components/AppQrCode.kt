@@ -3,8 +3,10 @@ package app.snapsync.ui.components
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -33,8 +35,10 @@ private val CardCaption = Color(0xFF5B6472)
 @Composable
 fun AppQrCode(content: String, caption: String? = null) {
     Surface(color = Color.White, shape = RoundedCornerShape(26.dp)) {
+        // As narrow as the code: the caption wraps beneath it rather than widening the card. A one-line
+        // caption set the card's width, so a longer one grew the white margin around the code.
         Column(
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp),
+            modifier = Modifier.width(IntrinsicSize.Min).padding(horizontal = 20.dp, vertical = 18.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
