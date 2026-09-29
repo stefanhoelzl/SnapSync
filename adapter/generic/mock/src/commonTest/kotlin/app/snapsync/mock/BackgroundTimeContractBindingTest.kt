@@ -43,7 +43,7 @@ class BackgroundTimeContractBindingTest {
     }
 
     @Test
-    fun `the operating system's expiry runs the handler once and leaves the hold to its holder`() {
+    fun `the operating system’s expiry runs the handler once and leaves the hold to its holder`() {
         val held = MutableStateFlow<List<HeldBackgroundTime>>(emptyList())
         var expiries = 0
         val hold = inMemoryBackgroundTime(held).begin("expiring") { expiries++ }

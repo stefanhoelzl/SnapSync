@@ -1224,7 +1224,7 @@ class StatusContainerHostTest {
      * change. The old compact dialog could only ever produce `Direction.Both` with the album off.
      */
     @Test
-    fun `a switch joins with the member's chosen direction and album`() = runTest {
+    fun `a switch joins with the member’s chosen direction and album`() = runTest {
         val other = "22222222-2222-4222-8222-222222222222"
         val configFake = FakeConfig(SAMPLE_CONFIG)
         var joinedDirection: Direction? = null
@@ -1284,7 +1284,7 @@ class StatusContainerHostTest {
 
     /** Cancelling on the surface the leave revealed ends with no event — the create layer. */
     @Test
-    fun `cancelling after a switch's leave lands on the create layer`() = runTest {
+    fun `cancelling after a switch’s leave lands on the create layer`() = runTest {
         val other = "22222222-2222-4222-8222-222222222222"
         val configFake = FakeConfig(SAMPLE_CONFIG)
         var commits = 0

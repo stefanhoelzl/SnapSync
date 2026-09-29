@@ -403,7 +403,7 @@ class JoinScreenTest {
     }
 
     @Test
-    fun `OK reports the calendar's span as a custom range inside the window`() = runComposeUiTest {
+    fun `OK reports the calendar’s span as a custom range inside the window`() = runComposeUiTest {
         var picked: Pair<LocalDateTime, LocalDateTime>? = null
         setScreen {
             TestStatusScreen(

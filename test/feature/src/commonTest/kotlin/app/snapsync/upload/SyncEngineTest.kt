@@ -78,7 +78,7 @@ class SyncEngineTest {
     }
 
     @Test
-    fun `provider is invoked exactly once with the platform's resource instance`() = runTest {
+    fun `provider is invoked exactly once with the platform’s resource instance`() = runTest {
         val resource = resource()
 
         val decision = engine.handle(SyncEvent.ResourceChanged(resource))
@@ -89,7 +89,7 @@ class SyncEngineTest {
     }
 
     @Test
-    fun `resource instance round-trips onto the decision's request`() = runTest {
+    fun `resource instance round-trips onto the decision’s request`() = runTest {
         val resource = resource()
 
         val decision = engine.handle(SyncEvent.ResourceChanged(resource))

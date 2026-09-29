@@ -44,7 +44,7 @@ class OsCompletionsTest {
     }
 
     @Test
-    fun `the operating system's expiry releases at once and the own work runs on`() = runTest {
+    fun `the operating system’s expiry releases at once and the own work runs on`() = runTest {
         val h = Handlers()
         val completions = OsCompletions("test")
         val gate = CompletableDeferred<Unit>()

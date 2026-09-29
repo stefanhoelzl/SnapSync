@@ -152,7 +152,7 @@ class EventCompletionTest {
     }
 
     @Test
-    fun `a closed event keeps a member still missing another member's photo`() = runTest {
+    fun `a closed event keeps a member still missing another member’s photo`() = runTest {
         val w = World(now = "2026-07-14T00:00:00Z").apply {
             answer = details(closed = true)
             received = false
@@ -201,7 +201,7 @@ class EventCompletionTest {
     }
 
     @Test
-    fun `a record of another event's manifest is no settled share here`() = runTest {
+    fun `a record of another event’s manifest is no settled share here`() = runTest {
         val w = World(now = "2026-07-14T00:00:00Z").apply {
             answer = details(closed = true)
             manifestRecord.saveLastUploaded(manifest(final = true).replaceFirst("E ", "OTHER "))

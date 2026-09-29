@@ -569,7 +569,7 @@ class DeviceAttestationTest {
     }
 
     @Test
-    fun `this process's own renewal is what the next request carries`() = runTest {
+    fun `this process’s own renewal is what the next request carries`() = runTest {
         val store = InMemoryAttestStore(token = token(1), keyId = "k")
         val (attest, _, _) = attestation(store = store)
         assertEquals(token(1), attest.token())
@@ -676,7 +676,7 @@ class DeviceAttestationTest {
     }
 
     @Test
-    fun `a retry reads the store of record not this process's copy`() = runTest {
+    fun `a retry reads the store of record not this process’s copy`() = runTest {
         val store = InMemoryAttestStore(token = token(30))
         val (attest, _, _) = attestation(store = store)
         assertEquals(token(30), attest.token()) // cached

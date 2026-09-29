@@ -1,9 +1,10 @@
 name: android
 
 # The Android app on an emulator, on every push (`docs/testing.md`, "The Android emulator host"): the counterpart of
-# `ios.yml`'s simulator jobs, on a Linux KVM runner — no Mac. Today it is the rig build's smoke check
-# (`scripts/android-smoke`: the app composes, the control channel answers, an intent reaches the screen); the Android
-# adapters' port-contract bindings join it as they are written.
+# `ios.yml`'s simulator jobs, on a Linux KVM runner — no Mac. Two runs on one emulator: the rig build's smoke check
+# (`scripts/android-smoke`: the app composes, the control channel answers, an intent reaches the screen), and every
+# module's `commonTest` on ART (`connectedAndroidDeviceTest`), as `ios-test` runs them on the iOS simulator. The Android
+# adapters' port-contract bindings join the second as they are written.
 #
 # `./gradlew build` already compiles every module's Android target and the plain app (which refuses at start — it has
 # no Android adapters yet). What only this job does is RUN the app, and put R8 over the whole graph.
@@ -34,13 +35,16 @@ jobs:
       # The rig build (installed below), and R8 over the same graph: the plain release is refused at start, so R8 would
       # strip nearly everything from it and prove nothing about dexing the app.
       - run: ./gradlew :app:android:assembleDebug :app:android:assembleRelease -Psnapsync.rig=true
+      # The device-test APKs, built before the emulator boots so the two never hold memory at once. Their own
+      # invocation: the property raises the libraries' minSdk to 30 (the test names' spaces), which the app must not see.
+      - run: ./gradlew assembleAndroidDeviceTest -Psnapsync.androidDeviceTests=true
       # The hosted runner exposes /dev/kvm to root only.
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Smoke check on the emulator
+      - name: Smoke check and device tests on the emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 36
@@ -50,10 +54,15 @@ jobs:
           # (measured on the dev box, emulator 36.1.9 and 37.1.11); the Vulkan path boots on both.
           emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -gpu swangle_indirect -memory 3072
           disable-animations: true
-          script: scripts/android-smoke
+          script: |
+            scripts/android-smoke
+            ./gradlew connectedAndroidDeviceTest -Psnapsync.androidDeviceTests=true --continue
       - uses: actions/upload-artifact@v7.0.1
         if: always()
         with:
           name: android-smoke
-          path: app/android/build/outputs/apk/debug/android-smoke-joined.png
+          path: |
+            app/android/build/outputs/apk/debug/android-smoke-joined.png
+            **/build/reports/androidTests/
+            **/build/outputs/androidTest-results/
           if-no-files-found: ignore

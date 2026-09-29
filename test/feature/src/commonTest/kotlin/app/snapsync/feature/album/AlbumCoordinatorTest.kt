@@ -102,7 +102,7 @@ class AlbumCoordinatorTest {
     }
 
     @Test
-    fun `ensureAlbum without granted access is a no-op — the access fact is the coordinator's guard`() = runTest {
+    fun `ensureAlbum without granted access is a no-op — the access fact is the coordinator’s guard`() = runTest {
         // The Provision flow passes the fact; the rule (no album without full photo access) is
         // this feature's leading guard since the migration finale, so no caller can forget it.
         val manager = FakeAlbumManager(createResult = "album-X")

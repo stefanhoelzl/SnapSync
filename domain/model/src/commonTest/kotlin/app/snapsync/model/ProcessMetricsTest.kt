@@ -267,7 +267,7 @@ class ProcessMetricsCallStackTest {
 class ProcessMetricsLineTest {
 
     @Test
-    fun `a quiet report's fields are recoverable from its own line`() {
+    fun `a quiet report’s fields are recoverable from its own line`() {
         val report = ProcessMetricReport(
             mapOf(
                 PROCESS_METRIC_WINDOW_BEGIN to "2026-09-11 00:00:00",

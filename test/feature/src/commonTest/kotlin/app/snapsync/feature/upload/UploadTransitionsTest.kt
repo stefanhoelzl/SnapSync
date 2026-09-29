@@ -246,7 +246,7 @@ class UploadTransitionsTest {
     // ---- leave ------------------------------------------------------------------------------------------
 
     @Test
-    fun `a leave deregisters then disarms and cancels the app's transfers`() = runTest {
+    fun `a leave deregisters then disarms and cancels the app’s transfers`() = runTest {
         val w = World(grant = GalleryAccess.GRANTED)
         w.registration.registered = true
 

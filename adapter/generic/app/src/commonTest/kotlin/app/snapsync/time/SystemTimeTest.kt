@@ -31,7 +31,7 @@ class SystemTimeTest {
     }
 
     @Test
-    fun `the production clock's zone is the device's current default zone`() {
+    fun `the production clock’s zone is the device’s current default zone`() {
         assertEquals(TimeZone.currentSystemDefault(), SystemClock.timeZone())
     }
 }

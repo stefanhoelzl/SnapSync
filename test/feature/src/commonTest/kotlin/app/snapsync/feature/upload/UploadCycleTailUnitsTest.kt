@@ -136,7 +136,7 @@ class UploadCycleTailUnitsTest {
     }
 
     @Test
-    fun `the top-up after a walk creates from the walk's handles without resolving`() = runTest {
+    fun `the top-up after a walk creates from the walk’s handles without resolving`() = runTest {
         val f = Fixture(listOf(resource("a"), resource("b")))
         val cycle = f.cycle()
         cycle.walkAndPublish(never)

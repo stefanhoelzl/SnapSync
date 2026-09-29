@@ -82,5 +82,22 @@ Everything past the port is `rig-channel`'s protocol; load it for the verbs. The
 go through the REAL lifecycle adapter (`AndroidLifecycle.deliverForeground`); every other `/os` verb through its mock.
 `/os/photokit-ext/*` is refused: Android has no upload extension. `device/relaunch` is refused: force-stop and start.
 
+## Common tests on the emulator
+
+Every module with a `commonTest` runs it on ART too, as `ios-test` runs it on the iOS simulator (`snapsync.android`
+declares the device test). With the emulator up:
+
+```bash
+./gradlew connectedAndroidDeviceTest -Psnapsync.androidDeviceTests=true --continue     # all modules, ~7 min cold
+./gradlew :domain:model:connectedAndroidDeviceTest -Psnapsync.androidDeviceTests=true  # one module
+# reports: <module>/build/reports/androidTests/connected/
+```
+
+- The property is **required**: it raises the libraries' minSdk to 30 for that run, because D8 writes a test name's
+  spaces only from DEX 040. Without it the dexing fails naming a backtick test.
+- An ASCII apostrophe in a backtick test name **cannot be dexed at any API level** — write `’` (U+2019), which DEX
+  accepts. The JVM and Kotlin/Native take either, so only this run notices.
+- ⚠️ Stop the emulator before a full `./gradlew build` on this box: the two together got the Gradle daemon OOM-killed.
+
 To check R8 over the whole graph: `./gradlew :app:android:assembleRelease -Psnapsync.rig=true`, `zipalign` and
 `apksigner sign --ks ~/.android/debug.keystore --ks-pass pass:android` the unsigned APK, install it, run the smoke.

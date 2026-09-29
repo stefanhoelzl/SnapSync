@@ -1,6 +1,5 @@
 package app.snapsync.rig
 
-import android.content.Context
 import app.snapsync.android.scene.AndroidLifecycle
 import app.snapsync.compose.AppCore
 import app.snapsync.compose.DevicePorts
@@ -10,7 +9,6 @@ import app.snapsync.launchadapters.AdapterChoice
 import app.snapsync.launchadapters.AdapterProcess
 import app.snapsync.launchadapters.chosenPorts
 import app.snapsync.launchadapters.randomDeviceId
-import app.snapsync.mock.MockAndroidDatabases
 import app.snapsync.mock.MockDevice
 import app.snapsync.mock.MockedSystem
 import app.snapsync.mock.OperatorDrivenUploads
@@ -55,12 +53,8 @@ class AndroidRigLaunch internal constructor(
     val appDrivenUpload: AppUploadMechanism = OperatorDrivenUploads
 }
 
-/**
- * Build the launch over the root's [real] adapters. [context] is the application's: the mocks' SQLite reaches the
- * platform's through it.
- */
-fun androidRigLaunch(real: DevicePorts, context: Context): AndroidRigLaunch {
-    MockAndroidDatabases.install(context)
+/** Build the launch over the root's [real] adapters. */
+fun androidRigLaunch(real: DevicePorts): AndroidRigLaunch {
     val device = MockDevice(ownDeviceId = randomDeviceId())
     device.declaredVersion.value = SERVED_VERSION
     val ports = chosenPorts(real.lazies, ANDROID_CHOICE, device, AdapterProcess.APP)
@@ -137,8 +131,6 @@ private fun AndroidRigLaunch.hooks(
     osExtensionNotApplicable = "Android has no upload extension: its uploader runs in the app's own process",
     osRecord = world.os::record,
     adapters = description,
-    // The Android emulator, before any contract binding runs there to make it a contract host.
-    hostName = { "ANDROID_EMU" },
 )
 
 /**

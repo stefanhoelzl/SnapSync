@@ -83,7 +83,7 @@ class GalleryServicesTest {
     // ---- GalleryCandidateSource ---------------------------------------------------------------------
 
     @Test
-    fun `candidates are the gallery's facts and the admitted ones' resources come in ONE request`() = runTest {
+    fun `candidates are the gallery’s facts and the admitted ones’ resources come in ONE request`() = runTest {
         val gallery = ScriptedGallery(assets = listOf(photo("A"), photo("B"), photo("C")))
         val read = assertIs<CandidateRead.Readable>(GalleryCandidateSource(gallery).candidates(policy))
         assertEquals(listOf(AssetId("A"), AssetId("B"), AssetId("C")), read.candidates.map { it.facts.assetId })
@@ -121,7 +121,7 @@ class GalleryServicesTest {
     // ---- GalleryDiscovery ---------------------------------------------------------------------------
 
     @Test
-    fun `only a full grant's walk is authoritative for deletion`() = runTest {
+    fun `only a full grant’s walk is authoritative for deletion`() = runTest {
         for (access in GalleryAccess.entries) {
             val walk = GalleryDiscovery(ScriptedGallery(access = access, assets = listOf(photo("A")))).discover(policy)
             assertEquals(listOf(AssetId("A")), walk.candidates.map { it.facts.assetId }, "$access")
@@ -214,7 +214,7 @@ class GalleryServicesTest {
     }
 
     @Test
-    fun `the denylist reads only the calibration's albums matched trimmed and ignoring case`() = runTest {
+    fun `the denylist reads only the calibration’s albums matched trimmed and ignoring case`() = runTest {
         val gallery = ScriptedGallery(
             albums = listOf(
                 AlbumRecord("wa", "  whatsapp "),

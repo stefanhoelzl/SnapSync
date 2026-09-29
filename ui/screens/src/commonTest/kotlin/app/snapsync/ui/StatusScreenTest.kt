@@ -866,7 +866,7 @@ class StatusScreenTest {
     }
 
     @Test
-    fun `confirming submits the trimmed name with the membership's event id`() = runComposeUiTest {
+    fun `confirming submits the trimmed name with the membership’s event id`() = runComposeUiTest {
         val submitted = mutableListOf<Pair<String, String>>()
         setContent {
             TestStatusScreen(
@@ -1011,7 +1011,7 @@ class StatusScreenTest {
      * two controls — which is the whole of the reported symptom.
      */
     @Test
-    fun `a join's own commit leaves the heading and cluster controls in place`() = runComposeUiTest {
+    fun `a join’s own commit leaves the heading and cluster controls in place`() = runComposeUiTest {
         setContent {
             TestStatusScreen(
                 joined(

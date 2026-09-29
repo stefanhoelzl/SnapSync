@@ -2,7 +2,6 @@ package app.snapsync.rig
 
 import app.snapsync.contracts.CONTRACT_REFUSED
 import app.snapsync.contracts.InAppContract
-import app.snapsync.contracts.currentHost
 import app.snapsync.services.logs.LogTailService
 import kotlin.coroutines.CoroutineContext
 
@@ -155,11 +154,6 @@ class RigHooks(
      * that believed itself mocked.
      */
     val uncomposed: String? = null,
-    /**
-     * The name `GET /device` gives this host: the contract host this process is, where one exists. A host no contract
-     * binding runs on yet (the Android app) names itself, since the contracts' host set holds only bound hosts.
-     */
-    val hostName: () -> String = { currentHost.name },
 ) {
 
     /**
