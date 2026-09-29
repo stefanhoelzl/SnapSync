@@ -1,5 +1,12 @@
 // The `/api/v2` device-API surface.
 //
+// THIS FILE IS A FROZEN CONTRACT, for compatible changes only. 0.4 — the first App Store build — speaks
+// v2 and cannot be updated in place, so v2's wire behaviour must not move under it. The tests already here
+// must pass WITHOUT being edited; NEW tests may be added for additions 0.4 ignores (a new route, a new
+// optional response field). A change that needs an existing test edited is breaking: it goes to
+// `/api/v3`, or ships with a deliberate `MIN_APP_VERSION` bump (`src/config.ts`) that sends 0.4 to the
+// update notice. See `docs/architecture.md`.
+//
 // Fixtures here are deliberately LITERAL and local rather than shared with `v1.test.ts`, even where the
 // two versions would spell them identically today. v1 is a frozen contract; if it imported a fixture
 // builder this file also used, a change made for v2 could silently move what v1 asserts. Only machinery
