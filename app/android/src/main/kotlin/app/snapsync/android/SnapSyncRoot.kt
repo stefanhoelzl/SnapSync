@@ -3,17 +3,26 @@ package app.snapsync.android
 import android.app.Application
 import app.snapsync.android.attest.AndroidDeviceIntegrity
 import app.snapsync.android.backend.androidHttpClient
+import app.snapsync.android.gallery.AndroidGallery
 import app.snapsync.android.link.AndroidLinks
 import app.snapsync.android.logging.LogcatSink
+import app.snapsync.android.permission.AndroidPhotoPermission
 import app.snapsync.android.scene.AndroidLifecycle
 import app.snapsync.android.scene.AndroidUi
+import app.snapsync.android.scene.ForegroundActivity
 import app.snapsync.android.storage.AndroidDatabases
 import app.snapsync.android.storage.AndroidFiles
 import app.snapsync.android.storage.AndroidPlatformDeviceId
 import app.snapsync.android.storage.AndroidPreferences
 import app.snapsync.android.storage.AndroidSecureStore
+import app.snapsync.android.systemui.AndroidSystemUi
+import app.snapsync.android.upload.AndroidExtensionRegistry
+import app.snapsync.android.work.AndroidBackgroundTime
+import app.snapsync.android.work.AndroidUpload
+import app.snapsync.android.work.AndroidWake
 import app.snapsync.compose.AppCore
 import app.snapsync.compose.AppPorts
+import app.snapsync.compose.AppUploaderPorts
 import app.snapsync.compose.DevicePorts
 import app.snapsync.compose.NoEntryContext
 import app.snapsync.compose.NoProcessMetrics
@@ -21,14 +30,16 @@ import app.snapsync.compose.ProcessPorts
 import app.snapsync.compose.ProcessServices
 import app.snapsync.compose.PushPorts
 import app.snapsync.compose.UploadRecordPorts
+import app.snapsync.compose.appUploader
 import app.snapsync.compose.snapSyncProcess
-import app.snapsync.http.HttpBackend
 import app.snapsync.host.ComposedApp
 import app.snapsync.host.snapSyncHost
+import app.snapsync.http.HttpBackend
 import app.snapsync.model.DeviceIdentityRole
 import app.snapsync.model.EntryScope
 import app.snapsync.model.PlatformEntry
 import app.snapsync.model.invocation
+import app.snapsync.ports.PhotoGrantRead
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.services.album.AlbumMapService
@@ -81,6 +92,15 @@ class SnapSyncRoot(internal val application: Application) {
         CutoffFormatter(now = process.clock::now, zone = process.clock.timeZone())
     }
 
+    /**
+     * The activity the member is looking at, tracked from the process's start so a system surface — the permission
+     * dialog, the share sheet — has something to present from, and a return from Settings re-reads the photo grant.
+     */
+    private val foreground = ForegroundActivity(application)
+
+    /** The photo grant, and the dialog and selection sheet that change it. */
+    private val photoPermission: AndroidPhotoPermission by lazy { AndroidPhotoPermission(application, foreground) }
+
     /** This process's REAL adapters — the systems Android has one for — each built on first use. */
     private val real: DevicePorts = DevicePorts(
         clock = lazyOf(SystemClock),
@@ -93,6 +113,14 @@ class SnapSyncRoot(internal val application: Application) {
         lifecycle = lazy { lifecycle },
         links = lazy { links },
         ui = lazy { ui },
+        gallery = lazy { AndroidGallery(application, photoPermission, scope) },
+        photoAccess = lazy { photoPermission },
+        systemUi = lazy { AndroidSystemUi(application, foreground) },
+        extensionRegistry = lazyOf(AndroidExtensionRegistry),
+        wake = lazy { AndroidWake(application) },
+        backgroundTime = lazy { AndroidBackgroundTime(application) },
+        // Its transfers hold this launch's background time — the real one, or the mock a rig launch chose.
+        appUpload = lazy { AndroidUpload(application, ports.backgroundTime) },
     )
 
     /** The adapters that differ between a production and a rig build, chosen at BUILD time. */
@@ -153,7 +181,20 @@ class SnapSyncRoot(internal val application: Application) {
                     AndroidPlatformDeviceId(application),
                 ),
                 appStoreUrl = null,
-                appDrivenUpload = adapters.appDrivenUpload,
+                // The app's uploader over the shared cycle — the only uploader Android has (no OS-driven tier).
+                appDrivenUpload = {
+                    adapters.appDrivenUpload {
+                        appUploader(
+                            app,
+                            AppUploaderPorts(
+                                config = config,
+                                grant = PhotoGrantRead { ports.photoAccess.permission.value },
+                                host = BuildConfig.UPLOAD_BASE,
+                                appVersion = BuildConfig.APP_VERSION,
+                            ),
+                        )
+                    }
+                },
                 appUpload = ports.appUpload,
                 backgroundTime = ports.backgroundTime,
                 wake = ports.wake,

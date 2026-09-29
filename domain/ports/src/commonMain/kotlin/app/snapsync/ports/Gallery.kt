@@ -25,6 +25,10 @@ import app.snapsync.model.WriteOutcome
  *
  * The upload extension gets this and nothing more; the app gets [Gallery], which extends it.
  *
+ * **Every read is scoped to the member's default gallery**, which the platform defines (capability `photo-sharing`):
+ * on iOS the whole library, on Android `DCIM` and its subfolders — where a subfolder is also what [albums] lists. An
+ * asset outside it is never returned, by any read, so no consumer can count, list or upload one.
+ *
  * **Reads answer [GalleryRead.NotReadable] when no grant lets this process see the library** (undetermined or
  * refused) — without touching the platform, whose empty answer there is not an empty library, and whose album
  * fetch under an undetermined grant raises the permission dialog. Under a partial grant a read answers what
@@ -56,7 +60,10 @@ interface GalleryReader {
      */
     suspend fun resources(ids: Set<AssetId>): GalleryRead<List<RawAsset>>
 
-    /** Every user-created album (never a system smart album, whose titles are localized). */
+    /**
+     * Every user-created album (never a system smart album, whose titles are localized). On Android an album is a
+     * folder of the default gallery, titled by the folder's own name.
+     */
     suspend fun albums(): GalleryRead<List<AlbumRecord>>
 
     /** The albums among [ids] that still resolve (the member may have deleted one). */

@@ -1,8 +1,8 @@
 schema: spec-driven
 
 context: |
-  SnapSync: an iOS app for sharing photos from an event (Kotlin
-  Multiplatform + Compose), shipped via TestFlight.
+  SnapSync: an iOS and Android app for sharing photos from an event (Kotlin
+  Multiplatform + Compose), shipped via TestFlight (Android: Play, from phase 5).
 
   openspec/specs/<capability>/spec.md is the contract of record for what a
   USER can observe (see WHAT EARNS A SPEC below); the decision record —
@@ -116,10 +116,16 @@ context: |
   at their own gallery. No accounts — a device UUID plus platform attestation is
   the whole identity — and setup/enrollment stay simple.
 
+  Android is a supported platform (decision record: changes/archive/2026-09-29-android-sharing):
+  App Attest/APNs are the iOS bindings of platform-neutral seams, Keystore key
+  attestation/FCM the Android ones. What a member shares is decided by one
+  selection policy over the member's DEFAULT GALLERY, which the platform
+  defines: the photo library (or the limited selection) on iPhone, DCIM and its
+  subfolders on Android — an explicit Android exception to "when in doubt, a
+  photo is shared".
+
   Named future directions (not commitments; do not build for them, but do not
-  deepen assumptions against them without naming it in the change): Android
-  support (App Attest/APNs are the iOS bindings of platform-neutral seams);
-  paid events (small events stay free; creation is the payment gate's attach
+  deepen assumptions against them without naming it in the change): paid events (small events stay free; creation is the payment gate's attach
   point, capacity/duration the tier boundary); concurrent multi-event
   membership (single active membership is the CURRENT contract — switch =
   leave-then-join — while bytes, ledger keys, and backend GC are already

@@ -31,6 +31,10 @@ kotlin {
             implementation(libs.compose.ui)
             // The process's foreground life (`ProcessLifecycleOwner`).
             implementation(libs.androidx.lifecycle.process)
+            // The activity-result registry the photo-permission dialog is launched through.
+            implementation(libs.androidx.activity.compose)
+            // The wakes, the background-time holds and the uploads run as WorkManager work.
+            implementation(libs.androidx.work.runtime)
             // The `Databases` adapter: SQLDelight over the platform's SQLite, and the open helper it is handed.
             implementation(libs.sqldelight.driver.android)
             implementation(libs.androidx.sqlite.framework)
@@ -44,6 +48,7 @@ kotlin {
             implementation(project(":domain:services"))
             implementation(libs.kotlinx.datetime)
             implementation(libs.coroutines.test)
+            implementation(libs.androidx.work.testing)
         }
     }
 }

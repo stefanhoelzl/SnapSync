@@ -252,7 +252,8 @@ class TailRunner(
                 return@invocation null
             }
             val outcome = admit(trigger)
-            if (shouldSchedule(outcome, trigger.rearm) || importsLeft(trigger.rearm)) heartbeat.arm()
+            val rearm = rearmFor(trigger, outcome)
+            if (shouldSchedule(outcome, rearm) || importsLeft(rearm)) heartbeat.arm()
             outcome
         }
 
@@ -400,6 +401,23 @@ class TailRunner(
         CycleResult.SKIPPED -> false
         CycleResult.PROCESSING, is CycleResult.Paused -> rearm != Rearm.NEVER
         CycleResult.COMPLETED, CycleResult.FAILED -> rearm == Rearm.ALWAYS
+    }
+
+    /**
+     * [trigger]'s re-arm policy, once the library watch has been renewed (capability `background-upload`, "Photos
+     * upload without the app being opened").
+     *
+     * After every tail that ran the uploads for a membership that contributes — any trigger but an import-only one, any
+     * outcome but `SKIPPED` (an import-only tail's outcome says nothing of the membership) — the library-change
+     * wake is re-requested: a standing "wake me when a photo is added", so a device that is caught up still notices
+     * the next photo. Where one stands (Android), the heartbeat no longer has to keep itself alive to notice new
+     * photos, so [Rearm.ALWAYS] becomes [Rearm.WHEN_WORK_REMAINS]: a timed wake only while work remains. Where none can
+     * (iOS, which answers the library-change wake `Unsupported`), [Rearm.ALWAYS] stands — the heartbeat's own
+     * re-submission is how the app looks at its library there.
+     */
+    private fun rearmFor(trigger: TailTrigger, outcome: TailOutcome): Rearm {
+        val watched = trigger.scope != TailScope.IMPORT && outcome.result != CycleResult.SKIPPED && heartbeat.watchLibrary()
+        return if (watched && trigger.rearm == Rearm.ALWAYS) Rearm.WHEN_WORK_REMAINS else trigger.rearm
     }
 
     /**

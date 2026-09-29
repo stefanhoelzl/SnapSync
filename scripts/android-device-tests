@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Every module's device tests on the running emulator (`connectedAndroidDeviceTest`), with the loopback transfer
+# fixture the upload contract exchanges bytes with (scripts/transfer-fixture.py) served on the host and reversed into
+# the emulator, whose 127.0.0.1:$PORT then reaches it. The `android-emulator` CI job runs exactly this; so can you.
+#
+#   ADB=$ANDROID_HOME/platform-tools/adb scripts/android-device-tests [gradle args…]
+set -euo pipefail
+cd "$(dirname "$0")/.."
+ADB=${ADB:-adb}
+PORT=${FIXTURE_PORT:-8123}
+mkdir -p build
+python3 scripts/transfer-fixture.py --port "$PORT" --log build/transfer-fixture.log &
+FIXTURE=$!
+trap 'kill $FIXTURE 2>/dev/null || true' EXIT
+until curl -fsS "http://127.0.0.1:$PORT/_health" >/dev/null 2>&1; do sleep 0.2; done
+"$ADB" reverse "tcp:$PORT" "tcp:$PORT"
+./gradlew connectedAndroidDeviceTest --continue \
+  "-Pandroid.testInstrumentationRunnerArguments.fixture=http://127.0.0.1:$PORT" "$@"

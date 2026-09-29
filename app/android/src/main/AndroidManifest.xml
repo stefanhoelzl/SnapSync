@@ -4,6 +4,17 @@
     <!-- The backend, and on a rig build the control channel's loopback server. -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!--
+      The member's photos (capability `photo-access`): full access is images AND video (API 33+), or storage (API
+      30-32); API 34+ may grant only a selection. The location permission keeps each original's location in what is
+      uploaded (MediaStore redacts it otherwise). Asked for together, only on a deliberate tap.
+    -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
+    <uses-permission android:name="android.permission.ACCESS_MEDIA_LOCATION" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+
     <!-- Nothing is backed up or transferred to another device: see res/xml/data_extraction_rules.xml. -->
     <application
         android:name=".SnapSyncApplication"

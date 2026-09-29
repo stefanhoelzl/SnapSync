@@ -579,7 +579,9 @@ MetricKit (`/device/process-metrics` feeds the real handler). Code: `:test:launc
 The Android rig build (`:app:android` under `-Psnapsync.rig=true`) serves the same protocol from inside the app on an
 emulator, reached over `adb forward tcp:18099 tcp:18099` (load `android-emulator`). It reads its adapter choice from
 the adapters file as the iOS app host does (`device/adapters*` write it, and the app exits), with two differences that
-both come from Android not having every real adapter yet. **No file is not all real**: it is every system mocked but
+both come from Android not having every real adapter yet (today it has the screen, the lifecycle, the clock, the
+storage, attestation, the backend, links, the photo library, the system UI, the wakes, the background-time holds and
+the upload session; downloads, push and the crash reporter are phases 4 and 5). **No file is not all real**: it is every system mocked but
 the screen and its foreground life, fresh in memory at every start — what every launch without a file has always
 composed. And **a choice may leave real only the systems Android has an adapter for** (`AndroidRig.kt`'s list; naming
 another `real`, or omitting it, refuses the launch, which then composes nothing). A file-chosen launch saves its mocks'
@@ -594,7 +596,18 @@ runs it on the simulator: the code ships on ART after D8, over the platform's SQ
 device test, never a host test (that is the JVM again), at the app's own minSdk (30 — D8 writes a backtick name's
 spaces only from DEX 040, which is part of why the app's minSdk is 30). An ASCII apostrophe in a backtick name is
 never representable in DEX: write `’`. The fakes' shared contract bindings run there as host `ANDROID_EMU`, and so do
-the Android adapters' own (`:adapter:android`'s `src/androidDeviceTest`). The mocks'
+the Android adapters' own (`:adapter:android`'s `src/androidDeviceTest`). Run them with
+`scripts/android-device-tests`, as the job does: it serves `scripts/transfer-fixture.py` on the host, reverses its port
+into the emulator and passes its address as the `fixture` instrumentation argument the upload contract needs (a run
+without it fails, naming the script).
+
+**Photos on the emulator are seeded by the process that reads them** (measured 2026-09-29): MediaStore hides a photo
+the SHELL owns (`adb push`, `UiAutomation`) from every other app, so a photo-library contract inserts its own fixture —
+which it reads with no grant and deletes with no confirmation — with the capture date in the file's EXIF as well as
+`DATE_TAKEN`, since publishing re-derives it. For the same reason an end-to-end run seeds through the rig's
+`device/gallery/seed`, which inserts the app's own photos into `DCIM/Camera` where the library is real. The grant is the
+test process's own and revoking one kills it, so `NO_GRANT` clauses stay the iOS test executable's; the album writes
+are iOS's too (Android files no photo into an album — `GRANTED_SEEDED_ALBUMS_WRITABLE`). The mocks'
 SQLite reaches the platform through a context their AAR's `MockAndroidContext` provider takes at process start.
 
 The client compiles against `model/`, presentation and `feature/`, never `ports/`, `flow/`, `compose/` or

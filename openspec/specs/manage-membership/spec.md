@@ -225,7 +225,7 @@ event's invite again (capability `join-event`).
 ### Requirement: The joined screen offers the invite until the event closes
 The joined screen SHALL show, while the device is in an event that has not closed (capability
 `event-lifetime`), a scannable QR code of the event's invite link (capability `join-event`) and a share
-action that hands the same link to the iOS share sheet, even when photo access is missing. The QR code
+action that hands the same link to the system share sheet, even when photo access is missing. The QR code
 SHALL be dark on a light background in both light and dark appearance. The QR code SHALL be presented as an
 invitation for other people to join the event, and its caption SHALL tell the member that others join by
 scanning this code with their camera, not instruct the member to scan. Sharing SHALL have no effect on the
@@ -234,7 +234,7 @@ event, nor once the event has closed.
 
 #### Scenario: A host shares the invite before granting photo access
 - **WHEN** a host who has not granted photo access has just joined their new event
-- **THEN** the joined screen shows the event's QR code and a share action, and sharing sends the invite link through the iOS share sheet
+- **THEN** the joined screen shows the event's QR code and a share action, and sharing sends the invite link through the system share sheet
 
 #### Scenario: The QR stays scannable in dark mode
 - **WHEN** the phone is in dark appearance

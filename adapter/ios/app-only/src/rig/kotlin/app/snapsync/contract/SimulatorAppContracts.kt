@@ -148,13 +148,20 @@ private fun ByteArray.toNSData(): NSData = usePinned { NSData.create(bytes = it.
 class SimAppGalleryReaderBinding : Binding<GalleryReaderState, SeededLibrary<GalleryReader>> {
     override val host = Host.IOS_SIM_APP
     override val kind = BindingKind.Live
-    override val reaches = setOf(GalleryReaderState.GRANTED_SEEDED, GalleryReaderState.GRANTED_EMPTY_WINDOW)
+    override val reaches = setOf(
+        GalleryReaderState.GRANTED_SEEDED,
+        GalleryReaderState.GRANTED_EMPTY_WINDOW,
+        GalleryReaderState.GRANTED_SEEDED_ALBUMS_WRITABLE,
+    )
 
     override fun create(state: GalleryReaderState, clauseId: String): Entered<SeededLibrary<GalleryReader>> {
         val seeded = when (state) {
             GalleryReaderState.NO_GRANT -> return Entered.Unreachable(UNREACHABLE_NO_GRANT)
-            GalleryReaderState.GRANTED_SEEDED -> seedPhotos(PhotoLibrary.window(GalleryReaderContract.name, clauseId).seedDate)
+            GalleryReaderState.GRANTED_SEEDED, GalleryReaderState.GRANTED_SEEDED_ALBUMS_WRITABLE ->
+                seedPhotos(PhotoLibrary.window(GalleryReaderContract.name, clauseId).seedDate)
             GalleryReaderState.GRANTED_EMPTY_WINDOW -> emptyList()
+            GalleryReaderState.GRANTED_SEEDED_IN_A_FOLDER, GalleryReaderState.GRANTED_SEEDED_OUTSIDE_THE_DEFAULT_GALLERY ->
+                return Entered.Unreachable("iOS has no folders: the library is the member's default gallery")
         }
         // Minted through the adapter's own mapping, so the clauses check that mapping end to end.
         val ids = seeded.mapTo(linkedSetOf()) { checkNotNull(PhotoKitAssetIds.assetIdOf(it)) { "'$it' has no canonical id" } }

@@ -11,6 +11,7 @@ import co.touchlab.kermit.Severity
 import co.touchlab.kermit.StaticConfig
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
@@ -53,25 +54,30 @@ class HeartbeatTest {
     }
 
     @Test
-    fun `arming asks for every wake - a timed heartbeat that needs the network and a library change`() {
+    fun `arming asks for a timed heartbeat that needs the network`() {
         val wake = RecordingWake()
         Heartbeat(wake).arm()
-        assertEquals(
-            listOf(
-                WakeId.Heartbeat to WakeTrigger.After(earliest = 60.seconds, requiresNetwork = true),
-                WakeId.LibraryChanged to WakeTrigger.LibraryChange(maxDelay = 60.seconds),
-            ),
-            wake.scheduled,
-        )
+        assertEquals(listOf<Pair<WakeId, WakeTrigger>>(WakeId.Heartbeat to WakeTrigger.After(earliest = 60.seconds, requiresNetwork = true)), wake.scheduled)
     }
 
     @Test
-    fun `a platform without a kind of wake is not a failure`() {
+    fun `watching the library asks for a library-change wake and answers that one stands`() {
+        val wake = RecordingWake()
+        assertTrue(Heartbeat(wake).watchLibrary())
+        assertEquals(listOf<Pair<WakeId, WakeTrigger>>(WakeId.LibraryChanged to WakeTrigger.LibraryChange(maxDelay = 60.seconds)), wake.scheduled)
+    }
+
+    @Test
+    fun `a platform without a library-change wake is not a failure and watches nothing`() {
         val captured = Capturing()
         val wake = RecordingWake(supported = setOf(WakeId.Heartbeat))
-        Heartbeat(wake, Logger(StaticConfig(logWriterList = listOf(captured)), "test")).arm()
-        assertEquals(2, wake.scheduled.size, "every wake is asked for, whatever the platform has")
+        assertFalse(Heartbeat(wake, Logger(StaticConfig(logWriterList = listOf(captured)), "test")).watchLibrary())
         assertTrue(captured.warnings.isEmpty(), "an unsupported wake is said nothing about: ${captured.warnings}")
+    }
+
+    @Test
+    fun `a refused library watch watches nothing`() {
+        assertFalse(Heartbeat(RecordingWake(refuse = true)).watchLibrary())
     }
 
     @Test

@@ -878,12 +878,20 @@ is the only drain, plus the once-per-process interrupted-import sweep at host as
 There is no download backstop task any more.
 
 **The heartbeat** is the `Heartbeat` service (`services/wake`) over the `Wake` port: a one-shot wake no sooner than
-60 s from now, needing the network, re-requested each time; it arms and cancels every `WakeId` on every platform,
-and a platform without a kind of wake answers `Unsupported` (iOS has no library-change wake). **When** it is armed is
-the table's rule — `TailRunner.shouldSchedule` over each trigger's re-arm — with one addition (phase 11f): after a
-tail whose upload units would not re-arm (a declining membership's `SKIPPED`, or a drained relaunch), staged downloads
-still waiting to be imported count as work remaining and arm it — except for the triggers that never re-arm. So a
-membership that only receives arms a heartbeat while a save iOS cut short is waiting, and not otherwise.
+60 s from now, needing the network, re-requested each time. **When** it is armed is the table's rule —
+`TailRunner.shouldSchedule` over each trigger's re-arm — with one addition (phase 11f): after a tail whose upload
+units would not re-arm (a declining membership's `SKIPPED`, or a drained relaunch), staged downloads still waiting to
+be imported count as work remaining and arm it — except for the triggers that never re-arm. So a membership that only
+receives arms a heartbeat while a save iOS cut short is waiting, and not otherwise.
+
+**The library watch** is the service's other wake: `watchLibrary` requests a one-shot `WakeId.LibraryChanged`,
+delivered within 60 s of a change to the photo library, and answers whether one now stands. The runner renews it
+after every tail that ran the uploads for a contributing membership (any trigger but an import-only one, any outcome
+but `SKIPPED`), so a caught-up device still notices the next photo. iOS answers it `Unsupported` — its library-change
+wake is the upload extension — and there the table stands as written. **Where a watch stands, `always` becomes "only
+if work remains"**: on iOS the perpetual heartbeat is how the app looks at its library at all, and iOS runs a
+`BGProcessingTask` sparsely; WorkManager honours the 60 s closely, so the same rule would wake a caught-up Android
+phone every minute. A disarm cancels both wakes. Decision record: `changes/archive/2026-09-29-android-sharing` (D5).
 
 **In-process requests hold time too.** A tail requested from inside the process — a transition's arm, an upload
 completion's top-up, a staged download's import, a selection change (its own work included) — holds the process's
@@ -920,6 +928,26 @@ SE2), so:
   the change and the baseline path drop a snapshot built under a grant that has since become full.
 - The denylisted-album lookup is asked only under a full grant (it can only answer the empty set otherwise).
 - Ledger counts refresh after tail units only while foregrounded (foreground entry re-reads them anyway).
+
+**On Android** there is one process and one uploader. The `Wake`, `BackgroundTime` and `Upload` adapters
+(`:adapter:android`'s `work/`) are WorkManager's:
+- **a wake** is one unique one-time work per `WakeId` — the heartbeat's delay and network constraint, or content-URI
+  triggers on MediaStore's image and video collections for the library watch. A re-request replaces a pending wake,
+  except from inside that wake's own running worker, where it appends (replacing would cancel the worker asking). The
+  worker is an entry port on the `Application.onCreate` composition and builds no screen; its stop (`onStopped`) is
+  the wake's `Completion.onExpired`.
+- **a background-time hold** is an expedited work that runs until the hold ends; its stop is the hold's expiry. It is
+  what keeps a process the member just left, or one a worker started, from being frozen mid-unit.
+- **an upload** is an in-process PUT streamed from MediaStore (`UploadSourceKind.RESOURCE`, no staged copy), at most
+  four at once, each end reported inline. The adapter holds background time while any is live; the hold's expiry
+  cancels them, reported failed, to restart on a later run. A small journal names every job not yet reported, and a
+  process that died with jobs in it has them reported failed when the next one listens — so a row never waits on a
+  transfer that no longer exists. A connection per transfer: a streamed body is sent once, and a pooled connection
+  the server closed would fail it outright.
+
+A force-stop cancels every WorkManager request until the next opening, when the foreground's tail re-requests them;
+before the first unlock the app (not direct-boot aware) never runs. Doze and App Standby defer work to maintenance
+windows.
 
 **Push registration is change-driven.** The composition asks the push service for the token at every launch (as
 the graph is composed, from `onLaunch`) and in the `Lifecycle` handler at every foreground entry. `PushRegistration` publishes only when (token, env, deviceId) differs from the

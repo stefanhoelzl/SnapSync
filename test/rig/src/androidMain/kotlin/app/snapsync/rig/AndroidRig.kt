@@ -1,5 +1,6 @@
 package app.snapsync.rig
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import app.snapsync.android.link.AndroidLinks
@@ -22,27 +23,28 @@ import app.snapsync.mock.UploadNetwork
 import app.snapsync.model.ConfigRead
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
-import app.snapsync.ports.Files
 import app.snapsync.model.SecureSlots
 import app.snapsync.model.SecureStoreRead
+import app.snapsync.ports.Files
 import app.snapsync.presentation.StatusContainerHost
+import app.snapsync.rig.gallery.seedMediaStore
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.logs.LogTailService
 import co.touchlab.kermit.Logger
+import java.io.File
+import kotlin.system.exitProcess
+import kotlin.time.Clock
+import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
-import java.io.File
-import kotlin.system.exitProcess
-import kotlin.time.Clock
-import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * **The Android rig build's launch** (`docs/testing.md`, "Launch-time adapters"): the app composed over the adapter choice
@@ -83,8 +85,12 @@ class AndroidRigLaunch internal constructor(
     /** The line this launch adds to the app's boot banner. */
     val bootLines: List<String> = listOf("[boot] adapters = $description")
 
-    /** The app uploader's mechanism: the mocked transfer session creates nothing, so the operator is the engine. */
-    val appDrivenUpload: AppUploadMechanism = OperatorDrivenUploads
+    /**
+     * The app uploader's mechanism: the real one, unless the transfer session it would create its uploads on is the
+     * mock, which creates nothing — then the operator is the engine, as on the iOS app host and the JVM root.
+     */
+    fun appDrivenUpload(build: () -> AppUploadMechanism): AppUploadMechanism =
+        if (MockedSystem.UPLOAD_SESSION in launch.choice.mocked) OperatorDrivenUploads else build()
 }
 
 /** Build the launch over the root's [real] adapters; [uploadBase] is the real backend's, the build's resolved one. */
@@ -213,17 +219,18 @@ private fun exitSoon() {
 /**
  * Start the control channel over the composed app, once the main thread is done with the root's own launch — the
  * server reads the process services and the composition, which exist after it. [lifecycle] is the real adapter the
- * `/os` foreground and background verbs deliver through; [filesDir] is where the bound port is published.
+ * `/os` foreground and background verbs deliver through; [context] is the application — its files directory is where
+ * the bound port is published, and a real library is seeded through its media store.
  */
 fun AndroidRigLaunch.start(
     core: () -> AppCore,
     host: () -> StatusContainerHost,
     lifecycle: AndroidLifecycle,
     links: AndroidLinks,
-    filesDir: File,
+    context: Context,
 ) {
     CoroutineScope(Dispatchers.Main).launch {
-        RigServer(core = core, host = host, hooks = hooks(core, host, lifecycle, links, filesDir)).start()
+        RigServer(core = core, host = host, hooks = hooks(core, host, lifecycle, links, context)).start()
     }
 }
 
@@ -232,10 +239,10 @@ private fun AndroidRigLaunch.hooks(
     host: () -> StatusContainerHost,
     lifecycle: AndroidLifecycle,
     links: AndroidLinks,
-    filesDir: File,
+    context: Context,
 ): RigHooks = RigHooks(
     bootedAt = Clock.System.now().toString(),
-    uploadTier = "operator-driven",
+    uploadTier = if (world.isMocked(MockedSystem.UPLOAD_SESSION)) "operator-driven" else "app",
     uploadBase = uploadBase,
     transferBinding = "mock",
     // The platform calls the app's entry points on the main thread, so the rig does too.
@@ -253,11 +260,13 @@ private fun AndroidRigLaunch.hooks(
     excludedUserCommands = excludedUserCommands(),
     deviceCommands = world.honouredLevers() + adapterCommands(this) + mapOf(
         "reset" to resetCommand(reset = controls::reset),
-        "gallery/seed" to seedCommand { n, kind -> world.seedMockLibrary(n, kind) },
+        "gallery/seed" to seedCommand { n, kind ->
+            if (world.isMocked(MockedSystem.LIBRARY)) world.seedMockLibrary(n, kind) else seedMediaStore(context, log, n, kind)
+        },
     ),
     readGallery = world.mockGalleryReader(),
     osExtensionEnabled = { null },
-    publishBoundPort = { bound -> rigPortFilePath(filesDir.path)?.let { File(it).writeText(bound.toString()) } },
+    publishBoundPort = { bound -> rigPortFilePath(context.filesDir.path)?.let { File(it).writeText(bound.toString()) } },
     contracts = emptyList(),
     refusals = androidRefusals(world),
     osExtensionNotApplicable = "Android has no upload extension: its uploader runs in the app's own process",
@@ -304,7 +313,11 @@ private fun androidRefusals(world: MockWorld): Map<String, String> = world.lever
         "process death is the app's exit followed by a launch (`adb shell am force-stop`, then start it); the channel " +
             "cannot relaunch the process it runs in",
     )
-    put("device/gallery/wipe", "the photo library is mocked on this build; a mocked library is fresh for every launch")
+    put(
+        "device/gallery/wipe",
+        "a mocked library is fresh for every launch, and a real one's photos are the member's: seed or remove them " +
+            "through MediaStore (`adb push` and a scan), never through the channel",
+    )
     put("device/uploaders", "Android composes no OS-driven upload mechanism for a switch to choose between")
     put("device/process-metrics", "process-metric reports are MetricKit's; no Android provider is composed")
     RigVocabulary.appHostCommands.filter { it.startsWith("device/upload-") }.forEach {
@@ -325,6 +338,11 @@ private val ANDROID_REAL_ADAPTERS: Set<MockedSystem> = setOf(
     MockedSystem.INTEGRITY,
     MockedSystem.BACKEND,
     MockedSystem.LINKS,
+    MockedSystem.LIBRARY,
+    MockedSystem.SYSTEM_UI,
+    MockedSystem.WAKE,
+    MockedSystem.BACKGROUND_TIME,
+    MockedSystem.UPLOAD_SESSION,
 )
 
 /**
