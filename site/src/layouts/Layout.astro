@@ -60,28 +60,40 @@ const favicon = await getImage({ src: appIcon, width: 64, height: 64, format: "p
   <body style={`--appicon:url(${brandmark.src})`}>
     <header>
       <div class="wrap">
-        <a class="brand" href="/"><span class="brandmark sm"></span>SnapSync</a>
+        <a class="brand" href="/">
+          <span class="brandmark sm"></span>SnapSync
+        </a>
         <nav>
-          <a class="hide-sm" href="/#how">How it works</a>
-          <a class="hide-sm" href="/#privacy">Privacy</a>
-          <a class="hide-sm" href="/#terms">Terms</a>
+          <a class="hide-sm" href="/#how">
+            How it works
+          </a>
+          <a class="hide-sm" href="/#privacy">
+            Privacy
+          </a>
+          <a class="hide-sm" href="/#terms">
+            Terms
+          </a>
           <a
             href="https://github.com/stefanhoelzl/SnapSync/issues"
             target="_blank"
             rel="noopener noreferrer"
-            aria-label="Support (opens in a new tab)">Support</a
+            aria-label="Support (opens in a new tab)"
           >
+            Support
+          </a>
         </nav>
       </div>
     </header>
 
-    <main><slot /></main>
+    <main>
+      <slot />
+    </main>
 
     <footer>
       <div class="wrap">
-        <a class="brand" href="/" style="font-size:1rem"
-          ><span class="brandmark xs"></span>SnapSync</a
-        >
+        <a class="brand" href="/" style="font-size:1rem">
+          <span class="brandmark xs"></span>SnapSync
+        </a>
         <div class="flinks">
           <a href="/#how">How it works</a>
           <a href="/#privacy">Privacy</a>
@@ -90,14 +102,18 @@ const favicon = await getImage({ src: appIcon, width: 64, height: 64, format: "p
             href="https://github.com/stefanhoelzl/SnapSync/issues"
             target="_blank"
             rel="noopener noreferrer"
-            aria-label="Support (opens in a new tab)">Support</a
+            aria-label="Support (opens in a new tab)"
           >
+            Support
+          </a>
           <a
             href="mailto:stefanh+snapsync@posteo.de"
             target="_blank"
             rel="noopener noreferrer"
-            aria-label="Contact (opens in a new tab)">Contact</a
+            aria-label="Contact (opens in a new tab)"
           >
+            Contact
+          </a>
         </div>
         <p class="copy">
           © 2026 SnapSync · An independent project · Not affiliated with Apple Inc. "App Store" is a
