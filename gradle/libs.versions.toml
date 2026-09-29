@@ -1,49 +1,50 @@
 [versions]
-kotlin = "2.4.0"
-compose = "1.11.1"
+kotlin = "2.4.20"
+compose = "1.12.1"
 # Compose Multiplatform versions Material 3 separately from the rest of the framework; this is the
-# release compose 1.11.1 paired with when its (now deprecated) `compose.material3` accessor was used.
+# newest stable release (checked against compose 1.12.1; its line past 1.9 is alpha-only).
 compose-material3 = "1.9.0"
-# Versioned separately from compose too: the release the deprecated `compose.materialIconsExtended`
-# accessor resolved to under compose 1.11.1.
+# Versioned separately from compose too: the last release of the icons artifact (still 1.7.3 under
+# compose 1.12.1).
 compose-material-icons = "1.7.3"
 foojay = "1.0.0"
 jdk = "25"
-orbit = "10.0.0"
-coroutines = "1.10.2"
-sqldelight = "2.3.2"
-kermit = "2.0.6"
+orbit = "12.0.1"
+coroutines = "1.11.0"
+sqldelight = "2.4.0"
+kermit = "2.2.0"
 detekt = "1.23.8"
-dependencyAnalysis = "3.17.0"
-kover = "0.9.9"
-kotlinx-datetime = "0.7.1"
-kotlinx-serialization = "1.9.0"
-qrose = "1.1.2"
-# 3.2.4, not 3.2.0: 3.2.0 names a field `use streaming syntax`, which D8 refuses below DEX 040 (minSdk 30)
+dependencyAnalysis = "3.19.2"
+kover = "0.9.10"
+kotlinx-datetime = "0.8.0"
+kotlinx-serialization = "1.11.0"
+qrose = "1.3.0"
+# Never 3.2.0: it names a field `use streaming syntax`, which D8 refuses below DEX 040 (minSdk 30)
 # (KTOR-8583, fixed in 3.2.1). The Android minSdk is 30 now, but a build must not hinge on it.
-ktor = "3.2.4"
+ktor = "3.6.0"
 # sentry-kmp 0.27.0 pins sentry-cocoa 8.58.2 — the SPM package in iosApp.xcodeproj and the
 # test-link provisioning in :adapter:ios:ext-safe must carry the SAME cocoa version.
 sentry-kmp = "0.27.0"
 sentry-cocoa = "8.58.2"
 # Android (`docs/architecture.md`, "Zones inside the core": the allowed targets). One AGP for the KMP library plugin
 # every multiplatform module's `android` target comes from and the application plugin `:app:android` applies.
-agp = "9.3.3"
+agp = "9.4.1"
 # minSdk 30 (Android 11), one level for the app AND its device tests: scoped storage is enforced (29 still let an app
 # opt out) and `MediaStore.create*Request` batches consent, so the gallery adapters have one code path; and D8 writes
 # the backtick test names' spaces only from DEX 040 (API 30), so the tests run at the level the app ships at. Android
 # 10 was 4.6% of German Android traffic (StatCounter, Aug 2026; ≥30 reaches 85.6%), mostly 2018–19 phones past their
-# security updates. targetSdk tracks Play's current requirement, compileSdk follows it.
+# security updates. targetSdk tracks Play's current requirement; compileSdk follows it unless a dependency needs more
+# (37: compose 1.12's androidx artifacts require compiling against it — only the API surface, not the behaviour).
 android-minSdk = "30"
-android-compileSdk = "36"
+android-compileSdk = "37"
 android-targetSdk = "36"
 # The bytecode the Android compilations emit: D8/R8 dexes it (the toolchain stays `jdk`; only the target is lowered).
 android-jvmTarget = "17"
-androidx-activity = "1.12.4"
-androidx-lifecycle = "2.10.0"
+androidx-activity = "1.13.0"
+androidx-lifecycle = "2.11.0"
 androidx-test-runner = "1.7.0"
 # The Jetpack Compose release `compose` resolves to on Android — for the one androidx artifact named directly.
-androidx-compose = "1.11.2"
+androidx-compose = "1.12.1"
 
 [libraries]
 compose-runtime = { module = "org.jetbrains.compose.runtime:runtime", version.ref = "compose" }

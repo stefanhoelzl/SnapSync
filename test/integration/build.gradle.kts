@@ -54,7 +54,7 @@ dependencies {
 // (`scripts/sim-contracts`), which boots the simulator and the backend and passes their addresses. Outside `build`
 // by construction: this task is never a dependency of `check`. It FAILS — never skips — when an address is missing,
 // so a job that forgot to pass one cannot pass with nothing run.
-val journeys: SourceSet by sourceSets.creating
+val journeys: SourceSet = sourceSets.create("journeys")
 dependencies {
     "journeysImplementation"(project(":test:control"))
     "journeysImplementation"(project(":domain:model"))
@@ -83,7 +83,7 @@ tasks.register<Test>("journeys") {
 // a live simulator instead of starting Gradle there: a Gradle daemon plus a test JVM pushed the 7 GB CI runner into
 // swap at exactly that moment, and the app missed its 5 s HTTP timeout on a request the backend had answered in
 // 132 ms (run 36173548419).
-val journeysClasspath by tasks.registering {
+val journeysClasspath = tasks.register("journeysClasspath") {
     description = "Writes the journeys' runtime classpath to build/journeys-classpath.txt (ios-contracts only)."
     val classpath = journeys.runtimeClasspath
     val out = layout.buildDirectory.file("journeys-classpath.txt")
@@ -99,11 +99,11 @@ val journeysClasspath by tasks.registering {
 // shot by the scenarios in the test source set (`Shots.kt`, which `ShotsTest` runs on the JVM host on every build),
 // and captured with `simctl`. Run ONLY by `screenshots.yml` on a macOS runner, as a bare JVM on the classpath
 // below — the same reason the journeys are. Never a dependency of `check`.
-val screenshots: SourceSet by sourceSets.creating {
+val screenshots: SourceSet = sourceSets.create("screenshots") {
     compileClasspath += sourceSets.test.get().output + sourceSets.test.get().compileClasspath
     runtimeClasspath += output + compileClasspath + sourceSets.test.get().runtimeClasspath
 }
-val screenshotsClasspath by tasks.registering {
+val screenshotsClasspath = tasks.register("screenshotsClasspath") {
     description = "Writes the screenshot capture's runtime classpath to build/screenshots-classpath.txt."
     val classpath = screenshots.runtimeClasspath
     val out = layout.buildDirectory.file("screenshots-classpath.txt")

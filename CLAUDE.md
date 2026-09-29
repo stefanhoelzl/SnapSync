@@ -70,7 +70,7 @@ special handling (the album **denylist**, though, is inert — album structure i
 unreadable; the resolution floors still apply). Decision record:
 `openspec/changes/accept-limited-photo-access/` (`PROBE-FINDINGS.md` + `LIMITED-ACCESS-DESIGN.md`).
 
-Stack: Kotlin 2.4.0 · Compose MP 1.11.1 · JDK 25 · min iOS 18.0 · Orbit MVI · SQLDelight · Ktor.
+Stack: Kotlin 2.4.20 · Compose MP 1.12.1 · JDK 25 · min iOS 18.0 · Orbit MVI · SQLDelight · Ktor.
 (Two uploaders, both active where both exist: the app-driven background `URLSession` on every iOS version
 under any usable grant, and — on iOS ≥26.1 — the OS-driven PhotoKit extension, registered from join to leave
 and creating only under a full grant. An overlap is a duplicate upload of the same object, never a loss;

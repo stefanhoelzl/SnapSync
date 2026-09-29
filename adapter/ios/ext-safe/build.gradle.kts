@@ -25,7 +25,7 @@ plugins {
 // mac-side test-link tasks depend on it (Linux never links iOS binaries).
 val sentryCocoaVersion = libs.versions.sentry.cocoa.get()
 val sentryFrameworkDir = layout.buildDirectory.dir("sentry-cocoa/$sentryCocoaVersion")
-val provisionSentryCocoa by tasks.registering {
+val provisionSentryCocoa = tasks.register("provisionSentryCocoa") {
     val zipUrl = "https://github.com/getsentry/sentry-cocoa/releases/download/" +
         "$sentryCocoaVersion/Sentry-Dynamic.xcframework.zip"
     val outDir = sentryFrameworkDir
@@ -63,7 +63,7 @@ val rigEnabled = providers.gradleProperty("snapsync.rig").map(String::toBoolean)
 // single source, and nothing is copied by hand.
 val contractRecordings = rootProject.layout.projectDirectory.dir("test/contracts/recordings")
 val generatedRecordings = layout.buildDirectory.dir("generated/contractRecordings/kotlin")
-val embedContractRecordings by tasks.registering {
+val embedContractRecordings = tasks.register("embedContractRecordings") {
     val sources = fileTree(contractRecordings) { include("*.rec") }
     val out = generatedRecordings
     inputs.files(sources)

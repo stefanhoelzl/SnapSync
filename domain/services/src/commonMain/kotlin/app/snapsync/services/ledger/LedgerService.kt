@@ -194,7 +194,7 @@ class LedgerService(
      * admitted set the gallery counted for `N`; the ledger interprets nothing about admission.
      */
     suspend fun assetProgress(): Map<AssetId, Boolean> =
-        queries.assetProgress(DONE_STATES) { assetId, notDone -> assetId to ((notDone ?: 0L) == 0L) }
+        queries.assetProgress(DONE_STATES) { assetId, notDone -> assetId to (notDone == 0L) }
             .executeAsList()
             .toMap()
 

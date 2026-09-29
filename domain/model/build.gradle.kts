@@ -79,7 +79,7 @@ val linkDomain: String = requireNotNull(resolvedDeployment["domain"]) {
 //     link at all, so deriving a scheme here would generate a constant that cannot work.
 // A local deployment therefore gets an https LINK_ORIGIN it never exercises — correct and inert — rather
 // than an http one that would look consistent and mean nothing.
-val generateLinkOrigin by tasks.registering {
+val generateLinkOrigin = tasks.register("generateLinkOrigin") {
     val outDir = layout.buildDirectory.dir("generated/linkOrigin/kotlin")
     val domain = linkDomain
     inputs.property("domain", domain)
@@ -114,7 +114,7 @@ val eventWindowMaxSeconds: Long = requireNotNull(resolvedDeployment["eventWindow
     "deployment '$deploymentName' resolved no numeric `eventWindowMaxSeconds` — the create picker has no bound"
 }
 
-val generateEventWindowMax by tasks.registering {
+val generateEventWindowMax = tasks.register("generateEventWindowMax") {
     val outDir = layout.buildDirectory.dir("generated/eventWindowMax/kotlin")
     val seconds = eventWindowMaxSeconds
     inputs.property("eventWindowMaxSeconds", seconds)
