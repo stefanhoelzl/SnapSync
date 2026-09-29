@@ -21,6 +21,9 @@
 //      rather than in a narrow window near expiry.
 
 import { type CBORType, decodeCBOR } from "@levischuck/tiny-cbor";
+// @peculiar/x509 2.x resolves its services through tsyringe and no longer bundles the Reflect polyfill that needs:
+// it must be evaluated before the library is.
+import "reflect-metadata";
 import * as x509 from "@peculiar/x509";
 import { decodeBase64Url, encodeBase64 } from "@std/encoding";
 import type { Config } from "./config.ts";
