@@ -9,6 +9,8 @@ dependencyResolutionManagement {
     repositories {
         gradlePluginPortal()
         mavenCentral()
+        // The Android Gradle Plugin's API (`snapsync.android`).
+        google()
     }
     versionCatalogs {
         create("libs") { from(files("../gradle/libs.versions.toml")) }

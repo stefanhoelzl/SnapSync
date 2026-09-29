@@ -1,5 +1,7 @@
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
+    // The `android` target (`docs/architecture.md`, "Zones inside the core"): the Android app links this module.
+    id("snapsync.android")
     alias(libs.plugins.kotlin.serialization)
 }
 
@@ -37,7 +39,8 @@ plugins {
 // If that code is ever composed into a path an operator did not ask for, it needs tests.
 kotlin {
     jvmToolchain(libs.versions.jdk.get().toInt())
-    // The JVM host (see the module note above). Never linked into a shipped binary.
+    // The JVM host (see the module note above). Never linked into a shipped binary. The `android` target
+    // (`snapsync.android`) is the Android app host's, linked only into the Android rig build.
     jvm()
     iosArm64()
     iosSimulatorArm64()
@@ -89,6 +92,14 @@ kotlin {
             implementation(project(":adapter:ios:app-only"))
             implementation(project(":adapter:ios:ext-safe"))
             // The launch-time adapters the app host's launch reads (`IosLaunchAdapters.kt`, `docs/testing.md`).
+            implementation(project(":test:launch-adapters"))
+        }
+
+        // The Android app host (`AndroidRig.kt`): the Android build's real screen and lifecycle adapters, and the
+        // launch-time adapters' port swap its fixed choice composes through. Linked, like the iOS half, only into a
+        // rig build.
+        androidMain.dependencies {
+            implementation(project(":adapter:android"))
             implementation(project(":test:launch-adapters"))
         }
 

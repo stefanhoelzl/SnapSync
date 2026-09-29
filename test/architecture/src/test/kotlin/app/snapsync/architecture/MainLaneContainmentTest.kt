@@ -68,6 +68,9 @@ class MainLaneContainmentTest {
         // The app shell: injects the lane into the composition (`AppPorts.uiLane`). The ONE shell in the app process
         // that may name the lane.
         "/app/ios/src/iosMain/kotlin/app/snapsync/ios/SnapSyncRoot.kt" to "injects AppPorts.uiLane",
+        // The Android app shell, the same one seat in its process: it injects the lane, and composes on it — the
+        // lifecycle adapter's process observer must be added on the main thread.
+        "/app/android/src/main/kotlin/app/snapsync/android/SnapSyncRoot.kt" to "injects AppPorts.uiLane",
         // The iOS `Lifecycle` adapter: `didBecomeActive` / `willResignActive` are observed on the main queue, where
         // UIKit posts them and where the scene record they write is confined.
         "/adapter/ios/ui/src/iosMain/kotlin/app/snapsync/scene/IosLifecycle.kt" to

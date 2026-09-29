@@ -82,10 +82,10 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `LedgerCountsSource` | `:domain:feature` | `:domain:feature` MutableLedgerCountsSource, ReadingLedgerCountsSource; `:domain:flow` CountingCounts; `:test:feature` CountingSource | yes |
 | `LibraryChangeToken` | `:domain:ports` | `:adapter:generic:mock` Token; `:adapter:ios:app-only` PhotoKitLibraryChangeToken; `:domain:services` Token | no |
 | `LibraryChangeTokenRead` | `:domain:ports` | — | no |
-| `Lifecycle` | `:domain:ports` | `:adapter:ios:ui` IosLifecycle | no |
+| `Lifecycle` | `:domain:ports` | `:adapter:android` AndroidLifecycle; `:adapter:ios:ui` IosLifecycle | no |
 | `Links` | `:domain:ports` | `:adapter:ios:app-only` IosLinks | no |
 | `Listenable` | `:domain:ports` | — | no |
-| `LogSink` | `:domain:ports` | `:adapter:generic:mock` Recording; `:adapter:ios:ext-safe` FileLogSink, PublicNSLogSink | no |
+| `LogSink` | `:domain:ports` | `:adapter:android` LogcatSink; `:adapter:generic:mock` Recording; `:adapter:ios:ext-safe` FileLogSink, PublicNSLogSink | no |
 | `ManifestPublisher` | `:domain:services` | `:domain:services` BackendManifestPublisher; `:test:feature` FakeUploader | yes |
 | `MembershipRead` | `:domain:model` | `:domain:model` Member, NotMember, Unreadable | no |
 | `PhotoAccessStatusSource` | `:domain:ports` | `:adapter:generic:mock` InMemoryPhotoAccess; `:adapter:ios:app-only` PhotoLibraryPermission | yes |
@@ -126,7 +126,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `SystemUi` | `:domain:ports` | `:adapter:ios:app-only` IosSystemUi; `:domain:compose` NoSystemUi | no |
 | `TokenOutcome` | `:domain:model` | `:domain:model` ChallengeStale, Minted, NotAttested, Refused, Unreachable | no |
 | `TransferRecord` | `:domain:services` | `:domain:services` LedgerService, Record | no |
-| `Ui` | `:domain:ports` | `:adapter:ios:ui` IosUi; `:test:rig` RigUi | yes |
+| `Ui` | `:domain:ports` | `:adapter:android` AndroidUi; `:adapter:ios:ui` IosUi; `:test:rig` RigUi | yes |
 | `UiIntent` | `:domain:model` | `:domain:model` CancelJoin, CancelReconfigure, CancelSwitch, ChoosePhotos, ConfirmJoin, ConfirmLeaveDismiss, ConfirmLeaveOpen, ConfirmSwitch, CreateEvent, LeaveEvent, OpenAppStore, OpenReconfigure, OpenSettings, RangeCustom, RangePreset, ReceiveOn, Reconfigure, RenameDismiss, RenameEvent, RenameOpen, RenameStatusConsumed, ReportBugDismiss, ReportBugOpen, RequestPermission, RetryJoin, RetryLoad, SaveToAlbum, SendDiagnostics, ShareInvite, ShareOn | no |
 | `Upload` | `:domain:ports` | `:adapter:generic:mock` NetworkedUpload; `:adapter:ios:app-only` IosUrlSessionUploadPlatform; `:adapter:ios:ext-safe` IosPhotoKitUploadPlatform, PlayedOs, SimulatorUploadJobQueue; `:domain:services` ScriptedUpload | no |
 | `UploadDiscovery` | `:domain:services` | `:domain:feature` RecordingDelegate, SelectionScopedDiscovery; `:domain:services` GalleryDiscovery, Library, Resources, WalkMemo; `:test:feature` FakePlatform, Library | yes |

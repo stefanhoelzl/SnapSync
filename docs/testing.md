@@ -563,6 +563,17 @@ MetricKit (`/device/process-metrics` feeds the real handler). Code: `:test:launc
   create, join, a cycle through the mocked queue, the objects in the mocked backend, all surviving a relaunch (a
   SIGKILL on the phone); an all-mock launch on the simulator; a misspelt file composing nothing.
 
+### The Android emulator host
+
+The Android rig build (`:app:android` under `-Psnapsync.rig=true`) serves the same protocol from inside the app on an
+emulator, reached over `adb forward tcp:18099 tcp:18099` (load `android-emulator`). Its adapter choice is **fixed**, not
+read from a file: every system mocked but the screen and its foreground life, the two Android has real adapters for
+(`AndroidRig.kt` composes it through the same `chosenPorts` a read choice uses). So it refuses `device/adapters*`,
+`device/relaunch` and the upload extension's `/os` verbs (Android has none), and names itself `ANDROID_EMU` in
+`GET /device` — a name, not yet a contract `Host`, since no binding runs there. `scripts/android-smoke` — install,
+launch, `/health`, `GET /device`, an event created and joined over the mocked backend — is the `android-emulator` CI
+job (`android.yml`), on a Linux KVM runner. A build without the property refuses at start: it has no adapters yet.
+
 The client compiles against `model/`, presentation and `feature/`, never `ports/`, `flow/`, `compose/` or
 the host, and `ReadModelImportsTest` confines its `feature/` references to the `readmodel` packages. **That
 compile boundary and that gate are the read-model rule.** Decision record:

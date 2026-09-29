@@ -230,7 +230,7 @@ class RigServer(
      * a wired verb the vocabulary does not name — answers `500` naming it, loudly, without stopping the host.
      */
     private suspend fun ApplicationCall.respondAdvertisement() {
-        val ad = hooks.advertise(currentHost.name)
+        val ad = hooks.advertise(hooks.hostName())
         val status = if (ad.unclassified.isEmpty() && ad.outsideVocabulary.isEmpty()) {
             HttpStatusCode.OK
         } else {

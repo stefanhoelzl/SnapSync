@@ -1,0 +1,59 @@
+name: android
+
+# The Android app on an emulator, on every push (`docs/testing.md`, "The Android emulator host"): the counterpart of
+# `ios.yml`'s simulator jobs, on a Linux KVM runner — no Mac. Today it is the rig build's smoke check
+# (`scripts/android-smoke`: the app composes, the control channel answers, an intent reaches the screen); the Android
+# adapters' port-contract bindings join it as they are written.
+#
+# `./gradlew build` already compiles every module's Android target and the plain app (which refuses at start — it has
+# no Android adapters yet). What only this job does is RUN the app, and put R8 over the whole graph.
+
+on:
+  push:
+    branches: ["**"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android-emulator:
+    name: android-emulator
+    runs-on: ubuntu-26.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 25
+      - uses: gradle/actions/setup-gradle@v5
+      # The rig build (installed below), and R8 over the same graph: the plain release is refused at start, so R8 would
+      # strip nearly everything from it and prove nothing about dexing the app.
+      - run: ./gradlew :app:android:assembleDebug :app:android:assembleRelease -Psnapsync.rig=true
+      # The hosted runner exposes /dev/kvm to root only.
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Smoke check on the emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          # `swangle_indirect`, not the default SwiftShader GLES: the latter segfaults in its JIT on some hosts
+          # (measured on the dev box, emulator 36.1.9 and 37.1.11); the Vulkan path boots on both.
+          emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -gpu swangle_indirect -memory 3072
+          disable-animations: true
+          script: scripts/android-smoke
+      - uses: actions/upload-artifact@v7.0.1
+        if: always()
+        with:
+          name: android-smoke
+          path: app/android/build/outputs/apk/debug/android-smoke-joined.png
+          if-no-files-found: ignore

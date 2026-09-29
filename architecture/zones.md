@@ -8,6 +8,7 @@ not edit — the `:tools:diagrams` freshness test fails on drift; regenerate ins
 ```mermaid
 flowchart LR
   subgraph adapter
+    adapter_android[":adapter:android"]
     adapter_generic_app[":adapter:generic:app"]
     adapter_generic_mock[":adapter:generic:mock"]
     adapter_ios_app_only[":adapter:ios:app-only"]
@@ -32,6 +33,11 @@ flowchart LR
     ui_components[":ui:components"]
     ui_screens[":ui:screens"]
   end
+  adapter_android --> domain_model
+  adapter_android --> domain_ports
+  adapter_android --> domain_presentation
+  adapter_android --> ui_components
+  adapter_android --> ui_screens
   adapter_generic_app --> domain_model
   adapter_generic_app --> domain_ports
   adapter_generic_app --> domain_services

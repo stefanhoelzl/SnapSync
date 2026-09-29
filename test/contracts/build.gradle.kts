@@ -1,5 +1,7 @@
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
+    // The `android` target (`docs/architecture.md`, "Zones inside the core"): the Android app links this module.
+    id("snapsync.android")
 }
 
 // PORT CONTRACTS (`docs/architecture.md`): the contract mechanism and every port contract, as clause
@@ -40,6 +42,10 @@ kotlin {
         // kotlin-test's @Test on JVM comes from a framework artifact the Kotlin plugin attaches to TEST
         // compilations only; the bindings' JVM test tasks run JUnit 4.
         jvmMain.dependencies {
+            implementation(kotlin("test-junit"))
+        }
+        // The same framework artifact for the Android rig build, which links this module's main code.
+        androidMain.dependencies {
             implementation(kotlin("test-junit"))
         }
         commonTest.dependencies {

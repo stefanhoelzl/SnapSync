@@ -7,13 +7,15 @@ import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
 
 /**
  * The allowed targets, declared once (`docs/architecture.md`, "Zones inside the core"): every core zone and
- * every `:ui:*` module compiles for exactly `jvm`, `iosArm64` and `iosSimulatorArm64`, and declares no target list
- * of its own. A module MAY still configure a target this plugin declared (its test runtime, say).
+ * every `:ui:*` module compiles for exactly `jvm`, `iosArm64`, `iosSimulatorArm64` and `android` (the last through
+ * [AndroidTargetPlugin], which the modules outside the core apply on their own), and declares no target list of its
+ * own. A module MAY still configure a target this plugin declared (its test runtime, say).
  *
- * Adding a target — Android, one day — is an edit here and to that law's list, not a change to any other law.
+ * Adding a target is an edit here and to that law's list, not a change to any other law.
  */
 class TargetsPlugin : Plugin<Project> {
     override fun apply(project: Project) {
+        project.pluginManager.apply(AndroidTargetPlugin::class.java)
         project.pluginManager.withPlugin("org.jetbrains.kotlin.multiplatform") {
             val jdk = project.extensions.getByType(VersionCatalogsExtension::class.java)
                 .named("libs").findVersion("jdk").get().requiredVersion.toInt()

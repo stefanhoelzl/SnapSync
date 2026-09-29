@@ -13,6 +13,8 @@ dependencies {
     // the Apple targets' global build services then fail to cast across the two — the failure the root's comment
     // records.
     compileOnly("org.jetbrains.kotlin:kotlin-gradle-plugin:${libs.versions.kotlin.get()}")
+    // compileOnly for the same reason: the Android target is configured through the ONE AGP the root build loaded.
+    compileOnly(libs.android.gradle)
 }
 
 gradlePlugin {
@@ -20,6 +22,10 @@ gradlePlugin {
         register("targets") {
             id = "snapsync.targets"
             implementationClass = "app.snapsync.buildlogic.TargetsPlugin"
+        }
+        register("android") {
+            id = "snapsync.android"
+            implementationClass = "app.snapsync.buildlogic.AndroidTargetPlugin"
         }
     }
 }

@@ -1,19 +1,21 @@
 package app.snapsync.launchadapters
 
 import app.snapsync.compose.DevicePorts
+import app.snapsync.mock.MockDevice
 import app.snapsync.mock.MockedSystem
-import app.snapsync.mock.MockState
 
 /**
- * [real] with each system [launch]'s adapter choice mocks swapped for its mock's face — [root]'s faces, one per port, built on
- * first use like the real adapter each stands in for. A system the adapter choice leaves real hands its real lazy through
+ * [real] with each system [choice] mocks swapped for [device]'s mock of it — [root]'s faces, one per port, built on
+ * first use like the real adapter each stands in for. A system the choice leaves real hands its real lazy through
  * untouched, so its adapter is built exactly when it would have been.
+ *
+ * A launch read from the adapters file composes through this ([LaunchAdapters.Chosen.ports]); so does a build whose
+ * choice is fixed rather than read — the Android rig build, whose platform has no real adapter for most systems yet.
  */
-internal fun chosenPorts(real: DevicePorts.Lazies, launch: LaunchAdapters.Chosen, root: AdapterProcess): DevicePorts {
-    val device = launch.device
+fun chosenPorts(real: DevicePorts.Lazies, choice: AdapterChoice, device: MockDevice, root: AdapterProcess): DevicePorts {
     val app = root == AdapterProcess.APP
     fun <T> pick(system: MockedSystem, real: Lazy<T>, mock: () -> T): Lazy<T> =
-        if (launch.choice.isMocked(system)) lazy(mock) else real
+        if (choice.isMocked(system)) lazy(mock) else real
     return DevicePorts(
         clock = pick(MockedSystem.CLOCK, real.clock) { device.clock.port() },
         // The extension reports to a channel nobody observes — the one the JVM root gives it too.

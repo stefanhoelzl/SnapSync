@@ -9,11 +9,13 @@ Do not edit — the `:tools:diagrams` freshness test fails on drift; regenerate 
 
 ```mermaid
 flowchart LR
+  adapter_android[":adapter:android"]
   adapter_generic_app[":adapter:generic:app"]
   adapter_generic_mock[":adapter:generic:mock"]
   adapter_ios_app_only[":adapter:ios:app-only"]
   adapter_ios_ext_safe[":adapter:ios:ext-safe"]
   adapter_ios_ui[":adapter:ios:ui"]
+  app_android[":app:android"]
   app_desktop[":app:desktop"]
   app_ios[":app:ios"]
   app_ios_extension[":app:ios:extension"]
@@ -38,6 +40,11 @@ flowchart LR
   tools_diagrams[":tools:diagrams"]
   ui_components[":ui:components"]
   ui_screens[":ui:screens"]
+  adapter_android --> domain_model
+  adapter_android --> domain_ports
+  adapter_android --> domain_presentation
+  adapter_android --> ui_components
+  adapter_android --> ui_screens
   adapter_generic_app --> domain_model
   adapter_generic_app --> domain_ports
   adapter_generic_app --> domain_services
@@ -69,6 +76,15 @@ flowchart LR
   adapter_ios_ui --> domain_presentation
   adapter_ios_ui --> ui_components
   adapter_ios_ui --> ui_screens
+  app_android --> adapter_android
+  app_android --> adapter_generic_app
+  app_android --> domain_compose
+  app_android --> domain_feature
+  app_android --> domain_host
+  app_android --> domain_model
+  app_android --> domain_ports
+  app_android --> domain_presentation
+  app_android --> domain_services
   app_desktop --> adapter_generic_app
   app_desktop --> app_jvm
   app_desktop --> domain_feature
@@ -156,6 +172,7 @@ flowchart LR
   test_launch_adapters --> domain_compose
   test_launch_adapters --> domain_model
   test_launch_adapters --> domain_ports
+  test_rig --> adapter_android
   test_rig --> adapter_generic_mock
   test_rig --> adapter_ios_app_only
   test_rig --> adapter_ios_ext_safe
