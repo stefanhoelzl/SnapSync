@@ -398,6 +398,35 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadService>("Do
             assertEquals(0, s.counts().stillArriving, "and it leaves the denominator, so the screen can still complete")
         }
 
+        /**
+         * The joined screen's received count is THIS membership's (capability `sync-status`). An imported row
+         * outlives its event — it is the suppression handle — so an unscoped count read every foreign photo the
+         * device ever imported as received for whatever event came next (measured on a device: "2418 received"
+         * for an event whose union was empty).
+         */
+        clause("event-scoped counts see only that event's union", DownloadStoreState.EMPTY) { s ->
+            val earlier = AssetRef("DEVICE-B", AssetId("ASSET-OLD"))
+            val earlierResources = listOf(PlannedResource("ASSET-OLD-primary.heic", "https://e/old", "primary", "image/heic", "OLD.HEIC"))
+            s.planAll(listOf(PlannedAsset(earlier, "2026-06-01T10:00:00Z", earlierResources)), eventId = "EVENT-1", members = listOf(earlier))
+            s.markStaged(earlier, "ASSET-OLD-primary.heic", "/stage/old")
+            s.markImported(earlier, AssetId("LOCAL-OLD"))
+            assertEquals(1, s.counts("EVENT-1").imported)
+
+            // The next event's union holds none of it.
+            s.planAll(listOf(PlannedAsset(ref, "2026-06-30T10:00:00Z", resources())), eventId = "EVENT-2", members = listOf(ref))
+            val next = s.counts("EVENT-2")
+            assertEquals(0, next.imported, "the earlier event's photo is not received for this one")
+            assertEquals(1, next.stillArriving, "only this event's photo is there to receive")
+            assertEquals(setOf(AssetId("LOCAL-OLD")), s.suppressedLocalIds(), "the earlier row is kept as a handle")
+            assertEquals(2, s.counts().stillArriving, "the device-wide census still sees both")
+
+            // A photo that reappears in a later union counts for that event from then on.
+            s.planAll(emptyList(), eventId = "EVENT-2", members = listOf(ref, earlier))
+            assertEquals(1, s.counts("EVENT-2").imported)
+            assertEquals(2, s.counts("EVENT-2").stillArriving)
+            assertEquals(0, s.counts("EVENT-1").stillArriving, "the tag moved with it")
+        }
+
         /** The guard: a row that already settled one way must not be re-settled another. */
         clause("settling an already terminal row applies nothing", DownloadStoreState.EMPTY) { s ->
             s.plan(ref, "2026-06-30T10:00:00Z", resources())
