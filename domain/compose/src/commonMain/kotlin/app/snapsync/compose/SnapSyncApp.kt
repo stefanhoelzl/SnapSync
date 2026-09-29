@@ -400,9 +400,10 @@ class AppCore internal constructor(
         LedgerBackedSyncStatusSource(ledgerCounts, galleryAccess, gallery.admitted, scope)
     }
 
-    // Download progress for the joined-layer "downloaded X of Y" line (capability `receiving-photos`).
+    // Download progress for the joined screen's received count and download arrow, scoped to the joined event
+    // (capabilities `receiving-photos`, `sync-status`).
     val downloadStatusSource: StoreDownloadStatusSource by lazy {
-        StoreDownloadStatusSource(ports.downloadStore)
+        StoreDownloadStatusSource(ports.downloadStore, currentEvent = { ports.config.config.value?.eventId })
     }
     val downloadStatus: DownloadStatusSource get() = downloadStatusSource
 

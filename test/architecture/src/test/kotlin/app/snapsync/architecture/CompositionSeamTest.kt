@@ -153,6 +153,9 @@ class CompositionSeamTest {
         "DownloadController.eventAlbum" to
             "the current membership's event album — the album feature's AlbumCoordinator.albumIdFor over the " +
             "ConfigService, a sibling feature this one may not name; read from the in-process map, nothing leaves",
+        "StoreDownloadStatusSource.currentEvent" to
+            "the joined membership's event id, read in compose/ off the ConfigService the composition already " +
+            "holds, so the received count is scoped to it (capability `sync-status`) — null with no membership",
         "JoinEvent.provision" to
             "runs the provision the composition owns (the Provision flow under its entry label, then the album " +
             "gather start) — core machinery the join use-case may not name",

@@ -12,6 +12,12 @@ CREATE TABLE downloadAsset (
     state          TEXT AS DownloadState NOT NULL,
     creationDate   TEXT NOT NULL,
     createdLocalId TEXT AS AssetId,
+    -- The event whose union this row was last seen in (capability `sync-status`): what scopes the joined
+    -- screen's received count to the CURRENT membership. Rows outlive their event on purpose — an imported
+    -- row's `createdLocalId` is the suppression handle that keeps a downloaded photo from being uploaded back —
+    -- so without this the count is every foreign photo the device ever imported. Every reconcile re-tags the
+    -- rows of the union it read; `NULL` is a row no reconcile has tagged since the column was added.
+    eventId        TEXT,
     PRIMARY KEY (sourceDeviceId, sourceAssetId)
 );
 
@@ -40,8 +46,15 @@ CREATE TABLE downloadResource (
 -- --- asset lifecycle ---
 
 upsertAsset:
-INSERT OR IGNORE INTO downloadAsset (sourceDeviceId, sourceAssetId, state, creationDate, createdLocalId)
-VALUES (:sourceDeviceId, :sourceAssetId, :state, :creationDate, NULL);
+INSERT OR IGNORE INTO downloadAsset (sourceDeviceId, sourceAssetId, state, creationDate, createdLocalId, eventId)
+VALUES (:sourceDeviceId, :sourceAssetId, :state, :creationDate, NULL, :eventId);
+
+-- Tag a row as a member of [eventId]'s union — settled rows included, which is the point: an imported photo
+-- of THIS event counts as received here, one imported for an earlier event does not. Writes only a row whose
+-- tag differs, so a reconcile over an unchanged union is a read.
+tagEvent:
+UPDATE downloadAsset SET eventId = :eventId
+WHERE sourceDeviceId = :sourceDeviceId AND sourceAssetId = :sourceAssetId AND eventId IS NOT :eventId;
 
 selectAssetState:
 SELECT state FROM downloadAsset
@@ -162,6 +175,22 @@ WHERE state = 'IMPORTED' AND createdLocalId IS NOT NULL;
 -- database rather than three reads taken at different instants (capability `receiving-photos`; the
 -- `sync-status` group requires each of its members to be internally consistent). SQLite evaluates the
 -- whole SELECT in a single implicit transaction, so the three subqueries cannot disagree with each other.
+-- The same three counts, scoped to ONE event's rows: the joined screen's received count and download arrow
+-- (capability `sync-status`, "The joined screen counts what was shared and received").
+projectionCountsForEvent:
+SELECT
+  (SELECT COUNT(*) FROM downloadAsset WHERE eventId = :eventId AND state = 'IMPORTED') AS imported,
+  (SELECT COUNT(*) FROM downloadAsset WHERE eventId = :eventId AND state != 'UNIMPORTABLE') AS stillArriving,
+  (SELECT COUNT(*) FROM downloadAsset a
+     WHERE a.eventId = :eventId AND a.state NOT IN ('IMPORTED', 'UNIMPORTABLE')
+       AND EXISTS (
+           SELECT 1 FROM downloadResource r
+           WHERE r.sourceDeviceId = a.sourceDeviceId AND r.sourceAssetId = a.sourceAssetId
+             AND r.enqueued = 1 AND r.stagedPath IS NULL
+       )) AS inFlight;
+
+-- The same counts over EVERY event this device has held — the diagnostics' and the reset's census, never
+-- the screen's.
 projectionCounts:
 SELECT
   (SELECT COUNT(*) FROM downloadAsset WHERE state = 'IMPORTED') AS imported,

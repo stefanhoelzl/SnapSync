@@ -98,6 +98,18 @@ exactly that reason — the comment in `JoinedLayer` records it); "others" satis
 The QR stays the hero between heading and status. *Rejected:* event card first with the invite below (A), and
 the QR behind an "Invite others" button (C).
 
+### D10: The received count is scoped to the joined event (found on the SE2 after apply)
+The download store is keyed by source ref alone, and a leave KEEPS imported rows: each one's `createdLocalId` is
+the suppression handle that stops a downloaded photo being uploaded back. So `projectionCounts` — which on `main`
+only drove the download arrow — counted every foreign photo the device had ever imported. Rendered as a number it
+read "2418 received" for an event whose union was empty. Fix: migration 4→5 adds a nullable `eventId` to
+`downloadAsset`; each reconcile tags every foreign ref of the union it read (settled rows included) inside the
+planning transaction (`planAll(…, eventId, members)`), and `StoreDownloadStatusSource` reads `counts(<joined event>)`. The
+unscoped `counts()` stays as the device census (diagnostics, reset). A pre-upgrade row reads as untagged until
+the first reconcile after the upgrade.
+*Rejected:* holding the current union in memory — no migration, but the download side would stay unread (and
+the screen on "Syncing…") until a union read succeeds, i.e. forever while offline.
+
 ## Risks / Trade-offs
 
 - [The `ui` detekt tier's `LongMethod`/`LongParameterList` ceilings may be hit by `JoinedLayer`] → extract the

@@ -83,12 +83,17 @@ class DownloadService(databases: Databases) : SuppressionSource {
      * Every asset and its resources inside ONE transaction — one durable commit for the batch, where a
      * transaction per asset paid one each. Per-asset atomicity is a consequence, not a trade: an asset's row
      * and its resources still land together, because the whole batch does.
+     *
+     * For ONE event's reconcile, pass its [eventId] and [members] — the union's foreign refs, settled ones
+     * included — and every one of those rows is tagged with the event in the same transaction, so the
+     * event-scoped counts ([counts] with an event) never see a planned row that is not yet tagged. A tag moves: a ref seen
+     * again in a later event's union counts for that event from then on.
      */
-    suspend fun planAll(assets: List<PlannedAsset>) {
-        if (assets.isEmpty()) return
+    suspend fun planAll(assets: List<PlannedAsset>, eventId: String? = null, members: Collection<AssetRef> = emptyList()) {
+        if (assets.isEmpty() && (eventId == null || members.isEmpty())) return
         q.transaction {
             assets.forEach { (ref, creationDate, resources) ->
-                q.upsertAsset(ref.sourceDeviceId, ref.sourceAssetId, DownloadState.PENDING, creationDate)
+                q.upsertAsset(ref.sourceDeviceId, ref.sourceAssetId, DownloadState.PENDING, creationDate, eventId)
                 resources.forEach { r ->
                     q.upsertResource(
                         ref.sourceDeviceId, ref.sourceAssetId, r.resourceKey,
@@ -96,6 +101,7 @@ class DownloadService(databases: Databases) : SuppressionSource {
                     )
                 }
             }
+            if (eventId != null) members.forEach { q.tagEvent(eventId, it.sourceDeviceId, it.sourceAssetId) }
         }
     }
 
@@ -215,12 +221,16 @@ class DownloadService(databases: Databases) : SuppressionSource {
      * reads would be equivalent here, but it would put the consistency in the caller's hands, where the next
      * count added could quietly be read outside it.
      */
-    suspend fun counts(): DownloadCounts = q.projectionCounts().executeAsOne().let {
-        DownloadCounts(
-            imported = it.imported.toInt(),
-            stillArriving = it.stillArriving.toInt(),
-            inFlight = it.inFlight.toInt(),
-        )
+    suspend fun counts(eventId: String? = null): DownloadCounts {
+        // Scoped to ONE event's rows for what the joined screen shows (capability `sync-status`): the table keeps
+        // every event's imported rows as suppression handles, so the unscoped read is a census of the device
+        // (diagnostics, reset), never this membership's progress.
+        val row = if (eventId == null) {
+            q.projectionCounts().executeAsOne().let { Triple(it.imported, it.stillArriving, it.inFlight) }
+        } else {
+            q.projectionCountsForEvent(eventId).executeAsOne().let { Triple(it.imported, it.stillArriving, it.inFlight) }
+        }
+        return DownloadCounts(imported = row.first.toInt(), stillArriving = row.second.toInt(), inFlight = row.third.toInt())
     }
 
     /**

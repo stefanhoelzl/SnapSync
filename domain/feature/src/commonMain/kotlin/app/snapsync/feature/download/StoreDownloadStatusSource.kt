@@ -17,7 +17,13 @@ import app.snapsync.feature.download.readmodel.DownloadStatusSource
  * saying so is what stops the download arrow from hiding — and the whole screen from settling — over
  * counts nobody took.
  */
-class StoreDownloadStatusSource(private val store: DownloadService) : DownloadStatusSource {
+class StoreDownloadStatusSource(
+    private val store: DownloadService,
+    // The current membership's event, or `null` with none. The store keeps every past event's imported rows
+    // (they are the suppression handles), so the counts must be scoped to the event on screen (capability
+    // `sync-status`): unscoped, "received" was every foreign photo the device ever imported.
+    private val currentEvent: () -> String?,
+) : DownloadStatusSource {
     private val _progress = MutableStateFlow(DownloadProgress.UNREAD)
     override val progress: StateFlow<DownloadProgress> = _progress.asStateFlow()
 
@@ -37,7 +43,8 @@ class StoreDownloadStatusSource(private val store: DownloadService) : DownloadSt
      * zero — the distinction `DownloadProgress.UNREAD` exists to protect.
      */
     override suspend fun refresh() {
-        val counts = runCatchingCancellable { store.counts() }.getOrNull() ?: return
+        val eventId = currentEvent() ?: return
+        val counts = runCatchingCancellable { store.counts(eventId) }.getOrNull() ?: return
         _progress.value = DownloadProgress(
             downloaded = counts.imported,
             total = counts.stillArriving,

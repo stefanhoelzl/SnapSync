@@ -196,7 +196,9 @@ class DownloadController(
                     PlannedResource(it.key, it.url, it.role, it.contentType, it.originalFilename)
                 })
             }
-            if (plans.isNotEmpty()) store.planAll(plans)
+            // Tag the whole foreign union with this event, settled refs included: an imported photo of THIS event
+            // counts as received on the joined screen, and one imported for an earlier event stops counting.
+            store.planAll(plans, eventId, members = foreign.map { AssetRef(it.deviceId, it.assetId) })
             log.i { "reconcile: ${assets.size} union asset(s), ${plans.size} foreign planned" }
             // Enqueue the not-yet-staged resources to the OS, then mark them in-flight so the status
             // line's download arrow can pulse (superseded once each stages). Idempotent: re-marking an
