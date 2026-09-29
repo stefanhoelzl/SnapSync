@@ -24,7 +24,7 @@
 
 - [x] 4.1 `:test:integration`: assert the joined `UiState`'s `timing` and `counts` in the existing status journeys (counts track shared / received; hidden without access and before the start)
 - [x] 4.2 Review every joined state in the desktop world harness through its levers (the `ui-harness` skill), light and dark
-- [ ] 4.3 Dispatch `screenshots.yml` on the branch, eyeball the `in_sync` raws (light/dark), commit them; `create` and `joining` should come back identical
+- [x] 4.3 Dispatch `screenshots.yml` on the branch, eyeball the `in_sync` raws (light/dark), commit them; `create` and `joining` should come back identical
 
 ## 5. Verify
 
