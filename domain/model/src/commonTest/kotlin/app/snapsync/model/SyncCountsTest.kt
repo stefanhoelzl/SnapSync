@@ -17,7 +17,7 @@ class SyncCountsTest {
     }
 
     @Test
-    fun `counts and timing survive the control channel's wire`() {
+    fun `counts and timing survive the control channel wire`() {
         val counts = SyncCounts(DirectionCount.Off, DirectionCount.Progress(40, 52))
         assertEquals(counts, Json.decodeFromString<SyncCounts>(Json.encodeToString(counts)))
         val timings = listOf(
