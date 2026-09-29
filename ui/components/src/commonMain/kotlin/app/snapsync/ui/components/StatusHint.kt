@@ -9,14 +9,15 @@ import androidx.compose.ui.text.style.TextAlign
 
 /**
  * A quiet, centered secondary hint line (e.g. the create screen's "scan to join" footer). Semantic:
- * the call site passes only the text; the muted treatment and centering are owned here.
+ * the call site passes only the text; the muted treatment and centering are owned here. [isError] states a
+ * failure in the same slot (the create screen's message below Create), in the error colour.
  */
 @Composable
-fun StatusHint(text: String) {
+fun StatusHint(text: String, isError: Boolean = false) {
     Text(
         text = text,
         style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
         textAlign = TextAlign.Center,
         modifier = Modifier.fillMaxWidth(),
     )

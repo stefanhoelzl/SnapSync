@@ -47,8 +47,8 @@ import androidx.compose.foundation.lazy.LazyListState
 // one visible-row count so the band lines up with whatever the columns render.
 
 /** The wheel row geometry: three visible rows keeps the dialog compact under the calendar. */
-private val WheelRowHeight = 38.dp
-private const val WHEEL_VISIBLE_ROWS = 3
+internal val WheelRowHeight = 38.dp
+internal const val WHEEL_VISIBLE_ROWS = 3
 
 /**
  * The time as a pair of **snapping wheels** — hour and minute — in the same recessed well the ±1
@@ -122,7 +122,7 @@ internal fun TimeWheels(
  * The centre reading line: a one-row-tall `surfaceVariant` bar between two `outlineVariant` hairlines.
  */
 @Composable
-private fun SelectionBand() {
+internal fun SelectionBand() {
     val scheme = MaterialTheme.colorScheme
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -201,7 +201,7 @@ private fun WheelColumn(
  * around it: that code moves the list, this reads where the list came to rest.
  */
 @Composable
-private fun rememberCenteredRow(listState: LazyListState, count: Int): Int {
+internal fun rememberCenteredRow(listState: LazyListState, count: Int): Int {
     val rowPx = with(LocalDensity.current) { WheelRowHeight.toPx() }
     val centerIndex by remember {
         derivedStateOf {

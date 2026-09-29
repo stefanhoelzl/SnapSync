@@ -17,11 +17,10 @@ import kotlin.time.Duration.Companion.seconds
 import app.snapsync.model.Layer
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.model.UiState
-import app.snapsync.ui.components.AppErrorBanner
-import app.snapsync.ui.components.appRangeLabel
 import app.snapsync.ui.components.AppEventHeaderHost
 import app.snapsync.ui.components.AppIdentityHeader
-import app.snapsync.ui.components.AppEventDateRangeSection
+import app.snapsync.ui.components.AppEventRangePicker
+import app.snapsync.ui.components.LatestUntil
 import kotlinx.datetime.LocalDateTime
 import app.snapsync.ui.components.AppQuestionHeading
 import app.snapsync.ui.components.AppTextField
@@ -30,8 +29,7 @@ import app.snapsync.ui.components.StatusHero
 import app.snapsync.ui.components.StatusHint
 import app.snapsync.ui.components.StatusIndicator
 
-// Event creation (capability `create-event`): the name/date form, its in-flight state, and the
-// rename failure vocabulary the heading dialog reports.
+// Event creation (capability `create-event`): the name/date form and its in-flight state.
 
 /** The longest event window, in whole days, as the create screen states it. */
 private val EVENT_WINDOW_MAX_DAYS: Long = EVENT_WINDOW_MAX_SECONDS.seconds.inWholeDays
@@ -39,25 +37,20 @@ private val EVENT_WINDOW_MAX_DAYS: Long = EVENT_WINDOW_MAX_SECONDS.seconds.inWho
 /**
  * The create-event landing layer (create-event) — the app's front door for a HOST, brought to the
  * same design language as the join gate. It reads as an invitation being *authored*: the compact host
- * header (the real app mark + "HOST AN EVENT" eyebrow + title + one warm line) leads, then the one
- * question the surface asks — what is it called — with the name field answering it, then the event's
- * date range as a stated-consequence card. Create + the scan hint stay pinned to the bottom.
+ * header leads, then the two questions the surface asks — what is it called, and when is it — with the name
+ * field and the inline range picker answering them. Create + one line under it stay pinned to the bottom.
  *
- * The header is the compact (left-aligned) form so identity costs one line-pair: the short form below —
- * and the transient "creating …" state that replaces it ([CreatingEventScreen]) — stay anchored in the
- * same place, so the surface never jumps between the two.
+ * The name and the range live in the [draft] (only the submitted values cross the container). The range
+ * has NO complete default: the start is preset to when the screen opened and the last day to today, but the
+ * end TIME must be chosen, because a pre-filled window the host never looked at was almost always wrong
+ * and silently bounds every member's photos (capability `photo-sharing`). Create is disabled until
+ * [nextStep] is complete; a line ABOVE Create names the next missing step, and turns into the event's
+ * duration once there is none. The picker cannot produce an inverted or over-long range, so the window
+ * guards in [createEnabled] only restate it.
  *
- * The name and the date range live in the [draft] (only the submitted values cross the container);
- * Create is disabled until the trimmed name is non-empty AND the range satisfies `start < end` AND it is
- * no longer than the backend's event window — which the picker already cannot produce, so the last guard
- * only restates it — and the field caps at 100 characters. A returned failure is therefore a *submission*
- * failure (the server was unreachable or rejected it), not the current input being malformed. It is
- * stated in an [AppErrorBanner] above the action, never as a red field, which would falsely blame the
- * host's typing.
- *
- * The range defaults to **`[now, now + 1 day]`, frozen at first composition** (see [rememberCreateDraft]).
- * A slow typer therefore sets a start a few minutes in the past — harmless, since they are at their own
- * event.
+ * A returned failure is a *submission* failure (the server was unreachable or rejected it), not the current
+ * input being malformed. It replaces the scan hint BELOW Create — never a red field, which would blame the
+ * host's typing, and never a banner that grows the pinned area over the range picker.
  */
 @Composable
 internal fun CreateEventScreen(
@@ -66,22 +59,12 @@ internal fun CreateEventScreen(
     onCreateEvent: (String, LocalDateTime, LocalDateTime) -> Unit,
     cutoff: CutoffFormatter,
 ) {
-    // A returned failure — a scanned-invalid-link (transient) or a creation failure reduced into
-    // `state.error` — is a submission-level condition, not a live field error, so it is banished to a
-    // banner above the action rather than reddening the name field.
-    // ONE banner, ONE value. The reduction already coalesced the two causes — a sticky create failure
-    // and a self-clearing invalid-link error, the transient winning — so the screen renders what it is
-    // given rather than re-deciding the precedence at the render site.
-    val bannerError: String? = state.error
     Column(modifier = Modifier.fillMaxSize()) {
         // Identity, pinned to the top so it holds its place across the form / creating swap.
         AppEventHeaderHost(
             title = "Start an event",
             subtitle = "Everyone's photos, one shared place.",
         )
-        // The form flows directly beneath the header that introduces it (the join gate's top-aligned
-        // grammar), scrolling under the pinned action. Grouping the header with its form reads more
-        // coherently than floating the form in the middle would.
         Column(
             modifier = Modifier
                 .weight(1f)
@@ -89,11 +72,7 @@ internal fun CreateEventScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Column(
-                modifier = Modifier.fillMaxWidth().padding(top = 18.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                AppQuestionHeading("What's it called?")
+            CreateQuestion("What's it called?", Modifier.padding(top = 18.dp)) {
                 AppTextField(
                     value = draft.name,
                     onValueChange = { draft.name = it },
@@ -101,40 +80,73 @@ internal fun CreateEventScreen(
                     maxLength = EVENT_NAME_MAX_LENGTH,
                 )
             }
-            AppEventDateRangeSection(
-                from = draft.from,
-                until = draft.until,
-                rangeLabel = { f, u -> appRangeLabel(f, u) },
-                // The live humanized duration hint (capability `create-event`), e.g. "Event lasts 5 days".
-                durationLabel = { f, u -> "Event lasts ${cutoff.humanizedDuration(f, u)}" },
-                // The truthfulness line: this window is the event's capture-date bound
-                // (capability `photo-sharing`) — stated once, where it is set — and the one limit on it, so
-                // a picker that will not reach further is explained rather than merely stubborn.
-                note = "Only photos taken during this window are shared — the range every guest starts " +
-                    "from. An event can last up to $EVENT_WINDOW_MAX_DAYS days.",
-                latestUntil = cutoff::latestEnd,
-                onRangeChange = { f, u -> draft.from = f; draft.until = u },
-            )
-        }
-        // Action pinned to the bottom.
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            if (bannerError != null) {
-                AppErrorBanner(bannerError)
+            CreateQuestion("When is it?") {
+                AppEventRangePicker(
+                    range = draft.range,
+                    latest = LatestUntil(cutoff::latestEnd),
+                    // The truthfulness line: this window is the event's capture-date bound (capability
+                    // `photo-sharing`) — stated once, where it is set — and the one limit on it.
+                    note = "Only photos taken during this window are shared — the range every guest starts " +
+                        "from. An event can last up to $EVENT_WINDOW_MAX_DAYS days.",
+                    onChange = { draft.range = it },
+                )
             }
-            PrimaryButton(
-                label = "Create event",
-                onClick = { onCreateEvent(draft.name, draft.from, draft.until) },
-                // Disabled while the name is blank OR the range is not `start < end` OR it is longer
-                // than the event window.
-                enabled = draft.name.isNotBlank() && draft.from < draft.until &&
-                    cutoff.fitsEventWindow(draft.from, draft.until),
-            )
-            StatusHint("Or scan a QR code in the Camera app to join one.")
         }
+        CreateActions(state, draft, onCreateEvent, cutoff)
     }
+}
+
+/** One question the form asks, over the control that answers it. */
+@Composable
+private fun CreateQuestion(question: String, modifier: Modifier = Modifier, answer: @Composable () -> Unit) {
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        AppQuestionHeading(question)
+        answer()
+    }
+}
+
+/**
+ * The pinned bottom: what is still missing (or how long the event lasts), Create, and one line under it —
+ * the scan hint, or in its place the failure. A constant height, so nothing here ever covers the picker.
+ */
+@Composable
+private fun CreateActions(
+    state: Layer.CreateEvent,
+    draft: CreateDraft,
+    onCreateEvent: (String, LocalDateTime, LocalDateTime) -> Unit,
+    cutoff: CutoffFormatter,
+) {
+    // ONE value: the reduction already coalesced a sticky create failure and a self-clearing invalid-link
+    // notice, the transient winning, so the screen renders what it is given.
+    val error: String? = state.error
+    val until = draft.range.until
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        StatusHint(nextStepLine(draft.nextStep(), draft.range.from, until, cutoff))
+        PrimaryButton(
+            label = "Create event",
+            onClick = { if (until != null) onCreateEvent(draft.name, draft.range.from, until) },
+            enabled = createEnabled(draft, cutoff),
+        )
+        StatusHint(error ?: "Or scan a QR code in the Camera app to join one.", isError = error != null)
+    }
+}
+
+/** The line above Create: the next missing step, or — once there is none — the event's duration. */
+private fun nextStepLine(step: CreateStep, from: LocalDateTime, until: LocalDateTime?, cutoff: CutoffFormatter) =
+    when (step) {
+        CreateStep.NAME -> "Name the event"
+        CreateStep.END_TIME -> "Pick an end time"
+        CreateStep.COMPLETE -> until?.let { "Event lasts ${cutoff.humanizedDuration(from, it)}" }.orEmpty()
+    }
+
+/**
+ * Create is enabled only for a complete draft. The window checks restate what the picker already cannot
+ * produce (an inverted or over-long range), so a regression there is refused rather than submitted.
+ */
+private fun createEnabled(draft: CreateDraft, cutoff: CutoffFormatter): Boolean {
+    val until = draft.range.until ?: return false
+    return draft.nextStep() == CreateStep.COMPLETE && draft.range.from < until &&
+        cutoff.fitsEventWindow(draft.range.from, until)
 }
 
 /**

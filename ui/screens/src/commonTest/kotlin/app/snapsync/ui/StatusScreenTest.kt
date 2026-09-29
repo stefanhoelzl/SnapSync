@@ -10,6 +10,11 @@ import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.eventStart
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.ComposeUiTest
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.text.AnnotatedString
@@ -29,6 +34,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import app.snapsync.model.GalleryAccess
@@ -158,6 +164,27 @@ private fun fixedCutoff() = CutoffFormatter(
     zone = TimeZone.UTC,
 )
 
+/** The status screen on a create layer, with the wheels snapping instantly so the scene can idle. */
+@Composable
+private fun CreateScreen(state: UiState, cutoff: CutoffFormatter = fixedCutoff(), actions: StatusActions = testActions()) =
+    CompositionLocalProvider(LocalReduceMotion provides true) { TestStatusScreen(state, cutoff = cutoff, actions = actions) }
+
+/** Settle the Until hour wheel by tapping a row next to its reading line (the start's hour, 12). */
+internal fun ComposeUiTest.setUntilHour(row: String) {
+    // The wheels sit below the calendar, under the fold of a test window: scroll the FORM (the wheel's own
+    // closest scroll parent) so the wheel is in view, then tap the row.
+    onNodeWithContentDescription("Until hour", useUnmergedTree = true).performScrollTo()
+    onNode(hasText(row) and hasAnyAncestor(hasContentDescription("Until hour")), useUnmergedTree = true).performClick()
+    waitForIdle()
+}
+
+/** A complete form: [name], the last day Wednesday 8 July, and the end at 13:00. */
+internal fun ComposeUiTest.completeForm(name: String) {
+    onNode(hasSetTextAction()).performTextInput(name)
+    onNodeWithContentDescription("Wednesday 8 July 2026").performClick()
+    setUntilHour("13")
+}
+
 class StatusScreenTest {
 
     // ---- the not-started clock line ----
@@ -212,10 +239,13 @@ class StatusScreenTest {
     }
 
     // ---- create layer ----
+    //
+    // Every create test composes with reduce motion: the range picker's wheels would otherwise animate, and
+    // an animating scene never idles. The fixed clock reads Monday 6 July 2026, 12:00 UTC.
 
     @Test
     fun `create screen shows the name input and the scan-to-join hint`() = runComposeUiTest {
-        setContent { TestStatusScreen(UiState(Layer.CreateEvent()), cutoff = fixedCutoff()) }
+        setContent { CreateScreen(UiState(Layer.CreateEvent())) }
 
         onNodeWithText("Start an event").assertExists()
         onNodeWithText("Or scan a QR code in the Camera app to join one.").assertExists()
@@ -224,145 +254,114 @@ class StatusScreenTest {
     }
 
     @Test
-    fun `invalid deeplink error shows on the create screen`() = runComposeUiTest {
-        setContent {
-            TestStatusScreen(UiState(Layer.CreateEvent(error = "That QR code wasn't valid.")), cutoff = fixedCutoff())
-        }
+    fun `invalid deeplink error shows below Create in place of the scan hint`() = runComposeUiTest {
+        setContent { CreateScreen(UiState(Layer.CreateEvent(error = "That QR code wasn't valid."))) }
         onNodeWithText("That QR code wasn't valid.").assertExists()
+        onNodeWithText("Or scan a QR code in the Camera app to join one.").assertDoesNotExist()
     }
 
     @Test
-    fun `a create failure shows its inline error on the create screen`() = runComposeUiTest {
-        setContent { TestStatusScreen(UiState(Layer.CreateEvent(error = "Couldn't reach the server.")), cutoff = fixedCutoff()) }
+    fun `a create failure shows below Create in place of the scan hint`() = runComposeUiTest {
+        setContent { CreateScreen(UiState(Layer.CreateEvent(error = "Couldn't reach the server."))) }
         onNodeWithText("Couldn't reach the server.").assertExists()
+        onNodeWithText("Or scan a QR code in the Camera app to join one.").assertDoesNotExist()
     }
 
     @Test
-    fun `create is disabled until a name is typed`() = runComposeUiTest {
-        setContent { TestStatusScreen(UiState(Layer.CreateEvent()), cutoff = fixedCutoff()) }
+    fun `the start is preset to now and the last day to today with its time blank`() = runComposeUiTest {
+        setContent { CreateScreen(UiState(Layer.CreateEvent())) }
+        onNodeWithText("6 Jul 2026, 12:00").assertExists()
+        onNodeWithText("6 Jul 2026, pick a time").assertExists()
+        onNodeWithContentDescription("Until hour", useUnmergedTree = true)
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "not set"))
+    }
 
+    @Test
+    fun `the line above Create names the next missing step`() = runComposeUiTest {
+        setContent { CreateScreen(UiState(Layer.CreateEvent())) }
+        onNodeWithText("Name the event").assertExists()
         onNodeWithText("Create event").assertIsNotEnabled()
+
         onNode(hasSetTextAction()).performTextInput("My Party")
+        onNodeWithText("Pick an end time").assertExists()
+        onNodeWithText("Create event").assertIsNotEnabled()
+
+        // Tapping the last day alone does not complete the range.
+        onNodeWithContentDescription("Wednesday 8 July 2026").performClick()
+        onNodeWithText("Pick an end time").assertExists()
+        onNodeWithText("Create event").assertIsNotEnabled()
+
+        setUntilHour("13")
+        onNodeWithText("Event lasts 2 days").assertExists()
         onNodeWithText("Create event").assertIsEnabled()
     }
 
     @Test
-    fun `tapping create submits the typed name`() = runComposeUiTest {
-        var created: String? = null
-        setContent { TestStatusScreen(UiState(Layer.CreateEvent()), cutoff = fixedCutoff(), actions = testActions(onCreateEvent = { n, _, _ -> created = n })) }
-
-        onNode(hasSetTextAction()).performTextInput("My Party")
-        onNodeWithText("Create event").performClick()
-        assertEquals("My Party", created)
-    }
-
-    @Test
-    fun `the create screen shows the date range defaulting to now to now plus 1d with a duration hint`() = runComposeUiTest {
+    fun `tapping create submits the typed name AND the chosen range`() = runComposeUiTest {
+        var created: Triple<String, LocalDateTime, LocalDateTime>? = null
         setContent {
-            TestStatusScreen(UiState(Layer.CreateEvent()), cutoff = fixedCutoff())
+            CreateScreen(UiState(Layer.CreateEvent()), actions = testActions(onCreateEvent = { n, f, u -> created = Triple(n, f, u) }))
         }
-        // now = 6 Jul 12:00 (UTC) → default window [6 Jul 12:00, 7 Jul 12:00], the compact adaptive label.
-        onNodeWithText("6 Jul 12:00 – 7 Jul 12:00").assertExists()
-        onNodeWithText("Event lasts 1 day").assertExists()
-        onNodeWithContentDescription("Edit event dates").assertExists()
-    }
-
-    @Test
-    fun `tapping create submits the typed name AND the chosen date range`() = runComposeUiTest {
-        var createdName: String? = null
-        var createdFrom: LocalDateTime? = null
-        var createdUntil: LocalDateTime? = null
-        setContent {
-            TestStatusScreen(
-                UiState(Layer.CreateEvent()),
-                cutoff = fixedCutoff(),
-                actions = testActions(
-                    onCreateEvent = { n, f, u -> createdName = n; createdFrom = f; createdUntil = u },
-                )
-            )
-        }
-        onNode(hasSetTextAction()).performTextInput("My Party")
+        completeForm("My Party")
         onNodeWithText("Create event").performClick()
 
-        assertEquals("My Party", createdName)
-        // The default window is [now, now + 1 day] as LOCAL wall-clock values. The container converts each;
-        // the screen never touches a clock, a timezone, or a cutoff string.
-        assertEquals(LocalDateTime(2026, 7, 6, 12, 0), createdFrom)
-        assertEquals(LocalDateTime(2026, 7, 7, 12, 0), createdUntil)
+        // LOCAL wall-clock values; the container converts each, the screen never touches a cutoff string.
+        assertEquals(Triple("My Party", LocalDateTime(2026, 7, 6, 12, 0), LocalDateTime(2026, 7, 8, 13, 0)), created)
     }
 
     @Test
-    fun `the range default is frozen at first composition and not re-derived at submit`() = runComposeUiTest {
-        // The label is the screen's whole statement about what will be sent. A range that silently drifted
+    fun `the start is frozen at first composition and not re-derived at submit`() = runComposeUiTest {
+        // The summary is the screen's statement about what will be sent. A start that silently drifted
         // between being displayed and being posted would make the screen lie.
         val clock = MovableClock(Instant.parse("2026-07-06T12:00:00Z"))
         var createdFrom: LocalDateTime? = null
         setContent {
-            TestStatusScreen(
+            CreateScreen(
                 UiState(Layer.CreateEvent()),
                 cutoff = CutoffFormatter(now = clock::now, zone = TimeZone.UTC),
-                actions = testActions(
-                    onCreateEvent = { _, f, _ -> createdFrom = f },
-                )
+                actions = testActions(onCreateEvent = { _, f, _ -> createdFrom = f }),
             )
         }
-        onNodeWithText("6 Jul 12:00 – 7 Jul 12:00").assertExists()
-
         // Ten minutes pass while the user types.
         clock.instant = Instant.parse("2026-07-06T12:10:00Z")
-        onNode(hasSetTextAction()).performTextInput("My Party")
+        completeForm("My Party")
         onNodeWithText("Create event").performClick()
 
-        // The label said 12:00 and 12:00 is what was sent — NOT the instant Create was tapped.
-        onNodeWithText("6 Jul 12:00 – 7 Jul 12:00").assertExists()
+        onNodeWithText("6 Jul 2026, 12:00").assertExists()
         assertEquals(LocalDateTime(2026, 7, 6, 12, 0), createdFrom)
     }
 
     @Test
-    fun `the edit affordance opens ONE range dialog showing the calendar and both time wheels together`() = runComposeUiTest {
-        // The picker is a single dialog: a hand-drawn month calendar AND both HH:MM time-wheel pairs (From
-        // and Until) visible at once. One OK commits the whole span.
-        //
-        // Reduce motion is REQUIRED: the picker's time wheels animate on open (a LazyColumn settle), and an
-        // animating scene never reaches idle — without this flag `waitForIdle` stalls for ~16 min.
+    fun `the preset start is cut to the minute it shows`() = runComposeUiTest {
+        // Seconds the host cannot see must not make the created start differ from the shown one.
+        var createdFrom: LocalDateTime? = null
         setContent {
-            CompositionLocalProvider(LocalReduceMotion provides true) { TestStatusScreen(UiState(Layer.CreateEvent()), cutoff = fixedCutoff()) }
+            CreateScreen(
+                UiState(Layer.CreateEvent()),
+                cutoff = CutoffFormatter(now = { Instant.parse("2026-07-06T12:00:37Z") }, zone = TimeZone.UTC),
+                actions = testActions(onCreateEvent = { _, f, _ -> createdFrom = f }),
+            )
         }
-        onNodeWithText("Date & time").assertDoesNotExist() // no dialog yet
+        completeForm("My Party")
+        onNodeWithText("Create event").performClick()
+        assertEquals(LocalDateTime(2026, 7, 6, 12, 0), createdFrom)
+    }
 
-        onNodeWithContentDescription("Edit event dates").performClick()
-
-        onNodeWithText("Date & time").assertExists()
-        onNodeWithText("OK").assertExists()
-        onNodeWithText("Cancel").assertExists()
-        // Calendar pane present (the visible month) AND both time panes present (all four wheels).
+    @Test
+    fun `all four time wheels are on the screen with the calendar`() = runComposeUiTest {
+        setContent { CreateScreen(UiState(Layer.CreateEvent())) }
         onNodeWithText("July 2026").assertExists()
-        onNodeWithContentDescription("From hour", useUnmergedTree = true).assertExists()
-        onNodeWithContentDescription("From minute", useUnmergedTree = true).assertExists()
+        onNodeWithContentDescription("From hour", useUnmergedTree = true)
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "12"))
+        onNodeWithContentDescription("From minute", useUnmergedTree = true)
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "00"))
         onNodeWithContentDescription("Until hour", useUnmergedTree = true).assertExists()
         onNodeWithContentDescription("Until minute", useUnmergedTree = true).assertExists()
     }
 
     @Test
-    fun `the range picker time wheels expose the current window bounds`() = runComposeUiTest {
-        // The default window is [6 Jul 12:00, 7 Jul 12:00], so both wheel pairs open on 12 and 00. Reduce
-        // motion is required so the wheels snap (an animating scene never idles — see the dialog test above).
-        setContent {
-            CompositionLocalProvider(LocalReduceMotion provides true) { TestStatusScreen(UiState(Layer.CreateEvent()), cutoff = fixedCutoff()) }
-        }
-        onNodeWithContentDescription("Edit event dates").performClick()
-
-        onNodeWithContentDescription("From hour", useUnmergedTree = true)
-            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "12"))
-        onNodeWithContentDescription("Until hour", useUnmergedTree = true)
-            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "12"))
-        onNodeWithContentDescription("From minute", useUnmergedTree = true)
-            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "00"))
-    }
-
-    @Test
     fun `the name field caps at 100 characters`() = runComposeUiTest {
-        setContent { TestStatusScreen(UiState(Layer.CreateEvent()), cutoff = fixedCutoff()) }
+        setContent { CreateScreen(UiState(Layer.CreateEvent())) }
 
         val field = onNode(hasSetTextAction())
         field.performTextInput("a".repeat(100))
@@ -373,7 +372,7 @@ class StatusScreenTest {
 
     @Test
     fun `create layer shows no sync line and no leave and no invite`() = runComposeUiTest {
-        setContent { TestStatusScreen(UiState(Layer.CreateEvent()), cutoff = fixedCutoff()) }
+        setContent { CreateScreen(UiState(Layer.CreateEvent())) }
 
         onNodeWithText("In sync").assertDoesNotExist()
         onNodeWithText("Synchronization", substring = true).assertDoesNotExist()
@@ -385,18 +384,18 @@ class StatusScreenTest {
     fun `a failed create brings back the name and range the host entered and Create retries with them`() = runComposeUiTest {
         // Capability `create-event`, "A failed create keeps what the host entered". The form is replaced by
         // the in-flight screen while the create runs; its draft must outlive that swap. The clock moves
-        // during the create, so a draft rebuilt from scratch would show a DIFFERENT default range.
+        // during the create, so a draft rebuilt from scratch would show a DIFFERENT start and no end.
         val clock = MovableClock(Instant.parse("2026-07-06T12:00:00Z"))
         val state = mutableStateOf(UiState(Layer.CreateEvent()))
         val submitted = mutableListOf<Triple<String, LocalDateTime, LocalDateTime>>()
         setContent {
-            TestStatusScreen(
+            CreateScreen(
                 state.value,
                 cutoff = CutoffFormatter(now = clock::now, zone = TimeZone.UTC),
                 actions = testActions(onCreateEvent = { n, f, u -> submitted += Triple(n, f, u) }),
             )
         }
-        onNode(hasSetTextAction()).performTextInput("My Party")
+        completeForm("My Party")
         onNodeWithText("Create event").performClick()
 
         state.value = UiState(Layer.CreatingEvent)
@@ -407,7 +406,8 @@ class StatusScreenTest {
 
         onNodeWithText("Couldn't reach the server.").assertExists()
         assertEquals("My Party", onNode(hasSetTextAction()).fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
-        onNodeWithText("6 Jul 12:00 – 7 Jul 12:00").assertExists()
+        onNodeWithText("6 Jul 2026, 12:00").assertExists()
+        onNodeWithText("8 Jul 2026, 13:00").assertExists()
         onNodeWithText("Create event").assertIsEnabled().performClick()
         assertEquals(2, submitted.size)
         assertEquals(submitted[0], submitted[1], "the retry submits exactly what the failed attempt did")
@@ -415,13 +415,12 @@ class StatusScreenTest {
 
     @Test
     fun `leaving the create flow drops the draft so a later visit starts afresh`() = runComposeUiTest {
-        // The draft belongs to ONE visit: a host who created, joined and later left meets an empty name and a
-        // newly frozen default, as "the default range is now until tomorrow, frozen when the screen opened"
-        // requires.
+        // The draft belongs to ONE visit: a host who created, joined and later left meets an empty name, a
+        // newly frozen start and a blank end time.
         val clock = MovableClock(Instant.parse("2026-07-06T12:00:00Z"))
         val state = mutableStateOf(UiState(Layer.CreateEvent()))
-        setContent { TestStatusScreen(state.value, cutoff = CutoffFormatter(now = clock::now, zone = TimeZone.UTC)) }
-        onNode(hasSetTextAction()).performTextInput("My Party")
+        setContent { CreateScreen(state.value, cutoff = CutoffFormatter(now = clock::now, zone = TimeZone.UTC)) }
+        completeForm("My Party")
 
         state.value = inSync
         waitForIdle()
@@ -430,28 +429,36 @@ class StatusScreenTest {
         waitForIdle()
 
         assertEquals("", onNode(hasSetTextAction()).fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
-        onNodeWithText("9 Jul 08:30 – 10 Jul 08:30").assertExists()
+        onNodeWithText("9 Jul 2026, 08:30").assertExists()
+        onNodeWithText("9 Jul 2026, pick a time").assertExists()
     }
 
     @Test
     fun `the create screen states the longest range an event can have`() = runComposeUiTest {
-        setContent { TestStatusScreen(UiState(Layer.CreateEvent()), cutoff = fixedCutoff()) }
+        setContent { CreateScreen(UiState(Layer.CreateEvent())) }
         onNodeWithText("An event can last up to 30 days", substring = true).assertExists()
     }
 
     @Test
-    fun `the create range picker cannot reach past 30 days from the start`() = runComposeUiTest {
-        // Capability `create-event`, "A range longer than 30 days cannot be chosen". Reduce motion: see the
-        // dialog test above.
+    fun `a same-day event needs only the end time`() = runComposeUiTest {
+        var created: Triple<String, LocalDateTime, LocalDateTime>? = null
         setContent {
-            CompositionLocalProvider(LocalReduceMotion provides true) { TestStatusScreen(UiState(Layer.CreateEvent()), cutoff = fixedCutoff()) }
+            CreateScreen(UiState(Layer.CreateEvent()), actions = testActions(onCreateEvent = { n, f, u -> created = Triple(n, f, u) }))
         }
-        onNodeWithContentDescription("Edit event dates").performClick()
-        // The default range is complete, so this tap starts a new span on 1 July 12:00 and the END is picked.
-        onNodeWithContentDescription("Wednesday 1 July 2026").performClick()
-        onNodeWithContentDescription("Friday 31 July 2026").assertIsEnabled() // 30 days on
+        onNode(hasSetTextAction()).performTextInput("Dinner")
+        setUntilHour("13")
+        onNodeWithText("Event lasts 1 hour").assertExists()
+        onNodeWithText("Create event").performClick()
+        assertEquals(Triple("Dinner", LocalDateTime(2026, 7, 6, 12, 0), LocalDateTime(2026, 7, 6, 13, 0)), created)
+    }
+
+    @Test
+    fun `the last day cannot be picked past 30 days from the start`() = runComposeUiTest {
+        // Capability `create-event`, "A range longer than 30 days cannot be chosen".
+        setContent { CreateScreen(UiState(Layer.CreateEvent())) }
         onNodeWithContentDescription("Next month").performClick()
-        onNodeWithContentDescription("Saturday 1 August 2026").assertIsNotEnabled() // 31 days on
+        onNodeWithContentDescription("Wednesday 5 August 2026").assertIsEnabled()  // 30 days on
+        onNodeWithContentDescription("Thursday 6 August 2026").assertIsNotEnabled() // 31 days on
     }
 
     @Test
