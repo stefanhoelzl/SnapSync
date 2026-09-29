@@ -26,7 +26,9 @@ from the adapters file (`rig-channel`'s `device/adapters*`, as on the iOS app ho
   you create is a 1970 one.
 - **A file** may make real only what Android has a real adapter for — today `screen`, `lifecycle`, `clock`, `files`,
   `databases`, `preferences`, `keychain` (the Keystore-sealed secure store), `integrity` (Keystore key attestation),
-  `backend` (the real api over OkHttp) and `links` (the activity's VIEW intents; `/os` link verbs then deliver through it). Every other system must be named `mock`: an omitted system reads as `real`,
+  `backend` (the real api over OkHttp), `links` (the activity's VIEW intents; `/os` link verbs then deliver through it),
+  `library` (MediaStore — `DCIM` is the member's default gallery), `system-ui`, `wake`, `background-time` and
+  `upload-session` (WorkManager, and in-process uploads). Every other system must be named `mock`: an omitted system reads as `real`,
   and a choice leaving one real is refused. Write it while not joined; the app exits, and you start it again
   (`am start`). A file-chosen launch saves its mocks' state, so it survives a force-stop.
 
@@ -59,7 +61,13 @@ adb shell run-as app.snapsync find files databases -type f   # the real stores (
 ```
 
 A build **without** the property compiles, links and **refuses at start** (`app/android/src/prod`): Android has no
-adapters for the gallery, the uploads, the downloads or push yet. Do not "fix" that by composing mocks into it —
+adapters for the downloads, push or the crash reporter yet.
+
+**Seeding a real library:** `POST /device/gallery/seed?n=&kind=` inserts the app's OWN photos into `DCIM/Camera` (same
+kinds as iOS). Never `adb push` a photo to test with: MediaStore hides a shell-owned photo from every other app, so
+the app never sees it (measured 2026-09-29). A shell write does still fire the library-change wake, which is how to
+cold-start the process through WorkManager. The emulator's AOSP camera saves to `Pictures/` (outside `DCIM`) and
+writes no location. Do not "fix" that by composing mocks into it —
 `MockContainmentTest` fails the build.
 
 ## One-time setup (already done on this box — check before redoing)
@@ -138,8 +146,8 @@ Every module with a `commonTest` runs it on ART too, as `ios-test` runs it on th
 declares the device test). With the emulator up:
 
 ```bash
-./gradlew connectedAndroidDeviceTest --continue          # all modules, ~7 min cold
-./gradlew :domain:model:connectedAndroidDeviceTest       # one module
+ADB=$ANDROID_HOME/platform-tools/adb scripts/android-device-tests   # all modules, as CI does (serves the transfer fixture)
+./gradlew :domain:model:connectedAndroidDeviceTest                  # one module that needs no fixture
 # reports: <module>/build/reports/androidTests/connected/
 ```
 

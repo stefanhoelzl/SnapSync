@@ -22,7 +22,7 @@ internal fun platformAdapters(root: SnapSyncRoot, real: DevicePorts): PlatformAd
         devControls = launch.controls,
         ui = lazyOf(launch.ui),
         ports = launch.ports,
-        appDrivenUpload = { launch.appDrivenUpload },
+        appDrivenUpload = launch::appDrivenUpload,
         bootLines = launch.bootLines,
         afterLaunch = {
             launch.start(
@@ -30,7 +30,7 @@ internal fun platformAdapters(root: SnapSyncRoot, real: DevicePorts): PlatformAd
                 host = { root.host },
                 lifecycle = root.lifecycle,
                 links = root.links,
-                filesDir = root.application.filesDir,
+                context = root.application,
             )
         },
     )

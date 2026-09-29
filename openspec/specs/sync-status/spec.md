@@ -63,16 +63,16 @@ access SHALL NOT count as missing access (capability `photo-access`).
 ### Requirement: The missing-access line is the one line the member can act on
 
 When photo access is missing, the status line SHALL be a tappable attention line: tapping it SHALL
-raise iOS's access dialog if access was never decided, and SHALL open the app's page in iOS Settings if
-it was refused (capability `photo-access`). It SHALL be the only tappable status line.
+raise the system's access dialog if access was never decided, and SHALL open the app's page in the phone's
+Settings if it was refused (capability `photo-access`). It SHALL be the only tappable status line.
 
 #### Scenario: Never asked
 - **WHEN** access was never decided and the member taps the line
-- **THEN** iOS's photo-access dialog appears
+- **THEN** the system's photo-access dialog appears
 
 #### Scenario: Previously refused
 - **WHEN** access was refused and the member taps the line
-- **THEN** the app's page in iOS Settings opens
+- **THEN** the app's page in the phone's Settings opens
 
 ### Requirement: A not-yet-started event says when it starts
 

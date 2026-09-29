@@ -18,8 +18,8 @@ internal class PlatformAdapters(
     val ui: Lazy<Ui>,
     /** The ports this launch composes over. */
     val ports: DevicePorts,
-    /** The app uploader's mechanism. */
-    val appDrivenUpload: () -> AppUploadMechanism,
+    /** The app uploader's mechanism: the real one [build]s, or the build's substitute for it. */
+    val appDrivenUpload: (build: () -> AppUploadMechanism) -> AppUploadMechanism,
     /** What this build adds to the process's boot banner. */
     val bootLines: List<String>,
     /** What this build starts once the root has composed — the control channel, on a rig build. */

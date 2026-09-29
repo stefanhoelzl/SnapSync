@@ -1,0 +1,32 @@
+package app.snapsync.android.gallery
+
+import kotlin.test.Test
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+
+/** The member's default gallery on Android: `DCIM` and every folder under it, matched as SQLite's `LIKE` matches. */
+class DefaultGalleryTest {
+
+    @Test
+    fun `DCIM and every folder under it are the default gallery`() {
+        assertTrue(DefaultGallery.contains("DCIM/Camera/"))
+        assertTrue(DefaultGallery.contains("DCIM/100ANDRO/"))
+        assertTrue(DefaultGallery.contains("DCIM/OpenCamera/2026/"))
+        assertTrue(DefaultGallery.contains("DCIM/"))
+    }
+
+    @Test
+    fun `case does not matter as it does not to LIKE`() {
+        assertTrue(DefaultGallery.contains("dcim/camera/"))
+    }
+
+    @Test
+    fun `anything outside DCIM is not`() {
+        assertFalse(DefaultGallery.contains("Pictures/Screenshots/"))
+        assertFalse(DefaultGallery.contains("Pictures/WhatsApp/"))
+        assertFalse(DefaultGallery.contains("Download/"))
+        assertFalse(DefaultGallery.contains("DCIMX/"))
+        assertFalse(DefaultGallery.contains(""))
+        assertFalse(DefaultGallery.contains(null))
+    }
+}

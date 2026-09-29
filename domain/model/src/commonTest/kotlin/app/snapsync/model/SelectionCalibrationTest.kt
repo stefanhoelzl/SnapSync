@@ -19,6 +19,15 @@ class SelectionCalibrationTest {
     }
 
     @Test
+    fun the_phones_screenshot_and_screen_recording_folders_are_denylisted() {
+        // Android files them into these DCIM subfolders, and marks neither kind on the asset.
+        assertTrue(SELECTION_CALIBRATION.isDenylistedAlbum("Screenshots"))
+        assertTrue(SELECTION_CALIBRATION.isDenylistedAlbum("Screen recordings"))
+        assertTrue(SELECTION_CALIBRATION.isDenylistedAlbum("ScreenRecorder"))
+        assertFalse(SELECTION_CALIBRATION.isDenylistedAlbum("Camera"))
+    }
+
+    @Test
     fun matching_is_case_insensitive() {
         assertTrue(SELECTION_CALIBRATION.isDenylistedAlbum("whatsapp"))
         assertTrue(SELECTION_CALIBRATION.isDenylistedAlbum("WHATSAPP"))

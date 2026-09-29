@@ -31,15 +31,20 @@ import kotlin.time.Duration.Companion.seconds
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class) // runCurrent on the test scheduler
 class TailRunnerTest {
 
-    /** Counts the heartbeat wakes the runner's re-arm requests, through the real heartbeat service. */
-    private class Scheduler {
+    /**
+     * Counts the heartbeat wakes the runner's re-arm requests, and the library watches it renews, through the real
+     * heartbeat service. By default the platform has no library-change wake — iOS; [watchesLibrary] is Android.
+     */
+    private class Scheduler(private val watchesLibrary: Boolean = false) {
         var scheduled = 0
+        var watched = 0
         val heartbeat = Heartbeat(
             object : Wake {
                 override fun listen(handlers: WakeHandlers) = Unit
-                override fun schedule(id: WakeId, trigger: WakeTrigger): ScheduleResult {
-                    if (id == WakeId.Heartbeat) scheduled++
-                    return ScheduleResult.Scheduled
+                override fun schedule(id: WakeId, trigger: WakeTrigger): ScheduleResult = when (id) {
+                    WakeId.Heartbeat -> ScheduleResult.Scheduled.also { scheduled++ }
+                    WakeId.LibraryChanged ->
+                        if (watchesLibrary) ScheduleResult.Scheduled.also { watched++ } else ScheduleResult.Unsupported
                 }
 
                 override fun cancel(id: WakeId) = Unit
@@ -431,6 +436,47 @@ class TailRunnerTest {
                     else -> 0
                 }
                 assertEquals(expected, scheduler.scheduled, "$trigger after $result")
+            }
+        }
+    }
+
+    @Test
+    fun `where the library is watched the heartbeat re-arms only while work remains`() = runTest {
+        val remainsOnly = setOf(
+            TailTrigger.ARM, TailTrigger.FOREGROUND, TailTrigger.SILENT_PUSH, TailTrigger.SELECTION_CHANGE,
+            TailTrigger.HEARTBEAT, TailTrigger.UPLOAD_SESSION_EVENTS, TailTrigger.DOWNLOAD_SESSION_EVENTS,
+        )
+        for (trigger in TailTrigger.entries) {
+            for (result in CycleResult.all) {
+                val units = Units().apply {
+                    topUp = { result }
+                    walk = { WalkOutcome.Walked(result, addedRows = false) }
+                }
+                val scheduler = Scheduler(watchesLibrary = true)
+                runner(units, scheduler).request(trigger)
+                val workRemains = result == CycleResult.PROCESSING || result is CycleResult.Paused
+                val expected = if (trigger in remainsOnly && workRemains) 1 else 0
+                assertEquals(expected, scheduler.scheduled, "$trigger after $result: a caught-up device keeps no timer")
+            }
+        }
+    }
+
+    @Test
+    fun `every tail of a contributing membership renews the library watch whatever its trigger`() = runTest {
+        for (trigger in TailTrigger.entries.filter { it != TailTrigger.UPLOAD_COMPLETED }) {
+            for (result in CycleResult.all) {
+                val units = Units().apply {
+                    topUp = { result }
+                    walk = { WalkOutcome.Walked(result, addedRows = false) }
+                }
+                val scheduler = Scheduler(watchesLibrary = true)
+                runner(units, scheduler).request(trigger)
+                val expected = if (result == CycleResult.SKIPPED || trigger.scope == TailScope.IMPORT) 0 else 1
+                assertEquals(
+                    expected, scheduler.watched,
+                    "$trigger after $result: a caught-up device must still notice the next photo; a membership " +
+                        "that contributes nothing, or a tail that only imported, renews nothing",
+                )
             }
         }
     }

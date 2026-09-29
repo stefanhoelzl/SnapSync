@@ -40,6 +40,12 @@ data class SelectionCalibration(
      * It is also a heuristic against a moving target: these titles are app-chosen strings with no registry,
      * and an app can rename its album in any release. Adding a title is a one-line change and none of them
      * are load-bearing, so the list is allowed to rot gracefully rather than being defended by machinery.
+     *
+     * **On Android an album is a folder** — a subfolder of `DCIM`, the member's default gallery there — so the same
+     * list also names the folders the phone's own tools file screenshots and screen recordings into (`Screenshots`,
+     * `Screen recordings`, `ScreenRecorder`). Android marks neither kind on the asset, and a screen recording clears
+     * the video floor. iOS reads only user-created albums, so there these titles match only an album a member named
+     * so — whose contents the screenshot and screen-recording rules mostly exclude already.
      */
     val denylistTitles: Set<String>,
 ) {
@@ -78,5 +84,9 @@ val SELECTION_CALIBRATION: SelectionCalibration = SelectionCalibration(
         "X",
         "Pinterest",
         "Reddit",
+        // The phone's own screenshot and screen-recording folders (Android: a DCIM subfolder is an album)
+        "Screenshots",
+        "Screen recordings",
+        "ScreenRecorder",
     ),
 )

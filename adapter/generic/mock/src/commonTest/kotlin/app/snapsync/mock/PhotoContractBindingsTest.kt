@@ -63,12 +63,16 @@ class PhotoContractBindingsTest {
             GalleryReaderState.NO_GRANT,
             GalleryReaderState.GRANTED_SEEDED,
             GalleryReaderState.GRANTED_EMPTY_WINDOW,
+            GalleryReaderState.GRANTED_SEEDED_ALBUMS_WRITABLE,
         )
 
         override fun create(state: GalleryReaderState, clauseId: String): Entered<SeededLibrary<GalleryReader>> {
             val library = when (state) {
-                GalleryReaderState.GRANTED_SEEDED -> seededLibrary(GalleryReaderContract.name, clauseId)
-                else -> MutableStateFlow(emptyList())
+                GalleryReaderState.GRANTED_SEEDED, GalleryReaderState.GRANTED_SEEDED_ALBUMS_WRITABLE ->
+                    seededLibrary(GalleryReaderContract.name, clauseId)
+                GalleryReaderState.GRANTED_SEEDED_IN_A_FOLDER, GalleryReaderState.GRANTED_SEEDED_OUTSIDE_THE_DEFAULT_GALLERY ->
+                    return Entered.Unreachable("the in-memory library has no folders: all of it is the default gallery")
+                GalleryReaderState.NO_GRANT, GalleryReaderState.GRANTED_EMPTY_WINDOW -> MutableStateFlow(emptyList())
             }
             val gallery = inMemoryGallery(library, access(state != GalleryReaderState.NO_GRANT))
             return Entered.Ready(SeededLibrary(gallery, library.value.mapTo(linkedSetOf()) { it.assetId }))

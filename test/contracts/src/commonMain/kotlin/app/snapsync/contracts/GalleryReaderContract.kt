@@ -26,6 +26,24 @@ enum class GalleryReaderState {
 
     /** A full grant, and nothing seeded in the clause's window. */
     GRANTED_EMPTY_WINDOW,
+
+    /**
+     * [GRANTED_SEEDED] on a platform that lets the app create albums and file photos into them (iOS). Android files no
+     * photo into an album — an album there is a folder, and moving a member's photo is not the app's to do.
+     */
+    GRANTED_SEEDED_ALBUMS_WRITABLE,
+
+    /**
+     * A full grant, and [SEED_COUNT] assets seeded in the clause's window inside a folder of the default gallery named
+     * for the clause — on a platform whose albums are folders (Android: a `DCIM` subfolder). iOS has no folders.
+     */
+    GRANTED_SEEDED_IN_A_FOLDER,
+
+    /**
+     * A full grant, and [SEED_COUNT] assets seeded in the clause's window OUTSIDE the member's default gallery — on a
+     * platform whose default gallery is narrower than its library (Android: outside `DCIM`). On iOS the library IS it.
+     */
+    GRANTED_SEEDED_OUTSIDE_THE_DEFAULT_GALLERY,
 }
 
 /**
@@ -134,7 +152,7 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
             assertEquals(GalleryRead.Read(emptyList()), seeded.port.resources(emptySet()))
         }
 
-        clause("A_CREATED_ALBUM_RESOLVES_AND_IS_LISTED", GalleryReaderState.GRANTED_SEEDED) { seeded ->
+        clause("A_CREATED_ALBUM_RESOLVES_AND_IS_LISTED", GalleryReaderState.GRANTED_SEEDED_ALBUMS_WRITABLE) { seeded ->
             val title = title("A_CREATED_ALBUM_RESOLVES_AND_IS_LISTED")
             val id = assertNotNull(seeded.port.createAlbum(title))
             val byId = assertIs<GalleryRead.Read<List<AlbumRecord>>>(seeded.port.albumsById(setOf(id)))
@@ -150,7 +168,7 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
             )
         }
 
-        clause("ADDED_ASSETS_ARE_MEMBERS", GalleryReaderState.GRANTED_SEEDED) { seeded ->
+        clause("ADDED_ASSETS_ARE_MEMBERS", GalleryReaderState.GRANTED_SEEDED_ALBUMS_WRITABLE) { seeded ->
             val clauseId = "ADDED_ASSETS_ARE_MEMBERS"
             val album = assertNotNull(seeded.port.createAlbum(title(clauseId)))
             assertEquals(WriteOutcome.Ok, seeded.port.addToAlbum(album, seeded.ids))
@@ -161,7 +179,7 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
             )
         }
 
-        clause("MEMBERS_CAPTURED_BEFORE_SINCE_ARE_NOT_RETURNED", GalleryReaderState.GRANTED_SEEDED) { seeded ->
+        clause("MEMBERS_CAPTURED_BEFORE_SINCE_ARE_NOT_RETURNED", GalleryReaderState.GRANTED_SEEDED_ALBUMS_WRITABLE) { seeded ->
             val clauseId = "MEMBERS_CAPTURED_BEFORE_SINCE_ARE_NOT_RETURNED"
             val album = assertNotNull(seeded.port.createAlbum(title(clauseId)))
             seeded.port.addToAlbum(album, seeded.ids)
@@ -172,13 +190,13 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
             )
         }
 
-        clause("ADD_TO_A_MISSING_ALBUM_FAILS_AND_CREATES_NOTHING", GalleryReaderState.GRANTED_SEEDED) { seeded ->
+        clause("ADD_TO_A_MISSING_ALBUM_FAILS_AND_CREATES_NOTHING", GalleryReaderState.GRANTED_SEEDED_ALBUMS_WRITABLE) { seeded ->
             val album = absentAlbumId("ADD_TO_A_MISSING_ALBUM_FAILS_AND_CREATES_NOTHING")
             assertIs<WriteOutcome.Failed>(seeded.port.addToAlbum(album, seeded.ids))
             assertEquals(GalleryRead.Read(emptyList()), seeded.port.albumsById(setOf(album)), "adding never creates")
         }
 
-        clause("ADD_OF_A_MISSING_ASSET_IS_SKIPPED", GalleryReaderState.GRANTED_SEEDED) { seeded ->
+        clause("ADD_OF_A_MISSING_ASSET_IS_SKIPPED", GalleryReaderState.GRANTED_SEEDED_ALBUMS_WRITABLE) { seeded ->
             val clauseId = "ADD_OF_A_MISSING_ASSET_IS_SKIPPED"
             val album = assertNotNull(seeded.port.createAlbum(title(clauseId)))
             assertEquals(WriteOutcome.Ok, seeded.port.addToAlbum(album, seeded.ids + absentAssetId(clauseId)))
@@ -187,6 +205,31 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
                 seeded.port.albumMembers(album, captureCutoffOf(window(clauseId).start)),
                 "an asset the library does not hold is skipped, and the ones it holds are still added",
             )
+        }
+
+        clause("A_FOLDER_IS_A_LISTED_ALBUM_OF_ITS_ASSETS", GalleryReaderState.GRANTED_SEEDED_IN_A_FOLDER) { seeded ->
+            val clauseId = "A_FOLDER_IS_A_LISTED_ALBUM_OF_ITS_ASSETS"
+            val listed = assertIs<GalleryRead.Read<List<AlbumRecord>>>(seeded.port.albums())
+            val album = assertNotNull(
+                listed.value.singleOrNull { it.title == title(clauseId) },
+                "the folder is listed once, under its own name: ${listed.value.map { it.title }}",
+            )
+            assertEquals(GalleryRead.Read(listOf(album)), seeded.port.albumsById(setOf(album.id)))
+            assertEquals(
+                GalleryRead.Read(seeded.ids),
+                seeded.port.albumMembers(album.id, captureCutoffOf(window(clauseId).start)),
+                "a folder's album holds exactly the assets in the folder — what the album denylist excludes",
+            )
+        }
+
+        clause("ASSETS_OUTSIDE_THE_DEFAULT_GALLERY_ARE_NOT_READ", GalleryReaderState.GRANTED_SEEDED_OUTSIDE_THE_DEFAULT_GALLERY) { seeded ->
+            val clauseId = "ASSETS_OUTSIDE_THE_DEFAULT_GALLERY_ARE_NOT_READ"
+            assertEquals(SEED_COUNT, seeded.ids.size, "the binding seeded what the state promises")
+            val read = assertIs<GalleryRead.Read<List<AssetFacts>>>(seeded.port.assets(policy(clauseId)))
+            val leaked = read.value.mapTo(mutableSetOf()) { it.assetId } intersect seeded.ids
+            assertTrue(leaked.isEmpty(), "an asset outside the default gallery is never a candidate to share: $leaked")
+            assertEquals(GalleryRead.Read(emptyList()), seeded.port.assetsById(seeded.ids))
+            assertEquals(GalleryRead.Read(emptyList()), seeded.port.resources(seeded.ids))
         }
     }
 

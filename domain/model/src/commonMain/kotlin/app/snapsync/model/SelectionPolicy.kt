@@ -60,6 +60,12 @@ package app.snapsync.model
  * (capability `photo-sharing`, *Selection filter*), but that is an optimization which can
  * neither widen nor narrow the admitted set — [admits] stays authoritative.
  *
+ * What the policy decides OVER is the member's **default gallery**, and that the platform defines: its gallery
+ * adapter returns only assets there — the library (or the partial grant's selection) on iOS, `DCIM` and its
+ * subfolders on Android. That scope is not a rule and not an optimization: an asset outside it is never a
+ * candidate at any consumer, because every consumer reads through the same port. The platform defines the
+ * default gallery; the policy is the one decision over it.
+ *
  * ## One value, one derivation
  *
  * The membership contributes every asset **all** of its [rules] admit.

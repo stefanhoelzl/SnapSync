@@ -71,6 +71,14 @@ class MainLaneContainmentTest {
         // The Android app shell, the same one seat in its process: it injects the lane, and composes on it — the
         // lifecycle adapter's process observer must be added on the main thread.
         "/app/android/src/main/kotlin/app/snapsync/android/SnapSyncRoot.kt" to "injects AppPorts.uiLane",
+        // Android's photo-permission dialog and selection sheet: an activity-result registration and its launch must
+        // happen on the main thread (capability `photo-access`).
+        "/adapter/android/src/androidMain/kotlin/app/snapsync/android/permission/AndroidPhotoPermission.kt" to
+            "launches the permission request through the activity-result registry",
+        // Android's own UI: starts the share chooser, a URL's app, and this app's Settings page from the activity in
+        // front — `startActivity`, named on the main lane so the adapter is correct for any caller.
+        "/adapter/android/src/androidMain/kotlin/app/snapsync/android/systemui/AndroidSystemUi.kt" to
+            "starts the share chooser + ACTION_VIEW",
         // The iOS `Lifecycle` adapter: `didBecomeActive` / `willResignActive` are observed on the main queue, where
         // UIKit posts them and where the scene record they write is confined.
         "/adapter/ios/ui/src/iosMain/kotlin/app/snapsync/scene/IosLifecycle.kt" to
