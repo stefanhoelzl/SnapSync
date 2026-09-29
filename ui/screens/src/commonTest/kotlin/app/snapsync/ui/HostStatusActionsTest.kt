@@ -315,7 +315,8 @@ class HostStatusActionsTest {
     @Test
     fun `create submits the typed name`() = rigTest(rig()) { rig ->
         awaitState(rig) { it.layer is Layer.CreateEvent }
-        onNode(hasSetTextAction()).performTextInput("My Party")
+        // Create is enabled only once the range is complete too (capability `create-event`).
+        completeForm("My Party")
         onNodeWithText("Create event").performClick()
         awaitFired(rig, "create:My Party")
     }
