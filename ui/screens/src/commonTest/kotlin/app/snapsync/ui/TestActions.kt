@@ -1,6 +1,11 @@
 package app.snapsync.ui
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.ime
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.model.UiState
 import app.snapsync.ui.components.RangeChoiceActions
@@ -79,4 +84,18 @@ internal fun testRangeChoiceActions(
 /** The status screen with inert actions unless a test supplies its own. */
 @Composable
 internal fun TestStatusScreen(state: UiState, cutoff: CutoffFormatter, actions: StatusActions = testActions()) =
-    StatusScreen(state = state, cutoff = cutoff, actions = actions)
+    WithoutKeyboardInsets { StatusScreen(state = state, cutoff = cutoff, actions = actions) }
+
+/**
+ * [content] laid out as if no soft keyboard were up — as it is on the JVM and the iOS simulator, which have none.
+ *
+ * On the Android emulator, typing into a field raises the platform keyboard, and the screen's `safeDrawing` padding
+ * shrinks the form's viewport by the keyboard's height — asynchronously, after the typing returns. A test that then
+ * taps a calendar day or a wheel row finds it clipped below the new edge (zero visible bounds) and its click lands on
+ * nothing: measured on API 36, the viewport went from 450–2042 px to 450–1222 px under a day row at 1255 px. Consuming
+ * the keyboard's insets here keeps every screen test on one layout on every target; how the screen makes room for the
+ * keyboard is not what these tests are about.
+ */
+@Composable
+internal fun WithoutKeyboardInsets(content: @Composable () -> Unit) =
+    Box(Modifier.consumeWindowInsets(WindowInsets.ime)) { content() }

@@ -97,6 +97,11 @@ declares the device test). With the emulator up:
   without renaming every test.
 - An ASCII apostrophe in a backtick test name **cannot be dexed at any API level** — write `’` (U+2019), which DEX
   accepts. The JVM and Kotlin/Native take either, so only this run notices.
+- ⚠️ Typing into a field raises the SOFT KEYBOARD on the emulator (the JVM and the iOS simulator have none), and the
+  screen's `safeDrawing` padding then shrinks the form under it — asynchronously, so a later tap lands on a clipped
+  node and silently misses. Screen tests compose through `WithoutKeyboardInsets` (`TestStatusScreen` does); a new
+  screen-test root must too. Disabling the IME does not stick (Android re-enables Gboard), and `hw.keyboard = yes`
+  still leaves Gboard's input view up.
 - ⚠️ Stop the emulator before a full `./gradlew build` on this box: the two together got the Gradle daemon OOM-killed.
 
 To check R8 over the whole graph: `./gradlew :app:android:assembleRelease -Psnapsync.rig=true`, `zipalign` and
