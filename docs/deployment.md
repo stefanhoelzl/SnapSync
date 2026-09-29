@@ -159,6 +159,17 @@ The deployment declares the **names**. Values come from the environment of which
   `deno task schema:check`, and a bundle that must carry the commit sha.
   `deno task test` deliberately has **no `--allow-net`**, so no test can reach the real zone.
   Decision record: `changes/archive/2026-08-27-make-api-tests-required`.
+- **`api.yml` → `migration-rehearsal`** posts on every push but does work only when `api/migrations/`
+  differs from the merge base with `main`. It copies the deployed store into a local `sqld`
+  (`src/scripts/rehearsal-copy.ts`: **pseudonymised** by a per-run key, store to store in memory,
+  `__bunny_migrations` byte-exact, counts only in the log), runs the deploy's own
+  `bunny db migrations apply` against it through a loopback TLS proxy (`src/scripts/tls-proxy.ts` — the CLI
+  refuses unencrypted URLs and has no flag to lift it), then `assert-schema.ts`. That catches, before merge,
+  the two failures that used to surface only in the deploy's window: **history drift** (an applied file edited
+  — c19b6c4b edited comments in 0001–0003 and 0004 then failed three deploys) and **data** (a precondition
+  that aborts, a constraint the real rows break). It holds only the **read-only** database token. Drift made
+  outside a branch (a hand edit to `__bunny_migrations`, a CLI release changing its checksum) still surfaces
+  at the deploy.
 - **`deploy.yml`** runs on push to `main` only, in one concurrency group (`deploy`,
   `cancel-in-progress: false`), so every published bundle is probed by the run that published it. Jobs:
   - `changes` decides whether the api changed since the commit that is **live** (read from `/health`),
@@ -233,6 +244,7 @@ bundle that disagreed with the schema", never "certainly".
 | Job | Holds | Never holds |
 |---|---|---|
 | `api` | `BUNNY_SCRIPT_ID`, `BUNNY_DEPLOY_KEY` (script-scoped), `BUNNY_DATABASE_URL`/`_AUTH_TOKEN` (it runs the migrations) | the storage key, the account key |
+| `migration-rehearsal` (api.yml, every branch) | `BUNNY_DATABASE_URL`, `BUNNY_DATABASE_READONLY_TOKEN` | any write-capable credential |
 | `site` | `BUNNY_STORAGE_ACCESS_KEY` | the account key |
 | `nightly-cleanup` | `BUNNY_STORAGE_ACCESS_KEY`, the database pair | the account key, any Edge Script credential |
 
@@ -264,7 +276,10 @@ The rules (the checked ones are enforced by `migrations.test.ts`):
   transaction on the same connection. `DROP TABLE` fires `ON DELETE CASCADE`, so rebuilding a referenced
   table would otherwise empty its children and still report success. Both runners must do this the same
   way.
-- **Never edit an applied migration.** The checksum refuses it.
+- **Never edit an applied migration — not even a comment.** The checksum refuses it, and
+  `migration-rehearsal` fails the branch that does.
+- **A new TEXT column is pseudonymised in the rehearsal copy by default.** If a migration must match on its
+  values (an enum, a timestamp), add it to `VERBATIM` in `rehearsal-copy.ts` — only if it is not secret.
 - **Every served API version keeps its behaviour.** That version's wire-contract tests must pass
   **unmodified**. A test that asserts a retired column is re-expressed to assert the same fact and is
   listed in the change.
