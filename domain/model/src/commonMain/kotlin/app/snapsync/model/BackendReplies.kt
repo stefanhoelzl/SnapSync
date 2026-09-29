@@ -102,18 +102,41 @@ class UnionAsset(
     val resources: List<UnionResource>,
 )
 
-/** `POST /attest/token` — a fresh attestation of [keyId] over [challenge]. */
-class MintRequest(val deviceId: String, val keyId: String, val attestation: ByteArray, val challenge: String)
+/**
+ * `POST /attest/token` — a fresh attestation of [keyId] over [challenge], in [format]: the backend verifies it by the
+ * verifier the format names. For [ProofFormat.ANDROID_KEY], [attestation] is the certificate chain, leaf first, as
+ * concatenated DER (each certificate is self-delimiting), and [keyId] is this device's own name for the key — the
+ * backend reads nothing from it.
+ */
+class MintRequest(
+    val deviceId: String,
+    val keyId: String,
+    val format: ProofFormat,
+    val attestation: ByteArray,
+    val challenge: String,
+)
 
 /** `POST /attest/renew` — an assertion by the key this device attested, over [challenge]. */
 class RenewRequest(val deviceId: String, val assertion: ByteArray, val challenge: String)
 
 /**
  * What the device's integrity service produced over a challenge (the `DeviceIntegrity` port): the [handle] of the
- * key that produced it — newly created for a first proof, the one passed in for a renewal — and the [bytes] the
- * backend verifies.
+ * key that produced it — newly created for a first proof, the one passed in for a renewal — the [format] the
+ * platform's proofs have, and the [bytes] the backend verifies.
  */
-class Proof(val handle: String, val bytes: ByteArray)
+class Proof(val handle: String, val format: ProofFormat, val bytes: ByteArray)
+
+/**
+ * Which kind of proof a platform produces — the verifier the backend's mint dispatches to (`proof.format` on the wire).
+ * A renewal names none: the backend verifies it by what the device's attestation proved.
+ */
+enum class ProofFormat {
+    /** App Attest: an attestation object when fresh, an assertion when renewing. */
+    APP_ATTEST,
+
+    /** Android Keystore key attestation: the key's certificate chain when fresh, an ECDSA signature when renewing. */
+    ANDROID_KEY,
+}
 
 /**
  * A backend refusal of this build (capability `app-update-required`): the cell the version gate publishes and the

@@ -147,7 +147,11 @@ async function handler(request: Request): Promise<Response> {
       await putAttestation(
         db,
         enrol,
-        { publicKey: "dev-rig-not-a-real-attestation", environment: "development" },
+        {
+          publicKey: "dev-rig-not-a-real-attestation",
+          platform: "ios",
+          environment: "development",
+        },
         new Date().toISOString(),
         new Date(Date.now() + DEV_ATTEST_TTL_MS).toISOString(),
       );

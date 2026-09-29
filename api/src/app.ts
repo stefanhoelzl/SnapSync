@@ -22,7 +22,10 @@
 // ── THE GATE (capability `privacy-security`) ────────────────────────────────────────────────────
 //
 // EVERY ROUTE REQUIRES A DEVICE TOKEN — obtainable only by completing App Attest, so the API is callable
-// by a genuine, unmodified SnapSync on a genuine Apple device and by nothing else. The exceptions are a
+// by a genuine, unmodified SnapSync on a genuine Apple device and by nothing else. (An Android key
+// attestation mints the same token, but only where the deployment names the app's signing certificate:
+// until the app is on Play no deployed backend does, so this sentence stays true — `android-attest.ts`.)
+// The exceptions are a
 // CLOSED LIST, and each is exempt for its own stated reason (see the middleware in `createApp`):
 //
 //   * the three `/attest/*` issuers — self-authenticating; they cannot require the token they mint.
@@ -55,7 +58,11 @@
 //       record is on file (attest afresh); 502 when the store cannot be read or written, because absence
 //       and "could not ask" have different remedies and must not collapse.
 //   Under /api/v2 both issuers answer a stale challenge `409 stale challenge` instead of v1's `401`
-//   (see `attestIssuers`); every other answer is the same.
+//   (see `attestIssuers`), and the mint takes a typed `proof` — `{format: "apple-appattest", keyId,
+//   attestation}` or `{format: "android-key", chain}` (an Android Keystore key attestation,
+//   `android-attest.ts`) — whose format chooses the verifier; renewal verifies by the platform the stored
+//   row PROVED (`attest_platform`), an App Attest assertion or an Android signature. v1 stays flat and
+//   App Attest only.
 //
 //   POST /api/v1/events
 //     → mints an event: INSERTs the `events` row, stamping `capacity` and the `lifetimeSeconds` DURATION
@@ -165,16 +172,15 @@ import {
 import { BUILD_SHA, type Config } from "./config.ts";
 import { createApnsSender, type PushToken } from "./apns.ts";
 import {
-  b64ToBytes,
   bytesToB64,
   challengeIsValid,
   mintChallenge,
   mintToken,
   tokenExpiryIso,
-  verifyAssertion,
-  verifyAttestation,
   verifyToken,
 } from "./attest.ts";
+import { type MintShape, parseMintBody, verifyMintProof, verifyRenewal } from "./attest-proofs.ts";
+import { RevocationUnavailable } from "./android-attest.ts";
 // Storage primitives — now ONLY the byte store. The attestation record was the last non-byte object this
 // script touched, and it is a row now (`docs/architecture.md`): storage holds bytes, the database holds
 // facts.
@@ -1105,34 +1111,38 @@ export function createApp(
   // because `401` means "your credential is rejected" and a stale challenge rejects no credential — it is what
   // let a client read a renewal's expired challenge as a revoked token. One implementation, parameterised on
   // that one status, so the two versions cannot drift anywhere else. Decision record: harden-seam-bug-classes.
-  const attestIssuers = (staleChallengeStatus: 401 | 409) => {
+  //
+  // The two versions' MINT BODIES differ too: v1's is frozen flat App Attest (`{deviceId, keyId,
+  // attestation, challenge}`); v2's carries a typed `proof` whose `format` names its verifier, which is how
+  // an Android key attestation reaches its own (`attest-proofs.ts`). The renew body is the same on both.
+  const attestIssuers = (staleChallengeStatus: 401 | 409, mintShape: MintShape) => {
     const issuers = new Hono();
-    // Attest: verify the attestation object, persist the attested public key, mint a token.
+    // Attest: verify the attestation, persist the attested public key, mint a token.
     issuers.post("/attest/token", async (c) => {
-      let body: { deviceId?: string; keyId?: string; attestation?: string; challenge?: string };
+      let raw: unknown;
       try {
-        body = await c.req.json();
+        raw = await c.req.json();
       } catch {
         return c.text("invalid body", 400);
       }
-      const { deviceId, keyId, attestation, challenge } = body;
-      if (!deviceId || !validateUUID(deviceId) || !keyId || !attestation || !challenge) {
-        return c.text("invalid body", 400);
-      }
+      const body = parseMintBody(raw, mintShape);
+      if (!body) return c.text("invalid body", 400);
+      const { deviceId, challenge, proof } = body;
       if (!await challengeIsValid(config, challenge, now())) {
         return c.text("stale challenge", staleChallengeStatus);
       }
 
       let verified;
       try {
-        verified = await verifyAttestation(config, {
-          attestation: b64ToBytes(attestation),
-          challenge,
-          keyId: b64ToBytes(keyId),
-          at: new Date(now()),
-        });
+        verified = await verifyMintProof(config, proof, challenge, new Date(now()), fetchImpl);
       } catch (e) {
-        console.error(`attest: attestation rejected for ${deviceId}: ${e}`);
+        // Android's revocation list could not be fetched: "could not look", which the client retries —
+        // never the 401 that would send it down a fresh attestation for a verdict nobody reached.
+        if (e instanceof RevocationUnavailable) {
+          console.error(`attest: ${deviceId}: ${e.message}`);
+          return c.text("upstream error", 502);
+        }
+        console.error(`attest: ${proof.format} attestation rejected for ${deviceId}: ${e}`);
         return c.text("attestation rejected", 401);
       }
 
@@ -1147,7 +1157,11 @@ export function createApp(
         await putAttestation(
           db,
           deviceId,
-          { publicKey: bytesToB64(verified.publicKey), environment: verified.environment },
+          {
+            publicKey: bytesToB64(verified.publicKey),
+            platform: verified.platform,
+            environment: verified.environment,
+          },
           new Date(now()).toISOString(),
           tokenExpiryIso(config, now()),
         );
@@ -1156,7 +1170,7 @@ export function createApp(
         return c.text("upstream error", 502);
       }
 
-      console.info(`attest: ${deviceId} attested (${verified.environment})`);
+      console.info(`attest: ${deviceId} attested (${verified.platform}, ${verified.environment})`);
       return c.json({ token: await mintToken(config, deviceId, now()) }, 201);
     });
 
@@ -1197,14 +1211,9 @@ export function createApp(
       }
 
       try {
-        await verifyAssertion({
-          assertion: b64ToBytes(assertion),
-          challenge,
-          publicKey: b64ToBytes(record.publicKey),
-          appId: config.attestAppId,
-        });
+        await verifyRenewal(config, record, assertion, challenge);
       } catch (e) {
-        console.error(`renew: assertion rejected for ${deviceId}: ${e}`);
+        console.error(`renew: ${record.platform} assertion rejected for ${deviceId}: ${e}`);
         return c.text("assertion rejected", 401);
       }
 
@@ -1954,11 +1963,11 @@ export function createApp(
   // shared splitter, so a further version needs no change to either.
   const v1 = new Hono();
   v1.route("/", deviceApi);
-  v1.route("/", attestIssuers(401));
+  v1.route("/", attestIssuers(401, "flat"));
   v1.route("/", v1Only);
   const v2 = new Hono();
   v2.route("/", deviceApi);
-  v2.route("/", attestIssuers(409));
+  v2.route("/", attestIssuers(409, "typed"));
   v2.route("/", v2Only);
   app.route("/api/v1", v1);
   app.route("/api/v2", v2);

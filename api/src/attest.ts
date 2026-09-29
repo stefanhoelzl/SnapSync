@@ -334,7 +334,7 @@ export async function verifyAssertion(opts: {
 }
 
 /** DER `SEQUENCE { INTEGER r, INTEGER s }` → the raw 64-byte `r||s` WebCrypto expects. */
-function derSignatureToRaw(der: Uint8Array): Uint8Array {
+export function derSignatureToRaw(der: Uint8Array): Uint8Array {
   if (der[0] !== 0x30) throw new Error("assertion signature is not DER");
   let i = 2;
   if (der[1] & 0x80) i = 2 + (der[1] & 0x7f); // long-form length

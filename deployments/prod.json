@@ -3,6 +3,7 @@
     "components/build.json",
     "components/policy.json",
     "components/apple.json",
+    "components/android.json",
     "components/storage-snap-sync-dev.json",
     "components/prod-core.json"
   ]

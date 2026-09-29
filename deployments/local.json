@@ -3,6 +3,8 @@
     "components/build.json",
     "components/policy.json",
     "components/apple.json",
+    "components/android.json",
+    "components/android-local.json",
     "components/storage-local.json"
   ],
   "domain": "127.0.0.1:8080"

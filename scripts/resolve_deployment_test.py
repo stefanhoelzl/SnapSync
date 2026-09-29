@@ -53,6 +53,13 @@ APPLE = {
     "appAttestRootCa": "-----BEGIN CERTIFICATE-----\nx\n-----END CERTIFICATE-----",
 }
 
+ANDROID = {
+    "androidPackageName": "test.package",
+    "androidSigningCertDigests": [],
+    "androidAttestationRoots": ["-----BEGIN CERTIFICATE-----\ny\n-----END CERTIFICATE-----"],
+    "androidAttestationTrust": "hardware",
+}
+
 
 _KEEP = []  # hold each TemporaryDirectory until exit, so cleanup is not GC-timed (ResourceWarning)
 
@@ -79,10 +86,11 @@ class Tree:
         })
         self.component("policy", POLICY)
         self.component("apple", APPLE)
+        self.component("android", ANDROID)
         self.component("storage", {"storage": storage if storage is not None else dict(BUNNY)})
         body = {
             "extends": ["components/build.json", "components/policy.json", "components/apple.json",
-                        "components/storage.json"],
+                        "components/android.json", "components/storage.json"],
             "domain": "example.invalid",
             **SECRETS,
             **overrides,
@@ -101,10 +109,11 @@ class MergeTest(unittest.TestCase):
         t.component("b", {"domain": "b.invalid"})
         t.component("policy", POLICY)
         t.component("apple", APPLE)
+        t.component("android", ANDROID)
         t.component("storage", {"storage": dict(BUNNY)})
         t.deployment("t", {
             "extends": ["components/a.json", "components/b.json", "components/policy.json",
-                        "components/apple.json", "components/storage.json"],
+                        "components/apple.json", "components/android.json", "components/storage.json"],
             "domain": "own.invalid",
             **SECRETS,
         })
@@ -140,9 +149,10 @@ class ValidationTest(unittest.TestCase):
     def test_missing_required_key_names_it(self):
         t = Tree()
         t.component("apple", APPLE)
+        t.component("android", ANDROID)
         t.component("storage", {"storage": dict(BUNNY)})
         t.deployment("t", {
-            "extends": ["components/apple.json", "components/storage.json"],
+            "extends": ["components/apple.json", "components/android.json", "components/storage.json"],
             "domain": "x.invalid", **SECRETS,
         })
         with self.assertRaisesRegex(rd.ResolveError, "eventCapacity"):
@@ -175,9 +185,11 @@ class KindTest(unittest.TestCase):
         t = Tree()
         t.component("policy", POLICY)
         t.component("apple", APPLE)
+        t.component("android", ANDROID)
         t.component("storage", {"storage": {"kind": "filesystem", "root": ".store"}})
         t.deployment("t", {
-            "extends": ["components/policy.json", "components/apple.json", "components/storage.json"],
+            "extends": ["components/policy.json", "components/apple.json", "components/android.json",
+                        "components/storage.json"],
             "domain": "127.0.0.1:8080",
         })
         flat = t.resolve()
@@ -479,7 +491,7 @@ class MaintenanceKeyTest(unittest.TestCase):
         t = Tree().standard()
         t.component("core", {"domain": "example.invalid", **SECRETS})
         shared = ["components/build.json", "components/policy.json", "components/apple.json",
-                  "components/storage.json", "components/core.json"]
+                  "components/android.json", "components/storage.json", "components/core.json"]
         t.deployment("live", {"extends": shared})
         t.deployment("window", {"extends": shared, "maintenance": True})
 
@@ -495,6 +507,38 @@ class MaintenanceKeyTest(unittest.TestCase):
         t.deployment("window", {"extends": ["t.json"], "maintenance": True})
         with self.assertRaisesRegex(rd.ResolveError, "may not itself declare"):
             t.resolve("window")
+
+
+class AndroidTrustTest(unittest.TestCase):
+    """`androidAttestationTrust` (`api/src/android-attest.ts`): `any` never reaches a deployed bundle."""
+
+    def test_a_deployed_backend_may_not_accept_software_attestation(self):
+        # The emulator's attestation is signed with a key hard-coded in AOSP: accepting it on a bunny
+        # deployment would open the shared production store to any program claiming to be the app.
+        with self.assertRaisesRegex(rd.ResolveError, "androidAttestationTrust 'any'"):
+            Tree().standard(androidAttestationTrust="any").resolve()
+
+    def test_the_local_rig_may(self):
+        storage = {"kind": "filesystem", "root": "/tmp/x"}
+        flat = Tree().standard(storage=storage, androidAttestationTrust="any").resolve()
+        self.assertEqual(flat["androidAttestationTrust"], "any")
+
+    def test_an_unknown_trust_is_refused(self):
+        with self.assertRaisesRegex(rd.ResolveError, "outside"):
+            Tree().standard(androidAttestationTrust="some").resolve()
+
+    def test_a_digest_is_the_assetlinks_form(self):
+        good = ":".join(["AB"] * 32)
+        flat = Tree().standard(androidSigningCertDigests=[good]).resolve()
+        self.assertEqual(flat["androidSigningCertDigests"], [good])
+        for bad in [good.lower(), ":".join(["AB"] * 31), good.replace(":", "")]:
+            with self.assertRaisesRegex(rd.ResolveError, "signing digest"):
+                Tree().standard(androidSigningCertDigests=[bad]).resolve()
+
+    def test_the_lists_are_typed_as_string_arrays(self):
+        types = rd.render_types(Tree().standard().resolve())
+        self.assertIn("readonly androidSigningCertDigests: readonly string[];", types)
+        self.assertIn("readonly androidAttestationRoots: readonly string[];", types)
 
 
 class AtomicityTest(unittest.TestCase):

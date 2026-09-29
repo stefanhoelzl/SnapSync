@@ -4,6 +4,7 @@ package app.snapsync.attest
 
 import app.snapsync.objc.objcBoundary
 import app.snapsync.model.Proof
+import app.snapsync.model.ProofFormat
 import app.snapsync.ports.DeviceIntegrity
 import co.touchlab.kermit.Logger
 import kotlin.coroutines.resume
@@ -55,9 +56,9 @@ class IosDeviceIntegrity internal constructor(
     override suspend fun prove(challenge: String, handle: String?): Proof =
         if (handle == null) {
             val keyId = generateKey()
-            Proof(keyId, attest(keyId, challenge))
+            Proof(keyId, ProofFormat.APP_ATTEST, attest(keyId, challenge))
         } else {
-            Proof(handle, assert(handle, challenge))
+            Proof(handle, ProofFormat.APP_ATTEST, assert(handle, challenge))
         }
 
     private suspend fun generateKey(): String = suspendCoroutine { cont ->

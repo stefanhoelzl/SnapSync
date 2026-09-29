@@ -16,6 +16,7 @@ import app.snapsync.model.EventMeta
 import app.snapsync.model.EventRenamed
 import app.snapsync.model.MintRequest
 import app.snapsync.model.Proof
+import app.snapsync.model.ProofFormat
 import app.snapsync.model.RenewRequest
 import app.snapsync.model.Reply
 import app.snapsync.mock.fixedClock
@@ -61,12 +62,12 @@ private class FakeKey(
         if (handle != null) {
             asserted++
             if (assertThrows) throw IllegalStateException("the Secure Enclave key is gone")
-            return Proof(handle, byteArrayOf(4, 5, 6))
+            return Proof(handle, ProofFormat.APP_ATTEST, byteArrayOf(4, 5, 6))
         }
         val key = "key-${++generated}"
         attested++
         if (attestThrows) throw IllegalStateException("Apple said no")
-        return Proof(key, byteArrayOf(1, 2, 3))
+        return Proof(key, ProofFormat.APP_ATTEST, byteArrayOf(1, 2, 3))
     }
 }
 

@@ -8,6 +8,7 @@ import app.snapsync.model.DeviceFile
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.MemberCounts
 import app.snapsync.model.MintRequest
+import app.snapsync.model.ProofFormat
 import app.snapsync.model.RenewRequest
 import app.snapsync.model.Reply
 import app.snapsync.model.ResourceRole
@@ -29,6 +30,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
@@ -108,7 +110,7 @@ class HttpBackendTest {
         )
         val ungated = listOf<suspend () -> Unit>(
             { backend.challenge() },
-            { backend.mintToken(MintRequest("D", "K", byteArrayOf(1), "c")) },
+            { backend.mintToken(MintRequest("D", "K", ProofFormat.APP_ATTEST, byteArrayOf(1), "c")) },
             { backend.renewToken(RenewRequest("D", byteArrayOf(1), "c")) },
             { backend.getEvent("E") },
             { backend.eventFiles("E") },
@@ -131,15 +133,32 @@ class HttpBackendTest {
     }
 
     @Test
+    fun an_android_key_attestation_goes_out_as_its_chain_one_certificate_per_entry() = runTest {
+        val leaf = byteArrayOf(0x30, 0x01, 0x01)
+        val root = byteArrayOf(0x30, 0x02, 0x02, 0x02)
+        backend(body = """{"token":"D.1.sig"}""").mintToken(MintRequest("D", "alias", ProofFormat.ANDROID_KEY, leaf + root, "c"))
+        val proof = Json.parseToJsonElement(sent.single().body).jsonObject.getValue("proof").jsonObject
+        assertEquals("android-key", proof.getValue("format").jsonPrimitive.content)
+        assertEquals(
+            listOf(Base64.encode(leaf), Base64.encode(root)),
+            proof.getValue("chain").jsonArray.map { it.jsonPrimitive.content },
+        )
+        assertEquals(setOf("format", "chain"), proof.keys, "the backend reads nothing from an Android key's alias")
+    }
+
+    @Test
     fun the_attest_routes_send_their_proofs_base64_and_read_the_minted_token() = runTest {
         val backend = backend(body = """{"token":"D.1.sig","challenge":"chal"}""")
         assertEquals(Reply.Ok("chal"), backend.challenge())
-        assertEquals(Reply.Ok("D.1.sig"), backend.mintToken(MintRequest("D", "K", byteArrayOf(1, 2), "c")))
+        assertEquals(Reply.Ok("D.1.sig"), backend.mintToken(MintRequest("D", "K", ProofFormat.APP_ATTEST, byteArrayOf(1, 2), "c")))
         assertEquals(Reply.Ok("D.1.sig"), backend.renewToken(RenewRequest("D", byteArrayOf(3), "c")))
         assertEquals(listOf("GET /api/v2/attest/challenge", "POST /api/v2/attest/token", "POST /api/v2/attest/renew"), sent.map { "${it.method} ${it.path}" })
         val mint = Json.parseToJsonElement(sent[1].body).jsonObject
-        assertEquals(Base64.encode(byteArrayOf(1, 2)), mint.getValue("attestation").jsonPrimitive.content)
-        assertEquals("K", mint.getValue("keyId").jsonPrimitive.content)
+        assertEquals("c", mint.getValue("challenge").jsonPrimitive.content)
+        val proof = mint.getValue("proof").jsonObject
+        assertEquals("apple-appattest", proof.getValue("format").jsonPrimitive.content)
+        assertEquals(Base64.encode(byteArrayOf(1, 2)), proof.getValue("attestation").jsonPrimitive.content)
+        assertEquals("K", proof.getValue("keyId").jsonPrimitive.content)
         val renew = Json.parseToJsonElement(sent[2].body).jsonObject
         assertEquals(Base64.encode(byteArrayOf(3)), renew.getValue("assertion").jsonPrimitive.content)
         assertNull(renew["keyId"], "a renewal carries no keyId: the backend knows the key it attested")
@@ -147,7 +166,7 @@ class HttpBackendTest {
 
     @Test
     fun a_success_that_names_no_token_is_malformed_rather_than_an_empty_credential() = runTest {
-        assertIs<Reply.Malformed>(backend(body = "{}").mintToken(MintRequest("D", "K", byteArrayOf(1), "c")))
+        assertIs<Reply.Malformed>(backend(body = "{}").mintToken(MintRequest("D", "K", ProofFormat.APP_ATTEST, byteArrayOf(1), "c")))
         assertIs<Reply.Malformed>(backend(body = "{}").challenge())
     }
 

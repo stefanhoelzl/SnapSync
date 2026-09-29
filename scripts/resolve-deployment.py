@@ -179,6 +179,37 @@ INVENTORY = [
         public fact (Apple publishes it), so declaring it exposes nothing, and shipping it in the same
         artifact as the code that reads it means a verification change cannot deploy without its anchor.
     """),
+    Key("androidPackageName", [JSON], doc="""
+        The Android app's package name (its `applicationId`). What an Android key attestation must name as
+        its application (`api/src/android-attest.ts`), and the package the served `assetlinks.json`
+        associates the event link with. The Android counterpart of `bundleId`, kept its own key because
+        the two platforms' identifiers are independent facts that merely coincide today.
+    """),
+    Key("androidSigningCertDigests", [JSON], doc="""
+        The SHA-256 digests of the signing certificates an Android attestation may name, colon-separated
+        upper-case hex — the form `assetlinks.json` carries them in, which is served from this same list.
+        For a deployed backend this is the PLAY APP SIGNING key's certificate, never the upload key's:
+        Play re-signs every install with it, so it is the one a real device reports. EMPTY until the app is
+        on Play (phase 5): an empty list accepts no Android device at all, which is what keeps the
+        `privacy-security` promise ("a genuine SnapSync app on a genuine Apple device") true in production
+        until the spec is reworded. Ignored under `androidAttestationTrust = any`.
+    """),
+    Key("androidAttestationRoots", [JSON], doc="""
+        The PEM roots an Android key attestation chain must end at, matched by PUBLIC KEY — so a root Google
+        re-issues over the same key (its RSA root has four certificates, and devices still present the
+        older ones) needs no change here, and a NEW root key is one entry added. Google publishes the
+        current set at https://android.googleapis.com/attestation/root: the RSA root
+        (`serialNumber=f92009e853b6b045`) and, since 2026-02-01, the P-384 `Key Attestation CA1`.
+        A public fact, so declaring it exposes nothing; it ships in the artifact that reads it.
+    """),
+    Key("androidAttestationTrust", [JSON], doc="""
+        How much an Android attestation must prove: `hardware` — a TEE or StrongBox key, a locked
+        bootloader over a verified (or owner-signed) boot, and a signing digest from
+        `androidSigningCertDigests` — or `any`, which accepts a SOFTWARE attestation (the emulator's, whose
+        key is hard-coded in AOSP, so it proves nothing) over any digest and any boot state. `any` exists
+        for the local rig alone, and the resolver refuses it for every deployment whose storage is not the
+        local filesystem, so no deployed bundle can carry it.
+    """),
     Key("eventCapacity", [JSON], doc="""
         Maximum devices EVER enrolled per event (active OR departed — leaving frees no slot). PRODUCT
         POLICY, not a deployment-varying fact: every deployment extends the same component. The only
@@ -429,7 +460,31 @@ def validate(flat: dict, name: str) -> str:
         elif key.scope == "build" and key.name in flat:
             # A literal for a build-scope key is fine; it is simply not read from the environment.
             pass
+    validate_android_trust(flat, name, kind)
     return kind
+
+
+ANDROID_TRUST = {"hardware", "any"}
+
+
+def validate_android_trust(flat: dict, name: str, kind: str) -> None:
+    """`any` only where nothing is deployed: a software attestation must never open a deployed backend."""
+    trust = flat.get("androidAttestationTrust")
+    if trust not in ANDROID_TRUST:
+        fail(f"deployment '{name}': androidAttestationTrust '{trust}' is outside {sorted(ANDROID_TRUST)}")
+    if trust == "any" and kind != "filesystem":
+        fail(
+            f"deployment '{name}': androidAttestationTrust 'any' accepts the emulator's software attestation "
+            f"and is refused for a '{kind}' deployment — only the local rig (storage.kind=filesystem) may carry it"
+        )
+    for list_key in ("androidSigningCertDigests", "androidAttestationRoots"):
+        value = flat.get(list_key)
+        if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+            fail(f"deployment '{name}': {list_key} must be a list of strings")
+    for digest in flat["androidSigningCertDigests"]:
+        parts = digest.split(":")
+        if len(parts) != 32 or not all(len(p) == 2 and p == p.upper() and all(c in "0123456789ABCDEF" for c in p) for p in parts):
+            fail(f"deployment '{name}': signing digest '{digest}' is not 32 upper-case colon-separated hex bytes")
 
 
 # ── Resolution of values ───────────────────────────────────────────────────────────────────────────
@@ -660,6 +715,8 @@ def render_types(flat: dict) -> str:
             t = "boolean"
         elif isinstance(sample, (int, float)):
             t = "number"
+        elif isinstance(sample, list):
+            t = "readonly string[]"
         else:
             t = "string"
         doc = " ".join(key.doc.split())
