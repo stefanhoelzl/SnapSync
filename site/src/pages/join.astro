@@ -19,17 +19,27 @@ import AppStoreButton from "../components/AppStoreButton.astro";
   <div class="join">
     <div id="app" class="hidden">
       <h1 id="title">Event photos</h1>
-      <p class="sub" id="subtitle">Download everyone's photos from this event.</p>
-      <button class="primary" id="download" disabled>Download all photos (zip)</button>
-      <div class="status" id="status">Loading…</div>
-      <div class="cta"><AppStoreButton /></div>
+      <p class="sub" id="subtitle">
+        Download everyone's photos from this event.
+      </p>
+      <button class="primary" id="download" disabled>
+        Download all photos (zip)
+      </button>
+      <div class="status" id="status">
+        Loading…
+      </div>
+      <div class="cta">
+        <AppStoreButton />
+      </div>
     </div>
     <div id="invalid" class="hidden">
       <h1>Invalid or expired link</h1>
       <p class="sub">
         This SnapSync invite could not be opened. Ask the event host for a fresh link.
       </p>
-      <div class="cta"><AppStoreButton /></div>
+      <div class="cta">
+        <AppStoreButton />
+      </div>
     </div>
   </div>
 </Layout>
