@@ -226,10 +226,11 @@ event's invite again (capability `join-event`).
 The joined screen SHALL show, while the device is in an event that has not closed (capability
 `event-lifetime`), a scannable QR code of the event's invite link (capability `join-event`) and a share
 action that hands the same link to the iOS share sheet, even when photo access is missing. The QR code
-SHALL be dark on a light background in both light and dark appearance. Its caption SHALL tell the member
-that someone else scans this code to join, not instruct the member to scan. Sharing SHALL have no effect
-on the app's state, whether completed or cancelled. Invite affordances SHALL NOT appear while the device
-is in no event, nor once the event has closed.
+SHALL be dark on a light background in both light and dark appearance. The QR code SHALL be presented as an
+invitation for other people to join the event, and its caption SHALL tell the member that others join by
+scanning this code with their camera, not instruct the member to scan. Sharing SHALL have no effect on the
+app's state, whether completed or cancelled. Invite affordances SHALL NOT appear while the device is in no
+event, nor once the event has closed.
 
 #### Scenario: A host shares the invite before granting photo access
 - **WHEN** a host who has not granted photo access has just joined their new event
@@ -243,9 +244,14 @@ is in no event, nor once the event has closed.
 - **WHEN** one guest scans the member's QR code and another taps the link the member shared
 - **THEN** both reach the join screen of the same event
 
+#### Scenario: The QR code reads as an invitation
+- **WHEN** a member looks at the QR code on the joined screen
+- **THEN** it is labelled as a way to invite others, not as sharing their photos
+
 #### Scenario: The caption addresses the member
 - **WHEN** a member reads the caption beneath the QR code
-- **THEN** it tells them that others scan this code to join, and does not tell them to scan anything
+- **THEN** it tells them that others join by scanning this code with their camera, and does not tell them
+  to scan anything
 
 #### Scenario: A closed event offers no invite
 - **WHEN** the event closes while a member is looking at the joined screen
@@ -297,4 +303,3 @@ opens the app after such a leave, it SHALL show the create screen.
 #### Scenario: A premature "gone" is disbelieved
 - **WHEN** the server fails to find the event before its deletion date without confirming it has finished
 - **THEN** the member stays joined and sharing continues
-
