@@ -69,7 +69,7 @@ jobs:
       # Keep openspec/specs the contract of record: every spec must parse and
       # carry a normative (SHALL/MUST) requirement + a scenario. Pinned so an
       # upstream rule change can't turn CI red without a deliberate bump.
-      - run: npx --yes @fission-ai/openspec@1.5.0 validate --specs --strict
+      - run: npx --yes @fission-ai/openspec@1.13.2 validate --specs --strict
 
   resolver-test:
     # This display name is the status-check context required by `main`'s branch ruleset,
