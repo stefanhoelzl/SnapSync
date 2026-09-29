@@ -28,7 +28,7 @@ val rigEnabled = providers.gradleProperty("snapsync.rig").map(String::toBoolean)
 // needs its own: the generated map is `internal` to the test compilation it lands in.
 val contractRecordings = rootProject.layout.projectDirectory.dir("test/contracts/recordings")
 val generatedRecordings = layout.buildDirectory.dir("generated/contractRecordings/kotlin")
-val embedContractRecordings by tasks.registering {
+val embedContractRecordings = tasks.register("embedContractRecordings") {
     val sources = fileTree(contractRecordings) { include("*.rec") }
     val out = generatedRecordings
     inputs.files(sources)

@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.TimeZone
-import org.orbitmvi.orbit.test.test
+import org.orbitmvi.orbit.test.testWithInternalState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -40,12 +40,12 @@ class VersionGateHostTest {
     @Test
     fun `a refused build reaches the update screen carrying the minimum and the remedy`() = runTest {
         val refusal = MutableStateFlow<VersionRefusal?>(null)
-        gateHost(backgroundScope, refusal).test(this) {
+        gateHost(backgroundScope, refusal).testWithInternalState(this) {
             runOnCreate() // the initial state is the ordinary create layer
 
             refusal.value = VersionRefusal("0.4")
 
-            val layer = awaitState().layer
+            val layer = awaitInternalState().layer
             assertIs<Layer.UpdateRequired>(layer)
             assertEquals("0.4", layer.minimumVersion)
             assertEquals(STORE_URL, layer.storeUrl, "a screen whose only remedy is a link must carry it")
@@ -63,14 +63,14 @@ class VersionGateHostTest {
         gateHost(
             backgroundScope, refusal,
             config = EventConfig(GATE_EVENT_ID, "Anna's Birthday", GATE_CUTOFF, maxPhotoDate = GATE_CEILING),
-        ).test(this) {
+        ).testWithInternalState(this) {
             runOnCreate() // the initial state is the joined layer
 
             refusal.value = VersionRefusal("0.4")
-            assertIs<Layer.UpdateRequired>(awaitState().layer)
+            assertIs<Layer.UpdateRequired>(awaitInternalState().layer)
 
             refusal.value = null
-            assertIs<Layer.Joined>(awaitState().layer)
+            assertIs<Layer.Joined>(awaitInternalState().layer)
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -78,10 +78,10 @@ class VersionGateHostTest {
     @Test
     fun `a refusal that named no version still shows the screen and names nothing`() = runTest {
         val refusal = MutableStateFlow<VersionRefusal?>(null)
-        gateHost(backgroundScope, refusal).test(this) {
+        gateHost(backgroundScope, refusal).testWithInternalState(this) {
             runOnCreate()
             refusal.value = VersionRefusal(null)
-            val layer = awaitState().layer
+            val layer = awaitInternalState().layer
             assertIs<Layer.UpdateRequired>(layer)
             assertNull(layer.minimumVersion, "no version was sent, so none is claimed")
             cancelAndIgnoreRemainingItems()

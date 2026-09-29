@@ -98,6 +98,13 @@ kover {
 //
 // ⚠️ The cost is real and belongs on the record: this weakens the guard for all nine packages, not just
 // the one that moved. It should rise again the moment `feature/push` gains reachable covered code.
+//
+// The aggregate BRANCH floor LOWERED 91 -> 90 by the Kotlin 2.4.0 -> 2.4.20 bump. Forcing proof, measured on
+// both compilers over unchanged sources: MISSED branches held at 71 while COVERED fell 725 -> 714, all of it
+// in `UploadCycle` (-6), `DownloadController` (-2) and `SyncEngine` (-3) — the newer compiler emits fewer
+// bytecode branches for the same code. The denominator shrank around a fixed gap, so the ratio fell
+// 91.08 -> 90.96 with no test losing anything. The gap it shrank around is largely unreachable by
+// construction (e.g. `SyncEngine.needsJob`'s one miss is the synthetic arm of an exhaustive `when`).
 kover {
     reports {
         total {
@@ -109,7 +116,7 @@ kover {
                         coverageUnits = CoverageUnit.INSTRUCTION
                     }
                     bound {
-                        minValue = 91
+                        minValue = 90
                         coverageUnits = CoverageUnit.BRANCH
                     }
                 }

@@ -50,7 +50,7 @@ kotlin {
         }
         // The JVM `Databases` adapter (`JdbcDatabases`): the one platform source set here, because the SQLDelight
         // driver is per platform. The iOS one is `:adapter:ios:ext-safe`'s.
-        val jvmMain by getting {
+        named("jvmMain") {
             dependencies {
                 implementation(libs.sqldelight.driver.sqlite)
             }
@@ -58,7 +58,7 @@ kotlin {
         // The contract bindings (`docs/architecture.md`). The contracts live in `:test:contracts`' commonMain.
         // `:domain:services` is here, test-only, because the storage services' SQLite behaviour is measured over
         // this module's real `JdbcDatabases` — a `:domain:*` build file names no module, so they cannot run there.
-        val jvmTest by getting {
+        named("jvmTest") {
             dependencies {
                 implementation(project(":test:contracts"))
                 implementation(project(":domain:services"))
@@ -68,7 +68,7 @@ kotlin {
                 implementation(project(":test:edge"))
             }
         }
-        val iosSimulatorArm64Test by getting {
+        named("iosSimulatorArm64Test") {
             dependencies {
                 implementation(project(":test:contracts"))
                 implementation(libs.sqldelight.driver.native)

@@ -64,9 +64,9 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.datetime.LocalDateTime
-import org.orbitmvi.orbit.Container
-import org.orbitmvi.orbit.ContainerHost
-import org.orbitmvi.orbit.container
+import org.orbitmvi.orbit.OrbitContainer
+import org.orbitmvi.orbit.OrbitContainerHost
+import org.orbitmvi.orbit.orbitContainer
 import app.snapsync.model.EventDetails
 import app.snapsync.model.JoinPhase
 import app.snapsync.model.JoinedSurface
@@ -121,7 +121,7 @@ class StatusContainerHost(
     // Where a bug report goes on this build (capability `privacy-security`) — a constant the composition states,
     // carried on every `UiState` so the sheet says it. Defaulted to the distributed build's answer.
     private val reportDestination: ReportDestination = ReportDestination.DEVELOPER,
-) : ContainerHost<UiState, Nothing> {
+) : OrbitContainerHost<UiState, UiState, Nothing> {
 
     // The bundles are unpacked into the names the body already uses. Grouping happens at the boundary,
     // where a caller has to read it; inside, each source keeps the name that says what it is.
@@ -249,8 +249,8 @@ class StatusContainerHost(
                 }
             }
 
-    override val container: Container<UiState, Nothing> =
-        scope.container(
+    override val container: OrbitContainer<UiState, UiState, Nothing> =
+        scope.orbitContainer(
             // All seams hold their current truth synchronously, so the first state the screen can ever
             // render derives from real values — never a guess or a placeholder.
             initialState = reduceFrom(
