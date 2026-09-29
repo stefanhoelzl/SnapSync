@@ -128,8 +128,10 @@ class KotlinShellGuardTest {
             .toList()
         assertTrue(includes.isNotEmpty(), "settings.gradle.kts parsed to zero includes — the scan is broken")
 
-        // The JVM root is a shell by the same definition — it composes and forwards — so it is scanned too.
-        val shellModules = includes.filter { it == ":app:ios" || it.startsWith(":app:ios:") || it == ":app:jvm" }
+        // The JVM and Android roots are shells by the same definition — they compose and forward — so they are scanned too.
+        val shellModules = includes.filter {
+            it == ":app:ios" || it.startsWith(":app:ios:") || it == ":app:jvm" || it == ":app:android"
+        }
         assertTrue(shellModules.isNotEmpty(), "no :app:ios* modules found — the shells have moved")
 
         val unscanned = shellModules.filterNot { module ->

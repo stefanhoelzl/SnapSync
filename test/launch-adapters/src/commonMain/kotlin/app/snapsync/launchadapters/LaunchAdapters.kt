@@ -79,7 +79,7 @@ sealed interface LaunchAdapters {
          * root reaches only the shared files, has no App Attest, and reports to a channel nobody observes, in its own
          * process and inside the app alike.
          */
-        fun ports(real: DevicePorts, root: AdapterProcess): DevicePorts = chosenPorts(real.lazies, this, root)
+        fun ports(real: DevicePorts, root: AdapterProcess): DevicePorts = chosenPorts(real.lazies, choice, device, root)
 
         /**
          * Write every mocked system's state that changed since the last write — each file whole and atomically. Only the

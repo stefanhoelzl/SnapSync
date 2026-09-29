@@ -19,11 +19,25 @@ kover = "0.9.9"
 kotlinx-datetime = "0.7.1"
 kotlinx-serialization = "1.9.0"
 qrose = "1.1.2"
-ktor = "3.2.0"
+# 3.2.4, not 3.2.0: 3.2.0 names a field `use streaming syntax`, which D8 refuses below DEX 040 (minSdk 30) — the
+# Android build cannot dex it at minSdk 29 (KTOR-8583, fixed in 3.2.1).
+ktor = "3.2.4"
 # sentry-kmp 0.27.0 pins sentry-cocoa 8.58.2 — the SPM package in iosApp.xcodeproj and the
 # test-link provisioning in :adapter:ios:ext-safe must carry the SAME cocoa version.
 sentry-kmp = "0.27.0"
 sentry-cocoa = "8.58.2"
+# Android (`docs/architecture.md`, "Zones inside the core": the allowed targets). One AGP for the KMP library plugin
+# every multiplatform module's `android` target comes from and the application plugin `:app:android` applies.
+agp = "9.3.3"
+# minSdk 29 (Android 10): the first release with scoped storage's `RELATIVE_PATH` / `IS_PENDING`, so the gallery
+# adapters have one code path; targetSdk tracks Play's current requirement, compileSdk follows it.
+android-minSdk = "29"
+android-compileSdk = "36"
+android-targetSdk = "36"
+# The bytecode the Android compilations emit: D8/R8 dexes it (the toolchain stays `jdk`; only the target is lowered).
+android-jvmTarget = "17"
+androidx-activity = "1.12.4"
+androidx-lifecycle = "2.10.0"
 
 [libraries]
 compose-runtime = { module = "org.jetbrains.compose.runtime:runtime", version.ref = "compose" }
@@ -36,9 +50,12 @@ compose-material3 = { module = "org.jetbrains.compose.material3:material3", vers
 orbit-core = { module = "org.orbit-mvi:orbit-core", version.ref = "orbit" }
 orbit-test = { module = "org.orbit-mvi:orbit-test", version.ref = "orbit" }
 coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+# `Dispatchers.Main` on Android: the main looper, which the Android root composes on.
+coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
 coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
 sqldelight-runtime = { module = "app.cash.sqldelight:runtime", version.ref = "sqldelight" }
 sqldelight-driver-sqlite = { module = "app.cash.sqldelight:sqlite-driver", version.ref = "sqldelight" }
+sqldelight-driver-android = { module = "app.cash.sqldelight:android-driver", version.ref = "sqldelight" }
 sqldelight-driver-native = { module = "app.cash.sqldelight:native-driver", version.ref = "sqldelight" }
 sqldelight-dialect-sqlite = { module = "app.cash.sqldelight:sqlite-3-35-dialect", version.ref = "sqldelight" }
 kermit = { module = "co.touchlab:kermit", version.ref = "kermit" }
@@ -52,9 +69,15 @@ ktor-client-cio = { module = "io.ktor:ktor-client-cio", version.ref = "ktor" }
 # Server side — `:test:rig` ONLY (the module exists to withhold these from everything else).
 ktor-server-core = { module = "io.ktor:ktor-server-core", version.ref = "ktor" }
 ktor-server-cio = { module = "io.ktor:ktor-server-cio", version.ref = "ktor" }
+androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activity" }
+androidx-lifecycle-process = { module = "androidx.lifecycle:lifecycle-process", version.ref = "androidx-lifecycle" }
+# The AGP API the convention plugins configure the `android` target through — compileOnly in `build-logic`.
+android-gradle = { module = "com.android.tools.build:gradle", version.ref = "agp" }
 sentry-kmp = { module = "io.sentry:sentry-kotlin-multiplatform", version.ref = "sentry-kmp" }
 
 [plugins]
+android-kmp-library = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }
+android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }

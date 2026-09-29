@@ -12,58 +12,59 @@ functions hold the feature graph; this matrix keeps the per-root adapter surface
 
 Roots found:
 
+- `SnapSyncRoot` — `app/android/src/main/kotlin/app/snapsync/android/SnapSyncRoot.kt`
 - `SnapSyncRoot` — `app/ios/src/iosMain/kotlin/app/snapsync/ios/SnapSyncRoot.kt`
 - `UploadExtensionRoot` — `app/ios/extension/src/iosMain/kotlin/app/snapsync/ios/upload/UploadExtensionRoot.kt`
 
-| Constructed type | SnapSyncRoot | UploadExtensionRoot |
-|---|---|---|
-| `AlbumCoordinator` | | x |
-| `AlbumMapService` | x | x |
-| `AppPorts` | x | |
-| `AppUploaderPorts` | x | |
-| `AttestState` | x | x |
-| `BackgroundSessions` | x | |
-| `CachedAttestStore` | | x |
-| `ConfigService` | x | x |
-| `CutoffFormatter` | x | |
-| `DeviceManifestService` | x | x |
-| `DevicePorts` | x | x |
-| `DownloadService` | x | |
-| `FileLogSink` | x | x |
-| `GalleryAlbums` | | x |
-| `GalleryDiscovery` | | x |
-| `HttpBackend` | x | x |
-| `IosBackgroundTime` | x | |
-| `IosDatabases` | x | x |
-| `IosDeviceIntegrity` | x | |
-| `IosDownload` | x | |
-| `IosExtensionHost` | | x |
-| `IosFiles` | x | x |
-| `IosGallery` | x | |
-| `IosGalleryReader` | x | x |
-| `IosLifecycle` | x | |
-| `IosLinks` | x | |
-| `IosPreferences` | x | x |
-| `IosProcessInfo` | x | |
-| `IosPushNotifications` | x | |
-| `IosSystemUi` | x | |
-| `IosUi` | x | |
-| `IosUrlSessionUploadPlatform` | x | |
-| `IosWake` | x | |
-| `LedgerService` | x | x |
-| `LogTailService` | x | |
-| `MetricKitProcessMetrics` | x | |
-| `NoPlatformDeviceId` | x | x |
-| `PersistedDeviceIdentity` | x | x |
-| `PhotoLibraryPermission` | x | |
-| `ProcessPorts` | x | x |
-| `PublicNSLogSink` | x | x |
-| `PushPorts` | x | |
-| `PushRegistrationRecord` | x | |
-| `PushTokenSource` | x | |
-| `SceneRecord` | x | |
-| `SentryCrashReporter` | x | x |
-| `StagingService` | x | |
-| `SuppressionService` | | x |
-| `UploadPorts` | | x |
-| `UploadRecordPorts` | x | |
+| Constructed type | SnapSyncRoot | SnapSyncRoot | UploadExtensionRoot |
+|---|---|---|---|
+| `AlbumCoordinator` | | | x |
+| `AlbumMapService` | x | x | x |
+| `AppPorts` | x | x | |
+| `AppUploaderPorts` | x | x | |
+| `AttestState` | x | x | x |
+| `BackgroundSessions` | x | x | |
+| `CachedAttestStore` | | | x |
+| `ConfigService` | x | x | x |
+| `CutoffFormatter` | x | x | |
+| `DeviceManifestService` | x | x | x |
+| `DevicePorts` | x | x | x |
+| `DownloadService` | x | x | |
+| `FileLogSink` | x | x | x |
+| `GalleryAlbums` | | | x |
+| `GalleryDiscovery` | | | x |
+| `HttpBackend` | x | x | x |
+| `IosBackgroundTime` | x | x | |
+| `IosDatabases` | x | x | x |
+| `IosDeviceIntegrity` | x | x | |
+| `IosDownload` | x | x | |
+| `IosExtensionHost` | | | x |
+| `IosFiles` | x | x | x |
+| `IosGallery` | x | x | |
+| `IosGalleryReader` | x | x | x |
+| `IosLifecycle` | x | x | |
+| `IosLinks` | x | x | |
+| `IosPreferences` | x | x | x |
+| `IosProcessInfo` | x | x | |
+| `IosPushNotifications` | x | x | |
+| `IosSystemUi` | x | x | |
+| `IosUi` | x | x | |
+| `IosUrlSessionUploadPlatform` | x | x | |
+| `IosWake` | x | x | |
+| `LedgerService` | x | x | x |
+| `LogTailService` | x | x | |
+| `MetricKitProcessMetrics` | x | x | |
+| `NoPlatformDeviceId` | x | x | x |
+| `PersistedDeviceIdentity` | x | x | x |
+| `PhotoLibraryPermission` | x | x | |
+| `ProcessPorts` | x | x | x |
+| `PublicNSLogSink` | x | x | x |
+| `PushPorts` | x | x | |
+| `PushRegistrationRecord` | x | x | |
+| `PushTokenSource` | x | x | |
+| `SceneRecord` | x | x | |
+| `SentryCrashReporter` | x | x | x |
+| `StagingService` | x | x | |
+| `SuppressionService` | | | x |
+| `UploadPorts` | | | x |
+| `UploadRecordPorts` | x | x | |

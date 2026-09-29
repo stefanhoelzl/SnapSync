@@ -9,13 +9,16 @@
 // and reads). Honesty is mechanical, not an adjective: the classes behind the port faces are all `internal` and
 // every face is port-typed, so an app can reach nothing a port does not declare — the compiler says so.
 //
-// Targets: jvm + iosSimulatorArm64 + iosArm64. The device target exists for the launch-time adapters only
-// (`docs/testing.md`, "Launch-time adapters"): a RIG build of the app on a phone links this module so a launch
-// can hand some ports their mocks. A production build never links it — `:app:ios` and `:app:ios:extension`
+// Targets: jvm + iosSimulatorArm64 + iosArm64 + android. The android target exists for the Android rig build alone,
+// as iosArm64 does for the phone's; the same containment covers both. The device target exists for the launch-time
+// adapters only (`docs/testing.md`, "Launch-time adapters"): a RIG build of the app on a phone links this module so
+// a launch can hand some ports their mocks. A production build never links it — `:app:ios` and `:app:ios:extension`
 // name it only under `-Psnapsync.rig=true`, and `MockContainmentTest` fails the build the day either names it outside
 // that switch — so "mocks never link into a shipped framework" stays true of every binary that ships.
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
+    // The `android` target (`docs/architecture.md`, "Zones inside the core"): the Android app links this module.
+    id("snapsync.android")
     // The persisted mock state (`:test:launch-adapters`): each mocked system's durable state as JSON in the App Group.
     alias(libs.plugins.kotlin.serialization)
     // Coverage measurement (`docs/architecture.md`). Applied here rather than in a
@@ -55,6 +58,9 @@ kotlin {
         }
         iosMain.dependencies {
             implementation(libs.sqldelight.driver.native)
+        }
+        androidMain.dependencies {
+            implementation(libs.sqldelight.driver.android)
         }
         // The stay-behind tests that drive `:domain` subjects through these fakes (re-homed from the
         // deleted `:domain:gallery` / `:domain:download-store` / `:capability:attest` modules at

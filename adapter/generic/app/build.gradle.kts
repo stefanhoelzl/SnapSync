@@ -15,6 +15,8 @@ import kotlinx.kover.gradle.plugin.dsl.GroupingEntityType
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
+    // The `android` target (`docs/architecture.md`, "Zones inside the core"): the Android app links this module.
+    id("snapsync.android")
     alias(libs.plugins.kotlin.serialization)
     // Coverage measurement (`docs/architecture.md`). Applied here rather than in a
     // `subprojects {}` block so the instrumented set is readable per module.

@@ -34,6 +34,9 @@ plugins {
     alias(libs.plugins.kotlin.compose) apply false
     alias(libs.plugins.compose) apply false
     alias(libs.plugins.sqldelight) apply false
+    // The Android target of every multiplatform module (`snapsync.android`) and the Android app (`:app:android`).
+    alias(libs.plugins.android.kmp.library) apply false
+    alias(libs.plugins.android.application) apply false
     alias(libs.plugins.detekt)
     alias(libs.plugins.dependency.analysis)
     // Applied per module rather than here (`docs/architecture.md`): the set of instrumented
@@ -114,7 +117,7 @@ dependencyAnalysis {
     }
 }
 
-// The iOS shell roots, NAMED rather than derived from `:app:*` (`docs/architecture.md`,
+// The shell roots, NAMED rather than derived from `:app:*` (`docs/architecture.md`,
 // "The shell gates"). `:app:desktop` is an `:app:*` module this gate has never scanned and must not:
 // it hosts two harness applications and is test equipment, measured as `harness` under capability
 // `docs/architecture.md`. Listing the shells is what makes that distinction visible; a `:app:*` glob
@@ -140,6 +143,10 @@ val appShellSources = files(
     "test/rig/src/hook",
     // The same, compiled INTO `:app:ios:extension` in place of its `src/entries` under the same property.
     "test/rig/src/ext-hook",
+    // The Android root (`SnapSyncRoot`): the same composition, in the Android app's one process.
+    "app/android/src",
+    // The same, compiled INTO `:app:android` in place of its `src/prod` under the same property.
+    "test/rig/src/android-hook",
 )
 
 // The detekt plugin registers its own `detekt` task against the ROOT project's Kotlin source set —
@@ -229,6 +236,7 @@ val detektTierOf: Map<String, String> = mapOf(
     ":app:ios:extension" to "shell",
     ":domain:host" to "shell",
     ":app:jvm" to "shell",
+    ":app:android" to "shell",
 
     // The tested core and its adapters. `:domain:presentation` belongs here and not in `ui`: it is
     // Compose-free (a core zone with no Compose dependency), so none of Compose's structural inflation
@@ -245,6 +253,7 @@ val detektTierOf: Map<String, String> = mapOf(
     ":adapter:ios:app-only" to "core",
     ":adapter:ios:ext-safe" to "core",
     ":adapter:ios:ui" to "core",
+    ":adapter:android" to "core",
     ":domain:presentation" to "core",
 
     // Compose. Its own tier because Compose inflates cyclomatic complexity and function length
