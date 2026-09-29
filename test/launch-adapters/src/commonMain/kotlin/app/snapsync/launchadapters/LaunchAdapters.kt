@@ -55,6 +55,11 @@ class AdapterFacts(
      * where not every system has a real adapter (Android: every system without one mocked).
      */
     val whenAbsent: AdapterChoice? = null,
+    /**
+     * The systems this platform does not have at all — no adapter, and nothing composed over their mock — so the
+     * coherence rules they trigger do not apply (`AdapterChoice.incoherence`). Empty on iOS.
+     */
+    val absentSystems: Set<MockedSystem> = emptySet(),
 )
 
 /** A fresh device id, for a Keychain mock that holds none yet. */
@@ -141,7 +146,7 @@ sealed interface LaunchAdapters {
             when (val text = files.read(FileArea.SHARED, AdapterFiles.CHOICE)) {
                 is FileResult.Ok -> when (val parsed = AdapterChoice.parse(text.value.decodeToString())) {
                     is AdapterParse.Invalid -> Refused(parsed.problems.map { "${AdapterFiles.CHOICE}: $it" })
-                    is AdapterParse.Parsed -> (parsed.choice.incoherence() + parsed.choice.unwritten(facts)).takeIf { it.isNotEmpty() }
+                    is AdapterParse.Parsed -> (parsed.choice.incoherence(facts.absentSystems) + parsed.choice.unwritten(facts)).takeIf { it.isNotEmpty() }
                         ?.let(::Refused)
                         ?: restore(parsed.choice, files, process, facts)
                 }

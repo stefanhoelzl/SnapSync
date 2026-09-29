@@ -25,9 +25,28 @@ from the adapters file (`rig-channel`'s `device/adapters*`, as on the iOS app ho
   **foreground life**, fresh in memory — an exit forgets them. The mocked clock stands at the **epoch**: an event window
   you create is a 1970 one.
 - **A file** may make real only what Android has a real adapter for — today `screen`, `lifecycle`, `clock`, `files`,
-  `databases`, `preferences`, `keychain` (the Keystore-sealed secure store). Every other system must be named `mock`: an
-  omitted system reads as `real`, and a choice leaving one real is refused. Write it while not joined; the app exits,
-  and you start it again (`am start`). A file-chosen launch saves its mocks' state, so it survives a force-stop.
+  `databases`, `preferences`, `keychain` (the Keystore-sealed secure store), `integrity` (Keystore key attestation) and
+  `backend` (the real api over OkHttp). Every other system must be named `mock`: an omitted system reads as `real`,
+  and a choice leaving one real is refused. Write it while not joined; the app exits, and you start it again
+  (`am start`). A file-chosen launch saves its mocks' state, so it survives a force-stop.
+
+### The real backend: a local api
+
+`backend=real` talks to the build's RESOLVED deployment — `prod` by default, where an Android attestation is refused
+(no signing digest is named until Play). Build against the local rig instead and reach it from the emulator's own
+loopback (load `local-backend` for the api side):
+
+```bash
+./gradlew :app:android:assembleDebug -Psnapsync.rig=true -Psnapsync.deployment=local   # base http://127.0.0.1:8080/api/v2
+(cd api && ch bg deno task dev:local)                                                  # run_in_background
+adb reverse tcp:8080 tcp:8080          # the emulator's 127.0.0.1:8080 is now the host's — no 10.0.2.2
+# then the choice above with integrity=real and backend=real; the api logs `attest: <id> attested (android, software)`
+```
+
+Plain HTTP to `127.0.0.1` is allowed only in the rig build (`test/rig/src/android-hook/res/xml/rig_network_security.xml`,
+merged under the property). The emulator's KeyMint attests in SOFTWARE under a per-AVD test root, which only the local
+rig's `androidAttestationTrust: any` accepts. The rig's fallback bearer fills a token for a request that carries none,
+so a working request proves nothing about attestation — the api's `attest:` log line does.
 
 ```bash
 curl -sS -X POST localhost:18099/device/adapters/current      # what this launch runs, and what may be real
@@ -40,7 +59,7 @@ adb shell run-as app.snapsync find files databases -type f   # the real stores (
 ```
 
 A build **without** the property compiles, links and **refuses at start** (`app/android/src/prod`): Android has no
-adapters for the backend, gallery or push yet. Do not "fix" that by composing mocks into it —
+adapters for the gallery, the uploads, the downloads or push yet. Do not "fix" that by composing mocks into it —
 `MockContainmentTest` fails the build.
 
 ## One-time setup (already done on this box — check before redoing)

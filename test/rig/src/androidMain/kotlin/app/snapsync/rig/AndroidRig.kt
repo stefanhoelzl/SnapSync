@@ -68,7 +68,12 @@ class AndroidRigLaunch internal constructor(
     val world: MockWorld,
     /** The real files adapter the adapter choice lives on. */
     internal val files: Files,
+    /** The real api's base, the build's resolved one. */
+    realBase: String,
 ) {
+    /** Where this launch's backend is: the mock's synthetic base, or the real api's. */
+    val uploadBase: String = if (MockedSystem.BACKEND in launch.choice.mocked) MOCK_BASE else realBase
+
     /** This launch's choice, in one line — `/health` reports it. */
     val description: String = launch.choice.toString()
 
@@ -79,14 +84,15 @@ class AndroidRigLaunch internal constructor(
     val appDrivenUpload: AppUploadMechanism = OperatorDrivenUploads
 }
 
-/** Build the launch over the root's [real] adapters. */
-fun androidRigLaunch(real: DevicePorts): AndroidRigLaunch {
+/** Build the launch over the root's [real] adapters; [uploadBase] is the real backend's, the build's resolved one. */
+fun androidRigLaunch(real: DevicePorts, uploadBase: String): AndroidRigLaunch {
     val facts = AdapterFacts(
         osDrivenUpload = false,
         appVersion = SERVED_VERSION,
         freshDeviceId = ::randomDeviceId,
         realAdapters = ANDROID_REAL_ADAPTERS,
         whenAbsent = ANDROID_DEFAULT,
+        absentSystems = ANDROID_ABSENT_SYSTEMS,
     )
     val launch = when (val read = LaunchAdapters.load(real.files, AdapterProcess.APP, facts)) {
         is LaunchAdapters.Chosen -> read
@@ -116,7 +122,7 @@ fun androidRigLaunch(real: DevicePorts): AndroidRigLaunch {
         joinedEventId = { (ConfigService(ports.files, ports.clock).read() as? ConfigRead.Joined)?.config?.eventId },
         setInviteLinkHints = { controls.hints = it },
     )
-    return AndroidRigLaunch(launch, ports, controls, RigUi(ports.lazies.ui), world, real.files)
+    return AndroidRigLaunch(launch, ports, controls, RigUi(ports.lazies.ui), world, real.files, uploadBase)
 }
 
 /**
@@ -136,7 +142,7 @@ private fun adapterCommands(launch: AndroidRigLaunch): Map<String, RigCommand> =
         when (val parsed = AdapterChoice.parse(text)) {
             is AdapterParse.Invalid -> CommandResult.badRequest(parsed.problems.joinToString("; "))
             is AdapterParse.Parsed -> {
-                val broken = parsed.choice.incoherence() +
+                val broken = parsed.choice.incoherence(ANDROID_ABSENT_SYSTEMS) +
                     MockedSystem.entries.filter { it !in ANDROID_REAL_ADAPTERS && !parsed.choice.isMocked(it) }
                         .map { "${it.key}=real: Android has no real ${it.key} adapter yet" }
                 val joined = launch.world.joinedEventId()
@@ -225,7 +231,7 @@ private fun AndroidRigLaunch.hooks(
 ): RigHooks = RigHooks(
     bootedAt = Clock.System.now().toString(),
     uploadTier = "operator-driven",
-    uploadBase = MOCK_BASE,
+    uploadBase = uploadBase,
     transferBinding = "mock",
     // The platform calls the app's entry points on the main thread, so the rig does too.
     mainLane = Dispatchers.Main,
@@ -308,7 +314,15 @@ private val ANDROID_REAL_ADAPTERS: Set<MockedSystem> = setOf(
     MockedSystem.DATABASES,
     MockedSystem.PREFERENCES,
     MockedSystem.KEYCHAIN,
+    MockedSystem.INTEGRITY,
+    MockedSystem.BACKEND,
 )
+
+/**
+ * The systems Android does not have: the PhotoKit upload-job queue and the upload extension's registration. Nothing on
+ * this root composes over their mocks (no upload cycle, no extension), so the rules they trigger do not apply here.
+ */
+private val ANDROID_ABSENT_SYSTEMS: Set<MockedSystem> = setOf(MockedSystem.UPLOAD_QUEUE, MockedSystem.EXTENSION_REGISTRY)
 
 /** What a launch with no adapters file composes: every system mocked but the screen and its foreground life. */
 private val ANDROID_DEFAULT = AdapterChoice(MockedSystem.entries.toSet() - setOf(MockedSystem.SCREEN, MockedSystem.LIFECYCLE))

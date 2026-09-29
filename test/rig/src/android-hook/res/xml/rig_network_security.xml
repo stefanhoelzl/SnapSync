@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The rig build's ONE relaxation of Android's cleartext block: plain HTTP to the loopback address only, which is where
+  the local api (`deno task dev:local`, `deployments/local.json`'s 127.0.0.1:8080) is reached from the emulator, over
+  `adb reverse tcp:8080 tcp:8080`. Everything else keeps the platform default (HTTPS only). Merged into the app only
+  under -Psnapsync.rig=true (`app/android/build.gradle.kts`), so a production build carries none of it — the same
+  shape as iOS, whose ATS exempts only the loopback literal.
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+    </domain-config>
+</network-security-config>

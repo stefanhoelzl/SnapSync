@@ -1,6 +1,8 @@
 package app.snapsync.android
 
 import android.app.Application
+import app.snapsync.android.attest.AndroidDeviceIntegrity
+import app.snapsync.android.backend.androidHttpClient
 import app.snapsync.android.logging.LogcatSink
 import app.snapsync.android.scene.AndroidLifecycle
 import app.snapsync.android.scene.AndroidUi
@@ -19,6 +21,7 @@ import app.snapsync.compose.ProcessServices
 import app.snapsync.compose.PushPorts
 import app.snapsync.compose.UploadRecordPorts
 import app.snapsync.compose.snapSyncProcess
+import app.snapsync.http.HttpBackend
 import app.snapsync.host.ComposedApp
 import app.snapsync.host.snapSyncHost
 import app.snapsync.model.DeviceIdentityRole
@@ -81,6 +84,8 @@ class SnapSyncRoot(internal val application: Application) {
         databases = lazy { AndroidDatabases(application) },
         preferences = lazy { AndroidPreferences(application) },
         secureStore = lazy { AndroidSecureStore(application) },
+        integrity = lazy { AndroidDeviceIntegrity() },
+        backend = lazy { HttpBackend(androidHttpClient(), BuildConfig.UPLOAD_BASE, BuildConfig.APP_VERSION) },
         lifecycle = lazy { lifecycle },
         ui = lazy { ui },
     )

@@ -329,6 +329,13 @@ class RenderingTest(unittest.TestCase):
         self.assertEqual(expected, json.loads(rd.render_site(flat))["appStoreUrl"])
         self.assertEqual(expected, plist(flat)["appStoreUrl"])
 
+    def test_gradle_gets_the_same_upload_base_the_plist_does(self):
+        # The Android app's backend address: derived once, so it cannot disagree with iOS's.
+        for domain in ["example.invalid", "127.0.0.1:8080"]:
+            flat = Tree().standard(domain=domain).resolve()
+            props = dict(l.split("=", 1) for l in rd.render_properties(flat).splitlines() if "=" in l and not l.startswith("#"))
+            self.assertEqual(props["uploadBase"], plist(flat)["uploadBase"])
+
     def test_the_upload_base_carries_the_version_prefix(self):
         # Also a `//`-carrying value, and read back through the parser for the same reason.
         flat = Tree().standard().resolve()

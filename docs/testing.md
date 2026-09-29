@@ -212,6 +212,11 @@ Where bindings live: beside their implementations.
   download services through them on ART: `:adapter:android`'s device tests (`src/androidDeviceTest`), on `ANDROID_EMU`.
   The Android module has no `commonTest` — every binding there needs the platform — so the convention plugin declares
   the device test for a module with `src/androidDeviceTest` too.
+- `DeviceIntegrity` on Android: its AVAILABLE clauses run live on `ANDROID_EMU` (a key is made, attested, named and
+  signs; an unknown one refuses) — which proves the adapter, never the hardware. The same test RECORDS a proof the api
+  replays through its real routes (`api/test/android-emulator-proof.test.ts`), which is what checks that the bytes the
+  adapter produces are the bytes the verifier reads. A real phone's chain first meets the production verifier in the
+  closed test; until then Google's recorded device chains stand in (`api/test/android-attest.test.ts`).
 - `PlatformDeviceId`: its contract runs live on `ANDROID_EMU` over `ANDROID_ID` (an offered id is stable and
   canonical), and on the JVM over `NoPlatformDeviceId` (no id is `null`). "The same after a reinstall" is the property
   the id is chosen for and no process can test on itself; it is checked by hand on the emulator.
@@ -282,7 +287,7 @@ holding a different one.
 | `IOS_SIM_APP` | rig build of the app on a simulator, ad-hoc signed (`scripts/sim-sign`) | App Group available; photo grant via `applesimutils` (`simctl privacy grant` does not work for PhotoKit); no Keychain group; no partial grant exists |
 | `IOS_DEVICE_APP` | entitled app on a device | Keychain, App Group, any grant a person sets. The **only** place a partial grant exists |
 | `IOS_DEVICE_PHOTOKIT_EXT` | the upload extension on a device, launched by the OS | about 60 s per `process()` call, then killed; 6–11 min back-off after a kill |
-| `ANDROID_EMU` | a device-test APK (or the rig app) on the Android emulator | app-private storage and the Keystore (software-backed); no hardware attestation |
+| `ANDROID_EMU` | a device-test APK (or the rig app) on the Android emulator | app-private storage and the Keystore; its KeyMint attests in SOFTWARE under a per-AVD "Google Test LLC" root (measured 2026-09-29), so no hardware attestation |
 
 A backend a binding launches is **not a host**. It is part of the implementation. The real `api/` makes a
 binding `Live`, and the in-memory mock makes it `Fake`. An endpoint
