@@ -15,8 +15,13 @@ class AdapterChoice(mocked: Set<MockedSystem>) {
      * Why this adapter choice cannot compose, one reason per broken rule — empty for a coherent choice. Each rule is a pair of
      * systems whose real half would reach something its mocked half cannot answer, or would let a mocked run touch the
      * real `snap-sync-dev` zone, which real users' photos live in.
+     *
+     * A rule a system of [absent] triggers does not apply: [absent] are the systems the platform does not HAVE (Android
+     * has no PhotoKit upload-job queue and no upload extension to register), whose mock nothing composes over — so a
+     * rule about what their mocked half would do describes a run that cannot happen.
      */
-    fun incoherence(): List<String> = RULES.mapNotNull { it.brokenBy(this) }
+    fun incoherence(absent: Set<MockedSystem> = emptySet()): List<String> =
+        RULES.filter { it.whenSystem !in absent }.mapNotNull { it.brokenBy(this) }
 
     /** The adapters file's text: every system, one `key=mock|real` line each, in the vocabulary's order. */
     fun render(): String = MockedSystem.entries.joinToString("\n", postfix = "\n") {

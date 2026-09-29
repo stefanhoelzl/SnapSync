@@ -26,7 +26,11 @@
 // certificate digest), the key lives in hardware, and the device boots a verified OS behind a locked
 // bootloader. How strict those last three are is the DEPLOYMENT's (`androidAttestationTrust`):
 // `hardware` for anything deployed — the resolver refuses anything else there — and `any` for the local
-// rig, whose emulator attests in software with a key hard-coded in AOSP, which proves nothing, on purpose.
+// rig, which proves nothing, on purpose. Under `any` the root is not pinned either, because the emulator's
+// cannot be: measured 2026-09-29 on the API 36 `google_apis` image, its KeyMint attests in SOFTWARE
+// (security level 0, bootloader unlocked, boot unverified) under a self-signed "Droid Unregistered Device
+// CA, O=Google Test LLC" root minted with the AVD, valid for ~10 weeks, its intermediate for ~2 — so every
+// fresh AVD, and every CI run, brings a new one. Every other check still runs.
 
 import * as x509 from "@peculiar/x509";
 import { bytesEqual, derSignatureToRaw } from "./attest.ts";
@@ -233,8 +237,14 @@ async function verifyChain(
     );
   }
   const root = chain[chain.length - 1];
-  if (!pinned(root, config.androidAttestationRoots.map((pem) => new x509.X509Certificate(pem)))) {
-    throw new Error("the chain does not end at a pinned attestation root");
+  if (config.androidAttestationTrust === "hardware") {
+    if (!pinned(root, config.androidAttestationRoots.map((pem) => new x509.X509Certificate(pem)))) {
+      throw new Error("the chain does not end at a pinned attestation root");
+    }
+  } else if (root.issuer !== root.subject || !await root.verify({ signatureOnly: true })) {
+    // Under `any` the anchor is not compared — the emulator's is a per-AVD "Google Test LLC" root that
+    // lives for weeks (measured 2026-09-29) — but the chain must still end at a root that signs itself.
+    throw new Error("the chain does not end at a self-signed root");
   }
   for (let i = 0; i < chain.length - 1; i++) {
     const cert = chain[i];

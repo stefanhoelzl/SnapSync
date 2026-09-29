@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The rig build's manifest overlay: plain HTTP to the loopback address only (res/xml/rig_network_security.xml). -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:networkSecurityConfig="@xml/rig_network_security" />
+</manifest>

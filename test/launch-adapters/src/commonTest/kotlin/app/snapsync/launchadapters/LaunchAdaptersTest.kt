@@ -73,6 +73,14 @@ class LaunchAdaptersTest {
     }
 
     @Test
+    fun a_rule_an_absent_system_triggers_does_not_apply() {
+        // "upload-queue=mock needs backend=mock" is about mocked PhotoKit jobs; a platform without that queue has none.
+        val choice = AdapterChoice(setOf(MockedSystem.UPLOAD_QUEUE, MockedSystem.EXTENSION_REGISTRY))
+        assertTrue(choice.incoherence().any { it.startsWith("upload-queue=mock") })
+        assertTrue(choice.incoherence(absent = setOf(MockedSystem.UPLOAD_QUEUE)).none { it.startsWith("upload-queue=mock") })
+    }
+
+    @Test
     fun a_choice_that_does_not_parse_is_refused_naming_the_line() {
         write(AdapterFiles.CHOICE, "clock=mock\nbakend=mock\n")
         val refused = assertIs<LaunchAdapters.Refused>(launch())

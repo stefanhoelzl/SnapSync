@@ -10,6 +10,23 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+// The resolved deployment the app talks to (`docs/deployment.md`): `:domain:model` runs the resolver at configuration
+// time (it generates LINK_ORIGIN from the same resolution), so this project reads what that run rendered.
+evaluationDependsOn(":domain:model")
+
+val deployment: Map<String, String> = rootProject.layout.projectDirectory.file("build/deployment.properties").asFile
+    .readLines()
+    .filterNot { it.isBlank() || it.startsWith("#") }
+    .associate { line -> line.substringBefore('=') to line.substringAfter('=') }
+
+// The version this build declares to the backend (capability `app-update-required`): the SAME marketing-version floor
+// every iOS dev build carries (`Config.xcconfig`), which the api's `MIN_APP_VERSION` is pinned to stay at or below.
+// Android derives no release versions yet — the store build does (phase 5) — so the floor is the honest declaration.
+val marketingVersionFloor: String = rootProject.layout.projectDirectory.file("iosApp/Configuration/Config.xcconfig")
+    .asFile.readLines()
+    .single { it.startsWith("MARKETING_VERSION") }
+    .substringAfter('=').trim()
+
 android {
     namespace = "app.snapsync.android"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
@@ -18,8 +35,12 @@ android {
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         versionCode = 1
-        versionName = "0.1"
+        versionName = marketingVersionFloor
+        val uploadBase = requireNotNull(deployment["uploadBase"]) { "the resolved deployment rendered no uploadBase" }
+        buildConfigField("String", "UPLOAD_BASE", "\"$uploadBase\"")
+        buildConfigField("String", "APP_VERSION", "\"$marketingVersionFloor\"")
     }
+    buildFeatures { buildConfig = true }
     compileOptions {
         sourceCompatibility = JavaVersion.toVersion(libs.versions.android.jvmTarget.get())
         targetCompatibility = JavaVersion.toVersion(libs.versions.android.jvmTarget.get())
@@ -42,6 +63,17 @@ android {
     sourceSets.getByName("main").kotlin.directories.add(
         if (rigEnabled) "../../test/rig/src/android-hook/kotlin" else "src/prod/kotlin",
     )
+    // The rig's cleartext-to-loopback exception, which reaches the local api: its resource and the manifest overlay
+    // naming it, both only under the property.
+    if (rigEnabled) sourceSets.getByName("main").res.directories.add("../../test/rig/src/android-hook/res")
+}
+
+androidComponents {
+    onVariants { variant ->
+        if (rigEnabled) {
+            variant.sources.manifests.addStaticManifestFile("../../test/rig/src/android-hook/AndroidManifest.xml")
+        }
+    }
 }
 
 kotlin {

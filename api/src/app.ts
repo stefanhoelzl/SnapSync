@@ -272,6 +272,13 @@ type StreamInit = RequestInit & { duplex?: "half" };
 export type Deps = {
   /** Upstream fetch (global fetch in production; a fake in tests). */
   fetch: FetchLike;
+  /**
+   * The fetch Google's public attestation status list is read through (`android-attest.ts`) — NOT {@link fetch},
+   * which is the STORAGE upstream: the local rig's filesystem shim behind it refuses every URL outside the zone,
+   * and a test's recorder counts it. Defaults to the global fetch; a test without network permission then answers
+   * "could not look" (a 502), never a verdict.
+   */
+  revocationFetch?: FetchLike;
   /** Validated storage config (built at startup via readConfig). */
   config: Config;
   /**
@@ -566,7 +573,14 @@ async function readPushToken(db: Db, deviceId: string): Promise<PushToken | null
 // rather than left as dead code inviting a second bearer-secret path.)
 
 export function createApp(
-  { fetch: fetchImpl, config, db, now = Date.now, buildSha = BUILD_SHA }: Deps,
+  {
+    fetch: fetchImpl,
+    config,
+    db,
+    now = Date.now,
+    buildSha = BUILD_SHA,
+    revocationFetch = (url, init) => fetch(url, init),
+  }: Deps,
 ): Hono {
   // The S3 signer used ONLY to presign download URLs (`docs/architecture.md`). Access Key ID =
   // the zone name, secret = the storage-zone `AccessKey`; pure Web-Crypto, no network. Uploads/reads/
@@ -1134,7 +1148,13 @@ export function createApp(
 
       let verified;
       try {
-        verified = await verifyMintProof(config, proof, challenge, new Date(now()), fetchImpl);
+        verified = await verifyMintProof(
+          config,
+          proof,
+          challenge,
+          new Date(now()),
+          revocationFetch,
+        );
       } catch (e) {
         // Android's revocation list could not be fetched: "could not look", which the client retries —
         // never the 401 that would send it down a fresh attestation for a verdict nobody reached.

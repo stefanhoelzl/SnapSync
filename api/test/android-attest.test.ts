@@ -245,8 +245,15 @@ Deno.test("android: under trust 'any' the software attestation and the unlocked 
   );
 });
 
-Deno.test("android: trust 'any' still needs the chain, the root, the challenge and the package", async () => {
-  await refused(verify(anyTrust(SOFTWARE, GOOGLE_ROOTS), SOFTWARE), "pinned attestation root");
+Deno.test("android: trust 'any' pins no root — the emulator's is minted per AVD — but still needs the rest", async () => {
+  // A root no deployment names is accepted here, as the emulator's "Google Test LLC" root must be.
+  assertEquals(
+    (await verify(anyTrust(SOFTWARE, GOOGLE_ROOTS), SOFTWARE)).securityLevel,
+    "software",
+  );
+  // The chain itself is still verified: another device's key over this chain is refused.
+  const spliced = [RKP_STRONGBOX.chain[0], ...RKP_TEE.chain.slice(1)];
+  await refused(verify(anyTrust(RKP_TEE, []), RKP_TEE, { chain: spliced }), "issuer");
   const other = { ...SOFTWARE, challenge: encodeBase64(new TextEncoder().encode("x")) };
   await refused(verify(anyTrust(SOFTWARE, [SOFTWARE_ROOT]), other), "challenge");
   await refused(
@@ -410,7 +417,12 @@ Deno.test("route: a genuine Android chain over ANOTHER challenge is 401, recordi
   const db = await store();
   const config = hardware(FACTORY_TEE_LOCKED);
   const list = statusList();
-  const app = createApp({ config, db, fetch: list.fetch });
+  const app = createApp({
+    config,
+    db,
+    fetch: () => Promise.reject(new Error("no storage here")),
+    revocationFetch: list.fetch,
+  });
   const res = await app.request("/api/v2/attest/token", {
     method: "POST",
     headers: V2,
