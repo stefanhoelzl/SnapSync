@@ -14,8 +14,6 @@ knows it can hold it.
 Main decision record: `changes/archive/2026-07-17-establish-target-architecture`. Seam, failure, state
 and concurrency rules: `changes/archive/2026-09-23-harden-seam-bug-classes`.
 
-The structure is being re-cut into thin ports. The direction is §11.
-
 ---
 
 ## 1. Overview
@@ -920,52 +918,3 @@ store of record.
 timer (SIGKILL), `notifyTermination` follows only normal returns, `performExpiringActivity` never fires, and its
 memory limit is 32 MB (an overrun is a jetsam kill loop). A `process()` measured 0.6–1.4 s, and every unit is a
 safe retry. It walks afresh every call and holds no memo.
-
----
-
-## 11. Direction: the thin-ports re-cut (in progress)
-
-This section describes where the structure is **heading**, not what the gates enforce today. Each phase that
-lands moves its part into the sections above and trims this one.
-
-**Goal.** The app should be honest to test against mocks, and an Android build should need only new adapters.
-Both follow from one rule: **a port is what the core uses of ONE external system**, thin and platform-neutral.
-Every decision lives in `:domain:services` (shared capabilities) or `:domain:feature` (product behaviour that
-cannot see other features). Ports never call ports, and only services compose them — a gated law since 11c
-(section 2), with an allowlist the later phases empty.
-
-**Zones.** The target zone graph is the one section 2 draws and `ModuleSetTest` pins: since the feature → ports cut,
-features see services only.
-
-**Ports:**
-- Backend: typed, one HTTP client per composition (11c, shipped — section 2).
-- Gallery and GalleryReader (shipped in 11d; `export` of a resource to a file landed with the transfer ports in 11f).
-- Upload, ExtensionRegistry, Download and Wake (11f, shipped — section 10). `Upload` is one port for both upload
-  tiers, answering which source it takes (a library resource, or a file the upload services export); the job
-  decisions — which ledger row a job answers, when a free retry is spent, which end is recorded — are the upload
-  services' (`services/upload`).
-- Files, Databases, Preferences, SecureStore and PlatformDeviceId.
-- DeviceIntegrity (11c, shipped). (The process ports — CrashReporter, ProcessMetrics, SystemUi, Clock, ProcessInfo,
-  LogSink and EntryContext — landed in 11e and are described above.)
-- PushNotifications, Links, Lifecycle, ExtensionHost, Ui and DevControls (11g1, shipped — section 2).
-
-Every event the platform delivers now arrives through an event port (section 2, "Events arrive through `listen`").
-Once-only deliveries are persisted inline on the delivering thread.
-
-**Rules that land with the phases:**
-- Pure port data lives in `model/`. This is true since 11a.
-- The entry surface is event ports, a root holds no `if` and no entry of its own, the rig is an adapter set chosen at
-  build time, an adapter constructor takes no function, and `ports/` holds interfaces only — all gated since 11g1
-  (section 2); the feature → ports cut emptied the last of `ports/`'s allowlist.
-- Features see services, never ports — a compile boundary since the feature → ports cut (section 2). The store
-  interfaces became their concrete services, and the feature tests that need a port's mock moved to `:test:feature`.
-- `SelectionCalibration` is one product-policy value in `model/` (11d), not supplied per composition: the floors and
-  the denylist mean the same on every platform.
-
-**Phases.** 11a structure (shipped) → 11b storage and `:domain:services` (shipped) → 11c backend and integrity
-(shipped), 11d gallery (shipped) and 11e process ports (shipped), in parallel → 11f transfer (shipped) → 11g1 entry
-surface (shipped), with 11i (canonical asset ids, shipped — section 2) beside it → the feature → ports cut (shipped —
-section 2) → 11g2a (the three-face mocks, the JVM root `:app:jvm`, the rig's JVM host and the desktop on them — shipped,
-`docs/testing.md` "Mocks" and "The JVM root") → 11g2b (`:test:world` and the mini-edge deleted, the world's tests
-rewritten as rig tests, the rest in their zone — shipped) → 11h (the adapters chosen at launch — shipped,
-`docs/testing.md` "Launch-time adapters"), then 12 (screenshots from an all-mock simulator run).

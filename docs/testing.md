@@ -18,8 +18,6 @@ Runbooks are skills. Load the skill before doing what it covers:
 
 Main decision record: `changes/archive/2026-08-27-establish-testing-architecture`.
 
-Testing is moving with the thin-ports re-cut. The direction is §11.
-
 ---
 
 ## 1. The checks
@@ -166,6 +164,10 @@ differently from the system it stands in for. **The contract code is the specifi
 doc or spec restates its clauses. This section covers the testing mechanics. Which ports are contracted,
 and why that matters for architecture, is in `docs/architecture.md`.
 
+**Only ports have contracts.** Two things deliberately have none. `PlatformDeviceId`'s only implementation
+is a constant null, so there is nothing for a clause to hold until an adapter answers one. The entry ports'
+handlers are pinned by rig tests over the JVM root (section 7) rather than by clauses.
+
 Decision record: `changes/archive/2026-09-22-establish-port-contracts`. Later extensions are listed at the
 end of this section.
 
@@ -246,6 +248,12 @@ fails the build until someone records it, and declaring a state unreachable cann
 If no host can exercise a platform fact, it belongs in the adapter's KDoc with its evidence, not in a
 clause.
 
+A clause must be able to FAIL: a do-nothing implementation of the port has to break it. A clause a stub
+would satisfy states nothing about the real system.
+
+Where a port's own surface cannot enter a clause's state, an external OS stimulus may drive it —
+`simctl openurl/push/launch/terminate`, a `BGTask` simulation the rig triggers, an XCUITest host.
+
 A real adapter still counts as real when its location or configuration is injected: a temp directory
 instead of the App-Group container, a loopback reporting endpoint instead of the baked DSN, or the
 simulator's default `URLSession` instead of the device's background session. **The one lookup it bypasses
@@ -278,8 +286,13 @@ the binding stands up only to *receive* (the Sentry ingest), or to *answer with 
 input or observer. It does not change the binding's kind. A receiving endpoint must not be more lenient
 than production on a limit production is measured to enforce.
 
-No host can enter "protected data unavailable before first unlock". A clause conditioned on it has no real
-host, so it is not written.
+No host can enter "protected data unavailable before first unlock", and the reason is mechanical rather
+than a gap in the fleet: before first unlock the App-Group file the launch-time adapters read sits in a
+class the OS will not decrypt, so `LaunchMix` refuses and a rig build composes nothing — the observer is
+disabled by the very condition it would observe. A clause conditioned on it has no real host, so it is
+not written. What that state would prove is covered where a host CAN enter it: `AttestStoreContract`'s
+`AN_UNREADABLE_TOKEN_IS_NOT_ABSENCE` and `AN_UNREADABLE_KEY_ID_IS_NOT_ABSENCE`, whose `INACCESSIBLE`
+state is reached on `IOS_SIM_KEXE`, where every `SecItem*` call answers `-25291`.
 
 ### How each host is run
 
@@ -753,34 +766,3 @@ fixture. Instead:
 - What an Apple API *declares* (enum cases, nullability) is read from the Kotlin/Native platform klibs
   and pinned by `PlatformVocabularyPinTest`. Do not use a copy of the constants. See CLAUDE.md, "Reading
   the Apple SDK from Linux".
-
----
-
-## 11. Direction: the thin-ports re-cut (in progress)
-
-This section describes where testing is **heading** as the ports are re-cut (`docs/architecture.md` §11). It does
-not describe what runs today. Each phase moves its part into the sections above.
-
-- **Contracts are the executable specification of the real system and the licence for its mocks.**
-  - Only ports have contracts. Every clause runs against a real implementation somewhere, and a do-nothing
-    implementation must fail.
-  - Every measurement becomes a clause with a host and a committed recording. External OS stimuli are allowed
-    (`simctl openurl/push/launch/terminate`, a BGTask simulation triggered by the rig, an XCUITest host).
-  - Each port has a clause → host table. Anything unproven gets a probe first.
-  - The entry ports' handlers are pinned by rig tests over the JVM root, not by contracts (since 11g1; section 7).
-- **Fewer, thinner contracts.** The ten backend contracts became one `Backend` contract in 11c (section 4).
-- **Recordings.** When a phase converts a port whose device results are recorded, it keeps the adapter's OS call
-  sequence identical and replays first; it re-records in a device session only if a replay diverges. 11b
-  (SecureStore, AttestStore) and 11e (`LinkOpener`, now a contract over `SystemUi.openUrl` under its recorded
-  name) replayed unedited; 11c re-recorded AttestKey as DeviceIntegrity. Still ahead: 11f (BackgroundScheduler,
-  BackgroundTransfer on the extension, and UploadExtensionRegistry GRANTED + LIMITED, where an operator toggles the
-  grant).
-- **PlatformDeviceId has no contract until an Android host exists.** Its only implementation is a constant null.
-- **`:test:world` and the mini-edge are gone** (11g2b). The mocks and the JVM root replaced them in 11g2a (section 5);
-  their tests are rig tests (section 7), and the few assertions no process outside the app can see live in their
-  zone.
-- **The rig reaches the app only through ports.** On both hosts every operator lever is a mock's operator face
-  (section 6); the app host has one for each system its launch-time adapters mocks (11h, section 6).
-- **The forge is gone** (12). The marketing screenshots are the real app on a simulator over launch adapters, driven
-  by the scenarios `ShotsTest` runs on the JVM host (`docs/deployment.md`, "Screenshots"); UI review is the world
-  harness's (section 8). `DeletionLedgerTest` keeps the forge deleted.
