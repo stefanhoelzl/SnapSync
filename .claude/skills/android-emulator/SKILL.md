@@ -32,11 +32,13 @@ adapters for the backend, storage, gallery or push yet. Do not "fix" that by com
 ```bash
 export ANDROID_HOME=~/.cache/android-sdk ANDROID_AVD_HOME=~/.cache/android-sdk/avd
 ls $ANDROID_HOME   # build-tools cmdline-tools emulator platform-tools platforms system-images
-cat local.properties   # sdk.dir=<same path> — gitignored; ./gradlew build needs the SDK too
+grep android.home ~/.gradle/gradle.properties   # systemProp.android.home=<same path> — how every worktree's build
+                                                # and IDE sync find the SDK (a per-checkout local.properties is lost
+                                                # in each new workspace, and an IDE daemon lacks the shell's env)
 ```
 
 From scratch: unzip `commandlinetools-linux-*_latest.zip` into `$ANDROID_HOME/cmdline-tools/latest`, accept the
-licenses (`yes | sdkmanager --sdk_root=$ANDROID_HOME --licenses`), install `platform-tools`, `platforms;android-36`,
+licenses (`yes | sdkmanager --sdk_root=$ANDROID_HOME --licenses`), install `platform-tools`, `platforms;android-37` (compileSdk),
 `emulator` and `system-images;android-36;google_apis;x86_64`, then
 `avdmanager create avd -n snapsync-api36 -k "system-images;android-36;google_apis;x86_64" -d pixel_6`. Gradle fetches
 the build-tools it wants itself.
