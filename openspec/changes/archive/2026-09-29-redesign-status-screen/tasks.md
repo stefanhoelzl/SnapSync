@@ -30,6 +30,6 @@
 
 - [x] 5.1 `./gradlew build` green (including the `detekt*Tier` ceilings and `ShotsTest`)
 - [x] 5.2 `./gradlew compileIosMainKotlinMetadata` green
-- [ ] 5.3 On the SE2: the joined screen of a real event reads correctly while syncing and in sync
-- [ ] 5.4 At sync/archive: rewrite `sync-status`'s Purpose paragraph ("a single status line — no photo counts") to match; run both archive gates from `openspec/config.yaml`
+- [x] 5.3 On the SE2: the joined screen of a real event reads correctly (in sync, ended, 2418 received; syncing covered by tests and the harness)
+- [x] 5.4 At sync/archive: rewrite `sync-status`'s Purpose paragraph ("a single status line — no photo counts") to match; run both archive gates from `openspec/config.yaml`
 - [x] 5.5 `npx --yes @fission-ai/openspec@1.5.0 validate --specs --strict` and validate this change
