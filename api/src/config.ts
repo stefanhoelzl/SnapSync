@@ -136,8 +136,11 @@ export type Config = {
  * correctly by v2 at all. Refusing it with a `426` naming this minimum is the honest answer: the remedy
  * is "install a newer build", which is exactly what the refusal says.
  *
- * It refuses no shipped build, because no shipped build speaks v2 — they all speak v1, which this gate
- * never touches (`refusedForVersion` returns early for v1, and v1 is frozen for the installed base).
+ * ⚠️ **Raising it now disables shipped installs.** 0.4 is the first App Store build and speaks v2, so a
+ * bump refuses every installed 0.4 at once, sending it to the update notice. That is the ONE sanctioned
+ * way to break v2's wire (the other is a `/api/v3`): v2 is frozen for compatible changes only
+ * (`docs/architecture.md`). Builds below 0.4 speak v1, which this gate never touches
+ * (`refusedForVersion` returns early for v1, and v1 is frozen for the installed base).
  *
  * ⚠️ **It must stay at or below `MARKETING_VERSION` in `iosApp/Configuration/Config.xcconfig`.** That
  * floor is what every DEV and SIDELOAD build carries — such builds have no release tag to compute a

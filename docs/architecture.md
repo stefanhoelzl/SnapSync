@@ -496,7 +496,11 @@ retries forever, so an outage delays uploads but loses none.
 > documents `no-cache`).
 
 **The HTTP API is not a user contract.** It is bounded by the minimum app version (`426`, below),
-and `/api/v1` is frozen only while builds that speak it are served. Change v2 freely within that.
+and each version is frozen only while builds that speak it are served. `/api/v1` is frozen outright.
+`/api/v2` is frozen for **compatible changes only** since 0.4, its first App Store build: an addition 0.4
+ignores (a new route, a new optional response field) is fine, and anything 0.4 would misread is breaking.
+A breaking change goes to `/api/v3`, or ships with a deliberate `MIN_APP_VERSION` bump that sends 0.4 to
+the update notice. `v2.test.ts`'s existing tests must pass unedited; new ones may be added.
 
 ### Where state lives
 
