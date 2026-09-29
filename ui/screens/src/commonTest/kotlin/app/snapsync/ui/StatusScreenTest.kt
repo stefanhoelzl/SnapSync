@@ -50,6 +50,10 @@ import app.snapsync.model.Overlays
 import app.snapsync.model.RenameState
 import app.snapsync.model.Layer
 import app.snapsync.model.MemberCounts
+import app.snapsync.model.DirectionCount
+import app.snapsync.model.EventTiming
+import app.snapsync.model.SyncCounts
+import app.snapsync.model.TimeLeft
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.model.EventDetails
 import app.snapsync.model.EventStart
@@ -140,15 +144,29 @@ private fun joined(
     health: SyncHealth,
     pendingSwitch: PendingSwitch? = null,
     canChoosePhotos: Boolean = false,
-    ended: Boolean = false,
+    timing: EventTiming = EventTiming.Running(TimeLeft.Days(4)),
+    counts: SyncCounts? = null,
     membership: EventConfig = MEMBERSHIP,
     inviteUrl: String = SAMPLE_INVITE,
     renameState: RenameState = RenameState.Idle,
     closed: Boolean = false,
     waiting: MemberCounts? = null,
 ) = UiState(
-    Layer.Joined(membership, inviteUrl, health, pendingSwitch, canChoosePhotos, ended, renameState, closed = closed, waiting = waiting),
+    Layer.Joined(
+        membership = membership,
+        inviteUrl = inviteUrl,
+        health = health,
+        pendingSwitch = pendingSwitch,
+        canChoosePhotos = canChoosePhotos,
+        timing = timing,
+        counts = counts,
+        renameState = renameState,
+        closed = closed,
+        waiting = waiting,
+    ),
 )
+
+private fun progress(done: Int, total: Int) = DirectionCount.Progress(done, total)
 private val inSync = joined(SyncHealth.InSync)
 private val syncing = joined(SyncHealth.Syncing(Arrow.PULSING, Arrow.HIDDEN))
 private val syncPending = joined(SyncHealth.Syncing(Arrow.STATIC, Arrow.HIDDEN))
@@ -223,19 +241,21 @@ class StatusScreenTest {
     }
 
     @Test
-    fun `the not-started health renders a clock line naming the start — below the QR`() = runComposeUiTest {
+    fun `before the start the dates say when and the status line says what the wait means`() = runComposeUiTest {
         setContent {
             TestStatusScreen(
-                joined(SyncHealth.NotStarted(eventStart("2026-07-04T18:00:00Z"))),
+                joined(SyncHealth.NotStarted, timing = EventTiming.Upcoming(TimeLeft.Days(2))),
                 cutoff = fixedCutoff(),
             )
         }
-        // Rendered in the DEVICE's local zone (UTC here), in the same one-line slot every other status
-        // uses — the joined layer never grows a second line.
-        onNodeWithText("Starts 4 Jul, 18:00").assertExists()
-        // It is information, not an action: no sync arrows, no "In sync".
+        // Time is said once, on the dates line; the status line no longer restates the start.
+        onNodeWithText("Mon 6 – Fri 10 Jul · starts in 2 days").assertExists()
+        onNodeWithText("Sharing starts with the event").assertExists()
+        onNodeWithText("Starts", substring = true).assertDoesNotExist()
+        // It is information, not an action: no sync arrows, no "In sync", and no counts.
         onNodeWithText("In sync").assertDoesNotExist()
         onNodeWithText("Synchronization pending …").assertDoesNotExist()
+        onNodeWithText("shared", substring = true).assertDoesNotExist()
     }
 
     // ---- create layer ----
@@ -377,7 +397,7 @@ class StatusScreenTest {
         onNodeWithText("In sync").assertDoesNotExist()
         onNodeWithText("Synchronization", substring = true).assertDoesNotExist()
         onNodeWithContentDescription("Leave event").assertDoesNotExist()
-        onNodeWithText("Let someone else scan this to join").assertDoesNotExist()
+        onNodeWithText("Others join by scanning this with their camera").assertDoesNotExist()
     }
 
     @Test
@@ -596,7 +616,7 @@ class StatusScreenTest {
         val healths = listOf(
             SyncHealth.InSync,
             SyncHealth.Syncing(Arrow.PULSING, Arrow.HIDDEN),
-            SyncHealth.NotStarted(eventStart("2026-07-04T18:00:00Z")),
+            SyncHealth.NotStarted,
         )
         for (health in healths) {
             state.value = joined(health, canChoosePhotos = true)
@@ -685,7 +705,7 @@ class StatusScreenTest {
              cutoff = fixedCutoff())
         }
         onNodeWithContentDescription("Leave event").assertExists()
-        onNodeWithText("Let someone else scan this to join").assertExists()
+        onNodeWithText("Others join by scanning this with their camera").assertExists()
         onNodeWithContentDescription("Share invite link").assertExists()
     }
 
@@ -747,7 +767,7 @@ class StatusScreenTest {
     @Test
     fun `joined shows the invite QR and share action`() = runComposeUiTest {
         setContent { TestStatusScreen(inSync, cutoff = fixedCutoff()) }
-        onNodeWithText("Let someone else scan this to join").assertExists()
+        onNodeWithText("Others join by scanning this with their camera").assertExists()
         onNodeWithContentDescription("Share invite link").assertExists()
     }
 
@@ -1145,60 +1165,153 @@ class StatusScreenTest {
         assertEquals(0, saved, "Cancel commits nothing")
     }
 
-    // ---- joined layer: the "Event ended" marker (capability `sync-status`) ----
+    // ---- joined layer: the heading's joined statement and dates (capability `sync-status`) ----
 
     @Test
-    fun `an ended event marks the health line on its own line`() = runComposeUiTest {
-        setContent { TestStatusScreen(joined(SyncHealth.InSync, ended = true), cutoff = fixedCutoff()) }
-        // The marker is its OWN line above the status, not an inline prefix. Asserting the EXACT text is
-        // the point: an inline `Event ended · In sync` would satisfy a substring match, and reading as one
-        // sentence is exactly the failure this layout exists to prevent — the two are unrelated facts (the
-        // capture window closed; the transfer is still going).
-        onNodeWithText("Event ended").assertExists()
-        onNodeWithText("Event ended ·", substring = true).assertDoesNotExist()
-        // The status itself is untouched — same value, same slot, full width.
-        onNodeWithText("In sync").assertExists()
+    fun `the heading says the device has joined and how long the event lasts`() = runComposeUiTest {
+        setContent { TestStatusScreen(inSync, cutoff = fixedCutoff()) }
+        onNodeWithText("Anna's Birthday").assertExists()
+        onNodeWithText("You've joined this event").assertExists()
+        onNodeWithText("Mon 6 – Fri 10 Jul · ends in 4 days").assertExists()
     }
 
     @Test
-    fun `the ended marker never merges into the status text`() = runComposeUiTest {
-        // A syncing health is the case that produced the original complaint: `Event ended ·
-        // Synchronization pending…` parses as a claim ABOUT the syncing and wraps mid-phrase on a phone.
-        setContent { TestStatusScreen(
-                joined(SyncHealth.Syncing(Arrow.STATIC, Arrow.HIDDEN), ended = true),
+    fun `the last day counts down in hours and then minutes`() = runComposeUiTest {
+        val state = mutableStateOf(joined(SyncHealth.InSync, timing = EventTiming.Running(TimeLeft.Hours(5))))
+        setContent { TestStatusScreen(state.value, cutoff = fixedCutoff()) }
+        onNodeWithText("Mon 6 – Fri 10 Jul · ends in 5 hours").assertExists()
+        state.value = joined(SyncHealth.InSync, timing = EventTiming.Running(TimeLeft.Minutes(40)))
+        onNodeWithText("Mon 6 – Fri 10 Jul · ends in 40 min").assertExists()
+        state.value = joined(SyncHealth.InSync, timing = EventTiming.Running(TimeLeft.Hours(1)))
+        onNodeWithText("Mon 6 – Fri 10 Jul · ends in 1 hour").assertExists()
+    }
+
+    @Test
+    fun `a same-day event today shows its times`() = runComposeUiTest {
+        val party = MEMBERSHIP.copy(
+            startsAt = eventStart("2026-07-06T18:00:00Z"),
+            endsAt = eventEnd("2026-07-06T23:00:00Z"),
+        )
+        setContent {
+            TestStatusScreen(
+                joined(SyncHealth.NotStarted, membership = party, timing = EventTiming.Upcoming(TimeLeft.Hours(6))),
                 cutoff = fixedCutoff(),
-            ) }
-        onNodeWithText("Event ended").assertExists()
-        onNodeWithText("Event ended ·", substring = true).assertDoesNotExist()
+            )
+        }
+        onNodeWithText("Today 18:00 – 23:00 · starts in 6 hours").assertExists()
+    }
+
+    @Test
+    fun `an ended event says so on the dates line and never in the status text`() = runComposeUiTest {
+        setContent {
+            TestStatusScreen(
+                joined(SyncHealth.Syncing(Arrow.STATIC, Arrow.HIDDEN), timing = EventTiming.Ended),
+                cutoff = fixedCutoff(),
+            )
+        }
+        onNodeWithText("Mon 6 – Fri 10 Jul · ended").assertExists()
+        onNodeWithText("Event ended", substring = true).assertDoesNotExist()
+        onNodeWithText("Synchronization pending…").assertExists()
+    }
+
+    // ---- joined layer: the counts line (capability `sync-status`) ----
+
+    @Test
+    fun `the counts show both directions while work remains`() = runComposeUiTest {
+        setContent {
+            TestStatusScreen(
+                joined(SyncHealth.Syncing(Arrow.PULSING, Arrow.STATIC), counts = SyncCounts(progress(12, 15), progress(40, 52))),
+                cutoff = fixedCutoff(),
+            )
+        }
+        onNodeWithText("Synchronization ongoing…").assertExists()
+        onNodeWithText("12/15 shared · 40/52 received").assertExists()
+    }
+
+    @Test
+    fun `in sync the counts show totals`() = runComposeUiTest {
+        setContent {
+            TestStatusScreen(
+                joined(SyncHealth.InSync, counts = SyncCounts(progress(15, 15), progress(52, 52))),
+                cutoff = fixedCutoff(),
+            )
+        }
+        onNodeWithText("In sync").assertExists()
+        onNodeWithText("15 shared · 52 received").assertExists()
+    }
+
+    @Test
+    fun `a switched-off direction says so`() = runComposeUiTest {
+        val state = mutableStateOf(
+            joined(SyncHealth.Syncing(Arrow.HIDDEN, Arrow.STATIC), counts = SyncCounts(DirectionCount.Off, progress(40, 52))),
+        )
+        setContent { TestStatusScreen(state.value, cutoff = fixedCutoff()) }
+        onNodeWithText("Not sharing · 40/52 received").assertExists()
+        state.value = joined(SyncHealth.InSync, counts = SyncCounts(progress(15, 15), DirectionCount.Off))
+        onNodeWithText("15 shared · Not receiving").assertExists()
+    }
+
+    @Test
+    fun `no counts are drawn when the state carries none`() = runComposeUiTest {
+        setContent { TestStatusScreen(joined(SyncHealth.NeedsAccess(GalleryAccess.DENIED)), cutoff = fixedCutoff()) }
+        onNodeWithText("shared", substring = true).assertDoesNotExist()
+        onNodeWithText("received", substring = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun `limited access shows its counts beside the two access offers`() = runComposeUiTest {
+        setContent {
+            TestStatusScreen(
+                joined(SyncHealth.InSync, canChoosePhotos = true, counts = SyncCounts(progress(6, 6), progress(52, 52))),
+                cutoff = fixedCutoff(),
+            )
+        }
+        onNodeWithText("6 shared · 52 received").assertExists()
+        onNodeWithText("Choose more photos").assertExists()
+        onNodeWithText("Allow full access").assertExists()
     }
 
     // ---- joined layer: early completion (capabilities `sync-status`, `manage-membership`) ----
 
     @Test
-    fun `an ended open event says who it is still waiting for on the marker line`() = runComposeUiTest {
+    fun `an ended open event says who it is still waiting for beneath the counts`() = runComposeUiTest {
         setContent {
-            TestStatusScreen(joined(SyncHealth.InSync, ended = true, waiting = MemberCounts(5, 3)), cutoff = fixedCutoff())
+            TestStatusScreen(
+                joined(
+                    SyncHealth.InSync, timing = EventTiming.Ended, waiting = MemberCounts(5, 3),
+                    counts = SyncCounts(progress(34, 34), progress(110, 110)),
+                ),
+                cutoff = fixedCutoff(),
+            )
         }
-        onNodeWithText("Event ended · waiting for 2 of 5 members").assertExists()
+        onNodeWithText("34 shared · 110 received").assertExists()
+        onNodeWithText("Waiting for 2 of 5 members").assertExists()
         onNodeWithText("In sync").assertExists()
     }
 
     @Test
     fun `a closed event offers only Leave`() = runComposeUiTest {
-        setContent { TestStatusScreen(joined(SyncHealth.InSync, ended = true, closed = true), cutoff = fixedCutoff()) }
+        setContent {
+            TestStatusScreen(joined(SyncHealth.InSync, timing = EventTiming.Ended, closed = true), cutoff = fixedCutoff())
+        }
         onNodeWithContentDescription("Share invite link").assertDoesNotExist()
         onNodeWithContentDescription("Event settings").assertDoesNotExist()
         onNodeWithContentDescription("Rename event").assertDoesNotExist()
-        onNodeWithText("Let someone else scan this to join").assertDoesNotExist()
+        onNodeWithText("Others join by scanning this with their camera").assertDoesNotExist()
+        onNodeWithText("Invite others", ignoreCase = true).assertDoesNotExist()
         onNodeWithContentDescription("Leave event").assertExists()
         onNodeWithText("In sync").assertExists()
+        // The name, the joined statement and the dates stay.
+        onNodeWithText("You've joined this event").assertExists()
+        onNodeWithText("Mon 6 – Fri 10 Jul · ended").assertExists()
     }
 
     @Test
-    fun `a non-ended event shows no Event ended marker`() = runComposeUiTest {
+    fun `the invite is labelled as an invitation for others`() = runComposeUiTest {
         setContent { TestStatusScreen(inSync, cutoff = fixedCutoff()) }
-        onNodeWithText("Event ended", substring = true).assertDoesNotExist()
-        onNodeWithText("In sync").assertExists()
+        onNodeWithText("Invite others", ignoreCase = true).assertExists()
+        onNodeWithText("Share this event", ignoreCase = true).assertDoesNotExist()
+        onNodeWithText("Others join by scanning this with their camera").assertExists()
     }
 
     private fun hasAnyProgressIndication(): SemanticsMatcher =

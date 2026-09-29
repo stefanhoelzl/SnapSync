@@ -74,6 +74,11 @@ import app.snapsync.model.Layer
 import app.snapsync.model.PendingSwitch
 import app.snapsync.model.RenameState
 import app.snapsync.model.SyncHealth
+import app.snapsync.model.SyncCounts
+import app.snapsync.model.DirectionCount
+import app.snapsync.model.EventTiming
+import app.snapsync.model.TimeLeft
+import app.snapsync.model.eventTiming
 import app.snapsync.model.UiState
 
 private const val EVENT_ID = "11111111-1111-4111-8111-111111111111"
@@ -102,8 +107,10 @@ private fun joined(
     pendingSwitch: PendingSwitch? = null,
     config: EventConfig = SAMPLE_CONFIG,
     canChoosePhotos: Boolean = false,
-    ended: Boolean = false,
     renameState: RenameState = RenameState.Idle,
+    counts: SyncCounts? = null,
+    // The fixed clock's reading of the membership's bounds; a test that moves the clock names its own.
+    timing: EventTiming = eventTiming(config.startsAt, config.endsAt, NOW_CUTOFF),
 ) = UiState(
     Layer.Joined(
         membership = config,
@@ -111,10 +118,17 @@ private fun joined(
         health = health,
         pendingSwitch = pendingSwitch,
         canChoosePhotos = canChoosePhotos,
-        ended = ended,
+        timing = timing,
+        counts = counts,
         renameState = renameState,
     ),
 )
+
+/** The counts line for [shared] and [received] as `done to total` pairs. */
+private fun counts(shared: Pair<Int, Int>, received: Pair<Int, Int> = 0 to 0) =
+    SyncCounts(progress(shared), progress(received))
+
+private fun progress(p: Pair<Int, Int>) = DirectionCount.Progress(p.first, p.second)
 
 /** The membership a commit provisions: the cutoff the member confirmed, under the loaded name. */
 private fun committed(cutoff: String, name: String = "Anna's Birthday") =
@@ -159,13 +173,18 @@ private fun StatusContainerHost.confirmJoinAs(
     onConfirmJoin()
 }
 
-private fun syncing(up: Arrow, down: Arrow = Arrow.HIDDEN, config: EventConfig = SAMPLE_CONFIG) =
-    joined(SyncHealth.Syncing(up, down), config = config)
+private fun syncing(
+    up: Arrow,
+    down: Arrow = Arrow.HIDDEN,
+    config: EventConfig = SAMPLE_CONFIG,
+    counts: SyncCounts,
+) = joined(SyncHealth.Syncing(up, down), config = config, counts = counts)
 
 /** The direction-masking tests' membership: SAMPLE_CONFIG's window, receive-only. */
 private val downloadOnly = SAMPLE_CONFIG.copy(direction = Direction.DownloadOnly)
-private val inSync = joined(SyncHealth.InSync)
-private val joinedLoading = joined(SyncHealth.Loading)
+/** Settled with [shared] of the member's photos shared and nothing to receive. */
+private fun inSync(shared: Int = 0) = joined(SyncHealth.InSync, counts = counts(shared to shared))
+private val joinedLoading get() = joined(SyncHealth.Loading)
 private fun needsAccess(p: GalleryAccess) = joined(SyncHealth.NeedsAccess(p))
 
 private class FakeSyncStatusSource(initial: SyncStatus = SyncStatus.Ready(snapshot())) :
@@ -347,7 +366,7 @@ class StatusContainerHostTest {
             permission = FakePermissionSource(GalleryAccess.GRANTED),
             configFake = FakeConfig(notStartedConfig()),
         )
-        assertEquals(joined(SyncHealth.NotStarted(futureStart), config = notStartedConfig()), host.container.stateFlow.value)
+        assertEquals(joined(SyncHealth.NotStarted, config = notStartedConfig()), host.container.stateFlow.value)
     }
 
     @Test
@@ -373,7 +392,7 @@ class StatusContainerHostTest {
             permission = FakePermissionSource(GalleryAccess.GRANTED),
             configFake = FakeConfig(SAMPLE_CONFIG), // startsAt defaults to CUTOFF, which precedes now
         )
-        assertEquals(inSync, host.container.stateFlow.value)
+        assertEquals(inSync(shared = 5), host.container.stateFlow.value)
     }
 
     @Test
@@ -385,7 +404,10 @@ class StatusContainerHostTest {
             permission = FakePermissionSource(GalleryAccess.GRANTED),
             configFake = FakeConfig(notStartedConfig(startsAt = EventStart(NOW_CUTOFF))),
         )
-        assertEquals(joined(SyncHealth.InSync, config = notStartedConfig(EventStart(NOW_CUTOFF))), host.container.stateFlow.value)
+        assertEquals(
+            joined(SyncHealth.InSync, config = notStartedConfig(EventStart(NOW_CUTOFF)), counts = counts(0 to 0)),
+            host.container.stateFlow.value,
+        )
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -413,7 +435,7 @@ class StatusContainerHostTest {
             // A minute passes; the event still has not begun, so the line stands.
             advanceTimeBy(61_000)
             assertEquals(
-                joined(SyncHealth.NotStarted(futureStart), config = notStartedConfig()),
+                joined(SyncHealth.NotStarted, config = notStartedConfig()),
                 containerHost.container.stateFlow.value,
             )
 
@@ -421,7 +443,13 @@ class StatusContainerHostTest {
             // and no source has changed.
             clock.instant = Instant.parse("2026-07-09T18:00:01Z")
             advanceTimeBy(61_000)
-            assertEquals(joined(SyncHealth.InSync, config = notStartedConfig()), containerHost.container.stateFlow.value)
+            assertEquals(
+                joined(
+                    SyncHealth.InSync, config = notStartedConfig(), counts = counts(0 to 0),
+                    timing = EventTiming.Running(remaining = null),
+                ),
+                containerHost.container.stateFlow.value,
+            )
 
             cancelAndIgnoreRemainingItems()
         }
@@ -433,7 +461,7 @@ class StatusContainerHostTest {
         host(source, backgroundScope).test(this) {
             runOnCreate()
             source.value = snapshot(pending = 35, completed = 12, total = 47)
-            expectState(syncing(up = Arrow.PULSING)) // completed<total, pending>0
+            expectState(syncing(up = Arrow.PULSING, counts = counts(12 to 47))) // completed<total, pending>0
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -444,7 +472,7 @@ class StatusContainerHostTest {
         host(source, backgroundScope).test(this) {
             runOnCreate()
             source.value = snapshot(completed = 0, total = 5) // pending 0
-            expectState(syncing(up = Arrow.STATIC))
+            expectState(syncing(up = Arrow.STATIC, counts = counts(0 to 5)))
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -493,7 +521,12 @@ class StatusContainerHostTest {
             .test(this) {
                 runOnCreate()
                 source.value = snapshot(completed = 0, total = 0)
-                expectState(syncing(up = Arrow.HIDDEN, down = Arrow.PULSING, config = downloadOnly))
+                expectState(
+                    syncing(
+                        up = Arrow.HIDDEN, down = Arrow.PULSING, config = downloadOnly,
+                        counts = SyncCounts(DirectionCount.Off, progress(2 to 5)),
+                    ),
+                )
                 cancelAndIgnoreRemainingItems()
             }
     }
@@ -505,7 +538,12 @@ class StatusContainerHostTest {
             .test(this) {
                 runOnCreate()
                 source.value = snapshot(completed = 0, total = 0) // contributes nothing → nothing outstanding
-                expectState(joined(SyncHealth.InSync, config = downloadOnly))
+                expectState(
+                    joined(
+                        SyncHealth.InSync, config = downloadOnly,
+                        counts = SyncCounts(DirectionCount.Off, progress(5 to 5)),
+                    ),
+                )
                 cancelAndIgnoreRemainingItems()
             }
     }
@@ -532,7 +570,13 @@ class StatusContainerHostTest {
                 // membership that promised to share nothing.
                 source.value = snapshot(pending = 2, completed = 1, total = 5)
                 // Surfaced, not concealed.
-                expectState(syncing(up = Arrow.PULSING, down = Arrow.HIDDEN, config = downloadOnly))
+                // Counted too, not shown as "not sharing": the counts line obeys the same rule as the arrow.
+                expectState(
+                    syncing(
+                        up = Arrow.PULSING, down = Arrow.HIDDEN, config = downloadOnly,
+                        counts = counts(1 to 5, received = 5 to 5),
+                    ),
+                )
                 cancelAndIgnoreRemainingItems()
             }
     }
@@ -649,7 +693,9 @@ class StatusContainerHostTest {
             containerHost.confirmJoinAs()
             // Confirm provisions → config present + granted + snapshot total 0 → settled. The state now
             // carries the membership the commit persisted, so the expectation names it.
-            expectState(joined(SyncHealth.InSync, config = committed("2026-07-06T00:00:00Z", "My Party")))
+            expectState(
+                joined(SyncHealth.InSync, config = committed("2026-07-06T00:00:00Z", "My Party"), counts = counts(0 to 0)),
+            )
             cancelAndIgnoreRemainingItems()
         }
         assertEquals(captureCutoff("2026-07-06T00:00:00Z"), config.config.value?.minPhotoDate)
@@ -686,7 +732,7 @@ class StatusContainerHostTest {
         host(source, backgroundScope).test(this) {
             runOnCreate()
             source.value = snapshot(completed = 12, total = 47)
-            expectState(syncing(up = Arrow.STATIC)) // rising synced count, no join screen
+            expectState(syncing(up = Arrow.STATIC, counts = counts(12 to 47))) // rising synced count, no join screen
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -697,7 +743,7 @@ class StatusContainerHostTest {
         host(source, backgroundScope).test(this) {
             runOnCreate()
             source.value = snapshot(completed = 0, total = 0)
-            expectState(inSync)
+            expectState(inSync())
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -709,7 +755,7 @@ class StatusContainerHostTest {
         host(source, backgroundScope).test(this) {
             runOnCreate()
             source.value = snapshot(completed = 34, total = 34)
-            expectState(inSync)
+            expectState(inSync(shared = 34))
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -720,7 +766,7 @@ class StatusContainerHostTest {
         host(source, backgroundScope).test(this) {
             runOnCreate()
             source.value = snapshot(completed = 6, total = 5) // synced clamps to 5 >= total
-            expectState(inSync)
+            expectState(inSync(shared = 5))
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -731,9 +777,9 @@ class StatusContainerHostTest {
         host(source, backgroundScope).test(this) {
             runOnCreate()
             source.value = snapshot(completed = 1, total = 10)
-            expectState(syncing(up = Arrow.STATIC))
+            expectState(syncing(up = Arrow.STATIC, counts = counts(1 to 10)))
             source.value = snapshot(completed = 10, total = 10)
-            expectState(inSync)
+            expectState(inSync(shared = 10))
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -743,7 +789,7 @@ class StatusContainerHostTest {
         val source = FakeSyncStatusSource(snapshot(completed = 34, total = 34))
         val container = host(source, backgroundScope).container
 
-        assertEquals(inSync, container.stateFlow.value)
+        assertEquals(inSync(shared = 34), container.stateFlow.value)
     }
 
     @Test
@@ -774,7 +820,7 @@ class StatusContainerHostTest {
         val container = host(source, backgroundScope, permission = permission).container
 
         assertEquals(
-            joined(SyncHealth.InSync, canChoosePhotos = true),
+            joined(SyncHealth.InSync, canChoosePhotos = true, counts = counts(34 to 34)),
             container.stateFlow.value,
         )
     }
@@ -845,7 +891,7 @@ class StatusContainerHostTest {
         host(source, backgroundScope, permission = permission).test(this) {
             runOnCreate()
             permission.permission.value = GalleryAccess.GRANTED
-            expectState(inSync)
+            expectState(inSync(shared = 34))
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -1818,7 +1864,7 @@ class StatusContainerHostTest {
         host(source, backgroundScope, attested = attested).test(this) {
             runOnCreate()
             source.value = snapshot(pending = 5, completed = 0, total = 5)
-            expectState(syncing(up = Arrow.PULSING))
+            expectState(syncing(up = Arrow.PULSING, counts = counts(0 to 5)))
 
             attested.value = false // a renewal was attempted while the app was open — and it failed
 
@@ -1841,7 +1887,7 @@ class StatusContainerHostTest {
 
             attested.value = true // the next wake renewed successfully
 
-            expectState(syncing(up = Arrow.PULSING))
+            expectState(syncing(up = Arrow.PULSING, counts = counts(0 to 5)))
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -2096,5 +2142,74 @@ class ClosedEventJoinTest {
             assertJoining(awaitState(), EVENT_ID, JoinPhase.Closed)
             cancelAndIgnoreRemainingItems()
         }
+    }
+}
+
+/**
+ * What the joined layer says beside its health (capability `sync-status`): the dates line's timing and the
+ * counts line. Its own class so the health tests above stay within the tests tier's size ceiling.
+ */
+class StatusContainerHostJoinedFactsTest {
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun `the dates line counts down on the minute tick and settles on ended`() = runTest {
+        // The dates line (capability `sync-status`) moves with the wall clock alone: no source changes here,
+        // and the countdown still steps from hours to minutes to ended.
+        val clock = MovableClock(Instant.parse(NOW_CUTOFF.iso))
+        val running = SAMPLE_CONFIG.copy(endsAt = eventEnd("2026-07-09T14:00:00Z"))
+        val host = StatusContainerHost(
+            StatusSources(
+                FakeSyncStatusSource(snapshot(completed = 3, total = 3)),
+                FakePermissionSource(GalleryAccess.GRANTED).permission, FakeConfig(running).config,
+            ),
+            backgroundScope,
+            cutoffFormatter = movableCutoffFormatter(clock),
+            queries = noQueries,
+            commands = testCommands(),
+            diagnostics = testDiagnostics(),
+        )
+        fun settled(timing: EventTiming) =
+            joined(SyncHealth.InSync, config = running, counts = counts(3 to 3), timing = timing)
+        host.test(this) {
+            runOnCreate()
+            assertEquals(settled(EventTiming.Running(TimeLeft.Hours(2))), containerHost.container.stateFlow.value)
+
+            clock.instant = Instant.parse("2026-07-09T13:30:00Z")
+            advanceTimeBy(61_000)
+            assertEquals(settled(EventTiming.Running(TimeLeft.Minutes(30))), containerHost.container.stateFlow.value)
+
+            clock.instant = Instant.parse("2026-07-09T14:00:05Z")
+            advanceTimeBy(61_000)
+            assertEquals(settled(EventTiming.Ended), containerHost.container.stateFlow.value)
+
+            cancelAndIgnoreRemainingItems()
+        }
+    }
+
+    @Test
+    fun `the counts line carries both directions while syncing`() = runTest {
+        val source = FakeSyncStatusSource(SyncStatus.Loading)
+        StatusContainerHost(
+            StatusSources(
+                source, FakePermissionSource(GalleryAccess.GRANTED).permission, FakeConfig().config,
+                download = InMemoryDownloadStatusSource(DownloadProgress(40, 52, inFlight = 1)),
+            ),
+            backgroundScope,
+            cutoffFormatter = fixedCutoffFormatter(),
+            queries = noQueries,
+            commands = testCommands(),
+            diagnostics = testDiagnostics(),
+        ).test(this) {
+                runOnCreate()
+                source.value = snapshot(completed = 12, total = 15)
+                expectState(
+                    syncing(
+                        up = Arrow.STATIC, down = Arrow.PULSING,
+                        counts = counts(12 to 15, received = 40 to 52),
+                    ),
+                )
+                cancelAndIgnoreRemainingItems()
+            }
     }
 }

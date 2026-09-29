@@ -84,12 +84,14 @@ fun StatusScreen(
             // real control and appears in the accessibility tree. Not suppressed during a pending switch,
             // for the same reasons the settings gear is not: `RenameEvent` guards the `eventId` itself,
             // and suppressing here also hid the pen for the whole of a join's own commit.
-            heading = (state.layer as? Layer.Joined)?.membership?.name
-                ?.takeIf { chrome.showsJoinedChrome }?.let {
+            // Beneath it, that this device has joined and the event's dates (capability `sync-status`).
+            heading = (state.layer as? Layer.Joined)
+                ?.takeIf { chrome.showsJoinedChrome }?.let { joined ->
                 ScreenHeading(
-                    text = it,
+                    text = joined.membership.name,
                     onEdit = if (chrome.canRename) actions.surfaces.onRenameOpen else null,
                     editDescription = "Rename event",
+                    details = { JoinedHeadingDetails(joined, cutoff) },
                 )
             },
             bottomActions = bottomActions,
@@ -358,8 +360,8 @@ private fun JoinedBottomActions(actions: StatusActions, closed: Boolean) {
 private fun ColumnScope.CurrentLayer(
     state: UiState,
     chrome: StatusChrome,
-    // Still needed by the CREATE form (its own name/date draft, held by `CreateFlow`)
-    // and by the joined layer's clock line. The RANGE form no longer needs it: its bounds arrive
+    // Still needed by the CREATE form (its own name/date draft, held by `CreateFlow`). The joined layer's
+    // dates are drawn in the heading, which [StatusScreen] builds. The RANGE form no longer needs it: its bounds arrive
     // resolved (capability `sync-status`).
     cutoff: CutoffFormatter,
     actions: StatusActions,
@@ -392,6 +394,6 @@ private fun ColumnScope.CurrentLayer(
                 ),
             )
         is Layer.Joined ->
-            JoinedLayer(layer, actions.access, cutoff)
+            JoinedLayer(layer, actions.access)
     }
 }

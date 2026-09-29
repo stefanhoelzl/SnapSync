@@ -38,6 +38,10 @@ import app.snapsync.feature.download.readmodel.DownloadStatusSource
 import app.snapsync.feature.download.readmodel.InMemoryDownloadStatusSource
 import app.snapsync.model.SyncStatus
 import app.snapsync.model.SyncProgress
+import app.snapsync.model.SyncCounts
+import app.snapsync.model.DirectionCount
+import app.snapsync.model.EventTiming
+import app.snapsync.model.eventTiming
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -204,8 +208,8 @@ class StatusContainerHost(
 
 
     /**
-     * "Now", re-emitted every minute **only** while the joined event has not begun (capability
-     * `sync-status`).
+     * "Now", re-emitted every minute **only** while the joined event has not ended (capability
+     * `sync-status`): the not-started line and the dates line's countdown are the two things it moves.
      *
      * `SyncHealth.NotStarted` is the one health that depends on **wall-clock time** rather than the
      * ledger, so no snapshot emission would ever retire it — without this, the clock line would sit there
@@ -231,10 +235,11 @@ class StatusContainerHost(
                         emit(now)
                         if (bounds == null) return@flow
                         val (startsAt, endsAt) = bounds
-                        // Two wall-clock lines depend on this tick: NotStarted (until `startsAt`) and the
-                        // "Event ended" marker (until `endsAt`). Keep ticking while EITHER boundary is still
-                        // ahead; once both have passed, no clock-driven line can change, so the timer
-                        // self-terminates. Canonical fixed-width UTC ⇒ lexicographic order IS chronological.
+                        // Two wall-clock things depend on this tick: NotStarted (until `startsAt`) and the
+                        // dates line's countdown — "starts in …", "ends in …", then "ended" (until `endsAt`).
+                        // Keep ticking while EITHER boundary is still ahead; once both have passed, no
+                        // clock-driven line can change, so the timer self-terminates. Canonical fixed-width
+                        // UTC ⇒ lexicographic order IS chronological.
                         // (A backgrounded iOS app is suspended, so this is foreground-only in practice.)
                         val startPassed = now >= startsAt.at
                         val endPassed = endsAt == null || now >= endsAt.at
@@ -950,8 +955,8 @@ class StatusContainerHost(
 }
 
 /**
- * How often the not-started clock line re-checks the wall clock (capability `sync-status`). One
- * minute: the line names a start time to the minute, so a finer tick would buy nothing visible, and
+ * How often the joined screen re-checks the wall clock (capability `sync-status`). One minute: the
+ * dates line's finest unit is a minute ("ends in 40 min"), so a finer tick would buy nothing visible, and
  * nothing of the member's can upload before the start regardless.
  */
 private const val NOT_STARTED_TICK_MILLIS = 60_000L
@@ -1079,7 +1084,7 @@ private fun reduceFrom(
         // CAN be syncing yet — the cutoff floor guarantees it (`minPhotoDate >= startsAt > now`, and a
         // photo cannot be captured in the future) — so a snapshot line would say nothing true that this
         // does not say better. Canonical fixed-width UTC on both sides ⇒ lexicographic IS chronological.
-        config.startsAt.at > nowCutoff -> SyncHealth.NotStarted(config.startsAt)
+        config.startsAt.at > nowCutoff -> SyncHealth.NotStarted
         // Uploads are gated on an attestation token, and we could not get one. Ranked BELOW permission and
         // BELOW NotStarted for the same reason: with no library access — or before the event begins —
         // nothing of this member's can upload anyway, so an unusable token is not yet their problem, and
@@ -1101,13 +1106,18 @@ private fun reduceFrom(
     }
     // A pending join for a DIFFERENT event while joined is a switch confirmation over the joined screen.
     val pendingSwitch = pending?.let { PendingSwitch(it.eventId, it.phase) }
-    // The event's declared end has passed: an "Event ended" marker prefixing the health line (capability
-    // `sync-status`). Informational only — the health above is unchanged and sync continues in the
-    // backend grace window. `null` endsAt (a legacy config before its reconcile backfill) shows no marker.
-    // Canonical fixed-width UTC on both sides ⇒ lexicographic IS chronological.
-    val ended = config.endsAt?.let { it.at < nowCutoff } ?: false
+    // Where the event is in its life, for the dates line (capability `sync-status`). Informational only —
+    // the health above is unchanged by it, and sync continues after the end in the backend grace window.
+    val timing = eventTiming(config.startsAt, config.endsAt, nowCutoff)
+    // The counts line rides ONLY on the two health rungs that read the numbers; every rung above them
+    // means the numbers are unknown (not read yet), zero (no access collapses the gallery total) or beside
+    // the point (not started, unverified) — and the one status line is what the member should read.
+    val counts = (snapshot as? SyncStatus.Ready)
+        ?.takeIf { health is SyncHealth.InSync || health is SyncHealth.Syncing }
+        ?.let { syncCounts(it.progress, download, config.direction) }
     return joinedLayer(
-        config, health, pendingSwitch, permission, ended, rename, reconfiguring, transient, form, resolveAgainst,
+        config, health, pendingSwitch, permission, JoinedFacts(timing, counts),
+        rename, reconfiguring, transient, form, resolveAgainst,
     )
 }
 
@@ -1123,7 +1133,7 @@ private fun joinedLayer(
     health: SyncHealth,
     pendingSwitch: PendingSwitch?,
     permission: GalleryAccess,
-    ended: Boolean,
+    facts: JoinedFacts,
     rename: RenameStatus,
     reconfiguring: SettingsSurface,
     transient: String?,
@@ -1140,11 +1150,14 @@ private fun joinedLayer(
         // The resting affordance, not an attention state (capability `photo-access`): a
         // partial grant's joined layer always offers the picker, whatever the health.
         canChoosePhotos = permission == GalleryAccess.LIMITED,
-        ended = ended,
+        timing = facts.timing,
+        counts = facts.counts,
         closed = config.closed,
         // Only once this member is in sync is "who are we waiting for" the member's question (capability
         // `sync-status`); only while the event is open is anyone still settling.
-        waiting = config.members?.takeIf { ended && !config.closed && health == SyncHealth.InSync && it.waitingFor > 0 },
+        waiting = config.members?.takeIf {
+            facts.timing == EventTiming.Ended && !config.closed && health == SyncHealth.InSync && it.waitingFor > 0
+        },
         renameState = rename.toRenameState(),
         // The same transient cell the create layer's banner reads. A rejected link is rejected wherever
         // it arrives, so the message reaches whichever layer is showing rather than only one of them.
@@ -1192,6 +1205,27 @@ private fun syncHealth(progress: SyncProgress, download: DownloadProgress): Sync
         SyncHealth.Syncing(upload = upload, download = downloadArrow)
     }
 }
+
+/** What the joined layer says beside its health: the dates line's timing and the counts line. */
+private class JoinedFacts(val timing: EventTiming, val counts: SyncCounts?)
+
+// The counts line, from the SAME pairs `syncHealth` derives the arrows from, so the numbers and the arrows
+// cannot disagree. A direction reads `Off` only when the member switched it off AND it has no work: the
+// reason is the one above `syncHealth` — a display that hides work in a switched-off direction conceals
+// exactly the mismatch the member most needs to see.
+private fun syncCounts(progress: SyncProgress, download: DownloadProgress, direction: Direction): SyncCounts =
+    SyncCounts(
+        shared = if (!direction.includesUpload && progress.total == 0) {
+            DirectionCount.Off
+        } else {
+            DirectionCount.Progress(done = progress.synced, total = progress.total)
+        },
+        received = if (!direction.includesDownload && download.total == 0) {
+            DirectionCount.Off
+        } else {
+            DirectionCount.Progress(done = minOf(download.downloaded, download.total), total = download.total)
+        },
+    )
 
 private fun arrowOf(shown: Boolean, pulsing: Boolean): Arrow =
     if (!shown) Arrow.HIDDEN else if (pulsing) Arrow.PULSING else Arrow.STATIC

@@ -33,7 +33,6 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import app.snapsync.model.Arrow
-import kotlinx.datetime.LocalDateTime
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -46,7 +45,7 @@ private const val PULSE_MILLIS = 700
 /**
  * The joined-layer sync health, rendered as the single status line. A sealed semantic value (runtime
  * data), not a set of components — the call site passes only the health and, for the attention state,
- * an `onClick`; never appearance. There are no numeric counts here.
+ * an `onClick`; never appearance. The counts are not here: they are the screen's own line beneath this one.
  */
 sealed interface AppSyncStatus {
     /** Joined but persisted state not read yet — a neutral first frame. */
@@ -59,14 +58,11 @@ sealed interface AppSyncStatus {
     data class Syncing(val upload: Arrow, val download: Arrow) : AppSyncStatus
 
     /**
-     * The event has not begun (capability `sync-status`). [startsAt] is the event's start as a
-     * plain local wall-clock value — the component owns the copy and the date formatting, as it already
-     * does for "In sync".
-     *
-     * Informational, not actionable: flat (no background) and NOT tappable. It carries the start instant
-     * because a bare "not started yet" invites exactly the question it fails to answer.
+     * The event has not begun (capability `sync-status`). Informational, not actionable: flat (no
+     * background) and NOT tappable. It says what the wait MEANS — sharing starts with the event — and not
+     * when: the joined screen's dates line says that, and time is said in one place.
      */
-    data class NotStarted(val startsAt: LocalDateTime) : AppSyncStatus
+    data object NotStarted : AppSyncStatus
 
     /**
      * Photo access is off — the sole attention state; the only one with a background, tappable.
@@ -106,44 +102,17 @@ private const val STATIC_ALPHA = 0.38f
  * (no background — e.g. a bare green check for `InSync`, a clock for `NotStarted`); `NeedsAccess` and
  * `CannotVerifyDevice` carry a background, and only `NeedsAccess` is tappable ([onAttentionClick]) —
  * `CannotVerifyDevice` offers the user no action, because there is none. A `Pulsing` arrow animates its
- * opacity; a `Static` arrow is shown dimmed without motion. No counts are shown.
+ * opacity; a `Static` arrow is shown dimmed without motion.
  */
 @Composable
 fun AppStatusLine(
     status: AppSyncStatus,
-    ended: Boolean = false,
-    /** What the ended marker adds after "Event ended" — the waiting line (capability `sync-status`). */
-    endedDetail: String? = null,
     onAttentionClick: () -> Unit = {},
 ) {
-    // The event's declared end has passed (capability `sync-status`): an informational "Event ended"
-    // marker sits on its OWN line ABOVE the regular status. Purely a marker: it changes no arrow, count,
-    // or health value, and sync continues.
-    //
-    // It was once an inline `Event ended · <status>` prefix in the single status slot. Two things broke
-    // that. It reads as ONE sentence — "Event ended · Synchronization pending…" parses as a claim about
-    // the syncing, when the two are unrelated facts (the window closed; the transfer is still going). And
-    // on a phone-width line the pair wraps mid-phrase, so the break lands wherever the text happens to
-    // run out. Stacking states each fact once, and lets the status keep the full width it was designed
-    // for. The marker is styled DOWN from the status it labels, so the health stays the thing you read.
-    if (ended) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Text(
-                text = endedDetail?.let { "Event ended · $it" } ?: "Event ended",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            StatusBody(status, onAttentionClick)
-        }
-    } else {
-        StatusBody(status, onAttentionClick)
-    }
+    StatusBody(status, onAttentionClick)
 }
 
-/** The one-line status content itself, without the ended marker. Extracted so the marker can prefix it. */
+/** The one-line status content itself. */
 @Composable
 private fun StatusBody(status: AppSyncStatus, onAttentionClick: () -> Unit) {
     when (status) {
@@ -159,11 +128,11 @@ private fun StatusBody(status: AppSyncStatus, onAttentionClick: () -> Unit) {
 
         is AppSyncStatus.Syncing -> SyncingLine(status)
 
-        is AppSyncStatus.NotStarted ->
+        AppSyncStatus.NotStarted ->
             IconLine(
                 icon = Icons.Filled.Schedule, // a clock: the event exists, it simply has not begun
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                text = "Starts ${formatStartShort(status.startsAt)}",
+                text = "Sharing starts with the event",
             )
 
         is AppSyncStatus.NeedsAccess -> NeedsAccessLine(status.prompt, onAttentionClick)
