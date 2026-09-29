@@ -13,12 +13,26 @@
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        <!-- singleTop: an event link opened while the app runs reaches the running activity (onNewIntent). -->
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:launchMode="singleTop">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!--
+              The event link (capability `join-event`): https://<the resolved deployment's domain>/join, exactly — the
+              same narrow claim the AASA makes, so the marketing page, the event pages and the device API keep opening in
+              a browser. autoVerify asks Android to check the domain's /.well-known/assetlinks.json; until that names
+              this app's signing certificate (phase 5), the link is unverified and opens in the browser.
+            -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="${linkHost}" android:path="/join" />
             </intent-filter>
         </activity>
     </application>

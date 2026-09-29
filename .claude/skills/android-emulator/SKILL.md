@@ -25,8 +25,8 @@ from the adapters file (`rig-channel`'s `device/adapters*`, as on the iOS app ho
   **foreground life**, fresh in memory — an exit forgets them. The mocked clock stands at the **epoch**: an event window
   you create is a 1970 one.
 - **A file** may make real only what Android has a real adapter for — today `screen`, `lifecycle`, `clock`, `files`,
-  `databases`, `preferences`, `keychain` (the Keystore-sealed secure store), `integrity` (Keystore key attestation) and
-  `backend` (the real api over OkHttp). Every other system must be named `mock`: an omitted system reads as `real`,
+  `databases`, `preferences`, `keychain` (the Keystore-sealed secure store), `integrity` (Keystore key attestation),
+  `backend` (the real api over OkHttp) and `links` (the activity's VIEW intents; `/os` link verbs then deliver through it). Every other system must be named `mock`: an omitted system reads as `real`,
   and a choice leaving one real is refused. Write it while not joined; the app exits, and you start it again
   (`am start`). A file-chosen launch saves its mocks' state, so it survives a force-stop.
 
@@ -118,6 +118,19 @@ adb logcat -s SnapSync:V AndroidRuntime:E                               # the wh
 Everything past the port is `rig-channel`'s protocol; load it for the verbs. The app's `/os` foreground and background
 go through the REAL lifecycle adapter (`AndroidLifecycle.deliverForeground`); every other `/os` verb through its mock.
 `/os/photokit-ext/*` is refused: Android has no upload extension. `device/relaunch` is refused: force-stop and start.
+
+## Opening an event link
+
+The activity claims `https://<domain>/join` (the resolved deployment's domain, any port). Nothing verifies the domain
+on the emulator — the served `assetlinks.json` names no certificate before Play — so deliver the link to the app
+explicitly, quoting the fragment for the device shell. With `links=real` in the adapter choice:
+
+```bash
+adb shell "am start -W -a android.intent.action.VIEW -d 'https://127.0.0.1:8080/join#v=3&d=…' app.snapsync"
+```
+
+A running app gets it in `onNewIntent` (single-top), a stopped one in `onCreate`; both carried the fragment intact
+(measured 2026-09-29).
 
 ## Common tests on the emulator
 

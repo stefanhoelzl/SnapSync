@@ -27,8 +27,14 @@ fun isGatedRequest(method: String, path: String): Boolean {
 
 private val VERSION_PREFIX = Regex("""^/api/v\d+(?=/|$)""")
 
-/** The exact-path public GETs: the marketing page, the join page, the health probe, the AASA. */
-internal val PUBLIC_GETS = setOf("/", "/join", "/health", "/.well-known/apple-app-site-association")
+/** The exact-path public GETs: the marketing page, the join page, the health probe, the AASA, the asset links. */
+internal val PUBLIC_GETS = setOf(
+    "/",
+    "/join",
+    "/health",
+    "/.well-known/apple-app-site-association",
+    "/.well-known/assetlinks.json",
+)
 
 /** The two event reads authorized by eventId possession alone. */
 private val EVENT_READ = Regex("""^/events/[^/]+$""")

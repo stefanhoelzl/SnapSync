@@ -1,3 +1,4 @@
+import type { Config } from "../src/config.ts";
 import { emptyStore } from "./support/db.ts";
 import { assert, assertEquals } from "@std/assert";
 import { createApp, type FetchLike } from "../src/app.ts";
@@ -58,6 +59,50 @@ Deno.test("event-link: the AASA declares the app and the /join path only", async
   // Path-only match: no query and no fragment constraint, so a malformed link still opens the app and
   // shows the invalid-link error rather than dead-ending silently in a browser.
   assertEquals(details[0].components, [{ "/": "/join" }]);
+});
+
+const ASSETLINKS = "/.well-known/assetlinks.json";
+
+/** The app with an Android attestation policy of its own. */
+const appWith = (android: Partial<Config>) =>
+  createApp({
+    config: { ...CONFIG, ...android },
+    db: DB,
+    fetch: () => Promise.reject(new Error("no storage")),
+  });
+
+Deno.test("event-link: the asset links name the app and the certificates the attestation policy accepts", async () => {
+  const digest = Array(32).fill("AB").join(":");
+  const res = await appWith({
+    androidPackageName: "app.snapsync",
+    androidSigningCertDigests: [digest],
+  })
+    .request(ASSETLINKS);
+  assertEquals(res.status, 200); // NOT a 3xx — Android's verifier does not follow redirects either
+  assertEquals(res.headers.get("Content-Type"), "application/json");
+  assertEquals(await res.json(), [{
+    relation: ["delegate_permission/common.handle_all_urls"],
+    target: {
+      namespace: "android_app",
+      package_name: "app.snapsync",
+      sha256_cert_fingerprints: [digest],
+    },
+  }]);
+});
+
+Deno.test("event-link: with no certificate named — every deployed backend until Play, and the local rig — they claim nothing", async () => {
+  // `[]` is the honest file: no app may take the link from the browser, and the invite page loads there.
+  assertEquals(
+    await (await appWith({ androidSigningCertDigests: [] }).request(ASSETLINKS)).json(),
+    [],
+  );
+  const digest = Array(32).fill("AB").join(":");
+  const local = appWith({ androidSigningCertDigests: [digest], androidAttestationTrust: "any" });
+  assertEquals(
+    await (await local.request(ASSETLINKS)).json(),
+    [],
+    "`any` names no certificate, so it claims nothing",
+  );
 });
 
 Deno.test("event-link: the backend has exactly one source for the link domain", () => {

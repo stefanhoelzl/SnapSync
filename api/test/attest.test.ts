@@ -449,6 +449,16 @@ Deno.test("gate: the event link's AASA is served without a token", async () => {
   assertEquals(calls.length, 0); // and serving it reads no storage
 });
 
+Deno.test("gate: the event link's asset links are served without a token", async () => {
+  const { calls, app: a } = app();
+  const res = await a.request("/.well-known/assetlinks.json");
+  // NOT 401 — Android's link verifier fetches it with no Authorization header, as Apple's CDN does the AASA.
+  assertEquals(res.status, 200);
+  assertEquals(calls.length, 0);
+  assertEquals((await a.request("/.well-known/assetlinks.json/x")).status, 401);
+  assertEquals((await a.request("/.well-known/assetlinks.json", { method: "POST" })).status, 401);
+});
+
 Deno.test("gate: the /join download page is served without a token", async () => {
   const { calls, app: a } = app({ "site/join/index.html": "<!doctype html>join" });
   const res = await a.request("/join");

@@ -932,6 +932,7 @@ export function createApp(
     // public event reads below, which are already ungated and uncacheable and do touch storage.
     const publicGet = path === "/" || path === "/join" || path === "/health" ||
       path === "/.well-known/apple-app-site-association" ||
+      path === "/.well-known/assetlinks.json" ||
       path.startsWith("/_astro/");
     // The two event READS the no-app download page fetches (capability `event-site`): the event
     // metadata `/events/<id>` and the photo union `/events/<id>/files`. These are authorized by
@@ -1014,6 +1015,30 @@ export function createApp(
     c.header("Cache-Control", PUBLIC_CACHE);
     c.header("Content-Type", "application/json");
     return c.req.method === "HEAD" ? c.body(null) : c.body(aasa);
+  });
+
+  // The Android counterpart (capability `join-event`): Digital Asset Links, which Android's verifier fetches to
+  // let the app claim `https://<domain>/join` (the intent filter narrows the path; this file names the app). It
+  // names the package and the signing certificates the attestation policy accepts — ONE list
+  // (`androidSigningCertDigests`), so the app a link opens is the app that may attest. Empty on every deployed
+  // backend until the app is on Play, and under trust `any` (which names no certificate): `[]` claims nothing,
+  // so no app can take the link from the browser.
+  const assetlinks = JSON.stringify(
+    config.androidAttestationTrust === "hardware" && config.androidSigningCertDigests.length > 0
+      ? [{
+        relation: ["delegate_permission/common.handle_all_urls"],
+        target: {
+          namespace: "android_app",
+          package_name: config.androidPackageName,
+          sha256_cert_fingerprints: config.androidSigningCertDigests,
+        },
+      }]
+      : [],
+  );
+  app.on(["GET", "HEAD"], "/.well-known/assetlinks.json", (c) => {
+    c.header("Cache-Control", PUBLIC_CACHE);
+    c.header("Content-Type", "application/json");
+    return c.req.method === "HEAD" ? c.body(null) : c.body(assetlinks);
   });
 
   // The no-app download page (capabilities `join-event`, `event-site`, built by `web-site`): the

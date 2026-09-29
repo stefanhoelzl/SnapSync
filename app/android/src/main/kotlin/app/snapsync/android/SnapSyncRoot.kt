@@ -3,6 +3,7 @@ package app.snapsync.android
 import android.app.Application
 import app.snapsync.android.attest.AndroidDeviceIntegrity
 import app.snapsync.android.backend.androidHttpClient
+import app.snapsync.android.link.AndroidLinks
 import app.snapsync.android.logging.LogcatSink
 import app.snapsync.android.scene.AndroidLifecycle
 import app.snapsync.android.scene.AndroidUi
@@ -66,6 +67,9 @@ class SnapSyncRoot(internal val application: Application) {
     /** The process's foreground life. `internal` so a rig build's `/os` verbs deliver through it. */
     internal val lifecycle: AndroidLifecycle by lazy { AndroidLifecycle() }
 
+    /** The links the activity is opened with. `internal` so the activity, and a rig build's `/os` verb, deliver them. */
+    internal val links: AndroidLinks by lazy { AndroidLinks(log) }
+
     /** The screen an activity pulls. */
     internal val ui: AndroidUi by lazy { AndroidUi(cutoffFormatter, log) }
 
@@ -87,6 +91,7 @@ class SnapSyncRoot(internal val application: Application) {
         integrity = lazy { AndroidDeviceIntegrity() },
         backend = lazy { HttpBackend(androidHttpClient(), BuildConfig.UPLOAD_BASE, BuildConfig.APP_VERSION) },
         lifecycle = lazy { lifecycle },
+        links = lazy { links },
         ui = lazy { ui },
     )
 

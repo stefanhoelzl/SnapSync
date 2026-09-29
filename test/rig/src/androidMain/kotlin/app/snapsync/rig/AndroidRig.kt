@@ -1,5 +1,8 @@
 package app.snapsync.rig
 
+import android.content.Intent
+import android.net.Uri
+import app.snapsync.android.link.AndroidLinks
 import app.snapsync.android.scene.AndroidLifecycle
 import app.snapsync.compose.AppCore
 import app.snapsync.compose.DevicePorts
@@ -216,10 +219,11 @@ fun AndroidRigLaunch.start(
     core: () -> AppCore,
     host: () -> StatusContainerHost,
     lifecycle: AndroidLifecycle,
+    links: AndroidLinks,
     filesDir: File,
 ) {
     CoroutineScope(Dispatchers.Main).launch {
-        RigServer(core = core, host = host, hooks = hooks(core, host, lifecycle, filesDir)).start()
+        RigServer(core = core, host = host, hooks = hooks(core, host, lifecycle, links, filesDir)).start()
     }
 }
 
@@ -227,6 +231,7 @@ private fun AndroidRigLaunch.hooks(
     core: () -> AppCore,
     host: () -> StatusContainerHost,
     lifecycle: AndroidLifecycle,
+    links: AndroidLinks,
     filesDir: File,
 ): RigHooks = RigHooks(
     bootedAt = Clock.System.now().toString(),
@@ -239,7 +244,7 @@ private fun AndroidRigLaunch.hooks(
     triggerGroups = mapOf(
         "app" to TriggerGroup(
             lane = Dispatchers.Main,
-            wired = appTriggers(ChosenEntryDriver(world::isMocked, MockEntryDriver(world.device, world.os), AndroidEntryDriver(lifecycle))) +
+            wired = appTriggers(ChosenEntryDriver(world::isMocked, MockEntryDriver(world.device, world.os), AndroidEntryDriver(lifecycle, links))) +
                 ("onExpiry" to RigTrigger.Fire { arg -> if (arg == "next") world.os.expireNext() else world.os.expire() }),
             excluded = emptyMap(),
         ),
@@ -262,10 +267,11 @@ private fun AndroidRigLaunch.hooks(
 
 /**
  * The Android operating system, driven where its system is real: the app's foreground life, through the same adapter
- * method the process's resume and pause reach, on the main thread. Every other system is mocked on this build, so
- * [ChosenEntryDriver] hands its deliveries to the mock and never here.
+ * method the process's resume and pause reach, on the main thread, and an App Link, as the VIEW intent a running
+ * activity is handed. Every other system has no Android adapter yet, so [ChosenEntryDriver] hands its deliveries to
+ * the mock and never here.
  */
-private class AndroidEntryDriver(private val lifecycle: AndroidLifecycle) : EntryDriver {
+private class AndroidEntryDriver(private val lifecycle: AndroidLifecycle, private val links: AndroidLinks) : EntryDriver {
     override fun foreground() = lifecycle.deliverForeground()
 
     override fun background() = lifecycle.deliverBackground()
@@ -276,7 +282,9 @@ private class AndroidEntryDriver(private val lifecycle: AndroidLifecycle) : Entr
 
     override fun silentPush(eventId: String?, done: () -> Unit) = mocked("push")
 
-    override fun continueLink(url: String) = mocked("links")
+    // An App Link as the platform hands it to a running activity: a VIEW intent carrying the URL, fragment and all.
+    override fun continueLink(url: String) =
+        links.deliverIntent("onNewIntent", Intent(Intent.ACTION_VIEW, Uri.parse(url)))
 
     override fun backgroundTask(identifier: String, done: () -> Unit) = mocked("wake")
 
@@ -316,6 +324,7 @@ private val ANDROID_REAL_ADAPTERS: Set<MockedSystem> = setOf(
     MockedSystem.KEYCHAIN,
     MockedSystem.INTEGRITY,
     MockedSystem.BACKEND,
+    MockedSystem.LINKS,
 )
 
 /**
