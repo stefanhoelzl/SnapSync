@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════════════════════════════════
--- 0003 — THE MANIFEST VERSION A MEMBERSHIP LAST ACCEPTED (capabilities `docs/architecture.md`, `docs/architecture.md`)
+-- 0003 — THE MANIFEST VERSION A MEMBERSHIP LAST ACCEPTED (capabilities `database`, `api-endpoints`)
 --
 -- ⚠️ FROZEN ONCE APPLIED, like every migration here: the runner records a checksum of these bytes, so
 -- editing this file makes every later apply refuse as `modified` history. A correction is a NEW file.
