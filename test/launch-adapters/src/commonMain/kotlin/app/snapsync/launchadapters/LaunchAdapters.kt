@@ -44,6 +44,17 @@ class AdapterFacts(
     val appVersion: String,
     /** A device id for a Keychain mock that holds none yet — a fresh one per device ([randomDeviceId]). */
     val freshDeviceId: () -> String,
+    /**
+     * The systems this platform has a REAL adapter for, or `null` where every system has one (iOS). A choice that leaves
+     * any other system real — naming it `real`, or omitting it, which the file's grammar reads as real — is refused: it
+     * would compose over an adapter nobody wrote.
+     */
+    val realAdapters: Set<MockedSystem>? = null,
+    /**
+     * What a launch with no adapters file composes over: `null` for all real (iOS), or the platform's default choice
+     * where not every system has a real adapter (Android: every system without one mocked).
+     */
+    val whenAbsent: AdapterChoice? = null,
 )
 
 /** A fresh device id, for a Keychain mock that holds none yet. */
@@ -130,15 +141,37 @@ sealed interface LaunchAdapters {
             when (val text = files.read(FileArea.SHARED, AdapterFiles.CHOICE)) {
                 is FileResult.Ok -> when (val parsed = AdapterChoice.parse(text.value.decodeToString())) {
                     is AdapterParse.Invalid -> Refused(parsed.problems.map { "${AdapterFiles.CHOICE}: $it" })
-                    is AdapterParse.Parsed -> parsed.choice.incoherence().takeIf { it.isNotEmpty() }?.let(::Refused)
+                    is AdapterParse.Parsed -> (parsed.choice.incoherence() + parsed.choice.unwritten(facts)).takeIf { it.isNotEmpty() }
+                        ?.let(::Refused)
                         ?: restore(parsed.choice, files, process, facts)
                 }
-                FileResult.NotFound -> AllReal
+                // The platform's default launch keeps nothing: no file chose it, so there is no state to carry.
+                FileResult.NotFound -> facts.whenAbsent?.let { restore(it, files, process, facts, persisted = false) } ?: AllReal
                 else -> Refused(listOf("${AdapterFiles.CHOICE} could not be read: $text"))
             }
 
-        private fun restore(choice: AdapterChoice, files: Files, process: AdapterProcess, facts: AdapterFacts): LaunchAdapters {
-            val databases = choice.takeIf { it.isMocked(MockedSystem.DATABASES) }?.let {
+        /** Every system [facts] has no real adapter for that this choice leaves real, each naming why. */
+        private fun AdapterChoice.unwritten(facts: AdapterFacts): List<String> {
+            val real = facts.realAdapters ?: return emptyList()
+            return MockedSystem.entries.filter { it !in real && !isMocked(it) }.map {
+                "${it.key}=real: this platform has no real ${it.key} adapter yet (real adapters: " +
+                    real.sortedBy { r -> r.ordinal }.joinToString(",") { r -> r.key } + ")"
+            }
+        }
+
+        /**
+         * The mocked device [choice] composes over. A [persisted] launch — one an adapters file chose — keeps its mocked
+         * databases in files and restores each mocked system's saved state; one that is not starts every mock fresh, in
+         * memory.
+         */
+        private fun restore(
+            choice: AdapterChoice,
+            files: Files,
+            process: AdapterProcess,
+            facts: AdapterFacts,
+            persisted: Boolean = true,
+        ): LaunchAdapters {
+            val databases = choice.takeIf { persisted && it.isMocked(MockedSystem.DATABASES) }?.let {
                 (files.locate(FileArea.SHARED, AdapterFiles.DATABASES) as? FileResult.Ok)?.value
                     ?: return Refused(listOf("the mocked databases' folder ${AdapterFiles.DATABASES} has no location"))
             }
@@ -152,7 +185,7 @@ sealed interface LaunchAdapters {
                 acceptsAnyUploadHandle = !choice.isMocked(MockedSystem.LIBRARY),
             )
             device.declaredVersion.value = facts.appVersion
-            val problems = choice.mocked.mapNotNull { system ->
+            val problems = choice.mocked.filter { persisted }.mapNotNull { system ->
                 when (val state = files.read(FileArea.SHARED, AdapterFiles.state(system))) {
                     is FileResult.Ok -> runCatchingCancellable { MockState.restore(device, system, state.value.decodeToString()) }
                         .exceptionOrNull()?.let { "${AdapterFiles.state(system)} does not restore: ${it.message}" }

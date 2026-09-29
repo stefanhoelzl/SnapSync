@@ -36,6 +36,8 @@ flowchart LR
   adapter_android --> domain_model
   adapter_android --> domain_ports
   adapter_android --> domain_presentation
+  adapter_android --> domain_services
+  adapter_android --> test_contracts
   adapter_android --> ui_components
   adapter_android --> ui_screens
   adapter_generic_app --> domain_model

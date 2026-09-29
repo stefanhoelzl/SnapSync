@@ -4,8 +4,12 @@
     <!-- The backend, and on a rig build the control channel's loopback server. -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Nothing is backed up or transferred to another device: see res/xml/data_extraction_rules.xml. -->
     <application
         android:name=".SnapSyncApplication"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">

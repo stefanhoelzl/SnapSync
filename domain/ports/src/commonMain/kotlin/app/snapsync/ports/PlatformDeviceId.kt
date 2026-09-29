@@ -6,9 +6,8 @@ package app.snapsync.ports
  * (Android: an id derived from `ANDROID_ID`) answers it, and the persisted identity uses it in place of a random
  * one when it has to mint.
  *
- * No contract yet: the only implementation is the constant `null`, and a clause needs a real implementation on a
- * host to run against (`ContractCoverageTest`). The identity service's test covers "`null` ⇒ random" with a stub;
- * the contract lands with the first adapter that answers anything.
+ * Its promises are the port contract `PlatformDeviceIdContract`: an offered id is stable and has the device-id shape,
+ * bound live on the Android emulator; no id is `null`, bound on the JVM.
  */
 fun interface PlatformDeviceId {
     fun stableId(): String?

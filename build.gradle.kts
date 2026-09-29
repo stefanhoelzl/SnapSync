@@ -168,6 +168,7 @@ tasks.register<io.gitlab.arturbosch.detekt.Detekt>("detektAppShell") {
     // Kotlin. Pointing `setSource` at `src` picks up `iosTest`/`commonTest` too, which is how the
     // first run of this task (arch-abandoned-v1) scanned `PhotoKitSmokeTest.kt`.
     exclude("**/commonTest/**", "**/iosTest/**", "**/jvmTest/**", "**/appleTest/**", "**/nativeTest/**")
+    exclude("**/androidDeviceTest/**")
     exclude("**/build/**")
     config.setFrom(files("config/detekt/app-shell.yml"))
     buildUponDefaultConfig = false
@@ -218,7 +219,7 @@ tasks.named("check") { dependsOn("detektAppShell") }
 /** Kotlin source-set directory names that hold TESTS. Everything else under `src/` is production. */
 val testSourceSetDirs = listOf(
     "commonTest", "iosTest", "iosSimulatorArm64Test", "jvmTest", "appleTest",
-    "nativeTest", "test",
+    "nativeTest", "androidDeviceTest", "test",
 )
 
 /**

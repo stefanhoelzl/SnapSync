@@ -43,6 +43,8 @@ android-jvmTarget = "17"
 androidx-activity = "1.13.0"
 androidx-lifecycle = "2.11.0"
 androidx-test-runner = "1.7.0"
+# The open helper SQLDelight's Android driver runs on — the version its own POM resolves.
+androidx-sqlite = "2.6.2"
 # The Jetpack Compose release `compose` resolves to on Android — for the one androidx artifact named directly.
 androidx-compose = "1.12.1"
 
@@ -82,6 +84,8 @@ androidx-test-runner = { module = "androidx.test:runner", version.ref = "android
 # The empty activity Compose's `runComposeUiTest` launches on Android, merged into a device-test APK.
 compose-ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest", version.ref = "androidx-compose" }
 androidx-lifecycle-process = { module = "androidx.lifecycle:lifecycle-process", version.ref = "androidx-lifecycle" }
+# The `Databases` adapter builds its own open helper, to refuse the platform's delete-on-corruption.
+androidx-sqlite-framework = { module = "androidx.sqlite:sqlite-framework", version.ref = "androidx-sqlite" }
 # The AGP API the convention plugins configure the `android` target through — compileOnly in `build-logic`.
 android-gradle = { module = "com.android.tools.build:gradle", version.ref = "agp" }
 sentry-kmp = { module = "io.sentry:sentry-kotlin-multiplatform", version.ref = "sentry-kmp" }

@@ -21,7 +21,8 @@ import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
  * reason it runs on the iOS simulator: the code ships on ART, after D8, over the platform's own SQLite and Compose
  * renderer, none of which the JVM run exercises. Not a host test: that is the JVM again, over a stubbed `android.jar`.
  * The device tests need an emulator, so `./gradlew build` does not run them; the `android-emulator` CI job does
- * (`connectedAndroidDeviceTest`, `docs/testing.md`).
+ * (`connectedAndroidDeviceTest`, `docs/testing.md`). A module with no common tests but device tests of its own
+ * (`src/androidDeviceTest`: an Android adapter's contract bindings, which need the platform) declares it the same way.
  */
 class AndroidTargetPlugin : Plugin<Project> {
     override fun apply(project: Project) {
@@ -35,7 +36,7 @@ class AndroidTargetPlugin : Plugin<Project> {
                 compileSdk = version("android-compileSdk").toInt()
                 minSdk = version("android-minSdk").toInt()
                 compilerOptions.jvmTarget.set(JvmTarget.fromTarget(version("android-jvmTarget")))
-                if (project.file("src/commonTest").isDirectory) {
+                if (hasDeviceTests(project)) {
                     withDeviceTestBuilder { sourceSetTreeName = "test" }.configure {
                         instrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
                     }
@@ -45,7 +46,7 @@ class AndroidTargetPlugin : Plugin<Project> {
             // fails validation; no test here carries Compose resources.
             project.tasks.matching { it.name == "copyAndroidDeviceTestComposeResourcesToAndroidAssets" }
                 .configureEach { enabled = false }
-            if (project.file("src/commonTest").isDirectory) {
+            if (hasDeviceTests(project)) {
                 kotlin.sourceSets.named("androidDeviceTest") {
                     dependencies {
                         implementation(versions.findLibrary("androidx-test-runner").get())
@@ -58,6 +59,9 @@ class AndroidTargetPlugin : Plugin<Project> {
     }
 
     private companion object {
+
+        fun hasDeviceTests(project: Project): Boolean =
+            project.file("src/commonTest").isDirectory || project.file("src/androidDeviceTest").isDirectory
 
         /** `:adapter:generic:mock` → `app.snapsync.adapter.generic.mock`: unique per module, as an AAR's namespace must be. */
         fun namespaceOf(path: String): String =

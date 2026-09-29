@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  NOTHING of this app leaves the device, by cloud backup or by a device-to-device transfer. The device id and the
+  attestation state must never reach a second phone: two phones restored from one backup would share one identity
+  (and a restored attestation token without its Keystore key is garbage anyway). A new phone is a new device, as on
+  iOS, whose device-id Keychain slot is this-device-only. `allowBackup="false"` alone does not cover the
+  device-to-device transfer an Android 12+ target is subject to, hence these rules; `backup_rules.xml` is the same
+  for the Android 11 devices minSdk 30 still admits.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+        <exclude domain="device_root" path="." />
+        <exclude domain="device_file" path="." />
+        <exclude domain="device_database" path="." />
+        <exclude domain="device_sharedpref" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+        <exclude domain="device_root" path="." />
+        <exclude domain="device_file" path="." />
+        <exclude domain="device_database" path="." />
+        <exclude domain="device_sharedpref" path="." />
+    </device-transfer>
+</data-extraction-rules>

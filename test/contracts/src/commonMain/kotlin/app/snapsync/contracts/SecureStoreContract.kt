@@ -29,6 +29,12 @@ enum class SecureStoreState {
 
     /** Holding the seed value under some other protection — a legacy item awaiting the in-place upgrade. */
     HOLDING_RESTRICTED,
+
+    /**
+     * Holding the seed value sealed under a key the store no longer has — on Android, a Keystore key deleted or
+     * permanently invalidated under the item. Unreachable where the store keeps no key of its own (the Keychain).
+     */
+    HOLDING_UNDER_A_LOST_KEY,
 }
 
 /**
@@ -126,6 +132,23 @@ object SecureStoreContract : Contract<SecureStoreState, SecureStore>("SecureStor
         clause("HOLDING_DELETE_REMOVES", SecureStoreState.HOLDING_BACKGROUND_READABLE) { store ->
             store.delete(slot("HOLDING_DELETE_REMOVES"))
             assertEquals(SecureStoreRead.Absent, store.read(slot("HOLDING_DELETE_REMOVES")))
+        }
+
+        // A value nobody can ever decrypt again is gone, not unreadable: answering Unavailable would leave the device
+        // without an identity forever, because nothing mints over an unavailable read.
+        clause("LOST_KEY_READS_AS_ABSENT", SecureStoreState.HOLDING_UNDER_A_LOST_KEY) { store ->
+            assertEquals(SecureStoreRead.Absent, store.read(slot("LOST_KEY_READS_AS_ABSENT")))
+            assertEquals(SecureStoreRead.Absent, store.read(slot("LOST_KEY_READS_AS_ABSENT")), "and stays absent")
+        }
+
+        clause("LOST_KEY_RESOLVE_MINTS_AND_READS_BACK", SecureStoreState.HOLDING_UNDER_A_LOST_KEY) { store ->
+            val resolved = resolveOrMint(store, slot("LOST_KEY_RESOLVE_MINTS_AND_READS_BACK")) { minted("LOST_KEY_RESOLVE_MINTS_AND_READS_BACK") }
+            assertEquals(minted("LOST_KEY_RESOLVE_MINTS_AND_READS_BACK"), resolved)
+            assertEquals(
+                SecureStoreRead.Found(resolved, StoredProtection.BACKGROUND_READABLE),
+                store.read(slot("LOST_KEY_RESOLVE_MINTS_AND_READS_BACK")),
+                "the store seals under a fresh key and reads it back",
+            )
         }
 
         clause("RESTRICTED_READS_AS_NOT_BACKGROUND_READABLE", SecureStoreState.HOLDING_RESTRICTED) { store ->

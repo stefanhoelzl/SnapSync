@@ -39,6 +39,9 @@ class AppGroupFileSecureStoreContractTest {
             if (state == SecureStoreState.HOLDING_RESTRICTED) {
                 return Entered.Unreachable("a file store is always written background-readable")
             }
+            if (state == SecureStoreState.HOLDING_UNDER_A_LOST_KEY) {
+                return Entered.Unreachable("a file store seals nothing under a key")
+            }
             val dir = newTempDirectory()
             if (state == SecureStoreState.HOLDING_BACKGROUND_READABLE) {
                 // Seeded as a raw file, not through the store under test: one file per slot, named for it.

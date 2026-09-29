@@ -4,6 +4,11 @@ import android.app.Application
 import app.snapsync.android.logging.LogcatSink
 import app.snapsync.android.scene.AndroidLifecycle
 import app.snapsync.android.scene.AndroidUi
+import app.snapsync.android.storage.AndroidDatabases
+import app.snapsync.android.storage.AndroidFiles
+import app.snapsync.android.storage.AndroidPlatformDeviceId
+import app.snapsync.android.storage.AndroidPreferences
+import app.snapsync.android.storage.AndroidSecureStore
 import app.snapsync.compose.AppCore
 import app.snapsync.compose.AppPorts
 import app.snapsync.compose.DevicePorts
@@ -16,7 +21,6 @@ import app.snapsync.compose.UploadRecordPorts
 import app.snapsync.compose.snapSyncProcess
 import app.snapsync.host.ComposedApp
 import app.snapsync.host.snapSyncHost
-import app.snapsync.identity.NoPlatformDeviceId
 import app.snapsync.model.DeviceIdentityRole
 import app.snapsync.model.EntryScope
 import app.snapsync.model.PlatformEntry
@@ -73,6 +77,10 @@ class SnapSyncRoot(internal val application: Application) {
     /** This process's REAL adapters — the systems Android has one for — each built on first use. */
     private val real: DevicePorts = DevicePorts(
         clock = lazyOf(SystemClock),
+        files = lazy { AndroidFiles(application) },
+        databases = lazy { AndroidDatabases(application) },
+        preferences = lazy { AndroidPreferences(application) },
+        secureStore = lazy { AndroidSecureStore(application) },
         lifecycle = lazy { lifecycle },
         ui = lazy { ui },
     )
@@ -129,7 +137,11 @@ class SnapSyncRoot(internal val application: Application) {
                 manifestStore = manifestStore,
                 integrity = ports.integrity,
                 attestStore = AttestState(ports.secureStore),
-                deviceIdentity = PersistedDeviceIdentity(DeviceIdentityRole.MINTING, ports.secureStore, NoPlatformDeviceId()),
+                deviceIdentity = PersistedDeviceIdentity(
+                    DeviceIdentityRole.MINTING,
+                    ports.secureStore,
+                    AndroidPlatformDeviceId(application),
+                ),
                 appStoreUrl = null,
                 appDrivenUpload = adapters.appDrivenUpload,
                 appUpload = ports.appUpload,

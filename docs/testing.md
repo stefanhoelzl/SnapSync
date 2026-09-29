@@ -208,9 +208,13 @@ Where bindings live: beside their implementations.
   through the services over it: `:adapter:generic:app` `jvmTest` — so every `build` runs them, not only CI's simulator job.
 - The iOS `Databases`, `Files` and `Preferences` adapters, and the storage services through them on Kotlin/Native:
   `:adapter:ios:ext-safe` tests.
-- `PlatformDeviceId` has **no contract**, on purpose: its only implementation answers a constant `null`, and a
-  clause must run against a real implementation somewhere (`ContractCoverageTest`). The identity service's test covers
-  "`null` ⇒ random" with a stub. The contract lands with the first adapter that answers an id (Android).
+- The Android `Files`, `Databases`, `Preferences` and `SecureStore` adapters, and the config, staging, ledger and
+  download services through them on ART: `:adapter:android`'s device tests (`src/androidDeviceTest`), on `ANDROID_EMU`.
+  The Android module has no `commonTest` — every binding there needs the platform — so the convention plugin declares
+  the device test for a module with `src/androidDeviceTest` too.
+- `PlatformDeviceId`: its contract runs live on `ANDROID_EMU` over `ANDROID_ID` (an offered id is stable and
+  canonical), and on the JVM over `NoPlatformDeviceId` (no id is `null`). "The same after a reinstall" is the property
+  the id is chosen for and no process can test on itself; it is checked by hand on the emulator.
 - The storage services' fake-driven tests (their answers to what no contract state enters): `:adapter:generic:mock`
   `commonTest`, over the storage mocks — where the services' contracts are bound over the mocks too
   (`StoreContractBindingsTest`, `AppGroupStoreContractBindingsTest`, `ConfigStoreContractBindingTest`), so the mocks
@@ -278,7 +282,7 @@ holding a different one.
 | `IOS_SIM_APP` | rig build of the app on a simulator, ad-hoc signed (`scripts/sim-sign`) | App Group available; photo grant via `applesimutils` (`simctl privacy grant` does not work for PhotoKit); no Keychain group; no partial grant exists |
 | `IOS_DEVICE_APP` | entitled app on a device | Keychain, App Group, any grant a person sets. The **only** place a partial grant exists |
 | `IOS_DEVICE_PHOTOKIT_EXT` | the upload extension on a device, launched by the OS | about 60 s per `process()` call, then killed; 6–11 min back-off after a kill |
-| `ANDROID_EMU` | a device-test APK (or the rig app) on the Android emulator | app-private storage only; only the fakes' shared bindings run here so far |
+| `ANDROID_EMU` | a device-test APK (or the rig app) on the Android emulator | app-private storage and the Keystore (software-backed); no hardware attestation |
 
 A backend a binding launches is **not a host**. It is part of the implementation. The real `api/` makes a
 binding `Live`, and the in-memory mock makes it `Fake`. An endpoint
@@ -568,19 +572,24 @@ MetricKit (`/device/process-metrics` feeds the real handler). Code: `:test:launc
 ### The Android emulator host
 
 The Android rig build (`:app:android` under `-Psnapsync.rig=true`) serves the same protocol from inside the app on an
-emulator, reached over `adb forward tcp:18099 tcp:18099` (load `android-emulator`). Its adapter choice is **fixed**, not
-read from a file: every system mocked but the screen and its foreground life, the two Android has real adapters for
-(`AndroidRig.kt` composes it through the same `chosenPorts` a read choice uses). So it refuses `device/adapters*`,
-`device/relaunch` and the upload extension's `/os` verbs (Android has none), and is contract host `ANDROID_EMU` in
-`GET /device` — the host the device tests run on too. `scripts/android-smoke` — install,
-launch, `/health`, `GET /device`, an event created and joined over the mocked backend — is the `android-emulator` CI
-job (`android.yml`), on a Linux KVM runner. A build without the property refuses at start: it has no adapters yet.
+emulator, reached over `adb forward tcp:18099 tcp:18099` (load `android-emulator`). It reads its adapter choice from
+the adapters file as the iOS app host does (`device/adapters*` write it, and the app exits), with two differences that
+both come from Android not having every real adapter yet. **No file is not all real**: it is every system mocked but
+the screen and its foreground life, fresh in memory at every start — what every launch without a file has always
+composed. And **a choice may leave real only the systems Android has an adapter for** (`AndroidRig.kt`'s list; naming
+another `real`, or omitting it, refuses the launch, which then composes nothing). A file-chosen launch saves its mocks'
+state beside the file, as on iOS, because a real store then outlives the process. It refuses `device/relaunch` and the
+upload extension's `/os` verbs (Android has none), and is contract host `ANDROID_EMU` in `GET /device` — the host the
+device tests run on too. `scripts/android-smoke` — install, launch, `/health`, `GET /device`, an event created and
+joined over the mocked backend — is the `android-emulator` CI job (`android.yml`), on a Linux KVM runner. A build
+without the property refuses at start: not every system has an Android adapter yet.
 
 The same job runs every module's `commonTest` on the emulator (`connectedAndroidDeviceTest`), for the reason `ios-test`
 runs it on the simulator: the code ships on ART after D8, over the platform's SQLite and Compose renderer. It is a
 device test, never a host test (that is the JVM again), at the app's own minSdk (30 — D8 writes a backtick name's
 spaces only from DEX 040, which is part of why the app's minSdk is 30). An ASCII apostrophe in a backtick name is
-never representable in DEX: write `’`. The fakes' shared contract bindings run there as host `ANDROID_EMU`. The mocks'
+never representable in DEX: write `’`. The fakes' shared contract bindings run there as host `ANDROID_EMU`, and so do
+the Android adapters' own (`:adapter:android`'s `src/androidDeviceTest`). The mocks'
 SQLite reaches the platform through a context their AAR's `MockAndroidContext` provider takes at process start.
 
 The client compiles against `model/`, presentation and `feature/`, never `ports/`, `flow/`, `compose/` or
