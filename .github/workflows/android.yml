@@ -35,9 +35,8 @@ jobs:
       # The rig build (installed below), and R8 over the same graph: the plain release is refused at start, so R8 would
       # strip nearly everything from it and prove nothing about dexing the app.
       - run: ./gradlew :app:android:assembleDebug :app:android:assembleRelease -Psnapsync.rig=true
-      # The device-test APKs, built before the emulator boots so the two never hold memory at once. Their own
-      # invocation: the property raises the libraries' minSdk to 30 (the test names' spaces), which the app must not see.
-      - run: ./gradlew assembleAndroidDeviceTest -Psnapsync.androidDeviceTests=true
+      # The device-test APKs, built before the emulator boots so the two never hold memory at once.
+      - run: ./gradlew assembleAndroidDeviceTest
       # The hosted runner exposes /dev/kvm to root only.
       - name: Enable KVM
         run: |
@@ -56,7 +55,7 @@ jobs:
           disable-animations: true
           script: |
             scripts/android-smoke
-            ./gradlew connectedAndroidDeviceTest -Psnapsync.androidDeviceTests=true --continue
+            ./gradlew connectedAndroidDeviceTest --continue
       - uses: actions/upload-artifact@v7.0.1
         if: always()
         with:

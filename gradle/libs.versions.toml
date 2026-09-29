@@ -19,8 +19,8 @@ kover = "0.9.9"
 kotlinx-datetime = "0.7.1"
 kotlinx-serialization = "1.9.0"
 qrose = "1.1.2"
-# 3.2.4, not 3.2.0: 3.2.0 names a field `use streaming syntax`, which D8 refuses below DEX 040 (minSdk 30) — the
-# Android build cannot dex it at minSdk 29 (KTOR-8583, fixed in 3.2.1).
+# 3.2.4, not 3.2.0: 3.2.0 names a field `use streaming syntax`, which D8 refuses below DEX 040 (minSdk 30)
+# (KTOR-8583, fixed in 3.2.1). The Android minSdk is 30 now, but a build must not hinge on it.
 ktor = "3.2.4"
 # sentry-kmp 0.27.0 pins sentry-cocoa 8.58.2 — the SPM package in iosApp.xcodeproj and the
 # test-link provisioning in :adapter:ios:ext-safe must carry the SAME cocoa version.
@@ -29,15 +29,14 @@ sentry-cocoa = "8.58.2"
 # Android (`docs/architecture.md`, "Zones inside the core": the allowed targets). One AGP for the KMP library plugin
 # every multiplatform module's `android` target comes from and the application plugin `:app:android` applies.
 agp = "9.3.3"
-# minSdk 29 (Android 10): the first release with scoped storage's `RELATIVE_PATH` / `IS_PENDING`, so the gallery
-# adapters have one code path; targetSdk tracks Play's current requirement, compileSdk follows it.
-android-minSdk = "29"
+# minSdk 30 (Android 11), one level for the app AND its device tests: scoped storage is enforced (29 still let an app
+# opt out) and `MediaStore.create*Request` batches consent, so the gallery adapters have one code path; and D8 writes
+# the backtick test names' spaces only from DEX 040 (API 30), so the tests run at the level the app ships at. Android
+# 10 was 4.6% of German Android traffic (StatCounter, Aug 2026; ≥30 reaches 85.6%), mostly 2018–19 phones past their
+# security updates. targetSdk tracks Play's current requirement, compileSdk follows it.
+android-minSdk = "30"
 android-compileSdk = "36"
 android-targetSdk = "36"
-# The minSdk of a DEVICE-TEST build only (`-Psnapsync.androidDeviceTests=true`, the emulator job): the tests' backtick
-# names carry spaces, which D8 writes only from DEX 040 (API 30). The device-test component takes no minSdk of its own,
-# so that run raises the libraries'; the app, built without the property, stays at `android-minSdk`.
-android-deviceTestMinSdk = "30"
 # The bytecode the Android compilations emit: D8/R8 dexes it (the toolchain stays `jdk`; only the target is lowered).
 android-jvmTarget = "17"
 androidx-activity = "1.12.4"

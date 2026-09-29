@@ -88,13 +88,13 @@ Every module with a `commonTest` runs it on ART too, as `ios-test` runs it on th
 declares the device test). With the emulator up:
 
 ```bash
-./gradlew connectedAndroidDeviceTest -Psnapsync.androidDeviceTests=true --continue     # all modules, ~7 min cold
-./gradlew :domain:model:connectedAndroidDeviceTest -Psnapsync.androidDeviceTests=true  # one module
+./gradlew connectedAndroidDeviceTest --continue          # all modules, ~7 min cold
+./gradlew :domain:model:connectedAndroidDeviceTest       # one module
 # reports: <module>/build/reports/androidTests/connected/
 ```
 
-- The property is **required**: it raises the libraries' minSdk to 30 for that run, because D8 writes a test name's
-  spaces only from DEX 040. Without it the dexing fails naming a backtick test.
+- The backtick test names' spaces dex only from DEX 040 (API 30) — one reason minSdk is 30. Never lower it below 30
+  without renaming every test.
 - An ASCII apostrophe in a backtick test name **cannot be dexed at any API level** — write `’` (U+2019), which DEX
   accepts. The JVM and Kotlin/Native take either, so only this run notices.
 - ⚠️ Stop the emulator before a full `./gradlew build` on this box: the two together got the Gradle daemon OOM-killed.

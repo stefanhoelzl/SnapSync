@@ -578,9 +578,9 @@ job (`android.yml`), on a Linux KVM runner. A build without the property refuses
 
 The same job runs every module's `commonTest` on the emulator (`connectedAndroidDeviceTest`), for the reason `ios-test`
 runs it on the simulator: the code ships on ART after D8, over the platform's SQLite and Compose renderer. It is a
-device test, never a host test (that is the JVM again), and it runs with `-Psnapsync.androidDeviceTests=true`, which
-raises the libraries' minSdk to 30 for the run — D8 writes a backtick name's spaces only from DEX 040, and an ASCII
-apostrophe in one never (write `’`). The fakes' shared contract bindings run there as host `ANDROID_EMU`. The mocks'
+device test, never a host test (that is the JVM again), at the app's own minSdk (30 — D8 writes a backtick name's
+spaces only from DEX 040, which is part of why the app's minSdk is 30). An ASCII apostrophe in a backtick name is
+never representable in DEX: write `’`. The fakes' shared contract bindings run there as host `ANDROID_EMU`. The mocks'
 SQLite reaches the platform through a context their AAR's `MockAndroidContext` provider takes at process start.
 
 The client compiles against `model/`, presentation and `feature/`, never `ports/`, `flow/`, `compose/` or
