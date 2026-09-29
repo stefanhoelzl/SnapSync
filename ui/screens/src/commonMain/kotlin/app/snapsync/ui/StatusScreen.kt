@@ -148,9 +148,13 @@ private fun statusChrome(state: UiState): StatusChrome {
         canRename = showsJoinedChrome && !joinedLayer.closed,
         closed = joinedLayer?.closed == true,
         // Every join phase pins Cancel (and, on Ready, Join) as its own full-width bottom cluster; the
-        // reconfigure surface likewise pins its own Save/Cancel — so both take the safe-area-anchored
-        // bottom edge with no jump.
-        pinsActionCluster = state.layer is Layer.JoiningEvent || reconfiguring != null,
+        // reconfigure surface likewise pins its own Save/Cancel, and the create form its Create + hint (the
+        // in-flight create screen too, so the swap does not jump) — so all take the safe-area-anchored
+        // bottom edge.
+        pinsActionCluster = reconfiguring != null || when (state.layer) {
+            is Layer.JoiningEvent, is Layer.CreateEvent, Layer.CreatingEvent -> true
+            else -> false
+        },
     )
 }
 
