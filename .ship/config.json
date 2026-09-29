@@ -1,4 +1,4 @@
 {
-  "timeout.total": 20,
-  "timeout.ci": 15
+  "timeout.total": 35,
+  "timeout.ci": 30
 }
