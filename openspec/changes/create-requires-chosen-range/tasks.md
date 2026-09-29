@@ -25,7 +25,7 @@
 - [x] 4.1 ~~Seed a completed draft for the forge `create` state~~ — dropped on rebase: `main` retired the forge; the `create` shot is the real app's fresh form (design D7)
 - [x] 4.2 Check the desktop control panel and world inspector still drive create (they call create with explicit values); adjust any labels that reference the dialog
 - [x] 4.3 Drive the create screen through the harness driver: screenshot opened, name typed, day tapped (blank), complete, same-day, and failed states, light and dark
-- [ ] 4.4 Dispatch `screenshots.yml` on the branch, eyeball `create-{light,dark}.png`, and commit them (the `create` shot should now be stable across runs)
+- [x] 4.4 Dispatch `screenshots.yml` on the branch, eyeball `create-{light,dark}.png`, and commit them (the `create` shot should now be stable across runs)
 
 ## 5. Last day preset to today (operator feedback on the SE2)
 
