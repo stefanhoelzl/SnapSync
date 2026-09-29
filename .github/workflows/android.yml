@@ -49,6 +49,10 @@ jobs:
           api-level: 36
           target: google_apis
           arch: x86_64
+          # The phone the screen tests are measured on, and the one the `android-emulator` skill creates. Without it the
+          # runner makes a 320×640 px, 160 dpi AVD (320×640 dp), where the create form's calendar and the permission
+          # buttons sit below the fold and a test's tap on them lands on a clipped node.
+          profile: pixel_6
           # `swangle_indirect`, not the default SwiftShader GLES: the latter segfaults in its JIT on some hosts
           # (measured on the dev box, emulator 36.1.9 and 37.1.11); the Vulkan path boots on both.
           emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -gpu swangle_indirect -memory 3072
