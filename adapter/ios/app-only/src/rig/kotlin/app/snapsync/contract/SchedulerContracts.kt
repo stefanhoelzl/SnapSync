@@ -12,7 +12,6 @@ import app.snapsync.contracts.Replayer
 import app.snapsync.contracts.ScheduledWakes
 import app.snapsync.contracts.WakeContract
 import app.snapsync.contracts.WakeState
-import app.snapsync.contracts.recordingName
 import app.snapsync.contracts.render
 import app.snapsync.contracts.run
 import app.snapsync.background.BackgroundTaskApi
@@ -147,34 +146,28 @@ internal class DeviceSchedulerBinding(private val recorder: Recorder) : Binding<
 }
 
 /**
- * The recording's name for a run with Background App Refresh as it is on the device now: iOS refuses the idle
- * heartbeat's app refresh while it is off (or Low Power Mode is on), so the adapter's fallback is recorded — and
- * replayed — under its own name (decision record `changes/timely-background-receiving`, D2, D8).
- */
-internal fun schedulerRecordingName(refreshAvailable: Boolean): String =
-    recordingName(WakeContract.name, Host.IOS_DEVICE_APP, null) + if (refreshAvailable) "" else REFRESH_OFF
-
-/** The suffix of a recording taken with Background App Refresh off. */
-internal const val REFRESH_OFF = ".REFRESH_OFF"
-
-/**
- * Runs `WakeContract` against THIS app's `BGTaskScheduler` and renders the recording — named for whether Background
- * App Refresh is on ([schedulerRecordingName]). Refuses on a simulator, whose answers must never be filed under the
- * device's name.
+ * Runs `WakeContract` against THIS app's `BGTaskScheduler` and renders the recording. Refuses on a simulator, whose
+ * answers must never be filed under the device's name — and with Background App Refresh off, where iOS accepts every
+ * request and keeps none (measured on the SE2 / iOS 26.6.2, 2026-09-30): a recording taken then fails every clause
+ * that expects a pending wake, and no adapter could make it pass (decision record `changes/timely-background-receiving`,
+ * D2).
  */
 internal fun recordScheduler(): String {
     if (NSProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] != null) {
         return CONTRACT_REFUSED + "this process is a simulator app, not ${Host.IOS_DEVICE_APP}; record on a device.\n"
     }
+    val refresh = UIApplication.sharedApplication.backgroundRefreshStatus
+    if (refresh != UIBackgroundRefreshStatus.UIBackgroundRefreshStatusAvailable) {
+        return CONTRACT_REFUSED +
+            "Background App Refresh is not available (status $refresh): iOS keeps no background task then; turn it on " +
+            "in Settings → General → Background App Refresh and record again.\n"
+    }
     val recorder = Recorder()
     val results = run(WakeContract, DeviceSchedulerBinding(recorder))
     val env = deviceDiagnosticEnvironment(uploadTier = "n/a")
-    val refreshAvailable =
-        UIApplication.sharedApplication.backgroundRefreshStatus == UIBackgroundRefreshStatus.UIBackgroundRefreshStatusAvailable
     val header = listOf(
         "contract" to WakeContract.name,
         "host" to Host.IOS_DEVICE_APP.name,
-        "file" to schedulerRecordingName(refreshAvailable) + ".rec",
         "device" to env.deviceModel,
         "os" to env.osVersion,
         "build" to env.buildNumber,

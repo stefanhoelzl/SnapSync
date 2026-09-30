@@ -61,8 +61,7 @@ already state the outcomes this change delivers or keeps; none gains a line.
   same throttle; a small per-event "last checked" service over the existing preferences port; the selection
   observer opened at composition instead of host assembly.
 - **Wake port:** the trigger carries busy or idle. iOS adapter: a second task identifier
-  (`BGAppRefreshTaskRequest`) beside the processing heartbeat, mutual replacement, cancel covering both, fallback
-  to a one-hour processing request when refresh is unavailable. Android adapter: the same work with a longer
+  (`BGAppRefreshTaskRequest`) beside the processing heartbeat, mutual replacement, cancel covering both. Android adapter: the same work with a longer
   initial delay.
 - **iOS project:** the `fetch` background mode and the new permitted task identifier in the app's `Info.plist`;
   the runtime-identity pin; the rig's entry routing.

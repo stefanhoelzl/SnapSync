@@ -93,9 +93,12 @@ reads membership out of an upload result.
   without the cancel a pending 60 s processing request survives an idle re-arm and the cadence never drops.
 - `listen` registers both launch handlers (required before launch finishes); both route to `WakeId.Heartbeat`.
   `cancel(Heartbeat)` cancels both.
-- **A refused refresh falls back** to a `BGProcessingTaskRequest` with a 1 h earliest bound, logged at warn. Refresh
-  is unavailable when the user turned Background App Refresh off or Low Power Mode is on; processing usually still
-  runs, if mostly on the charger — worse, never nothing.
+- **No fallback.** The design first had a refused refresh fall back to a 1 h processing request. Measured on the SE2 /
+  iOS 26.6.2 with Background App Refresh off (2026-09-30): iOS **accepts** both a refresh and a processing request and
+  then holds **neither** pending — there is no refusal to react to, and processing is dropped exactly like refresh.
+  Such a device wakes in the background only as the system allows otherwise (a silent push, if iOS delivers it); the
+  spec's "as the phone's system allows" covers it, and today's 60 s heartbeat was already dead there. A refusal for
+  any other reason is reported as it always was. The rig's recorder refuses to record with the setting off.
 - Expiry: the refresh task gets roughly 30 s. It rides the existing `TaskCompletion` → `runner.stop` path; work the
   stop leaves makes the next re-arm busy (D1).
 
@@ -103,7 +106,8 @@ Plist: `fetch` joins `UIBackgroundModes`; the identifier joins `BGTaskSchedulerP
 `RuntimeIdentityTest` pin (every OS-held literal exactly once) and the rig's `MockEntryDriver` routing learn it.
 
 *Rejected:* idle as a processing request with a longer earliest bound — iOS tends to run processing only when idle
-or charging, i.e. overnight; kept only as the fallback.
+or charging, i.e. overnight. A logged warning when Background App Refresh is off — considered and not taken: the spec
+already words the outcome, and nothing on the device could act on it.
 
 **Android:** the same unique work, `setInitialDelay(1 h)` for idle. No new work kind.
 
@@ -184,8 +188,9 @@ measured the first case, not the second. The backstop's case stays covered by D1
 - **Wake contract** (`WakeContract`, recorded name `BackgroundScheduler`) gains `IDLE_ARMS_ONE`,
   `IDLE_REPLACES_BUSY`, `BUSY_REPLACES_IDLE`, `CANCEL_CLEARS_IDLE`; the `pendingWakes` handle counts both iOS
   identifiers. Hosts: the mock on the JVM, `AndroidWorkContractTest` on `ANDROID_EMU`, the iOS device recording
-  re-taken (the adapter's OS calls change) plus `…IOS_DEVICE_APP.REFRESH_OFF.rec` with Background App Refresh off,
-  which replays the fallback against real answers.
+  re-taken (the adapter's OS calls change; all eight clauses passed live on the SE2 / iOS 26.6.2). A recording with
+  Background App Refresh off is not taken: every clause expecting a pending wake fails there, and no adapter could
+  pass it (D2).
 - **Rig:** `/device/os-record` gains `pendingWake` (`{cadence, earliestSeconds}` or `null`) from the wake mock's
   pending map — the state reached, not a count; `heartbeatsScheduled` stays. `/os/app/onBackgroundTask` accepts the
   idle identifier. The backend mock exposes union/event read counts if it does not already.
@@ -203,7 +208,8 @@ measured the first case, not the second. The backstop's case stays covered by D1
 
 - [iOS hands out refreshes by app usage; an app opened rarely during a short event may get few] → the spec says
   "as the phone's system allows"; each idle wake logs its trigger, so field dumps show the real rate.
-- [Background App Refresh off / Low Power Mode] → D2 fallback to processing with 1 h earliest.
+- [Background App Refresh off / Low Power Mode: iOS keeps no background task at all (measured, D2)] → accepted; the
+  device receives when a push wakes it or when it is opened, as today.
 - [Prompt behaviour of a background selection read on other iOS releases is unmeasured; 26.5.x leaked in the
   foreground] → measured clean on 26.6.2 only; re-measure at the next iOS major, as the alert-rule record already
   requires; if it leaks, the read goes back behind host assembly and limited access stays idle-only.

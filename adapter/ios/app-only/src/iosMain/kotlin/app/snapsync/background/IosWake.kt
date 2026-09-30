@@ -31,8 +31,12 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
  *   NOT required, so the OS grants windows often enough to drain a first whole-library upload and to catch new
  *   captures while the app is closed;
  * - **idle** — a `BGAppRefreshTaskRequest` on [IDLE_TASK_IDENTIFIER]: iOS runs processing mostly when idle or
- *   charging, a refresh through the day. Refused — Background App Refresh off, Low Power Mode — it **falls back** to a
- *   processing request at the same earliest date: worse, never nothing.
+ *   charging, a refresh through the day.
+ *
+ * **With Background App Refresh off, iOS keeps neither.** Measured on the SE2 / iOS 26.6.2 (2026-09-30): both requests
+ * are *accepted* and then nothing is pending — no refusal to react to, and a processing request is dropped exactly like
+ * a refresh, so there is no fallback to make. Such a device wakes in the background only as the system allows otherwise
+ * (capability `receiving-photos`, "as the phone's system allows"). ⏰ Re-measure at the next iOS major.
  *
  * iOS keeps one pending request per identifier, and the two identifiers coexist — so **each submission cancels the
  * other identifier** first, or an idle re-arm would leave the busy wake standing. [cancel] withdraws both, and both
@@ -126,13 +130,9 @@ class IosWake internal constructor(
             tasks.cancel(HEARTBEAT_TASK_IDENTIFIER)
             val refresh = BGAppRefreshTaskRequest(IDLE_TASK_IDENTIFIER)
             refresh.earliestBeginDate = NSDate.dateWithTimeIntervalSinceNow(earliestSeconds)
-            val refused = tasks.submit(refresh).exceptionOrNull() ?: return ScheduleResult.Scheduled
-            // Background App Refresh is off, or Low Power Mode is on: a processing request still runs, if mostly on the
-            // charger. Said out loud, because the idle wake is then much rarer.
-            log.w(refused) { "the idle refresh was refused — falling back to a processing request" }
-        } else {
-            tasks.cancel(IDLE_TASK_IDENTIFIER)
+            return answerOf(tasks.submit(refresh))
         }
+        tasks.cancel(IDLE_TASK_IDENTIFIER)
         return answerOf(tasks.submit(processing(after, earliestSeconds)))
     }
 
