@@ -63,6 +63,13 @@ inputs:
     description: Password for the Development .p12.
     required: true
 
+outputs:
+  konan-key:
+    description: >-
+      The ~/.konan primary key this run restored under (it never hits). The CALLER saves it — with
+      .github/actions/konan-save, family `device`, on main only — after its own later steps, so the one
+      `-device-` entry also carries what those steps compiled (ios-build's simulator platform tests).
+    value: ${{ steps.konan.outputs.cache-primary-key }}
 runs:
   using: composite
   steps:
@@ -330,45 +337,3 @@ runs:
         if ! ls -1 "$K" | grep -q '^ios_arm64-g'; then
           echo "::warning::Debug cache family (ios_arm64-g*) absent from ~/.konan — the warm-up did not produce one, so every branch push will rebuild ~314 MB of dependency caches (see the restore step's comment)."
         fi
-
-    # main OWNS the ~/.konan entry; branch runs are pure consumers (see the restore step). Deliberately
-    # last and deliberately un-`always()`-ed: a failed archive can leave ~/.konan half-written, and a
-    # poisoned entry on main would have to be deleted by hand. actions/cache's post-step had no such
-    # protection — which is the other half of why the combined step was split.
-    - name: Save Kotlin/Native (~/.konan)
-      if: github.ref == 'refs/heads/main'
-      uses: actions/cache/save@v6
-      with:
-        path: ~/.konan
-        key: ${{ steps.konan.outputs.cache-primary-key }}
-
-    # Reclaim the entries this save superseded. Without it ~/.konan accumulates one ~500 MB entry per
-    # merge — the run id in the key mints a new one every time and only the newest is ever restored —
-    # and five such orphans (~2.1 GB) were live at once against a budget already at 9.7 of 10 GB.
-    #
-    # That accumulation stopped being cosmetic the moment the warm-up above started working: the merge
-    # gate's 12.1 -> 4.3 min now DEPENDS on the newest `-device-` entry being there, and LRU eviction
-    # under a full budget is exactly what would take it — silently, with nothing red, the gate simply
-    # back at twelve minutes.
-    #
-    # Scoped by SUFFIX rather than by the dependency hash, so a hash rotation (a Kotlin or dependency
-    # bump) cannot strand the pre-bump entries forever; and scoped to `-device-` so it can never touch
-    # the `-sim-test-` / `-sim-journeys-` entries test (ios) and journeys (ios) own. `continue-on-error`
-    # because reclaiming space must never fail a merge that delivers.
-    - name: Reclaim superseded ~/.konan entries
-      if: github.ref == 'refs/heads/main'
-      continue-on-error: true
-      shell: bash
-      env:
-        GH_TOKEN: ${{ github.token }}
-        KEEP: ${{ steps.konan.outputs.cache-primary-key }}
-        PATTERN: ^konan-${{ runner.os }}-.*-device-
-      run: |
-        set -uo pipefail
-        gh api "repos/$GITHUB_REPOSITORY/actions/caches?per_page=100" \
-          --jq ".actions_caches[] | select(.key | test(\"$PATTERN\")) | select(.key != \"$KEEP\") | [.id, .key] | @tsv" \
-        | while IFS=$'\t' read -r id key; do
-            echo "reclaiming $key"
-            gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/caches/$id" --silent \
-              || echo "::warning::could not delete superseded cache $key"
-          done

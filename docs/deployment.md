@@ -382,15 +382,20 @@ filter**, so docs-only merges build and deliver too), plus `workflow_dispatch` o
 runs on the same ref and event, `main` included. `~/.gradle` and `~/.konan` are cached; signing material is **never**
 cached.
 
-**One required check: `ci`.** It `needs:` every gate, runs `if: always()`, and fails unless each gate succeeded — so
-a gate is added, renamed or dropped by editing `ci.yml`, never the branch ruleset. The only other required check is
-`check-label` (§7), which is pull-request-triggered and lives in its own file. `/ship` owns the ruleset (read it with
-`gh api repos/stefanhoelzl/SnapSync/rulesets`). `ios-deliver`, `deploy.yml`, `nightly-cleanup`, `screenshots` and
+**Required checks: every gate, plus `check-label`** (§7, pull-request-triggered, its own file). `/ship` owns the
+ruleset (read it with `gh api repos/stefanhoelzl/SnapSync/rulesets`) and requires every check that ran on a PR, so a
+new gate joins it on the next ship by having run; a **renamed or removed** gate must be dropped in that ship
+(`--drop-context`), because a required context never posted again freezes every merge. The aggregate `ci` `needs:`
+every gate, runs `if: always()`, and fails unless each succeeded; it is what `ios-deliver` waits on. `ios-deliver`, `deploy.yml`, `nightly-cleanup`, `screenshots` and
 `ios-appstore-promote` must **never** be required: none of them runs on a PR push.
 
 **No gate `needs:` another**: each compiles what it needs, so a red gate never skips another's run. The one artifact
 edge is `ios-build` → `ios-deliver`. The shared `commonTest` runs once, on the JVM, in `build`; each platform runs the
-same three gates — its build, its platform-bound tests, its journeys (`docs/testing.md`, "Where each test runs").
+same two gates — its build followed by its platform-bound tests on the same runner, and its journeys
+(`docs/testing.md`, "Where each test runs"). Build and tests share a runner because together they stay under the
+journeys (~8 min against ~10 on iOS), so the critical path does not move and a push holds one macOS runner fewer (the
+account gets about three). The journeys stay separate: a one-job-per-platform spike doubled the iOS wall clock (~21
+min against ~10).
 
 | Job | Runner | What it does |
 |---|---|---|
@@ -398,17 +403,15 @@ same three gates — its build, its platform-bound tests, its journeys (`docs/te
 | `metadata` | ubuntu | `openspec validate --specs --strict` (pinned 1.13.2), the resolver's suite (§1), and the App Store listing's offline validation (§6). |
 | `api-test`, `migration-rehearsal` | ubuntu | §2, "Gates". |
 | `site-build` | ubuntu | The site's build and `npm run check`. |
-| `ios-build` | macos-26 | Signed `xcodebuild` archive of the device (`iosArm64`) app: the app's only device compile. **Release** on a delivering run (a push to `main`, or any dispatch), **Debug** otherwise (about 2.4 min faster; a Release-only failure shows up on `main`). It exports no IPA and uploads nothing to Apple. On a delivering run it verifies the baked deployment (below), then tars the archive (artifacts lose symlinks and exec bits) and uploads it for `ios-deliver` (1-day retention). |
-| `android-build` | ubuntu | `:app:android:assembleRelease -Psnapsync.rig=true`: R8 over the rig build's whole graph. R8 on the plain release, with the keep rules Firebase and Ktor need, is the store build's (phase 5). |
-| `test (ios)` | macos-26 | `./gradlew iosPlatformTest`: every module's `iosTest` on the simulator (host `IOS_SIM_KEXE`). |
-| `test (android)` | ubuntu (KVM) | `./gradlew androidPlatformTest`: `:adapter:android`'s device tests on a Gradle-managed Pixel 6 / API 36 emulator, the transfer fixture served by the build (host `ANDROID_EMU`). |
+| `ios-build` | macos-26 | Signed `xcodebuild` archive of the device (`iosArm64`) app: the app's only device compile. **Release** on a delivering run (a push to `main`, or any dispatch), **Debug** otherwise (about 2.4 min faster; a Release-only failure shows up on `main`). It exports no IPA and uploads nothing to Apple. It verifies the baked deployment (below), runs `./gradlew iosPlatformTest` — every module's `iosTest` on the simulator (host `IOS_SIM_KEXE`) — and on a delivering run tars the archive (artifacts lose symlinks and exec bits) and uploads it for `ios-deliver` (1-day retention). |
+| `android-build` | ubuntu | `:app:android:assembleRelease -Psnapsync.rig=true`: R8 over the rig build's whole graph; then `./gradlew androidPlatformTest`, `:adapter:android`'s device tests on a Gradle-managed Pixel 6 / API 36 emulator with the transfer fixture served by the build (host `ANDROID_EMU`, KVM). R8 on the plain release, with the keep rules Firebase and Ktor need, is the store build's (phase 5). |
 | `journeys (ios)` | macos-26 | `scripts/sim-contracts`: builds the rig app (`-Psnapsync.rig=true`, `local` deployment) and ad-hoc signs it (`scripts/sim-sign`). **Nothing overlaps the build**: only after it, with the Gradle and Kotlin daemons stopped, does it boot **one** fresh simulator (a booting simulator slows the build several-fold, and a second fresh one's first-boot work tripled the job). Right after boot it stops the simulator's `apsd` (its reconnect loop to Apple's push sandbox logged a million lines in six minutes and cost ~170 s of CPU through the log daemon; nothing tested needs it) and opens Photos, so the library's first-use preparation starts while the app installs (the first write then took 1–46 s instead of 1:23–4:43). Spotlight is switched off on the runner. It installs the app, grants photo access (pinned `applesimutils`), starts `scripts/transfer-fixture.py` and a local `api/` on a fresh filesystem store (warmed with one request), and launches the app. A timestamped **photo-library readiness** stage then makes the first library write (an asset dated outside every contract's window), because a fresh simulator's library takes minutes to accept one and that wait belongs to the platform, not to the first contract. It then checks the `GET /device` vocabulary, runs every registered port contract over the rig (host `IOS_SIM_APP`), and runs the all-real journeys on a bare JVM, with no Gradle alive next to the simulator (`docs/testing.md` section 7). Fails on any `Failed`/`NotWithin` clause, a refused run, an empty registry, a failed journey (printing its assertion message), or a fixture, backend or app that never answers (it captures a screenshot and the app log in that case). Evidence kept: the fixture's request log, the backend's output with a per-request log, host memory/CPU samples, host and simulator crash reports. Decision record: `changes/archive/2026-09-25-one-simulator-journeys`. |
 | `journeys (android)` | ubuntu (KVM) | Builds the rig APK (`local` deployment) and the journeys, stops the daemons, boots one emulator and runs `scripts/android-journeys`: a local `api/` reversed into the emulator, the app granted the photo library before its first launch, an adapter choice real for every system Android has an adapter for (only the crash reporter and the iOS-only upload-job queue and extension registration mocked), the `GET /device` vocabulary check, then the same journeys on a bare JVM. |
 | `ci` | ubuntu | The aggregate above. |
 
-**The Kotlin/Native cache is one family per job**: `-device-` (`ios-build`, inside `.github/actions/ios-archive`),
-`-sim-test-` (`test (ios)`), `-sim-journeys-` (`journeys (ios)`), through `.github/actions/konan-restore` and
-`konan-save`. Each job restores its own family first, so a job whose compile set changes never leaves another partly
+**The Kotlin/Native cache is one family per job**: `-device-` (`ios-build`: restored inside
+`.github/actions/ios-archive`, saved by the job after its simulator tests, so it holds both), `-sim-journeys-`
+(`journeys (ios)`), through `.github/actions/konan-restore` and `konan-save`. Each job restores its own family first, so a job whose compile set changes never leaves another partly
 cold; the primary key carries the run id so it never hits and every save writes fresh; only `main` saves, and each
 save deletes its own family's superseded entries (the repo's 10 GB budget is full).
 

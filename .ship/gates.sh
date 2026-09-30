@@ -2,8 +2,8 @@
 # The local half of what gates a merge on `main`. Exit 0 passes; any other exit fails the ship and
 # THIS OUTPUT IS THE REPORT (contract: ~/.claude/skills/ship/hooks.md).
 #
-# Covers the gates of ci.yml (whose aggregate `ci` is, with `check-label`, the only required check) that a
-# Linux machine can actually run:
+# Covers the gates of ci.yml (each a required check, beside `check-label`) that a Linux machine can
+# actually run:
 #
 #   build         -> ./gradlew build, which also carries the diagrams freshness half
 #                    (:tools:diagrams:test), the detekt complexity tiers, and the
@@ -12,8 +12,8 @@
 #   api-test      -> the deno set below
 #
 # The rest stay CI-only BY DECISION, not by oversight:
-#   ios-build / test (ios) / journeys (ios)       macOS-only; no Linux machine can run them
-#   android-build / test (android) / journeys (android)
+#   ios-build / journeys (ios)                    macOS-only; no Linux machine can run them
+#   android-build / journeys (android)
 #                                                 minutes of emulator and R8 per ship; CI runs them
 #                                                 (./gradlew androidPlatformTest, scripts/android-journeys)
 #   check-label                    /ship applies the label as it opens the PR

@@ -69,7 +69,7 @@ class AndroidTargetPlugin : Plugin<Project> {
                     }
                 }
                 serveTransferFixture(project)
-                // What `./gradlew androidPlatformTest` runs in every module that has device tests; `test (android)` in CI.
+                // What `./gradlew androidPlatformTest` runs in each module with device tests; `android-build` in CI.
                 project.tasks.register("androidPlatformTest") {
                     group = "verification"
                     description = "Runs this module's device tests on the managed emulator ($MANAGED_DEVICE)."

@@ -210,11 +210,11 @@ Two harness facts that are invisible until they bite, and that no amount of loca
   **macOS-only**, GitHub Actions `macos-26`) and `./gradlew androidPlatformTest` (`:adapter:android`'s
   device tests on a Gradle-managed emulator it boots itself — Linux with KVM). The composed app on each
   runtime is the journeys' (`scripts/sim-contracts`, `scripts/android-journeys`).
-- **CI is ONE workflow, `.github/workflows/ci.yml`**, and its aggregate job `ci` is the only required
-  check besides `check-label`: add, rename or drop a gate there, never in the ruleset. Per platform it
-  runs the same three gates — build (`ios-build` / `android-build`), `test (ios|android)`,
+- **CI is ONE workflow, `.github/workflows/ci.yml`**. Per platform it runs the same two gates — the
+  build followed by the platform tests on one runner (`ios-build` / `android-build`), and
   `journeys (ios|android)` — beside the Linux `build`, `metadata`, `api-test`, `migration-rehearsal` and
-  `site-build`. `docs/deployment.md` §4.
+  `site-build`; the aggregate `ci` is what `ios-deliver` waits on. `/ship` requires every gate that ran,
+  so a renamed or removed gate must be dropped from the ruleset in its ship. `docs/deployment.md` §4.
 
 **Complexity ceilings** (`docs/architecture.md`) gate `build` too, as eight
 `detekt*Tier` tasks — `shell` · `flow` · `compose` · `core` · `ui` · `harness` · `tests` ·
@@ -452,7 +452,7 @@ with the proxy task above).
   envelopes evict it. Nothing on screen says so (source: `SentryHttpTransport.m` at 8.58.2; M7 in
   `changes/archive/2026-09-23-diagnostics-reporter-contracts`). So every outgoing event is bounded **by
   construction** (capability `privacy-security`; the caps sit in `model/EventBounds.kt`), and the
-  `CrashReporter` contract's `WIRE_WORST_CASE_DUMP_ARRIVES` clause fails `test (ios)` if they stop fitting.
+  `CrashReporter` contract's `WIRE_WORST_CASE_DUMP_ARRIVES` clause fails `ios-build`'s platform tests if they stop fitting.
   Dumps group as one issue (`diagnostic dump`); read them with `/bugsink`.
   ⚠️ **Do not reach for `NSLog` when debugging — not even "just this once", not even from Swift.** An
   interpolated `NSLog("x \(y)")` is a *dynamic format string*, which os_log redacts wholesale: your line
