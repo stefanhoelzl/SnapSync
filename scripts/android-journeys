@@ -1,0 +1,120 @@
+#!/usr/bin/env bash
+# The all-real journeys on the Android emulator — the `journeys (android)` CI job, and its reproduction on this Linux
+# box (the `android-emulator` skill boots the emulator first). The Android half of what `scripts/sim-contracts` does on
+# the iOS simulator (`docs/testing.md`, "All-real journeys are the contracts' safety net").
+#
+#   ./gradlew :app:android:assembleDebug :test:integration:journeysClasses :test:integration:journeysClasspath \
+#       -Psnapsync.rig=true -Psnapsync.deployment=local
+#   scripts/android-journeys          # an emulator booted and reachable over adb
+#
+# Built FIRST and separately, so no Gradle daemon holds memory beside the emulator; this script builds nothing. It
+# starts the real backend on the address the `local` deployment bakes in (127.0.0.1:8080, reversed into the emulator),
+# installs the rig build, grants it the photo library BEFORE its first launch, and chooses its adapters: real for every
+# system Android has an adapter for, mock for the rest (the crash reporter, and the iOS-only upload-job queue and
+# extension registration). Then the journeys, over the control channel — the same ones the iOS simulator app runs.
+#
+# It FAILS on: a backend that never answers, an app baked for another backend, a vocabulary entry the host leaves
+# unclassified, a refused adapter choice, and any journey failure. Everything it learns goes to build/android-journeys/,
+# which CI keeps as an artifact.
+set -u
+cd "$(dirname "$0")/.."
+
+OUT=build/android-journeys
+mkdir -p "$OUT"
+ADB=${ADB:-adb}
+APK=app/android/build/outputs/apk/debug/android-debug.apk
+RIG_PORT=18099
+RIG="http://127.0.0.1:$RIG_PORT"
+BACKEND="http://127.0.0.1:8080/api/v2"
+
+fail() {
+    echo "android-journeys: FAILED — $*" | tee -a "$OUT/result"
+    "$ADB" exec-out screencap -p > "$OUT/failure.png" 2>/dev/null
+    exit 1
+}
+stage() { echo "[$(date -u +%H:%M:%S)] $*" | tee -a "$OUT/stages"; }
+
+[ -f "$APK" ] || fail "no rig APK at $APK — build it first (see the header)"
+[ -f test/integration/build/journeys-classpath.txt ] || fail "the journeys are not compiled — build them first (see the header)"
+command -v deno >/dev/null || fail "deno is not on PATH — the journeys need the real backend"
+
+cleanup() {
+    [ -n "${BACKEND_PID:-}" ] && kill -- "-$BACKEND_PID" 2>/dev/null
+    "$ADB" logcat -d > "$OUT/logcat.txt" 2>/dev/null
+}
+trap cleanup EXIT
+
+# The real backend, on the loopback address the `local` deployment bakes into the build. Started first, so its first
+# start (dependency downloads included) overlaps the install.
+stage "backend: starting"
+# Its own process group, so the cleanup stops `deno task` AND the server it spawns.
+setsid bash -c 'cd api && exec deno task dev:local' > "$OUT/backend.log" 2>&1 &
+BACKEND_PID=$!
+
+"$ADB" wait-for-device
+"$ADB" logcat -c
+"$ADB" uninstall app.snapsync >/dev/null 2>&1
+"$ADB" install -r "$APK" >/dev/null || fail "install $APK"
+# The photo library under a full grant, before the first launch: the journeys seed it and upload from it.
+for permission in READ_MEDIA_IMAGES READ_MEDIA_VIDEO ACCESS_MEDIA_LOCATION; do
+    "$ADB" shell pm grant app.snapsync "android.permission.$permission" || fail "could not grant $permission"
+done
+"$ADB" reverse tcp:8080 tcp:8080 >/dev/null || fail "adb reverse for the backend"
+"$ADB" forward "tcp:$RIG_PORT" "tcp:$RIG_PORT" >/dev/null || fail "adb forward for the control channel"
+stage "app: installed and granted"
+
+i=0
+until curl -s --max-time 5 -o /dev/null "$BACKEND/events/00000000-0000-4000-8000-000000000000"; do
+    i=$((i + 1)); [ $i -lt 90 ] || { tail -40 "$OUT/backend.log"; fail "the local backend never answered on $BACKEND"; }; sleep 2
+done
+stage "backend: answering"
+
+launch() {
+    "$ADB" shell am start -W -n app.snapsync/app.snapsync.android.MainActivity >/dev/null || fail "launch"
+    i=0
+    until curl -fsS --max-time 2 "$RIG/health" >/dev/null 2>&1; do
+        i=$((i + 1)); [ $i -le 60 ] || fail "the control channel never answered on $RIG/health"; sleep 1
+    done
+}
+launch
+stage "app: launched (every system mocked)"
+
+# Real wherever Android has an adapter; every other system named `mock` (an omitted one reads as real, and a choice
+# leaving a system real that has no Android adapter is refused). Written while not joined; the app exits on it.
+choice="$OUT/adapters"
+: > "$choice"
+for s in screen lifecycle clock files databases preferences keychain integrity backend links library system-ui wake \
+         background-time upload-session downloads push process-info; do echo "$s=real" >> "$choice"; done
+for s in crash-reporter extension-registry upload-queue; do echo "$s=mock" >> "$choice"; done
+code="$(curl -sS -o "$OUT/adapters.answer" -w '%{http_code}' -X POST --data-binary @"$choice" "$RIG/device/adapters")"
+[ "$code" = 200 ] || { cat "$OUT/adapters.answer"; fail "the adapter choice was refused (HTTP $code)"; }
+# The process exits after answering; wait for it to be gone before starting it again.
+i=0
+while "$ADB" shell pidof app.snapsync >/dev/null 2>&1; do
+    i=$((i + 1)); [ $i -le 30 ] || fail "the app did not exit after the adapter choice"; sleep 1
+done
+launch
+curl -sS -X POST "$RIG/device/adapters/current" > "$OUT/adapters.current"
+stage "app: relaunched over the chosen adapters"
+
+# Never drive an app baked for another backend: that is the shared production one, and these journeys create events
+# and upload photos.
+base="$(curl -sS "$RIG/device/state" | python3 -c 'import json,sys; print(json.load(sys.stdin)["build"].get("uploadBase",""))')"
+[ "$base" = "$BACKEND" ] || fail "the app is baked for '$base', not the local backend $BACKEND — refusing to run"
+
+# The app host's classification of the control vocabulary, read once: an unclassified entry answers 500.
+code="$(curl -sS -o "$OUT/device.json" -w '%{http_code}' "$RIG/device")"
+[ "$code" = 200 ] || { cat "$OUT/device.json"; fail "GET /device answered $code"; }
+
+stage "journeys: starting"
+# A bare JVM on the classpath written at compile time, NOT Gradle — as on iOS, no daemon beside the emulator.
+"${JAVA_HOME:+$JAVA_HOME/bin/}java" -Xmx512m -cp "$(cat test/integration/build/journeys-classpath.txt)" \
+    -Dsnapsync.journey.appA="$RIG" -Dsnapsync.journey.backend="$BACKEND"\
+    org.junit.runner.JUnitCore app.snapsync.journeys.Journeys > "$OUT/journeys.log" 2>&1
+journeys=$?
+stage "journeys: done"
+if [ $journeys -ne 0 ]; then
+    sed -n '/^There w/,/^FAILURES/p' "$OUT/journeys.log" | grep -vE '^[[:space:]]+at ' | head -30
+    fail "a journey failed (log in $OUT)"
+fi
+echo "android-journeys: the journeys passed" | tee "$OUT/result"

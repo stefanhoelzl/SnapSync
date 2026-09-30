@@ -24,7 +24,7 @@ import kotlin.test.fail
  * only real host leaves the clause uncovered, and this fails.
  *
  * A host CI runs **in-app** — the simulator app — is visible here only through source, so a `Live` binding there
- * counts only when the in-app registry the `ios-contracts` job runs names it: a `simulatorAppContract(<Contract>,
+ * counts only when the in-app registry the `journeys (ios)` job runs names it: a `simulatorAppContract(<Contract>,
  * <BindingClass>(), …)` call. An unregistered one is run by nobody, and the gate fails naming it.
  *
  * Scope is derived, never listed ("Gates fail closed on novelty"), with ONE stated exclusion: the mechanism's
@@ -77,7 +77,7 @@ class ContractCoverageTest {
         }
     }
 
-    /** The binding classes the simulator app's registry names — what the `ios-contracts` job actually runs. */
+    /** The binding classes the simulator app's registry names — what the `journeys (ios)` job actually runs. */
     private val registered: Set<String> = sources.flatMap { src ->
         REGISTERED.findAll(src.text).map { it.groupValues[1] }.toList()
     }.toSet()
@@ -133,7 +133,7 @@ class ContractCoverageTest {
             .map { "${it.name ?: "<anonymous object>"} (${it.host}) — ${it.file}" }
         if (unregistered.isNotEmpty()) {
             fail(
-                "these bindings name a host the `ios-contracts` job runs in-app, but no `simulatorAppContract(<Contract>, " +
+                "these bindings name a host the `journeys (ios)` job runs in-app, but no `simulatorAppContract(<Contract>, " +
                     "<BindingClass>(), …)` registers them, so nothing ever runs them. Register each as a named class:\n  " +
                     unregistered.joinToString("\n  "),
             )
@@ -146,8 +146,8 @@ class ContractCoverageTest {
             ?.lines()?.mapNotNull { HOST_ENTRY.matchEntire(it)?.groupValues?.get(1) }.orEmpty()
         assertTrue(declared.isNotEmpty(), "found no entries in the Host enum at $HOST_FILE")
         val literal = bindings.mapNotNull { it.host?.takeIf { h -> h.startsWith("Host.") }?.removePrefix("Host.") }.toSet()
-        // A shared binding (`override val host = currentHost`, the fakes' in `commonTest`) runs on every host a
-        // `currentHost` actual answers — the Android emulator's, whose only bindings so far are those fakes.
+        // A shared binding (`override val host = currentHost`, the fakes' in `commonTest`) names every host a
+        // `currentHost` actual answers, though CI runs those fakes on the JVM only.
         val shared = if (bindings.any { it.host == "currentHost" }) currentHostActuals() else emptySet()
         val unused = declared - literal - shared
         assertTrue(unused.isEmpty(), "Host values no binding names — the enum holds only bound hosts: $unused")

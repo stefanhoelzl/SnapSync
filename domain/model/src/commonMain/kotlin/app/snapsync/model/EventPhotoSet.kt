@@ -42,7 +42,7 @@ package app.snapsync.model
  * innermost zone and references nothing project-internal outside itself (law `docs/architecture.md`, "Zones
  * inside the core"), while a port lives in `ports/`. Features — which may hold ports — bind the two:
  * `EventPhotoSet(policy, source::candidates)`. That keeps the admission itself in `model/`, where it is
- * exercised in `commonTest` on JVM **and** the simulator, rather than in untested wiring.
+ * exercised in `commonTest` (on the JVM), rather than in untested wiring.
  *
  * The lambda's hazard is real and was realised once: this seam previously existed with the same signature
  * and **all nine call sites ignored the parameter**, each fetching eagerly and handing over a finished

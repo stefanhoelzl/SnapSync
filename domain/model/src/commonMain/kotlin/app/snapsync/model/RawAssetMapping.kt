@@ -2,7 +2,7 @@ package app.snapsync.model
 
 /**
  * The **pure fan-out mapping** `RawAsset` → engine `Resource`s — the single site of the fan-out
- * orchestration, extracted from the iOS enumerator so it runs on JVM + the simulator (capability
+ * orchestration, extracted from the iOS enumerator so it runs in `commonTest` (capability
  * `sync-status`, Move A). For each [RawAsset]
  * (whose [AssetId] the adapter already minted canonical), for each [RawResource], drop it when its raw [RawResource.type] maps to no role
  * ([resourceRole] — originals only), else wrap it as a `Resource` whose `filename` is the shared

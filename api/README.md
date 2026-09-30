@@ -14,8 +14,8 @@ deno task dev:local     # the local rig on 127.0.0.1:8080: filesystem store + re
 ```
 
 Also `deno fmt --check`, `deno task lint`, `deno task check`, `deno task schema:check`, which
-together make up the `api-test` required check. `deno task dev:tunnel` adds a cloudflared tunnel so
-a phone can reach the rig. Reset the rig with `rm -rf api/.localstore`.
+together make up ci.yml's `api-test` gate. `deno task dev:tunnel` adds a cloudflared tunnel so a
+phone can reach the rig. Reset the rig with `rm -rf api/.localstore`.
 
 ⚠️ Running `src/main.ts` directly targets the **real** zone and database. Use the rig instead.
 

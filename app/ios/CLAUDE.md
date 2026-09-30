@@ -206,7 +206,7 @@ family, a transport's guarded terminal write, and the membership reset family. O
   Written as `$(UPLOAD_SCHEME)://$(UPLOAD_HOST)/api/v1`, **composed** rather than carried: an
   `Info.plist` substitution can only read a build setting and `//` opens a comment anywhere on an
   xcconfig line, so the resolver emits a scheme enum and a bare host and the URL is assembled in the
-  plist, where `//` is data. `ios.yml` asserts it equals that bundle's `Deployment.plist` `uploadBase`.
+  plist, where `//` is data. CI's `ios-build` asserts it equals that bundle's `Deployment.plist` `uploadBase`.
   It must be an HTTPS endpoint: default ATS (HTTPS-only) applies, no `NSAllowsLocalNetworking`
   exception. (A user-configurable upload host is impossible with this API.)
 - **Extension `Info.plist`** also declares `EXExtensionPointIdentifier =

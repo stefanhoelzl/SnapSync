@@ -38,13 +38,13 @@
 	     opens a comment anywhere on an xcconfig line with no escape (which truncated the Sentry DSN to
 	     `https:` and shipped four mute builds). So the resolver emits a scheme enum and a bare host —
 	     neither able to contain `//` — and the URL is assembled here, where `//` is data. Both are
-	     generated into Deployment.xcconfig by scripts/resolve-deployment.py; ios.yml asserts the value
+	     generated into Deployment.xcconfig by scripts/resolve-deployment.py; CI's ios-build asserts the value
 	     built from them equals this bundle's Deployment.plist `uploadBase`.
 
 	     The OTHER deployment values stay out of this file (`docs/deployment.md`) — see
 	     the app's Info.plist for why. This process reads its OWN bundle, so the generated
 	     Deployment.plist is copied into the .appex as well as the .app; a copy that reached only one
-	     of them is a reachable state, and the one ios.yml asserts against both. -->
+	     of them is a reachable state, and the one CI's ios-build asserts against both. -->
 	<key>BackgroundUploadURLBase</key>
 	<string>$(UPLOAD_SCHEME)://$(UPLOAD_HOST)/api/v2</string>
 	<!-- THE SAME SUPPRESSION THE APP CARRIES, and it must be here too: the Photos framework reads it from

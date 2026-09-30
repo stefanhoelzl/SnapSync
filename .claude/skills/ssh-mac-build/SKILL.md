@@ -175,7 +175,7 @@ A quick tunnel's hostname is **random per session**, so the IPA is rebuilt per s
 incremental Debug). ⚠️ Crossing backends needs a **device reset** (`POST /device/reset` over the control
 channel) in **both** directions or nothing uploads, silently — load `local-backend` before doing this.
 
-`ios.yml` carries a `workflow_dispatch`: it archives Release and delivers the branch to internal
+`ci.yml` carries a `workflow_dispatch`: it runs every gate, archives Release and delivers the branch to internal
 TestFlight, which is the route to a phone with no cable. It does not replace this loop — it produces no
 IPA you can sideload, and a TestFlight build carries no control channel — but it is the way to get a
 DSN-carrying build onto a device (`docs/deployment.md`).

@@ -41,7 +41,7 @@ if (!url || !token) {
 }
 
 // The COMMITTED artifact is what this claims to assert against, so check it is current first. On the
-// deploy path that is belt-and-braces — `api.yml` gates it on the PR — but it costs nothing and makes
+// deploy path that is belt-and-braces — ci.yml's `api-test` gates it on the PR — but it costs nothing and makes
 // the failure legible: "the snapshot is stale" and "the store disagrees" are different problems with
 // different fixes, and collapsing them would send the operator after the wrong one.
 if (await Deno.readTextFile(SCHEMA_PATH) !== await generateSchema()) {

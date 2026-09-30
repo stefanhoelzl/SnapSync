@@ -164,7 +164,7 @@ async function handler(request: Request): Promise<Response> {
 }
 
 // One line per request served (method, path, status, duration), so a client-side timeout can be placed on one side
-// of the wire: `ios-contracts` keeps this output as evidence. Not in ephemeral mode, whose stdout belongs to the test
+// of the wire: `journeys (ios)` keeps this output as evidence. Not in ephemeral mode, whose stdout belongs to the test
 // JVM that launched it and is read only up to the readiness line, so every further line would fill a pipe no one
 // drains.
 async function logged(request: Request): Promise<Response> {

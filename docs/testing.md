@@ -25,12 +25,24 @@ Main decision record: `changes/archive/2026-08-27-establish-testing-architecture
 | command | what it is |
 |---|---|
 | `./gradlew build` | **The canonical check.** Compiles every target, runs every JVM test and every gate. Needs no display. Needs `deno` on `PATH`. |
-| `./gradlew iosSimulatorArm64Test` | The same shared test sources compiled to Kotlin/Native. macOS only (CI `macos-26`, or `ssh-mac-build`). |
+| `./gradlew iosPlatformTest` | The **platform-bound** iOS tests (every module's `iosTest`) on the simulator. macOS only (CI `macos-26`, or `ssh-mac-build`). |
+| `./gradlew androidPlatformTest` | The **platform-bound** Android tests (every module's `androidDeviceTest`) on a Gradle-managed emulator it boots itself. Needs KVM and the SDK. |
 | `./gradlew compileIosMainKotlinMetadata` | Linux proxy for the iOS source sets. A **compile, not coverage**. Never describe it as a test. |
 | `cd api && deno task test` | The backend suite. Offline by construction. |
 
-Both `build` and the simulator run gate merges. The simulator run is the **only** place Kotlin/Native-only
-breakage shows up: code the JVM accepts and Native rejects passes `build` and fails there.
+### Where each test runs
+
+The shared `commonTest` runs **once, on the JVM**, under `build`. A platform runtime runs only what only it can answer:
+the adapters and their contract bindings over the platform's own APIs (Keychain, PhotoKit, the native SQLite driver;
+Keystore, MediaStore, WorkManager, DownloadManager). Each platform has the same three CI gates (`ci.yml`): its
+**build** (the signed iOS archive; R8 over the Android rig build), its **platform tests** (`test (ios)`,
+`test (android)`), and its **journeys** (`journeys (ios)`, `journeys (android)`, section "Journeys").
+
+The shared tests used to run on Kotlin/Native and on ART as well. In their history that caught only test NAMES those
+compilers reject (a comma for Kotlin/Native, an apostrophe or a space below DEX 040), never shared logic behaving
+differently at runtime; every real platform bug came from an adapter or a driver, through its contract binding. So a
+difference between runtimes in shared code is what the journeys catch — they run the composed app on each runtime.
+The Kotlin/Native compile of every shared source set is still checked by `ios-build` and the journeys' app builds.
 
 **Deno is a hard prerequisite of `build`.** `:adapter:generic:app:jvmTest` runs the `Backend` port's
 contract against the real `api/`, started as `src/dev/serve.ts --ephemeral` (loopback only, filesystem
@@ -39,8 +51,8 @@ store, no bunny zone reachable). Without Deno those tests **fail naming it**. Th
 (`changes/archive/2026-09-23-contract-backend-clients`).
 
 **Build-property-gated source sets are compiled by CI.** Code built only under `-Psnapsync.rig=true` is invisible
-to `build`. That is what compile-time containment means, and it is also a blind spot. `build.yml` therefore runs
-`compileIosMainKotlinMetadata -Psnapsync.rig=true` on every push. A gated tree that carries **tests** must have them
+to `build`. That is what compile-time containment means, and it is also a blind spot. Both platforms' journeys build
+the rig app on every push, which compiles those trees in full. A gated tree that carries **tests** must have them
 RUN there too, not only compiled: the forge's gated test set once stopped compiling and stayed broken for weeks while
 a main-only compile step stayed green beside it. No gated tree carries tests today.
 
@@ -56,9 +68,8 @@ dependency to the module.
 
 ### Logic tests go in `commonTest`
 
-`commonTest` runs on every target the module declares. The JVM is the fast loop and `iosSimulatorArm64`
-is the target that ships. A platform test source set holds only what that platform's toolchain cannot run
-anywhere else. Where two targets have equivalent implementations, they share one port contract
+`commonTest` runs on the JVM (see "Where each test runs"). A platform test source set holds only what that platform's
+toolchain cannot run anywhere else. Where two targets have equivalent implementations, they share one port contract
 (section 4).
 
 `commonTest` is where a test *goes*. It is not a reason to *move* code. Do not move a platform-to-neutral
@@ -71,7 +82,7 @@ Non-`commonTest` source sets that exist today:
 | source set | why | exception? |
 |---|---|---|
 | `:adapter:ios:ext-safe`, `:adapter:ios:app-only` `iosTest` | these modules have no JVM target, so `iosTest` **is** their common set | no |
-| `:adapter:generic:app` `jvmTest` + `iosSimulatorArm64Test` | JVM-driver and native-driver halves of one storage contract; together they cover both targets | no |
+| `:adapter:generic:app` `jvmTest` + `:adapter:ios:ext-safe` `iosTest` | JVM-driver and native-driver halves of one storage contract; together they cover both targets | no |
 | `:adapter:generic:app` `jvmTest` (backend Live bindings) | they launch `api/` as a local process, which a K/N test executable under `simctl` cannot do. Nothing is lost: the clients are `commonMain` code, and their K/N compile is covered by `commonTest` | yes, stated in the build file |
 | `:ui:components` `jvmTest` | Compose component tests with no iOS counterpart | yes |
 | `:test:architecture`, `:tools:diagrams` `src/test` | they read the repository's own text | yes |
@@ -315,9 +326,10 @@ state is reached on `IOS_SIM_KEXE`, where every `SecItem*` call answers `-25291`
 
 ### How each host is run
 
-- **JVM, `IOS_SIM_KEXE`:** ordinary test tasks in `build` and `iosSimulatorArm64Test`.
-- **`ANDROID_EMU`:** `connectedAndroidDeviceTest` in the `android-emulator` job (`android.yml`).
-- **`IOS_SIM_APP`: live on every push.** The `ios-contracts` job in `ios.yml` builds the app under
+- **JVM:** ordinary test tasks in `build`.
+- **`IOS_SIM_KEXE`:** `iosPlatformTest`, the `test (ios)` job.
+- **`ANDROID_EMU`:** `androidPlatformTest` on a Gradle-managed emulator, the `test (android)` job.
+- **`IOS_SIM_APP`: live on every push.** The `journeys (ios)` job builds the app under
   `-Psnapsync.rig=true`, applies the declared grant, launches it, and `scripts/sim-contracts` runs every
   entry of the host's in-app registry (`GET /contract`) through the rig's contract verb. It fails on any
   run-failing outcome, any refusal, or an empty registry. Each run starts from a fresh simulator. A host CI
@@ -608,19 +620,18 @@ composed. And **a choice may leave real only the systems Android has an adapter 
 another `real`, or omitting it, refuses the launch, which then composes nothing). A file-chosen launch saves its mocks'
 state beside the file, as on iOS, because a real store then outlives the process. It refuses `device/relaunch` and the
 upload extension's `/os` verbs (Android has none), and is contract host `ANDROID_EMU` in `GET /device` — the host the
-device tests run on too. `scripts/android-smoke` — install, launch, `/health`, `GET /device`, an event created and
-joined over the mocked backend — is the `android-emulator` CI job (`android.yml`), on a Linux KVM runner. A build
-without the property composes every real adapter and starts, with no crash reporter until phase 5.
+device tests run on too. The `journeys (android)` CI job drives it over every real adapter Android has
+(`scripts/android-journeys`). A build without the property composes every real adapter and starts, with no crash
+reporter until phase 5.
 
-The same job runs every module's `commonTest` on the emulator (`connectedAndroidDeviceTest`), for the reason `ios-test`
-runs it on the simulator: the code ships on ART after D8, over the platform's SQLite and Compose renderer. It is a
-device test, never a host test (that is the JVM again), at the app's own minSdk (30 — D8 writes a backtick name's
-spaces only from DEX 040, which is part of why the app's minSdk is 30). An ASCII apostrophe in a backtick name is
-never representable in DEX: write `’`. The fakes' shared contract bindings run there as host `ANDROID_EMU`, and so do
-the Android adapters' own (`:adapter:android`'s `src/androidDeviceTest`). Run them with
-`scripts/android-device-tests`, as the job does: it serves `scripts/transfer-fixture.py` on the host, reverses its port
-into the emulator and passes its address as the `fixture` instrumentation argument the upload contract needs (a run
-without it fails, naming the script).
+The Android adapters' contract bindings (`:adapter:android`'s `src/androidDeviceTest`) are device tests, never host
+tests (that is the JVM again), at the app's own minSdk (30 — D8 writes a backtick name's spaces only from DEX 040). An
+ASCII apostrophe in a backtick name is never representable in DEX: write `’`. `./gradlew androidPlatformTest` runs
+them on a Gradle-managed Pixel 6 / API 36 emulator it boots and tears down itself (`snapsync.android`,
+`android.testoptions.manageddevices.emulator.gpu=swangle_indirect`); `./gradlew connectedAndroidDeviceTest` on an
+emulator you booted. Either way the build serves `scripts/transfer-fixture.py` on the host for the run and passes the
+address an emulator reaches it at (`http://10.0.2.2:8123`) as the `fixture` instrumentation argument the upload
+contract needs.
 
 **A force-stop is checked from outside the process** (`scripts/android-force-stop-check`, non-gating — no CI job runs
 it): a contract clause runs inside the app, and a force-stop kills the process that would observe it. The script
@@ -685,8 +696,8 @@ never reaches past the protocol.
 
 ### Journeys: the contracts' safety net
 
-A few end-to-end runs with **everything real**: the rig build on **one** simulator, `api/` served locally,
-and the real photo library. They cover creating and joining an event, the app's own photos reaching the
+A few end-to-end runs with **everything real**: the rig build on **one** simulator or emulator, `api/` served
+locally, and the real photo library — the same journeys on iOS and Android. They cover creating and joining an event, the app's own photos reaching the
 backend and the union, and the app receiving another member's photos into its library. That other member is
 played by the journey itself (`Member`), over the backend's **public HTTP surface only**, with real JPEG bytes,
 so the app's download ends in a real photo-library import. It is never a JVM-host lever or a private route,
@@ -695,8 +706,10 @@ fresh simulator's first-boot work swamped the hosted runner (it tripled the job 
 
 - Source set `journeys` in `:test:integration`, task `:test:integration:journeys`. It is **outside
   `build`**.
-- They run only in the `ios-contracts` CI job (`scripts/sim-contracts` boots the simulator and the
-  backend). There they run on a bare JVM, `java … org.junit.runner.JUnitCore app.snapsync.journeys.Journeys`
+- They run in the `journeys (ios)` CI job (`scripts/sim-contracts` boots the simulator and the backend, after the
+  simulator app's contracts) and the `journeys (android)` one (`scripts/android-journeys`, on an emulator the job
+  boots, over every real adapter Android has — only the crash reporter is mocked, and the iOS-only upload-job queue
+  and extension registration). There they run on a bare JVM, `java … org.junit.runner.JUnitCore app.snapsync.journeys.Journeys`
   over the classpath `:test:integration:journeysClasspath` writes at compile time, with
   `-Dsnapsync.journey.appA|backend`. No Gradle is alive next to the simulator: a Gradle daemon and a test JVM
   starting there pushed the runner into swap, and the app timed out a response the backend had sent 9 s

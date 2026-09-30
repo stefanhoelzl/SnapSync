@@ -38,7 +38,7 @@ private val NEVER_STOP: () -> Boolean = { false }
  * retry), then walk the library, record what it found, and create jobs from the ledger — all gated by the
  * [engine]. This is the testable core: it depends only on the [engine], the [ledger] (to reconstruct
  * lifecycle jobs and to delete the rows of departed assets), and the [BackgroundTransfer] and
- * [UploadDiscovery] ports, so a fake platform + a real engine exercise the whole flow on the simulator
+ * [UploadDiscovery] ports, so a fake platform + a real engine exercise the whole flow in `commonTest`
  * without touching PhotoKit.
  *
  * Every walk is a **full enumeration**; there is no persisted cursor (capability `background-upload`,

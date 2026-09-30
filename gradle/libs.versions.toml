@@ -87,10 +87,8 @@ androidx-activity-compose = { module = "androidx.activity:activity-compose", ver
 androidx-work-runtime = { module = "androidx.work:work-runtime", version.ref = "androidx-work" }
 androidx-work-testing = { module = "androidx.work:work-testing", version.ref = "androidx-work" }
 firebase-messaging = { module = "com.google.firebase:firebase-messaging", version.ref = "firebase-messaging" }
-# The instrumentation runner the Android device tests (`commonTest` on the emulator) run under.
+# The instrumentation runner the Android device tests (`src/androidDeviceTest` on the emulator) run under.
 androidx-test-runner = { module = "androidx.test:runner", version.ref = "androidx-test-runner" }
-# The empty activity Compose's `runComposeUiTest` launches on Android, merged into a device-test APK.
-compose-ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest", version.ref = "androidx-compose" }
 androidx-lifecycle-process = { module = "androidx.lifecycle:lifecycle-process", version.ref = "androidx-lifecycle" }
 # The `Databases` adapter builds its own open helper, to refuse the platform's delete-on-corruption.
 androidx-sqlite-framework = { module = "androidx.sqlite:sqlite-framework", version.ref = "androidx-sqlite" }

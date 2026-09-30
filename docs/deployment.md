@@ -68,7 +68,7 @@ Renderings, all emitted by one invocation (`python3 scripts/resolve-deployment.p
 | metadata | `build/metadata/**` | the App Store listing (domain-derived URLs rendered from templates) |
 | site | `site/src/deployment.json` | the Astro site |
 
-`scripts/resolve_deployment_test.py` is the `resolver-test` required check.
+`scripts/resolve_deployment_test.py` runs in `ci.yml`'s `metadata` gate, on every push.
 
 Decision record: `changes/archive/2026-08-25-add-deployment-resolver-and-boot-probe`.
 
@@ -97,7 +97,7 @@ The deployment declares the **names**. Values come from the environment of which
 | `ATTEST_TOKEN_KEY` | Edge Script env | HMAC key for device tokens and attest challenges |
 | `BUNNY_DATABASE_URL` / `BUNNY_DATABASE_AUTH_TOKEN` | Edge Script env; GH secrets for the `api` deploy job and `nightly-cleanup` | the relational store |
 | `FCM_SERVICE_ACCOUNT_KEY` | Edge Script env | the Firebase service account's **JSON key file contents** (not a path), role *Firebase Cloud Messaging API Admin*. **Optional**: absent, the backend boots and the FCM sender skips every Android token |
-| `SENTRY_DSN` | GH secret, `ios.yml` | build-scope; baked only into distributed iOS builds (§5) |
+| `SENTRY_DSN` | GH secret, `ci.yml` (`ios-build`) | build-scope; baked only into distributed iOS builds (§5) |
 
 - The backend validates every declared runtime secret **once at startup**. A missing or blank one throws,
   and the script does not boot. The one exception is `FCM_SERVICE_ACCOUNT_KEY`: without it Android members
@@ -126,7 +126,7 @@ The deployment declares the **names**. Values come from the environment of which
   truncated the DSN to `https:` and shipped four silent TestFlight builds (644–673).
 - `BackgroundUploadURLBase` is **also** authored in each bundle's own `Info.plist`, because iOS reads it
   from there to validate the background-upload registration. The resolver's `DEVICE_API_PREFIX` pins
-  both. `ios.yml` checks after archiving that the two are **exactly equal** in both bundles (§4). Moving
+  both. `ios-build` checks after archiving that the two are **exactly equal** in both bundles (§4). Moving
   the API version means changing both carriers together.
 - The URL scheme is derived from the host: `http` for a loopback IP literal, `https` for everything else.
   No ATS exception ships.
@@ -160,14 +160,14 @@ The deployment declares the **names**. Values come from the environment of which
 
 ### Gates (pre-merge) and the deploy workflow (post-merge)
 
-- **`api.yml` → `api-test`** runs on every push to every branch with **no path filter**, because a
-  required check that is never posted blocks merges forever. It resolves `prod`, then runs `deno fmt
+- **`ci.yml` → `api-test`** runs on every push to every branch with **no path filter**, because a
+  merge gate that is never posted blocks merges forever. It resolves `prod`, then runs `deno fmt
   --check`, `deno lint` (with the local plugins declared in `deno.json`, including the complexity rule),
   `deno task check` (type-checks `src/`, `src/dev/`, `src/scripts/`, `src/lint/`), `deno task test`,
   `deno task schema:check`, and a bundle that must carry the commit sha.
   `deno task test` deliberately has **no `--allow-net`**, so no test can reach the real zone.
   Decision record: `changes/archive/2026-08-27-make-api-tests-required`.
-- **`api.yml` → `migration-rehearsal`** posts on every push but does work only when `api/migrations/`
+- **`ci.yml` → `migration-rehearsal`** posts on every push but does work only when `api/migrations/`
   differs from the merge base with `main`. It copies the deployed store into a local `sqld`
   (`src/scripts/rehearsal-copy.ts`: **pseudonymised** by a per-run key, store to store in memory,
   `__bunny_migrations` byte-exact, counts only in the log), runs the deploy's own
@@ -252,7 +252,7 @@ bundle that disagreed with the schema", never "certainly".
 | Job | Holds | Never holds |
 |---|---|---|
 | `api` | `BUNNY_SCRIPT_ID`, `BUNNY_DEPLOY_KEY` (script-scoped), `BUNNY_DATABASE_URL`/`_AUTH_TOKEN` (it runs the migrations) | the storage key, the account key |
-| `migration-rehearsal` (api.yml, every branch) | `BUNNY_DATABASE_URL`, `BUNNY_DATABASE_READONLY_TOKEN` | any write-capable credential |
+| `migration-rehearsal` (ci.yml, every branch) | `BUNNY_DATABASE_URL`, `BUNNY_DATABASE_READONLY_TOKEN` | any write-capable credential |
 | `site` | `BUNNY_STORAGE_ACCESS_KEY` | the account key |
 | `nightly-cleanup` | `BUNNY_STORAGE_ACCESS_KEY`, the database pair | the account key, any Edge Script credential |
 
@@ -375,30 +375,42 @@ Decision records: `changes/archive/2026-07-21-nightly-cleanup`,
 
 ---
 
-## 4. iOS CI
+## 4. CI
 
-`.github/workflows/ios.yml`, on `macos-26` with the runner's GM Xcode (never a beta). Triggers: push to
-any branch (tags excluded, and **no path filter**, so docs-only merges build and deliver too), plus
-`workflow_dispatch` on any ref. Newer pushes cancel older runs on the same ref. `~/.gradle` and `~/.konan`
-are cached. Signing material is **never** cached.
+`.github/workflows/ci.yml` holds **every merge gate**. Triggers: push to any branch (tags excluded, and **no path
+filter**, so docs-only merges build and deliver too), plus `workflow_dispatch` on any ref. Newer pushes cancel older
+runs on the same ref and event, `main` included. `~/.gradle` and `~/.konan` are cached; signing material is **never**
+cached.
 
-Three parallel **merge gates**. None of them may `needs:` another, because a red gate would then skip a
-required check and block merges. `ios-deliver` (§5) needs **all three**; a job that joins the gates joins
-its `needs:` in the same change, or delivery stops consulting it (`ios-contracts` once shipped as a gate
-without it, so red contracts and journeys still reached TestFlight):
+**One required check: `ci`.** It `needs:` every gate, runs `if: always()`, and fails unless each gate succeeded — so
+a gate is added, renamed or dropped by editing `ci.yml`, never the branch ruleset. The only other required check is
+`check-label` (§7), which is pull-request-triggered and lives in its own file. `/ship` owns the ruleset (read it with
+`gh api repos/stefanhoelzl/SnapSync/rulesets`). `ios-deliver`, `deploy.yml`, `nightly-cleanup`, `screenshots` and
+`ios-appstore-promote` must **never** be required: none of them runs on a PR push.
 
-| Job | What it does |
-|---|---|
-| `ios-build` | Signed `xcodebuild` archive of the device (`iosArm64`) app: the app's only compile. **Release** on a delivering run (a push to `main`, or any dispatch), **Debug** otherwise (about 2.4 min faster; a Release-only failure shows up on `main`). A pure gate: it exports no IPA and uploads nothing to Apple. On a delivering run it verifies the baked deployment (below), then tars the archive (artifacts lose symlinks and exec bits) and uploads it for `ios-deliver` (1-day retention). |
-| `ios-test` | `./gradlew iosSimulatorArm64Test`: every test source set the simulator target compiles (`commonTest` plus the iOS adapters' `iosTest`). |
-| `ios-contracts` | Builds the rig app (`-Psnapsync.rig=true`, `local` deployment) and ad-hoc signs it (`scripts/sim-sign`). **Nothing overlaps the build**: only after it, with the Gradle and Kotlin daemons stopped, does it boot **one** fresh simulator (a booting simulator slows the build several-fold, and a second fresh one's first-boot work tripled the job). Right after boot it stops the simulator's `apsd` (its reconnect loop to Apple's push sandbox logged a million lines in six minutes and cost ~170 s of CPU through the log daemon; nothing tested needs it) and opens Photos, so the library's first-use preparation starts while the app installs (the first write then took 1–46 s instead of 1:23–4:43). Spotlight is switched off on the runner. It installs the app, grants photo access (pinned `applesimutils`), starts `scripts/transfer-fixture.py` and a local `api/` on a fresh filesystem store (warmed with one request), and launches the app. A timestamped **photo-library readiness** stage then makes the first library write (an asset dated outside every contract's window), because a fresh simulator's library takes minutes to accept one and that wait belongs to the platform, not to the first contract. It then checks the `GET /device` vocabulary, runs every registered port contract over the rig, and runs the all-real journeys on a bare JVM, with no Gradle alive next to the simulator (`docs/testing.md` section 7). Fails on any `Failed`/`NotWithin` clause, a refused run, an empty registry, a failed journey (printing its assertion message), or a fixture, backend or app that never answers (it captures a screenshot and the app log in that case). Evidence kept: the fixture's request log, the backend's output with a per-request log, host memory/CPU samples, host and simulator crash reports. Decision record: `changes/archive/2026-09-25-one-simulator-journeys`. |
+**No gate `needs:` another**: each compiles what it needs, so a red gate never skips another's run. The one artifact
+edge is `ios-build` → `ios-deliver`. The shared `commonTest` runs once, on the JVM, in `build`; each platform runs the
+same three gates — its build, its platform-bound tests, its journeys (`docs/testing.md`, "Where each test runs").
 
-The full required-check set lives only in the branch ruleset (read it with
-`gh api repos/stefanhoelzl/SnapSync/rulesets`). At the time of writing it is: `api-test`,
-`appstore-metadata-validate`, `build`, `check-label`, `diagrams`, `ios-build`, `ios-contracts`,
-`ios-test`, `resolver-test`, `site-build`, `spec-validate`. `/ship` owns the ruleset, and a context
-becomes required by having actually run on a PR. `ios-deliver`, `deploy.yml`, `nightly-cleanup`,
-`screenshots` and `ios-appstore-promote` must **never** be required.
+| Job | Runner | What it does |
+|---|---|---|
+| `build` | ubuntu | `./gradlew build` (every target compiled, every JVM test, every architecture gate; needs Deno), then the diagrams freshness check: `architectureDiagrams` on the clean checkout must leave `architecture/` unchanged. |
+| `metadata` | ubuntu | `openspec validate --specs --strict` (pinned 1.13.2), the resolver's suite (§1), and the App Store listing's offline validation (§6). |
+| `api-test`, `migration-rehearsal` | ubuntu | §2, "Gates". |
+| `site-build` | ubuntu | The site's build and `npm run check`. |
+| `ios-build` | macos-26 | Signed `xcodebuild` archive of the device (`iosArm64`) app: the app's only device compile. **Release** on a delivering run (a push to `main`, or any dispatch), **Debug** otherwise (about 2.4 min faster; a Release-only failure shows up on `main`). It exports no IPA and uploads nothing to Apple. On a delivering run it verifies the baked deployment (below), then tars the archive (artifacts lose symlinks and exec bits) and uploads it for `ios-deliver` (1-day retention). |
+| `android-build` | ubuntu | `:app:android:assembleRelease -Psnapsync.rig=true`: R8 over the rig build's whole graph. R8 on the plain release, with the keep rules Firebase and Ktor need, is the store build's (phase 5). |
+| `test (ios)` | macos-26 | `./gradlew iosPlatformTest`: every module's `iosTest` on the simulator (host `IOS_SIM_KEXE`). |
+| `test (android)` | ubuntu (KVM) | `./gradlew androidPlatformTest`: `:adapter:android`'s device tests on a Gradle-managed Pixel 6 / API 36 emulator, the transfer fixture served by the build (host `ANDROID_EMU`). |
+| `journeys (ios)` | macos-26 | `scripts/sim-contracts`: builds the rig app (`-Psnapsync.rig=true`, `local` deployment) and ad-hoc signs it (`scripts/sim-sign`). **Nothing overlaps the build**: only after it, with the Gradle and Kotlin daemons stopped, does it boot **one** fresh simulator (a booting simulator slows the build several-fold, and a second fresh one's first-boot work tripled the job). Right after boot it stops the simulator's `apsd` (its reconnect loop to Apple's push sandbox logged a million lines in six minutes and cost ~170 s of CPU through the log daemon; nothing tested needs it) and opens Photos, so the library's first-use preparation starts while the app installs (the first write then took 1–46 s instead of 1:23–4:43). Spotlight is switched off on the runner. It installs the app, grants photo access (pinned `applesimutils`), starts `scripts/transfer-fixture.py` and a local `api/` on a fresh filesystem store (warmed with one request), and launches the app. A timestamped **photo-library readiness** stage then makes the first library write (an asset dated outside every contract's window), because a fresh simulator's library takes minutes to accept one and that wait belongs to the platform, not to the first contract. It then checks the `GET /device` vocabulary, runs every registered port contract over the rig (host `IOS_SIM_APP`), and runs the all-real journeys on a bare JVM, with no Gradle alive next to the simulator (`docs/testing.md` section 7). Fails on any `Failed`/`NotWithin` clause, a refused run, an empty registry, a failed journey (printing its assertion message), or a fixture, backend or app that never answers (it captures a screenshot and the app log in that case). Evidence kept: the fixture's request log, the backend's output with a per-request log, host memory/CPU samples, host and simulator crash reports. Decision record: `changes/archive/2026-09-25-one-simulator-journeys`. |
+| `journeys (android)` | ubuntu (KVM) | Builds the rig APK (`local` deployment) and the journeys, stops the daemons, boots one emulator and runs `scripts/android-journeys`: a local `api/` reversed into the emulator, the app granted the photo library before its first launch, an adapter choice real for every system Android has an adapter for (only the crash reporter and the iOS-only upload-job queue and extension registration mocked), the `GET /device` vocabulary check, then the same journeys on a bare JVM. |
+| `ci` | ubuntu | The aggregate above. |
+
+**The Kotlin/Native cache is one family per job**: `-device-` (`ios-build`, inside `.github/actions/ios-archive`),
+`-sim-test-` (`test (ios)`), `-sim-journeys-` (`journeys (ios)`), through `.github/actions/konan-restore` and
+`konan-save`. Each job restores its own family first, so a job whose compile set changes never leaves another partly
+cold; the primary key carries the run id so it never hits and every save writes fresh; only `main` saves, and each
+save deletes its own family's superseded entries (the repo's 10 GB budget is full).
 
 **Archive verification** (delivering runs): read the bundle id, `uploadBase`, APNs environment,
 crash-reporting environment and DSN back out of **both** the app and the nested `.appex`, and compare
@@ -415,24 +427,26 @@ one bundle, or a value truncated by a grammar, fails the run here instead of pro
 included. It reaches **no external tester**: the builds go to the internal `development` group only.
 Real users get builds only through the App Store release (§6).
 
-- **`ios-deliver`** (`needs: [ios-build, ios-test, ios-contracts]`, every merge gate; runs on delivering runs only): downloads and unpacks
+- **`ios-deliver`** (in `ci.yml`, `needs: ci` — every merge gate, both platforms; runs on delivering runs only): downloads and unpacks
   the archive, re-signs and exports an `app-store-connect` IPA **without recompiling**, and uploads it
   with one `app-store-connect publish --whats-new …` call (codemagic-cli-tools). That call waits for the
-  build to become visible. There is no `--testflight` flag and no beta-group change. Any red gate — the
-  build, the test suite, or the in-app contracts and journeys — means nothing is uploaded. Delivery
-  therefore starts only when the slowest gate (`ios-contracts`) finishes, and a flaky `ios-contracts`
-  skips that commit's upload until it is re-run. Decision record:
+  build to become visible. There is no `--testflight` flag and no beta-group change. Any red gate — on
+  either platform — means nothing is uploaded: `main` is red. Delivery therefore starts only when the
+  slowest gate finishes, and a flaky gate skips that commit's upload until it is re-run. Decision record:
   `changes/archive/2026-09-25-deliver-needs-ios-contracts`. The job is **not** required and does **not** use `continue-on-error`: a
   failed delivery shows red and blocks nothing.
 - **"What to Test" note**: `<PR title> (#<num>, <short sha>)`, resolved through
   `GET repos/{repo}/commits/{sha}/pulls`. It falls back to `<head subject> (<short sha>)`. On a dispatch
   it uses the operator's note, or `<ref> (<short sha>)`. Arbitrary text reaches the shell only through
   environment variables.
-- **Branch dispatch = a real TestFlight build of a branch**: `gh workflow run ios.yml --ref <branch>
+- **Branch dispatch = a real TestFlight build of a branch**: `gh workflow run ci.yml --ref <branch>
   [-f what_to_test="…"]`. It follows every rule of a `main` delivery (every merge gate, Release, production APNs, DSN,
   dSYMs, internal group only). Use it for anything only a distributed build can do, for example the hidden
   diagnostic dump.
-- **Build numbers**: `CFBundleVersion` = `github.run_number` (monotonic across refs).
+- **Build numbers**: `CFBundleVersion` = `ci.yml`'s `github.run_number` + `BUILD_NUMBER_OFFSET` (2000; monotonic
+  across refs). Earlier builds (all below 2000) were numbered by the retired `ios.yml`'s run number, and App Store Connect refuses
+  a build number not above the last one for the same version, so the new workflow's count starts above it. Never
+  lower the offset.
   `MARKETING_VERSION` = `max(floor, latest vX.Y tag with minor + 1)`, compared as integer tuples
   (`v0.9 → 0.10`). The floor is committed in `Config.xcconfig`, so a major jump (`→ 1.0`) is a PR that
   raises the floor.
@@ -480,15 +494,16 @@ gh workflow run ios-appstore-promote.yml -f build_number=512              # atta
 gh workflow run ios-appstore-promote.yml -f build_number=512 -f submit=true
 ```
 
-`build_number` is the build's `CFBundleVersion`, which equals the `ios.yml` `run_number` that produced it.
+`build_number` is the build's `CFBundleVersion`: `ci.yml`'s `run_number` + 2000 (`BUILD_NUMBER_OFFSET`), or, for a
+build at or below 2000, the retired `ios.yml`'s `run_number`.
 There is no `version` input: the store version is **derived** from the build's own marketing version.
 The workflow is a single `ubuntu` job: no Xcode, no signing, only the existing Admin ASC key. Order of
 steps:
 
 1. Resolve build N (wait for `VALID`) and derive `X.Y`. It must match `^\d+\.\d+$`.
 2. **Refuse if tag `vX.Y` already exists.** This happens before any App Store Connect change.
-3. Resolve the origin commit: `build_number` → the `ios.yml` run on `main` with that `run_number` →
-   `head_sha`. If it cannot be resolved, fail; never guess.
+3. Resolve the origin commit: `build_number` → the delivering run on `main` (`ci.yml` run `build_number − 2000`
+   above the offset, otherwise the retired `ios.yml` run `build_number`, by its workflow id) → `head_sha`. If it cannot be resolved, fail; never guess.
 4. Derive the release notes (§7). If they exceed 4000 characters, fail here, having changed nothing.
 5. Find or create the `X.Y` version record and attach the build (idempotent). A **newly created** record
    gets the committed copyright (year of first publication). An existing record's copyright is left alone.
@@ -503,7 +518,7 @@ steps:
 
 Operator rules:
 
-- ⚠️ **Never push a `vX.Y` tag by hand.** Tags trigger nothing (`build.yml`, `ios.yml` and `deploy.yml`
+- ⚠️ **Never push a `vX.Y` tag by hand.** Tags trigger nothing (`ci.yml` and `deploy.yml`
   ignore tags), and a tag that already exists makes that version **permanently unreleasable**, because
   step 2 refuses it.
 - ⚠️ **A promote is single-shot per version.** After it succeeds, the tag blocks a re-run. Correcting an
@@ -524,11 +539,11 @@ Operator rules:
   promotional text, support and marketing URLs, name, subtitle and privacy-policy URL. The URLs are
   **templates** with a domain placeholder, rendered into `build/metadata/` by the resolver. Everything
   else is edited directly.
-- **`appstore-metadata-validate`** (`appstore.yml`, every push, **required**, no credentials): character
+- **The listing's validation** (`ci.yml`'s `metadata` gate, every push, no credentials): character
   limits (description ≤ 4000, keywords ≤ 100, promotional text ≤ 170, whatsNew ≤ 4000, subtitle ≤ 30),
   URL syntax, and **unknown keys**. The tool's schema is closed. That is why the review notes and the
-  screenshot headlines live in their own files: a new key in the canonical files would fail this required
-  check and block merges.
+  screenshot headlines live in their own files: a new key in the canonical files would fail this gate
+  and block merges.
 - **`appstore-metadata-apply`** (`deploy.yml`, `main` only, not required): resolves the **editable**
   version (`PREPARE_FOR_SUBMISSION` / `DEVELOPER_REJECTED`) at run time, never through a stored id, and
   overwrites the fields that are present. The committed file wins over console edits. It never touches a

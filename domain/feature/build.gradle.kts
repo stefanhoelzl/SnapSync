@@ -13,7 +13,7 @@ plugins {
     alias(libs.plugins.kover)
 }
 
-// Full failure messages in CI: the Kotlin/Native simulator runner otherwise prints a terse
+// Full failure messages on a simulator run: the Kotlin/Native simulator runner otherwise prints a terse
 // "AssertionError at null:-1" with no expected/actual.
 tasks.withType<KotlinNativeSimulatorTest>().configureEach {
     testLogging {

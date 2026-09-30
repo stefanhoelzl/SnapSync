@@ -36,7 +36,7 @@ sealed interface AlbumMapSource {
 }
 
 /**
- * Decide once, purely, so the one-shot migration is tested on JVM **and** the simulator rather than
+ * Decide once, purely, so the one-shot migration is tested in `commonTest` rather than
  * living in an untested iOS file.
  *
  * The App Group wins whenever it holds anything: migration is one-shot, and a second read must not

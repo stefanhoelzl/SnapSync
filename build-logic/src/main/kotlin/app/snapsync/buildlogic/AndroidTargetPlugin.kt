@@ -17,12 +17,13 @@ import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
  * the toolchain's `jdk` to `android-jvmTarget`, because D8 dexes it and the Android runtime runs it; the toolchain that
  * compiles it stays the one every other target uses.
  *
- * `commonTest` runs on the EMULATOR too — a device test (`androidDeviceTest`, from the `test` source-set tree), for the
- * reason it runs on the iOS simulator: the code ships on ART, after D8, over the platform's own SQLite and Compose
- * renderer, none of which the JVM run exercises. Not a host test: that is the JVM again, over a stubbed `android.jar`.
- * The device tests need an emulator, so `./gradlew build` does not run them; the `android-emulator` CI job does
- * (`connectedAndroidDeviceTest`, `docs/testing.md`). A module with no common tests but device tests of its own
- * (`src/androidDeviceTest`: an Android adapter's contract bindings, which need the platform) declares it the same way.
+ * A module's DEVICE tests (`src/androidDeviceTest`) are what only the platform can answer — an Android adapter's contract
+ * bindings, over ART, the platform's SQLite, Keystore, MediaStore and WorkManager. `commonTest` is NOT among them: the
+ * shared logic runs once, on the JVM, under `./gradlew build` (`docs/testing.md`, "Where each test runs"). They need an
+ * emulator, so `build` does not run them; `./gradlew androidPlatformTest` does, on the managed device declared here
+ * ([MANAGED_DEVICE], booted and torn down by the Android Gradle plugin), and `connectedAndroidDeviceTest` on an
+ * emulator you booted yourself. Either way the upload contract's transfer fixture is served on the host for the run
+ * ([TransferFixtureService]) and handed to the tests as the `fixture` instrumentation argument.
  */
 class AndroidTargetPlugin : Plugin<Project> {
     override fun apply(project: Project) {
@@ -37,8 +38,22 @@ class AndroidTargetPlugin : Plugin<Project> {
                 minSdk = version("android-minSdk").toInt()
                 compilerOptions.jvmTarget.set(JvmTarget.fromTarget(version("android-jvmTarget")))
                 if (hasDeviceTests(project)) {
+                    // The `test` tree names the source set `androidDeviceTest`. It would also pull in a `commonTest`,
+                    // which is why a module declares device tests only where it holds no common tests (the adapters).
                     withDeviceTestBuilder { sourceSetTreeName = "test" }.configure {
                         instrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+                        instrumentationRunnerArguments["fixture"] = TransferFixtureService.FIXTURE_ADDRESS
+                        managedDevices {
+                            localDevices.create(MANAGED_DEVICE) {
+                                // The phone the screen tests are measured on, and the one the `android-emulator` skill
+                                // creates. The GPU mode is the root `gradle.properties`' (SwiftShader's JIT segfaults).
+                                device = "Pixel 6"
+                                apiLevel = version("android-targetSdk").toInt()
+                                systemImageSource = "google"
+                                require64Bit = true
+                                testedAbi = "x86_64"
+                            }
+                        }
                     }
                 }
             }
@@ -50,18 +65,45 @@ class AndroidTargetPlugin : Plugin<Project> {
                 kotlin.sourceSets.named("androidDeviceTest") {
                     dependencies {
                         implementation(versions.findLibrary("androidx-test-runner").get())
-                        // `kotlin.test` for every module's common tests on ART — some take it from `jvmTest` alone.
                         implementation("org.jetbrains.kotlin:kotlin-test")
                     }
+                }
+                serveTransferFixture(project)
+                // What `./gradlew androidPlatformTest` runs in every module that has device tests; `test (android)` in CI.
+                project.tasks.register("androidPlatformTest") {
+                    group = "verification"
+                    description = "Runs this module's device tests on the managed emulator ($MANAGED_DEVICE)."
+                    dependsOn("${MANAGED_DEVICE}AndroidDeviceTest")
                 }
             }
         }
     }
 
+    /** The device-test runs — on the managed device, or a connected one — start the host's transfer fixture first. */
+    private fun serveTransferFixture(project: Project) {
+        val fixture = project.gradle.sharedServices.registerIfAbsent(
+            TransferFixtureService.NAME,
+            TransferFixtureService::class.java,
+        ) {
+            parameters.script.set(project.rootProject.layout.projectDirectory.file("scripts/transfer-fixture.py"))
+            parameters.log.set(project.rootProject.layout.buildDirectory.file("transfer-fixture.log"))
+            parameters.port.set(TransferFixtureService.PORT)
+        }
+        project.tasks.matching { it.name in DEVICE_TEST_TASKS }.configureEach {
+            usesService(fixture)
+            doFirst { fixture.get().ensureStarted() }
+        }
+    }
+
     private companion object {
 
-        fun hasDeviceTests(project: Project): Boolean =
-            project.file("src/commonTest").isDirectory || project.file("src/androidDeviceTest").isDirectory
+        /** The managed device `androidPlatformTest` runs the device tests on: `<name>AndroidDeviceTest`. */
+        const val MANAGED_DEVICE = "pixel6"
+
+        private val DEVICE_TEST_TASKS = setOf("connectedAndroidDeviceTest", "${MANAGED_DEVICE}AndroidDeviceTest")
+
+        /** A device test is a platform-bound test: only a module with `src/androidDeviceTest` declares one. */
+        fun hasDeviceTests(project: Project): Boolean = project.file("src/androidDeviceTest").isDirectory
 
         /** `:adapter:generic:mock` → `app.snapsync.adapter.generic.mock`: unique per module, as an AAR's namespace must be. */
         fun namespaceOf(path: String): String =

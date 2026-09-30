@@ -10,7 +10,7 @@ import app.snapsync.model.SecureStoreUnavailable
 
 /**
  * The mint-once-then-read core, shared by every [SecureStore]-backed store and tested in `commonTest`
- * (so it runs on JVM **and** `iosSimulatorArm64`). Pure: the platform supplies the effects.
+ * (on the JVM). Pure: the platform supplies the effects.
  *
  * The order below is normative, and each step exists because the one above it was once skipped:
  *

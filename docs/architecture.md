@@ -92,8 +92,9 @@ The `android` target is its own plugin, `snapsync.android` (AGP's `com.android.k
 `jvm`/iOS list (`:adapter:generic:*`, and the rig's `:test:rig`, `:test:launch-adapters`, `:test:contracts`). It
 reads the SDK levels from `libs.versions.toml` (minSdk 30 — scoped storage enforced, one code path, and the level the device tests run at too) and **lowers the bytecode
 to `android-jvmTarget` (17)** while the toolchain stays JDK 25: D8/R8 dexes what the Android compilations emit, and
-R8 over the whole rig graph is built on every push (`android.yml`). It declares no host tests — `commonTest`
-already runs on the JVM and the iOS simulator. The Android app itself is ONE process with ONE composition
+R8 over the whole rig graph is built on every push (`ci.yml`'s `android-build`). It declares no host tests —
+`commonTest` runs on the JVM — and device tests only where a module has `src/androidDeviceTest` (the adapters'
+contract bindings), run on a Gradle-managed emulator by `androidPlatformTest`. The Android app itself is ONE process with ONE composition
 (`:app:android`'s `SnapSyncRoot`, built in `Application.onCreate`) and ONE adapter module (`:adapter:android`):
 iOS splits its adapters because its upload extension is a second process with linkage limits, and Android has no
 second process.
@@ -446,7 +447,7 @@ byte-deterministic (code-point sort, `\n`, UTF-8, no timestamps or absolute path
   generation**, which makes the transcriber the flow law's instrument. An escaping `scope.launch` is not
   in the grammar.
 - Freshness: `:tools:diagrams:test` regenerates and diffs against the committed files (inputs include
-  `settings.gradle.kts` and every `build.gradle.kts`). In CI, the required `diagrams` check regenerates
+  `settings.gradle.kts` and every `build.gradle.kts`). In CI, `ci.yml`'s `build` gate regenerates
   on a clean checkout and fails on any difference, including untracked files. Stale diagrams block the
   PR. Regenerate and commit.
 - The module-graph renderer has a byte-identical twin in `:tools:diagrams`. Keep them in step.

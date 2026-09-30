@@ -6,7 +6,7 @@
 // Today it holds what the screen and its foreground life need, the storage adapters (files, databases, preferences,
 // the Keystore-sealed secure store, the platform device id) and the platform log. Every other system's adapter arrives
 // with the phase that needs it. Its contract bindings are device tests (`src/androidDeviceTest`): they need ART and the
-// platform's SQLite and Keystore, so they run on the emulator (`connectedAndroidDeviceTest`).
+// platform's SQLite and Keystore, so they run on the emulator (`androidPlatformTest`).
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     // The `android` target (`docs/architecture.md`, "Zones inside the core") — this module's only one.

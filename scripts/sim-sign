@@ -11,7 +11,7 @@
 # "App Group container 'group.app.snapsync' unavailable — the application-groups entitlement is
 # missing or unprovisioned", so no ledger, no config, no live stack — and a rig build's launch
 # adapters, whose choice and mocked state live there, have nowhere to live. screenshots.yml and
-# ios-contracts both sign their rig build with this. An ad-hoc signature carrying
+# journeys (ios) both sign their rig build with this. An ad-hoc signature carrying
 # iosApp/Configuration/simulator.entitlements fixes it
 # (measured 2026-08-09, macOS 26.5.2 / Xcode 26.6 / iOS 26.5 simulator).
 #

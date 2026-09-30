@@ -26,7 +26,7 @@ const val CONFIG_FILE_FOREIGN_STATUS: Int = -1
 const val CONFIG_FILE_UNUSABLE_STATUS: Int = -2
 
 /**
- * The file-backed config read, pure so every branch runs on JVM **and** the iOS simulator
+ * The file-backed config read, pure so every branch runs in `commonTest`
  * (capability `join-event`):
  *
  * - [ConfigFileRead.Content] → decode via the versioned envelope (`decodeConfigFile`, `model/`):
@@ -60,7 +60,7 @@ fun configReadViaFile(file: ConfigFileRead): ConfigRead = when (file) {
 /**
  * The next [ConfigService.config] value after a trigger-time re-read (migration step 12: every
  * OS-callback flow re-reads the membership before acting on it, replacing the deleted unlock-hook
- * repair). Pure so the one branch that matters is tested on JVM and the simulator:
+ * repair). Pure so the one branch that matters is tested in `commonTest`:
  *
  * - a **conclusive** read ([ConfigRead.Joined] / [ConfigRead.None]) replaces the value;
  * Absence: the returned null means "definitively not joined" and ONLY that — the three-state

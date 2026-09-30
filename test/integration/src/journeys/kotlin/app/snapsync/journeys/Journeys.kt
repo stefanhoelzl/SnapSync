@@ -35,7 +35,7 @@ import kotlin.time.Duration.Companion.seconds
 
 /**
  * The all-real journeys (`docs/testing.md`, "All-real journeys are the contracts' safety net"): the
- * rig build of the iOS app on ONE simulator — member A — and the real backend served locally, driven through the
+ * rig build of the app on ONE simulator or emulator — member A — and the real backend served locally, driven through the
  * same typed client every integration test speaks. The second member is played by this test itself, over the
  * backend's public HTTP surface only, with real JPEG bytes ([Member]): to the backend it is a device, to A a foreign
  * member whose photos take the real download and PhotoKit import path. One simulator, because a second freshly
@@ -49,6 +49,8 @@ import kotlin.time.Duration.Companion.seconds
  * ONE test, three journeys in order, because each stands on the last and the simulator is shared: A creates and
  * joins; A's photos land in the backend and the event's union; a member joins A's event through the id in A's invite
  * link, shares photos, and they arrive in A's library.
+ *
+ * The same journeys run on iOS (`scripts/sim-contracts`) and Android (`scripts/android-journeys`).
  */
 class Journeys {
 
@@ -164,6 +166,6 @@ class Journeys {
         const val MEMBER_PHOTOS = 2
 
         fun address(name: String): String = System.getProperty("snapsync.journey.$name")
-            ?: fail("snapsync.journey.$name is not set — the journeys run only against the addresses ios-contracts passes")
+            ?: fail("snapsync.journey.$name is not set — the journeys run only against the addresses their script passes")
     }
 }

@@ -1,0 +1,42 @@
+# Restore ~/.konan for ONE job's cache family (`docs/deployment.md`, "CI"). Every Kotlin/Native job in ci.yml owns
+# its own family — `-device-` (ios-build, inside ios-archive), `-sim-test-` (test (ios)), `-sim-journeys-`
+# (journeys (ios)) — so each restores exactly what it compiled last time on main, and a job whose compile set changes
+# never leaves another partly cold.
+#
+# ~/.konan holds the Kotlin/Native toolchain AND the per-dependency library caches the compiler builds on first use
+# (Compose, Skiko, coroutines, …). Measured on macos-26: without them the simulator tests paid ~3 min more.
+#
+# RESTORE AND SAVE ARE SPLIT ON PURPOSE (konan-save is the other half) — do NOT fold them into one actions/cache step
+# with a stable key. actions/cache writes its post-step entry ONLY when the primary key MISSED; a key that rotates only
+# on a dependency bump HIT on every ordinary run and silently discarded everything newly compiled (both entries were
+# once frozen 18 days). Hence the run id in the primary key: it never hits, the restore falls through to restore-keys
+# (newest match wins), and every save writes a fresh entry.
+#
+# The family is also what keeps two jobs of ONE run from racing for the same key: they share `github.run_id`, and only
+# the first to finish could reserve it (ios-build's save silently failed for weeks that way).
+#
+# Narrow → broad: this family first, then any entry for this dependency set, then any konan entry at all — so a cold
+# runner or a brand-new branch still lands on a toolchain instead of downloading one.
+name: Restore Kotlin/Native (~/.konan)
+description: Restore this job's ~/.konan cache family; pass `key` to konan-save.
+inputs:
+  family:
+    description: "This job's cache family, e.g. sim-test"
+    required: true
+outputs:
+  key:
+    description: The primary key this run saves under (never restored itself).
+    value: ${{ steps.restore.outputs.cache-primary-key }}
+runs:
+  using: composite
+  steps:
+    - name: Restore Kotlin/Native (~/.konan)
+      id: restore
+      uses: actions/cache/restore@v6
+      with:
+        path: ~/.konan
+        key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}-${{ inputs.family }}-${{ github.run_id }}
+        restore-keys: |
+          konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}-${{ inputs.family }}-
+          konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}-
+          konan-${{ runner.os }}-

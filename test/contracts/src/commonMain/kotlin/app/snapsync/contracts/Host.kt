@@ -27,7 +27,7 @@ enum class Host {
     /**
      * The rig build of the app bundle on a simulator, ad-hoc signed with the App Group only. Its bundle
      * identifier is what lets `applesimutils` grant it photo access, which no test executable can hold, so it
-     * is where PhotoKit runs under a real full grant. It is run live on every push by the `ios-contracts`
+     * is where PhotoKit runs under a real full grant. It is run live on every push by the `journeys (ios)`
      * job (`docs/architecture.md`, "In-app hosts CI can reach are run live over the rig"). Its Keychain
      * answers `-34018` to an explicit-group query, so it reaches none of `IOS_DEVICE_APP`'s Keychain states.
      */
@@ -47,10 +47,10 @@ enum class Host {
     IOS_DEVICE_PHOTOKIT_EXT,
 
     /**
-     * A device-test APK on the Android emulator (`connectedAndroidDeviceTest`, the `android-emulator` CI job) — and the
-     * Android rig build of the app there, which answers the same host. The fakes' shared bindings run here, and the
-     * Android adapters' own (`:adapter:android`'s device tests); the emulator's Keystore is software-backed, so nothing
-     * here proves hardware attestation.
+     * A device-test APK on the Android emulator (`androidPlatformTest`, the `test (android)` CI job) — and the Android
+     * rig build of the app there, which answers the same host. The Android adapters' own bindings run here
+     * (`:adapter:android`'s device tests); the fakes' shared ones run on the JVM only. The emulator's Keystore is
+     * software-backed, so nothing here proves hardware attestation.
      */
     ANDROID_EMU,
 }
@@ -60,7 +60,7 @@ enum class BindingKind { Fake, Live, Replay }
 
 /**
  * The host this process is, for bindings compiled into a source set shared by several targets — the
- * fakes' bindings in `commonTest`, which run on the JVM and the simulator alike. A binding for a single
+ * fakes' bindings in `commonTest`, which CI runs on the JVM only (another target running them answers its own). A binding for a single
  * target names its host literally instead, which is what the contract-coverage gate reads.
  */
 expect val currentHost: Host

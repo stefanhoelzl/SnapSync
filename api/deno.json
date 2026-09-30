@@ -57,7 +57,7 @@
   // The project's own lint rules, declared here rather than on a workflow command line so that CI
   // and a developer's local `deno lint` run the SAME rule set (`docs/deployment.md`).
   // `complexity.ts` carries this backend's cyclomatic ceiling — the TypeScript half of capability
-  // `docs/architecture.md`. It needs no new CI step: `api.yml` already gates on `deno lint`.
+  // `docs/architecture.md`. It needs no new CI step: ci.yml's `api-test` already gates on `deno lint`.
   "lint": {
     "plugins": ["./src/lint/complexity.ts"]
   }

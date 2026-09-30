@@ -50,8 +50,8 @@ jobs:
           java-version: 25
       - uses: gradle/actions/setup-gradle@v5
 
-      # Warm from the same Kotlin/Native entry as ios.yml, so the first in-session build is not cold.
-      # RESTORE-ONLY, deliberately: `main` owns that entry (ios.yml writes it) and a session is a pure
+      # Warm from the same Kotlin/Native entries as ci.yml, so the first in-session build is not cold.
+      # RESTORE-ONLY, deliberately: `main` owns those entries (ci.yml's iOS jobs write them) and a session is a pure
       # consumer. A ~500 MB session-end write into an already-full 10 GB budget would evict entries
       # every PR build depends on, and sessions are rare, hand-dispatched and branch-scoped.
       # The run id guarantees the primary key MISSES, so the restore falls through to the NEWEST entry —

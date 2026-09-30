@@ -205,7 +205,7 @@ symbolicator:
 ```bash
 BUILD=$(python3 -c 'import json;print(json.load(open("'"$OUT"'/event.json"))["data"]["dist"])')
 DSYM_DIR="$OUT/dsyms-$BUILD"
-gh run download -n "dsyms-$BUILD" -D "$DSYM_DIR"   # from the ios.yml run that built it
+gh run download -n "dsyms-$BUILD" -D "$DSYM_DIR"   # from the ci.yml run that built it
 uvx --from symbolic python .claude/skills/bugsink/symbolicate.py "$OUT/event.json" "$DSYM_DIR"
 ```
 
@@ -332,7 +332,7 @@ wrong, say so and let the operator reopen it in the web UI.
   deliberate: a build whose channel resolved to `dev` while still carrying a DSN reports honestly as
   `development`. Read `data.environment` rather than assuming. (A DSN can no longer be hand-injected on
   an `xcodebuild` line — it rides in the generated `Deployment.plist`, which an override cannot reach —
-  so on-device reporting work is a `gh workflow run ios.yml --ref <branch>` dispatch.)
+  so on-device reporting work is a `gh workflow run ci.yml --ref <branch>` dispatch.)
 - **An event with no `data.release` is an OLD BUILD, not a regression.** Release and the `process`
   tag arrived in `add-release-and-process-to-crash-reports`; a crash captured on an earlier build and
   delivered later carries `release = null` or the SDK's own `app.snapsync@<v>+<build>` fallback (which
