@@ -28,7 +28,8 @@ import kotlin.test.assertTrue
 
 /**
  * The event album where the library's album is the FOLDER a photo lives in (Android; capability `event-album`,
- * `changes/android-event-album` D4, D5): over the photo-library mock playing an Android library, with the REAL album
+ * `changes/archive/2026-09-30-android-event-album` D4, D5): over the photo-library mock playing an Android library,
+ * with the REAL album
  * map. The collection library's rules are [AlbumCoordinatorTest]'s and are unchanged.
  */
 class FolderAlbumCoordinatorTest {

@@ -5,7 +5,8 @@ package app.snapsync.android.gallery
  * it, on every storage volume — where camera apps save. Every read of the gallery is scoped to it, and the selection
  * policy is the one decision over what it returns (`docs/architecture.md`).
  *
- * It has two scopes (`changes/android-event-album` D8), because the event albums live inside it, in [ALBUM_ROOT]:
+ * It has two scopes (`changes/archive/2026-09-30-android-event-album` D8), because the event albums live inside it,
+ * in [ALBUM_ROOT]:
  * - **the library** ([SQL], [contains]): all of `DCIM`. The by-id reads and the album reads use it, so a received photo
  *   saved into an event album still reads as present, and the album as holding it.
  * - **the candidates** ([CANDIDATE_SQL], [isCandidate]): `DCIM` without [ALBUM_ROOT]. The reads that decide what the

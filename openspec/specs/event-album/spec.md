@@ -17,39 +17,54 @@ Decision record: changes/archive/2026-07-08-add-event-album
 
 ### Requirement: The album is offered on by default and declinable in one tap
 
-On iPhone, the join surface (capability `join-event`) SHALL offer the event album as its own choice,
-separate from the choices to share and to receive, switched on unless the member unchecks it; joining
-without touching it SHALL create the album. The surface SHALL tell the member which photos the album will
-collect for their current choices — the photos they share, the photos they receive, both, or nothing — and,
-when unchecked, that no album will be created. The choice SHALL be changeable later (capability
-`manage-membership`).
+The join surface (capability `join-event`) SHALL offer the event album as its own choice, separate from the
+choices to share and to receive, switched on unless the member unchecks it; joining without touching it SHALL
+create the album. The surface SHALL tell the member which photos the album will collect for their current
+choices — on iPhone the photos they share, the photos they receive, both, or nothing; on Android the photos
+they receive, their own photos staying in the camera folder, or nothing — and, when unchecked, that no album
+will be created. The choice SHALL be changeable later (capability `manage-membership`).
 
 #### Scenario: Joining without touching the album choice
-- **WHEN** an iPhone member joins without changing the album choice
+- **WHEN** a member joins without changing the album choice
 - **THEN** an album for the event is created in their library
 
 #### Scenario: Declining the album
-- **WHEN** an iPhone member unchecks the album choice and joins
+- **WHEN** a member unchecks the album choice and joins
 - **THEN** no album is created and no photo is placed in one
 
 #### Scenario: The explanation follows the switches
 - **WHEN** an iPhone member turns sharing off and keeps receiving on the join surface
 - **THEN** the album choice explains that it will collect the photos they receive
 
+#### Scenario: On Android the explanation names received photos only
+- **WHEN** an Android member keeps sharing and receiving on the join surface
+- **THEN** the album choice explains that it will collect the photos they receive and that their own photos stay in the camera folder
+
+#### Scenario: On Android without receiving the album collects nothing
+- **WHEN** an Android member turns receiving off and keeps sharing on the join surface
+- **THEN** the album choice explains that it will collect nothing
+
 ### Requirement: The album holds the event as this device holds it
 
-While the album is on, it SHALL contain every photo of this event that the device holds: the member's own
-photos being shared to the event and the photos received from other members of this event. The album
-SHALL be titled with the event's name when it is created. A received photo SHALL appear in the album the
-moment it appears in the library, never loose first. An own photo SHALL be placed as soon as the device
-queues it for sharing, without waiting for the upload — also when offline.
+While the album is on, it SHALL contain every photo of this event that the device holds, as far as the
+platform allows. On iPhone that is the member's own photos being shared to the event and the photos received
+from other members of this event. On Android it is the photos received from other members of this event: an
+Android album is a folder, and the member's own photos SHALL stay where their camera saved them — never moved
+out of the camera folder and never copied. The album SHALL be titled with the event's name when it is
+created; on Android, characters a folder name cannot hold are left out. A received photo SHALL appear in the
+album the moment it appears in the library, never loose first. On iPhone an own photo SHALL be placed as soon
+as the device queues it for sharing, without waiting for the upload — also when offline.
 
 #### Scenario: Both directions land in the album
-- **WHEN** a member who shares and receives takes a photo and receives one during the event
+- **WHEN** an iPhone member who shares and receives takes a photo and receives one during the event
 - **THEN** both are in the event's album
 
+#### Scenario: On Android only received photos are in the album
+- **WHEN** an Android member who shares and receives takes a photo and receives one during the event
+- **THEN** the received photo is in the event's album, and their own photo stays in the camera folder and is not in the album
+
 #### Scenario: An offline photo is already in the album
-- **WHEN** a member takes an in-range photo with no network connection
+- **WHEN** an iPhone member takes an in-range photo with no network connection
 - **THEN** it is placed in the album before its upload has completed
 
 #### Scenario: A received photo is never loose
@@ -64,22 +79,28 @@ queues it for sharing, without waiting for the upload — also when offline.
 
 The album SHALL be filled with the photos the device already holds for the event whenever it is turned
 on — at a join, a rejoin, a switch, a saved change of settings, or photo access becoming usable while the
-app runs: own photos currently shared to it and photos already received from it. Photos received for a
-different event SHALL NOT be added. Photos this device shared before the join that the new event also
-covers SHALL be added once the device has looked at them, which MAY be shortly after the join rather than
-at once. Gathering SHALL never add a photo twice and SHALL NOT make the member wait.
+app runs: on iPhone own photos currently shared to it and photos already received from it; on Android the
+photos already received from it, which are moved out of the camera folder into the album. Photos received for
+a different event SHALL NOT be added. On iPhone, photos this device shared before the join that the new event
+also covers SHALL be added once the device has looked at them, which MAY be shortly after the join rather
+than at once. Gathering SHALL never add a photo twice and SHALL NOT make the member wait. On Android a received
+photo the app can no longer move — one saved before the app was reinstalled — SHALL stay in the camera folder.
 
 #### Scenario: Turning the album on later
-- **WHEN** a member who joined without the album turns it on in settings
+- **WHEN** an iPhone member who joined without the album turns it on in settings
 - **THEN** the photos they already shared and received in this event are added to a new album
+
+#### Scenario: On Android, turning the album on later moves received photos into it
+- **WHEN** an Android member who joined without the album, and has received photos of this event, turns it on in settings
+- **THEN** those photos move from the camera folder into the new album, each appearing once in the gallery, and their own photos stay in the camera folder
 
 #### Scenario: A photo from another event stays out
 - **WHEN** the device holds a photo received in an earlier event that is not part of this event
 - **THEN** it is not added to this event's album
 
 #### Scenario: A photo shared before the join arrives shortly after
-- **WHEN** a member joins with the album on, and a photo they shared to an earlier event lies inside this
-  event's range
+- **WHEN** an iPhone member joins with the album on, and a photo they shared to an earlier event lies inside
+  this event's range
 - **THEN** it appears in the new album after the device's first pass over the library, without being
   uploaded again
 
@@ -90,26 +111,37 @@ at once. Gathering SHALL never add a photo twice and SHALL NOT make the member w
 ### Requirement: Turning the album off keeps it
 
 Turning the album off SHALL stop placing new photos and SHALL NOT delete the album or remove photos from
-it. Turning it on again SHALL reuse the same album.
+it. Turning it on again SHALL reuse the same album. On Android, photos received while the album is off SHALL
+arrive in the camera folder (capability `receiving-photos`).
 
 #### Scenario: Off, then on again
 - **WHEN** a member turns the album off, takes photos, and turns it on again
 - **THEN** the same album is used and the photos taken meanwhile are gathered into it
 
+#### Scenario: On Android, photos received while off go to the camera folder
+- **WHEN** an Android member turns the album off and then receives a photo
+- **THEN** the photo arrives in the camera folder, and the album keeps the photos it already held
+
 ### Requirement: The album survives leaving and is reused on rejoin
 
 Leaving the event SHALL NOT delete the album or its photos. Rejoining the same event with the album on
-SHALL reuse the existing album. Photos SHALL be placed in the album this event created even if the member
-renamed that album or another event shares its name; renaming the event (capability `manage-membership`)
-SHALL NOT retitle an album already created.
+SHALL reuse the existing album. Photos SHALL be placed in the album this event created even if another event
+shares its name; renaming the event (capability `manage-membership`) SHALL NOT retitle an album already
+created. On iPhone photos SHALL be placed in that album even if the member renamed it. On Android an album the
+member renamed SHALL NOT be followed: it counts as deleted (requirement "A deleted album is recreated only
+when the member asks"), so later received photos arrive in the camera folder until the member opts in again.
 
 #### Scenario: Rejoin reuses the album
 - **WHEN** a member leaves an event and later rejoins it with the album on
 - **THEN** new photos go into the same album, next to the earlier ones
 
 #### Scenario: A renamed album keeps receiving photos
-- **WHEN** a member renames the event's album in Photos
+- **WHEN** an iPhone member renames the event's album in Photos
 - **THEN** new event photos are still placed in it
+
+#### Scenario: On Android a renamed album is not followed
+- **WHEN** an Android member renames the event's album in a gallery app and then receives a photo
+- **THEN** the photo arrives in the camera folder, and the renamed album keeps the photos it held
 
 #### Scenario: Two events with the same name
 - **WHEN** a member has been in two events with the same name
@@ -118,11 +150,18 @@ SHALL NOT retitle an album already created.
 ### Requirement: A deleted album is recreated only when the member asks
 
 If the member deletes the album, the app SHALL NOT recreate it on its own. It SHALL create a new album
-only on a deliberate opt-in: rejoining with the album on, or turning the album on in settings.
+only on a deliberate opt-in: rejoining with the album on, or turning the album on in settings. On Android,
+deleting the album in a gallery app also deletes the photos in it; an album that held photos and holds none
+any more — deleted, emptied, or renamed — SHALL count as deleted, and later received photos SHALL arrive in the camera folder until the member
+opts in again.
 
 #### Scenario: A deleted album stays deleted
 - **WHEN** the member deletes the event's album and more photos arrive
 - **THEN** no album reappears, and the photos still arrive in the library
+
+#### Scenario: On Android later photos arrive in the camera folder
+- **WHEN** an Android member deletes the event's album in a gallery app and then receives a photo
+- **THEN** no album reappears and the photo arrives in the camera folder
 
 #### Scenario: Opting in again recreates it
 - **WHEN** after deleting it the member turns the album on in settings
@@ -132,11 +171,16 @@ only on a deliberate opt-in: rejoining with the album on, or turning the album o
 
 The album SHALL be created when the member joins with it on and photo access is full or limited, or as
 soon as such access is granted afterwards, so it exists before the first photo is placed. A membership
-that never shares or receives a photo MAY have an empty album.
+that never shares or receives a photo MAY have an empty album. On Android an album SHALL appear in gallery
+apps once it holds its first photo, since a gallery app shows no empty folder.
 
 #### Scenario: Created once access is granted
 - **WHEN** a member joins with the album on before granting photo access, and then grants limited access
 - **THEN** the album is created and photos placed from then on land in it
+
+#### Scenario: On Android the album appears with its first received photo
+- **WHEN** an Android member joins with the album on and receives the event's first photo
+- **THEN** an album named after the event appears in their gallery holding that photo
 
 ### Requirement: Album problems never affect sharing or receiving
 
@@ -146,17 +190,3 @@ download; the photo is still shared or saved to the library.
 #### Scenario: A placement fails
 - **WHEN** placing a photo in the album fails
 - **THEN** the photo is still uploaded or saved into the library as usual
-
-### Requirement: An Android member has no event album
-
-On Android the app SHALL NOT offer the event album — neither on the join screen nor in settings — and SHALL
-NOT create an album or place any photo in one. The member's own photos stay where their camera saved them,
-and received photos arrive in the camera folder (capability `receiving-photos`).
-
-#### Scenario: Joining on Android
-- **WHEN** an Android member joins an event
-- **THEN** the join screen offers no album choice, and no album for the event appears in their gallery
-
-#### Scenario: Settings on Android
-- **WHEN** an Android member opens the settings of their membership
-- **THEN** no album choice is offered

@@ -14,7 +14,8 @@ enum class AlbumKind {
     /**
      * An album is the folder a file lives in, and a file lives in exactly one (Android). Filing a photo MOVES it, and only
      * a photo this app saved itself may be moved without asking, so the album holds the photos the member receives; their
-     * own photos stay where the camera saved them (decision record: `changes/android-event-album` D1).
+     * own photos stay where the camera saved them (decision record: `changes/archive/2026-09-30-android-event-album`
+     * D1).
      */
     FOLDER,
 }
