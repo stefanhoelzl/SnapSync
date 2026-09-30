@@ -30,9 +30,10 @@ import kotlin.time.Instant
  *    type. A pending item is invisible to every other app and to this app's own reads, so its `_ID` — the asset's
  *    identity ([AssetId]) — is handed to [onPlaceholder] before anything can observe it: that record is what keeps the
  *    received photo from being shared back.
- * 2. **Copy the staged bytes**, unchanged: a HEIC stays a HEIC, a MOV stays a QuickTime movie. Only the `PRIMARY`
- *    resource is written — a Live Photo arrives as its still (its video was downloaded and is released with the rest of
- *    the staged bytes once the import confirms).
+ * 2. **Copy the staged bytes**, unchanged: a HEIC stays a HEIC, a MOV stays a QuickTime movie. A Live Photo is the one
+ *    exception: its still and video are first built into a motion photo ([MotionPhotoBuilder], BEFORE step 1, so a
+ *    failure creates nothing and the still is inserted exactly as before), and that JPEG is what is inserted and
+ *    written. Either way the staged resources are released together once the import confirms.
  * 3. **Publish** (`IS_PENDING = 0`): the one atomic point where the item goes live. The media scanner, which runs on
  *    the publish, fills `DATE_TAKEN` from the file's own metadata (EXIF with its offset, a movie's creation time).
  *    A file that carries no date comes out of that scan with none — and a value written with the publish is
@@ -41,7 +42,8 @@ import kotlin.time.Instant
  *
  * A kill before step 3 leaves an invisible pending item. The core's startup sweep finds its recorded id absent and
  * imports again, and [cleanOrphans] — once per process, before the first import — deletes this app's leftover pending
- * items in `DCIM/Camera` and the event albums' folders (MediaStore would expire them after a week anyway).
+ * items in `DCIM/Camera` and the event albums' folders (MediaStore would expire them after a week anyway), and a killed
+ * conversion's scratch file.
  *
  * **MediaStore stores whatever bytes it is given**, so the library's own "reject what I cannot read" is done here: an
  * original that does not decode (an image with no bounds, a video with no dimensions), and a content type that is
@@ -53,17 +55,40 @@ internal class MediaStoreImport(context: Context, private val log: Logger) {
 
     private val resolver: ContentResolver = context.applicationContext.contentResolver
     private val packageName: String = context.applicationContext.packageName
+    private val motionPhotos = MotionPhotoBuilder(File(context.applicationContext.cacheDir, "motion-photo"), log)
     private var orphansCleaned = false
 
     @Synchronized
     fun import(request: ImportRequest, onPlaceholder: (AssetId) -> Unit): ImportResult {
         cleanOrphansOnce()
-        val primary = request.resources.firstOrNull { it.role == ResourceRole.PRIMARY.wire }
+        val original = request.resources.firstOrNull { it.role == ResourceRole.PRIMARY.wire }
             ?: return refused("no original to import among ${request.resources.map { it.role }}")
-        val collection = collectionFor(primary.contentType)
-            ?: return refused("'${primary.contentType}' is neither a photo nor a video")
-        if (!decodes(primary, collection)) return refused("the original '${primary.originalFilename}' does not decode")
+        val collection = collectionFor(original.contentType)
+            ?: return refused("'${original.contentType}' is neither a photo nor a video")
+        if (!decodes(original, collection)) return refused("the original '${original.originalFilename}' does not decode")
         val folder = request.album?.takeIf { DefaultGallery.isAlbumFolder(it) } ?: CAMERA_FOLDER
+        val motion = motionPhotoOf(request, original, collection)
+        try {
+            return insert(request, motion ?: original, collection, folder, onPlaceholder)
+        } finally {
+            motion?.let { File(it.stagedPath).delete() }
+        }
+    }
+
+    /** A Live Photo's motion photo, when the request is one and it can be built; null imports [original] as it is. */
+    private fun motionPhotoOf(request: ImportRequest, original: StagedResource, collection: Uri): StagedResource? {
+        val live = request.resources.firstOrNull { it.role == ResourceRole.LIVE.wire }
+        if (live == null || collection != IMAGES || !live.contentType.startsWith("video/")) return null
+        return motionPhotos.build("${request.ref.sourceAssetId}", original, live)
+    }
+
+    private fun insert(
+        request: ImportRequest,
+        primary: StagedResource,
+        collection: Uri,
+        folder: String,
+        onPlaceholder: (AssetId) -> Unit,
+    ): ImportResult {
         val uri = runCatchingCancellable { resolver.insert(collection, pendingValues(primary, folder)) }
             .onFailure { log.w(it) { "${request.ref.sourceAssetId}: the insert was refused" } }
             .getOrNull()
@@ -89,6 +114,7 @@ internal class MediaStoreImport(context: Context, private val log: Logger) {
     private fun cleanOrphansOnce() {
         if (orphansCleaned) return
         orphansCleaned = true
+        motionPhotos.clean()
         val removed = COLLECTIONS.sumOf { collection -> cleanOrphans(collection) }
         if (removed > 0) log.i { "deleted $removed pending item(s) a killed import left behind" }
     }

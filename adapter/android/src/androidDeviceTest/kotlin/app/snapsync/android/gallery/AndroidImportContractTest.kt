@@ -4,6 +4,8 @@ import android.app.Application
 import android.content.ContentResolver
 import android.content.ContentUris
 import android.content.ContentValues
+import android.graphics.BitmapFactory
+import android.media.ExifInterface
 import android.net.Uri
 import android.os.Bundle
 import android.provider.MediaStore
@@ -29,14 +31,20 @@ import app.snapsync.model.ImportRequest
 import app.snapsync.model.ImportResult
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.StagedResource
+import app.snapsync.model.jpegXmp
+import app.snapsync.model.locateMotionVideo
+import app.snapsync.model.motionPhotoStill
 import app.snapsync.ports.GalleryHandlers
+import java.io.ByteArrayInputStream
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.time.Instant
 import kotlinx.coroutines.CoroutineScope
@@ -50,11 +58,14 @@ import kotlinx.coroutines.runBlocking
  * Android facts no shared contract states: a received photo lands once in the camera folder at its capture time — an
  * iPhone HEIC with an offset and an iPhone HEVC movie and an Android MP4 through their own metadata, a JPEG with no
  * date of its own through the modification time the import stamps (MediaProvider ignores an app's `DATE_TAKEN`); a Live Photo
- * arrives as its still; what a killed import leaves is invisible, reads as absent, and is cleaned at the next import;
+ * arrives as ONE JPEG motion photo with its video appended unchanged, or as its still, once, when that cannot be built;
+ * what a killed import leaves is invisible, reads as absent, and is cleaned at the next import;
  * a content type that is neither photo nor video is refused for good.
  *
  * The fixtures under `resources/import/` were generated with Pillow/pillow-heif and ffmpeg (libx265 `hvc1`, the
  * `com.apple.quicktime.creationdate` atom) to carry an iPhone's metadata; each was captured at [CAPTURED].
+ * `iphone-live.heic` (128×64, rotated a quarter turn) also carries a location and Make/Model. It is sized in whole
+ * 64-pixel blocks: a padded HEIF needs a crop box, which the API-30 decoder ignores (measured).
  */
 class AndroidImportContractTest {
 
@@ -147,15 +158,66 @@ class AndroidImportContractTest {
     }
 
     @Test
-    fun `a Live Photo arrives as its still`(): Unit = runBlocking {
+    fun `a HEIC Live Photo arrives as ONE JPEG motion photo carrying its video unchanged`(): Unit = runBlocking {
         val ref = ref("live")
+        val mov = fixture("iphone.mov")
         val resources = listOf(
-            stagedResource("IMG_0001.HEIC", "image/heic", fixture("iphone.heic")),
-            stagedResource("IMG_0001.MOV", "video/quicktime", fixture("iphone.mov"), ResourceRole.LIVE),
+            stagedResource("IMG_0001.HEIC", "image/heic", fixture("iphone-live.heic")),
+            stagedResource("IMG_0001.MOV", "video/quicktime", mov, ResourceRole.LIVE),
         )
         val id = assertIs<ImportResult.Imported>(gallery.import(ImportRequest(ref, resources, iso(CAPTURED), null))).createdLocalId
-        assertEquals("image/heic", column(id, MediaStore.MediaColumns.MIME_TYPE), "the still is what arrives")
-        assertEquals(0, countNamed("IMG_0001.MOV"), "the Live Photo's movie is not saved beside it")
+        assertEquals(MarkerState.CONFIRMED, markers[ref])
+        assertEquals("image/jpeg", column(id, MediaStore.MediaColumns.MIME_TYPE), "re-encoded: Google Photos plays no HEIC motion photo")
+        assertEquals("IMG_0001.jpg", column(id, MediaStore.MediaColumns.DISPLAY_NAME), "the sender's name, with the new extension")
+        assertEquals(0, countNamed("IMG_0001.MOV"), "the movie travels inside the photo, not beside it")
+        assertEquals(0, countNamed("IMG_0001.HEIC"), "one item, never the still as well")
+
+        val file = bytesOf(id)
+        val xmp = assertNotNull(jpegXmp(file), "the JPEG carries XMP")
+        assertTrue("Camera:MotionPhoto=\"1\"" in xmp && "GCamera:MicroVideo=\"1\"" in xmp, "both tag sets")
+        val video = assertNotNull(locateMotionVideo(xmp, file), "the XMP locates the video")
+        assertContentEquals(mov, file.copyOfRange(video.first, video.last + 1), "the MOV is appended as delivered")
+
+        assertEquals(CAPTURED, dateTaken(id), "the capture date and its offset were carried over")
+        val exif = ExifInterface(ByteArrayInputStream(file))
+        assertEquals(ExifInterface.ORIENTATION_NORMAL, exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, -1), "the decoder applied it")
+        assertEquals("iPhone 15", exif.getAttribute(ExifInterface.TAG_MODEL))
+        val latLong = FloatArray(2)
+        assertTrue(exif.getLatLong(latLong), "the location travels with the photo")
+        assertEquals(LIVE_LATITUDE, latLong[0], DEGREES_TOLERANCE)
+        assertEquals(LIVE_LONGITUDE, latLong[1], DEGREES_TOLERANCE)
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(file, 0, file.size, bounds)
+        assertEquals(LIVE_UPRIGHT_SIZE, bounds.outWidth to bounds.outHeight, "full size, upright")
+    }
+
+    @Test
+    fun `a JPEG Live Photo keeps its still byte for byte ahead of the XMP`(): Unit = runBlocking {
+        val still = fixture("noexif.jpg")
+        val mov = fixture("iphone.mov")
+        val resources = listOf(
+            stagedResource("IMG_0002.JPG", "image/jpeg", still),
+            stagedResource("IMG_0002.MOV", "video/quicktime", mov, ResourceRole.LIVE),
+        )
+        val id = assertIs<ImportResult.Imported>(gallery.import(ImportRequest(ref("jpeg-live"), resources, iso(CAPTURED), null))).createdLocalId
+        assertEquals("IMG_0002.JPG", column(id, MediaStore.MediaColumns.DISPLAY_NAME))
+        assertContentEquals(assertNotNull(motionPhotoStill(still, mov.size.toLong())) + mov, bytesOf(id), "only the XMP segment is new")
+    }
+
+    @Test
+    fun `a Live Photo whose still cannot carry the motion arrives as its still exactly once`(): Unit = runBlocking {
+        // A still that already describes a motion photo cannot be given a second one: the conversion answers "no" before
+        // anything is inserted, and the still is imported exactly as before.
+        val still = assertNotNull(motionPhotoStill(fixture("noexif.jpg"), videoLength = 10))
+        val resources = listOf(
+            stagedResource("IMG_0003.JPG", "image/jpeg", still),
+            stagedResource("IMG_0003.MOV", "video/quicktime", fixture("iphone.mov"), ResourceRole.LIVE),
+        )
+        val ref = ref("fallback")
+        val id = assertIs<ImportResult.Imported>(gallery.import(ImportRequest(ref, resources, iso(CAPTURED), null))).createdLocalId
+        assertContentEquals(still, bytesOf(id), "the still, unchanged")
+        assertEquals(1, countNamed("IMG_0003.JPG"), "once")
+        assertEquals(MarkerState.CONFIRMED, markers[ref])
     }
 
     @Test
@@ -219,6 +281,9 @@ class AndroidImportContractTest {
 
     private fun dateTaken(id: AssetId): Long? = column(id, MediaStore.MediaColumns.DATE_TAKEN)?.toLongOrNull()
 
+    private fun bytesOf(id: AssetId): ByteArray =
+        checkNotNull(context.contentResolver.openInputStream(uriOf(id))) { "no stream for $id" }.use { it.readBytes() }
+
     private fun countNamed(name: String): Int = context.contentResolver.query(
         MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY),
         arrayOf(MediaStore.MediaColumns._ID),
@@ -263,6 +328,14 @@ class AndroidImportContractTest {
 
         /** MediaStore's `DATE_MODIFIED` is in seconds. */
         const val MILLIS_PER_SECOND = 1000L
+
+        /** Where `iphone-live.heic` was taken: 48°8'30" N, 11°34'15" E. */
+        const val LIVE_LATITUDE = 48.1417f
+        const val LIVE_LONGITUDE = 11.5708f
+        const val DEGREES_TOLERANCE = 0.001f
+
+        /** `iphone-live.heic` is 128×64 turned a quarter: upright, it is 64 wide and 128 high. */
+        val LIVE_UPRIGHT_SIZE = 64 to 128
 
         /** The fixtures that carry no capture date of their own. */
         val UNDATED = setOf("noexif.jpg")
