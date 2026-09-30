@@ -47,13 +47,13 @@ dependencies {
 // ---- The all-real journeys ----
 // (`docs/testing.md`, "All-real journeys are the contracts' safety net")
 //
-// A few end-to-end runs with EVERY system real: the rig build of the iOS app on ONE simulator, the real backend
-// served locally, the real photo library. The second member is played by the journey itself, over the backend's
+// A few end-to-end runs with EVERY system real: the rig build of the app on ONE simulator or emulator, the real
+// backend served locally, the real photo library. The second member is played by the journey itself, over the backend's
 // public HTTP surface with real JPEG bytes (`Member`), so to the app it is a foreign member like any device.
-// Written against the same typed client as the tests above, and run ONLY by the `ios-contracts` CI job
-// (`scripts/sim-contracts`), which boots the simulator and the backend and passes their addresses. Outside `build`
-// by construction: this task is never a dependency of `check`. It FAILS — never skips — when an address is missing,
-// so a job that forgot to pass one cannot pass with nothing run.
+// Written against the same typed client as the tests above, and run ONLY by the `journeys (ios|android)` CI jobs
+// (`scripts/sim-contracts`, `scripts/android-journeys`), which boot the device and the backend and pass their
+// addresses. Outside `build` by construction: this task is never a dependency of `check`. It FAILS — never skips —
+// when an address is missing, so a job that forgot to pass one cannot pass with nothing run.
 val journeys: SourceSet = sourceSets.create("journeys")
 dependencies {
     "journeysImplementation"(project(":test:control"))
@@ -67,7 +67,7 @@ dependencies {
     "journeysImplementation"(libs.ktor.client.cio)
 }
 tasks.register<Test>("journeys") {
-    description = "The all-real journeys against one simulator app and a local backend (ios-contracts only)."
+    description = "The all-real journeys against one simulator or emulator app and a local backend (CI journeys only)."
     group = "verification"
     testClassesDirs = journeys.output.classesDirs
     classpath = journeys.runtimeClasspath
@@ -79,12 +79,12 @@ tasks.register<Test>("journeys") {
     }
 }
 
-// The journeys' full runtime classpath, one line, so `scripts/sim-contracts` can run them with a bare `java` next to
-// a live simulator instead of starting Gradle there: a Gradle daemon plus a test JVM pushed the 7 GB CI runner into
-// swap at exactly that moment, and the app missed its 5 s HTTP timeout on a request the backend had answered in
-// 132 ms (run 36173548419).
+// The journeys' full runtime classpath, one line, so `scripts/sim-contracts` and `scripts/android-journeys` can run
+// them with a bare `java` next to a live simulator instead of starting Gradle there: a Gradle daemon plus a test JVM
+// pushed the 7 GB CI runner into swap at exactly that moment, and the app missed its 5 s HTTP timeout on a request
+// the backend had answered in 132 ms (run 36173548419).
 val journeysClasspath = tasks.register("journeysClasspath") {
-    description = "Writes the journeys' runtime classpath to build/journeys-classpath.txt (ios-contracts only)."
+    description = "Writes the journeys' runtime classpath to build/journeys-classpath.txt (CI journeys only)."
     val classpath = journeys.runtimeClasspath
     val out = layout.buildDirectory.file("journeys-classpath.txt")
     inputs.files(classpath)

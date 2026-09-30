@@ -26,6 +26,7 @@ import app.snapsync.model.SecureStoreRead
 import app.snapsync.model.uploadersCarried
 import app.snapsync.ports.Files
 import app.snapsync.presentation.StatusContainerHost
+import app.snapsync.rig.gallery.androidGalleryReader
 import app.snapsync.rig.gallery.seedMediaStore
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.logs.LogTailService
@@ -257,7 +258,7 @@ private fun AndroidRigLaunch.hooks(
             if (world.isMocked(MockedSystem.LIBRARY)) world.seedMockLibrary(n, kind) else seedMediaStore(context, log, n, kind)
         },
     ),
-    readGallery = world.mockGalleryReader(),
+    readGallery = if (world.isMocked(MockedSystem.LIBRARY)) world.mockGalleryReader() else androidGalleryReader(core, context),
     osExtensionEnabled = { null },
     publishBoundPort = { bound -> rigPortFilePath(context.filesDir.path)?.let { File(it).writeText(bound.toString()) } },
     contracts = emptyList(),
@@ -316,7 +317,7 @@ private fun androidRefusals(world: MockWorld): Map<String, String> = world.lever
     RigVocabulary.appHostCommands.filter { it.startsWith("device/upload-") }.forEach {
         put(it, "the mocked upload-job queue is operated by the jobs verbs, not by an operating system to play")
     }
-    put(RigVocabulary.CONTRACT, "Android's port-contract bindings run as device tests (connectedAndroidDeviceTest), not in the app")
+    put(RigVocabulary.CONTRACT, "Android's port-contract bindings run as device tests (androidPlatformTest), not in the app")
 }
 
 /** The systems Android has a real adapter for — the only ones an adapter choice may leave real. */

@@ -110,10 +110,9 @@ Then wait: `until [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1 ]
 
 ```bash
 ./gradlew :app:android:assembleDebug -Psnapsync.rig=true
-ADB=$ANDROID_HOME/platform-tools/adb scripts/android-smoke     # install, launch, forward, create + join, screenshot
 ```
 
-`scripts/android-smoke` is exactly what the `android-emulator` CI job runs (`.github/workflows/android.yml`). By hand:
+Then install and drive it by hand (`scripts/android-journeys` does the same end to end, over a local api — below):
 
 ```bash
 adb install -r app/android/build/outputs/apk/debug/android-debug.apk
@@ -142,27 +141,31 @@ adb shell "am start -W -a android.intent.action.VIEW -d 'https://127.0.0.1:8080/
 A running app gets it in `onNewIntent` (single-top), a stopped one in `onCreate`; both carried the fragment intact
 (measured 2026-09-29).
 
-## Common tests on the emulator
+## Device tests and journeys (what CI runs)
 
-Every module with a `commonTest` runs it on ART too, as `ios-test` runs it on the iOS simulator (`snapsync.android`
-declares the device test). With the emulator up:
+The shared `commonTest` runs on the JVM only. What runs on the emulator is Android's own — `:adapter:android`'s device
+tests (the adapters' contract bindings) and the all-real journeys — the `test (android)` and `journeys (android)` jobs
+of `ci.yml`:
 
 ```bash
-ADB=$ANDROID_HOME/platform-tools/adb scripts/android-device-tests   # all modules, as CI does (serves the transfer fixture)
-./gradlew :domain:model:connectedAndroidDeviceTest                  # one module that needs no fixture
-# reports: <module>/build/reports/androidTests/connected/
+./gradlew androidPlatformTest            # boots its OWN managed emulator (pixel6, API 36), runs, tears it down
+./gradlew :adapter:android:connectedAndroidDeviceTest   # on the emulator you booted above
+# reports: adapter/android/build/reports/androidTests/ ; either way the build serves scripts/transfer-fixture.py
+# on the host (build/transfer-fixture.log), reached from the emulator as http://10.0.2.2:8123
+
+./gradlew :app:android:assembleDebug :test:integration:journeysClasses :test:integration:journeysClasspath \
+    -Psnapsync.rig=true -Psnapsync.deployment=local && ./gradlew --stop
+JAVA_HOME=<a JDK 25> ADB=$ANDROID_HOME/platform-tools/adb scripts/android-journeys   # evidence: build/android-journeys/
 ```
+
+`androidPlatformTest` needs no emulator of yours — stop yours first, the two together are heavy. The journeys script
+needs JDK 25 on `JAVA_HOME` (the journeys compile to 25) and deno; it starts the local api itself.
 
 - The backtick test names' spaces dex only from DEX 040 (API 30) — one reason minSdk is 30. Never lower it below 30
   without renaming every test.
 - An ASCII apostrophe in a backtick test name **cannot be dexed at any API level** — write `’` (U+2019), which DEX
-  accepts. The JVM and Kotlin/Native take either, so only this run notices.
-- ⚠️ Typing into a field raises the SOFT KEYBOARD on the emulator (the JVM and the iOS simulator have none), and the
-  screen's `safeDrawing` padding then shrinks the form under it — asynchronously, so a later tap lands on a clipped
-  node and silently misses. Screen tests compose through `WithoutKeyboardInsets` (`TestStatusScreen` does); a new
-  screen-test root must too. Disabling the IME does not stick (Android re-enables Gboard), and `hw.keyboard = yes`
-  still leaves Gboard's input view up.
+  accepts.
 - ⚠️ Stop the emulator before a full `./gradlew build` on this box: the two together got the Gradle daemon OOM-killed.
 
 To check R8 over the whole graph: `./gradlew :app:android:assembleRelease -Psnapsync.rig=true`, `zipalign` and
-`apksigner sign --ks ~/.android/debug.keystore --ks-pass pass:android` the unsigned APK, install it, run the smoke.
+`apksigner sign --ks ~/.android/debug.keystore --ks-pass pass:android` the unsigned APK, install it, and drive it.

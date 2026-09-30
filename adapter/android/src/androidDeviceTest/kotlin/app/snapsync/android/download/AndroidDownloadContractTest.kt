@@ -30,7 +30,7 @@ import kotlinx.coroutines.withTimeout
 /**
  * `DownloadManager` against the [DownloadContract] on the emulator, and the Android fact no shared contract states: a
  * transfer that finished while no completion broadcast reached the app is delivered by the next start's pass. The
- * clauses fetch from `scripts/transfer-fixture.py` (reversed into the emulator by `scripts/android-device-tests`); the
+ * clauses fetch from `scripts/transfer-fixture.py` (served on the host by the Gradle test run, `10.0.2.2` here); the
  * download provider honours this test APK's cleartext permission for the loopback.
  *
  * The test APK declares no manifest receiver, so the binding registers [DownloadCompleteReceiver] at run time — the
@@ -114,7 +114,7 @@ class AndroidDownloadContractTest {
     }
 
     private fun fixture(): String = checkNotNull(InstrumentationRegistry.getArguments().getString("fixture")) {
-        "no transfer fixture: run scripts/android-device-tests, which serves one and passes its address"
+        "no transfer fixture: run ./gradlew androidPlatformTest, which serves one and passes its address"
     }.trimEnd('/')
 
     private companion object {

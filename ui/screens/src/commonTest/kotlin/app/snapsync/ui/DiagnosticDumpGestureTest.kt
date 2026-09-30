@@ -46,7 +46,7 @@ import kotlin.time.Instant
  * is sent is trimmed — the description titles the issue in the reporting channel, so whitespace must
  * never become a title. Both are only observable from a test like this one. Headless on both targets:
  * `:ui:screens:jvmTest` renders offscreen (no display needed) and `:ui:screens:iosSimulatorArm64Test`
- * renders into the simulator's own offscreen scene.
+ * renders into the simulator's own offscreen scene. CI runs the JVM one only.
  */
 class DiagnosticDumpGestureTest {
 

@@ -1,0 +1,45 @@
+# Save ~/.konan for ONE job's cache family, and reclaim the entries of that family this save supersedes — the other
+# half of konan-restore (rationale there).
+#
+# MAIN ONLY, and the caller gates it (`if: github.ref == 'refs/heads/main'`): the repo cache budget is 10 GB and
+# full, an entry is ~430 MB, and a branch runs the same compile main already published — so main OWNS every entry
+# and branches are pure consumers. Success only (the default `if` semantics on the calling step): a failed or
+# cancelled run can leave a half-written library cache, and a poisoned entry on main would have to be deleted by hand.
+#
+# The reclaim is scoped by SUFFIX (the family), never by the dependency hash, so a Kotlin or dependency bump cannot
+# strand the pre-bump entries, and it can never touch another family. `continue-on-error`: reclaiming space must
+# never fail a merge.
+name: Save Kotlin/Native (~/.konan)
+description: Save this job's ~/.konan cache family on main and delete its superseded entries.
+inputs:
+  family:
+    description: "This job's cache family, e.g. sim-test (must match konan-restore's)"
+    required: true
+  key:
+    description: konan-restore's `key` output.
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Save Kotlin/Native (~/.konan)
+      uses: actions/cache/save@v6
+      with:
+        path: ~/.konan
+        key: ${{ inputs.key }}
+    # Deleting a cache entry is an Actions API write: the calling job grants `actions: write`.
+    - name: Reclaim superseded ~/.konan entries
+      continue-on-error: true
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        KEEP: ${{ inputs.key }}
+        PATTERN: ^konan-${{ runner.os }}-.*-${{ inputs.family }}-
+      run: |
+        set -uo pipefail
+        gh api "repos/$GITHUB_REPOSITORY/actions/caches?per_page=100" \
+          --jq ".actions_caches[] | select(.key | test(\"$PATTERN\")) | select(.key != \"$KEEP\") | [.id, .key] | @tsv" \
+        | while IFS=$'\t' read -r id key; do
+            echo "reclaiming $key"
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/caches/$id" --silent \
+              || echo "::warning::could not delete superseded cache $key"
+          done

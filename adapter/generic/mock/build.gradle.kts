@@ -64,7 +64,7 @@ kotlin {
         }
         // The stay-behind tests that drive `:domain` subjects through these fakes (re-homed from the
         // deleted `:domain:gallery` / `:domain:download-store` / `:capability:attest` modules at
-        // migration step 10; testing rule 1 — commonTest runs on JVM and the iOS simulator).
+        // migration step 10; commonTest runs on the JVM only — `docs/testing.md`, "Where each test runs").
         commonTest.dependencies {
             implementation(kotlin("test"))
             implementation(libs.coroutines.test)

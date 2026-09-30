@@ -1,5 +1,5 @@
 #!/bin/sh
-# Run the simulator app's port contracts, end to end — the `ios-contracts` CI job, and its reproduction on a
+# Run the simulator app's port contracts, end to end — the `journeys (ios)` CI job, and its reproduction on a
 # Mac session (`docs/architecture.md`, "In-app hosts CI can reach are run live over the rig").
 #
 #   scripts/sim-contracts            # on macOS, from the repo root, with snapsync.rig=true in ~/.gradle

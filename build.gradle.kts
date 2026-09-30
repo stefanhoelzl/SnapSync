@@ -497,3 +497,20 @@ val nativeParallelThreads = minOf(Runtime.getRuntime().availableProcessors(), 4)
 if (!providers.gradleProperty("kotlin.native.parallelThreads").isPresent) {
     allprojects { extra["kotlin.native.parallelThreads"] = nativeParallelThreads.toString() }
 }
+
+// ---- Platform-bound tests (`docs/testing.md`, "Where each test runs") ----------------------------------------------
+//
+// The shared `commonTest` runs ONCE, on the JVM, under `build`. A platform runtime runs only what only it can answer:
+// a module's `iosTest` (the iOS adapters and their contract bindings on the simulator's `test.kexe`, the native
+// SQLite drivers) through `./gradlew iosPlatformTest` (macOS), and a module's `androidDeviceTest` through
+// `./gradlew androidPlatformTest` (`snapsync.android` registers that one, beside the managed device it runs on).
+// Derived from the source tree, never listed: a module that gains iOS tests is run the day it does.
+subprojects {
+    if (file("src/iosTest").isDirectory || file("src/iosSimulatorArm64Test").isDirectory) {
+        tasks.register("iosPlatformTest") {
+            group = "verification"
+            description = "Runs this module's iOS tests on the simulator."
+            dependsOn("iosSimulatorArm64Test")
+        }
+    }
+}

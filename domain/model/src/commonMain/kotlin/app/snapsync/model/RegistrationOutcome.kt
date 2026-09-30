@@ -5,7 +5,7 @@ import co.touchlab.kermit.Severity
 /**
  * What a change to the OS-driven upload-job registration actually did (capability `background-upload`).
  *
- * This is a **decision**, so it lives here and is tested on JVM and the simulator, rather than in the
+ * This is a **decision**, so it lives here and is tested in `commonTest`, rather than in the
  * adapter that makes the call — `:app:ios` is wiring-only and the shell gate enforces it. The adapter
  * reports the platform's three raw facts (did it return true, and if not, which error) and renders whatever
  * comes back; every branch is here.

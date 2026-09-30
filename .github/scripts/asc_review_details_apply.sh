@@ -5,7 +5,7 @@
 #
 # The notes live in metadata/review/notes.md — OUTSIDE the metadata tool's canonical schema on purpose.
 # `asc metadata validate` decodes only version/<v>/<locale>.json and app-info/<locale>.json, strictly; an
-# unknown key there fails appstore-metadata-validate, a REQUIRED check, and freezes merges. It is a flat
+# unknown key there fails ci.yml's `metadata` gate, hence the REQUIRED `ci` check, and freezes merges. It is a flat
 # .md, not <locale>.json, because an appStoreReviewDetail is version-scoped and NOT localized — one per
 # version, no locale — and because prose belongs in a file you can read in a diff.
 #

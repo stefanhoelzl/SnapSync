@@ -9,6 +9,7 @@
     <!-- The download contract's hidden transfers: without it DownloadManager refuses a VISIBILITY_HIDDEN request. -->
     <uses-permission android:name="android.permission.DOWNLOAD_WITHOUT_NOTIFICATION" />
 
-    <!-- The upload contract's loopback fixture is plain HTTP on 127.0.0.1 (scripts/android-device-tests). -->
+    <!-- The upload contract's loopback fixture is plain HTTP on the host's loopback, 10.0.2.2 from the emulator
+         (build-logic's TransferFixtureService). -->
     <application android:usesCleartextTraffic="true" />
 </manifest>

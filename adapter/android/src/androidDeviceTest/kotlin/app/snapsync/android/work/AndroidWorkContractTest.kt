@@ -57,7 +57,8 @@ import kotlinx.coroutines.withTimeoutOrNull
  * The WorkManager adapters against their port contracts on the emulator, and the Android facts no shared contract
  * states: a library change wakes the app; a wake re-armed from inside its own run is not cancelled by it; a transfer a
  * dead process left is reported failed. The upload clauses exchange bytes with `scripts/transfer-fixture.py`, whose
- * address `scripts/android-device-tests` passes as the `fixture` instrumentation argument; a run without it fails.
+ * address the Gradle test run (`androidPlatformTest`) passes as the `fixture` instrumentation argument; a run without
+ * it fails.
  */
 class AndroidWorkContractTest {
 
@@ -221,7 +222,7 @@ class AndroidWorkContractTest {
     }
 
     private fun fixture(): String = checkNotNull(InstrumentationRegistry.getArguments().getString("fixture")) {
-        "no transfer fixture: run scripts/android-device-tests, which serves one and passes its address"
+        "no transfer fixture: run ./gradlew androidPlatformTest, which serves one and passes its address"
     }.trimEnd('/')
 
     private fun landedAt(base: String) = FixtureObjects { path ->

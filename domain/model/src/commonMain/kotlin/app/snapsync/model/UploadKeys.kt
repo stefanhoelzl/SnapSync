@@ -40,7 +40,7 @@ const val APP_VERSION_HEADER: String = "x-snapsync-app-version"
 /**
  * Pure construction of an asset resource's ledger key / object name — the single place the role-based
  * `"<assetId>-<role>.<ext>"` layout lives, `assetId` being the canonical [AssetId]. Kept platform-free so
- * the layout is unit-tested on the simulator instead of trapped inside the PhotoKit adapter; the adapter (and
+ * the layout is unit-tested in `commonTest` instead of trapped inside the PhotoKit adapter; the adapter (and
  * the device listing's seam) only supply the raw fields. Shared by the upload producer (`:app:ios:extension`) and the manifest synthesis
  * so a manifest's `filename` is byte-identical to what the producer uploads under.
  */

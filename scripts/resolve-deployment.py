@@ -11,11 +11,12 @@ languages with nothing checking they agreed — while composing the App Attest `
 Guards did not scale because guards are opt-in: they cover what someone remembered, which is exactly how
 `BACKGROUND_UPLOAD_URL_BASE` — the device-facing upload host itself — went unpinned. Generation is total.
 
-WHY PYTHON. No CI job carries both Deno and Gradle (`build.yml` installs Java only; `api.yml` and
-`deploy.yml`'s `api` job install Deno only), so neither runtime can be the single resolver without forcing a toolchain into a
-workflow that deliberately lacks it. Stdlib-only Python3 is present on `ubuntu-26.04`, on `macos-26`
-(`ios.yml` already runs it there with no setup step) and on every dev machine. Stdlib-only also sidesteps
-the PEP-668 externally-managed caveat `ios.yml` records, which concerns `pip install`, not imports.
+WHY PYTHON. The jobs that resolve do not share a toolchain (ci.yml's `ios-build` installs Java only;
+`api-test` and `deploy.yml`'s `api` job install Deno only; `metadata` neither), so neither runtime can be the
+single resolver without forcing a toolchain into a job that deliberately lacks it. Stdlib-only Python3 is
+present on `ubuntu-26.04`, on `macos-26` (`ios-build` already runs it there with no setup step) and on every
+dev machine. Stdlib-only also sidesteps the PEP-668 externally-managed caveat ci.yml records, which concerns
+`pip install`, not imports.
 
 WHY ONE INVOCATION EMITS EVERYTHING. A per-rendering mode would let one artifact be rendered from `prod`
 while another was rendered from `local` — artifacts that DISAGREE, which is the bug class this exists to
@@ -68,7 +69,7 @@ this script renders into `Deployment.plist`, and the `BackgroundUploadURLBase` l
 each bundle's own `Info.plist` — where `assetsd` reads it to validate the background-upload
 registration insert, and where no generated value can reach. A base on one version with the carrier on
 the other may register fine and have every upload refused, with nothing logged. The test pins the two
-against this constant, and `ios.yml` re-checks it against the archived bundles.
+against this constant, and ci.yml's `ios-build` re-checks it against the archived bundles.
 
 Moving it is a device-API version move, not an edit: the byte destinations, the join, the manifest and
 the listing all change shape together (capability-by-capability, `changes/archive/device-speaks-v2`).
@@ -141,7 +142,7 @@ INVENTORY = [
         never, and nothing uploads on that tier (measured on device, SE2/26.6, 2026-08-28; the matching
         rule the daemon applies is NOT established — do not assert one). BOTH bundles carry BOTH forms:
         each process reads its own bundle for `uploadBase`, and which bundle the daemon reads for its own
-        key has not been established. `ios.yml` asserts the two agree in each bundle after archiving.
+        key has not been established. ci.yml's `ios-build` asserts the two agree in each bundle after archiving.
 
         It MUST be HTTPS: default ATS applies and no `NSAllowsLocalNetworking` exception ships, so a
         baked `http://` network host fails silently on device (loopback is exempt, which is how a
@@ -370,7 +371,7 @@ INVENTORY = [
         `sentryEnvironment`. Absent in every dev/sideload build; only a CI Release archive resolves it
         (`docs/deployment.md`). It cannot be injected on an `xcodebuild` line any more —
         a build-setting override cannot substitute into a generated resource — so an on-device build
-        that reports is a `workflow_dispatch` of `ios.yml`, not a sideload.
+        that reports is a `workflow_dispatch` of `ci.yml`, not a sideload.
     """),
 ]
 
@@ -671,7 +672,7 @@ def render_plist(flat: dict) -> str:
 
     The file is copied into the app bundle AND the extension bundle: each process reads its own
     `NSBundle.mainBundle`, so a value present in one and absent from the other is a reachable state,
-    and it is the one `ios.yml` asserts against both bundles.
+    and it is the one ci.yml's `ios-build` asserts against both bundles.
     """
     p = project(flat, PLIST)
     distributed = p.get("channel") == "release"

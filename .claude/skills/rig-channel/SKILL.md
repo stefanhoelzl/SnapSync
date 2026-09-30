@@ -206,7 +206,7 @@ curl -s --max-time 120 -X POST "localhost:18099/contract/Upload?host=IOS_DEVICE_
 
 On a **simulator** the same verb runs the photo-library contracts against real PhotoKit under a real full
 grant. The app bundle is the only simulator process `applesimutils` can grant photo access to. Nothing is
-recorded: the answer is the outcome table, and the `ios-contracts` CI job runs exactly what `GET /contract`
+recorded: the answer is the outcome table, and the `journeys (ios)` CI job runs exactly what `GET /contract`
 lists, on every push. `scripts/sim-contracts` is that job, and running it on a Mac session reproduces it.
 
 ```bash

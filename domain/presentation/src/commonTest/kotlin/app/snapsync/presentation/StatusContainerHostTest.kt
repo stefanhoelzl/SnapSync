@@ -1513,7 +1513,8 @@ class StatusContainerHostTest {
         val h = host(source, backgroundScope, permission = permission, configFake = FakeConfig(null))
         // Driven through the orbit-test fixture so the intent event loop runs on THIS test's
         // virtual scheduler (its dispatcherOverride) — Orbit's public SettingsBuilder cannot pin
-        // it, and calling the intent on the bare container WAS the twice-measured ios-test flake:
+        // it, and calling the intent on the bare container WAS the twice-measured ios-test flake
+        // (when commonTest still ran on the simulator):
         // the default event loop is Dispatchers.Default, so while this test sat suspended in
         // `join()`, runTest's clock could auto-advance THROUGH the self-clear delay before the
         // first assert observed the set (set-then-clear conflated on a real thread's schedule).

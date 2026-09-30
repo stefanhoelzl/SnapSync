@@ -1,21 +1,21 @@
-# Shared "archive a signed iOS device app" steps, used by ios.yml → ios-build (the merge gate). The
+# Shared "archive a signed iOS device app" steps, used by ci.yml → ios-build (a merge gate). The
 # archive it produces is what ios-deliver uploads and what the App Store release later PROMOTES
 # (ios-appstore-promote.yml builds nothing — it promotes an existing build).
 #
 # WHY a COMPOSITE action and not a reusable (workflow_call) workflow: a reusable workflow renames the
-# caller's status-check context to "<job> / <inner-job>", which would rename `ios-build` and freeze
-# merges (branch-protection requires exactly "ios-build"). A composite action is STEP-level, so the
-# calling job keeps its name (= its required status-check context) unchanged.
+# caller's status-check context to "<job> / <inner-job>", which would rename `ios-build` wherever it is
+# read. A composite action is STEP-level, so the calling job keeps its name (= its status-check context)
+# unchanged.
 #
 # It holds the security-sensitive scaffolding that was previously duplicated inline: Java/Gradle/Konan
 # setup, the extension-framework compile (the shipping iosArm64 klib), the App Store Connect API key,
 # an ephemeral signing keychain, and BOTH persistent certs (Distribution + Development — importing both
 # is deliberate: an empty keychain makes automatic signing mint a NEW cert each run, and
 # `xcodebuild archive` provisions a development identity in addition to the distribution one; see
-# ios.yml's header and the ios-testflight-delivery spec).
+# ci.yml's ios-deliver and the ios-testflight-delivery spec).
 #
 # Version / APNs / host are INJECTED on the xcodebuild line (never read from a committed bump):
-#   * marketing-version  — empty = the Config.xcconfig floor (0.1); ios.yml passes the computed
+#   * marketing-version  — empty = the Config.xcconfig floor (0.1); ci.yml's ios-build passes the computed
 #     max(floor, latest tag + minor 1) for a Release build.
 #   * There is deliberately NO aps-environment / apns-env / sentry-dsn input any more: those are
 #     DERIVED into the generated Deployment.xcconfig from one `channel` value (capability
@@ -113,7 +113,7 @@ runs:
     # `-device-` namespace on the key below).
     #
     # RESTORE AND SAVE ARE SPLIT, and saving is GATED TO main — the same pattern, for the same
-    # reasons, as ios.yml's ios-test (see its comment). Two things forced it here:
+    # reasons, as every other ~/.konan family (see .github/actions/konan-restore). Two things forced it here:
     #   * actions/cache writes its post-step entry only when the primary key MISSED. With the old
     #     branch key (stable, no run id) a branch MISSED every time and therefore SAVED every time —
     #     a ~510 MB entry per push, into a 10 GB budget that was already over (10.92 GB, evicting).
@@ -123,7 +123,7 @@ runs:
     #     orphan, evicting main's live entries. main OWNS the entry; every branch run is a consumer.
     # The run id in the primary key makes it never hit, so the restore always falls through to
     # restore-keys (newest match wins) and main's save always writes a fresh entry — the same
-    # stale-entry trap ios-test documents (both konan families were once frozen 18 days). That
+    # stale-entry trap konan-restore documents (both konan families were once frozen 18 days). That
     # never-hit key is now doubly load-bearing: it is what keeps the Debug family the warm-up builds
     # from going stale as dependencies move, which is exactly how the family in the entry rotted
     # before anyone noticed it was there.
@@ -133,7 +133,7 @@ runs:
       with:
         path: ~/.konan
         # `-device-` NAMESPACES THIS JOB'S ENTRY, and that is a bug fix, not tidiness. ios-build and
-        # ios-test are two jobs of the SAME workflow run, so `github.run_id` is identical — and both
+        # (then) ios-test were two jobs of the SAME workflow run, so `github.run_id` is identical — and both
         # used to save under this one key. ios-test finishes in ~4 min and ios-build in ~14, so
         # ios-test won every time and ios-build's save NEVER LANDED: `Failed to save: Unable to
         # reserve cache with key konan-macOS-<hash>-<run_id>`, reported as `outcome=success` with no
@@ -297,7 +297,7 @@ runs:
     #
     # COST, and why it is not on anyone's critical path: the first main run after this lands pays the
     # full cold build (~9 min); every merge after restores the family it saved and pays roughly the
-    # warm link. `ios-build` on main posts a required check but no merge waits on a main run, and
+    # warm link. `ios-build` on main gates `ci` but no merge waits on a main run, and
     # `ios-deliver` needs this job only for its archive artifact, which is already uploaded above.
     #
     # `continue-on-error` because a cache warm-up must NEVER fail a merge that delivers to TestFlight.
@@ -353,8 +353,8 @@ runs:
     #
     # Scoped by SUFFIX rather than by the dependency hash, so a hash rotation (a Kotlin or dependency
     # bump) cannot strand the pre-bump entries forever; and scoped to `-device-` so it can never touch
-    # the `-sim-` entry ios-test owns. `continue-on-error` because reclaiming space must never fail a
-    # merge that delivers.
+    # the `-sim-test-` / `-sim-journeys-` entries test (ios) and journeys (ios) own. `continue-on-error`
+    # because reclaiming space must never fail a merge that delivers.
     - name: Reclaim superseded ~/.konan entries
       if: github.ref == 'refs/heads/main'
       continue-on-error: true

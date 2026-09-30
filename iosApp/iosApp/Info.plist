@@ -31,7 +31,7 @@
 	     It is COMPOSED from two build settings the resolver generates (a scheme enum and a bare host),
 	     never carried as one URL-valued setting: an Info.plist substitution can only read a build
 	     setting, and "//" opens a comment anywhere on an xcconfig line. The "//" lands here, where it
-	     is data. ios.yml asserts what this composes to equals this bundle's Deployment.plist
+	     is data. CI's ios-build asserts what this composes to equals this bundle's Deployment.plist
 	     `uploadBase`.
 
 	     EVERY OTHER deployment value stays out of this file (`docs/deployment.md`). The

@@ -23,10 +23,6 @@ kotlin {
         }
     }
     sourceSets {
-        // On the emulator, `runComposeUiTest` launches the empty activity this manifest merges into the test APK.
-        getByName("androidDeviceTest").dependencies {
-            implementation(libs.compose.ui.test.manifest)
-        }
         commonMain.dependencies {
             api(project(":domain:model"))
             api(project(":domain:feature"))
@@ -40,11 +36,10 @@ kotlin {
             implementation(libs.compose.runtime)
             implementation(libs.compose.foundation)
         }
-        // The screen tests live in commonTest, so they run on BOTH the JVM (fast loop, offscreen —
-        // see the jvm block above) and iosSimulatorArm64 (`ios-test` in CI). That is the standing rule
-        // — "every unit test runs on the iOS simulator too" — and it bites hardest here: iOS renders
-        // these screens through a different Compose backend than the desktop one, so a JVM-only suite
-        // never sees the target that ships.
+        // The screen tests live in commonTest, which CI runs on the JVM only (`build`; offscreen —
+        // see the jvm block above). The simulator runs platform-bound tests only (`docs/testing.md`,
+        // "Where each test runs"), so this suite never sees the Compose backend iOS renders these
+        // screens through; only the simulator app's runs (journeys, screenshots) render that one.
         commonTest.dependencies {
             implementation(kotlin("test"))
             // The multiplatform `runComposeUiTest` API (no JUnit4 rule — that artifact is JVM-only).

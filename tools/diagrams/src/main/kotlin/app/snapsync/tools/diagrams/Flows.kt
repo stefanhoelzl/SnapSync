@@ -7,7 +7,7 @@ package app.snapsync.tools.diagrams
  * `docs/architecture.md`, "Commands cross one door").
  *
  * **The generation failure is a hard gate** (armed at the migration finale): a construct outside
- * the closed grammar throws, which fails `:tools:diagrams:generate` (the CI `diagrams` job) AND the
+ * the closed grammar throws, which fails `:tools:diagrams:generate` (the diagrams step of CI's `build` job) AND the
  * in-process freshness test under `./gradlew build` — an untranscribable flow is a law violation,
  * not a rendering problem. The closed grammar (`docs/architecture.md`):
  *

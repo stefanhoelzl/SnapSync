@@ -77,7 +77,7 @@ kotlin {
     }
 }
 
-// Full failure messages in CI: the Kotlin/Native simulator runner otherwise prints a terse
+// Full failure messages on a simulator run: the Kotlin/Native simulator runner otherwise prints a terse
 // "AssertionError at null:-1" with no expected/actual (config carried over with the re-homed
 // NativeLedgerStoreTest from `:domain:engine`).
 tasks.withType<org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeSimulatorTest>().configureEach {

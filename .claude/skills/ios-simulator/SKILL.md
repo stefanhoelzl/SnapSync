@@ -174,7 +174,7 @@ State these before writing a scenario against this host, or you will write one t
 
 The signature is not optional. An **unsigned** simulator build has no App-Group container —
 `App Group container 'group.app.snapsync' unavailable` — so no ledger, no config, no live stack, and no
-launch adapters (their choice and mocked state live there). `screenshots.yml` and ios-contracts both build
+launch adapters (their choice and mocked state live there). `screenshots.yml` and `journeys (ios)` both build
 unsigned and then run `scripts/sim-sign`.
 
 ```
@@ -226,7 +226,7 @@ seed, wipe — is now a channel verb. Load `rig-channel` for the full surface.
 ## The PhotoKit port contracts run here
 
 The simulator app is the host (`IOS_SIM_APP`) where the photo-library contracts meet real PhotoKit under a
-full grant, and CI runs them on every push (`ios-contracts`). `scripts/sim-contracts` is that job, start to
+full grant, and CI runs them on every push (`journeys (ios)`). `scripts/sim-contracts` is that job, start to
 finish: a rig build, `sim-sign`, a fresh simulator, the `applesimutils` grant, the loopback transfer fixture
 (`scripts/transfer-fixture.py`, for the two `URLSession` contracts), launch, then every entry of
 `GET /contract`. It fails on any `Failed(…)` or `NotWithin(…)`, a refusal, or an empty registry. Run it on a Mac session to

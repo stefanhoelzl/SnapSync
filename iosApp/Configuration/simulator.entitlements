@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Entitlements for an AD-HOC SIGNED SIMULATOR build. Not a signing surface for any shipped binary:
-     `ios.yml`, `ios-archive` and every device build sign with iosApp.entitlements /
+     CI's `ios-build`, `ios-archive` and every device build sign with iosApp.entitlements /
      BackgroundUploadExtension.entitlements instead. This plist exists so a simulator build has an
      App-Group container at all — `scripts/sim-sign` applies it to the appex and then the .app.
 
      WHY THIS FILE EXISTS. An UNSIGNED simulator build has no App Group: `appGroupContainerPath` throws
      `App Group container 'group.app.snapsync' unavailable — the application-groups entitlement is
      missing or unprovisioned`, so every simulator build that composes the app — the rig build that
-     screenshots.yml and ios-contracts both run — is ad-hoc signed. An ad-hoc signature carrying the key below fixes it (measured 2026-08-09,
+     screenshots.yml and journeys (ios) both run — is ad-hoc signed. An ad-hoc signature carrying the key below fixes it (measured 2026-08-09,
      macOS 26.5.2 / Xcode 26.6 / iOS 26.5 simulator).
 
      ⚠️ WHY THERE IS NO keychain-access-groups KEY. Its ABSENCE IS THE DECISION, not an omission to

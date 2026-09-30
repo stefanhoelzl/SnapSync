@@ -15,7 +15,7 @@ import kotlin.test.Test
 
 /**
  * Runs the shared [DownloadStoreContract] through [DownloadService] over the real [IosDatabases] — the download
- * half of the gap CI's `ios-test` job exists for: the native driver, schema creation, the migrations, and the
+ * half of the gap CI's `test (ios)` job exists for: the native driver, schema creation, the migrations, and the
  * `DownloadState` enum column adapter on Kotlin/Native. Each clause gets a directory of its own, so no row leaks
  * between clauses.
  */

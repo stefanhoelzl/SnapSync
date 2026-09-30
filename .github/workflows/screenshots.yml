@@ -18,10 +18,10 @@
 # It uploads **6 RAW captures** (3 states x light/dark) as a workflow ARTIFACT and stops there.
 #
 # RAW ONLY, BY DESIGN. An operator commits these to `screenshots/` and they become the SINGLE SOURCE OF
-# TRUTH for two surfaces, each of which composites its own way: `appstore.yml` bakes on the brand band +
-# headline and uploads to App Store Connect; the backend derives small WebP for the landing page. Emitting
-# raws (rather than finished frames) is what lets a headline or a size change re-render WITHOUT a 10-20
-# minute macOS run. See `changes/archive/…-wire-screenshots-into-listing-and-site`.
+# TRUTH for two surfaces, each of which composites its own way: the release (ios-appstore-promote.yml)
+# bakes on the brand band + headline and uploads to App Store Connect; the backend derives small WebP for
+# the landing page. Emitting raws (rather than finished frames) is what lets a headline or a size change
+# re-render WITHOUT a 10-20 minute macOS run. See `changes/archive/…-wire-screenshots-into-listing-and-site`.
 #
 # WHY COMMIT simctl'S OUTPUT: `simctl` stamps no timestamp — its only PNG metadata is an `eXIf` chunk of
 # dimensions + colour space, byte-identical across captures. So a re-run with an unchanged UI produces an
@@ -58,8 +58,8 @@ jobs:
           distribution: temurin
           java-version: 25
       - uses: gradle/actions/setup-gradle@v5
-      # Same Kotlin/Native cache as ios.yml so a warm run skips the toolchain download and klib
-      # recompile — but RESTORE-ONLY: main owns that entry (ios.yml writes it), and this dispatch-only
+      # The Kotlin/Native cache ci.yml's `journeys (ios)` warms — it builds this same rig simulator app — so a warm run
+      # skips the toolchain download and klib recompile. RESTORE-ONLY: main owns that entry, and this dispatch-only
       # workflow is a pure consumer. That is also what it already did, just accidentally: with a key
       # rotating only on libs.versions.toml the primary key always HIT, so actions/cache's post-step
       # logged "not saving cache" and wrote nothing. Making it explicit costs nothing and fixes the
@@ -72,6 +72,7 @@ jobs:
           path: ~/.konan
           key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}-${{ github.run_id }}
           restore-keys: |
+            konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}-sim-journeys-
             konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}-
             konan-${{ runner.os }}-
 
@@ -91,7 +92,7 @@ jobs:
           echo "GRADLE_OPTS=-Dorg.gradle.project.snapsync.deployment=prod" >> "$GITHUB_ENV"
 
       # The RIG build of the real app for the simulator SDK (`-Psnapsync.rig=true`, in ~/.gradle and never in the
-      # repo's gradle.properties — exactly as ios-contracts builds it). Debug so the Kotlin/Native framework link
+      # repo's gradle.properties — exactly as journeys (ios) builds it). Debug so the Kotlin/Native framework link
       # skips the LLVM optimizer. Built unsigned, then AD-HOC signed: an unsigned simulator app has no App Group,
       # and the launch adapters' choice and the mocked systems' state live there (`scripts/sim-sign`).
       - name: Build the rig app for the iOS simulator
@@ -112,7 +113,7 @@ jobs:
           echo "APP_PATH=$APP" >> "$GITHUB_ENV"
 
       # The capture compiles now, and every Gradle and Kotlin daemon stops before the simulator boots: they hold
-      # gigabytes the simulator would swap against (the reason ios-contracts runs its journeys as a bare JVM too).
+      # gigabytes the simulator would swap against (the reason journeys (ios) runs its journeys as a bare JVM too).
       - name: Compile the capture
         run: |
           ./gradlew -q :test:integration:screenshotsClasses :test:integration:screenshotsClasspath

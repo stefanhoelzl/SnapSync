@@ -19,7 +19,7 @@
 # to a SINGLE ubuntu job — no Xcode, no signing certs, no keychain.
 #
 # VERSION IS DERIVED, NOT INPUT. The store version = the build's own `preReleaseVersion.version` (which
-# ios.yml computed as max(floor, lastTag+1) at build time). So the version record and the build always
+# ci.yml's ios-build computed as max(floor, lastTag+1) at build time). So the version record and the build always
 # match by construction — the "attach a mismatched build" hazard cannot arise. There is no `version` input.
 #
 # PROVENANCE IS AN UPLOAD-TIME GUARANTEE. `ios-deliver` runs only on main and only when every merge gate
@@ -30,7 +30,8 @@
 # TAG ORDERING IS LOAD-BEARING. Tag existence is checked FIRST (fail in seconds, not after the ASC work)
 # and the tag is created LAST (after submit). A failed run then leaves no tag and retries cleanly; a
 # released tag is never moved. The tag points at the BUILD'S ORIGIN COMMIT, resolved
-# `build_number → ios.yml run(branch=main, run_number=N) → head_sha`. If that origin cannot be resolved
+# `build_number → the delivering run on main → head_sha` — a ci.yml run numbered N − 2000 for a build above 2000
+# (ci.yml's BUILD_NUMBER_OFFSET), the retired ios.yml's run numbered N otherwise. If that origin cannot be resolved
 # (e.g. the run was deleted), the run FAILS rather than tag a guess. The tag message records `build N`.
 # NB: a wrong resolution would be a wrong TAG, never wrong bits — the attach identifies the build by N.
 #
@@ -58,7 +59,7 @@ on:
 
 permissions:
   contents: write # push the release tag
-  actions: read # read ios.yml runs to resolve the build's origin commit
+  actions: read # read ci.yml (or the retired ios.yml) runs to resolve the build's origin commit
   # The changelog derivation resolves the range's commits to their pull requests over GraphQL. The
   # `generate-notes` REST endpoint it replaced was contents-scoped, so `contents` alone sufficed;
   # reading pull requests is not, and without this the derivation fails (before any ASC mutation).
@@ -142,19 +143,27 @@ jobs:
           echo "tag $RELEASE_TAG is free"
 
       # Guard 2 (before any ASC mutation): resolve the build's ORIGIN COMMIT, or fail loud. Map
-      # build_number → the ios.yml run on main whose run_number equals it → head_sha. Restricting to
-      # branch=main disambiguates from any other workflow's run_number space. On a deleted/unresolvable
+      # build_number → the delivering run on main → head_sha: ci.yml's run numbered build − BUILD_NUMBER_OFFSET for a
+      # build above the offset (ci.yml's `env`, 2000 — keep the two equal), the retired ios.yml's run numbered build
+      # otherwise. Restricting to branch=main disambiguates from a dispatched branch build. On a deleted/unresolvable
       # run we FAIL rather than tag a wrong or placeholder commit.
       - name: Resolve the build's origin commit
         env:
           GH_TOKEN: ${{ github.token }}
+          BUILD_NUMBER_OFFSET: 2000
         run: |
+          if [ "$BUILD_NUMBER" -gt "$BUILD_NUMBER_OFFSET" ]; then
+            workflow=ci.yml; run=$((BUILD_NUMBER - BUILD_NUMBER_OFFSET))
+          else
+            # The retired ios.yml, by its workflow ID: its file is gone from the tree, its runs are not.
+            workflow=298185127; run=$BUILD_NUMBER
+          fi
           sha="$(gh api --paginate \
-            "/repos/${GITHUB_REPOSITORY}/actions/workflows/ios.yml/runs?branch=main" \
-            --jq ".workflow_runs[] | select(.run_number == ${BUILD_NUMBER}) | .head_sha" | head -1)"
+            "/repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow}/runs?branch=main" \
+            --jq ".workflow_runs[] | select(.run_number == ${run}) | .head_sha" | head -1)"
           if [ -z "$sha" ]; then
-            echo "::error::cannot resolve the origin commit for build ${BUILD_NUMBER} from an ios.yml run"
-            echo "::error::(run deleted, or the number is not an ios.yml build). Tag ${RELEASE_TAG} by hand."
+            echo "::error::cannot resolve the origin commit for build ${BUILD_NUMBER} from ${workflow} run ${run}"
+            echo "::error::(run deleted, or the number is not a delivered build). Tag ${RELEASE_TAG} by hand."
             exit 1
           fi
           echo "ORIGIN_SHA=$sha" >> "$GITHUB_ENV"
@@ -255,7 +264,7 @@ jobs:
       # App Review details, applied on EVERY release (not just when submitting), so a promote-only run
       # leaves the version submit-ready. Declarative: the committed notes win. The notes live OUTSIDE the
       # metadata tool's canonical schema (metadata/review/) — an unknown key in version/<v>/<locale>.json
-      # or app-info/<locale>.json would fail the REQUIRED appstore-metadata-validate check and freeze
+      # or app-info/<locale>.json would fail ci.yml's `metadata` gate (hence the REQUIRED `ci` check) and freeze
       # merges. An appStoreReviewDetail is version-scoped and NOT localized: one per version.
       - name: Apply the App Review details
         env:

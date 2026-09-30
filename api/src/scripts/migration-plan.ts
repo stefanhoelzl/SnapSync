@@ -17,7 +17,7 @@
 // of "is this history sound?" can disagree, and the one that matters is the one that applies. So drift is
 // named in the plan line, loudly, and left to fail where it actually fails.
 //
-// Before merge, the same refusal is RUN rather than predicted: api.yml's `migration-rehearsal` applies a
+// Before merge, the same refusal is RUN rather than predicted: ci.yml's `migration-rehearsal` applies a
 // branch's migration change with the real CLI against a copy of the deployed store (`rehearsal-copy.ts`).
 //
 // Out of the bundle: `main.ts` never reaches it.

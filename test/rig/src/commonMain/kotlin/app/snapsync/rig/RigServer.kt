@@ -405,7 +405,7 @@ class RigServer(
 
     /**
      * `GET /contract` — the names of the contracts registered for the host this process is, one per line. The
-     * `ios-contracts` job runs exactly this list, so a contract registered for the simulator app is run on every
+     * `journeys (ios)` job runs exactly this list, so a contract registered for the simulator app is run on every
      * push, and one registered for nothing is run by nobody (`docs/architecture.md`).
      */
     private suspend fun ApplicationCall.respondContractList() {

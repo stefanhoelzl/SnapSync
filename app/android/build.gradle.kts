@@ -62,7 +62,7 @@ android {
     buildTypes {
         release {
             // R8 over the whole app, as a store build will run it — on the rig build, which links the whole graph
-            // (the `android-emulator` job builds it). The plain release composes the same adapters now; switching R8 on
+            // (CI's `android-build` job builds it). The plain release composes the same adapters now; switching R8 on
             // for it, with the keep rules Firebase and Ktor need, is the store build's (phase 5).
             isMinifyEnabled = rigEnabled
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")

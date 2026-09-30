@@ -17,7 +17,7 @@ import kotlin.test.assertEquals
  * each bundle**, and the app and the extension are separate bundles with separate resources phases — so
  * a shipped bundle missing the file reaches this branch, and reaches it for all four values at once:
  * uploads go nowhere, a Release build registers sandbox APNs, events are mislabelled, and no crash
- * reporting is left to say so. That is not defended here. It is defended by `ios.yml`'s archive check,
+ * reporting is left to say so. That is not defended here. It is defended by CI's `ios-build` archive check,
  * which reads the file back out of **both** bundles and fails the run — the only gate that can see it.
  *
  * Blank is still the answer, and it is still load-bearing: `buildUploadConfig` treats a blank host

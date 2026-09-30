@@ -15,7 +15,7 @@ import kotlin.test.Test
 
 /**
  * Runs the shared [LedgerStoreContract] through [LedgerService] over the real [IosDatabases] — the gap CI's
- * `ios-test` job exists for: the native driver, schema creation, and the enum column adapter on Kotlin/Native.
+ * `test (ios)` job exists for: the native driver, schema creation, and the enum column adapter on Kotlin/Native.
  * Each clause gets a directory of its own.
  */
 class NativeLedgerStoreTest {

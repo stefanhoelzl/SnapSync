@@ -306,7 +306,7 @@ class RenderingTest(unittest.TestCase):
         is fine, the archive is fine, and the registration may well succeed; the uploads are simply
         refused, with nothing logged anywhere (capability `background-upload`).
 
-        `ios.yml` compares the two for real after archiving, which is the authoritative check — but it
+        ci.yml's `ios-build` compares the two for real after archiving, which is the authoritative check — but it
         needs a Mac and a signed build, so it reports a half-move hours later. This reads the committed
         literals directly and reports it in seconds. Both Info.plists, because a value present in one
         bundle and stale in the other is a reachable state.

@@ -39,10 +39,6 @@ kotlin {
         }
     }
     sourceSets {
-        // On the emulator, `runComposeUiTest` launches the empty activity this manifest merges into the test APK.
-        getByName("androidDeviceTest").dependencies {
-            implementation(libs.compose.ui.test.manifest)
-        }
         commonMain.dependencies {
             // Shared sync vocabulary in App* signatures (`model/`'s Arrow — the step-9 Arrow/ArrowLevel
             // unification): the ONE enum both presentation's reduction and this skin render from.

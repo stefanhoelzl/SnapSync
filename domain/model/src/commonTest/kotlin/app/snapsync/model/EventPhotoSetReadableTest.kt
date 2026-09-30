@@ -16,7 +16,7 @@ import kotlinx.coroutines.test.runTest
  * `sync-status`) — that frame cannot be taken back, so the two answers have to be separable *before*
  * anything counts.
  *
- * Exercised on JVM **and** `iosSimulatorArm64` (`docs/testing.md`), because this is the
+ * Exercised here in `commonTest` (on the JVM, `docs/testing.md`), because this is the
  * seam both device tiers reach through.
  */
 class EventPhotoSetReadableTest {

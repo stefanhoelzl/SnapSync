@@ -1,5 +1,5 @@
 // THE MIGRATION REHEARSAL'S COPY (`docs/deployment.md`, "Gates"): the deployed store, PSEUDONYMISED, into a
-// local libSQL server, so api.yml's `migration-rehearsal` job can run the platform runner's real
+// local libSQL server, so ci.yml's `migration-rehearsal` job can run the platform runner's real
 // `bunny db migrations apply` over real rows before a migration change merges.
 //
 // WHAT IT CATCHES THAT NOTHING ELSE DOES. The tests replay migrations over fixtures; the deploy applies them

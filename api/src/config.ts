@@ -170,7 +170,7 @@ export type Config = {
  * ⚠️ **It must stay at or below `MARKETING_VERSION` in `iosApp/Configuration/Config.xcconfig`.** That
  * floor is what every DEV and SIDELOAD build carries — such builds have no release tag to compute a
  * version from — so a minimum above it locks the developer out of their own backend, on a screen telling
- * them to visit the App Store. The two moved together, and `api.yml`'s suite (`min-app-version-floor.test.ts`)
+ * them to visit the App Store. The two moved together, and the api suite (`min-app-version-floor.test.ts`)
  * asserts the relation rather than trusting it.
  */
 export const MIN_APP_VERSION = "0.4";

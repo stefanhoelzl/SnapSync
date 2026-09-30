@@ -114,7 +114,7 @@ class RigHooks(
      * The port contracts this build can run in-app — `POST /contract/<name>`, and `GET /contract` for the ones
      * registered for the host this process is (`docs/architecture.md`). A device entry records what the
      * real implementation asked the operating system and returns the recording to commit verbatim; a
-     * simulator-app entry runs live and returns its outcome table, which the `ios-contracts` job judges.
+     * simulator-app entry runs live and returns its outcome table, which the `journeys (ios)` job judges.
      */
     val contracts: List<InAppContract>,
     /**

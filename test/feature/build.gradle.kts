@@ -5,10 +5,11 @@
 // services, ports and the mocks. A feature test that touches no port and no service stays in `:domain:feature`.
 //
 // Test-only: no main sources, never linked into anything. Targets mirror `:adapter:generic:mock` (jvm +
-// iosSimulatorArm64 + android) — the tests run on the JVM, the simulator and the emulator, as feature's own do.
+// iosSimulatorArm64 + android) — the tests run on the JVM only, as feature's own do (`docs/testing.md`, "Where
+// each test runs").
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
-    // The `android` target, for its `commonTest` on the emulator (`snapsync.android`).
+    // The `android` target (`snapsync.android`), mirroring the mocks'. Its `commonTest` is not run on the emulator.
     id("snapsync.android")
     // Coverage measurement: its tests' coverage is credited to the zones they exercise from the root build file
     // (`:domain:feature` first). It declares no verify rule — it holds no class of its own to measure.

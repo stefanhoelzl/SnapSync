@@ -1,18 +1,18 @@
 {
   "_comment": [
-    "Per-locale headline copy baked onto the App Store screenshots by appstore.yml, keyed by the",
+    "Per-locale headline copy baked onto the App Store screenshots by the release (ios-appstore-promote.yml), keyed by the",
     "marketing state (test/integration's Shots.kt) each raw in screenshots/ shows. Version-controlled next to the",
     "rest of the listing, so the copy is reviewable in a PR rather than living only in a CI script.",
     "",
     "This file is DELIBERATELY outside the metadata tool's schema. `asc metadata validate` decodes only",
     "version/<v>/<locale>.json and app-info/<locale>.json, and its decode is STRICT — an unknown key",
-    "there fails with `json: unknown field \"...\"`. Since appstore-metadata-validate is a REQUIRED status",
+    "there fails with `json: unknown field \"...\"`. Since that validation gates the REQUIRED `ci` status",
     "check, putting headlines in those files would freeze every merge. `asc` ignores this subtree.",
     "",
     "No length limit applies: unlike `keywords` (<=100) these are not Apple fields, and the compositor's",
     "`caption:` word-wraps inside a fixed box, so any copy length fits by construction.",
     "",
-    "Changing a headline needs NO macOS run — appstore.yml re-composites from the committed raws."
+    "Changing a headline needs NO macOS run — the release re-composites from the committed raws."
   ],
   "headlines": {
     "create": "Start an event in seconds",
