@@ -114,6 +114,8 @@ class JvmHostProtocolTest {
         val joined = client.awaitState { it.ready.configResolved }
         assertIs<Layer.Joined>(joined.ui.layer)
 
+        // The extension's cycle alone: the app's uploader, running beside it as on a phone, would take the same photo.
+        client.deviceVerb("uploaders", mapOf("app" to "off")).done()
         client.deviceVerb("gallery/seed", mapOf("n" to "1", "kind" to "policy")).done()
         val cycle = client.os("photokit-ext", "processRawValue").done()
         assertTrue("\"created\":1" in cycle, cycle)
@@ -139,6 +141,8 @@ class JvmHostProtocolTest {
         client.awaitState { (it.ui.layer as? Layer.JoiningEvent)?.range != null }
         client.user("confirmJoin").done()
         val event = client.awaitState { it.ready.configResolved }.ready.eventId
+        // The extension's cycle alone: the app's uploader, running beside it as on a phone, would take the same photo.
+        client.deviceVerb("uploaders", mapOf("app" to "off")).done()
         client.deviceVerb("gallery/seed", mapOf("n" to "1", "kind" to "policy")).done()
         client.os("photokit-ext", "processRawValue").done()
 
