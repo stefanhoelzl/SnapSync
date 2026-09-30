@@ -70,6 +70,8 @@ suspend fun Rig.reach(shot: Shot, relaunch: suspend Rig.() -> Unit): RigState {
         Shot.IN_SYNC -> {
             takePhotos()
             device("backend/next-event-id", "id" to Shot.EVENT_ID)
+            // The uploads below are the extension's cycle; the app's own uploader would take the same photos.
+            extensionUploadsOnly()
             createAndJoin(name = Shot.EVENT_NAME, startsAt = Shot.EVENT_START, endsAt = Shot.EVENT_END)
             uploadAll()
             foreignDevice("GUEST", *Array(Shot.THEIR_PHOTOS) { "GUEST-${it + 1}" })
