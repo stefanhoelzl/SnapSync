@@ -3,8 +3,8 @@
 package app.snapsync.rig
 
 import app.snapsync.jvm.JvmApp
-import app.snapsync.jvm.JvmBuild
 import app.snapsync.jvm.JvmMocks
+import app.snapsync.mock.BuildInfoMock
 import app.snapsync.mock.DeclaredVersion
 import app.snapsync.mock.UploadNetwork
 import app.snapsync.model.InviteLinkHints
@@ -98,7 +98,7 @@ class JvmRigHost private constructor(
             val mocks = JvmMocks(inviteLinkHints = InviteLinkHints.Honoured, network = backend.network)
             val version = DeclaredVersion(SERVED_VERSION)
             val log = RecordedLog()
-            val build = JvmBuild(
+            val build = BuildInfoMock(
                 uploadHost = backend.base,
                 declaredVersion = version,
                 dsn = DSN,

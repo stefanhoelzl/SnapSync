@@ -1,8 +1,7 @@
 package app.snapsync.jvm
 
-import app.snapsync.model.DiagnosticEnvironment
+import app.snapsync.mock.BuildInfoMock
 import app.snapsync.ports.Backend
-import app.snapsync.ports.BuildInfo
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.Clock
 import app.snapsync.ports.CrashReporter
@@ -36,7 +35,8 @@ import app.snapsync.ports.Wake
  * the external [systems] the app talks to.
  */
 class JvmAdapters(
-    val build: JvmBuild,
+    /** What the running build is — the mock whose declared version an operator may change in place. */
+    val build: BuildInfoMock,
     val device: JvmDevice,
     val entries: JvmEntries,
     val systems: JvmSystems,
@@ -94,31 +94,3 @@ class JvmSystems(
     val download: Download,
     val systemUi: SystemUi,
 )
-
-/**
- * What the running build IS — the constants a device's bundle carries, as the [BuildInfo] port both processes read.
- *
- * [appVersion] is read per use from [declaredVersion], a cell so an operator can play a member updating the app in
- * place: the backend port reads it per call, and the upload cycle once, when it is composed — as on a device.
- */
-class JvmBuild(
-    /** The backend's device-facing base, carrying exactly one version prefix. */
-    override val uploadHost: String,
-    val declaredVersion: app.snapsync.mock.DeclaredVersion,
-    /** Where the build reports, or `null` for one that reports nowhere (a dev build keeps its bug report). */
-    override val dsn: String?,
-    /** The build's App Store page — the update-required screen's one remedy. */
-    override val appStoreUrl: String?,
-    /** The APNs environment the build's push tokens belong to. */
-    override val apnsEnvironment: String,
-) : BuildInfo {
-    override val appVersion: String get() = declaredVersion.value.orEmpty()
-
-    /** The JVM carries no OS-driven upload mechanism. */
-    override val osSupportsOsDrivenUpload: Boolean = false
-
-    /** Off-device, none of the build/OS/device facts are known. */
-    override val diagnostics: DiagnosticEnvironment = DiagnosticEnvironment.UNKNOWN
-
-    override val bootLines: List<String> = emptyList()
-}

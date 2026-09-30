@@ -4,9 +4,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import app.snapsync.jvm.JvmApp
-import app.snapsync.jvm.JvmBuild
 import app.snapsync.jvm.JvmMocks
 import app.snapsync.mock.BackendCall
+import app.snapsync.mock.BuildInfoMock
 import app.snapsync.mock.DeclaredVersion
 import app.snapsync.mock.DownloadSessionMock
 import app.snapsync.mock.LibraryAssets
@@ -300,7 +300,7 @@ class WorldInspectorController(private val scope: CoroutineScope) {
 
     /** A fresh app over a fresh device, as the JVM root composes it. */
     private fun compose(): JvmApp<JvmMocks> {
-        val build = JvmBuild(
+        val build = BuildInfoMock(
             uploadHost = BACKEND_BASE,
             declaredVersion = DeclaredVersion(APP_VERSION),
             dsn = DSN,

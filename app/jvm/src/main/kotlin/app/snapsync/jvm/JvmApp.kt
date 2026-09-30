@@ -95,7 +95,7 @@ class JvmApp<D>(
             files = files,
             clock = ports.device.clock,
             entryContext = NoEntryContext,
-            build = ports.build,
+            build = ports.build.port(),
         )
 
         private fun appPorts(): AppPorts = AppPorts(
