@@ -17,6 +17,7 @@ class AlbumIntegrationTest {
 
     @Test
     fun enqueued_uploads_are_placed_in_the_album_before_they_finish_and_only_once() = rigTest {
+        extensionUploadsOnly()
         createAndJoin("saveToAlbum" to "true", name = "Party")
         addPhoto("A")
         addPhoto("B")
@@ -45,6 +46,7 @@ class AlbumIntegrationTest {
 
     @Test
     fun neither_a_save_nor_a_join_waits_for_the_gather_it_starts() = rigTest {
+        extensionUploadsOnly()
         val event = createAndJoin("saveToAlbum" to "false")
         addPhoto("A")
         uploadAll()

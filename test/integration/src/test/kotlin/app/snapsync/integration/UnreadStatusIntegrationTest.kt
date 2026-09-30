@@ -33,6 +33,7 @@ import kotlin.test.assertIs
 class UnreadStatusIntegrationTest {
     @Test
     fun a_joined_membership_with_photos_never_reads_in_sync_before_a_status_read() = rigTest {
+        extensionUploadsOnly()
         createAndJoin()
         addPhoto("A")
         // The cold launch: a joined membership, photos in the library, and nothing read yet.

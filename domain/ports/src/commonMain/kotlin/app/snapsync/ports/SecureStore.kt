@@ -26,7 +26,7 @@ import app.snapsync.model.WriteOutcome
  * is then unavailable and never used unsaved; an attestation token is not accepted). A [write] may **replace by
  * delete-then-add**, so after a refused write the old value may be gone.
  */
-interface SecureStore {
+interface SecureStore : Port {
 
     /** Read the item: its value and how it is currently protected. */
     fun read(slot: SecureSlot): SecureStoreRead

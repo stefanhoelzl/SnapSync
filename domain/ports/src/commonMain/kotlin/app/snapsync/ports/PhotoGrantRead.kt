@@ -11,6 +11,6 @@ import app.snapsync.model.GalleryAccess
  * because the read is a platform call (law "Ports are the I/O boundary named for the need", capability
  * `docs/architecture.md`); it used to be an inline lambda in the extension's composition root.
  */
-fun interface PhotoGrantRead {
+fun interface PhotoGrantRead : Port {
     fun current(): GalleryAccess
 }

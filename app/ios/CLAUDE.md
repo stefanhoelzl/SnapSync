@@ -85,10 +85,11 @@ shared composition functions in `:domain`'s `compose/` zone (law "One shared com
 is no per-root cycle or feature assembly any more.
 
 - **App**: `app/ios/src/iosMain/.../SnapSyncRoot.kt` — app-lifetime singleton owning a
-  `SupervisorJob` scope on `Dispatchers.Main` (outlives Compose recomposition). Builds `AppPorts`
-  (file-backed config store, PhotoKit permission, ledger/download stores, generic HTTP adapters,
-  coordination lambdas) and calls `snapSyncApp(scope, ports)`; the returned `AppCore`'s lazily
-  composed graph (status sources, attestation, join/leave/create, downloads, upload arm) is wired
+  `SupervisorJob` scope on its own composition lane (outlives Compose recomposition). Builds `AppPorts` —
+  ports and nothing else (`PortBundleTest`): the process's `ProcessPorts` with its `IosBuildInfo`, the App-Group
+  storage ports, PhotoKit, the generic HTTP backend, the entry ports — and calls `snapSyncHost(scope, ports,
+  formatter)`, whose first act sets the process up (crash reporting first) and which builds every service over the
+  ports; the lazily composed graph (status sources, attestation, join/leave/create, downloads, upload arm) is wired
   into `StatusContainerHost`. **The scope carries a `CoroutineExceptionHandler`** — its one
   non-negotiable member: a `SupervisorJob` isolates siblings from each other but does **nothing**
   for a throwable no child handles, which on Kotlin/Native hits the default terminate → `SIGABRT`.
@@ -100,13 +101,14 @@ is no per-root cycle or feature assembly any more.
   resort for what nothing else did, and it is what makes an otherwise-invisible launch crash
   self-diagnosing (the exception text lands in `debug.log` instead of an opaque abort).
 - **Extension**: `app/ios/extension/src/iosMain/.../UploadExtensionRoot.kt` — builds
-  `UploadPorts` (the file-backed `ConfigService`, the PhotoKit `IosPhotoKitUploadPlatform` +
-  `IosDiscovery` — both from `:adapter:ios:ext-safe`, where the platform adapter lives — App-Group
-  stores, `:adapter:generic:app` HTTP adapters) and calls `uploadCore(scope, ports)`; `process()` runs
-  one blocking cycle of the composed `UploadCycle`, then maps the pending→`PROCESSING` requeue and
-  the raw-value handoff through the tested `ports/` rules.
-- The app-driven tier's uploader (`compose/AppUploader.kt`) calls the same `uploadCore` over the app's own
-  `Upload` port (the background-`URLSession` adapter); the app's `TailRunner` drives it.
+  `ExtensionPorts` (its `ProcessPorts`, the App-Group databases, files and protected store, the PhotoKit library
+  reader and upload-job queue — from `:adapter:ios:ext-safe`, where the platform adapter lives — the
+  `:adapter:generic:app` HTTP backend, its `IosExtensionHost`) and calls `snapSyncExtension(ports)`, which builds the
+  extension's services (READ_ONLY identity, read-only suppression view, drop-only credential) and registers on the
+  host; `process()` runs one blocking cycle of the composed `UploadCycle`, then maps the pending→`PROCESSING`
+  requeue and the raw-value handoff through the tested `ports/` rules.
+- The app-driven tier's uploader (`compose/AppUploader.kt`) runs the same cycle assembly (`uploadCycle`) over the
+  app's own services and `Upload` port (the background-`URLSession` adapter); the app's `TailRunner` drives it.
 
 **Neither is the direction gate** (capability `background-upload`). Whether a membership uploads **at all** is
 decided inside `UploadCycle`, from a required `Contribution` (`:domain` `model/`) carrying the membership's
@@ -150,7 +152,7 @@ the compiler cannot — that the extension is never registrable below 26.1, and 
 deregisters or cancels anywhere but at a leave.
 
 **Ledger writers are owned by code, not by a process** (`photo-sharing`). The app holds a `LedgerWriter` on every
-OS version — constructed in the app's uploader (`compose/AppUploader.kt`) through `uploadCore` — and on **iOS ≥26.1** the
+OS version — constructed in the app's uploader (`compose/AppUploader.kt`) through `uploadCycle` — and on **iOS ≥26.1** the
 **extension** holds one too. Every write is one guarded transaction owned by named code: the cycle's record
 family, a transport's guarded terminal write, and the membership reset family. Outside that uploader,
 `:app:ios` constructs no writer.
@@ -255,16 +257,17 @@ reinstall. To exercise the app's uploader alone on a ≥26.1 device, switch the 
 
 ## Gotchas
 
-- **Device logs:** both composition roots hand `snapSyncProcess` the sinks `PublicNSLogSink()` and
+- **Device logs:** both composition roots hand their composition the sinks `PublicNSLogSink()` and
   `FileLogSink(<destination>)` — they live in `:adapter:ios:ext-safe` (capability `privacy-security`) — and it
-  installs the Kermit writers and logs the boot banner. The file sink takes its **destination**: the app passes `appLogDestination()`
+  (`snapSyncProcess`, the composition's first act) installs the Kermit writers and logs the boot banner. The file
+  sink takes its **destination**: the app passes `appLogDestination()`
   (its own `Documents/debug.log`, pullable as before), the extension `extensionLogDestination()`
   (`ext-debug.log` in the **App Group**, so the app can read it for a diagnostic dump; it falls back
   to its own Documents when the container is unavailable and says so in the boot banner). Verbatim,
   10 MB roll. The os_log `PublicNSLogSink` is redacted `<private>` on current iOS. The extension's log
   lives in the App Group, which is not USB-pullable; read it through the control channel
   (`GET /device/logs?process=extension`, load `rig-channel`) — the copy-into-Documents launch trigger that
-  used to serve this is gone, along with every other one. Each root hands `snapSyncProcess` its boot banner and wraps
+  used to serve this is gone, along with every other one. Each root hands its boot banner in its `BuildInfo` and wraps
   its entry points with `Logger.invocation`, so every line carries a `[<entryPoint>]` prefix. Keep new
   entry points wrapped, or their downstream lines lose the trigger prefix.
 - **`-lsqlite3`:** required in each target's `OTHER_LDFLAGS` (above) for any target linking SQLDelight's

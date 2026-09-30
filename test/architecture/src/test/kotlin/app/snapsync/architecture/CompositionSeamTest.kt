@@ -11,8 +11,9 @@ import kotlin.test.assertTrue
  * are the I/O boundary named for the need"). Decision record: `changes/…/enforce-port-boundary`
  * (D1, D5, D9).
  *
- * `AppPorts`, `UploadPorts` and the sub-bundle `UploadRecordPorts` are where the shell hands the core
- * everything it may not build itself.
+ * `AppPorts`, `ExtensionPorts`, `ProcessPorts` and `DevicePorts` are where the shell hands the core
+ * everything it may not build itself — ports and nothing else since `PortBundleTest` holds them to it, so their
+ * pinned inventories below are empty, and stay listed so a lambda slipping back in is seen here too.
  * Most of what crosses is a port, and a port is a *declared* boundary — a reader, and every gate that
  * reads types, can see the process end there. A function-typed field declares nothing: it is equally
  * the shape of pure in-core coordination and of an inline adapter written in the composition root. Five
@@ -57,11 +58,8 @@ class CompositionSeamTest {
     /** The composition bundles (law "One shared composition") → the `compose/` file declaring each. */
     private val bundles = mapOf(
         "AppPorts" to "domain/compose/src/commonMain/kotlin/app/snapsync/compose/SnapSyncApp.kt",
-        "UploadPorts" to "domain/compose/src/commonMain/kotlin/app/snapsync/compose/UploadCore.kt",
-        "UploadRecordPorts" to "domain/compose/src/commonMain/kotlin/app/snapsync/compose/UploadRecordPorts.kt",
-        "PushPorts" to "domain/compose/src/commonMain/kotlin/app/snapsync/compose/PushComposition.kt",
+        "ExtensionPorts" to "domain/compose/src/commonMain/kotlin/app/snapsync/compose/ExtensionCore.kt",
         "ProcessPorts" to "domain/compose/src/commonMain/kotlin/app/snapsync/compose/ProcessComposition.kt",
-        "AppUploaderPorts" to "domain/compose/src/commonMain/kotlin/app/snapsync/compose/AppUploader.kt",
         "DevicePorts" to "domain/compose/src/commonMain/kotlin/app/snapsync/compose/DevicePorts.kt",
     )
 
@@ -85,45 +83,17 @@ class CompositionSeamTest {
      * composition already holds" is not accepted for a value obtained by a platform read, however cached.
      */
     private val pins: Map<String, Map<String, String>> = mapOf(
-        "AppPorts" to mapOf(
-            "appDrivenUpload" to
-                "a factory for the app's uploader mechanism (an AppUploadMechanism, whose platform touches are its own " +
-                "adapter's). A thunk so the engine is constructed at first use rather than while the graph " +
-                "is being assembled",
-            "onEventMinted" to
-                "hands a minted event id back to the shell's link entry, which forwards it into THIS " +
-                "core's join gate — a U-turn through the entry surface so create and a scanned QR take " +
-                "one gate, not two. Nothing leaves the process",
-        ),
-        "UploadPorts" to mapOf(
-            "selectionScope" to
-                "what discovery may read right now (capability `photo-access`), derived by the " +
-                "app composition from current permission plus the in-memory snapshot — a call and not a " +
-                "value because the answer changes between cycles. Pure core read",
-            "token" to
-                "the attestation bearer, read per request from the AttestStore port (extension) or the " +
-                "core's own DeviceAttestation (app) — a call because a renewal must be picked up without " +
-                "rebuilding the cycle",
-            "freshToken" to
-                "the same bearer as `token`, through the same AttestStore port / DeviceAttestation, but after " +
-                "dropping the core's in-memory copy (CachedAttestStore.reread) — what a retry's request " +
-                "carries, since the other process may have renewed the token that copy still holds " +
-                "(capability `background-upload`, \"A retry picks up a refreshed token\")",
-        ),
-        // DELIBERATELY EMPTY, and that is the entry rather than an omission. A cohesive sub-bundle of
-        // AppPorts, holding PORT-typed fields and no lambda at all — so there is nothing here to judge, and
-        // a bundle whose inventory is empty must still be listed or the set-of-bundles check below cannot
-        // tell "no seams" from "not scanned".
-        "UploadRecordPorts" to emptyMap(),
-        // Empty for the same reason: the push registration's two ports, grouped as one need.
-        "PushPorts" to emptyMap(),
-        // Empty for the same reason: the per-process ports every root hands `snapSyncProcess` first.
+        // DELIBERATELY EMPTY, all four, and that is the entry rather than an omission: a composition bundle holds
+        // ports and nothing else (`PortBundleTest`). What used to be pinned here — the app uploader's factory, the
+        // minted-event hook, the cycle's token and selection reads — is built by the composition itself now, and
+        // pinned below as the constructor seam it became. A bundle whose inventory is empty must still be listed, or
+        // the set-of-bundles check below cannot tell "no seams" from "not scanned".
+        "AppPorts" to emptyMap(),
+        "ExtensionPorts" to emptyMap(),
         "ProcessPorts" to emptyMap(),
-        // Empty for the same reason: the app uploader's own reads and constants, beside the core it serves.
-        "AppUploaderPorts" to emptyMap(),
-        // Empty for the same reason: an iOS root's real adapters, one `Lazy` PORT each — the bundle its build's adapter
-        // set hands back, a launch-time adapters' on a rig build (`docs/testing.md`). A lazy is a port built on first use,
-        // not a lambda the core calls.
+        // An iOS or Android root's real adapters, one `Lazy` PORT each — the bundle its build's adapter set hands back,
+        // a launch-time adapters' on a rig build (`docs/testing.md`). A lazy is a port built on first use, not a lambda
+        // the core calls.
         "DevicePorts" to emptyMap(),
     )
 
@@ -144,7 +114,22 @@ class CompositionSeamTest {
             "the membership's ONE selection-policy derivation, built in compose/ over the download store and the " +
             "album port — a sibling the gather may not name (feature-blindness)",
         "CreateEvent.onMinted" to
-            "hands the minted event to AppPorts.onEventMinted, which routes it into this core's join gate",
+            "hands the minted event to AppCore.onEventMinted, which routes it into this core's join gate",
+        "AppCore.onEventMinted" to
+            "the host zone's join gate (StatusContainerHost.onEventCreated), handed in by snapSyncHost — a re-entry " +
+            "into this same graph so create and a scanned QR take one gate, not two. Nothing leaves the process",
+        "AppTail.appUploader" to
+            "this core's own app uploader (AppCore.appUploader), resolved at first use — deferred construction, " +
+            "since the uploader reads the graph the tail belongs to; its platform touches are its Upload port's",
+        "UploadServices.selectionScope" to
+            "what discovery may read right now (capability `photo-access`), derived by the app composition from " +
+            "current permission plus the in-memory snapshot — a call because the answer changes between cycles",
+        "UploadServices.token" to
+            "the attestation bearer, read per request from the extension's cached AttestState or the app core's own " +
+            "DeviceAttestation — a call because a renewal must be picked up without rebuilding the cycle",
+        "UploadServices.freshToken" to
+            "the same bearer as `token`, after dropping the in-memory copy (CachedAttestStore.reread) — what a " +
+            "retry's request carries, since the other process may have renewed it (capability `background-upload`)",
         "CollectDiagnosticDump.uploadFacts" to
             "two strings computed from this core's own upload resolution (registrable, admission) for the dump",
         "DownloadController.downloadEnabled" to
@@ -232,9 +217,9 @@ class CompositionSeamTest {
         "EventCompletion.everythingReceived" to
             "the sibling DownloadController.everythingReceived (its union read is the EventUnionSource service) — " +
             "feature-blindness",
-        "SelectionScopedDiscovery.selectionScope" to "UploadPorts.selectionScope, forwarded — a pure core read",
+        "SelectionScopedDiscovery.selectionScope" to "UploadServices.selectionScope, forwarded — a pure core read",
         "JoinedMembership.policy" to "the membership's ONE selection-policy derivation, built by the entry gate",
-        "UploadCycle.readGate" to "uploadCore's own entry-gate translation over the ports (readGate in UploadCore.kt)",
+        "UploadCycle.readGate" to "uploadCycle's own entry-gate translation over the services (readGate in UploadCore.kt)",
         "UploadCycle.engineFor" to
             "builds the SyncEngine over the gate's config per cycle — core machinery, whose transfer is a port",
         "UploadCycle.onDiscovery" to
@@ -428,11 +413,7 @@ class CompositionSeamTest {
      */
     @Test
     fun `the gate actually parsed every composition bundle (non-vacuity floor)`() {
-        // UploadRecordPorts: the join marker, then the device listing (now a backend service) left it; PushPorts: the publisher did.
-        val floors = mapOf(
-            "AppPorts" to 30, "UploadPorts" to 10, "UploadRecordPorts" to 1, "PushPorts" to 2, "ProcessPorts" to 5,
-            "AppUploaderPorts" to 4, "DevicePorts" to 20,
-        )
+        val floors = mapOf("AppPorts" to 20, "ExtensionPorts" to 9, "ProcessPorts" to 7, "DevicePorts" to 20)
         floors.forEach { (bundle, floor) ->
             assertTrue(
                 params(bundle).size >= floor,
@@ -441,17 +422,8 @@ class CompositionSeamTest {
                     "passing on nothing",
             )
         }
-        // The arrow detection is exercised on the bundles that carry BOTH kinds of field. It cannot be
-        // asserted on `UploadRecordPorts`, whose fields are all ports — which is the whole reason its
-        // pinned inventory is empty, and therefore not evidence that the detection is broken.
-        listOf("AppPorts", "UploadPorts").forEach { bundle ->
-            val all = params(bundle)
-            assertTrue(
-                all.any { isFunctionType(it.type) } && all.any { !isFunctionType(it.type) },
-                "composition seam gate: $bundle parsed as all-function or no-function fields — the " +
-                    "arrow detection is broken, which fails this gate open in one direction or the other",
-            )
-        }
+        // The arrow detection itself is exercised on a sample (`the constructor parser finds function types and
+        // ignores prose`): every bundle here is all-port, which is the whole reason its pinned inventory is empty.
         assertEquals(
             bundles.keys.toSortedSet(),
             declaredBundles().toSortedSet(),

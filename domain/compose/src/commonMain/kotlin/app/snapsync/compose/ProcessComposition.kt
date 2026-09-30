@@ -1,6 +1,7 @@
 package app.snapsync.compose
 
 import app.snapsync.model.ReportDestination
+import app.snapsync.ports.BuildInfo
 import app.snapsync.ports.Clock
 import app.snapsync.ports.CrashHandlers
 import app.snapsync.ports.CrashReporter
@@ -14,6 +15,7 @@ import app.snapsync.services.crash.ProcessAccount
 import app.snapsync.services.logs.SinkLogWriter
 import co.touchlab.kermit.LogWriter
 import co.touchlab.kermit.Logger
+import co.touchlab.kermit.StaticConfig
 
 /**
  * The ports every process has exactly one of, whatever it composes afterwards (`docs/architecture.md`, "One
@@ -25,7 +27,13 @@ class ProcessPorts(
     val crashReporter: CrashReporter,
     /** The OS's account of this process; [NoProcessMetrics] where there is no provider. */
     val processMetrics: ProcessMetrics,
-    /** Where this process's log lines are written — the device-log file and the platform's log on iOS. */
+    /**
+     * Where this process's log lines are written — the device-log file and the platform's log on iOS.
+     *
+     * **A process that supplies sinks owns Kermit's global writer list**, and [snapSyncProcess] installs its writers
+     * there. A process that supplies none leaves it alone: a JVM hosts many "processes" in one VM, where that list is
+     * VM-global, and a composition there must not take it over.
+     */
     val logSinks: List<LogSink>,
     /** This process's files, by area. One instance: every file-backed service is built over it. */
     val files: Files,
@@ -33,20 +41,11 @@ class ProcessPorts(
     val clock: Clock,
     /** The ambient entry-point seam the device-log lines and the crash channel's `entry_point` tag read. */
     val entryContext: EntryContext,
-    /** Where this build reports to, or `null` for a build that reports nowhere — a constant of the build. */
-    val dsn: String?,
     /**
-     * The process's boot banner — what the process is and which build (capability `privacy-security`), so a reader
-     * who concatenates the app's and the extension's logs can tell runs apart. Logged first, before anything else
-     * in the process can log.
+     * What the running build is: where it reports to ([BuildInfo.dsn]), its boot banner ([BuildInfo.bootLines]), and
+     * the constants every composition over this process reads.
      */
-    val bootLines: List<String>,
-    /**
-     * Whether this composition owns the process's global logger configuration. A root does, and [snapSyncProcess]
-     * then installs the process's log writers. A JVM world does not: it is one of many "processes" composed in one
-     * JVM, and Kermit's writer list is JVM-global.
-     */
-    val ownsGlobalLogger: Boolean,
+    val build: BuildInfo,
 )
 
 /**
@@ -73,14 +72,30 @@ class ProcessServices internal constructor(
      * channel re-installs them after pointing Kermit elsewhere for a while.
      */
     val logWriters: List<LogWriter>,
+    /** What the running build is — see [ProcessPorts.build]. */
+    val build: BuildInfo,
+    /** Whether this process installed [logWriters] as Kermit's global list — see [ProcessPorts.logSinks]. */
+    private val ownsGlobalLogger: Boolean,
 ) {
+    /**
+     * A logger over THIS process's writers, for the composition's own lines. Where the process owns the global list
+     * that is the same list; where it does not (a JVM "process"), the lines reach the process's own sinks AND whatever
+     * the VM logs to, so a composition's line is never lost to a writer list another composition replaced.
+     */
+    fun logger(tag: String): Logger {
+        val writers = if (ownsGlobalLogger) logWriters else logWriters + Logger.config.logWriterList
+        return Logger(StaticConfig(logWriterList = writers), tag)
+    }
+
     /** Where a bug report goes on this build (capability `privacy-security`): sent where it reports, else kept here. */
     val reportDestination: ReportDestination
         get() = if (crash.isConfigured) ReportDestination.DEVELOPER else ReportDestination.THIS_DEVICE
 }
 
 /**
- * Set up what is per-process — **called first by every root**, before it composes anything else, and exactly once.
+ * Set up what is per-process — **the first act of every composition** (`snapSyncHost`, `snapSyncExtension`), before it
+ * composes anything else, and exactly once per process. No root calls it: a root hands its [ProcessPorts] to its
+ * composition, which cannot then be built in a process whose crash reporting has not started.
  *
  * In order, each for a reason:
  * 1. The log writers, where this process owns the global logger — so nothing below logs into the void — and the
@@ -92,14 +107,18 @@ class ProcessServices internal constructor(
  *    channel, whose log writer is already installed).
  */
 fun snapSyncProcess(ports: ProcessPorts): ProcessServices {
-    val crash = CrashReporting(ports.crashReporter, ports.dsn, ports.entryContext, ports.files)
+    val crash = CrashReporting(ports.crashReporter, ports.build.dsn, ports.entryContext, ports.files)
     ports.crashReporter.listen(CrashHandlers(onEvent = crash::shapeEvent, onBreadcrumb = crash::shapeCrumb))
     val writers = listOfNotNull(SinkLogWriter(ports.logSinks, ports.entryContext), crash.logWriter)
-    if (ports.ownsGlobalLogger) Logger.setLogWriters(writers)
-    val boot = Logger.withTag("process")
-    ports.bootLines.forEach { line -> boot.i { line } }
+    val ownsGlobalLogger = ports.logSinks.isNotEmpty()
+    if (ownsGlobalLogger) Logger.setLogWriters(writers)
+    val services = ProcessServices(
+        crash, ProcessAccount(crash), ports.files, ports.clock, ports.entryContext, writers, ports.build,
+        ownsGlobalLogger,
+    )
+    val boot = services.logger("process")
+    ports.build.bootLines.forEach { line -> boot.i { line } }
     crash.start()
-    val account = ProcessAccount(crash)
-    ports.processMetrics.listen(MetricHandlers(onReport = account::handle))
-    return ProcessServices(crash, account, ports.files, ports.clock, ports.entryContext, writers)
+    ports.processMetrics.listen(MetricHandlers(onReport = services.processAccount::handle))
+    return services
 }

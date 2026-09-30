@@ -35,6 +35,7 @@ class DownloadLeaveIntegrationTest {
 
     @Test
     fun an_imported_photo_outlives_a_leave_and_a_rejoin_never_sends_it_back() = rigTest {
+        extensionUploadsOnly()
         val event = createAndJoin()
         foreignDevice("DEV-F", "FQ")
         downloadAll()
@@ -53,6 +54,7 @@ class DownloadLeaveIntegrationTest {
     /** Leaving is RENAME-ONLY: no reap, no byte collection — the nightly sweep (capability `event-lifetime`) does that. */
     @Test
     fun leaving_departs_this_device_and_keeps_the_event_its_bytes_and_the_union() = rigTest {
+        extensionUploadsOnly()
         val event = createAndJoin()
         addPhoto("A")
         uploadAll()

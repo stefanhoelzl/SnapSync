@@ -22,6 +22,7 @@ class BoundedTopUpIntegrationTest {
 
     @Test
     fun a_backlog_drains_across_cycles_stopping_at_each_refusal() = rigTest {
+        extensionUploadsOnly()
         createAndJoin()
         device("jobs/limit", "n" to "2") // far fewer slots than there is work
         val assets = listOf("A", "B", "C", "D", "E", "F")

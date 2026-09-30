@@ -22,6 +22,7 @@ class FullStackIntegrationTest {
 
     @Test
     fun a_future_start_event_uploads_nothing_and_reads_not_started() = rigTest {
+        extensionUploadsOnly()
         // THE THEOREM the whole design rests on (capability `photo-sharing`).
         //
         // Nothing syncs before the event starts — and NOT because a gate refuses. There is no gate. The join-time
@@ -43,6 +44,7 @@ class FullStackIntegrationTest {
 
     @Test
     fun the_same_event_uploads_normally_once_its_start_is_in_the_past() = rigTest {
+        extensionUploadsOnly()
         // The mirror of the theorem: with the start in the past the floor binds nothing, and the very same stack
         // uploads exactly as it did before start dates existed.
         createAndJoin()
@@ -59,6 +61,7 @@ class FullStackIntegrationTest {
 
     @Test
     fun the_counts_line_tracks_what_was_shared_and_received() = rigTest {
+        extensionUploadsOnly()
         // Capability `sync-status`, "The joined screen counts what was shared and received": the same numbers the
         // arrows derive from, through the real stack — own photos out, the other members' photos in.
         createAndJoin()
@@ -92,6 +95,7 @@ class FullStackIntegrationTest {
 
     @Test
     fun upload_completion_advances_uistate_and_world_outcomes() = rigTest {
+        extensionUploadsOnly()
         createAndJoin()
         addPhoto("A")
         refresh()
@@ -188,12 +192,15 @@ class FullStackIntegrationTest {
         // N counts the selection: two to upload. Awaiting it also sequences the cycle below.
         awaitHealth { it is SyncHealth.Syncing }
 
-        uploadAll()
+        // Under a partial grant only the app's uploader creates (the extension withholds by its own admission): its
+        // transfers are created from the selection change's tail, and the operating system lands them.
+        awaitAppUploads(2)
+        completeAppUploads()
 
         val landed = objects()
         assertTrue(primaryKey("A") in landed && primaryKey("B") in landed, "$landed")
         assertTrue(primaryKey("UNSELECTED") !in landed, "the unselected photo never entered the pipeline")
-        assertEquals(2, jobs().created)
+        assertEquals(2, appUploads().created)
 
         refresh()
         val settled = awaitState { it.health == SyncHealth.InSync }.joined!!
@@ -213,11 +220,14 @@ class FullStackIntegrationTest {
         device("selection/change", "assets" to "OK,OLD,SHOT")
         awaitHealth { it is SyncHealth.Syncing }
 
-        uploadAll()
+        // Under a partial grant only the app's uploader creates (the extension withholds by its own admission): its
+        // transfers are created from the selection change's tail, and the operating system lands them.
+        awaitAppUploads(1)
+        completeAppUploads()
 
         val landed = objects()
         assertEquals(setOf(primaryKey("OK")), landed, "only the policy-admitted pick uploads")
-        assertEquals(1, jobs().created)
+        assertEquals(1, appUploads().created)
     }
 
     @Test
@@ -235,7 +245,10 @@ class FullStackIntegrationTest {
         device("selection/change", "assets" to "MINE,$imported")
         awaitHealth { it is SyncHealth.Syncing }
 
-        uploadAll()
+        // Under a partial grant only the app's uploader creates (the extension withholds by its own admission): its
+        // transfers are created from the selection change's tail, and the operating system lands them.
+        awaitAppUploads(1)
+        completeAppUploads()
 
         // The foreign import never re-uploaded under this device's id.
         assertEquals(setOf(primaryKey("MINE")), objects())
@@ -243,6 +256,7 @@ class FullStackIntegrationTest {
 
     @Test
     fun upload_completeness_is_ledger_local_and_backend_independent() = rigTest {
+        extensionUploadsOnly()
         createAndJoin()
         addPhoto("A")
         uploadAll()
@@ -261,6 +275,7 @@ class FullStackIntegrationTest {
 
     @Test
     fun leaving_as_the_last_member_returns_to_the_setup_gate_and_keeps_the_event() = rigTest {
+        extensionUploadsOnly()
         val event = createAndJoin()
         addPhoto("A")
         uploadAll()
@@ -285,6 +300,7 @@ class FullStackIntegrationTest {
 
     @Test
     fun upload_only_uploads_own_but_imports_no_foreign() = rigTest {
+        extensionUploadsOnly()
         createAndJoin("direction" to "upload")
         addPhoto("A")
         foreignDevice("DEV-F", "FQ")
@@ -305,6 +321,7 @@ class FullStackIntegrationTest {
 
     @Test
     fun download_only_imports_foreign_and_reads_in_sync_through_a_zero_total() = rigTest {
+        extensionUploadsOnly()
         createAndJoin("direction" to "download")
         addPhoto("A") // an un-uploaded own photo remains in the library
         foreignDevice("DEV-F", "FQ")
@@ -325,6 +342,7 @@ class FullStackIntegrationTest {
 
     @Test
     fun download_only_uploads_nothing_when_the_cycle_actually_runs() = rigTest {
+        extensionUploadsOnly()
         // THE PRIVACY INVARIANT (capability `background-upload`). The join gate promises "Only receive the event's
         // photos — you won't share yours". On the app-driven tier the APP invokes the cycle — foreground entry, the
         // heartbeat, a silent push — and every one of those reaches exactly this call.

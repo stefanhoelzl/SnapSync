@@ -28,7 +28,7 @@ import app.cash.sqldelight.db.SqlSchema
  * - a database that exists but cannot be opened (locked, unreadable, not a database) is [DbOpen.Failed] on
  *   **both** paths, never [DbOpen.Missing].
  */
-fun interface Databases {
+fun interface Databases : Port {
 
     fun open(name: String, schema: SqlSchema<QueryResult.Value<Unit>>, readOnly: Boolean): DbOpen
 }

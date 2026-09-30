@@ -1,8 +1,6 @@
 package app.snapsync.compose
 
-import app.snapsync.feature.upload.TailTrigger
 import app.snapsync.model.WakeId
-import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.Completion
 import app.snapsync.ports.WakeHandlers
 import app.snapsync.model.invocation
@@ -22,10 +20,10 @@ internal fun wakeHandlersOf(core: AppCore): WakeHandlers =
     WakeHandlers(onWake = { id, completion -> core.onWake(id, completion) })
 
 private fun AppCore.onWake(id: WakeId, completion: Completion) =
-    ports.log.invocation(process.entryContext, "onWake", params = "id=$id") { runWake(id, completion) }
+    services.log.invocation(process.entryContext, "onWake", params = "id=$id") { runWake(id, completion) }
 
 private fun AppCore.runWake(id: WakeId, completion: Completion) {
-    val completions = OsCompletions("onWake($id)", log = ports.log)
+    val completions = OsCompletions("onWake($id)", log = services.log)
     val handover = completions.adopt(completion)
     // Registered before the launch, so an expiry the operating system fires before the coroutine first runs is not
     // lost: a registration after the expiry runs at once (the port's promise).
@@ -36,7 +34,7 @@ private fun AppCore.runWake(id: WakeId, completion: Completion) {
     }
     scope.launch {
         completions.releaseAfter {
-            ports.log.invocation(process.entryContext, "runWake", params = "id=$id") {
+            services.log.invocation(process.entryContext, "runWake", params = "id=$id") {
                 prelude()
                 // A wake whose time is already up requests no tail: a stop while none runs is a no-op. A tail that
                 // fails is contained — the completion is still released, and the next wake retries.

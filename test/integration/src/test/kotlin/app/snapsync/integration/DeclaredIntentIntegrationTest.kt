@@ -25,6 +25,7 @@ class DeclaredIntentIntegrationTest {
 
     @Test
     fun a_live_photo_is_declared_whole_and_stays_hidden_until_it_is_whole() = rigTest {
+        extensionUploadsOnly()
         val event = createAndJoin()
         addPhoto("LIVE", kind = "live-photo")
 
@@ -67,6 +68,7 @@ class DeclaredIntentIntegrationTest {
 
     @Test
     fun a_discovered_asset_is_declared_before_any_byte_moves() = rigTest {
+        extensionUploadsOnly()
         val event = createAndJoin()
         addPhoto("A")
 

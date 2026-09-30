@@ -15,9 +15,9 @@ import app.snapsync.services.backend.DeviceFilesSource
  * A top-level factory rather than an `AppCore` body because `AppCore` is measured: the `compose` tier's
  * `LargeClass` ceiling is what keeps that class from absorbing every composition in the graph.
  */
-internal fun shareSetLoadFor(ports: AppPorts, files: DeviceFilesSource): ShareSetLoad = ShareSetLoad(
+internal fun shareSetLoadFor(services: AppServices, files: DeviceFilesSource): ShareSetLoad = ShareSetLoad(
     files = files,
-    ledger = ports.uploadRecord.ledger,
-    identity = ports.deviceIdentity,
-    log = ports.log,
+    ledger = services.ledger,
+    identity = services.deviceIdentity,
+    log = services.log,
 )

@@ -32,8 +32,8 @@ import kotlinx.coroutines.newSingleThreadContext
  * The **full-stack world harness** (`:app:desktop:run`, `docs/testing.md`): the real
  * `StatusScreen` in a phone frame on the left — rendering exactly what the app the JVM root composed showed on its
  * screen, never forged — and a **world inspector** on the right that plays the device's mocks through a single
- * [WorldInspectorController]. The operator plays the OS: nothing auto-runs; **Invoke extension** runs one
- * `process()`-shaped cycle by hand.
+ * [WorldInspectorController]. The operator plays the OS: **Invoke extension** runs one `process()`-shaped cycle by
+ * hand, and the app's own uploader — which runs as on a phone — waits for the operator to land its transfers.
  *
  * It is where every UI state is reviewed without a device: each is reachable through the inspector's levers — the
  * screens the app shows only while it waits by holding what it waits on — and none is forged. Thin wiring + Compose

@@ -12,7 +12,7 @@ import kotlinx.coroutines.launch
  */
 internal fun AppCore.reconfigureEventFor(): ReconfigureEvent =
     ReconfigureEvent(
-        configSource = ports.config,
+        configSource = services.config,
         refreshStatus = { refreshStatusSources() },
         armUpload = { uploadTransitions.onReconfigure() },
         ensureAlbum = { cfg ->
@@ -31,5 +31,5 @@ internal fun AppCore.reconfigureEventFor(): ReconfigureEvent =
         cancelDownloads = { downloadController.onLeaveOrSwitch() },
         // The policy bounds are a manifest projection input that lives outside the ledger (capability
         // `manage-membership`); the use-case calls this after its config save has landed.
-        bumpManifestVersion = { ports.uploadRecord.ledger.bumpManifestVersion() },
+        bumpManifestVersion = { services.ledger.bumpManifestVersion() },
     )

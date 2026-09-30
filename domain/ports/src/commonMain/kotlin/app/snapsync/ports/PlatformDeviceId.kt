@@ -9,6 +9,6 @@ package app.snapsync.ports
  * Its promises are the port contract `PlatformDeviceIdContract`: an offered id is stable and has the device-id shape,
  * bound live on the Android emulator; no id is `null`, bound on the JVM.
  */
-fun interface PlatformDeviceId {
+fun interface PlatformDeviceId : Port {
     fun stableId(): String?
 }

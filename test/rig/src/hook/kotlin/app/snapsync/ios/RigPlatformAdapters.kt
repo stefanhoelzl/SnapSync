@@ -78,7 +78,6 @@ internal fun platformAdapters(real: DevicePorts): PlatformAdapters {
         ui = lazyOf(launch.ui),
         ports = launch.ports,
         launch = launch::launch,
-        appDrivenUpload = launch::appDrivenUpload,
         bootLines = launch.bootLines,
     )
 }

@@ -13,12 +13,12 @@ import app.snapsync.services.version.AppVersionGate
  *
  * A top-level factory rather than an `AppCore` body because `AppCore` is measured (see [shareSetLoadFor]).
  */
-internal fun attestationFor(ports: AppPorts, clock: Clock, versionGate: AppVersionGate): DeviceAttestation =
+internal fun attestationFor(services: AppServices, clock: Clock, versionGate: AppVersionGate): DeviceAttestation =
     DeviceAttestation(
-        integrity = ports.integrity,
-        backend = ports.backend,
-        store = ports.attestStore,
-        identity = ports.deviceIdentity,
+        integrity = services.ports.integrity,
+        backend = services.ports.backend,
+        store = services.attestStore,
+        identity = services.deviceIdentity,
         clock = clock,
         versionGate = versionGate,
     )
@@ -28,8 +28,8 @@ internal fun attestationFor(ports: AppPorts, clock: Clock, versionGate: AppVersi
  * token is dropped, a new one obtained, and the call retried once — and whose verdicts reach [versionGate].
  */
 internal fun backendServicesFor(
-    ports: AppPorts,
+    services: AppServices,
     attestation: DeviceAttestation,
     versionGate: AppVersionGate,
 ): BackendServices =
-    BackendServices(CredentialedBackend(ports.backend, attestation, versionGate), ports.deviceIdentity)
+    BackendServices(CredentialedBackend(services.ports.backend, attestation, versionGate), services.deviceIdentity)

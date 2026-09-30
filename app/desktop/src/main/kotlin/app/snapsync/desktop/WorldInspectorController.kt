@@ -35,7 +35,6 @@ import app.snapsync.ports.Completion
 import app.snapsync.services.config.CONFIG_FILE_NAME
 import app.snapsync.services.gallery.GalleryAlbums
 import app.snapsync.services.gallery.GalleryCandidateSource
-import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.StateFlow
@@ -199,6 +198,9 @@ class WorldInspectorController(private val scope: CoroutineScope) {
 
     fun failJob(key: String, error: UploadError) = launchMutation { mocks.uploadQueue.operator.failJob(key, error) }
 
+    /** The OS lands one of the app uploader's transfers — its end reported to the app as it happens. */
+    fun completeAppUpload(key: String) = launchMutation { mocks.uploadSession.operator.complete(key) }
+
     fun setJobLimit(limit: Int) = launchMutation { mocks.uploadQueue.operator.jobLimit = limit.coerceAtLeast(0) }
 
     // ---- downloads -------------------------------------------------------------------------------
@@ -299,12 +301,11 @@ class WorldInspectorController(private val scope: CoroutineScope) {
     /** A fresh app over a fresh device, as the JVM root composes it. */
     private fun compose(): JvmApp<JvmMocks> {
         val build = JvmBuild(
-            host = BACKEND_BASE,
-            appVersion = DeclaredVersion(APP_VERSION),
+            uploadHost = BACKEND_BASE,
+            declaredVersion = DeclaredVersion(APP_VERSION),
             dsn = DSN,
             appStoreUrl = APP_STORE_URL,
             apnsEnvironment = "sandbox",
-            log = Logger.withTag("desktop"),
         )
         return JvmApp(scope, JvmMocks()) { device -> device.adapters(build, attests = true) }
     }
@@ -421,12 +422,15 @@ class WorldInspectorController(private val scope: CoroutineScope) {
         }
         val queue = mocks.uploadQueue.operator
         val jobs = queue.liveJobKeys().map { key -> JobRow(key, attempts = queue.created.count { it.filename == key }) }
+        val session = mocks.uploadSession.operator
+        val appUploads = session.liveKeys().map { key -> JobRow(key, attempts = session.created.count { it == key }) }
         val downloads = mocks.downloads.operator.inFlight().map { DownloadRow(url = it.url, description = it.description) }
         return InspectorSnapshot(
             joinedEventId = joined?.eventId,
             galleryRows = galleryRows,
             backend = backend,
             jobs = jobs,
+            appUploads = appUploads,
             downloads = downloads,
             jobLimit = queue.jobLimit,
             backendOffline = mocks.backend.operator.offline,
@@ -467,6 +471,8 @@ data class InspectorSnapshot(
     val galleryRows: List<GalleryRow>,
     val backend: List<DeviceObjects>,
     val jobs: List<JobRow>,
+    /** The app uploader's transfers in flight, on its background session. */
+    val appUploads: List<JobRow>,
     val downloads: List<DownloadRow>,
     val jobLimit: Int,
     val backendOffline: Boolean,
@@ -476,7 +482,9 @@ data class InspectorSnapshot(
 ) {
     companion object {
         val EMPTY =
-            InspectorSnapshot(null, emptyList(), emptyList(), emptyList(), emptyList(), Int.MAX_VALUE, false, false, emptySet())
+            InspectorSnapshot(
+                null, emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), Int.MAX_VALUE, false, false, emptySet(),
+            )
     }
 }
 

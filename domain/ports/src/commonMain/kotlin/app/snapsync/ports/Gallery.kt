@@ -38,7 +38,7 @@ import app.snapsync.model.WriteOutcome
  * Every read hops off the caller's lane itself: each platform call is a synchronous round-trip into the photo
  * service, which no timeout can abandon.
  */
-interface GalleryReader {
+interface GalleryReader : Port {
 
     /** The grant as the platform reports it right now. Cheap, synchronous, and never raises a dialog. */
     fun access(): GalleryAccess
@@ -124,7 +124,7 @@ class GalleryHandlers(
  * Rebuilding one foreign asset in the gallery (capability `receiving-photos`) — the one [Gallery] member the
  * download feature needs, on its own so the feature names nothing else of the app's gallery.
  */
-interface GalleryImport {
+interface GalleryImport : Port {
     /**
      * Create one asset from [request]'s staged resources in one platform transaction. The placeholder and the
      * outcome reach the registered [GalleryHandlers] (`onImportPlaceholder` inside the change, `onImportSettled` on
@@ -166,7 +166,7 @@ interface Gallery : GalleryReader, LibraryChangeTokenRead, GalleryImport, Listen
 /**
  * The one [Gallery] member the walk memo needs, on its own so the memo names nothing else of the app's gallery.
  */
-interface LibraryChangeTokenRead {
+interface LibraryChangeTokenRead : Port {
     /**
      * The library's change token now, or `null` when the platform gave none — which a caller treats as "cannot
      * tell", never as "unchanged". Read **before** the walk it is stored with, so a change landing while the walk

@@ -24,6 +24,7 @@ class ManifestVersionIntegrationTest {
 
     @Test
     fun a_cycle_that_changed_the_ledger_is_followed_by_one_republish_and_then_skips() = rigTest {
+        extensionUploadsOnly()
         // The cost of reading the version first: a cycle's own writes (recording what its walk found) advance
         // the counter after the read, so the next cycle's version no longer matches the skip record and it
         // republishes the unchanged snapshot once. Pinned so the cost stays visible and bounded.

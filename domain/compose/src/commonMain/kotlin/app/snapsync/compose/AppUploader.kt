@@ -4,26 +4,10 @@ import app.snapsync.feature.upload.AppUploadMechanism
 import app.snapsync.feature.upload.UploadCycle
 import app.snapsync.feature.upload.WalkOutcome
 import app.snapsync.model.CycleResult
-import app.snapsync.services.config.ConfigService
 import app.snapsync.ports.PhotoGrantRead
 import app.snapsync.model.invocation
 import app.snapsync.services.gallery.GalleryAlbums
 import app.snapsync.services.gallery.GalleryDiscovery
-
-/**
- * What the app's uploader needs that the core it serves does not hold: the root's own reads and constants.
- *
- * The three-state [config] read, never the core's `ConfigSource` — that port *"cannot express unreadable"*, and this
- * tier once read it anyway: a failed read arrived as `null`, and a device that never left was treated as one that had
- * (capability `join-event`). [grant] is the platform's live grant read — what the walk memo keys on. [host] and
- * [appVersion] are constants of the running build.
- */
-class AppUploaderPorts(
-    val config: ConfigService,
-    val grant: PhotoGrantRead,
-    val host: String,
-    val appVersion: String,
-)
 
 /**
  * **The app's uploader** (capability `background-upload`): the app-driven tier on every iOS version — the core tail's
@@ -33,18 +17,25 @@ class AppUploaderPorts(
  * object, never a loss (decision record `changes/both-uploaders-active`).
  *
  * It was `:app:ios`'s `UrlSessionUploadController` until phase 11f: the root forwarded the core's reads into it and it
- * wired the cycle. Composed here, it reads [core] directly, and the root supplies only what [AppUploaderPorts] names.
- * It holds no trigger, no OS completion handler and no heartbeat — those are the core's.
+ * wired the cycle. Composed here, it reads [core] directly — its services, its ports and the build's constants — and
+ * no root supplies anything for it. It holds no trigger, no OS completion handler and no heartbeat — those are the
+ * core's.
  */
-fun appUploader(core: AppCore, ports: AppUploaderPorts): AppUploadMechanism = ComposedAppUploader(core, ports)
+internal fun appUploader(core: AppCore): AppUploadMechanism = ComposedAppUploader(core)
 
-private class ComposedAppUploader(
-    private val core: AppCore,
-    private val uploader: AppUploaderPorts,
-) : AppUploadMechanism {
+private class ComposedAppUploader(private val core: AppCore) : AppUploadMechanism {
 
-    private val app get() = core.ports
+    private val app get() = core.services
+    private val ports get() = core.ports
+    private val build get() = core.ports.process.build
     private val log get() = app.log
+
+    /**
+     * The platform's live grant read — what the walk memo keys on, and what the denylisted-album lookup asks. Read
+     * through the gallery port rather than the core's permission cell, which follows the platform rather than leading
+     * it.
+     */
+    private val grant = PhotoGrantRead { core.ports.gallery.access() }
 
     /**
      * The cycle — assembled by the SHARED composition `uploadCore` (`docs/architecture.md`, "One shared composition"):
@@ -53,28 +44,28 @@ private class ComposedAppUploader(
      * ≥26.1 extension and the world harness run. Long-lived: each unit re-reads the membership.
      */
     private val cycle: UploadCycle by lazy {
-        uploadCore(
-            core.scope,
+        uploadCycle(
             core.process,
-            UploadPorts(
-                appVersion = uploader.appVersion,
+            UploadServices(
+                appVersion = build.appVersion,
                 process = UploaderProcess.App(
                     core.appUploadAdmission,
-                    PhotoGrantRead { app.photoAccess.permission.value },
+                    PhotoGrantRead { ports.photoAccess.permission.value },
                 ),
-                config = uploader.config,
+                // The THREE-state membership read, never the core's StateFlow (capability `join-event`).
+                config = app.config,
                 // Resolved per probe/use, never held: an unresolvable Keychain id must skip the cycle cleanly.
                 deviceIdentity = app.deviceIdentity,
-                host = uploader.host,
-                ledger = app.uploadRecord.ledger,
-                upload = app.appUpload,
-                gallery = app.gallery,
+                host = build.uploadHost,
+                ledger = app.ledger,
+                upload = ports.appUpload,
+                gallery = ports.gallery,
                 // The walk memo is the app uploader's alone (capability `photo-sharing`, "An unchanged library is
                 // answered from the walk memo"); the extension walks bare.
                 discovery = appUploadDiscovery(
-                    walk = GalleryDiscovery(app.gallery),
-                    changeToken = app.gallery,
-                    grant = uploader.grant,
+                    walk = GalleryDiscovery(ports.gallery),
+                    changeToken = ports.gallery,
+                    grant = grant,
                     log = log,
                 ),
                 selectionScope = core::selectionScope,
@@ -84,7 +75,7 @@ private class ComposedAppUploader(
                 suppression = app.downloadStore,
                 // Denylisted-album membership, scoped by the cutoff — the SAME admit-on-doubt answer the own-device
                 // status total gets, so the two consumers of the policy cannot diverge.
-                albumManager = GalleryAlbums(app.gallery),
+                albumManager = GalleryAlbums(ports.gallery),
                 albumLookupFailure = AlbumLookupFailure.AdmitOnDoubt,
                 albumCoordinator = core.albumCoordinator,
                 token = { core.attestation.token() },

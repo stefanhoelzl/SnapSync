@@ -18,6 +18,7 @@ class ReconfigureIntegrationTest {
 
     @Test
     fun enabling_share_on_a_download_only_membership_starts_uploading_in_place() = rigTest {
+        extensionUploadsOnly()
         val event = createAndJoin("direction" to "download")
         addPhoto("A")
 
@@ -40,6 +41,7 @@ class ReconfigureIntegrationTest {
 
     @Test
     fun turning_the_album_on_gathers_already_synced_photos_and_places_new_ones() = rigTest {
+        extensionUploadsOnly()
         // Every membership carries a name (capability `join-event`); it titles the album.
         createAndJoin("saveToAlbum" to "false", name = "Anna's Birthday")
         addPhoto("A")

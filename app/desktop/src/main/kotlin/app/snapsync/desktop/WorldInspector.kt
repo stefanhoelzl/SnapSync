@@ -162,6 +162,7 @@ fun WorldInspector(
                         OutlinedButton(onClick = { controller.failJob(job.key, UploadError.Unknown("forced")) }) { Text("Unk") }
                     }
                 }
+                AppUploads(controller, snap)
             },
             right = { Downloads(controller, snap) },
         )
@@ -227,6 +228,17 @@ fun WorldInspector(
 }
 
 /** The download session's in-flight transfers, and the three ways the operator lets them finish. */
+/** The app's own uploader, which runs too, over its background session: its transfers wait for the OS to land them. */
+@Composable
+private fun AppUploads(controller: WorldInspectorController, snap: InspectorSnapshot) {
+    Faint("app uploads")
+    if (snap.appUploads.isEmpty()) Faint("(no live transfers)")
+    snap.appUploads.forEach { upload ->
+        Text(upload.key + "  ·  attempt ${upload.attempts}", maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Button(onClick = { controller.completeAppUpload(upload.key) }) { Text("✓") }
+    }
+}
+
 @Composable
 private fun Downloads(controller: WorldInspectorController, snap: InspectorSnapshot) {
     Button(enabled = snap.downloads.isNotEmpty(), onClick = { controller.stageAllDownloads() }) { Text("Stage all pending") }

@@ -38,6 +38,7 @@ class NarrowedScopeIntegrationTest {
 
     @Test
     fun raising_the_cutoff_stops_uploading_the_rows_the_wider_one_recorded() = rigTest {
+        extensionUploadsOnly()
         val event = createAndJoin()
         addPhoto("EARLY", date = early)
         addPhoto("LATE", date = late)
@@ -69,6 +70,7 @@ class NarrowedScopeIntegrationTest {
 
     @Test
     fun excluded_rows_do_not_starve_admitted_work() = rigTest {
+        extensionUploadsOnly()
         // The one way to make this worse than the bug: admit AFTER a bounded read. Rows needing a job come back in
         // a stable key order, so an excluded backlog at the front would fill a bounded read on every cycle and the
         // admitted row further down would never be reached — a permanent, silent stall.
@@ -95,6 +97,7 @@ class NarrowedScopeIntegrationTest {
 
     @Test
     fun after_a_narrowing_the_manifest_and_the_uploaded_set_are_the_same_set() = rigTest {
+        extensionUploadsOnly()
         // Not "each is individually correct" — the SAME set. One policy gates both, so a narrowing that reached one
         // consumer and not the other is the defect, whatever each looks like alone.
         val event = createAndJoin()

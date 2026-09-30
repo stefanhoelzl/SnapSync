@@ -3,7 +3,6 @@ package app.snapsync.jvm
 import app.snapsync.http.HttpBackend
 import app.snapsync.mock.DeclaredVersion
 import app.snapsync.mock.MockDevice
-import app.snapsync.mock.OperatorDrivenUploads
 import app.snapsync.mock.UploadNetwork
 import app.snapsync.model.ApnsPushToken
 import app.snapsync.model.CreateEventRequest
@@ -18,6 +17,7 @@ import app.snapsync.model.RenewRequest
 import app.snapsync.model.Reply
 import app.snapsync.model.UnionAsset
 import app.snapsync.ports.Backend
+import app.snapsync.ports.LogSink
 import io.ktor.client.HttpClient
 
 /**
@@ -34,7 +34,12 @@ class JvmMocks(
      * One launch's adapters over these mocks. [attests] is whether the app process has App Attest (a simulator has
      * not); [backend] is the backend port — the mock's own face by default, or one reaching the real `api/`.
      */
-    fun adapters(build: JvmBuild, attests: Boolean, backend: Backend = this.backend.port(build.appVersion)): JvmAdapters =
+    fun adapters(
+        build: JvmBuild,
+        attests: Boolean,
+        backend: Backend = this.backend.port(build.declaredVersion),
+        logSinks: List<LogSink> = emptyList(),
+    ): JvmAdapters =
         JvmAdapters(
             build = build,
             device = JvmDevice(
@@ -48,6 +53,7 @@ class JvmMocks(
                 secureStore = keychain.port(),
                 integrity = enclave.port(available = attests),
                 processInfo = processInfo.port(),
+                logSinks = logSinks,
             ),
             entries = JvmEntries(
                 lifecycle = lifecycle.port(),
@@ -69,7 +75,6 @@ class JvmMocks(
                 cycleUpload = uploadQueue.port(),
                 download = downloads.port(),
                 systemUi = systemUi.port(),
-                appDrivenUpload = OperatorDrivenUploads,
             ),
         )
 

@@ -17,6 +17,7 @@ class RelaunchIntegrationTest {
 
     @Test
     fun the_upload_ledger_survives_so_a_relaunched_app_uploads_nothing_twice() = rigTest {
+        extensionUploadsOnly()
         createAndJoin()
         addPhoto("A")
         uploadAll()

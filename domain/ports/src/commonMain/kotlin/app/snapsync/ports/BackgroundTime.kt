@@ -18,7 +18,7 @@ package app.snapsync.ports
  * App process only. The upload extension has no such signal to offer — measured, its only end is a hard kill
  * (capability `background-upload`) — so this port is not bound in, linked into or faked for its composition.
  */
-interface BackgroundTime {
+interface BackgroundTime : Port {
 
     /**
      * Begin a hold, labelled [label] for the diagnostic line, and return it.

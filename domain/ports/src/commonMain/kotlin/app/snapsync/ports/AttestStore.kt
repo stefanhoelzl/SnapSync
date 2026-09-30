@@ -8,7 +8,7 @@ package app.snapsync.ports
  * Binding note: on iOS both are [SecureStore] items in the **shared Keychain access group**, the same
  * one holding the device id.
  */
-interface AttestStore {
+interface AttestStore : Port {
 
     /**
      * The current token, or null if none was ever stored. MAY be expired — the reader decides.

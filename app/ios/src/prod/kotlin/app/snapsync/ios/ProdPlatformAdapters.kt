@@ -13,6 +13,5 @@ internal fun platformAdapters(real: DevicePorts): PlatformAdapters = PlatformAda
     ui = real.lazies.ui,
     ports = real,
     launch = { compose -> compose() },
-    appDrivenUpload = { build -> build() },
     bootLines = emptyList(),
 )

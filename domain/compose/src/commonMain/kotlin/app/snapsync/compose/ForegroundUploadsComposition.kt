@@ -16,9 +16,10 @@ import app.snapsync.services.backend.DeviceFilesSource
  * A top-level factory rather than an `AppCore` body for the same reason as `shareSetLoadFor`: `AppCore` is measured
  * by the `compose` tier's `LargeClass` ceiling.
  */
-internal fun storedUploadSettleFor(ports: AppPorts, files: DeviceFilesSource): StoredUploadSettle = StoredUploadSettle(
-    files = files,
-    ledger = ports.uploadRecord.ledger,
-    identity = ports.deviceIdentity,
-    log = ports.log,
-)
+internal fun storedUploadSettleFor(services: AppServices, files: DeviceFilesSource): StoredUploadSettle =
+    StoredUploadSettle(
+        files = files,
+        ledger = services.ledger,
+        identity = services.deviceIdentity,
+        log = services.log,
+    )

@@ -20,6 +20,7 @@ import app.snapsync.model.userActivityParams
 import app.snapsync.ports.LinkHandlers
 import app.snapsync.ports.UiHandlers
 import app.snapsync.model.invocation
+import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -36,6 +37,11 @@ import kotlinx.coroutines.launch
  */
 class ComposedApp internal constructor(
     val core: AppCore,
+    /**
+     * What the process set up as the composition's first act — its crash reporting, its metrics handler, its log
+     * writers. Exposed for the control channel, which drives a synthetic process-metric report through THIS instance.
+     */
+    val process: ProcessServices,
     /** The one cutoff formatter the status host and the screen rendering it share. */
     val cutoffFormatter: CutoffFormatter,
     private val assembleHost: () -> StatusContainerHost,
@@ -65,7 +71,6 @@ class ComposedApp internal constructor(
  */
 fun snapSyncHost(
     scope: CoroutineScope,
-    process: ProcessServices,
     ports: AppPorts,
     /**
      * The one cutoff formatter of this process — built by the root, which read the device zone once, and handed to
@@ -73,7 +78,12 @@ fun snapSyncHost(
      */
     cutoffFormatter: CutoffFormatter,
 ): ComposedApp {
-    val core = snapSyncApp(scope, process, ports)
+    // The process first — inside `snapSyncApp`, before anything else in the graph can fail. A minted event routes into
+    // the host's join gate, so create and a scanned QR take one gate; the host is assembled by the time one is minted.
+    lateinit var composed: ComposedApp
+    val core = snapSyncApp(scope, ports, onEventMinted = { eventId -> composed.host.onEventCreated(eventId) })
+    val process = core.process
+    val log = process.logger("app")
     // The event ports' ONE registration each, on composition — a background wake's import needs its handlers as much
     // as a foreground launch does. `listen` only registers: the selection observer opens at host assembly below.
     ports.gallery.listen(core.galleryHandlers)
@@ -84,7 +94,7 @@ fun snapSyncHost(
     ports.download.listen(core.events.downloadHandlers)
     ports.appUpload.listen(core.events.uploadHandlers)
     core.installPushRegistration()
-    val composed = ComposedApp(core, cutoffFormatter) {
+    composed = ComposedApp(core, process, cutoffFormatter) {
         // Host assembly: the permission-grant collectors install ONLY from here (see [ComposedApp]).
         core.installPermissionSubscriptions()
         val host = StatusContainerHost(
@@ -99,18 +109,19 @@ fun snapSyncHost(
             // Where a bug report goes on this build — the sheet says it (capability `privacy-security`).
             reportDestination = process.reportDestination,
             diagnostics = StatusDiagnostics(
-                log = { message -> ports.log.i { message } },
+                log = { message -> log.i { message } },
                 // `Error`: the threshold at which a Kermit line becomes a crash-reporting event rather than a
                 // breadcrumb (capability `privacy-security`) — a command that failed outright is exactly what
                 // should reach the operator.
-                onIntentError = { throwable -> ports.log.e(throwable) { "user command failed" } },
+                onIntentError = { throwable -> log.e(throwable) { "user command failed" } },
             ),
         )
-        // The platform's UI is shown every state the host reduces, from assembly on, on the UI lane.
-        scope.launch(ports.uiLane) { host.container.stateFlow.collect(ports.ui::show) }
+        // The platform's UI is shown every state the host reduces, from assembly on. `show` only hands the state over:
+        // the adapter renders it on its own main thread.
+        scope.launch { host.container.stateFlow.collect(ports.ui::show) }
         host
     }
-    listenToEntries(composed, process, ports)
+    listenToEntries(composed, process, ports, log)
     // Asked at every launch, a background one included (capability `receiving-photos`, "Registration timing"): the
     // answer arrives through the push handlers just registered, and asking is how a rotated token is learned.
     ports.pushNotifications.register()
@@ -124,7 +135,7 @@ fun snapSyncHost(
  * `Links.onLink` and `Ui.onLive`. Nothing else assembles it: a push token, a silent push, a scheduled or transfer wake
  * builds no host (a cold background start installs no permission-grant subscription).
  */
-private fun listenToEntries(composed: ComposedApp, process: ProcessServices, ports: AppPorts) {
+private fun listenToEntries(composed: ComposedApp, process: ProcessServices, ports: AppPorts, log: Logger) {
     val core = composed.core
     ports.lifecycle.listen(lifecycleHandlers(core, assembleHost = { composed.host }))
     ports.pushNotifications.listen(pushHandlers(core))
@@ -134,7 +145,7 @@ private fun listenToEntries(composed: ComposedApp, process: ProcessServices, por
             onLink = { delivery ->
                 // Host-first: a link is a person opening the app, whatever the delivery turns out to be.
                 val host = composed.host
-                onLink(delivery, process, ports) { url -> host.onOpenUrl(url) }
+                onLink(delivery, process, log) { url -> host.onOpenUrl(url) }
             },
         ),
     )
@@ -153,15 +164,15 @@ private fun listenToEntries(composed: ComposedApp, process: ProcessServices, por
  * join gate on it, fragment intact; every other delivery is logged by its outcome, so "we were called" stays
  * distinguishable from "we were never called".
  */
-private fun onLink(delivery: LinkDelivery, process: ProcessServices, ports: AppPorts, open: (String) -> Unit) {
-    ports.log.invocation(
+private fun onLink(delivery: LinkDelivery, process: ProcessServices, log: Logger, open: (String) -> Unit) {
+    log.invocation(
         process.entryContext,
         delivery.hook,
         params = userActivityParams(delivery.activityType, delivery.url),
         result = { outcome: EventLinkDelivery -> outcome.summary },
     ) {
         forwardEventLink(delivery.isWebLink, delivery.activityType, delivery.url) { url ->
-            ports.log.invocation(process.entryContext, "onOpenUrl", params = "url=$url") { open(url) }
+            log.invocation(process.entryContext, "onOpenUrl", params = "url=$url") { open(url) }
         }
     }
 }
@@ -180,5 +191,5 @@ private fun statusSourcesOf(core: AppCore, ports: AppPorts): StatusSources = Sta
     attested = core.attested,
     pending = MutablePendingJoinSource(),
     versionRefusal = core.versionRefusal,
-    appStoreUrl = ports.appStoreUrl,
+    appStoreUrl = ports.process.build.appStoreUrl,
 )

@@ -6,6 +6,7 @@ import app.snapsync.compose.ProcessPorts
 import app.snapsync.compose.snapSyncProcess
 import app.snapsync.mock.inMemoryCrashReporter
 import app.snapsync.mock.inMemoryFiles
+import app.snapsync.mock.fixedBuildInfo
 import app.snapsync.mock.fixedClock
 import app.snapsync.model.CrashEvent
 import app.snapsync.model.DiagnosticDump
@@ -57,9 +58,7 @@ class ProcessCompositionTest {
         files = inMemoryFiles(private = privateFiles),
         clock = fixedClock(kotlin.time.Instant.fromEpochSeconds(0)),
         entryContext = NoEntryContext,
-        dsn = dsn,
-        bootLines = emptyList(),
-        ownsGlobalLogger = false,
+        build = fixedBuildInfo(dsn = dsn),
     )
 
     private fun dump() = DiagnosticDump("stuck on $id", mapOf("screen" to "Joined"), emptyMap(), "app\n", "ext\n")

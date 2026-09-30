@@ -14,6 +14,7 @@ import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.Lifecycle
 import app.snapsync.ports.Links
 import app.snapsync.ports.PhotoAccessStatusSource
+import app.snapsync.ports.PlatformDeviceId
 import app.snapsync.ports.Preferences
 import app.snapsync.ports.ProcessInfo
 import app.snapsync.ports.PushNotifications
@@ -40,6 +41,8 @@ class DevicePorts(
     databases: Lazy<Databases> = absent("databases"),
     preferences: Lazy<Preferences> = absent("preferences"),
     secureStore: Lazy<SecureStore> = absent("secureStore"),
+    /** The platform's own stable device id, where it has one (none on iOS). */
+    platformDeviceId: Lazy<PlatformDeviceId> = absent("platformDeviceId"),
     integrity: Lazy<DeviceIntegrity> = absent("integrity"),
     processInfo: Lazy<ProcessInfo> = absent("processInfo"),
     backend: Lazy<Backend> = absent("backend"),
@@ -64,7 +67,8 @@ class DevicePorts(
 ) {
     /** The constructor's lazies, so an adapter choice can hand the real ones through untouched. */
     val lazies: Lazies = Lazies(
-        clock, crashReporter, files, databases, preferences, secureStore, integrity, processInfo, backend,
+        clock, crashReporter, files, databases, preferences, secureStore, platformDeviceId, integrity, processInfo,
+        backend,
         backgroundTime, wake, extensionRegistry, gallery, galleryReader, photoAccess, appUpload, cycleUpload, download,
         systemUi, lifecycle, links, pushNotifications, ui,
     )
@@ -75,6 +79,7 @@ class DevicePorts(
     val databases: Databases by databases
     val preferences: Preferences by preferences
     val secureStore: SecureStore by secureStore
+    val platformDeviceId: PlatformDeviceId by platformDeviceId
     val integrity: DeviceIntegrity by integrity
     val processInfo: ProcessInfo by processInfo
     val backend: Backend by backend
@@ -101,6 +106,7 @@ class DevicePorts(
         val databases: Lazy<Databases>,
         val preferences: Lazy<Preferences>,
         val secureStore: Lazy<SecureStore>,
+        val platformDeviceId: Lazy<PlatformDeviceId>,
         val integrity: Lazy<DeviceIntegrity>,
         val processInfo: Lazy<ProcessInfo>,
         val backend: Lazy<Backend>,

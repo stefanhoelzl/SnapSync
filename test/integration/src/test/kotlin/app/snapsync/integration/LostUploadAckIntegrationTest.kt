@@ -29,6 +29,7 @@ class LostUploadAckIntegrationTest {
 
     @Test
     fun a_completion_learned_by_a_dead_process_is_settled_and_never_re_uploaded() = rigTest {
+        extensionUploadsOnly()
         createAndJoin()
         addPhoto("A")
 
@@ -57,6 +58,7 @@ class LostUploadAckIntegrationTest {
 
     @Test
     fun a_platform_that_reports_within_the_cycle_settles_in_that_same_cycle_and_places_once() = rigTest {
+        extensionUploadsOnly()
         // The PhotoKit tier's shape: that tier has no callback outside the cycle — its adapter fetches the
         // finished jobs, records them settled and acknowledges in place. The album placement is not waiting for
         // that: it happened when the upload was first enqueued, so the completion adds nothing to the album and

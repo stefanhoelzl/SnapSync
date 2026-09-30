@@ -25,7 +25,7 @@ import app.snapsync.model.Handoff
  * Contracted by `SharePresenterContract` ([share]) and `LinkOpenerContract` ([openUrl]) in `:test:contracts` — two
  * contracts over this one port, named as they were recorded (`LinkOpener@IOS_DEVICE_APP.rec`).
  */
-interface SystemUi {
+interface SystemUi : Port {
     /** Present the platform's share surface carrying [text], and answer whether it appeared. */
     suspend fun share(text: String): Handoff
 

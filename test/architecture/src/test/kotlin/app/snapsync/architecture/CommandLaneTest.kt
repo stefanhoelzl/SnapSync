@@ -14,25 +14,26 @@ import kotlin.test.fail
  * (synchronous PhotoKit XPC behind a `suspend` signature is exactly that shape) then runs to completion
  * there. So the lane has to be declared where the command is built.
  *
- * Two lanes, three decorators, **no default**: `awaitingOnCoreLane` (the caller waits on the result),
- * `detachedOnCoreLane` (fire-and-forget, outcome on a read-model), `onUiLane` (presents platform UI and
- * must stay on the main thread). A command built through none of them does not compile — this gate
- * catches the other half, a command built through none of them *because it was written inline*.
+ * Three decorators, **no default**, all on the composition's lane: `awaitingOnCoreLane` (the caller waits on the
+ * result), `detachedOnCoreLane` (fire-and-forget, outcome on a read-model), `handedToPlatformUi` (hands something to
+ * the platform's UI — the adapter reaches the main thread itself; the composition names no main lane). A command
+ * built through none of them does not compile — this gate catches the other half, a command built through none of
+ * them *because it was written inline*.
  *
- * It also keeps the manually-verified surface small. The UI-lane commands cannot be exercised by any
+ * It also keeps the manually-verified surface small. The platform-UI commands cannot be exercised by any
  * automated test available to this project — they are fakes on desktop, and driving them on device needs
  * a signed WebDriverAgent — so "is the lane right?" has to be answerable by reading one file. This gate
  * guarantees the answer is in that file rather than emergent.
  */
 class CommandLaneTest {
 
-    private val decorators = listOf("awaitingOnCoreLane", "detachedOnCoreLane", "onUiLane")
+    private val decorators = listOf("awaitingOnCoreLane", "detachedOnCoreLane", "handedToPlatformUi")
 
     /**
      * The query bundle's ONE admissible decorator (law "Queries cross a lane-gated door"): a query returns a
      * value the caller waits for, and presents no platform UI, so it is awaited on the core lane — never
-     * detached (the caller would have no answer) and never on the UI lane (the reads are the blocking work
-     * the main lane must never see; the shareable count used to run there).
+     * detached (the caller would have no answer) and never handed to the platform's UI (the reads are the
+     * blocking work the main thread must never see; the shareable count used to run there).
      */
     private val queryDecorators = listOf("awaitingOnCoreLane")
 

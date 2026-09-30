@@ -15,7 +15,7 @@ import app.snapsync.model.Availability
  * Named for the need: iOS answers with `UIApplication.isProtectedDataAvailable`; an Android binding would ask
  * whether the user has unlocked since boot.
  */
-interface ProcessInfo {
+interface ProcessInfo : Port {
     /** Whether protected storage can be read right now. May hop to whatever thread the platform requires. */
     suspend fun protectedDataAvailable(): Availability
 }

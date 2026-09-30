@@ -61,6 +61,7 @@ class DiagnosticDumpIntegrationTest {
 
     @Test
     fun a_confirmed_dump_carries_both_logs_and_the_live_counts() = rigTest {
+        extensionUploadsOnly()
         createAndJoin()
         addPhoto("CAM")
         // The operator plays the OS: one cycle enqueues, the platform completes, the NEXT cycle

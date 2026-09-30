@@ -1,7 +1,6 @@
 package app.snapsync.ios
 
 import app.snapsync.compose.DevicePorts
-import app.snapsync.feature.upload.AppUploadMechanism
 import app.snapsync.ports.DevControls
 import app.snapsync.ports.Ui
 
@@ -24,8 +23,6 @@ internal class PlatformAdapters(
     val ports: DevicePorts,
     /** Compose the graph at launch — [compose] itself in production; nothing on a rig launch whose adapter choice was refused. */
     val launch: (compose: () -> Unit) -> Unit,
-    /** The app uploader's mechanism, given how to build the real one — the real one in production. */
-    val appDrivenUpload: (real: () -> AppUploadMechanism) -> AppUploadMechanism,
     /** What this build adds to the process's boot banner: nothing in production. */
     val bootLines: List<String>,
 )

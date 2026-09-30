@@ -18,6 +18,7 @@ class UploadCycleIntegrationTest {
 
     @Test
     fun process_starts_a_new_upload_and_asks_to_be_called_again() = rigTest {
+        extensionUploadsOnly()
         createAndJoin()
         addPhoto("A")
 
@@ -27,6 +28,7 @@ class UploadCycleIntegrationTest {
 
     @Test
     fun process_with_nothing_new_completes() = rigTest {
+        extensionUploadsOnly()
         createAndJoin()
         assertEquals("completed", cycle())
         assertEquals(0, jobs().created, "nothing is uploaded")
@@ -34,6 +36,7 @@ class UploadCycleIntegrationTest {
 
     @Test
     fun process_without_a_membership_declines() = rigTest {
+        extensionUploadsOnly()
         addPhoto("A")
         assertEquals("skipped", cycle())
         assertEquals(0, jobs().created, "nothing is uploaded")
@@ -43,6 +46,7 @@ class UploadCycleIntegrationTest {
 
     @Test
     fun a_revoked_grant_withholds_the_cycle_and_leaves_the_published_union_intact() = rigTest {
+        extensionUploadsOnly()
         createAndJoin()
         addPhoto("A")
         uploadAll()
@@ -58,6 +62,7 @@ class UploadCycleIntegrationTest {
 
     @Test
     fun a_restored_grant_resumes_where_it_left_off() = rigTest {
+        extensionUploadsOnly()
         createAndJoin()
         permission("DENIED")
         addPhoto("A")
@@ -75,6 +80,7 @@ class UploadCycleIntegrationTest {
      */
     @Test
     fun a_withheld_cycle_never_opens_the_download_store() = rigTest {
+        extensionUploadsOnly()
         createAndJoin()
         addPhoto("A")
         permission("DENIED")
@@ -91,6 +97,7 @@ class UploadCycleIntegrationTest {
     /** One cutoff drives BOTH the byte upload and the manifest projection. */
     @Test
     fun a_cutoff_keeps_a_pre_cutoff_photo_out_of_the_upload_and_the_union() = rigTest {
+        extensionUploadsOnly()
         createAndJoin("cutoff" to "2026-06-01T00:00:00Z")
         addPhoto("OLD", date = "2026-05-20T10:00:00Z")
         addPhoto("NEW", date = "2026-06-05T10:00:00Z")
@@ -106,6 +113,7 @@ class UploadCycleIntegrationTest {
 
     @Test
     fun a_failed_job_is_retried_once_in_place_then_re_created() = rigTest {
+        extensionUploadsOnly()
         createAndJoin()
         addPhoto("A")
         cycle()
@@ -125,6 +133,7 @@ class UploadCycleIntegrationTest {
 
     @Test
     fun an_unreadable_walk_retracts_nothing_and_the_next_readable_walk_retracts_the_deleted_photo() = rigTest {
+        extensionUploadsOnly()
         val event = createAndJoin()
         addPhoto("A")
         uploadAll()
@@ -147,6 +156,7 @@ class UploadCycleIntegrationTest {
      */
     @Test
     fun a_storage_reset_then_a_new_event_re_uploads_everything() = rigTest {
+        extensionUploadsOnly()
         val first = createAndJoin()
         addPhoto("A")
         uploadAll()
@@ -177,6 +187,7 @@ class UploadCycleIntegrationTest {
      */
     @Test
     fun a_wake_that_needs_no_store_opens_no_database_and_the_first_cycle_opens_the_ledger() = rigTest {
+        extensionUploadsOnly()
         createAndJoin()
         addPhoto("A")
         device("relaunch", "scene" to "false")

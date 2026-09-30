@@ -182,12 +182,21 @@ class UploadQueueOperator internal constructor(private val mock: UploadQueueMock
 }
 
 /**
- * The app uploader's background transfer session, as the operating system holds it: no jobs — the JVM compositions'
- * app uploader creates none — and its handlers are those of the process that registered last.
+ * The app uploader's background transfer session, as the operating system holds it — a `URLSession`'s shape: it sends a
+ * FILE, holds at most [LIVE_CAP] live transfers (`LIMIT_EXCEEDED` beyond), offers no free retry, and reports each
+ * transfer's end the moment it happens through its handlers ([UploadHandlers.onFinished]) rather than presenting it
+ * when asked. The transfers are the OS's, so they outlive a process: a relaunched app's handlers hear their ends.
+ *
+ * The operator plays the OS's network ([UploadSessionOperator.complete]): a transfer lands on [network] as the
+ * backend's byte route receives it, and its answer is reported to the process that registered last.
  */
-class UploadSessionMock {
+class UploadSessionMock(internal val network: UploadNetwork) {
+    internal class Transfer(val tag: String, val target: UploadTarget)
+
     internal var handlers: UploadHandlers? = null
     internal var handbacks = 0
+    internal val live = mutableListOf<Transfer>()
+    internal val created = mutableListOf<String>()
 
     fun port(): Upload = object : Upload {
         override val accepts: UploadSourceKind = UploadSourceKind.FILE
@@ -196,34 +205,93 @@ class UploadSessionMock {
             this@UploadSessionMock.handlers = handlers
         }
 
-        override suspend fun create(source: UploadSource, target: UploadTarget, tag: String): UploadCreateOutcome =
-            UploadCreateOutcome.FAILED
+        override suspend fun create(source: UploadSource, target: UploadTarget, tag: String): UploadCreateOutcome {
+            if (source !is UploadSource.File) return UploadCreateOutcome.FAILED
+            if (live.size >= LIVE_CAP) return UploadCreateOutcome.LIMIT_EXCEEDED
+            live += Transfer(tag, target)
+            created += tag
+            return UploadCreateOutcome.CREATED
+        }
 
-        override suspend fun jobs(set: UploadJobSet): List<UploadJob> = emptyList()
+        /** Only in-flight transfers are known: a terminal one is reported as it ends, and none is offered a retry. */
+        override suspend fun jobs(set: UploadJobSet): List<UploadJob> = when (set) {
+            UploadJobSet.IN_FLIGHT -> live.map { it.view(UploadJobState.PENDING, null) }
+            UploadJobSet.RETRY_OFFERED, UploadJobSet.TERMINAL -> emptyList()
+        }
 
-        override suspend fun retry(job: UploadJob, target: UploadTarget): ChangeOutcome = ChangeOutcome.Applied
+        override suspend fun retry(job: UploadJob, target: UploadTarget): ChangeOutcome =
+            ChangeOutcome.Refused(null, "a transfer session has no free retry; a failure is re-created")
 
+        /** Nothing to acknowledge: a transfer's end is reported once, as it happens. */
         override suspend fun acknowledge(job: UploadJob): ChangeOutcome = ChangeOutcome.Applied
 
-        override suspend fun cancel(job: UploadJob): ChangeOutcome = ChangeOutcome.Applied
+        /** A cancelled transfer ends, and its end is reported like any other — as the platform's delegate does. */
+        override suspend fun cancel(job: UploadJob): ChangeOutcome {
+            val transfer = job.handle as? Transfer ?: return ChangeOutcome.Refused(null, "not this session's transfer")
+            if (live.remove(transfer)) handlers?.onFinished(transfer.view(UploadJobState.FAILED, UploadError.Cancelled))
+            return ChangeOutcome.Applied
+        }
     }
 
     val operator: UploadSessionOperator = UploadSessionOperator(this)
+
+    internal fun Transfer.view(state: UploadJobState, error: UploadError?) = UploadJob(
+        handle = this,
+        tag = tag,
+        destinationPath = destinationPathOf(target.url),
+        contentType = null,
+        state = state,
+        error = error,
+        source = null,
+    )
+
+    internal companion object {
+        /** The live transfers a session holds before `create` answers `LIMIT_EXCEEDED` — the iOS adapter's cap. */
+        const val LIVE_CAP = 4
+    }
 }
 
 class UploadSessionOperator internal constructor(private val mock: UploadSessionMock) {
     /** How many background-event handbacks reached the session. */
     val handbacks: Int get() = mock.handbacks
 
+    /** The tags (upload keys) of the transfers still in flight. */
+    fun liveKeys(): List<String> = mock.live.map { it.tag }
+
+    /** Every transfer created, in order, by its tag (a re-created failure shows as a repeated key). */
+    val created: List<String> get() = mock.created.toList()
+
     /**
-     * The operating system relaunches the app for this session's events, handing [completion]. Nothing is in flight, so
-     * the session has nothing to deliver: its drain report follows at once.
+     * The OS performs the live transfer tagged [key] over the network, and reports its end to the process that
+     * registered last — at once, as a running app's session delegate hears it.
+     */
+    suspend fun complete(key: String) {
+        val transfer = mock.live.firstOrNull { it.tag == key } ?: return
+        val status = mock.network.put(transfer.target.url, transfer.target.headers, TRANSFERRED_BYTES)
+        mock.live.remove(transfer)
+        val (state, error) = when {
+            status == null -> UploadJobState.FAILED to UploadError.Network
+            status in 200..299 -> UploadJobState.SUCCEEDED to null
+            else -> UploadJobState.FAILED to UploadError.Http(status)
+        }
+        val registered = checkNotNull(mock.handlers) { "no process listened to the upload session" }
+        with(mock) { registered.onFinished(transfer.view(state, error)) }
+    }
+
+    /**
+     * The operating system relaunches the app for this session's events, handing [completion]. The ends of transfers
+     * that landed while no process ran were reported as they happened, so the drain report follows at once.
      */
     fun handBack(completion: Completion) {
         val registered = checkNotNull(mock.handlers) { "no process listened to the upload session" }
         registered.onBackgroundEvents(completion)
         mock.handbacks++
         registered.onEventsDrained()
+    }
+
+    private companion object {
+        /** A minimal JPEG: the mocked photos carry no bytes, and no backend reads these back. */
+        val TRANSFERRED_BYTES = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xD9.toByte())
     }
 }
 

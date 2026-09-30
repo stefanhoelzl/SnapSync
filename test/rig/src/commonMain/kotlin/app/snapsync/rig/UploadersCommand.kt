@@ -5,7 +5,9 @@ import app.snapsync.model.UploaderPin
 import app.snapsync.model.extensionRegistrable
 
 fun uploadersCommand(
-    controls: RigDevControls,
+    /** The build's per-uploader switch — the channel's development controls, or the mocked ones on the JVM host. */
+    pin: () -> UploaderPin?,
+    setPin: (UploaderPin?) -> Unit,
     osSupportsOsDrivenUpload: () -> Boolean,
     permission: () -> GalleryAccess,
     reconcile: suspend () -> Unit,
@@ -19,8 +21,8 @@ fun uploadersCommand(
         app == Parsed.Invalid || extension == Parsed.Invalid ->
             CommandResult.badRequest("app and extension take on|off")
         else -> {
-            val previous = controls.pin ?: UploaderPin()
-            val pin = if (reset) {
+            val previous = pin() ?: UploaderPin()
+            val next = if (reset) {
                 null
             } else {
                 UploaderPin(
@@ -28,11 +30,11 @@ fun uploadersCommand(
                     extension = (extension as? Parsed.Value)?.on ?: previous.extension,
                 )
             }
-            controls.pin = pin
+            setPin(next)
             reconcile()
-            val registrable = extensionRegistrable(osSupportsOsDrivenUpload(), permission(), pin)
+            val registrable = extensionRegistrable(osSupportsOsDrivenUpload(), permission(), next)
             CommandResult.ok(
-                """{"app":${pin?.app ?: true},"extension":${pin?.extension ?: true},""" +
+                """{"app":${next?.app ?: true},"extension":${next?.extension ?: true},""" +
                     """"extensionRegistrable":$registrable,"permission":"${permission().name}",""" +
                     """"osSupportsOsDriven":${osSupportsOsDrivenUpload()}}""",
             )

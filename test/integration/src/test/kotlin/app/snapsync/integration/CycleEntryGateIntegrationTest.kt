@@ -35,6 +35,7 @@ class CycleEntryGateIntegrationTest {
 
     @Test
     fun an_unreadable_membership_leaves_the_ledger_untouched() = rigTest {
+        extensionUploadsOnly()
         // Weakened from "the ledger rows are byte-identical" (the ledger is internal) to its observable twins: the
         // device stays joined, nothing is uploaded and no job is created while unreadable — and once readable again,
         // the settled photo is NOT re-queued, which a cleared ledger would do.
@@ -64,6 +65,7 @@ class CycleEntryGateIntegrationTest {
 
     @Test
     fun an_unreadable_membership_uploads_nothing_and_touches_no_storage() = rigTest {
+        extensionUploadsOnly()
         createAndJoin()
         addPhoto("A")
         membershipUnreadable(true)
@@ -83,6 +85,7 @@ class CycleEntryGateIntegrationTest {
     // membership reads as not joined, and the cycle uploads nothing for it.
     @Test
     fun a_cleared_membership_reads_as_not_joined_and_uploads_nothing() = rigTest {
+        extensionUploadsOnly()
         createAndJoin()
         addPhoto("A")
         cycle()
@@ -99,6 +102,7 @@ class CycleEntryGateIntegrationTest {
 
     @Test
     fun a_readable_membership_still_uploads_so_the_gate_is_not_skipping_everything() = rigTest {
+        extensionUploadsOnly()
         // The control. A gate that declines every cycle is indistinguishable from a gate that works
         // unless the happy path is asserted alongside it — and a silently-skipped upload is this
         // project's defining failure mode.
@@ -112,6 +116,7 @@ class CycleEntryGateIntegrationTest {
 
     @Test
     fun the_membership_is_re_read_each_cycle_so_the_skip_is_not_sticky() = rigTest {
+        extensionUploadsOnly()
         // The cycle is long-lived now. An unreadable read must not latch: the next cycle, once the device
         // is unlocked, has to resume normally.
         createAndJoin()

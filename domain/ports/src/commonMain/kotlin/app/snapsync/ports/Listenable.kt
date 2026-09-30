@@ -6,6 +6,6 @@ package app.snapsync.ports
  * and only registers: it runs no handler, reads nothing and builds no feature — the handlers themselves are the
  * composition's, each a flow command, a service call or a presentation intent.
  */
-interface Listenable<H> {
+interface Listenable<H> : Port {
     fun listen(handlers: H)
 }

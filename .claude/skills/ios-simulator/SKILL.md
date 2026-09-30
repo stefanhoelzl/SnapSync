@@ -35,7 +35,7 @@ State these before writing a scenario against this host, or you will write one t
   Apple, so a synthetic token through the `onPushToken` trigger is the way in.
 - **The OS never invokes the upload extension — so the CHANNEL invokes its root instead.** Under a full
   grant the extension is registrable here, exactly as on a ≥26.1 device, and its root now runs:
-  `/os/photokit-ext/processRawValue` calls the **real** `UploadExtensionRoot`, so the shared `uploadCore`,
+  `/os/photokit-ext/processRawValue` calls the **real** `UploadExtensionRoot`, so the shared `uploadCycle`,
   the entry gate, real PhotoKit discovery, the real selection policy, the real
   App-Group ledger and a real backend are all exercised. Both uploaders run over the one
   ledger by design; to exercise one alone use `POST /device/uploaders?app=off` or `?extension=off`.

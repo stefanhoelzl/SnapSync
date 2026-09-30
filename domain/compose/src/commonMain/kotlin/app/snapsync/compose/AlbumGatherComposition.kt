@@ -20,7 +20,7 @@ import kotlinx.coroutines.launch
  * is the composition lane — never the UI lane, because the platform add blocks its thread.
  */
 internal fun albumGather(
-    ports: AppPorts,
+    services: AppServices,
     union: EventUnionSource,
     entryContext: EntryContext,
     access: GalleryAccessState,
@@ -28,12 +28,12 @@ internal fun albumGather(
     scope: CoroutineScope,
     policyFor: suspend (EventConfig) -> SelectionPolicy,
 ): AlbumGather = AlbumGather(
-    configSource = ports.config,
-    ledger = ports.uploadRecord.ledger,
+    configSource = services.config,
+    ledger = services.ledger,
     policyFor = policyFor,
     union = union,
-    downloads = ports.downloadStore,
-    identity = ports.deviceIdentity,
+    downloads = services.downloadStore,
+    identity = services.deviceIdentity,
     photoAccess = access,
     coordinator = coordinator,
     scope = scope,
@@ -56,13 +56,13 @@ internal fun albumGather(
  * one album-less membership.
  */
 internal fun CoroutineScope.launchAlbumGrantSubscription(
-    ports: AppPorts,
+    services: AppServices,
     coordinator: AlbumCoordinator,
     gather: AlbumGather,
 ): Job = launch {
-    ports.photoAccess.permission.collect { status ->
+    services.ports.photoAccess.permission.collect { status ->
         if (status.grantsPhotoAccess) {
-            ports.config.config.value?.let { cfg ->
+            services.config.config.value?.let { cfg ->
                 coordinator.ensureAlbum(cfg.eventId, cfg.name, cfg.saveToAlbum)
             }
         }

@@ -11,7 +11,7 @@ import app.snapsync.model.WriteOutcome
  * A read keeps "absent" and "could not look" apart ([PrefRead]); a write answers a [WriteOutcome] rather than
  * throwing.
  */
-interface Preferences {
+interface Preferences : Port {
 
     fun get(key: String): PrefRead
 
