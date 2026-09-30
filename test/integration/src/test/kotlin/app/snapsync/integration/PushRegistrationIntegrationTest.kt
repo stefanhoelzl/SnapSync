@@ -41,7 +41,7 @@ class PushRegistrationIntegrationTest {
     }
 
     /**
-     * **The credential arm of `AppCore.installPushRegistration` is wired** (capabilities
+     * **The credential arm of `AppCore.installCompositionSubscriptions` is wired** (capabilities
      * `receiving-photos`, `privacy-security`).
      *
      * THE JOIN THIS PINS. The app publishes a delivered APNs token only when it differs from the last

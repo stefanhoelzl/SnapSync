@@ -894,7 +894,7 @@ joined**: busy while work remains (uploads the tail left, or staged downloads no
 full-grant sharer notices its own new photos only by looking — no library-change wake standing and the OS uploader
 not confirmed registered — until the event's end; idle for every other joined device (receive-only, uploads held
 back, a partial grant, caught up with a library wake, and everyone after the end); none once not joined. Its inputs
-are the tail's outcome and `CadenceFacts`, which the composition reads fresh (`AppCore.cadenceFacts`: the membership,
+are the tail's outcome and `CadenceFacts`, which the composition reads fresh (`cadenceFactsOf` in `compose/`: the membership,
 its direction, the grant, and the OS's own registration answer). Decision record:
 `changes/timely-background-receiving` (D1–D3).
 

@@ -45,7 +45,7 @@ class AppTail internal constructor(
     private val downloads: () -> DownloadController,
     /** The app's admission as a Boolean — whether a completion may request the top-up. */
     private val mayCreate: () -> Boolean,
-    /** What the heartbeat's re-arm reads after a tail — see [AppCore.cadenceFacts]. */
+    /** What the heartbeat's re-arm reads after a tail — see [cadenceFactsOf]. */
     private val cadenceFacts: () -> CadenceFacts,
     /** The in-process ledger-counts re-read, run after a tail unit only while foregrounded. */
     private val refreshCounts: suspend () -> Unit,
@@ -167,4 +167,21 @@ class AppTail internal constructor(
             .onFailure { services.log.w(it) { "the selection change's discovery failed; its tail still runs" } }
         hold.thenTail(TailTrigger.SELECTION_CHANGE)
     }
+}
+
+/**
+ * What the heartbeat's re-arm reads of [core] after a tail (capability `receiving-photos`; decision record
+ * `changes/timely-background-receiving`, D1, D3) — read fresh each time. The OS uploader counts as confirmed only when
+ * it may be registered here (a full grant, an OS that carries it, the dev pin not off) **and** the OS's own answer says
+ * it is: whether registering is allowed says nothing about whether it happened.
+ */
+internal fun cadenceFactsOf(core: AppCore): CadenceFacts {
+    val config = core.services.config.config.value
+    return CadenceFacts(
+        joined = config != null,
+        ended = config != null && core.services.config.hasEnded(config),
+        shares = config?.direction?.includesUpload == true,
+        fullGrant = core.ports.photoAccess.permission.value == GalleryAccess.GRANTED,
+        osUploaderConfirmed = core.extensionRegistrableNow() && core.extensionRegistration.isRegistered() == true,
+    )
 }

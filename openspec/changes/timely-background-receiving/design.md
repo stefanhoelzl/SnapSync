@@ -155,8 +155,9 @@ nobody joins, nothing changes — so the late leave has no visible effect beyond
 
 ### D6 — Under limited access, a background start reads the selection
 
-The selection subscription and the observer move out of `installPermissionSubscriptions` into an idempotent
-`installSelectionObserver()` the host composition calls on composition, for every start. The permission-grant
+The selection subscription and the observer move out of `installPermissionSubscriptions` into the idempotent
+installer the host composition already calls on composition, for every start — beside the push registration, as
+`installCompositionSubscriptions()`. The permission-grant
 collectors, the album grant subscription and the interrupted-import sweep stay at host assembly — the reason
 `changes/archive/2026-07-17-create-flow-zone-and-drain-shell` D6 gives (a cold wake must not replay the grant into
 the upload transitions) is about those, not about the selection.

@@ -46,7 +46,6 @@ import app.snapsync.feature.upload.PushTailGuard
 import app.snapsync.feature.upload.TailTrigger
 import app.snapsync.services.upload.ExtensionRegistration
 import app.snapsync.services.wake.EventChecks
-import app.snapsync.feature.upload.CadenceFacts
 import app.snapsync.services.upload.OsDrivenRegistration
 import app.snapsync.ports.ExtensionRegistry
 import app.snapsync.feature.upload.UploadAdmission
@@ -458,23 +457,6 @@ class AppCore internal constructor(
      *  `background-upload`, "The delegate records the terminal fact before it returns"). */
     val appMayCreate: () -> Boolean = { appUploadAdmission() == UploadAdmission.Admit }
 
-    /**
-     * What the heartbeat's re-arm reads after a tail (capability `receiving-photos`; decision record
-     * `changes/timely-background-receiving`, D1, D3) — read fresh each time. The OS uploader counts as confirmed only
-     * when it may be registered here (a full grant, an OS that carries it, the dev pin not off) **and** the OS's own
-     * answer says it is: whether registering is allowed says nothing about whether it happened.
-     */
-    val cadenceFacts: () -> CadenceFacts = {
-        val config = services.config.config.value
-        CadenceFacts(
-            joined = config != null,
-            ended = config != null && services.config.hasEnded(config),
-            shares = config?.direction?.includesUpload == true,
-            fullGrant = ports.photoAccess.permission.value == GalleryAccess.GRANTED,
-            osUploaderConfirmed = extensionRegistrableNow() && extensionRegistration.isRegistered() == true,
-        )
-    }
-
     // The upload arm (capability `background-upload`): what each membership transition does to the two
     // uploaders. Stateless — every decision is derived from the registration fact, the grant and whether a
     // membership exists, at the moment of the transition; the root defaults nothing.
@@ -803,25 +785,10 @@ class AppCore internal constructor(
             entryContext = process.entryContext,
             downloads = { downloadController },
             mayCreate = appMayCreate,
-            cadenceFacts = cadenceFacts,
+            cadenceFacts = { cadenceFactsOf(this) },
             refreshCounts = { ledgerCounts.refresh() },
-            finish = ::endOfWake,
+            finish = { trigger -> membershipEnd.endOfWake(trigger) },
         )
-    }
-
-    /**
-     * The end of every wake whose tail covered the whole pass (capabilities `receiving-photos` and `manage-membership`;
-     * decision record `changes/timely-background-receiving`, D4–D5): first the **bounded photo check** — the union read,
-     * at most once an hour per event, so others' photos arrive when no push does — then the event-completion step,
-     * whose read of the event's state is bounded the same way unless [trigger] is one that asks the event anyway: a
-     * push (the close is announced by one), an opening, a join.
-     */
-    private suspend fun endOfWake(trigger: TailTrigger) {
-        services.config.config.value?.eventId?.let { eventId ->
-            runCatchingCancellable { downloadController.reconcileIfDue(eventId) }
-                .onFailure { services.log.w(it) { "the bounded photo check failed; the next wake runs it again" } }
-        }
-        membershipEnd.completion.finish(bounded = trigger !in ASKS_THE_EVENT)
     }
 
     val provisionFlow: Provision by lazy {
@@ -1061,42 +1028,6 @@ class AppCore internal constructor(
     }
 
     /**
-     * Open the **selection observer** and its collector (capability `photo-access`): under a partial grant, the
-     * observer's first emission is the start's baseline read and every later one a change the member made — in the
-     * in-app picker, in Settings, or by iCloud sync. Under any other grant the observer reads nothing.
-     *
-     * Installed by the host composition on **every start**, a background one included — unlike
-     * [installPermissionSubscriptions], which only host assembly installs. Without it a background start under a
-     * partial grant never learns its selection, withholds every upload, and the app's own wake-ups upload nothing
-     * (capability `background-upload`, "Photos upload without the app being opened"). Measured on an SE2 / iOS 26.6.2:
-     * a background start reads the selection and raises no limited-library prompt (decision record
-     * `changes/timely-background-receiving`, D6). **Idempotent: once per process.**
-     */
-    @OptIn(ExperimentalAtomicApi::class)
-    fun installSelectionObserver() {
-        if (!selectionObserverInstalled.compareAndSet(expectedValue = false, newValue = true)) return
-        scope.launch {
-            // One selection-change emission → ONE read serving both consumers (capability
-            // `photo-access`, "One discovery serves both the status total and the enqueue"):
-            // the cell feeds the cycle's discovery AND backs the permission-aware candidate source, so
-            // `refresh` recounts N over the very same snapshot — no second library read on this path, and
-            // no snapshot-specific entry point for the total to drift through.
-            for (snapshot in selectionChanges) {
-                latestSelectionSnapshot.value = resourcesFrom(snapshot.assets)
-                services.config.config.value?.let { cfg -> gallery.refresh(selectionPolicyForMembership(cfg)) }
-                // Its own work — the snapshot-fed discovery → manifest — then the tail (① and ② from the snapshot).
-                tail.onSelectionChanged()
-            }
-        }
-        // The selection observer opens here and nowhere else — on composition, so a background start reads it too.
-        ports.gallery.observeChanges(true)
-    }
-
-    /** Whether [installSelectionObserver] has opened the observer in this process. */
-    @OptIn(ExperimentalAtomicApi::class)
-    private val selectionObserverInstalled = AtomicBoolean(false)
-
-    /**
      * Install the **port-state-transition subscriptions** on the permission StateFlow (spec
      * `docs/architecture.md`, "Commands cross one door": installed in `compose/`; the transition
      * semantics — the upload permission-change transition, sole-creator album ensure — are feature rules),
@@ -1111,7 +1042,7 @@ class AppCore internal constructor(
      * shell invokes it from its host-assembly path — the only place the collectors ever installed — so
      * a cold background wake that merely touches [AppCore] runs **no** launch reconcile and installs no
      * collector. Call it once; each call installs a fresh set of collectors. The selection observer is not one of
-     * them: it opens on every start ([installSelectionObserver]).
+     * them: it opens on every start ([installCompositionSubscriptions]).
      */
     fun installPermissionSubscriptions() {
         scope.launch {
@@ -1152,7 +1083,8 @@ class AppCore internal constructor(
     }
 
     /**
-     * Start registering the device's APNs token, and keep the registration alive across a credential
+     * **The subscriptions every start installs, a background one included.** Start registering the device's APNs
+     * token, and keep the registration alive across a credential
      * change (capability `receiving-photos`). Installed on **every cold start** — a foreground launch and a
      * background wake alike (a silent push, a background-`URLSession` relaunch, the upload heartbeat) — by the
      * shared host composition as it composes the graph (capability `sync-status`, "Push registration is started
@@ -1181,19 +1113,42 @@ class AppCore internal constructor(
      *
      * The registration is composed here over the push ports (see [pushRegistrationFor]); the token source is
      * the shell's, delivered by the OS.
+     *
+     * **And open the selection observer** and its collector (capability `photo-access`), for the same reason: under a
+     * partial grant the observer's first emission is the start's baseline read and every later one a change the member
+     * made — in the in-app picker, in Settings, or by iCloud sync; under any other grant it reads nothing. Without it a
+     * background start under a partial grant never learns its selection, withholds every upload, and the app's own
+     * wake-ups upload nothing (capability `background-upload`, "Photos upload without the app being opened"). Measured
+     * on an SE2 / iOS 26.6.2: a background start reads the selection and raises no limited-library prompt (decision
+     * record `changes/timely-background-receiving`, D6).
      */
     @OptIn(ExperimentalAtomicApi::class)
-    fun installPushRegistration() {
-        if (!pushRegistrationInstalled.compareAndSet(expectedValue = false, newValue = true)) return
+    fun installCompositionSubscriptions() {
+        if (!compositionSubscriptionsInstalled.compareAndSet(expectedValue = false, newValue = true)) return
         scope.launch {
             runCatchingCancellable { attestation.ensureFresh() }
             pushRegistration.run(services.pushTokens, attestation.tokenChanged)
         }
+        scope.launch {
+            // One selection-change emission → ONE read serving both consumers (capability
+            // `photo-access`, "One discovery serves both the status total and the enqueue"):
+            // the cell feeds the cycle's discovery AND backs the permission-aware candidate source, so
+            // `refresh` recounts N over the very same snapshot — no second library read on this path, and
+            // no snapshot-specific entry point for the total to drift through.
+            for (snapshot in selectionChanges) {
+                latestSelectionSnapshot.value = resourcesFrom(snapshot.assets)
+                services.config.config.value?.let { cfg -> gallery.refresh(selectionPolicyForMembership(cfg)) }
+                // Its own work — the snapshot-fed discovery → manifest — then the tail (① and ② from the snapshot).
+                tail.onSelectionChanged()
+            }
+        }
+        // The selection observer opens here and nowhere else — on composition, so a background start reads it too.
+        ports.gallery.observeChanges(true)
     }
 
-    /** Whether [installPushRegistration] has installed its collector in this process. */
+    /** Whether [installCompositionSubscriptions] has installed its subscriptions in this process. */
     @OptIn(ExperimentalAtomicApi::class)
-    private val pushRegistrationInstalled = AtomicBoolean(false)
+    private val compositionSubscriptionsInstalled = AtomicBoolean(false)
 
     /** The device's push registration (capability `receiving-photos`) — see [pushRegistrationFor]. */
     val pushRegistration: PushRegistration by lazy { pushRegistrationFor(services, backend.pushTokens) }
@@ -1224,6 +1179,3 @@ fun snapSyncApp(
 private fun Logger.recordingRefusal(name: String, handoff: Handoff): Handoff = handoff.also {
     if (it is Handoff.Refused) e { "$name: nothing was handed off — ${it.reason}" }
 }
-
-/** The triggers whose own reason is to ask the event now — their end-of-wake read of its state is not bounded. */
-private val ASKS_THE_EVENT = setOf(TailTrigger.SILENT_PUSH, TailTrigger.FOREGROUND, TailTrigger.ARM)

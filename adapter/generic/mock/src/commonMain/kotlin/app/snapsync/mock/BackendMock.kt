@@ -106,11 +106,11 @@ class BackendOperator internal constructor(private val state: BackendState) {
     /** How many publishes the backend applied for this membership. */
     fun publishesOf(eventId: String, deviceId: String): Int = state.publishes[eventId to deviceId] ?: 0
 
-    /** How many times a device's read of [eventId]'s union (`GET /events/:id/files`) reached the backend. */
-    fun unionReadsOf(eventId: String): Int = state.unionReads[eventId] ?: 0
+    /** How many of the devices' reads of each event's union (`GET /events/:id/files`) reached the backend, by event. */
+    val unionReads: Map<String, Int> get() = state.unionReads.toMap()
 
-    /** How many times a device's read of [eventId]'s details (`GET /events/:id`) reached the backend. */
-    fun eventReadsOf(eventId: String): Int = state.eventReads[eventId] ?: 0
+    /** How many of the devices' reads of each event's details (`GET /events/:id`) reached the backend, by event. */
+    val eventReads: Map<String, Int> get() = state.eventReads.toMap()
 
     /** How many publishes it refused as older than the one it held. */
     fun refusedPublishesOf(eventId: String, deviceId: String): Int = state.refused[eventId to deviceId] ?: 0

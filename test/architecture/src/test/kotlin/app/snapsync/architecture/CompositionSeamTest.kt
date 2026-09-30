@@ -202,7 +202,7 @@ class CompositionSeamTest {
             "whether staged downloads still wait to be imported, read from the core's own DownloadStore PORT for the " +
             "heartbeat's re-arm — a read the runner may not name (feature-blindness)",
         "TailRunner.cadenceFacts" to
-            "this core's own facts for the heartbeat's cadence (AppCore.cadenceFacts): the membership and grant already " +
+            "this core's own facts for the heartbeat's cadence (cadenceFactsOf): the membership and grant already " +
             "held in memory, and the extension registration SERVICE's answer over its port — reads the runner may not name",
         "TailSignal.stop" to
             "the running tail's own stop flag (set by TailRunner.stop, Apple's expiry forwarded) — built only by the " +
@@ -211,10 +211,10 @@ class CompositionSeamTest {
             "the composed DownloadController, resolved when the tail's ① runs rather than when the tail is built — " +
             "deferred construction: a cold background wake builds no more of the graph than it reaches",
         "AppTail.mayCreate" to "this core's own app admission (AppCore.appMayCreate), read fresh at each completion",
-        "AppTail.cadenceFacts" to "this core's own cadence facts (AppCore.cadenceFacts), forwarded to its tail runner",
+        "AppTail.cadenceFacts" to "this core's own cadence facts (cadenceFactsOf), forwarded to its tail runner",
         "AppTail.refreshCounts" to "this core's own ledger-counts refresh (AppCore.ledgerCounts.refresh)",
         "AppTail.finish" to
-            "this core's own end-of-wake step (AppCore.endOfWake: the bounded photo check, then EventCompletion.finish), " +
+            "this core's own end-of-wake step (MembershipEnd.endOfWake: the bounded photo check, then EventCompletion.finish), " +
             "run after the tail rather than inside it",
         "WakeHold.finish" to "AppTail.finish, forwarded to each wake's hold — the same end-of-wake step",
         "EventCompletion.publishFinal" to
