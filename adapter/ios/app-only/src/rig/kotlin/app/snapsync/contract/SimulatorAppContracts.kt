@@ -24,6 +24,10 @@ import app.snapsync.contracts.Host
 import app.snapsync.contracts.ImportedLibrary
 import app.snapsync.contracts.InAppContract
 import app.snapsync.contracts.LinkOpenerContract
+import app.snapsync.contracts.LivePhotoImportContract
+import app.snapsync.contracts.LivePhotoImportState
+import app.snapsync.contracts.LivePhotoLibrary
+import app.snapsync.contracts.StagedLiveImport
 import app.snapsync.contracts.MarkerState
 import app.snapsync.contracts.PhotoAccess
 import app.snapsync.contracts.PhotoAccessContract
@@ -70,6 +74,9 @@ import platform.Foundation.create
 import platform.Foundation.writeToFile
 import platform.Photos.PHAsset
 import platform.Photos.PHAssetCreationRequest
+import platform.Photos.PHAssetMediaSubtypePhotoLive
+import platform.Photos.PHAssetResource
+import platform.Photos.PHAssetResourceTypePairedVideo
 import platform.Photos.PHAssetResourceTypePhoto
 import platform.Photos.PHPhotoLibrary
 
@@ -93,6 +100,7 @@ fun simulatorAppContracts(): List<InAppContract> = listOf(
     simulatorAppContract(GalleryContract, SimAppGalleryBinding(), ::refusal),
     simulatorAppContract(PhotoAccessContract, SimAppPhotoAccessBinding(), ::refusal),
     simulatorAppContract(GalleryImportContract, SimAppImporterBinding(), ::refusal),
+    simulatorAppContract(LivePhotoImportContract, SimAppLivePhotoImportBinding(), ::refusal),
     simulatorAppContract(ProcessInfoContract, SimAppProcessInfoBinding(), ::hostRefusal),
     simulatorAppContract(LinkOpenerContract, SimAppLinkOpenerBinding(), ::hostRefusal),
     simulatorAppContract(SharePresenterContract, SimAppSharePresenterBinding(), ::hostRefusal),
@@ -251,6 +259,71 @@ class SimAppImporterBinding : Binding<GalleryImportState, StagedImport> {
             override fun marker(ref: AssetRef): MarkerState = markers[ref] ?: MarkerState.NONE
         }
         return Entered.Ready(StagedImport(importer, stage, library))
+    }
+}
+
+/**
+ * The motion-photo import in a running app under the full grant (`LivePhotoImportContract`): the one host where
+ * Photos itself judges the Live Photo the importer builds.
+ */
+class SimAppLivePhotoImportBinding : Binding<LivePhotoImportState, StagedLiveImport> {
+    override val host = Host.IOS_SIM_APP
+    override val kind = BindingKind.Live
+    override val reaches = setOf(
+        LivePhotoImportState.GRANTED_MOTION_PHOTO_STAGED,
+        LivePhotoImportState.GRANTED_BROKEN_MOTION_PHOTO_STAGED,
+    )
+
+    override fun create(state: LivePhotoImportState, clauseId: String): Entered<StagedLiveImport> {
+        val bytes = when (state) {
+            LivePhotoImportState.GRANTED_MOTION_PHOTO_STAGED -> PhotoLibrary.motionPhoto
+            LivePhotoImportState.GRANTED_BROKEN_MOTION_PHOTO_STAGED -> PhotoLibrary.brokenMotionPhoto
+        }
+        val markers = mutableMapOf<AssetRef, MarkerState>()
+        val importer = contractGallery().apply {
+            listen(
+                GalleryHandlers(
+                    onChanged = {},
+                    onImportPlaceholder = { ref, _ -> markers[ref] = MarkerState.RECORDED },
+                    onImportSettled = { ref, outcome ->
+                        when (outcome) {
+                            is ImportResult.Imported -> markers[ref] = MarkerState.CONFIRMED
+                            is ImportResult.Failed -> if (outcome.placeholder != null) markers[ref] = MarkerState.CLEARED
+                        }
+                    },
+                ),
+            )
+        }
+        val stage = {
+            val key = "contract-$clauseId-primary.jpg"
+            val path = NSTemporaryDirectory() + key
+            check(bytes.toNSData().writeToFile(path, atomically = true)) { "could not stage $path" }
+            listOf(StagedResource(key, ResourceRole.PRIMARY.wire, "image/jpeg", "PXL_0001.MP.jpg", path))
+        }
+        val library = object : LivePhotoLibrary {
+            override suspend fun captureDate(id: AssetId): String? =
+                asset(id)?.creationDate?.let { NSISO8601DateFormatter().stringFromDate(it) }
+
+            override fun marker(ref: AssetRef): MarkerState = markers[ref] ?: MarkerState.NONE
+
+            override suspend fun isLivePhoto(id: AssetId): Boolean? =
+                asset(id)?.let { (it.mediaSubtypes and PHAssetMediaSubtypePhotoLive) != 0UL }
+
+            override suspend fun resourceKinds(id: AssetId): List<String> {
+                val asset = asset(id) ?: return emptyList()
+                return PHAssetResource.assetResourcesForAsset(asset).filterIsInstance<PHAssetResource>().map {
+                    when (it.type) {
+                        PHAssetResourceTypePhoto -> "photo"
+                        PHAssetResourceTypePairedVideo -> "pairedVideo"
+                        else -> "type ${it.type}"
+                    }
+                }
+            }
+
+            private fun asset(id: AssetId): PHAsset? =
+                PHAsset.fetchAssetsWithLocalIdentifiers(listOf(PhotoKitAssetIds.localIdentifierOf(id)), null).firstObject() as? PHAsset
+        }
+        return Entered.Ready(StagedLiveImport(importer, stage, library))
     }
 }
 

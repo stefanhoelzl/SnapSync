@@ -6,6 +6,7 @@ import android.media.ExifInterface
 import app.snapsync.model.StagedResource
 import app.snapsync.model.importFilename
 import app.snapsync.model.motionPhotoStill
+import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.withExtension
 import co.touchlab.kermit.Logger
 import java.io.File
@@ -31,13 +32,9 @@ internal class MotionPhotoBuilder(private val scratchDir: File, private val log:
      * The motion photo built from [still] and [video], as a staged JPEG in the scratch directory — or null, and the
      * still is imported as it is. The caller deletes the returned file once the import is over.
      */
-    fun build(assetId: String, still: StagedResource, video: StagedResource): StagedResource? = try {
-        assemble(assetId, still, video)
-    } catch (e: Exception) {
-        fallBack(assetId, e)
-    } catch (e: OutOfMemoryError) {
-        fallBack(assetId, e)
-    }
+    fun build(assetId: String, still: StagedResource, video: StagedResource): StagedResource? =
+        // Catches an `OutOfMemoryError` too: the full-size bitmap is the one allocation here that can fail.
+        runCatchingCancellable { assemble(assetId, still, video) }.getOrElse { fallBack(assetId, it) }
 
     private fun assemble(assetId: String, still: StagedResource, video: StagedResource): StagedResource? {
         scratchDir.mkdirs()

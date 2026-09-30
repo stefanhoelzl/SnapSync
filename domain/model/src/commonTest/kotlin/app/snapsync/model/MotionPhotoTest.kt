@@ -100,6 +100,14 @@ class MotionPhotoTest {
     }
 
     @Test
+    fun a_video_wrapped_in_an_mpvd_box_is_found_inside_it() {
+        val video = mp4(bytes = 64)
+        val box = byteArrayOf(0, 0, 0, 72) + "mpvd".encodeToByteArray() + video
+        val file = jpeg() + box
+        assertEquals(file.size - 64 until file.size, locateMotionVideo("""GCamera:MicroVideoOffset="72"""", file))
+    }
+
+    @Test
     fun an_implausible_or_foreign_trailer_is_no_motion_photo() {
         val file = jpeg() + mp4(bytes = 64)
         assertNull(locateMotionVideo("<x:xmpmeta/>", file), "no motion XMP")
