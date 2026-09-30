@@ -400,6 +400,7 @@ class AppCore internal constructor(
             // Three-valued, no fallback (capability `receiving-photos`): no membership → `null` → no arm.
             downloadEnabled = { services.config.config.value?.direction?.includesDownload },
             checks = services.eventChecks,
+            libraryWritable = { ports.photoAccess.permission.value.grantsPhotoAccess },
             entryContext = process.entryContext,
         )
     }
@@ -507,9 +508,7 @@ class AppCore internal constructor(
     // The join-time load (capability `photo-sharing`), built in `shareSetLoadFor`. Public for
     // the world harness, whose operator provision runs this instance rather than a copy.
     val shareSetLoad: ShareSetLoad by lazy { shareSetLoadFor(services, backend.deviceFiles) }
-    private val receivedPhotoAdoption by lazy {
-        receivedPhotoAdoptionFor(services, backend.union, ports.gallery, ::selectionScope)
-    }
+    internal val receivedPhotoAdoption by lazy { receivedPhotoAdoptionFor(services, backend, ports.gallery, this) }
 
     // The in-place reconfigure use-case (capability `manage-membership`): rewrite the joined
     // membership's participation fields (direction/cutoff/album) whole, then re-drive the provision-side
@@ -1060,7 +1059,7 @@ class AppCore internal constructor(
             uploadTransitions.onLaunch()
             ports.photoAccess.permission
                 .dropWhile { it == atLaunch }
-                .collect { uploadTransitions.onPermissionChanged() }
+                .collect { onGrantChanged(it) }
         }
         // The event album's grant subscription: ensure the album, then let the gather judge the emission.
         scope.launchAlbumGrantSubscription(services, albumCoordinator, albumGather)

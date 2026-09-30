@@ -1,6 +1,7 @@
 package app.snapsync.mock
 
 import app.snapsync.model.FileArea
+import app.snapsync.model.GalleryAccess
 import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.SecureSlots
 
@@ -56,7 +57,10 @@ open class MockDevice(
 
     /**
      * Delete the app, as a member does from the home screen: its files (both areas — the App Group goes with the last
-     * app of its group), its databases and its user defaults are gone. What outlives an app is kept: the Keychain (so
+     * app of its group), its databases and its user defaults are gone, and so is its photo grant — the operating system
+     * forgets it, and the next request raises the dialog again. That dialog stays OPEN: nobody has answered it until
+     * the operator does (`device/permission`), because a join does not wait for the answer (measured on the SE2,
+     * iOS 26.6: the grant landed 64 s after the join had provisioned). What outlives an app is kept: the Keychain (so
      * the device id), the photo library and everything the backend holds. Reinstalling is this followed by a launch.
      */
     fun uninstallApp() {
@@ -64,6 +68,8 @@ open class MockDevice(
         disk.operator.area(FileArea.PRIVATE).clear()
         databases.operator.deleteAll()
         preferences.values.clear()
+        library.operator.access = GalleryAccess.NOT_DETERMINED
+        library.operator.requestAnswer = GalleryAccess.NOT_DETERMINED
     }
 
     /** The marketing version the app's build declares to the backend mock — a cell an operator may change. */

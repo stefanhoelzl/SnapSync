@@ -75,33 +75,54 @@ from `[a-z2-7]`.
   `tokenOf(filename)`. It replaces `importFilename` at both import adapters and is unit-tested in
   `commonTest`.
 
-### D4. Adoption runs inside `MembershipEntry`, before the config save, for every direction
+### D4. Adoption runs at the join and again when the photo grant becomes usable, for every direction
 
 Adoption sits beside `ShareSetLoad`:
 
 1. Fetch the event's union (`EventUnionSource`).
-2. Take the foreign refs the download store has no row for.
+2. Take the foreign refs the download store has not settled.
 3. List gallery candidates inside the event's capture window, `[startsAt, endsAt]`.
 4. Drop candidates the download store already knows as a `createdLocalId`.
 5. Read the remaining candidates' names and parse their tokens.
-6. Record each token that matches an unknown ref as `IMPORTED` with `createdLocalId` set to that candidate,
-   tagged with the event.
+6. Record each token that matches an open ref as `IMPORTED` with `createdLocalId` set to that candidate,
+   tagged with the event (D7).
 
-Why this placement:
-- Running before the save means no uploader can see the membership while its received photos are still
-  unsuppressed. This is the same reason `ShareSetLoad` runs before the save.
-- Running for every direction closes share-back for share-only rejoins. It also removes the "receiving
-  switched on later" edge, because the join already adopted.
+It runs at two moments:
+- **In `MembershipEntry`, before the config save.** No uploader can see the membership while its received
+  photos are still unsuppressed, for the same reason `ShareSetLoad` runs before the save. This is enough when
+  the grant is already usable at the join.
+- **When the photo grant becomes usable while joined**, in the composition's permission subscription, before
+  `uploadTransitions.onPermissionChanged()` arms the uploads and its tail drains the staged downloads.
+
+The second moment is not optional. A reinstall resets the photo grant, so its rejoin **always** provisions
+with the access dialog still open: the join does not wait for the answer (`simplify-join-screen`, D3), and
+the first moment reads an unreadable library. Measured on the SE2, 2026-09-30:
+`adopted 0 … 0 marked in window` at 19:50:03, then the grant at 19:51:07. All four received photos were
+imported again, and the two ≥ 3 MP ones were shared back.
+
+Two rules make the second moment sufficient:
+- **No import without a usable grant** (`DownloadController.libraryWritable`). Downloads the join planned
+  and staged wait instead of running PhotoKit changes that iOS holds until the dialog is answered, which
+  would race the adoption.
+- **Adoption settles a planned or staged row that no import has created an asset for** (D7), since by the
+  grant the ref is already planned.
+
+Running for every direction closes share-back for share-only rejoins, and makes the "receiving switched on
+later" edge moot.
 
 Failure handling:
-- The union fetch is best-effort and never blocks the join, like `ShareSetLoad`. It is skipped offline or on
-  failure, which leaves the accepted gap stated in the spec.
+- The union fetch is best-effort and never blocks the join or the grant, like `ShareSetLoad`. It is skipped
+  offline or on failure, which leaves the accepted gap stated in the spec.
 - With no usable grant there are no candidates, and adoption is a no-op.
+- Under a partial grant with no selection read yet, there are no candidates either (D5); this falls under the
+  limited-access gap.
 
 Rejected alternatives:
 - *Adopt on every reconcile.* It runs a snapshot and name check whenever unknown refs appear, which after the
   join means every new foreign photo, and it still misses share-only memberships.
 - *Adopt only on an empty DB.* It needs a reliable "fresh DB" signal and misses a partial loss.
+- *Make the join wait for the access answer.* It is simpler, but it changes when a join commits
+  (`join-event`, `photo-access`), and it would still miss a grant given later in Settings.
 
 ### D5. Candidates come from the event window and the grant's own scope
 
@@ -124,13 +145,23 @@ manifest, the status total `N`, and the join preview. `SelectionPolicy` stays fa
 A marked photo that reaches another member outside SnapSync (AirDrop, a messenger) is admitted on doubt, as
 today.
 
-### D7. A new store write, no migration
+### D7. Two store writes and a locked seam, no migration
 
-`DownloadService.adoptAll(adopted, eventId)` over the `adoptImported` statement:
+`DownloadService.adoptAll(adopted, eventId)` settles, in one transaction:
+- a ref with **no row**: `adoptImported`, an `INSERT OR IGNORE` of a terminal `IMPORTED` row carrying the
+  adopted asset as its marker, with no resource rows;
+- a ref **planned or staged, not terminal, and carrying no marker**: `adoptPending`, an `UPDATE` to
+  `IMPORTED` with the adopted asset. No import has created an asset for such a ref. Its staged files are
+  released by the pass that releases every imported row's bytes, and a transfer still in flight stages onto
+  the settled row and is released the same way.
 
-- an `INSERT OR IGNORE` of a terminal `IMPORTED` row with its marker;
-- it never overwrites an existing row, so a concurrent reconcile or import wins;
-- no resource rows, so nothing is staged or released.
+Every other row is left exactly as it is: a row carrying an import's marker (confirmed or not), and a
+terminal row (imported, unimportable, or a photo the member deleted).
+
+The write reaches the store only through `DownloadController.settleAdopted`. It runs under the controller's
+mutex and skips any ref the controller has claimed for an import, so adoption never lands underneath an
+import whose change block is about to write its own marker. `ReceivedPhotoAdoption` takes it as an injected
+`record` (feature-blindness).
 
 The schema is unchanged.
 

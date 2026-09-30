@@ -10,6 +10,7 @@ import app.snapsync.services.gallery.ImportedAssetPresence
 import app.snapsync.services.gallery.GalleryImporter
 
 import app.snapsync.model.AssetPresence
+import app.snapsync.model.AdoptedAsset
 import app.snapsync.model.AssetRef
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.model.PlannedAsset
@@ -75,6 +76,14 @@ class DownloadController(
     // read stamps it, and [reconcileIfDue] reads the union only when an hour has passed. Required: the bound is what
     // keeps a busy heartbeat from reading a whole union per wake.
     private val checks: EventChecks,
+    // Whether the photo library may be written right now — a usable grant (capability `receiving-photos`). The drain
+    // imports NOTHING without one. Not for the import's sake (the platform would hold a change until the person
+    // answers the dialog, then run it) but for the join's: after a reinstall the rejoin provisions while the access
+    // dialog is still open, and the photos an earlier install received can be recognised only once the library is
+    // readable. An import that ran first would land a second copy of each (measured on the SE2, 2026-09-30: all four
+    // of a rejoin's received photos). The grant's own transition recognises them, then drains (the composition).
+    // Required, and with no default, for the reason [downloadEnabled] has none.
+    private val libraryWritable: () -> Boolean,
     private val log: Logger = Logger.withTag("DownloadController"),
     private val entryContext: EntryScope = EntryScope.None,
 ) {
@@ -283,6 +292,14 @@ class DownloadController(
     }
 
     /**
+     * Record [adopted] — photos already in the library that a join recognised as refs' earlier imports (capability
+     * `receiving-photos`) — under the same lock as every other decision here, so a ref this process has CLAIMED for an
+     * import is never adopted underneath it: that import's own marker settles it. Answers the refs recorded.
+     */
+    suspend fun settleAdopted(adopted: Collection<AdoptedAsset>, eventId: String): Set<AssetRef> =
+        mutex.withLock { store.adoptAll(adopted.filter { it.ref !in importing }, eventId) }
+
+    /**
      * The process's one recovery pass: adjudicate what a dead process left behind, then drain.
      *
      * The drain is not optional and not a caller's business. The *absent* branch **clears a marker**, and
@@ -478,6 +495,10 @@ class DownloadController(
         // resource (an unmapped type, a corrupt staged file). The old batch form could not reach this,
         // because it iterated a fixed list; the per-ref form has to say so explicitly.
         val attempted = mutableSetOf<AssetRef>()
+        if (!libraryWritable()) {
+            log.i { "import drain skipped — no usable photo grant yet; what is staged stays staged" }
+            return
+        }
         while (true) {
             // Between two imports, never inside one: the operating system's time is up, so nothing new starts.
             if (stopRequested()) {

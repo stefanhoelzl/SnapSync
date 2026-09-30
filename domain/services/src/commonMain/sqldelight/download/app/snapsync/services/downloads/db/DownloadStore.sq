@@ -54,12 +54,26 @@ VALUES (:sourceDeviceId, :sourceAssetId, :state, :creationDate, NULL, :eventId);
 -- deleted with its store. A terminal IMPORTED row carrying its marker — the same shape a confirmed import leaves — so
 -- it is never planned, never downloaded, and its asset is suppressed from the upload universe at once.
 --
--- INSERT OR IGNORE, never an upsert: an existing row is the authoritative record of this ref (a reconcile planned it,
--- an import holds its marker, the member deleted the photo), and adoption only fills a gap the store has no record of.
--- No resource rows: nothing is staged, so nothing is released or pruned.
+-- INSERT OR IGNORE, never an upsert: an existing row is this install's own record of the ref, and only the one kind
+-- below may be adopted over. No resource rows: nothing is staged, so nothing is released or pruned.
 adoptImported:
 INSERT OR IGNORE INTO downloadAsset (sourceDeviceId, sourceAssetId, state, creationDate, createdLocalId, eventId)
 VALUES (:sourceDeviceId, :sourceAssetId, 'IMPORTED', :creationDate, :createdLocalId, :eventId);
+
+-- The one existing row adoption settles: planned or staged, not terminal, and carrying NO marker — so no import has
+-- created an asset for it. It exists because a rejoin after a reinstall plans its downloads while the photo-access
+-- dialog is still open, and only the grant lets the library be read; by then the ref is planned, and adopting only
+-- absent rows would import a second copy of a photo the library holds. A row that carries a marker (an import created
+-- an asset, confirmed or not) and a terminal row (imported, unimportable, or a photo the member deleted) are left
+-- exactly as they are. Its resource rows stay: a staged file is released by the pass that releases every imported
+-- row's bytes, and a transfer still in flight stages onto a settled row, which that pass then releases too.
+adoptPending:
+UPDATE downloadAsset
+SET state = 'IMPORTED', createdLocalId = :createdLocalId, eventId = :eventId
+WHERE sourceDeviceId = :sourceDeviceId
+  AND sourceAssetId = :sourceAssetId
+  AND state NOT IN ('IMPORTED', 'UNIMPORTABLE')
+  AND createdLocalId IS NULL;
 
 -- Tag a row as a member of [eventId]'s union — settled rows included, which is the point: an imported photo
 -- of THIS event counts as received here, one imported for an earlier event does not. Writes only a row whose

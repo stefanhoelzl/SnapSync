@@ -12,6 +12,7 @@ import app.snapsync.feature.support.RecordingDownload
 import app.snapsync.feature.support.RecordingFiles
 import app.snapsync.feature.support.ThrowingDeletes
 import app.snapsync.feature.support.downloadJobs
+import app.snapsync.model.AdoptedAsset
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetPresence
 import app.snapsync.model.AssetRef
@@ -164,6 +165,7 @@ class DownloadControllerTest {
         disk: Files = RecordingFiles(),
         downloadEnabled: () -> Boolean? = { true },
         checks: EventChecks = EventChecks(inMemoryPreferences(), now = { NOW }),
+        libraryWritable: () -> Boolean = { true },
     ): DownloadController {
         val staging = StagingService(disk)
         return DownloadController(
@@ -173,7 +175,7 @@ class DownloadControllerTest {
             // Named from here on: this constructor has grown twice mid-change, and positional
             // arguments silently re-bind when it does.
             stagedBytes = staging,
-            myDeviceId = myDevice, downloadEnabled = downloadEnabled, checks = checks,
+            myDeviceId = myDevice, downloadEnabled = downloadEnabled, checks = checks, libraryWritable = libraryWritable,
         )
     }
 
@@ -273,6 +275,43 @@ class DownloadControllerTest {
         assertTrue(store.isSettled(ref))
         assertEquals(setOf(AssetId("LOCAL-Q_L0_001")), store.suppressedLocalIds()) // suppression handle recorded
         assertEquals(1, store.counts().imported)
+    }
+
+    @Test
+    fun nothing_imports_without_a_usable_grant_and_a_grant_imports_what_waited() = runTest {
+        // A reinstall's rejoin plans and stages with the photo-access dialog still open (capability `receiving-photos`).
+        val store = DownloadService(inMemoryDatabases())
+        val importer = FakeImporter()
+        var granted = false
+        val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, importer = importer, libraryWritable = { granted })
+        val ref = AssetRef("DEVICE-A", AssetId("Q"))
+        c.reconcile("event")
+        c.onResourceStaged(ref, "Q-primary.heic", "/stage/p")
+        c.onResourceStaged(ref, "Q-live.mov", "/stage/l")
+
+        c.importReady()
+        assertTrue(importer.imported.isEmpty(), "no import while the dialog is open")
+        assertFalse(store.isSettled(ref), "the staged photo waits")
+
+        granted = true
+        c.importReady()
+        assertEquals(listOf(ref), importer.imported)
+    }
+
+    @Test
+    fun an_adopted_ref_is_never_imported() = runTest {
+        val store = DownloadService(inMemoryDatabases())
+        val importer = FakeImporter()
+        val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, importer = importer)
+        val ref = AssetRef("DEVICE-A", AssetId("Q"))
+        c.reconcile("event")
+        c.onResourceStaged(ref, "Q-primary.heic", "/stage/p")
+        c.onResourceStaged(ref, "Q-live.mov", "/stage/l")
+
+        assertEquals(setOf(ref), c.settleAdopted(listOf(AdoptedAsset(ref, AssetId("L-KEPT"), "2026-06-01T10:00:00Z")), "event"))
+        c.importReady()
+        assertTrue(importer.imported.isEmpty(), "the library already holds it")
+        assertEquals(setOf(AssetId("L-KEPT")), store.suppressedLocalIds())
     }
 
     // ── everythingReceived (capability `manage-membership`, "The app leaves on its own …") ──────────

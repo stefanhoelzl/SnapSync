@@ -146,7 +146,11 @@ class AndroidImportContractTest {
             val id = assertIs<ImportResult.Imported>(result, "$fixture imports").createdLocalId
             assertEquals(MarkerState.CONFIRMED, markers[ref])
             assertEquals(MediaStoreImport.CAMERA_FOLDER, column(id, MediaStore.MediaColumns.RELATIVE_PATH), fixture)
-            assertEquals(fixture, column(id, MediaStore.MediaColumns.DISPLAY_NAME), "the sender's filename is kept")
+            assertEquals(
+                ReceivedPhotoName.mark(fixture, "key-$fixture", ref),
+                column(id, MediaStore.MediaColumns.DISPLAY_NAME),
+                "the sender's filename is kept, with SnapSync's mark",
+            )
             if (fixture in UNDATED) {
                 // MediaProvider ignores an app's DATE_TAKEN; only the scan writes it, from the file. A file with no
                 // date of its own is left undated and sorts by DATE_MODIFIED, which the import set to its capture time.
