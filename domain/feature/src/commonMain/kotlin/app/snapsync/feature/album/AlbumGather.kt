@@ -56,7 +56,8 @@ const val GATHER_BATCH_SIZE: Int = 500
  * operator harness and tests, which drive the stack synchronously.
  *
  * Where the album is a folder (Android, [AlbumCoordinator.placesOwnPhotos] false) only the foreign set is gathered,
- * and gathering MOVES those photos out of the camera folder into the album (`changes/android-event-album` D5).
+ * and gathering MOVES those photos out of the camera folder into the album
+ * (`changes/archive/2026-09-30-android-event-album` D5).
  *
  * It never ensures the album: its triggers do that first, and a gather that also created albums would race
  * the grant subscription's creation into a duplicate. It keeps **no record** of what it placed: adding an

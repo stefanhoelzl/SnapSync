@@ -178,7 +178,8 @@ class AlbumGatherTest {
 
     @Test
     fun `a folder album gathers only this event’s received photos — never the member’s own`() = runTest {
-        // `changes/android-event-album` D5: on Android the album is the folder received photos live in, and gathering
+        // `changes/archive/2026-09-30-android-event-album` D5: on Android the album is the folder received photos
+        // live in, and gathering
         // moves them there; an own photo is the camera's file, never the app's to move.
         val r = rig(union = listOf(inUnion("PEER", "IN_UNION")), kind = AlbumKind.FOLDER)
         r.own("OWN", "2026-09-10T00:00:00Z")

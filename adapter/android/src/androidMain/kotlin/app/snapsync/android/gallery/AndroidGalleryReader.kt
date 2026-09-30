@@ -51,7 +51,8 @@ import kotlinx.coroutines.withContext
  * - **Android does not say** that a photo is a screenshot, a screen recording, or edited: those facts read `false`
  *   (the screenshot and screen-recording folders are excluded as albums instead).
  *
- * **Its albums are folders** ([albumKind] is [AlbumKind.FOLDER]; capability `event-album`, `changes/android-event-album`
+ * **Its albums are folders** ([albumKind] is [AlbumKind.FOLDER]; capability `event-album`,
+ * `changes/archive/2026-09-30-android-event-album`
  * D2, D3, D6): a file lives in one folder, so the event album is a folder of its own, `DCIM/SnapSync/<name>/`, and its
  * [AlbumId] is that path. [createAlbum] picks a free one — numbered when another event, or a folder emptied earlier,
  * holds the name — and creates the directory, so two events never share one. An album resolves ([albumsById]) only

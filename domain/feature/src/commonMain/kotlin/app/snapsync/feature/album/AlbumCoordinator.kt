@@ -18,7 +18,8 @@ import co.touchlab.kermit.Logger
  * *adds* to an already-created album. The download path does its add atomically inside the importer's own
  * commit (design D5/D9) and only borrows [albumIdFor]; it does not route through [place].
  *
- * **The library's [AlbumKind] decides what the album may hold** (`changes/android-event-album` D4, D5). Under
+ * **The library's [AlbumKind] decides what the album may hold** (`changes/archive/2026-09-30-android-event-album`
+ * D4, D5). Under
  * [AlbumKind.COLLECTION] (iPhone) everything here is as it always was. Under [AlbumKind.FOLDER] (Android) the album
  * is the folder received photos are saved into, so:
  *  - the member's own photos are never placed ([place] is a no-op): filing one would move it out of the camera

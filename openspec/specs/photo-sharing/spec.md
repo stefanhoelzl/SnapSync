@@ -147,7 +147,9 @@ excluded. Inside DCIM the capture range and the resolution floors SHALL apply to
 because Android does not tell the app that a photo was edited. A photo or video outside DCIM SHALL NOT be
 shared, however it got there and whatever its resolution — media saved from a messaging app or the web,
 downloads, and photos from in-app cameras that save elsewhere — and the member SHALL have no way to add
-another folder. Under limited access (capability `photo-access`) the member's selection SHALL be filtered the
+another folder. The folder inside DCIM where SnapSync keeps the event albums (capability `event-album`)
+SHALL NOT be shared either, with everything in it — the photos the member received there, and anything the
+member put there themselves. Under limited access (capability `photo-access`) the member's selection SHALL be filtered the
 same way. On iPhone this requirement does not apply.
 
 #### Scenario: A camera photo is shared
@@ -178,6 +180,11 @@ same way. On iPhone this requirement does not apply.
 #### Scenario: A small image in DCIM is excluded
 - **WHEN** a 1600 × 1200 image lands in the camera's folder during the event
 - **THEN** it is not shared
+
+#### Scenario: The event album's photos are not shared
+- **WHEN** an Android member has received photos into an event's album, and they lie inside the capture range
+  of the event they are sharing to
+- **THEN** none of them is shared, even when the device no longer knows it received them
 
 ### Requirement: Under limited access the messaging-app album rule cannot apply
 
@@ -350,4 +357,3 @@ unless the event's photos are deleted first (capability `event-lifetime`).
 #### Scenario: A last upload finishes after the close
 - **WHEN** a member's photo is still uploading when the event closes because every member has settled
 - **THEN** it completes and reaches the other members
-

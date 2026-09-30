@@ -114,15 +114,15 @@ else and share the photos they took within the event's range.
   closed
 - **THEN** the join screen offers Join with the full event window preselected, and after joining their photos from the event's dates are shared
 
-### Requirement: The member decides separately whether to share and whether to receive
+### Requirement: The member decides separately whether to share, whether to receive, and whether to keep an album
 The join screen SHALL show the event's name and two switches — share my photos, and receive everyone's
 photos — both on by default, and SHALL NOT make the user pick a named mode. Neither switch SHALL ever
 flip the other. With sharing on, the screen SHALL state what is never shared (screenshots, screen
 recordings, GIFs and pictures saved from chat apps, capability `photo-sharing`) and the capture range
 being shared; with it off, it SHALL say that nothing of the user's leaves the phone and hide the range.
-With both switches off, Join SHALL be disabled and the reason stated beside it. On iPhone the screen SHALL
-also offer the event-album choice (capability `event-album`), whose note names only the photos the current
-switches would collect; on Android it SHALL offer none.
+With both switches off, Join SHALL be disabled and the reason stated beside it. The screen SHALL also offer
+the event-album choice (capability `event-album`), whose note names only the photos the current switches would
+collect — on Android only received photos ever are.
 
 #### Scenario: Both switches start on
 - **WHEN** the join screen has loaded an event
@@ -140,9 +140,9 @@ switches would collect; on Android it SHALL offer none.
 - **WHEN** the user turns both switches off
 - **THEN** Join is disabled, a line above it explains that a membership that neither shares nor receives does nothing, and neither switch turns itself back on
 
-#### Scenario: No album choice on Android
+#### Scenario: The album choice on Android
 - **WHEN** the join screen has loaded an event on an Android phone
-- **THEN** it offers the two switches and the range, and no album choice
+- **THEN** it offers the two switches, the range, and the album choice switched on, whose note names the photos they receive
 
 ### Requirement: The shared capture range always has a lower bound inside the event window
 With sharing on, the join screen SHALL let the user choose the range of capture dates they share,
@@ -322,4 +322,3 @@ NOT be reported as closed.
 #### Scenario: A member does not lose their event to a closed invite
 - **WHEN** a member opens the invite of a different event that has closed
 - **THEN** they are told it can no longer be joined, and remain in their current event
-

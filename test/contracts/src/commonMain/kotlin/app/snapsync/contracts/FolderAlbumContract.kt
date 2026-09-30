@@ -35,7 +35,8 @@ class FolderAlbums(val gallery: Gallery, val seeded: Set<AssetId>, val stage: ()
 
 /**
  * What a [AlbumKind.FOLDER] gallery promises about the event album (capability `event-album`; decision record
- * `changes/android-event-album` D2, D3, D6, D8) — this list IS the specification of those obligations. The core
+ * `changes/archive/2026-09-30-android-event-album` D2, D3, D6, D8) — this list IS the specification of those
+ * obligations. The core
  * builds on each: an empty album that resolved would never read as deleted; a move that minted a new id would let echo
  * suppression miss a received photo; an album photo that stayed a candidate would be shared back as the member's own.
  */

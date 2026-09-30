@@ -70,10 +70,10 @@ that finds the event missing SHALL NOT end it.
 - **WHEN** a rename fails because the server no longer finds the event
 - **THEN** the member stays joined, with the generic failure message and nothing torn down
 
-### Requirement: A member changes what they share and receive without leaving
+### Requirement: A member changes their settings without leaving
 Until the event closes (capability `event-lifetime`), the joined screen SHALL offer a settings action
-that opens the same choices as the join screen — share and receive switches, the capture range, and, on
-iPhone, the album — pre-filled with the membership's current settings under the event's name. A saved
+that opens the same choices as the join screen — share and receive switches, the capture range, and the
+album — pre-filled with the membership's current settings under the event's name. A saved
 range equal to the event's whole window SHALL show as the whole event, and any other as a custom range.
 Save SHALL apply all changes at once, without a confirmation dialog; Cancel SHALL discard them. Both
 switches off SHALL disable Save with the reason stated. Changed range bounds SHALL stay within the event's
@@ -82,12 +82,12 @@ has closed, settings SHALL NOT be offered and the membership's settings SHALL st
 close.
 
 #### Scenario: Settings open pre-filled
-- **WHEN** an iPhone member who shares and receives with the album on opens settings
+- **WHEN** a member who shares and receives with the album on opens settings
 - **THEN** both switches and the album are on and the range shows the one they joined with
 
-#### Scenario: Settings on Android offer no album
-- **WHEN** an Android member who shares and receives opens settings
-- **THEN** both switches are on, the range shows the one they joined with, and no album choice is offered
+#### Scenario: An Android membership from before the album opens with it off
+- **WHEN** an Android member who joined before Android had the event album opens settings
+- **THEN** the album choice is offered and is off
 
 #### Scenario: Cancel discards changes
 - **WHEN** the member changes several settings and taps Cancel
@@ -113,8 +113,8 @@ close.
 The settings screen SHALL show the live count of photos that will be shared (as on the join screen,
 capability `join-event`). It SHALL state that sharing less stops listing those photos to the event while
 anyone who already received them keeps them, and that photos the member received stay; it SHALL NOT
-suggest that narrowing deletes or recalls photos from other members. On iPhone, turning the album on SHALL
-say that the photos already synced are collected too.
+suggest that narrowing deletes or recalls photos from other members. Turning the album on SHALL say that the
+photos already synced are collected too — on Android, the photos already received.
 
 #### Scenario: Narrowing is described honestly
 - **WHEN** the member opens settings
@@ -123,6 +123,10 @@ say that the photos already synced are collected too.
 #### Scenario: Album-on mentions photos already synced
 - **WHEN** an iPhone member turns the album on in settings
 - **THEN** the screen says the album also collects the photos already synced
+
+#### Scenario: On Android album-on mentions photos already received
+- **WHEN** an Android member turns the album on in settings
+- **THEN** the screen says the album also collects the photos already received, and that their own photos stay in the camera folder
 
 ### Requirement: Saved settings take effect immediately
 After Save, newly enabled directions SHALL start at once rather than waiting for iOS to schedule work:

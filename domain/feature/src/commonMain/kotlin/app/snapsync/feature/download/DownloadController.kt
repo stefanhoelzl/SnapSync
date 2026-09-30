@@ -48,7 +48,8 @@ class DownloadController(
     // feature's rule, bound by the composition.
     private val eventAlbum: suspend () -> AlbumId?,
     // Told when an import settled as imported INTO [eventAlbum]'s answer — how a folder album learns it has held a
-    // photo, which is what later tells an emptied one from a fresh one (`changes/android-event-album` D4).
+    // photo, which is what later tells an emptied one from a fresh one
+    // (`changes/archive/2026-09-30-android-event-album` D4).
     private val onImportedIntoAlbum: suspend (AlbumId) -> Unit,
     // Where staged bytes live, what is still on disk, and the release of settled rows' bytes (capability
     // `receiving-photos`). Required: a composition that downloads must say where the bytes land.
