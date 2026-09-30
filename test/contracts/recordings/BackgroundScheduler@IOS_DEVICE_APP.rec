@@ -1,33 +1,90 @@
 # contract: BackgroundScheduler
 # host: IOS_DEVICE_APP
+# file: BackgroundScheduler@IOS_DEVICE_APP.rec
 # device: iPhone12,8
 # os: Version 26.6.2 (Build 23G90)
 # build: 1
-# kotlin: 2.4.0
-# recorded: 2026-09-23T14:02:54Z
+# kotlin: 2.4.20
+# recorded: 2026-09-30T15:00:42Z
 # live SCHEDULE_ARMS_ONE: Passed
 # live SCHEDULE_IS_IDEMPOTENT: Passed
 # live CANCEL_CLEARS: Passed
 # live CANCEL_EMPTY_IS_QUIET: Passed
+# live IDLE_ARMS_ONE: Passed
+# live IDLE_REPLACES_BUSY: Passed
+# live BUSY_REPLACES_IDLE: Passed
+# live CANCEL_CLEARS_IDLE: Passed
+[BUSY_REPLACES_IDLE]
+cancel(id=app.snapsync.upload.heartbeat) -> done
+cancel(id=app.snapsync.heartbeat.idle) -> done
+cancel(id=app.snapsync.upload.heartbeat) -> done
+submitRefresh(id=app.snapsync.heartbeat.idle begin=<masked>) -> accepted
+cancel(id=app.snapsync.heartbeat.idle) -> done
+submit(id=app.snapsync.upload.heartbeat network=true power=false begin=<masked>) -> accepted
+pending() -> [app.snapsync.upload.heartbeat]
+cancel(id=app.snapsync.upload.heartbeat) -> done
+cancel(id=app.snapsync.heartbeat.idle) -> done
 [CANCEL_CLEARS]
 cancel(id=app.snapsync.upload.heartbeat) -> done
+cancel(id=app.snapsync.heartbeat.idle) -> done
+cancel(id=app.snapsync.heartbeat.idle) -> done
 submit(id=app.snapsync.upload.heartbeat network=true power=false begin=<masked>) -> accepted
 cancel(id=app.snapsync.upload.heartbeat) -> done
-pending() -> [app.snapsync.download.backstop]
+cancel(id=app.snapsync.heartbeat.idle) -> done
+pending() -> []
 cancel(id=app.snapsync.upload.heartbeat) -> done
+cancel(id=app.snapsync.heartbeat.idle) -> done
+[CANCEL_CLEARS_IDLE]
+cancel(id=app.snapsync.upload.heartbeat) -> done
+cancel(id=app.snapsync.heartbeat.idle) -> done
+cancel(id=app.snapsync.upload.heartbeat) -> done
+submitRefresh(id=app.snapsync.heartbeat.idle begin=<masked>) -> accepted
+cancel(id=app.snapsync.upload.heartbeat) -> done
+cancel(id=app.snapsync.heartbeat.idle) -> done
+pending() -> []
+cancel(id=app.snapsync.upload.heartbeat) -> done
+cancel(id=app.snapsync.heartbeat.idle) -> done
 [CANCEL_EMPTY_IS_QUIET]
 cancel(id=app.snapsync.upload.heartbeat) -> done
+cancel(id=app.snapsync.heartbeat.idle) -> done
 cancel(id=app.snapsync.upload.heartbeat) -> done
-pending() -> [app.snapsync.download.backstop]
+cancel(id=app.snapsync.heartbeat.idle) -> done
+pending() -> []
 cancel(id=app.snapsync.upload.heartbeat) -> done
+cancel(id=app.snapsync.heartbeat.idle) -> done
+[IDLE_ARMS_ONE]
+cancel(id=app.snapsync.upload.heartbeat) -> done
+cancel(id=app.snapsync.heartbeat.idle) -> done
+cancel(id=app.snapsync.upload.heartbeat) -> done
+submitRefresh(id=app.snapsync.heartbeat.idle begin=<masked>) -> accepted
+pending() -> [app.snapsync.heartbeat.idle]
+cancel(id=app.snapsync.upload.heartbeat) -> done
+cancel(id=app.snapsync.heartbeat.idle) -> done
+[IDLE_REPLACES_BUSY]
+cancel(id=app.snapsync.upload.heartbeat) -> done
+cancel(id=app.snapsync.heartbeat.idle) -> done
+cancel(id=app.snapsync.heartbeat.idle) -> done
+submit(id=app.snapsync.upload.heartbeat network=true power=false begin=<masked>) -> accepted
+cancel(id=app.snapsync.upload.heartbeat) -> done
+submitRefresh(id=app.snapsync.heartbeat.idle begin=<masked>) -> accepted
+pending() -> [app.snapsync.heartbeat.idle]
+cancel(id=app.snapsync.upload.heartbeat) -> done
+cancel(id=app.snapsync.heartbeat.idle) -> done
 [SCHEDULE_ARMS_ONE]
 cancel(id=app.snapsync.upload.heartbeat) -> done
+cancel(id=app.snapsync.heartbeat.idle) -> done
+cancel(id=app.snapsync.heartbeat.idle) -> done
 submit(id=app.snapsync.upload.heartbeat network=true power=false begin=<masked>) -> accepted
-pending() -> [app.snapsync.download.backstop,app.snapsync.upload.heartbeat]
+pending() -> [app.snapsync.upload.heartbeat]
 cancel(id=app.snapsync.upload.heartbeat) -> done
+cancel(id=app.snapsync.heartbeat.idle) -> done
 [SCHEDULE_IS_IDEMPOTENT]
 cancel(id=app.snapsync.upload.heartbeat) -> done
+cancel(id=app.snapsync.heartbeat.idle) -> done
+cancel(id=app.snapsync.heartbeat.idle) -> done
 submit(id=app.snapsync.upload.heartbeat network=true power=false begin=<masked>) -> accepted
+cancel(id=app.snapsync.heartbeat.idle) -> done
 submit(id=app.snapsync.upload.heartbeat network=true power=false begin=<masked>) -> accepted
-pending() -> [app.snapsync.download.backstop,app.snapsync.upload.heartbeat]
+pending() -> [app.snapsync.upload.heartbeat]
 cancel(id=app.snapsync.upload.heartbeat) -> done
+cancel(id=app.snapsync.heartbeat.idle) -> done
