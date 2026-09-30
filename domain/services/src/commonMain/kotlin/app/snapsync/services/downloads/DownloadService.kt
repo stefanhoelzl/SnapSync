@@ -1,5 +1,6 @@
 package app.snapsync.services.downloads
 
+import app.snapsync.model.AdoptedAsset
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.DownloadCounts
@@ -105,18 +106,32 @@ class DownloadService(databases: Databases) : SuppressionSource {
         }
     }
 
+    /**
+     * Record every [adopted] photo as its ref's confirmed import, tagged with [eventId], in ONE transaction, and answer
+     * the refs actually recorded. A ref the store already holds a row for is left exactly as it is — whatever that row
+     * says (planned, mid-import, imported, unimportable) is a record of this install, and adoption only fills the gap a
+     * deleted store left (capability `receiving-photos`).
+     */
+    suspend fun adoptAll(adopted: Collection<AdoptedAsset>, eventId: String): Set<AssetRef> {
+        if (adopted.isEmpty()) return emptySet()
+        return q.transactionWithResult {
+            adopted.filterTo(mutableSetOf()) { a ->
+                q.adoptImported(a.ref.sourceDeviceId, a.ref.sourceAssetId, a.creationDate, a.localId, eventId)
+                q.changedRows().executeAsOne() > 0
+            }.mapTo(mutableSetOf()) { it.ref }
+        }
+    }
+
     /** The not-yet-staged resources across all non-imported assets — the download work queue. */
     suspend fun pendingDownloads(): List<PendingDownload> =
         q.selectPendingResources { device, asset, key, url, role, contentType, original ->
             PendingDownload(AssetRef(device, asset), PlannedResource(key, url, role, contentType, original))
         }.executeAsList()
 
-    /** Mark a resource's download as sent to the OS (a background transfer now exists) — the in-flight marker. */
-    suspend fun markEnqueued(ref: AssetRef, resourceKey: String) {
-        q.markResourceEnqueued(ref.sourceDeviceId, ref.sourceAssetId, resourceKey)
-    }
-
-    /** Every mark in ONE transaction: one durable commit for the batch rather than an autocommit per resource. */
+    /**
+     * Mark each download as sent to the OS (a background transfer now exists) — the in-flight marker — in ONE
+     * transaction: one durable commit for the batch rather than an autocommit per resource.
+     */
     suspend fun markAllEnqueued(downloads: Collection<PendingDownload>) {
         if (downloads.isEmpty()) return
         q.transaction {

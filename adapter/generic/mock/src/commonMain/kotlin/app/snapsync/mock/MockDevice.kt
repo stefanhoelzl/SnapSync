@@ -1,5 +1,6 @@
 package app.snapsync.mock
 
+import app.snapsync.model.FileArea
 import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.SecureSlots
 
@@ -52,6 +53,18 @@ open class MockDevice(
     val devControls = DevControlsMock(inviteLinkHints)
     val extensionHost = ExtensionHostMock()
     val systemUi = SystemUiMock()
+
+    /**
+     * Delete the app, as a member does from the home screen: its files (both areas — the App Group goes with the last
+     * app of its group), its databases and its user defaults are gone. What outlives an app is kept: the Keychain (so
+     * the device id), the photo library and everything the backend holds. Reinstalling is this followed by a launch.
+     */
+    fun uninstallApp() {
+        disk.operator.area(FileArea.SHARED).clear()
+        disk.operator.area(FileArea.PRIVATE).clear()
+        databases.operator.deleteAll()
+        preferences.values.clear()
+    }
 
     /** The marketing version the app's build declares to the backend mock — a cell an operator may change. */
     val declaredVersion: DeclaredVersion = DeclaredVersion(null)

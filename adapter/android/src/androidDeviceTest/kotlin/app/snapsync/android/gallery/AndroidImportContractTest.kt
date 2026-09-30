@@ -29,6 +29,7 @@ import app.snapsync.model.GalleryAccess
 import app.snapsync.model.GalleryRead
 import app.snapsync.model.ImportRequest
 import app.snapsync.model.ImportResult
+import app.snapsync.model.ReceivedPhotoName
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.StagedResource
 import app.snapsync.model.jpegXmp
@@ -127,6 +128,8 @@ class AndroidImportContractTest {
                 override suspend fun captureDate(id: AssetId): String? =
                     (dateTaken(id) ?: modified(id)?.times(MILLIS_PER_SECOND))?.let(::iso)
                 override fun marker(ref: AssetRef): MarkerState = markers[ref] ?: MarkerState.NONE
+                // The column the gallery reader reports as the primary resource's original filename.
+                override suspend fun primaryFilename(id: AssetId): String? = column(id, MediaStore.MediaColumns.DISPLAY_NAME)
             }
             return Entered.Ready(StagedImport(gallery, stage, library))
         }
@@ -169,9 +172,13 @@ class AndroidImportContractTest {
         val id = assertIs<ImportResult.Imported>(gallery.import(ImportRequest(ref, resources, iso(CAPTURED), null))).createdLocalId
         assertEquals(MarkerState.CONFIRMED, markers[ref])
         assertEquals("image/jpeg", column(id, MediaStore.MediaColumns.MIME_TYPE), "re-encoded: Google Photos plays no HEIC motion photo")
-        assertEquals("$stem.jpg", column(id, MediaStore.MediaColumns.DISPLAY_NAME), "the sender's name, with the new extension")
-        assertEquals(0, countNamed("$stem.MOV"), "the movie travels inside the photo, not beside it")
-        assertEquals(0, countNamed("$stem.HEIC"), "one item, never the still as well")
+        assertEquals(
+            ReceivedPhotoName.mark("$stem.jpg", "key-$stem.jpg", ref),
+            column(id, MediaStore.MediaColumns.DISPLAY_NAME),
+            "the sender's name with SnapSync's mark, and the new extension",
+        )
+        assertEquals(0, countNamed(ReceivedPhotoName.mark("$stem.MOV", "key-$stem.MOV", ref)), "the movie travels inside the photo, not beside it")
+        assertEquals(0, countNamed(ReceivedPhotoName.mark("$stem.HEIC", "key-$stem.HEIC", ref)), "one item, never the still as well")
 
         val file = bytesOf(id)
         val xmp = assertNotNull(jpegXmp(file), "the JPEG carries XMP")
@@ -201,8 +208,9 @@ class AndroidImportContractTest {
             stagedResource("$stem.JPG", "image/jpeg", still),
             stagedResource("$stem.MOV", "video/quicktime", mov, ResourceRole.LIVE),
         )
-        val id = assertIs<ImportResult.Imported>(gallery.import(ImportRequest(ref("jpeg-live"), resources, iso(CAPTURED), null))).createdLocalId
-        assertEquals("$stem.JPG", column(id, MediaStore.MediaColumns.DISPLAY_NAME))
+        val ref = ref("jpeg-live")
+        val id = assertIs<ImportResult.Imported>(gallery.import(ImportRequest(ref, resources, iso(CAPTURED), null))).createdLocalId
+        assertEquals(ReceivedPhotoName.mark("$stem.JPG", "key-$stem.JPG", ref), column(id, MediaStore.MediaColumns.DISPLAY_NAME))
         assertContentEquals(assertNotNull(motionPhotoStill(still, mov.size.toLong())) + mov, bytesOf(id), "only the XMP segment is new")
     }
 
@@ -219,7 +227,7 @@ class AndroidImportContractTest {
         val ref = ref("fallback")
         val id = assertIs<ImportResult.Imported>(gallery.import(ImportRequest(ref, resources, iso(CAPTURED), null))).createdLocalId
         assertContentEquals(still, bytesOf(id), "the still, unchanged")
-        assertEquals(1, countNamed("$stem.JPG"), "once")
+        assertEquals(1, countNamed(ReceivedPhotoName.mark("$stem.JPG", "key-$stem.JPG", ref)), "once")
         assertEquals(MarkerState.CONFIRMED, markers[ref])
     }
 

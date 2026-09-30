@@ -1,5 +1,6 @@
 package app.snapsync.contracts
 
+import app.snapsync.model.AdoptedAsset
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.services.downloads.DownloadService
@@ -53,10 +54,10 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadService>("Do
             s.plan(ref, "2026-06-30T10:00:00Z", resources())
             assertEquals(0, s.counts().inFlight) // planned, but nothing sent to the OS yet
 
-            s.markEnqueued(ref, "ASSET-Q-primary.heic")
+            s.markAllEnqueued(s.pendingDownloads().filter { it.resource.resourceKey == "ASSET-Q-primary.heic" })
             assertEquals(1, s.counts().inFlight) // a resource sent → the asset is in flight
 
-            s.markEnqueued(ref, "ASSET-Q-live.mov")
+            s.markAllEnqueued(s.pendingDownloads().filter { it.resource.resourceKey == "ASSET-Q-live.mov" })
             assertEquals(1, s.counts().inFlight) // asset-counted, not one per resource
 
             s.markStaged(ref, "ASSET-Q-primary.heic", "/stage/primary.heic")
@@ -77,7 +78,7 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadService>("Do
          */
         clause("the projection counts come from one read", DownloadStoreState.EMPTY) { s ->
             s.plan(ref, "2026-06-30T10:00:00Z", resources())
-            s.markEnqueued(ref, "ASSET-Q-primary.heic")
+            s.markAllEnqueued(s.pendingDownloads().filter { it.resource.resourceKey == "ASSET-Q-primary.heic" })
 
             val counts = s.counts()
             assertEquals(0, counts.imported, "nothing imported yet")
@@ -565,6 +566,44 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadService>("Do
             s.markStaged(ref, "ASSET-Q-primary.heic", "/p")
             s.markStaged(ref, "ASSET-Q-live.mov", "/l")
             assertEquals(1, s.counts().inFlight, "staging still supersedes a batch mark")
+        }
+
+        // --- adoption of marked photos at join (capability `receiving-photos`) ---
+
+        clause("an adopted photo is settled suppressed and counted for its event", DownloadStoreState.EMPTY) { s ->
+            val adopted = s.adoptAll(listOf(AdoptedAsset(ref, AssetId("LOCAL-KEPT"), "2026-06-30T10:00:00Z")), "EVENT-1")
+            assertEquals(setOf(ref), adopted)
+            assertTrue(s.isSettled(ref), "an adopted ref is never planned or downloaded again")
+            assertEquals(setOf(AssetId("LOCAL-KEPT")), s.suppressedLocalIds(), "and its asset is never uploaded back")
+            assertEquals(mapOf(ref to AssetId("LOCAL-KEPT")), s.importedLocalIds(listOf(ref)))
+            assertEquals(1, s.counts("EVENT-1").imported, "it counts as received for the event it was adopted for")
+            assertTrue(s.pendingDownloads().isEmpty() && s.importableAssets().isEmpty() && s.unconfirmedImports().isEmpty())
+
+            s.plan(ref, "2026-06-30T10:00:00Z", resources())
+            assertTrue(s.pendingDownloads().isEmpty(), "a later plan cannot downgrade it")
+        }
+
+        clause("adoption never overwrites a row the store already holds", DownloadStoreState.EMPTY) { s ->
+            val deleted = AssetRef("DEVICE-B", AssetId("ASSET-DELETED"))
+            s.plan(ref, "2026-06-30T10:00:00Z", resources())
+            s.plan(deleted, "2026-06-30T11:00:00Z", resources())
+            s.markImported(deleted, AssetId("LOCAL-GONE"))
+
+            val adopted = s.adoptAll(
+                listOf(
+                    AdoptedAsset(ref, AssetId("LOCAL-X"), "2026-06-30T10:00:00Z"),
+                    AdoptedAsset(deleted, AssetId("LOCAL-Y"), "2026-06-30T11:00:00Z"),
+                ),
+                "EVENT-1",
+            )
+            assertTrue(adopted.isEmpty(), "a planned row and an imported row are both this install's own record")
+            assertFalse(s.isSettled(ref), "the planned row still downloads")
+            assertEquals(setOf(AssetId("LOCAL-GONE")), s.suppressedLocalIds(), "the imported row keeps its own marker")
+        }
+
+        clause("adopting nothing writes nothing", DownloadStoreState.EMPTY) { s ->
+            assertTrue(s.adoptAll(emptyList(), "EVENT-1").isEmpty())
+            assertEquals(0, s.counts().stillArriving)
         }
     }
 

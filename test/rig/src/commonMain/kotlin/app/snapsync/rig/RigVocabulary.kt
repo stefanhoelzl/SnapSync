@@ -104,6 +104,7 @@ object RigVocabulary {
         "device/clock/advance",
         "device/app-version",
         "device/relaunch",
+        "device/reinstall",
         "device/selection/change",
         "device/gallery/add",
         "device/gallery/remove",

@@ -546,6 +546,9 @@ backend mock's operator has answers `409` with the reason.
 - `device/relaunch?scene=false` is a cold **background** launch: the process starts with no scene, so nothing builds
   a screen. A test about what a wake must not build starts there and reads only the OS record — `/device/state` and
   `/user` read the screen, and asking would assemble it.
+- `device/reinstall` deletes the app and installs it again: its files, databases and user defaults go, while the
+  Keychain (the device id), the photo library and the backend keep theirs, and a cold foreground launch follows. It
+  is the JVM host's alone; both app hosts refuse it, since deleting the app ends the process that serves the channel.
 
 There are **no click, semantics or pixel verbs**. Taps and pixels belong to the UI tier (section 8).
 
@@ -636,7 +639,7 @@ upload session, the downloads, push and the crash reporter). **No file is not al
 the screen and its foreground life, fresh in memory at every start — what every launch without a file has always
 composed. And **a choice may leave real only the systems Android has an adapter for** (`AndroidRig.kt`'s list; naming
 another `real`, or omitting it, refuses the launch, which then composes nothing). A file-chosen launch saves its mocks'
-state beside the file, as on iOS, because a real store then outlives the process. It refuses `device/relaunch` and the
+state beside the file, as on iOS, because a real store then outlives the process. It refuses `device/relaunch`, `device/reinstall` and the
 upload extension's `/os` verbs (Android has none), and is contract host `ANDROID_EMU` in `GET /device` — the host the
 device tests run on too. The `journeys (android)` CI job drives it over every real adapter Android has
 (`scripts/android-journeys`). A build without the property composes every real adapter and starts; its crash reporter

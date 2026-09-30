@@ -231,6 +231,11 @@ fun iosRefusals(launch: RigLaunch): Map<String, String> = buildMap {
         "process death on a device is the app's exit (POST /device/adapters does one) followed by a launch; the channel " +
             "cannot relaunch the process it runs in",
     )
+    put(
+        "device/reinstall",
+        "deleting the app ends the process the channel runs in; delete and reinstall it from outside (`ios-device` / " +
+            "`simctl uninstall`, then install)",
+    )
     if (world.isMocked(MockedSystem.LIBRARY)) {
         put("device/gallery/wipe", "the photo library is mocked on this launch; a mocked library is never PhotoKit's to wipe")
     }

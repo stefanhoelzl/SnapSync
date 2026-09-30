@@ -113,6 +113,10 @@ class PhotoContractBindingsTest {
                     library.value.firstOrNull { it.facts.assetId == id }?.creationDate
 
                 override fun marker(ref: AssetRef): MarkerState = markers[ref] ?: MarkerState.NONE
+
+                override suspend fun primaryFilename(id: AssetId): String? =
+                    library.value.firstOrNull { it.facts.assetId == id }
+                        ?.rawResources?.firstOrNull { it.role == ResourceRole.PRIMARY }?.originalFilename
             }
             val staged = {
                 listOf(

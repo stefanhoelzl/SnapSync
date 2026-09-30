@@ -161,6 +161,9 @@ class CompositionSeamTest {
         "MembershipEntry.notifyLeave" to "the same best-effort wrapper as LeaveEvent.notifyLeave, over the LeaveNotifier port",
         "MembershipEntry.loadShareSet" to
             "the sibling ShareSetLoad feature (its listing crosses the DeviceFilesSource port) — feature-blindness",
+        "MembershipEntry.adoptReceived" to
+            "the sibling ReceivedPhotoAdoption feature (its union read crosses the EventUnionSource port, its library " +
+            "read the GalleryReader port) — feature-blindness",
         "MembershipEntry.saveConfig" to
             "the ConfigStore port's save, handed in so the entry's ordered steps are recorded by its tests " +
             "exactly as they run",

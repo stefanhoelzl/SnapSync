@@ -4,7 +4,6 @@ import android.graphics.Bitmap
 import android.graphics.ImageDecoder
 import android.media.ExifInterface
 import app.snapsync.model.StagedResource
-import app.snapsync.model.importFilename
 import app.snapsync.model.motionPhotoStill
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.withExtension
@@ -53,11 +52,14 @@ internal class MotionPhotoBuilder(private val scratchDir: File, private val log:
             stream.write(withXmp)
             videoFile.inputStream().use { it.copyTo(stream) }
         }
-        val name = importFilename(still.originalFilename, still.resourceKey)
         log.i { "$assetId: built a motion photo (${if (isJpeg) "JPEG kept" else "re-encoded to JPEG"}, video ${videoFile.length()} B)" }
+        // The sender's name, its extension following the bytes; the import adds SnapSync's mark (`ReceivedPhotoName`).
+        // An unknown name stays unknown, and the key's extension follows instead, so the mark names it `snapsync-….jpg`.
+        val name = still.originalFilename
         return still.copy(
             contentType = "image/jpeg",
-            originalFilename = if (isJpeg) name else withExtension(name, ".jpg"),
+            originalFilename = if (isJpeg || name.isEmpty()) name else withExtension(name, ".jpg"),
+            resourceKey = if (isJpeg) still.resourceKey else withExtension(still.resourceKey, ".jpg"),
             stagedPath = out.path,
         )
     }

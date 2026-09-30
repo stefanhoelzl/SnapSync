@@ -48,6 +48,15 @@ internal fun jvmDeviceCommands(rig: JvmRig): Map<String, RigCommand> = rig.world
         if (scene) rig.showScreen()
         CommandResult.ok("""{"relaunched":true,"scene":$scene}""")
     },
+    // Deleting the app and installing it again: its files, databases and user defaults are gone, the Keychain, the
+    // photo library and the backend keep theirs (capability `receiving-photos`, what a reinstall forgets), then a cold
+    // foreground launch as `relaunch` makes one.
+    "reinstall" to RigCommand { _, _ ->
+        rig.mocks.uninstallApp()
+        rig.app.relaunch()
+        rig.showScreen()
+        CommandResult.ok("""{"reinstalled":true}""")
+    },
 )
 
 /**

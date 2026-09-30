@@ -11,11 +11,12 @@ import android.net.Uri
 import android.os.Bundle
 import android.provider.MediaStore
 import app.snapsync.model.AssetId
+import app.snapsync.model.AssetRef
+import app.snapsync.model.ReceivedPhotoName
 import app.snapsync.model.ImportRequest
 import app.snapsync.model.ImportResult
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.StagedResource
-import app.snapsync.model.importFilename
 import co.touchlab.kermit.Logger
 import java.io.File
 import java.io.IOException
@@ -89,7 +90,7 @@ internal class MediaStoreImport(context: Context, private val log: Logger) {
         folder: String,
         onPlaceholder: (AssetId) -> Unit,
     ): ImportResult {
-        val uri = runCatchingCancellable { resolver.insert(collection, pendingValues(primary, folder)) }
+        val uri = runCatchingCancellable { resolver.insert(collection, pendingValues(primary, folder, request.ref)) }
             .onFailure { log.w(it) { "${request.ref.sourceAssetId}: the insert was refused" } }
             .getOrNull()
             ?: return ImportResult.Failed("MediaStore refused the insert")
@@ -162,8 +163,10 @@ internal class MediaStoreImport(context: Context, private val log: Logger) {
         runCatchingCancellable { resolver.delete(uri, null) }.onFailure { log.w(it) { "the unfinished item $uri stays pending" } }
     }
 
-    private fun pendingValues(resource: StagedResource, folder: String) = ContentValues().apply {
-        put(MediaStore.MediaColumns.DISPLAY_NAME, importFilename(resource.originalFilename, resource.resourceKey))
+    private fun pendingValues(resource: StagedResource, folder: String, ref: AssetRef) = ContentValues().apply {
+        // The sender's name with SnapSync's mark (`ReceivedPhotoName`): what a reinstalled app reads back to know the
+        // photo was received. A collision makes MediaStore append " (1)", which the mark's reader tolerates.
+        put(MediaStore.MediaColumns.DISPLAY_NAME, ReceivedPhotoName.mark(resource.originalFilename, resource.resourceKey, ref))
         put(MediaStore.MediaColumns.MIME_TYPE, resource.contentType)
         put(MediaStore.MediaColumns.RELATIVE_PATH, folder)
         put(MediaStore.MediaColumns.IS_PENDING, 1)

@@ -49,6 +49,18 @@ upsertAsset:
 INSERT OR IGNORE INTO downloadAsset (sourceDeviceId, sourceAssetId, state, creationDate, createdLocalId, eventId)
 VALUES (:sourceDeviceId, :sourceAssetId, :state, :creationDate, NULL, :eventId);
 
+-- Record a photo ALREADY in the library as this ref's import (capability `receiving-photos`): what a join's adoption
+-- writes for a received photo whose filename carries this ref's SnapSync mark, after the app that imported it was
+-- deleted with its store. A terminal IMPORTED row carrying its marker — the same shape a confirmed import leaves — so
+-- it is never planned, never downloaded, and its asset is suppressed from the upload universe at once.
+--
+-- INSERT OR IGNORE, never an upsert: an existing row is the authoritative record of this ref (a reconcile planned it,
+-- an import holds its marker, the member deleted the photo), and adoption only fills a gap the store has no record of.
+-- No resource rows: nothing is staged, so nothing is released or pruned.
+adoptImported:
+INSERT OR IGNORE INTO downloadAsset (sourceDeviceId, sourceAssetId, state, creationDate, createdLocalId, eventId)
+VALUES (:sourceDeviceId, :sourceAssetId, 'IMPORTED', :creationDate, :createdLocalId, :eventId);
+
 -- Tag a row as a member of [eventId]'s union — settled rows included, which is the point: an imported photo
 -- of THIS event counts as received here, one imported for an earlier event does not. Writes only a row whose
 -- tag differs, so a reconcile over an unchanged union is a read.

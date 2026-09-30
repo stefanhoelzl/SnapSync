@@ -49,6 +49,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import app.snapsync.gallery.currentPhotoPermission
 import app.snapsync.model.GalleryAccess
+import app.snapsync.model.GalleryRead
 import app.snapsync.model.ResourceRole
 import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.model.AssetRef
@@ -257,6 +258,11 @@ class SimAppImporterBinding : Binding<GalleryImportState, StagedImport> {
             }
 
             override fun marker(ref: AssetRef): MarkerState = markers[ref] ?: MarkerState.NONE
+
+            // Through the reader's resource read — the same read a later install's join makes.
+            override suspend fun primaryFilename(id: AssetId): String? =
+                (IosGalleryReader(Logger.withTag("contract")).resources(setOf(id)) as? GalleryRead.Read)
+                    ?.value?.firstOrNull()?.rawResources?.firstOrNull { it.role == ResourceRole.PRIMARY }?.originalFilename
         }
         return Entered.Ready(StagedImport(importer, stage, library))
     }

@@ -25,21 +25,29 @@ class MembershipEntryTest {
         stopUploads = { order += "stop" },
         notifyLeave = { order += "leave:$it" },
         loadShareSet = { order += "load" },
+        adoptReceived = { order += "adopt:${it.eventId}" },
         saveConfig = { order += "save:${it.eventId}" },
         startUploads = { order += "start" },
     )
 
     @Test
-    fun `a switch stops the previous uploads then leaves then loads then saves then starts the new uploads`() = runTest {
+    fun `a switch stops the previous uploads then leaves then loads then adopts then saves then starts the new uploads`() = runTest {
         val order = mutableListOf<String>()
         entry(order).enter("OLD", cfg)
-        assertEquals(listOf("stop", "leave:OLD", "load", "save:NEW", "start"), order)
+        assertEquals(listOf("stop", "leave:OLD", "load", "adopt:NEW", "save:NEW", "start"), order)
     }
 
     @Test
     fun `a first join has nothing to stop or leave`() = runTest {
         val order = mutableListOf<String>()
         entry(order).enter(null, cfg)
-        assertEquals(listOf("load", "save:NEW", "start"), order)
+        assertEquals(listOf("load", "adopt:NEW", "save:NEW", "start"), order)
+    }
+
+    @Test
+    fun `a share-only join adopts too`() = runTest {
+        val order = mutableListOf<String>()
+        entry(order).enter(null, cfg.copy(direction = Direction.UploadOnly))
+        assertEquals(listOf("load", "adopt:NEW", "save:NEW", "start"), order)
     }
 }
