@@ -87,6 +87,7 @@ internal class InMemoryBackend(
     }
 
     override suspend fun getEvent(eventId: String): Reply<EventMeta> = online {
+        state.eventReads[eventId] = (state.eventReads[eventId] ?: 0) + 1
         state.awaitRelease(BackendCall.EVENT)
         val event = state.events[eventId] ?: return@online notFound()
         val startsAt = event.startsAt ?: event.createdAt
@@ -152,6 +153,7 @@ internal class InMemoryBackend(
     }
 
     override suspend fun eventFiles(eventId: String): Reply<List<UnionAsset>> = online {
+        state.unionReads[eventId] = (state.unionReads[eventId] ?: 0) + 1
         val union = state.union(eventId) ?: return@online notFound()
         Reply.Ok(
             union.map { (deviceId, asset) ->

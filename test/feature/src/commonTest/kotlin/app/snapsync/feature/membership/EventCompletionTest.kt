@@ -1,5 +1,9 @@
 package app.snapsync.feature.membership
 
+import kotlin.time.Duration.Companion.minutes
+import app.snapsync.mock.inMemoryPreferences
+import app.snapsync.services.wake.EventChecks
+import app.snapsync.services.wake.EventCheck
 import app.snapsync.feature.support.ConfigWrites
 import app.snapsync.feature.support.TestLedger
 import app.snapsync.feature.support.inertPendingLeaves
@@ -84,6 +88,8 @@ class EventCompletionTest {
         var finalPublishes = 0
         val leavesSent = mutableListOf<String>()
         val pendingLeaves = PendingLeaves(inMemoryFiles(), { id -> leavesSent += id; Result.success(Unit) })
+        var clock: Instant = Instant.parse(now)
+        val checks = EventChecks(inMemoryPreferences(), now = { clock })
 
         suspend fun pending(asset: AssetId) =
             ledger.resetTo(listOf(LedgerEntry("${asset.value}-primary.heic", asset, LedgerState.REQUESTED)))
@@ -98,6 +104,7 @@ class EventCompletionTest {
             pendingLeaves = pendingLeaves,
             publishFinal = { finalPublishes++ },
             everythingReceived = { received },
+            checks = checks,
         )
 
         fun TestScope.leave() = LeaveEvent(
@@ -233,8 +240,39 @@ class EventCompletionTest {
                 pendingLeaves = pendingLeaves,
                 publishFinal = {},
                 everythingReceived = { error("the union read failed") },
+                checks = checks,
             )
         }
         assertEquals(CompletionOutcome.WAITING, completion.finish())
+    }
+
+    // ---- the bounded read of the event's state (decision record `changes/timely-background-receiving`, D5) ----------
+
+    @Test
+    fun `a bounded wake within the hour of any read of the event reads none`() = runTest {
+        val w = World(now = "2026-07-14T00:00:00Z")
+        with(w) { completion() }.finish(bounded = false) // a push, an opening or a join: it reads, and stamps
+        w.clock = w.clock + 59.minutes
+        assertEquals(CompletionOutcome.WAITING, with(w) { completion() }.finish(bounded = true))
+        assertEquals(1, w.fetches, "the bounded wake read nothing")
+        w.clock = w.clock + 1.minutes
+        with(w) { completion() }.finish(bounded = true)
+        assertEquals(2, w.fetches, "an hour after the last read it reads again")
+    }
+
+    @Test
+    fun `an unbounded step reads the event however recently it was read`() = runTest {
+        val w = World(now = "2026-07-14T00:00:00Z")
+        with(w) { completion() }.finish(bounded = false)
+        with(w) { completion() }.finish(bounded = false)
+        assertEquals(2, w.fetches, "a close push must be heard")
+    }
+
+    @Test
+    fun `before the end no bound is consulted and nothing is read`() = runTest {
+        val w = World(now = "2026-07-01T00:00:00Z")
+        assertEquals(CompletionOutcome.NOT_ENDED, with(w) { completion() }.finish(bounded = true))
+        assertEquals(0, w.fetches)
+        assertTrue(w.checks.due(EventCheck.CLOSE, joined.eventId), "and no time was stamped")
     }
 }

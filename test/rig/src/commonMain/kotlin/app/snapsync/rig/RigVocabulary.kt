@@ -80,6 +80,7 @@ object RigVocabulary {
         "device/backend/event",
         "device/backend/departed",
         "device/backend/publishes",
+        "device/backend/reads",
         "device/backend/pushes",
         "device/diagnostics/sent",
         // What the operating system recorded of the app: the completion handlers it handed over and got back, the

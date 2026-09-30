@@ -1,5 +1,7 @@
 package app.snapsync.feature.download
 
+import app.snapsync.mock.inMemoryPreferences
+import app.snapsync.services.wake.EventChecks
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.feature.support.InMemoryAssetPresence
 import app.snapsync.feature.support.RecordingFiles
@@ -58,6 +60,7 @@ class DownloadPushReceiverTest {
             // (capability `receiving-photos`) — so state a downloading membership explicitly. The gate no
             // longer defaults: a permissive default is what let "no membership" mean "download freely".
             downloadEnabled = { true },
+            checks = EventChecks(inMemoryPreferences(), now = { kotlin.time.Instant.fromEpochMilliseconds(0) }),
         )
     }
 

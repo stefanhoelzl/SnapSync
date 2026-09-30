@@ -43,7 +43,7 @@ internal class WakeHold(
     private val tail: TailRunner,
     private val log: Logger,
     /** The end-of-wake step, run once this wake's tail has ended — see `AppTail`'s `finish`. */
-    private val finish: suspend () -> Unit,
+    private val finish: suspend (TailTrigger) -> Unit,
 ) {
     private val expired = AtomicBoolean(false)
     private val guarded = AtomicReference<List<OsCompletions.Handover>>(emptyList())
@@ -94,7 +94,7 @@ internal class WakeHold(
     private suspend fun finishAfter(trigger: TailTrigger) {
         val due = trigger.scope == TailScope.FULL
         if (due && !expired.load()) {
-            runCatchingCancellable { finish() }
+            runCatchingCancellable { finish(trigger) }
                 .onFailure { log.w(it) { "$label: the end-of-wake step failed; the next wake runs it again" } }
         }
     }

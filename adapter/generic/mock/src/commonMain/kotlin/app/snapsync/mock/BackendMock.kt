@@ -106,6 +106,12 @@ class BackendOperator internal constructor(private val state: BackendState) {
     /** How many publishes the backend applied for this membership. */
     fun publishesOf(eventId: String, deviceId: String): Int = state.publishes[eventId to deviceId] ?: 0
 
+    /** How many times a device's read of [eventId]'s union (`GET /events/:id/files`) reached the backend. */
+    fun unionReadsOf(eventId: String): Int = state.unionReads[eventId] ?: 0
+
+    /** How many times a device's read of [eventId]'s details (`GET /events/:id`) reached the backend. */
+    fun eventReadsOf(eventId: String): Int = state.eventReads[eventId] ?: 0
+
     /** How many publishes it refused as older than the one it held. */
     fun refusedPublishesOf(eventId: String, deviceId: String): Int = state.refused[eventId to deviceId] ?: 0
 
@@ -251,6 +257,10 @@ internal class BackendState(
     val deviceConfigs = mutableMapOf<String, PushEndpoint>()
     val deviceConfigWrites = mutableMapOf<String, Int>()
     val publishes = mutableMapOf<Pair<String, String>, Int>()
+
+    /** Reads of each event's union and of its details, as the backend served them — what a device cost it. */
+    val unionReads = mutableMapOf<String, Int>()
+    val eventReads = mutableMapOf<String, Int>()
     val refused = mutableMapOf<Pair<String, String>, Int>()
     val pushes = mutableListOf<SentPush>()
     val challenges = mutableSetOf<String>()

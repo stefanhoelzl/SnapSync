@@ -1,5 +1,10 @@
 package app.snapsync.feature.download
 
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.hours
+import kotlin.time.Instant
+import app.snapsync.mock.inMemoryPreferences
+import app.snapsync.services.wake.EventChecks
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.feature.support.InMemoryAssetPresence
 import app.snapsync.feature.support.RecordingDatabases
@@ -158,6 +163,7 @@ class DownloadControllerTest {
         // passes the disk it means and says so at the call site.
         disk: Files = RecordingFiles(),
         downloadEnabled: () -> Boolean? = { true },
+        checks: EventChecks = EventChecks(inMemoryPreferences(), now = { NOW }),
     ): DownloadController {
         val staging = StagingService(disk)
         return DownloadController(
@@ -166,7 +172,7 @@ class DownloadControllerTest {
             // Named from here on: this constructor has grown twice mid-change, and positional
             // arguments silently re-bind when it does.
             stagedBytes = staging,
-            myDeviceId = myDevice, downloadEnabled = downloadEnabled,
+            myDeviceId = myDevice, downloadEnabled = downloadEnabled, checks = checks,
         )
     }
 
@@ -1269,8 +1275,61 @@ class DownloadControllerTest {
         )
     }
 
+    // ---- the bounded union read of a background wake (decision record `changes/timely-background-receiving`, D4) ----
+
+    @Test
+    fun a_wake_reads_the_union_when_none_was_read_within_the_hour() = runTest {
+        val union = FakeUnion(emptyList())
+        controller(union).reconcileIfDue("event")
+        assertEquals(1, union.calls)
+    }
+
+    @Test
+    fun a_wake_within_the_hour_of_any_read_reads_none() = runTest {
+        val union = FakeUnion(emptyList())
+        var now = NOW
+        val checks = EventChecks(inMemoryPreferences(), now = { now })
+        val controller = controller(union, checks = checks)
+        controller.reconcile("event") // a push, an opening or a join: unbounded, and it stamps
+        now = NOW + 59.minutes
+        controller.reconcileIfDue("event")
+        assertEquals(1, union.calls, "the wake after a push reads nothing")
+        now = NOW + 1.hours
+        controller.reconcileIfDue("event")
+        assertEquals(2, union.calls, "an hour later it reads again")
+    }
+
+    @Test
+    fun a_failed_read_counts_so_a_failing_backend_is_not_asked_every_wake() = runTest {
+        val union = FakeUnion(emptyList(), ok = false)
+        val controller = controller(union)
+        controller.reconcileIfDue("event")
+        controller.reconcileIfDue("event")
+        assertEquals(1, union.calls)
+    }
+
+    @Test
+    fun an_upload_only_membership_reads_no_union_on_a_wake() = runTest {
+        val union = FakeUnion(emptyList())
+        controller(union, downloadEnabled = { false }).reconcileIfDue("event")
+        assertEquals(0, union.calls)
+    }
+
+    @Test
+    fun forgetting_the_checks_lets_the_next_wake_read_at_once() = runTest {
+        val union = FakeUnion(emptyList())
+        val controller = controller(union)
+        controller.reconcile("event")
+        controller.forgetChecks("event")
+        controller.reconcileIfDue("event")
+        assertEquals(2, union.calls)
+    }
+
     private companion object {
         /** The measured backlog: 101 foreign assets in one background wake. */
         const val N = 101
+
+        /** The wall clock the bounded union read is judged on. */
+        val NOW: Instant = Instant.parse("2026-09-30T12:00:00Z")
     }
 }

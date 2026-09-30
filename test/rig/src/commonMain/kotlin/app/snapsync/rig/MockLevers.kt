@@ -169,6 +169,16 @@ private fun MockWorld.backendReads(op: (suspend MockWorld.(Map<String, String>) 
             )
         }
     },
+    "backend/reads" to op { params ->
+        withEvent(params) { event ->
+            val backend = device.backend.operator
+            CommandResult.ok(
+                buildJsonObject {
+                    put("event", event); put("union", backend.unionReadsOf(event)); put("event-details", backend.eventReadsOf(event))
+                }.toString(),
+            )
+        }
+    },
     "backend/pushes" to op { _ ->
         CommandResult.ok(
             buildJsonObject {

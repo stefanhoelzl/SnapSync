@@ -1,5 +1,7 @@
 package app.snapsync.flow
 
+import app.snapsync.mock.inMemoryPreferences
+import app.snapsync.services.wake.EventChecks
 import app.snapsync.mock.fixedClock
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.mock.inMemoryFiles
@@ -56,6 +58,7 @@ internal fun CoroutineScope.flowDownloadController(union: EventUnionSource): Dow
         stagedBytes = staging,
         myDeviceId = "DEV",
         downloadEnabled = { true },
+        checks = EventChecks(inMemoryPreferences(), now = { Instant.parse("2026-07-09T12:00:00Z") }),
     )
 }
 
