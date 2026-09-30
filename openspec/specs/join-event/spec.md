@@ -120,9 +120,9 @@ photos — both on by default, and SHALL NOT make the user pick a named mode. Ne
 flip the other. With sharing on, the screen SHALL state what is never shared (screenshots, screen
 recordings, GIFs and pictures saved from chat apps, capability `photo-sharing`) and the capture range
 being shared; with it off, it SHALL say that nothing of the user's leaves the phone and hide the range.
-With both switches off, Join SHALL be disabled and the reason stated beside it. The screen SHALL also
-offer the event-album choice (capability `event-album`), whose note names only the photos the current
-switches would collect.
+With both switches off, Join SHALL be disabled and the reason stated beside it. On iPhone the screen SHALL
+also offer the event-album choice (capability `event-album`), whose note names only the photos the current
+switches would collect; on Android it SHALL offer none.
 
 #### Scenario: Both switches start on
 - **WHEN** the join screen has loaded an event
@@ -139,6 +139,10 @@ switches would collect.
 #### Scenario: Both off blocks Join with a reason
 - **WHEN** the user turns both switches off
 - **THEN** Join is disabled, a line above it explains that a membership that neither shares nor receives does nothing, and neither switch turns itself back on
+
+#### Scenario: No album choice on Android
+- **WHEN** the join screen has loaded an event on an Android phone
+- **THEN** it offers the two switches and the range, and no album choice
 
 ### Requirement: The shared capture range always has a lower bound inside the event window
 With sharing on, the join screen SHALL let the user choose the range of capture dates they share,

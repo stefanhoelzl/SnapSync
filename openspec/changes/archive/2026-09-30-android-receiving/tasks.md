@@ -40,4 +40,4 @@
 
 - [x] 6.1 After the Firebase project and the Edge Script secret exist (Migration Plan): on the emulator with a Google-APIs image, the plain build registers an `fcm` token against a local api run with the FCM key, and a photo shared by a second member wakes it and arrives in `DCIM/Camera`; verify through the device log and the library read, and record the result in design.md
 - [x] 6.2 Verify the whole PR: `./gradlew build` (emulator stopped), `compileIosMainKotlinMetadata`, `deno task check` and the api tests, the iOS contract replays, the `android-emulator` and `diagrams` checks green
-- [ ] 6.3 With the user's word: sync and archive the change, then run `openspec/config.yaml`'s two archive gates (no placeholder Purpose; no code identifiers in `receiving-photos`, `event-album`, `join-event`, `manage-membership`); verify `validate --specs --strict` passes after archiving
+- [x] 6.3 With the user's word: sync and archive the change, then run `openspec/config.yaml`'s two archive gates (no placeholder Purpose; no code identifiers in `receiving-photos`, `event-album`, `join-event`, `manage-membership`); verify `validate --specs --strict` passes after archiving
