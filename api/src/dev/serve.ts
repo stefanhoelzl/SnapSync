@@ -41,7 +41,7 @@ import { DEV_ATTEST_TTL_MS, deviceNamedBy, enrolmentTarget } from "./fallback.ts
 import { DEV_TOKEN_DEVICE_ID, devConfig } from "./config.ts";
 import { sqliteDb } from "./db-sqlite.ts";
 import { replay } from "./replay.ts";
-import { fsFetch } from "./fs-storage.ts";
+import { fsFetch, withFcmPassthrough } from "./fs-storage.ts";
 import { startTunnel, type Tunnel } from "./tunnel.ts";
 
 const HOST_FILE = ".localdev/host";
@@ -113,7 +113,7 @@ await Deno.mkdir(options.store, { recursive: true });
 const db = sqliteDb(`${options.store}/api.db`);
 await replay(db);
 
-const app = createApp({ config, db, fetch: storage });
+const app = createApp({ config, db, fetch: withFcmPassthrough(storage, config) });
 
 // Unauthenticated callers get a token minted for the device the PATH names, because the app refuses a
 // token on any other device's route (`actsFor`, 403) — so a curl, a simulator (no App Attest) and the

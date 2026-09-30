@@ -88,10 +88,11 @@ export function devConfig(publicHost: string, s3Scheme: string): Config {
     // exactly the route's best-effort contract, not a local fake of it.
     apnsPrivateKey: "",
     apnsTopic: d.bundleId,
-    // The local rig sends no FCM push unless a developer exports a key: the FCM sender skips every token
-    // without one, which is the same best-effort contract a deployed backend without the key keeps.
+    // The local rig sends FCM pushes only when a developer runs it with the key in its environment
+    // (`secrets-env` injects it); without one the FCM sender skips every token — the same best-effort
+    // contract a deployed backend without the key keeps.
     fcmProjectId: d.firebaseProjectId,
-    fcmServiceAccountKey: "",
+    fcmServiceAccountKey: devFcmKey(),
     attestTokenKey: DEV_ATTEST_TOKEN_KEY,
     // Blank, and unreachable by construction: the rig builds its `Db` from `node:sqlite` against a local
     // file (`src/dev/serve.ts`), never from these. A filesystem deployment declares no database
@@ -125,4 +126,16 @@ export function devConfig(publicHost: string, s3Scheme: string): Config {
 /** The directory the shim reads and writes, as the resolved deployment declares it. */
 export function devStoreRoot(fallback: string): string {
   return isFilesystemDeployment(DEPLOYMENT) ? DEPLOYMENT.storage.root : fallback;
+}
+
+/**
+ * The FCM service-account key the developer ran the rig with, or `""`. Read only where the run was granted that one
+ * variable (`deno task dev:local` / `dev:tunnel` are); any other launcher of the rig simply sends no FCM push.
+ */
+function devFcmKey(): string {
+  try {
+    return Deno.env.get("FCM_SERVICE_ACCOUNT_KEY") ?? "";
+  } catch {
+    return "";
+  }
 }

@@ -155,3 +155,41 @@ Deno.test("fcm → a refused exchange or a refused send is a failed outcome, nev
   assertEquals(b.status, "failed");
   assertEquals(b.code, 404);
 });
+
+Deno.test("fan-out → the unsent summary names why, never a token", async () => {
+  const { unsentSummary } = await import("../src/push.ts");
+  assertEquals(unsentSummary([{ token: "T", status: "sent", code: 200 }]), "");
+  const summary = unsentSummary([
+    { token: "secret-token-1", status: "skipped", reason: "kind web" },
+    { token: "secret-token-2", status: "skipped", reason: "kind web" },
+    { token: "secret-token-3", status: "failed", code: 403 },
+  ]);
+  assertEquals(summary, "; skipped: kind web ×2, failed: 403 ×1");
+  assert(
+    !summary.includes("secret-token"),
+    "a push token addresses a device and never reaches the log",
+  );
+});
+
+Deno.test("dev rig → FCM's endpoints pass through only with a key, and nothing else ever does", async () => {
+  const { withFcmPassthrough } = await import("../src/dev/fs-storage.ts");
+  const inner = (url: string) => Promise.resolve(new Response(`inner:${url}`));
+  const keyless = withFcmPassthrough(
+    inner,
+    { fcmProjectId: PROJECT, fcmServiceAccountKey: "" } as never,
+  );
+  assertEquals(keyless, inner, "without a key the storage shim is untouched");
+  const keyed = withFcmPassthrough(
+    inner,
+    { fcmProjectId: PROJECT, fcmServiceAccountKey: "k" } as never,
+  );
+  assertEquals(
+    await (await keyed("https://example.com/", {})).text(),
+    "inner:https://example.com/",
+  );
+  assertEquals(
+    await (await keyed(`https://fcm.googleapis.com/v1/projects/another/messages:send`, {})).text(),
+    `inner:https://fcm.googleapis.com/v1/projects/another/messages:send`,
+    "another project's send route is not passed through",
+  );
+});

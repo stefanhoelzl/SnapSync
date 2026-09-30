@@ -183,3 +183,18 @@ function safeJoin(base: string, key: string): string {
   }
   return path;
 }
+
+/**
+ * [inner], with exactly Google's two FCM endpoints — the OAuth token exchange and this project's `messages:send` —
+ * reaching the real internet, and only when the developer ran the rig WITH an FCM key (`secrets-env` injects it):
+ * that is how a local run delivers a real silent wake to an emulator. Every other URL still meets [inner], which
+ * refuses anything outside its storage zone; without a key nothing passes through at all.
+ */
+export function withFcmPassthrough(inner: FetchLike, config: Config): FetchLike {
+  if (config.fcmServiceAccountKey === "" || config.fcmProjectId === "") return inner;
+  const allowed = [
+    "https://oauth2.googleapis.com/token",
+    `https://fcm.googleapis.com/v1/projects/${config.fcmProjectId}/messages:send`,
+  ];
+  return (url, init) => allowed.includes(url) ? fetch(url, init) : inner(url, init);
+}

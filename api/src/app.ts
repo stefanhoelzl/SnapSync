@@ -171,7 +171,7 @@ import {
 } from "./validators.ts";
 import { BUILD_SHA, type Config } from "./config.ts";
 import type { PushToken } from "./apns.ts";
-import { createPushSender } from "./push.ts";
+import { createPushSender, unsentSummary } from "./push.ts";
 import {
   bytesToB64,
   challengeIsValid,
@@ -1741,7 +1741,8 @@ export function createApp(
     const outcomes = await pushSender.sendSilent(tokens, eventId);
     const sent = outcomes.filter((o) => o.status === "sent").length;
     console.info(
-      `notify: event ${eventId} — ${memberIds.length} members, ${tokens.length} with a token, ${sent} pushed`,
+      `notify: event ${eventId} — ${memberIds.length} members, ${tokens.length} with a token, ${sent} pushed` +
+        unsentSummary(outcomes),
     );
 
     return c.body(null, 202);
@@ -1774,7 +1775,11 @@ export function createApp(
         ),
       ]);
       const sent = outcomes.filter((o) => o.status === "sent").length;
-      console.info(`v2 notify: event ${eventId} — ${tokens.length} recipients, ${sent} pushed`);
+      console.info(
+        `v2 notify: event ${eventId} — ${tokens.length} recipients, ${sent} pushed${
+          unsentSummary(outcomes)
+        }`,
+      );
     } catch (e) {
       console.error(`v2 notify: fan-out failed for ${eventId} (best-effort, publish stands): ${e}`);
     }
