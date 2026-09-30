@@ -82,16 +82,20 @@ fun motionPhotoStill(jpeg: ByteArray, videoLength: Long): ByteArray? {
 /**
  * The byte range of the video a motion photo [file] carries at its end, as its XMP [xmp] describes it — the
  * `MotionPhoto` item's `Item:Length`, else the legacy `MicroVideoOffset` — or null when [xmp] describes none, or the
- * range is implausible: empty, reaching into the file's first bytes, or not starting with an ISO-BMFF `ftyp` box.
+ * range is implausible: empty, reaching into the file's first bytes, or not starting with an ISO-BMFF `ftyp` box
+ * (after an `mpvd` box header, which a HEIC motion photo may wrap its video in).
  * Null means "not a motion photo this device can take apart"; the file is then imported as it is.
  */
 fun locateMotionVideo(xmp: String, file: ByteArray): IntRange? {
     val length = motionItemLength(xmp) ?: legacyOffset(xmp) ?: return null
     if (length <= FTYP_PROBE || length > file.size - MIN_STILL_BYTES) return null
     val start = file.size - length.toInt()
-    val box = file.copyOfRange(start + 4, start + FTYP_PROBE).decodeToString()
-    return if (box == "ftyp") start until file.size else null
+    // A HEIC motion photo may wrap the video in an `mpvd` box, whose 8-byte header the length can include.
+    val video = if (boxType(file, start) == "mpvd") start + FTYP_PROBE else start
+    return if (video + FTYP_PROBE <= file.size && boxType(file, video) == "ftyp") video until file.size else null
 }
+
+private fun boxType(file: ByteArray, at: Int): String = file.copyOfRange(at + 4, at + FTYP_PROBE).decodeToString()
 
 /** The still's presentation time the XMP declares, in microseconds, or null when it declares none (or −1). */
 fun motionPresentationTimestampUs(xmp: String): Long? =

@@ -161,16 +161,17 @@ class AndroidImportContractTest {
     fun `a HEIC Live Photo arrives as ONE JPEG motion photo carrying its video unchanged`(): Unit = runBlocking {
         val ref = ref("live")
         val mov = fixture("iphone.mov")
+        val stem = uniqueStem("LIVE")
         val resources = listOf(
-            stagedResource("IMG_0001.HEIC", "image/heic", fixture("iphone-live.heic")),
-            stagedResource("IMG_0001.MOV", "video/quicktime", mov, ResourceRole.LIVE),
+            stagedResource("$stem.HEIC", "image/heic", fixture("iphone-live.heic")),
+            stagedResource("$stem.MOV", "video/quicktime", mov, ResourceRole.LIVE),
         )
         val id = assertIs<ImportResult.Imported>(gallery.import(ImportRequest(ref, resources, iso(CAPTURED), null))).createdLocalId
         assertEquals(MarkerState.CONFIRMED, markers[ref])
         assertEquals("image/jpeg", column(id, MediaStore.MediaColumns.MIME_TYPE), "re-encoded: Google Photos plays no HEIC motion photo")
-        assertEquals("IMG_0001.jpg", column(id, MediaStore.MediaColumns.DISPLAY_NAME), "the sender's name, with the new extension")
-        assertEquals(0, countNamed("IMG_0001.MOV"), "the movie travels inside the photo, not beside it")
-        assertEquals(0, countNamed("IMG_0001.HEIC"), "one item, never the still as well")
+        assertEquals("$stem.jpg", column(id, MediaStore.MediaColumns.DISPLAY_NAME), "the sender's name, with the new extension")
+        assertEquals(0, countNamed("$stem.MOV"), "the movie travels inside the photo, not beside it")
+        assertEquals(0, countNamed("$stem.HEIC"), "one item, never the still as well")
 
         val file = bytesOf(id)
         val xmp = assertNotNull(jpegXmp(file), "the JPEG carries XMP")
@@ -195,12 +196,13 @@ class AndroidImportContractTest {
     fun `a JPEG Live Photo keeps its still byte for byte ahead of the XMP`(): Unit = runBlocking {
         val still = fixture("noexif.jpg")
         val mov = fixture("iphone.mov")
+        val stem = uniqueStem("LIVEJPEG")
         val resources = listOf(
-            stagedResource("IMG_0002.JPG", "image/jpeg", still),
-            stagedResource("IMG_0002.MOV", "video/quicktime", mov, ResourceRole.LIVE),
+            stagedResource("$stem.JPG", "image/jpeg", still),
+            stagedResource("$stem.MOV", "video/quicktime", mov, ResourceRole.LIVE),
         )
         val id = assertIs<ImportResult.Imported>(gallery.import(ImportRequest(ref("jpeg-live"), resources, iso(CAPTURED), null))).createdLocalId
-        assertEquals("IMG_0002.JPG", column(id, MediaStore.MediaColumns.DISPLAY_NAME))
+        assertEquals("$stem.JPG", column(id, MediaStore.MediaColumns.DISPLAY_NAME))
         assertContentEquals(assertNotNull(motionPhotoStill(still, mov.size.toLong())) + mov, bytesOf(id), "only the XMP segment is new")
     }
 
@@ -209,14 +211,15 @@ class AndroidImportContractTest {
         // A still that already describes a motion photo cannot be given a second one: the conversion answers "no" before
         // anything is inserted, and the still is imported exactly as before.
         val still = assertNotNull(motionPhotoStill(fixture("noexif.jpg"), videoLength = 10))
+        val stem = uniqueStem("FALLBACK")
         val resources = listOf(
-            stagedResource("IMG_0003.JPG", "image/jpeg", still),
-            stagedResource("IMG_0003.MOV", "video/quicktime", fixture("iphone.mov"), ResourceRole.LIVE),
+            stagedResource("$stem.JPG", "image/jpeg", still),
+            stagedResource("$stem.MOV", "video/quicktime", fixture("iphone.mov"), ResourceRole.LIVE),
         )
         val ref = ref("fallback")
         val id = assertIs<ImportResult.Imported>(gallery.import(ImportRequest(ref, resources, iso(CAPTURED), null))).createdLocalId
         assertContentEquals(still, bytesOf(id), "the still, unchanged")
-        assertEquals(1, countNamed("IMG_0003.JPG"), "once")
+        assertEquals(1, countNamed("$stem.JPG"), "once")
         assertEquals(MarkerState.CONFIRMED, markers[ref])
     }
 
@@ -280,6 +283,12 @@ class AndroidImportContractTest {
     private fun modified(id: AssetId): Long? = column(id, MediaStore.MediaColumns.DATE_MODIFIED)?.toLongOrNull()
 
     private fun dateTaken(id: AssetId): Long? = column(id, MediaStore.MediaColumns.DATE_TAKEN)?.toLongOrNull()
+
+    /**
+     * A name no earlier run left in the camera folder. MediaStore resolves a collision by renaming (a camera-style
+     * `IMG_0001` becomes the next free number), which the spec allows but which would make a name assertion flaky.
+     */
+    private fun uniqueStem(prefix: String) = "${prefix}_${System.nanoTime()}"
 
     private fun bytesOf(id: AssetId): ByteArray =
         checkNotNull(context.contentResolver.openInputStream(uriOf(id))) { "no stream for $id" }.use { it.readBytes() }

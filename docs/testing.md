@@ -853,8 +853,9 @@ fixture. Instead:
 - **What a host can reach is stated by the contracts' bindings** (their literal reachable-state sets), not
   by smoke tests that call the platform without asserting anything.
 - **Reachable on the simulator app, so asserted live there:** PhotoKit under a full grant, asset and album
-  creation, imports, and both app-process `URLSession` transports over the default session (everything
-  except the background session's lifecycle).
+  creation, imports (including Photos accepting a received motion photo, taken apart, as ONE Live Photo:
+  `LivePhotoImportContract`), and both app-process `URLSession` transports over the default session
+  (everything except the background session's lifecycle).
 - **Device-only, reached through recordings replayed on every build:** the upload-job subsystem (recorded
   *inside the extension*, where production calls it), extension registration including its refusal under
   a partial grant, `BGTaskScheduler`, the Keychain and App Attest.

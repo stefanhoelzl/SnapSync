@@ -124,9 +124,21 @@ caught for the decode alone and falls back to the still (D6).
    so no hand parser is needed. `MotionPhotoTrailer.locate` gives the video's range, and the range must start
    with an ISO-BMFF `ftyp` box. Anything else is not a motion photo, and the import is today's.
 2. **Content identifier:** one fresh UUID per import.
-3. **Still:** the image part (the file truncated before the trailer) is copied losslessly with
-   `CGImageDestinationCopyImageSource`, adding `kCGImagePropertyMakerAppleDictionary` key `17` = the UUID. It is
-   written to the staging directory, on the same volume, so `shouldMoveFile` stays a rename.
+3. **Still:** the image part (the file truncated before the trailer) gets `kCGImagePropertyMakerAppleDictionary`
+   key `17` = the UUID, which Photos requires to pair it. It is written to the staging directory, on the same
+   volume, so `shouldMoveFile` stays a rename.
+   - **Lossless first:** `CGImageDestinationCopyImageSource` with the identifier set through
+     `CGImageMetadataSetValueMatchingImageProperty`.
+   - **Otherwise, maximum quality:** `CGImageDestinationAddImageFromSource` with the source's own properties plus the
+     identifier, at `kCGImageDestinationLossyCompressionQuality = 1.0`. The format, resolution and metadata stay the
+     same.
+
+   Why both: the lossless copy accepts metadata only as XMP, and the SDK declares no XMP namespace for Apple's maker
+   note (read from the ImageIO klib, 2026-09-30). Every known Live Photo builder uses the re-encoding path. Which
+   route a device takes is logged. **Measured** (simulator, iOS 26.5, 2026-09-30, `LivePhotoImport` contract): the
+   lossless copy did not keep the identifier, the re-encode did, and Photos accepted the pair as ONE Live Photo. The re-encode touches only this member's gallery
+   copy, which the spec allows for making a photo move. Rejected: writing Apple's maker note into the EXIF by hand,
+   a proprietary binary format that only a run against Photos could check.
 4. **Video:** a passthrough `AVAssetReader`/`AVAssetWriter` (`outputSettings = nil`, so no re-encode) writes the
    MP4's tracks into a QuickTime `.mov` with:
    - the top-level `com.apple.quicktime.content.identifier` = the UUID;
@@ -204,9 +216,10 @@ whichever of the two lands first. Their changes are in different parts of the fi
     original is refused for good before any conversion, as today.
 
   Playback is asserted on the file's structure only, because a test cannot read what another app plays.
-- **IOS_SIM_APP (the rig's `SimulatorAppContracts`):** a Google motion-photo JPEG imports as ONE asset with a
-  `photo` and a `pairedVideo` resource and `PHAssetMediaSubtypePhotoLive`. A malformed trailer imports as a
-  plain photo.
+- **IOS_SIM_APP (`LivePhotoImportContract`, bound in the rig's `SimulatorAppContracts`):** a Google motion-photo
+  JPEG imports as ONE asset with a `photo` and a `pairedVideo` resource and `PHAssetMediaSubtypePhotoLive`. A JPEG
+  whose motion XMP points at a trailer that is no video imports as a plain photo. The contract is iOS-only, since
+  Android keeps a motion photo as its file. Both pass (`scripts/sim-contracts` on a macOS runner, 2026-09-30).
 - **Web:** the pair naming is a pure function, unit-tested beside the page.
 - **Hardware, once, before merging the platform PRs, and only with the user's go-ahead:**
   - a received Live Photo plays in Google Photos on the A40, imported by the rig build through MediaStore
