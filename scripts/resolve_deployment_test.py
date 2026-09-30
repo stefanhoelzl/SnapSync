@@ -37,6 +37,7 @@ SECRETS = {
     "attestTokenKey": {"env": "TEST_TOKEN_KEY"},
     "databaseUrl": {"env": "TEST_DATABASE_URL"},
     "databaseToken": {"env": "TEST_DATABASE_TOKEN"},
+    "fcmServiceAccountKey": {"env": "TEST_FCM_KEY"},
 }
 POLICY = {
     "eventCapacity": 3,
@@ -58,6 +59,10 @@ ANDROID = {
     "androidSigningCertDigests": [],
     "androidAttestationRoots": ["-----BEGIN CERTIFICATE-----\ny\n-----END CERTIFICATE-----"],
     "androidAttestationTrust": "hardware",
+    "firebaseProjectId": "test-project",
+    "firebaseApplicationId": "1:1:android:1",
+    "firebaseApiKey": "test-api-key",
+    "firebaseSenderId": "1",
 }
 
 

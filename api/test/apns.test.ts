@@ -13,6 +13,8 @@ const BASE: Omit<Config, "apnsPrivateKey"> = {
   apnsKeyId: "ABC123KEYID",
   apnsTeamId: "E9Z8BADH58",
   apnsTopic: "app.snapsync",
+  fcmProjectId: "",
+  fcmServiceAccountKey: "",
   attestTokenKey: "test-attest-token-key",
   minAppVersion: "0.1",
   databaseUrl: "",

@@ -15,10 +15,10 @@
 
 ## 3. The api: the FCM sender
 
-- [ ] 3.1 Add `firebaseProjectId` and `fcmServiceAccountKey: { env: "FCM_SERVICE_ACCOUNT_KEY" }` to `api/src/deployment.ts` and the deployment components, with KDoc stating that the secret MUST be set on the Edge Script before this merges; verify `deno task check` and the deployment resolver's tests pass
-- [ ] 3.2 Implement `api/src/fcm.ts` (D9): the jose RS256 service-account JWT exchanged for an access token cached about 50 min, the HTTP v1 send (`data.eventId`, `HIGH`, `collapse_key`), `skipped` for a mismatched `env` or a missing key, and the key imported on first use; verify deno tests with a fake fetch cover the token exchange, the cache, the send body, the skips and a non-2xx answer as `failed`
-- [ ] 3.3 Put `createPushSender` in front of `apns.ts` and `fcm.ts`, picking by kind, and route every `sendSilent` call site (notify, the v2 notify, the close) through it; verify the existing notify and close tests pass unchanged and a new test wakes one `apns` and one `fcm` member from one notify
-- [ ] 3.4 Document the FCM sender and the secret in `docs/deployment.md` (config before code) and `docs/architecture.md` (the push fan-out); verify `deno lint` (the complexity plugin) and `deno fmt --check` pass
+- [x] 3.1 Add `firebaseProjectId` and `fcmServiceAccountKey: { env: "FCM_SERVICE_ACCOUNT_KEY" }` to `api/src/deployment.ts` and the deployment components, with KDoc stating that the secret MUST be set on the Edge Script before this merges; verify `deno task check` and the deployment resolver's tests pass
+- [x] 3.2 Implement `api/src/fcm.ts` (D9): the jose RS256 service-account JWT exchanged for an access token cached about 50 min, the HTTP v1 send (`data.eventId`, `HIGH`, `collapse_key`), `skipped` for a mismatched `env` or a missing key, and the key imported on first use; verify deno tests with a fake fetch cover the token exchange, the cache, the send body, the skips and a non-2xx answer as `failed`
+- [x] 3.3 Put `createPushSender` in front of `apns.ts` and `fcm.ts`, picking by kind, and route every `sendSilent` call site (notify, the v2 notify, the close) through it; verify the existing notify and close tests pass unchanged and a new test wakes one `apns` and one `fcm` member from one notify
+- [x] 3.4 Document the FCM sender and the secret in `docs/deployment.md` (config before code) and `docs/architecture.md` (the push fan-out); verify `deno lint` (the complexity plugin) and `deno fmt --check` pass
 
 ## 4. Android downloads and the import
 

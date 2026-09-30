@@ -67,6 +67,17 @@ export type Config = {
   /** APNs push topic — the `apns-topic` header. DERIVED from the bundle id. */
   apnsTopic: string;
   /**
+   * The Firebase project FCM pushes are sent through (`projects/<id>/messages:send`), and the only `env` an FCM
+   * token is sent under — an FCM token is bound to the project that issued it. Empty: no FCM push is sent.
+   */
+  fcmProjectId: string;
+  /**
+   * The Firebase service account's JSON key file contents, from which the FCM sender signs its OAuth assertion.
+   * A SECRET: read from the environment, never in source. OPTIONAL, unlike every other secret: empty means the
+   * FCM sender skips every Android token, and the backend still boots and serves.
+   */
+  fcmServiceAccountKey: string;
+  /**
    * Signs and verifies the device bearer token (capability `privacy-security`). A SECRET: read from the
    * environment, never in source.
    */
@@ -206,7 +217,12 @@ function publicFields(
   d: BunnyDeployment,
 ): Omit<
   Config,
-  "accessKey" | "apnsPrivateKey" | "attestTokenKey" | "databaseUrl" | "databaseToken"
+  | "accessKey"
+  | "apnsPrivateKey"
+  | "attestTokenKey"
+  | "databaseUrl"
+  | "databaseToken"
+  | "fcmServiceAccountKey"
 > {
   const storage = d.storage;
   return {
@@ -224,6 +240,7 @@ function publicFields(
     // The push topic IS the bundle id, and the attest app id is `<team>.<bundle>` — derive both so they
     // cannot drift from the identity the app is actually signed with.
     apnsTopic: d.bundleId,
+    fcmProjectId: d.firebaseProjectId,
     attestAppId: `${d.teamId}.${d.bundleId}`,
     appAttestRootCa: d.appAttestRootCa,
     ...androidFields(d),
@@ -293,6 +310,9 @@ export function readConfig(env: Record<string, string | undefined>): Config {
   // than serving requests whose relational writes silently go nowhere (`docs/deployment.md`).
   const databaseUrl = secret(d.databaseUrl, env, missing);
   const databaseToken = secret(d.databaseToken, env, missing);
+  // OPTIONAL: an absent FCM key must not stop the backend booting (Android members then get no wake), so it is
+  // read without recording it missing. Not trimmed, for the same reason a PEM is not: the key file carries one.
+  const fcmServiceAccountKey = env[d.fcmServiceAccountKey.env] ?? "";
 
   if (missing.length > 0) {
     throw new Error(`missing configuration: ${missing.join(", ")}`);
@@ -305,6 +325,7 @@ export function readConfig(env: Record<string, string | undefined>): Config {
     attestTokenKey,
     databaseUrl,
     databaseToken,
+    fcmServiceAccountKey,
   };
 }
 
@@ -330,6 +351,7 @@ export function readSweepConfig(env: Record<string, string | undefined>): Config
     accessKey,
     apnsPrivateKey: "", // unused by the sweep (the edge holds the real APNs key)
     attestTokenKey: "", // unused by the sweep (the edge holds the real token-signing key)
+    fcmServiceAccountKey: "", // unused by the sweep (the edge holds the real FCM key)
     // The sweep DOES hold these: it marks from the database and deletes from storage, and its deletion
     // decision runs against the primary inside an interactive transaction (`docs/architecture.md`).
     databaseUrl,
@@ -361,6 +383,7 @@ export function migrateConfig(env: Record<string, string | undefined>): Config {
     accessKey: "",
     apnsPrivateKey: "",
     attestTokenKey: "",
+    fcmServiceAccountKey: "",
     databaseUrl,
     databaseToken,
   };
@@ -378,6 +401,7 @@ export function storageConfig(accessKey: string): Config {
     accessKey,
     apnsPrivateKey: "",
     attestTokenKey: "",
+    fcmServiceAccountKey: "",
     databaseUrl: "",
     databaseToken: "",
   };

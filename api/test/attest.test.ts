@@ -46,6 +46,8 @@ const CONFIG: Config = {
   apnsTeamId: "E9Z8BADH58",
   apnsPrivateKey: "-----BEGIN PRIVATE KEY-----\nMIG...\n-----END PRIVATE KEY-----\n",
   apnsTopic: "app.snapsync",
+  fcmProjectId: "",
+  fcmServiceAccountKey: "",
   attestTokenKey: "test-attest-token-key",
   databaseUrl: "",
   databaseToken: "",

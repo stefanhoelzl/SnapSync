@@ -88,6 +88,10 @@ export function devConfig(publicHost: string, s3Scheme: string): Config {
     // exactly the route's best-effort contract, not a local fake of it.
     apnsPrivateKey: "",
     apnsTopic: d.bundleId,
+    // The local rig sends no FCM push unless a developer exports a key: the FCM sender skips every token
+    // without one, which is the same best-effort contract a deployed backend without the key keeps.
+    fcmProjectId: d.firebaseProjectId,
+    fcmServiceAccountKey: "",
     attestTokenKey: DEV_ATTEST_TOKEN_KEY,
     // Blank, and unreachable by construction: the rig builds its `Db` from `node:sqlite` against a local
     // file (`src/dev/serve.ts`), never from these. A filesystem deployment declares no database
