@@ -37,7 +37,7 @@
 
 ## 6. Force-stop on Android
 
-- [ ] 6.1 Add a non-gating script beside `scripts/android-device-tests` that, on the emulator, leaves an idle wake pending, runs `adb shell am force-stop`, asserts no job is pending (`dumpsys jobscheduler`), starts the app and asserts the job is back; verify it passes on a local emulator run and document it in `docs/testing.md`
+- [x] 6.1 Add a non-gating script beside `scripts/android-device-tests` that, on the emulator, leaves an idle wake pending, runs `adb shell am force-stop`, asserts no job is pending (`dumpsys jobscheduler`), starts the app and asserts the job is back; verify it passes on a local emulator run and document it in `docs/testing.md`
 
 ## 7. Integration
 
