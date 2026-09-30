@@ -144,7 +144,7 @@ A running app gets it in `onNewIntent` (single-top), a stopped one in `onCreate`
 ## Device tests and journeys (what CI runs)
 
 The shared `commonTest` runs on the JVM only. What runs on the emulator is Android's own — `:adapter:android`'s device
-tests (the adapters' contract bindings) and the all-real journeys — the `test (android)` and `journeys (android)` jobs
+tests (the adapters' contract bindings) and the all-real journeys — `android-build`'s platform tests and the `journeys (android)` job
 of `ci.yml`:
 
 ```bash

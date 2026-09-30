@@ -1,26 +1,31 @@
 # CI — EVERY merge gate, in one workflow (`docs/deployment.md`, "CI"; `docs/testing.md`, "Where each test runs").
 #
-# THE ONE REQUIRED CHECK IS `ci` (plus `check-label`, which is pull-request-triggered and lives in its own file). `ci`
-# needs every gate below and fails unless each one succeeded, so adding, renaming or dropping a gate is an edit to this
-# file and never to `main`'s branch ruleset (`/ship` owns the ruleset; there is no committed copy). Do NOT rename the
-# `ci` job: that context is what the ruleset requires, and a context that is never posted freezes every merge.
+# REQUIRED CHECKS. `/ship` owns `main`'s branch ruleset (there is no committed copy) and requires every check that ran
+# on a PR, so each gate below is a required context of its own, beside `check-label` (pull-request-triggered, its own
+# file). `ci` needs every gate and fails unless each one succeeded; it is what `ios-deliver` waits on. A new gate joins
+# the ruleset on the next ship by having run; a RENAMED or REMOVED gate must be dropped from the ruleset in that ship
+# (`--drop-context`), because a required context that is never posted again freezes every merge.
 #
 # NO PATH FILTER, deliberately, on the workflow or any gate: GitHub treats a required check that is never posted as
 # permanently PENDING, so a path-filtered gate would freeze every PR whose diff fell outside it. A gate that has
 # nothing to do on a diff decides that in a STEP (migration-rehearsal) and still posts.
 #
 # WHAT RUNS WHERE. The shared `commonTest` runs ONCE, on the JVM, in `build`. A platform runtime runs only what only it
-# can answer, and both platforms have the same three gates:
+# can answer, and both platforms have the same two gates:
 #
 #   build           Linux: `./gradlew build` (every target compiled, every JVM test, every architecture gate) and the
 #                   diagrams freshness check
-#   ios-build       the SIGNED device archive — the shipping iosArm64 compile, and the delivery source on main
+#   ios-build       the SIGNED device archive — the shipping iosArm64 compile, and the delivery source on main — then
+#                   the platform-bound tests, `./gradlew iosPlatformTest` on the simulator (the iOS adapters and their
+#                   contract bindings on the test executable, the native SQLite drivers)
 #   android-build   R8 over the rig build's whole graph (R8 on the plain release, with the keep rules Firebase and
-#                   Ktor need, is the store build's — phase 5)
-#   test (ios|android)       the platform-bound tests: `./gradlew iosPlatformTest` on the simulator (the iOS adapters
-#                   and their contract bindings on the test executable, the native SQLite drivers) and
-#                   `./gradlew androidPlatformTest` on a Gradle-managed emulator (the Android adapters' contract
-#                   bindings)
+#                   Ktor need, is the store build's — phase 5), then the platform-bound tests,
+#                   `./gradlew androidPlatformTest` on a Gradle-managed emulator (the Android adapters' contract bindings)
+#
+#                   Build and tests share a runner because together they stay under the journeys (measured: ~8 min
+#                   on iOS against ~10): the critical path does not move, and a push holds one macOS runner fewer —
+#                   the account gets about three. The journeys stay a job of their own; folding them in too doubled
+#                   the iOS wall clock (a one-job-per-platform spike: ~21 min against ~10).
 #   journeys (ios|android)   the all-real journeys against a local api/ — on iOS after the simulator app's in-app port
 #                   contracts (`scripts/sim-contracts`), on Android over every real adapter it has
 #                   (`scripts/android-journeys`). Scripts, not Gradle: every Gradle and Kotlin daemon
@@ -316,7 +321,7 @@ jobs:
   # scaffolding lives in .github/actions/ios-archive (a composite action keeps this job's name; a reusable workflow
   # would prefix it).
   ios-build:
-    # `actions: write`: the archive action reclaims the `-device-` ~/.konan entries its save supersedes.
+    # `actions: write`: the `-device-` ~/.konan save reclaims the entries it supersedes.
     permissions:
       contents: read
       actions: write
@@ -393,6 +398,7 @@ jobs:
       # passed: they are derived into the deployment fragment from `channel`, and an xcodebuild override would let
       # them disagree.
       - name: Archive signed device app
+        id: archive
         uses: ./.github/actions/ios-archive
         with:
           build-config: ${{ env.BUILD_CONFIG }}
@@ -461,6 +467,22 @@ jobs:
               echo "$NAME: no sentryDsn, as expected off a distributed channel"
             fi
           done
+      # The platform-bound tests, on this same runner after the archive (`docs/testing.md`, "Where each test runs"):
+      # every module's `iosTest` on a booted simulator (iOS 26 runtime on macos-26) — the iOS adapters and their
+      # contract bindings on the unentitled test executable (IOS_SIM_KEXE), and the native SQLite drivers behind the
+      # storage contracts. Here rather than in a job of their own: together with the archive they take ~8 min, under
+      # `journeys (ios)`, so the critical path does not move and a push holds one macOS runner fewer (the account gets
+      # about three).
+      - name: Platform tests on the simulator
+        run: ./gradlew iosPlatformTest
+      # One `-device-` entry for this job: the archive action restored it, and it is saved only here, after the tests,
+      # so it carries the simulator caches they built as well as the device ones.
+      - name: Save Kotlin/Native (~/.konan)
+        if: github.ref == 'refs/heads/main'
+        uses: ./.github/actions/konan-save
+        with:
+          family: device
+          key: ${{ steps.archive.outputs.konan-key }}
       # Hand the archive to ios-deliver on a delivering run. TAR first: upload-artifact zips its payload and drops
       # executable bits and symlinks, which would corrupt the signed bundle and break `-exportArchive`.
       - name: Pack the signed archive for delivery
@@ -486,59 +508,21 @@ jobs:
           java-version: 25
       - uses: gradle/actions/setup-gradle@v5
       - run: ./gradlew :app:android:assembleRelease -Psnapsync.rig=true
-
-  # The platform-bound tests, one Gradle task per platform (`docs/testing.md`, "Where each test runs").
-  test:
-    name: test (${{ matrix.platform }})
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: ios
-            runs-on: macos-26
-          - platform: android
-            runs-on: ubuntu-26.04
-    runs-on: ${{ matrix.runs-on }}
-    # `actions: write`: the iOS cell reclaims its superseded ~/.konan entries on main.
-    permissions:
-      contents: read
-      actions: write
-    steps:
-      - uses: actions/checkout@v7.0.1
-      - uses: actions/setup-java@v6
-        with:
-          distribution: temurin
-          java-version: 25
-      - uses: gradle/actions/setup-gradle@v5
-      - name: Restore Kotlin/Native (~/.konan)
-        id: konan
-        if: matrix.platform == 'ios'
-        uses: ./.github/actions/konan-restore
-        with:
-          family: sim-test
-      # The hosted runner exposes /dev/kvm to root only; the managed emulator needs it.
+      # The platform-bound tests, on this same runner after the build: `:adapter:android`'s device tests on a
+      # Gradle-managed Pixel 6 / API 36 emulator, with the upload contract's transfer fixture served on the host by
+      # the build. The hosted runner exposes /dev/kvm to root only; the managed emulator needs it.
       - name: Enable KVM
-        if: matrix.platform == 'android'
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      # iOS: every module's `iosTest` on a booted simulator (iOS 26 runtime on macos-26) — the iOS adapters and their
-      # contract bindings on the unentitled test executable (IOS_SIM_KEXE), and the native SQLite drivers behind the
-      # storage contracts. Android: every module's `androidDeviceTest` on a Gradle-managed Pixel 6 / API 36 emulator,
-      # with the upload contract's transfer fixture served on the host by the build.
-      - run: ./gradlew ${{ matrix.platform }}PlatformTest
-      - name: Save Kotlin/Native (~/.konan)
-        if: matrix.platform == 'ios' && github.ref == 'refs/heads/main'
-        uses: ./.github/actions/konan-save
-        with:
-          family: sim-test
-          key: ${{ steps.konan.outputs.key }}
+      - name: Platform tests on the managed emulator
+        run: ./gradlew androidPlatformTest
       - name: Keep the reports
-        if: always() && matrix.platform == 'android'
+        if: always()
         uses: actions/upload-artifact@v7.0.1
         with:
-          name: test-android-${{ github.run_attempt }}
+          name: android-build-reports-${{ github.run_attempt }}
           path: |
             **/build/reports/androidTests/
             **/build/outputs/androidTest-results/
@@ -624,7 +608,7 @@ jobs:
           api-level: 36
           target: google_apis
           arch: x86_64
-          # The phone the `android-emulator` skill creates, and the managed device `test (android)` runs on.
+          # The phone the `android-emulator` skill creates, and the managed device `android-build` tests on.
           profile: pixel_6
           # `swangle_indirect`, not the default SwiftShader GLES: the latter segfaults in its JIT on some hosts
           # (measured on the dev box, emulator 36.1.9 and 37.1.11); the Vulkan path boots on both.
@@ -643,12 +627,12 @@ jobs:
             build/android-journeys/
           if-no-files-found: ignore
 
-  # ── The one required check ───────────────────────────────────────────────────────────────────────────────────────
+  # ── The aggregate ───────────────────────────────────────────────────────────────────────────────────────
 
   # `always()` so it posts whatever the gates did: a gate that failed, was cancelled or was skipped fails it. Without
   # `always()` a red gate would SKIP this job, and a skipped required check counts as passing.
   ci:
-    needs: [build, metadata, api-test, migration-rehearsal, site-build, ios-build, android-build, test, journeys]
+    needs: [build, metadata, api-test, migration-rehearsal, site-build, ios-build, android-build, journeys]
     if: always()
     runs-on: ubuntu-26.04
     steps:

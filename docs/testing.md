@@ -35,8 +35,9 @@ Main decision record: `changes/archive/2026-08-27-establish-testing-architecture
 The shared `commonTest` runs **once, on the JVM**, under `build`. A platform runtime runs only what only it can answer:
 the adapters and their contract bindings over the platform's own APIs (Keychain, PhotoKit, the native SQLite driver;
 Keystore, MediaStore, WorkManager, DownloadManager). Each platform has the same three CI gates (`ci.yml`): its
-**build** (the signed iOS archive; R8 over the Android rig build), its **platform tests** (`test (ios)`,
-`test (android)`), and its **journeys** (`journeys (ios)`, `journeys (android)`, section "Journeys").
+**build** followed on the same runner by its **platform tests** (`ios-build`: the signed archive, then
+`iosPlatformTest`; `android-build`: R8 over the rig build, then `androidPlatformTest`), and its **journeys**
+(`journeys (ios)`, `journeys (android)`, section "Journeys").
 
 The shared tests used to run on Kotlin/Native and on ART as well. In their history that caught only test NAMES those
 compilers reject (a comma for Kotlin/Native, an apostrophe or a space below DEX 040), never shared logic behaving
@@ -333,8 +334,8 @@ state is reached on `IOS_SIM_KEXE`, where every `SecItem*` call answers `-25291`
 ### How each host is run
 
 - **JVM:** ordinary test tasks in `build`.
-- **`IOS_SIM_KEXE`:** `iosPlatformTest`, the `test (ios)` job.
-- **`ANDROID_EMU`:** `androidPlatformTest` on a Gradle-managed emulator, the `test (android)` job.
+- **`IOS_SIM_KEXE`:** `iosPlatformTest`, in the `ios-build` job.
+- **`ANDROID_EMU`:** `androidPlatformTest` on a Gradle-managed emulator, in the `android-build` job.
 - **`IOS_SIM_APP`: live on every push.** The `journeys (ios)` job builds the app under
   `-Psnapsync.rig=true`, applies the declared grant, launches it, and `scripts/sim-contracts` runs every
   entry of the host's in-app registry (`GET /contract`) through the rig's contract verb. It fails on any

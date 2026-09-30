@@ -13,7 +13,7 @@ name: Save Kotlin/Native (~/.konan)
 description: Save this job's ~/.konan cache family on main and delete its superseded entries.
 inputs:
   family:
-    description: "This job's cache family, e.g. sim-test (must match konan-restore's)"
+    description: "This job's cache family, e.g. sim-journeys (must match konan-restore's)"
     required: true
   key:
     description: konan-restore's `key` output.

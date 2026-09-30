@@ -1,5 +1,5 @@
 # Restore ~/.konan for ONE job's cache family (`docs/deployment.md`, "CI"). Every Kotlin/Native job in ci.yml owns
-# its own family — `-device-` (ios-build, inside ios-archive), `-sim-test-` (test (ios)), `-sim-journeys-`
+# its own family — `-device-` (ios-build: restored inside ios-archive, saved after its simulator tests), `-sim-journeys-`
 # (journeys (ios)) — so each restores exactly what it compiled last time on main, and a job whose compile set changes
 # never leaves another partly cold.
 #
@@ -21,7 +21,7 @@ name: Restore Kotlin/Native (~/.konan)
 description: Restore this job's ~/.konan cache family; pass `key` to konan-save.
 inputs:
   family:
-    description: "This job's cache family, e.g. sim-test"
+    description: "This job's cache family, e.g. sim-journeys"
     required: true
 outputs:
   key:

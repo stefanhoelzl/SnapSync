@@ -47,7 +47,7 @@ enum class Host {
     IOS_DEVICE_PHOTOKIT_EXT,
 
     /**
-     * A device-test APK on the Android emulator (`androidPlatformTest`, the `test (android)` CI job) — and the Android
+     * A device-test APK on the Android emulator (`androidPlatformTest`, run by the `android-build` job) — and the Android
      * rig build of the app there, which answers the same host. The Android adapters' own bindings run here
      * (`:adapter:android`'s device tests); the fakes' shared ones run on the JVM only. The emulator's Keystore is
      * software-backed, so nothing here proves hardware attestation.

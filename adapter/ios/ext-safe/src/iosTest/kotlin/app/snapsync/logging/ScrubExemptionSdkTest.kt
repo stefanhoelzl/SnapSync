@@ -21,7 +21,7 @@ import kotlin.time.Duration.Companion.seconds
  * exemption exists to prevent.
  *
  * So it is measured here rather than assumed, on the one platform that can: `iosSimulatorArm64Test`,
- * run by `test (ios)` on macOS CI. This is the forcing proof behind the exemption's design decision
+ * run by `ios-build`'s platform tests on macOS CI. This is the forcing proof behind the exemption's design decision
  * (`changes/…/design.md`, D2) — if a future SDK upgrade changes the ordering, this fails loudly
  * instead of quietly degrading every future report.
  *
