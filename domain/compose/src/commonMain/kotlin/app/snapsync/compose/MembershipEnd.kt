@@ -1,5 +1,7 @@
 package app.snapsync.compose
 
+import app.snapsync.model.runCatchingCancellable
+import app.snapsync.feature.upload.TailTrigger
 import app.snapsync.feature.membership.EventCompletion
 import app.snapsync.services.leave.PendingLeaves
 
@@ -39,6 +41,21 @@ class MembershipEnd internal constructor(private val core: AppCore) {
     }
 
     /**
+     * The end of every wake whose tail covered the whole pass (capabilities `receiving-photos` and `manage-membership`;
+     * decision record `changes/timely-background-receiving`, D4–D5): first the **bounded photo check** — the union
+     * read, at most once an hour per event, so others' photos arrive when no push does — then the event-completion
+     * step, whose read of the event's state is bounded the same way unless [trigger] is one that asks the event anyway:
+     * a push (the close is announced by one), an opening, a join.
+     */
+    suspend fun endOfWake(trigger: TailTrigger) {
+        core.services.config.config.value?.eventId?.let { eventId ->
+            runCatchingCancellable { core.downloadController.reconcileIfDue(eventId) }
+                .onFailure { core.services.log.w(it) { "the bounded photo check failed; the next wake runs it again" } }
+        }
+        completion.finish(bounded = trigger !in ASKS_THE_EVENT)
+    }
+
+    /**
      * The backend-leave effect: recorded first (idempotent — the leave command recorded it already), then every
      * outstanding leave is sent. One the backend does not confirm stays recorded, and the next wake's [completion]
      * sends it again — a finished event is deleted once everyone has LEFT, so a lost leave is no longer harmless.
@@ -53,3 +70,6 @@ class MembershipEnd internal constructor(private val core: AppCore) {
         }
     }
 }
+
+/** The triggers whose own reason is to ask the event now — their end-of-wake read of its state is not bounded. */
+private val ASKS_THE_EVENT = setOf(TailTrigger.SILENT_PUSH, TailTrigger.FOREGROUND, TailTrigger.ARM)

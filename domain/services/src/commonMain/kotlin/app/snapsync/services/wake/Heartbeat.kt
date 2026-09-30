@@ -36,7 +36,7 @@ class Heartbeat(
      * requests are idempotent, so a repeated arm replaces the pending request rather than stacking one.
      */
     fun arm(cadence: WakeCadence) {
-        request(WakeId.Heartbeat, heartbeat(cadence))
+        request(WakeId.Heartbeat, triggerAt(cadence))
     }
 
     /**
@@ -78,7 +78,7 @@ class Heartbeat(
          * The heartbeat's trigger at [cadence]. It needs the network (its work uploads and reads the event) and not
          * external power, so the operating system grants windows often enough to drain a first whole-library upload.
          */
-        fun heartbeat(cadence: WakeCadence): WakeTrigger.After = when (cadence) {
+        fun triggerAt(cadence: WakeCadence): WakeTrigger.After = when (cadence) {
             WakeCadence.BUSY -> WakeTrigger.After(earliest = BUSY_EARLIEST, requiresNetwork = true, cadence = cadence)
             WakeCadence.IDLE -> WakeTrigger.After(earliest = IDLE_EARLIEST, requiresNetwork = true, cadence = cadence)
         }

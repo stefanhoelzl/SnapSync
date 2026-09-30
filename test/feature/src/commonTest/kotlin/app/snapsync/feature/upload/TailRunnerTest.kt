@@ -429,7 +429,7 @@ class TailRunnerTest {
     // ---- re-arm ---------------------------------------------------------------------------------------------
 
     @Test
-    fun `every trigger that re-arms applies the cadence rule, and the completions arm nothing`() = runTest {
+    fun `every trigger that re-arms applies the cadence rule and the completions arm nothing`() = runTest {
         // iOS-like: no library-change wake, a full grant, the OS uploader not confirmed, an open event.
         for (trigger in TailTrigger.entries) {
             for (result in CycleResult.all) {

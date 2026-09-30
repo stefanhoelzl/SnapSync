@@ -34,7 +34,7 @@ import kotlinx.coroutines.launch
  *
  * The push-registration subscription and the selection observer are the two exceptions: [snapSyncHost] installs them
  * itself, as the graph is composed — so on every cold start, a background wake's included (see
- * [AppCore.installPushRegistration] and [AppCore.installSelectionObserver]).
+ * [AppCore.installCompositionSubscriptions]).
  */
 class ComposedApp internal constructor(
     val core: AppCore,
@@ -94,8 +94,7 @@ fun snapSyncHost(
     // The transfer sessions' events — a background relaunch that hands back finished transfers must find these.
     ports.download.listen(core.events.downloadHandlers)
     ports.appUpload.listen(core.events.uploadHandlers)
-    core.installPushRegistration()
-    core.installSelectionObserver()
+    core.installCompositionSubscriptions()
     composed = ComposedApp(core, process, cutoffFormatter) {
         // Host assembly: the permission-grant collectors install ONLY from here (see [ComposedApp]).
         core.installPermissionSubscriptions()

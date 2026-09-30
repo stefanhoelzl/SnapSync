@@ -26,12 +26,12 @@ class HeartbeatCadenceTest {
     ) = heartbeatCadence(facts, leftWork, importsRemain, contributes, libraryWatched)
 
     @Test
-    fun `a device that is not joined keeps no heartbeat, whatever is left`() {
+    fun `a device that is not joined keeps no heartbeat whatever is left`() {
         assertNull(cadence(facts = open.copy(joined = false), leftWork = true, importsRemain = true))
     }
 
     @Test
-    fun `work left keeps the heartbeat busy, for every kind of member`() {
+    fun `work left keeps the heartbeat busy for every kind of member`() {
         for (facts in listOf(open, open.copy(fullGrant = false), open.copy(ended = true), open.copy(osUploaderConfirmed = true))) {
             assertEquals(WakeCadence.BUSY, cadence(facts = facts, leftWork = true), "uploads left, $facts")
             assertEquals(WakeCadence.BUSY, cadence(facts = facts, importsRemain = true, contributes = false), "imports left, $facts")
@@ -51,7 +51,7 @@ class HeartbeatCadenceTest {
     }
 
     @Test
-    fun `receive-only, held back and partial-grant members idle`() {
+    fun `receive-only held back and partial-grant members idle`() {
         assertEquals(WakeCadence.IDLE, cadence(contributes = false), "receive-only or held back: the cycle declined")
         assertEquals(WakeCadence.IDLE, cadence(facts = open.copy(shares = false)), "receive-only, whatever the cycle said")
         assertEquals(WakeCadence.IDLE, cadence(facts = open.copy(fullGrant = false)), "a camera photo never joins a selection")
