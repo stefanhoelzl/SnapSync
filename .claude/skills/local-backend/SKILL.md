@@ -118,9 +118,12 @@ reconcile, not a re-upload of the library.
   against the rig.
 - **`dev:local` mints download URLs as `https://127.0.0.1:8080/…`** because the production presigned
   URL shape is fixed. Swap the scheme to follow one by hand: `… | sed 's|^https://|http://|'`.
-- **No APNs**, so `/events/<id>/notify` returns `202` with every token skipped — faithful to the
-  route's best-effort contract. A receiving device therefore reconciles on foreground/relaunch rather
-  than on a silent push.
+- **No APNs**, so an iPhone's wake is skipped — faithful to the route's best-effort contract; it
+  reconciles on foreground/relaunch rather than on a silent push. **FCM is real when you bring the key:**
+  `ch bg secrets-env -c 'cd api && deno task dev:local'` (unlock `secrets-env` first; its cached unlock
+  lasts 15 minutes) lets exactly Google's token exchange and this project's `messages:send` through the
+  storage shim, so an Android rig build with `push=real` is woken for real — the notify log line says
+  `1 pushed`, or names why not (`; skipped: …`, `; failed: …`). Without the key nothing passes through.
 
 ## The oracle
 

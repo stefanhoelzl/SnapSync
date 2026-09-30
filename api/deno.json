@@ -31,8 +31,8 @@
     // `dev:tunnel` adds a cloudflared quick tunnel so a physical device can reach it under default ATS.
     // Both resolve the `local` deployment, whose filesystem storage kind the rig requires — running them
     // against a bunny deployment throws rather than writing into a real zone.
-    "dev:local": "deno task config:local && deno run --allow-net --allow-read --allow-write --allow-run src/dev/serve.ts",
-    "dev:tunnel": "deno task config:local && deno run --allow-net --allow-read --allow-write --allow-run src/dev/serve.ts --tunnel",
+    "dev:local": "deno task config:local && deno run --allow-net --allow-read --allow-write --allow-run --allow-env=FCM_SERVICE_ACCOUNT_KEY src/dev/serve.ts",
+    "dev:tunnel": "deno task config:local && deno run --allow-net --allow-read --allow-write --allow-run --allow-env=FCM_SERVICE_ACCOUNT_KEY src/dev/serve.ts --tunnel",
     "bundle": "deno task config && deno bundle src/main.ts -o dist/main.js",
     "bundle:maintenance": "deno task config:maintenance && deno bundle src/main.ts -o dist/main.js",
     "lint": "deno lint",

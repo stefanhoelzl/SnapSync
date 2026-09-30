@@ -27,3 +27,17 @@ export function createPushSender(config: Config, fetchImpl: FetchLike): PushSend
       })),
   };
 }
+
+/**
+ * Why the tokens that were not pushed were not, as `; skipped: kind x ×2, failed: 403 ×1` — never the tokens themselves
+ * (a push token addresses a device). Empty when every token was pushed.
+ */
+export function unsentSummary(outcomes: SendOutcome[]): string {
+  const counts = new Map<string, number>();
+  for (const o of outcomes) {
+    if (o.status === "sent") continue;
+    const why = `${o.status}: ${o.reason ?? o.code ?? "unknown"}`;
+    counts.set(why, (counts.get(why) ?? 0) + 1);
+  }
+  return counts.size === 0 ? "" : "; " + [...counts].map(([why, n]) => `${why} ×${n}`).join(", ");
+}

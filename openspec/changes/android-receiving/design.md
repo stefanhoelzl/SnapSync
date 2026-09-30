@@ -301,6 +301,22 @@ Both platforms already behave this way. The delta states both gaps rather than i
 - **Rebase with phase 8**, which also edits `receiving-photos` → this change leaves the wake requirement alone;
   whichever lands second rebases.
 
+## Verification on the emulator (2026-09-30)
+
+- **A real FCM wake, end to end.** Emulator (Google APIs image, API 36), the rig build with every system real but the
+  crash reporter, against a local api run with the FCM key (the dev rig lets exactly Google's two FCM endpoints
+  through when given a key). FCM issued a token; the app registered it (`kind fcm`, env `snapsync-142c3`). With the
+  app's process killed, a second member shared a photo: the api pushed through FCM (`1 pushed`), FCM started the
+  dead process, the silent-push flow reconciled the active event, and the photo landed in `DCIM/Camera` — no activity,
+  no UI. On the new process `getToken()` answered the unchanged token, recognized and not re-published (D8).
+- **Receiving over a local api**, and **nothing shared back**: the walk after the import added no rows; the union
+  held only the other member's asset.
+- **The plain build** cold-starts on all its real adapters, and a completion broadcast starts a dead process with no
+  host built.
+- **The FCM service account** is a dedicated `snapsync-fcm-sender` with only *Firebase Cloud Messaging API Admin*
+  in `snapsync-142c3` — not the broad *firebase-adminsdk* account. A new role took about three minutes to reach FCM
+  after IAM already reported it (a `validate_only` send answered 403, then 400 on the dummy token).
+
 ## Migration Plan
 
 1. **Before the api commit can merge — you (config before code):**
