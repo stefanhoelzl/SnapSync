@@ -16,6 +16,7 @@ class ShareableCountIntegrationTest {
 
     @Test
     fun the_preview_count_equals_the_set_the_cycle_uploads() = rigTest {
+        extensionUploadsOnly()
         addPhoto("CAM") // an ordinary camera photo — admitted
         addPhoto("SHOT", kind = "screenshot") // excluded by subtype
         addPhoto("WA", kind = "low-res") // 1.9 MP → below the 3 MP floor, excluded

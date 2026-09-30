@@ -21,7 +21,7 @@ import app.snapsync.model.FileTail
  * Writes create missing parent directories, replace atomically, and leave the file readable while the device is
  * locked after its first unlock (the upload extension runs there).
  */
-interface Files {
+interface Files : Port {
 
     /** The whole file. */
     fun read(area: FileArea, path: String): FileResult<ByteArray>

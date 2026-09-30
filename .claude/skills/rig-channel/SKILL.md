@@ -408,8 +408,10 @@ curl -s -X POST localhost:18099/device/adapters/clear  # back to all real; exits
   fall-back to real.
 - **Mocked means operator-driven**: nothing a mock plays happens on its own. The levers of the JVM host section below
   are honoured here for exactly the systems the choice mocks (`GET /device` lists which); `/os` entries go through the
-  mock where the system is mocked. With `upload-session` mocked the app's own uploader is the operator-driven one:
-  run cycles with `/os/photokit-ext/processRawValue`, finish jobs with `device/jobs/complete`.
+  mock where the system is mocked. With `upload-session` mocked the app's own uploader still runs, and its transfers
+  wait for you: `device/uploads` lists them, `device/uploads/complete` lands them. The extension's cycle runs with
+  `/os/photokit-ext/processRawValue`, its jobs land with `device/jobs/complete`. Both uploaders take the same photos,
+  so to drive one alone switch the other off (`device/uploaders`, below — the JVM host honours it too).
 - Mock state persists across relaunches (`rig/state/`, `rig/databases/` in the App Group), written by the app.
 - Measured 2026-09-28 on the SE2 (iOS 26.6.2): the choice above over the phone's REAL library — 55 resources (Live
   Photo motion included) through the mocked queue into the mocked backend, all still there after a SIGKILL and

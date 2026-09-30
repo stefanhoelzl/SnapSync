@@ -20,6 +20,7 @@ class ShareSetIntegrationTest {
 
     @Test
     fun leave_then_rejoin_the_same_event_re_uploads_nothing() = rigTest {
+        extensionUploadsOnly()
         val event = createAndJoin()
         addPhoto("A")
         uploadAll()
@@ -42,6 +43,7 @@ class ShareSetIntegrationTest {
 
     @Test
     fun a_switch_replaces_the_share_set_and_re_uploads_nothing_already_stored() = rigTest {
+        extensionUploadsOnly()
         val next = registerEvent(name = "Next") // E2, to switch to
         createAndJoin() // E1
         addPhoto("A")
@@ -75,6 +77,7 @@ class ShareSetIntegrationTest {
      */
     @Test
     fun re_scanning_your_own_events_link_creates_no_new_upload_job_and_re_uploads_nothing() = rigTest {
+        extensionUploadsOnly()
         val event = createAndJoin()
         addPhoto("A")
         cycle() // A is requested: work in flight
@@ -92,6 +95,7 @@ class ShareSetIntegrationTest {
 
     @Test
     fun a_join_whose_listing_fails_still_joins_and_uploads() = rigTest {
+        extensionUploadsOnly()
         createAndJoin()
         addPhoto("A")
         uploadAll()

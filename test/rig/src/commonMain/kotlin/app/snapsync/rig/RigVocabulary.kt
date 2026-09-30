@@ -60,6 +60,8 @@ object RigVocabulary {
         "device/jobs/limit",
         "device/jobs/complete",
         "device/jobs/fail",
+        "device/uploads",
+        "device/uploads/complete",
         "device/import/fail-next",
         "device/membership/unreadable",
         "device/permission",

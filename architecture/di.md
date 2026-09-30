@@ -18,23 +18,15 @@ Roots found:
 
 | Constructed type | SnapSyncRoot | SnapSyncRoot | UploadExtensionRoot |
 |---|---|---|---|
-| `AlbumCoordinator` | | | x |
-| `AlbumMapService` | x | x | x |
 | `AppPorts` | x | x | |
-| `AppUploaderPorts` | x | x | |
-| `AttestState` | x | x | x |
 | `BackgroundSessions` | x | x | |
-| `CachedAttestStore` | | | x |
-| `ConfigService` | x | x | x |
 | `CutoffFormatter` | x | x | |
-| `DeviceManifestService` | x | x | x |
 | `DevicePorts` | x | x | x |
-| `DownloadService` | x | x | |
+| `ExtensionPorts` | | | x |
 | `FileLogSink` | x | x | x |
-| `GalleryAlbums` | | | x |
-| `GalleryDiscovery` | | | x |
 | `HttpBackend` | x | x | x |
 | `IosBackgroundTime` | x | x | |
+| `IosBuildInfo` | x | x | x |
 | `IosDatabases` | x | x | x |
 | `IosDeviceIntegrity` | x | x | |
 | `IosDownload` | x | x | |
@@ -51,20 +43,10 @@ Roots found:
 | `IosUi` | x | x | |
 | `IosUrlSessionUploadPlatform` | x | x | |
 | `IosWake` | x | x | |
-| `LedgerService` | x | x | x |
-| `LogTailService` | x | x | |
 | `MetricKitProcessMetrics` | x | x | |
 | `NoPlatformDeviceId` | x | x | x |
-| `PersistedDeviceIdentity` | x | x | x |
 | `PhotoLibraryPermission` | x | x | |
 | `ProcessPorts` | x | x | x |
 | `PublicNSLogSink` | x | x | x |
-| `PushPorts` | x | x | |
-| `PushRegistrationRecord` | x | x | |
-| `PushTokenSource` | x | x | |
 | `SceneRecord` | x | x | |
 | `SentryCrashReporter` | x | x | x |
-| `StagingService` | x | x | |
-| `SuppressionService` | | | x |
-| `UploadPorts` | | | x |
-| `UploadRecordPorts` | x | x | |

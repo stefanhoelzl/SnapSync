@@ -8,7 +8,6 @@ import app.snapsync.android.scene.AndroidLifecycle
 import app.snapsync.compose.AppCore
 import app.snapsync.compose.DevicePorts
 import app.snapsync.contracts.EntryDriver
-import app.snapsync.feature.upload.AppUploadMechanism
 import app.snapsync.launchadapters.AdapterChoice
 import app.snapsync.launchadapters.AdapterFacts
 import app.snapsync.launchadapters.AdapterFiles
@@ -18,13 +17,13 @@ import app.snapsync.launchadapters.LaunchAdapters
 import app.snapsync.launchadapters.randomDeviceId
 import app.snapsync.mock.MockDevice
 import app.snapsync.mock.MockedSystem
-import app.snapsync.mock.OperatorDrivenUploads
 import app.snapsync.mock.UploadNetwork
 import app.snapsync.model.ConfigRead
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
 import app.snapsync.model.SecureSlots
 import app.snapsync.model.SecureStoreRead
+import app.snapsync.model.uploadersCarried
 import app.snapsync.ports.Files
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.rig.gallery.seedMediaStore
@@ -85,12 +84,6 @@ class AndroidRigLaunch internal constructor(
     /** The line this launch adds to the app's boot banner. */
     val bootLines: List<String> = listOf("[boot] adapters = $description")
 
-    /**
-     * The app uploader's mechanism: the real one, unless the transfer session it would create its uploads on is the
-     * mock, which creates nothing — then the operator is the engine, as on the iOS app host and the JVM root.
-     */
-    fun appDrivenUpload(build: () -> AppUploadMechanism): AppUploadMechanism =
-        if (MockedSystem.UPLOAD_SESSION in launch.choice.mocked) OperatorDrivenUploads else build()
 }
 
 /** Build the launch over the root's [real] adapters; [uploadBase] is the real backend's, the build's resolved one. */
@@ -242,7 +235,7 @@ private fun AndroidRigLaunch.hooks(
     context: Context,
 ): RigHooks = RigHooks(
     bootedAt = Clock.System.now().toString(),
-    uploadTier = if (world.isMocked(MockedSystem.UPLOAD_SESSION)) "operator-driven" else "app",
+    uploadTier = uploadersCarried(osSupportsOsDrivenUpload = false),
     uploadBase = uploadBase,
     transferBinding = "mock",
     // The platform calls the app's entry points on the main thread, so the rig does too.

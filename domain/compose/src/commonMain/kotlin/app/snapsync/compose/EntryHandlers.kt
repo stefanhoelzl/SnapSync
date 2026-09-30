@@ -1,7 +1,6 @@
 package app.snapsync.compose
 
 import app.snapsync.feature.upload.TailTrigger
-import app.snapsync.model.ApnsPushToken
 import app.snapsync.model.PlatformError
 import app.snapsync.model.PushMessage
 import app.snapsync.model.PushToken
@@ -33,7 +32,7 @@ import kotlinx.coroutines.launch
 fun lifecycleHandlers(core: AppCore, assembleHost: () -> Unit): LifecycleHandlers {
     val ports = core.ports
     val entry: EntryContext = core.process.entryContext
-    val log = ports.log
+    val log = core.log
     return LifecycleHandlers(
         onForeground = {
             log.invocation(entry, "onForeground", params = core.foregroundParams()) {
@@ -76,11 +75,11 @@ fun lifecycleHandlers(core: AppCore, assembleHost: () -> Unit): LifecycleHandler
 fun pushHandlers(core: AppCore): PushHandlers {
     val ports = core.ports
     val entry: EntryContext = core.process.entryContext
-    val log = ports.log
+    val log = core.log
     return PushHandlers(
         onToken = { token: PushToken ->
             log.invocation(entry, "onPushToken", params = "hex=${token.hex.take(TOKEN_PREFIX)}…") {
-                ports.push.tokens.deliver(token.hex)
+                core.services.pushTokens.deliver(token.hex)
             }
         },
         onTokenFailure = { error: PlatformError? ->
@@ -99,11 +98,11 @@ fun devHandlers(core: AppCore): DevHandlers = DevHandlers(onReset = { core.reset
 
 private fun AppCore.silentPush(message: PushMessage, completion: Completion) {
     val wake = tail.hold("onSilentPush")
-    val completions = OsCompletions("onSilentPush", log = ports.log)
+    val completions = OsCompletions("onSilentPush", log = services.log)
     wake.guard(completions.adopt(completion))
     scope.launch {
         completions.releaseAfter {
-            ports.log.invocation(
+            services.log.invocation(
                 process.entryContext,
                 "onSilentPush.run",
                 params = "protectedData=${ports.processInfo.protectedDataAvailable()}",
@@ -124,7 +123,7 @@ private const val TOKEN_PREFIX = 12
 /** The `onForeground` invocation params: the app uploader's admission and the registration fact. */
 private fun AppCore.foregroundParams(): String =
     "app=${appUploadAdmission().name} extensionRegistrable=${extensionRegistrableNow()}" +
-        " osSupported=${ports.osSupportsOsDrivenUpload}"
+        " osSupported=${ports.process.build.osSupportsOsDrivenUpload}"
 
 /**
  * The shared prelude of a wake with no flow of its own: re-read the membership (cross-process writes and a
@@ -132,8 +131,8 @@ private fun AppCore.foregroundParams(): String =
  * best-effort — a failed prelude must not rob the wake of its tail, whose units read the membership themselves.
  */
 internal suspend fun AppCore.prelude() {
-    runCatchingCancellable { ports.config.reload() }
-        .onFailure { ports.log.w(it) { "prelude: the membership re-read failed" } }
+    runCatchingCancellable { services.config.reload() }
+        .onFailure { services.log.w(it) { "prelude: the membership re-read failed" } }
     runCatchingCancellable { attestation.refresh() }
-        .onFailure { ports.log.w(it) { "prelude: the attestation refresh failed" } }
+        .onFailure { services.log.w(it) { "prelude: the attestation refresh failed" } }
 }

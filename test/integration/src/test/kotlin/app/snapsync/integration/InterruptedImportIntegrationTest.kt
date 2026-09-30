@@ -52,6 +52,7 @@ class InterruptedImportIntegrationTest {
     }
     @Test
     fun the_first_copy_is_never_uploaded_back_into_the_event() = rigTest {
+        extensionUploadsOnly()
         stageWithAbandonedImport()
 
         relaunchAndAssemble()
@@ -107,6 +108,7 @@ class InterruptedImportIntegrationTest {
     /** The full leave/switch shape: the row survives, adjudicates correctly afterwards, and never echoes. */
     @Test
     fun after_a_leave_the_interrupted_import_still_settles_without_a_duplicate() = rigTest {
+        extensionUploadsOnly()
         val before = stageWithAbandonedImport()
         val staged = stagedFiles()
 
@@ -150,6 +152,7 @@ class InterruptedImportIntegrationTest {
      */
     @Test
     fun a_live_transaction_survives_a_full_trigger_cycle_without_a_duplicate() = rigTest {
+        extensionUploadsOnly()
         createAndJoin()
         foreignDevice(foreignDevice, foreignAsset)
         val galleryBefore = libraryTotal()
@@ -193,6 +196,7 @@ class InterruptedImportIntegrationTest {
      */
     @Test
     fun the_composition_startup_sweep_settles_what_a_dead_process_left() = rigTest {
+        extensionUploadsOnly()
         val before = stageWithAbandonedImport()
         // Exactly what a killed process leaves: an asset in the library, a row that does not know it. No
         // trigger will settle this — that is the point.

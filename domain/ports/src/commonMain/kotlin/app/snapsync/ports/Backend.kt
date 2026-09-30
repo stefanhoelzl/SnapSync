@@ -33,7 +33,7 @@ import app.snapsync.model.UnionAsset
  * Its promises are the port contract `BackendContract` (`docs/testing.md`), run against the real `api/` and the
  * in-memory mock.
  */
-interface Backend {
+interface Backend : Port {
 
     /** `GET /attest/challenge` — a server-issued nonce. */
     suspend fun challenge(): Reply<String>

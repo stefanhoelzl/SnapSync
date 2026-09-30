@@ -409,21 +409,31 @@ build the same classes over caller-held cells.
 
 ### The JVM root (`:app:jvm`)
 
-`JvmApp` composes the app on the JVM exactly as `SnapSyncRoot` does on the phone — `snapSyncProcess`, then
-`snapSyncHost` — over the adapters **its caller** chooses for each launch, from a durable state the caller keeps:
+`JvmApp` composes the app on the JVM exactly as `SnapSyncRoot` does on the phone — `snapSyncHost` over `AppPorts`, ports
+and nothing else — and the upload extension beside it exactly as `UploadExtensionRoot` does (`snapSyncExtension` over
+`ExtensionPorts`), over the adapters **its caller** chooses for each launch, from a durable state the caller keeps:
 `JvmApp(scope, durable) { durable -> adapters }`. `JvmMocks` is that durable state as one mock per external system, and
-`JvmMocks.adapters(build, attests, backend)` its launch's adapters; a caller may put the real `api/` behind the backend
-port instead (`VersionedHttpBackend`). **`relaunch()` is process death**: the running app's collectors and launches
-end, and a new app is composed over a fresh set of port faces over the same durable state. It is wiring only — no
-lever, no test DSL — and gated as a shell.
+`JvmMocks.adapters(build, attests, backend, logSinks)` its launch's adapters (`JvmBuild` is the launch's `BuildInfo`); a
+caller may put the real `api/` behind the backend port instead (`VersionedHttpBackend`). **`relaunch()` is process
+death**: the running app's collectors and launches end, and a new app is composed over a fresh set of port faces over the
+same durable state. It is wiring only — no lever, no test DSL — and gated as a shell.
 
 Its stated deviations from the phone:
-- the upload extension's cycle is composed beside the app, over the app's admission, and invoked through the
-  extension's entry port (`ExtensionHost`); it is unauthenticated, so it re-reads no credential; the app-driven
-  uploader is inert (`OperatorDrivenUploads`) — the operator is the engine, and the tail's top-up and walk move
-  nothing a protocol could read (which unit ran is `TailRunnerTest`'s);
-- the push token survives a relaunch, as the OS re-delivers it to every launch;
+- both processes live in one JVM: the app and the extension each set their own process up over their own process ports
+  (the extension's files reach only the shared area, its crash channel is one nobody observes), and a process that
+  supplies no log sinks leaves Kermit's JVM-global writer list alone — the rig's JVM host hands the app's process its
+  recorder, which is how `/device/logs` reads the app's log back;
 - the screen's "now" is the wall clock, while the core reads the launch's `Clock`.
+
+**Both uploaders run, as on a phone.** The app's uploader is the real one over the mocked transfer session
+(`UploadSessionMock`: a `URLSession`'s shape — four live transfers, no free retry, each end reported to the app as it
+happens), whose transfers the operator lands (`/device/uploads/complete`); the extension's cycle runs when a caller
+invokes it (`/os/photokit-ext/processRawValue`) and its jobs land through `/device/jobs/complete`. Both would take the
+same photos, so a test about one of them says so: a test driving the extension's cycle switches the app's uploader off
+first (`extensionUploadsOnly()`, over `/device/uploaders?app=off` — the build's development controls, which the JVM
+host honours like a device's rig build), and a test under a partial grant, where the extension withholds by its own
+admission, lands the app's transfers. The push service re-delivers the token it issued to a relaunched process's
+request, as the OS answers every launch's.
 
 Its callers are the rig's JVM host (section 6) and the desktop world harness (section 8).
 
@@ -564,8 +574,9 @@ MetricKit (`/device/process-metrics` feeds the real handler). Code: `:test:launc
   exit) and `rig/databases/` (a mocked database is a file). The extension, in its own process, never writes: the
   coherence rules keep every system it would write real there. A relaunch finds what the last launch left.
 - **Everything mocked is operator-driven**: nothing a mock plays happens on its own. A mocked wake cancels the real
-  heartbeat and answers a real one at once; a mocked upload session makes the app's uploader the operator-driven one,
-  as on the JVM root, and every upload is a cycle the channel invokes. `/os` delivers through each system's mock where
+  heartbeat and answers a real one at once; a mocked upload session holds the app's uploader's transfers until the
+  channel lands them (`device/uploads/complete`), as on the JVM root, and a mocked upload-job queue holds the
+  extension's until `device/jobs/complete`. `/os` delivers through each system's mock where
   it is mocked (`ChosenEntryDriver`) and through the iOS adapter otherwise; `device/os-record` reports the mocked
   systems' part. A mocked download stages a 16×16 JPEG, which a real library imports.
 - **Memory**: the extension, in its own process, restores only the systems its choice mocks — under the rules above,

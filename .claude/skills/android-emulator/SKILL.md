@@ -17,8 +17,8 @@ nothing here touches the iPhone. There is no Android phone; real-device measurem
 
 ## What the app is here
 
-Only the **rig build** (`-Psnapsync.rig=true`) runs. It composes the real app (`snapSyncProcess`, then
-`snapSyncHost`, in `SnapSyncRoot`, built in `Application.onCreate`) over an **adapter choice**, read at every start
+Only the **rig build** (`-Psnapsync.rig=true`) runs. It composes the real app (`snapSyncHost` over
+`AppPorts`, in `SnapSyncRoot`, built in `Application.onCreate`) over an **adapter choice**, read at every start
 from the adapters file (`rig-channel`'s `device/adapters*`, as on the iOS app host):
 
 - **No file** (a fresh install, or after `POST /device/adapters/clear`): every system mocked but the **screen** and its

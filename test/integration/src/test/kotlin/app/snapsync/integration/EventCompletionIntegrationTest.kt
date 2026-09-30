@@ -21,6 +21,7 @@ class EventCompletionIntegrationTest {
 
     @Test
     fun the_only_member_settles_closes_the_event_and_leaves_at_the_end_of_a_wake() = rigTest {
+        extensionUploadsOnly()
         val event = createAndJoin(startsAt = SHORT_START, endsAt = SHORT_END)
         device("clock/advance", "to" to AFTER_THE_END)
         // The first upload cycle after the end settles the share — on this host the operator plays the uploader.

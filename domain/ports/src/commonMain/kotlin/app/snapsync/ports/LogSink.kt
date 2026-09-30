@@ -12,6 +12,6 @@ import co.touchlab.kermit.Severity
  * the adapter's (the iOS file sink is tuned for background wakes), and a sink never throws: this IS the log, so
  * there is nowhere to report a failure.
  */
-fun interface LogSink {
+fun interface LogSink : Port {
     fun write(severity: Severity, tag: String, line: String)
 }

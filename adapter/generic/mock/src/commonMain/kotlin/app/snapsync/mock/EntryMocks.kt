@@ -88,10 +88,18 @@ class LinksOperator internal constructor(private val mock: LinksMock) {
     }
 }
 
-/** The platform's push service. */
+/**
+ * The platform's push service. It keeps the token it issued this device, as the platform does: a process that asks
+ * ([PushNotifications.register]) and has not been told it yet — a relaunched one — is answered with it, the way the
+ * OS answers every launch's request. A process that already holds it is told nothing new.
+ */
 class PushServiceMock {
     internal var handlers: PushHandlers? = null
     internal var registrations = 0
+
+    /** The token this device was issued, and which process's handlers have been told it. */
+    internal var issued: String? = null
+    internal var toldTo: PushHandlers? = null
 
     fun port(): PushNotifications = object : PushNotifications {
         override fun listen(handlers: PushHandlers) {
@@ -100,6 +108,12 @@ class PushServiceMock {
 
         override fun register() {
             registrations++
+            val token = issued ?: return
+            val current = handlers ?: return
+            if (toldTo !== current) {
+                toldTo = current
+                current.onToken(PushToken(token))
+            }
         }
     }
 
@@ -110,8 +124,13 @@ class PushServiceOperator internal constructor(private val mock: PushServiceMock
     /** How many times the app asked the push service for its token. */
     val registrations: Int get() = mock.registrations
 
-    /** The push service issued this device [hex] as its token. */
-    fun deliverToken(hex: String) = mock.handlers.registered("PushNotifications").onToken(PushToken(hex))
+    /** The push service issued this device [hex] as its token — kept, and re-delivered to a relaunched process's request. */
+    fun deliverToken(hex: String) {
+        val handlers = mock.handlers.registered("PushNotifications")
+        mock.issued = hex
+        mock.toldTo = handlers
+        handlers.onToken(PushToken(hex))
+    }
 
     /** The push service could not issue a token. */
     fun deliverTokenFailure(description: String?) =

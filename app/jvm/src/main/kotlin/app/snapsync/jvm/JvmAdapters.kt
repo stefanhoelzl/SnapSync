@@ -1,7 +1,8 @@
 package app.snapsync.jvm
 
-import app.snapsync.feature.upload.AppUploadMechanism
+import app.snapsync.model.DiagnosticEnvironment
 import app.snapsync.ports.Backend
+import app.snapsync.ports.BuildInfo
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.Clock
 import app.snapsync.ports.CrashReporter
@@ -15,6 +16,7 @@ import app.snapsync.ports.Files
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.Lifecycle
 import app.snapsync.ports.Links
+import app.snapsync.ports.LogSink
 import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.ports.Preferences
 import app.snapsync.ports.ProcessInfo
@@ -24,7 +26,6 @@ import app.snapsync.ports.SystemUi
 import app.snapsync.ports.Ui
 import app.snapsync.ports.Upload
 import app.snapsync.ports.Wake
-import co.touchlab.kermit.Logger
 
 /**
  * **One launch's adapters** — every port the JVM root composes the app and its upload extension over, chosen by the
@@ -57,6 +58,12 @@ class JvmDevice(
     val secureStore: SecureStore,
     val integrity: DeviceIntegrity,
     val processInfo: ProcessInfo,
+    /**
+     * Where the app process's log lines go. None by default: a JVM hosts many "processes", and a process that supplies
+     * sinks takes over the VM's global writer list (`ProcessPorts.logSinks`). A caller that reads the app's log back
+     * (the control channel's JVM host) supplies its recorder here.
+     */
+    val logSinks: List<LogSink>,
 )
 
 /** The operating system's entries into the app and its upload extension — the event ports. */
@@ -86,26 +93,32 @@ class JvmSystems(
     val cycleUpload: Upload,
     val download: Download,
     val systemUi: SystemUi,
-    /** The app-driven uploader's mechanism — `OperatorDrivenUploads` where the operator invokes every cycle. */
-    val appDrivenUpload: AppUploadMechanism,
 )
 
 /**
- * What the running build IS — the constants a device's bundle carries.
+ * What the running build IS — the constants a device's bundle carries, as the [BuildInfo] port both processes read.
  *
- * [appVersion] is read per call by a backend port that takes it, and once — when the cycle is composed — by the
- * cycle, as on a device; it is a cell so an operator can play a member updating the app in place.
+ * [appVersion] is read per use from [declaredVersion], a cell so an operator can play a member updating the app in
+ * place: the backend port reads it per call, and the upload cycle once, when it is composed — as on a device.
  */
 class JvmBuild(
     /** The backend's device-facing base, carrying exactly one version prefix. */
-    val host: String,
-    val appVersion: app.snapsync.mock.DeclaredVersion,
+    override val uploadHost: String,
+    val declaredVersion: app.snapsync.mock.DeclaredVersion,
     /** Where the build reports, or `null` for one that reports nowhere (a dev build keeps its bug report). */
-    val dsn: String?,
+    override val dsn: String?,
     /** The build's App Store page — the update-required screen's one remedy. */
-    val appStoreUrl: String?,
+    override val appStoreUrl: String?,
     /** The APNs environment the build's push tokens belong to. */
-    val apnsEnvironment: String,
-    /** Where the composed app's own log lines go. */
-    val log: Logger,
-)
+    override val apnsEnvironment: String,
+) : BuildInfo {
+    override val appVersion: String get() = declaredVersion.value.orEmpty()
+
+    /** The JVM carries no OS-driven upload mechanism. */
+    override val osSupportsOsDrivenUpload: Boolean = false
+
+    /** Off-device, none of the build/OS/device facts are known. */
+    override val diagnostics: DiagnosticEnvironment = DiagnosticEnvironment.UNKNOWN
+
+    override val bootLines: List<String> = emptyList()
+}

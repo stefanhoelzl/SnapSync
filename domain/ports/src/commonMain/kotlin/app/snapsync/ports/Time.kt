@@ -11,7 +11,7 @@ import kotlinx.datetime.TimeZone
  *
  * Adapters implement (`SystemClock` in `:adapter:generic:app`); tests pass a fixed instant and zone.
  */
-interface Clock {
+interface Clock : Port {
     /** Now. A wall clock is not monotonic (NTP or the user can step it back), so no caller may rely on that. */
     fun now(): Instant
 

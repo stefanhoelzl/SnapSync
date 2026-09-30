@@ -10,6 +10,6 @@ import kotlinx.coroutines.flow.StateFlow
  * first emission. Every value is the whole truth; truth arrives here and nowhere else —
  * commands (the gallery's access request, `SystemUi.openSettings`) never carry results back.
  */
-interface PhotoAccessStatusSource {
+interface PhotoAccessStatusSource : Port {
     val permission: StateFlow<GalleryAccess>
 }

@@ -27,6 +27,8 @@ fun chosenPorts(real: DevicePorts.Lazies, choice: AdapterChoice, device: MockDev
         databases = pick(MockedSystem.DATABASES, real.databases) { device.databases.port() },
         preferences = pick(MockedSystem.PREFERENCES, real.preferences) { device.preferences.port() },
         secureStore = pick(MockedSystem.KEYCHAIN, real.secureStore) { device.keychain.port() },
+        // No system of its own: the platform's id is read-only and never written, so the real one always stands.
+        platformDeviceId = real.platformDeviceId,
         // App Attest exists in the app and never in the extension.
         integrity = pick(MockedSystem.INTEGRITY, real.integrity) { device.enclave.port(available = app) },
         processInfo = pick(MockedSystem.PROCESS_INFO, real.processInfo) { device.processInfo.port() },

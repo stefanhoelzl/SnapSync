@@ -289,6 +289,18 @@ private fun MockWorld.transferLevers(): Map<String, Lever> = mapOf(
         keys.forEach { queue.completeJob(it) }
         CommandResult.ok("""{"completed":${jsonList(keys)}}""")
     }),
+    // The app uploader's transfer session: its live transfers and how many it was ever handed.
+    "uploads" to mocked(MockedSystem.UPLOAD_SESSION, RigCommand { _, _ ->
+        val session = device.uploadSession.operator
+        CommandResult.ok("""{"live":${jsonList(session.liveKeys())},"created":${session.created.size}}""")
+    }),
+    // The OS lands every live app-uploader transfer (or the one `key` names), each reported to the app as it ends.
+    "uploads/complete" to mocked(MockedSystem.UPLOAD_SESSION, RigCommand { params, _ ->
+        val session = device.uploadSession.operator
+        val keys = params["key"]?.let(::listOf) ?: session.liveKeys()
+        keys.forEach { session.complete(it) }
+        CommandResult.ok("""{"completed":${jsonList(keys)}}""")
+    }),
     "jobs/fail" to mocked(MockedSystem.UPLOAD_QUEUE, RigCommand { params, _ ->
         val key = params["key"]
         val error = uploadError(params["error"])

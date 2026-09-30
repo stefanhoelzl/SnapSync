@@ -25,7 +25,7 @@ import app.snapsync.model.RegistrationState
  * Only the **app** process registers — the extension is the thing being registered — so the iOS adapter is placed in
  * `:adapter:ios:app-only`.
  */
-interface ExtensionRegistry {
+interface ExtensionRegistry : Port {
 
     /** Change the registration, and report what the platform answered. Returns rather than throws. */
     suspend fun setEnabled(enabled: Boolean): RegistrationAnswer

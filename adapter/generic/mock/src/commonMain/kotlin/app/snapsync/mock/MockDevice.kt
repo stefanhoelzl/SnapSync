@@ -40,11 +40,10 @@ open class MockDevice(
     val wakes = WakeMock()
     val backgroundTime = BackgroundTimeMock()
     val extensionRegistry = ExtensionRegistryMock(supported = osDrivenUpload)
-    val uploadQueue = UploadQueueMock(
-        network ?: UploadNetwork { url, headers, _ -> backend.operator.receive(url, headers) },
-        acceptsAnyHandle = acceptsAnyUploadHandle,
-    )
-    val uploadSession = UploadSessionMock()
+    /** Where an OS-performed upload lands: the backend mock's byte route, unless the caller routes it elsewhere. */
+    private val uploadNetwork = network ?: UploadNetwork { url, headers, _ -> backend.operator.receive(url, headers) }
+    val uploadQueue = UploadQueueMock(uploadNetwork, acceptsAnyHandle = acceptsAnyUploadHandle)
+    val uploadSession = UploadSessionMock(uploadNetwork)
     val downloads = DownloadSessionMock(temporaryFiles ?: TemporaryFiles.on(disk.port()))
     val lifecycle = LifecycleMock()
     val links = LinksMock()

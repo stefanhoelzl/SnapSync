@@ -4,10 +4,8 @@ package app.snapsync.rig
 
 import app.snapsync.compose.DevicePorts
 import app.snapsync.config.bakedUploadBase
-import app.snapsync.feature.upload.AppUploadMechanism
 import app.snapsync.logging.appMarketingVersion
 import app.snapsync.mock.MockDevice
-import app.snapsync.mock.OperatorDrivenUploads
 import app.snapsync.mock.UploadNetwork
 import app.snapsync.launchadapters.LaunchAdapters
 import app.snapsync.launchadapters.AdapterChoice
@@ -50,9 +48,8 @@ private val log = Logger.withTag("rig")
  * the process's start, the ports the app composes over, the control channel's own adapters, and the [world] its
  * operator levers move. Built by the app hook while `SnapSyncRoot` initializes, before anything logs.
  *
- * Every decision the hook may not hold is here: what a refused adapter choice composes (nothing), what a mocked transfer session
- * makes the app's uploader (the operator-driven one), and which real system must be quieted because its mock replaced
- * it.
+ * Every decision the hook may not hold is here: what a refused adapter choice composes (nothing), and which real system
+ * must be quieted because its mock replaced it.
  */
 class RigLaunch internal constructor(
     val launch: LaunchAdapters,
@@ -81,13 +78,6 @@ class RigLaunch internal constructor(
         if (uncomposed == null) compose() else log.e { "the adapter choice was refused — nothing is composed: $uncomposed" }
     }
 
-    /**
-     * The app uploader's mechanism: the real one, unless the transfer session it would create its uploads on is the
-     * mock, which creates nothing — then the operator is the engine, as on the JVM root: every upload goes through the
-     * cycle the channel invokes (`/os/photokit-ext/processRawValue`).
-     */
-    fun appDrivenUpload(build: () -> AppUploadMechanism): AppUploadMechanism =
-        if (world.isMocked(MockedSystem.UPLOAD_SESSION)) OperatorDrivenUploads else build()
 
     /** Write every mocked system's changed state now — before an exit. */
     internal fun flush() {

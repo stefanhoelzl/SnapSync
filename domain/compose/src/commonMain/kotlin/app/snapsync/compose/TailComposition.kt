@@ -36,7 +36,9 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
  */
 class AppTail internal constructor(
     private val scope: CoroutineScope,
-    private val ports: AppPorts,
+    private val services: AppServices,
+    /** The app's uploader — resolved on first use, since it depends on the graph this tail belongs to. */
+    private val appUploader: () -> AppUploadMechanism,
     /** The process's entry-point seam, which the tail's lines carry. */
     private val entryContext: EntryContext,
     private val downloads: () -> DownloadController,
@@ -54,10 +56,10 @@ class AppTail internal constructor(
     private val foreground = AtomicBoolean(false)
 
     /** The app uploader, resolved at first use — it owns a process-lifetime background session on a device. */
-    private val mechanism: AppUploadMechanism get() = ports.appDrivenUpload()
+    private val mechanism: AppUploadMechanism get() = appUploader()
 
     /** The heartbeat the runner re-arms and a disarm cancels — the process's, over the `Wake` port. */
-    private val heartbeat = Heartbeat(ports.wake, ports.log)
+    private val heartbeat = Heartbeat(services.ports.wake, services.log)
 
     /** The one tail runner of this process. */
     val runner: TailRunner by lazy {
@@ -75,14 +77,14 @@ class AppTail internal constructor(
             topUp = { stop -> mechanism.topUp(stop) },
             walkAndPublish = { stop -> mechanism.walkAndPublish(stop) },
             // Exactly a full grant: under a partial one the tail reads no library (capability `photo-access`).
-            walkPermitted = { ports.photoAccess.permission.value == GalleryAccess.GRANTED },
+            walkPermitted = { services.ports.photoAccess.permission.value == GalleryAccess.GRANTED },
             mayCreate = mayCreate,
             foregrounded = { foreground.load() },
             refreshStatus = refreshCounts,
             heartbeat = heartbeat,
-            importsRemain = { ports.downloadStore.importableAssets().isNotEmpty() },
-            leftover = { "staged downloads not yet imported: ${ports.downloadStore.importableAssets().size}" },
-            log = ports.log,
+            importsRemain = { services.downloadStore.importableAssets().isNotEmpty() },
+            leftover = { "staged downloads not yet imported: ${services.downloadStore.importableAssets().size}" },
+            log = services.log,
             entryContext = entryContext,
         )
     }
@@ -105,7 +107,8 @@ class AppTail internal constructor(
     }
 
     /** A hold on the process's background time for [label], whose expiry stops this tail. */
-    internal fun hold(label: String): WakeHold = WakeHold(label, ports.backgroundTime, runner, ports.log, finish)
+    internal fun hold(label: String): WakeHold =
+        WakeHold(label, services.ports.backgroundTime, runner, services.log, finish)
 
     /**
      * The heartbeat wake's hand-over — it holds no [WakeHold] of its own: its tail, then the end-of-wake step. A tail
@@ -113,9 +116,11 @@ class AppTail internal constructor(
      */
     internal suspend fun heartbeatThenFinish(id: String) {
         runCatchingCancellable { runner.request(TailTrigger.HEARTBEAT) }
-            .onFailure { ports.log.w(it) { "runWake($id): its tail failed" } }
+            .onFailure { services.log.w(it) { "runWake($id): its tail failed" } }
         runCatchingCancellable { finish() }
-            .onFailure { ports.log.w(it) { "runWake($id): the end-of-wake step failed; the next wake runs it again" } }
+            .onFailure {
+                services.log.w(it) { "runWake($id): the end-of-wake step failed; the next wake runs it again" }
+            }
     }
 
     /**
@@ -134,7 +139,7 @@ class AppTail internal constructor(
      * the session's drain report — the relaunch's own work, recording the terminals, is done by then (capability
      * `sync-status`). The adapter's completion puts the release on the main thread UIKit requires.
      */
-    val uploadCompletions: OsCompletions = OsCompletions("url-session.onBackgroundSessionEvents", log = ports.log)
+    val uploadCompletions: OsCompletions = OsCompletions("url-session.onBackgroundSessionEvents", log = services.log)
 
     /** What the upload transport tells the core — see [AppUploadEvents]. */
     val uploadEvents: AppUploadEvents = object : AppUploadEvents {
@@ -151,11 +156,11 @@ class AppTail internal constructor(
      * snapshot-fed discovery → manifest publish — the uploader's walk unit, whose discovery binding is the selection
      * snapshot there — then the tail (① import, ② top-up from the snapshot; never ③ under a partial grant).
      */
-    internal suspend fun onSelectionChanged() = ports.log.invocation(entryContext, "onSelectionChanged") {
+    internal suspend fun onSelectionChanged() = services.log.invocation(entryContext, "onSelectionChanged") {
         // Held from before its own work to its tail's end, like any in-process request (see [requestDetached]).
         val hold = hold("onSelectionChanged")
         runCatchingCancellable { mechanism.walkAndPublish { false } }
-            .onFailure { ports.log.w(it) { "the selection change's discovery failed; its tail still runs" } }
+            .onFailure { services.log.w(it) { "the selection change's discovery failed; its tail still runs" } }
         hold.thenTail(TailTrigger.SELECTION_CHANGE)
     }
 }

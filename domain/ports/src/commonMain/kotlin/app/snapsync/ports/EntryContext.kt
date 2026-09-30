@@ -18,7 +18,7 @@ import app.snapsync.model.EntryScope
  * bodies run after their launcher returns, instrumentation sets the context *inside* the launched
  * coroutine so it spans the actual async work.
  */
-interface EntryContext : EntryScope {
+interface EntryContext : Port, EntryScope {
 
     /**
      * The entry point a line logged right now, on this thread, belongs to — or `null` when none is claimed. Read by

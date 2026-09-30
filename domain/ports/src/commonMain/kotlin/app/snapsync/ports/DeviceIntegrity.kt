@@ -16,7 +16,7 @@ import app.snapsync.model.Proof
  *
  * Its promises are the port contract `DeviceIntegrityContract`, recorded on a device (`docs/testing.md`).
  */
-interface DeviceIntegrity {
+interface DeviceIntegrity : Port {
 
     /** Whether this process can produce a proof at all. False in an app extension. */
     fun isAvailable(): Boolean

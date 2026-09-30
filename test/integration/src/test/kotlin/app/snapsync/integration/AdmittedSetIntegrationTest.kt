@@ -32,6 +32,7 @@ class AdmittedSetIntegrationTest {
 
     @Test
     fun a_post_ceiling_photo_reaches_no_consumer() = rigTest {
+        extensionUploadsOnly()
         addPhoto("IN", date = inWindow)
         addPhoto("AFTER", date = postCeiling)
 
@@ -61,6 +62,7 @@ class AdmittedSetIntegrationTest {
 
     @Test
     fun an_open_window_admits_the_same_photo_at_every_consumer() = rigTest {
+        extensionUploadsOnly()
         // The control. Without it the assertions above would pass just as well against a stack that dropped AFTER
         // for some unrelated reason — which is exactly how the original bug hid behind four green suites. An event
         // is at most 30 days long, so "open" is a window whose end lies past AFTER.
@@ -84,6 +86,7 @@ class AdmittedSetIntegrationTest {
 
     @Test
     fun the_origin_exclusions_reach_every_consumer_too() = rigTest {
+        extensionUploadsOnly()
         // The ceiling is the bound that drifted, but the property is about the SET, not about one rule: a
         // screenshot and a sub-floor image must be absent from all four answers just as firmly.
         addPhoto("CAM", date = inWindow)

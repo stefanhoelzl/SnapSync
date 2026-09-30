@@ -21,6 +21,7 @@ class CapTruncatedPublishIntegrationTest {
 
     @Test
     fun a_device_that_never_drains_still_publishes_what_it_uploaded() = rigTest {
+        extensionUploadsOnly()
         val event = createAndJoin()
         device("jobs/limit", "n" to "2") // fewer slots than there is work, with enough left over to stay behind
         for (id in listOf("A", "B", "C", "D", "E")) addPhoto(id)

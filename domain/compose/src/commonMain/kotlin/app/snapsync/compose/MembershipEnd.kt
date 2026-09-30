@@ -13,7 +13,7 @@ class MembershipEnd internal constructor(private val core: AppCore) {
 
     /** The leaves the backend has not confirmed — see [PendingLeaves]. */
     val pendingLeaves: PendingLeaves by lazy {
-        PendingLeaves(core.process.files, core.backend.leave, core.ports.log)
+        PendingLeaves(core.process.files, core.backend.leave, core.services.log)
     }
 
     /**
@@ -22,18 +22,18 @@ class MembershipEnd internal constructor(private val core: AppCore) {
      */
     val completion: EventCompletion by lazy {
         EventCompletion(
-            config = core.ports.config,
+            config = core.services.config,
             refresh = core.membershipRefresh,
             leaveEvent = core.leaveEvent,
             directory = core.backend.directory,
-            manifestRecord = core.ports.manifestStore,
-            ledger = core.ports.uploadRecord.ledger,
+            manifestRecord = core.services.manifestStore,
+            ledger = core.services.ledger,
             pendingLeaves = pendingLeaves,
             // The uploader's own discovery → publish, which marks the manifest settled once the range has ended. Under
             // a partial grant it reads the selection snapshot, never the library (capability `photo-access`).
-            publishFinal = { core.ports.appDrivenUpload().walkAndPublish { false } },
+            publishFinal = { core.appUploader.walkAndPublish { false } },
             everythingReceived = { eventId -> core.downloadController.everythingReceived(eventId) },
-            log = core.ports.log,
+            log = core.services.log,
         )
     }
 
@@ -46,7 +46,7 @@ class MembershipEnd internal constructor(private val core: AppCore) {
         pendingLeaves.record(eventId)
         val outstanding = pendingLeaves.deliverAll()
         if (outstanding > 0) {
-            core.ports.log.i { "leave of $eventId not confirmed yet — $outstanding retried on the next wake" }
+            core.services.log.i { "leave of $eventId not confirmed yet — $outstanding retried on the next wake" }
         }
     }
 }

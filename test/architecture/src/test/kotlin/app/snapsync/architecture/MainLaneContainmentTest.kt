@@ -65,12 +65,10 @@ class MainLaneContainmentTest {
         // sheet it presented, and UIKit dismissal is main-thread-only like the presentation it undoes.
         "/adapter/ios/app-only/src/rig/kotlin/app/snapsync/contract/HandoffContracts.kt" to
             "dismisses the UIActivityViewController a clause presented",
-        // The app shell: injects the lane into the composition (`AppPorts.uiLane`). The ONE shell in the app process
-        // that may name the lane.
-        "/app/ios/src/iosMain/kotlin/app/snapsync/ios/SnapSyncRoot.kt" to "injects AppPorts.uiLane",
-        // The Android app shell, the same one seat in its process: it injects the lane, and composes on it — the
-        // lifecycle adapter's process observer must be added on the main thread.
-        "/app/android/src/main/kotlin/app/snapsync/android/SnapSyncRoot.kt" to "injects AppPorts.uiLane",
+        // The Android app shell: its composition scope runs on the main lane — the lifecycle adapter's process observer
+        // must be added on the main thread. The composition itself names no main lane: every platform-UI adapter
+        // hops there on its own (`docs/architecture.md`, "Dispatcher lanes are fixed by the composition").
+        "/app/android/src/main/kotlin/app/snapsync/android/SnapSyncRoot.kt" to "composes on the main lane",
         // Android's photo-permission dialog and selection sheet: an activity-result registration and its launch must
         // happen on the main thread (capability `photo-access`).
         "/adapter/android/src/androidMain/kotlin/app/snapsync/android/permission/AndroidPhotoPermission.kt" to

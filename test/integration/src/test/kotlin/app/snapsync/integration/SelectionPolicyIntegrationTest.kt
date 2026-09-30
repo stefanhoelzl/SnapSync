@@ -23,6 +23,7 @@ class SelectionPolicyIntegrationTest {
 
     @Test
     fun a_screenshot_is_neither_uploaded_nor_shared() = rigTest {
+        extensionUploadsOnly()
         val event = createAndJoin()
         addPhoto("CAM") // an ordinary camera photo
         addPhoto("SHOT", kind = "screenshot") // …and a screenshot taken at the same event
@@ -43,6 +44,7 @@ class SelectionPolicyIntegrationTest {
 
     @Test
     fun a_whatsapp_album_photo_is_neither_uploaded_nor_shared() = rigTest {
+        extensionUploadsOnly()
         val event = createAndJoin()
         addPhoto("CAM")
         addPhoto("WA")
@@ -59,6 +61,7 @@ class SelectionPolicyIntegrationTest {
 
     @Test
     fun a_compressed_received_image_is_excluded_but_a_1080p_recording_is_not() = rigTest {
+        extensionUploadsOnly()
         // The single most dangerous line in this policy: 1080p video is 2.07 MP, BELOW the 3 MP image floor.
         // If the floors were shared, every video anyone recorded at the event would silently disappear.
         createAndJoin()
@@ -74,6 +77,7 @@ class SelectionPolicyIntegrationTest {
 
     @Test
     fun the_status_total_excludes_what_the_cycle_refuses_so_the_screen_reaches_in_sync() = rigTest {
+        extensionUploadsOnly()
         // The two components enumerate INDEPENDENTLY. If the total counted the screenshot the cycle will never
         // upload, completeness would peg below 100% and the joined screen would say "pending" forever — so the
         // screen reaching In sync once the one admitted photo lands IS the total excluding the other two.

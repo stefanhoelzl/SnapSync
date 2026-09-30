@@ -21,38 +21,21 @@ import app.snapsync.android.work.AndroidBackgroundTime
 import app.snapsync.android.work.AndroidUpload
 import app.snapsync.android.work.AndroidWake
 import app.snapsync.compose.AppCore
+import app.snapsync.build.StaticBuildInfo
 import app.snapsync.compose.AppPorts
-import app.snapsync.compose.AppUploaderPorts
+import app.snapsync.model.DiagnosticEnvironment
 import app.snapsync.compose.DevicePorts
 import app.snapsync.compose.NoEntryContext
 import app.snapsync.compose.NoProcessMetrics
 import app.snapsync.compose.ProcessPorts
-import app.snapsync.compose.ProcessServices
-import app.snapsync.compose.PushPorts
-import app.snapsync.compose.UploadRecordPorts
-import app.snapsync.compose.appUploader
-import app.snapsync.compose.snapSyncProcess
 import app.snapsync.host.ComposedApp
 import app.snapsync.host.snapSyncHost
 import app.snapsync.http.HttpBackend
-import app.snapsync.model.DeviceIdentityRole
 import app.snapsync.model.EntryScope
 import app.snapsync.model.PlatformEntry
 import app.snapsync.model.invocation
-import app.snapsync.ports.PhotoGrantRead
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.StatusContainerHost
-import app.snapsync.services.album.AlbumMapService
-import app.snapsync.services.config.ConfigService
-import app.snapsync.services.downloads.DownloadService
-import app.snapsync.services.identity.AttestState
-import app.snapsync.services.identity.PersistedDeviceIdentity
-import app.snapsync.services.ledger.LedgerService
-import app.snapsync.services.logs.LogTailService
-import app.snapsync.services.manifest.DeviceManifestService
-import app.snapsync.services.push.PushRegistrationRecord
-import app.snapsync.services.push.PushTokenSource
-import app.snapsync.services.staging.StagingService
 import app.snapsync.time.SystemClock
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -62,8 +45,8 @@ import kotlinx.coroutines.SupervisorJob
 
 /**
  * **The Android composition root** (`docs/architecture.md`, "One shared composition"): ONE per process, built in
- * `Application.onCreate` — the process's services first (`snapSyncProcess`), then the shared host composition
- * (`snapSyncHost`) over the ports this build's adapter set hands back ([platformAdapters]). Android runs the activity,
+ * `Application.onCreate` — the shared host composition (`snapSyncHost`, whose first act sets the process up) over the
+ * ports this build's adapter set hands back ([platformAdapters]) and nothing else. Android runs the activity,
  * and in later phases the workers and the push service, in this one process, so they are all entry ports on this one
  * composition; there is no second root.
  *
@@ -89,7 +72,7 @@ class SnapSyncRoot(internal val application: Application) {
      * status host reduces with it and the screen renders with it.
      */
     private val cutoffFormatter: CutoffFormatter by lazy {
-        CutoffFormatter(now = process.clock::now, zone = process.clock.timeZone())
+        CutoffFormatter(now = ports.clock::now, zone = ports.clock.timeZone())
     }
 
     /**
@@ -108,6 +91,8 @@ class SnapSyncRoot(internal val application: Application) {
         databases = lazy { AndroidDatabases(application) },
         preferences = lazy { AndroidPreferences(application) },
         secureStore = lazy { AndroidSecureStore(application) },
+        // ANDROID_ID, as a v5 UUID: it survives a reinstall, so a first mint adopts it.
+        platformDeviceId = lazy { AndroidPlatformDeviceId(application) },
         integrity = lazy { AndroidDeviceIntegrity() },
         backend = lazy { HttpBackend(androidHttpClient(), BuildConfig.UPLOAD_BASE, BuildConfig.APP_VERSION) },
         lifecycle = lazy { lifecycle },
@@ -128,8 +113,8 @@ class SnapSyncRoot(internal val application: Application) {
 
     private val ports: DevicePorts get() = adapters.ports
 
-    /** This process's per-process services — every root's first act. */
-    private val process: ProcessServices = snapSyncProcess(
+    /** This process's per-process ports — set up by the composition as its first act. */
+    private val processPorts: ProcessPorts by lazy {
         ProcessPorts(
             crashReporter = ports.crashReporter,
             processMetrics = NoProcessMetrics,
@@ -137,11 +122,20 @@ class SnapSyncRoot(internal val application: Application) {
             files = ports.files,
             clock = ports.clock,
             entryContext = NoEntryContext,
-            dsn = null,
-            bootLines = listOf("=== app process start ===") + adapters.bootLines,
-            ownsGlobalLogger = true,
-        ),
-    )
+            build = StaticBuildInfo(
+                appVersion = BuildConfig.APP_VERSION,
+                uploadHost = BuildConfig.UPLOAD_BASE,
+                appStoreUrl = null,
+                // The push token's environment is APNs vocabulary; Android's push service replaces it.
+                apnsEnvironment = "sandbox",
+                // Android has no OS-driven upload mechanism: the app's uploader is its only one.
+                osSupportsOsDrivenUpload = false,
+                diagnostics = DiagnosticEnvironment.UNKNOWN,
+                dsn = null,
+                bootLines = listOf("=== app process start ===") + adapters.bootLines,
+            ),
+        )
+    }
 
     // The app-scope error boundary: a throwable no coroutine handled is logged, and the app lives — errors reduce into
     // state and never crash the shell. The main lane: the composition's, as on iOS.
@@ -150,51 +144,24 @@ class SnapSyncRoot(internal val application: Application) {
             CoroutineExceptionHandler { _, t -> log.e(t) { "uncaught in app scope — logged, not fatal" } },
     )
 
-    private val config: ConfigService by lazy { ConfigService(ports.files, process.clock) }
-    private val ledger: LedgerService by lazy { LedgerService(ports.databases) }
-    private val downloadStore: DownloadService by lazy { DownloadService(ports.databases) }
-    private val manifestStore: DeviceManifestService by lazy { DeviceManifestService(ports.files) }
-
     /** The core AND the status host over it, from the shared host composition. */
     private val composed: ComposedApp by lazy {
         snapSyncHost(
             scope = scope,
-            process = process,
             cutoffFormatter = cutoffFormatter,
             ports = AppPorts(
-                config = config,
+                process = processPorts,
+                databases = ports.databases,
+                preferences = ports.preferences,
+                secureStore = ports.secureStore,
+                platformDeviceId = ports.platformDeviceId,
                 photoAccess = ports.photoAccess,
                 gallery = ports.gallery,
                 systemUi = ports.systemUi,
-                uiLane = Dispatchers.Main,
-                uploadRecord = UploadRecordPorts(ledger = ledger),
-                downloadStore = downloadStore,
-                stagedBytes = StagingService(ports.files),
                 download = ports.download,
                 backend = ports.backend,
-                manifestStore = manifestStore,
                 integrity = ports.integrity,
-                attestStore = AttestState(ports.secureStore),
-                deviceIdentity = PersistedDeviceIdentity(
-                    DeviceIdentityRole.MINTING,
-                    ports.secureStore,
-                    AndroidPlatformDeviceId(application),
-                ),
-                appStoreUrl = null,
-                // The app's uploader over the shared cycle — the only uploader Android has (no OS-driven tier).
-                appDrivenUpload = {
-                    adapters.appDrivenUpload {
-                        appUploader(
-                            app,
-                            AppUploaderPorts(
-                                config = config,
-                                grant = PhotoGrantRead { ports.photoAccess.permission.value },
-                                host = BuildConfig.UPLOAD_BASE,
-                                appVersion = BuildConfig.APP_VERSION,
-                            ),
-                        )
-                    }
-                },
+                // The app's uploader transport — the only uploader Android has (no OS-driven tier).
                 appUpload = ports.appUpload,
                 backgroundTime = ports.backgroundTime,
                 wake = ports.wake,
@@ -204,14 +171,7 @@ class SnapSyncRoot(internal val application: Application) {
                 lifecycle = ports.lifecycle,
                 links = ports.links,
                 ui = adapters.ui.value,
-                albumMapStore = AlbumMapService(ports.preferences, ports.secureStore),
-                // A minted event routes into the host's join gate, so create and a scanned QR take one gate.
-                onEventMinted = { eventId -> host.onEventCreated(eventId) },
-                // The push token's environment is APNs vocabulary; Android's push service replaces it.
-                push = PushPorts(tokens = PushTokenSource(PUSH_ENVIRONMENT), record = PushRegistrationRecord(ports.files)),
                 processInfo = ports.processInfo,
-                deviceLogs = LogTailService(ports.files),
-                log = log,
             ),
         )
     }
@@ -230,9 +190,5 @@ class SnapSyncRoot(internal val application: Application) {
     fun onLaunch() = log.invocation(EntryScope.None, "onLaunch") {
         composed
         adapters.afterLaunch()
-    }
-
-    private companion object {
-        const val PUSH_ENVIRONMENT = "sandbox"
     }
 }

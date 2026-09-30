@@ -8,6 +8,7 @@ import app.snapsync.jvm.JvmMocks
 import app.snapsync.mock.DeclaredVersion
 import app.snapsync.mock.UploadNetwork
 import app.snapsync.model.InviteLinkHints
+import app.snapsync.model.uploadersCarried
 import app.snapsync.services.logs.LogTailService
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -98,15 +99,14 @@ class JvmRigHost private constructor(
             val version = DeclaredVersion(SERVED_VERSION)
             val log = RecordedLog()
             val build = JvmBuild(
-                host = backend.base,
-                appVersion = version,
+                uploadHost = backend.base,
+                declaredVersion = version,
                 dsn = DSN,
                 appStoreUrl = APP_STORE_URL,
                 apnsEnvironment = "sandbox",
-                log = log.logger("JvmRigHost"),
             )
             val app = JvmApp(scope, mocks) { device ->
-                device.adapters(build, attests = backend.attests, backend = backend.port(device, version))
+                device.adapters(build, attests = backend.attests, backend = backend.port(device, version), logSinks = listOf(log))
             }
             val network = backend.network ?: UploadNetwork { url, headers, _ -> mocks.backend.operator.receive(url, headers) }
             val rig = JvmRig(
@@ -122,7 +122,7 @@ class JvmRigHost private constructor(
             val mocks = rig.mocks
             return RigHooks(
                 bootedAt = Clock.System.now().toString(),
-                uploadTier = "operator-driven",
+                uploadTier = uploadersCarried(osSupportsOsDrivenUpload = false),
                 uploadBase = rig.backend.base,
                 transferBinding = "mock",
                 mainLane = rig.lane,

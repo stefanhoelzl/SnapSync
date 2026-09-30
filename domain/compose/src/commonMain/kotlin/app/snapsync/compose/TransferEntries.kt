@@ -32,11 +32,11 @@ class AppEvents internal constructor(private val core: AppCore) {
     val uploadTransfer: UploadTransferService by lazy {
         UploadTransferService(
             upload = core.ports.appUpload,
-            record = core.ports.uploadRecord.ledger,
+            record = core.services.ledger,
             resources = GalleryDiscovery(core.ports.gallery),
             gallery = core.ports.gallery,
             files = core.process.files,
-            log = core.ports.log,
+            log = core.services.log,
             entryContext = core.process.entryContext,
         )
     }
@@ -89,7 +89,7 @@ internal fun uploadHandlersOf(core: AppCore): UploadHandlers = UploadHandlers(
  * the prelude, and the rest is the tail's.
  */
 internal fun AppCore.onTransferEvents(session: String, trigger: TailTrigger, adopt: () -> OsCompletions.Handover) =
-    ports.log.invocation(process.entryContext, "onBackgroundTransfers", params = "session=$session") {
+    services.log.invocation(process.entryContext, "onBackgroundTransfers", params = "session=$session") {
         val wake = tail.hold("onBackgroundTransfers($session)")
         val handover = adopt()
         wake.guard(handover)
@@ -97,7 +97,7 @@ internal fun AppCore.onTransferEvents(session: String, trigger: TailTrigger, ado
             // The protected-storage state for this wake (capability `sync-status`), recorded one dispatch later: the
             // read may have to hop threads, and the adoption above must not wait for it.
             val protectedData = ports.processInfo.protectedDataAvailable()
-            ports.log.i { "onBackgroundTransfers(session=$session): protectedData=$protectedData" }
+            services.log.i { "onBackgroundTransfers(session=$session): protectedData=$protectedData" }
             prelude()
             handover.awaitRelease()
             wake.thenTail(trigger)

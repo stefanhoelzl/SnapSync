@@ -13,8 +13,6 @@ import app.snapsync.feature.upload.UploadCycle
 import app.snapsync.feature.upload.cycleGate
 import app.snapsync.feature.upload.suppressionGate
 import app.snapsync.model.SelectionScope
-import app.snapsync.model.CaptureCutoff
-import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.selectionPolicyFor
 import app.snapsync.model.EdgeUploadRequestProvider
 import app.snapsync.services.gallery.GalleryAlbums
@@ -36,7 +34,6 @@ import app.snapsync.model.SecureStoreUnavailable
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.downloads.SuppressionSource
 import co.touchlab.kermit.Logger
-import kotlinx.coroutines.CoroutineScope
 
 /**
  * The uploader process a cycle runs in, and so where its admission comes from.
@@ -58,14 +55,13 @@ sealed interface UploaderProcess {
 }
 
 /**
- * The ports one upload-cycle assembly consumes (`docs/architecture.md`, "One shared
- * composition"): port interfaces plus the thunks whose *call time* is load-bearing. A root
- * constructs its adapters and states its policies here; [uploadCore] does the assembling — so a
- * port added to the cycle is added to this bundle once, and every tier (and the world harness)
- * fails to compile until it answers, instead of one tier silently shipping without it (which is
- * how the app-driven tier once shipped without the direction gate).
+ * What one upload-cycle assembly consumes (`docs/architecture.md`, "One shared composition"): the SERVICES a process
+ * built over its ports, plus the thunks whose *call time* is load-bearing. Internal — no root builds one: the app's
+ * uploader builds it from its core ([appUploader]), the extension from its own ports ([snapSyncExtension]) — so a
+ * member added to the cycle is added here once, and both tiers fail to compile until they answer, instead of one tier
+ * silently shipping without it (which is how the app-driven tier once shipped without the direction gate).
  */
-class UploadPorts(
+internal class UploadServices(
     /** The three-state membership read (capability `join-event`). Read fresh once per cycle. */
     val config: ConfigService,
     /**
@@ -147,16 +143,11 @@ class UploadPorts(
 )
 
 /**
- * The ONE upload-cycle assembly (`docs/architecture.md`, "One shared composition"): both device
- * tiers' roots and the world harness call this — there is no second wiring, so a wiring difference
- * between the harness and production is impossible rather than undetected.
- *
- * [scope] is the process scope the composition contract receives (the law's signature). Nothing in
- * the upload subset consumes it yet; migration step 8 installs the port-state-transition
- * subscriptions here, which do.
+ * The ONE upload-cycle assembly (`docs/architecture.md`, "One shared composition"): the app's uploader and the upload
+ * extension both call this — there is no second wiring, so a wiring difference between the tiers is impossible rather
+ * than undetected.
  */
-@Suppress("UNUSED_PARAMETER")
-fun uploadCore(scope: CoroutineScope, process: ProcessServices, ports: UploadPorts): UploadCycle {
+internal fun uploadCycle(process: ProcessServices, ports: UploadServices): UploadCycle {
     // [process] proves the process set up its crash reporting before this cycle was composed (`snapSyncProcess`, every
     // root's first act), and supplies the one `Files` a file uploader's staged bytes live in.
     val ledger = LedgerWriter(ports.ledger)
@@ -249,7 +240,7 @@ fun uploadCore(scope: CoroutineScope, process: ProcessServices, ports: UploadPor
  *    trigger flows' membership re-read (`ConfigService.reload`, migration step 12 — before that,
  *    the app shell's `ProtectedDataGate` unlock hook), which every trigger runs before acting.
  */
-private suspend fun readGate(ports: UploadPorts): CycleGate {
+private suspend fun readGate(ports: UploadServices): CycleGate {
     val gate = readEntryGate(ports)
     // Last, and only for an admitted cycle: the extension opens the download store read-only here, so a
     // process that may not create never opens it (capability `receiving-photos`).
@@ -257,7 +248,7 @@ private suspend fun readGate(ports: UploadPorts): CycleGate {
 }
 
 /** The gate from the membership, the identity and the admission — everything but the suppression read. */
-private suspend fun readEntryGate(ports: UploadPorts): CycleGate {
+private suspend fun readEntryGate(ports: UploadServices): CycleGate {
     // The manifest version FIRST — before the membership, and so before the policy and the rows the manifest
     // is projected from (capability `background-upload`). Every change that could alter the projection
     // advances it, so a change this cycle's projection misses happened after this read and carries a higher

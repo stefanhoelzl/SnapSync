@@ -62,7 +62,8 @@ fun deviceCommands(
     // registration fact it produces, because the extension is never registrable below 26.1 or without a full
     // grant, whatever the switch says. The grant is the app's own — the mocked library's, where the adapter choice mocks it.
     "uploaders" to uploadersCommand(
-        controls = launch.controls,
+        pin = { launch.controls.pin },
+        setPin = { launch.controls.pin = it },
         osSupportsOsDrivenUpload = { osSupportsOsDrivenUpload },
         permission = { core().photoPermission.value },
         reconcile = { core().uploadTransitions.onOverrideChanged() },

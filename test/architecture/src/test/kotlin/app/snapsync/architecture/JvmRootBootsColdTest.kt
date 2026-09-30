@@ -95,13 +95,13 @@ class JvmRootBootsColdTest {
                 val core: AppCore get() = launch.composed.core
                 val eager = core.downloadJobs
                 private inner class Launch {
-                    val composed: ComposedApp = snapSyncHost(scope, process, appPorts(), formatter)
-                    val cycle: UploadCycle by lazy { uploadCore(scope, composed.core.ports) }
+                    val composed: ComposedApp = snapSyncHost(scope, appPorts(), formatter)
+                    val extension: ComposedExtension = snapSyncExtension(extensionPorts())
                     val controller: DownloadController get() = composed.core.downloadController
                     val warm = composed.core.downloadController
                     init {
                         composed.core.downloadJobs
-                        snapSyncExtension(host, ports = { composed.core.ports }, cycle = { cycle })
+                        snapSyncExtension(ports = { composed.core.ports })
                     }
                     fun stage() { composed.core.downloadJobs.awaitOutstandingStagings() }
                 }

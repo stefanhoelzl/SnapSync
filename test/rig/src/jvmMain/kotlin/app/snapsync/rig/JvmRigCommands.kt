@@ -28,6 +28,15 @@ internal fun jvmWorld(rig: JvmRig, os: PlayedOs): MockWorld = MockWorld(
 /** The JVM host's `/device` write commands. */
 internal fun jvmDeviceCommands(rig: JvmRig): Map<String, RigCommand> = rig.world.honouredLevers() + mapOf(
     "reset" to resetCommand(reset = { rig.mocks.devControls.operator.reset() }),
+    // The per-uploader switch, on the mocked development controls. This host composes both uploaders, as a phone does,
+    // and both run; a test about one of them switches the other off here, since both would take the same photos.
+    "uploaders" to uploadersCommand(
+        pin = { rig.mocks.devControls.operator.pin },
+        setPin = { rig.mocks.devControls.operator.pin = it },
+        osSupportsOsDrivenUpload = { false },
+        permission = { rig.app.core.photoPermission.value },
+        reconcile = { rig.app.core.uploadTransitions.onOverrideChanged() },
+    ),
     "gallery/seed" to seedCommand { n, kind -> rig.world.seedMockLibrary(n, kind) },
     // Process death and a cold foreground launch: the new app's host is assembled — its subscriptions installed, the
     // startup sweep among them — and shown, as a phone brings a scene up. `scene=false` is a cold BACKGROUND launch
@@ -57,7 +66,6 @@ internal fun jvmRefusals(rig: JvmRig): Map<String, String> = rig.world.leverRefu
         "a mocked photo library is fresh for every host, so there is nothing to wipe; the wipe's answer is PhotoKit's " +
             "source, album and folder census, which a mocked library has no counterpart for",
     )
-    put("device/uploaders", "the JVM root composes no OS-driven upload mechanism for a switch to choose between")
     put(
         "device/process-metrics",
         "process-metric reports are MetricKit's; the JVM runs no process the operating system measures",

@@ -122,8 +122,10 @@ class EntryIntegrationTest {
     @Test
     fun a_silent_push_for_another_event_reaches_no_arm_and_joins_no_tail() = rigTest {
         createAndJoin()
-        foreignDevice("DEV-F", "FQ")
+        // A cold background launch first, so the join's own reconcile — still running in the process it ends — cannot
+        // start the foreign photo's transfer; the push below is the only thing the new process is asked to do.
         device("relaunch", "scene" to "false")
+        foreignDevice("DEV-F", "FQ")
         val armed = osRecord().heartbeatsScheduled
 
         val atRelease = osAtRelease(os("app", "onSilentPush", OTHER_EVENT))
@@ -136,8 +138,10 @@ class EntryIntegrationTest {
     @Test
     fun a_silent_push_naming_no_event_still_releases() = rigTest {
         createAndJoin()
-        foreignDevice("DEV-F", "FQ")
+        // A cold background launch first, so the join's own reconcile — still running in the process it ends — cannot
+        // start the foreign photo's transfer; the push below is the only thing the new process is asked to do.
         device("relaunch", "scene" to "false")
+        foreignDevice("DEV-F", "FQ")
 
         val atRelease = osAtRelease(os("app", "onSilentPush"))
 
