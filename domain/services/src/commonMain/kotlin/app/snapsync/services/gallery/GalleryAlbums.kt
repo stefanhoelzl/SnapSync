@@ -38,12 +38,13 @@ class GalleryAlbums(
     /**
      * Add the library assets [assetIds] (the gallery's asset ids, as the ledger and the download store carry
      * them) to the album [albumLocalId]. Best-effort: a missing asset is skipped, adding an already-present
-     * asset is a no-op.
+     * asset is a no-op. Answers whether the library took the add.
      */
-    suspend fun add(albumLocalId: String, assetIds: List<AssetId>) {
-        if (assetIds.isEmpty()) return
+    suspend fun add(albumLocalId: String, assetIds: List<AssetId>): Boolean {
+        if (assetIds.isEmpty()) return false
         val outcome = gallery.addToAlbum(albumLocalId, assetIds.toSet())
         if (outcome != WriteOutcome.Ok) log.w { "add to album $albumLocalId: $outcome (${assetIds.size} asset(s))" }
+        return outcome == WriteOutcome.Ok
     }
 
     /**

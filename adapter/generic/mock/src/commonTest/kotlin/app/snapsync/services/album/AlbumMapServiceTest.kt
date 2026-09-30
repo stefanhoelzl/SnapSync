@@ -38,6 +38,21 @@ class AlbumMapServiceTest {
     private val legacyMap = SecureStoreRead.Found("""{"E":"album-1"}""", StoredProtection.BACKGROUND_READABLE)
 
     @Test
+    fun `an album is unfilled until marked — and a new album for the event starts unfilled`() {
+        val values = mutableMapOf(ALBUM_MAP_KEY to """{"E":"album-1"}""")
+        val service = AlbumMapService(inMemoryPreferences(values), Legacy(SecureStoreRead.Absent))
+
+        assertFalse(service.filled("E"), "a map stored before the mark existed reads as unfilled")
+        service.markFilled("E")
+        assertTrue(AlbumMapService(inMemoryPreferences(values), Legacy(SecureStoreRead.Absent)).filled("E"), "the mark persists")
+        assertFalse(service.filled("F"), "the mark is per event")
+
+        service.put("E", "album-2")
+        assertFalse(service.filled("E"), "a recreated album has held nothing yet")
+        assertEquals("album-2", service.get("E"))
+    }
+
+    @Test
     fun `a legacy map is migrated once and then deleted`() {
         val values = mutableMapOf<String, String>()
         val legacy = Legacy(legacyMap)

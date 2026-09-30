@@ -63,7 +63,8 @@ internal fun CoroutineScope.launchAlbumGrantSubscription(
     services.ports.photoAccess.permission.collect { status ->
         if (status.grantsPhotoAccess) {
             services.config.config.value?.let { cfg ->
-                coordinator.ensureAlbum(cfg.eventId, cfg.name, cfg.saveToAlbum)
+                // Not an opt-in: a launch's replay never brings back a folder album the member emptied.
+                coordinator.ensureAlbum(cfg.eventId, cfg.name, cfg.saveToAlbum, optIn = false)
             }
         }
         gather.onAccessObserved(status.grantsPhotoAccess)

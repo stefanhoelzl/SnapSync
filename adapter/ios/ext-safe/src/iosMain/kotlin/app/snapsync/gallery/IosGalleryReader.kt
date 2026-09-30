@@ -4,6 +4,7 @@ package app.snapsync.gallery
 
 import app.snapsync.ios.qos.photoKitReadLane
 import app.snapsync.ios.qos.qosLabel
+import app.snapsync.model.AlbumKind
 import app.snapsync.model.AlbumId
 import app.snapsync.model.AlbumRecord
 import app.snapsync.model.AssetFacts
@@ -141,7 +142,7 @@ class IosGalleryReader(private val log: Logger = Logger.withTag("gallery")) : Ga
         }
     }
 
-    override val supportsAlbumWrites: Boolean = true
+    override val albumKind: AlbumKind = AlbumKind.COLLECTION
 
     override suspend fun createAlbum(title: String): AlbumId? {
         var placeholderId: String? = null

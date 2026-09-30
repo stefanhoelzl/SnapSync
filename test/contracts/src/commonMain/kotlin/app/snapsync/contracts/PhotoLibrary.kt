@@ -78,6 +78,8 @@ object PhotoLibrary {
             UploadContract,
             // Its change clause seeds one photo to move the library's token.
             GalleryContract,
+            // Its clauses seed the photos they move into a folder album.
+            FolderAlbumContract,
         )
     }
 

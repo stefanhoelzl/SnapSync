@@ -63,6 +63,7 @@ class AndroidImportContractTest {
     private val markers = ConcurrentHashMap<AssetRef, MarkerState>()
     private val created = mutableSetOf<Uri>()
     private val staging = File(context.filesDir, "contract-staging")
+    private val albums = mutableListOf<String>()
 
     private val gallery by lazy {
         AndroidGallery(context, AndroidPhotoPermission(context, foreground), scope).apply {
@@ -89,6 +90,7 @@ class AndroidImportContractTest {
     fun cleanUp() {
         created.forEach { runCatching { context.contentResolver.delete(it, null, null) } }
         staging.deleteRecursively()
+        albums.forEach { File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DCIM).parentFile, it).delete() }
         scope.cancel()
     }
 
@@ -170,6 +172,26 @@ class AndroidImportContractTest {
     }
 
     @Test
+    fun `a received photo imported into an event album lands only in its folder — once`(): Unit = runBlocking {
+        val album = checkNotNull(gallery.createAlbum("import-contract-${System.nanoTime()}"))
+        albums += album
+        val ref = ref("into-album")
+        val result = gallery.import(ImportRequest(ref, listOf(stagedResource("IMG_7.JPG", "image/jpeg", PhotoLibrary.jpeg)), iso(CAPTURED), album))
+        val id = assertIs<ImportResult.Imported>(result).createdLocalId
+        assertEquals(album, column(id, MediaStore.MediaColumns.RELATIVE_PATH), "saved straight into the album's folder")
+        assertEquals(0, countNamed("IMG_7.JPG"), "not loose in the camera folder first")
+    }
+
+    @Test
+    fun `what a killed import into an album leaves is cleaned at the next import`(): Unit = runBlocking {
+        val album = checkNotNull(gallery.createAlbum("import-contract-${System.nanoTime()}"))
+        albums += album
+        insertPending("killed-album.jpg", folder = album)
+        gallery.import(ImportRequest(ref("after-album-kill"), listOf(stagedResource("next.jpg", "image/jpeg", PhotoLibrary.jpeg)), iso(CAPTURED), album))
+        assertEquals(0, pendingCount(album), "the album folder's leftover pending item is deleted before the next import")
+    }
+
+    @Test
     fun `a content type that is neither photo nor video is refused for good`(): Unit = runBlocking {
         val ref = ref("pdf")
         val result = gallery.import(ImportRequest(ref, listOf(stagedResource("doc.pdf", "application/pdf", PhotoLibrary.notAnImage)), iso(CAPTURED), null))
@@ -205,23 +227,23 @@ class AndroidImportContractTest {
         null,
     )?.use { it.count } ?: 0
 
-    private fun insertPending(name: String): Uri = checkNotNull(
+    private fun insertPending(name: String, folder: String = MediaStoreImport.CAMERA_FOLDER): Uri = checkNotNull(
         context.contentResolver.insert(
             MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY),
             ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, name)
                 put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
-                put(MediaStore.MediaColumns.RELATIVE_PATH, MediaStoreImport.CAMERA_FOLDER)
+                put(MediaStore.MediaColumns.RELATIVE_PATH, folder)
                 put(MediaStore.MediaColumns.IS_PENDING, 1)
             },
         ),
     ).also { created += it }
 
-    private fun pendingCount(): Int {
+    private fun pendingCount(folder: String = MediaStoreImport.CAMERA_FOLDER): Int {
         val args = Bundle().apply {
             putInt(MediaStore.QUERY_ARG_MATCH_PENDING, MediaStore.MATCH_ONLY)
             putString(ContentResolver.QUERY_ARG_SQL_SELECTION, "${MediaStore.MediaColumns.RELATIVE_PATH} = ?")
-            putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, arrayOf(MediaStoreImport.CAMERA_FOLDER))
+            putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, arrayOf(folder))
         }
         return context.contentResolver.query(
             MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), arrayOf(MediaStore.MediaColumns._ID), args, null,

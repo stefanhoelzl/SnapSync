@@ -48,6 +48,7 @@ private val DOCUMENTED_INVENTORY: Set<String> = setOf(
     "group.app.snapsync",
     "rejoin.joinedEventId",
     "app.snapsync.album.map",
+    "app.snapsync.album.filled",
     "ledger.db",
     "downloads.db",
     "eventconfig.json",
@@ -128,6 +129,9 @@ class RuntimeIdentityTest {
         // `join-loads-leave-clears` clean — and which a drifted literal would turn into a silent no-op.
         "rejoin.joinedEventId",
         "app.snapsync.album.map",
+        // The folder album's filled marks (`android-event-album` D4): a drifted key reads every album unfilled, so an
+        // emptied Android album would silently keep being filled instead of reading as deleted.
+        "app.snapsync.album.filled",
         "ledger.db",
         "downloads.db",
         "eventconfig.json",

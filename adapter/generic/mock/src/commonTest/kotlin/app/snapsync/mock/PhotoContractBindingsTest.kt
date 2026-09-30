@@ -3,6 +3,9 @@ package app.snapsync.mock
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.Entered
+import app.snapsync.contracts.FolderAlbumContract
+import app.snapsync.contracts.FolderAlbumState
+import app.snapsync.contracts.FolderAlbums
 import app.snapsync.contracts.GalleryChange
 import app.snapsync.contracts.GalleryContract
 import app.snapsync.contracts.GalleryReaderContract
@@ -21,6 +24,7 @@ import app.snapsync.contracts.SeededLibrary
 import app.snapsync.contracts.StagedImport
 import app.snapsync.contracts.currentHost
 import app.snapsync.contracts.verify
+import app.snapsync.model.AlbumKind
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.GalleryAccess
@@ -63,12 +67,12 @@ class PhotoContractBindingsTest {
             GalleryReaderState.NO_GRANT,
             GalleryReaderState.GRANTED_SEEDED,
             GalleryReaderState.GRANTED_EMPTY_WINDOW,
-            GalleryReaderState.GRANTED_SEEDED_ALBUMS_WRITABLE,
+            GalleryReaderState.GRANTED_SEEDED_COLLECTION_ALBUMS,
         )
 
         override fun create(state: GalleryReaderState, clauseId: String): Entered<SeededLibrary<GalleryReader>> {
             val library = when (state) {
-                GalleryReaderState.GRANTED_SEEDED, GalleryReaderState.GRANTED_SEEDED_ALBUMS_WRITABLE ->
+                GalleryReaderState.GRANTED_SEEDED, GalleryReaderState.GRANTED_SEEDED_COLLECTION_ALBUMS ->
                     seededLibrary(GalleryReaderContract.name, clauseId)
                 GalleryReaderState.GRANTED_SEEDED_IN_A_FOLDER, GalleryReaderState.GRANTED_SEEDED_OUTSIDE_THE_DEFAULT_GALLERY ->
                     return Entered.Unreachable("the in-memory library has no folders: all of it is the default gallery")
@@ -137,22 +141,34 @@ class PhotoContractBindingsTest {
         },
     )
 
-    /** The library mock playing an Android library, which files no photo into an album. */
-    private val galleryReaderWithoutAlbumWrites = object : Binding<GalleryReaderState, SeededLibrary<GalleryReader>> {
+    /** The library mock playing an Android library, whose albums are the folders its photos live in. */
+    private val folderAlbums = object : Binding<FolderAlbumState, FolderAlbums> {
         override val host = currentHost
         override val kind = BindingKind.Fake
-        override val reaches = setOf(GalleryReaderState.GRANTED_SEEDED)
+        override val reaches = setOf(FolderAlbumState.GRANTED_OWN_PHOTOS_SEEDED)
 
-        override fun create(state: GalleryReaderState, clauseId: String): Entered<SeededLibrary<GalleryReader>> {
-            if (state != GalleryReaderState.GRANTED_SEEDED) {
-                return Entered.Unreachable("the album-less library is bound for its album-write refusals; the other states are the in-memory gallery's")
-            }
-            val library = seededLibrary(GalleryReaderContract.name, clauseId)
+        override fun create(state: FolderAlbumState, clauseId: String): Entered<FolderAlbums> {
+            val library = seededLibrary(FolderAlbumContract.name, clauseId)
             val mock = PhotoLibraryMock().apply {
-                operator.supportsAlbumWrites = false
+                operator.albumKind = AlbumKind.FOLDER
                 operator.set(library.value)
             }
-            return Entered.Ready(SeededLibrary(mock.port(), library.value.mapTo(linkedSetOf()) { it.assetId }))
+            val seeded = library.value.mapTo(linkedSetOf()) { it.assetId }
+            // The seeded photos are this app's own saves, as the emulator binding's are: the ones it may move.
+            mock.state.ownImports += seeded
+            val gallery = mock.port().apply { listen(markerHandlers(mutableMapOf())) }
+            val staged = {
+                listOf(
+                    StagedResource(
+                        resourceKey = "contract-$clauseId-primary.jpg",
+                        role = ResourceRole.PRIMARY.wire,
+                        contentType = "image/jpeg",
+                        originalFilename = "IMG_0001.JPG",
+                        stagedPath = "staged:/contract-$clauseId-primary.jpg",
+                    ),
+                )
+            }
+            return Entered.Ready(FolderAlbums(gallery, seeded, staged))
         }
     }
 
@@ -177,8 +193,8 @@ class PhotoContractBindingsTest {
         verify(GalleryReaderContract, galleryReader)
 
     @Test
-    fun `the library mock without album writes satisfies the GalleryReader contract`() =
-        verify(GalleryReaderContract, galleryReaderWithoutAlbumWrites)
+    fun `the library mock with folder albums satisfies the FolderAlbum contract`() =
+        verify(FolderAlbumContract, folderAlbums)
 
     @Test
     fun `the in-memory gallery satisfies the Gallery contract`() =

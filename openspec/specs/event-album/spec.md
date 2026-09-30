@@ -4,8 +4,10 @@
 
 Without it, an event's photos scatter through the camera roll: the member's own shots blend into their
 timeline and received photos land loose beside them. This capability gives each member an album in their
-Photos library, named after the event, that gathers the event as their device holds it — the photos they
-share and the photos they receive — which is also why the app needs no gallery of its own. It is on by
+photo library, named after the event, that gathers the event as their device holds it — on iPhone the photos
+they share and the photos they receive; on Android, where an album is the folder a photo lives in, the photos
+they receive, their own staying where the camera saved them — which is also why the app needs no gallery of
+its own. It is on by
 default and declinable in one tap, it survives leaving and rejoining, it respects an album the member
 deleted, and a problem with the album never gets in the way of sharing or receiving.
 

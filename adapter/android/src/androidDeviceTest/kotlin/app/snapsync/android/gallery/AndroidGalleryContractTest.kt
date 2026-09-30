@@ -1,12 +1,18 @@
 package app.snapsync.android.gallery
 
 import android.app.Application
+import android.content.ContentUris
+import android.os.Environment
+import android.provider.MediaStore
 import app.snapsync.android.permission.AndroidPhotoPermission
 import app.snapsync.android.scene.ForegroundActivity
 import app.snapsync.android.storage.context
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.Entered
+import app.snapsync.contracts.FolderAlbumContract
+import app.snapsync.contracts.FolderAlbumState
+import app.snapsync.contracts.FolderAlbums
 import app.snapsync.contracts.GalleryChange
 import app.snapsync.contracts.GalleryContract
 import app.snapsync.contracts.GalleryReaderContract
@@ -21,7 +27,11 @@ import app.snapsync.contracts.SeededLibrary
 import app.snapsync.contracts.verify
 import app.snapsync.model.AssetId
 import app.snapsync.model.GalleryAccess
+import app.snapsync.model.ResourceRole
+import app.snapsync.model.StagedResource
+import app.snapsync.ports.GalleryHandlers
 import app.snapsync.ports.GalleryReader
+import java.io.File
 import kotlin.test.Test
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -33,7 +43,8 @@ import kotlinx.coroutines.cancel
  *
  * `NO_GRANT` is not reachable here: the grant is the process's, and revoking a runtime permission kills the process
  * holding it — the test run with it. The iOS test executable, which can hold no grant at all, covers those clauses.
- * The album WRITES are iOS's: Android files no photo into an album.
+ * The collection album clauses are iOS's: an Android album is a folder, and its clauses are [FolderAlbumContract]'s —
+ * bound here over photos this APK seeds itself, which are therefore its own to move.
  */
 class AndroidGalleryContractTest {
 
@@ -57,8 +68,8 @@ class AndroidGalleryContractTest {
             val ids: Set<AssetId> = when (state) {
                 GalleryReaderState.NO_GRANT ->
                     return Entered.Unreachable("the grant is the process's, and revoking it kills the process")
-                GalleryReaderState.GRANTED_SEEDED_ALBUMS_WRITABLE ->
-                    return Entered.Unreachable("Android files no photo into an album: an album is a folder")
+                GalleryReaderState.GRANTED_SEEDED_COLLECTION_ALBUMS ->
+                    return Entered.Unreachable("an Android album is the folder a photo lives in, not a collection: FolderAlbumContract")
                 GalleryReaderState.GRANTED_EMPTY_WINDOW -> emptySet()
                 GalleryReaderState.GRANTED_SEEDED -> MediaStoreSeeder.seed(MediaStoreSeeder.CAMERA, date)
                 GalleryReaderState.GRANTED_SEEDED_IN_A_FOLDER ->
@@ -93,6 +104,50 @@ class AndroidGalleryContractTest {
         }
     }
 
+    private val folderAlbums = object : Binding<FolderAlbumState, FolderAlbums> {
+        override val host = Host.ANDROID_EMU
+        override val kind = BindingKind.Live
+        override val grant = GalleryAccess.GRANTED
+        override val reaches = setOf(FolderAlbumState.GRANTED_OWN_PHOTOS_SEEDED)
+
+        override fun create(state: FolderAlbumState, clauseId: String): Entered<FolderAlbums> {
+            MediaStoreSeeder.grantFull()
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            val imported = mutableSetOf<AssetId>()
+            val gallery = AndroidGallery(context, permission(), scope).apply {
+                listen(
+                    GalleryHandlers(
+                        onChanged = {},
+                        onImportPlaceholder = { _, id -> imported += id },
+                        onImportSettled = { _, _ -> },
+                    ),
+                )
+            }
+            val seeded = MediaStoreSeeder.seed(MediaStoreSeeder.CAMERA, PhotoLibrary.window(FolderAlbumContract.name, clauseId).seedDate)
+            val staging = File(context.filesDir, "folder-album-staging").apply { mkdirs() }
+            val stage = {
+                val file = File(staging, "${System.nanoTime()}.jpg").apply { writeBytes(PhotoLibrary.jpeg) }
+                listOf(StagedResource("key-$clauseId", ResourceRole.PRIMARY.wire, "image/jpeg", "IMG_0001.JPG", file.absolutePath))
+            }
+            return Entered.Ready(FolderAlbums(gallery, seeded, stage)) {
+                MediaStoreSeeder.delete(seeded)
+                imported.forEach { id ->
+                    context.contentResolver.delete(
+                        ContentUris.withAppendedId(MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), id.value.toLong()),
+                        null,
+                        null,
+                    )
+                }
+                staging.deleteRecursively()
+                // The clause's album folders, now empty: named for the contract, so nothing else is touched.
+                File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM), "SnapSync")
+                    .listFiles { f -> f.name.startsWith(FolderAlbumContract.title(clauseId)) }
+                    ?.forEach { it.delete() }
+                scope.cancel()
+            }
+        }
+    }
+
     private val photoAccess = object : Binding<PhotoAccessState, PhotoAccess> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
@@ -112,6 +167,9 @@ class AndroidGalleryContractTest {
 
     @Test
     fun `MediaStore satisfies the Gallery contract`() = verify(GalleryContract, gallery)
+
+    @Test
+    fun `MediaStore’s event-album folders satisfy the FolderAlbum contract`() = verify(FolderAlbumContract, folderAlbums)
 
     @Test
     fun `the Android permission adapter satisfies the PhotoAccess contract`() = verify(PhotoAccessContract, photoAccess)

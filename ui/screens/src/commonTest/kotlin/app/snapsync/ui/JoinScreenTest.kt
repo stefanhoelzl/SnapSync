@@ -2,6 +2,7 @@
 
 package app.snapsync.ui
 
+import app.snapsync.model.AlbumKind
 import app.snapsync.model.ShareCount
 import app.snapsync.model.captureCeiling
 
@@ -584,17 +585,27 @@ class JoinScreenTest {
     }
 
     @Test
-    fun `a phone that cannot hold an album is offered none`() = runComposeUiTest {
-        // Capability `event-album`: on Android the join screen has the two switches and the range, and no album.
+    fun `a phone with folder albums offers the album — collecting only what is received`() = runComposeUiTest {
+        // Capability `event-album`: on Android the album is the folder received photos are saved into, so the note
+        // never names the member's own photos, which stay in the camera folder.
+        setScreen {
+            TestStatusScreen(joining(ready(), form = RangeForm(albumKind = AlbumKind.FOLDER)), cutoff = fixedCutoff())
+        }
+        onNodeWithText("Create an album").performScrollTo().assertToggle(ToggleableState.On)
+        onNodeWithText(
+            "Photos you receive are collected in an album named after the event. Your own photos stay in your camera folder.",
+        ).assertExists()
+    }
+
+    @Test
+    fun `a phone with folder albums says the album collects nothing without receiving`() = runComposeUiTest {
         setScreen {
             TestStatusScreen(
-                joining(ready(), form = RangeForm(saveToAlbum = false, albumOffered = false)),
+                joining(ready(), form = RangeForm(receiveOn = false, albumKind = AlbumKind.FOLDER)),
                 cutoff = fixedCutoff(),
             )
         }
-        onNodeWithText("Share my photos").assertExists()
-        onNodeWithText("Create an album").assertDoesNotExist()
-        onNodeWithText("No album is created.").assertDoesNotExist()
+        onNodeWithText("You won't receive photos, so nothing is collected.").performScrollTo().assertExists()
     }
 
     @Test

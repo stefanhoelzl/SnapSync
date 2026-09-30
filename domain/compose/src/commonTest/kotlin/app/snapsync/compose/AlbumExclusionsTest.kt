@@ -1,5 +1,6 @@
 package app.snapsync.compose
 
+import app.snapsync.model.AlbumKind
 import app.snapsync.model.AssetId
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.SELECTION_CALIBRATION
@@ -47,7 +48,7 @@ class AlbumExclusionsTest {
         override suspend fun assetsById(ids: Set<AssetId>): GalleryRead<List<AssetFacts>> = error("not used")
         override suspend fun resources(ids: Set<AssetId>): GalleryRead<List<RawAsset>> = error("not used")
         override suspend fun albumsById(ids: Set<AlbumId>): GalleryRead<List<AlbumRecord>> = error("not used")
-        override val supportsAlbumWrites: Boolean = true
+        override val albumKind: AlbumKind = AlbumKind.COLLECTION
         override suspend fun createAlbum(title: String): AlbumId? = error("not used")
         override suspend fun addToAlbum(album: AlbumId, assets: Set<AssetId>): WriteOutcome = error("not used")
         override suspend fun export(resource: Resource, to: String): WriteOutcome = error("not used")

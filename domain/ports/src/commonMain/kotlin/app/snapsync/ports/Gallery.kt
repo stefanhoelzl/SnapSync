@@ -2,6 +2,7 @@ package app.snapsync.ports
 
 import app.snapsync.model.Resource
 import app.snapsync.model.AlbumId
+import app.snapsync.model.AlbumKind
 import app.snapsync.model.AlbumRecord
 import app.snapsync.model.AssetFacts
 import app.snapsync.model.AssetId
@@ -76,21 +77,24 @@ interface GalleryReader : Port {
     suspend fun albumMembers(album: AlbumId, since: CaptureCutoff?): GalleryRead<Set<AssetId>>
 
     /**
-     * Whether this library can create an album and file a photo into it without moving or copying the photo
-     * (capability `event-album`). A fact of the platform, fixed for the adapter's life. Where it is `false`,
-     * [createAlbum] answers `null` and [addToAlbum] fails, and the app offers no event album at all.
+     * How this library holds an album (capability `event-album`): a [AlbumKind.COLLECTION] an asset is added to, or
+     * the [AlbumKind.FOLDER] a file lives in. A fact of the platform, fixed for the adapter's life.
      */
-    val supportsAlbumWrites: Boolean
+    val albumKind: AlbumKind
 
     /**
      * Create an album titled [title] and return its id, or `null` when the platform refused — whatever the
-     * cause. Only the app creates albums (`AlbumCoordinator`).
+     * cause. Only the app creates albums (`AlbumCoordinator`). A [AlbumKind.FOLDER] album is a folder of its own:
+     * two albums of one title are two folders, and one does not [albumsById]-resolve until it holds a photo.
      */
     suspend fun createAlbum(title: String): AlbumId?
 
     /**
      * File [assets] into [album]. An id the library no longer holds is skipped, and adding an asset already in
-     * the album is a no-op. An album that no longer resolves is [WriteOutcome.Failed].
+     * the album is a no-op. Under [AlbumKind.COLLECTION] an album that no longer resolves is [WriteOutcome.Failed].
+     * Under [AlbumKind.FOLDER] filing MOVES the file into the album's folder, keeping its id, and an album this
+     * library created takes photos while still empty; an asset the platform will not let this app move (one it did
+     * not save itself) is skipped, never asked about.
      */
     suspend fun addToAlbum(album: AlbumId, assets: Set<AssetId>): WriteOutcome
 

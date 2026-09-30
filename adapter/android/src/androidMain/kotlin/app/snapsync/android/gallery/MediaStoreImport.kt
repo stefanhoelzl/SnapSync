@@ -22,8 +22,9 @@ import java.io.IOException
 import kotlin.time.Instant
 
 /**
- * Rebuilding a foreign photo in the member's camera folder (capability `receiving-photos`): one MediaStore item in
- * `DCIM/Camera`, owned by this app, never visible half-written.
+ * Rebuilding a foreign photo in the member's library (capability `receiving-photos`): one MediaStore item, owned by this
+ * app, never visible half-written — in the event album's folder when the import names one (capability `event-album`:
+ * a received photo is in the album the moment it exists, never loose first), in `DCIM/Camera` otherwise.
  *
  * 1. **Insert pending** (`IS_PENDING = 1`) into the image or video collection, by the `PRIMARY` resource's content
  *    type. A pending item is invisible to every other app and to this app's own reads, so its `_ID` — the asset's
@@ -40,7 +41,7 @@ import kotlin.time.Instant
  *
  * A kill before step 3 leaves an invisible pending item. The core's startup sweep finds its recorded id absent and
  * imports again, and [cleanOrphans] — once per process, before the first import — deletes this app's leftover pending
- * items in `DCIM/Camera` (MediaStore would expire them after a week anyway).
+ * items in `DCIM/Camera` and the event albums' folders (MediaStore would expire them after a week anyway).
  *
  * **MediaStore stores whatever bytes it is given**, so the library's own "reject what I cannot read" is done here: an
  * original that does not decode (an image with no bounds, a video with no dimensions), and a content type that is
@@ -62,7 +63,8 @@ internal class MediaStoreImport(context: Context, private val log: Logger) {
         val collection = collectionFor(primary.contentType)
             ?: return refused("'${primary.contentType}' is neither a photo nor a video")
         if (!decodes(primary, collection)) return refused("the original '${primary.originalFilename}' does not decode")
-        val uri = runCatchingCancellable { resolver.insert(collection, pendingValues(primary)) }
+        val folder = request.album?.takeIf { DefaultGallery.isAlbumFolder(it) } ?: CAMERA_FOLDER
+        val uri = runCatchingCancellable { resolver.insert(collection, pendingValues(primary, folder)) }
             .onFailure { log.w(it) { "${request.ref.sourceAssetId}: the insert was refused" } }
             .getOrNull()
             ?: return ImportResult.Failed("MediaStore refused the insert")
@@ -80,7 +82,7 @@ internal class MediaStoreImport(context: Context, private val log: Logger) {
             discard(uri)
             return ImportResult.Failed("the item could not be published", placeholder = id)
         }
-        log.i { "${request.ref.sourceAssetId}: imported as $id into $CAMERA_FOLDER" }
+        log.i { "${request.ref.sourceAssetId}: imported as $id into $folder" }
         return ImportResult.Imported(id)
     }
 
@@ -88,18 +90,22 @@ internal class MediaStoreImport(context: Context, private val log: Logger) {
         if (orphansCleaned) return
         orphansCleaned = true
         val removed = COLLECTIONS.sumOf { collection -> cleanOrphans(collection) }
-        if (removed > 0) log.i { "deleted $removed pending item(s) a killed import left in $CAMERA_FOLDER" }
+        if (removed > 0) log.i { "deleted $removed pending item(s) a killed import left behind" }
     }
 
-    /** Delete this app's pending items in the camera folder — only ever a killed import's leftovers. */
+    /** Delete this app's pending items in the folders it imports into — only ever a killed import's leftovers. */
     private fun cleanOrphans(collection: Uri): Int = runCatchingCancellable {
         val args = Bundle().apply {
             putInt(MediaStore.QUERY_ARG_MATCH_PENDING, MediaStore.MATCH_ONLY)
             putString(
                 ContentResolver.QUERY_ARG_SQL_SELECTION,
-                "${MediaStore.MediaColumns.OWNER_PACKAGE_NAME} = ? AND ${MediaStore.MediaColumns.RELATIVE_PATH} = ?",
+                "${MediaStore.MediaColumns.OWNER_PACKAGE_NAME} = ? AND " +
+                    "(${MediaStore.MediaColumns.RELATIVE_PATH} = ? OR ${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ?)",
             )
-            putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, arrayOf(packageName, CAMERA_FOLDER))
+            putStringArray(
+                ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS,
+                arrayOf(packageName, CAMERA_FOLDER, "${DefaultGallery.ALBUM_ROOT}%"),
+            )
         }
         val ids = resolver.query(collection, arrayOf(MediaStore.MediaColumns._ID), args, null)?.use { cursor ->
             buildList { while (cursor.moveToNext()) add(cursor.getLong(0)) }
@@ -130,10 +136,10 @@ internal class MediaStoreImport(context: Context, private val log: Logger) {
         runCatchingCancellable { resolver.delete(uri, null) }.onFailure { log.w(it) { "the unfinished item $uri stays pending" } }
     }
 
-    private fun pendingValues(resource: StagedResource) = ContentValues().apply {
+    private fun pendingValues(resource: StagedResource, folder: String) = ContentValues().apply {
         put(MediaStore.MediaColumns.DISPLAY_NAME, importFilename(resource.originalFilename, resource.resourceKey))
         put(MediaStore.MediaColumns.MIME_TYPE, resource.contentType)
-        put(MediaStore.MediaColumns.RELATIVE_PATH, CAMERA_FOLDER)
+        put(MediaStore.MediaColumns.RELATIVE_PATH, folder)
         put(MediaStore.MediaColumns.IS_PENDING, 1)
     }
 
@@ -155,7 +161,7 @@ internal class MediaStoreImport(context: Context, private val log: Logger) {
         .also { log.w { "import refused for good: $reason" } }
 
     companion object {
-        /** Where received photos land: the camera folder, among the member's own camera photos. */
+        /** Where received photos land with no event album: the camera folder, among the member's own camera photos. */
         const val CAMERA_FOLDER = "DCIM/Camera/"
 
         private val IMAGES: Uri = MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)

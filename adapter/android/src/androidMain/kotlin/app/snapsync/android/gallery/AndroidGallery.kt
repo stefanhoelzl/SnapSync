@@ -34,7 +34,8 @@ import kotlinx.coroutines.withContext
  *   Android raises no prompt for a read, so nothing here rations them.
  * - **The change token** is each external volume's MediaStore version and generation: the generation moves on every
  *   change to the volume's media, and the version on a rebuild of its database.
- * - **Imports** rebuild a foreign photo in the camera folder ([MediaStoreImport]): pending, recorded, written, published.
+ * - **Imports** rebuild a foreign photo in the event album's folder, or the camera folder when there is none
+ *   ([MediaStoreImport]): pending, recorded, written, published.
  */
 class AndroidGallery(
     context: Context,
@@ -53,7 +54,7 @@ class AndroidGallery(
         scope.launch {
             reads.receiveAsFlow().collect {
                 if (observer == null) return@collect
-                val snapshot = readable { items(Query()).map { it.rawAsset() } }
+                val snapshot = readable { items(Query(), candidates = true).map { it.rawAsset() } }
                 if (snapshot is GalleryRead.Read) handlers?.onChanged(SelectionSnapshot(snapshot.value))
             }
         }

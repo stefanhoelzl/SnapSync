@@ -140,8 +140,8 @@ suspend fun Rig.refresh() = foreground()
 /** How many unchanged reads, [Rig.eventually]'s poll apart, count as settled. */
 private const val SETTLED_READS = 3
 
-/** An album this app created, and the assets placed in it, in order. */
-class Album(val name: String, val assets: List<String>) {
+/** An album this app created, and the assets in it, in order. [id] is the library's own, for a person's levers. */
+class Album(val name: String, val assets: List<String>, val id: String = "") {
     override fun toString() = "Album($name, $assets)"
 }
 
@@ -149,7 +149,11 @@ class Album(val name: String, val assets: List<String>) {
 suspend fun Rig.albums(): List<Album> =
     deviceJson("album/contents").getValue("albums").jsonArray.map { a ->
         val o = a.jsonObject
-        Album(o.getValue("name").jsonPrimitive.content, o.getValue("assets").jsonArray.map { it.jsonPrimitive.content })
+        Album(
+            o.getValue("name").jsonPrimitive.content,
+            o.getValue("assets").jsonArray.map { it.jsonPrimitive.content },
+            o.getValue("id").jsonPrimitive.content,
+        )
     }
 
 /** How many push registrations the backend stored for this device — the config is last-write-wins, the count is not. */

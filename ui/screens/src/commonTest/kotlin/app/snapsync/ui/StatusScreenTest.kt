@@ -2,6 +2,7 @@
 
 package app.snapsync.ui
 
+import app.snapsync.model.AlbumKind
 import app.snapsync.model.eventEnd
 import app.snapsync.model.deletesAt
 import app.snapsync.model.captureCutoff
@@ -1127,6 +1128,20 @@ class StatusScreenTest {
         }
         onNodeWithText("including the ones already synced", substring = true).assertExists()
         onNodeWithText("from now on", substring = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun `turning a folder album on says the already-received photos are included and own photos stay`() = runComposeUiTest {
+        // Capability `manage-membership`: on Android the album gathers what was received, never the member's own photos.
+        val withAlbum = MEMBERSHIP.copy(saveToAlbum = true)
+        setContent {
+            TestStatusScreen(
+                reconfiguring(withAlbum, RangeForm(saveToAlbum = true, albumKind = AlbumKind.FOLDER)),
+                cutoff = fixedCutoff(),
+            )
+        }
+        onNodeWithText("including the ones already received", substring = true).assertExists()
+        onNodeWithText("Your own photos stay in your camera folder", substring = true).assertExists()
     }
 
     @Test

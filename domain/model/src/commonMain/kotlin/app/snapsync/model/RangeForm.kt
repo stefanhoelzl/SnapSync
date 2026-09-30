@@ -23,16 +23,16 @@ import kotlinx.serialization.Serializable
  * `event-album`). The headless `autoJoin` path does NOT read these seeds and deliberately keeps its own
  * album default off; see `StatusContainerHost.autoConfirm`.
  *
- * [albumOffered] is not a choice but the platform's answer: whether this phone can hold an event album at all
- * (capability `event-album` — an Android phone cannot). Where it is `false` the surfaces show no album choice and
- * [saveToAlbum] is `false`, so what is committed says what happens.
+ * [albumKind] is not a choice but the platform's answer: how this phone holds an event album (capability
+ * `event-album`). It decides what the album note says the album collects — on an Android phone, whose album is a
+ * folder, only the photos the member receives.
  */
 @Serializable
 data class RangeForm(
     val shareOn: Boolean = true,
     val receiveOn: Boolean = true,
     val saveToAlbum: Boolean = true,
-    val albumOffered: Boolean = true,
+    val albumKind: AlbumKind = AlbumKind.COLLECTION,
     val preset: RangeChoice = RangeChoice.WHOLE_EVENT,
     /** The picked start behind [RangeChoice.CUSTOM]; `null` resolves to the window's start. */
     val customFrom: LocalDateTime? = null,

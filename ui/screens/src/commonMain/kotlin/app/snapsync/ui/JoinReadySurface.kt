@@ -1,5 +1,6 @@
 package app.snapsync.ui
 
+import app.snapsync.model.AlbumKind
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -125,11 +126,16 @@ private fun AccessExplanation() {
 
 /**
  * What the album will collect, named exactly for the switches currently on, so the row can never claim a feed
- * the membership does not have (capability `event-album`).
+ * the membership does not have (capability `event-album`). A folder album (Android) holds only what is received:
+ * the member's own photos stay where their camera saved them, and the note says so.
  */
 private fun joinAlbumNote(participation: ParticipationState): String = with(participation) {
     when {
         !saveToAlbum -> "No album is created."
+        albumKind == AlbumKind.FOLDER && receiveOn ->
+            "Photos you receive are collected in an album named after the event. " +
+                "Your own photos stay in your camera folder."
+        albumKind == AlbumKind.FOLDER -> "You won't receive photos, so nothing is collected."
         shareOn && receiveOn ->
             "Photos you share and photos you receive are collected in an album named after the event."
         shareOn -> "Photos you share are collected in an album named after the event."
