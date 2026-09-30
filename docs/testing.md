@@ -351,9 +351,7 @@ recording is input to a clause, never an expectation.
   clause id.
 - A missing recording, or a missing block for a declared-reachable clause, is `Failed`, not `NotRunHere`.
 - Files: `test/contracts/recordings/<Contract>@<HOST>.rec`, or `<Contract>@<HOST>.<GRANT>.rec` when the
-  binding declares a grant (for example `UploadExtensionRegistry@IOS_DEVICE_APP.LIMITED.rec`), or
-  `BackgroundScheduler@IOS_DEVICE_APP.REFRESH_OFF.rec` for the `Wake` contract taken with Background App Refresh
-  off — where iOS refuses the idle heartbeat's app refresh and the adapter's fallback is what gets recorded. Each file
+  binding declares a grant (for example `UploadExtensionRegistry@IOS_DEVICE_APP.LIMITED.rec`). Each file
   has a provenance header, then one `[CLAUSE_ID]` block per clause, sorted, of `call -> answer` lines. A
   run overwrites the file. **Commit it unedited.** Git holds its history, and an iOS update that changes
   an answer shows up as a diff on the same host.

@@ -166,11 +166,9 @@ git diff test/contracts/recordings/        # review it like code, then commit it
 - Two runs in a row should differ only in the header. If a block moves between runs, a volatile key is
   unmasked — add it to `VOLATILE_KEYS` in `adapter/ios/ext-safe/src/rig/kotlin/…/KeychainTape.kt`.
 - `404` means this build has no such contract — check the build carries `-Psnapsync.rig=true`.
-- **`BackgroundScheduler`** records the same way, **twice**: once as the phone normally is
-  (`…/contract/BackgroundScheduler > test/contracts/recordings/BackgroundScheduler@IOS_DEVICE_APP.rec`), then with
-  **Settings → General → Background App Refresh** off (`… > …/BackgroundScheduler@IOS_DEVICE_APP.REFRESH_OFF.rec`),
-  where iOS refuses the idle heartbeat's app refresh and the adapter's fallback is recorded; switch it back on after.
-  The body's `# file:` header names the file each run belongs in. It runs against the production heartbeat
+- **`BackgroundScheduler`** records the same way (`…/contract/BackgroundScheduler > test/contracts/recordings/BackgroundScheduler@IOS_DEVICE_APP.rec`),
+  with **Background App Refresh ON**: with it off, iOS accepts every request and keeps none (measured, SE2 / 26.6.2),
+  so every clause expecting a pending wake would fail — the verb refuses (`409`) and says so. It runs against the production heartbeat
   identifiers (`BGTaskScheduler` accepts only identifiers the plist lists), so ⚠️ **the run leaves the rig build's
   heartbeat CANCELLED** — the app's next trigger (a foreground, a completed cycle) re-arms it. Its volatile key
   (`begin`, the absolute earliest-begin date) is masked in `adapter/ios/app-only/src/rig/kotlin/…/SchedulerContracts.kt`.

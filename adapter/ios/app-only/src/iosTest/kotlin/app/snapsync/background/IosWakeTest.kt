@@ -122,20 +122,17 @@ class IosWakeTest {
     }
 
     @Test
-    fun `a refused refresh falls back to processing and says so`() {
+    fun `a refused refresh is reported and nothing else is asked for`() {
+        // No fallback: with Background App Refresh off iOS drops a processing request as well (measured on the SE2).
         val tasks = FakeTasks(refuseRefresh = true)
         val answer = IosWake(Logger(StaticConfig(logWriterList = listOf(captured)), "test"), tasks)
             .schedule(WakeId.Heartbeat, idle)
-        assertEquals(ScheduleResult.Scheduled, answer, "the fallback stands")
+        assertIs<ScheduleResult.Refused>(answer)
         assertEquals(
-            listOf(
-                "cancel ${IosWake.HEARTBEAT_TASK_IDENTIFIER}",
-                "refresh ${IosWake.IDLE_TASK_IDENTIFIER}",
-                "processing ${IosWake.HEARTBEAT_TASK_IDENTIFIER}",
-            ),
+            listOf("cancel ${IosWake.HEARTBEAT_TASK_IDENTIFIER}", "refresh ${IosWake.IDLE_TASK_IDENTIFIER}"),
             tasks.calls,
         )
-        assertTrue(captured.lines.any { (severity, message) -> severity == Severity.Warn && "falling back" in message })
+        assertTrue(captured.lines.any { (severity, message) -> severity == Severity.Warn && "BGTask submit failed" in message })
     }
 
     @Test
