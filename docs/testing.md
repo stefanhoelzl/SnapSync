@@ -234,10 +234,15 @@ Where bindings live: beside their implementations.
   by the next start), and the `GalleryImport` contract over the MediaStore import (`AndroidImportContractTest`, which
   also pins what no shared clause states: fixtures carrying an iPhone's metadata — a HEIC with an offset, an HEVC MOV —
   and an Android MP4 land once in `DCIM/Camera` at their capture time; a JPEG with no date of its own gets the capture
-  time as its modification time, since MediaProvider ignores an app's `DATE_TAKEN`; a Live Photo arrives as its still;
-  a killed import's pending item reads absent and is cleaned; the fixtures live in
+  time as its modification time, since MediaProvider ignores an app's `DATE_TAKEN`; a Live Photo arrives as ONE JPEG
+  motion photo — a HEIC still re-encoded with its date, offset, location and camera carried over and its rotation
+  applied, a JPEG still kept byte for byte, both XMP tag sets, the MOV appended unchanged — or, when that cannot be
+  built, as its still, once; a killed import's pending item reads absent and is cleaned; the fixtures live in
   `src/androidDeviceTest/resources/import/`; an import into an event album lands only in its folder, and a killed one
-  there is cleaned too). Whether a gallery app sorts by those dates, and whether a MOV plays, is the closed test's.
+  there is cleaned too). The motion photo is asserted on its bytes: whether Google Photos PLAYS it is measured on a
+  phone: a test cannot read what another app plays. The byte formats themselves are `:domain:model`'s
+  `MotionPhoto.kt`, tested on the JVM. Whether a gallery app sorts by those dates, and whether a MOV plays, is the
+  closed test's.
 - The event album on Android: the `FolderAlbum` contract runs live on `ANDROID_EMU` (`AndroidGalleryContractTest`) and
   over the library mock playing an Android library: two albums of one title are two folders; an empty album folder
   does not resolve until a photo lands; a moved photo keeps its `_ID` (measured at API 30 and 36 before it was pinned)

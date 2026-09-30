@@ -120,6 +120,7 @@ import PlayStoreButton from "../components/PlayStoreButton.astro";
 <script>
   import { zipSync } from "fflate";
   import { decodeInvite, playHrefFor } from "../lib/invite";
+  import { zipEntries } from "../lib/zip-names";
 
   (function () {
     const $ = (id: string) => document.getElementById(id)!;
@@ -134,25 +135,6 @@ import PlayStoreButton from "../components/PlayStoreButton.astro";
     const setStatus = (t: string) => {
       $("status").textContent = t;
     };
-
-    // Disambiguate duplicate filenames so a collision does not silently drop a photo.
-    function uniqueName(used: Set<string>, name: string): string {
-      if (!used.has(name)) {
-        used.add(name);
-        return name;
-      }
-      const dot = name.lastIndexOf(".");
-      const stem = dot > 0 ? name.slice(0, dot) : name;
-      const ext = dot > 0 ? name.slice(dot) : "";
-      let i = 2,
-        candidate;
-      do {
-        candidate = stem + "-" + i + ext;
-        i++;
-      } while (used.has(candidate));
-      used.add(candidate);
-      return candidate;
-    }
 
     async function main() {
       // fragment decode: the same wire contract as capability `join-event` (#v=3&d=<base64url(json)>)
@@ -198,22 +180,15 @@ import PlayStoreButton from "../components/PlayStoreButton.astro";
       if (name) $("title").textContent = name;
       document.title = name ? name + " — SnapSync" : "SnapSync — event photos";
 
-      // One file per asset: the PRIMARY resource only. A Live Photo / GIF also carries a paired "live"
-      // video resource in the union — we deliberately skip it and download just the still.
-      const items: { url: string; name: string }[] = [];
-      const used = new Set<string>();
-      for (const asset of union) {
-        for (const r of asset.resources || []) {
-          if (r.role !== "primary") continue;
-          items.push({ url: r.url, name: uniqueName(used, r.filename || r.key || "photo") });
-        }
-      }
+      // Every photo's original, and a Live Photo's video beside its still under the same name
+      // (capability `event-site`; the naming rule is `zip-names.ts`).
+      const { entries: items, photos } = zipEntries(union);
       if (items.length === 0) {
         setStatus("No photos have been shared to this event yet.");
         return;
       }
 
-      setStatus(items.length + " photo" + (items.length === 1 ? "" : "s") + " ready.");
+      setStatus(photos + " photo" + (photos === 1 ? "" : "s") + " ready.");
       const btn = $("download") as HTMLButtonElement;
       const LABEL = "Download all photos (zip)";
       const setP = (frac: number) => btn.style.setProperty("--p", Math.round(frac * 100) + "%");
@@ -225,7 +200,7 @@ import PlayStoreButton from "../components/PlayStoreButton.astro";
         const files: Record<string, Uint8Array> = {};
         try {
           for (let i = 0; i < items.length; i++) {
-            btn.textContent = "Downloading " + (i + 1) + " of " + items.length + "…";
+            btn.textContent = "Downloading file " + (i + 1) + " of " + items.length + "…";
             setP(i / items.length);
             const res = await fetch(items[i].url);
             if (!res.ok) throw new Error("photo " + res.status);
@@ -244,9 +219,7 @@ import PlayStoreButton from "../components/PlayStoreButton.astro";
           a.click();
           a.remove();
           setTimeout(() => URL.revokeObjectURL(url), 60000);
-          setStatus(
-            "Done — " + items.length + " photo" + (items.length === 1 ? "" : "s") + " downloaded.",
-          );
+          setStatus("Done — " + photos + " photo" + (photos === 1 ? "" : "s") + " downloaded.");
         } catch (_e) {
           setStatus(
             "Download failed. Reload and try again" +
