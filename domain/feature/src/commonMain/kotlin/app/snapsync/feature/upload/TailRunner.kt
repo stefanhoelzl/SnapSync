@@ -2,6 +2,7 @@
 
 package app.snapsync.feature.upload
 
+import app.snapsync.model.WakeCadence
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.CycleResult
 import app.snapsync.model.EntryScope
@@ -253,7 +254,7 @@ class TailRunner(
             }
             val outcome = admit(trigger)
             val rearm = rearmFor(trigger, outcome)
-            if (shouldSchedule(outcome, rearm) || importsLeft(rearm)) heartbeat.arm()
+            if (shouldSchedule(outcome, rearm) || importsLeft(rearm)) heartbeat.arm(WakeCadence.BUSY)
             outcome
         }
 

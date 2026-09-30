@@ -55,6 +55,7 @@ private val DOCUMENTED_INVENTORY: Set<String> = setOf(
     "last-uploaded.json",
     // OS-registered BGTask / URLSession identifiers.
     "app.snapsync.upload.heartbeat",
+    "app.snapsync.heartbeat.idle",
     "app.snapsync.upload.session",
     "app.snapsync.download.bg",
     // Framework baseNames.
@@ -137,6 +138,7 @@ class RuntimeIdentityTest {
         // accumulator itself from growing back.
         "last-uploaded.json",
         "app.snapsync.upload.heartbeat",
+        "app.snapsync.heartbeat.idle",
         "app.snapsync.upload.session",
         "app.snapsync.download.bg",
         // The shared Keychain access group (capability `photo-sharing`). It is runtime identity in
@@ -192,7 +194,7 @@ class RuntimeIdentityTest {
         "app.snapsync.album" to "albummap",
     )
 
-    private val bgTaskIds = listOf("app.snapsync.upload.heartbeat")
+    private val bgTaskIds = listOf("app.snapsync.upload.heartbeat", "app.snapsync.heartbeat.idle")
 
     private val baseNames = listOf("SnapSyncKit", "SnapSyncUploadKit")
 

@@ -15,7 +15,9 @@ import kotlin.test.Test
 /**
  * The entitled device's `BGTaskScheduler`, REPLAYED (`docs/architecture.md`): the CURRENT
  * [app.snapsync.background.IosWake] runs against what iOS answered when
- * `test/contracts/recordings/BackgroundScheduler@IOS_DEVICE_APP.rec` was recorded, and the current clauses judge.
+ * `test/contracts/recordings/BackgroundScheduler@IOS_DEVICE_APP.rec` was recorded — and again against
+ * `BackgroundScheduler@IOS_DEVICE_APP.REFRESH_OFF.rec`, taken with Background App Refresh off — and the current clauses
+ * judge.
  *
  * A change that asks iOS something else — another request attribute, another order, a call more or fewer — reads
  * `Diverged`: re-record on the device (the `rig-channel` runbook). A recorded answer that violates a clause reads
@@ -23,18 +25,19 @@ import kotlin.test.Test
  */
 class WakeReplayContractTest {
 
-    private val recording = RECORDINGS[RECORDING]?.let(Recording::parse)
+    /** A replay of the recording [name] — one per Background App Refresh setting it was taken under. */
+    private fun binding(name: String) = object : Binding<WakeState, ScheduledWakes> {
+        private val recording = RECORDINGS[name]?.let(Recording::parse)
 
-    private val binding = object : Binding<WakeState, ScheduledWakes> {
         override val host = Host.IOS_DEVICE_APP
         override val kind = BindingKind.Replay
         override val reaches = setOf(WakeState.EMPTY)
 
         override fun create(state: WakeState, clauseId: String): Entered<ScheduledWakes> {
             val tape = recording
-                ?: return Entered.Unreachable("no recording $RECORDING.rec — record it on a device over the rig")
+                ?: return Entered.Unreachable("no recording $name.rec — record it on a device over the rig")
             val block = tape.blocks[clauseId]
-                ?: return Entered.Unreachable("$RECORDING.rec holds no block for $clauseId — re-record")
+                ?: return Entered.Unreachable("$name.rec holds no block for $clauseId — re-record")
             val replayer = Replayer(clauseId, block)
             return schedulerInState(ReplayingBackgroundTaskApi(replayer), afterDispose = replayer::assertExhausted)
         }
@@ -42,9 +45,10 @@ class WakeReplayContractTest {
 
     @Test
     fun `the recorded device scheduler satisfies the Wake contract`() =
-        verify(WakeContract, binding)
+        verify(WakeContract, binding(schedulerRecordingName(refreshAvailable = true)))
 
-    private companion object {
-        const val RECORDING = "BackgroundScheduler@IOS_DEVICE_APP"
-    }
+    /** The idle heartbeat's fallback, replayed against iOS's refusal of an app refresh. */
+    @Test
+    fun `the recorded device scheduler with Background App Refresh off satisfies the Wake contract`() =
+        verify(WakeContract, binding(schedulerRecordingName(refreshAvailable = false)))
 }

@@ -8,12 +8,15 @@ import app.snapsync.model.WakeId
 /** The heartbeat's `BGTask` identifier, as the operating system hands it to the app. */
 const val UPLOAD_HEARTBEAT_TASK: String = "app.snapsync.upload.heartbeat"
 
+/** The idle heartbeat's `BGTask` identifier (an app refresh), as the operating system hands it to the app. */
+const val IDLE_HEARTBEAT_TASK: String = "app.snapsync.heartbeat.idle"
+
 /** The app uploader's background `URLSession` identifier, as the operating system hands it back. */
 const val UPLOAD_TRANSFER_CHANNEL: String = "app.snapsync.upload.session"
 
 /**
  * The operating system, driven through the mocks' operator faces (`docs/testing.md`, "The control channel"), as the
- * iOS adapters deliver. The heartbeat's task wakes the app through the wake mock; any other task identifier is answered
+ * iOS adapters deliver. The heartbeat's tasks — busy and idle — wake the app through the wake mock; any other task identifier is answered
  * at once, unknown. The app uploader's session hands its events back through the upload session, every other identifier
  * through the download session — the iOS adapter's routing.
  */
@@ -32,7 +35,8 @@ class MockEntryDriver(private val device: MockDevice, private val os: PlayedOs) 
     override fun continueLink(url: String) = device.links.operator.open(url)
 
     override fun backgroundTask(identifier: String, done: () -> Unit) {
-        if (identifier == UPLOAD_HEARTBEAT_TASK) device.wakes.operator.fire(WakeId.Heartbeat, os.completion(done)) else done()
+        val heartbeat = identifier == UPLOAD_HEARTBEAT_TASK || identifier == IDLE_HEARTBEAT_TASK
+        if (heartbeat) device.wakes.operator.fire(WakeId.Heartbeat, os.completion(done)) else done()
     }
 
     override fun backgroundTransfers(identifier: String, done: () -> Unit) {

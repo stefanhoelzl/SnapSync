@@ -85,6 +85,8 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>processing</string>
+		<!-- App refresh for the idle heartbeat (capability `receiving-photos`): a joined device with nothing left to do still looks in now and then for others' photos and the event's close (changes/timely-background-receiving, D2). -->
+		<string>fetch</string>
 		<!-- Silent (content-available) remote notifications wake the app in the background (capability `receiving-photos`). Registered at launch; the AppDelegate forwards receipt to Kotlin. -->
 		<string>remote-notification</string>
 	</array>
@@ -95,6 +97,9 @@
 		     while the app is closed. The download import-tail backstop that was listed here is deleted
 		     (changes/own-work-per-wake, D7). -->
 		<string>app.snapsync.upload.heartbeat</string>
+		<!-- The same heartbeat when nothing is left to do: a BGAppRefreshTask, which iOS runs through the
+		     day where it runs processing mostly on the charger (changes/timely-background-receiving, D2). -->
+		<string>app.snapsync.heartbeat.idle</string>
 	</array>
 </dict>
 </plist>

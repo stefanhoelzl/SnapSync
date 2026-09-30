@@ -82,6 +82,23 @@ class EntryIntegrationTest {
         }
     }
 
+    // ---- Wake ------------------------------------------------------------------------------------------------------
+
+    @Test
+    fun both_heartbeat_tasks_wake_the_app_and_an_unknown_task_does_not() = rigTest {
+        createAndJoin()
+        device("relaunch", "scene" to "false")
+        val before = osRecord().handed
+
+        os("app", "onBackgroundTask", HEARTBEAT_TASK)
+        os("app", "onBackgroundTask", IDLE_HEARTBEAT_TASK)
+        os("app", "onBackgroundTask", "app.example.not-registered")
+
+        val after = osRecord()
+        assertEquals(before + 2, after.handed, "each heartbeat task hands the app its completion; an unknown one none")
+        assertEquals(after.handed, after.released, "and every handed completion is released")
+    }
+
     // ---- PushNotifications ----------------------------------------------------------------------------------------
 
     @Test

@@ -7,7 +7,6 @@ import app.snapsync.objc.objcBoundary
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.suspendCancellableCoroutine
-import platform.BackgroundTasks.BGProcessingTaskRequest
 import platform.BackgroundTasks.BGTask
 import platform.BackgroundTasks.BGTaskRequest
 import platform.BackgroundTasks.BGTaskScheduler
@@ -32,8 +31,11 @@ internal interface BackgroundTaskApi {
      */
     fun register(identifier: String, launch: (BGTask) -> Unit): Boolean
 
-    /** Submit [request]: success when the system accepted it, otherwise its refusal as an `ObjCFailure`. */
-    fun submit(request: BGProcessingTaskRequest): Result<Unit>
+    /**
+     * Submit [request] — a processing or an app-refresh request: success when the system accepted it, otherwise its
+     * refusal as an `ObjCFailure`.
+     */
+    fun submit(request: BGTaskRequest): Result<Unit>
 
     fun cancel(identifier: String)
 
@@ -52,7 +54,7 @@ internal object SystemBackgroundTaskApi : BackgroundTaskApi {
             }
         }
 
-    override fun submit(request: BGProcessingTaskRequest): Result<Unit> =
+    override fun submit(request: BGTaskRequest): Result<Unit> =
         checkedObjC("submitTaskRequest(${request.identifier})") { BGTaskScheduler.sharedScheduler.submitTaskRequest(request, it) }
 
     override fun cancel(identifier: String) = BGTaskScheduler.sharedScheduler.cancelTaskRequestWithIdentifier(identifier)

@@ -25,6 +25,7 @@ import app.snapsync.model.UploadError
 import app.snapsync.model.UploadJobState
 import app.snapsync.model.UploadTarget
 import app.snapsync.model.WakeId
+import app.snapsync.model.WakeCadence
 import app.snapsync.model.WakeTrigger
 import app.snapsync.model.deviceManifestFromJson
 import app.snapsync.model.encodeToJson
@@ -246,10 +247,15 @@ private class TriggerDto(
     val earliestMillis: Long? = null,
     val requiresNetwork: Boolean? = null,
     val maxDelayMillis: Long? = null,
+    val cadence: String? = null,
 ) {
     fun trigger(): WakeTrigger = when (kind) {
         LIBRARY_CHANGE -> WakeTrigger.LibraryChange(maxDelayMillis!!.milliseconds)
-        else -> WakeTrigger.After(earliestMillis!!.milliseconds, requiresNetwork == true)
+        else -> WakeTrigger.After(
+            earliestMillis!!.milliseconds,
+            requiresNetwork == true,
+            cadence?.let(WakeCadence::valueOf) ?: WakeCadence.BUSY,
+        )
     }
 
     companion object {
@@ -257,7 +263,9 @@ private class TriggerDto(
         private const val LIBRARY_CHANGE = "libraryChange"
 
         fun of(id: WakeId, trigger: WakeTrigger): TriggerDto = when (trigger) {
-            is WakeTrigger.After -> TriggerDto(id.name, AFTER, trigger.earliest.inWholeMilliseconds, trigger.requiresNetwork)
+            is WakeTrigger.After -> TriggerDto(
+                id.name, AFTER, trigger.earliest.inWholeMilliseconds, trigger.requiresNetwork, cadence = trigger.cadence.name,
+            )
             is WakeTrigger.LibraryChange -> TriggerDto(id.name, LIBRARY_CHANGE, maxDelayMillis = trigger.maxDelay.inWholeMilliseconds)
         }
     }

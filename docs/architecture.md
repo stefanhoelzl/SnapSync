@@ -838,7 +838,8 @@ Keychain (only in `:adapter:ios:ext-safe`, as `IosSecureStore`; every item is re
 `simulator.entitlements` carries the App Group only and **must not** declare `keychain-access-groups`,
 because that makes an ad-hoc simulator build unlaunchable.
 
-OS-registered identifiers: the one BGTask `app.snapsync.upload.heartbeat` (Kotlin and `Info.plist` must agree:
+OS-registered identifiers: the heartbeat's two BGTasks — `app.snapsync.upload.heartbeat` (busy, a processing
+task) and `app.snapsync.heartbeat.idle` (idle, an app refresh) — (Kotlin and `Info.plist` must agree:
 `RuntimeIdentityTest` asserts `BGTaskSchedulerPermittedIdentifiers` lists **exactly** the pinned set, the wake adapter
 registers exactly that set in its `listen`, and the Swift shell registers none, so a retired id such as
 `app.snapsync.download.backstop` left in the plist fails the build); background `URLSession`s `app.snapsync.upload.session` and
@@ -866,7 +867,7 @@ tail:
 | silent push (active event only, `PushTailGuard`) | union read, plan, download enqueue | full | always |
 | download-session relaunch | stage the delivered files | full | only if work remains |
 | upload-session relaunch (iOS 18–26.0) | the delegate records terminals | full | only if work remains |
-| heartbeat (`Wake`; on iOS the `BGTask` `app.snapsync.upload.heartbeat`) | none: the wake *is* the tail | full | always |
+| heartbeat (`Wake`; on iOS the `BGTask` `app.snapsync.upload.heartbeat`, or `app.snapsync.heartbeat.idle` when idle) | none: the wake *is* the tail | full | always |
 | limited-grant selection change | snapshot-fed discovery → manifest | full | always |
 | foreground | download reconcile, stored-upload settle, staged-byte reclaim, status and membership refresh | full | always |
 | membership transition's arm | none (requested detached) | full | always |

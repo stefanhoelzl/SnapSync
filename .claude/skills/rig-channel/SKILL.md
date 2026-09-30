@@ -166,11 +166,14 @@ git diff test/contracts/recordings/        # review it like code, then commit it
 - Two runs in a row should differ only in the header. If a block moves between runs, a volatile key is
   unmasked — add it to `VOLATILE_KEYS` in `adapter/ios/ext-safe/src/rig/kotlin/…/KeychainTape.kt`.
 - `404` means this build has no such contract — check the build carries `-Psnapsync.rig=true`.
-- **`BackgroundScheduler`** records the same way (`…/contract/BackgroundScheduler > test/contracts/recordings/BackgroundScheduler@IOS_DEVICE_APP.rec`).
-  It runs against the production heartbeat identifier (`BGTaskScheduler` accepts only identifiers the
-  plist lists), so ⚠️ **the run leaves the rig build's upload heartbeat CANCELLED** — the app's next trigger
-  (a foreground, a completed cycle) re-arms it. Its volatile key (`begin`, the absolute earliest-begin
-  date) is masked in `adapter/ios/app-only/src/rig/kotlin/…/SchedulerContracts.kt`.
+- **`BackgroundScheduler`** records the same way, **twice**: once as the phone normally is
+  (`…/contract/BackgroundScheduler > test/contracts/recordings/BackgroundScheduler@IOS_DEVICE_APP.rec`), then with
+  **Settings → General → Background App Refresh** off (`… > …/BackgroundScheduler@IOS_DEVICE_APP.REFRESH_OFF.rec`),
+  where iOS refuses the idle heartbeat's app refresh and the adapter's fallback is recorded; switch it back on after.
+  The body's `# file:` header names the file each run belongs in. It runs against the production heartbeat
+  identifiers (`BGTaskScheduler` accepts only identifiers the plist lists), so ⚠️ **the run leaves the rig build's
+  heartbeat CANCELLED** — the app's next trigger (a foreground, a completed cycle) re-arms it. Its volatile key
+  (`begin`, the absolute earliest-begin date) is masked in `adapter/ios/app-only/src/rig/kotlin/…/SchedulerContracts.kt`.
 - **`UploadExtensionRegistry`** records once per photo grant, into a file named for it. With **full** access:
   `…/contract/UploadExtensionRegistry > …/UploadExtensionRegistry@IOS_DEVICE_APP.GRANTED.rec`; then switch the
   app to **Limited** access in Settings, relaunch, and record `…LIMITED.rec`; then switch back. The body's
@@ -430,8 +433,9 @@ block until the app releases the handler and return `heldMs`. A push and a trans
 their **own work** (the push's union read and enqueue; the session's staging and drain report) and run the
 rest — import, top-up, walk — as the tail afterwards, so `heldMs` does not include the tail; poll
 `/device/state` for its effects. The heartbeat releases after its tail. The last two take the identifier
-the OS would deliver as `arg`: `onBackgroundTask?arg=app.snapsync.upload.heartbeat` (the app uploader's
-heartbeat — the only background task; the download backstop is deleted), and
+the OS would deliver as `arg`: `onBackgroundTask?arg=app.snapsync.upload.heartbeat` (the busy heartbeat) or
+`?arg=app.snapsync.heartbeat.idle` (the idle heartbeat, an app refresh) — the same wake to the core; the download
+backstop is deleted — and
 `onBackgroundTransfers?arg=app.snapsync.upload.session` for the app uploader's session (any other channel
 routes to the downloads). An unknown task identifier is completed at once and logged.
 

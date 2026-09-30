@@ -18,10 +18,30 @@ enum class WakeId {
     LibraryChanged,
 }
 
+/**
+ * How urgently a timed wake is wanted — the core's word; which task kind carries it is the adapter's (capability
+ * `receiving-photos`; decision record `changes/timely-background-receiving`, D1–D2).
+ */
+enum class WakeCadence {
+    /** Work remains, or a new photo can only be noticed by looking: wake again soon. */
+    BUSY,
+
+    /** Nothing is left to do: look in now and then — for others' photos and the event's close — and no more. */
+    IDLE,
+}
+
 /** When the operating system may deliver a scheduled wake. */
 sealed interface WakeTrigger {
-    /** No sooner than [earliest] from now, and only with a network connection when [requiresNetwork]. */
-    data class After(val earliest: Duration, val requiresNetwork: Boolean) : WakeTrigger
+    /**
+     * No sooner than [earliest] from now, and only with a network connection when [requiresNetwork]. [cadence] says
+     * how urgently: an adapter may carry the two on different task kinds, and a request of one replaces a pending one
+     * of the other — one timed wake is pending at a time.
+     */
+    data class After(
+        val earliest: Duration,
+        val requiresNetwork: Boolean,
+        val cadence: WakeCadence = WakeCadence.BUSY,
+    ) : WakeTrigger
 
     /** When the photo library changes, delivered no later than [maxDelay] after the change. */
     data class LibraryChange(val maxDelay: Duration) : WakeTrigger

@@ -1,21 +1,26 @@
 package app.snapsync.services.wake
 
 import app.snapsync.model.ScheduleResult
+import app.snapsync.model.WakeCadence
 import app.snapsync.model.WakeId
 import app.snapsync.model.WakeTrigger
 import app.snapsync.ports.Wake
 import co.touchlab.kermit.Logger
+import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * **The app uploader's heartbeat** (capability `background-upload`, "Photos upload without the app being opened"):
- * the timed background wake that keeps the process tail running while work remains and the app is closed — the one
- * wake of the app's own asking, since the download backstop went (decision record `changes/own-work-per-wake`).
+ * **The app's heartbeat** (capabilities `background-upload`, "Photos upload without the app being opened", and
+ * `receiving-photos`, "New photos are announced by a silent wake, and never only by it"): the timed background wake
+ * that keeps the process tail running while the app is closed — **busy** while work remains, **idle** otherwise, and
+ * pending for as long as the device is joined (decision record `changes/timely-background-receiving`, D1).
  *
- * Owns what the two wakes ARE — their delays and the heartbeat's network requirement — over the thin [Wake] port.
- * **When** each is armed is the tail runner's rule (`feature/upload/TailRunner`); a disarm cancels both.
+ * Owns what the wakes ARE — their delays and the heartbeat's network requirement — over the thin [Wake] port.
+ * **When** and at which cadence each is armed is the tail runner's rule (`feature/upload/TailRunner`); a disarm
+ * cancels every one.
  *
- * - [arm] requests the timed heartbeat.
+ * - [arm] requests the timed heartbeat at a [WakeCadence]: one heartbeat is pending at a time, so a request at one
+ *   cadence replaces a pending one at the other.
  * - [watchLibrary] requests the library-change wake: a standing "wake me when a photo is added", re-requested after
  *   every tail while the membership contributes. A platform without it answers [ScheduleResult.Unsupported] — iOS,
  *   whose library-change wake is the upload extension — which is not a failure and needs no branch here; the answer
@@ -30,17 +35,17 @@ class Heartbeat(
      * Ensure the next heartbeat is requested. One-shot on every platform, so this is called to re-submit; the port's
      * requests are idempotent, so a repeated arm replaces the pending request rather than stacking one.
      */
-    fun arm() {
-        request(WakeId.Heartbeat)
+    fun arm(cadence: WakeCadence) {
+        request(WakeId.Heartbeat, heartbeat(cadence))
     }
 
     /**
      * Ensure a library-change wake is requested, and answer whether one now stands — `false` where the platform has
      * none (iOS) or refused it. One-shot like the heartbeat, and idempotent.
      */
-    fun watchLibrary(): Boolean = request(WakeId.LibraryChanged)
+    fun watchLibrary(): Boolean = request(WakeId.LibraryChanged, WakeTrigger.LibraryChange(maxDelay = LIBRARY_CHANGE_DELAY))
 
-    private fun request(id: WakeId): Boolean = when (val answer = wake.schedule(id, triggerFor(id))) {
+    private fun request(id: WakeId, trigger: WakeTrigger): Boolean = when (val answer = wake.schedule(id, trigger)) {
         ScheduleResult.Scheduled -> true
         ScheduleResult.Unsupported -> false
         // Not silent (`docs/architecture.md`, "Absence is never silent"): a refused heartbeat is a device that
@@ -53,23 +58,29 @@ class Heartbeat(
         WakeId.entries.forEach(wake::cancel)
     }
 
-    private companion object {
+    internal companion object {
         /**
-         * A small delay, so a burst of re-arms coalesces into roughly one wake; the operating system treats it as a
-         * lower bound and schedules opportunistically after it.
+         * The busy delay: small, so a burst of re-arms coalesces into roughly one wake; the operating system treats it
+         * as a lower bound and schedules opportunistically after it.
          */
-        val EARLIEST = 60.seconds
+        val BUSY_EARLIEST = 60.seconds
+
+        /**
+         * The idle delay: nothing is left to do, so the wake only looks in — for others' photos and the event's close,
+         * each checked at most once an hour anyway (decision record `changes/timely-background-receiving`, D4–D5).
+         */
+        val IDLE_EARLIEST = 1.hours
 
         /** The most a library-change wake may lag the change that prompted it. */
         val LIBRARY_CHANGE_DELAY = 60.seconds
 
         /**
-         * The trigger for [id]. The heartbeat needs the network (its work uploads) and not external power, so the
-         * operating system grants windows often enough to drain a first whole-library upload.
+         * The heartbeat's trigger at [cadence]. It needs the network (its work uploads and reads the event) and not
+         * external power, so the operating system grants windows often enough to drain a first whole-library upload.
          */
-        fun triggerFor(id: WakeId): WakeTrigger = when (id) {
-            WakeId.Heartbeat -> WakeTrigger.After(earliest = EARLIEST, requiresNetwork = true)
-            WakeId.LibraryChanged -> WakeTrigger.LibraryChange(maxDelay = LIBRARY_CHANGE_DELAY)
+        fun heartbeat(cadence: WakeCadence): WakeTrigger.After = when (cadence) {
+            WakeCadence.BUSY -> WakeTrigger.After(earliest = BUSY_EARLIEST, requiresNetwork = true, cadence = cadence)
+            WakeCadence.IDLE -> WakeTrigger.After(earliest = IDLE_EARLIEST, requiresNetwork = true, cadence = cadence)
         }
     }
 }

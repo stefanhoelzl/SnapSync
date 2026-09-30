@@ -1,6 +1,7 @@
 package app.snapsync.services.wake
 
 import app.snapsync.model.ScheduleResult
+import app.snapsync.model.WakeCadence
 import app.snapsync.model.WakeId
 import app.snapsync.model.WakeTrigger
 import app.snapsync.ports.Wake
@@ -13,6 +14,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -54,10 +56,27 @@ class HeartbeatTest {
     }
 
     @Test
-    fun `arming asks for a timed heartbeat that needs the network`() {
+    fun `a busy heartbeat asks for a timed wake after a minute that needs the network`() {
         val wake = RecordingWake()
-        Heartbeat(wake).arm()
-        assertEquals(listOf<Pair<WakeId, WakeTrigger>>(WakeId.Heartbeat to WakeTrigger.After(earliest = 60.seconds, requiresNetwork = true)), wake.scheduled)
+        Heartbeat(wake).arm(WakeCadence.BUSY)
+        assertEquals(
+            listOf<Pair<WakeId, WakeTrigger>>(
+                WakeId.Heartbeat to WakeTrigger.After(earliest = 60.seconds, requiresNetwork = true, cadence = WakeCadence.BUSY),
+            ),
+            wake.scheduled,
+        )
+    }
+
+    @Test
+    fun `an idle heartbeat asks for a timed wake after an hour that needs the network`() {
+        val wake = RecordingWake()
+        Heartbeat(wake).arm(WakeCadence.IDLE)
+        assertEquals(
+            listOf<Pair<WakeId, WakeTrigger>>(
+                WakeId.Heartbeat to WakeTrigger.After(earliest = 1.hours, requiresNetwork = true, cadence = WakeCadence.IDLE),
+            ),
+            wake.scheduled,
+        )
     }
 
     @Test
@@ -83,7 +102,7 @@ class HeartbeatTest {
     @Test
     fun `a refused wake is said out loud`() {
         val captured = Capturing()
-        Heartbeat(RecordingWake(refuse = true), Logger(StaticConfig(logWriterList = listOf(captured)), "test")).arm()
+        Heartbeat(RecordingWake(refuse = true), Logger(StaticConfig(logWriterList = listOf(captured)), "test")).arm(WakeCadence.BUSY)
         assertTrue(
             captured.warnings.any { "refused" in it && "BGTaskSchedulerErrorDomain/1" in it },
             "a refused heartbeat uploads only while the app is open; the line is the only evidence: ${captured.warnings}",
