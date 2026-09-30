@@ -1,5 +1,6 @@
 package app.snapsync.mock
 
+import app.snapsync.model.AlbumKind
 import app.snapsync.model.AlbumId
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
@@ -132,16 +133,52 @@ class PhotoLibraryOperator internal constructor(private val state: LibraryState)
     /** Every asset id the app asked to add to [albumId], across all adds, in order. */
     fun assetsIn(albumId: String): List<AssetId> = state.addedLog.filter { it.first == albumId }.flatMap { it.second }
 
+    /**
+     * The photos in the app's album [albumId]: under [AlbumKind.COLLECTION] every asset it was asked to add, in order
+     * ([assetsIn]); under [AlbumKind.FOLDER] the photos its folder holds now.
+     */
+    fun contentsOf(albumId: String): List<AssetId> = when (state.albumKind) {
+        AlbumKind.COLLECTION -> assetsIn(albumId)
+        AlbumKind.FOLDER -> {
+            val held = state.library.value.mapTo(mutableSetOf()) { it.assetId }
+            state.folderOf.filter { (asset, folder) -> folder == albumId && asset in held }.keys.sortedBy { it.value }
+        }
+    }
+
     /** Put [assetId] into an album some other app made, titled [title] — e.g. `placeIn("WhatsApp", "A1")`. */
     fun placeIn(title: String, assetId: String) {
         val cell = checkNotNull(state.writableAlbums) { "this library's other-app albums are a read-only cell" }
         cell.value = cell.value + (title to (cell.value[title].orEmpty() + AssetId(assetId)))
     }
 
-    /** The person deletes an album the app made: it no longer resolves. */
+    /**
+     * The person deletes an album the app made: it no longer resolves. Under [AlbumKind.FOLDER] the folder goes with
+     * its photos, as a gallery app's folder delete does.
+     */
     fun delete(albumId: String) {
-        state.deletedAlbums += albumId
+        when (state.albumKind) {
+            AlbumKind.COLLECTION -> state.deletedAlbums += albumId
+            AlbumKind.FOLDER -> {
+                val inside = state.folderOf.filterValues { it == albumId }.keys
+                state.folderOf.keys.removeAll(inside)
+                state.library.value = state.library.value.filterNot { it.assetId in inside }
+            }
+        }
     }
+
+    /**
+     * The person renames a [AlbumKind.FOLDER] album the app made in a gallery app: its photos move to a folder of the new
+     * name, still inside the SnapSync folder, and the album the app knows is left empty.
+     */
+    fun rename(albumId: String, newTitle: String) {
+        check(state.albumKind == AlbumKind.FOLDER) { "a collection album's title is not where its photos live" }
+        val renamed = "renamed-${state.albumCounter++}"
+        state.created[renamed] = LibraryState.Album(newTitle)
+        state.folderOf.entries.filter { it.value == albumId }.forEach { it.setValue(renamed) }
+    }
+
+    /** The album folder [assetId] lives in under [AlbumKind.FOLDER], or `null` — the camera folder. */
+    fun folderOf(assetId: AssetId): String? = state.folderOf[assetId]
 
     /** Every add waits until [releaseAdds]. */
     fun holdAdds() {
@@ -165,12 +202,12 @@ class PhotoLibraryOperator internal constructor(private val state: LibraryState)
     // ---- the platform -----------------------------------------------------------------------------
 
     /**
-     * Whether this library can create and fill albums — an iPhone's can, an Android phone's cannot (a folder is an
-     * album there, and a photo lives in one). Set before composing to play an Android library.
+     * How this library holds an album: an iPhone's [AlbumKind.COLLECTION] (the default) or an Android phone's
+     * [AlbumKind.FOLDER]. Set before composing to play an Android library.
      */
-    var supportsAlbumWrites: Boolean
-        get() = state.albumWrites
-        set(value) { state.albumWrites = value }
+    var albumKind: AlbumKind
+        get() = state.albumKind
+        set(value) { state.albumKind = value }
 
     fun releaseEnumeration() {
         state.enumerationHeld?.complete(Unit)
@@ -209,7 +246,13 @@ internal class LibraryState(
     var enumerationHeld: CompletableDeferred<Unit>? = null
     var failNextEnumeration = false
     var byIdReadable = true
-    var albumWrites = true
+    var albumKind = AlbumKind.COLLECTION
+
+    /** Under [AlbumKind.FOLDER], the app's album folder each photo in one lives in; a photo in none is in the camera folder. */
+    val folderOf = mutableMapOf<AssetId, AlbumId>()
+
+    /** What this library imported — the photos the app saved itself, which it may move. */
+    val ownImports = mutableSetOf<AssetId>()
 
     /** [userAlbums] as the operator writes it — a caller-supplied read-only cell is never written. */
     val writableAlbums: MutableStateFlow<Map<String, Set<AssetId>>>? get() = userAlbums as? MutableStateFlow

@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.model.AlbumKind
 import app.snapsync.model.Layer
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -32,21 +33,62 @@ class AlbumIntegrationTest {
     }
 
     @Test
-    fun a_phone_without_album_writes_is_offered_no_album_and_gets_none() = rigTest {
-        // Capability `event-album`: an Android phone's library cannot hold an event album, so the join screen offers
-        // none, and even a join that asks for one creates and fills nothing.
-        device("album/writes", "on" to "false")
-        device("relaunch")
+    fun an_android_phone_is_offered_the_album_and_it_collects_received_photos_only() = rigTest {
+        // Capability `event-album`: an Android album is the folder received photos are saved into, so the join screen
+        // offers it on, and it holds what arrives — never the member's own camera photo.
+        androidLibrary()
         create(name = "Party")
         val gate = state().ui.layer as Layer.JoiningEvent
-        assertEquals(false, gate.form.albumOffered, "the join screen offers no album")
-        assertEquals(false, gate.form.saveToAlbum)
+        assertEquals(AlbumKind.FOLDER, gate.form.albumKind)
+        assertEquals(true, gate.form.saveToAlbum, "the album is on by default, as on iPhone")
 
-        join("saveToAlbum" to "true")
+        join()
         addPhoto("A")
         cycle()
+        foreignDevice("DEV-F", "FQ")
+        downloadAll()
 
-        assertTrue(albums().isEmpty(), "no album was created or filled: ${albums()}")
+        assertEquals(listOf(RECEIVED), albums().single().assets, "the received photo is in the album; the own one is not")
+        val candidates = gallery().policy!!.assets.map { it.assetId }
+        assertTrue(RECEIVED !in candidates, "a photo in the album is never a candidate to share: $candidates")
+    }
+
+    @Test
+    fun on_android_a_photo_received_with_the_album_off_is_gathered_when_it_is_turned_on() = rigTest {
+        androidLibrary()
+        createAndJoin("saveToAlbum" to "false")
+        addPhoto("A")
+        foreignDevice("DEV-F", "FQ")
+        downloadAll()
+        assertTrue(albums().isEmpty(), "no album while it is off: the photo is in the camera folder")
+
+        user("reconfigure", "saveToAlbum" to "true")
+        awaitState { it.joined?.membership?.saveToAlbum == true }
+
+        eventually<List<String>?>(read = { albums().singleOrNull()?.assets }) { it == listOf(RECEIVED) }
+    }
+
+    @Test
+    fun on_android_a_deleted_album_stays_deleted_until_the_member_turns_it_on_again() = rigTest {
+        androidLibrary()
+        createAndJoin("saveToAlbum" to "true", name = "Party")
+        foreignDevice("DEV-F", "FQ")
+        downloadAll()
+        val first = albums().single()
+        assertEquals(listOf(RECEIVED), first.assets)
+
+        device("album/delete", "album" to first.id) // the gallery app deletes the folder, and its photo with it
+        foreignDevice("DEV-F", "FR")
+        downloadAll()
+        assertEquals(listOf(first.id), albums().map { it.id }, "no album was brought back")
+        assertTrue(albums().single().assets.isEmpty(), "the later photo arrived in the camera folder")
+
+        user("reconfigure", "saveToAlbum" to "false")
+        awaitState { it.joined?.membership?.saveToAlbum == false }
+        user("reconfigure", "saveToAlbum" to "true")
+        awaitState { it.joined?.membership?.saveToAlbum == true }
+
+        eventually<List<String>?>(read = { albums().firstOrNull { it.id != first.id }?.assets }) { it == listOf("imported-DEV-F-FR") }
     }
 
     @Test
@@ -93,5 +135,16 @@ class AlbumIntegrationTest {
         assertEquals(placed, albums().single().assets.size, "the join landed with its gather still held")
         device("album/hold-adds", "on" to "false")
         eventually<Int>(read = { albums().single().assets.size }) { it > placed }
+    }
+
+    /** The photo library plays an Android phone's, whose albums are folders — read once at host assembly. */
+    private suspend fun Rig.androidLibrary() {
+        device("album/kind", "kind" to "folder")
+        device("relaunch")
+    }
+
+    private companion object {
+        /** The id the photo library gives the photo DEV-F shared as FQ. */
+        const val RECEIVED = "imported-DEV-F-FQ"
     }
 }

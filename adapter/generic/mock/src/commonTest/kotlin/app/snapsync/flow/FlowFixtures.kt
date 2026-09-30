@@ -55,6 +55,7 @@ internal fun CoroutineScope.flowDownloadController(union: EventUnionSource): Dow
         importer = GalleryImporter(NoImports, staging),
         presence = UnknownPresence,
         eventAlbum = { null },
+        onImportedIntoAlbum = {},
         stagedBytes = staging,
         myDeviceId = "DEV",
         downloadEnabled = { true },

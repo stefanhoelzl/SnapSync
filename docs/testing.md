@@ -235,8 +235,14 @@ Where bindings live: beside their implementations.
   and an Android MP4 land once in `DCIM/Camera` at their capture time; a JPEG with no date of its own gets the capture
   time as its modification time, since MediaProvider ignores an app's `DATE_TAKEN`; a Live Photo arrives as its still;
   a killed import's pending item reads absent and is cleaned; the fixtures live in
-  `src/androidDeviceTest/resources/import/`). Whether a gallery app sorts by those dates, and whether a MOV plays, is
-  the closed test's.
+  `src/androidDeviceTest/resources/import/`; an import into an event album lands only in its folder, and a killed one
+  there is cleaned too). Whether a gallery app sorts by those dates, and whether a MOV plays, is the closed test's.
+- The event album on Android: the `FolderAlbum` contract runs live on `ANDROID_EMU` (`AndroidGalleryContractTest`) and
+  over the library mock playing an Android library: two albums of one title are two folders; an empty album folder
+  does not resolve until a photo lands; a moved photo keeps its `_ID` (measured at API 30 and 36 before it was pinned)
+  and is no candidate to share; an import into an album lands there. The one clause it cannot reach on the emulator
+  is a camera photo **another** app owns being left in place (every photo the test seeds is its own): the core never
+  hands one over (`FolderAlbumCoordinatorTest`, `AlbumGatherTest`), and the closed test observes the platform's refusal.
 - `PlatformDeviceId`: its contract runs live on `ANDROID_EMU` over `ANDROID_ID` (an offered id is stable and
   canonical), and on the JVM over `NoPlatformDeviceId` (no id is `null`). "The same after a reinstall" is the property
   the id is chosen for and no process can test on itself; it is checked by hand on the emulator.
@@ -626,7 +632,7 @@ reporter until phase 5.
 
 The Android adapters' contract bindings (`:adapter:android`'s `src/androidDeviceTest`) are device tests, never host
 tests (that is the JVM again), at the app's own minSdk (30 — D8 writes a backtick name's spaces only from DEX 040). An
-ASCII apostrophe in a backtick name is never representable in DEX: write `’`. `./gradlew androidPlatformTest` runs
+ASCII apostrophe or a comma in a backtick name is never representable in DEX: write `’`, and `—` for the comma. `./gradlew androidPlatformTest` runs
 them on a Gradle-managed Pixel 6 / API 36 emulator it boots and tears down itself (`snapsync.android`,
 `android.testoptions.manageddevices.emulator.gpu=swangle_indirect`); `./gradlew connectedAndroidDeviceTest` on an
 emulator you booted. Either way the build serves `scripts/transfer-fixture.py` on the host for the run and passes the

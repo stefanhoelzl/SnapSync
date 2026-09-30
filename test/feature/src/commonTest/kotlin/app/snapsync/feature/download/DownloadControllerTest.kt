@@ -169,6 +169,7 @@ class DownloadControllerTest {
         return DownloadController(
             union, store, downloadJobs(backgroundScope, download, staging), GalleryImporter(importer, staging), presence,
             eventAlbum = { null },
+            onImportedIntoAlbum = {},
             // Named from here on: this constructor has grown twice mid-change, and positional
             // arguments silently re-bind when it does.
             stagedBytes = staging,

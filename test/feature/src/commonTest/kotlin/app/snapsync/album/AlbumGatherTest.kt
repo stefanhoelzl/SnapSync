@@ -11,6 +11,7 @@ import app.snapsync.feature.support.configService
 import app.snapsync.feature.support.galleryAccess
 import app.snapsync.feature.support.testIdentity
 import app.snapsync.model.AlbumId
+import app.snapsync.model.AlbumKind
 import app.snapsync.model.AlbumRecord
 import app.snapsync.model.GalleryRead
 import app.snapsync.model.WriteOutcome
@@ -91,6 +92,7 @@ class AlbumGatherTest {
         val union: GateableUnion,
         granted: Boolean,
         scope: CoroutineScope,
+        kind: AlbumKind = AlbumKind.COLLECTION,
     ) {
         val config: ConfigService = configService(cfg)
         private val databases = inMemoryDatabases()
@@ -108,6 +110,7 @@ class AlbumGatherTest {
             coordinator = AlbumCoordinator(
                 GalleryAlbums(manager),
                 AlbumMapService(inMemoryPreferences(), inMemorySecureStore()).apply { put("E2", "ALBUM-2") },
+                kind = kind,
             ),
             scope = scope,
             entryContext = EntryScope.None,
@@ -132,7 +135,8 @@ class AlbumGatherTest {
         union: List<UnionAsset> = emptyList(),
         failingCall: Int? = null,
         granted: Boolean = true,
-    ) = Rig(cfg, RecordingAlbumManager(failingCall), GateableUnion(Result.success(union)), granted, this)
+        kind: AlbumKind = AlbumKind.COLLECTION,
+    ) = Rig(cfg, RecordingAlbumManager(failingCall), GateableUnion(Result.success(union)), granted, this, kind)
 
     private fun inUnion(device: String, assetId: String) = UnionAsset(device, AssetId(assetId), "2026-09-10T00:00:00Z", emptyList())
 
@@ -170,6 +174,21 @@ class AlbumGatherTest {
         r.imported("PEER", "OTHER_EVENT", "LOCAL-OTHER")
         r.gather.gather("E2")
         assertEquals(setOf(AssetId("LOCAL-IN")), r.manager.added)
+    }
+
+    @Test
+    fun `a folder album gathers only this event’s received photos — never the member’s own`() = runTest {
+        // `changes/android-event-album` D5: on Android the album is the folder received photos live in, and gathering
+        // moves them there; an own photo is the camera's file, never the app's to move.
+        val r = rig(union = listOf(inUnion("PEER", "IN_UNION")), kind = AlbumKind.FOLDER)
+        r.own("OWN", "2026-09-10T00:00:00Z")
+        r.imported("PEER", "IN_UNION", "LOCAL-IN")
+        r.imported("PEER", "OTHER_EVENT", "LOCAL-OTHER")
+
+        r.gather.gather("E2")
+        r.gather.gather("E2")
+
+        assertEquals(setOf(AssetId("LOCAL-IN")), r.manager.added, "a second gather files nothing new")
     }
 
     @Test

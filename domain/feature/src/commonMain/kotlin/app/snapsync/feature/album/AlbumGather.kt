@@ -55,6 +55,9 @@ const val GATHER_BATCH_SIZE: Int = 500
  * join and a Save must not wait on a cost that grows with the photos held. [awaitStarted] exists only for the
  * operator harness and tests, which drive the stack synchronously.
  *
+ * Where the album is a folder (Android, [AlbumCoordinator.placesOwnPhotos] false) only the foreign set is gathered,
+ * and gathering MOVES those photos out of the camera folder into the album (`changes/android-event-album` D5).
+ *
  * It never ensures the album: its triggers do that first, and a gather that also created albums would race
  * the grant subscription's creation into a duplicate. It keeps **no record** of what it placed: adding an
  * asset already in the collection is a no-op (measured, simulator, iOS 26.5), so a repeat costs O(N) and
@@ -122,9 +125,11 @@ class AlbumGather(
             !cfg.saveToAlbum -> log.i { "gather: event=$eventId opted out of the album — skipping" }
             !photoAccess.usable -> log.i { "gather: photo access not usable — skipping event=$eventId" }
             else -> {
-                val ids = ownSet(cfg) + foreignSet(eventId)
-                log.i { "gather: placing ${ids.size} asset(s) for event=$eventId" }
-                ids.chunked(batchSize).forEach { batch -> coordinator.place(eventId, batch) }
+                val own = if (coordinator.placesOwnPhotos) ownSet(cfg) else emptyList()
+                val foreign = foreignSet(eventId)
+                log.i { "gather: placing ${own.size} own and ${foreign.size} received asset(s) for event=$eventId" }
+                own.chunked(batchSize).forEach { batch -> coordinator.place(eventId, batch) }
+                foreign.chunked(batchSize).forEach { batch -> coordinator.placeReceived(eventId, batch) }
             }
         }
     }

@@ -4,6 +4,7 @@ import app.snapsync.mock.BackendCall
 import app.snapsync.mock.DownloadSessionMock
 import app.snapsync.mock.LibraryAssets
 import app.snapsync.mock.MockedSystem
+import app.snapsync.model.AlbumKind
 import app.snapsync.model.APP_LOG_FILE_NAME
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
@@ -357,12 +358,35 @@ private fun MockWorld.libraryLevers(): Map<String, Lever> = mapOf(
             CommandResult.ok("""{"permission":"${status.name}"}""")
         }
     }),
-    // Whether the library can create and fill albums (`on=false`: an Android phone's). The composition reads it once,
-    // at host assembly, so a test sets it and then relaunches.
-    "album/writes" to mocked(MockedSystem.LIBRARY, RigCommand { params, _ ->
-        val on = flag(params, "on")
-        device.library.operator.supportsAlbumWrites = on
-        CommandResult.ok("""{"albumWrites":$on}""")
+    // How the library holds an album (`kind=folder`: an Android phone's; `collection`: an iPhone's). The composition
+    // reads it once, at host assembly, so a test sets it and then relaunches.
+    "album/kind" to mocked(MockedSystem.LIBRARY, RigCommand { params, _ ->
+        val kind = AlbumKind.entries.firstOrNull { it.name.equals(params["kind"], ignoreCase = true) }
+        if (kind == null) {
+            CommandResult.badRequest("kind is one of ${AlbumKind.entries.joinToString { it.name.lowercase() }}")
+        } else {
+            device.library.operator.albumKind = kind
+            CommandResult.ok("""{"albumKind":"${kind.name.lowercase()}"}""")
+        }
+    }),
+    // The person deletes an album the app made — under `folder`, with the photos in it.
+    "album/delete" to mocked(MockedSystem.LIBRARY, RigCommand { params, _ ->
+        val album = params["album"] ?: return@RigCommand CommandResult.badRequest("album is required")
+        device.library.operator.delete(album)
+        CommandResult.ok("""{"deleted":${jsonString(album)}}""")
+    }),
+    // The person renames a `folder` album the app made in a gallery app: its photos move to a folder of the new name.
+    "album/rename" to mocked(MockedSystem.LIBRARY, RigCommand { params, _ ->
+        val album = params["album"]
+        val title = params["title"]
+        when {
+            album == null || title == null -> CommandResult.badRequest("album and title are both required")
+            device.library.operator.albumKind != AlbumKind.FOLDER -> CommandResult.badRequest("only a folder album is renamed where its photos live")
+            else -> {
+                device.library.operator.rename(album, title)
+                CommandResult.ok("""{"renamed":${jsonString(album)},"title":${jsonString(title)}}""")
+            }
+        }
     }),
     // Every add to an album waits until released (`on=false`) — the photo library's change blocks held.
     "album/hold-adds" to mocked(MockedSystem.LIBRARY, RigCommand { params, _ ->
@@ -494,7 +518,8 @@ private fun MockWorld.deviceFacts(): Map<String, Lever> = mapOf(
         val staged = device.disk.operator.paths(FileArea.SHARED).filter { it.startsWith("$DOWNLOAD_STAGING_DIR/") }
         CommandResult.ok(buildJsonObject { putJsonArray("files") { staged.sorted().forEach { add(JsonPrimitive(it)) } } }.toString())
     }),
-    // Every album this app created, with the assets placed in it, in order.
+    // Every album this app created, with the assets in it: under `collection` those placed, in order; under `folder`
+    // the photos its folder holds now.
     "album/contents" to mocked(MockedSystem.LIBRARY, RigCommand { _, _ ->
         val library = device.library.operator
         CommandResult.ok(
@@ -504,7 +529,7 @@ private fun MockWorld.deviceFacts(): Map<String, Lever> = mapOf(
                         add(
                             buildJsonObject {
                                 put("id", id); put("name", name)
-                                putJsonArray("assets") { library.assetsIn(id).forEach { add(JsonPrimitive(it.value)) } }
+                                putJsonArray("assets") { library.contentsOf(id).forEach { add(JsonPrimitive(it.value)) } }
                             },
                         )
                     }

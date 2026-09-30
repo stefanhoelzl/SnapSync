@@ -1,5 +1,6 @@
 package app.snapsync.services.gallery
 
+import app.snapsync.model.AlbumKind
 import app.snapsync.model.AlbumId
 import app.snapsync.model.AlbumRecord
 import app.snapsync.model.AssetFacts
@@ -61,7 +62,7 @@ class GalleryServicesTest {
         override suspend fun albumsById(ids: Set<AlbumId>) = read("albumsById") { albums.filter { it.id in ids } }
         override suspend fun albumMembers(album: AlbumId, since: CaptureCutoff?) =
             read("albumMembers($album)") { members[album].orEmpty() }
-        override val supportsAlbumWrites: Boolean = true
+        override val albumKind: AlbumKind = AlbumKind.COLLECTION
         override suspend fun createAlbum(title: String): AlbumId? = created.also { calls += "createAlbum($title)" }
         override suspend fun addToAlbum(album: AlbumId, assets: Set<AssetId>): WriteOutcome {
             adds += album to assets

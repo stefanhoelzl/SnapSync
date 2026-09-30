@@ -54,6 +54,7 @@ class DownloadPushReceiverTest {
             union, DownloadService(inMemoryDatabases()), downloadJobs(backgroundScope, staging = staging),
             GalleryImporter(NoopImporter(), staging), InMemoryAssetPresence(),
             eventAlbum = { null },
+            onImportedIntoAlbum = {},
             stagedBytes = staging,
             myDeviceId = myDevice,
             // These tests exercise the ACTIVE-EVENT guard, which is orthogonal to the direction gate

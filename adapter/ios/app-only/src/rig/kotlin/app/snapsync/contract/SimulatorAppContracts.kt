@@ -151,13 +151,13 @@ class SimAppGalleryReaderBinding : Binding<GalleryReaderState, SeededLibrary<Gal
     override val reaches = setOf(
         GalleryReaderState.GRANTED_SEEDED,
         GalleryReaderState.GRANTED_EMPTY_WINDOW,
-        GalleryReaderState.GRANTED_SEEDED_ALBUMS_WRITABLE,
+        GalleryReaderState.GRANTED_SEEDED_COLLECTION_ALBUMS,
     )
 
     override fun create(state: GalleryReaderState, clauseId: String): Entered<SeededLibrary<GalleryReader>> {
         val seeded = when (state) {
             GalleryReaderState.NO_GRANT -> return Entered.Unreachable(UNREACHABLE_NO_GRANT)
-            GalleryReaderState.GRANTED_SEEDED, GalleryReaderState.GRANTED_SEEDED_ALBUMS_WRITABLE ->
+            GalleryReaderState.GRANTED_SEEDED, GalleryReaderState.GRANTED_SEEDED_COLLECTION_ALBUMS ->
                 seedPhotos(PhotoLibrary.window(GalleryReaderContract.name, clauseId).seedDate)
             GalleryReaderState.GRANTED_EMPTY_WINDOW -> emptyList()
             GalleryReaderState.GRANTED_SEEDED_IN_A_FOLDER, GalleryReaderState.GRANTED_SEEDED_OUTSIDE_THE_DEFAULT_GALLERY ->

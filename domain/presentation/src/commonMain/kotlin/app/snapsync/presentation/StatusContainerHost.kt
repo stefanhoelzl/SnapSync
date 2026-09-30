@@ -1,5 +1,6 @@
 package app.snapsync.presentation
 
+import app.snapsync.model.AlbumKind
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.ReportDestination
 import app.snapsync.model.captureCeiling
@@ -121,10 +122,9 @@ class StatusContainerHost(
     // Where a bug report goes on this build (capability `privacy-security`) — a constant the composition states,
     // carried on every `UiState` so the sheet says it. Defaulted to the distributed build's answer.
     private val reportDestination: ReportDestination = ReportDestination.DEVELOPER,
-    // Whether this phone can hold an event album (capability `event-album`): the photo library's own answer, which the
-    // composition reads once. Where it cannot (Android), no surface offers the album and nothing commits one.
-    // Defaulted to the iPhone's answer.
-    private val albumOffered: Boolean = true,
+    // How this phone holds an event album (capability `event-album`): the photo library's own answer, which the
+    // composition reads once and the surfaces' album note follows. Defaulted to the iPhone's answer.
+    private val albumKind: AlbumKind = AlbumKind.COLLECTION,
 ) : OrbitContainerHost<UiState, UiState, Nothing> {
 
     // The bundles are unpacked into the names the body already uses. Grouping happens at the boundary,
@@ -163,8 +163,8 @@ class StatusContainerHost(
     // PRESENT — and each open re-seeds, so nothing can leak from one surface into the other.
     private val formState = MutableStateFlow(freshForm())
 
-    /** An untouched surface's choices on this phone: all on, the album only where the phone can hold one. */
-    private fun freshForm(): RangeForm = RangeForm().offering(albumOffered)
+    /** An untouched surface's choices on this phone: all on, the album included. */
+    private fun freshForm(): RangeForm = RangeForm(albumKind = albumKind)
 
     // Whether the joined layer is showing its settings surface. A flag rather than a `UiState` family, for
     // the reason `manage-membership` D4 gives: opening is client-side navigation that touches no port.
@@ -503,7 +503,7 @@ class StatusContainerHost(
          */
         fun onOpenReconfigure() = intent {
             val config = config.value ?: return@intent
-            formState.value = reconfigureForm(config, cutoffFormatter::toLocal).offering(albumOffered)
+            formState.value = reconfigureForm(config, cutoffFormatter::toLocal).copy(albumKind = albumKind)
             reconfiguringState.value = Owned(config.eventId, SettingsSurface.Open)
         }
 
@@ -577,7 +577,7 @@ class StatusContainerHost(
 
         fun onReceiveOn(on: Boolean) = intent { formState.value = formState.value.copy(receiveOn = on) }
 
-        fun onSaveToAlbum(on: Boolean) = intent { formState.value = formState.value.copy(saveToAlbum = on).offering(albumOffered) }
+        fun onSaveToAlbum(on: Boolean) = intent { formState.value = formState.value.copy(saveToAlbum = on) }
 
         fun onRangePreset(preset: RangeChoice) = intent { formState.value = formState.value.copy(preset = preset) }
 
@@ -942,7 +942,7 @@ class StatusContainerHost(
         // interactive surface, where `RangeForm.saveToAlbum` starts ON: the cutoff and direction above
         // match their seeds, but a headless launch should do the minimal, side-effect-free thing, and
         // the link's explicit `saveToAlbum` already exercises album placement without a tap.
-        val saveToAlbum = (explicitSaveToAlbum ?: false) && albumOffered
+        val saveToAlbum = explicitSaveToAlbum ?: false
         // As in `commit`: a membership begins here, so its surface state starts here — in one place every new membership passes
         // through, a rejoin of the same event included (capability `sync-status`). A collector watching the
         // config could miss that: it is a StateFlow, and a leave and a rejoin of one event can conflate into A → A.

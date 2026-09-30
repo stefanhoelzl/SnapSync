@@ -149,7 +149,11 @@ private fun extensionServices(
         albumManager = albums,
         albumLookupFailure = AlbumLookupFailure.FailCycle,
         // The extension only ever ADDS completed uploads to the event album; the app is its sole creator.
-        albumCoordinator = AlbumCoordinator(albums, AlbumMapService(ports.preferences, ports.secureStore)),
+        albumCoordinator = AlbumCoordinator(
+            albums,
+            AlbumMapService(ports.preferences, ports.secureStore),
+            kind = ports.gallery.albumKind,
+        ),
         token = token,
         // A retry re-reads the shared item: the app may have renewed the token this copy still holds.
         freshToken = {

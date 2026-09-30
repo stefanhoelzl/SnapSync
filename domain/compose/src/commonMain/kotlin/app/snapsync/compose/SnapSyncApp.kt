@@ -392,6 +392,9 @@ class AppCore internal constructor(
             eventAlbum = {
                 services.config.config.value?.let { albumCoordinator.albumIdFor(it.eventId, it.saveToAlbum) }
             },
+            onImportedIntoAlbum = { album ->
+                services.config.config.value?.let { albumCoordinator.onImportedInto(it.eventId, album) }
+            },
             stagedBytes = services.stagedBytes,
             myDeviceId = services.deviceIdentity.deviceId(),
             // Three-valued, no fallback (capability `receiving-photos`): no membership → `null` → no arm.
@@ -417,7 +420,7 @@ class AppCore internal constructor(
     // Event album (capability `event-album`): the coordinator over the shared leave-surviving map.
     // The APP is the SOLE creator (on the permission grant); both processes only add.
     val albumCoordinator: AlbumCoordinator by lazy {
-        AlbumCoordinator(albumManager, services.albumMapStore)
+        AlbumCoordinator(albumManager, services.albumMapStore, kind = ports.gallery.albumKind)
     }
 
     // The event album's gather (capability `event-album`): place what the device already holds for the event.

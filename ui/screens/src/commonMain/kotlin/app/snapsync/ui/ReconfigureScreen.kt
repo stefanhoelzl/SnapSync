@@ -1,5 +1,6 @@
 package app.snapsync.ui
 
+import app.snapsync.model.AlbumKind
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.rememberScrollState
@@ -83,7 +84,7 @@ internal fun ReconfigureScreen(
                     rangeLabel = appRangeLabel(range.from, range.until),
                 ),
                 actions = participation,
-                albumNote = reconfigureAlbumNote(surface.form.saveToAlbum),
+                albumNote = reconfigureAlbumNote(surface.form.saveToAlbum, surface.form.albumKind),
             )
         }
         SaveActions(enabled = range.commitEnabled, onSave = onSave, onCancel = onCancel)
@@ -205,10 +206,13 @@ internal fun SwitchDialog(
  * already-synced photos are included. "Synced", not "shared and received": this note does not vary with the
  * switches, and must not name a feed the membership lacks.
  */
-private fun reconfigureAlbumNote(saveToAlbum: Boolean): String = if (saveToAlbum) {
-    "Photos are collected in an album named after the event, including the ones already synced."
-} else {
-    "No album is created."
+private fun reconfigureAlbumNote(saveToAlbum: Boolean, kind: AlbumKind): String = when {
+    !saveToAlbum -> "No album is created."
+    // A folder album (Android) holds only what is received, and gathering moves the received photos into it.
+    kind == AlbumKind.FOLDER ->
+        "Photos you receive are collected in an album named after the event, including the ones already received. " +
+            "Your own photos stay in your camera folder."
+    else -> "Photos are collected in an album named after the event, including the ones already synced."
 }
 
 /**

@@ -1,5 +1,6 @@
 package app.snapsync.feature.album
 
+import app.snapsync.model.AlbumKind
 import app.snapsync.model.AssetId
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.services.gallery.GalleryAlbums
@@ -15,11 +16,23 @@ import co.touchlab.kermit.Logger
  * Ownership: **the app is the sole creator** — only the app calls [ensureAlbum] (on the photo-permission
  * grant). Both the app and the extension call [place] (when an own photo's upload is first enqueued), which only ever
  * *adds* to an already-created album. The download path does its add atomically inside the importer's own
- * commit (design D5/D9) and only borrows [AlbumMapService.get]; it does not route through [place].
+ * commit (design D5/D9) and only borrows [albumIdFor]; it does not route through [place].
+ *
+ * **The library's [AlbumKind] decides what the album may hold** (`changes/android-event-album` D4, D5). Under
+ * [AlbumKind.COLLECTION] (iPhone) everything here is as it always was. Under [AlbumKind.FOLDER] (Android) the album
+ * is the folder received photos are saved into, so:
+ *  - the member's own photos are never placed ([place] is a no-op): filing one would move it out of the camera
+ *    folder, and it is not the app's file to move;
+ *  - an empty folder is no album, so "does not resolve" cannot mean "deleted" by itself — the album map's `filled`
+ *    mark tells an album the member emptied (deleted, emptied or renamed) from one not filled yet. A deleted one
+ *    answers no album at import ([albumIdFor]), so photos land in the camera folder, and is recreated only on an
+ *    opt-in ([ensureAlbum]'s `optIn`), never on a launch's grant replay.
  */
 class AlbumCoordinator(
     private val manager: GalleryAlbums,
     private val store: AlbumMapService,
+    /** How the library holds an album — the gallery's own answer, fixed for the composition's life. */
+    private val kind: AlbumKind = AlbumKind.COLLECTION,
     private val log: Logger = Logger.withTag("AlbumCoordinator"),
 ) {
 
@@ -42,13 +55,32 @@ class AlbumCoordinator(
      * Reuses the stored album if it still resolves (so a re-join keeps the prior membership's photos);
      * recreates and overwrites the map if the stored id is dangling (the user deleted the album).
      * **App-only** — the sole-creator invariant that removes the cross-process create race (design D3).
+     *
+     * [optIn] says whether this call is the member's deliberate opt-in — a join, a rejoin or a settings Save —
+     * rather than the grant subscription's replay at a launch. Only an opt-in recreates a deleted
+     * [AlbumKind.FOLDER] album (capability `event-album`, "A deleted album is recreated only when the member
+     * asks"); under [AlbumKind.COLLECTION] it changes nothing.
      */
-    suspend fun ensureAlbum(eventId: String, name: String, saveToAlbum: Boolean, hasUsableAccess: Boolean = true): String? {
+    suspend fun ensureAlbum(
+        eventId: String,
+        name: String,
+        saveToAlbum: Boolean,
+        hasUsableAccess: Boolean = true,
+        optIn: Boolean = true,
+    ): String? {
         if (!hasUsableAccess || !saveToAlbum) return null
         store.get(eventId)?.let { existing ->
+            if (kind == AlbumKind.FOLDER && !store.filled(eventId)) {
+                log.i { "ensureAlbum: reused album=$existing for event=$eventId (not filled yet)" }
+                return existing
+            }
             if (manager.exists(existing)) {
                 log.i { "ensureAlbum: reused album=$existing for event=$eventId" }
                 return existing
+            }
+            if (kind == AlbumKind.FOLDER && !optIn) {
+                log.i { "ensureAlbum: album for event=$eventId was emptied by the member — not recreated without an opt-in" }
+                return null
             }
             log.i { "ensureAlbum: stored album for event=$eventId no longer resolves — recreating" }
         }
@@ -63,30 +95,65 @@ class AlbumCoordinator(
     }
 
     /**
-     * The album `localIdentifier` the current membership's adds go to, or `null` when it opted out
-     * ([saveToAlbum] off) or no album was ever created — the same opt-in rule [ensureAlbum] gates on,
-     * exposed synchronously because the download importer reads it **inside** its atomic PhotoKit
-     * change block (capability `event-album`, design D5/D9: the import-time add borrows the map
-     * lookup, it does not route through [place]).
+     * The album `localIdentifier` the current membership's imports go to, or `null` when it opted out
+     * ([saveToAlbum] off) or no album was ever created — the same opt-in rule [ensureAlbum] gates on. The
+     * download importer reads it once per import, before the import's own change block (capability
+     * `event-album`, design D5/D9: the import-time add borrows the lookup, it does not route through [place]).
+     * Under [AlbumKind.FOLDER] a filled album the member emptied answers `null` too: the photo then lands in the
+     * camera folder instead of bringing the folder back.
      */
-    fun albumIdFor(eventId: String, saveToAlbum: Boolean): String? =
-        if (saveToAlbum) store.get(eventId) else null
+    suspend fun albumIdFor(eventId: String, saveToAlbum: Boolean): String? {
+        if (!saveToAlbum) return null
+        val stored = store.get(eventId) ?: return null
+        if (kind == AlbumKind.COLLECTION || !store.filled(eventId) || manager.exists(stored)) return stored
+        log.i { "albumIdFor: album for event=$eventId was emptied by the member — importing into the camera folder" }
+        return null
+    }
+
+    /**
+     * An import into [album] settled as imported: under [AlbumKind.FOLDER] the event's album has now held a photo, so
+     * emptying it later reads as a deletion. A no-op under [AlbumKind.COLLECTION], or when [album] is no longer the
+     * event's (a recreation raced the import).
+     */
+    fun onImportedInto(eventId: String, album: String) {
+        if (kind == AlbumKind.FOLDER && store.get(eventId) == album) store.markFilled(eventId)
+    }
 
     /**
      * Add [assetIds] (the gallery's asset ids) to [eventId]'s album, best-effort. If no album exists yet (the app has not created
      * it), the add is **skipped** (never created here) — the app's [ensureAlbum] on the permission grant
      * guarantees the album exists before sync in practice. A failure to add is logged, never thrown.
      */
+    /** Whether the member's own photos go into the album: only where it is a collection, never a folder. */
+    val placesOwnPhotos: Boolean get() = kind == AlbumKind.COLLECTION
+
     suspend fun place(eventId: String, assetIds: List<AssetId>) {
         if (assetIds.isEmpty()) return
+        if (kind == AlbumKind.FOLDER) return // the member's own photos stay where their camera saved them
+        file(eventId, assetIds)
+    }
+
+    /**
+     * File [assetIds] — photos this device RECEIVED for [eventId] — into its album, best-effort: the gather's foreign
+     * half. Under [AlbumKind.FOLDER] this MOVES them out of the camera folder and marks the album filled once a move
+     * landed; under [AlbumKind.COLLECTION] it is [place].
+     */
+    suspend fun placeReceived(eventId: String, assetIds: List<AssetId>) {
+        if (assetIds.isEmpty()) return
+        if (file(eventId, assetIds) && kind == AlbumKind.FOLDER) store.markFilled(eventId)
+    }
+
+    /** Whether the add reached the library; a skipped or failed one is logged, never thrown. */
+    private suspend fun file(eventId: String, assetIds: List<AssetId>): Boolean {
         val albumId = store.get(eventId)
         if (albumId == null) {
             log.i { "place: no album yet for event=$eventId — skipping ${assetIds.size} asset(s)" }
-            return
+            return false
         }
-        runCatchingCancellable {
-            manager.add(albumId, assetIds)
-            log.i { "place: added ${assetIds.size} asset(s) to album=$albumId for event=$eventId" }
-        }.onFailure { log.w(it) { "place: add to album failed for event=$eventId" } }
+        return runCatchingCancellable {
+            manager.add(albumId, assetIds).also { added ->
+                if (added) log.i { "place: added ${assetIds.size} asset(s) to album=$albumId for event=$eventId" }
+            }
+        }.onFailure { log.w(it) { "place: add to album failed for event=$eventId" } }.getOrDefault(false)
     }
 }

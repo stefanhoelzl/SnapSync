@@ -124,7 +124,10 @@ but the core is shared).
   (`OWNER_PACKAGE_NAME` = this package). It skips an id that is gone, already there, or owned by another
   package (after a reinstall ownership is cleared), and answers `Ok` when every movable row moved. It never
   asks for consent. This relies on a move keeping `_ID`, which both echo suppression and the download store's
-  import record depend on. It is measured, not assumed (tasks, contract clause).
+  import record depend on. **Measured 2026-09-30 on the emulator at API 30 and API 36:** an app-owned row moved from
+  `DCIM/Camera/` to `DCIM/SnapSync/<name>/` by a `RELATIVE_PATH` update answers `1`, keeps its `_ID`, keeps its
+  owner, and its file is at the new path. `FolderAlbumContract.A_MOVED_PHOTO_KEEPS_ITS_ID_AND_IS_NO_CANDIDATE`
+  pins it on `ANDROID_EMU`.
 
 ### D7. The note says "received"
 
@@ -158,11 +161,15 @@ exclude the folder. That is the "one policy, one place" rule the photo-sharing s
   emulator at API 30 and 36, and pinned as a `GalleryImport` contract clause on `ANDROID_EMU`. If it does not
   hold, the gather re-records the new id in the download store before echo suppression can miss it. That would
   be a design revision, raised before implementation.
-- [`mkdirs` under `DCIM` may be refused on some API level] → measured. If refused, `createAlbum` still answers
-  the path, and only the same-name-while-empty collision is lost; D2's collision check still sees any folder
-  holding an item.
-- [A gallery app's folder delete may leave the empty directory] → irrelevant to D4, which reads MediaStore
-  items, not directories. It only affects D2's collision check, which then numbers the recreated folder.
+- [`mkdirs` under `DCIM` may be refused on some API level] → **measured 2026-09-30, API 30 and 36, under the
+  full grant:** `File(DCIM, "SnapSync/<name>").mkdirs()` answers `true` and the directory exists; MediaStore
+  lists nothing for an empty directory. Without a grant it was not measured: `createAlbum` runs only under usable
+  access (`ensureAlbum`'s guard). If a device refuses it, `createAlbum` still answers the path, and only the
+  same-name-while-empty collision is lost; D2's collision check still sees any folder holding an item.
+- [An emptied folder leaves its directory] → **measured, API 30 and 36:** deleting a folder's only item through
+  MediaStore leaves the directory on disk. D4 reads MediaStore items, not directories, so it still reads the album
+  as deleted. D2's collision check sees the directory, so a recreation after a delete gets a numbered folder; the
+  delete's leftover directory is empty and invisible in every gallery app.
 - [The Android album holds half the event] → stated on the join and settings screens (D7) and in the spec.
 - [Gathering moves files a backup app or another gallery indexed under `DCIM/Camera`] → those are the app's own
   received photos, and moving them is what the member opted into.
@@ -175,6 +182,19 @@ exclude the folder. That is the "one policy, one place" rule the photo-sharing s
 - iOS is unchanged: `COLLECTION` keeps every current path, and `optIn` is ignored under it.
 - Rollback: revert the change. Folders already created stay in the member's gallery as ordinary folders, and
   their photos stay where they are.
+
+## Verification on the emulator
+
+**2026-09-30, API 36, the rig build over the REAL photo library** (backend, downloads and transfers mocked; another
+member played with the `foreign-device` lever):
+- The join form offered the album, on, with the received-only note.
+- A received photo was saved straight into `DCIM/SnapSync/Party/` (`_ID` 541), and it was not a share candidate.
+- With the album turned off, the next one went to `DCIM/Camera/` (542). Turning the album on again moved 542 into
+  `DCIM/SnapSync/Party/`, keeping its `_ID`.
+- After both rows were deleted through MediaStore (what a gallery app's folder delete does), the next photo (543)
+  went to `DCIM/Camera/`: "emptied by the member".
+- Turning the album off and on in settings recreated it as `DCIM/SnapSync/Party (2)/` and moved 543 in. The
+  numbered name is D2 at work: the deleted folder's empty directory stays on disk and still holds the name.
 
 ## Open Questions
 

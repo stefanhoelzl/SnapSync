@@ -1,5 +1,6 @@
 package app.snapsync.presentation
 
+import app.snapsync.model.AlbumKind
 import app.snapsync.model.ReportDestination
 import app.snapsync.model.ReconfigureOutcome
 import app.snapsync.model.UserQueries
@@ -110,7 +111,7 @@ class StatusContainerHostSurfacesTest {
         queries: UserQueries = noQueries,
         onCommitJoin: suspend (eventId: String) -> Unit = {},
         reportDestination: ReportDestination = ReportDestination.DEVELOPER,
-        albumOffered: Boolean = true,
+        albumKind: AlbumKind = AlbumKind.COLLECTION,
     ) = StatusContainerHost(
         StatusSources(FakeSync(), MutableStateFlow(GalleryAccess.GRANTED), config),
         scope,
@@ -134,7 +135,7 @@ class StatusContainerHostSurfacesTest {
         queries = queries,
         diagnostics = testDiagnostics(),
         reportDestination = reportDestination,
-        albumOffered = albumOffered,
+        albumKind = albumKind,
     )
 
     /** Await the first state satisfying [predicate] — failing loudly rather than hanging if none comes. */
@@ -164,13 +165,13 @@ class StatusContainerHostSurfacesTest {
         queries: UserQueries = noQueries,
         onCommitJoin: suspend (eventId: String) -> Unit = {},
         reportDestination: ReportDestination = ReportDestination.DEVELOPER,
-        albumOffered: Boolean = true,
+        albumKind: AlbumKind = AlbumKind.COLLECTION,
         body: suspend (StatusContainerHost) -> Unit,
     ) = runTest {
         withContext(Dispatchers.Default) {
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
             try {
-                body(host(scope, spy, config, sendDiagnostics, queries, onCommitJoin, reportDestination, albumOffered))
+                body(host(scope, spy, config, sendDiagnostics, queries, onCommitJoin, reportDestination, albumKind))
             } finally {
                 scope.cancel()
             }
@@ -458,24 +459,23 @@ class StatusContainerHostSurfacesTest {
     }
 
     @Test
-    fun `a phone without an event album offers none and saves none`() {
-        // Capability `event-album`: an Android phone. Even a membership stored with the album on, and a tap that
-        // reached the form anyway, commit no album.
+    fun `a phone with folder albums opens a stored album-off membership off — and saves the album it turns on`() {
+        // Capability `event-album`: an Android membership joined before Android had the album was saved with it off.
+        // Settings show that choice, carry the phone's album kind for the note, and commit the album once turned on.
         val spy = Spy()
-        return onHost(spy, config = MutableStateFlow(CONFIG.copy(saveToAlbum = true)), albumOffered = false) { host ->
+        return onHost(spy, config = MutableStateFlow(CONFIG.copy(saveToAlbum = false)), albumKind = AlbumKind.FOLDER) { host ->
             host.surfaces.onOpenReconfigure()
             val form = host.reconfigureForm()
-            assertEquals(false, form.albumOffered, "the settings surface offers no album")
-            assertEquals(false, form.saveToAlbum, "a stored album choice is not carried onto a phone without albums")
+            assertEquals(AlbumKind.FOLDER, form.albumKind, "the settings surface knows the album is a folder")
+            assertEquals(false, form.saveToAlbum, "the stored choice is shown as it was saved")
             host.form.onSaveToAlbum(true)
-            host.form.onShareOn(false)
-            host.stateWhere("the share edit applied") {
-                ((it.layer as? Layer.Joined)?.surface as? JoinedSurface.Reconfigure)?.form?.shareOn == false
+            host.stateWhere("the album edit applied") {
+                ((it.layer as? Layer.Joined)?.surface as? JoinedSurface.Reconfigure)?.form?.saveToAlbum == true
             }
 
             host.onReconfigure()
             host.stateWhere("the surface closed") { (it.layer as? Layer.Joined)?.surface == JoinedSurface.Status }
-            assertEquals(false, spy.reconfigures.single().saveToAlbum)
+            assertEquals(true, spy.reconfigures.single().saveToAlbum)
         }
     }
 

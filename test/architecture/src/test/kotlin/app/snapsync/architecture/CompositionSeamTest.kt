@@ -138,6 +138,10 @@ class CompositionSeamTest {
         "DownloadController.eventAlbum" to
             "the current membership's event album — the album feature's AlbumCoordinator.albumIdFor over the " +
             "ConfigService, a sibling feature this one may not name; read from the in-process map, nothing leaves",
+        "DownloadController.onImportedIntoAlbum" to
+            "tells the album feature's AlbumCoordinator.onImportedInto that an import landed in the event album, so a " +
+            "folder album is marked filled (`android-event-album` D4) — a sibling feature this one may not name; " +
+            "writes the in-process album map, nothing leaves",
         "StoreDownloadStatusSource.currentEvent" to
             "the joined membership's event id, read in compose/ off the ConfigService the composition already " +
             "holds, so the received count is scoped to it (capability `sync-status`) — null with no membership",

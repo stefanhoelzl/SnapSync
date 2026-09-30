@@ -42,10 +42,14 @@ class DownloadController(
     // assets that exist, clear their markers, and re-import them — which is the defect this guard is
     // here to prevent, reintroduced by the thing meant to prevent it.
     private val presence: ImportedAssetPresence,
-    // The event album an import files into, for the current membership — `null` for none (opted out, or not
-    // created yet). Read once per import, BEFORE it (capability `event-album`), so the platform's change block
-    // does no lookup of its own. Required: which album is the album feature's rule, bound by the composition.
-    private val eventAlbum: () -> AlbumId?,
+    // The event album an import files into, for the current membership — `null` for none (opted out, not
+    // created yet, or a folder album the member emptied). Read once per import, BEFORE it (capability
+    // `event-album`), so the platform's change block does no lookup of its own. Required: which album is the album
+    // feature's rule, bound by the composition.
+    private val eventAlbum: suspend () -> AlbumId?,
+    // Told when an import settled as imported INTO [eventAlbum]'s answer — how a folder album learns it has held a
+    // photo, which is what later tells an emptied one from a fresh one (`changes/android-event-album` D4).
+    private val onImportedIntoAlbum: suspend (AlbumId) -> Unit,
     // Where staged bytes live, what is still on disk, and the release of settled rows' bytes (capability
     // `receiving-photos`). Required: a composition that downloads must say where the bytes land.
     private val stagedBytes: StagingService,
@@ -530,7 +534,8 @@ class DownloadController(
         log.invocation(entryContext, "import", params = "asset=${claimed.ref.sourceAssetId}") {
             val ref = claimed.ref
             // No try/catch: a throw leaves the ref claimed and propagates. See the KDoc above.
-            val result = importer.import(ImportRequest(ref, claimed.resources, claimed.creationDate, eventAlbum()))
+            val album = eventAlbum()
+            val result = importer.import(ImportRequest(ref, claimed.resources, claimed.creationDate, album))
             mutex.withLock {
                 when (result) {
                     is ImportResult.Imported -> {
@@ -544,6 +549,7 @@ class DownloadController(
                         // AFTER the confirming write, never before: a crash between them must leave extra
                         // bytes, not a row pointing at bytes that are gone (capability `receiving-photos`).
                         releaseStagedBytes(ref)
+                        album?.let { onImportedIntoAlbum(it) }
                     }
                     is ImportResult.Failed ->
                         // Two failures, two outcomes, and the library's own behaviour is what tells them
