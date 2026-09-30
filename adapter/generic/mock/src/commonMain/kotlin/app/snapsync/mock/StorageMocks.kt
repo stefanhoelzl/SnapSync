@@ -39,6 +39,20 @@ class FileSystemOperator internal constructor(private val disk: FileSystemMock) 
 
     fun read(area: FileArea, path: String): ByteArray? = area(area)[path]
 
+    /**
+     * The paths [area] holds now, as a copy. The disk has no lock and the app writes it from its own threads, so a copy
+     * the app wrote into while it was taken is taken again — never an iteration that dies half-way.
+     */
+    fun paths(area: FileArea): List<String> {
+        while (true) {
+            try {
+                return area(area).keys.toList()
+            } catch (_: ConcurrentModificationException) {
+                continue
+            }
+        }
+    }
+
     fun write(area: FileArea, path: String, bytes: ByteArray) {
         area(area)[path] = bytes
     }
