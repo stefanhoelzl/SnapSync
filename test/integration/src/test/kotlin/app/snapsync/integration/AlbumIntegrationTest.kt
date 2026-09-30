@@ -32,6 +32,24 @@ class AlbumIntegrationTest {
     }
 
     @Test
+    fun a_phone_without_album_writes_is_offered_no_album_and_gets_none() = rigTest {
+        // Capability `event-album`: an Android phone's library cannot hold an event album, so the join screen offers
+        // none, and even a join that asks for one creates and fills nothing.
+        device("album/writes", "on" to "false")
+        device("relaunch")
+        create(name = "Party")
+        val gate = state().ui.layer as Layer.JoiningEvent
+        assertEquals(false, gate.form.albumOffered, "the join screen offers no album")
+        assertEquals(false, gate.form.saveToAlbum)
+
+        join("saveToAlbum" to "true")
+        addPhoto("A")
+        cycle()
+
+        assertTrue(albums().isEmpty(), "no album was created or filled: ${albums()}")
+    }
+
+    @Test
     fun rejoining_the_event_reuses_its_album() = rigTest {
         val event = createAndJoin("saveToAlbum" to "true", name = "Party")
         assertEquals(1, albums().size)

@@ -1,6 +1,6 @@
 package app.snapsync.mock
 
-import app.snapsync.model.ApnsPushToken
+import app.snapsync.model.PushEndpoint
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.Availability
@@ -62,7 +62,7 @@ class MockStateTest {
         assertTrue(device.backend.operator.objectsOf(DEVICE).isNotEmpty())
         assertEquals(device.backend.operator.objectsOf(DEVICE), copy.backend.operator.objectsOf(DEVICE))
         assertEquals(1, copy.backend.operator.publishesOf(event, DEVICE))
-        assertEquals(ApnsPushToken("tok", "sandbox"), copy.backend.operator.deviceConfigOf(DEVICE))
+        assertEquals(PushEndpoint("apns", "tok", "sandbox"), copy.backend.operator.deviceConfigOf(DEVICE))
         assertEquals(listOf(SentPush(event, OTHER, "other-token")), copy.backend.operator.pushesSent())
         assertIs<Reply.Ok<*>>(copy.backend.port(app.snapsync.mock.DeclaredVersion("99.0")).getEvent(event))
     }
@@ -112,8 +112,8 @@ class MockStateTest {
         val event = (backend.createEvent(null, CreateEventRequest("Party", "2026-06-01T00:00:00Z", null)) as Reply.Ok).value.eventId
         backend.joinEvent(null, event, DEVICE)
         backend.joinEvent(null, event, OTHER)
-        backend.putDeviceConfig(null, DEVICE, ApnsPushToken("tok", "sandbox"))
-        backend.putDeviceConfig(null, OTHER, ApnsPushToken("other-token", "sandbox"))
+        backend.putDeviceConfig(null, DEVICE, PushEndpoint("apns", "tok", "sandbox"))
+        backend.putDeviceConfig(null, OTHER, PushEndpoint("apns", "other-token", "sandbox"))
         val asset = foreignAsset("A1")
         backend.publishManifest(null, event, DEVICE, DeviceManifest(DEVICE, listOf(asset), version = 3))
         device.backend.operator.deposit(DEVICE, AssetId("A1"), app.snapsync.model.ResourceRole.PRIMARY, "A1-primary.jpg")

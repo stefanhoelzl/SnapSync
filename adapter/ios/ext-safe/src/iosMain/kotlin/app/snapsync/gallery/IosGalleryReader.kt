@@ -141,6 +141,8 @@ class IosGalleryReader(private val log: Logger = Logger.withTag("gallery")) : Ga
         }
     }
 
+    override val supportsAlbumWrites: Boolean = true
+
     override suspend fun createAlbum(title: String): AlbumId? {
         var placeholderId: String? = null
         return checkedObjC("createAlbum") { error ->

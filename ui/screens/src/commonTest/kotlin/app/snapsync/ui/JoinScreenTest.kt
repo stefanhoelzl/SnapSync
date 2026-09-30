@@ -584,6 +584,20 @@ class JoinScreenTest {
     }
 
     @Test
+    fun `a phone that cannot hold an album is offered none`() = runComposeUiTest {
+        // Capability `event-album`: on Android the join screen has the two switches and the range, and no album.
+        setScreen {
+            TestStatusScreen(
+                joining(ready(), form = RangeForm(saveToAlbum = false, albumOffered = false)),
+                cutoff = fixedCutoff(),
+            )
+        }
+        onNodeWithText("Share my photos").assertExists()
+        onNodeWithText("Create an album").assertDoesNotExist()
+        onNodeWithText("No album is created.").assertDoesNotExist()
+    }
+
+    @Test
     fun `the album note adapts to all four switch combinations`() = runComposeUiTest {
         // The note varies over BOTH switches at once, so it is stated per combination rather than
         // toggled into: the surface renders the combination the state names.

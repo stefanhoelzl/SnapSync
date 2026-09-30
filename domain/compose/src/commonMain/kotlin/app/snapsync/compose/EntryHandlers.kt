@@ -78,8 +78,8 @@ fun pushHandlers(core: AppCore): PushHandlers {
     val log = core.log
     return PushHandlers(
         onToken = { token: PushToken ->
-            log.invocation(entry, "onPushToken", params = "hex=${token.hex.take(TOKEN_PREFIX)}…") {
-                core.services.pushTokens.deliver(token.hex)
+            log.invocation(entry, "onPushToken", params = "token=${token.value.take(TOKEN_PREFIX)}…") {
+                core.services.pushTokens.deliver(token.value)
             }
         },
         onTokenFailure = { error: PlatformError? ->

@@ -1,6 +1,6 @@
 package app.snapsync.services.backend
 
-import app.snapsync.model.ApnsPushToken
+import app.snapsync.model.PushEndpoint
 import app.snapsync.model.CreateEventRequest
 import app.snapsync.model.DeviceFile
 import app.snapsync.model.DeviceManifest
@@ -31,7 +31,7 @@ interface AuthenticatedBackend {
     suspend fun leaveEvent(eventId: String, deviceId: String): Reply<Unit>
     suspend fun eventFiles(eventId: String): Reply<List<UnionAsset>>
     suspend fun deviceFiles(deviceId: String): Reply<List<DeviceFile>>
-    suspend fun putDeviceConfig(deviceId: String, push: ApnsPushToken): Reply<Unit>
+    suspend fun putDeviceConfig(deviceId: String, push: PushEndpoint): Reply<Unit>
 }
 
 /**
@@ -100,7 +100,7 @@ class CredentialedBackend(
 
     override suspend fun deviceFiles(deviceId: String) = gated { backend.deviceFiles(it, deviceId) }
 
-    override suspend fun putDeviceConfig(deviceId: String, push: ApnsPushToken) =
+    override suspend fun putDeviceConfig(deviceId: String, push: PushEndpoint) =
         gated { backend.putDeviceConfig(it, deviceId, push) }
 
     private suspend fun <T> gated(call: suspend (token: String?) -> Reply<T>): Reply<T> {

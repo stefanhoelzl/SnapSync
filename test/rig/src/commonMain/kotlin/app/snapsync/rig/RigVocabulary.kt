@@ -68,6 +68,7 @@ object RigVocabulary {
         "device/downloads/stage",
         "device/album/place",
         "device/album/hold-adds",
+        "device/album/writes",
         "device/invite-link-hints",
         "device/foreign-device",
         // The integration surface's observable reads of the world's simulated systems (capability

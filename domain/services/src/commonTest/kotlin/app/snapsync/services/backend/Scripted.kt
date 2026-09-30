@@ -3,7 +3,7 @@ package app.snapsync.services.backend
 import app.snapsync.services.identity.MapSecureStore
 import app.snapsync.ports.SecureStore
 import app.snapsync.services.identity.identityOf
-import app.snapsync.model.ApnsPushToken
+import app.snapsync.model.PushEndpoint
 import app.snapsync.model.CreateEventRequest
 import app.snapsync.model.DeviceFile
 import app.snapsync.model.DeviceManifest
@@ -42,7 +42,7 @@ internal class ScriptedBackend(var answer: (route: String, token: String?) -> Re
     override suspend fun leaveEvent(token: String?, eventId: String, deviceId: String): Reply<Unit> = call("leave", token)
     override suspend fun eventFiles(eventId: String): Reply<List<UnionAsset>> = call("union", null)
     override suspend fun deviceFiles(token: String?, deviceId: String): Reply<List<DeviceFile>> = call("files", token)
-    override suspend fun putDeviceConfig(token: String?, deviceId: String, push: ApnsPushToken): Reply<Unit> = call("config", token)
+    override suspend fun putDeviceConfig(token: String?, deviceId: String, push: PushEndpoint): Reply<Unit> = call("config", token)
 }
 
 /** A [Credential] holding [current], which a rejection replaces with [recovered] (or keeps, for `null`). */

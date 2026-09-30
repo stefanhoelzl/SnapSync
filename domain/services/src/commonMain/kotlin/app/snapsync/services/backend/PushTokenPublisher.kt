@@ -1,6 +1,6 @@
 package app.snapsync.services.backend
 
-import app.snapsync.model.ApnsPushToken
+import app.snapsync.model.PushEndpoint
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.toResult
 import app.snapsync.services.identity.PersistedDeviceIdentity
@@ -19,7 +19,7 @@ fun interface PushTokenPublisher {
      * and never a throw, because all of them mean the same thing to the only caller: not registered this time, retry
      * at the next trigger.
      */
-    suspend fun publish(token: ApnsPushToken): Result<Unit>
+    suspend fun publish(token: PushEndpoint): Result<Unit>
 }
 
 /**
@@ -31,7 +31,7 @@ class BackendPushTokenPublisher(
     private val identity: PersistedDeviceIdentity,
 ) : PushTokenPublisher {
 
-    override suspend fun publish(token: ApnsPushToken): Result<Unit> {
+    override suspend fun publish(token: PushEndpoint): Result<Unit> {
         val id = runCatchingCancellable { identity.deviceId() }.getOrElse { return Result.failure(it) }
         return backend.putDeviceConfig(id, token).toResult("config PUT $id")
     }

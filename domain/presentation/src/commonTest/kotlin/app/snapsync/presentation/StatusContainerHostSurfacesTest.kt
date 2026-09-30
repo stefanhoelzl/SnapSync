@@ -110,6 +110,7 @@ class StatusContainerHostSurfacesTest {
         queries: UserQueries = noQueries,
         onCommitJoin: suspend (eventId: String) -> Unit = {},
         reportDestination: ReportDestination = ReportDestination.DEVELOPER,
+        albumOffered: Boolean = true,
     ) = StatusContainerHost(
         StatusSources(FakeSync(), MutableStateFlow(GalleryAccess.GRANTED), config),
         scope,
@@ -133,6 +134,7 @@ class StatusContainerHostSurfacesTest {
         queries = queries,
         diagnostics = testDiagnostics(),
         reportDestination = reportDestination,
+        albumOffered = albumOffered,
     )
 
     /** Await the first state satisfying [predicate] — failing loudly rather than hanging if none comes. */
@@ -162,12 +164,13 @@ class StatusContainerHostSurfacesTest {
         queries: UserQueries = noQueries,
         onCommitJoin: suspend (eventId: String) -> Unit = {},
         reportDestination: ReportDestination = ReportDestination.DEVELOPER,
+        albumOffered: Boolean = true,
         body: suspend (StatusContainerHost) -> Unit,
     ) = runTest {
         withContext(Dispatchers.Default) {
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
             try {
-                body(host(scope, spy, config, sendDiagnostics, queries, onCommitJoin, reportDestination))
+                body(host(scope, spy, config, sendDiagnostics, queries, onCommitJoin, reportDestination, albumOffered))
             } finally {
                 scope.cancel()
             }
@@ -451,6 +454,28 @@ class StatusContainerHostSurfacesTest {
                 "share off with receive on is a download-only membership",
             )
             assertTrue(sent.saveToAlbum)
+        }
+    }
+
+    @Test
+    fun `a phone without an event album offers none and saves none`() {
+        // Capability `event-album`: an Android phone. Even a membership stored with the album on, and a tap that
+        // reached the form anyway, commit no album.
+        val spy = Spy()
+        return onHost(spy, config = MutableStateFlow(CONFIG.copy(saveToAlbum = true)), albumOffered = false) { host ->
+            host.surfaces.onOpenReconfigure()
+            val form = host.reconfigureForm()
+            assertEquals(false, form.albumOffered, "the settings surface offers no album")
+            assertEquals(false, form.saveToAlbum, "a stored album choice is not carried onto a phone without albums")
+            host.form.onSaveToAlbum(true)
+            host.form.onShareOn(false)
+            host.stateWhere("the share edit applied") {
+                ((it.layer as? Layer.Joined)?.surface as? JoinedSurface.Reconfigure)?.form?.shareOn == false
+            }
+
+            host.onReconfigure()
+            host.stateWhere("the surface closed") { (it.layer as? Layer.Joined)?.surface == JoinedSurface.Status }
+            assertEquals(false, spy.reconfigures.single().saveToAlbum)
         }
     }
 

@@ -1,7 +1,7 @@
 package app.snapsync.mock
 
 import app.snapsync.model.APP_VERSION_HEADER
-import app.snapsync.model.ApnsPushToken
+import app.snapsync.model.PushEndpoint
 import app.snapsync.model.AssetId
 import app.snapsync.model.DeviceFile
 import app.snapsync.model.DeviceManifest
@@ -116,7 +116,7 @@ class BackendOperator internal constructor(private val state: BackendState) {
     fun isDeparted(eventId: String, deviceId: String): Boolean = state.memberships[eventId to deviceId]?.departed == true
 
     /** The push registration [deviceId] stored, or null. */
-    fun deviceConfigOf(deviceId: String): ApnsPushToken? = state.deviceConfigs[deviceId]
+    fun deviceConfigOf(deviceId: String): PushEndpoint? = state.deviceConfigs[deviceId]
 
     /** How many push registrations it stored for [deviceId] — the config is last-write-wins, this count is not. */
     fun deviceConfigWritesOf(deviceId: String): Int = state.deviceConfigWrites[deviceId] ?: 0
@@ -248,7 +248,7 @@ internal class BackendState(
 
     val events = mutableMapOf<String, Event>()
     val memberships = mutableMapOf<Pair<String, String>, Membership>()
-    val deviceConfigs = mutableMapOf<String, ApnsPushToken>()
+    val deviceConfigs = mutableMapOf<String, PushEndpoint>()
     val deviceConfigWrites = mutableMapOf<String, Int>()
     val publishes = mutableMapOf<Pair<String, String>, Int>()
     val refused = mutableMapOf<Pair<String, String>, Int>()

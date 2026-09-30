@@ -5,7 +5,7 @@ import app.snapsync.mock.BuildInfoMock
 import app.snapsync.mock.DeclaredVersion
 import app.snapsync.mock.MockDevice
 import app.snapsync.mock.UploadNetwork
-import app.snapsync.model.ApnsPushToken
+import app.snapsync.model.PushEndpoint
 import app.snapsync.model.CreateEventRequest
 import app.snapsync.model.DeviceFile
 import app.snapsync.model.DeviceManifest
@@ -117,6 +117,6 @@ class VersionedHttpBackend(
     override suspend fun eventFiles(eventId: String): Reply<List<UnionAsset>> = http().eventFiles(eventId)
     override suspend fun deviceFiles(token: String?, deviceId: String): Reply<List<DeviceFile>> =
         http().deviceFiles(token, deviceId)
-    override suspend fun putDeviceConfig(token: String?, deviceId: String, push: ApnsPushToken): Reply<Unit> =
+    override suspend fun putDeviceConfig(token: String?, deviceId: String, push: PushEndpoint): Reply<Unit> =
         http().putDeviceConfig(token, deviceId, push)
 }

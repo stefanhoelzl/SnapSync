@@ -6,6 +6,7 @@ import app.snapsync.model.PlatformEntry
 import app.snapsync.model.PlatformError
 import app.snapsync.model.PushMessage
 import app.snapsync.model.PushToken
+import app.snapsync.model.PUSH_KIND_APNS
 import app.snapsync.ports.Completion
 import app.snapsync.ports.PushHandlers
 import app.snapsync.ports.PushNotifications
@@ -28,6 +29,8 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
  */
 class IosPushNotifications(private val log: Logger) : PushNotifications {
     private var handlers: PushHandlers? = null
+
+    override val kind: String = PUSH_KIND_APNS
 
     override fun listen(handlers: PushHandlers) {
         this.handlers = handlers

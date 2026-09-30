@@ -17,6 +17,13 @@ import app.snapsync.model.PushToken
  */
 interface PushNotifications : Listenable<PushHandlers> {
     /**
+     * The push service this adapter speaks — the backend's push kind (`PUSH_KIND_APNS`, `PUSH_KIND_FCM`) the device's
+     * registration carries, so the backend picks the sender that can reach it. A fact of the platform, fixed for the
+     * adapter's life: an iOS build only ever holds APNs tokens, an Android build only FCM ones.
+     */
+    val kind: String
+
+    /**
      * Ask the platform for this device's token. Cheap and idempotent: asking is the only way to learn a rotated
      * token, so the composition asks at every launch and at every foreground entry, and the answer arrives through
      * [PushHandlers.onToken] or [PushHandlers.onTokenFailure].

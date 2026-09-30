@@ -76,6 +76,13 @@ interface GalleryReader : Port {
     suspend fun albumMembers(album: AlbumId, since: CaptureCutoff?): GalleryRead<Set<AssetId>>
 
     /**
+     * Whether this library can create an album and file a photo into it without moving or copying the photo
+     * (capability `event-album`). A fact of the platform, fixed for the adapter's life. Where it is `false`,
+     * [createAlbum] answers `null` and [addToAlbum] fails, and the app offers no event album at all.
+     */
+    val supportsAlbumWrites: Boolean
+
+    /**
      * Create an album titled [title] and return its id, or `null` when the platform refused — whatever the
      * cause. Only the app creates albums (`AlbumCoordinator`).
      */

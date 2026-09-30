@@ -348,6 +348,13 @@ private fun MockWorld.libraryLevers(): Map<String, Lever> = mapOf(
             CommandResult.ok("""{"permission":"${status.name}"}""")
         }
     }),
+    // Whether the library can create and fill albums (`on=false`: an Android phone's). The composition reads it once,
+    // at host assembly, so a test sets it and then relaunches.
+    "album/writes" to mocked(MockedSystem.LIBRARY, RigCommand { params, _ ->
+        val on = flag(params, "on")
+        device.library.operator.supportsAlbumWrites = on
+        CommandResult.ok("""{"albumWrites":$on}""")
+    }),
     // Every add to an album waits until released (`on=false`) — the photo library's change blocks held.
     "album/hold-adds" to mocked(MockedSystem.LIBRARY, RigCommand { params, _ ->
         val on = flag(params, "on")

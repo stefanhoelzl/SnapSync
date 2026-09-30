@@ -108,6 +108,8 @@ fun snapSyncHost(
             inviteLinkHints = ports.devControls.inviteLinkHints(),
             // Where a bug report goes on this build — the sheet says it (capability `privacy-security`).
             reportDestination = process.reportDestination,
+            // Whether this phone can hold an event album (capability `event-album`) — the photo library's own answer.
+            albumOffered = ports.gallery.supportsAlbumWrites,
             diagnostics = StatusDiagnostics(
                 log = { message -> log.i { message } },
                 // `Error`: the threshold at which a Kermit line becomes a crash-reporting event rather than a

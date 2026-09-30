@@ -120,3 +120,10 @@ internal fun reconfigureForm(membership: EventConfig, toLocal: (CaptureDate) -> 
  * commit; it exists so the resolution is TOTAL rather than optional.
  */
 internal const val NO_CEILING_YEARS = 100
+
+/**
+ * [this] form on a phone that [albumOffered] an event album or not (capability `event-album`): where none can be held,
+ * the choice is not offered and nothing commits one, whatever was stored or tapped.
+ */
+internal fun RangeForm.offering(albumOffered: Boolean): RangeForm =
+    if (albumOffered) this else copy(albumOffered = false, saveToAlbum = false)

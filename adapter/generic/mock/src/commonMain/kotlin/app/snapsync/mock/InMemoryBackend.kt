@@ -1,6 +1,6 @@
 package app.snapsync.mock
 
-import app.snapsync.model.ApnsPushToken
+import app.snapsync.model.PushEndpoint
 import app.snapsync.model.CreateEventRequest
 import app.snapsync.model.DeviceFile
 import app.snapsync.model.DeviceManifest
@@ -172,7 +172,7 @@ internal class InMemoryBackend(
         Reply.Ok(state.storedFiles[deviceId].orEmpty().toList())
     }
 
-    override suspend fun putDeviceConfig(token: String?, deviceId: String, push: ApnsPushToken): Reply<Unit> =
+    override suspend fun putDeviceConfig(token: String?, deviceId: String, push: PushEndpoint): Reply<Unit> =
         gated(token) {
             state.deviceConfigs[deviceId] = push
             state.deviceConfigWrites[deviceId] = (state.deviceConfigWrites[deviceId] ?: 0) + 1

@@ -2,7 +2,7 @@
 
 package app.snapsync.feature.push
 
-import app.snapsync.model.ApnsPushToken
+import app.snapsync.model.PushEndpoint
 import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemorySecureStore
@@ -28,13 +28,13 @@ import kotlin.test.assertTrue
 
 /** The address and body are `HttpBackend`'s (`HttpBackendTest`); this double records what was published. */
 private class FakePushTokenPublisher(private val result: Result<Unit> = Result.success(Unit)) : PushTokenPublisher {
-    val calls = mutableListOf<ApnsPushToken>()
+    val calls = mutableListOf<PushEndpoint>()
 
     /** When set, the FIRST publish fails (the gated 401 a fresh install takes) and later ones succeed. */
     var failFirst = false
     private var publishes = 0
 
-    override suspend fun publish(token: ApnsPushToken): Result<Unit> {
+    override suspend fun publish(token: PushEndpoint): Result<Unit> {
         calls.add(token)
         if (failFirst && publishes++ == 0) return Result.failure(IllegalStateException("HTTP 401 unattested"))
         return result
@@ -69,7 +69,7 @@ class PushRegistrationTest {
     fun failed_write_is_absorbed_not_thrown() = runTest {
         val client = FakePushTokenPublisher(Result.failure(RuntimeException("boom")))
         // Must not throw — a failed registration never disrupts the app.
-        registration(client).register(ApnsPushToken("T", "sandbox"))
+        registration(client).register(PushEndpoint("apns", "T", "sandbox"))
         assertEquals(1, client.calls.size)
     }
 
@@ -82,7 +82,7 @@ class PushRegistrationTest {
     @Test
     fun a_throwing_publish_is_absorbed_and_the_next_trigger_registers() = runTest {
         var locked = true
-        val calls = mutableListOf<ApnsPushToken>()
+        val calls = mutableListOf<PushEndpoint>()
         val registration = registration(
             PushTokenPublisher { token ->
                 if (locked) throw IllegalStateException("secure store unavailable")
@@ -90,7 +90,7 @@ class PushRegistrationTest {
                 Result.success(Unit)
             },
         )
-        val source = PushTokenSource("sandbox")
+        val source = PushTokenSource("apns", "sandbox")
         val credential = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
         val job = launch { registration.run(source, credential) }
 
@@ -111,7 +111,7 @@ class PushRegistrationTest {
         // backend registration is absent.
         val client = FakePushTokenPublisher()
         val reg = registration(client)
-        val t = ApnsPushToken("SAME", "production")
+        val t = PushEndpoint("apns", "SAME", "production")
         reg.register(t)
         reg.register(t)
         assertEquals(2, client.calls.size)
@@ -121,7 +121,7 @@ class PushRegistrationTest {
     @Test
     fun run_registers_on_delivery_and_on_rotation() = runTest {
         val client = FakePushTokenPublisher()
-        val source = PushTokenSource("sandbox")
+        val source = PushTokenSource("apns", "sandbox")
         val job = launch(UnconfinedTestDispatcher(testScheduler)) { registration(client).run(source) }
 
         source.deliver("TOKEN1")
@@ -129,16 +129,16 @@ class PushRegistrationTest {
         job.cancel()
 
         assertEquals(2, client.calls.size)
-        assertEquals(ApnsPushToken("TOKEN1", "sandbox"), client.calls[0])
+        assertEquals(PushEndpoint("apns", "TOKEN1", "sandbox"), client.calls[0])
         // env is the source's compile-time value on every token.
-        assertEquals(ApnsPushToken("TOKEN2", "sandbox"), client.calls[1])
+        assertEquals(PushEndpoint("apns", "TOKEN2", "sandbox"), client.calls[1])
     }
 
     @Test
     fun an_unchanged_triple_is_not_re_published() = runTest {
         // The OS answers every app entry's ask, mostly with the same token. Only the first answer publishes.
         val client = FakePushTokenPublisher()
-        val source = PushTokenSource("sandbox")
+        val source = PushTokenSource("apns", "sandbox")
         val job = launch(UnconfinedTestDispatcher(testScheduler)) { registration(client).run(source) }
 
         source.deliver("TOKEN1")
@@ -146,17 +146,17 @@ class PushRegistrationTest {
         source.deliver("TOKEN1")
         job.cancel()
 
-        assertEquals(listOf(ApnsPushToken("TOKEN1", "sandbox")), client.calls)
+        assertEquals(listOf(PushEndpoint("apns", "TOKEN1", "sandbox")), client.calls)
     }
 
     @Test
     fun a_record_from_an_earlier_process_suppresses_the_launch_publish() = runTest {
         // A cold start — a background wake included — delivers the token the backend already holds.
         val client = FakePushTokenPublisher()
-        registration(client).register(ApnsPushToken("TOKEN1", "sandbox"))
+        registration(client).register(PushEndpoint("apns", "TOKEN1", "sandbox"))
         client.calls.clear()
 
-        val relaunched = PushTokenSource("sandbox")
+        val relaunched = PushTokenSource("apns", "sandbox")
         val job = launch(UnconfinedTestDispatcher(testScheduler)) { registration(client).run(relaunched) }
         relaunched.deliver("TOKEN1")
         job.cancel()
@@ -167,38 +167,68 @@ class PushRegistrationTest {
     @Test
     fun a_changed_env_is_published() = runTest {
         val client = FakePushTokenPublisher()
-        registration(client).register(ApnsPushToken("TOKEN1", "sandbox"))
+        registration(client).register(PushEndpoint("apns", "TOKEN1", "sandbox"))
         client.calls.clear()
 
-        val production = PushTokenSource("production")
+        val production = PushTokenSource("apns", "production")
         val job = launch(UnconfinedTestDispatcher(testScheduler)) { registration(client).run(production) }
         production.deliver("TOKEN1")
         job.cancel()
 
-        assertEquals(listOf(ApnsPushToken("TOKEN1", "production")), client.calls)
+        assertEquals(listOf(PushEndpoint("apns", "TOKEN1", "production")), client.calls)
+    }
+
+    @Test
+    fun a_changed_kind_is_published() = runTest {
+        // The same token string under another push service is a registration the backend has never seen.
+        val client = FakePushTokenPublisher()
+        registration(client).register(PushEndpoint("apns", "TOKEN1", "sandbox"))
+        client.calls.clear()
+
+        val fcm = PushTokenSource("fcm", "sandbox")
+        val job = launch(UnconfinedTestDispatcher(testScheduler)) { registration(client).run(fcm) }
+        fcm.deliver("TOKEN1")
+        job.cancel()
+
+        assertEquals(listOf(PushEndpoint("fcm", "TOKEN1", "sandbox")), client.calls)
+    }
+
+    @Test
+    fun a_record_written_before_the_kind_publishes_once_then_matches() = runTest {
+        // An iOS device updating from a build whose record had no kind: its three-line record matches nothing, so
+        // the first delivery re-publishes (an idempotent PUT) and the next one is suppressed again.
+        record.saveLastRegistered(listOf("sandbox", "DEVICE-1", "TOKEN1").joinToString("\n"))
+        val client = FakePushTokenPublisher()
+        val source = PushTokenSource("apns", "sandbox")
+        val job = launch(UnconfinedTestDispatcher(testScheduler)) { registration(client).run(source) }
+        source.deliver("TOKEN1")
+        source.deliver("TOKEN1")
+        job.cancel()
+
+        assertEquals(listOf(PushEndpoint("apns", "TOKEN1", "sandbox")), client.calls)
     }
 
     @Test
     fun a_changed_device_identity_is_published() = runTest {
         val client = FakePushTokenPublisher()
-        registration(client).register(ApnsPushToken("TOKEN1", "sandbox"))
+        registration(client).register(PushEndpoint("apns", "TOKEN1", "sandbox"))
         client.calls.clear()
 
         // A device reset: the identity is gone from the store and a new process mints another.
         secureStore.delete(SecureSlots.DEVICE_ID)
         identity = identityMinting("DEVICE-2")
-        val source = PushTokenSource("sandbox")
+        val source = PushTokenSource("apns", "sandbox")
         val job = launch(UnconfinedTestDispatcher(testScheduler)) { registration(client).run(source) }
         source.deliver("TOKEN1")
         job.cancel()
 
-        assertEquals(listOf(ApnsPushToken("TOKEN1", "sandbox")), client.calls, "the backend never saw this device")
+        assertEquals(listOf(PushEndpoint("apns", "TOKEN1", "sandbox")), client.calls, "the backend never saw this device")
     }
 
     @Test
     fun a_failed_publish_is_not_recorded_and_the_next_delivery_re_sends_it() = runTest {
         val client = FakePushTokenPublisher().apply { failFirst = true }
-        val source = PushTokenSource("sandbox")
+        val source = PushTokenSource("apns", "sandbox")
         val job = launch(UnconfinedTestDispatcher(testScheduler)) { registration(client).run(source) }
 
         source.deliver("TOKEN1") // refused
@@ -215,7 +245,7 @@ class PushRegistrationTest {
     fun an_unreadable_identity_publishes_nothing_on_a_delivery() = runTest {
         val client = FakePushTokenPublisher()
         secureStore.locked = true
-        val source = PushTokenSource("sandbox")
+        val source = PushTokenSource("apns", "sandbox")
         val job = launch(UnconfinedTestDispatcher(testScheduler)) { registration(client).run(source) }
 
         source.deliver("TOKEN1")
@@ -235,7 +265,7 @@ class PushRegistrationTest {
         // app entry would re-send it, but a device that receives no silent pushes gets few entries; a new
         // credential is what makes the refused PUT acceptable, so it re-sends at once.
         val client = FakePushTokenPublisher().apply { failFirst = true }
-        val source = PushTokenSource("sandbox")
+        val source = PushTokenSource("apns", "sandbox")
         val credential = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
         val registration = registration(client)
 
@@ -256,7 +286,7 @@ class PushRegistrationTest {
     fun a_periodic_renewal_re_publishes_an_unchanged_registration() = runTest {
         // A fresh credential publishes unconditionally — a renewal cannot be told from a mint, and must not be.
         val client = FakePushTokenPublisher()
-        val source = PushTokenSource("sandbox")
+        val source = PushTokenSource("apns", "sandbox")
         val credential = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
@@ -276,7 +306,7 @@ class PushRegistrationTest {
         val credential = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
-            registration(client).run(PushTokenSource("sandbox"), credential)
+            registration(client).run(PushTokenSource("apns", "sandbox"), credential)
         }
 
         credential.emit(Unit) // attested, but the OS has delivered no APNs token yet
@@ -288,12 +318,12 @@ class PushRegistrationTest {
     fun a_delivery_before_the_collector_starts_is_still_seen() = runTest {
         // The OS may answer before the registration is installed; the last answer is replayed to it.
         val client = FakePushTokenPublisher()
-        val source = PushTokenSource("sandbox")
+        val source = PushTokenSource("apns", "sandbox")
         source.deliver("EARLY")
 
         val job = launch(UnconfinedTestDispatcher(testScheduler)) { registration(client).run(source) }
         job.cancel()
 
-        assertEquals(listOf(ApnsPushToken("EARLY", "sandbox")), client.calls)
+        assertEquals(listOf(PushEndpoint("apns", "EARLY", "sandbox")), client.calls)
     }
 }

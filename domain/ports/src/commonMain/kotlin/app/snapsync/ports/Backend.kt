@@ -1,6 +1,6 @@
 package app.snapsync.ports
 
-import app.snapsync.model.ApnsPushToken
+import app.snapsync.model.PushEndpoint
 import app.snapsync.model.CreateEventRequest
 import app.snapsync.model.DeviceFile
 import app.snapsync.model.DeviceManifest
@@ -69,5 +69,5 @@ interface Backend : Port {
     suspend fun deviceFiles(token: String?, deviceId: String): Reply<List<DeviceFile>>
 
     /** `PUT /devices/<deviceId>` — publish a device's push registration. */
-    suspend fun putDeviceConfig(token: String?, deviceId: String, push: ApnsPushToken): Reply<Unit>
+    suspend fun putDeviceConfig(token: String?, deviceId: String, push: PushEndpoint): Reply<Unit>
 }

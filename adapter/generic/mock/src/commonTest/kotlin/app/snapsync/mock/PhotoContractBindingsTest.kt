@@ -137,6 +137,25 @@ class PhotoContractBindingsTest {
         },
     )
 
+    /** The library mock playing an Android library, which files no photo into an album. */
+    private val galleryReaderWithoutAlbumWrites = object : Binding<GalleryReaderState, SeededLibrary<GalleryReader>> {
+        override val host = currentHost
+        override val kind = BindingKind.Fake
+        override val reaches = setOf(GalleryReaderState.GRANTED_SEEDED)
+
+        override fun create(state: GalleryReaderState, clauseId: String): Entered<SeededLibrary<GalleryReader>> {
+            if (state != GalleryReaderState.GRANTED_SEEDED) {
+                return Entered.Unreachable("the album-less library is bound for its album-write refusals; the other states are the in-memory gallery's")
+            }
+            val library = seededLibrary(GalleryReaderContract.name, clauseId)
+            val mock = PhotoLibraryMock().apply {
+                operator.supportsAlbumWrites = false
+                operator.set(library.value)
+            }
+            return Entered.Ready(SeededLibrary(mock.port(), library.value.mapTo(linkedSetOf()) { it.assetId }))
+        }
+    }
+
     private val gallery = object : Binding<GalleryState, GalleryChange> {
         override val host = currentHost
         override val kind = BindingKind.Fake
@@ -156,6 +175,10 @@ class PhotoContractBindingsTest {
     @Test
     fun `the in-memory gallery satisfies the GalleryReader contract`() =
         verify(GalleryReaderContract, galleryReader)
+
+    @Test
+    fun `the library mock without album writes satisfies the GalleryReader contract`() =
+        verify(GalleryReaderContract, galleryReaderWithoutAlbumWrites)
 
     @Test
     fun `the in-memory gallery satisfies the Gallery contract`() =

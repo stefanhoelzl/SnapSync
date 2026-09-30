@@ -92,6 +92,19 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
             assertEquals(GalleryRead.NotReadable, gallery.albumsById(setOf(absentAlbumId(clauseId))))
         }
 
+        clause("A_LIBRARY_WITHOUT_ALBUM_WRITES_REFUSES_THEM", GalleryReaderState.GRANTED_SEEDED) { seeded ->
+            // What `supportsAlbumWrites` declares is what the writes do: a library that says it cannot hold an event
+            // album creates none and files nothing, so the app that hides the choice has nothing to fall back on.
+            if (seeded.port.supportsAlbumWrites) return@clause
+            val clauseId = "A_LIBRARY_WITHOUT_ALBUM_WRITES_REFUSES_THEM"
+            assertEquals(null, seeded.port.createAlbum(title(clauseId)), "no album is created")
+            assertIs<WriteOutcome.Failed>(seeded.port.addToAlbum(absentAlbumId(clauseId), seeded.ids), "nothing is filed")
+        }
+
+        clause("A_WRITABLE_LIBRARY_DECLARES_IT", GalleryReaderState.GRANTED_SEEDED_ALBUMS_WRITABLE) { seeded ->
+            assertTrue(seeded.port.supportsAlbumWrites, "a library whose albums the app writes declares album writes")
+        }
+
         clause("GRANTED_READS_GRANTED", GalleryReaderState.GRANTED_EMPTY_WINDOW) { seeded ->
             assertEquals(GalleryAccess.GRANTED, seeded.port.access())
         }
