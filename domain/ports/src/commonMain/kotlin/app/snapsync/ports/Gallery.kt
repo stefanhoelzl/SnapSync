@@ -108,7 +108,7 @@ interface GalleryReader : Port {
  */
 class GalleryHandlers(
     /**
-     * The whole selection under a partial grant, once when observation begins (the cold-launch baseline) and once
+     * The whole selection under a partial grant, once when observation begins (the start's baseline) and once
      * per change — only while [Gallery.observeChanges] is on and the grant is partial. **Conflated**: only the latest
      * snapshot matters, so a handler hands it on rather than doing the work in place.
      */
@@ -151,7 +151,8 @@ interface Gallery : GalleryReader, LibraryChangeTokenRead, GalleryImport, Listen
     /**
      * Open ([enabled]) or close the selection observer. Open, it observes **only while the grant is partial** — a
      * baseline snapshot when observation begins and one per change after — and closes by itself when the grant
-     * moves away. Called only from host assembly, so a background wake that never builds the screen reads nothing.
+     * moves away. Called on composition, on every start — a background one included, so a wake that builds no screen
+     * still learns the selection it may upload from.
      */
     fun observeChanges(enabled: Boolean)
 

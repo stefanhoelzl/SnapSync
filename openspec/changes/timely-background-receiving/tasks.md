@@ -6,8 +6,8 @@
 
 ## 2. The selection is read on every start under limited access (D6)
 
-- [ ] 2.1 Move the selection subscription and `gallery.observeChanges(true)` out of `installPermissionSubscriptions` into an idempotent `installSelectionObserver()` that `snapSyncHost` calls on composition, leaving the grant collectors, the album grant subscription and the interrupted-import sweep at host assembly; verify with a `:test:integration` scenario on the JVM host — `relaunch?scene=false` under `LIMITED` with a staged backlog → `device/os-record` shows the selection observed and the backend receives the backlog's bytes without an `onForeground` — and that the existing "a cold background wake assembles no host" assertions still hold
-- [ ] 2.2 Correct `CLAUDE.md` fact ① ("the observer opens only at host assembly"), the KDoc of `installPermissionSubscriptions` / `PhotoKitSelection` / `ComposedApp`, and `docs/architecture.md` where it states the read discipline, citing this change and the 2026-09-30 SE2 measurement; verify by grep that no text still claims a background start reads no selection
+- [x] 2.1 Move the selection subscription and `gallery.observeChanges(true)` out of `installPermissionSubscriptions` into an idempotent `installSelectionObserver()` that `snapSyncHost` calls on composition, leaving the grant collectors, the album grant subscription and the interrupted-import sweep at host assembly; verify with a `:test:integration` scenario on the JVM host — `relaunch?scene=false` under `LIMITED` with a staged backlog → `device/os-record` shows the selection observed and the backend receives the backlog's bytes without an `onForeground` — and that the existing "a cold background wake assembles no host" assertions still hold
+- [x] 2.2 Correct `CLAUDE.md` fact ① ("the observer opens only at host assembly"), the KDoc of `installPermissionSubscriptions` / `PhotoKitSelection` / `ComposedApp`, and `docs/architecture.md` where it states the read discipline, citing this change and the 2026-09-30 SE2 measurement; verify by grep that no text still claims a background start reads no selection
 
 ## 3. The wake port carries a cadence (D2, D8 contract)
 

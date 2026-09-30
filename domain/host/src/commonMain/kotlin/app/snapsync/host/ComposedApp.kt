@@ -32,8 +32,9 @@ import kotlinx.coroutines.launch
  * builds the host. That is the iOS shell's timing, and it is load-bearing — a cold background wake that merely
  * touches [core] must install no permission collector and run no launch reconcile.
  *
- * The push-registration subscription is the one exception, and it is installed by [snapSyncHost] itself, as the
- * graph is composed — so on every cold start, a background wake's included (see [AppCore.installPushRegistration]).
+ * The push-registration subscription and the selection observer are the two exceptions: [snapSyncHost] installs them
+ * itself, as the graph is composed — so on every cold start, a background wake's included (see
+ * [AppCore.installPushRegistration] and [AppCore.installSelectionObserver]).
  */
 class ComposedApp internal constructor(
     val core: AppCore,
@@ -55,8 +56,8 @@ class ComposedApp internal constructor(
  * core exposes.
  *
  * The gallery's and the wake's handlers are registered here too, on composition, for the same reason: an import
- * finishing in a background wake, or the wake itself, must find them. Registering starts nothing — the selection
- * observer opens at host assembly.
+ * finishing in a background wake, or the wake itself, must find them. Registering starts nothing; the selection
+ * observer opens right after, on composition, so a background start under a partial grant learns its selection.
  *
  * The push registration is installed HERE, on composition, rather than at host assembly: a process composes its
  * graph on every cold start — the first operating-system entry that reaches the core does it, foreground or
@@ -85,7 +86,7 @@ fun snapSyncHost(
     val process = core.process
     val log = process.logger("app")
     // The event ports' ONE registration each, on composition — a background wake's import needs its handlers as much
-    // as a foreground launch does. `listen` only registers: the selection observer opens at host assembly below.
+    // as a foreground launch does. `listen` only registers: the selection observer opens below, still on composition.
     ports.gallery.listen(core.galleryHandlers)
     // On iOS this registration IS the `BGTask` launch handler, which Apple requires before launch finishes — why the
     // root composes at launch. It starts nothing: the handlers run only when the operating system wakes the app.
@@ -94,6 +95,7 @@ fun snapSyncHost(
     ports.download.listen(core.events.downloadHandlers)
     ports.appUpload.listen(core.events.uploadHandlers)
     core.installPushRegistration()
+    core.installSelectionObserver()
     composed = ComposedApp(core, process, cutoffFormatter) {
         // Host assembly: the permission-grant collectors install ONLY from here (see [ComposedApp]).
         core.installPermissionSubscriptions()

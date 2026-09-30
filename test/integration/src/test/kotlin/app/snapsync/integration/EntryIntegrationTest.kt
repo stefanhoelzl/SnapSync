@@ -178,28 +178,34 @@ class EntryIntegrationTest {
     // ---- The selection observer -----------------------------------------------------------------------------------
 
     /**
-     * **The partial grant's selection observer opens only from host assembly** (`docs/architecture.md`, "Events arrive
-     * through `listen`"): a wake that builds no screen pays no selection read nobody consumes, and the process that is
-     * foregrounded later still gets its baseline.
+     * **The partial grant's selection observer opens on every start** (capability `background-upload`, "Photos upload
+     * without the app being opened"; decision record `changes/timely-background-receiving`, D6): a background start
+     * that builds no screen still reads the selection, so the app's own wake uploads what waits — which a start that
+     * never learned its selection withheld, backlog included.
      */
     @Test
-    fun wakes_open_no_selection_observer_and_the_foreground_does() = rigTest {
-        val event = createAndJoin()
+    fun a_background_start_reads_the_selection_and_shares_what_waits() = rigTest {
         permission("LIMITED")
+        createAndJoin()
+        addPhoto("A")
+        device("jobs/limit", "n" to "0") // selected, no job yet: the work a cold start inherits
+        device("selection/change", "assets" to "A")
+        cycle()
+        assertEquals(0, jobs().created, "precondition: nothing was created")
+
         device("relaunch", "scene" to "false")
+        assertTrue(osRecord().selectionObserved, "composition opens the observer, a background start included")
+        device("jobs/limit", "n" to UNLIMITED)
 
-        os("app", "onBackgroundTask", HEARTBEAT_TASK)
-        os("app", "onBackgroundTransfers", UPLOAD_SESSION)
-        os("app", "onSilentPush", event)
-        assertFalse(osRecord().selectionObserved, "a wake that never builds the screen opened the selection observer")
-
-        foreground()
-        assertTrue(osRecord().selectionObserved, "host assembly is what opens it")
+        // A start that never learned its selection withholds every creation; this one read it.
+        eventually(read = { cycle(); jobs().live }) { it == listOf(primaryKey("A")) }
+        assertFalse(osRecord().screenShown, "and the start built no screen")
     }
 
     private companion object {
         const val TOKEN = "0a1b2c3d4e5f60718293a4b5c6d7e8f9"
         const val OTHER_EVENT = "33333333-3333-4333-8333-333333333333"
+        const val UNLIMITED = "2147483647"
     }
 }
 

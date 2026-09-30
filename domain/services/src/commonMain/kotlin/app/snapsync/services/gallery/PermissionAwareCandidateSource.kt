@@ -20,7 +20,7 @@ import kotlinx.coroutines.flow.StateFlow
  * - **`GRANTED`** → [walk], the platform's bounded library walk.
  * - **`LIMITED`** → the user's hand-picked [selection], which the admission then filters exactly as it
  *   would a walk. The snapshot arrives **already read, with resources**, from the sanctioned read points
- *   (the cold-launch baseline and the photo-selection-change observer). That eagerness is the mechanism
+ *   (the start's baseline and the photo-selection-change observer). That eagerness is the mechanism
  *   keeping every library *fetch* in-flow: a deferred read would have to re-fetch by local identifier at
  *   upload time, and holding the resources means no later library read is needed at all. (Not an alert
  *   argument: no probe has seen reads of an unchanged library raise iOS's limited-access prompt, which
