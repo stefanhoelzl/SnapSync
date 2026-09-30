@@ -100,7 +100,10 @@ class AndroidPushNotifications(
     override fun register() {
         val messaging = messaging ?: return failure("no push service on this build or phone")
         messaging.token.addOnCompleteListener { task ->
-            val token = task.result.takeIf { task.isSuccessful && !it.isNullOrBlank() }
+            // `task.result` THROWS on a failed task, and this runs on the main thread: read it only once the task
+            // succeeded, so a refused registration reaches `failure` instead of killing the process (it did, on the CI
+            // emulator: "FCM Registration failed!").
+            val token = if (task.isSuccessful) task.result?.takeIf { it.isNotBlank() } else null
             if (token != null) {
                 handlers?.onToken(PushToken(token))
             } else {
