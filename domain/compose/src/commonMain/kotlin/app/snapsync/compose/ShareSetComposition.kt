@@ -1,7 +1,12 @@
 package app.snapsync.compose
 
+import app.snapsync.feature.membership.ReceivedPhotoAdoption
 import app.snapsync.feature.membership.ShareSetLoad
+import app.snapsync.model.SelectionScope
+import app.snapsync.ports.GalleryReader
 import app.snapsync.services.backend.DeviceFilesSource
+import app.snapsync.services.backend.EventUnionSource
+import app.snapsync.services.gallery.MarkedPhotoLookup
 
 /**
  * The join-time load (capability `photo-sharing`) over the app's ports: a provision into a new
@@ -18,6 +23,24 @@ import app.snapsync.services.backend.DeviceFilesSource
 internal fun shareSetLoadFor(services: AppServices, files: DeviceFilesSource): ShareSetLoad = ShareSetLoad(
     files = files,
     ledger = services.ledger,
+    identity = services.deviceIdentity,
+    log = services.log,
+)
+
+/**
+ * The join-time adoption (capability `receiving-photos`): the union over [union], the download store, and the library's
+ * marked photos over [gallery] under the same read discipline as upload discovery ([selectionScope]). A top-level
+ * factory for the same reason as [shareSetLoadFor].
+ */
+internal fun receivedPhotoAdoptionFor(
+    services: AppServices,
+    union: EventUnionSource,
+    gallery: GalleryReader,
+    selectionScope: () -> SelectionScope,
+): ReceivedPhotoAdoption = ReceivedPhotoAdoption(
+    union = union,
+    store = services.downloadStore,
+    library = MarkedPhotoLookup(gallery, selectionScope),
     identity = services.deviceIdentity,
     log = services.log,
 )

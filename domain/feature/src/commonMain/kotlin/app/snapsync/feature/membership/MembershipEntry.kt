@@ -12,8 +12,12 @@ import app.snapsync.model.EventConfig
  *    work against a ledger about to be replaced, and then the best-effort backend leave fires.
  * 2. The upload ledger becomes the new membership's share set ([ShareSetLoad]) — BEFORE the save, so no cycle
  *    ever sees the new membership over the previous one's ledger.
- * 3. The whole config is saved.
- * 4. The uploads are started for the membership just saved — the join transition: the extension registration
+ * 3. The photos still in the library that an earlier install received for this event are recognised by their
+ *    SnapSync mark and recorded as received ([ReceivedPhotoAdoption]), for every direction — BEFORE the save, so
+ *    no uploader sees the membership while a received photo in its range is not yet held out of the upload universe
+ *    (capability `receiving-photos`).
+ * 4. The whole config is saved.
+ * 5. The uploads are started for the membership just saved — the join transition: the extension registration
  *    forced where the OS allows it, the app armed where access is usable. After the save, so a registered
  *    extension never reads the previous membership's config over the new ledger.
  *
@@ -28,6 +32,8 @@ class MembershipEntry(
     private val notifyLeave: suspend (eventId: String) -> Unit,
     /** Make the upload ledger the new membership's share set. */
     private val loadShareSet: suspend () -> Unit,
+    /** Recognise the library's photos an earlier install received for [EventConfig.eventId] ([ReceivedPhotoAdoption]). */
+    private val adoptReceived: suspend (EventConfig) -> Unit,
     /** Persist the whole config (a port touch). */
     private val saveConfig: suspend (EventConfig) -> Unit,
     /** Start the uploads for the membership just saved (the upload arm's join verb). */
@@ -40,6 +46,7 @@ class MembershipEntry(
             notifyLeave(previousEventId)
         }
         loadShareSet()
+        adoptReceived(cfg)
         saveConfig(cfg)
         startUploads()
     }

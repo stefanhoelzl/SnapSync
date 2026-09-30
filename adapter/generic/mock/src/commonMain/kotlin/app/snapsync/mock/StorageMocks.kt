@@ -101,6 +101,9 @@ class DatabasesMock(refusals: Map<String, DbOpen> = emptyMap(), directory: Strin
 class DatabasesOperator internal constructor(private val held: InMemoryDatabases) {
     /** Every open the device saw, by name, in order — a process's opens and every later one's. */
     val opened: List<String> get() = held.opened.toList()
+
+    /** Delete every database, as deleting the app does (in-memory databases only). */
+    fun deleteAll() = held.deleteAll()
 }
 
 /** The device's user defaults. */

@@ -5,13 +5,14 @@ import app.snapsync.model.AlbumKind
 import app.snapsync.model.AlbumRecord
 import app.snapsync.model.AssetFacts
 import app.snapsync.model.AssetId
+import app.snapsync.model.AssetRef
+import app.snapsync.model.ReceivedPhotoName
 import app.snapsync.model.ImportRequest
 import app.snapsync.model.ImportResult
 import app.snapsync.model.RawResource
 import app.snapsync.model.Resource
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.StagedResource
-import app.snapsync.model.importFilename
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.GalleryRead
@@ -92,7 +93,7 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
         val createdLocalId = AssetId("imported-${ref.sourceDeviceId}-${ref.sourceAssetId}$suffix")
         handlers.onImportPlaceholder(ref, createdLocalId)
         state.answers.beforeCommit(ref)?.let { return settle(ImportResult.Failed(it, placeholder = createdLocalId)) }
-        state.library.value = state.library.value + createdAsset(createdLocalId, request.resources, request.creationDate)
+        state.library.value = state.library.value + createdAsset(createdLocalId, request.ref, request.resources, request.creationDate)
         state.ownImports += createdLocalId
         if (state.albumKind == AlbumKind.FOLDER) request.album?.takeIf { it in state.created }?.let { state.folderOf[createdLocalId] = it }
         state.answers.afterCommit(ref)?.let { return settle(ImportResult.Failed(it, placeholder = createdLocalId)) }
@@ -204,16 +205,16 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
     private inline fun <T> readable(read: () -> T): GalleryRead<T> =
         if (state.access.value.grantsPhotoAccess) GalleryRead.Read(read()) else GalleryRead.NotReadable
 
-    private fun createdAsset(id: AssetId, resources: List<StagedResource>, creationDate: String) = RawAsset(
+    private fun createdAsset(id: AssetId, ref: AssetRef, resources: List<StagedResource>, creationDate: String) = RawAsset(
         assetId = id,
         creationDate = creationDate,
         rawResources = resources.map { staged ->
             RawResource(
                 role = if (staged.role == ResourceRole.LIVE.wire) ResourceRole.LIVE else ResourceRole.PRIMARY,
                 mimeContentType = staged.contentType,
-                // The SAME naming rule the iOS importer applies (`importFilename`), so an in-memory library
-                // cannot show a human name where a device would show a storage key.
-                originalFilename = importFilename(staged.originalFilename, staged.resourceKey),
+                // The SAME naming rule both platform importers apply (`ReceivedPhotoName`), so an in-memory library
+                // carries the mark a reinstalled app reads back, exactly where a device would.
+                originalFilename = ReceivedPhotoName.mark(staged.originalFilename, staged.resourceKey, ref),
                 handle = Unit,
             )
         },

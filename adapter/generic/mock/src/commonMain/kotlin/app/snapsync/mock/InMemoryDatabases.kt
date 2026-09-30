@@ -63,6 +63,16 @@ internal class InMemoryDatabases(
         return DbOpen.Opened(driver)
     }
 
+    /**
+     * Delete every database, as deleting the app deletes its container: the next open of any name creates it anew.
+     * In-memory databases only — file-backed ones are the launch-time adapters' persisted state, which the app host's
+     * own uninstall deletes.
+     */
+    fun deleteAll() {
+        check(directory == null) { "deleting file-backed databases is not modelled; the app host's uninstall deletes them" }
+        held.clear()
+    }
+
     /** A database a file already holds — another process's, or an earlier launch's — opened and kept. */
     private fun onDisk(name: String): SqlDriver? = directory
         ?.takeIf { databaseFileExists(it, name) }

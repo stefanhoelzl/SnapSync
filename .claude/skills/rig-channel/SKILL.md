@@ -520,6 +520,8 @@ curl -s localhost:<port>/device            # honoured + refused (reasons) for TH
     `databasesOpened`, `stagedFiles`. A receipted `/os` answer carries it as read at the release (`osAtRelease`).
   - `device/relaunch?scene=false` — a cold background launch: no screen is built. Read only `device/os-record`
     until an `os/app/onForeground`: `/device/state` and `/user` read the screen and would assemble it.
+  - `device/reinstall` (JVM host only) — delete the app and launch it again: files, databases and user defaults gone;
+    Keychain, photo library and backend kept.
 - The **operator levers** (on the app host, only for the systems its adapter choice mocks): `device/jobs` (live keys), `device/jobs/complete[?key=]` (the "OS"
   finishes a transfer — its bytes cross to the backend's byte route), `device/jobs/fail?key=&error=`, `device/jobs/limit?n=`,
   `device/backend/objects[?device=]`, `device/backend/offline?on=`, `device/permission?status=`,

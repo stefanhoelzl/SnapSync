@@ -228,6 +228,20 @@ suspend fun selectionPolicyFor(
 fun noContribution(): SelectionPolicy = SelectionPolicy(listOf(SelectionRule.DenyAll))
 
 /**
+ * The library photos that may be one of an event's RECEIVED photos (capability `receiving-photos`): everything captured
+ * inside the event's own range, `[startsAt, endsAt]`, with no origin exclusion — a received photo is recognised by the
+ * SnapSync mark in its name, not by what it is. Never a contribution policy: nothing it admits is shared. It carries a
+ * floor like every policy here, so its walk is bounded; a null [endsAt] (a membership saved before events carried an
+ * end) is unbounded above, as [selectionRulesFor]'s ceiling is.
+ */
+fun eventWindow(startsAt: EventStart, endsAt: EventEnd?): SelectionPolicy = SelectionPolicy(
+    listOfNotNull(
+        SelectionRule.CaptureAfter(CaptureCutoff(startsAt.at)),
+        endsAt?.let { SelectionRule.CaptureBefore(CaptureCeiling(it.at)) },
+    ),
+)
+
+/**
  * One rule of the [SelectionPolicy]. Sealed so the platform can pattern-match the set and translate the
  * rules it can express into a native fetch predicate (capability `photo-sharing`, *Selection
  * filter*) — a domain rule, translated per platform, never a platform hint leaking into `model/`.

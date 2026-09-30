@@ -147,11 +147,14 @@ class FullStackIntegrationTest {
 
         downloadAll()
 
-        // What lands in the library is what the capturing device called it, NOT the storage object key — which
-        // carries the assetId and the `-primary` role token and was what PhotoKit picked up off the staged file
-        // when nobody named the resource.
+        // What lands in the library is what the capturing device called it with SnapSync's mark added — NOT the
+        // storage object key, which carries the assetId and the `-primary` role token and was what PhotoKit picked
+        // up off the staged file when nobody named the resource. The mark is what a reinstalled app recognises it by.
         val names = gallery(resources = true).policy!!.assets.mapNotNull { it.originalFilenames }
-        assertTrue(listOf("IMG_4471.HEIC") in names, "the imported photo is named IMG_4471.HEIC: $names")
+        assertTrue(
+            names.any { it.size == 1 && Regex("""IMG_4471\.snapsync-[a-z2-7]{10}\.HEIC""").matches(it.single()) },
+            "the imported photo is named IMG_4471.snapsync-<token>.HEIC: $names",
+        )
     }
 
     @Test

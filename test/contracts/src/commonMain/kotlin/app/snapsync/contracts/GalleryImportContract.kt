@@ -4,6 +4,7 @@ import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.ImportResult
 import app.snapsync.model.ImportRequest
+import app.snapsync.model.ReceivedPhotoName
 import app.snapsync.ports.GalleryImport
 import app.snapsync.model.StagedResource
 import kotlin.test.assertEquals
@@ -38,6 +39,12 @@ interface ImportedLibrary {
 
     /** Where the marker for [ref] stands, as the registered import handlers recorded it. */
     fun marker(ref: AssetRef): MarkerState
+
+    /**
+     * The filename the library reports for the PRIMARY resource of the asset with [id] — what a later install reads
+     * back to recognise the photo as received — or `null` if none exists.
+     */
+    suspend fun primaryFilename(id: AssetId): String?
 }
 
 /**
@@ -77,6 +84,20 @@ object GalleryImportContract : Contract<GalleryImportState, StagedImport>("Galle
                 "an import sorts by its original capture date, not by when it arrived",
             )
             assertEquals(MarkerState.CONFIRMED, subject.library.marker(ref(clauseId)))
+        }
+
+        clause("AN_IMPORT_CARRIES_ITS_REFS_MARK", GalleryImportState.GRANTED_VALID_STAGED) { subject ->
+            val clauseId = "AN_IMPORT_CARRIES_ITS_REFS_MARK"
+            val date = PhotoLibrary.window(name, clauseId).seedDate
+            val result = subject.importer.import(ImportRequest(ref(clauseId), subject.stage(), date, album = null))
+            val id = assertIs<ImportResult.Imported>(result, "an ordinary photo imports").createdLocalId
+            val filename = subject.library.primaryFilename(id)
+            assertEquals(
+                ReceivedPhotoName.token(ref(clauseId)),
+                filename?.let(ReceivedPhotoName::tokenOf),
+                "the library keeps the mark on the name it reports ('$filename'): it is how a reinstalled app knows the " +
+                    "photo was received (capability `receiving-photos`)",
+            )
         }
 
         clause("A_REPEAT_IMPORT_CREATES_A_SECOND_ASSET", GalleryImportState.GRANTED_VALID_STAGED) { subject ->

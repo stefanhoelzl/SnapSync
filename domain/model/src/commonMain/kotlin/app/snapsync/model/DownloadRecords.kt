@@ -64,6 +64,12 @@ data class PlannedResource(
  */
 data class PlannedAsset(val ref: AssetRef, val creationDate: String, val resources: List<PlannedResource>)
 
+/**
+ * A photo already in the library that a join recognised, by its SnapSync mark, as [ref]'s earlier import (capability
+ * `receiving-photos`): [localId] is that library asset, [creationDate] the union's capture timestamp for the ref.
+ */
+data class AdoptedAsset(val ref: AssetRef, val localId: AssetId, val creationDate: String)
+
 /** A resource ready to import: its staged file plus the typing the importer needs. */
 data class StagedResource(
     val resourceKey: String,

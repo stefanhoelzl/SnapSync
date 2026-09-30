@@ -1,7 +1,8 @@
 package app.snapsync.download
 
 import app.snapsync.model.StagedResource
-import app.snapsync.model.importFilename
+import app.snapsync.model.AssetRef
+import app.snapsync.model.ReceivedPhotoName
 import app.snapsync.model.locateMotionVideo
 import app.snapsync.model.motionPresentationTimestampUs
 import app.snapsync.model.runCatchingCancellable
@@ -128,8 +129,10 @@ internal class LivePhotoFromMotionPhoto(private val log: Logger) {
 
     /**
      * The Live Photo [primary] carries, when it is a motion photo this device can take apart; null imports it as it is.
+     * Both files are named with [ref]'s SnapSync mark (`ReceivedPhotoName`), as every received photo is.
      */
-    suspend fun pair(assetId: String, primary: StagedResource): Pair? = withContext(Dispatchers.Default) {
+    suspend fun pair(ref: AssetRef, primary: StagedResource): Pair? = withContext(Dispatchers.Default) {
+        val assetId = "${ref.sourceAssetId}"
         // The XMP first, through ImageIO, which reads no more of the file than its metadata: every received photo passes
         // here, and only a motion photo is worth reading whole.
         val xmp = xmpOf(primary.stagedPath)?.takeIf { MOTION_MARK in it || LEGACY_MOTION_MARK in it } ?: return@withContext null
@@ -142,7 +145,7 @@ internal class LivePhotoFromMotionPhoto(private val log: Logger) {
         checkedObjC("createDirectoryAtPath") {
             NSFileManager.defaultManager.createDirectoryAtPath(dir, withIntermediateDirectories = true, attributes = null, error = it)
         }.onFailure { log.w(it) { "$assetId: no scratch directory — imported as it is" } }.getOrNull() ?: return@withContext null
-        val name = importFilename(primary.originalFilename, primary.resourceKey)
+        val name = ReceivedPhotoName.mark(primary.originalFilename, primary.resourceKey, ref)
         val stillIn = "$dir$identifier-in.${extensionOf(name)}"
         val stillOut = "$dir$identifier.${extensionOf(name)}"
         val mp4 = "$dir$identifier.mp4"

@@ -3,10 +3,10 @@ package app.snapsync.download
 import app.snapsync.gallery.Iso8601
 import app.snapsync.gallery.PhotoKitAssetIds
 import app.snapsync.ios.qos.qosLabel
-import app.snapsync.model.importFilename
 import app.snapsync.objc.objcBoundary
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
+import app.snapsync.model.ReceivedPhotoName
 import app.snapsync.model.ImportResult
 import app.snapsync.model.ImportRequest
 import app.snapsync.model.ResourceRole
@@ -38,8 +38,9 @@ import kotlin.coroutines.resume
  * offered as a Live Photo ([LivePhotoFromMotionPhoto]), falling back to exactly this import.
  *
  * Naming: each resource is created with an explicit `originalFilename` — the capturing device's own
- * name, carried through the manifest and the union (see `importFilename`). Left to PhotoKit, the
- * resource would be named after the staged file, which is the storage object key.
+ * name, carried through the manifest and the union, with SnapSync's mark added (see `ReceivedPhotoName`) — every
+ * resource of one asset carries the same token. Left to PhotoKit, the resource would be named after the staged
+ * file, which is the storage object key.
  *
  * Echo-suppression: the created asset's local identifier (sanitized to the upload-key `assetId` form,
  * `/`→`_`, so the upload extension's discovery matches it) reaches the registered `onImportPlaceholder`
@@ -83,7 +84,7 @@ internal class IosPhotoLibraryImporter(
                 log.w { "skip resource ${r.resourceKey}: unmapped role=${r.role} contentType=${r.contentType}" }
                 null
             } else {
-                Triple(type, r.stagedPath, importFilename(r.originalFilename, r.resourceKey))
+                Triple(type, r.stagedPath, ReceivedPhotoName.mark(r.originalFilename, r.resourceKey, ref))
             }
         }
         if (typed.isEmpty()) {
@@ -98,7 +99,7 @@ internal class IosPhotoLibraryImporter(
         val primary = request.resources.singleOrNull()
             ?.takeIf { it.role == ResourceRole.PRIMARY.wire && it.contentType.startsWith("image/") }
             ?: return null
-        return livePhotos.pair("${request.ref.sourceAssetId}", primary)
+        return livePhotos.pair(request.ref, primary)
     }
 
     private val LivePhotoFromMotionPhoto.Pair.resources: List<Triple<Long, String, String>>
@@ -235,7 +236,7 @@ private fun consumedResources(error: NSError?): Boolean {
             // after the file we hand it — and that file is staged under its storage object
             // name, so the photo would land in the library called
             // "<assetId>-primary.heic". The name is decided in `:domain` model/
-            // (`importFilename`), which is where its fallback is unit-tested.
+            // (`ReceivedPhotoName`), which is where the mark and its fallback are unit-tested.
             val options = PHAssetResourceCreationOptions().apply {
                 originalFilename = filename
                 // MOVE, not copy (capability `receiving-photos`). Two things follow, and both are

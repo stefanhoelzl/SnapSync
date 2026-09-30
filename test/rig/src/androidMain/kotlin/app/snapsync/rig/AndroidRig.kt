@@ -308,6 +308,10 @@ private fun androidRefusals(world: MockWorld): Map<String, String> = world.lever
             "cannot relaunch the process it runs in",
     )
     put(
+        "device/reinstall",
+        "deleting the app ends the process the channel runs in; `adb uninstall` it and install it again from outside",
+    )
+    put(
         "device/gallery/wipe",
         "a mocked library is fresh for every launch, and a real one's photos are the member's: seed or remove them " +
             "through MediaStore (`adb push` and a scan), never through the channel",

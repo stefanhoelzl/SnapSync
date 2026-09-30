@@ -507,6 +507,9 @@ class AppCore internal constructor(
     // The join-time load (capability `photo-sharing`), built in `shareSetLoadFor`. Public for
     // the world harness, whose operator provision runs this instance rather than a copy.
     val shareSetLoad: ShareSetLoad by lazy { shareSetLoadFor(services, backend.deviceFiles) }
+    private val receivedPhotoAdoption by lazy {
+        receivedPhotoAdoptionFor(services, backend.union, ports.gallery, ::selectionScope)
+    }
 
     // The in-place reconfigure use-case (capability `manage-membership`): rewrite the joined
     // membership's participation fields (direction/cutoff/album) whole, then re-drive the provision-side
@@ -799,12 +802,13 @@ class AppCore internal constructor(
             downloadController = downloadController,
             albumCoordinator = albumCoordinator,
             activeEventId = { services.config.config.value?.eventId },
-            // The order (stop, backend leave, load, save, start uploads) is `MembershipEntry`'s rule; the backend
-            // leave is awaited here, unlike the leave command's fire-and-forget, as it always was on this path.
+            // The order (stop, backend leave, load, adopt, save, start uploads) is `MembershipEntry`'s rule; the
+            // backend leave is awaited here, unlike the leave command's fire-and-forget, as it always was on this path.
             enterMembership = MembershipEntry(
                 stopUploads = { uploadTransitions.onLeave() },
                 notifyLeave = notifyLeave,
                 loadShareSet = { shareSetLoad.load() },
+                adoptReceived = { cfg -> receivedPhotoAdoption.adopt(cfg) },
                 saveConfig = { cfg -> services.config.save(cfg) },
                 startUploads = { uploadTransitions.onJoin() },
             )::enter,
