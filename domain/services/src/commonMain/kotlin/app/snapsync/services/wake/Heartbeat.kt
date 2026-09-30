@@ -36,7 +36,9 @@ class Heartbeat(
      * requests are idempotent, so a repeated arm replaces the pending request rather than stacking one.
      */
     fun arm(cadence: WakeCadence) {
-        request(WakeId.Heartbeat, triggerAt(cadence))
+        val trigger = triggerAt(cadence)
+        // The field's only record of the cadence a device keeps (decision record `changes/timely-background-receiving`).
+        if (request(WakeId.Heartbeat, trigger)) log.i { "heartbeat armed: ${cadence.name.lowercase()}, no sooner than ${trigger.earliest}" }
     }
 
     /**

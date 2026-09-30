@@ -42,4 +42,4 @@
 ## 7. Integration
 
 - [ ] 7.1 Verify `./gradlew build` (no display), `./gradlew compileIosMainKotlinMetadata`, `./gradlew architectureDiagrams` committed (the diagrams check is required), and the macOS `ios-test` / `ios-contracts` jobs green on the PR
-- [ ] 7.2 Verify on the SE2 with a rig build (device lock): a joined receive-only member caught up submits the idle refresh request (read back through `getPendingTaskRequests` in the app log), and a full-access sharer on 26.6 with the extension registered drops to idle once caught up
+- [x] 7.2 Verify on the SE2 with a rig build (device lock): a joined receive-only member caught up submits the idle refresh request (read back through `getPendingTaskRequests` in the app log), and a full-access sharer on 26.6 with the extension registered drops to idle once caught up
