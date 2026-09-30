@@ -5,7 +5,7 @@ import app.snapsync.mock.ExtensionHostMock
 import app.snapsync.mock.PhotoLibraryMock
 import app.snapsync.mock.UploadNetwork
 import app.snapsync.mock.UploadQueueMock
-import app.snapsync.mock.fixedBuildInfo
+import app.snapsync.mock.BuildInfoMock
 import app.snapsync.mock.fixedClock
 import app.snapsync.mock.inMemoryCrashReporter
 import app.snapsync.mock.inMemoryDatabases
@@ -104,7 +104,7 @@ class ExtensionEntryTest {
             files = files,
             clock = clock,
             entryContext = NoEntryContext,
-            build = fixedBuildInfo(),
+            build = BuildInfoMock().port(),
         ),
         databases = databases,
         preferences = inMemoryPreferences(),

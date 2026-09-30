@@ -21,9 +21,8 @@ import app.snapsync.android.work.AndroidBackgroundTime
 import app.snapsync.android.work.AndroidUpload
 import app.snapsync.android.work.AndroidWake
 import app.snapsync.compose.AppCore
-import app.snapsync.build.StaticBuildInfo
+import app.snapsync.android.buildinfo.AndroidBuildInfo
 import app.snapsync.compose.AppPorts
-import app.snapsync.model.DiagnosticEnvironment
 import app.snapsync.compose.DevicePorts
 import app.snapsync.compose.NoEntryContext
 import app.snapsync.compose.NoProcessMetrics
@@ -122,16 +121,10 @@ class SnapSyncRoot(internal val application: Application) {
             files = ports.files,
             clock = ports.clock,
             entryContext = NoEntryContext,
-            build = StaticBuildInfo(
+            build = AndroidBuildInfo(
                 appVersion = BuildConfig.APP_VERSION,
+                buildNumber = BuildConfig.VERSION_CODE.toString(),
                 uploadHost = BuildConfig.UPLOAD_BASE,
-                appStoreUrl = null,
-                // The push token's environment is APNs vocabulary; Android's push service replaces it.
-                apnsEnvironment = "sandbox",
-                // Android has no OS-driven upload mechanism: the app's uploader is its only one.
-                osSupportsOsDrivenUpload = false,
-                diagnostics = DiagnosticEnvironment.UNKNOWN,
-                dsn = null,
                 bootLines = listOf("=== app process start ===") + adapters.bootLines,
             ),
         )

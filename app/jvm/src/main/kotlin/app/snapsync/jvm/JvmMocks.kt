@@ -1,6 +1,7 @@
 package app.snapsync.jvm
 
 import app.snapsync.http.HttpBackend
+import app.snapsync.mock.BuildInfoMock
 import app.snapsync.mock.DeclaredVersion
 import app.snapsync.mock.MockDevice
 import app.snapsync.mock.UploadNetwork
@@ -35,7 +36,7 @@ class JvmMocks(
      * not); [backend] is the backend port — the mock's own face by default, or one reaching the real `api/`.
      */
     fun adapters(
-        build: JvmBuild,
+        build: BuildInfoMock,
         attests: Boolean,
         backend: Backend = this.backend.port(build.declaredVersion),
         logSinks: List<LogSink> = emptyList(),

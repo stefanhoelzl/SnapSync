@@ -413,7 +413,7 @@ build the same classes over caller-held cells.
 and nothing else — and the upload extension beside it exactly as `UploadExtensionRoot` does (`snapSyncExtension` over
 `ExtensionPorts`), over the adapters **its caller** chooses for each launch, from a durable state the caller keeps:
 `JvmApp(scope, durable) { durable -> adapters }`. `JvmMocks` is that durable state as one mock per external system, and
-`JvmMocks.adapters(build, attests, backend, logSinks)` its launch's adapters (`JvmBuild` is the launch's `BuildInfo`); a
+`JvmMocks.adapters(build, attests, backend, logSinks)` its launch's adapters (`build` is a `BuildInfoMock`, its declared version a cell the caller holds); a
 caller may put the real `api/` behind the backend port instead (`VersionedHttpBackend`). **`relaunch()` is process
 death**: the running app's collectors and launches end, and a new app is composed over a fresh set of port faces over the
 same durable state. It is wiring only — no lever, no test DSL — and gated as a shell.

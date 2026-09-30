@@ -18,7 +18,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `BackgroundTime` | `:domain:ports` | `:adapter:android` AndroidBackgroundTime; `:adapter:generic:mock` InMemoryBackgroundTime; `:adapter:ios:app-only` IosBackgroundTime | yes |
 | `BackgroundTimeHold` | `:domain:ports` | `:adapter:android` Hold; `:adapter:generic:mock` Hold; `:adapter:ios:app-only` Held, Refused | no |
 | `BackgroundTransfer` | `:domain:services` | `:domain:services` UploadTransferService; `:test:feature` FakePlatform, Library | yes |
-| `BuildInfo` | `:domain:ports` | `:adapter:generic:mock` FixedBuildInfo; `:adapter:ios:ext-safe` IosBuildInfo; `:app:jvm` JvmBuild | no |
+| `BuildInfo` | `:domain:ports` | `:adapter:android` AndroidBuildInfo; `:adapter:ios:ext-safe` IosBuildInfo | no |
 | `Candidate` | `:domain:model` | `:domain:model` BatchedCandidate, HeldCandidate, LazyCandidate | no |
 | `CandidateRead` | `:domain:model` | `:domain:model` NotReadable, Readable | no |
 | `CandidateSource` | `:domain:services` | `:adapter:generic:mock` Blowing, RecordingEnumerator, ResourceCandidates, Switchable; `:domain:feature` FactsSource, UnreadableSource; `:domain:services` GalleryCandidateSource, PermissionAwareCandidateSource, RecordingWalk; `:test:feature` OneAsset | yes |
