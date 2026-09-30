@@ -45,6 +45,7 @@ import app.snapsync.feature.upload.AppUploadMechanism
 import app.snapsync.feature.upload.PushTailGuard
 import app.snapsync.feature.upload.TailTrigger
 import app.snapsync.services.upload.ExtensionRegistration
+import app.snapsync.feature.upload.CadenceFacts
 import app.snapsync.services.upload.OsDrivenRegistration
 import app.snapsync.ports.ExtensionRegistry
 import app.snapsync.feature.upload.UploadAdmission
@@ -455,6 +456,23 @@ class AppCore internal constructor(
      *  `background-upload`, "The delegate records the terminal fact before it returns"). */
     val appMayCreate: () -> Boolean = { appUploadAdmission() == UploadAdmission.Admit }
 
+    /**
+     * What the heartbeat's re-arm reads after a tail (capability `receiving-photos`; decision record
+     * `changes/timely-background-receiving`, D1, D3) — read fresh each time. The OS uploader counts as confirmed only
+     * when it may be registered here (a full grant, an OS that carries it, the dev pin not off) **and** the OS's own
+     * answer says it is: whether registering is allowed says nothing about whether it happened.
+     */
+    val cadenceFacts: () -> CadenceFacts = {
+        val config = ports.config.config.value
+        CadenceFacts(
+            joined = config != null,
+            ended = config != null && ports.config.hasEnded(config),
+            shares = config?.direction?.includesUpload == true,
+            fullGrant = ports.photoAccess.permission.value == GalleryAccess.GRANTED,
+            osUploaderConfirmed = extensionRegistrableNow() && extensionRegistration.isRegistered() == true,
+        )
+    }
+
     // The upload arm (capability `background-upload`): what each membership transition does to the two
     // uploaders. Stateless — every decision is derived from the registration fact, the grant and whether a
     // membership exists, at the moment of the transition; the root defaults nothing.
@@ -783,6 +801,7 @@ class AppCore internal constructor(
             entryContext = process.entryContext,
             downloads = { downloadController },
             mayCreate = appMayCreate,
+            cadenceFacts = cadenceFacts,
             refreshCounts = { ledgerCounts.refresh() },
             finish = { membershipEnd.completion.finish() },
         )

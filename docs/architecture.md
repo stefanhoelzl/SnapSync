@@ -864,13 +864,13 @@ tail:
 
 | wake | own work | tail | heartbeat re-arm |
 |---|---|---|---|
-| silent push (active event only, `PushTailGuard`) | union read, plan, download enqueue | full | always |
-| download-session relaunch | stage the delivered files | full | only if work remains |
-| upload-session relaunch (iOS 18–26.0) | the delegate records terminals | full | only if work remains |
-| heartbeat (`Wake`; on iOS the `BGTask` `app.snapsync.upload.heartbeat`, or `app.snapsync.heartbeat.idle` when idle) | none: the wake *is* the tail | full | always |
-| limited-grant selection change | snapshot-fed discovery → manifest | full | always |
-| foreground | download reconcile, stored-upload settle, staged-byte reclaim, status and membership refresh | full | always |
-| membership transition's arm | none (requested detached) | full | always |
+| silent push (active event only, `PushTailGuard`) | union read, plan, download enqueue | full | the cadence rule |
+| download-session relaunch | stage the delivered files | full | the cadence rule |
+| upload-session relaunch (iOS 18–26.0) | the delegate records terminals | full | the cadence rule |
+| heartbeat (`Wake`; on iOS the `BGTask` `app.snapsync.upload.heartbeat`, or `app.snapsync.heartbeat.idle` when idle) | none: the wake *is* the tail | full | the cadence rule |
+| limited-grant selection change | snapshot-fed discovery → manifest | full | the cadence rule |
+| foreground | download reconcile, stored-upload settle, staged-byte reclaim, status and membership refresh | full | the cadence rule |
+| membership transition's arm | none (requested detached) | full | the cadence rule |
 | upload completion (admission `Admit` only) | none | ② only | never |
 | download staged in a running process | record the staging | ① only | never |
 
@@ -884,21 +884,25 @@ applies its own re-arm to the outcome. A throwing unit fails the tail and every 
 is the only drain, plus the once-per-process interrupted-import sweep at host assembly (same per-asset claims).
 There is no download backstop task any more.
 
-**The heartbeat** is the `Heartbeat` service (`services/wake`) over the `Wake` port: a one-shot wake no sooner than
-60 s from now, needing the network, re-requested each time. **When** it is armed is the table's rule —
-`TailRunner.shouldSchedule` over each trigger's re-arm — with one addition (phase 11f): after a tail whose upload
-units would not re-arm (a declining membership's `SKIPPED`, or a drained relaunch), staged downloads still waiting to
-be imported count as work remaining and arm it — except for the triggers that never re-arm. So a membership that only
-receives arms a heartbeat while a save iOS cut short is waiting, and not otherwise.
+**The heartbeat** is the `Heartbeat` service (`services/wake`) over the `Wake` port: a one-shot wake at a **cadence** —
+**busy**, no sooner than 60 s, or **idle**, no sooner than an hour — needing the network, re-requested each time; a
+request at one cadence replaces a pending one at the other. **The cadence rule** (`feature/upload/HeartbeatCadence`,
+applied by `TailRunner` after every tail whose trigger re-arms) keeps one pending **for as long as the device is
+joined**: busy while work remains (uploads the tail left, or staged downloads not yet imported) or while a
+full-grant sharer notices its own new photos only by looking — no library-change wake standing and the OS uploader
+not confirmed registered — until the event's end; idle for every other joined device (receive-only, uploads held
+back, a partial grant, caught up with a library wake, and everyone after the end); none once not joined. Its inputs
+are the tail's outcome and `CadenceFacts`, which the composition reads fresh (`AppCore.cadenceFacts`: the membership,
+its direction, the grant, and the OS's own registration answer). Decision record:
+`changes/timely-background-receiving` (D1–D3).
 
 **The library watch** is the service's other wake: `watchLibrary` requests a one-shot `WakeId.LibraryChanged`,
 delivered within 60 s of a change to the photo library, and answers whether one now stands. The runner renews it
 after every tail that ran the uploads for a contributing membership (any trigger but an import-only one, any outcome
-but `SKIPPED`), so a caught-up device still notices the next photo. iOS answers it `Unsupported` — its library-change
-wake is the upload extension — and there the table stands as written. **Where a watch stands, `always` becomes "only
-if work remains"**: on iOS the perpetual heartbeat is how the app looks at its library at all, and iOS runs a
-`BGProcessingTask` sparsely; WorkManager honours the 60 s closely, so the same rule would wake a caught-up Android
-phone every minute. A disarm cancels both wakes. Decision record: `changes/archive/2026-09-29-android-sharing` (D5).
+but `SKIPPED`), so a caught-up device still notices the next photo; where one stands (Android), a caught-up sharer
+idles. iOS answers it `Unsupported` — its library-change wake is the upload extension, which counts only once the OS
+confirms it registered. A disarm cancels both wakes. Decision record: `changes/archive/2026-09-29-android-sharing`
+(D5).
 
 **In-process requests hold time too.** A tail requested from inside the process — a transition's arm, an upload
 completion's top-up, a staged download's import, a selection change (its own work included) — holds the process's

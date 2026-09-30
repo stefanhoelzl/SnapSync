@@ -60,7 +60,10 @@ class WakeOperator internal constructor(private val mock: WakeMock) {
 
     /** The operating system wakes the app for [id], handing it [completion]. */
     fun fire(id: WakeId, completion: Completion) {
-        checkNotNull(mock.handlers) { "no process registered for wakes — nothing would receive this one" }.onWake(id, completion)
+        val handlers = checkNotNull(mock.handlers) { "no process registered for wakes — nothing would receive this one" }
+        // Every wake is one-shot: the operating system launching it is what consumes the request.
+        mock.pending.value -= id
+        handlers.onWake(id, completion)
     }
 }
 

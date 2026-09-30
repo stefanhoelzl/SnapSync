@@ -32,6 +32,14 @@ class OsRecord(private val json: JsonObject) {
     val selectionObserved: Boolean get() = json.getValue("selectionObserved").jsonPrimitive.boolean
     val heartbeatsScheduled: Int get() = json.int("heartbeatsScheduled")
 
+    /** The heartbeat the operating system holds now, as `"busy"`/`"idle"` — `null` when none is pending. */
+    val pendingCadence: String?
+        get() = (json["pendingWake"] as? JsonObject)?.getValue("cadence")?.jsonPrimitive?.content
+
+    /** The pending heartbeat's earliest delay in seconds — `null` when none is pending. */
+    val pendingEarliestSeconds: Long?
+        get() = (json["pendingWake"] as? JsonObject)?.getValue("earliestSeconds")?.jsonPrimitive?.content?.toLong()
+
     /** The background-time holds outstanding, by the name the app began each under. */
     val backgroundTimeHolds: List<String> get() = json.getValue("backgroundTimeHolds").jsonArray.map { it.jsonPrimitive.content }
     val pushRegistrations: Int get() = json.int("pushRegistrations")
