@@ -15,9 +15,9 @@ import androidx.work.workDataOf
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.BackgroundTimeHold
 import co.touchlab.kermit.Logger
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 
@@ -36,14 +36,17 @@ class AndroidBackgroundTime(context: Context, private val log: Logger = Logger.w
 
     private val appContext = context.applicationContext
     private val work = WorkManager.getInstance(appContext)
-    private val next = AtomicLong()
 
     init {
         registered = this
     }
 
     override fun begin(label: String, onExpiry: () -> Unit): BackgroundTimeHold {
-        val id = "hold.${next.incrementAndGet()}"
+        // Unique across instances AND processes: the live holds are this process's, and a work's unique name is the
+        // device's. A counter restarting at 1 — per instance, or per process — named a new hold after one whose worker
+        // was still being cancelled, or one a dead process left enqueued: `KEEP` ignored the new request, and the old
+        // worker's stop then expired the new hold.
+        val id = "hold.${UUID.randomUUID()}"
         val hold = Hold(id, label, onExpiry)
         holds[id] = hold
         try {
