@@ -23,10 +23,12 @@ import {
   D2,
   E,
   enrolDevice,
+  fcmRecorder,
   recorder,
   rows,
   store,
   storeWithEvent,
+  withFcm,
 } from "./support/harness.ts";
 
 // ── v2 fixtures ────────────────────────────────────────────────────────────────────────────────────
@@ -34,6 +36,8 @@ import {
 const VERSION_HEADER = "x-snapsync-app-version";
 const CURRENT = "0.1"; // at the configured minimum
 
+/** A third member — an Android phone in the mixed-platform fan-out. */
+const D3 = "33333333-0000-4000-8000-000000000004";
 const BYTE_PATH = `/api/v2/files/devices/${D}/ASSET1/primary?filename=IMG_0001.HEIC`;
 const BYTE_OBJ_URL =
   `https://storage.bunnycdn.com/snapsync-zone/files/devices/${D}/ASSET1-primary.heic`;
@@ -646,6 +650,40 @@ Deno.test("fan-out → the byte that completes an asset wakes the event", async 
 
   assertEquals((await app.request(BYTE_PATH, { method: "PUT", body: "x" })).status, 201);
   assertEquals(pushed, ["recipient"], "the last declared role landing wakes the other member");
+  db.close();
+});
+
+Deno.test("fan-out → one completion wakes an iPhone through APNs and an Android phone through FCM", async () => {
+  // Each member is reached through the push service its app registered — the kind rides with the token.
+  const db = await storeWithEvent();
+  const apns = apnsRecorder(200);
+  const fcm = fcmRecorder(apns.fetchImpl);
+  const app = v2({ config: await withFcm(await apnsConfig()), db, fetch: fcm.fetchImpl });
+  await app.request(JOIN_PATH, { method: "PUT" });
+  const members = [[D2, "apns", "iphone-recipient", "sandbox"], [
+    D3,
+    "fcm",
+    "android-recipient",
+    "test-project",
+  ]];
+  for (const [device, kind, token, env] of members) {
+    await app.request(`/api/v2/events/${E}/devices/${device}`, {
+      method: "PUT",
+      headers: await as(device),
+    });
+    await enrolDevice(db, device);
+    await db.execute(
+      `UPDATE devices SET push_kind = ?, push_token = ?, push_env = ?, push_updated_at = '2026-07-14T00:00:00Z'
+        WHERE device_id = ?`,
+      [kind, token, env, device],
+    );
+  }
+
+  await app.request(MANIFEST_PATH, { method: "PUT", body: DECLARE_ONE });
+  assertEquals((await app.request(BYTE_PATH, { method: "PUT", body: "x" })).status, 201);
+
+  assertEquals(apns.pushed, ["iphone-recipient"], "the iPhone is woken through APNs");
+  assertEquals(fcm.sent, ["android-recipient"], "the Android phone is woken through FCM");
   db.close();
 });
 

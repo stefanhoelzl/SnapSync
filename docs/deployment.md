@@ -96,15 +96,23 @@ The deployment declares the **names**. Values come from the environment of which
 | `APNS_PRIVATE_KEY` | Edge Script env | APNs Auth Key `.p8` **PEM contents** (not a path) |
 | `ATTEST_TOKEN_KEY` | Edge Script env | HMAC key for device tokens and attest challenges |
 | `BUNNY_DATABASE_URL` / `BUNNY_DATABASE_AUTH_TOKEN` | Edge Script env; GH secrets for the `api` deploy job and `nightly-cleanup` | the relational store |
+| `FCM_SERVICE_ACCOUNT_KEY` | Edge Script env | the Firebase service account's **JSON key file contents** (not a path), role *Firebase Cloud Messaging API Admin*. **Optional**: absent, the backend boots and the FCM sender skips every Android token |
 | `SENTRY_DSN` | GH secret, `ios.yml` | build-scope; baked only into distributed iOS builds (§5) |
 
 - The backend validates every declared runtime secret **once at startup**. A missing or blank one throws,
-  and the script does not boot. Then the post-publish probe (§2) fails the deploy. The required set is
+  and the script does not boot. The one exception is `FCM_SERVICE_ACCOUNT_KEY`: without it Android members
+  get no silent wake (their photos arrive on the next opening), and nothing else changes. Then the post-publish probe (§2) fails the deploy. The required set is
   derived from the deployment's declaration, not from a second list in code.
 - ⚠️ **Order matters when you add a secret**: set it in the Edge Script environment **before** merging the
   code that reads it. If you merge first, the next deploy produces a bundle that cannot boot. Removing a
   secret is safe in either order.
 - There is **no admin or bypass credential** anywhere in the backend.
+- FCM: the Firebase project's public values — `firebaseProjectId`, `firebaseApplicationId`, `firebaseApiKey`,
+  `firebaseSenderId` — live in `deployments/components/android.json`. The project id reaches the api (the FCM
+  sender addresses `projects/<id>/messages:send` and sends only to tokens registered under it) and the Android
+  build; the other three reach only the Android build, which starts Firebase from them (there is no
+  `google-services.json` and no google-services plugin). Empty values start no Firebase and send no FCM push.
+  Set the service-account key **before** merging code that depends on it, like any secret.
 - APNs: `apnsKeyId` / `teamId` / `bundleId` live in `deployments/components/apple.json`. Update that
   file if the key is rotated. The APNs topic is derived from the bundle id. The key is a one-time
   provisioning for team `E9Z8BADH58`. Decision record: `changes/archive/2026-07-05-push-notification-infra`.

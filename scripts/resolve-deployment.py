@@ -185,6 +185,28 @@ INVENTORY = [
         associates the event link with. The Android counterpart of `bundleId`, kept its own key because
         the two platforms' identifiers are independent facts that merely coincide today.
     """),
+    Key("firebaseProjectId", [JSON, PROPS], doc="""
+        The Firebase project an Android build's pushes come from (capability `receiving-photos`). ONE value with
+        two readers: the Android app starts Firebase with it, and the backend's FCM sender addresses
+        `projects/<id>/messages:send` with it and sends only to tokens registered under it (an FCM token is
+        bound to the project that issued it; the app registers the project id as its token's `env`). A public
+        fact — it ships in every APK. EMPTY until the project exists: an empty id starts no Firebase on the
+        device and sends no FCM push, so Android members get no wake and their photos arrive on the next
+        opening, which the spec already allows.
+    """),
+    Key("firebaseApplicationId", [PROPS], doc="""
+        The Firebase Android app id (`1:<sender>:android:<hash>`) the app starts Firebase with. Public — it
+        ships in every APK — and rendered here rather than read from a `google-services.json`, as every other
+        deployment value reaches the build. Empty until the Firebase project exists.
+    """),
+    Key("firebaseApiKey", [PROPS], doc="""
+        The Firebase Android API key the app starts Firebase with. Public by design (it ships in every APK and
+        identifies the project; it authorises nothing on its own). Empty until the Firebase project exists.
+    """),
+    Key("firebaseSenderId", [PROPS], doc="""
+        The Firebase project number — FCM's sender id — the app starts Firebase with. Public. Empty until the
+        Firebase project exists.
+    """),
     Key("androidSigningCertDigests", [JSON], doc="""
         The SHA-256 digests of the signing certificates an Android attestation may name, colon-separated
         upper-case hex — the form `assetlinks.json` carries them in, which is served from this same list.
@@ -265,6 +287,14 @@ INVENTORY = [
     Key("apnsPrivateKey", [JSON], required="kind==bunny", env_ref=True, doc="""
         The APNs Auth Key `.p8` PEM CONTENTS (not a path). Do NOT trim it — a PEM's trailing newline is
         significant to parsers; reject it only when absent or whitespace-only.
+    """),
+    Key("fcmServiceAccountKey", [JSON], required="kind==bunny", env_ref=True, doc="""
+        The Firebase service account's JSON KEY FILE CONTENTS (not a path), from which the FCM sender signs the
+        OAuth assertion it exchanges for an access token. A genuine credential: the deployment names the
+        variable, never the value. It SHOULD be set on the Edge Script BEFORE the code reading it is merged,
+        as every credential is (`attestTokenKey`) — but unlike those it is read as OPTIONAL: an absent key does
+        not stop the backend booting; the FCM sender then skips every Android token, so Android members get no
+        wake while iOS is unaffected.
     """),
     Key("attestTokenKey", [JSON], required="kind==bunny", env_ref=True, doc="""
         Signs and verifies the device bearer token. MUST be set on the Edge Script BEFORE the code reading

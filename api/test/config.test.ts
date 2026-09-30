@@ -37,6 +37,10 @@ Deno.test("readConfig: the secrets → Config, with every non-secret from the re
     apnsPrivateKey: PEM,
     // The push topic IS the bundle id, derived rather than restated.
     apnsTopic: D.bundleId,
+    // The Firebase project FCM pushes go through: the resolved public value.
+    fcmProjectId: D.firebaseProjectId,
+    // Optional: absent from SECRETS, and the backend still boots — Android members just get no wake.
+    fcmServiceAccountKey: "",
     attestTokenKey: "t",
     databaseUrl: "libsql://example.invalid",
     databaseToken: "dbt",
@@ -164,6 +168,16 @@ Deno.test("readConfig: an empty environment names EVERY missing secret", () => {
 
 Deno.test("readConfig: APNs private key is preserved verbatim (trailing newline not trimmed)", () => {
   assertEquals(readConfig({ ...SECRETS, APNS_PRIVATE_KEY: PEM }).apnsPrivateKey, PEM);
+});
+
+Deno.test("readConfig: the FCM service-account key is read verbatim when set", () => {
+  const key = '{"client_email":"sender@example.iam","private_key":"k"}\n';
+  assertEquals(readConfig({ ...SECRETS, FCM_SERVICE_ACCOUNT_KEY: key }).fcmServiceAccountKey, key);
+});
+
+Deno.test("readConfig: an absent FCM key does not stop the backend booting", () => {
+  // Unlike every other credential: without it the FCM sender skips Android tokens, and iOS is unaffected.
+  assertEquals(readConfig(SECRETS).fcmServiceAccountKey, "");
 });
 
 // THE RESOLVED DEPLOYMENT WINS. The regression this pins is real: the dead Edge Script carried a stale

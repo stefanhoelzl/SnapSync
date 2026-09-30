@@ -35,6 +35,8 @@ export const CONFIG = {
   apnsTeamId: "E9Z8BADH58",
   apnsPrivateKey: "-----BEGIN PRIVATE KEY-----\nMIG...\n-----END PRIVATE KEY-----\n",
   apnsTopic: "app.snapsync",
+  fcmProjectId: "",
+  fcmServiceAccountKey: "",
   attestTokenKey: "test-attest-token-key",
   appAttestRootCa: "",
   androidPackageName: "app.snapsync",
@@ -205,6 +207,53 @@ export async function apnsConfig() {
   for (const b of pkcs8) bin += String.fromCharCode(b);
   const pem = `-----BEGIN PRIVATE KEY-----\n${btoa(bin)}\n-----END PRIVATE KEY-----\n`;
   return { ...CONFIG, apnsPrivateKey: pem };
+}
+
+/**
+ * [config] able to send through FCM for the Firebase project `test-project`: a real RSA service-account key, so the
+ * sender really signs its token-exchange assertion.
+ */
+export async function withFcm<C extends object>(
+  config: C,
+): Promise<C & { fcmProjectId: string; fcmServiceAccountKey: string }> {
+  const kp = await crypto.subtle.generateKey(
+    {
+      name: "RSASSA-PKCS1-v1_5",
+      modulusLength: 2048,
+      publicExponent: new Uint8Array([1, 0, 1]),
+      hash: "SHA-256",
+    },
+    true,
+    ["sign", "verify"],
+  );
+  const pkcs8 = new Uint8Array(await crypto.subtle.exportKey("pkcs8", kp.privateKey));
+  let bin = "";
+  for (const b of pkcs8) bin += String.fromCharCode(b);
+  const pem = `-----BEGIN PRIVATE KEY-----\n${btoa(bin)}\n-----END PRIVATE KEY-----\n`;
+  const key = JSON.stringify({
+    client_email: "sender@test-project.iam.gserviceaccount.com",
+    private_key: pem,
+  });
+  return { ...config, fcmProjectId: "test-project", fcmServiceAccountKey: key };
+}
+
+/**
+ * [inner] with Google's two FCM endpoints faked in front of it: the token exchange answers an access token, and each
+ * FCM send is recorded (its device token) and answered 200.
+ */
+export function fcmRecorder(inner: FetchLike) {
+  const sent: string[] = [];
+  const fetchImpl: FetchLike = (url, init) => {
+    if (url === "https://oauth2.googleapis.com/token") {
+      return Promise.resolve(Response.json({ access_token: "ACCESS", expires_in: 3599 }));
+    }
+    if (url.startsWith("https://fcm.googleapis.com/")) {
+      sent.push(JSON.parse(init?.body as string).message.token);
+      return Promise.resolve(new Response("{}", { status: 200 }));
+    }
+    return inner(url, init);
+  };
+  return { sent, fetchImpl };
 }
 
 /** An APNs-shaped fetch fake: records the pushes (and their headers) and answers each with `status`. */

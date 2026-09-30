@@ -170,7 +170,8 @@ import {
   validateUUID,
 } from "./validators.ts";
 import { BUILD_SHA, type Config } from "./config.ts";
-import { createApnsSender, type PushToken } from "./apns.ts";
+import type { PushToken } from "./apns.ts";
+import { createPushSender } from "./push.ts";
 import {
   bytesToB64,
   challengeIsValid,
@@ -592,10 +593,10 @@ export function createApp(
     service: "s3",
   });
 
-  // The APNs provider sender (capability `receiving-photos`), memoizing its ES256 provider JWT across
-  // sends. Used by the notify fan-out and the expiry reap's member notification. No production caller
-  // is wired to notify yet (the trigger is a deferred use case).
-  const apns = createApnsSender(config, fetchImpl);
+  // The silent-wake sender (capability `receiving-photos`): each token through the push service its kind names —
+  // APNs for an iPhone, FCM for an Android phone — each memoizing its own credential across sends. Every wake goes
+  // through it: the notify fan-out and the close.
+  const pushSender = createPushSender(config, fetchImpl);
 
   // ── THE EVENT-LIMITS GATE (capability `event-lifetime`) ───────────────────────────────────────────
   //
@@ -1737,7 +1738,7 @@ export function createApp(
     // Best-effort per-member token read (skips members without a registered token), then fan out.
     const tokens = (await Promise.all(memberIds.map((d) => readPushToken(db, d))))
       .filter((t): t is PushToken => t !== null);
-    const outcomes = await apns.sendSilent(tokens, eventId);
+    const outcomes = await pushSender.sendSilent(tokens, eventId);
     const sent = outcomes.filter((o) => o.status === "sent").length;
     console.info(
       `notify: event ${eventId} — ${memberIds.length} members, ${tokens.length} with a token, ${sent} pushed`,
@@ -1767,7 +1768,7 @@ export function createApp(
       const tokens = await pushTokensForEvent(db, eventId, publisherId);
       if (tokens.length === 0) return;
       const outcomes = await Promise.race([
-        apns.sendSilent(tokens, eventId),
+        pushSender.sendSilent(tokens, eventId),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error("fan-out timed out")), FANOUT_TIMEOUT_MS)
         ),
