@@ -776,10 +776,10 @@ class UploadCycle(
         }
 
         /**
-         * Definitively not joined. `SKIPPED`, not `COMPLETED`: with no membership there is nothing to wake for,
-         * and the tail runner re-arms the heartbeat on anything but `SKIPPED` — so an unjoined device whose triggers
-         * now reach the app engine would carry a self-re-submitting `BGProcessingTask` for no event. The join
-         * is what arms it (capability `background-upload`, "No membership, no arm").
+         * Definitively not joined. `SKIPPED`, not `COMPLETED`: with no membership there is nothing to upload for. The
+         * heartbeat's re-arm reads membership itself, not this answer, so an unjoined device carries no heartbeat
+         * either way (capability `background-upload`, "No membership, no arm"; decision record
+         * `changes/timely-background-receiving`, D1).
          */
         data object NotJoined : CycleOutcome {
             override val result get() = CycleResult.SKIPPED

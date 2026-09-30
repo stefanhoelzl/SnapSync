@@ -54,7 +54,7 @@ class AppTail internal constructor(
      * `manage-membership`), run once the tail has ended, outside it — it may leave the event, and a leave must never
      * run inside the tail it would stop.
      */
-    private val finish: suspend () -> Unit,
+    private val finish: suspend (TailTrigger) -> Unit,
 ) {
     private val foreground = AtomicBoolean(false)
 
@@ -121,7 +121,7 @@ class AppTail internal constructor(
     internal suspend fun heartbeatThenFinish(id: String) {
         runCatchingCancellable { runner.request(TailTrigger.HEARTBEAT) }
             .onFailure { services.log.w(it) { "runWake($id): its tail failed" } }
-        runCatchingCancellable { finish() }
+        runCatchingCancellable { finish(TailTrigger.HEARTBEAT) }
             .onFailure {
                 services.log.w(it) { "runWake($id): the end-of-wake step failed; the next wake runs it again" }
             }

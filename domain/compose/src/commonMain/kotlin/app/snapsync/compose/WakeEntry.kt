@@ -12,9 +12,11 @@ import kotlinx.coroutines.launch
  * (`SnapSyncRoot.onLaunch` forces it: iOS requires the `BGTask` launch handler before the app finishes launching).
  *
  * Every wake the app asks for is the heartbeat's (capability `background-upload`, "The tail runner reimplements the OS
- * scheduler"): whichever [WakeId] fires, its work is the full tail. It has no own work beyond the prelude — the wake is
- * a grant of time — so its completion is held until that tail ends, or released at once on the operating system's
- * expiry ([Completion.onExpired]), which also stops the tail. The re-arm is the tail runner's.
+ * scheduler"): whichever [WakeId] fires, busy or idle, its work is the full tail, then the end-of-wake step — which asks
+ * the event for others' photos and, after its end, for its state, each at most once an hour (decision record
+ * `changes/timely-background-receiving`, D4–D5). It has no own work beyond the prelude — the wake is a grant of time — so
+ * its completion is held until that tail ends, or released at once on the operating system's expiry
+ * ([Completion.onExpired]), which also stops the tail. The re-arm is the tail runner's.
  */
 internal fun wakeHandlersOf(core: AppCore): WakeHandlers =
     WakeHandlers(onWake = { id, completion -> core.onWake(id, completion) })

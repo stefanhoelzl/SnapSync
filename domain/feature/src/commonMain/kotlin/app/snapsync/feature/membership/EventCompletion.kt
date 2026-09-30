@@ -1,5 +1,7 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.services.wake.EventChecks
+import app.snapsync.services.wake.EventCheck
 import app.snapsync.model.deviceManifestFromJson
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.services.backend.EventDirectory
@@ -23,7 +25,10 @@ import co.touchlab.kermit.Logger
  *    upload cycle marks it once the range has ended, but under a partial grant the tail itself publishes nothing, so
  *    this is what makes sure every device eventually says "settled".
  * 4. **Reads the event's state** ([EventDirectory]) and folds it through the one [MembershipRefresh] rule: a
- *    completed event ends the membership there, and a closed one is recorded.
+ *    completed event ends the membership there, and a closed one is recorded. A **bounded** step — a wake that is not
+ *    a push, an opening or a join — reads it at most once an hour per event ([EventChecks]; decision record
+ *    `changes/timely-background-receiving`, D5): the close is announced by a push, so this read only covers a lost one,
+ *    and a member that leaves a closed event up to an hour late changes nothing anyone can see.
  * 5. **Leaves once the closed event has nothing left for this device**: every photo it shares has reached the event
  *    (the ledger holds no unfinished upload of an asset its final manifest declares) and every photo of the others it receives
  *    is in its library or was deleted there ([everythingReceived]). A photo that repeatedly fails to arrive keeps
@@ -50,11 +55,16 @@ class EventCompletion(
      * download controller's answer (feature-blindness).
      */
     private val everythingReceived: suspend (eventId: String) -> Boolean,
+    /** When a wake last read the event's state — every read stamps it; a [finish] that is bounded honours it. */
+    private val checks: EventChecks,
     private val log: Logger = Logger.withTag("EventCompletion"),
 ) {
 
-    /** Run the end-of-wake step — see the class. Never throws but for cancellation. */
-    suspend fun finish(): CompletionOutcome {
+    /**
+     * Run the end-of-wake step — see the class. [bounded] for a wake that is not a push, an opening or a join: it reads
+     * the event's state only when none was read within the hour. Never throws but for cancellation.
+     */
+    suspend fun finish(bounded: Boolean = false): CompletionOutcome {
         runCatchingCancellable { pendingLeaves.deliverAll() }.onFailure { log.w(it) { "pending leaves not delivered" } }
         val current = config.config.value ?: return CompletionOutcome.NOT_JOINED
         if (!config.hasEnded(current)) return CompletionOutcome.NOT_ENDED
@@ -64,6 +74,11 @@ class EventCompletion(
             runCatchingCancellable { publishFinal() }.onFailure { log.w(it) { "settling the share failed; next wake retries" } }
         }
 
+        if (bounded && !checks.due(EventCheck.CLOSE, eventId)) {
+            log.i { "the event's state was read within the hour — this wake reads none" }
+            return CompletionOutcome.WAITING
+        }
+        checks.stamp(EventCheck.CLOSE, eventId)
         when (refresh.refresh(eventId, directory.fetch(eventId).toJoinLoad())) {
             RefreshOutcome.COMPLETED, RefreshOutcome.ABSENT -> return CompletionOutcome.LEFT
             RefreshOutcome.INCONCLUSIVE -> return CompletionOutcome.WAITING

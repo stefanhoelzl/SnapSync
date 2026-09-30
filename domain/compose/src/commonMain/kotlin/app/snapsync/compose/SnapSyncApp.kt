@@ -45,6 +45,7 @@ import app.snapsync.feature.upload.AppUploadMechanism
 import app.snapsync.feature.upload.PushTailGuard
 import app.snapsync.feature.upload.TailTrigger
 import app.snapsync.services.upload.ExtensionRegistration
+import app.snapsync.services.wake.EventChecks
 import app.snapsync.feature.upload.CadenceFacts
 import app.snapsync.services.upload.OsDrivenRegistration
 import app.snapsync.ports.ExtensionRegistry
@@ -396,6 +397,7 @@ class AppCore internal constructor(
             myDeviceId = services.deviceIdentity.deviceId(),
             // Three-valued, no fallback (capability `receiving-photos`): no membership → `null` → no arm.
             downloadEnabled = { services.config.config.value?.direction?.includesDownload },
+            checks = services.eventChecks,
             entryContext = process.entryContext,
         )
     }
@@ -463,10 +465,10 @@ class AppCore internal constructor(
      * answer says it is: whether registering is allowed says nothing about whether it happened.
      */
     val cadenceFacts: () -> CadenceFacts = {
-        val config = ports.config.config.value
+        val config = services.config.config.value
         CadenceFacts(
             joined = config != null,
-            ended = config != null && ports.config.hasEnded(config),
+            ended = config != null && services.config.hasEnded(config),
             shares = config?.direction?.includesUpload == true,
             fullGrant = ports.photoAccess.permission.value == GalleryAccess.GRANTED,
             osUploaderConfirmed = extensionRegistrableNow() && extensionRegistration.isRegistered() == true,
@@ -803,8 +805,23 @@ class AppCore internal constructor(
             mayCreate = appMayCreate,
             cadenceFacts = cadenceFacts,
             refreshCounts = { ledgerCounts.refresh() },
-            finish = { membershipEnd.completion.finish() },
+            finish = ::endOfWake,
         )
+    }
+
+    /**
+     * The end of every wake whose tail covered the whole pass (capabilities `receiving-photos` and `manage-membership`;
+     * decision record `changes/timely-background-receiving`, D4–D5): first the **bounded photo check** — the union read,
+     * at most once an hour per event, so others' photos arrive when no push does — then the event-completion step,
+     * whose read of the event's state is bounded the same way unless [trigger] is one that asks the event anyway: a
+     * push (the close is announced by one), an opening, a join.
+     */
+    private suspend fun endOfWake(trigger: TailTrigger) {
+        services.config.config.value?.eventId?.let { eventId ->
+            runCatchingCancellable { downloadController.reconcileIfDue(eventId) }
+                .onFailure { services.log.w(it) { "the bounded photo check failed; the next wake runs it again" } }
+        }
+        membershipEnd.completion.finish(bounded = trigger !in ASKS_THE_EVENT)
     }
 
     val provisionFlow: Provision by lazy {
@@ -1207,3 +1224,6 @@ fun snapSyncApp(
 private fun Logger.recordingRefusal(name: String, handoff: Handoff): Handoff = handoff.also {
     if (it is Handoff.Refused) e { "$name: nothing was handed off — ${it.reason}" }
 }
+
+/** The triggers whose own reason is to ask the event now — their end-of-wake read of its state is not bounded. */
+private val ASKS_THE_EVENT = setOf(TailTrigger.SILENT_PUSH, TailTrigger.FOREGROUND, TailTrigger.ARM)

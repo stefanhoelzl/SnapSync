@@ -16,6 +16,8 @@ import app.snapsync.model.PlannedAsset
 import app.snapsync.model.PlannedResource
 import app.snapsync.model.EntryScope
 import app.snapsync.services.staging.StagingService
+import app.snapsync.services.wake.EventCheck
+import app.snapsync.services.wake.EventChecks
 import app.snapsync.model.StagedResource
 import app.snapsync.model.UnconfirmedImport
 import app.snapsync.model.invocation
@@ -64,6 +66,10 @@ class DownloadController(
     // callers, not of the gate. The default is gone for the same reason the cutoff and the reconcile have
     // none: a permissive default on a safety gate is how a caller ships without one.
     private val downloadEnabled: () -> Boolean?,
+    // When a background wake last read the union (decision record `changes/timely-background-receiving`, D4): every
+    // read stamps it, and [reconcileIfDue] reads the union only when an hour has passed. Required: the bound is what
+    // keeps a busy heartbeat from reading a whole union per wake.
+    private val checks: EventChecks,
     private val log: Logger = Logger.withTag("DownloadController"),
     private val entryContext: EntryScope = EntryScope.None,
 ) {
@@ -160,6 +166,23 @@ class DownloadController(
      * tail's, running concurrently with it at foreground, which the single-flight tail exists to rule out (decision
      * record `changes/own-work-per-wake`, D1).
      */
+    /**
+     * [reconcile], unless the union was read within the hour (capability `receiving-photos`, "New photos are announced
+     * by a silent wake, and never only by it"; decision record `changes/timely-background-receiving`, D4): what a
+     * background wake runs, so others' photos arrive when no push does, at no more than one union read per hour per
+     * event. A push, an opening and a join call [reconcile] itself — each has a reason to read now.
+     */
+    suspend fun reconcileIfDue(eventId: String) {
+        if (!checks.due(EventCheck.PHOTOS, eventId)) {
+            log.i { "union read within the hour — this wake reads none" }
+            return
+        }
+        reconcile(eventId)
+    }
+
+    /** Forget when [eventId]'s union was last read — a leave or a reset, so a re-join reads at once. */
+    fun forgetChecks(eventId: String) = checks.clear(eventId)
+
     suspend fun reconcile(eventId: String) = log.invocation(entryContext, "reconcile", params = "eventId=$eventId") {
         // `!= true` covers BOTH non-answers: an upload-only membership (`false`) and no membership at all
         // (`null`). Neither enables the arm, and neither is inferred from the other.
@@ -168,6 +191,8 @@ class DownloadController(
             log.i { "reconcile skipped — this membership does not download" }
             return@invocation
         }
+        // Every read counts, a failing one too: a backend that fails is asked no more often than one that answers.
+        checks.stamp(EventCheck.PHOTOS, eventId)
         // A failed union fetch costs this wake its DISCOVERY, not its imports: the tail that follows the wake's own
         // work drains what is staged whatever the union answered, because the drain reads only the store and the
         // bytes already on disk.

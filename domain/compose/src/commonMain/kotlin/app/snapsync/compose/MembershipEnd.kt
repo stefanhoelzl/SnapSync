@@ -33,6 +33,7 @@ class MembershipEnd internal constructor(private val core: AppCore) {
             // a partial grant it reads the selection snapshot, never the library (capability `photo-access`).
             publishFinal = { core.appUploader.walkAndPublish { false } },
             everythingReceived = { eventId -> core.downloadController.everythingReceived(eventId) },
+            checks = core.services.eventChecks,
             log = core.services.log,
         )
     }
@@ -43,6 +44,8 @@ class MembershipEnd internal constructor(private val core: AppCore) {
      * sends it again — a finished event is deleted once everyone has LEFT, so a lost leave is no longer harmless.
      */
     suspend fun notifyLeave(eventId: String) {
+        // A re-join asks the event at once: its bounded background checks start over.
+        core.services.eventChecks.clear(eventId)
         pendingLeaves.record(eventId)
         val outstanding = pendingLeaves.deliverAll()
         if (outstanding > 0) {

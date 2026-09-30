@@ -1,5 +1,6 @@
 package app.snapsync.compose
 
+import app.snapsync.services.wake.EventChecks
 import app.snapsync.model.DeviceIdentityRole
 import app.snapsync.ports.AttestStore
 import app.snapsync.services.album.AlbumMapService
@@ -73,6 +74,13 @@ internal class AppServices(val ports: AppPorts, val process: ProcessServices) {
 
     /** The event album's leave-surviving `eventId → album` map (capability `event-album`). */
     val albumMapStore: AlbumMapService by lazy { AlbumMapService(ports.preferences, ports.secureStore) }
+
+    /**
+     * When a background wake last asked the event for its photos and its state (capability `receiving-photos`;
+     * decision record `changes/timely-background-receiving`, D4–D5) — over the shared preferences, so it outlives the
+     * process a wake usually is.
+     */
+    val eventChecks: EventChecks by lazy { EventChecks(ports.preferences, now = process.clock::now) }
 
     /**
      * The OS-delivered push token (capability `receiving-photos`), paired with the push service's kind (its adapter's)

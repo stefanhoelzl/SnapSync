@@ -1,0 +1,86 @@
+package app.snapsync.integration
+
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonPrimitive
+import kotlin.test.Test
+import kotlin.test.assertEquals
+
+/**
+ * **A background wake asks the event at most once an hour** (capability `receiving-photos`, "New photos are announced
+ * by a silent wake, and never only by it"; decision record `changes/timely-background-receiving`, D4–D5), counted at
+ * the backend: a heartbeat reads the union when none was read within the hour, and — after the event's end — its
+ * state the same way; a push reads both whenever it comes, and resets the hour.
+ */
+class EventChecksIntegrationTest {
+
+    @Test
+    fun heartbeats_read_the_union_at_most_once_an_hour() = rigTest {
+        val event = createAndJoin()
+        val joined = unionReads(event)
+
+        device("clock/advance", "to" to T0)
+        heartbeat()
+        assertEquals(joined + 1, unionReads(event), "the first wake after the join's read asks")
+
+        device("clock/advance", "to" to T0_PLUS_10_MIN)
+        heartbeat()
+        assertEquals(joined + 1, unionReads(event), "ten minutes later it does not")
+
+        device("clock/advance", "to" to T0_PLUS_1_H)
+        heartbeat()
+        assertEquals(joined + 2, unionReads(event), "an hour later it asks again")
+    }
+
+    @Test
+    fun a_push_reads_the_union_whenever_it_comes_and_resets_the_hour() = rigTest {
+        val event = createAndJoin()
+        device("clock/advance", "to" to T0)
+        heartbeat()
+        val before = unionReads(event)
+
+        device("clock/advance", "to" to T0_PLUS_10_MIN)
+        os("app", "onSilentPush", event)
+        eventually(read = { unionReads(event) }) { it == before + 1 }
+
+        device("clock/advance", "to" to T0_PLUS_20_MIN)
+        heartbeat()
+        assertEquals(before + 1, unionReads(event), "the wake after a push reads nothing")
+    }
+
+    @Test
+    fun after_the_end_heartbeats_read_the_event_at_most_once_an_hour_and_a_push_always() = rigTest {
+        val event = createAndJoin(startsAt = SHORT_START, endsAt = SHORT_END)
+        device("clock/advance", "to" to AFTER_THE_END)
+        heartbeat()
+        val first = eventReads(event)
+
+        device("clock/advance", "to" to AFTER_THE_END_PLUS_10_MIN)
+        heartbeat()
+        assertEquals(first, eventReads(event), "a wake within the hour reads no state")
+
+        os("app", "onSilentPush", event)
+        eventually<Int>(read = { eventReads(event) }) { it == first + 1 }
+    }
+
+    private suspend fun Rig.heartbeat() {
+        os("app", "onBackgroundTask", HEARTBEAT_TASK)
+    }
+
+    private suspend fun Rig.unionReads(event: String): Int =
+        deviceJson("backend/reads", "event" to event).getValue("union").jsonPrimitive.int
+
+    private suspend fun Rig.eventReads(event: String): Int =
+        deviceJson("backend/reads", "event" to event).getValue("event-details").jsonPrimitive.int
+
+    private companion object {
+        const val T0 = "2026-06-10T12:00:00Z"
+        const val T0_PLUS_10_MIN = "2026-06-10T12:10:00Z"
+        const val T0_PLUS_20_MIN = "2026-06-10T12:20:00Z"
+        const val T0_PLUS_1_H = "2026-06-10T13:00:00Z"
+
+        const val SHORT_START = "2026-05-15T00:00:00"
+        const val SHORT_END = "2026-05-20T00:00:00"
+        const val AFTER_THE_END = "2026-05-22T00:00:00Z"
+        const val AFTER_THE_END_PLUS_10_MIN = "2026-05-22T00:10:00Z"
+    }
+}

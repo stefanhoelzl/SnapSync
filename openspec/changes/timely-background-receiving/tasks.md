@@ -28,12 +28,12 @@
 
 ## 5. The bounded photo and close checks (D4, D5)
 
-- [ ] 5.1 Add the per-event last-checked service over `Preferences` (`reconcile.lastAt.<eventId>`, `close.lastAt.<eventId>`; every attempt stamps; a future time is due; clear on leave and reset) in `:domain:services`; verify with service tests over the `Preferences` mock
-- [ ] 5.2 Add `DownloadController.reconcileIfDue(eventId)` and stamp every unthrottled `reconcile` too; run `reconcileIfDue` in the end-of-wake step of every full-scope tail; verify with `:test:feature` tests (due → one union read; within the hour → none; upload-only → none; failed read still stamps)
-- [ ] 5.3 Put `EventCompletion.finish`'s event read behind the close bound, bypassed after `SILENT_PUSH`, `FOREGROUND` and `ARM` (the trigger reaches the step through `WakeHold.finishAfter` and `heartbeatThenFinish`); verify with `EventCompletion` tests (throttled wake within the hour → no read; push → read; foreground → read)
-- [ ] 5.4 Expose union and event read counts on the backend mock's operator face and the rig (`backend/requests?route=…`) if they are not readable yet; verify through `RigClient`
-- [ ] 5.5 Add the bound scenarios to `:test:integration`: two heartbeat wakes 10 min apart → 1 union read, `clock/advance` +1 h → 2; a silent push between wakes → the push reads, the next wake does not; after the end, two wakes within the hour → 1 event read, a close push → one more; verify they pass on the JVM host
-- [ ] 5.6 Update the KDoc of `EventCompletion`, `WakeEntry`, `Heartbeat` and `TailRunner` (the "download backstop went" and "no periodic wake" wording) to the new rule; verify by grep that no KDoc still says the app has no timed wake for a member who does not upload
+- [x] 5.1 Add the per-event last-checked service over `Preferences` (`reconcile.lastAt.<eventId>`, `close.lastAt.<eventId>`; every attempt stamps; a future time is due; clear on leave and reset) in `:domain:services`; verify with service tests over the `Preferences` mock
+- [x] 5.2 Add `DownloadController.reconcileIfDue(eventId)` and stamp every unthrottled `reconcile` too; run `reconcileIfDue` in the end-of-wake step of every full-scope tail; verify with `:test:feature` tests (due → one union read; within the hour → none; upload-only → none; failed read still stamps)
+- [x] 5.3 Put `EventCompletion.finish`'s event read behind the close bound, bypassed after `SILENT_PUSH`, `FOREGROUND` and `ARM` (the trigger reaches the step through `WakeHold.finishAfter` and `heartbeatThenFinish`); verify with `EventCompletion` tests (throttled wake within the hour → no read; push → read; foreground → read)
+- [x] 5.4 Expose union and event read counts on the backend mock's operator face and the rig (`backend/requests?route=…`) if they are not readable yet; verify through `RigClient`
+- [x] 5.5 Add the bound scenarios to `:test:integration`: two heartbeat wakes 10 min apart → 1 union read, `clock/advance` +1 h → 2; a silent push between wakes → the push reads, the next wake does not; after the end, two wakes within the hour → 1 event read, a close push → one more; verify they pass on the JVM host
+- [x] 5.6 Update the KDoc of `EventCompletion`, `WakeEntry`, `Heartbeat` and `TailRunner` (the "download backstop went" and "no periodic wake" wording) to the new rule; verify by grep that no KDoc still says the app has no timed wake for a member who does not upload
 
 ## 6. Force-stop on Android
 

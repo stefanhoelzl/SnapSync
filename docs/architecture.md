@@ -538,7 +538,9 @@ The generated snapshot is `api/schema.sql` (section "Database" below).
   event refuses join and rename `410 {error:"closed"}`, and a manifest whose asset set differs from
   the stored one `409 {error:"closed"}` (the identical set is a `200` no-op, and the batch itself is
   gated on the close). Each device then leaves on its own once it holds everything
-  (`EventCompletion`, run after every full-scope tail), and a leave is recorded before it is sent
+  (`EventCompletion`, run after every full-scope tail — its read of the event's state at most once an hour
+  per event from a wake that is not a push, an opening or a join, `EventChecks`, just as the same step's union
+  read is), and a leave is recorded before it is sent
   (`PendingLeaves`) and re-sent by every wake until the backend confirms it — which is what makes
   EMPTY dependable. The byte route stamps `last_landed_at`; the **clock** is
   `max(ends_at, last_landed_at) + 3 days`.
