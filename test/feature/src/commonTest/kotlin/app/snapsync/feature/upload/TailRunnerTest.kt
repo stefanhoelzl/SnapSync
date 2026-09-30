@@ -1,6 +1,7 @@
 package app.snapsync.feature.upload
 
 import app.snapsync.model.ScheduleResult
+import app.snapsync.model.WakeCadence
 import app.snapsync.model.WakeId
 import app.snapsync.model.WakeTrigger
 import app.snapsync.ports.Wake
@@ -36,13 +37,15 @@ class TailRunnerTest {
      * heartbeat service. By default the platform has no library-change wake — iOS; [watchesLibrary] is Android.
      */
     private class Scheduler(private val watchesLibrary: Boolean = false) {
-        var scheduled = 0
+        /** The cadence of every heartbeat the re-arm requested, in order. */
+        val cadences = mutableListOf<WakeCadence>()
+        val scheduled: Int get() = cadences.size
         var watched = 0
         val heartbeat = Heartbeat(
             object : Wake {
                 override fun listen(handlers: WakeHandlers) = Unit
                 override fun schedule(id: WakeId, trigger: WakeTrigger): ScheduleResult = when (id) {
-                    WakeId.Heartbeat -> ScheduleResult.Scheduled.also { scheduled++ }
+                    WakeId.Heartbeat -> ScheduleResult.Scheduled.also { cadences += (trigger as WakeTrigger.After).cadence }
                     WakeId.LibraryChanged ->
                         if (watchesLibrary) ScheduleResult.Scheduled.also { watched++ } else ScheduleResult.Unsupported
                 }
@@ -70,8 +73,11 @@ class TailRunnerTest {
         var mayCreate = true
         var foreground = false
 
-        /** Whether staged downloads are left for a later import — what the re-arm asks after a declining tail. */
+        /** Whether staged downloads are left for a later import — work remaining, to the re-arm. */
         var importsLeft = false
+
+        /** What the device is, to the re-arm: by default a joined full-grant member of an open event, iOS-like. */
+        var facts = JOINED
         var active = 0
         var maxActive = 0
 
@@ -120,6 +126,7 @@ class TailRunnerTest {
         refreshStatus = { units.refreshes++ },
         heartbeat = scheduler.heartbeat,
         importsRemain = { units.importsLeft },
+        cadenceFacts = { units.facts },
         leftover = { "" },
     )
 
@@ -227,8 +234,9 @@ class TailRunnerTest {
 
     @Test
     fun `a joiner applies its own re-arm to the tail’s outcome`() = runTest {
-        for ((result, expected) in listOf(CycleResult.PROCESSING to 1, CycleResult.COMPLETED to 0)) {
-            val units = Units().apply { topUpGate = CompletableDeferred(); topUp = { result } }
+        // After the event's end a caught-up device idles; work left keeps it busy.
+        for ((result, expected) in listOf(CycleResult.PROCESSING to WakeCadence.BUSY, CycleResult.COMPLETED to WakeCadence.IDLE)) {
+            val units = Units().apply { topUpGate = CompletableDeferred(); topUp = { result }; facts = JOINED.copy(ended = true) }
             val scheduler = Scheduler()
             val tail = runner(units, scheduler)
             val completion = async { tail.request(TailTrigger.UPLOAD_COMPLETED) }
@@ -239,12 +247,12 @@ class TailRunnerTest {
             units.topUpGate = null
             completion.await()
             relaunch.await()
-            assertEquals(expected, scheduler.scheduled, "a relaunch that joined re-arms only on remaining work ($result)")
+            assertEquals(listOf(expected), scheduler.cadences, "the relaunch re-arms once, the completion not at all ($result)")
         }
     }
 
     @Test
-    fun `a joiner against a declining membership arms nothing`() = runTest {
+    fun `a joiner against a declining membership keeps the idle heartbeat`() = runTest {
         val units = Units().apply { topUpGate = CompletableDeferred(); topUp = { CycleResult.SKIPPED } }
         units.walk = { WalkOutcome.Walked(CycleResult.SKIPPED, addedRows = false) }
         val scheduler = Scheduler()
@@ -257,7 +265,10 @@ class TailRunnerTest {
         units.topUpGate = null
         assertEquals(CycleResult.SKIPPED, heartbeat.await()?.result)
         arm.await()
-        assertEquals(0, scheduler.scheduled, "SKIPPED arms nothing, whatever the triggers' own policies")
+        assertEquals(
+            listOf(WakeCadence.IDLE, WakeCadence.IDLE), scheduler.cadences,
+            "a joined membership that contributes nothing still looks in — for others' photos and the close",
+        )
     }
 
     // ---- staged imports left over (declared in phase 11f) ------------------------------------------------
@@ -272,7 +283,7 @@ class TailRunnerTest {
         }
         val scheduler = Scheduler()
         runner(units, scheduler).request(TailTrigger.SILENT_PUSH)
-        assertEquals(1, scheduler.scheduled, "the imports still waiting are work remaining")
+        assertEquals(listOf(WakeCadence.BUSY), scheduler.cadences, "the imports still waiting are work remaining")
     }
 
     @Test
@@ -280,7 +291,7 @@ class TailRunnerTest {
         val units = Units().apply { importsLeft = true }
         val scheduler = Scheduler()
         runner(units, scheduler).request(TailTrigger.DOWNLOAD_SESSION_EVENTS)
-        assertEquals(1, scheduler.scheduled, "a relaunch re-arms on remaining work, and imports are work")
+        assertEquals(listOf(WakeCadence.BUSY), scheduler.cadences, "imports are work, so the heartbeat stays busy")
     }
 
     @Test
@@ -294,14 +305,17 @@ class TailRunnerTest {
     }
 
     @Test
-    fun `a declining tail with nothing left to import arms nothing`() = runTest {
-        val units = Units().apply {
-            topUp = { CycleResult.SKIPPED }
-            walk = { WalkOutcome.Walked(CycleResult.SKIPPED, addedRows = false) }
+    fun `a declining tail with nothing left to import idles while joined and arms nothing once not`() = runTest {
+        for ((facts, expected) in listOf(JOINED to listOf(WakeCadence.IDLE), NOT_JOINED to emptyList())) {
+            val units = Units().apply {
+                topUp = { CycleResult.SKIPPED }
+                walk = { WalkOutcome.Walked(CycleResult.SKIPPED, addedRows = false) }
+                this.facts = facts
+            }
+            val scheduler = Scheduler()
+            runner(units, scheduler).request(TailTrigger.HEARTBEAT)
+            assertEquals(expected, scheduler.cadences, "joined=${facts.joined}")
         }
-        val scheduler = Scheduler()
-        runner(units, scheduler).request(TailTrigger.HEARTBEAT)
-        assertEquals(0, scheduler.scheduled)
     }
 
     // ---- the stop ---------------------------------------------------------------------------------------
@@ -370,7 +384,7 @@ class TailRunnerTest {
         tail.stop("test expiry")
         units.walkGate!!.complete(Unit)
         assertEquals(TailOutcome(CycleResult.SKIPPED, cut = true), heartbeat.await())
-        assertEquals(0, scheduler.scheduled, "SKIPPED never re-arms, stopped or not")
+        assertEquals(listOf(WakeCadence.IDLE), scheduler.cadences, "a decline stands, stopped or not: joined, it idles")
     }
 
     @Test
@@ -415,12 +429,8 @@ class TailRunnerTest {
     // ---- re-arm ---------------------------------------------------------------------------------------------
 
     @Test
-    fun `each trigger re-arms per its row of the table`() = runTest {
-        val always = setOf(
-            TailTrigger.ARM, TailTrigger.FOREGROUND, TailTrigger.SILENT_PUSH, TailTrigger.SELECTION_CHANGE,
-            TailTrigger.HEARTBEAT,
-        )
-        val whenWorkRemains = setOf(TailTrigger.UPLOAD_SESSION_EVENTS, TailTrigger.DOWNLOAD_SESSION_EVENTS)
+    fun `every trigger that re-arms applies the cadence rule, and the completions arm nothing`() = runTest {
+        // iOS-like: no library-change wake, a full grant, the OS uploader not confirmed, an open event.
         for (trigger in TailTrigger.entries) {
             for (result in CycleResult.all) {
                 val units = Units().apply {
@@ -430,23 +440,20 @@ class TailRunnerTest {
                 val scheduler = Scheduler()
                 runner(units, scheduler).request(trigger)
                 val expected = when {
-                    result == CycleResult.SKIPPED -> 0
-                    trigger in always -> 1
-                    trigger in whenWorkRemains && (result == CycleResult.PROCESSING || result is CycleResult.Paused) -> 1
-                    else -> 0
+                    !trigger.rearms -> emptyList()
+                    // Declined: the member contributes nothing, so nothing of its own is left to notice.
+                    result == CycleResult.SKIPPED -> listOf(WakeCadence.IDLE)
+                    // Contributing under a full grant with no library-change wake: the looking IS the noticing.
+                    else -> listOf(WakeCadence.BUSY)
                 }
-                assertEquals(expected, scheduler.scheduled, "$trigger after $result")
+                assertEquals(expected, scheduler.cadences, "$trigger after $result")
             }
         }
     }
 
     @Test
-    fun `where the library is watched the heartbeat re-arms only while work remains`() = runTest {
-        val remainsOnly = setOf(
-            TailTrigger.ARM, TailTrigger.FOREGROUND, TailTrigger.SILENT_PUSH, TailTrigger.SELECTION_CHANGE,
-            TailTrigger.HEARTBEAT, TailTrigger.UPLOAD_SESSION_EVENTS, TailTrigger.DOWNLOAD_SESSION_EVENTS,
-        )
-        for (trigger in TailTrigger.entries) {
+    fun `where the library is watched the heartbeat is busy only while work remains`() = runTest {
+        for (trigger in TailTrigger.entries.filter { it.rearms }) {
             for (result in CycleResult.all) {
                 val units = Units().apply {
                     topUp = { result }
@@ -455,9 +462,26 @@ class TailRunnerTest {
                 val scheduler = Scheduler(watchesLibrary = true)
                 runner(units, scheduler).request(trigger)
                 val workRemains = result == CycleResult.PROCESSING || result is CycleResult.Paused
-                val expected = if (trigger in remainsOnly && workRemains) 1 else 0
-                assertEquals(expected, scheduler.scheduled, "$trigger after $result: a caught-up device keeps no timer")
+                val expected = if (workRemains) WakeCadence.BUSY else WakeCadence.IDLE
+                assertEquals(listOf(expected), scheduler.cadences, "$trigger after $result: a caught-up device idles")
             }
+        }
+    }
+
+    @Test
+    fun `a caught-up member idles once nothing of its own is left to notice by looking`() = runTest {
+        val cases = listOf(
+            JOINED to WakeCadence.BUSY,
+            JOINED.copy(osUploaderConfirmed = true) to WakeCadence.IDLE,
+            JOINED.copy(fullGrant = false) to WakeCadence.IDLE,
+            JOINED.copy(ended = true) to WakeCadence.IDLE,
+            JOINED.copy(shares = false) to WakeCadence.IDLE,
+        )
+        for ((facts, expected) in cases) {
+            val units = Units().apply { this.facts = facts }
+            val scheduler = Scheduler()
+            runner(units, scheduler).request(TailTrigger.HEARTBEAT)
+            assertEquals(listOf(expected), scheduler.cadences, "$facts")
         }
     }
 
@@ -496,6 +520,7 @@ class TailRunnerTest {
             refreshStatus = {},
             heartbeat = Scheduler().heartbeat,
             importsRemain = { false },
+            cadenceFacts = { JOINED },
             leftover = { "" },
         )
         val failure = withTimeout(5.seconds) { assertFailsWith<IllegalStateException> { tail.request(TailTrigger.HEARTBEAT) } }
@@ -529,6 +554,7 @@ class TailRunnerTest {
             refreshStatus = { error("counts unreadable") },
             heartbeat = scheduler.heartbeat,
             importsRemain = { false },
+            cadenceFacts = { JOINED },
             leftover = { "" },
         )
         val outcome = tail.request(TailTrigger.FOREGROUND)
@@ -619,6 +645,7 @@ class TailRunnerTest {
             refreshStatus = {},
             heartbeat = Scheduler().heartbeat,
             importsRemain = { false },
+            cadenceFacts = { JOINED },
             leftover = { "staged downloads not yet imported: 2" },
             log = co.touchlab.kermit.Logger(co.touchlab.kermit.loggerConfigInit(recorder), "TailRunnerTest"),
         )
@@ -654,6 +681,7 @@ class TailRunnerTest {
             refreshStatus = {},
             heartbeat = scheduler.heartbeat,
             importsRemain = { false },
+            cadenceFacts = { JOINED },
             leftover = { "" },
         )
         return tail to never
@@ -702,6 +730,7 @@ class TailRunnerTest {
             refreshStatus = {},
             heartbeat = Scheduler().heartbeat,
             importsRemain = { false },
+            cadenceFacts = { JOINED },
             leftover = { error("store unreadable") },
             log = co.touchlab.kermit.Logger(co.touchlab.kermit.loggerConfigInit(recorder), "TailRunnerTest"),
         )
@@ -734,4 +763,10 @@ class TailRunnerTest {
     }
 
     private fun TestScope.launchRequest(tail: TailRunner, trigger: TailTrigger) = launch { tail.request(trigger) }
+
+    private companion object {
+        /** A joined full-grant member of an open event whose OS uploader is not confirmed — iOS below 26.1, say. */
+        val JOINED = CadenceFacts(joined = true, ended = false, shares = true, fullGrant = true, osUploaderConfirmed = false)
+        val NOT_JOINED = JOINED.copy(joined = false)
+    }
 }

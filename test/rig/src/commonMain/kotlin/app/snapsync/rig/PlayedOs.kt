@@ -5,8 +5,11 @@ package app.snapsync.rig
 import app.snapsync.mock.MockDevice
 import app.snapsync.mock.MockedSystem
 import app.snapsync.model.FileArea
+import app.snapsync.model.WakeId
+import app.snapsync.model.WakeTrigger
 import app.snapsync.ports.Completion
 import app.snapsync.services.staging.DOWNLOAD_STAGING_DIR
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -90,7 +93,17 @@ class PlayedOs(private val device: MockDevice, private val mocked: (MockedSystem
         }
         if (mocked(MockedSystem.SCREEN)) put("screenShown", device.screen.operator.shown.value != null)
         if (mocked(MockedSystem.LIBRARY)) put("selectionObserved", device.library.operator.observing)
-        if (mocked(MockedSystem.WAKE)) put("heartbeatsScheduled", device.wakes.operator.heartbeatsScheduled)
+        if (mocked(MockedSystem.WAKE)) {
+            put("heartbeatsScheduled", device.wakes.operator.heartbeatsScheduled)
+            // The heartbeat the operating system holds now — the state reached, not a count: its cadence and delay.
+            when (val pending = device.wakes.operator.pendingWakes[WakeId.Heartbeat]) {
+                is WakeTrigger.After -> putJsonObject("pendingWake") {
+                    put("cadence", pending.cadence.name.lowercase())
+                    put("earliestSeconds", pending.earliest.inWholeSeconds)
+                }
+                else -> put("pendingWake", JsonNull)
+            }
+        }
         // By the name the app began each under, as `beginBackgroundTask(withName:)` names them to the system.
         if (mocked(MockedSystem.BACKGROUND_TIME)) {
             putJsonArray("backgroundTimeHolds") { device.backgroundTime.operator.holds.value.forEach { add(JsonPrimitive(it.label)) } }

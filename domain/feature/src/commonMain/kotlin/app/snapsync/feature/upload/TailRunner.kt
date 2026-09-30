@@ -2,7 +2,6 @@
 
 package app.snapsync.feature.upload
 
-import app.snapsync.model.WakeCadence
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.CycleResult
 import app.snapsync.model.EntryScope
@@ -50,51 +49,37 @@ enum class TailScope(internal val imports: Boolean, internal val topsUp: Boolean
     }
 }
 
-/** When a trigger schedules the next heartbeat after its tail, subject always to the `SKIPPED` rule. */
-enum class Rearm {
-    /** Whatever the tail left, unless it declined. */
-    ALWAYS,
-
-    /** Only when work remains ([CycleResult.PROCESSING]). */
-    WHEN_WORK_REMAINS,
-
-    /** Never — completions re-request the top-up while the app is open. */
-    NEVER,
-}
-
 /**
- * The wakes that request the tail, each with the part of it it needs and its re-arm policy (capability
- * `background-upload`, "The tail runner reimplements the OS scheduler"; decision record
- * `changes/own-work-per-wake`, D1 and D2). Every trigger's own work has already run, outside the runner, before it
- * requests.
+ * The wakes that request the tail, each with the part of it it needs and whether it re-arms the heartbeat after it
+ * (capability `background-upload`, "The tail runner reimplements the OS scheduler"; decision records
+ * `changes/own-work-per-wake`, D1 and D2, and `changes/timely-background-receiving`, D1). Every trigger's own work has
+ * already run, outside the runner, before it requests. A trigger that re-arms applies the one cadence rule
+ * ([heartbeatCadence]); one that does not arrived inside a process some other trigger already owns the re-arm of.
  */
-enum class TailTrigger(val scope: TailScope, val rearm: Rearm) {
-    /** A membership transition or a launch armed the engine — the only trigger that arms the FIRST heartbeat. */
-    ARM(TailScope.FULL, Rearm.ALWAYS),
+enum class TailTrigger(val scope: TailScope, val rearms: Boolean) {
+    /** A membership transition or a launch armed the engine — the trigger that arms the FIRST heartbeat. */
+    ARM(TailScope.FULL, rearms = true),
 
     /** Foreground entry: a force-quit cancelled every pending heartbeat, and reopening is when it can be restored. */
-    FOREGROUND(TailScope.FULL, Rearm.ALWAYS),
+    FOREGROUND(TailScope.FULL, rearms = true),
 
     /** A silent push for the active event — the reliable wake, clustered exactly when an event is live. */
-    SILENT_PUSH(TailScope.FULL, Rearm.ALWAYS),
+    SILENT_PUSH(TailScope.FULL, rearms = true),
 
     /** The selection changed under a partial grant: the member just acted, and the chain may be severed. */
-    SELECTION_CHANGE(TailScope.FULL, Rearm.ALWAYS),
+    SELECTION_CHANGE(TailScope.FULL, rearms = true),
 
     /** The heartbeat `BGTask`: one-shot, so its own re-submission is what keeps it alive. */
-    HEARTBEAT(TailScope.FULL, Rearm.ALWAYS),
+    HEARTBEAT(TailScope.FULL, rearms = true),
 
-    /** A background upload-session relaunch: the drain continues itself, so re-arm only on remaining work. */
-    UPLOAD_SESSION_EVENTS(TailScope.FULL, Rearm.WHEN_WORK_REMAINS),
+    /** A background upload-session relaunch. */
+    UPLOAD_SESSION_EVENTS(TailScope.FULL, rearms = true),
 
-    /**
-     * A background download-session relaunch. The re-arm table names no policy for it; it is given the upload
-     * relaunch's — a background wake whose tail left upload work re-arms the heartbeat, one that finished does not.
-     */
-    DOWNLOAD_SESSION_EVENTS(TailScope.FULL, Rearm.WHEN_WORK_REMAINS),
+    /** A background download-session relaunch. */
+    DOWNLOAD_SESSION_EVENTS(TailScope.FULL, rearms = true),
 
     /** An upload finished and freed a slot: the top-up alone, and only while the app may create. */
-    UPLOAD_COMPLETED(TailScope.TOP_UP, Rearm.NEVER),
+    UPLOAD_COMPLETED(TailScope.TOP_UP, rearms = false),
 
     /**
      * A download finished staging in a process that is already running (no relaunch delivered it): the import alone.
@@ -102,7 +87,7 @@ enum class TailTrigger(val scope: TailScope, val rearm: Rearm) {
      * walk per staged resource is exactly the waste the tail exists to avoid. It re-arms nothing: the wake or the
      * foreground it arrived in owns the heartbeat's re-arm.
      */
-    DOWNLOAD_STAGED(TailScope.IMPORT, Rearm.NEVER),
+    DOWNLOAD_STAGED(TailScope.IMPORT, rearms = false),
 }
 
 /**
@@ -184,10 +169,12 @@ data class TailOutcome(val result: CycleResult, val cut: Boolean)
  * declined with `SKIPPED`. The stop consumes any pending pass; its joiners receive the cut outcome.
  *
  * **Rules carried over from the pump.** `PROCESSING` never busy-loops: a truncated ② is not re-run for that reason
- * alone (a completion or the heartbeat re-requests it); the ③ → ② loop runs only because ③ recorded rows. `SKIPPED`
- * never re-arms for the upload units' sake, at any trigger — only staged imports still waiting ([importsRemain]) re-arm
- * a trigger whose upload outcome would not. The re-arm decision is exhaustive over [CycleResult] and made outside
- * [mutex]. A
+ * alone (a completion or the heartbeat re-requests it); the ③ → ② loop runs only because ③ recorded rows.
+ *
+ * **The re-arm** is [heartbeatCadence] over the tail's outcome, the staged imports still waiting ([importsRemain]),
+ * the library watch and the [cadenceFacts]: a heartbeat stays pending — busy or idle — for as long as the device is
+ * joined, whatever the upload units answered (decision record `changes/timely-background-receiving`, D1). It is
+ * exhaustive over [CycleResult] and made outside [mutex]. A
  * completion is requested only while [mayCreate] (it is always recorded by the transport first). A failed tail fails
  * every waiter and consumes its pending pass, so no phantom pass lands on the next request. Ledger counts refresh
  * after each unit only while [foregrounded] (design D11), best-effort.
@@ -214,13 +201,13 @@ class TailRunner(
     /** The heartbeat the re-arm rule arms (capability `background-upload`). */
     private val heartbeat: Heartbeat,
     /**
-     * Whether staged downloads are still waiting to be imported — asked after a tail whose upload units would not
-     * re-arm on their own. Leftover imports count as work remaining, so they keep the heartbeat armed until ① has
-     * drained them (declared in phase 11f): without it a membership that only receives never arms one, and a photo
-     * whose save iOS cut short waited for the next push or the next opening (capability `receiving-photos`, "Photos
-     * arrive without the app being opened"). A read of the core's own store; a failed read re-arms nothing.
+     * Whether staged downloads are still waiting to be imported. Leftover imports are work remaining, so they keep the
+     * heartbeat busy until ① has drained them (declared in phase 11f; capability `receiving-photos`, "Photos arrive
+     * without the app being opened"). A read of the core's own store; a failed read counts as nothing left.
      */
     private val importsRemain: suspend () -> Boolean,
+    /** What the device is, for the re-arm's cadence — read after each tail that re-arms (see [CadenceFacts]). */
+    private val cadenceFacts: () -> CadenceFacts,
     /**
      * What a stop left behind, beyond the units it kept from running — for the operating-system expiry line
      * (capability `privacy-security`, "Operating-system expiry is logged"): at least the staged downloads not yet
@@ -253,8 +240,7 @@ class TailRunner(
                 return@invocation null
             }
             val outcome = admit(trigger)
-            val rearm = rearmFor(trigger, outcome)
-            if (shouldSchedule(outcome, rearm) || importsLeft(rearm)) heartbeat.arm(WakeCadence.BUSY)
+            if (trigger.rearms) rearm(trigger, outcome)
             outcome
         }
 
@@ -393,45 +379,35 @@ class TailRunner(
     }
 
     /**
-     * The re-arm decision for [outcome] under [rearm] — exhaustive, so a new [CycleResult] variant is a compile error
-     * here rather than a policy nobody chose. `SKIPPED` schedules nothing for the uploads at any trigger: the
-     * membership contributes nothing, and the transition that changes that arrives as [TailTrigger.ARM]. Leftover staged imports
-     * are the other half of "work remains" ([importsLeft]).
-     */
-    private fun shouldSchedule(outcome: TailOutcome, rearm: Rearm): Boolean = when (outcome.result) {
-        CycleResult.SKIPPED -> false
-        CycleResult.PROCESSING, is CycleResult.Paused -> rearm != Rearm.NEVER
-        CycleResult.COMPLETED, CycleResult.FAILED -> rearm == Rearm.ALWAYS
-    }
-
-    /**
-     * [trigger]'s re-arm policy, once the library watch has been renewed (capability `background-upload`, "Photos
-     * upload without the app being opened").
+     * The re-arm after [trigger]'s tail ended with [outcome] (capability `background-upload`, "Photos upload without
+     * the app being opened"; decision record `changes/timely-background-receiving`, D1).
      *
      * After every tail that ran the uploads for a membership that contributes — any trigger but an import-only one, any
-     * outcome but `SKIPPED` (an import-only tail's outcome says nothing of the membership) — the library-change
-     * wake is re-requested: a standing "wake me when a photo is added", so a device that is caught up still notices
-     * the next photo. Where one stands (Android), the heartbeat no longer has to keep itself alive to notice new
-     * photos, so [Rearm.ALWAYS] becomes [Rearm.WHEN_WORK_REMAINS]: a timed wake only while work remains. Where none can
-     * (iOS, which answers the library-change wake `Unsupported`), [Rearm.ALWAYS] stands — the heartbeat's own
-     * re-submission is how the app looks at its library there.
+     * outcome but `SKIPPED` (an import-only tail's outcome says nothing of the membership) — the library-change wake is
+     * re-requested first: a standing "wake me when a photo is added", so a device that is caught up still notices the
+     * next photo. Where one stands (Android) the heartbeat need not look for new photos itself; where none can (iOS,
+     * which answers it `Unsupported`) the confirmed OS uploader is what stands in for it. Then [heartbeatCadence] picks
+     * busy, idle or nothing, and the heartbeat is armed at that cadence — replacing the pending one.
      */
-    private fun rearmFor(trigger: TailTrigger, outcome: TailOutcome): Rearm {
-        val watched = trigger.scope != TailScope.IMPORT && outcome.result != CycleResult.SKIPPED && heartbeat.watchLibrary()
-        return if (watched && trigger.rearm == Rearm.ALWAYS) Rearm.WHEN_WORK_REMAINS else trigger.rearm
+    private suspend fun rearm(trigger: TailTrigger, outcome: TailOutcome) {
+        val contributes = outcome.result != CycleResult.SKIPPED
+        val watched = trigger.scope != TailScope.IMPORT && contributes && heartbeat.watchLibrary()
+        val cadence = heartbeatCadence(
+            facts = cadenceFacts(),
+            leftWork = outcome.result.leftWork,
+            importsRemain = importsLeft(),
+            contributes = contributes,
+            libraryWatched = watched,
+        ) ?: return
+        heartbeat.arm(cadence)
     }
 
-    /**
-     * Whether leftover staged imports re-arm a trigger its upload outcome did not: a trigger that never re-arms still
-     * does not, and one that does counts them as work remaining — decided outside [mutex], like the rest of the re-arm.
-     */
-    private suspend fun importsLeft(rearm: Rearm): Boolean {
-        if (rearm == Rearm.NEVER) return false
-        return runCatchingCancellable { importsRemain() }
-            .onFailure { log.w(it) { "whether staged imports remain is unreadable — no re-arm for them" } }
+    /** Whether staged imports are still waiting — decided outside [mutex], like the rest of the re-arm. */
+    private suspend fun importsLeft(): Boolean =
+        runCatchingCancellable { importsRemain() }
+            .onFailure { log.w(it) { "whether staged imports remain is unreadable — counted as none" } }
             .getOrDefault(false)
-            .also { left -> if (left) log.i { "staged downloads remain to import — the heartbeat is re-armed" } }
-    }
+            .also { left -> if (left) log.i { "staged downloads remain to import — the heartbeat stays busy" } }
 
     /** One tail: its first scope, the pass joiners requested, its stop, and what its waiters await. */
     private class Run(val first: TailScope) {

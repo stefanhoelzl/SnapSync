@@ -510,7 +510,8 @@ backend mock's operator has answers `409` with the reason.
   told so; `?arg=next` hands the next handler over already expired. The app host honours it only when its adapter choice mocks
   the background-time holds — a real OS's expiry is its own.
 - `device/os-record` is what the OS recorded of the app: the completion handlers handed over, released and released
-  a second time; whether a screen was shown; whether the selection observer is open; the heartbeat requests; the
+  a second time; whether a screen was shown; whether the selection observer is open; the heartbeat requests and the
+  heartbeat pending now (`pendingWake`: its cadence and delay, or `null`); the
   background-time holds, by the name each was begun under; the push registrations; the transfer sessions; the
   databases opened and the files staged. A receipted entry's answer carries it **as read at the release**
   (`osAtRelease`), because "released after the wake's own work" is a statement about that instant.
@@ -658,6 +659,7 @@ mocks, and the journeys exercise the real systems.
   - the photo library (census, albums, original filenames),
   - OS upload jobs,
   - the operating system's record of the app (`device/os-record`): completion handlers released, heartbeat requests,
+    the heartbeat pending now and its cadence,
     background-time holds, the screen, the selection observer, push registrations, the transfer sessions, the
     databases opened,
   - the download staging directory,

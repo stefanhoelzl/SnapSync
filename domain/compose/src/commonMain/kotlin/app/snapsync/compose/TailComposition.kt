@@ -7,6 +7,7 @@ import app.snapsync.feature.download.DownloadController
 import app.snapsync.feature.upload.AppUploadEngine
 import app.snapsync.feature.upload.AppUploadEvents
 import app.snapsync.feature.upload.AppUploadMechanism
+import app.snapsync.feature.upload.CadenceFacts
 import app.snapsync.feature.upload.TailRunner
 import app.snapsync.feature.upload.TailTrigger
 import app.snapsync.model.GalleryAccess
@@ -44,6 +45,8 @@ class AppTail internal constructor(
     private val downloads: () -> DownloadController,
     /** The app's admission as a Boolean — whether a completion may request the top-up. */
     private val mayCreate: () -> Boolean,
+    /** What the heartbeat's re-arm reads after a tail — see [AppCore.cadenceFacts]. */
+    private val cadenceFacts: () -> CadenceFacts,
     /** The in-process ledger-counts re-read, run after a tail unit only while foregrounded. */
     private val refreshCounts: suspend () -> Unit,
     /**
@@ -83,6 +86,7 @@ class AppTail internal constructor(
             refreshStatus = refreshCounts,
             heartbeat = heartbeat,
             importsRemain = { services.downloadStore.importableAssets().isNotEmpty() },
+            cadenceFacts = cadenceFacts,
             leftover = { "staged downloads not yet imported: ${services.downloadStore.importableAssets().size}" },
             log = services.log,
             entryContext = entryContext,

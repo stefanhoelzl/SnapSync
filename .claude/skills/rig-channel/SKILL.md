@@ -517,7 +517,7 @@ curl -s localhost:<port>/device            # honoured + refused (reasons) for TH
   - `os/app/onExpiry` — time is up for every held completion handler and background-time hold; `?arg=next` hands the
     next handler over already expired. Hold a receipted entry open (a second request) and expire it.
   - `device/os-record` — handlers handed/released/`releasedAgain`/held, `screenShown`, `selectionObserved`,
-    `heartbeatsScheduled`, `backgroundTimeHolds` (by name: `onForeground`, `onSilentPush`, `tail(…)`, …),
+    `heartbeatsScheduled`, `pendingWake` (`{cadence: busy|idle, earliestSeconds}` or `null`), `backgroundTimeHolds` (by name: `onForeground`, `onSilentPush`, `tail(…)`, …),
     `pushRegistrations`, the download session (`up`, `started`, `inFlight`), `uploadSessionHandbacks`,
     `databasesOpened`, `stagedFiles`. A receipted `/os` answer carries it as read at the release (`osAtRelease`).
   - `device/relaunch?scene=false` — a cold background launch: no screen is built. Read only `device/os-record`

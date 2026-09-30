@@ -21,10 +21,10 @@
 
 ## 4. The cadence rule (D1, D3)
 
-- [ ] 4.1 Replace `rearmFor` + `shouldSchedule` with one pure rule returning none / busy / idle over: joined, event ended, uploads remaining, imports remaining, full grant, OS library wake — keeping `Rearm.NEVER` triggers inert and the exhaustive `when` over `CycleResult`; verify with unit tests covering every row of D1's table
-- [ ] 4.2 Supply the OS-library-wake input from the composition: Android = the library watch stands; iOS = `osSupportsOsDrivenUpload && permission == GRANTED && extensionRegistration.isRegistered() == true` and the uploader pin not off; verify with `TailRunnerTest` cases (confirmed → idle when caught up; `null`/`false` → busy; limited → idle; denied → idle; receive-only → idle; after the end → idle; not joined → none)
-- [ ] 4.3 Add `pendingWake` (`{cadence, earliestSeconds}` or `null`) to `/device/os-record` from the wake mock's pending map; verify `:test:control`'s client reads it and the existing `heartbeatsScheduled` assertions still pass
-- [ ] 4.4 Add the cadence scenarios to `:test:integration` (receive-only caught up → idle; staged imports → busy; full-access sharer without a library wake → busy; the same after `clock/advance` past the end → idle; `device/permission?status=DENIED` → idle; mocked extension registry confirmed → idle; leave → `null`); verify they pass on the JVM host
+- [x] 4.1 Replace `rearmFor` + `shouldSchedule` with one pure rule returning none / busy / idle over: joined, event ended, uploads remaining, imports remaining, full grant, OS library wake — keeping `Rearm.NEVER` triggers inert and the exhaustive `when` over `CycleResult`; verify with unit tests covering every row of D1's table
+- [x] 4.2 Supply the OS-library-wake input from the composition: Android = the library watch stands; iOS = `osSupportsOsDrivenUpload && permission == GRANTED && extensionRegistration.isRegistered() == true` and the uploader pin not off; verify with `TailRunnerTest` cases (confirmed → idle when caught up; `null`/`false` → busy; limited → idle; denied → idle; receive-only → idle; after the end → idle; not joined → none)
+- [x] 4.3 Add `pendingWake` (`{cadence, earliestSeconds}` or `null`) to `/device/os-record` from the wake mock's pending map; verify `:test:control`'s client reads it and the existing `heartbeatsScheduled` assertions still pass
+- [x] 4.4 Add the cadence scenarios to `:test:integration` (receive-only caught up → idle; full-access sharer without a library wake → busy; the same after `clock/advance` past the end → idle; `device/permission?status=DENIED` → idle; a partial grant → idle; leave → `null`); verify they pass on the JVM host. The JVM root carries no OS uploader and no staged-import lever reaches a tail's end, so the confirmed-uploader and staged-imports rows are pinned by `TailRunnerTest` / `HeartbeatCadenceTest` instead
 
 ## 5. The bounded photo and close checks (D4, D5)
 
