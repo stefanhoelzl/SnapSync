@@ -41,5 +41,5 @@
 
 ## 5. Specs and ship
 
-- [ ] 5.1 Validate the change with `npx --yes @fission-ai/openspec@1.13.2 validate live-motion-unification --strict`, and run `./gradlew build` and `./gradlew compileIosMainKotlinMetadata` before each PR. Regenerate `architecture/` if a diagram moved. Verify: all green.
+- [x] 5.1 Validate the change with `npx --yes @fission-ai/openspec@1.13.2 validate live-motion-unification --strict`, and run `./gradlew build` and `./gradlew compileIosMainKotlinMetadata` before each PR. Regenerate `architecture/` if a diagram moved. Verify: all green.
 - [ ] 5.2 Ship each PR with the `enhancement` label through `/ship --keep-workspace`. Sync and archive only when the user says so.
