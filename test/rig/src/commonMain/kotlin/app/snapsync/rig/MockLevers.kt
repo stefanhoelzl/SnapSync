@@ -491,7 +491,7 @@ private fun MockWorld.deviceLevers(): Map<String, Lever> = mapOf(
 private fun MockWorld.deviceFacts(): Map<String, Lever> = mapOf(
     // The files in the download staging directory — what a person with the container open would see.
     "staging" to mocked(MockedSystem.FILES, RigCommand { _, _ ->
-        val staged = device.disk.operator.area(FileArea.SHARED).keys.filter { it.startsWith("$DOWNLOAD_STAGING_DIR/") }
+        val staged = device.disk.operator.paths(FileArea.SHARED).filter { it.startsWith("$DOWNLOAD_STAGING_DIR/") }
         CommandResult.ok(buildJsonObject { putJsonArray("files") { staged.sorted().forEach { add(JsonPrimitive(it)) } } }.toString())
     }),
     // Every album this app created, with the assets placed in it, in order.

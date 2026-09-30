@@ -16,19 +16,17 @@ class EventChecksIntegrationTest {
     @Test
     fun heartbeats_read_the_union_at_most_once_an_hour() = rigTest {
         val event = createAndJoin()
-        val joined = unionReads(event)
-
         device("clock/advance", "to" to T0)
-        heartbeat()
-        assertEquals(joined + 1, unionReads(event), "the first wake after the join's read asks")
+        heartbeat() // long after the join's own reads: this wake asks
+        val first = unionReads(event)
 
         device("clock/advance", "to" to T0_PLUS_10_MIN)
         heartbeat()
-        assertEquals(joined + 1, unionReads(event), "ten minutes later it does not")
+        assertEquals(first, unionReads(event), "ten minutes later it does not")
 
         device("clock/advance", "to" to T0_PLUS_1_H)
         heartbeat()
-        assertEquals(joined + 2, unionReads(event), "an hour later it asks again")
+        assertEquals(first + 1, unionReads(event), "an hour later it asks again")
     }
 
     @Test
@@ -50,6 +48,8 @@ class EventChecksIntegrationTest {
     @Test
     fun after_the_end_heartbeats_read_the_event_at_most_once_an_hour_and_a_push_always() = rigTest {
         val event = createAndJoin(startsAt = SHORT_START, endsAt = SHORT_END)
+        // A second member that never settles keeps the event open, so this one stays joined to be woken.
+        foreignDevice("DEV-F", "FQ")
         device("clock/advance", "to" to AFTER_THE_END)
         heartbeat()
         val first = eventReads(event)

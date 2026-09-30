@@ -17,6 +17,8 @@ class HeartbeatCadenceIntegrationTest {
     fun a_full_grant_sharer_keeps_looking_until_the_end_and_then_idles() = rigTest {
         permission("GRANTED")
         createAndJoin("direction" to "upload", startsAt = SHORT_START, endsAt = SHORT_END)
+        // A second member that never settles keeps the event open after its end, so this one stays joined.
+        foreignDevice("DEV-F", "FQ")
         heartbeat()
         assertEquals(BUSY, osRecord().pendingCadence, "its own new photos are noticed only by looking")
 

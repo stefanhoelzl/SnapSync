@@ -205,24 +205,26 @@ class EntryIntegrationTest {
         permission("LIMITED")
         createAndJoin()
         addPhoto("A")
-        device("jobs/limit", "n" to "0") // selected, no job yet: the work a cold start inherits
+        // The member picks A while the app's uploader is held back: selected, nothing created — the work a cold start
+        // inherits. (Under a partial grant the extension withholds by its own admission; only the app's uploader runs.)
+        device("uploaders", "app" to "off")
         device("selection/change", "assets" to "A")
-        cycle()
-        assertEquals(0, jobs().created, "precondition: nothing was created")
+        eventually(read = { gallery().policy?.assets?.mapTo(mutableSetOf()) { it.assetId } }) { it == setOf("A") }
+        // Back on, with A never discovered: under a partial grant only the selection's own read discovers.
+        device("uploaders", "app" to "on")
+        assertEquals(0, appUploads().created, "precondition: nothing was created")
 
         device("relaunch", "scene" to "false")
         assertTrue(osRecord().selectionObserved, "composition opens the observer, a background start included")
-        device("jobs/limit", "n" to UNLIMITED)
 
-        // A start that never learned its selection withholds every creation; this one read it.
-        eventually(read = { cycle(); jobs().live }) { it == listOf(primaryKey("A")) }
+        // The start's own baseline read discovers A and creates it: a start that never read its selection withholds.
+        assertEquals(listOf(primaryKey("A")), awaitAppUploads(1).live)
         assertFalse(osRecord().screenShown, "and the start built no screen")
     }
 
     private companion object {
         const val TOKEN = "0a1b2c3d4e5f60718293a4b5c6d7e8f9"
         const val OTHER_EVENT = "33333333-3333-4333-8333-333333333333"
-        const val UNLIMITED = "2147483647"
     }
 }
 
