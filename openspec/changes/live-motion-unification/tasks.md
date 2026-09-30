@@ -37,7 +37,7 @@
 ## 4. Web zip: Live Photo pair (`site/`, PR "web")
 
 - [x] 4.1 Extract the zip's naming into a pure function. It allocates one stem per asset through the existing collision rule; the still keeps its extension, and the `live` video takes the same stem with its own extension. Include `live` resources in the item list, and remove the stale "GIF" comment. Verify: `site/test/zip-names.test.ts` (one pair, two colliding pairs, a photo colliding with a pair) runs under `npm run check`, which CI's `site` job runs.
-- [ ] 4.2 Rebase onto phase 5's /join changes if they have landed. Verify: the site build passes, and in a local run (`local-backend`) the downloaded zip holds `IMG_x.HEIC` and `IMG_x.MOV` for a seeded Live Photo.
+- [x] 4.2 Rebase onto phase 5's /join changes if they have landed (they had not; rebased onto `main`). Verify: the site build passes. End to end (2026-09-30): an ephemeral local api (port 8097, scratch store) served the built site. An event seeded through the public routes held two Live Photos both named `IMG_4471` plus `IMG_0002.JPG`. Headless Chromium on the real `/join` page downloaded `Zip-Check.zip` holding `IMG_4471.HEIC`, `IMG_4471.MOV`, `IMG_4471-2.HEIC`, `IMG_4471-2.MOV` (each still with its own video's bytes) and `IMG_0002.JPG`, with the status "3 photos ready" and then "Done — 3 photos downloaded".
 
 ## 5. Specs and ship
 
