@@ -20,5 +20,6 @@ internal fun pushRegistrationFor(services: AppServices, publisher: PushTokenPubl
  * `receiving-photos`: a join publishes unconditionally); a no-op before the OS has delivered one.
  */
 internal suspend fun PushRegistration.reRegister(services: AppServices) {
-    services.pushTokens.token.value?.let { register(PushEndpoint(services.pushTokens.kind, it, services.pushTokens.env)) }
+    val tokens = services.pushTokens
+    tokens.token.value?.let { register(PushEndpoint(tokens.kind, it, tokens.env)) }
 }
