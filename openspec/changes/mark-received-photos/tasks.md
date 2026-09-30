@@ -77,9 +77,28 @@
 - [x] 4.2 Docs: `docs/architecture.md`'s download-store / suppression section explains that the mark is a second
   record rebuilt at join (not a contract). Verify it names the gates and tests from 1–3 accurately.
 
+## 6. Adoption when the grant becomes usable (found on the SE2, design D4/D7)
+
+- [x] 6.1 `device/reinstall` resets the library grant to `NOT_DETERMINED` and leaves the dialog unanswered;
+  `ReinstallIntegrationTest` grants only after the rejoin. Verify it reproduces the device failure first (it
+  did: 2 shared back, 1 duplicate).
+- [x] 6.2 `DownloadController.libraryWritable` (required, no default): nothing imports without a usable grant.
+  Verify with `DownloadControllerTest` (`nothing_imports_without_a_usable_grant_…`).
+- [x] 6.3 `adoptPending` statement + `DownloadService.adoptAll` settles unmarked planned/staged rows;
+  `DownloadController.settleAdopted` under the mutex, skipping claimed refs; `ReceivedPhotoAdoption.record`.
+  Verify with `DownloadStoreContract` (`adoption settles a planned row and leaves a marked or terminal one`),
+  `DownloadControllerTest` (`an_adopted_ref_is_never_imported`) and `ReceivedPhotoAdoptionTest`.
+- [x] 6.4 Adopt in the permission subscription before `uploadTransitions.onPermissionChanged()`. Verify with
+  `ReinstallIntegrationTest` green (it logs `adopted 0` at the join, then `adopted 2` at the grant),
+  `CompositionSeamTest` and `./gradlew build`.
+- [x] 6.5 Android device tests pin the marked `DISPLAY_NAME` (`AndroidImportContractTest`).
+
 ## 5. On-device verification (before archive)
 
 - [ ] 5.1 On the SE2 with a full grant:
+  - ⚠️ 2026-09-30 run FAILED: after a reinstall iOS resets the photo grant, so the join provisions under
+    `NOT_DETERMINED` and adoption reads nothing (`adopted 0 … 0 marked in window`); all 4 received photos were
+    downloaded again and the two ≥3 MP ones were shared back. Needs a design change before re-running.
   - receive photos, delete and reinstall the app, rejoin: no duplicates, and nothing is shared back;
   - record the join latency with a large in-window library (design risk).
 

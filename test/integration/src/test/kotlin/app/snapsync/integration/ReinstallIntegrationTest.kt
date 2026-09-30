@@ -11,8 +11,8 @@ import kotlin.test.assertTrue
  * and "Received photos are never shared back"): the download record goes with the app, and the SnapSync mark on each
  * received photo's name is what the rejoin recognises it by.
  *
- * `device/reinstall` deletes the app's files, databases and user defaults and keeps what outlives it — the Keychain,
- * the photo library, the backend — then launches the app again, unjoined.
+ * `device/reinstall` deletes the app's files, databases, user defaults and photo grant and keeps what outlives it —
+ * the Keychain, the photo library, the backend — then launches the app again, unjoined.
  */
 class ReinstallIntegrationTest {
 
@@ -51,12 +51,24 @@ class ReinstallIntegrationTest {
         assertTrue(objects().isEmpty())
     }
 
-    /** Open the event's link and confirm its gate with [choices], as a member rejoining after a reinstall does. */
+    /**
+     * Open the event's link and confirm its gate with [choices], as a member rejoining after a reinstall does: the
+     * confirm raises the photo-access dialog (the reinstall reset the grant), the join goes ahead without waiting for
+     * it, and the member answers it only afterwards — the order measured on the SE2.
+     */
     private suspend fun Rig.rejoin(event: String, vararg choices: Pair<String, String>) {
         openLink(inviteLink(event))
         awaitState { (it.ui.layer as? Layer.JoiningEvent)?.eventId == event }
         join(*choices)
+        val before = adoptions()
+        permission("GRANTED")
+        // The grant's adoption is the app's answer to it, and it runs before the uploads are armed; a cycle forced
+        // here directly (as a test may) must not overtake it, as none can on a phone.
+        eventually(read = { adoptions() }) { it > before }
     }
+
+    /** How many adoption passes the app has logged — each join's, and each usable grant's. */
+    private suspend fun Rig.adoptions(): Int = ADOPTION.findAll(client.logs()).count()
 
     /** The library's photos whose names carry the SnapSync mark — every received photo, by asset id. */
     private suspend fun Rig.receivedAssetIds(): List<String> =
@@ -66,5 +78,6 @@ class ReinstallIntegrationTest {
 
     private companion object {
         const val OTHER = "DEV-F"
+        val ADOPTION = Regex("""adopted \d+ received photo""")
     }
 }

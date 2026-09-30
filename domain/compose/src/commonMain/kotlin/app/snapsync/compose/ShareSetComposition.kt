@@ -2,10 +2,11 @@ package app.snapsync.compose
 
 import app.snapsync.feature.membership.ReceivedPhotoAdoption
 import app.snapsync.feature.membership.ShareSetLoad
-import app.snapsync.model.SelectionScope
+import app.snapsync.model.GalleryAccess
+import app.snapsync.model.grantsPhotoAccess
 import app.snapsync.ports.GalleryReader
+import app.snapsync.services.backend.BackendServices
 import app.snapsync.services.backend.DeviceFilesSource
-import app.snapsync.services.backend.EventUnionSource
 import app.snapsync.services.gallery.MarkedPhotoLookup
 
 /**
@@ -28,19 +29,31 @@ internal fun shareSetLoadFor(services: AppServices, files: DeviceFilesSource): S
 )
 
 /**
- * The join-time adoption (capability `receiving-photos`): the union over [union], the download store, and the library's
- * marked photos over [gallery] under the same read discipline as upload discovery ([selectionScope]). A top-level
- * factory for the same reason as [shareSetLoadFor].
+ * The join-time adoption (capability `receiving-photos`): the union over [backend], the download store, and the
+ * library's marked photos over [gallery] under the same read discipline as upload discovery ([AppCore.selectionScope]),
+ * written through the download controller's locked write. A top-level factory for the same reason as [shareSetLoadFor].
  */
 internal fun receivedPhotoAdoptionFor(
     services: AppServices,
-    union: EventUnionSource,
+    backend: BackendServices,
     gallery: GalleryReader,
-    selectionScope: () -> SelectionScope,
+    core: AppCore,
 ): ReceivedPhotoAdoption = ReceivedPhotoAdoption(
-    union = union,
+    union = backend.union,
     store = services.downloadStore,
-    library = MarkedPhotoLookup(gallery, selectionScope),
+    library = MarkedPhotoLookup(gallery, core::selectionScope),
+    record = core.downloadController::settleAdopted,
     identity = services.deviceIdentity,
     log = services.log,
 )
+
+/**
+ * The app's answer to a changed photo grant. A grant that became usable while joined first recognises the photos an
+ * earlier install received (capability `receiving-photos`) — BEFORE the uploads are armed and the staged downloads
+ * imported, because a reinstall's rejoin always provisions with the access dialog still open (design
+ * `mark-received-photos`, D4). A top-level extension because `AppCore` is measured (see [shareSetLoadFor]).
+ */
+internal suspend fun AppCore.onGrantChanged(permission: GalleryAccess) {
+    services.config.config.value?.takeIf { permission.grantsPhotoAccess }?.let { receivedPhotoAdoption.adopt(it) }
+    uploadTransitions.onPermissionChanged()
+}

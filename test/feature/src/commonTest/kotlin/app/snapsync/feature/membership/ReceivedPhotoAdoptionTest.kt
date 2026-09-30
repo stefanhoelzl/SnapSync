@@ -61,7 +61,7 @@ class ReceivedPhotoAdoptionTest {
         val lookup = MarkedPhotoLookup(inMemoryGallery(MutableStateFlow(library))) { SelectionScope.Unrestricted }
     }
 
-    private fun World.adoption(me: String) = ReceivedPhotoAdoption(unionSource, store, lookup, testIdentity(me))
+    private fun World.adoption(me: String) = ReceivedPhotoAdoption(unionSource, store, lookup, store::adoptAll, testIdentity(me))
 
     @Test
     fun a_marked_photo_of_the_union_is_adopted() = runTest {
@@ -99,16 +99,27 @@ class ReceivedPhotoAdoptionTest {
     @Test
     fun an_unreadable_identity_does_not_throw() = runTest {
         val world = World(Result.success(unionOf(ref("A"))), listOf(received("L-A", ref("A"))))
-        ReceivedPhotoAdoption(world.unionSource, world.store, world.lookup, unreadableIdentity()).adopt(cfg)
+        ReceivedPhotoAdoption(world.unionSource, world.store, world.lookup, world.store::adoptAll, unreadableIdentity()).adopt(cfg)
         assertTrue(world.store.suppressedLocalIds().isEmpty())
     }
 
     @Test
-    fun a_row_the_store_already_holds_is_left_untouched() = runTest {
+    fun a_ref_planned_while_the_grant_was_pending_is_adopted_not_imported_again() = runTest {
+        // A reinstall's rejoin plans its downloads with the photo-access dialog still open; the grant then adopts.
         val world = World(Result.success(unionOf(ref("A"))), listOf(received("L-A", ref("A"))))
         world.store.plan(ref("A"), date, listOf(PlannedResource("A-primary.heic", "https://e/a", "primary", "image/heic", "IMG.HEIC")))
         world.adoption(me).adopt(cfg)
-        assertFalse(world.store.isSettled(ref("A")), "this install's own planned row still downloads")
-        assertTrue(world.store.suppressedLocalIds().isEmpty())
+        assertTrue(world.store.isSettled(ref("A")), "the library already holds it")
+        assertEquals(setOf(AssetId("L-A")), world.store.suppressedLocalIds())
+    }
+
+    @Test
+    fun a_ref_an_import_created_an_asset_for_is_left_untouched() = runTest {
+        val world = World(Result.success(unionOf(ref("A"))), listOf(received("L-A", ref("A"))))
+        world.store.plan(ref("A"), date, listOf(PlannedResource("A-primary.heic", "https://e/a", "primary", "image/heic", "IMG.HEIC")))
+        world.store.recordCreatedLocalId(ref("A"), AssetId("L-NEW"))
+        world.adoption(me).adopt(cfg)
+        assertFalse(world.store.isSettled(ref("A")), "its import's own confirmation settles it")
+        assertEquals(setOf(AssetId("L-NEW")), world.store.suppressedLocalIds())
     }
 }

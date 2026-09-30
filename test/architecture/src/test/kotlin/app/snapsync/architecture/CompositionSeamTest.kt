@@ -135,6 +135,9 @@ class CompositionSeamTest {
         "DownloadController.downloadEnabled" to
             "the membership's direction, three-valued (no membership → null → no arm), derived in compose/ over " +
             "the ConfigService the composition already reads",
+        "DownloadController.libraryWritable" to
+            "this core's current photo permission, already held in memory — a pure core read (capability " +
+            "`receiving-photos`: nothing imports without a usable grant)",
         "DownloadController.eventAlbum" to
             "the current membership's event album — the album feature's AlbumCoordinator.albumIdFor over the " +
             "ConfigService, a sibling feature this one may not name; read from the in-process map, nothing leaves",
@@ -164,6 +167,9 @@ class CompositionSeamTest {
         "MembershipEntry.adoptReceived" to
             "the sibling ReceivedPhotoAdoption feature (its union read crosses the EventUnionSource port, its library " +
             "read the GalleryReader port) — feature-blindness",
+        "ReceivedPhotoAdoption.record" to
+            "the sibling DownloadController.settleAdopted — its locked write over the DownloadStore port — " +
+            "feature-blindness",
         "MembershipEntry.saveConfig" to
             "the ConfigStore port's save, handed in so the entry's ordered steps are recorded by its tests " +
             "exactly as they run",

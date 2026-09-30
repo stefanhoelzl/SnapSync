@@ -108,16 +108,21 @@ class DownloadService(databases: Databases) : SuppressionSource {
 
     /**
      * Record every [adopted] photo as its ref's confirmed import, tagged with [eventId], in ONE transaction, and answer
-     * the refs actually recorded. A ref the store already holds a row for is left exactly as it is — whatever that row
-     * says (planned, mid-import, imported, unimportable) is a record of this install, and adoption only fills the gap a
-     * deleted store left (capability `receiving-photos`).
+     * the refs actually recorded (capability `receiving-photos`). A ref with no row gets one; a ref planned or staged
+     * but not yet imported — no marker, not terminal — is settled onto the adopted photo instead of being imported
+     * again. Every other row (an import's marker, imported, unimportable, deleted by the member) is this install's own
+     * record and is left exactly as it is.
      */
     suspend fun adoptAll(adopted: Collection<AdoptedAsset>, eventId: String): Set<AssetRef> {
         if (adopted.isEmpty()) return emptySet()
         return q.transactionWithResult {
             adopted.filterTo(mutableSetOf()) { a ->
-                q.adoptImported(a.ref.sourceDeviceId, a.ref.sourceAssetId, a.creationDate, a.localId, eventId)
-                q.changedRows().executeAsOne() > 0
+                val (device, asset) = a.ref
+                q.adoptImported(device, asset, a.creationDate, a.localId, eventId)
+                q.changedRows().executeAsOne() > 0 || run {
+                    q.adoptPending(a.localId, eventId, device, asset)
+                    q.changedRows().executeAsOne() > 0
+                }
             }.mapTo(mutableSetOf()) { it.ref }
         }
     }

@@ -583,22 +583,35 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadService>("Do
             assertTrue(s.pendingDownloads().isEmpty(), "a later plan cannot downgrade it")
         }
 
-        clause("adoption never overwrites a row the store already holds", DownloadStoreState.EMPTY) { s ->
+        clause("adoption settles a planned row and leaves a marked or terminal one", DownloadStoreState.EMPTY) { s ->
+            val marked = AssetRef("DEVICE-B", AssetId("ASSET-MARKED"))
             val deleted = AssetRef("DEVICE-B", AssetId("ASSET-DELETED"))
-            s.plan(ref, "2026-06-30T10:00:00Z", resources())
-            s.plan(deleted, "2026-06-30T11:00:00Z", resources())
-            s.markImported(deleted, AssetId("LOCAL-GONE"))
+            s.plan(ref, "2026-06-30T10:00:00Z", resources()) // planned while the photo grant was pending
+            s.markStaged(ref, "ASSET-Q-primary.heic", "/stage/primary.heic")
+            s.plan(marked, "2026-06-30T11:00:00Z", resources())
+            assertTrue(s.recordCreatedLocalId(marked, AssetId("LOCAL-CREATED")), "an import created an asset for it")
+            s.plan(deleted, "2026-06-30T12:00:00Z", resources())
+            s.markImported(deleted, AssetId("LOCAL-GONE")) // imported, then deleted from the library by the member
 
             val adopted = s.adoptAll(
                 listOf(
-                    AdoptedAsset(ref, AssetId("LOCAL-X"), "2026-06-30T10:00:00Z"),
-                    AdoptedAsset(deleted, AssetId("LOCAL-Y"), "2026-06-30T11:00:00Z"),
+                    AdoptedAsset(ref, AssetId("LOCAL-KEPT"), "2026-06-30T10:00:00Z"),
+                    AdoptedAsset(marked, AssetId("LOCAL-OTHER"), "2026-06-30T11:00:00Z"),
+                    AdoptedAsset(deleted, AssetId("LOCAL-Y"), "2026-06-30T12:00:00Z"),
                 ),
                 "EVENT-1",
             )
-            assertTrue(adopted.isEmpty(), "a planned row and an imported row are both this install's own record")
-            assertFalse(s.isSettled(ref), "the planned row still downloads")
-            assertEquals(setOf(AssetId("LOCAL-GONE")), s.suppressedLocalIds(), "the imported row keeps its own marker")
+            assertEquals(setOf(ref), adopted, "only the planned row, which no import has created an asset for")
+            assertTrue(s.isSettled(ref), "it is never imported: the library already holds it")
+            assertTrue(s.importableAssets().none { it.ref == ref })
+            assertTrue(s.pendingDownloads().none { it.ref == ref }, "and nothing of it is downloaded any more")
+            assertEquals(
+                setOf(AssetId("LOCAL-KEPT"), AssetId("LOCAL-CREATED"), AssetId("LOCAL-GONE")),
+                s.suppressedLocalIds(),
+                "each row keeps the handle of the asset it records",
+            )
+            assertEquals(listOf("/stage/primary.heic"), s.stagedPathsOfImportedAssets(), "its staged bytes are released")
+            assertEquals(1, s.counts("EVENT-1").imported, "it counts as received for the event it was adopted for")
         }
 
         clause("adopting nothing writes nothing", DownloadStoreState.EMPTY) { s ->
