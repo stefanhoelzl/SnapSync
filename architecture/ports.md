@@ -96,7 +96,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `PlatformDeviceId` | `:domain:ports` | `:adapter:android` AndroidPlatformDeviceId; `:adapter:generic:app` NoPlatformDeviceId | no |
 | `Port` | `:domain:ports` | `:test:architecture` None | yes |
 | `PrefRead` | `:domain:model` | `:domain:model` Absent, Unavailable, Value | no |
-| `Preferences` | `:domain:ports` | `:adapter:android` AndroidPreferences; `:adapter:generic:mock` InMemoryPreferences; `:adapter:ios:ext-safe` IosPreferences | yes |
+| `Preferences` | `:domain:ports` | `:adapter:android` AndroidPreferences; `:adapter:generic:mock` InMemoryPreferences; `:adapter:ios:ext-safe` IosPreferences; `:domain:services` Prefs | yes |
 | `ProcessInfo` | `:domain:ports` | `:adapter:android` AndroidProcessInfo; `:adapter:generic:mock` InMemoryProcessInfo; `:adapter:ios:app-only` IosProcessInfo | yes |
 | `ProcessMetrics` | `:domain:ports` | `:adapter:generic:mock` HeldReports; `:adapter:ios:app-only` MetricKitProcessMetrics; `:domain:compose` NoProcessMetrics | no |
 | `PushNotifications` | `:domain:ports` | `:adapter:android` AndroidPushNotifications; `:adapter:ios:app-only` IosPushNotifications | no |
