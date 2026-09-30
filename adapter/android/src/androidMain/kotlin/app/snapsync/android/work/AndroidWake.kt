@@ -20,6 +20,7 @@ import app.snapsync.ports.Wake
 import app.snapsync.ports.WakeHandlers
 import co.touchlab.kermit.Logger
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ExecutionException
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.time.toJavaDuration
@@ -67,10 +68,15 @@ class AndroidWake(context: Context, private val log: Logger = Logger.withTag("wa
             .apply { constrain(trigger) }
             .build()
         val policy = if (id in running) ExistingWorkPolicy.APPEND_OR_REPLACE else ExistingWorkPolicy.REPLACE
-        work.enqueueUniqueWork(nameOf(id), policy, request)
+        // Awaited: WorkManager enqueues asynchronously, and a content-URI trigger observes only once its job is
+        // registered with the platform — so answering before that missed a change made right after, and an enqueue
+        // that failed later was never reported. `Scheduled` now means the platform holds the request.
+        work.enqueueUniqueWork(nameOf(id), policy, request).result.get()
         ScheduleResult.Scheduled
     } catch (e: IllegalStateException) {
         ScheduleResult.Refused("${e::class.simpleName}: ${e.message}")
+    } catch (e: ExecutionException) {
+        ScheduleResult.Refused("${e.cause?.let { it::class.simpleName }}: ${e.cause?.message}")
     }
 
     /** [trigger] as WorkManager's delay and constraints. */
