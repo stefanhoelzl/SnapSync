@@ -34,7 +34,7 @@ import kotlinx.coroutines.withContext
  *   Android raises no prompt for a read, so nothing here rations them.
  * - **The change token** is each external volume's MediaStore version and generation: the generation moves on every
  *   change to the volume's media, and the version on a rebuild of its database.
- * - **Imports** are phase 4's: this answers a failure that consumed nothing, so a later build retries it.
+ * - **Imports** rebuild a foreign photo in the camera folder ([MediaStoreImport]): pending, recorded, written, published.
  */
 class AndroidGallery(
     context: Context,
@@ -47,6 +47,7 @@ class AndroidGallery(
     private var observing = false
     private var observer: ContentObserver? = null
     private val reads = Channel<Unit>(Channel.CONFLATED)
+    private val importer = MediaStoreImport(context, log)
 
     init {
         scope.launch {
@@ -73,8 +74,12 @@ class AndroidGallery(
     override suspend fun widenSelection(): GalleryAccess = permission.widenSelection()
 
     override suspend fun import(request: ImportRequest): ImportResult {
-        val result = ImportResult.Failed("Android imports no photo yet")
-        handlers?.onImportSettled(request.ref, result)
+        val handlers = handlers ?: return ImportResult.Failed("no import handlers registered")
+            .also { log.e { "import of ${request.ref.sourceAssetId} before listen — nothing created" } }
+        val result = withContext(Dispatchers.IO) {
+            importer.import(request) { id -> handlers.onImportPlaceholder(request.ref, id) }
+        }
+        handlers.onImportSettled(request.ref, result)
         return result
     }
 

@@ -24,7 +24,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `CandidateSource` | `:domain:services` | `:adapter:generic:mock` Blowing, RecordingEnumerator, ResourceCandidates, Switchable; `:domain:feature` FactsSource, UnreadableSource; `:domain:services` GalleryCandidateSource, PermissionAwareCandidateSource, RecordingWalk; `:test:feature` OneAsset | yes |
 | `ChangeOutcome` | `:domain:model` | `:domain:model` Applied, Refused | no |
 | `Clock` | `:domain:ports` | `:adapter:generic:app` SystemClock; `:domain:presentation` MovableClock; `:ui:screens` MovableClock | no |
-| `Completion` | `:domain:ports` | `:adapter:android` WorkerCompletion; `:adapter:ios:app-only` PushCompletion, Released, SessionCompletion, TaskCompletion; `:app:desktop` NoCompletion; `:test:rig` Handler | yes |
+| `Completion` | `:domain:ports` | `:adapter:android` OnceCompletion, WorkerCompletion; `:adapter:ios:app-only` PushCompletion, Released, SessionCompletion, TaskCompletion; `:app:desktop` NoCompletion; `:test:rig` Handler | yes |
 | `ConfigDecodeResult` | `:domain:model` | `:domain:model` Failure, Success | no |
 | `ConfigFileDecode` | `:domain:model` | `:domain:model` Foreign, Unusable, Valid | no |
 | `ConfigFileRead` | `:domain:model` | `:domain:model` Content, Failed, Missing | no |
@@ -46,7 +46,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `DeviceIdResult` | `:domain:model` | `:domain:model` AbsentNotMintable, Id, Unavailable | no |
 | `DeviceIntegrity` | `:domain:ports` | `:adapter:android` AndroidDeviceIntegrity; `:adapter:generic:mock` FakeKey, InMemoryDeviceIntegrity; `:adapter:ios:ext-safe` IosDeviceIntegrity | yes |
 | `DirectionCount` | `:domain:model` | `:domain:model` Off, Progress | no |
-| `Download` | `:domain:ports` | `:adapter:generic:mock` Face, InertDownload, NetworkedDownload; `:adapter:ios:app-only` IosDownload; `:domain:services` FakeDownload; `:test:feature` RecordingDownload | yes |
+| `Download` | `:domain:ports` | `:adapter:android` AndroidDownload; `:adapter:generic:mock` Face, InertDownload, NetworkedDownload; `:adapter:ios:app-only` IosDownload; `:domain:services` FakeDownload; `:test:feature` RecordingDownload | yes |
 | `DownloadStatusSource` | `:domain:feature` | `:domain:feature` InMemoryDownloadStatusSource, StoreDownloadStatusSource | yes |
 | `DumpResult` | `:domain:model` | `:domain:model` NotSent, Queued, Saved | no |
 | `Enter` | `:domain:feature` | `:domain:feature` Join, LeavePrevious | no |
@@ -97,9 +97,9 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `Port` | `:domain:ports` | `:test:architecture` None | yes |
 | `PrefRead` | `:domain:model` | `:domain:model` Absent, Unavailable, Value | no |
 | `Preferences` | `:domain:ports` | `:adapter:android` AndroidPreferences; `:adapter:generic:mock` InMemoryPreferences; `:adapter:ios:ext-safe` IosPreferences | yes |
-| `ProcessInfo` | `:domain:ports` | `:adapter:generic:mock` InMemoryProcessInfo; `:adapter:ios:app-only` IosProcessInfo | yes |
+| `ProcessInfo` | `:domain:ports` | `:adapter:android` AndroidProcessInfo; `:adapter:generic:mock` InMemoryProcessInfo; `:adapter:ios:app-only` IosProcessInfo | yes |
 | `ProcessMetrics` | `:domain:ports` | `:adapter:generic:mock` HeldReports; `:adapter:ios:app-only` MetricKitProcessMetrics; `:domain:compose` NoProcessMetrics | no |
-| `PushNotifications` | `:domain:ports` | `:adapter:ios:app-only` IosPushNotifications | no |
+| `PushNotifications` | `:domain:ports` | `:adapter:android` AndroidPushNotifications; `:adapter:ios:app-only` IosPushNotifications | no |
 | `PushTokenPublisher` | `:domain:services` | `:domain:services` BackendPushTokenPublisher; `:test:feature` FakePushTokenPublisher | yes |
 | `RegistrationAnswer` | `:domain:model` | `:domain:model` Answered, Unsupported | no |
 | `RegistrationOutcome` | `:domain:model` | `:domain:model` Applied, DisableRefusedByGrant, EnableRefusedByGrant, Failed, NothingToDisable, Unsupported | no |

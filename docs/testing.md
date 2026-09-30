@@ -217,6 +217,15 @@ Where bindings live: beside their implementations.
   replays through its real routes (`api/test/android-emulator-proof.test.ts`), which is what checks that the bytes the
   adapter produces are the bytes the verifier reads. A real phone's chain first meets the production verifier in the
   closed test; until then Google's recorded device chains stand in (`api/test/android-attest.test.ts`).
+- Receiving on Android: the `Download` contract runs live on `ANDROID_EMU` over DownloadManager against the transfer
+  fixture (`AndroidDownloadContractTest`, which also shows a transfer finished while no broadcast arrived is delivered
+  by the next start), and the `GalleryImport` contract over the MediaStore import (`AndroidImportContractTest`, which
+  also pins what no shared clause states: fixtures carrying an iPhone's metadata — a HEIC with an offset, an HEVC MOV —
+  and an Android MP4 land once in `DCIM/Camera` at their capture time; a JPEG with no date of its own gets the capture
+  time as its modification time, since MediaProvider ignores an app's `DATE_TAKEN`; a Live Photo arrives as its still;
+  a killed import's pending item reads absent and is cleaned; the fixtures live in
+  `src/androidDeviceTest/resources/import/`). Whether a gallery app sorts by those dates, and whether a MOV plays, is
+  the closed test's.
 - `PlatformDeviceId`: its contract runs live on `ANDROID_EMU` over `ANDROID_ID` (an offered id is stable and
   canonical), and on the JVM over `NoPlatformDeviceId` (no id is `null`). "The same after a reinstall" is the property
   the id is chosen for and no process can test on itself; it is checked by hand on the emulator.
@@ -591,8 +600,8 @@ The Android rig build (`:app:android` under `-Psnapsync.rig=true`) serves the sa
 emulator, reached over `adb forward tcp:18099 tcp:18099` (load `android-emulator`). It reads its adapter choice from
 the adapters file as the iOS app host does (`device/adapters*` write it, and the app exits), with two differences that
 both come from Android not having every real adapter yet (today it has the screen, the lifecycle, the clock, the
-storage, attestation, the backend, links, the photo library, the system UI, the wakes, the background-time holds and
-the upload session; downloads, push and the crash reporter are phases 4 and 5). **No file is not all real**: it is every system mocked but
+storage, attestation, the backend, links, the photo library, the system UI, the wakes, the background-time holds, the
+upload session and the downloads; push arrives with this phase's FCM adapter and the crash reporter with phase 5). **No file is not all real**: it is every system mocked but
 the screen and its foreground life, fresh in memory at every start — what every launch without a file has always
 composed. And **a choice may leave real only the systems Android has an adapter for** (`AndroidRig.kt`'s list; naming
 another `real`, or omitting it, refuses the launch, which then composes nothing). A file-chosen launch saves its mocks'
@@ -600,7 +609,7 @@ state beside the file, as on iOS, because a real store then outlives the process
 upload extension's `/os` verbs (Android has none), and is contract host `ANDROID_EMU` in `GET /device` — the host the
 device tests run on too. `scripts/android-smoke` — install, launch, `/health`, `GET /device`, an event created and
 joined over the mocked backend — is the `android-emulator` CI job (`android.yml`), on a Linux KVM runner. A build
-without the property refuses at start: not every system has an Android adapter yet.
+without the property composes every real adapter and starts, with no crash reporter until phase 5.
 
 The same job runs every module's `commonTest` on the emulator (`connectedAndroidDeviceTest`), for the reason `ios-test`
 runs it on the simulator: the code ships on ART after D8, over the platform's SQLite and Compose renderer. It is a

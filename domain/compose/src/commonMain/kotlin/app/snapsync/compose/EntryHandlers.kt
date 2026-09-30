@@ -84,7 +84,7 @@ fun pushHandlers(core: AppCore): PushHandlers {
         },
         onTokenFailure = { error: PlatformError? ->
             log.invocation(entry, "onPushTokenFailure", params = "error=${error?.description}") {
-                log.w { "APNs registration failed — no silent pushes will arrive: ${error?.description}" }
+                log.w { "push registration failed — no silent pushes will arrive: ${error?.description}" }
             }
         },
         onMessage = { message: PushMessage, completion: Completion ->

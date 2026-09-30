@@ -2,9 +2,9 @@
 // the app once, in its one process (`snapSyncProcess`, then `snapSyncHost` — `SnapSyncRoot`), and the activity that
 // pulls the screen. Wiring only, gated as a shell (`detektAppShell`, `KotlinShellGuardTest`); no test source set.
 //
-// NO Android adapter exists yet for any system but the screen and its foreground life, so a build WITHOUT
-// `-Psnapsync.rig=true` compiles and links, and refuses at start (`src/prod`), naming why. A rig build composes over
-// the mocks with the control channel served in-process (`test/rig/src/android-hook`), reached over `adb forward`.
+// A build WITHOUT `-Psnapsync.rig=true` composes every real Android adapter (`src/prod`), with no crash reporter until
+// phase 5. A rig build composes over an adapter choice of real and mocked systems, with the control channel served
+// in-process (`test/rig/src/android-hook`), reached over `adb forward`.
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -39,6 +39,17 @@ android {
         val uploadBase = requireNotNull(deployment["uploadBase"]) { "the resolved deployment rendered no uploadBase" }
         buildConfigField("String", "UPLOAD_BASE", "\"$uploadBase\"")
         buildConfigField("String", "APP_VERSION", "\"$marketingVersionFloor\"")
+        // The Firebase project the push service starts from (`docs/deployment.md`) — rendered, never a
+        // google-services.json. Empty until the project exists: the app then starts no Firebase and gets no push.
+        listOf(
+            "FIREBASE_PROJECT_ID" to "firebaseProjectId",
+            "FIREBASE_APPLICATION_ID" to "firebaseApplicationId",
+            "FIREBASE_API_KEY" to "firebaseApiKey",
+            "FIREBASE_SENDER_ID" to "firebaseSenderId",
+        ).forEach { (field, key) ->
+            val value = requireNotNull(deployment[key]) { "the resolved deployment rendered no $key" }
+            buildConfigField("String", field, "\"$value\"")
+        }
         // The event link's host — the resolved deployment's domain without a port (an intent filter with no port
         // matches any, and LINK_ORIGIN carries the local rig's).
         manifestPlaceholders["linkHost"] = requireNotNull(deployment["domain"]).substringBefore(':')
@@ -51,9 +62,8 @@ android {
     buildTypes {
         release {
             // R8 over the whole app, as a store build will run it — on the rig build, which links the whole graph
-            // (the `android-emulator` job builds it). The plain release refuses at start, so R8 would strip it to
-            // nothing and prove nothing; the store build switches it on with the adapters that give it something
-            // to keep.
+            // (the `android-emulator` job builds it). The plain release composes the same adapters now; switching R8 on
+            // for it, with the keep rules Firebase and Ktor need, is the store build's (phase 5).
             isMinifyEnabled = rigEnabled
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }

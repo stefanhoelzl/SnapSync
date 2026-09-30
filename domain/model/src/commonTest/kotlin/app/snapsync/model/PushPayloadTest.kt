@@ -18,7 +18,7 @@ class PushPayloadTest {
     }
 
     @Test
-    fun `an FCM data message's string map yields its eventId`() {
+    fun `an FCM data message’s string map yields its eventId`() {
         // FCM hands a data message over as `Map<String, String>`: the same key the APNs payload carries.
         assertEquals("E1", pushEventId(mapOf("eventId" to "E1")))
     }

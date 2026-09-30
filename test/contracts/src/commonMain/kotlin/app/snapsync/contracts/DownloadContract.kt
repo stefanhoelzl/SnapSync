@@ -98,21 +98,37 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
         }
 
         clause("AN_ERROR_STATUS_IS_A_FINISHED_TRANSFER_OF_ITS_BODY", DownloadState.READY) { subject ->
-            // A background `URLSession` reports an HTTP error as a SUCCESSFUL transfer of the error body, with a nil
-            // completion error — the port reports the status, and the owner's integrity check is what refuses it.
+            // Two honest shapes, one outcome. A background `URLSession` reports an HTTP error as a SUCCESSFUL transfer of
+            // the error body, with a nil completion error — the port reports the status, and the owner's integrity
+            // check refuses it. Android's DownloadManager fails the transfer instead, the status as its reason, and
+            // keeps no body. Either way nothing is staged and the resource stays pending; what the port may never do is
+            // report an error answer as a success.
             val id = "AN_ERROR_STATUS_IS_A_FINISHED_TRANSFER_OF_ITS_BODY"
             val events = subject.transfer(id, FixtureAnswer.Respond(404, length = 16))
-            val finished = events.filterIsInstance<DownloadEvent.Finished>().single()
-            assertEquals(404, finished.facts.statusCode)
+            val finished = events.filterIsInstance<DownloadEvent.Finished>()
+            if (finished.isEmpty()) {
+                assertNotNull(events.filterIsInstance<DownloadEvent.Completed>().single().error, "an error answer fails")
+            } else {
+                assertEquals(404, finished.single().facts.statusCode)
+            }
             assertTrue(events.last() is DownloadEvent.Completed, "the slot is freed either way")
         }
 
         clause("NO_LENGTH_IS_NEGATIVE", DownloadState.READY) { subject ->
+            // Either the port finishes a body whose length was never declared and says the length is unknown (never
+            // zero), or it refuses to download what it cannot size — DownloadManager's answer ("can't know size of
+            // download"), a failed completion. Every object the backend presigns declares its length, so the refusal
+            // never meets a real download; what is asserted is that neither shape lies.
             val id = "NO_LENGTH_IS_NEGATIVE"
             val events = subject.transfer(id, FixtureAnswer.Respond(200, length = 32, declaresLength = false))
-            val facts = events.filterIsInstance<DownloadEvent.Finished>().single().facts
-            assertTrue(facts.expectedBytes < 0, "an undeclared length is 'unknown', not zero: $facts")
-            assertEquals(32, facts.receivedBytes)
+            val finished = events.filterIsInstance<DownloadEvent.Finished>()
+            if (finished.isEmpty()) {
+                assertNotNull(events.filterIsInstance<DownloadEvent.Completed>().single().error, "an unsized body fails")
+            } else {
+                val facts = finished.single().facts
+                assertTrue(facts.expectedBytes < 0, "an undeclared length is 'unknown', not zero: $facts")
+                assertEquals(32, facts.receivedBytes)
+            }
         }
 
         clause("SHORT_READ_IS_REPORTED_TRUTHFULLY", DownloadState.READY) { subject ->

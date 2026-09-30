@@ -336,6 +336,9 @@ private val ANDROID_REAL_ADAPTERS: Set<MockedSystem> = setOf(
     MockedSystem.WAKE,
     MockedSystem.BACKGROUND_TIME,
     MockedSystem.UPLOAD_SESSION,
+    MockedSystem.DOWNLOADS,
+    MockedSystem.PUSH,
+    MockedSystem.PROCESS_INFO,
 )
 
 /**

@@ -3,6 +3,10 @@ package app.snapsync.android
 import android.app.Application
 import app.snapsync.android.attest.AndroidDeviceIntegrity
 import app.snapsync.android.backend.androidHttpClient
+import app.snapsync.android.download.AndroidDownload
+import app.snapsync.android.process.AndroidProcessInfo
+import app.snapsync.android.push.AndroidPushNotifications
+import app.snapsync.android.push.FirebaseConfig
 import app.snapsync.android.gallery.AndroidGallery
 import app.snapsync.android.link.AndroidLinks
 import app.snapsync.android.logging.LogcatSink
@@ -24,6 +28,7 @@ import app.snapsync.compose.AppCore
 import app.snapsync.android.buildinfo.AndroidBuildInfo
 import app.snapsync.compose.AppPorts
 import app.snapsync.compose.DevicePorts
+import app.snapsync.compose.NoCrashReporter
 import app.snapsync.compose.NoEntryContext
 import app.snapsync.compose.NoProcessMetrics
 import app.snapsync.compose.ProcessPorts
@@ -83,6 +88,14 @@ class SnapSyncRoot(internal val application: Application) {
     /** The photo grant, and the dialog and selection sheet that change it. */
     private val photoPermission: AndroidPhotoPermission by lazy { AndroidPhotoPermission(application, foreground) }
 
+    /** The Firebase project this build's pushes come from — the resolved deployment's public values. */
+    private val firebase = FirebaseConfig(
+        projectId = BuildConfig.FIREBASE_PROJECT_ID,
+        applicationId = BuildConfig.FIREBASE_APPLICATION_ID,
+        apiKey = BuildConfig.FIREBASE_API_KEY,
+        senderId = BuildConfig.FIREBASE_SENDER_ID,
+    )
+
     /** This process's REAL adapters — the systems Android has one for — each built on first use. */
     private val real: DevicePorts = DevicePorts(
         clock = lazyOf(SystemClock),
@@ -105,6 +118,11 @@ class SnapSyncRoot(internal val application: Application) {
         backgroundTime = lazy { AndroidBackgroundTime(application) },
         // Its transfers hold this launch's background time — the real one, or the mock a rig launch chose.
         appUpload = lazy { AndroidUpload(application, ports.backgroundTime) },
+        download = lazy { AndroidDownload(application) },
+        pushNotifications = lazy { AndroidPushNotifications(application, firebase) },
+        processInfo = lazy { AndroidProcessInfo(application) },
+        // No crash reporter is linked until phase 5: this build carries no destination, so nothing would start anyway.
+        crashReporter = lazyOf(NoCrashReporter),
     )
 
     /** The adapters that differ between a production and a rig build, chosen at BUILD time. */
@@ -126,6 +144,8 @@ class SnapSyncRoot(internal val application: Application) {
                 buildNumber = BuildConfig.VERSION_CODE.toString(),
                 uploadHost = BuildConfig.UPLOAD_BASE,
                 bootLines = listOf("=== app process start ===") + adapters.bootLines,
+                // An FCM token belongs to the Firebase project that issued it: that project is its push environment.
+                apnsEnvironment = firebase.projectId,
             ),
         )
     }
