@@ -61,6 +61,7 @@ class GalleryServicesTest {
         override suspend fun albumsById(ids: Set<AlbumId>) = read("albumsById") { albums.filter { it.id in ids } }
         override suspend fun albumMembers(album: AlbumId, since: CaptureCutoff?) =
             read("albumMembers($album)") { members[album].orEmpty() }
+        override val supportsAlbumWrites: Boolean = true
         override suspend fun createAlbum(title: String): AlbumId? = created.also { calls += "createAlbum($title)" }
         override suspend fun addToAlbum(album: AlbumId, assets: Set<AssetId>): WriteOutcome {
             adds += album to assets

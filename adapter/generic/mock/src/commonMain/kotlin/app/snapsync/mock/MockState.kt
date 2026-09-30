@@ -2,7 +2,7 @@
 
 package app.snapsync.mock
 
-import app.snapsync.model.ApnsPushToken
+import app.snapsync.model.PushEndpoint
 import app.snapsync.model.AssetFacts
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
@@ -435,7 +435,7 @@ private class BackendDto(
     val storedFiles: Map<String, List<StoredFileDto>>,
     val events: Map<String, EventDto>,
     val memberships: List<MembershipDto>,
-    val deviceConfigs: Map<String, Pair<String, String>>,
+    val deviceConfigs: Map<String, Triple<String, String, String>>,
     val deviceConfigWrites: Map<String, Int>,
     val publishes: List<CountDto>,
     val refused: List<CountDto>,
@@ -465,7 +465,7 @@ private class BackendDto(
             state.memberships[it.event to it.device] =
                 BackendState.Membership(it.departed, it.manifest?.let(::deviceManifestFromJson), it.manifestVersion)
         }
-        deviceConfigs.forEach { (device, config) -> state.deviceConfigs[device] = ApnsPushToken(config.first, config.second) }
+        deviceConfigs.forEach { (device, config) -> state.deviceConfigs[device] = PushEndpoint(config.first, config.second, config.third) }
         state.deviceConfigWrites.putAll(deviceConfigWrites)
         publishes.forEach { state.publishes[it.event to it.device] = it.count }
         refused.forEach { state.refused[it.event to it.device] = it.count }
@@ -490,7 +490,7 @@ private class BackendDto(
             memberships = state.memberships.map { (key, m) ->
                 MembershipDto(key.first, key.second, m.departed, m.manifest?.encodeToJson(), m.manifestVersion)
             },
-            deviceConfigs = state.deviceConfigs.mapValues { it.value.token to it.value.env },
+            deviceConfigs = state.deviceConfigs.mapValues { Triple(it.value.kind, it.value.token, it.value.env) },
             deviceConfigWrites = state.deviceConfigWrites.toMap(),
             publishes = state.publishes.map { CountDto(it.key.first, it.key.second, it.value) },
             refused = state.refused.map { CountDto(it.key.first, it.key.second, it.value) },

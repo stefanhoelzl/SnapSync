@@ -162,6 +162,16 @@ class PhotoLibraryOperator internal constructor(private val state: LibraryState)
     val enumerationHeld: Boolean get() = state.enumerationHeld != null
 
     /** A held walk, and every later one, reads. */
+    // ---- the platform -----------------------------------------------------------------------------
+
+    /**
+     * Whether this library can create and fill albums — an iPhone's can, an Android phone's cannot (a folder is an
+     * album there, and a photo lives in one). Set before composing to play an Android library.
+     */
+    var supportsAlbumWrites: Boolean
+        get() = state.albumWrites
+        set(value) { state.albumWrites = value }
+
     fun releaseEnumeration() {
         state.enumerationHeld?.complete(Unit)
         state.enumerationHeld = null
@@ -199,6 +209,7 @@ internal class LibraryState(
     var enumerationHeld: CompletableDeferred<Unit>? = null
     var failNextEnumeration = false
     var byIdReadable = true
+    var albumWrites = true
 
     /** [userAlbums] as the operator writes it — a caller-supplied read-only cell is never written. */
     val writableAlbums: MutableStateFlow<Map<String, Set<AssetId>>>? get() = userAlbums as? MutableStateFlow

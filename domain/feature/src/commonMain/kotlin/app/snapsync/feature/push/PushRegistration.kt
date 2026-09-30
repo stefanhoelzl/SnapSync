@@ -1,6 +1,6 @@
 package app.snapsync.feature.push
 
-import app.snapsync.model.ApnsPushToken
+import app.snapsync.model.PushEndpoint
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.services.push.PushRegistrationRecord
@@ -14,15 +14,15 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 
 /**
- * Registers the device's APNs token with the backend (capability `receiving-photos`, "Registration timing —
+ * Registers the device's push token with the backend (capability `receiving-photos`, "Registration timing —
  * launch, join, and rotation"). It publishes through the [publisher] port, whose adapter owns the address and the
  * body. **No event id** (the token is device-scoped, event-independent). A failed publish is absorbed (logged), so
  * registration never blocks join/upload/download.
  *
  * **Change-driven.** The app asks the OS for the token at every app entry, and the OS answers every time — mostly
- * with the token it gave last time. A delivered token is therefore published only when the (`token`, `env`,
- * `deviceId`) triple it would register differs from the last one the backend accepted, which [record] keeps; and
- * the triple is recorded only after the backend accepted it, so a failed publish is re-sent at the next entry.
+ * with the token it gave last time. A delivered token is therefore published only when the (`kind`, `token`, `env`,
+ * `deviceId`) registration it would register differs from the last one the backend accepted, which [record] keeps; and
+ * the registration is recorded only after the backend accepted it, so a failed publish is re-sent at the next entry.
  * Publishing at every launch instead was measured on 102 of 108 process starts, 0.5–3 s each, most of them
  * background wakes (decision record `changes/own-work-per-wake`, D12).
  *
@@ -34,7 +34,7 @@ import kotlinx.coroutines.flow.merge
 class PushRegistration(
     private val publisher: PushTokenPublisher,
     private val record: PushRegistrationRecord,
-    /** Whose registration this is: part of the triple, since a changed device id is a registration the backend
+    /** Whose registration this is: part of the registration, since a changed device id is a registration the backend
      *  has never seen. Read per publish — it is a Keychain read that throws while protected data is unavailable. */
     private val identity: PersistedDeviceIdentity,
     private val log: Logger = Logger.withTag("PushRegistration"),
@@ -46,16 +46,16 @@ class PushRegistration(
      * or credential change would be registered (B11: an unreadable device identity did exactly that). Cancellation
      * still propagates.
      */
-    suspend fun register(token: ApnsPushToken) {
+    suspend fun register(token: PushEndpoint) {
         publish(token, keyOf(token))
     }
 
     /**
-     * Publish [token] only when its triple differs from the last one the backend accepted — the trigger of every
+     * Publish [token] only when its registration differs from the last one the backend accepted — the trigger of every
      * OS delivery. An unreadable device identity publishes nothing: the publisher could not address the device
      * either, and the next entry's delivery asks again.
      */
-    suspend fun registerIfChanged(token: ApnsPushToken) {
+    suspend fun registerIfChanged(token: PushEndpoint) {
         val key = keyOf(token) ?: return
         if (key == runCatchingCancellable { record.loadLastRegistered() }.getOrNull()) {
             log.i { "push token unchanged since the last accepted registration — not re-published" }
@@ -70,7 +70,7 @@ class PushRegistration(
      *
      * **[credentialChanged] is not an optimization; without it a refused registration waits for a change.** A `PUT`
      * refused because the device had no valid attestation yet (a fresh install races attestation, or the backend
-     * collected its record) leaves the triple unrecorded, so the next app entry would re-send it — but a device
+     * collected its record) leaves the registration unrecorded, so the next app entry would re-send it — but a device
      * that receives no silent pushes gets few entries. A new credential is exactly what makes the refused `PUT`
      * acceptable, so it re-sends at once; a periodic renewal re-sends too, deliberately without telling a renewal
      * from a mint (it costs one publish per renewal, and keeps the one healing path unconditional).
@@ -80,7 +80,7 @@ class PushRegistration(
             source.deliveries.map { Trigger.DELIVERY },
             credentialChanged.map { Trigger.CREDENTIAL },
         ).collect { trigger ->
-            val token = ApnsPushToken(source.token.value ?: return@collect, source.env)
+            val token = PushEndpoint(source.kind, source.token.value ?: return@collect, source.env)
             when (trigger) {
                 Trigger.DELIVERY -> registerIfChanged(token)
                 Trigger.CREDENTIAL -> register(token)
@@ -88,7 +88,7 @@ class PushRegistration(
         }
     }
 
-    private suspend fun publish(token: ApnsPushToken, key: String?) {
+    private suspend fun publish(token: PushEndpoint, key: String?) {
         runCatchingCancellable { publisher.publish(token) }.getOrElse { Result.failure(it) }
             .onSuccess {
                 key?.let { runCatchingCancellable { record.saveLastRegistered(it) } }
@@ -98,7 +98,7 @@ class PushRegistration(
     }
 
     /** The registration [token] would make, or `null` while the device identity cannot be read (logged). */
-    private fun keyOf(token: ApnsPushToken): String? =
+    private fun keyOf(token: PushEndpoint): String? =
         runCatchingCancellable { registrationKey(token, identity.deviceId()) }
             .onFailure { log.w(it) { "device identity unreadable — push registration deferred to the next trigger" } }
             .getOrNull()
@@ -107,8 +107,10 @@ class PushRegistration(
 }
 
 /**
- * The one string a registration is recorded as: the three facts the backend's registration depends on. Newline-
- * separated because none of them can contain one (a hex token, `sandbox`/`production`, a UUID).
+ * The one string a registration is recorded as: the four facts the backend's registration depends on. Newline-
+ * separated because none of them can contain one (a push kind, a push token, an environment, a UUID). The kind
+ * leads, so an install whose push service changed never reads as registered; a record written before the kind was
+ * part of the key (three lines) matches nothing and publishes once — an idempotent `PUT`.
  */
-internal fun registrationKey(token: ApnsPushToken, deviceId: String): String =
-    listOf(token.env, deviceId, token.token).joinToString("\n")
+internal fun registrationKey(token: PushEndpoint, deviceId: String): String =
+    listOf(token.kind, token.env, deviceId, token.token).joinToString("\n")

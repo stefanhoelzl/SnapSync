@@ -135,7 +135,10 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
         members.filterTo(mutableSetOf()) { it in captured }
     }
 
-    override suspend fun createAlbum(title: String): AlbumId {
+    override val supportsAlbumWrites: Boolean get() = state.albumWrites
+
+    override suspend fun createAlbum(title: String): AlbumId? {
+        if (!state.albumWrites) return null
         val id = "album-${state.albumCounter++}"
         state.created[id] = LibraryState.Album(title)
         state.createdLog += id to title
@@ -143,6 +146,7 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
     }
 
     override suspend fun addToAlbum(album: AlbumId, assets: Set<AssetId>): WriteOutcome {
+        if (!state.albumWrites) return WriteOutcome.Failed("this library files no photo into an album")
         state.addsHeld?.await()
         state.addedLog += album to assets.toList()
         val target = state.created[album] ?: return WriteOutcome.Failed("album $album does not resolve")

@@ -53,7 +53,7 @@ class CredentialedBackendTest {
         val credential = ScriptedCredential("T1", recovered = "T2")
         val backend = ScriptedBackend { _, token -> if (token == "T1") unauthorized else Reply.Ok(Unit) }
 
-        val reply = CredentialedBackend(backend, credential, versionGate = null).putDeviceConfig("D", app.snapsync.model.ApnsPushToken("t", "e"))
+        val reply = CredentialedBackend(backend, credential, versionGate = null).putDeviceConfig("D", app.snapsync.model.PushEndpoint("apns", "t", "e"))
 
         assertEquals(Reply.Ok(Unit), reply)
         assertEquals(listOf("T1"), credential.rejections, "the rejection names the token the call CARRIED")

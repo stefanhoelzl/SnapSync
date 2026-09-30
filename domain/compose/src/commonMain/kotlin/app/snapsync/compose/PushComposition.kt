@@ -1,6 +1,6 @@
 package app.snapsync.compose
 
-import app.snapsync.model.ApnsPushToken
+import app.snapsync.model.PushEndpoint
 import app.snapsync.feature.push.PushRegistration
 import app.snapsync.services.backend.PushTokenPublisher
 
@@ -16,9 +16,9 @@ internal fun pushRegistrationFor(services: AppServices, publisher: PushTokenPubl
     PushRegistration(publisher, services.pushRecord, services.deviceIdentity)
 
 /**
- * Re-PUT the delivered APNs token on join, whatever the last-registered record holds (capability
+ * Re-PUT the delivered push token on join, whatever the last-registered record holds (capability
  * `receiving-photos`: a join publishes unconditionally); a no-op before the OS has delivered one.
  */
 internal suspend fun PushRegistration.reRegister(services: AppServices) {
-    services.pushTokens.token.value?.let { register(ApnsPushToken(it, services.pushTokens.env)) }
+    services.pushTokens.token.value?.let { register(PushEndpoint(services.pushTokens.kind, it, services.pushTokens.env)) }
 }

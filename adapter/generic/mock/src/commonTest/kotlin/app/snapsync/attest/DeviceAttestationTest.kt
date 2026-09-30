@@ -7,7 +7,7 @@ import app.snapsync.model.DeviceIdentityRole
 import app.snapsync.ports.PlatformDeviceId
 import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.mock.InMemoryAttestStore
-import app.snapsync.model.ApnsPushToken
+import app.snapsync.model.PushEndpoint
 import app.snapsync.model.CreateEventRequest
 import app.snapsync.model.DeviceFile
 import app.snapsync.model.DeviceManifest
@@ -122,7 +122,7 @@ private class FakeClient(
     override suspend fun leaveEvent(token: String?, eventId: String, deviceId: String): Reply<Unit> = unused()
     override suspend fun eventFiles(eventId: String): Reply<List<UnionAsset>> = unused()
     override suspend fun deviceFiles(token: String?, deviceId: String): Reply<List<DeviceFile>> = unused()
-    override suspend fun putDeviceConfig(token: String?, deviceId: String, push: ApnsPushToken): Reply<Unit> = unused()
+    override suspend fun putDeviceConfig(token: String?, deviceId: String, push: PushEndpoint): Reply<Unit> = unused()
 
     private fun unused(): Nothing = error("attestation reaches only the /attest/… routes")
 }

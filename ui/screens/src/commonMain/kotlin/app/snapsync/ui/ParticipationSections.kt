@@ -62,8 +62,15 @@ internal fun ColumnScope.ParticipationSections(
             },
         )
     }
-    AppToggleSection(title = "Create an album", checked = state.saveToAlbum, onCheckedChange = actions.onSaveToAlbum) {
-        AppSectionNote(albumNote)
+    // A phone that cannot hold an event album (Android) is offered none (capability `event-album`).
+    if (state.albumOffered) {
+        AppToggleSection(
+            title = "Create an album",
+            checked = state.saveToAlbum,
+            onCheckedChange = actions.onSaveToAlbum,
+        ) {
+            AppSectionNote(albumNote)
+        }
     }
 }
 
@@ -126,6 +133,7 @@ class ParticipationState(
     val shareOn: Boolean get() = form.shareOn
     val receiveOn: Boolean get() = form.receiveOn
     val saveToAlbum: Boolean get() = form.saveToAlbum
+    val albumOffered: Boolean get() = form.albumOffered
     val choices: RangeChoices get() = RangeChoices(form.preset, range.from, range.until)
     val window: RangeWindow get() = RangeWindow(range.windowStart, range.windowEnd, range.nowAvailable)
 }

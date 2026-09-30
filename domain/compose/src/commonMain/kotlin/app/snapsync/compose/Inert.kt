@@ -1,6 +1,12 @@
 package app.snapsync.compose
 
+import app.snapsync.model.CrashEvent
+import app.snapsync.model.CrashOptions
+import app.snapsync.model.Crumb
+import app.snapsync.model.DumpResult
 import app.snapsync.model.Handoff
+import app.snapsync.ports.CrashHandlers
+import app.snapsync.ports.CrashReporter
 import app.snapsync.ports.EntryContext
 import app.snapsync.ports.MetricHandlers
 import app.snapsync.ports.ProcessMetrics
@@ -14,6 +20,20 @@ object NoEntryContext : EntryContext {
     override fun enter(name: String): Boolean = false
     override fun exit(owned: Boolean) = Unit
     override fun current(): String? = null
+}
+
+/**
+ * Reports nowhere: the crash-reporting binding for a build with no crash reporter linked (Android, until its reporter
+ * lands). Such a build also carries no destination, so crash reporting starts nothing and keeps a diagnostic dump on
+ * the phone without asking the channel; if anything did reach it, [sendDump] says nothing was sent.
+ */
+object NoCrashReporter : CrashReporter {
+    override fun listen(handlers: CrashHandlers) = Unit
+    override fun start(options: CrashOptions) = Unit
+    override fun capture(event: CrashEvent) = Unit
+    override fun breadcrumb(crumb: Crumb) = Unit
+    override fun setContext(name: String, fields: Map<String, String>) = Unit
+    override suspend fun sendDump(dump: CrashEvent): DumpResult = DumpResult.NotSent("no crash reporter on this build")
 }
 
 /** Delivers nothing, ever: the process-metrics binding for a process with no provider. */

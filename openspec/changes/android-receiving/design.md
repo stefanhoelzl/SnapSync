@@ -88,9 +88,11 @@ or copying it.
 
 `PushNotifications` gains `val kind: String`: the iOS adapter answers `"apns"`, the Android adapter `"fcm"`, and
 `PushServiceMock` has a setting defaulting to `"apns"`.
-- **The model.** `ApnsPushToken(token, env)` becomes `PushRegistration(kind, token, env)`, and `PushToken(hex)`
-  becomes `PushToken(value)`, since FCM tokens are not hex.
-- **The composition** builds `PushTokenSource` with the kind read from `ports.push` and the env the root states.
+- **The model.** `ApnsPushToken(token, env)` becomes `PushEndpoint(kind, token, env)` (not `PushRegistration`, which
+  is already the feature class that publishes it), and `PushToken(hex)` becomes `PushToken(value)`, since FCM tokens
+  are not hex.
+- **The token source** carries the kind beside the env: each root builds `PushTokenSource(kind, env)` with the kind
+  read from its push port and the env it states.
 - **The request.** `HttpBackend` sends the registration's `kind`; for iOS the request body stays byte-identical.
 - **The key.** `registrationKey` gains the kind, so an install whose kind changed can never read as "already
   registered". Each iOS device's stored key misses once after the update and re-publishes once. The route is an

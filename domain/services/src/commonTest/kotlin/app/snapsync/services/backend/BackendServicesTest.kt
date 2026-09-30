@@ -144,12 +144,12 @@ class BackendServicesTest {
         assertTrue(store.reads > 0, "the call resolves the identity")
         val locked = servicesAnswering(Reply.Ok(Unit), MapSecureStore(unavailable = true))
         assertTrue(locked.leave.notifyLeaving("E").isFailure)
-        assertTrue(locked.pushTokens.publish(app.snapsync.model.ApnsPushToken("t", "e")).isFailure)
+        assertTrue(locked.pushTokens.publish(app.snapsync.model.PushEndpoint("apns", "t", "e")).isFailure)
     }
 
     @Test
     fun a_push_registration_succeeds_only_on_a_served_write() = runTest {
-        val token = app.snapsync.model.ApnsPushToken("t", "sandbox")
+        val token = app.snapsync.model.PushEndpoint("apns", "t", "sandbox")
         assertTrue(servicesAnswering(Reply.Ok(Unit)).pushTokens.publish(token).isSuccess)
         assertTrue(servicesAnswering(Reply.Refused(401, "")).pushTokens.publish(token).isFailure)
     }

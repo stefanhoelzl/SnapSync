@@ -1,18 +1,25 @@
 package app.snapsync.model
 
 /**
- * An APNs device token and the APNs environment it belongs to — the `pushToken` persisted in
- * `devices/<deviceId>.json` (capability `receiving-photos`). `env` is `"sandbox"` (dev/sideloaded builds)
- * or `"production"` (TestFlight/App Store).
+ * Where the backend sends this device's silent pushes (capability `receiving-photos`) — the device's registered
+ * push token, as the backend stores it. [kind] names the push service ([PUSH_KIND_APNS], [PUSH_KIND_FCM]), stated by
+ * the `PushNotifications` adapter; [env] is the build's, never the delivery's: APNs' `"sandbox"` (dev/sideloaded
+ * builds) or `"production"` (TestFlight/App Store), and on FCM the Firebase project the token belongs to.
  */
-data class ApnsPushToken(val token: String, val env: String)
+data class PushEndpoint(val kind: String, val token: String, val env: String)
+
+/** The backend's push kind for Apple's push service. */
+const val PUSH_KIND_APNS: String = "apns"
+
+/** The backend's push kind for Firebase Cloud Messaging. */
+const val PUSH_KIND_FCM: String = "fcm"
 
 /**
- * The device token the platform's push service issued (or rotated), as lowercase hex — what the `PushNotifications`
- * port hands the core. Which APNs environment it belongs to is the build's, not the delivery's: the composition
- * pairs it into an [ApnsPushToken].
+ * The device token the platform's push service issued (or rotated) — what the `PushNotifications` port hands the
+ * core: lowercase hex on APNs, FCM's own opaque string on Android. Which service and environment it belongs to is
+ * the build's, not the delivery's: the composition pairs it into a [PushEndpoint].
  */
-data class PushToken(val hex: String)
+data class PushToken(val value: String)
 
 /**
  * A silent push as it arrived, its [payload] kept **whole** (capability `receiving-photos`): the `model/` codec

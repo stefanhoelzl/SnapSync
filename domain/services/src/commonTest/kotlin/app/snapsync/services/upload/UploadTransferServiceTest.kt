@@ -122,6 +122,7 @@ class UploadTransferServiceTest {
         override suspend fun albumsById(ids: Set<AlbumId>): GalleryRead<List<AlbumRecord>> = GalleryRead.Read(emptyList())
         override suspend fun albumMembers(album: AlbumId, since: CaptureCutoff?): GalleryRead<Set<AssetId>> =
             GalleryRead.Read(emptySet())
+        override val supportsAlbumWrites: Boolean = true
         override suspend fun createAlbum(title: String): AlbumId? = null
         override suspend fun addToAlbum(album: AlbumId, assets: Set<AssetId>) = WriteOutcome.Ok
         override suspend fun export(resource: Resource, to: String): WriteOutcome {

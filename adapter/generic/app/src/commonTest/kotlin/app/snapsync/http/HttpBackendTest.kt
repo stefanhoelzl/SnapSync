@@ -1,7 +1,7 @@
 package app.snapsync.http
 
 import app.snapsync.model.APP_VERSION_HEADER
-import app.snapsync.model.ApnsPushToken
+import app.snapsync.model.PushEndpoint
 import app.snapsync.model.AssetId
 import app.snapsync.model.CreateEventRequest
 import app.snapsync.model.DeviceFile
@@ -106,7 +106,7 @@ class HttpBackendTest {
             { backend.publishManifest("T", "E", "D", manifest) },
             { backend.leaveEvent("T", "E", "D") },
             { backend.deviceFiles("T", "D") },
-            { backend.putDeviceConfig("T", "D", ApnsPushToken("t", "sandbox")) },
+            { backend.putDeviceConfig("T", "D", PushEndpoint("apns", "t", "sandbox")) },
         )
         val ungated = listOf<suspend () -> Unit>(
             { backend.challenge() },
@@ -236,9 +236,15 @@ class HttpBackendTest {
 
     @Test
     fun the_device_config_is_the_apns_token_and_its_environment() = runTest {
-        backend(HttpStatusCode.Created).putDeviceConfig("T", "D", ApnsPushToken("tok", "sandbox"))
+        backend(HttpStatusCode.Created).putDeviceConfig("T", "D", PushEndpoint("apns", "tok", "sandbox"))
         assertEquals("PUT /api/v2/devices/D", "${sent[0].method} ${sent[0].path}")
         assertEquals("""{"pushToken":{"kind":"apns","token":"tok","env":"sandbox"}}""", sent[0].body)
+    }
+
+    @Test
+    fun the_device_config_carries_the_kind_the_push_adapter_states() = runTest {
+        backend(HttpStatusCode.Created).putDeviceConfig("T", "D", PushEndpoint("fcm", "f:tok", "snapsync-prod"))
+        assertEquals("""{"pushToken":{"kind":"fcm","token":"f:tok","env":"snapsync-prod"}}""", sent[0].body)
     }
 
     @Test

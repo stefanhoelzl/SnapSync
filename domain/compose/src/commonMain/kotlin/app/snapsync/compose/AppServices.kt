@@ -75,10 +75,13 @@ internal class AppServices(val ports: AppPorts, val process: ProcessServices) {
     val albumMapStore: AlbumMapService by lazy { AlbumMapService(ports.preferences, ports.secureStore) }
 
     /**
-     * The OS-delivered push token (capability `receiving-photos`), paired with this build's APNs environment — fed by
-     * the push service's `onToken`, which the host zone registers as the graph is composed.
+     * The OS-delivered push token (capability `receiving-photos`), paired with the push service's kind (its adapter's)
+     * and this build's push environment — fed by the push service's `onToken`, which the host zone registers as the
+     * graph is composed.
      */
-    val pushTokens: PushTokenSource by lazy { PushTokenSource(ports.process.build.apnsEnvironment) }
+    val pushTokens: PushTokenSource by lazy {
+        PushTokenSource(ports.pushNotifications.kind, ports.process.build.apnsEnvironment)
+    }
 
     /**
      * The last push registration the backend accepted, against which a delivered token is compared — so a launch that

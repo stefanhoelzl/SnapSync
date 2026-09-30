@@ -1,7 +1,7 @@
 package app.snapsync.http
 
 import app.snapsync.model.APP_VERSION_HEADER
-import app.snapsync.model.ApnsPushToken
+import app.snapsync.model.PushEndpoint
 import app.snapsync.model.AssetId
 import app.snapsync.model.CreateEventRequest
 import app.snapsync.model.DeviceFile
@@ -197,7 +197,7 @@ class HttpBackend(
             json.decodeFromString(ListSerializer(StoredDto.serializer()), text).map { DeviceFile(AssetId(it.assetId), it.role, it.filename) }
         }
 
-    override suspend fun putDeviceConfig(token: String?, deviceId: String, push: ApnsPushToken): Reply<Unit> =
+    override suspend fun putDeviceConfig(token: String?, deviceId: String, push: PushEndpoint): Reply<Unit> =
         exchange(HttpMethod.Put, "/devices/$deviceId", token, body = deviceConfigJson(push)) { }
 
     /**
@@ -272,11 +272,11 @@ class HttpBackend(
     private class StoredDto(val assetId: String, val role: ResourceRole, val filename: String)
 }
 
-/** The `devices/<id>` config body for [token] — always `kind: "apns"` in this app, and no event id: it is device-scoped. */
-internal fun deviceConfigJson(token: ApnsPushToken): String = JsonObject(
+/** The `devices/<id>` config body for [token] — its push service's kind as the adapter stated it, and no event id: it is device-scoped. */
+internal fun deviceConfigJson(token: PushEndpoint): String = JsonObject(
     mapOf(
         "pushToken" to JsonObject(
-            mapOf("kind" to JsonPrimitive("apns"), "token" to JsonPrimitive(token.token), "env" to JsonPrimitive(token.env)),
+            mapOf("kind" to JsonPrimitive(token.kind), "token" to JsonPrimitive(token.token), "env" to JsonPrimitive(token.env)),
         ),
     ),
 ).toString()

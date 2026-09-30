@@ -1,6 +1,6 @@
 package app.snapsync.contracts
 
-import app.snapsync.model.ApnsPushToken
+import app.snapsync.model.PushEndpoint
 import app.snapsync.model.AssetId
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.Reply
@@ -102,4 +102,4 @@ internal fun manifest(deviceId: String) =
 private fun versioned(deviceId: String, asset: SeededAsset, version: Long) =
     DeviceManifest(deviceId, listOf(asset.manifestEntry()), version = version)
 
-private fun pushToken(clauseId: String, n: Int = 1) = ApnsPushToken("token$n:$clauseId", "sandbox")
+private fun pushToken(clauseId: String, n: Int = 1) = PushEndpoint("apns", "token$n:$clauseId", "sandbox")

@@ -4,6 +4,7 @@ import app.snapsync.model.CycleResult
 import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.LinkDelivery
 import app.snapsync.model.PlatformError
+import app.snapsync.model.PUSH_KIND_APNS
 import app.snapsync.model.PushMessage
 import app.snapsync.model.PushToken
 import app.snapsync.model.UiIntent
@@ -96,12 +97,15 @@ class LinksOperator internal constructor(private val mock: LinksMock) {
 class PushServiceMock {
     internal var handlers: PushHandlers? = null
     internal var registrations = 0
+    internal var kind = PUSH_KIND_APNS
 
     /** The token this device was issued, and which process's handlers have been told it. */
     internal var issued: String? = null
     internal var toldTo: PushHandlers? = null
 
     fun port(): PushNotifications = object : PushNotifications {
+        override val kind: String get() = this@PushServiceMock.kind
+
         override fun listen(handlers: PushHandlers) {
             this@PushServiceMock.handlers = handlers
         }
@@ -124,12 +128,19 @@ class PushServiceOperator internal constructor(private val mock: PushServiceMock
     /** How many times the app asked the push service for its token. */
     val registrations: Int get() = mock.registrations
 
-    /** The push service issued this device [hex] as its token — kept, and re-delivered to a relaunched process's request. */
-    fun deliverToken(hex: String) {
+    /** The push service this device speaks — APNs unless a test plays an Android device. Set before composing. */
+    var kind: String
+        get() = mock.kind
+        set(value) {
+            mock.kind = value
+        }
+
+    /** The push service issued this device [token] — kept, and re-delivered to a relaunched process's request. */
+    fun deliverToken(token: String) {
         val handlers = mock.handlers.registered("PushNotifications")
-        mock.issued = hex
+        mock.issued = token
         mock.toldTo = handlers
-        handlers.onToken(PushToken(hex))
+        handlers.onToken(PushToken(token))
     }
 
     /** The push service could not issue a token. */

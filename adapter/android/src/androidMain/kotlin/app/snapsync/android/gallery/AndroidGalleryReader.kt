@@ -48,8 +48,11 @@ import kotlinx.coroutines.withContext
  * - **Android does not say** that a photo is a screenshot, a screen recording, or edited: those facts read `false`
  *   (the screenshot and screen-recording folders are excluded as albums instead).
  *
- * The phase-4 writes answer refusals: Android files no photo into an album, so [createAlbum] answers `null` and
- * [addToAlbum] fails.
+ * **It writes no album** ([supportsAlbumWrites] is `false`): [createAlbum] answers `null` and [addToAlbum] fails, for
+ * good. An Android album IS a folder and a file lives in exactly one folder, so filing a received photo into an event
+ * album would move it out of the camera folder or copy it (capability `receiving-photos`, "Received photos do not take
+ * up space twice"). Creating a folder would not "fix" this; the app offers no event album on Android instead
+ * (capability `event-album`).
  *
  * Reads answer [GalleryRead.NotReadable] without querying unless [access] allows one, and hop to [Dispatchers.IO]:
  * every query is a synchronous binder round-trip into the media provider.
@@ -94,6 +97,8 @@ open class AndroidGalleryReader(
             .and(floor?.let { Query("datetaken >= ?", listOf(it.toString())) })
         items(query).mapTo(mutableSetOf()) { it.assetId }
     }
+
+    override val supportsAlbumWrites: Boolean = false
 
     override suspend fun createAlbum(title: String): AlbumId? {
         log.i { "createAlbum '$title': Android files no photo into an album" }

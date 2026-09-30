@@ -1,5 +1,6 @@
 package app.snapsync.services.crash
 
+import app.snapsync.compose.NoCrashReporter
 import app.snapsync.compose.NoProcessMetrics
 import app.snapsync.compose.NoEntryContext
 import app.snapsync.compose.ProcessPorts
@@ -69,6 +70,16 @@ class ProcessCompositionTest {
         assertTrue(started.value, "reporting starts as the process's first act")
         assertTrue(process.crash.isConfigured)
         assertEquals(2, process.logWriters.size, "the sinks' writer and the crash channel's")
+    }
+
+    @Test
+    fun a_build_with_no_crash_reporter_composes_and_keeps_its_dump() = runTest {
+        // An Android build before its reporter lands: no destination and the inert channel. The process composes, and
+        // a diagnostic dump is saved on the phone, never handed to a channel that is not there.
+        val process = snapSyncProcess(ports(NoCrashReporter, NoProcessMetrics, dsn = null))
+        assertFalse(process.crash.isConfigured)
+        assertEquals(DumpResult.Saved(SAVED_DIAGNOSTIC_REPORT_PATH), process.crash.sendDump(dump()))
+        assertNotNull(privateFiles[SAVED_DIAGNOSTIC_REPORT_PATH], "the report is kept in the app's own files")
     }
 
     @Test

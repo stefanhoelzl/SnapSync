@@ -2,6 +2,7 @@ package app.snapsync.model
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 
 /**
@@ -14,6 +15,19 @@ class PushPayloadTest {
     @Test
     fun `extracts the eventId string`() {
         assertEquals("E1", pushEventId(mapOf<Any?, Any?>("eventId" to "E1", "aps" to mapOf<Any?, Any?>())))
+    }
+
+    @Test
+    fun `an FCM data message's string map yields its eventId`() {
+        // FCM hands a data message over as `Map<String, String>`: the same key the APNs payload carries.
+        assertEquals("E1", pushEventId(mapOf("eventId" to "E1")))
+    }
+
+    @Test
+    fun `an endpoint is its kind as well as its token and environment`() {
+        // The same token under another push service is another registration (the registration key leads with it).
+        assertNotEquals(PushEndpoint(PUSH_KIND_APNS, "T", "e"), PushEndpoint(PUSH_KIND_FCM, "T", "e"))
+        assertEquals(PushEndpoint(PUSH_KIND_FCM, "T", "e"), PushEndpoint("fcm", "T", "e"))
     }
 
     @Test
