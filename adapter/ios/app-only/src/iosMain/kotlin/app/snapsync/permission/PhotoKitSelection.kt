@@ -16,9 +16,14 @@ import platform.Photos.PHFetchResult
 /**
  * The PhotoKit binding of [IosGallery]'s selection observer (capability `photo-access`): observes the photo
  * library **only while observation is on and permission is [GalleryAccess.LIMITED]** and delivers the full current
- * selection with its resources — once when observation begins (the cold-launch baseline read; opening the
- * app is the user action that makes it in-flow) and after each change ([PhotoSelectionObserver] fires
+ * selection with its resources — once when observation begins (the start's baseline read; the composition opens
+ * observation on every start, a background one included) and after each change ([PhotoSelectionObserver] fires
  * for the in-app picker, Settings-side edits, and iCloud sync alike).
+ *
+ * A background-launched process reads it too: measured on the SE2 / iOS 26.6.2 (2026-09-30), a process iOS relaunched
+ * only for finished background uploads read the selection — a photo added in Settings while the app was closed
+ * included — and raised no limited-library prompt, also after a camera photo outside the selection (decision record
+ * `changes/timely-background-receiving`, D6). ⏰ Re-measure at the next iOS major.
  *
  * Every read here is **in-flow** (capability `photo-access`): the baseline is one scope query per
  * observation start, and each change reads the **pushed** `fetchResultAfterChanges` (never a fresh

@@ -1025,32 +1025,20 @@ class AppCore internal constructor(
     }
 
     /**
-     * Install the **port-state-transition subscriptions** on the permission StateFlow (spec
-     * `docs/architecture.md`, "Commands cross one door": installed in `compose/`; the transition
-     * semantics — the upload permission-change transition, sole-creator album ensure — are feature rules),
-     * and run the upload **launch reconcile** (capability `background-upload`, "Launch reconciles by
-     * comparison; only a join forces the repair").
+     * Open the **selection observer** and its collector (capability `photo-access`): under a partial grant, the
+     * observer's first emission is the start's baseline read and every later one a change the member made — in the
+     * in-app picker, in Settings, or by iCloud sync. Under any other grant the observer reads nothing.
      *
-     * The launch reconcile is explicit and the upload subscription skips the StateFlow's replayed value. It
-     * used to ride that replay — every UI launch fired a "permission change" that forced the extension's
-     * re-registration, wiping its in-flight jobs on every launch. Launch now compares instead.
-     *
-     * Deliberately an **explicit step, not `init`** (step 8 C3, restoring the pre-C2 timing): the app
-     * shell invokes it from its host-assembly path — the only place the collectors ever installed — so
-     * a cold background wake that merely touches [AppCore] runs **no** launch reconcile and installs no
-     * collector. Call it once; each call installs a fresh set of collectors.
+     * Installed by the host composition on **every start**, a background one included — unlike
+     * [installPermissionSubscriptions], which only host assembly installs. Without it a background start under a
+     * partial grant never learns its selection, withholds every upload, and the app's own wake-ups upload nothing
+     * (capability `background-upload`, "Photos upload without the app being opened"). Measured on an SE2 / iOS 26.6.2:
+     * a background start reads the selection and raises no limited-library prompt (decision record
+     * `changes/timely-background-receiving`, D6). **Idempotent: once per process.**
      */
-    fun installPermissionSubscriptions() {
-        scope.launch {
-            // Launch first, then real changes only: the value the launch reconciled against is not a
-            // transition, and a change that lands during the launch reconcile is still delivered (the prefix
-            // dropped is exactly the launch-time value). The transitions decide everything else.
-            val atLaunch = ports.photoAccess.permission.value
-            uploadTransitions.onLaunch()
-            ports.photoAccess.permission
-                .dropWhile { it == atLaunch }
-                .collect { uploadTransitions.onPermissionChanged() }
-        }
+    @OptIn(ExperimentalAtomicApi::class)
+    fun installSelectionObserver() {
+        if (!selectionObserverInstalled.compareAndSet(expectedValue = false, newValue = true)) return
         scope.launch {
             // One selection-change emission → ONE read serving both consumers (capability
             // `photo-access`, "One discovery serves both the status total and the enqueue"):
@@ -1064,8 +1052,42 @@ class AppCore internal constructor(
                 tail.onSelectionChanged()
             }
         }
-        // The selection observer opens here and nowhere else: a wake that never assembles the host reads nothing.
+        // The selection observer opens here and nowhere else — on composition, so a background start reads it too.
         ports.gallery.observeChanges(true)
+    }
+
+    /** Whether [installSelectionObserver] has opened the observer in this process. */
+    @OptIn(ExperimentalAtomicApi::class)
+    private val selectionObserverInstalled = AtomicBoolean(false)
+
+    /**
+     * Install the **port-state-transition subscriptions** on the permission StateFlow (spec
+     * `docs/architecture.md`, "Commands cross one door": installed in `compose/`; the transition
+     * semantics — the upload permission-change transition, sole-creator album ensure — are feature rules),
+     * and run the upload **launch reconcile** (capability `background-upload`, "Launch reconciles by
+     * comparison; only a join forces the repair").
+     *
+     * The launch reconcile is explicit and the upload subscription skips the StateFlow's replayed value. It
+     * used to ride that replay — every UI launch fired a "permission change" that forced the extension's
+     * re-registration, wiping its in-flight jobs on every launch. Launch now compares instead.
+     *
+     * Deliberately an **explicit step, not `init`** (step 8 C3, restoring the pre-C2 timing): the app
+     * shell invokes it from its host-assembly path — the only place the collectors ever installed — so
+     * a cold background wake that merely touches [AppCore] runs **no** launch reconcile and installs no
+     * collector. Call it once; each call installs a fresh set of collectors. The selection observer is not one of
+     * them: it opens on every start ([installSelectionObserver]).
+     */
+    fun installPermissionSubscriptions() {
+        scope.launch {
+            // Launch first, then real changes only: the value the launch reconciled against is not a
+            // transition, and a change that lands during the launch reconcile is still delivered (the prefix
+            // dropped is exactly the launch-time value). The transitions decide everything else.
+            val atLaunch = ports.photoAccess.permission.value
+            uploadTransitions.onLaunch()
+            ports.photoAccess.permission
+                .dropWhile { it == atLaunch }
+                .collect { uploadTransitions.onPermissionChanged() }
+        }
         // The event album's grant subscription: ensure the album, then let the gather judge the emission.
         scope.launchAlbumGrantSubscription(services, albumCoordinator, albumGather)
         scope.launch {

@@ -54,7 +54,9 @@ prompts after a camera photo, surviving SIGKILL onto the home screen) and **held
 one camera photo, 11 reads over 4 launch-and-kill cycles, zero prompts). So never assert "every photo costs
 a prompt", and never justify a read strategy as alert suppression. Record:
 `changes/archive/2026-09-21-correct-limited-access-alert-rule` (history table in its design). Reads still happen
-ONLY on the cold-launch baseline and the `Gallery` selection observer's `onChanged` emissions (the observer opens only at host assembly), and every
+ONLY on the start's baseline and the `Gallery` selection observer's `onChanged` emissions (the observer opens on composition, so a
+background start reads the selection too — measured prompt-free on the SE2/26.6.2, 2026-09-30:
+`changes/timely-background-receiving` D6), and every
 upload cycle's discovery is fed the in-memory snapshot (`SelectionScopedDiscovery` in `uploadCycle`), never a
 walk — because under a partial grant the selection IS the scope, and a walk is a round-trip that buys
 nothing. ⏰ Re-measure at the next iOS major; evidence is one device, and one probe on 26.6.x.

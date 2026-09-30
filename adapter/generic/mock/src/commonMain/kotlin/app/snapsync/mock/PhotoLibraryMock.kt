@@ -91,17 +91,17 @@ class PhotoLibraryOperator internal constructor(private val state: LibraryState)
      */
     val selection: StateFlow<List<RawAsset>?> = state.selection.asStateFlow()
 
-    /** Whether the running process's selection observer is open (host assembly opens it). */
+    /** Whether the running process's selection observer is open (composition opens it, on every start). */
     val observing: Boolean get() = state.listener?.observing == true
 
     /**
      * The person's selection under a partial grant is now [assets] — delivered whole, with its resources, to the running
      * process's observer, as the real observer delivers one. Fails loudly when no observer is open, rather than doing
-     * nothing: a process that never assembled its host would hear nothing.
+     * nothing: a process whose observer is closed would hear nothing.
      */
     fun changeSelection(assets: List<RawAsset>) {
         val listener = checkNotNull(state.listener) { "no process registered with the photo library" }
-        check(listener.observing) { "the selection observer is not open — only host assembly opens it" }
+        check(listener.observing) { "the selection observer is not open — the composition opens it" }
         state.selection.value = assets
         listener.handlers.onChanged(SelectionSnapshot(assets))
     }

@@ -17,6 +17,7 @@ import app.snapsync.model.GalleryRead
 import app.snapsync.model.RawAsset
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.SelectionRule
+import app.snapsync.model.SelectionSnapshot
 import app.snapsync.model.WriteOutcome
 import app.snapsync.model.grantsPhotoAccess
 import app.snapsync.model.toFacts
@@ -48,8 +49,9 @@ import app.snapsync.ports.LibraryChangeToken
  *   returns. The state's [LibraryChangeAnswers] is how the library answers each change. **Every import mints a
  *   fresh identifier**, as `PHAssetCreationRequest` does, counted before anything can fail, so a repeat import never
  *   lands on an earlier import's handle; the first keeps the bare form `imported-<device>-<asset>`.
- * - The observer never emits on its own: the selection is played through the operator, to the handlers of the
- *   process whose observer is open.
+ * - The observer emits on its own exactly once, as both platform adapters do: opening it under a partial grant
+ *   delivers the selection the person last picked (the start's baseline read). Every later selection is played
+ *   through the operator, to the handlers of the process whose observer is open.
  * - A change token is the library **value** it was read at: every change to the library replaces that value, so a
  *   token read after it never compares equal to one read before.
  */
@@ -60,7 +62,15 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
     }
 
     override fun observeChanges(enabled: Boolean) {
-        state.listener?.takeIf { it.face === this }?.observing = enabled
+        val listener = state.listener?.takeIf { it.face === this } ?: return
+        val opening = enabled && !listener.observing
+        listener.observing = enabled
+        // The baseline: a partial grant's observer reads the selection when it opens. A person who never picked one
+        // has nothing to read — the process stays unread until they do.
+        val picked = state.selection.value
+        if (opening && state.access.value == GalleryAccess.LIMITED && picked != null) {
+            listener.handlers.onChanged(SelectionSnapshot(picked))
+        }
     }
 
     override suspend fun import(request: ImportRequest): ImportResult {
