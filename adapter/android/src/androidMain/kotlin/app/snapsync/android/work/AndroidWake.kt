@@ -34,7 +34,9 @@ import kotlinx.coroutines.withTimeoutOrNull
 /**
  * The Android [Wake] over WorkManager (capability `background-upload`): one unique one-time work per [WakeId].
  *
- * - [WakeTrigger.After] — the heartbeat — waits at least its delay, and for a network when it asks for one.
+ * - [WakeTrigger.After] — the heartbeat — waits at least its delay, and for a network when it asks for one. Both its
+ *   cadences are the same unique work, so a busy request replaces a pending idle one and vice versa; the cadence
+ *   reaches WorkManager only as the delay (decision record `changes/timely-background-receiving`, D2).
  * - [WakeTrigger.LibraryChange] is a content-URI trigger on the image and video collections of every volume, delivered
  *   no later than its maximum delay after the change: WorkManager's counterpart of the upload extension being woken
  *   by a new photo. One-shot, like every wake here, so the core re-requests it after each tail.

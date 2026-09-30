@@ -89,6 +89,9 @@ private const val FOREGROUND_HOLD = "onForeground"
 /** The heartbeat's task identifier, as the operating system hands it to `onBackgroundTask`. */
 const val HEARTBEAT_TASK = "app.snapsync.upload.heartbeat"
 
+/** The idle heartbeat's task identifier — an app refresh on iOS; the same wake as [HEARTBEAT_TASK] to the core. */
+const val IDLE_HEARTBEAT_TASK = "app.snapsync.heartbeat.idle"
+
 /** The upload session's identifier, as the operating system hands it to `onBackgroundTransfers`. */
 const val UPLOAD_SESSION = "app.snapsync.upload.session"
 

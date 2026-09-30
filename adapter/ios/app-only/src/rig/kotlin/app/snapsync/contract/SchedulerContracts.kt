@@ -12,6 +12,7 @@ import app.snapsync.contracts.Replayer
 import app.snapsync.contracts.ScheduledWakes
 import app.snapsync.contracts.WakeContract
 import app.snapsync.contracts.WakeState
+import app.snapsync.contracts.recordingName
 import app.snapsync.contracts.render
 import app.snapsync.contracts.run
 import app.snapsync.background.BackgroundTaskApi
@@ -21,11 +22,15 @@ import app.snapsync.logging.deviceDiagnosticEnvironment
 import app.snapsync.objc.ObjCFailure
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
+import platform.BackgroundTasks.BGAppRefreshTaskRequest
 import platform.BackgroundTasks.BGProcessingTaskRequest
 import platform.BackgroundTasks.BGTask
+import platform.BackgroundTasks.BGTaskRequest
 import platform.Foundation.NSDate
 import platform.Foundation.NSISO8601DateFormatter
 import platform.Foundation.NSProcessInfo
+import platform.UIKit.UIApplication
+import platform.UIKit.UIBackgroundRefreshStatus
 
 /*
  * `BGTaskScheduler`'s operating-system boundary as TEXT, and the entitled app's binding of `WakeContract` (recorded as
@@ -45,10 +50,22 @@ import platform.Foundation.NSProcessInfo
  */
 internal const val HEARTBEAT = IosWake.HEARTBEAT_TASK_IDENTIFIER
 
-/** The earliest-begin date is absolute and moves with every run; its presence is recorded, its value masked. */
-private fun BGProcessingTaskRequest.render() =
-    "submit(id=$identifier network=$requiresNetworkConnectivity power=$requiresExternalPower " +
-        "begin=${if (earliestBeginDate != null) "<masked>" else "none"})"
+/** Every identifier the heartbeat rides — busy and idle — each pinned against the plist the same way. */
+private val HEARTBEATS = IosWake.TASK_IDENTIFIERS
+
+/**
+ * A request as text: its kind's attributes, the identifier, and — the earliest-begin date being absolute and moving
+ * with every run — the date's presence, its value masked.
+ */
+private fun BGTaskRequest.render(): String {
+    val begin = if (earliestBeginDate != null) "<masked>" else "none"
+    return when (this) {
+        is BGProcessingTaskRequest ->
+            "submit(id=$identifier network=$requiresNetworkConnectivity power=$requiresExternalPower begin=$begin)"
+        is BGAppRefreshTaskRequest -> "submitRefresh(id=$identifier begin=$begin)"
+        else -> "submitOther(id=$identifier begin=$begin)"
+    }
+}
 
 private const val ACCEPTED = "accepted"
 
@@ -75,7 +92,7 @@ internal class RecordingBackgroundTaskApi(private val real: BackgroundTaskApi, p
     override fun register(identifier: String, launch: (BGTask) -> Unit): Boolean =
         error("a contract clause registers no launch handler — the app's composition already did")
 
-    override fun submit(request: BGProcessingTaskRequest): Result<Unit> =
+    override fun submit(request: BGTaskRequest): Result<Unit> =
         real.submit(request).also { recorder.record(request.render(), it.renderAnswer()) }
 
     override fun cancel(identifier: String) =
@@ -90,7 +107,7 @@ internal class ReplayingBackgroundTaskApi(private val replayer: Replayer) : Back
     override fun register(identifier: String, launch: (BGTask) -> Unit): Boolean =
         error("a contract clause registers no launch handler, so a recording holds none to replay")
 
-    override fun submit(request: BGProcessingTaskRequest): Result<Unit> =
+    override fun submit(request: BGTaskRequest): Result<Unit> =
         replayer.answer(request.render()).parseAnswer(request.identifier)
 
     override fun cancel(identifier: String) {
@@ -101,17 +118,17 @@ internal class ReplayingBackgroundTaskApi(private val replayer: Replayer) : Back
 }
 
 /**
- * A fresh [IosWake] over [tasks], the system's queue EMPTY for the heartbeat: entered by a cancel through the seam, so
- * it is recorded and replayed like any other call. Shared by the device binding and its replay, so both make identical
- * calls. Disposal cancels again, leaving nothing pending; [afterDispose] runs last.
+ * A fresh [IosWake] over [tasks], the system's queue EMPTY for the heartbeat on both its identifiers: entered by
+ * cancels through the seam, so they are recorded and replayed like any other call. Shared by the device binding and its
+ * replay, so both make identical calls. Disposal cancels again, leaving nothing pending; [afterDispose] runs last.
  */
 internal fun schedulerInState(tasks: BackgroundTaskApi, afterDispose: () -> Unit = {}): Entered<ScheduledWakes> {
-    tasks.cancel(HEARTBEAT)
+    HEARTBEATS.forEach(tasks::cancel)
     val wake = IosWake(Logger.withTag("contract"), tasks)
     return Entered.Ready(
-        ScheduledWakes(wake) { tasks.pendingIdentifiers().count { it == HEARTBEAT } },
+        ScheduledWakes(wake) { tasks.pendingIdentifiers().count { it in HEARTBEATS } },
         dispose = {
-            tasks.cancel(HEARTBEAT)
+            HEARTBEATS.forEach(tasks::cancel)
             afterDispose()
         },
     )
@@ -130,8 +147,20 @@ internal class DeviceSchedulerBinding(private val recorder: Recorder) : Binding<
 }
 
 /**
- * Runs `WakeContract` against THIS app's `BGTaskScheduler` and renders the recording. Refuses on a
- * simulator, whose answers must never be filed under the device's name.
+ * The recording's name for a run with Background App Refresh as it is on the device now: iOS refuses the idle
+ * heartbeat's app refresh while it is off (or Low Power Mode is on), so the adapter's fallback is recorded — and
+ * replayed — under its own name (decision record `changes/timely-background-receiving`, D2, D8).
+ */
+internal fun schedulerRecordingName(refreshAvailable: Boolean): String =
+    recordingName(WakeContract.name, Host.IOS_DEVICE_APP, null) + if (refreshAvailable) "" else REFRESH_OFF
+
+/** The suffix of a recording taken with Background App Refresh off. */
+internal const val REFRESH_OFF = ".REFRESH_OFF"
+
+/**
+ * Runs `WakeContract` against THIS app's `BGTaskScheduler` and renders the recording — named for whether Background
+ * App Refresh is on ([schedulerRecordingName]). Refuses on a simulator, whose answers must never be filed under the
+ * device's name.
  */
 internal fun recordScheduler(): String {
     if (NSProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] != null) {
@@ -140,9 +169,12 @@ internal fun recordScheduler(): String {
     val recorder = Recorder()
     val results = run(WakeContract, DeviceSchedulerBinding(recorder))
     val env = deviceDiagnosticEnvironment(uploadTier = "n/a")
+    val refreshAvailable =
+        UIApplication.sharedApplication.backgroundRefreshStatus == UIBackgroundRefreshStatus.UIBackgroundRefreshStatusAvailable
     val header = listOf(
         "contract" to WakeContract.name,
         "host" to Host.IOS_DEVICE_APP.name,
+        "file" to schedulerRecordingName(refreshAvailable) + ".rec",
         "device" to env.deviceModel,
         "os" to env.osVersion,
         "build" to env.buildNumber,

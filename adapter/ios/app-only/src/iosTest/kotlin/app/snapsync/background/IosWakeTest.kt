@@ -3,6 +3,7 @@
 package app.snapsync.background
 
 import app.snapsync.model.ScheduleResult
+import app.snapsync.model.WakeCadence
 import app.snapsync.model.WakeId
 import app.snapsync.model.WakeTrigger
 import app.snapsync.ports.Completion
@@ -15,6 +16,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -95,12 +97,100 @@ class IosWakeTest {
         }
     }
 
+    // ---- the two task kinds (decision record `changes/timely-background-receiving`, D2) ------------------------------
+
+    private val idle = WakeTrigger.After(earliest = 1.hours, requiresNetwork = true, cadence = WakeCadence.IDLE)
+
+    @Test
+    fun `an idle heartbeat withdraws the busy one and asks for an app refresh`() {
+        val tasks = FakeTasks()
+        IosWake(Logger.withTag("test"), tasks).schedule(WakeId.Heartbeat, idle)
+        assertEquals(
+            listOf("cancel ${IosWake.HEARTBEAT_TASK_IDENTIFIER}", "refresh ${IosWake.IDLE_TASK_IDENTIFIER}"),
+            tasks.calls,
+        )
+    }
+
+    @Test
+    fun `a busy heartbeat withdraws the idle one and asks for processing`() {
+        val tasks = FakeTasks()
+        IosWake(Logger.withTag("test"), tasks).schedule(WakeId.Heartbeat, heartbeat)
+        assertEquals(
+            listOf("cancel ${IosWake.IDLE_TASK_IDENTIFIER}", "processing ${IosWake.HEARTBEAT_TASK_IDENTIFIER}"),
+            tasks.calls,
+        )
+    }
+
+    @Test
+    fun `a refused refresh falls back to processing and says so`() {
+        val tasks = FakeTasks(refuseRefresh = true)
+        val answer = IosWake(Logger(StaticConfig(logWriterList = listOf(captured)), "test"), tasks)
+            .schedule(WakeId.Heartbeat, idle)
+        assertEquals(ScheduleResult.Scheduled, answer, "the fallback stands")
+        assertEquals(
+            listOf(
+                "cancel ${IosWake.HEARTBEAT_TASK_IDENTIFIER}",
+                "refresh ${IosWake.IDLE_TASK_IDENTIFIER}",
+                "processing ${IosWake.HEARTBEAT_TASK_IDENTIFIER}",
+            ),
+            tasks.calls,
+        )
+        assertTrue(captured.lines.any { (severity, message) -> severity == Severity.Warn && "falling back" in message })
+    }
+
+    @Test
+    fun `cancelling the heartbeat withdraws both task kinds`() {
+        val tasks = FakeTasks()
+        IosWake(Logger.withTag("test"), tasks).cancel(WakeId.Heartbeat)
+        assertEquals(
+            listOf("cancel ${IosWake.HEARTBEAT_TASK_IDENTIFIER}", "cancel ${IosWake.IDLE_TASK_IDENTIFIER}"),
+            tasks.calls,
+        )
+    }
+
+    @Test
+    fun `both task kinds are registered and both wake the heartbeat`() {
+        val tasks = FakeTasks()
+        var woken = 0
+        IosWake(Logger.withTag("test"), tasks).also { it.listen(WakeHandlers(onWake = { _, _ -> woken++ })) }.let { adapter ->
+            assertEquals(IosWake.TASK_IDENTIFIERS, tasks.registered, "each identifier needs its launch handler")
+            adapter.onTaskLaunched(IosWake.IDLE_TASK_IDENTIFIER, Released())
+            assertEquals(1, woken, "the idle identifier is routed to the heartbeat wake too")
+        }
+    }
+
     /** A seam that accepts the registration and makes no other call. */
     private object NoRegistration : BackgroundTaskApi {
         override fun register(identifier: String, launch: (platform.BackgroundTasks.BGTask) -> Unit) = true
-        override fun submit(request: platform.BackgroundTasks.BGProcessingTaskRequest): Result<Unit> =
-            Result.success(Unit)
+        override fun submit(request: platform.BackgroundTasks.BGTaskRequest): Result<Unit> = Result.success(Unit)
         override fun cancel(identifier: String) = Unit
+        override suspend fun pendingIdentifiers(): List<String> = emptyList()
+    }
+
+    /** A seam that records each call by kind and identifier, refusing refresh requests when [refuseRefresh]. */
+    private class FakeTasks(private val refuseRefresh: Boolean = false) : BackgroundTaskApi {
+        val calls = mutableListOf<String>()
+        val registered = mutableListOf<String>()
+
+        override fun register(identifier: String, launch: (platform.BackgroundTasks.BGTask) -> Unit): Boolean {
+            registered += identifier
+            return true
+        }
+
+        override fun submit(request: platform.BackgroundTasks.BGTaskRequest): Result<Unit> {
+            val refresh = request is platform.BackgroundTasks.BGAppRefreshTaskRequest
+            calls += "${if (refresh) "refresh" else "processing"} ${request.identifier}"
+            return if (refresh && refuseRefresh) {
+                Result.failure(app.snapsync.objc.ObjCFailure("submitTaskRequest", "BGTaskSchedulerErrorDomain", 1, null))
+            } else {
+                Result.success(Unit)
+            }
+        }
+
+        override fun cancel(identifier: String) {
+            calls += "cancel $identifier"
+        }
+
         override suspend fun pendingIdentifiers(): List<String> = emptyList()
     }
 }
