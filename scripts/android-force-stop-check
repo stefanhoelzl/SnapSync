@@ -1,0 +1,84 @@
+#!/bin/sh
+# A force-stop stops receiving until the next opening, and the next opening restores the heartbeat (capability
+# `receiving-photos`, "A force-quit stops receiving until the next opening"; decision record
+# `changes/timely-background-receiving`, D8). NON-GATING: no CI job runs it — a contract clause cannot express it,
+# because a force-stop kills the process that would observe it, so it is checked from outside, over adb.
+#
+#   scripts/android-force-stop-check [apk]   # an emulator booted and reachable over adb (the `android-emulator` skill)
+#
+# It installs the rig build, chooses the REAL WorkManager wake (every system but the screen, its lifecycle, the clock
+# and the wake mocked), joins a receive-only event over the mocked backend — which leaves an idle heartbeat pending —
+# and then reads JobScheduler's own record: pending before, gone after `am force-stop`, pending again once the app is
+# opened. It leaves the app on the default adapter choice.
+set -eu
+
+APK=${1:-app/android/build/outputs/apk/debug/android-debug.apk}
+PORT=18099
+ADB=${ADB:-adb}
+BASE="http://127.0.0.1:$PORT"
+
+say() { printf '%s\n' "android-force-stop-check: $*"; }
+fail() { say "FAILED: $*"; "$ADB" logcat -d -s SnapSync:V AndroidRuntime:E | tail -40; exit 1; }
+
+# A WorkManager request with a delay is a JobScheduler job carrying a minimum latency: the heartbeat, busy or idle.
+heartbeats() { "$ADB" shell dumpsys jobscheduler app.snapsync | grep -c "Minimum latency" || true; }
+
+launch() {
+    "$ADB" shell am start -W -n app.snapsync/app.snapsync.android.MainActivity >/dev/null || fail "launch"
+    "$ADB" forward "tcp:$PORT" "tcp:$PORT" >/dev/null
+    i=0
+    until curl -fsS --max-time 5 "$BASE/health" >/dev/null 2>&1; do
+        i=$((i + 1)); [ "$i" -lt 60 ] || fail "the control channel never answered"; sleep 1
+    done
+}
+
+# Wait up to 30 s for [heartbeats] to satisfy the test in $1 (e.g. "-ge 1").
+await_heartbeats() {
+    i=0
+    until [ "$(heartbeats)" $1 ]; do
+        i=$((i + 1)); [ "$i" -lt 30 ] || return 1; sleep 1
+    done
+}
+
+"$ADB" wait-for-device
+"$ADB" install -r "$APK" >/dev/null || fail "install $APK"
+"$ADB" shell am force-stop app.snapsync
+launch
+
+# The real wake, and every system that must be named so. The app exits once the choice is written.
+CHOICE=$(printf 'screen=real\nlifecycle=real\nclock=real\nwake=real\nbackground-time=real\n'
+    for s in backend library files databases preferences keychain integrity crash-reporter process-info \
+             extension-registry upload-queue upload-session downloads links push system-ui; do echo "$s=mock"; done)
+curl -fsS --max-time 20 -X POST --data-binary "$CHOICE" "$BASE/device/adapters" >/dev/null || fail "adapter choice refused"
+sleep 2
+launch
+
+# A receive-only member of an event around today: caught up at once, so its heartbeat is idle (an hour away) and
+# stays pending for the whole check.
+TODAY=$(date -u +%Y-%m-%d)
+FROM=$(date -u -d "$TODAY -1 day" +%Y-%m-%d)
+UNTIL=$(date -u -d "$TODAY +5 days" +%Y-%m-%d)
+curl -fsS --max-time 20 -X POST "$BASE/user/create?name=force-stop&startsAt=${FROM}T00:00&endsAt=${UNTIL}T00:00" >/dev/null
+i=0
+until curl -fsS --max-time 10 "$BASE/device/state" | grep -q '"Ready"'; do
+    i=$((i + 1)); [ "$i" -lt 30 ] || fail "the join gate never opened"; sleep 1
+done
+curl -fsS --max-time 20 -X POST \
+    "$BASE/user/confirmJoin?cutoff=${FROM}T00:00:00Z&until=${UNTIL}T00:00:00Z&direction=download&saveToAlbum=false" >/dev/null
+
+await_heartbeats "-ge 1" || fail "no heartbeat was pending after the join"
+say "joined: $(heartbeats) heartbeat(s) pending"
+
+"$ADB" shell am force-stop app.snapsync
+await_heartbeats "-eq 0" || fail "a heartbeat survived the force-stop: $(heartbeats)"
+say "force-stopped: no heartbeat pending"
+
+launch
+await_heartbeats "-ge 1" || fail "opening the app did not restore the heartbeat"
+say "opened again: $(heartbeats) heartbeat(s) pending"
+
+# Leave the app as the smoke check expects it: unjoined, on the default adapter choice.
+curl -fsS --max-time 20 -X POST "$BASE/user/leave" >/dev/null || true
+sleep 2
+curl -fsS --max-time 20 -X POST "$BASE/device/adapters/clear" >/dev/null || true
+say "PASSED"

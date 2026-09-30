@@ -624,6 +624,13 @@ the Android adapters' own (`:adapter:android`'s `src/androidDeviceTest`). Run th
 into the emulator and passes its address as the `fixture` instrumentation argument the upload contract needs (a run
 without it fails, naming the script).
 
+**A force-stop is checked from outside the process** (`scripts/android-force-stop-check`, non-gating — no CI job runs
+it): a contract clause runs inside the app, and a force-stop kills the process that would observe it. The script
+installs the rig build, chooses the real WorkManager wake, joins a receive-only event over the mocked backend and reads
+JobScheduler's own record (`dumpsys jobscheduler`): the idle heartbeat pending, gone after `am force-stop`, pending again
+once the app is opened. The iOS force-quit has no such check: only a person's swipe records one, so it rests on Apple's
+documented behaviour. Decision record: `changes/timely-background-receiving` (D8).
+
 **Photos on the emulator are seeded by the process that reads them** (measured 2026-09-29): MediaStore hides a photo
 the SHELL owns (`adb push`, `UiAutomation`) from every other app, so a photo-library contract inserts its own fixture —
 which it reads with no grant and deletes with no confirmation — with the capture date in the file's EXIF as well as
