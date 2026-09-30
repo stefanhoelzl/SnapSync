@@ -60,8 +60,10 @@ adb shell am start -W -n app.snapsync/app.snapsync.android.MainActivity
 adb shell run-as app.snapsync find files databases -type f   # the real stores (run-as: debuggable build)
 ```
 
-A build **without** the property compiles, links and **refuses at start** (`app/android/src/prod`): Android has no
-adapters for the downloads, push or the crash reporter yet.
+A build **without** the property composes every real adapter and starts (`app/android/src/prod`), with no crash
+reporter until phase 5. It talks to the RESOLVED deployment (`prod` by default): never join an event with it you did not
+create, and `adb shell pm clear app.snapsync` after trying it. Its push service starts only when the deployment names a
+Firebase project (`deployments/components/android.json`); without one it logs "gets no push" and runs on.
 
 **Seeding a real library:** `POST /device/gallery/seed?n=&kind=` inserts the app's OWN photos into `DCIM/Camera` (same
 kinds as iOS). Never `adb push` a photo to test with: MediaStore hides a shell-owned photo from every other app, so

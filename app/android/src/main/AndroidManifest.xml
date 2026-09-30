@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- The backend, and on a rig build the control channel's loopback server. -->
     <uses-permission android:name="android.permission.INTERNET" />
@@ -14,6 +15,12 @@
     <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
     <uses-permission android:name="android.permission.ACCESS_MEDIA_LOCATION" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+
+    <!--
+      Other members' photos (capability `receiving-photos`) download through DownloadManager with no system notification:
+      the app's own status line shows receiving, as on iPhone. Granted at install; no prompt.
+    -->
+    <uses-permission android:name="android.permission.DOWNLOAD_WITHOUT_NOTIFICATION" />
 
     <!-- Nothing is backed up or transferred to another device: see res/xml/data_extraction_rules.xml. -->
     <application
@@ -46,5 +53,38 @@
                 <data android:scheme="https" android:host="${linkHost}" android:path="/join" />
             </intent-filter>
         </activity>
+        <!--
+          The silent wake (capability `receiving-photos`): FCM's entry into the app. Not exported: only FCM, through
+          Google Play services, delivers to it.
+        -->
+        <service
+            android:name="app.snapsync.android.push.SnapSyncMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+        <!--
+          Firebase starts only by hand, from the resolved deployment's values (`AndroidPushNotifications`): its auto-start
+          provider would look for a google-services.json this build does not carry, and would start Firebase in a rig
+          launch whose push service is mocked.
+        -->
+        <provider
+            android:name="com.google.firebase.provider.FirebaseInitProvider"
+            android:authorities="${applicationId}.firebaseinitprovider"
+            tools:ignore="MissingClass"
+            tools:node="remove" />
+        <!--
+          DownloadManager's completion broadcast (capability `receiving-photos`): declared here so it reaches a dead
+          process. Exported because the download provider sends it; only a sender holding its permission can.
+        -->
+        <receiver
+            android:name="app.snapsync.android.download.DownloadCompleteReceiver"
+            android:exported="true"
+            android:permission="android.permission.SEND_DOWNLOAD_COMPLETED_INTENTS">
+            <intent-filter>
+                <action android:name="android.intent.action.DOWNLOAD_COMPLETE" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

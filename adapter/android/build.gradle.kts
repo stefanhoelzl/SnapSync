@@ -35,6 +35,8 @@ kotlin {
             implementation(libs.androidx.activity.compose)
             // The wakes, the background-time holds and the uploads run as WorkManager work.
             implementation(libs.androidx.work.runtime)
+            // The push service (`AndroidPushNotifications`): FCM, started by hand from the deployment's values.
+            implementation(libs.firebase.messaging)
             // The `Databases` adapter: SQLDelight over the platform's SQLite, and the open helper it is handed.
             implementation(libs.sqldelight.driver.android)
             implementation(libs.androidx.sqlite.framework)

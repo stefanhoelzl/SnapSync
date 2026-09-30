@@ -19,11 +19,13 @@ class AndroidBuildInfo(
     private val buildNumber: String,
     override val uploadHost: String,
     override val bootLines: List<String>,
+    /**
+     * The push environment an FCM token is registered under: the Firebase project that issued it, the one the
+     * backend's FCM sender sends under (the port's name is APNs vocabulary; on Android it is the project id).
+     */
+    override val apnsEnvironment: String,
 ) : BuildInfo {
     override val appStoreUrl: String? = null
-
-    /** APNs vocabulary the push registration still speaks; Android's push service replaces it. */
-    override val apnsEnvironment: String = "sandbox"
 
     override val osSupportsOsDrivenUpload: Boolean = false
 

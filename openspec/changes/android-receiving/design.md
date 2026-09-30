@@ -131,10 +131,13 @@ broadcast onto the handlers as one small wake:
 | `onEventsDrained()` | after that one row |
 | `onInvalidated()` | never |
 
-**Staging is a copy.** The external files dir and the SHARED area are different mounts, so "move to staging" is a
-copy plus delete. The completion receiver's budget is about 10 s. A large-video fixture measures the copy; if it
-does not fit, `DownloadJobs`' staging root moves to the same volume (a change to where staging lives, not to the
-port).
+**Staging is a copy.** The external files dir and the SHARED area are different mounts, so the core's "move to
+staging" (`Files.adopt`, a non-atomic `java.nio` move) copies and deletes; no adapter change is needed. The receiver
+holds the broadcast (`goAsync`) until the core releases its completion, at most 50 s — a background broadcast is allowed
+about a minute. Measured 2026-09-30 on the emulator: a 500 MB copy across the two mounts took 0.49 s, so even a phone
+several times slower stays far inside it, and the core's background-time hold (an expedited job) keeps the process
+alive past the broadcast anyway. A completion broadcast, like a background `URLSession` relaunch, has no expiry signal
+of its own: `onExpired` never runs (the `Completion` contract), and its only "time is up" is that hold.
 
 **Missed broadcasts.** A force-stopped app receives no broadcasts. On every process start, the adapter queries its
 own rows and delivers every finished row still present through the same handlers. It calls `remove(id)`, which
@@ -143,6 +146,13 @@ tolerates.
 
 **`cancelAll`.** `DownloadManager.remove` broadcasts nothing, so the adapter reports `onCompleted(tag,
 "cancelled")` itself for every row it removes, as the port promises.
+
+**Two contract clauses gain a second honest shape.** An HTTP error status and a body with no declared length are
+*finished* transfers under `URLSession` (the status reported, the owner's integrity check refusing it) but *failed*
+ones under DownloadManager (the status as the reason; "can't know size of download"). The core treats both the same —
+nothing is staged and the resource stays pending — so `AN_ERROR_STATUS_IS_A_FINISHED_TRANSFER_OF_ITS_BODY` and
+`NO_LENGTH_IS_NEGATIVE` accept either, and still forbid the one lie: an error or an unsized body reported as a success.
+Every presigned object declares its length, so the second never meets a real download.
 
 **Expired links.** DownloadManager retries network errors and 5xx itself, but a 403 from an expired link is final:
 `STATUS_FAILED`, then the broadcast, then `onCompleted` with an error. The resource stays pending, and the next
@@ -157,7 +167,9 @@ reconcile plans it with a fresh link. That is the existing mechanism, with no ne
    every other app and to our own reads, so this satisfies "before it can be observed".
 2. Copy the staged `PRIMARY` bytes through `openOutputStream`, unchanged: a HEIC stays HEIC, a MOV stays
    `video/quicktime`, with no transcoding.
-3. `update(IS_PENDING = 0, DATE_TAKEN = creationDate)`: the one atomic point where the item goes live.
+3. Stamp the file's modification time with `creationDate` (D7), then `update(IS_PENDING = 0)`: the one atomic point
+   where the item goes live. An original that does not decode, and a content type that is neither image nor video,
+   are refused for good before step 1 — MediaStore stores whatever bytes it is given.
 4. `onImportSettled(Imported(id))`, after which the core releases the staged bytes.
 
 Any other content type is answered as a permanent failure (spec: "A photo the library rejects").
@@ -178,31 +190,33 @@ a week. Only the app's own pending rows are visible to it.
 The rest of the Gallery import contract, bound on `ANDROID_EMU`, is unchanged. Its new clauses kill the import at
 each of the three points and check the next start.
 
-### D7. Capture date: the file first, `DATE_TAKEN` as the fallback, measured
+### D7. Capture date: the file's own metadata, and the modification time where it has none — measured
 
-The bytes are unchanged, so an iPhone photo carries EXIF `DateTimeOriginal` + `OffsetTimeOriginal`, and a MOV
-carries `mvhd creation_time`. On publish, MediaProvider scans the file and fills `DATE_TAKEN` from them. Step 3
-also writes `DATE_TAKEN = creationDate`: if the scanner overrides it, the instant is the same; if the file has no
-date, ours is the only one.
+The bytes are unchanged, so an iPhone photo carries EXIF `DateTimeOriginal` + `OffsetTimeOriginal`, and a movie its
+`mvhd creation_time`. On publish, MediaProvider scans the file and fills `DATE_TAKEN` from them.
 
-Four emulator fixtures pin a contract clause, "a received item's `DATE_TAKEN` equals its capture time":
-1. an iPhone HEIC with an offset;
-2. an iPhone HEVC MOV;
-3. a JPEG without EXIF;
-4. an Android MP4.
+Measured on the emulator (API 36, 2026-09-30), with fixtures generated to carry an iPhone's metadata
+(`adapter/android/src/androidDeviceTest/resources/import/`):
+- **An iPhone HEIC with `+02:00`, an iPhone HEVC MOV and an Android MP4:** `DATE_TAKEN` is exactly the capture instant,
+  from the file.
+- **A JPEG with no date of its own:** `DATE_TAKEN` stays empty. MediaProvider **ignores an app's `DATE_TAKEN`**
+  ("Ignoring mutation of datetaken") — written with the insert, with the publish, or in an update after it — because
+  only the scan writes it. So the import sets the pending file's **modification time** to the sender's capture time
+  before publishing, and the scan's `DATE_MODIFIED` carries it. Rejected: writing an EXIF date into such a file, which
+  would change the original's bytes.
 
-If fixture 3 shows MediaStore drops the value, the fallback is to set the file's modification time to the
-capture time before publishing. Whether vendor galleries and Google Photos sort by `DATE_TAKEN` or read EXIF
-themselves is only visible on phase 6's devices. A display-name collision in `DCIM/Camera` gets MediaStore's
-`IMG_1234 (1).HEIC`; the spec delta states it.
+The Android import test pins both halves; the `GalleryImport` contract's binding reports the date the library sorts
+by (`DATE_TAKEN`, else `DATE_MODIFIED`). Whether a gallery app sorts an undated item by `DATE_MODIFIED` is only
+visible on phase 6's devices; every photo an iPhone sends carries its own date. A display-name collision in
+`DCIM/Camera` gets MediaStore's `IMG_1234 (1).HEIC`; the spec delta states it.
 
 ### D8. An FCM push runs the existing silent-push flow within FCM's budget
 
 `AndroidPushNotifications` (a `FirebaseMessagingService`):
 - **`onMessageReceived`** delivers `onMessage(PushMessage(remoteMessage.data), completion)` and blocks the FCM
-  worker thread until `completion` is released. At about 9 s it signals "time is up" through the process's
-  `BackgroundTime` expiry path, so the core's existing expiry handling applies and no wall-clock bound enters the
-  core.
+  worker thread until `completion` is released, at most about 9 s, then returns. The completion has no expiry signal
+  of its own (the `Completion` contract: a silent push's only "time is up" is the process's background time, which the
+  core already holds across the wake), so no wall-clock bound enters the core.
 - **The tail.** `TailRunner` requests its `BackgroundTime` hold (an expedited WorkManager job) before the
   completion is released, as it already does, so the job is enqueued while a high-priority message has the app
   on its temporary allowlist.
@@ -270,15 +284,20 @@ Both platforms already behave this way. The delta states both gaps rather than i
   dropped wake; D5's recovery at every start catches finished downloads.
 - **MOV playback** depends on the device's HEVC decoder → accepted as a platform limit; phase 6 checks it on real
   devices.
-- **The completion receiver's 10 s budget vs a cross-volume copy of a large video** → measured with a fixture; D5
-  names the fallback.
-- **The `DATE_TAKEN` fallback may be dropped** for a file with no date → D7's fixture decides; the fallback sets
-  the file's modification time.
+- **A multi-gigabyte video's staging copy on a slow phone** → the broadcast is held at most 50 s and the core's
+  background-time hold keeps the process alive past it; measured 0.49 s for 500 MB on the emulator (D5).
+- **A received file with no date of its own has no `DATE_TAKEN`** (MediaProvider takes it only from the file) → its
+  `DATE_MODIFIED` is the capture time (D7); a gallery app that ignores `DATE_MODIFIED` would sort it by arrival —
+  phase 6 shows which do. iPhone originals always carry their date.
 - **A kill during import steps 1–2 under Android 14's limited access** leaves the sweep UNKNOWN (only a full grant
   may answer ABSENT), and that one photo waits until access widens → the window is milliseconds long. The
   presence rule is shared with iOS, so it stays; recorded here as a known limitation.
 - **Mobile data for a Live Photo's discarded video** (D1) → until phase 7 uses it.
 - **One extra push registration per iOS device** after the update (D3) → an idempotent UPDATE.
+- **Firebase Messaging 25 deprecates `getToken()`/`onNewToken`** for `register()`/`onRegistered` → kept, with explicit
+  suppressions: the core asks for the token at every entry and compares, which is `getToken()`'s semantics; whether
+  `onRegistered` re-delivers an unchanged token to a new process is unmeasured until a Firebase project exists (closed
+  test). Moving is a change inside `AndroidPushNotifications` alone.
 - **Rebase with phase 8**, which also edits `receiving-photos` → this change leaves the wake requirement alone;
   whichever lands second rebases.
 
@@ -297,8 +316,3 @@ Both platforms already behave this way. The delta states both gaps rather than i
 3. **Rollback.** Reverting the PR restores APNs-only sending. FCM rows stay in `devices` and are skipped by the old
    `apns.ts`. On iOS, reverting re-publishes once more.
 
-## Open Questions
-
-- Whether the staging copy fits the receiver's budget for the largest real video, and whether MediaStore keeps an
-  app-written `DATE_TAKEN` for a file without a date. Both are measured during implementation, each with a named
-  fallback that changes neither the specs nor the task list.
