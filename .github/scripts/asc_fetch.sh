@@ -16,7 +16,9 @@ ASC_REPO="rudrankriyam/App-Store-Connect-CLI"
 dest="${1:?usage: asc_fetch.sh <dest-path>}"
 url="https://github.com/${ASC_REPO}/releases/download/${ASC_VERSION}/asc_${ASC_VERSION}_linux_amd64"
 
-curl -fsSL -o "$dest" "$url"
+# Retried: GitHub's release-asset CDN answers a transient 504 often enough to fail `metadata` (2 of 10 runs,
+# 2026-10-01); the checksum below still guards whatever finally arrives.
+curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors --connect-timeout 20 --max-time 120 -o "$dest" "$url"
 echo "${ASC_SHA256}  ${dest}" | sha256sum -c -
 chmod +x "$dest"
 "$dest" --version
