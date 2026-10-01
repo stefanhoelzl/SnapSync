@@ -165,7 +165,7 @@ Deno.test("android: another app, or another signing certificate, is refused", as
     verify({ ...hardware(RKP_TEE), androidSigningCertDigests: [digest] }, RKP_TEE),
     "signed with",
   );
-  // The deployed default until the app is on Play: no digest at all, so no Android device.
+  // No digest at all: no Android device.
   await refused(
     verify({ ...hardware(RKP_TEE), androidSigningCertDigests: [] }, RKP_TEE),
     "signed with",

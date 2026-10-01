@@ -21,11 +21,11 @@
 //
 // ── THE GATE (capability `privacy-security`) ────────────────────────────────────────────────────
 //
-// EVERY ROUTE REQUIRES A DEVICE TOKEN — obtainable only by completing App Attest, so the API is callable
-// by a genuine, unmodified SnapSync on a genuine Apple device and by nothing else. (An Android key
-// attestation mints the same token, but only where the deployment names the app's signing certificate:
-// until the app is on Play no deployed backend does, so this sentence stays true — `android-attest.ts`.)
-// The exceptions are a
+// EVERY ROUTE REQUIRES A DEVICE TOKEN — obtainable only by completing App Attest or an Android key
+// attestation, so the API is callable by a genuine, unmodified SnapSync on a genuine Apple device or a
+// verified Android phone and by nothing else. (The Android attestation mints the token only where the
+// deployment names the app's signing certificate — on a deployed backend, Play's app signing key —
+// `android-attest.ts`.) The exceptions are a
 // CLOSED LIST, and each is exempt for its own stated reason (see the middleware in `createApp`):
 //
 //   * the three `/attest/*` issuers — self-authenticating; they cannot require the token they mint.
@@ -1021,9 +1021,9 @@ export function createApp(
   // The Android counterpart (capability `join-event`): Digital Asset Links, which Android's verifier fetches to
   // let the app claim `https://<domain>/join` (the intent filter narrows the path; this file names the app). It
   // names the package and the signing certificates the attestation policy accepts — ONE list
-  // (`androidSigningCertDigests`), so the app a link opens is the app that may attest. Empty on every deployed
-  // backend until the app is on Play, and under trust `any` (which names no certificate): `[]` claims nothing,
-  // so no app can take the link from the browser.
+  // (`androidSigningCertDigests`), so the app a link opens is the app that may attest. Empty under trust `any`
+  // (which names no certificate) and wherever no certificate is named: `[]` claims nothing, so no app can take
+  // the link from the browser.
   const assetlinks = JSON.stringify(
     config.androidAttestationTrust === "hardware" && config.androidSigningCertDigests.length > 0
       ? [{

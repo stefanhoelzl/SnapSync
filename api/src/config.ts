@@ -96,8 +96,8 @@ export type Config = {
   /** The Android app's package name — what an Android key attestation must name (`android-attest.ts`). */
   androidPackageName: string;
   /**
-   * The signing-certificate SHA-256 digests an Android attestation may name, `AA:BB:…`. Empty on every
-   * deployed backend until the app is on Play: an empty list accepts no Android device.
+   * The signing-certificate SHA-256 digests an Android attestation may name, `AA:BB:…`. On a deployed
+   * backend, Play's app signing key; an empty list accepts no Android device.
    */
   androidSigningCertDigests: readonly string[];
   /** The PEM roots an Android attestation chain must end at, matched by public key. */

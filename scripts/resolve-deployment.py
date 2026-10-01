@@ -226,10 +226,9 @@ INVENTORY = [
         The SHA-256 digests of the signing certificates an Android attestation may name, colon-separated
         upper-case hex — the form `assetlinks.json` carries them in, which is served from this same list.
         For a deployed backend this is the PLAY APP SIGNING key's certificate, never the upload key's:
-        Play re-signs every install with it, so it is the one a real device reports. EMPTY until the app is
-        on Play (phase 5): an empty list accepts no Android device at all, which is what keeps the
-        `privacy-security` promise ("a genuine SnapSync app on a genuine Apple device") true in production
-        until the spec is reworded. Ignored under `androidAttestationTrust = any`.
+        Play re-signs every install with it, so it is the one a real device reports — and a release build
+        signed locally with the upload key is therefore refused. An empty list accepts no Android device at
+        all. Ignored under `androidAttestationTrust = any`.
     """),
     Key("androidAttestationRoots", [JSON], doc="""
         The PEM roots an Android key attestation chain must end at, matched by PUBLIC KEY — so a root Google
