@@ -38,12 +38,12 @@ import kotlinx.coroutines.withTimeout
  */
 class AndroidDownloadContractTest {
 
-    private val manager get() = context.getSystemService(DownloadManager::class.java)
     private val receiver = DownloadCompleteReceiver()
 
     @BeforeTest
     fun registerReceiver() {
-        removeAll()
+        awaitBroadcastsIdle()
+        removeAllDownloads()
         context.registerReceiver(
             receiver,
             IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
@@ -54,15 +54,7 @@ class AndroidDownloadContractTest {
     @AfterTest
     fun unregisterReceiver() {
         runCatching { context.unregisterReceiver(receiver) }
-        removeAll()
-    }
-
-    /** Remove every row this app holds, so no clause is handed another's leftovers. */
-    private fun removeAll() {
-        manager.query(DownloadManager.Query())?.use { cursor ->
-            val ids = buildList { while (cursor.moveToNext()) add(cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_ID))) }
-            ids.forEach { manager.remove(it) }
-        }
+        removeAllDownloads()
     }
 
     private val download = object : Binding<DownloadState, DownloadUnderTest> {
@@ -71,14 +63,14 @@ class AndroidDownloadContractTest {
         override val reaches = setOf(DownloadState.READY)
 
         override fun create(state: DownloadState, clauseId: String): Entered<DownloadUnderTest> {
-            removeAll()
+            removeAllDownloads()
             return Entered.Ready(
                 DownloadUnderTest(
                     open = { AndroidDownload(context) },
                     base = fixture(),
                     readTemp = { path -> runCatching { File(path).readBytes() }.getOrNull() },
                 ),
-            ) { removeAll() }
+            ) { removeAllDownloads() }
         }
     }
 
@@ -104,11 +96,11 @@ class AndroidDownloadContractTest {
         assertEquals("d-missed", delivered.tag)
         assertEquals(MISSED_LENGTH, delivered.body?.size, "the body is handed over, inline")
         assertEquals(DownloadEvent.Completed("d-missed", null), relaunched.events.last())
-        assertTrue(manager.query(DownloadManager.Query())?.use { it.count } == 0, "a delivered row is removed")
+        assertTrue(downloadManager.query(DownloadManager.Query())?.use { it.count } == 0, "a delivered row is removed")
         context.registerReceiver(receiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE), Context.RECEIVER_EXPORTED)
     }
 
-    private fun finished(): Boolean = manager.query(DownloadManager.Query()).use { cursor ->
+    private fun finished(): Boolean = downloadManager.query(DownloadManager.Query()).use { cursor ->
         cursor.moveToFirst() &&
             cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)) == DownloadManager.STATUS_SUCCESSFUL
     }
