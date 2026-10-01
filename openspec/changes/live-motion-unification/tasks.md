@@ -23,7 +23,7 @@
 
   Verify: 7/7 pass on the emulator (API 30), with the new fixture `iphone-live.heic`.
 - [x] 2.4 Update the `MediaStoreImport` KDoc (step 2 no longer "discards the MOV") and the receiving section of `docs/architecture.md` / `docs/testing.md` where they state the still-only import. Verify: `grep` finds no "arrives as its still" claim outside the fallback.
-- [ ] 2.5 Hardware check, **only after the user's go-ahead**: use the rig build on the Galaxy A40, with the import driven through the app and no event joined. Confirm a received HEIC Live Photo and a "Most Compatible" JPEG one (with a gain map, if one is available) play in Google Photos, allowing for the indexing lag. Remove the test photos afterwards. Verify: the result is recorded in this change's design under Risks.
+- [x] 2.5 Hardware check on the Galaxy A40 (SM-A405FN, Android 11, Google Photos 7.94), 2026-10-01, with your go-ahead and holding the `A40` lock. A one-off instrumented probe (not committed) imported, through `MediaStoreImport`, a real 12 MP iPhone XS HEIC + MOV and a 12 MP JPEG + the same MOV, both dated 2025-11-11, outside the joined SnapSync event's capture window. The first was re-encoded to JPEG and the second's JPEG kept. Google Photos showed both with the Motion control at their capture date, and after a tap it played the appended video (consecutive frames changed). Both photos were then deleted through MediaStore, the probe package was gone, and SnapSync's membership was untouched. Not covered: an iPhone "Most Compatible" JPEG carrying an HDR gain map (no sample).
 
 ## 3. iPhone: motion photo → Live Photo at import (`:adapter:ios:app-only`, PR "ios")
 
