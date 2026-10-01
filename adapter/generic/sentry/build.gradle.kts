@@ -99,11 +99,3 @@ kotlin {
         }
     }
 }
-
-// Full failure messages in CI: the Kotlin/Native simulator runner otherwise prints a terse "AssertionError at null:-1"
-// with no message and no line, which makes a red iOS-only test unreadable from Linux.
-tasks.withType<org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeSimulatorTest>().configureEach {
-    testLogging {
-        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
-    }
-}
