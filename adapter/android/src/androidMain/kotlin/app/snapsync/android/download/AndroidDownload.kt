@@ -13,6 +13,7 @@ import app.snapsync.ports.Completion
 import app.snapsync.ports.Download
 import app.snapsync.ports.DownloadHandlers
 import co.touchlab.kermit.Logger
+import java.io.File
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CompletableDeferred
@@ -43,6 +44,8 @@ import kotlinx.coroutines.withTimeoutOrNull
  *   [listen] runs over the rows still held. A row is removed (which deletes its file) only after `onFinished` has
  *   returned, under one lock, so a broadcast and the pass never deliver one row twice in a process; across processes
  *   staging tolerates a repeat.
+ * - **The bytes received are the file's**, not the row's count: a rescheduled running download can end SUCCESSFUL
+ *   naming an empty file ([FinishedRow.facts]), and only the owner's length check stops it being staged.
  * - **A 403 is final** (an expired presigned link): the row fails, is reported through `onCompleted` with its reason,
  *   and the next reconcile plans the resource with a fresh link.
  * - **[cancelAll]** removes every row; DownloadManager broadcasts nothing for a removal, so each is reported here.
@@ -123,7 +126,7 @@ class AndroidDownload(
                 handlers.onCompleted(tag, "DownloadManager reported success with no file")
                 return
             }
-            handlers.onFinished(tag, TransferOutcome(HTTP_OK, total, received), path)
+            handlers.onFinished(tag, facts(File(path).length()), path)
             handlers.onCompleted(tag, null)
         } else {
             handlers.onCompleted(tag, "download failed (reason $reason)")
@@ -160,7 +163,18 @@ class AndroidDownload(
         val localPath: String?,
         val total: Long,
         val received: Long,
-    )
+    ) {
+        /**
+         * The facts of a successful row whose file holds [onDisk] bytes. The bytes received are the FILE's, never the
+         * row's count: when DownloadManager reschedules a running download (its BOOT_COMPLETED pass does, for every
+         * row), the stopped thread runs on beside its successor, each claims its own file (`X`, then `X-1`), and the
+         * row can end SUCCESSFUL naming the empty one while the body sits in the other — measured on API 36. A file
+         * shorter than what the row says arrived is declared at least that long, since the row's total is rewritten
+         * by every writer's close; the owner's length check then refuses it and the next reconcile fetches it again.
+         */
+        fun facts(onDisk: Long): TransferOutcome =
+            TransferOutcome(HTTP_OK, if (onDisk < received) maxOf(total, received) else total, onDisk)
+    }
 
     internal companion object {
         /** The subdirectory of the app's external files dir the transfers land in. */
