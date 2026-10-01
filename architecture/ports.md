@@ -61,7 +61,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `EventRename` | `:domain:services` | `:domain:services` BackendEventRename; `:test:feature` FakeRename | yes |
 | `EventRenamer` | `:domain:feature` | `:domain:feature` RenameEvent | no |
 | `EventTiming` | `:domain:model` | `:domain:model` Ended, Running, Upcoming | no |
-| `EventUnionSource` | `:domain:services` | `:adapter:generic:mock` EmptyUnion, RecordingUnion; `:domain:services` BackendEventUnionSource; `:test:feature` FakeUnion, GateableUnion, RecordingUnion | yes |
+| `EventUnionSource` | `:domain:services` | `:adapter:generic:mock` EmptyUnion; `:domain:services` BackendEventUnionSource; `:test:feature` FakeUnion, RecordingUnion | yes |
 | `ExtensionHost` | `:domain:ports` | `:adapter:ios:ext-safe` ContractRunningExtensionHost, IosExtensionHost; `:test:launch-adapters` UncomposedExtensionHost | yes |
 | `ExtensionRegistration` | `:domain:services` | `:domain:services` OsDrivenRegistration; `:test:architecture` PlatformRegistration; `:test:feature` FakeRegistration | yes |
 | `ExtensionRegistry` | `:domain:ports` | `:adapter:android` AndroidExtensionRegistry; `:adapter:generic:mock` InMemoryExtensionRegistry; `:adapter:ios:app-only` PhotoKitExtensionRegistry, SimulatorExtensionRegistry; `:domain:services` RecordingRegistry | yes |

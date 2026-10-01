@@ -46,9 +46,12 @@ class MembershipEnd internal constructor(private val core: AppCore) {
      * read, at most once an hour per event, so others' photos arrive when no push does — then the event-completion
      * step, whose read of the event's state is bounded the same way unless [trigger] is one that asks the event anyway:
      * a push (the close is announced by one), an opening, a join.
+     *
+     * An arm's tail runs no photo check: an arm is requested from inside a join or a reconfigure, which read the union
+     * in their own work, and the tail can end before that read has stamped the hour — one union read too many per join.
      */
     suspend fun endOfWake(trigger: TailTrigger) {
-        core.services.config.config.value?.eventId?.let { eventId ->
+        core.services.config.config.value?.eventId?.takeIf { trigger != TailTrigger.ARM }?.let { eventId ->
             runCatchingCancellable { core.downloadController.reconcileIfDue(eventId) }
                 .onFailure { core.services.log.w(it) { "the bounded photo check failed; the next wake runs it again" } }
         }

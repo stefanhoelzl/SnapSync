@@ -32,7 +32,9 @@ internal fun shareSetLoadFor(services: AppServices, files: DeviceFilesSource): S
 /**
  * The join-time adoption (capability `receiving-photos`): the union over [backend], the download store, and the
  * library's marked photos over [gallery] under the same read discipline as upload discovery ([AppCore.selectionScope]),
- * written through the download controller's locked write. A top-level factory for the same reason as [shareSetLoadFor].
+ * written through the download controller's locked write. Every union it reads is offered to [AppCore.joinUnion], so
+ * the provision it runs in plans its downloads from the same answer. A top-level factory for the same reason as
+ * [shareSetLoadFor].
  */
 internal fun receivedPhotoAdoptionFor(
     services: AppServices,
@@ -40,7 +42,7 @@ internal fun receivedPhotoAdoptionFor(
     gallery: GalleryReader,
     core: AppCore,
 ): ReceivedPhotoAdoption = ReceivedPhotoAdoption(
-    union = backend.union,
+    union = { eventId -> backend.union.union(eventId).onSuccess { core.joinUnion.offer(eventId, it) } },
     store = services.downloadStore,
     library = MarkedPhotoLookup(gallery, core::selectionScope),
     record = core.downloadController::settleAdopted,

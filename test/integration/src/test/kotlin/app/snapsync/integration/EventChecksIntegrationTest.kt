@@ -9,7 +9,8 @@ import kotlin.test.assertEquals
  * **A background wake asks the event at most once an hour** (capability `receiving-photos`, "New photos are announced
  * by a silent wake, and never only by it"; decision record `changes/timely-background-receiving`, D4–D5), counted at
  * the backend: a heartbeat reads the union when none was read within the hour, and — after the event's end — its
- * state the same way; a push reads both whenever it comes, and resets the hour.
+ * state the same way; a push reads both whenever it comes, and resets the hour. A join and a reconfigure read the union
+ * once each.
  */
 class EventChecksIntegrationTest {
 
@@ -60,6 +61,27 @@ class EventChecksIntegrationTest {
 
         os("app", "onSilentPush", event)
         eventually<Int>(read = { eventReads(event) }) { it == first + 1 }
+    }
+
+    @Test
+    fun a_join_reads_the_union_once() = rigTest {
+        val event = createAndJoin()
+        assertEquals(1, unionReads(event), "the join read it before the membership was saved")
+        settleDownloads()
+        assertEquals(1, unionReads(event), "nothing after the save reads it again: the reconcile, the arm, the gather")
+    }
+
+    @Test
+    fun a_reconfigure_reads_the_union_once() = rigTest {
+        val event = createAndJoin("saveToAlbum" to "false")
+        settleDownloads()
+        val before = unionReads(event)
+
+        user("reconfigure", "saveToAlbum" to "true")
+        awaitState { it.joined?.membership?.saveToAlbum == true }
+        settleDownloads()
+
+        assertEquals(before + 1, unionReads(event), "the reconcile reads it; the arm and the gather do not")
     }
 
     private suspend fun Rig.heartbeat() {

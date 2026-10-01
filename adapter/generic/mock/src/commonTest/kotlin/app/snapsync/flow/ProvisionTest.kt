@@ -16,8 +16,6 @@ import app.snapsync.model.EventConfig
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
 import app.snapsync.services.gallery.GalleryAlbums
-import app.snapsync.services.backend.EventUnionSource
-import app.snapsync.model.UnionAsset
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.CoroutineScope
@@ -180,7 +178,7 @@ class ProvisionTest {
         registerPush: suspend () -> Unit = { order += "push" },
     ): Provision {
         return Provision(
-            downloadController = flowDownloadController(RecordingUnion(order)),
+            reconcileDownloads = { order += "reconcile:$it" },
             albumCoordinator = AlbumCoordinator(GalleryAlbums(RecordingAlbums(order, saveToAlbum)), albumStore),
             activeEventId = activeEventId,
             // The entry's inner order (stop, leave, load, save, start uploads) is `MembershipEntryTest`'s; here it
@@ -196,13 +194,6 @@ class ProvisionTest {
             hasUsableAccess = hasUsableAccess,
             registerPush = registerPush,
         )
-    }
-
-    private class RecordingUnion(private val order: MutableList<String>) : EventUnionSource {
-        override suspend fun union(eventId: String): Result<List<UnionAsset>> {
-            order += "reconcile:$eventId"
-            return Result.success(emptyList())
-        }
     }
 
     /**

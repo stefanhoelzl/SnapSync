@@ -1,7 +1,6 @@
 package app.snapsync.compose
 
 import app.snapsync.services.gallery.GalleryAccessState
-import app.snapsync.services.backend.EventUnionSource
 import app.snapsync.ports.EntryContext
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.album.AlbumGather
@@ -21,7 +20,6 @@ import kotlinx.coroutines.launch
  */
 internal fun albumGather(
     services: AppServices,
-    union: EventUnionSource,
     entryContext: EntryContext,
     access: GalleryAccessState,
     coordinator: AlbumCoordinator,
@@ -31,9 +29,7 @@ internal fun albumGather(
     configSource = services.config,
     ledger = services.ledger,
     policyFor = policyFor,
-    union = union,
     downloads = services.downloadStore,
-    identity = services.deviceIdentity,
     photoAccess = access,
     coordinator = coordinator,
     scope = scope,

@@ -190,12 +190,13 @@ suppressedLocalIds:
 SELECT createdLocalId FROM downloadAsset
 WHERE createdLocalId IS NOT NULL;
 
--- Every IMPORTED row's source ref and created local id, for the event album's gather (capability
--- `event-album`). The caller filters by the refs of ONE event's union: this store is event-blind and stays
--- so. An unconfirmed row (non-terminal, carrying a marker) is excluded — its asset is not adjudicated yet.
-selectImportedLocalIds:
-SELECT sourceDeviceId, sourceAssetId, createdLocalId FROM downloadAsset
-WHERE state = 'IMPORTED' AND createdLocalId IS NOT NULL;
+-- The created local id of every IMPORTED row tagged with ONE event, for the event album's gather (capability
+-- `event-album`): the tag is what says a row is in that event's union — every reconcile writes it for the whole
+-- foreign union, and an adoption for the event it adopts for — so the gather needs no union read of its own. An
+-- unconfirmed row (non-terminal, carrying a marker) is excluded — its asset is not adjudicated yet.
+selectImportedLocalIdsOfEvent:
+SELECT createdLocalId FROM downloadAsset
+WHERE eventId = :eventId AND state = 'IMPORTED' AND createdLocalId IS NOT NULL;
 
 -- The download projection's three counts in ONE statement, so they come from one snapshot of the
 -- database rather than three reads taken at different instants (capability `receiving-photos`; the

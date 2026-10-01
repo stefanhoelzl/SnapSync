@@ -1385,6 +1385,26 @@ class DownloadControllerTest {
         assertEquals(2, union.calls)
     }
 
+    // ---- a join plans from the union its adoption already read (one union read per join) ----
+
+    @Test
+    fun a_known_union_is_planned_without_a_read_of_its_own() = runTest {
+        val download = RecordingDownload()
+        val union = FakeUnion(emptyList())
+        controller(union, download = download).reconcile("event", known = listOf(asset("DEVICE-A", "FOREIGN")))
+        assertEquals(0, union.calls, "the join's adoption read it already")
+        assertEquals(setOf("FOREIGN-primary.heic", "FOREIGN-live.mov"), download.started.map { it.resourceKey }.toSet())
+    }
+
+    @Test
+    fun a_known_union_stamps_the_hour_so_the_next_wake_reads_none() = runTest {
+        val union = FakeUnion(emptyList())
+        val controller = controller(union)
+        controller.reconcile("event", known = emptyList())
+        controller.reconcileIfDue("event")
+        assertEquals(0, union.calls)
+    }
+
     private companion object {
         /** The measured backlog: 101 foreign assets in one background wake. */
         const val N = 101
