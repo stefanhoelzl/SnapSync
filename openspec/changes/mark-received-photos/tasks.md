@@ -122,6 +122,11 @@
   - record the join latency with a large in-window library (design risk).
 
   Verify from the `debug.log` adoption line and the library count, over the `rig-channel` skill.
-- [ ] 5.2 Check that the marked filename survives an edit in Photos and an iCloud Photos sync to a second
+- [x] 5.2 Check that the marked filename survives an edit in Photos and an iCloud Photos sync to a second
   device, and that the limited selection resets on reinstall. Record the findings in design.md's Risks, and
   confirm the spec's gap list still holds.
+  - ✅ edit, 2026-10-01 (SE2): a received photo edited in Photos (`hasAdjustments` true) keeps its original
+    resource named `IMG_9200.snapsync-vi72yxeyoh.JPG`, the resource adoption reads.
+  - ✅ limited selection on reinstall: every reinstall today reset the grant to `NOT_DETERMINED`, so the selection,
+    which is part of that grant, is gone with it. The spec's limited-access gap holds as written.
+  - ⏭ iCloud Photos sync to a second device: skipped by decision (2026-10-01); recorded as unverified in design.md's Risks.
