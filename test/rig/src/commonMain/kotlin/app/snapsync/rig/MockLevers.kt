@@ -349,7 +349,13 @@ private fun MockWorld.transferLevers(): Map<String, Lever> = mapOf(
         } else {
             TransferOutcome(statusCode = status, expectedBytes = -1L, receivedBytes = params["received"]?.toLongOrNull() ?: 0L)
         }
-        val finished = finishDownloads(outcome)
+        // `bytes=motion-photo`: what each transfer brought is a real Google motion photo (`PhotoLibrary.motionPhoto`).
+        val bytes = when (params["bytes"]) {
+            null -> null
+            "motion-photo" -> PhotoLibrary.motionPhoto
+            else -> return@RigCommand CommandResult.badRequest("bytes is motion-photo or absent, was '${params["bytes"]}'")
+        }
+        val finished = finishDownloads(outcome, bytes)
         if (params["drained"]?.toBoolean() == true && device.downloads.operator.realized) {
             device.downloads.operator.reportEventsDrained()
         }
@@ -607,10 +613,10 @@ fun MockWorld.mockGalleryReader(): suspend (String?, Boolean, Boolean) -> String
 }
 
 /** The operating system finishes every in-flight download with [outcome]; answers their descriptions. */
-private fun MockWorld.finishDownloads(outcome: TransferOutcome): List<String> {
+private fun MockWorld.finishDownloads(outcome: TransferOutcome, bytes: ByteArray? = null): List<String> {
     val session = device.downloads.operator
     if (!session.realized) return emptyList()
-    return session.inFlight().map { it.description }.onEach { session.finish(it, outcome) }
+    return session.inFlight().map { it.description }.onEach { session.finish(it, outcome, bytes) }
 }
 
 /** A fellow member with a primary resource per asset, captured on [filename]. */

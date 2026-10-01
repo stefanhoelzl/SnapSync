@@ -362,8 +362,8 @@ class DownloadSessionMock(private val temporaryFiles: TemporaryFiles? = null) {
 
     val operator: DownloadSessionOperator = DownloadSessionOperator(this)
 
-    internal fun leaveTempFile(description: String): String =
-        temporaryFiles?.leave("download-tmp/${description.hashCode().toUInt()}", TEMP_BYTES) ?: "temp:/$description"
+    internal fun leaveTempFile(description: String, bytes: ByteArray? = null): String =
+        temporaryFiles?.leave("download-tmp/${description.hashCode().toUInt()}", bytes ?: TEMP_BYTES) ?: "temp:/$description"
 
     internal fun registered(): DownloadHandlers =
         checkNotNull(handlers) { "no process listened to the download session — nothing would receive this" }
@@ -401,11 +401,12 @@ class DownloadSessionOperator internal constructor(private val mock: DownloadSes
 
     /**
      * A finish for [description], as the real delegate delivers one: the facts and a temporary file, then the
-     * completion. A rejected [outcome] leaves the resource un-staged.
+     * completion. A rejected [outcome] leaves the resource un-staged. The file holds [bytes] when given — the
+     * operator choosing what the transfer brought, e.g. a real motion photo — and a minimal JPEG otherwise.
      */
-    fun finish(description: String, outcome: TransferOutcome = DownloadSessionMock.HEALTHY) {
+    fun finish(description: String, outcome: TransferOutcome = DownloadSessionMock.HEALTHY, bytes: ByteArray? = null) {
         mock.started.filter { it.description == description }.forEach { it.finished = true }
-        mock.registered().onFinished(description, outcome, mock.leaveTempFile(description))
+        mock.registered().onFinished(description, outcome, mock.leaveTempFile(description, bytes))
         mock.registered().onCompleted(description, null)
     }
 
