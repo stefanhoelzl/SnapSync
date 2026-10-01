@@ -24,7 +24,7 @@ name: deploy
 # TESTFLIGHT IS DELIBERATELY NOT HERE. `ios-deliver` lives in ci.yml because it is bound to that run three
 # ways: it consumes the Release archive `ios-build` just produced (artifacts would have to cross runs, or
 # the 5-10 min archive be repeated), its CFBundleVersion IS ci.yml's `run_number` plus its `BUILD_NUMBER_OFFSET`
-# (ios-appstore-promote.yml resolves a build number back to that run), and it also delivers a dispatched
+# (promote.yml resolves a build number back to that run), and it also delivers a dispatched
 # BRANCH — which "main only"
 # excludes by definition.
 #
@@ -654,7 +654,7 @@ jobs:
   # EVERY PUSH, NO GATE: "file wins" means a console edit is overwritten by the next push to `main`, whatever
   # that push touched. Its gate is ci.yml's `metadata` (the App Store listing validation), which has passed on
   # this content — so no `needs:` (it could not reach another workflow's job anyway). Text only: the
-  # screenshots are uploaded by the release (ios-appstore-promote.yml), never by a push.
+  # screenshots are uploaded by the release (promote.yml), never by a push.
   #
   # Reuses the EXISTING Admin ASC key (no new secret, no Xcode/keychain/cert). The metadata tool `asc` is a
   # pinned, checksum-verified third-party binary (see asc_fetch.sh).

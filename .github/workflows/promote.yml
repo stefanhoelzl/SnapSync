@@ -1,9 +1,18 @@
-# Dispatch-driven App Store release (`docs/deployment.md`). This PROMOTES a build that
-# `ios-deliver` already uploaded to App Store Connect — it BUILDS NOTHING. `gh workflow run
-# ios-appstore-promote.yml -f build_number=N` picks build N (its CFBundleVersion), DERIVES the store
-# version from the build's own marketing version, finds-or-creates that App Store version record, attaches
-# the build, uploads the listing SCREENSHOTS to it, applies the App Review details, OPTIONALLY submits,
-# and — last — creates the `vX.Y` tag.
+# Dispatch-driven store release (`docs/deployment.md`). This PROMOTES ONE build number to the selected stores — the
+# App Store and/or Google Play — and BUILDS NOTHING: `ios-deliver` already uploaded build N to App Store Connect and
+# `android-deliver` the bundle whose `versionCode` is N to Play. `gh workflow run promote.yml -f build_number=N`
+# DERIVES the store version from the build's own marketing version, prepares each selected store, PREFLIGHTS each,
+# SUBMITS each, and — last — creates the `vX.Y` tag. There is no submit flag: a promote always submits, and the
+# preflights are the gate. `-f dry_run=true` stops after the preflights (no Play commit, no submit, no tag).
+#
+# STORES ARE CHECKBOXES: `ios` (default on) and `android` (default off until Play has production access, so a
+# promote dispatched from habit keeps releasing iOS alone). Neither selected is refused. A store left out NEVER gets
+# that version: the tag makes a version single-shot, so its next release is the next version. Play's target track is
+# the constant PLAY_TRACK below — the closed track until production access is granted.
+#
+# ONE VERSION LINE, ONE BUILD NUMBER. `ci.yml` builds both platforms with the same N (run_number + 2000) and the same
+# marketing version, so the version is read from App Store Connect's build N EVEN FOR AN ANDROID-ONLY PROMOTE (read
+# only): Play's API carries a bundle's versionCode, not its version name.
 #
 # WHY THIS UPLOADS SCREENSHOTS AT ALL (the long rationale is on the step itself): a screenshot upload can
 # only ever write to a version in an EDITABLE state, and concludes green when there is none. This workflow
@@ -13,46 +22,60 @@
 # on a version state it never observed, so it ran green and did nothing. It was deleted, not kept alongside
 # — correcting an ALREADY-promoted version's screenshots is a manual console upload, by decision.
 #
-# WHY PROMOTE, NOT BUILD: every main merge already uploads a signed, gated build to the internal TestFlight
-# group. Promoting one ships the EXACT bits you tested and reuses a build already in ASC, instead of
-# compiling a fourth never-run copy. It also collapses the old two-job (macOS build + ubuntu finish) split
-# to a SINGLE ubuntu job — no Xcode, no signing certs, no keychain.
+# WHY PROMOTE, NOT BUILD: every main merge already uploads a signed, gated build to internal TestFlight and to Play's
+# internal track. Promoting one ships the EXACT bits you tested and reuses a build the stores already hold, instead of
+# compiling a never-run copy. It is a SINGLE ubuntu job — no Xcode, no Gradle, no signing.
 #
 # VERSION IS DERIVED, NOT INPUT. The store version = the build's own `preReleaseVersion.version` (which
 # ci.yml's ios-build computed as max(floor, lastTag+1) at build time). So the version record and the build always
 # match by construction — the "attach a mismatched build" hazard cannot arise. There is no `version` input.
 #
-# PROVENANCE IS AN UPLOAD-TIME GUARANTEE. `ios-deliver` runs only on main and only when every merge gate
-# passes, so every promotable build is from a merged, gate-passing commit. This workflow therefore does NOT
-# re-check the commit's ancestry or check-runs (the old green-check apparatus is gone). Two guards remain:
-# the derived version must be two-part `^\d+\.\d+$`, and the `vX.Y` tag must not already exist.
+# PROVENANCE IS AN UPLOAD-TIME GUARANTEE. Both deliver jobs run only when every merge gate passes, so every
+# promotable build is from a gate-passing commit, and guard 2 accepts only a run on main. Three guards run before any
+# mutation: the tag is absent, the origin commit resolves, and every SELECTED store holds build N.
 #
-# TAG ORDERING IS LOAD-BEARING. Tag existence is checked FIRST (fail in seconds, not after the ASC work)
-# and the tag is created LAST (after submit). A failed run then leaves no tag and retries cleanly; a
-# released tag is never moved. The tag points at the BUILD'S ORIGIN COMMIT, resolved
-# `build_number → the delivering run on main → head_sha` — a ci.yml run numbered N − 2000 for a build above 2000
-# (ci.yml's BUILD_NUMBER_OFFSET), the retired ios.yml's run numbered N otherwise. If that origin cannot be resolved
-# (e.g. the run was deleted), the run FAILS rather than tag a guess. The tag message records `build N`.
-# NB: a wrong resolution would be a wrong TAG, never wrong bits — the attach identifies the build by N.
+# TAG ORDERING IS LOAD-BEARING. Tag existence is checked FIRST (fail in seconds, not after the store work)
+# and the tag is created LAST, only once every SELECTED store accepted the submission ("accepted" = the submission
+# went through; both stores review afterwards, and a review split ships that version on one store only). A failed
+# run then leaves no tag and retries cleanly; a released tag is never moved. The tag points at the BUILD'S ORIGIN
+# COMMIT, resolved `build_number → the delivering run on main → head_sha` — a ci.yml run numbered N − 2000 for a
+# build above 2000 (ci.yml's BUILD_NUMBER_OFFSET), the retired ios.yml's run numbered N otherwise. If that origin
+# cannot be resolved (e.g. the run was deleted), the run FAILS rather than tag a guess. The tag message records the
+# build and the stores. NB: a wrong resolution would be a wrong TAG, never wrong bits — each store identifies the
+# build by N.
 #
-# SUBMIT is opt-in (`-f submit=true`) AND gated: `asc review doctor` must report zero blocking checks or
-# the run refuses. The gate is OURS — a submission is outward-facing and effectively irreversible.
+# A RERUN COMPLETES A HALF-DONE PROMOTE. Each submit skips when already done: Play when PLAY_TRACK already carries N as
+# a completed release, the App Store when the X.Y record has left the editable states with build N — and then EVERY
+# App Store step skips, since a submitted record can no longer be written. Play is submitted FIRST: its commit is
+# all-or-nothing and it is the likelier refusal (a missing declaration), so a refusal there leaves nothing in front
+# of App Review. Failure points: before the Play commit → nothing submitted, rerun from scratch; between the two
+# submits → the rerun skips Play and submits Apple; at the tag → the rerun skips both and tags.
 #
 # This workflow posts NO branch-protection status check and is NOT a required check on `main`: it runs
 # only when dispatched and never as part of a PR's checks, so requiring it would freeze merges. A failed
-# release is RED but blocks nothing. It introduces no new App Store Connect credential (the review CONTACT
-# secrets grant no ASC access; they are secrets only because this repo is public and they are personal data).
-name: ios-appstore-promote
+# release is RED but blocks nothing. It introduces no new store credential (the review CONTACT secrets grant no ASC
+# access; they are secrets only because this repo is public and they are personal data).
+name: promote
 
 on:
   workflow_dispatch:
     inputs:
       build_number:
-        description: "Build number (CFBundleVersion) of the App Store Connect build to promote, e.g. 512."
+        description: "Build number to promote (CFBundleVersion = Play versionCode), e.g. 2140."
         required: true
         type: string
-      submit:
-        description: "Submit for App Store Review after attaching. Refused if `asc review doctor` reports a blocker."
+      ios:
+        description: "Release to the App Store."
+        required: false
+        default: true
+        type: boolean
+      android:
+        description: "Release to Google Play (the closed track until production access)."
+        required: false
+        default: false
+        type: boolean
+      dry_run:
+        description: "Stop after the preflights: no Play commit, no submit, no tag. The App Store version is still prepared."
         required: false
         default: false
         type: boolean
@@ -62,22 +85,25 @@ permissions:
   actions: read # read ci.yml (or the retired ios.yml) runs to resolve the build's origin commit
   # The changelog derivation resolves the range's commits to their pull requests over GraphQL. The
   # `generate-notes` REST endpoint it replaced was contents-scoped, so `contents` alone sufficed;
-  # reading pull requests is not, and without this the derivation fails (before any ASC mutation).
+  # reading pull requests is not, and without this the derivation fails (before any store mutation).
   pull-requests: read
 
-# Per-build group: two promotions of the SAME build_number don't run concurrently; distinct builds do not
-# cancel one another.
+# ONE group for every promote, queued and never cancelled. The tag is per VERSION, and two builds of one version
+# could otherwise race to it; and a cancel landing between the two submits is the worst moment to stop.
 concurrency:
-  group: ios-appstore-promote-${{ inputs.build_number }}
-  cancel-in-progress: true
+  group: promote
+  cancel-in-progress: false
 
 jobs:
   promote:
-    name: ios-appstore-promote
+    name: promote
     runs-on: ubuntu-26.04
     env:
       ASC_APP_ID: "6781692480"
       BUILD_NUMBER: ${{ inputs.build_number }}
+      # Play's target track. `alpha` is Play's closed testing track; it becomes `production` by PR once Google grants
+      # production access.
+      PLAY_TRACK: alpha
       # asc reads ASC_PRIVATE_KEY; appstore_release.py reads ASC_API_PRIVATE_KEY. Same Admin key the rest
       # of the pipeline uses — no new ASC credential.
       ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
@@ -87,6 +113,12 @@ jobs:
       ASC_BYPASS_KEYCHAIN: "1"
       DO_NOT_TRACK: "1"
     steps:
+      - name: Refuse a promote to no store
+        if: ${{ !inputs.ios && !inputs.android }}
+        run: |
+          echo "::error::select at least one store (ios and/or android)"
+          exit 1
+
       # fetch-depth: 0 so the resolved origin commit is present locally to tag; fetch-tags for the guard.
       - uses: actions/checkout@v7.0.1
         with:
@@ -94,12 +126,13 @@ jobs:
           fetch-tags: true
 
       - name: Fetch pinned asc
+        if: ${{ inputs.ios }}
         run: bash .github/scripts/asc_fetch.sh "$RUNNER_TEMP/asc"
 
-      # For appstore_release.py, whose dependencies are declared inline (PEP 723) and resolved by
-      # `uv run` into its own ephemeral environment — never a `pip install` into the system Python,
-      # which an externally-managed (PEP 668) image refuses. release_notes.py needs nothing beyond the
-      # standard library: it carries its own label→heading table and speaks to GitHub over urllib.
+      # For appstore_release.py and play_release.py, whose dependencies are declared inline (PEP 723) and resolved
+      # by `uv run` into their own ephemeral environment — never a `pip install` into the system Python, which an
+      # externally-managed (PEP 668) image refuses. release_notes.py needs nothing beyond the standard library: it
+      # carries its own label→heading table and speaks to GitHub over urllib.
       - name: Install uv
         uses: astral-sh/setup-uv@v10.2.0
 
@@ -110,6 +143,7 @@ jobs:
       # must not be `... --version | head -1`, because a pipeline returns the LAST command's status, so
       # `head` succeeds even when the binary does not exist.
       - name: Install ImageMagick
+        if: ${{ inputs.ios }}
         run: |
           set -euo pipefail
           sudo apt-get -qq update
@@ -117,8 +151,9 @@ jobs:
           if command -v magick >/dev/null 2>&1; then magick --version; else convert --version; fi
           fc-list | grep -qiE "liberation|dejavu" || { echo "::error::no bold sans font installed"; exit 1; }
 
-      # DERIVE the store version from the build (no mutation). Fails fast if the build's marketing version
-      # is not two-part X.Y (e.g. a pre-change 0.1.0 build cannot be promoted). Emits `version` output.
+      # DERIVE the store version from the build (no mutation), for EITHER store. Fails fast if the build's marketing
+      # version is not two-part X.Y (e.g. a pre-change 0.1.0 build cannot be promoted). Also reports whether the
+      # X.Y record was already submitted with this build — a rerun's cue to skip every App Store step.
       - name: Resolve the store version from the build
         id: resolve
         run: uv run .github/scripts/appstore_release.py resolve "$ASC_APP_ID" "$BUILD_NUMBER"
@@ -129,8 +164,9 @@ jobs:
           echo "RELEASE_TAG=v${{ steps.resolve.outputs.version }}" >> "$GITHUB_ENV"
           # asc ≥2.8 `review submit` requires the ASC build id (not the build NUMBER); resolve emits it.
           echo "BUILD_ID=${{ steps.resolve.outputs.build_id }}" >> "$GITHUB_ENV"
+          echo "PLAY_PACKAGE=$(jq -r .androidPackageName deployments/components/android.json)" >> "$GITHUB_ENV"
 
-      # Guard 1 (before any ASC mutation): the vX.Y tag must not already exist — a released version is
+      # Guard 1 (before any store mutation): the vX.Y tag must not already exist — a released version is
       # never re-released, and a released tag is never moved. The tag is created LAST, so a failed run
       # leaves none and retries cleanly.
       - name: Require the release tag to be absent
@@ -142,7 +178,7 @@ jobs:
           fi
           echo "tag $RELEASE_TAG is free"
 
-      # Guard 2 (before any ASC mutation): resolve the build's ORIGIN COMMIT, or fail loud. Map
+      # Guard 2 (before any store mutation): resolve the build's ORIGIN COMMIT, or fail loud. Map
       # build_number → the delivering run on main → head_sha: ci.yml's run numbered build − BUILD_NUMBER_OFFSET for a
       # build above the offset (ci.yml's `env`, 2000 — keep the two equal), the retired ios.yml's run numbered build
       # otherwise. Restricting to branch=main disambiguates from a dispatched branch build. On a deleted/unresolvable
@@ -169,20 +205,30 @@ jobs:
           echo "ORIGIN_SHA=$sha" >> "$GITHUB_ENV"
           echo "resolved build ${BUILD_NUMBER} → origin commit $sha"
 
+      # Guard 3 (before any store mutation), Play's half: the bundle with versionCode N was uploaded. Asked of Play's
+      # bundle list, not its tracks — the internal track keeps only its latest release, so an older build is in no
+      # track while its bundle stays releasable. The App Store's half is `resolve` above, which found build N.
+      - name: Require build N on Play
+        if: ${{ inputs.android }}
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: uv run .github/scripts/play_release.py has "$PLAY_PACKAGE" "$BUILD_NUMBER"
+
       # DERIVE the version's release notes from the labelled PRs merged since the previous release
-      # (`docs/deployment.md`). Nothing writes them by hand: they are the one part of the
-      # listing whose content differs per release, and a hand-written field is a step no gate names —
-      # a missing `en-US: whatsNew` is what refused the 0.2 submission (run 30632785849).
+      # (`docs/deployment.md`) — both forms: the App Store's, and the compact one Play's 500-character limit takes
+      # (plain bullets, the lines that do not fit dropped whole and counted). Nothing writes them by hand: they are
+      # the one part of the listing whose content differs per release, and a hand-written field is a step no gate
+      # names — a missing `en-US: whatsNew` is what refused the 0.2 submission (run 30632785849).
       #
-      # HERE, with the guards, BEFORE the first App Store Connect mutation: an unresolvable range or
-      # a result over Apple's 4000-character limit then costs a red run and nothing else. The applied
-      # step is further down, after the attach.
+      # HERE, with the guards, BEFORE the first store mutation: an unresolvable range or a result over
+      # Apple's 4000-character limit then costs a red run and nothing else.
       #
       # The range is the nearest ANCESTOR `vX.Y` tag of the origin commit → the origin commit. Both
       # ends already exist in this run: the tag-as-receipt is created on that same commit, so
       # consecutive releases delimit an exact range. `git describe` (not "newest tag in the repo")
       # keeps an out-of-order promote honest — it reports what THAT build added over the release
-      # before it. No ancestor tag = the first release, where Apple requires no notes at all.
+      # before it. No ancestor tag = the first release, where Apple requires no notes at all. The range is the
+      # same for both stores, so an iOS-only release's notes may name an Android change, and the reverse — accepted.
       #
       # THE DERIVATION READS NOTHING OUT OF THE PROMOTED COMMIT — that is the point, and it is why
       # this replaced a call to GitHub's `generate-notes`, which reads `.github/release.yml` from the
@@ -190,15 +236,16 @@ jobs:
       # build happened to contain. Build 542 was permanently un-promotable that way. The script
       # carries its own label→heading table, so every build ASC holds stays promotable.
       #
-      # Its stdout IS the summary section (rendered notes, the range's reconciliation counts, the
+      # Its stdout IS the summary section (both stores' rendered notes, the range's reconciliation counts, the
       # `internal` roster, and anything it could not categorize) — hence the redirect and the empty
       # step log. Uncategorized work is REPORTED, not fatal: `check-label` is a required check, so
       # anything uncategorized is history from before that gate, and refusing to release present work
-      # over it would block shipping while fixing nothing. Read the summary before submitting.
+      # over it would block shipping while fixing nothing.
       - name: Derive the release notes
         env:
           GH_TOKEN: ${{ github.token }}
           NOTES_FILE: ${{ runner.temp }}/whats-new.txt
+          PLAY_NOTES_FILE: ${{ runner.temp }}/play-notes.txt
         run: |
           set -euo pipefail
           prev="$(git describe --tags --abbrev=0 --match 'v[0-9]*' "$ORIGIN_SHA" 2>/dev/null || true)"
@@ -209,12 +256,17 @@ jobs:
           fi
           python .github/scripts/release_notes.py \
             --repo "$GITHUB_REPOSITORY" --target "$ORIGIN_SHA" ${prev:+--previous "$prev"} \
-            --version "$STORE_VERSION" --changelog "$NOTES_FILE" >> "$GITHUB_STEP_SUMMARY"
+            --version "$STORE_VERSION" --changelog "$NOTES_FILE" --play-changelog "$PLAY_NOTES_FILE" \
+            >> "$GITHUB_STEP_SUMMARY"
+
+      # ── App Store: prepare. Every App Store step below is skipped once the record was submitted with this build
+      # (a rerun after the Apple submit): a submitted record can no longer be written.
 
       # Find-or-create the X.Y App Store version record and attach this EXISTING build. Waits for the build
       # to be VALID (an already-uploaded build is normally VALID immediately) and is idempotent. The store
       # version is derived from the build itself, so no version argument is passed.
       - name: Attach the build to its App Store version record
+        if: ${{ inputs.ios && steps.resolve.outputs.submitted != 'true' }}
         run: uv run .github/scripts/appstore_release.py release "$ASC_APP_ID" "$BUILD_NUMBER"
 
       # The listing SCREENSHOTS for the version we just prepared (`docs/deployment.md`). This
@@ -230,8 +282,7 @@ jobs:
       # exists.
       #
       # ORDERING IS LOAD-BEARING: after the attach (the record must exist to be resolved) and before the
-      # submit gate below (or an opt-in submit would send a version carrying the PREVIOUS release's
-      # screenshots).
+      # submit below (or the submit would send a version carrying the PREVIOUS release's screenshots).
       #
       # The script is REUSED UNCHANGED and is passed no version — it resolves the editable version itself.
       # Its no-editable-version branch still matters here: if the attach somehow left none, this declines
@@ -242,31 +293,30 @@ jobs:
       # Fixing an already-promoted version (a bad headline, or a rejection) is a MANUAL console upload, by
       # decision. Do not re-add a push-triggered uploader for it.
       #
-      # NB `--replace` is destructive while this workflow keeps `cancel-in-progress: true`. Deliberate:
-      # the target is an editable version, which is NOT on the public storefront, so a cancelled run can
-      # only leave an UNPUBLISHED set partial, and the next run restores it. The concurrency group is per
-      # build_number, so only a concurrent re-promote of the same build can cancel at all.
+      # NB `--replace` is destructive. Harmless: the target is an editable version, which is NOT on the public
+      # storefront, so an interrupted run can only leave an UNPUBLISHED set partial, and the next run restores it.
       - name: Upload the listing screenshots to that version
+        if: ${{ inputs.ios && steps.resolve.outputs.submitted != 'true' }}
         env:
           ASC: ${{ runner.temp }}/asc
         run: bash .github/scripts/asc_screenshots_upload.sh
 
-      # The release notes derived above, written to the version's en-US localization. Applied on EVERY
-      # release like the review details below, so a promote-only run leaves the version submit-ready.
-      # AFTER the attach (the record must exist to be resolved) and BEFORE the submit gate — a
-      # submitted version must not carry the previous release's notes, and must not be missing them.
+      # The release notes derived above, written to the version's en-US localization. AFTER the attach (the record
+      # must exist to be resolved) and BEFORE the submit — a submitted version must not carry the previous
+      # release's notes, and must not be missing them.
       - name: Apply the release notes
+        if: ${{ inputs.ios && steps.resolve.outputs.submitted != 'true' }}
         env:
           ASC: ${{ runner.temp }}/asc
           NOTES_FILE: ${{ runner.temp }}/whats-new.txt
         run: bash .github/scripts/asc_release_notes_apply.sh
 
-      # App Review details, applied on EVERY release (not just when submitting), so a promote-only run
-      # leaves the version submit-ready. Declarative: the committed notes win. The notes live OUTSIDE the
-      # metadata tool's canonical schema (metadata/review/) — an unknown key in version/<v>/<locale>.json
-      # or app-info/<locale>.json would fail ci.yml's `metadata` gate (hence the REQUIRED `ci` check) and freeze
-      # merges. An appStoreReviewDetail is version-scoped and NOT localized: one per version.
+      # App Review details. Declarative: the committed notes win. The notes live OUTSIDE the metadata tool's
+      # canonical schema (metadata/review/) — an unknown key in version/<v>/<locale>.json or app-info/<locale>.json
+      # would fail ci.yml's `metadata` gate (hence the REQUIRED `ci` check) and freeze merges. An appStoreReviewDetail
+      # is version-scoped and NOT localized: one per version.
       - name: Apply the App Review details
+        if: ${{ inputs.ios && steps.resolve.outputs.submitted != 'true' }}
         env:
           ASC: ${{ runner.temp }}/asc
           CONTACT_FIRST_NAME: ${{ secrets.ASC_REVIEW_CONTACT_FIRST_NAME }}
@@ -275,10 +325,13 @@ jobs:
           CONTACT_PHONE: ${{ secrets.ASC_REVIEW_CONTACT_PHONE }}
         run: bash .github/scripts/asc_review_details_apply.sh
 
+      # ── Preflight, every selected store, before EITHER submit.
+
       # The submit gate is OURS, not the tool's: a submission is outward-facing and effectively
-      # irreversible, so an unready version must not reach App Review even when submission was requested.
-      - name: Refuse to submit an unready version
-        if: ${{ inputs.submit }}
+      # irreversible, so an unready version must not reach App Review. ⚠️ Not the whole preflight: it once passed a
+      # version that `asc review submit` then refused (run 30632785849).
+      - name: Preflight the App Store submission
+        if: ${{ inputs.ios && steps.resolve.outputs.submitted != 'true' }}
         env:
           ASC: ${{ runner.temp }}/asc
         run: |
@@ -291,23 +344,53 @@ jobs:
           fi
           echo "review doctor: no blocking checks — safe to submit"
 
+      # Play's own validation of the exact release the submit will commit (`versionCode` N as PLAY_TRACK's one
+      # release, with the compact notes), in an edit that is then DELETED — so a missing declaration or a refused
+      # track fails here, before anything is submitted anywhere. The submit opens a fresh edit (play_release.py says
+      # why). Skips green when the track already carries N.
+      - name: Preflight the Play release
+        if: ${{ inputs.android }}
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          uv run .github/scripts/play_release.py promote "$PLAY_PACKAGE" "$PLAY_TRACK" "$BUILD_NUMBER" \
+            "$STORE_VERSION ($BUILD_NUMBER)" "$RUNNER_TEMP/play-notes.txt" validate
+
+      # ── Submit: Play first, then the App Store (the header says why). Neither runs on a dry run.
+
+      - name: Release to Play
+        if: ${{ inputs.android && !inputs.dry_run }}
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          uv run .github/scripts/play_release.py promote "$PLAY_PACKAGE" "$PLAY_TRACK" "$BUILD_NUMBER" \
+            "$STORE_VERSION ($BUILD_NUMBER)" "$RUNNER_TEMP/play-notes.txt" commit
+          echo "::notice::build $BUILD_NUMBER released to Play's $PLAY_TRACK track as $STORE_VERSION"
+
       - name: Submit for App Store Review
-        if: ${{ inputs.submit }}
+        if: ${{ inputs.ios && steps.resolve.outputs.submitted != 'true' && !inputs.dry_run }}
         env:
           ASC: ${{ runner.temp }}/asc
         run: |
           "$ASC" review submit --app "$ASC_APP_ID" --version "$STORE_VERSION" --build "$BUILD_ID" --confirm
           echo "::notice::version $STORE_VERSION submitted for App Store Review"
 
-      # LAST, deliberately. The tag records what SHIPPED — the build's origin commit — and is written only
-      # once everything else has succeeded, so a failed submit leaves no tag and a retry is not blocked by
-      # the existence guard. Annotated, with the promoted build number in the message for auditability.
+      # LAST, deliberately. The tag records what SHIPPED — the build's origin commit — and is written only once every
+      # selected store accepted, so a failed submit leaves no tag and a retry is not blocked by the existence guard.
+      # Annotated, with the promoted build number and the stores in the message for auditability.
       - name: Create the release tag
+        if: ${{ !inputs.dry_run }}
+        env:
+          STORES: ${{ inputs.ios && inputs.android && 'ios, android' || inputs.ios && 'ios' || 'android' }}
         run: |
           # An annotated tag records a tagger identity; the runner has none, so set one (the
           # github-actions bot) or `git tag -a` fails with "empty ident name not allowed".
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "$RELEASE_TAG" "$ORIGIN_SHA" -m "App Store release $STORE_VERSION (build $BUILD_NUMBER)"
+          git tag -a "$RELEASE_TAG" "$ORIGIN_SHA" -m "release $STORE_VERSION (build $BUILD_NUMBER): $STORES"
           git push origin "refs/tags/$RELEASE_TAG"
-          echo "::notice::tagged $ORIGIN_SHA as $RELEASE_TAG (build $BUILD_NUMBER)"
+          echo "::notice::tagged $ORIGIN_SHA as $RELEASE_TAG (build $BUILD_NUMBER: $STORES)"
+
+      - name: Report the dry run
+        if: ${{ inputs.dry_run }}
+        run: echo "::notice::dry run — the preflights passed, and nothing was committed to Play, submitted or tagged"

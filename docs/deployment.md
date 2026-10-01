@@ -397,7 +397,7 @@ ruleset (read it with `gh api repos/stefanhoelzl/SnapSync/rulesets`) and require
 new gate joins it on the next ship by having run; a **renamed or removed** gate must be dropped in that ship
 (`--drop-context`), because a required context never posted again freezes every merge. The aggregate `ci` `needs:`
 every gate, runs `if: always()`, and fails unless each succeeded; it is what `ios-deliver` and `android-deliver` wait on. `ios-deliver`, `android-deliver`, `deploy.yml`, `nightly-cleanup`, `screenshots` and
-`ios-appstore-promote` must **never** be required: none of them runs on a PR push.
+`promote` must **never** be required: none of them runs on a PR push.
 
 **No gate `needs:` another**: each compiles what it needs, so a red gate never skips another's run. The artifact
 edges are `ios-build` → `ios-deliver` and `android-build` → `android-deliver`. The marketing version both builds carry
@@ -439,7 +439,7 @@ one bundle, or a value truncated by a grammar, fails the run here instead of pro
 
 **Every merge to `main` uploads a signed build to internal TestFlight and to Play's internal testing track**,
 automatically, docs-only merges included. It reaches **no external tester**: the builds go to TestFlight's internal
-`development` group and Play's internal testers only. Real users get builds only through the App Store release (§6).
+`development` group and Play's internal testers only. Real users get builds only through the store release (§6).
 
 - **`ios-deliver`** (in `ci.yml`, `needs: ci` — every merge gate, both platforms; runs on delivering runs only): downloads and unpacks
   the archive, re-signs and exports an `app-store-connect` IPA **without recompiling**, and uploads it
@@ -523,53 +523,69 @@ Decision records: `changes/archive/2026-07-14-gate-testflight-on-tests`,
 
 ---
 
-## 6. App Store release and metadata
+## 6. Store release and metadata
 
 ### Promote a build you already tested
 
 ```
-gh workflow run ios-appstore-promote.yml -f build_number=512              # attach, no submit
-gh workflow run ios-appstore-promote.yml -f build_number=512 -f submit=true
+gh workflow run promote.yml -f build_number=2140 -f dry_run=true            # stop after the preflights
+gh workflow run promote.yml -f build_number=2140                            # App Store only (the default)
+gh workflow run promote.yml -f build_number=2140 -f android=true            # App Store + Google Play
+gh workflow run promote.yml -f build_number=2140 -f ios=false -f android=true
 ```
 
-`build_number` is the build's `CFBundleVersion`: `ci.yml`'s `run_number` + 2000 (`BUILD_NUMBER_OFFSET`), or, for a
-build at or below 2000, the retired `ios.yml`'s `run_number`.
-There is no `version` input: the store version is **derived** from the build's own marketing version.
-The workflow is a single `ubuntu` job: no Xcode, no signing, only the existing Admin ASC key. Order of
-steps:
+`build_number` is the build's `CFBundleVersion` and its Android `versionCode`: `ci.yml`'s `run_number` + 2000
+(`BUILD_NUMBER_OFFSET`), or, for a build at or below 2000, the retired `ios.yml`'s `run_number`.
+There is no `version` input: the store version is **derived** from the build's own marketing version, read from
+App Store Connect's build N **for either store** (Play's API carries no version name; both platforms build one
+version line). The stores are checkboxes: `ios` (default on) and `android` (default off until Play grants
+production access); neither is refused. Play's target is the workflow constant `PLAY_TRACK`, today `alpha` (closed
+testing). A promote **always submits**; there is no submit flag. The workflow is a single `ubuntu` job: no Xcode,
+no Gradle, no signing, only the existing Admin ASC key and Play service account. Order of steps:
 
-1. Resolve build N (wait for `VALID`) and derive `X.Y`. It must match `^\d+\.\d+$`.
-2. **Refuse if tag `vX.Y` already exists.** This happens before any App Store Connect change.
+1. Resolve build N in App Store Connect and derive `X.Y`. It must match `^\d+\.\d+$`. Also read whether the `X.Y`
+   record already left the editable states **with build N** (a rerun after the App Store submit); with another
+   build, fail.
+2. **Refuse if tag `vX.Y` already exists.** This happens before any store change.
 3. Resolve the origin commit: `build_number` → the delivering run on `main` (`ci.yml` run `build_number − 2000`
    above the offset, otherwise the retired `ios.yml` run `build_number`, by its workflow id) → `head_sha`. If it cannot be resolved, fail; never guess.
-4. Derive the release notes (§7). If they exceed 4000 characters, fail here, having changed nothing.
-5. Find or create the `X.Y` version record and attach the build (idempotent). A **newly created** record
-   gets the committed copyright (year of first publication). An existing record's copyright is left alone.
-6. Upload the listing screenshots, composed from `screenshots/*.png` + `metadata/screenshots/en-US.json`
-   (ImageMagick). Only an **editable** version is written to, and the set is **replaced**.
-7. Apply the `en-US` `whatsNew` and the App Review details (notes from `metadata/review/notes.md`;
-   contact details from secrets because the repo is public; "no demo account"). These run on every
-   release, so a promote without submit still leaves the version ready to submit.
-8. If `submit=true`: `asc review doctor` must report no blocking check, otherwise the run fails. Then
-   submit.
-9. **Last**: create tag `vX.Y` on the origin commit, with the build number in the message.
+4. With `android`: require Play to hold a bundle with `versionCode` N (`play_release.py has`) — asked of the bundle
+   list, since the internal track keeps only its latest release.
+5. Derive the release notes for both stores (§7). Apple's over 4000 characters fails here, having changed nothing.
+6. With `ios`, unless already submitted: find or create the `X.Y` version record and attach the build (idempotent).
+   A **newly created** record gets the committed copyright (year of first publication). An existing record's
+   copyright is left alone. Upload the listing screenshots, composed from `screenshots/*.png` +
+   `metadata/screenshots/en-US.json` (ImageMagick) — only an **editable** version is written to, and the set is
+   **replaced**. Apply the `en-US` `whatsNew` and the App Review details (notes from `metadata/review/notes.md`;
+   contact details from secrets because the repo is public; "no demo account").
+7. **Preflight** every selected store before either submit: `asc review doctor` must report no blocking check;
+   Play validates an edit holding the exact release the submit will commit, then the edit is deleted.
+   `dry_run` stops here.
+8. **Submit Play, then the App Store.** Play: `versionCode` N becomes `PLAY_TRACK`'s one release, named
+   `X.Y (N)`, status `completed`, with the compact notes, in a fresh edit — skipped when the track already carries
+   N. App Store: `asc review submit` — skipped when step 1 found it submitted. Play goes first because its commit is
+   all-or-nothing and it is the likelier refusal, so a refusal there leaves nothing in front of App Review.
+9. **Last**, once every selected store accepted: create tag `vX.Y` on the origin commit, its message naming the
+   build and the stores (`release 0.12 (build 2140): ios, android`). "Accepted" is the submission going through;
+   both stores review afterwards, and a review split ships that version on one store only.
 
 Operator rules:
 
 - ⚠️ **Never push a `vX.Y` tag by hand.** Tags trigger nothing (`ci.yml` and `deploy.yml`
   ignore tags), and a tag that already exists makes that version **permanently unreleasable**, because
   step 2 refuses it.
-- ⚠️ **A promote is single-shot per version.** After it succeeds, the tag blocks a re-run. Correcting an
-  already-promoted version's screenshots or release notes is a **manual console upload**. A **failed**
-  run leaves no tag and can simply be dispatched again.
+- ⚠️ **A promote is single-shot per version.** After it succeeds, the tag blocks a re-run, and a store left out
+  never gets that version. Correcting an already-promoted version's screenshots or release notes is a **manual
+  console upload**. A **failed** run leaves no tag and is simply dispatched again: before the Play commit nothing
+  was submitted; between the two submits the rerun skips Play; at the tag it skips both.
 - ⚠️ `asc review doctor` is not the whole preflight. It once passed a version that `asc review submit`
   then refused (missing `en-US: whatsNew`, run 30632785849). A green gate does not guarantee the submit
   will pass.
 - Provenance is not re-checked at release. It is guaranteed at upload, because only green `main` commits
   (and deliberate dispatches) reach App Store Connect. ⚠️ Step 3 resolves only runs on `main`, so a
   branch-dispatched build has no resolvable origin and fails at step 3.
-- Concurrency is per `build_number` with `cancel-in-progress: true`. A cancelled run may leave an
-  **unpublished** editable version's screenshot set partial. The next run restores it.
+- Concurrency is ONE group for every promote, queued, never cancelled: the tag is per version, so two builds of one
+  version must not race to it, and a cancel between the two submits is the worst place to stop.
 
 ### Listing metadata
 
@@ -664,9 +680,13 @@ How the derivation works:
   bullet is the **PR title** with `type(scope):` stripped, a leading `Fix`/`Fixes`/`Fixed` stripped, and
   the first letter capitalized. No numbers, links, authors or markdown. **So the PR title is the App
   Store bullet**: `.ship/pr-title.md` holds the policy for writing it.
+- Google Play gets a **compact** form (`--play-changelog <file>`), because Play takes 500 characters: the same
+  bullets with no headings, `New` before `Fixed`, and the lines that do not fit dropped whole from the end and
+  counted in a closing `…and N more improvements`. It is met by construction, never refused. The range is the
+  same for both stores, so an iOS-only release's notes may name an Android change; that is accepted.
 - An all-`internal` range yields the committed fallback: *"Under-the-hood improvements and fixes."*
 - The changelog goes to `--changelog <file>`. A reconciliation report goes to stdout for the run summary:
-  counts, the excluded `internal` roster, and uncategorized PRs or unassociated commits listed
+  both stores' notes, counts, the excluded `internal` roster, and uncategorized PRs or unassociated commits listed
   separately. The changelog has **one** consumer, the promote workflow. There is no GitHub Release and no
   committed CHANGELOG.
 

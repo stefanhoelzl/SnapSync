@@ -32,8 +32,9 @@ from it. Nothing is written to stderr on success.
 
 Usage:
   release_notes.py --repo owner/name --target <sha> [--previous v0.1] [--version X.Y]
-                   [--changelog <path>] >> "$GITHUB_STEP_SUMMARY"
-Omit --changelog to preview: the report alone is printed and no file is written.
+                   [--changelog <path>] [--play-changelog <path>] >> "$GITHUB_STEP_SUMMARY"
+--play-changelog writes the compact form Google Play gets (plain bullets, at most 500 characters).
+Omit both to preview: the report alone is printed and no file is written.
 Env: GH_TOKEN (or GITHUB_TOKEN).
 """
 
@@ -52,6 +53,12 @@ import urllib.request
 # note cut off mid-sentence is worse than a red run that costs nothing (nothing has been mutated
 # yet, and this runs before the first App Store Connect call).
 MAX_CHARS = 4000
+
+# Play's limit on one language's release notes. Unlike Apple's, it is met by CONSTRUCTION, not refused:
+# 500 characters holds a handful of titles, so a normal release would otherwise fail. Whole lines are
+# dropped from the end — fixes first, since they come last — and a closing line counts them, so a note
+# is never cut mid-sentence.
+PLAY_MAX_CHARS = 500
 
 # What an all-`internal` release says. Apple rejects an empty `whatsNew`, and a build promoted for
 # infrastructure work alone is a legitimate release — so this is a committed constant rather than a
@@ -230,9 +237,25 @@ def changelog(published: dict[str, list[dict]]) -> str:
     return "\n\n".join(blocks) if blocks else FALLBACK
 
 
+def play_changelog(published: dict[str, list[dict]]) -> str:
+    """The compact form for Play: plain bullet lines, no headings, in category order, within
+    PLAY_MAX_CHARS — the lines that do not fit dropped whole and counted in a closing line."""
+    lines = [f"- {bullet(pull['title'])}" for title, _ in CATEGORIES for pull in published[title]]
+    if not lines:
+        return FALLBACK
+    for kept in range(len(lines), -1, -1):
+        dropped = len(lines) - kept
+        tail = [f"…and {dropped} more improvement{'s' if dropped > 1 else ''}"] if dropped else []
+        text = "\n".join(lines[:kept] + tail)
+        if len(text) <= PLAY_MAX_CHARS:
+            return text
+    raise AssertionError("unreachable: the closing line alone fits")
+
+
 def report(
     version: str | None,
     notes: str,
+    play_notes: str,
     published: dict[str, list[dict]],
     excluded: list[dict],
     uncategorized: list[dict],
@@ -246,6 +269,12 @@ def report(
         "",
         "```",
         notes,
+        "```",
+        "",
+        "#### Google Play (compact)",
+        "",
+        "```",
+        play_notes,
         "```",
         "",
         f"{total} pull request(s) in range — {count} published, {len(excluded)} internal, "
@@ -270,6 +299,7 @@ def main() -> None:
     parser.add_argument("--previous", help="the previous release's tag; omit for the first release")
     parser.add_argument("--version", help="the store version, for the report's heading")
     parser.add_argument("--changelog", help="write the plain-text changelog here; omit to preview")
+    parser.add_argument("--play-changelog", help="write the compact Play changelog here; omit to preview")
     args = parser.parse_args()
 
     auth = token()
@@ -277,6 +307,7 @@ def main() -> None:
     pulls, unassociated = associate(args.repo, commits, auth)
     published, excluded, uncategorized = classify(pulls)
     notes = changelog(published)
+    play_notes = play_changelog(published)
 
     if len(notes) > MAX_CHARS:
         sys.exit(
@@ -288,7 +319,10 @@ def main() -> None:
     if args.changelog:
         with open(args.changelog, "w", encoding="utf-8") as handle:
             handle.write(notes + "\n")
-    sys.stdout.write(report(args.version, notes, published, excluded, uncategorized, unassociated))
+    if args.play_changelog:
+        with open(args.play_changelog, "w", encoding="utf-8") as handle:
+            handle.write(play_notes + "\n")
+    sys.stdout.write(report(args.version, notes, play_notes, published, excluded, uncategorized, unassociated))
 
 
 if __name__ == "__main__":

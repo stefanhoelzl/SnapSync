@@ -5,7 +5,7 @@
 # ///
 """Promote an existing App Store Connect build to its App Store version record.
 
-`ios-appstore-promote.yml` PROMOTES a build that `ios-deliver` already uploaded (it builds nothing). The
+`promote.yml` PROMOTES a build that `ios-deliver` already uploaded (it builds nothing). The
 build is chosen by its build NUMBER (CFBundleVersion); the store version is DERIVED from the build's own
 marketing version (`preReleaseVersion.version`), so the version record and the build always match — there
 is no `version` input and no mismatch to guard.
@@ -15,8 +15,12 @@ REST API (same ES256 JWT + Admin key the rest of the pipeline uses — ASC_KEY_I
 ASC_API_PRIVATE_KEY — so it adds no new credential).
 
     resolve  Resolve the build by its build NUMBER, read its marketing version, validate it is two-part
-             `X.Y`, and emit it (to $GITHUB_OUTPUT as `version=X.Y` if set, else stdout). Makes NO
-             mutation — the workflow calls this FIRST so the tag-absent guard runs before any attach.
+             `X.Y`, and emit it (to $GITHUB_OUTPUT as `version=X.Y` if set, else stdout), with the build's
+             id and `submitted` — whether the `X.Y` record already left the editable states WITH THIS BUILD
+             (a rerun of a half-done promote then skips every App Store step; a record that left them with
+             ANOTHER build fails loud). Makes NO mutation — the workflow calls this FIRST so the tag-absent
+             guard runs before any attach. An Android-only promote calls it too: the build's marketing
+             version is the one version line both stores share, and Play's API does not carry it.
     release  Resolve the build (retried — waits until it is VALID), FIND-OR-CREATE the App Store version
              record whose versionString == the DERIVED store version (platform IOS), and ATTACH the build
              to it. Stops before submit-for-review. Idempotent: a record already referencing this build
@@ -109,6 +113,9 @@ def _resolve_build(s: requests.Session, app_id: str, build_number: str, wait: bo
                 print(f"build {build_number} = {build['id']} (version {version}, processingState {state})")
                 return build["id"], version
             print(f"build {build_number} found but processingState={state}; waiting {FIND_POLL_S}s")
+        elif not wait:
+            # `resolve` promotes a build delivered long ago: absent is a wrong number, not a slow upload.
+            raise SystemExit(f"::error::App Store Connect holds no build {build_number}")
         else:
             print(f"build {build_number} not discoverable yet; retrying in {FIND_POLL_S}s")
         if time.time() >= deadline:
@@ -163,6 +170,34 @@ def _find_or_create_version(s: requests.Session, app_id: str, version_string: st
     return vid
 
 
+# The states in which the record is still ours to write: everything else has been handed to App Review.
+EDITABLE_STATES = frozenset({"PREPARE_FOR_SUBMISSION", "DEVELOPER_REJECTED"})
+
+
+def _submitted(s: requests.Session, app_id: str, version_string: str, build_id: str) -> bool:
+    """Whether the `version_string` record was already submitted with this build (no mutation)."""
+    r = s.get(
+        f"{API}/apps/{app_id}/appStoreVersions",
+        params={"filter[versionString]": version_string, "filter[platform]": "IOS", "limit": 1},
+    )
+    r.raise_for_status()
+    existing = r.json()["data"]
+    if not existing:
+        return False
+    attributes = existing[0]["attributes"]
+    state = attributes.get("appVersionState") or attributes.get("appStoreState")
+    if state in EDITABLE_STATES:
+        return False
+    attached = _attached_build_id(s, existing[0]["id"])
+    if attached != build_id:
+        raise SystemExit(
+            f"::error::App Store version '{version_string}' is already {state} with build {attached}, "
+            f"not this one ({build_id}). That version is spent: promote a newer build."
+        )
+    print(f"version '{version_string}' is already {state} with this build — the App Store steps will skip")
+    return True
+
+
 def _attached_build_id(s: requests.Session, version_id: str) -> str | None:
     """The build id currently attached to this version record, or None."""
     r = s.get(f"{API}/appStoreVersions/{version_id}/relationships/build")
@@ -187,11 +222,13 @@ def resolve(app_id: str, build_number: str) -> None:
     s = _session()
     build_id, version = _resolve_build(s, app_id, build_number, wait=False)
     _validate_store_version(version)
+    submitted = _submitted(s, app_id, version, build_id)
     out = os.environ.get("GITHUB_OUTPUT")
     if out:
         with open(out, "a") as f:
             f.write(f"version={version}\n")
             f.write(f"build_id={build_id}\n")
+            f.write(f"submitted={'true' if submitted else 'false'}\n")
     print(version)
 
 
@@ -212,7 +249,7 @@ def release(app_id: str, build_number: str) -> None:
     )
     r.raise_for_status()
     print(f"attached build {build_id} to App Store version '{version_string}' ({version_id})")
-    print("::notice::build attached — the version is NOT submitted for review (a human does that)")
+    print("::notice::build attached — not yet submitted (the workflow's submit step does that)")
 
 
 if __name__ == "__main__":

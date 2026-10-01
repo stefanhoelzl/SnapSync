@@ -42,15 +42,15 @@
 # lands in both stores or neither, barring an upload failure. Neither posts a required check (neither runs on a PR
 # push, so requiring one would freeze merges), so each is free to fail red without blocking anything. A dispatch runs
 # every gate too. They reach only internal testers — TestFlight's `development` group, Play's internal testing track;
-# real users get builds only through the dispatch-driven App Store promotion (ios-appstore-promote.yml).
+# real users get builds only through the dispatch-driven store promotion (promote.yml).
 #
-# Deployers stay in their own files: deploy.yml (api, site, listing text — main only), ios-appstore-promote.yml,
+# Deployers stay in their own files: deploy.yml (api, site, listing text — main only), promote.yml,
 # screenshots.yml, nightly-cleanup.yml, ssh-runner-macos.yml.
 name: ci
 
 on:
   push:
-    # BRANCHES only. A `vX.Y` tag is a release RECEIPT created by ios-appstore-promote.yml; it triggers nothing.
+    # BRANCHES only. A `vX.Y` tag is a release RECEIPT created by promote.yml; it triggers nothing.
     branches: ["**"]
   # A DELIBERATE BRANCH DELIVERY (`docs/deployment.md`): dispatch this workflow on any ref and it runs every gate,
   # archives RELEASE and DELIVERS to internal TestFlight and the Play internal track, exactly as a push to main does —
@@ -73,7 +73,7 @@ env:
   # workflow's `run_number` PLUS this offset. Builds were numbered by the
   # retired ios.yml's run number (about 1100 when it retired), and App Store Connect refuses a build number that is not
   # higher than the last one uploaded for the same version, so a fresh workflow counting from 1 could deliver nothing.
-  # The offset keeps the sequence monotonic; ios-appstore-promote.yml maps a number above it back to THIS workflow's
+  # The offset keeps the sequence monotonic; promote.yml maps a number above it back to THIS workflow's
   # run (build − offset) and one at or below it to ios.yml's. Never lower it; never change it once a build used it.
   BUILD_NUMBER_OFFSET: 2000
 
