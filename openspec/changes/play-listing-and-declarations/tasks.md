@@ -27,6 +27,8 @@
 - [x] 4.4 Add the `play` target to `compose_screenshots.sh` (1080×1920, the same headlines, `-strip`, no PNG time chunks). Verify: running it twice on the committed raws gives byte-identical outputs and passes Play's ratio check; the composites are eyeballed.
 - [x] 4.5 Update `docs/deployment.md` "Screenshots" and CLAUDE.md's screenshot runbook for the Android raws. Verify: the documented dispatch/download commands match the workflow's artifact names.
 
+- [x] 4.6 Fix the light-theme status bar exposed by the captures (user's call): a day/night window theme with light bars on the light theme. Verify: re-captured on the emulator, dark icons on light and white on dark, status and navigation bars.
+
 ## 5. Play listing delivery
 
 - [x] 5.1 Measure whether Play re-encodes images: under `secrets-env`, upload one composite into an edit, list its sha256, and DELETE the edit, never committing it. Record the result in design.md D3, and pick a byte or pixel comparison accordingly.

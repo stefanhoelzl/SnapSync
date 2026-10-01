@@ -34,10 +34,14 @@ Data safety form.
   - It names the push token's issuer on each platform (Apple on iPhone, Google's Firebase Cloud Messaging on Android).
   - It describes the integrity check on each platform.
   - It lists Google among the service providers, for push wake-ups on Android and distribution through Google Play.
-- **Play's contact email** is a GitHub secret, injected at apply time, never committed.
+- **Play's contact email** is a GitHub secret, injected at apply time, never committed: the existing App Store review
+  contact's, `ASC_REVIEW_CONTACT_EMAIL`.
+- **The Android status bar is readable on the light theme.** The Android captures exposed it: the app never asked for
+  dark bar icons, so on Android 15+ (edge to edge) the clock, signal and battery were white on near-white. The window
+  theme now follows night mode, as the Compose theme does. This is a visual fix, added at the user's request.
 
 Out of scope: promotion to either store and the release-notes form (phase 5e); `playStoreUrl`, testers, the closed
-release itself, production (phase 6); any app behaviour change beyond the launcher icon; Android screenshots on the
+release itself, production (phase 6); any app behaviour change beyond the launcher icon and the status-bar contrast fix; Android screenshots on the
 landing page.
 
 ## Capabilities
