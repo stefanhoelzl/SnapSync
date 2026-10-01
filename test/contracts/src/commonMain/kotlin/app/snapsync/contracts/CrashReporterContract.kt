@@ -9,6 +9,8 @@ import app.snapsync.model.DIAGNOSTIC_LOG_BUDGET_BYTES
 import app.snapsync.model.DiagnosticDump
 import app.snapsync.model.DumpResult
 import app.snapsync.model.MAX_BREADCRUMBS
+import app.snapsync.model.PLATFORM_TAG
+import app.snapsync.model.PROCESS_TAG
 import app.snapsync.model.diagnosticDumpEvent
 import app.snapsync.model.scrubbedCrumb
 import app.snapsync.model.scrubbedEvent
@@ -35,6 +37,14 @@ enum class CrashReporterState {
      * imitating.
      */
     ON_THE_WIRE,
+
+    /**
+     * As [ON_THE_WIRE], except that the destination is unreachable until the channel is closed and started again in
+     * the same process ([CrashReporterSubject.restart]) — a report captured before it is kept and delivered after,
+     * the way a crash is delivered on the next launch. Only a binding that can close the channel keeping what it had
+     * not delivered reaches it.
+     */
+    ACROSS_A_RESTART,
 }
 
 /**
@@ -54,7 +64,25 @@ class DeliveredEvent(
     val contexts: Map<String, Map<String, String>>,
     /** Whether the event carries an exception (a stack trace), rather than only a message. */
     val hasException: Boolean,
+    /** The build's version line the event names, as transmitted. */
+    val release: String? = null,
+    /** The deployment the event is filed under, as transmitted. */
+    val environment: String? = null,
+    /** The build number the event names, as transmitted. */
+    val dist: String? = null,
 )
+
+/**
+ * A channel its binding can close and start again in the same process, keeping what it had not delivered — a
+ * relaunch, as far as the channel can tell ([CrashReporterState.ACROSS_A_RESTART]).
+ */
+fun interface CrashRestart {
+    /**
+     * Closes the channel, keeping its undelivered reports, makes the destination reachable, and answers a fresh
+     * reporter for this process — not yet listened to or started.
+     */
+    fun relaunch(): CrashReporter
+}
 
 /**
  * What a clause reads beyond the port (`docs/architecture.md`: "an outcome that leaves the process"): whether the
@@ -75,7 +103,13 @@ interface CrashObservation {
  * What a clause is handed: the port under contract — NOT yet listened to, since each clause registers the handlers it
  * needs — the options that start it against the binding's destination, and the handle it observes outcomes through.
  */
-class CrashReporterSubject(val reporter: CrashReporter, val options: CrashOptions, val observe: CrashObservation)
+class CrashReporterSubject(
+    val reporter: CrashReporter,
+    val options: CrashOptions,
+    val observe: CrashObservation,
+    /** How to relaunch the channel — handed only in [CrashReporterState.ACROSS_A_RESTART]. */
+    val restart: CrashRestart? = null,
+)
 
 /**
  * What the crash-reporting channel promises (`docs/architecture.md` — this list IS the specification of the port's
@@ -87,14 +121,18 @@ class CrashReporterSubject(val reporter: CrashReporter, val options: CrashOption
  * - Every event and breadcrumb passes the registered handlers on the way out: what they return is what leaves, and
  *   `null` leaves nothing.
  * - An event's tags and its exception ride it.
+ * - The build facts `start` is given — release, environment, build number, and the platform and process tags — ride
+ *   every event.
+ * - A build number `start` is given is the one a report was CAPTURED under, even when it is delivered after a
+ *   relaunch as another build — which is why a platform whose SDK re-stamps at send (iOS) is given none.
  * - The latest context supersedes the earlier one on every later event.
  * - The SDK's own per-install id rides every event — the one identifier nothing scrubs.
  * - Under the production handlers (`model/Crash.kt`): an automatic event leaves redacted, the operator's dump leaves
  *   verbatim, and the worst-case dump — full log budget, a full set of over-long breadcrumbs — still arrives below
  *   the ingest's maximum size, so a refused one never blocks the queue.
  *
- * **Not clauses**, each for want of a host (both documented on the adapter): that a context rides a crash delivered on
- * a LATER launch, and the `process` tag (the simulator test executable has no bundle identifier).
+ * **Not a clause**, for want of a host (documented on the adapter): that a context rides a crash delivered on a LATER
+ * launch after a real process death — [CrashReporterState.ACROSS_A_RESTART] restarts the channel, not the process.
  *
  * Negative outcomes ("exactly one", "nothing") are judged against a **sentinel**: after the stimulus the clause
  * captures a sentinel event and waits for it, then reads only what was delivered before it. Waiting a fixed time and
@@ -267,6 +305,43 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
             assertEquals("WIRE_TAGS_AND_EXCEPTION_RIDE_THE_EVENT", event.tags["entry_point"], "the tag rides the event")
         }
 
+        clause("WIRE_BUILD_FACTS_RIDE_THE_EVENT", CrashReporterState.ON_THE_WIRE) { s ->
+            val facts = CrashOptions(
+                dsn = s.options.dsn,
+                release = "9.9.contract",
+                environment = "contract",
+                dist = "990",
+                tags = mapOf(PLATFORM_TAG to "contract-platform", PROCESS_TAG to "app.snapsync.contract"),
+            )
+            s.reporter.listen(PASS_THROUGH)
+            s.reporter.start(facts)
+            val event = s.sentinelEvent(sentinel("WIRE_BUILD_FACTS_RIDE_THE_EVENT"))
+            assertEquals("9.9.contract", event.release, "the release it was started with")
+            assertEquals("contract", event.environment, "the environment it was started with")
+            assertEquals("990", event.dist, "the build number it was started with")
+            assertEquals("contract-platform", event.tags[PLATFORM_TAG], "the platform tag: ${event.tags}")
+            assertEquals("app.snapsync.contract", event.tags[PROCESS_TAG], "the process tag: ${event.tags}")
+        }
+
+        // ---- ACROSS_A_RESTART: what a relaunch delivers ------------------------------------------------------------
+
+        clause("RESTART_CACHED_EVENT_KEEPS_ITS_BUILD", CrashReporterState.ACROSS_A_RESTART) { s ->
+            val line = "RESTART_CACHED_EVENT_KEEPS_ITS_BUILD captured as build 1"
+            s.reporter.listen(PASS_THROUGH)
+            s.reporter.start(CrashOptions(dsn = s.options.dsn, release = "9.9.contract", dist = "1"))
+            s.reporter.capture(CrashEvent(message = line))
+            val relaunched = assertNotNull(s.restart, "the state hands a restart").relaunch()
+            relaunched.listen(PASS_THROUGH)
+            relaunched.start(CrashOptions(dsn = s.options.dsn, release = "9.9.contract", dist = "2"))
+            val event = s.observe.delivered { e -> e.any { it.message == line } }.first { it.message == line }
+            assertEquals(
+                "1",
+                event.dist,
+                "a report delivered after a relaunch as another build names the build it was captured under — the one " +
+                    "whose symbols resolve its stack",
+            )
+        }
+
         clause("WIRE_INSTALL_ID_IS_KEPT", CrashReporterState.ON_THE_WIRE) { s ->
             s.startListening(PRODUCTION)
             val installId = assertNotNull(
@@ -274,7 +349,7 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
                 "an event carries the SDK's per-install id — it powers affected-device counts",
             )
             assertTrue(
-                UUID_SHAPED.matches(installId),
+                INSTALL_ID_SHAPED.matches(installId),
                 "and it is the one identifier the production scrub lets through, intact: '$installId'",
             )
         }
@@ -335,5 +410,11 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
         }
     }
 
-    private val UUID_SHAPED = Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+    /**
+     * A random 128-bit id as a reporting SDK writes it: sentry-cocoa as a UUID, sentry-android as the same 32 hex digits
+     * without the dashes (measured on the emulator, sentry-android 8.41.0). A scrubbed one would read `‹uuid›`.
+     */
+    private val INSTALL_ID_SHAPED = Regex(
+        "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|[0-9a-fA-F]{32}",
+    )
 }

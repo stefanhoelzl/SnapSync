@@ -55,7 +55,8 @@ import sys
 # RAW below, which is the rule that keeps those two apart.
 
 JSON = "json"  # api/src/deployment.ts — the Deno bundle
-PROPS = "properties"  # build/deployment.properties — Gradle
+PROPS = "properties"  # build/deployment.properties — Gradle, reviewed literals only
+GRADLE_JSON = "gradle-json"  # build/deployment.json — Gradle, for values nobody reviewed
 XCCONFIG = "xcconfig"  # iosApp/Configuration/Deployment.xcconfig — Xcode BUILD SETTINGS only
 PLIST = "plist"  # iosApp/Configuration/Deployment.plist — bundled into app + extension
 METADATA = "metadata"  # build/metadata/** — the App Store listing
@@ -75,7 +76,7 @@ Moving it is a device-API version move, not an edit: the byte destinations, the 
 the listing all change shape together (capability-by-capability, `changes/archive/device-speaks-v2`).
 """
 
-BAKED = {PROPS, XCCONFIG, PLIST, METADATA, SITE}
+BAKED = {PROPS, GRADLE_JSON, XCCONFIG, PLIST, METADATA, SITE}
 """Renderings with no run time in which to resolve an environment reference.
 
 A `.properties` file, an `.xcconfig`, a bundled `.plist`, the App Store listing and a statically-built
@@ -355,9 +356,10 @@ INVENTORY = [
         tell them apart; the health route reports this value for that reason, and the probe asserts it in
         both directions.
     """),
-    Key("channel", [XCCONFIG, PLIST], scope="build", default="dev", doc="""
+    Key("channel", [XCCONFIG, PLIST, GRADLE_JSON], scope="build", default="dev", doc="""
         Whether this build is DISTRIBUTED. One discriminator, from which the renderers derive
-        APS_ENVIRONMENT (the entitlement, xcconfig) and `apnsEnv` / `sentryEnvironment` (the plist) —
+        APS_ENVIRONMENT (the entitlement, xcconfig) and `apnsEnv` / `sentryEnvironment` (the plist, and
+        Gradle's JSON for the Android build) —
         settings that must agree and were once held together only by a comment. Deriving them makes
         disagreement unrepresentable. It also gates the DSN: absence is the off-switch.
 
@@ -370,7 +372,7 @@ INVENTORY = [
         it do, and those are literals this file chooses. The rendering set records where a key
         INFLUENCES an artifact as well as where it appears; the two coincide for every other key.
     """),
-    Key("sentryDsn", [JSON, PLIST], scope="build", default="", doc="""
+    Key("sentryDsn", [JSON, PLIST, GRADLE_JSON], scope="build", default="", doc="""
         Crash-reporting ingestion key. NOT a secret in the disclosure sense — it authorises sending only,
         and ships inside every IPA — but not committed either, because a public repo would expose the
         instance to quota abuse. ABSENCE IS THE OFF-SWITCH: the renderer emits nothing unless `channel`
@@ -378,7 +380,8 @@ INVENTORY = [
         (The api bundle carries it unread; backend crash reporting is a separate change.)
 
         It renders to the PLIST and never to the xcconfig. A DSN contains `//`, which opens a comment in
-        that grammar — see RAW above. This is the value that proved the rule.
+        that grammar — see RAW above. This is the value that proved the rule. For the same reason the
+        Android build reads it from Gradle's JSON rendering, never from `deployment.properties`.
 
         Read by the `CrashReporting` adapter in BOTH processes, each from its own bundle, alongside
         `sentryEnvironment`. Absent in every dev/sideload build; only a CI Release archive resolves it
@@ -624,6 +627,21 @@ def render_properties(flat: dict) -> str:
         lines.append(f"{name.replace('.', '_')}={value}")
     lines.append(f"uploadBase={upload_base(flat['domain'])}")
     return "\n".join(lines) + "\n"
+
+
+def render_gradle_json(flat: dict) -> str:
+    """The values the Android build bakes in that nobody reviewed — JSON, a grammar that ESCAPES (see [RAW]).
+
+    The Android twin of [render_plist]'s crash-reporting half: `sentryEnvironment` DERIVED from `channel`,
+    and `sentryDsn` emitted only for a distributed build — absence is the off-switch, enforced here
+    rather than by CI declining to export the secret. `deployment.properties` stays reviewed literals.
+    """
+    p = project(flat, GRADLE_JSON)
+    distributed = p.get("channel") == "release"
+    values = {"sentryEnvironment": "production" if distributed else "development"}
+    if distributed and p.get("sentryDsn"):
+        values["sentryDsn"] = p["sentryDsn"]
+    return json.dumps(values, indent=2, sort_keys=True) + "\n"
 
 
 def upload_base(domain: str) -> str:
@@ -884,6 +902,7 @@ def emit(root: pathlib.Path, flat: dict) -> list[pathlib.Path]:
     targets = {
         root / "api/src/deployment.ts": render_deployment_ts(flat, sha),
         root / "build/deployment.properties": render_properties(flat),
+        root / "build/deployment.json": render_gradle_json(flat),
         root / "iosApp/Configuration/Deployment.xcconfig": render_xcconfig(flat),
         root / "iosApp/Configuration/Deployment.plist": render_plist(flat),
         root / "site/src/deployment.json": render_site(flat),

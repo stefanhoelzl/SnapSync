@@ -4,6 +4,7 @@
 module :adapter:android
 module :adapter:generic:app
 module :adapter:generic:mock
+module :adapter:generic:sentry
 module :adapter:ios:app-only
 module :adapter:ios:ext-safe
 module :adapter:ios:ui
@@ -51,6 +52,9 @@ edge :adapter:generic:mock :domain:model
 edge :adapter:generic:mock :domain:ports
 edge :adapter:generic:mock :domain:services
 edge :adapter:generic:mock :test:contracts
+edge :adapter:generic:sentry :domain:model
+edge :adapter:generic:sentry :domain:ports
+edge :adapter:generic:sentry :test:contracts
 edge :adapter:ios:app-only :adapter:ios:ext-safe
 edge :adapter:ios:app-only :domain:compose
 edge :adapter:ios:app-only :domain:model
@@ -72,6 +76,7 @@ edge :adapter:ios:ui :ui:components
 edge :adapter:ios:ui :ui:screens
 edge :app:android :adapter:android
 edge :app:android :adapter:generic:app
+edge :app:android :adapter:generic:sentry
 edge :app:android :domain:compose
 edge :app:android :domain:feature
 edge :app:android :domain:host
@@ -90,6 +95,7 @@ edge :app:desktop :test:control
 edge :app:desktop :ui:components
 edge :app:desktop :ui:screens
 edge :app:ios :adapter:generic:app
+edge :app:ios :adapter:generic:sentry
 edge :app:ios :adapter:ios:app-only
 edge :app:ios :adapter:ios:ext-safe
 edge :app:ios :adapter:ios:ui
@@ -102,6 +108,7 @@ edge :app:ios :domain:presentation
 edge :app:ios :domain:services
 edge :app:ios :ui:screens
 edge :app:ios:extension :adapter:generic:app
+edge :app:ios:extension :adapter:generic:sentry
 edge :app:ios:extension :adapter:ios:ext-safe
 edge :app:ios:extension :domain:compose
 edge :app:ios:extension :domain:feature

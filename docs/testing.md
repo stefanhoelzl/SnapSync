@@ -627,15 +627,15 @@ emulator, reached over `adb forward tcp:18099 tcp:18099` (load `android-emulator
 the adapters file as the iOS app host does (`device/adapters*` write it, and the app exits), with two differences that
 both come from Android not having every real adapter yet (today it has the screen, the lifecycle, the clock, the
 storage, attestation, the backend, links, the photo library, the system UI, the wakes, the background-time holds, the
-upload session and the downloads; push arrives with this phase's FCM adapter and the crash reporter with phase 5). **No file is not all real**: it is every system mocked but
+upload session, the downloads, push and the crash reporter). **No file is not all real**: it is every system mocked but
 the screen and its foreground life, fresh in memory at every start — what every launch without a file has always
 composed. And **a choice may leave real only the systems Android has an adapter for** (`AndroidRig.kt`'s list; naming
 another `real`, or omitting it, refuses the launch, which then composes nothing). A file-chosen launch saves its mocks'
 state beside the file, as on iOS, because a real store then outlives the process. It refuses `device/relaunch` and the
 upload extension's `/os` verbs (Android has none), and is contract host `ANDROID_EMU` in `GET /device` — the host the
 device tests run on too. The `journeys (android)` CI job drives it over every real adapter Android has
-(`scripts/android-journeys`). A build without the property composes every real adapter and starts, with no crash
-reporter until phase 5.
+(`scripts/android-journeys`). A build without the property composes every real adapter and starts; its crash reporter
+starts only on a distributed build, which carries a DSN.
 
 The Android adapters' contract bindings (`:adapter:android`'s `src/androidDeviceTest`) are device tests, never host
 tests (that is the JVM again), at the app's own minSdk (30 — D8 writes a backtick name's spaces only from DEX 040). An

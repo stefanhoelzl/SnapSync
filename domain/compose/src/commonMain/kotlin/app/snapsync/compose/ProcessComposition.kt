@@ -107,7 +107,7 @@ class ProcessServices internal constructor(
  *    channel, whose log writer is already installed).
  */
 fun snapSyncProcess(ports: ProcessPorts): ProcessServices {
-    val crash = CrashReporting(ports.crashReporter, ports.build.dsn, ports.entryContext, ports.files)
+    val crash = CrashReporting(ports.crashReporter, ports.build, ports.entryContext, ports.files)
     ports.crashReporter.listen(CrashHandlers(onEvent = crash::shapeEvent, onBreadcrumb = crash::shapeCrumb))
     val writers = listOfNotNull(SinkLogWriter(ports.logSinks, ports.entryContext), crash.logWriter)
     val ownsGlobalLogger = ports.logSinks.isNotEmpty()

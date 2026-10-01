@@ -1,6 +1,7 @@
 package app.snapsync.ports
 
 import app.snapsync.model.DiagnosticEnvironment
+import app.snapsync.model.Platform
 import app.snapsync.model.StoreLink
 
 /**
@@ -42,6 +43,16 @@ interface BuildInfo : Port {
 
     /** Where this build reports crashes to, or `null` for a build that reports nowhere. */
     val dsn: String?
+
+    /** Which platform the build is for — the crash channel's `platform` tag. */
+    val platform: Platform
+
+    /**
+     * This process's own identifier as the platform names it — the bundle id on iOS (the app's, or the upload
+     * extension's `.appex`), the package name on Android — or `null` where the process has none (the iOS simulator test
+     * executable). The crash channel's `process` tag, which tells the app's reports from the extension's.
+     */
+    val processId: String?
 
     /**
      * The process's boot banner — what the process is and which build (capability `privacy-security`), logged first, so

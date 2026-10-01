@@ -1,4 +1,4 @@
-package app.snapsync.logging
+package app.snapsync.sentry
 
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
@@ -17,11 +17,6 @@ import io.sentry.kotlin.multiplatform.Sentry
 import kotlin.test.Test
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import platform.Foundation.NSCachesDirectory
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSSearchPathForDirectoriesInDomains
@@ -47,6 +42,10 @@ class SentryCrashReporterContractTest {
     private val binding = object : Binding<CrashReporterState, CrashReporterSubject> {
         override val host = Host.IOS_SIM_KEXE
         override val kind = BindingKind.Live
+
+        // Not `ACROSS_A_RESTART`: its clause holds a build number given at start to the build the report was captured
+        // under, and sentry-cocoa re-stamps the dist at SEND — so iOS is given none (`model/`'s `crashDist`), and the
+        // crash-time build rides in the crash report itself (a belief, documented on the reporter).
         override val reaches = setOf(
             CrashReporterState.NOT_STARTED,
             CrashReporterState.STARTED,
@@ -54,6 +53,9 @@ class SentryCrashReporterContractTest {
         )
 
         override fun create(state: CrashReporterState, clauseId: String): Entered<CrashReporterSubject> {
+            if (state == CrashReporterState.ACROSS_A_RESTART) {
+                return Entered.Unreachable("sentry-cocoa re-stamps a given build number at send, so iOS is given none")
+            }
             val writers = Logger.config.logWriterList
             resetChannel()
             val ingest = LoopbackIngest()
@@ -88,40 +90,6 @@ class SentryCrashReporterContractTest {
         val caches = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, true).first() as String
         NSFileManager.defaultManager.removeItemAtPath("$caches/$SDK_CACHE", null)
         resetProcessStart()
-    }
-
-    /** The wire format onto the contract's vocabulary: this is the one place that knows Sentry's event shape. */
-    private fun JsonObject.toDelivered(): DeliveredEvent {
-        val message = this["message"]?.jsonObject?.let { m ->
-            (m["formatted"] ?: m["message"])?.jsonPrimitive?.content
-        }
-        // An event's breadcrumbs arrive as a bare array (measured); the protocol also allows `{ "values": [...] }`.
-        val crumbs = when (val raw = this["breadcrumbs"]) {
-            is JsonArray -> raw
-            is JsonObject -> raw["values"] as? JsonArray
-            else -> null
-        }.orEmpty().mapNotNull { (it as? JsonObject)?.get("message")?.jsonPrimitive?.content }
-        val tags = (this["tags"] as? JsonObject).orEmpty()
-        // The SDK adds contexts of its own (device, os, app) whose values are not all strings; only the all-string
-        // ones are ours to compare.
-        val contexts = (this["contexts"] as? JsonObject).orEmpty().mapNotNull { (name, value) ->
-            val fields = (value as? JsonObject)?.mapValues { (_, v) -> (v as? JsonPrimitive)?.takeIf { it.isString }?.content }
-            fields?.takeIf { f -> f.values.all { it != null } }?.let { f -> name to f.mapValues { it.value!! } }
-        }.toMap()
-        // Tags arrive as an object — the shape the dump clause has read them in since this binding was written.
-        return DeliveredEvent(
-            message = message,
-            breadcrumbs = crumbs,
-            installId = (this["user"] as? JsonObject)?.get("id")?.jsonPrimitive?.content,
-            tags = tags.mapNotNull { (k, v) -> (v as? JsonPrimitive)?.content?.let { k to it } }.toMap(),
-            contexts = contexts,
-            // Like breadcrumbs, the protocol allows `{ "values": [...] }` or a bare array.
-            hasException = when (val raw = this["exception"]) {
-                is JsonArray -> raw
-                is JsonObject -> raw["values"] as? JsonArray
-                else -> null
-            }.orEmpty().isNotEmpty(),
-        )
     }
 
     private companion object {

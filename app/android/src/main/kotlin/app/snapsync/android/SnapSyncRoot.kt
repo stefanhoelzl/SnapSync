@@ -28,7 +28,6 @@ import app.snapsync.compose.AppCore
 import app.snapsync.android.buildinfo.AndroidBuildInfo
 import app.snapsync.compose.AppPorts
 import app.snapsync.compose.DevicePorts
-import app.snapsync.compose.NoCrashReporter
 import app.snapsync.compose.NoEntryContext
 import app.snapsync.compose.NoProcessMetrics
 import app.snapsync.compose.ProcessPorts
@@ -40,6 +39,7 @@ import app.snapsync.model.PlatformEntry
 import app.snapsync.model.invocation
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.StatusContainerHost
+import app.snapsync.sentry.SentryCrashReporter
 import app.snapsync.time.SystemClock
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -121,8 +121,9 @@ class SnapSyncRoot(internal val application: Application) {
         download = lazy { AndroidDownload(application) },
         pushNotifications = lazy { AndroidPushNotifications(application, firebase) },
         processInfo = lazy { AndroidProcessInfo(application) },
-        // No crash reporter is linked until phase 5: this build carries no destination, so nothing would start anyway.
-        crashReporter = lazyOf(NoCrashReporter),
+        // The crash-reporting seat both platforms share (capability `privacy-security`). It starts only when the build
+        // carries a destination — a distributed one — and is never touched otherwise.
+        crashReporter = lazy { SentryCrashReporter() },
     )
 
     /** The adapters that differ between a production and a rig build, chosen at BUILD time. */
@@ -147,6 +148,9 @@ class SnapSyncRoot(internal val application: Application) {
                 // An FCM token belongs to the Firebase project that issued it: that project is its push environment.
                 apnsEnvironment = firebase.projectId,
                 playStoreUrl = BuildConfig.PLAY_STORE_URL,
+                processId = application.packageName,
+                dsn = BuildConfig.SENTRY_DSN,
+                reporterEnvironment = BuildConfig.SENTRY_ENVIRONMENT,
             ),
         )
     }

@@ -58,12 +58,6 @@ fun bakedApnsEnv(): String = deploymentValue("apnsEnv") ?: "sandbox"
 fun bakedSentryDsn(): String? = deploymentValue("sentryDsn")
 
 /**
- * The environment crash reports are filed under. `development` when absent, so a build that somehow
- * carries a DSN without an environment reports honestly rather than claiming production.
- */
-fun bakedSentryEnvironment(): String = deploymentValue("sentryEnvironment") ?: "development"
-
-/**
  * The app's App Store page, or `null` when this build carries none (capability `app-update-required`).
  *
  * Read on the ONE screen whose remedy is a download: when the backend refuses this build as too old,

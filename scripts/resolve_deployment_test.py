@@ -285,6 +285,19 @@ class RenderingTest(unittest.TestCase):
         )
         self.assertEqual(dsn, plist(flat)["sentryDsn"])
 
+    def test_the_android_build_gets_the_dsn_only_on_release_and_read_back_intact(self):
+        # The Android twin of the two tests above, through a real JSON parser: the value Gradle reads back is the
+        # value resolved, and absence off a distributed channel is the off-switch.
+        dsn = "https://k@example.invalid/1"
+        for channel, expected, environment in (("release", dsn, "production"), ("dev", None, "development")):
+            flat = Tree().standard(sentryDsn={"env": "SENTRY_DSN", "scope": "build"}).resolve(
+                env={"SENTRY_DSN": dsn, "SNAPSYNC_CHANNEL": channel}
+            )
+            gradle = json.loads(rd.render_gradle_json(flat))
+            self.assertEqual(expected, gradle.get("sentryDsn"))
+            self.assertEqual(environment, gradle["sentryEnvironment"])
+            self.assertNotIn(dsn, rd.render_properties(flat), "the DSN never reaches the RAW properties")
+
     def test_the_device_api_prefix_is_pinned(self):
         """The ONE literal the rest of these assertions derive from.
 

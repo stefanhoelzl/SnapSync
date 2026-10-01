@@ -64,7 +64,8 @@ Renderings, all emitted by one invocation (`python3 scripts/resolve-deployment.p
 | Rendering | Path | Read by |
 |---|---|---|
 | json | `api/src/deployment.ts` | the Deno bundle, the sweep, the migration scripts |
-| properties | `build/deployment.properties` | Gradle; also the deploy workflow reads `domain=` from it |
+| properties | `build/deployment.properties` | Gradle; also the deploy workflow reads `domain=` from it. **Literals only** |
+| gradle-json | `build/deployment.json` | Gradle, for the Android build's values nobody reviewed (the crash-reporting DSN and environment), in a grammar that escapes |
 | xcconfig | `iosApp/Configuration/Deployment.xcconfig` | Xcode build settings, entitlements, `Info.plist` substitutions. **Literals only** |
 | plist | `iosApp/Configuration/Deployment.plist` | copied into **both** the app and the extension bundle |
 | metadata | `build/metadata/**` | the App Store listing (domain-derived URLs rendered from templates) |
@@ -99,7 +100,7 @@ The deployment declares the **names**. Values come from the environment of which
 | `ATTEST_TOKEN_KEY` | Edge Script env | HMAC key for device tokens and attest challenges |
 | `BUNNY_DATABASE_URL` / `BUNNY_DATABASE_AUTH_TOKEN` | Edge Script env; GH secrets for the `api` deploy job and `nightly-cleanup` | the relational store |
 | `FCM_SERVICE_ACCOUNT_KEY` | Edge Script env | the Firebase service account's **JSON key file contents** (not a path), role *Firebase Cloud Messaging API Admin*. **Optional**: absent, the backend boots and the FCM sender skips every Android token |
-| `SENTRY_DSN` | GH secret, `ci.yml` (`ios-build`) | build-scope; baked only into distributed iOS builds (§5) |
+| `SENTRY_DSN` | GH secret, `ci.yml` (`ios-build`) | build-scope; baked only into distributed builds (§5) — iOS today; the Android delivering job sets it when it exists |
 
 - The backend validates every declared runtime secret **once at startup**. A missing or blank one throws,
   and the script does not boot. The one exception is `FCM_SERVICE_ACCOUNT_KEY`: without it Android members
@@ -480,9 +481,12 @@ Real users get builds only through the App Store release (§6).
 ### Crash-reporting DSN and dSYMs
 
 - `SENTRY_DSN` is a GitHub secret, declared as a **build-scope** env reference in `prod-core.json`, and
-  rendered **only** into `Deployment.plist` and **only** when the channel is `release`. A stray export on
-  a dev build still produces no DSN. No DSN means the SDK never starts **and** the hidden bug-report
-  dialog never opens. ⚠️ Injecting `SENTRY_DSN` on a dev `xcodebuild` line does nothing, because a build
+  rendered **only** into `Deployment.plist` (iOS) and `build/deployment.json` (Android, read into `BuildConfig`
+  as escaped string literals) and **only** when the channel is `release`. Never into `deployment.properties`:
+  its values are interpolated raw, like the xcconfig's. A stray export on a dev build still produces no DSN.
+  No DSN means the SDK never starts, and a bug report is saved on the phone instead of sent. No Android job
+  resolves `release` yet — every Android build reports nowhere until the Play delivery job sets
+  `SNAPSYNC_CHANNEL`/`SENTRY_DSN` as `ios-build` does. ⚠️ Injecting `SENTRY_DSN` on a dev `xcodebuild` line does nothing, because a build
   setting cannot substitute into a bundled resource. Dispatch the branch instead.
 - The Bugsink instance ingests no dSYMs. `ios-deliver` publishes each delivered build's dSYMs as
   artifact **`dsyms-<run_number>`** (= `CFBundleVersion`, 90 days, the platform maximum). The `/bugsink`

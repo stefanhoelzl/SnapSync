@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  What sentry-android reads from the merged manifest at init (capability `privacy-security`), carried by the module that
+  starts it so every app linking the reporter gets the same channel.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <application>
+        <!--
+          No auto-start: the SDK starts only when the crash-reporting service starts it — after it has registered the
+          scrub handlers, and only on a build that carries a DSN. (sentry-kmp's manifest also removes the SDK's init
+          provider; this keeps the rule true should it stop doing so.)
+        -->
+        <meta-data android:name="io.sentry.auto-init" android:value="false" />
+        <!-- No tap or gesture trail: it is too close to the usage tracking automatic reports must not carry. -->
+        <meta-data android:name="io.sentry.breadcrumbs.user-interaction" android:value="false" />
+        <!--
+          No app-start timing: the SDK's performance provider measures every launch for tracing, and automatic reports
+          carry no performance monitoring. Tracing is off, so it would send nothing — removed so it measures nothing.
+        -->
+        <provider
+            android:name="io.sentry.android.core.SentryPerformanceProvider"
+            android:authorities="${applicationId}.SentryPerformanceProvider"
+            tools:node="remove" />
+    </application>
+</manifest>

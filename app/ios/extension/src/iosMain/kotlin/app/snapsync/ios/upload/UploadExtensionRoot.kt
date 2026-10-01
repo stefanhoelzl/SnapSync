@@ -20,7 +20,7 @@ import app.snapsync.membership.darwinHttpClient
 import app.snapsync.logging.FileLogSink
 import app.snapsync.logging.extensionLogDestination
 import app.snapsync.logging.removeStaleExtensionDocumentsLog
-import app.snapsync.logging.SentryCrashReporter
+import app.snapsync.sentry.SentryCrashReporter
 import app.snapsync.compose.DevicePorts
 import app.snapsync.compose.ProcessPorts
 import app.snapsync.time.SystemClock

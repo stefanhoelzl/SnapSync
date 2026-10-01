@@ -32,9 +32,10 @@ fun deviceDiagnosticEnvironment(uploadTier: String): DiagnosticEnvironment {
         deviceModel = hardwareModel(),
         uploadTier = uploadTier,
         uploadBase = bakedUploadBase(),
-        // `"?"` deliberately, NOT the reporter's `"development"` fallback: a dump says what it could
-        // read. "Couldn't tell" and "development" are different answers, and collapsing them here would
-        // make a dump from a build with no readable deployment claim an environment it never had.
+        // `"?"` deliberately, never a guess: a dump says what it could read, and the crash channel files
+        // its reports under this same value. It is absent only on a build with no readable deployment,
+        // which also carries no DSN (the resolver derives both from one channel), so no report is ever
+        // filed as `"?"` — and none claims an environment it never had.
         reporterEnvironment = deploymentValue("sentryEnvironment") ?: "?",
     )
 }

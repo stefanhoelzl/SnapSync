@@ -11,15 +11,6 @@ kotlin {
     iosArm64()
     iosSimulatorArm64()
 
-    val sentrySimulatorSlice = project(":adapter:ios:ext-safe").layout.buildDirectory
-        .dir("sentry-cocoa/${libs.versions.sentry.cocoa.get()}/Sentry-Dynamic.xcframework/ios-arm64_x86_64-simulator")
-        .get().asFile.toString()
-    iosSimulatorArm64().binaries.all {
-        if (this is org.jetbrains.kotlin.gradle.plugin.mpp.TestExecutable) {
-            linkTaskProvider.configure { dependsOn(":adapter:ios:ext-safe:provisionSentryCocoa") }
-            linkerOpts("-F$sentrySimulatorSlice", "-rpath", sentrySimulatorSlice)
-        }
-    }
     sourceSets {
         commonMain.dependencies {
             api(project(":domain:model"))

@@ -40,7 +40,7 @@ import app.snapsync.services.preferences.removeOrphanedJoinMarker
 import app.snapsync.model.PlatformEntry
 import app.snapsync.logging.FileLogSink
 import app.snapsync.logging.appLogDestination
-import app.snapsync.logging.SentryCrashReporter
+import app.snapsync.sentry.SentryCrashReporter
 import app.snapsync.compose.ProcessPorts
 import app.snapsync.compose.ProcessServices
 import app.snapsync.logging.appBuildVersion
