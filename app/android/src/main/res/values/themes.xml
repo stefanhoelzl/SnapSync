@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      The window the Compose screen draws into. Android 15+ draws every app edge to edge, so the screen's background shows
+      behind the status and navigation bars, and the bars' icons must contrast with it: dark icons on the light theme.
+      Without this the platform keeps its white icons, invisible on the light background. The Compose theme follows the
+      system's night mode, and so does this resource (values-night/ holds the dark window).
+    -->
+    <style name="Theme.SnapSync" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+</resources>
