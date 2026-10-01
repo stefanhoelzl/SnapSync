@@ -71,7 +71,7 @@ class AndroidDownloadRescheduleTest {
         }
     }
 
-    /** One download rescheduled mid-flight; its finish as the next start delivers it, or null if it never finished. */
+    /** One download rescheduled mid-flight; its finish as the next start delivers it, or null if it did not stay finished. */
     private fun raceOnce(run: Int): DownloadEvent.Finished? {
         removeAllDownloads()
         val download = AndroidDownload(context)
@@ -93,7 +93,14 @@ class AndroidDownloadRescheduleTest {
 
         val relaunched = ClauseDownloadHandlers { runCatching { File(it).readBytes() }.getOrNull() }
         AndroidDownload(context).listen(relaunched.handlers)
-        return relaunched.events.filterIsInstance<DownloadEvent.Finished>().single()
+        val finished = relaunched.events.filterIsInstance<DownloadEvent.Finished>().singleOrNull()
+        // SUCCESSFUL is not final either: the stopped thread can still write the row back to retry after it was read
+        // (measured on CI: 200 ms later), and an unfinished row is rightly not delivered. Nothing to judge then — but a
+        // row that IS finished must have been delivered.
+        if (finished == null) {
+            check(status() != DownloadManager.STATUS_SUCCESSFUL) { "run $run: a finished row was not delivered" }
+        }
+        return finished
     }
 
     /** What DownloadManager's own (hidden) resume writes: a `control` change reschedules the row's job. */
