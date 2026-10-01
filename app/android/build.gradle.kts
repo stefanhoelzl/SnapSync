@@ -33,13 +33,21 @@ fun javaString(value: String): String {
     return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 }
 
-// The version this build declares to the backend (capability `app-update-required`): the SAME marketing-version floor
-// every iOS dev build carries (`Config.xcconfig`), which the api's `MIN_APP_VERSION` is pinned to stay at or below.
-// Android derives no release versions yet — the store build does (phase 5) — so the floor is the honest declaration.
+// The version this build declares to the backend (capability `app-update-required`) and to the store: a delivering
+// run's `-Psnapsync.versionName`, the marketing version `scripts/marketing-version.py` computes for BOTH stores;
+// without it, the SAME marketing-version floor every iOS dev build carries (`Config.xcconfig`), which the api's
+// `MIN_APP_VERSION` is pinned to stay at or below.
 val marketingVersionFloor: String = rootProject.layout.projectDirectory.file("iosApp/Configuration/Config.xcconfig")
     .asFile.readLines()
     .single { it.startsWith("MARKETING_VERSION") }
     .substringAfter('=').trim()
+val marketingVersion: String = providers.gradleProperty("snapsync.versionName").getOrElse(marketingVersionFloor)
+    .also { require(Regex("""\d+\.\d+""").matches(it)) { "snapsync.versionName '$it' is not two-part X.Y" } }
+
+// The build number: CI's `run_number + BUILD_NUMBER_OFFSET` (`ci.yml`), the SAME number the run's iOS build carries as
+// `CFBundleVersion`, so one number names one build in both stores — and is the crash reports' `dist`, which picks the
+// `r8-mapping-<build>` artifact a stack trace is retraced with. A local build is 1.
+val buildNumber: Int = providers.gradleProperty("snapsync.versionCode").map(String::toInt).getOrElse(1)
 
 android {
     namespace = "app.snapsync.android"
@@ -48,11 +56,11 @@ android {
         applicationId = "app.snapsync"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
-        versionCode = 1
-        versionName = marketingVersionFloor
+        versionCode = buildNumber
+        versionName = marketingVersion
         val uploadBase = requireNotNull(deployment["uploadBase"]) { "the resolved deployment rendered no uploadBase" }
         buildConfigField("String", "UPLOAD_BASE", "\"$uploadBase\"")
-        buildConfigField("String", "APP_VERSION", "\"$marketingVersionFloor\"")
+        buildConfigField("String", "APP_VERSION", "\"$marketingVersion\"")
         // The Firebase project the push service starts from (`docs/deployment.md`) — rendered, never a
         // google-services.json. Empty until the project exists: the app then starts no Firebase and gets no push.
         listOf(
@@ -90,7 +98,8 @@ android {
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             // A rig release is test equipment, never a store build: the debug key signs it so it installs on an
-            // emulator. The plain release stays unsigned here — the store's upload key is its delivery's.
+            // emulator. The plain release stays unsigned here — `ci.yml`'s `android-deliver` signs the bundle with
+            // the store's upload key, so no build of this file ever needs it.
             if (rigEnabled) signingConfig = signingConfigs.getByName("debug")
         }
     }

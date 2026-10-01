@@ -100,7 +100,7 @@ The deployment declares the **names**. Values come from the environment of which
 | `ATTEST_TOKEN_KEY` | Edge Script env | HMAC key for device tokens and attest challenges |
 | `BUNNY_DATABASE_URL` / `BUNNY_DATABASE_AUTH_TOKEN` | Edge Script env; GH secrets for the `api` deploy job and `nightly-cleanup` | the relational store |
 | `FCM_SERVICE_ACCOUNT_KEY` | Edge Script env | the Firebase service account's **JSON key file contents** (not a path), role *Firebase Cloud Messaging API Admin*. **Optional**: absent, the backend boots and the FCM sender skips every Android token |
-| `SENTRY_DSN` | GH secret, `ci.yml` (`ios-build`) | build-scope; baked only into distributed builds (§5) — iOS today; the Android delivering job sets it when it exists |
+| `SENTRY_DSN` | GH secret, `ci.yml` (`ios-build`, `android-build`) | build-scope; baked only into distributed builds (§5), on both platforms |
 
 - The backend validates every declared runtime secret **once at startup**. A missing or blank one throws,
   and the script does not boot. The one exception is `FCM_SERVICE_ACCOUNT_KEY`: without it Android members
@@ -396,11 +396,12 @@ cached.
 ruleset (read it with `gh api repos/stefanhoelzl/SnapSync/rulesets`) and requires every check that ran on a PR, so a
 new gate joins it on the next ship by having run; a **renamed or removed** gate must be dropped in that ship
 (`--drop-context`), because a required context never posted again freezes every merge. The aggregate `ci` `needs:`
-every gate, runs `if: always()`, and fails unless each succeeded; it is what `ios-deliver` waits on. `ios-deliver`, `deploy.yml`, `nightly-cleanup`, `screenshots` and
+every gate, runs `if: always()`, and fails unless each succeeded; it is what `ios-deliver` and `android-deliver` wait on. `ios-deliver`, `android-deliver`, `deploy.yml`, `nightly-cleanup`, `screenshots` and
 `ios-appstore-promote` must **never** be required: none of them runs on a PR push.
 
-**No gate `needs:` another**: each compiles what it needs, so a red gate never skips another's run. The one artifact
-edge is `ios-build` → `ios-deliver`. The shared `commonTest` runs once, on the JVM, in `build`; each platform runs the
+**No gate `needs:` another**: each compiles what it needs, so a red gate never skips another's run. The artifact
+edges are `ios-build` → `ios-deliver` and `android-build` → `android-deliver`. The marketing version both builds carry
+is one script both run (`scripts/marketing-version.py`), not a job they wait on. The shared `commonTest` runs once, on the JVM, in `build`; each platform runs the
 same two gates — its build followed by its platform-bound tests on the same runner, and its journeys
 (`docs/testing.md`, "Where each test runs"). Build and tests share a runner because together they stay under the
 journeys (~8 min against ~10 on iOS), so the critical path does not move and a push holds one macOS runner fewer (the
@@ -414,7 +415,7 @@ min against ~10).
 | `api-test`, `migration-rehearsal` | ubuntu | §2, "Gates". |
 | `site-build` | ubuntu | The site's build and `npm run check`. |
 | `ios-build` | macos-26 | Signed `xcodebuild` archive of the device (`iosArm64`) app: the app's only device compile. **Release** on a delivering run (a push to `main`, or any dispatch), **Debug** otherwise (about 2.4 min faster; a Release-only failure shows up on `main`). It exports no IPA and uploads nothing to Apple. It verifies the baked deployment (below), runs `./gradlew iosPlatformTest` — every module's `iosTest` on the simulator (host `IOS_SIM_KEXE`) — and on a delivering run tars the archive (artifacts lose symlinks and exec bits) and uploads it for `ios-deliver` (1-day retention). |
-| `android-build` | ubuntu | `:app:android:assembleRelease`: the plain release, the store's — R8 and resource shrinking over its whole graph, the R8 mapping in `app/android/build/outputs/mapping/release/` (that R8 output RUNS is `journeys (android)`'s, on the rig release); then `./gradlew androidPlatformTest`, `:adapter:android`'s device tests on a Gradle-managed Pixel 6 / API 36 emulator with the transfer fixture served by the build (host `ANDROID_EMU`, KVM). |
+| `android-build` | ubuntu | `:app:android:assembleRelease`: the plain release, the store's — R8 and resource shrinking over its whole graph, the R8 mapping in `app/android/build/outputs/mapping/release/` (that R8 output RUNS is `journeys (android)`'s, on the rig release). On a delivering run the same R8 run also produces the **bundle** (`bundleRelease`, channel `release`, the DSN, the computed version and the build number as `versionCode`); the job asserts the DSN is in the bundle's dex (compared, never printed) and uploads the unsigned bundle, its mapping and its version for `android-deliver` (1-day retention). Then `./gradlew androidPlatformTest`, `:adapter:android`'s device tests on a Gradle-managed Pixel 6 / API 36 emulator with the transfer fixture served by the build (host `ANDROID_EMU`, KVM). |
 | `journeys (ios)` | macos-26 | `scripts/sim-contracts`: builds the rig app (`-Psnapsync.rig=true`, `local` deployment) and ad-hoc signs it (`scripts/sim-sign`). **Nothing overlaps the build**: only after it, with the Gradle and Kotlin daemons stopped, does it boot **one** fresh simulator (a booting simulator slows the build several-fold, and a second fresh one's first-boot work tripled the job). Right after boot it stops the simulator's `apsd` (its reconnect loop to Apple's push sandbox logged a million lines in six minutes and cost ~170 s of CPU through the log daemon; nothing tested needs it) and opens Photos, so the library's first-use preparation starts while the app installs (the first write then took 1–46 s instead of 1:23–4:43). Spotlight is switched off on the runner. It installs the app, grants photo access (pinned `applesimutils`), starts `scripts/transfer-fixture.py` and a local `api/` on a fresh filesystem store (warmed with one request), and launches the app. A timestamped **photo-library readiness** stage then makes the first library write (an asset dated outside every contract's window), because a fresh simulator's library takes minutes to accept one and that wait belongs to the platform, not to the first contract. It then checks the `GET /device` vocabulary, runs every registered port contract over the rig (host `IOS_SIM_APP`), and runs the all-real journeys on a bare JVM, with no Gradle alive next to the simulator (`docs/testing.md` section 7). Fails on any `Failed`/`NotWithin` clause, a refused run, an empty registry, a failed journey (printing its assertion message), or a fixture, backend or app that never answers (it captures a screenshot and the app log in that case). Evidence kept: the fixture's request log, the backend's output with a per-request log, host memory/CPU samples, host and simulator crash reports. Decision record: `changes/archive/2026-09-25-one-simulator-journeys`. |
 | `journeys (android)` | ubuntu (KVM) | Builds the rig **release** APK (R8 and resource shrinking as the store build runs them, signed with the debug key; `local` deployment) and the journeys, stops the daemons, boots one emulator and runs `scripts/android-journeys`: a local `api/` reversed into the emulator, the app granted the photo library before its first launch, an adapter choice real for every system Android has an adapter for (only the crash reporter and the iOS-only upload-job queue and extension registration mocked), the `GET /device` vocabulary check, then the same journeys on a bare JVM. |
 | `ci` | ubuntu | The aggregate above. |
@@ -434,11 +435,11 @@ one bundle, or a value truncated by a grammar, fails the run here instead of pro
 
 ---
 
-## 5. TestFlight delivery
+## 5. TestFlight and Play internal delivery
 
-**Every merge to `main` uploads a signed build to internal TestFlight**, automatically, docs-only merges
-included. It reaches **no external tester**: the builds go to the internal `development` group only.
-Real users get builds only through the App Store release (§6).
+**Every merge to `main` uploads a signed build to internal TestFlight and to Play's internal testing track**,
+automatically, docs-only merges included. It reaches **no external tester**: the builds go to TestFlight's internal
+`development` group and Play's internal testers only. Real users get builds only through the App Store release (§6).
 
 - **`ios-deliver`** (in `ci.yml`, `needs: ci` — every merge gate, both platforms; runs on delivering runs only): downloads and unpacks
   the archive, re-signs and exports an `app-store-connect` IPA **without recompiling**, and uploads it
@@ -456,13 +457,31 @@ Real users get builds only through the App Store release (§6).
   [-f what_to_test="…"]`. It follows every rule of a `main` delivery (every merge gate, Release, production APNs, DSN,
   dSYMs, internal group only). Use it for anything only a distributed build can do, for example the hidden
   diagnostic dump.
-- **Build numbers**: `CFBundleVersion` = `ci.yml`'s `github.run_number` + `BUILD_NUMBER_OFFSET` (2000; monotonic
-  across refs). Earlier builds (all below 2000) were numbered by the retired `ios.yml`'s run number, and App Store Connect refuses
+- **Build numbers**: `CFBundleVersion` = Android's `versionCode` = `ci.yml`'s `github.run_number` +
+  `BUILD_NUMBER_OFFSET` (2000; monotonic across refs) — one number names one run's build in both stores, and an
+  Android crash report's `dist`. (Play had seen only `versionCode` 1, the manual first upload.) A local Android build
+  is `versionCode` 1, set through `-Psnapsync.versionCode`. Earlier builds (all below 2000) were numbered by the retired `ios.yml`'s run number, and App Store Connect refuses
   a build number not above the last one for the same version, so the new workflow's count starts above it. Never
   lower the offset.
   `MARKETING_VERSION` = `max(floor, latest vX.Y tag with minor + 1)`, compared as integer tuples
-  (`v0.9 → 0.10`). The floor is committed in `Config.xcconfig`, so a major jump (`→ 1.0`) is a PR that
+  (`v0.9 → 0.10`), computed by `scripts/marketing-version.py` in both `ios-build` and `android-build` on a delivering
+  run — the iOS `MARKETING_VERSION`, and Android's `versionName` and declared `APP_VERSION`
+  (`-Psnapsync.versionName`); every other build declares the floor. The floor is committed in `Config.xcconfig`, so a major jump (`→ 1.0`) is a PR that
   raises the floor.
+- **`android-deliver`** (in `ci.yml`, `needs: ci`, the same runs as `ios-deliver`): downloads the bundle
+  `android-build` built, keeps its R8 mapping as artifact **`r8-mapping-<build>`** (90 days), signs the bundle with
+  `jarsigner` and the **upload key** (Play re-signs it with the Google-held app signing key — the certificate prod's
+  `androidSigningCertDigests` pins — and adds its automatic-protection code), and uploads it with
+  `.github/scripts/play_release.py deliver`: ONE Play edit that uploads the bundle, makes it the internal track's one
+  release (named `<version> (<build>)`, status `completed`, the same note as TestFlight's cut to Play's 500
+  characters) and commits — or, on any failure, is deleted, so nothing half-lands. Not required, no
+  `continue-on-error`: a failed upload shows red and blocks nothing, and the next delivery carries a higher number.
+  The internal track serves only its **latest** release: a branch dispatch replaces `main`'s for internal testers until
+  the next merge. (Play's internal app sharing is not used: it re-signs with a key prod's attestation refuses.) The
+  mapping is not uploaded to Play; `/bugsink` retraces against the artifact. `play_release.py status <package>` lists
+  every track's releases read-only. Secrets: `PLAY_UPLOAD_KEYSTORE_BASE64` / `PLAY_UPLOAD_KEYSTORE_PASSWORD` (PKCS12,
+  alias `upload`, key password = store password) and `PLAY_SERVICE_ACCOUNT_JSON` (service account `play-ci`; locally
+  `PLAY_SERVICE_ACCOUNT_KEY` through secrets-env).
 - **Signing**: two persistent certificates imported into an ephemeral keychain in **both** `ios-build`
   and `ios-deliver`: Apple Distribution **and** Apple Development. `archive` also provisions a
   development identity, so without the imported Development cert CI would mint a new one every run and
@@ -484,14 +503,17 @@ Real users get builds only through the App Store release (§6).
   rendered **only** into `Deployment.plist` (iOS) and `build/deployment.json` (Android, read into `BuildConfig`
   as escaped string literals) and **only** when the channel is `release`. Never into `deployment.properties`:
   its values are interpolated raw, like the xcconfig's. A stray export on a dev build still produces no DSN.
-  No DSN means the SDK never starts, and a bug report is saved on the phone instead of sent. No Android job
-  resolves `release` yet — every Android build reports nowhere until the Play delivery job sets
-  `SNAPSYNC_CHANNEL`/`SENTRY_DSN` as `ios-build` does. ⚠️ Injecting `SENTRY_DSN` on a dev `xcodebuild` line does nothing, because a build
+  No DSN means the SDK never starts, and a bug report is saved on the phone instead of sent. On Android only
+  `android-build`'s bundle step of a delivering run resolves `release` (the platform tests after it resolve `dev`). ⚠️ Injecting `SENTRY_DSN` on a dev `xcodebuild` line does nothing, because a build
   setting cannot substitute into a bundled resource. Dispatch the branch instead.
 - The Bugsink instance ingests no dSYMs. `ios-deliver` publishes each delivered build's dSYMs as
   artifact **`dsyms-<run_number>`** (= `CFBundleVersion`, 90 days, the platform maximum). The `/bugsink`
   skill symbolicates against it on Linux and fails loudly once it has expired. Copy dSYMs somewhere
   permanent at promote time for any version that must outlive 90 days.
+- The Android store build is R8-obfuscated, with line numbers kept (`app/android/proguard-rules.pro`).
+  `android-deliver` publishes each delivered build's mapping as artifact **`r8-mapping-<build>`** (= `versionCode`
+  = the event's `dist`, 90 days); `/bugsink` retraces against it with R8's own `retrace`, and fails loudly once it
+  has expired.
 
 Decision records: `changes/archive/2026-07-14-gate-testflight-on-tests`,
 `changes/archive/2026-07-19-remove-alpha-testflight-promotion`,

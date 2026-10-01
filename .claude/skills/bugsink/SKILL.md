@@ -4,7 +4,7 @@ description: >-
   Triage SnapSync crash reports from the operator's Bugsink instance
   (steho.bugsink.com). List unresolved issues ranked by last-seen, drill into one
   issue for the full context (symbolicated stacktrace, breadcrumbs,
-  device/OS/app context), and resolve an issue a shipped fix closes - the one
+  device/OS/app context — an iOS trace symbolicated, an Android one retraced), and resolve an issue a shipped fix closes - the one
   write, and only on confirmation. Use when the user asks what's crashing, to
   look at a Bugsink issue/crash, to triage errors, names an issue like
   SNAPSYNC-3, or when a merged PR carries a `Bugsink-Resolves:` trailer.
@@ -192,7 +192,14 @@ Then work the files: `grep -n "enumeration:" "$OUT/app_log.txt" | tail`, `tail -
 - A dump has **no stacktrace and no `debug_meta`**, so symbolication (step 3) does not apply.
 - The two logs share a ~700 KB budget, so a dump is a **tail**, not the whole file. If the answer
   rolled off, ask for a `SNAPSYNC_EXPORT_LOGS=1` launch plus a USB pull instead.
-## 3. Symbolicate native crash frames (Linux, no Mac)
+## 3. Symbolicate (iOS) or retrace (Android) the stacktrace — Linux, no Mac
+
+**Pick by the event's `data.tags.platform`**: `ios` → the dSYM symbolication below; `android` → 3b.
+(Events from builds before the tag existed are iOS — Android reported nowhere until Play delivery.)
+
+```bash
+python3 -c 'import json;print((json.load(open("'"$OUT"'/event.json"))["data"].get("tags") or {}).get("platform"))'
+```
 
 Native cocoa frames arrive as raw addresses (Bugsink cannot symbolicate — tracker
 `bugsink/bugsink#20`). Symbolicate offline against that build's dSYMs using **`symbolic`**
@@ -218,6 +225,30 @@ Show the raw frames (from `stacktrace_md`), state the build number and that its
 `dsyms-<build>` artifact has expired, and point at the CLAUDE.md runbook note
 ("park longer-lived versions' dSYMs elsewhere at promote time"). Never symbolicate against
 a *different* build's dSYMs — that produces subtly-wrong frames.
+
+### 3b. Android: retrace against the build's R8 mapping
+
+The store build is R8-obfuscated, so its Java frames arrive as `gg3.a(SourceFile:12)`. Bugsink takes no
+mapping and Play is not given one: each delivered build's mapping ships as GitHub artifact
+**`r8-mapping-<build>`** where `<build> = data.dist` (90-day retention, `ci.yml`'s `android-deliver`).
+`retrace.py` rebuilds the event's exception (or, with none, each thread's stack) as a Java trace and runs
+R8's own `retrace` from the R8 that wrote the mapping (its `# compiler_version:` header; the jar is fetched
+once from Google's Maven into `~/.cache/snapsync-r8`). Needs `java` on PATH.
+
+```bash
+BUILD=$(python3 -c 'import json;print(json.load(open("'"$OUT"'/event.json"))["data"]["dist"])')
+MAP_DIR="$OUT/r8-mapping-$BUILD"
+gh run download -n "r8-mapping-$BUILD" -D "$MAP_DIR"   # from the ci.yml run that delivered it
+python3 .claude/skills/bugsink/retrace.py "$OUT/event.json" "$MAP_DIR"
+```
+
+Line numbers survive (`-keepattributes SourceFile,LineNumberTable` in `app/android/proguard-rules.pro`), so
+a retraced frame names its real file and line, inlined frames expanded.
+
+**When `r8-mapping-<build>` is gone (expired, or a build no delivering run made): fail loud**, exactly as for
+dSYMs: show the obfuscated frames from `stacktrace_md`, name the build and the missing artifact. Never
+retrace against a *different* build's mapping — R8 renames per build, so the result is confidently wrong.
+A `dist` of `1` is a local or pre-delivery build: no mapping exists for it.
 
 ## 4. Resolve an issue a shipped fix closes
 
@@ -341,6 +372,8 @@ wrong, say so and let the operator reopen it in the web UI.
 - **`data.dist` is CRASH-TIME on a real crash** — it comes from the crash report's own recorded build
   number, not from whatever was installed when the report was finally delivered (a cached crash can
   arrive days later; `SNAPSYNC-1` took three). That is what makes `dsyms-<dist>` the right artifact.
-  It holds *because* the app deliberately never sets the SDK's `dist` option — see the
+  On iOS it holds *because* the app deliberately never sets the SDK's `dist` option — see the
   `privacy-security` spec requirement "The build number is the SDK's crash-time value and is never
-  overridden". Do not "fix" that omission.
+  overridden". Do not "fix" that omission. On Android the app DOES set it (`model/`'s `crashDist`: the
+  Android SDK does not re-stamp it at send) to its `versionCode` — the same `run_number + 2000` the
+  run's iOS build carries — so `r8-mapping-<dist>` is the right artifact there.
