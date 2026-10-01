@@ -98,10 +98,10 @@ class BackendReach(
         read("publish ${manifest.deviceId}'s manifest", port.publishManifest(null, eventId, manifest.deviceId, manifest))
     }
 
-    /** One resource's bytes, where the app's uploader addresses them. */
-    suspend fun upload(deviceId: String, assetId: AssetId, resource: ManifestResource) {
+    /** One resource's bytes — [bytes], or a minimal placeholder — where the app's uploader addresses them. */
+    suspend fun upload(deviceId: String, assetId: AssetId, resource: ManifestResource, bytes: ByteArray = SEEDED_BYTES) {
         val url = "$base/files/devices/$deviceId/$assetId/${resource.role.wire}?filename=${resource.filename}"
-        val status = network.put(url, mapOf(APP_VERSION_HEADER to declared.value.orEmpty(), CONTENT_TYPE to JPEG), SEEDED_BYTES)
+        val status = network.put(url, mapOf(APP_VERSION_HEADER to declared.value.orEmpty(), CONTENT_TYPE to JPEG), bytes)
         check(status != null && status in SUCCESS) { "upload ${resource.key} for $deviceId was answered $status by the $name backend" }
     }
 

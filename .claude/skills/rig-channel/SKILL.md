@@ -526,7 +526,8 @@ curl -s localhost:<port>/device            # honoured + refused (reasons) for TH
   `device/import/fail-next`, `device/membership/unreadable?on=`,
   `device/downloads/stage[?status=502][&drained=true]` (the OS finishes every in-flight download, then optionally
   reports the session's events drained), `device/album/place?album=&asset=`, `device/album/hold-adds?on=`,
-  `device/foreign-device?device=&assets=a,b[&event=][&filename=]`,
+  `device/foreign-device?device=&assets=a,b[&event=][&filename=][&kind=motion-photo]` (`motion-photo`: each a real Google
+  motion photo, as an Android member shares it),
   `device/invite-link-hints?honoured=false` (play a shipped build; relaunch to be sure the new answer is read).
 - The **integration surface's** levers and reads (the same rule on the app host):
   - backend reads (`[event=]` defaults to the joined one, `[device=]` to this one): `backend/union`, `backend/manifest`,

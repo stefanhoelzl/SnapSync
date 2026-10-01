@@ -1,5 +1,6 @@
 package app.snapsync.rig
 
+import app.snapsync.contracts.PhotoLibrary
 import app.snapsync.mock.BackendCall
 import app.snapsync.mock.DownloadSessionMock
 import app.snapsync.mock.LibraryAssets
@@ -255,18 +256,30 @@ private fun MockWorld.backendLevers(op: (suspend MockWorld.(Map<String, String>)
         OK
     },
     // A fellow member with complete photos, through the backend's public surface. `event` defaults to the joined
-    // one; `assets` is a comma-separated list of asset ids.
+    // one; `assets` is a comma-separated list of asset ids. `kind=motion-photo` makes each a real Google motion photo
+    // (`PhotoLibrary.motionPhoto`), as an Android member's camera shares it; otherwise each is a placeholder photo.
     "foreign-device" to needs(Need.Reach, command = RigCommand { params, _ ->
         val who = params["device"]
         val assets = params["assets"]?.split(',')?.filter { it.isNotBlank() }.orEmpty()
         val event = params["event"] ?: joinedEventId()
+        val motion = when (params["kind"]) {
+            null, "photo" -> false
+            "motion-photo" -> true
+            else -> return@RigCommand CommandResult.badRequest("kind is photo or motion-photo, was '${params["kind"]}'")
+        }
         // The capturing device's own file name for every asset — what an import names its photo after.
-        val filename = params["filename"]
+        val filename = params["filename"] ?: if (motion) "PXL_MOTION.MP.jpg" else null
         if (who == null || assets.isEmpty()) {
             CommandResult.badRequest("device and a non-empty comma-separated assets are required")
         } else {
-            val manifest = assets.map { if (filename != null) foreignAsset(it, filename) else foreignAsset(it) }
-            val eventId = addForeignDevice(who, manifest, event)
+            val manifest = assets.map {
+                when {
+                    motion -> foreignAsset(it, filename!!, contentType = "image/jpeg")
+                    filename != null -> foreignAsset(it, filename)
+                    else -> foreignAsset(it)
+                }
+            }
+            val eventId = addForeignDevice(who, manifest, event, if (motion) PhotoLibrary.motionPhoto else null)
             CommandResult.ok("""{"device":${jsonString(who)},"eventId":${jsonString(eventId)}}""")
         }
     }),
@@ -601,12 +614,12 @@ private fun MockWorld.finishDownloads(outcome: TransferOutcome): List<String> {
 }
 
 /** A fellow member with a primary resource per asset, captured on [filename]. */
-internal fun foreignAsset(assetId: String, filename: String = "IMG.HEIC"): DeviceManifestAsset {
+internal fun foreignAsset(assetId: String, filename: String = "IMG.HEIC", contentType: String = "image/heic"): DeviceManifestAsset {
     val key = uploadKey(AssetId(assetId), ResourceRole.PRIMARY, filename)
     return DeviceManifestAsset(
         assetId = AssetId(assetId),
         creationDate = LibraryAssets.DEFAULT_DATE,
-        resources = listOf(ManifestResource(ResourceRole.PRIMARY, "image/heic", key, filename)),
+        resources = listOf(ManifestResource(ResourceRole.PRIMARY, contentType, key, filename)),
     )
 }
 
@@ -614,11 +627,18 @@ internal fun foreignAsset(assetId: String, filename: String = "IMG.HEIC"): Devic
  * A fellow member through the backend's public surface: [device] joins [event] — or an event the backend mints for it —
  * uploads every resource's bytes where the app's uploader addresses them, and publishes its manifest. Returns the event.
  */
-private suspend fun MockWorld.addForeignDevice(who: String, assets: List<DeviceManifestAsset>, event: String?): String {
+private suspend fun MockWorld.addForeignDevice(
+    who: String,
+    assets: List<DeviceManifestAsset>,
+    event: String?,
+    bytes: ByteArray? = null,
+): String {
     val reach = reach!!
     val eventId = event ?: reach.createEvent(FOREIGN_EVENT_NAME, FOREIGN_EVENT_START)
     reach.join(eventId, who)
-    assets.forEach { asset -> asset.resources.forEach { reach.upload(who, asset.assetId, it) } }
+    assets.forEach { asset ->
+        asset.resources.forEach { if (bytes != null) reach.upload(who, asset.assetId, it, bytes) else reach.upload(who, asset.assetId, it) }
+    }
     reach.publish(eventId, DeviceManifest(deviceId = who, assets = assets))
     return eventId
 }
