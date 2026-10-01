@@ -32,7 +32,7 @@
 - [x] 5.1 Measure whether Play re-encodes images: under `secrets-env`, upload one composite into an edit, list its sha256, and DELETE the edit, never committing it. Record the result in design.md D3, and pick a byte or pixel comparison accordingly.
 - [x] 5.2 Extend `play_release.py`: listing/details/images comparison and conditional PATCH/upload inside `deliver` (flags `--listing`, `--images`, `PLAY_CONTACT_EMAIL`), plus the read-only `listing-diff` verb. Verify: `listing-diff` run locally under `secrets-env` reports the expected first-time differences and commits nothing (`status` shows the internal track unchanged).
 - [x] 5.3 Wire `android-deliver`: on `refs/heads/main` only, resolve the deployment, composite the Play screenshots, stage the icon and feature graphic, and pass `--listing`/`--images`; a dispatch passes neither. Verify: `actionlint` passes, and the `if:` conditions are read and checked against a branch-dispatch run of the job.
-- [ ] 5.4 Ask the user to add the `PLAY_CONTACT_EMAIL` repo secret (never committed). Verify: `gh secret list` shows it.
+- [x] 5.4 The contact email: reuse the existing `ASC_REVIEW_CONTACT_EMAIL` secret (the user's choice), passed to the script as `PLAY_CONTACT_EMAIL`. Verify: `gh secret list` shows it.
 - [x] 5.5 Document Play listing delivery in `docs/deployment.md` (§6, and the delivery section describing `android-deliver`). Verify: the doc names the main-only gate and the diff rule.
 
 ## 6. Declarations

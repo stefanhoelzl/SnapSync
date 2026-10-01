@@ -20,7 +20,7 @@ Two answers are the **operator's explicit choice against the recommendation**: t
 | App name | SnapSync Photos (from `metadata/listing/`; written by the delivery) |
 | Category | **Photography** |
 | Tags | none |
-| Contact email | the `PLAY_CONTACT_EMAIL` secret (written by the delivery; never committed) |
+| Contact email | the `ASC_REVIEW_CONTACT_EMAIL` secret, the App Store review contact (written by the delivery; never committed) |
 | Website | the marketing URL (written by the delivery) |
 | Phone | none |
 | Form factors | **phones only**: no tablet, Chromebook, TV, Wear or XR screenshots or listing |

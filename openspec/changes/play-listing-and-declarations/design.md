@@ -105,7 +105,7 @@ per-track and a dispatched branch's draft copy must never reach it.
 Inside the edit, after the bundle and the release:
 - **Text.** `GET edits/{id}/listings/en-US` and `GET edits/{id}/details` are compared field by field with the
   rendered `title`, `shortDescription`, `fullDescription`, `contactWebsite` and `contactEmail` (the email comes from
-  the `PLAY_CONTACT_EMAIL` secret; empty means the field is left as Play has it). Only a difference is `PATCH`ed.
+  the `ASC_REVIEW_CONTACT_EMAIL` secret, the App Store review contact, passed as `PLAY_CONTACT_EMAIL`; empty means the field is left as Play has it). Only a difference is `PATCH`ed.
 - **Images.** For each image type (`icon`, `featureGraphic`, `phoneScreenshots`), `GET …/images/{type}` gives each
   image's `sha256`. If the ordered list differs from our files' sha256s, the script runs `deleteall` and uploads them
   in order.

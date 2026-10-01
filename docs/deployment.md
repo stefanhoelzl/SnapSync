@@ -483,7 +483,8 @@ automatically, docs-only merges included. It reaches **no external tester**: the
   with the repo (§6, "Google Play listing delivery"); a branch dispatch never touches it. Secrets:
   `PLAY_UPLOAD_KEYSTORE_BASE64` / `PLAY_UPLOAD_KEYSTORE_PASSWORD` (PKCS12, alias `upload`, key password = store
   password), `PLAY_SERVICE_ACCOUNT_JSON` (service account `play-ci`; locally `PLAY_SERVICE_ACCOUNT_KEY` through
-  secrets-env) and `PLAY_CONTACT_EMAIL` (the listing's contact email).
+  secrets-env) and `ASC_REVIEW_CONTACT_EMAIL` (the App Store review contact, reused as the listing's public contact
+  email).
 - **Signing**: two persistent certificates imported into an ephemeral keychain in **both** `ios-build`
   and `ios-deliver`: Apple Distribution **and** Apple Development. `archive` also provisions a
   development identity, so without the imported Development cert CI would mint a new one every run and
@@ -641,8 +642,8 @@ Every output is committed and none may be edited by hand. Change the geometry or
   `screenshots/android/` (the `play` target). `play_release.py deliver --listing … --images …` then compares each part
   with what Play holds, inside the edit that uploads the bundle:
   - the three text fields, by value;
-  - the contact website, and the contact email from the `PLAY_CONTACT_EMAIL` secret (never committed, never
-    printed);
+  - the contact website, and the contact email from the `ASC_REVIEW_CONTACT_EMAIL` secret (the App Store review
+    contact; never committed, never printed);
   - each image set, by the sha256 Play lists, which is the uploaded file's own (measured).
 
   Only a difference is written. A merge that changes no copy and no image therefore sends Play nothing to review,
