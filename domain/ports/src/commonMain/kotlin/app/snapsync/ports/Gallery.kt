@@ -52,6 +52,14 @@ interface GalleryReader : Port {
      */
     suspend fun assets(policy: SelectionPolicy): GalleryRead<List<AssetFacts>>
 
+    /**
+     * Every asset of the library [policy] narrows to — facts only — including the ones [assets] leaves out because they
+     * are never this member's to share: on Android the event albums' own folders, where received photos are filed.
+     * What a reinstalled app reads to recognise the photos it received before (capability `receiving-photos`). Narrowed
+     * and over-returning exactly as [assets] is; where the platform keeps no such folders it answers what [assets] does.
+     */
+    suspend fun libraryAssets(policy: SelectionPolicy): GalleryRead<List<AssetFacts>>
+
     /** The assets among [ids] the library still holds — facts only. A missing id is simply not returned. */
     suspend fun assetsById(ids: Set<AssetId>): GalleryRead<List<AssetFacts>>
 

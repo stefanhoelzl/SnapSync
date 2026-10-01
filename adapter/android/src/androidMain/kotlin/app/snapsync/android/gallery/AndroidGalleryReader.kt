@@ -84,6 +84,15 @@ open class AndroidGalleryReader(
             }
         }
 
+    // The whole default gallery, the event albums' folders included: received photos filed into an album are there.
+    override suspend fun libraryAssets(policy: SelectionPolicy): GalleryRead<List<AssetFacts>> =
+        log.invocation(EntryScope.None, "gallery.libraryAssets", result = { "${(it as? GalleryRead.Read)?.value?.size ?: "not readable"}" }) {
+            readable {
+                val narrowing = narrowingFor(policy) ?: return@readable emptyList()
+                items(narrowing, candidates = false).map { it.facts() }
+            }
+        }
+
     override suspend fun assetsById(ids: Set<AssetId>): GalleryRead<List<AssetFacts>> =
         readable { itemsById(ids).map { it.facts() } }
 

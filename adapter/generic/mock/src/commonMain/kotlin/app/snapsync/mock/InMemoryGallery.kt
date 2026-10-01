@@ -133,6 +133,19 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
         }
     }
 
+    // The whole library, a folder album's photos included (Android's event albums are folders `assets` leaves out).
+    override suspend fun libraryAssets(policy: SelectionPolicy): GalleryRead<List<AssetFacts>> {
+        state.enumerationHeld?.await()
+        return readable {
+            val floor = policy.rules.filterIsInstance<SelectionRule.CaptureAfter>().maxOfOrNull { it.cutoff.at.iso }
+            if (policy.rules.any { it.deniesEverything }) {
+                emptyList()
+            } else {
+                state.library.value.filter { floor == null || it.creationDate >= floor }.map { it.toFacts() }
+            }
+        }
+    }
+
     override suspend fun assetsById(ids: Set<AssetId>): GalleryRead<List<AssetFacts>> =
         if (!state.byIdReadable) GalleryRead.NotReadable else readable {
             state.library.value.map { it.toFacts() }.filter { it.assetId in ids }

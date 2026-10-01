@@ -141,6 +141,13 @@ Rejected alternatives:
   photo-access rule that a walk under a partial grant buys nothing.
 - Cost is one batched name read per join: about 7 s for 2,000 in-window photos on an SE2, and free on Android.
 
+- The candidates are the **library**, not the sharing candidates: `GalleryReader.libraryAssets`. On Android the
+  event album is a folder that `assets` deliberately leaves out (`main`'s `android-event-album`, D6), and a
+  received photo filed there must be recognised after a reinstall all the same. On iOS the two reads are the same
+  (an album is a collection over the camera roll). Found while rebasing onto `main`. Pinned by
+  `FolderAlbumContract` (`A_PHOTO_IN_AN_ALBUM_IS_STILL_IN_THE_LIBRARY`) and `ReinstallIntegrationTest`
+  (`an_android_rejoin_recognises_the_received_photos_filed_into_the_event_album`).
+
 ### D6. Suppression needs no new rule
 
 An adopted row carries `createdLocalId`, so the existing `NotEcho` rule excludes it from the upload, the

@@ -54,6 +54,7 @@ class GalleryServicesTest {
 
         override fun access(): GalleryAccess = access
         override suspend fun assets(policy: SelectionPolicy) = read("assets") { assets.map { it.facts } }
+        override suspend fun libraryAssets(policy: SelectionPolicy) = read("libraryAssets") { assets.map { it.facts } }
         override suspend fun assetsById(ids: Set<AssetId>) =
             read("assetsById") { assets.map { it.facts }.filter { it.assetId in ids } }
         override suspend fun resources(ids: Set<AssetId>) =
