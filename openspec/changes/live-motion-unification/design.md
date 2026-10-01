@@ -228,14 +228,17 @@ whichever of the two lands first. Their changes are in different parts of the fi
 
 ## Risks / Trade-offs
 
-- **The iPhone path is untested on any device.** Photos may reject a pairing whose still-image-time or
+- **The iPhone path was untested on any device.** Photos may reject a pairing whose still-image-time or
   identifier layout differs from what it expects. → D5 falls back to the still, so the risk is "no motion",
-  never "no photo". The simulator clause and one SE2 check come before the iOS PR merges.
+  never "no photo". **Measured:** the simulator contract passed (iOS 26.5), and on the SE2 (iOS 26.6.2,
+  2026-10-01) a received motion photo was committed as ONE asset of photo + paired video.
 - **Losslessly copying a HEIC with ImageIO may be refused.** Some Samsung phones shoot HEIC motion photos. →
   Falls back. Recorded, and phase 6 can measure it.
 - **An iPhone "Most Compatible" JPEG may carry an HDR gain map (MPF secondary image).** The motion-photo
-  directory then does not list it. → Google Photos locates the video by the trailing length. Checked on the A40
-  with a sample in the hardware step. If it breaks, strip the MPF segment or re-encode.
+  directory then does not list it. → Google Photos locates the video by the trailing length. **Not measured:**
+  the A40 check (2026-10-01) played a 12 MP HEIC re-encoded to JPEG and a plain 12 MP JPEG, both as motion photos
+  in Google Photos 7.94, but no gain-mapped sample was available. If it breaks, strip the MPF segment or
+  re-encode.
 - **The HEIC re-encode drops HDR and is lossy (q95).** → Only for this member's gallery copy. The event keeps
   the original, and the spec says so.
 - **≈ 2 s per Live Photo on a slow phone, inside a background wake.** → Imports already run one at a time, and
