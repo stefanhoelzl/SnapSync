@@ -35,7 +35,7 @@ class StagedLiveImport(
 
 /**
  * **A received motion photo becomes a Live Photo** (capability `receiving-photos`, "An Android motion photo reaches
- * iPhone as a Live Photo"; decision record `changes/live-motion-unification` D4–D6). The iPhone's alone: Android
+ * iPhone as a Live Photo"; decision record `changes/archive/2026-10-01-live-motion-unification` D4–D6). The iPhone's alone: Android
  * keeps a motion photo as the file it is, so only an iPhone host binds this.
  *
  * What it pins is what no unit test can: that the library ACCEPTS the pair the importer builds — a still carrying the

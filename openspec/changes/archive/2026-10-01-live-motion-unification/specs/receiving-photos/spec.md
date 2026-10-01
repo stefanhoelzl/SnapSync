@@ -4,7 +4,7 @@
 
 A received photo SHALL be saved as the sender's original: full resolution and original format, its
 original capture date (so it sorts where it was taken), and the filename it had on the sender's device —
-on Android with a number added when the camera folder already holds a file of that name. A moving photo SHALL
+on Android with a number added when the folder it is saved into already holds a file of that name. A moving photo SHALL
 arrive moving, in the receiving phone's own form: on iPhone a received Live Photo, and a received Android
 motion photo, SHALL be a working Live Photo; on Android a received Live Photo SHALL be a motion photo that
 plays. Where making a photo move needs a different format on the receiving phone, the saved copy MAY take that
@@ -26,7 +26,7 @@ received before a phone could keep them moving SHALL stay as they were saved.
 
 #### Scenario: A HEIC Live Photo is saved on Android as a JPEG
 - **WHEN** an Android member receives a Live Photo whose still the sender's iPhone saved as HEIC
-- **THEN** their camera folder holds it as a JPEG motion photo named like the sender's photo with a JPEG
+- **THEN** their library holds it as a JPEG motion photo named like the sender's photo with a JPEG
   extension, while every other member and the event's download still get the sender's HEIC
 
 #### Scenario: An Android motion photo reaches iPhone as a Live Photo

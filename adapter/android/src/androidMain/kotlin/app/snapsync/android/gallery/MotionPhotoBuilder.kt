@@ -13,7 +13,7 @@ import java.io.File
 
 /**
  * **A received Live Photo, rebuilt as a motion photo** (capability `receiving-photos`, "A Live Photo reaches Android as
- * a motion photo"; decision record `changes/live-motion-unification` D3): a JPEG still, Google's motion-photo XMP, and
+ * a motion photo"; decision record `changes/archive/2026-10-01-live-motion-unification` D3): a JPEG still, Google's motion-photo XMP, and
  * the Live Photo's video appended exactly as it was delivered — the one layout Google Photos was measured to play.
  *
  * - A **HEIC** still (the iPhone default) is decoded at full size and re-encoded as JPEG at [JPEG_QUALITY], because

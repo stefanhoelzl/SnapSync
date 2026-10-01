@@ -63,7 +63,7 @@ internal class IosPhotoLibraryImporter(
     suspend fun import(request: ImportRequest, handlers: GalleryHandlers): ImportResult {
         val ref = request.ref
         // A received Android motion photo becomes a Live Photo (capability `receiving-photos`; decision record
-        // `changes/live-motion-unification` D4/D5): its still and video are built beside the staged original, never
+        // `changes/archive/2026-10-01-live-motion-unification` D4/D5): its still and video are built beside the staged original, never
         // from it, so when Photos refuses the pair — even consuming its files — the original is still here, and is
         // imported exactly as before. The refused attempt settles as any failed commit does (its marker cleared,
         // since the library said no asset was created), and only the attempt that follows reaches the caller.
