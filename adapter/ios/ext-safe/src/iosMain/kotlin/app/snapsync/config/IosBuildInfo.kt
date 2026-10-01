@@ -3,10 +3,12 @@ package app.snapsync.config
 import app.snapsync.logging.appMarketingVersion
 import app.snapsync.logging.deviceDiagnosticEnvironment
 import app.snapsync.model.DiagnosticEnvironment
+import app.snapsync.model.Platform
 import app.snapsync.model.StoreKind
 import app.snapsync.model.StoreLink
 import app.snapsync.model.uploadersCarried
 import app.snapsync.ports.BuildInfo
+import platform.Foundation.NSBundle
 
 /**
  * The [BuildInfo] port over THIS process's bundle — the generated `Deployment.plist` both bundles carry and the
@@ -25,6 +27,10 @@ class IosBuildInfo(
     override val store: StoreLink? by lazy { bakedAppStoreUrl()?.let { StoreLink(it, StoreKind.APP_STORE) } }
     override val apnsEnvironment: String by lazy { bakedApnsEnv() }
     override val dsn: String? by lazy { bakedSentryDsn() }
+    override val platform: Platform = Platform.IOS
+
+    /** The main bundle's id — an extension's main bundle is its `.appex` — or `null` where there is none (the simulator test executable). */
+    override val processId: String? by lazy { NSBundle.mainBundle.bundleIdentifier?.takeIf { it.isNotBlank() } }
     override val diagnostics: DiagnosticEnvironment by lazy {
         deviceDiagnosticEnvironment(uploadersCarried(osSupportsOsDrivenUpload))
     }

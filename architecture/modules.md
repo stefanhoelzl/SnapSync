@@ -12,6 +12,7 @@ flowchart LR
   adapter_android[":adapter:android"]
   adapter_generic_app[":adapter:generic:app"]
   adapter_generic_mock[":adapter:generic:mock"]
+  adapter_generic_sentry[":adapter:generic:sentry"]
   adapter_ios_app_only[":adapter:ios:app-only"]
   adapter_ios_ext_safe[":adapter:ios:ext-safe"]
   adapter_ios_ui[":adapter:ios:ui"]
@@ -59,6 +60,9 @@ flowchart LR
   adapter_generic_mock --> domain_ports
   adapter_generic_mock --> domain_services
   adapter_generic_mock --> test_contracts
+  adapter_generic_sentry --> domain_model
+  adapter_generic_sentry --> domain_ports
+  adapter_generic_sentry --> test_contracts
   adapter_ios_app_only --> adapter_ios_ext_safe
   adapter_ios_app_only --> domain_compose
   adapter_ios_app_only --> domain_model
@@ -80,6 +84,7 @@ flowchart LR
   adapter_ios_ui --> ui_screens
   app_android --> adapter_android
   app_android --> adapter_generic_app
+  app_android --> adapter_generic_sentry
   app_android --> domain_compose
   app_android --> domain_feature
   app_android --> domain_host
@@ -98,6 +103,7 @@ flowchart LR
   app_desktop --> ui_components
   app_desktop --> ui_screens
   app_ios --> adapter_generic_app
+  app_ios --> adapter_generic_sentry
   app_ios --> adapter_ios_app_only
   app_ios --> adapter_ios_ext_safe
   app_ios --> adapter_ios_ui
@@ -110,6 +116,7 @@ flowchart LR
   app_ios --> domain_services
   app_ios --> ui_screens
   app_ios_extension --> adapter_generic_app
+  app_ios_extension --> adapter_generic_sentry
   app_ios_extension --> adapter_ios_ext_safe
   app_ios_extension --> domain_compose
   app_ios_extension --> domain_feature

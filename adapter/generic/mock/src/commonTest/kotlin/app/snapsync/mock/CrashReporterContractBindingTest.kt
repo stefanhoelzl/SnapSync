@@ -29,7 +29,7 @@ class CrashReporterContractBindingTest {
         override val reaches = setOf(CrashReporterState.NOT_STARTED, CrashReporterState.STARTED)
 
         override fun create(state: CrashReporterState, clauseId: String): Entered<CrashReporterSubject> {
-            if (state == CrashReporterState.ON_THE_WIRE) {
+            if (state == CrashReporterState.ON_THE_WIRE || state == CrashReporterState.ACROSS_A_RESTART) {
                 return Entered.Unreachable(
                     "the fake transmits nothing: what leaves a device is the SDK's serialization and the adapter's hooks",
                 )

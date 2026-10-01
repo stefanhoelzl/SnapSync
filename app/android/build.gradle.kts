@@ -19,6 +19,20 @@ val deployment: Map<String, String> = rootProject.layout.projectDirectory.file("
     .filterNot { it.isBlank() || it.startsWith("#") }
     .associate { line -> line.substringBefore('=') to line.substringAfter('=') }
 
+// The values of the resolved deployment NOBODY REVIEWED (`docs/deployment.md`): the crash-reporting destination and
+// its environment. The resolver renders them to JSON — a grammar that escapes — and never to `deployment.properties`,
+// whose values are interpolated raw; the DSN once reached a raw grammar and shipped mute builds. The DSN is present
+// only for a distributed channel: absence is the off-switch.
+val unreviewed: Map<String, String> = rootProject.layout.projectDirectory.file("build/deployment.json").asFile
+    .let { groovy.json.JsonSlurper().parse(it) as Map<*, *> }
+    .entries.associate { (key, value) -> key.toString() to value.toString() }
+
+/** [value] as a Java string literal — escaped, since a `buildConfigField` is pasted into generated source as it is. */
+fun javaString(value: String): String {
+    require(value.none { it < ' ' }) { "a deployment value carries a control character" }
+    return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+}
+
 // The version this build declares to the backend (capability `app-update-required`): the SAME marketing-version floor
 // every iOS dev build carries (`Config.xcconfig`), which the api's `MIN_APP_VERSION` is pinned to stay at or below.
 // Android derives no release versions yet — the store build does (phase 5) — so the floor is the honest declaration.
@@ -54,6 +68,10 @@ android {
         // until the listing is public (production launch): the notice then offers no store at all.
         val playStoreUrl = requireNotNull(deployment["playStoreUrl"]) { "the deployment rendered no playStoreUrl" }
         buildConfigField("String", "PLAY_STORE_URL", "\"$playStoreUrl\"")
+        // Where this build reports crashes (capability `privacy-security`): empty on every build but a distributed
+        // one, and then nothing starts. The environment its reports are filed under, derived from the same channel.
+        buildConfigField("String", "SENTRY_DSN", javaString(unreviewed["sentryDsn"].orEmpty()))
+        buildConfigField("String", "SENTRY_ENVIRONMENT", javaString(requireNotNull(unreviewed["sentryEnvironment"])))
         // The event link's host — the resolved deployment's domain without a port (an intent filter with no port
         // matches any, and LINK_ORIGIN carries the local rig's).
         manifestPlaceholders["linkHost"] = requireNotNull(deployment["domain"]).substringBefore(':')
@@ -115,6 +133,8 @@ dependencies {
     implementation(project(":domain:host"))
     implementation(project(":adapter:generic:app"))
     implementation(project(":adapter:android"))
+    // The crash-reporting seat both platforms share (capability `privacy-security`).
+    implementation(project(":adapter:generic:sentry"))
     implementation(libs.coroutines.core)
     implementation(libs.coroutines.android)
     implementation(libs.kermit)

@@ -104,7 +104,7 @@ class ProcessCompositionTest {
 
     @Test
     fun a_report_that_cannot_be_saved_says_so() = runTest {
-        val crash = CrashReporting(inMemoryCrashReporter(), null, NoEntryContext, inMemoryFiles(private = null))
+        val crash = CrashReporting(inMemoryCrashReporter(), BuildInfoMock().port(), NoEntryContext, inMemoryFiles(private = null))
         assertIs<DumpResult.NotSent>(crash.sendDump(dump()))
     }
 
@@ -139,10 +139,13 @@ class ProcessCompositionTest {
         val events = mutableListOf<CrashEvent>()
         val contexts = mutableMapOf<String, Map<String, String>>()
         var handlers: app.snapsync.ports.CrashHandlers? = null
+        var options: app.snapsync.model.CrashOptions? = null
         override fun listen(handlers: app.snapsync.ports.CrashHandlers) {
             this.handlers = handlers
         }
-        override fun start(options: app.snapsync.model.CrashOptions) = Unit
+        override fun start(options: app.snapsync.model.CrashOptions) {
+            this.options = options
+        }
         override fun capture(event: CrashEvent) {
             events += event
         }
@@ -164,7 +167,7 @@ class ProcessCompositionTest {
     @Test
     fun the_log_writer_hands_every_line_to_the_channel_and_an_error_as_an_event_tagged_with_its_entry_point() {
         val reporter = Recording()
-        val writer = assertNotNull(CrashReporting(reporter, "https://key@ingest/1", Entry("process"), inMemoryFiles()).logWriter)
+        val writer = assertNotNull(CrashReporting(reporter, BuildInfoMock(dsn = "https://key@ingest/1").port(), Entry("process"), inMemoryFiles()).logWriter)
         writer.log(co.touchlab.kermit.Severity.Info, "enumerated 3", "gallery", null)
         writer.log(co.touchlab.kermit.Severity.Error, "reconcile($id) failed", "engine", null)
         assertEquals(listOf("[process] enumerated 3", "[process] reconcile(‹uuid›) failed"), reporter.crumbs.map { it.message })
@@ -202,11 +205,67 @@ class ProcessCompositionTest {
 
     @Test
     fun describing_the_process_starts_a_reporting_channel_itself() {
-        val crash = CrashReporting(inMemoryCrashReporter(started, dumps), "https://key@ingest/1", NoEntryContext, inMemoryFiles())
+        val crash = CrashReporting(inMemoryCrashReporter(started, dumps), BuildInfoMock(dsn = "https://key@ingest/1").port(), NoEntryContext, inMemoryFiles())
         assertFalse(started.value)
         crash.describeProcess(ProcessMetricReport(emptyMap()))
         assertTrue(started.value, "an account that outran the composition must not reach an unstarted channel")
         assertNotNull(crash.logWriter)
-        assertNull(CrashReporting(inMemoryCrashReporter(), null, NoEntryContext, inMemoryFiles()).logWriter)
+        assertNull(CrashReporting(inMemoryCrashReporter(), BuildInfoMock().port(), NoEntryContext, inMemoryFiles()).logWriter)
+    }
+
+    private fun startedWith(build: BuildInfoMock): app.snapsync.model.CrashOptions {
+        val reporter = Recording()
+        CrashReporting(reporter, build.port(), NoEntryContext, inMemoryFiles()).start()
+        return assertNotNull(reporter.options, "the channel started")
+    }
+
+    private fun facts(buildNumber: String) = app.snapsync.model.DiagnosticEnvironment(
+        appVersion = "1.4",
+        buildNumber = buildNumber,
+        osVersion = "unknown",
+        deviceModel = "unknown",
+        uploadTier = "unknown",
+        uploadBase = "unknown",
+        reporterEnvironment = "production",
+    )
+
+    @Test
+    fun an_ios_build_reports_its_release_environment_platform_and_process_and_leaves_the_build_number_unset() {
+        val options = startedWith(
+            BuildInfoMock(
+                dsn = "https://key@ingest/1",
+                declaredVersion = app.snapsync.mock.DeclaredVersion("1.4"),
+                processId = "app.snapsync.ios.extension",
+                diagnostics = facts("2512"),
+            ),
+        )
+        assertEquals("https://key@ingest/1", options.dsn)
+        assertEquals("1.4", options.release)
+        assertEquals("production", options.environment)
+        assertNull(options.dist, "a cached iOS crash keeps the build it crashed in only while dist is unset")
+        assertEquals(mapOf("platform" to "ios", "process" to "app.snapsync.ios.extension"), options.tags)
+    }
+
+    @Test
+    fun an_android_build_stamps_the_build_it_runs() {
+        val options = startedWith(
+            BuildInfoMock(
+                dsn = "https://key@ingest/1",
+                platform = app.snapsync.model.Platform.ANDROID,
+                processId = "app.snapsync",
+                diagnostics = facts("2512"),
+            ),
+        )
+        assertEquals("2512", options.dist)
+        assertEquals(mapOf("platform" to "android", "process" to "app.snapsync"), options.tags)
+    }
+
+    @Test
+    fun a_process_with_no_identifier_carries_no_process_tag_and_a_blank_version_no_release() {
+        val options = startedWith(
+            BuildInfoMock(dsn = "https://key@ingest/1", declaredVersion = app.snapsync.mock.DeclaredVersion(""), processId = null),
+        )
+        assertNull(options.release)
+        assertEquals(mapOf("platform" to "ios"), options.tags)
     }
 }

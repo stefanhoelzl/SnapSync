@@ -1,4 +1,4 @@
-package app.snapsync.logging
+package app.snapsync.sentry
 
 import app.snapsync.model.NON_REDACTED_TAG
 import io.sentry.kotlin.multiplatform.Sentry

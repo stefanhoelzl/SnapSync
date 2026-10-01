@@ -1,6 +1,6 @@
 @file:OptIn(kotlinx.cinterop.BetaInteropApi::class)
 
-package app.snapsync.logging
+package app.snapsync.sentry
 
 import kotlinx.cinterop.ByteVar
 import kotlinx.cinterop.IntVar
@@ -16,11 +16,7 @@ import kotlinx.cinterop.sizeOf
 import kotlinx.cinterop.usePinned
 import kotlinx.cinterop.value
 import kotlin.concurrent.Volatile
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.int
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import platform.Foundation.NSData
 import platform.Foundation.NSDataCompressionAlgorithmZlib
 import platform.Foundation.NSLock
@@ -94,7 +90,7 @@ internal class LoopbackIngest {
     }
 
     /** The DSN that routes the SDK here. The key is a fixed non-secret: nothing checks it. */
-    val dsn: String get() = "http://$PUBLIC_KEY@127.0.0.1:$port/1"
+    val dsn: String get() = ingestDsn(port)
 
     /** Every `event` item received so far, in arrival order. */
     fun events(): List<JsonObject> {
@@ -201,35 +197,6 @@ internal class LoopbackIngest {
         return if (length == 0) ByteArray(0) else inflated.bytes!!.reinterpret<ByteVar>().readBytes(length)
     }
 
-    /**
-     * An envelope is newline-delimited: an envelope header, then for each item an item header and its payload.
-     * A payload whose item header names a `length` is exactly that many bytes; otherwise it runs to the next
-     * newline. Only `event` items are kept — the SDK also sends `client_report` items (M2).
-     */
-    private fun envelopeEvents(envelope: ByteArray): List<JsonObject> {
-        val events = mutableListOf<JsonObject>()
-        var at = lineEnd(envelope, 0) + 1 // skip the envelope header
-        while (at < envelope.size) {
-            val headerEnd = lineEnd(envelope, at)
-            val itemHeader = envelope.copyOfRange(at, headerEnd).decodeToString()
-            if (itemHeader.isBlank()) break
-            val header = Json.parseToJsonElement(itemHeader).jsonObject
-            val start = headerEnd + 1
-            val end = header["length"]?.jsonPrimitive?.int?.let { start + it } ?: lineEnd(envelope, start)
-            if (header["type"]?.jsonPrimitive?.content == "event") {
-                events += Json.parseToJsonElement(envelope.copyOfRange(start, end).decodeToString()).jsonObject
-            }
-            at = end + 1
-        }
-        return events
-    }
-
-    private fun lineEnd(bytes: ByteArray, from: Int): Int {
-        var i = from
-        while (i < bytes.size && bytes[i] != '\n'.code.toByte()) i++
-        return i
-    }
-
     private fun ByteArray.indexOf(needle: ByteArray): Int {
         outer@ for (i in 0..size - needle.size) {
             for (j in needle.indices) if (this[i + j] != needle[j]) continue@outer
@@ -239,15 +206,11 @@ internal class LoopbackIngest {
     }
 
     private companion object {
-        const val PUBLIC_KEY = "cafebabecafebabecafebabecafebabe"
         const val BACKLOG = 8
         const val CHUNK = 64 * 1024
         const val GZIP_HEADER = 10
         const val GZIP_TRAILER = 8
         const val GZIP_FRAMING = GZIP_HEADER + GZIP_TRAILER
-
-        /** Bugsink's `MAX_EVENT_SIZE`, measured 2026-07-29: larger events are refused with a `413`. */
-        const val MAX_EVENT_SIZE = 1024 * 1024
 
         /** Only envelopes this large are worth a line: the dumps, not the per-clause sentinels. */
         private const val REPORTED_SIZE_FLOOR = 64 * 1024

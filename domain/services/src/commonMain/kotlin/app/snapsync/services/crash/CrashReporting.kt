@@ -5,7 +5,10 @@ import app.snapsync.model.CrashOptions
 import app.snapsync.model.Crumb
 import app.snapsync.model.DiagnosticDump
 import app.snapsync.model.DumpResult
+import app.snapsync.model.PLATFORM_TAG
 import app.snapsync.model.PROCESS_METRIC_CONTEXT
+import app.snapsync.model.PROCESS_TAG
+import app.snapsync.model.crashDist
 import app.snapsync.model.ProcessMetricReport
 import app.snapsync.model.diagnosticDumpEvent
 import app.snapsync.model.loggedCrash
@@ -15,6 +18,7 @@ import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
 import app.snapsync.model.SAVED_DIAGNOSTIC_REPORT_PATH
 import app.snapsync.model.savedDiagnosticReport
+import app.snapsync.ports.BuildInfo
 import app.snapsync.ports.CrashReporter
 import app.snapsync.ports.Files
 import app.snapsync.ports.EntryContext
@@ -26,8 +30,10 @@ import co.touchlab.kermit.Severity
  * [CrashReporter] port. ONE per process, built by `snapSyncProcess` — which is what makes the idempotence below a
  * plain flag rather than a process-wide promise four independently constructed adapters had to keep.
  *
- * - **Whether this build reports at all** is [dsn]: `null` on every dev, sideload and simulator build, and then
- *   nothing starts, nothing is sent, and no connection is ever opened to the reporting host.
+ * - **Whether this build reports at all** is the build's DSN: `null` on every dev, sideload, emulator and simulator
+ *   build, and then nothing starts, nothing is sent, and no connection is ever opened to the reporting host.
+ * - **What the build is** — release, environment, build number, platform and process — is read from [build] and
+ *   handed to the adapter as [CrashOptions], so the adapter reads nothing of the platform itself.
  * - **What leaves** is the pure rules in `model/Crash.kt`: [shapeEvent] and [shapeCrumb] are what the composition
  *   registers as the port's handlers.
  * - **What a log line becomes** is [loggedCrash], through [logWriter] — which the ROOT installs, because Kermit's
@@ -35,13 +41,15 @@ import co.touchlab.kermit.Severity
  */
 class CrashReporting(
     private val reporter: CrashReporter,
-    /** Where this build reports to, or `null` for a build that reports nowhere — a constant of the build. */
-    private val dsn: String?,
+    /** What the running build is: where it reports to (`null` for nowhere) and the facts every report carries. */
+    private val build: BuildInfo,
     /** The ambient entry point a log line belongs to, which rides an event as its `entry_point` tag. */
     private val entry: EntryContext,
     /** The process's files: where a build that reports nowhere keeps the latest report. */
     private val files: Files,
 ) {
+
+    private val dsn: String? = build.dsn
 
     /** Whether this build carries a reporting destination. Constant for the process. */
     val isConfigured: Boolean get() = dsn != null
@@ -62,8 +70,19 @@ class CrashReporting(
         if (started) return
         val dsn = dsn ?: return
         started = true
-        reporter.start(CrashOptions(dsn))
+        reporter.start(options(dsn))
     }
+
+    private fun options(dsn: String): CrashOptions = CrashOptions(
+        dsn = dsn,
+        release = build.appVersion.takeIf { it.isNotBlank() },
+        environment = build.diagnostics.reporterEnvironment,
+        dist = crashDist(build.platform, build.diagnostics.buildNumber),
+        tags = buildMap {
+            put(PLATFORM_TAG, build.platform.tag)
+            build.processId?.takeIf { it.isNotBlank() }?.let { put(PROCESS_TAG, it) }
+        },
+    )
 
     /** What an event may leave as — the port's `onEvent` handler. */
     fun shapeEvent(event: CrashEvent): CrashEvent? = scrubbedEvent(event)

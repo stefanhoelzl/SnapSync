@@ -251,6 +251,7 @@ val detektTierOf: Map<String, String> = mapOf(
     ":domain:compose" to "core",
     ":adapter:generic:app" to "core",
     ":adapter:generic:mock" to "core",
+    ":adapter:generic:sentry" to "core",
     ":adapter:ios:app-only" to "core",
     ":adapter:ios:ext-safe" to "core",
     ":adapter:ios:ui" to "core",

@@ -50,14 +50,48 @@ data class CrashEvent(
 )
 
 /**
- * How the channel starts: where it reports and how many breadcrumbs an event carries. The build facts the adapter
- * reads from its own bundle (release, environment, which process) are not here — they are the platform's.
+ * How the channel starts: where it reports, what the build is, and how many breadcrumbs an event carries. Every value
+ * is a fact of the build, filled by the crash-reporting service from the `BuildInfo` port — the adapter reads nothing
+ * of the platform itself.
  */
 class CrashOptions(
     val dsn: String,
+    /** The build's version line, or `null` for none: an empty release is worse than none, it looks real. */
+    val release: String? = null,
+    /** Which deployment the build belongs to (`production`, `development`). */
+    val environment: String? = null,
+    /**
+     * The build number to stamp on every event, or `null` to leave the SDK's own. `null` on iOS on purpose — see
+     * [crashDist].
+     */
+    val dist: String? = null,
+    /** Tags every event of this process carries, on the channel's global scope ([PLATFORM_TAG], [PROCESS_TAG]). */
+    val tags: Map<String, String> = emptyMap(),
     /** Pinned, not defaulted: it is a row of the whole-event sum on [DIAGNOSTIC_LOG_BUDGET_BYTES]. */
     val maxBreadcrumbs: Int = MAX_BREADCRUMBS,
 )
+
+/** The tag naming the platform a report came from ([Platform.tag]). */
+const val PLATFORM_TAG: String = "platform"
+
+/** The tag naming the process a report came from: its bundle id on iOS (app or extension), its package on Android. */
+const val PROCESS_TAG: String = "process"
+
+/**
+ * The build number a platform's events are stamped with, or `null` to leave it unset.
+ *
+ * - **iOS: unset, on purpose.** sentry-cocoa applies the dist option UNCONDITIONALLY at send time, and a crash is
+ *   delivered on a LATER launch — possibly after the device updated — so a dist set here would overwrite the build
+ *   number the crash report recorded when it actually crashed, and symbols would be resolved as `dsyms-<dist>` against
+ *   a DIFFERENT build.
+ * - **Android: [buildNumber].** sentry-java applies options at capture, before an event is cached, so a cached event
+ *   keeps the build it was captured under — measured by `CrashReporterContract`'s
+ *   `RESTART_CACHED_EVENT_KEEPS_ITS_BUILD` on the emulator.
+ */
+fun crashDist(platform: Platform, buildNumber: String): String? = when (platform) {
+    Platform.IOS -> null
+    Platform.ANDROID -> buildNumber.takeIf { it.isNotBlank() }
+}
 
 /** What became of an operator-initiated dump. Delivery itself is the channel's business, and never claimed. */
 sealed interface DumpResult {

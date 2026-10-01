@@ -1,6 +1,5 @@
-package app.snapsync.logging
+package app.snapsync.sentry
 
-import app.snapsync.config.bakedSentryEnvironment
 import app.snapsync.model.CrashEvent
 import app.snapsync.model.CrashLevel
 import app.snapsync.model.CrashOptions
@@ -13,26 +12,30 @@ import io.sentry.kotlin.multiplatform.Sentry
 import io.sentry.kotlin.multiplatform.SentryEvent
 import io.sentry.kotlin.multiplatform.SentryLevel
 import io.sentry.kotlin.multiplatform.protocol.Breadcrumb
-import platform.Foundation.NSBundle
 
 /**
- * The Sentry seat of the [CrashReporter] port (capability `privacy-security`): a translation between the core's
- * crash vocabulary (`model/Crash.kt`) and the Sentry KMP SDK's, and nothing more.
+ * The Sentry seat of the [CrashReporter] port on BOTH platforms (capability `privacy-security`): a translation between
+ * the core's crash vocabulary (`model/Crash.kt`) and the Sentry KMP SDK's, and nothing more. One copy, because this is
+ * where "nothing unshaped leaves" is enforced.
  *
- * **It decides nothing.** Whether this build reports (the DSN), what is redacted and capped, which event is exempt,
- * what a log line becomes — all of that is `:domain:services`' `CrashReporting`, registered here as the port's
- * [CrashHandlers] and run from the SDK's `beforeSend`/`beforeBreadcrumb`. What stays here is what only the SDK's
- * seat can know:
+ * **It decides nothing, and reads nothing of the platform.** Whether this build reports (the DSN), what the build is
+ * (release, environment, build number, platform, process), what is redacted and capped, which event is exempt, what a
+ * log line becomes — all of that is `:domain:services`' `CrashReporting`, handed in as [CrashOptions] and registered
+ * as the port's [CrashHandlers], run from the SDK's `beforeSend`/`beforeBreadcrumb`. What stays here is what only the
+ * SDK's seat can know:
  *
- * - **`release` is set explicitly**, because the KMP layer assigns the native `releaseName` unconditionally from
- *   its own options: leaving it unset *clears* the bundle-derived default and the event ships with no release.
- * - **The `process` tag is this process's own bundle id**, set on the global scope, which the native SDK persists
- *   into fatal events — an extension's main bundle is its `.appex`, so the two processes label themselves.
- * - **`dist` is deliberately not set** — see the comment at that spot in [start].
- * - The SDK's failed-HTTP-request capture is off (request URLs embed eventIds; the logging seam already reports
- *   those failures, scrubbed) and `sendDefaultPii` is off. The SDK's random per-install `user.id` is the one
- *   deliberate identifier (spec: powers affected-device counts, linked to nothing) — do not scrub it. Bugsink
- *   ingests errors only, so tracing stays unset and replay stays at its off default.
+ * - **`release` is set explicitly**, because the KMP layer assigns the native release unconditionally from its own
+ *   options: leaving it unset *clears* the platform SDK's default and the event ships with no release.
+ * - **`dist` is set only when the options carry one** — `null` on iOS on purpose (`model/`'s `crashDist`).
+ * - **The options' tags go on the global scope**, which both native SDKs persist into fatal events, so a crash
+ *   delivered on a later launch carries the process that crashed.
+ * - Off: the SDK's failed-HTTP-request capture (request URLs embed eventIds; the logging seam already reports those
+ *   failures, scrubbed), default PII, and on Android screenshot and view-hierarchy attachments. The tap and gesture
+ *   breadcrumbs and the SDK's own auto-start are off in this module's Android manifest, which sentry-android reads at
+ *   init. ANR reporting stays on: an app frozen until the system closes it is reported (capability
+ *   `privacy-security`). The SDK's random per-install `user.id` is the one deliberate identifier (spec: powers
+ *   affected-device counts, linked to nothing) — do not scrub it. Bugsink ingests errors only, so tracing stays unset
+ *   and replay stays at its off default.
  *
  * **Idempotent across the whole process**, not just this instance: the SDK hub is process-global, and a second
  * init would reset its scope. One instance per process is the composition's rule (`snapSyncProcess`); the flag
@@ -41,13 +44,11 @@ import platform.Foundation.NSBundle
  * **Nothing unshaped leaves.** An event or breadcrumb that reaches the SDK's hooks before [listen] registered the
  * handlers is dropped rather than sent as it is.
  *
- * **What is asserted, and what is only believed.** `CrashReporterContract` (`:test:contracts`) runs this class,
- * over the real SDK, on the simulator test executable, against a loopback ingest. Two claims have no host there and
- * stay beliefs, with their evidence:
- * - the global-scope tag and context ride a crash delivered on a LATER launch — a reading of sentry-cocoa's source
- *   (`changes/archive/2026-07-29-add-release-and-process-to-crash-reports`), not a measurement;
- * - the `process` tag itself — the test executable has no bundle identifier (measured 2026-09-23), so there [start]
- *   sets none.
+ * **What is asserted, and what is only believed.** `CrashReporterContract` (`:test:contracts`) runs this class, over
+ * the real SDK, against a loopback ingest, on the iOS simulator test executable and on the Android emulator. One claim
+ * has no host and stays a belief: that the global-scope tags ride a crash delivered on a LATER launch after a real
+ * process death — a reading of sentry-cocoa's source (`changes/archive/2026-07-29-add-release-and-process-to-crash-reports`)
+ * on iOS, and on Android the cache-and-restart clause `RESTART_CACHED_EVENT_KEEPS_ITS_BUILD` rather than a crash.
  */
 class SentryCrashReporter : CrashReporter {
 
@@ -63,27 +64,26 @@ class SentryCrashReporter : CrashReporter {
         processStarted = true
         Sentry.init { sdk ->
             sdk.dsn = options.dsn
-            sdk.environment = bakedSentryEnvironment()
-            // The version line this build carries. Set only when present and non-blank: an empty-string release is
-            // worse than none, because it creates a release record that looks real. The build number is NOT folded
-            // in — it rides as `dist` (below), which is the SDK's own release/dist split.
-            bundleValue("CFBundleShortVersionString")?.let { sdk.release = it }
-            // ⚠️ `dist` is LEFT UNSET ON PURPOSE. It is not symmetrical with `release` above: the native SDK applies
-            // the release option only when the event has none, but applies the dist option UNCONDITIONALLY at send
-            // time. A crash is cached and delivered on a LATER launch — possibly after the device updated — so a dist
-            // we set would overwrite the build number the crash report recorded when it actually crashed. Because
-            // dSYMs are resolved as `dsyms-<dist>`, that would silently symbolicate a crash against a DIFFERENT
-            // build's symbols. Leaving it unset keeps the value crash-time accurate.
+            options.environment?.let { sdk.environment = it }
+            // Only when present: an empty-string release is worse than none, because it creates a release record that
+            // looks real. The build number is NOT folded in — it rides as `dist`, the SDK's own release/dist split.
+            options.release?.let { sdk.release = it }
+            // ⚠️ Only when the options carry one. sentry-cocoa applies the dist option UNCONDITIONALLY at send time, and a
+            // crash is delivered on a LATER launch — possibly after the device updated — so on iOS a dist set here would
+            // overwrite the build number the crash report recorded when it actually crashed. `crashDist` decides.
+            options.dist?.let { sdk.dist = it }
             sdk.sendDefaultPii = false
             sdk.enableCaptureFailedRequests = false
+            sdk.attachScreenshot = false
+            sdk.attachViewHierarchy = false
+            sdk.isAnrEnabled = true
             sdk.maxBreadcrumbs = options.maxBreadcrumbs
             sdk.beforeBreadcrumb = { crumb -> handlers?.onBreadcrumb?.invoke(crumb.toCrumb())?.let(crumb::shapedAs) }
             sdk.beforeSend = { event -> handlers?.onEvent?.invoke(event.toCrashEvent())?.let(event::shapedAs) }
         }
-        // Which of the two processes is reporting, on the global scope the native SDK persists into fatal events.
-        // The value is the raw bundle id, so the tag claims nothing beyond what it read.
-        NSBundle.mainBundle.bundleIdentifier?.takeIf { it.isNotBlank() }?.let { bundleId ->
-            Sentry.configureScope { scope -> scope.setTag("process", bundleId) }
+        // Which platform and process is reporting, on the global scope the native SDKs persist into fatal events.
+        if (options.tags.isNotEmpty()) {
+            Sentry.configureScope { scope -> options.tags.forEach { (key, value) -> scope.setTag(key, value) } }
         }
     }
 
@@ -138,10 +138,6 @@ private fun Scope.carry(event: CrashEvent) {
     event.tags.forEach { (key, value) -> setTag(key, value) }
     event.contexts.forEach { (name, fields) -> setContext(name, fields) }
 }
-
-/** Apple's OWN Info.plist keys only. Deployment values come from `bakedSentryEnvironment` and friends. */
-private fun bundleValue(key: String): String? =
-    (NSBundle.mainBundle.objectForInfoDictionaryKey(key) as? String)?.takeIf { it.isNotBlank() }
 
 // ---- the translation, both directions: the one place that knows the SDK's event shape ----------------------------
 

@@ -36,7 +36,7 @@ group, with the group's argument in the commit.
 
 | group | why it exists | members |
 |---|---|---|
-| **Withholding** | withholds a dependency (third-party, platform, or another core zone) from its consumers by compile error | `:domain:model` `:domain:ports` `:domain:services` `:domain:feature` `:domain:flow` `:domain:presentation` `:domain:compose` `:domain:host` · `:ui:screens` `:ui:components` · `:adapter:ios:ext-safe` `:adapter:ios:app-only` `:adapter:generic:app` `:adapter:generic:mock` · `:app:ios` `:app:ios:extension` `:app:desktop` |
+| **Withholding** | withholds a dependency (third-party, platform, or another core zone) from its consumers by compile error | `:domain:model` `:domain:ports` `:domain:services` `:domain:feature` `:domain:flow` `:domain:presentation` `:domain:compose` `:domain:host` · `:ui:screens` `:ui:components` · `:adapter:ios:ext-safe` `:adapter:ios:app-only` `:adapter:generic:app` `:adapter:generic:mock` `:adapter:generic:sentry` · `:app:ios` `:app:ios:extension` `:app:desktop` |
 | **Contained** | exists so that something is **absent** from a production build, and is linked only under a build property | `:test:rig`, `:test:contracts`, `:test:launch-adapters` (`-Psnapsync.rig`) |
 | **Support** | never linked into a shipped-format binary, exempt from production-module laws | `:app:jvm` `:test:integration` `:test:architecture` `:test:harness-driver` `:test:edge` `:test:control` `:tools:diagrams` |
 
@@ -113,7 +113,10 @@ paths, not modules. Each axis names the question that separates its leaves:
   extension-side link unsafe. `ui` is app-only too and holds what needs Compose and UIKit's UI: the `Ui`
   adapter (the Compose scene SwiftUI pulls, and the scene rule), the `Lifecycle` adapter, and the
   main-confined `SceneRecord` they share.
-- **generic axis = shippability.** `app` ships in the app and extension binaries. `mock` never ships. Each mock
+- **generic axis = shippability.** `app` ships in the app and extension binaries, and so does `sentry` — the crash
+  reporter, the `CrashReporter` port over the Sentry KMP SDK, ONE seat for iOS (both processes) and Android, because it
+  is where "nothing unshaped leaves" is enforced. It reads no platform API: the build's facts arrive in `CrashOptions`
+  from `BuildInfo`. It is its own module because it withholds the SDK. `mock` never ships. Each mock
   is a durable state, a per-process port face and a separate operator face (`docs/testing.md`, "Mocks"); the
   classes behind the port faces are all `internal` and every face is port-typed, so honesty is checked by the
   compiler: an app is only ever handed a port.

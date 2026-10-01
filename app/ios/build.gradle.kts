@@ -17,15 +17,15 @@ kotlin {
     }
 
     // Sentry test-link (capability `privacy-security`): this module's simulator TEST binary links
-    // :adapter:ios:ext-safe and therefore Sentry symbols; reuse the Sentry-Dynamic framework that
+    // :adapter:generic:sentry and therefore Sentry symbols; reuse the Sentry-Dynamic framework that
     // module provisions (see its build script for why the DYNAMIC variant) — same -F for the link,
     // same -rpath for the simulator-process load.
-    val sentrySimulatorSlice = project(":adapter:ios:ext-safe").layout.buildDirectory
+    val sentrySimulatorSlice = project(":adapter:generic:sentry").layout.buildDirectory
         .dir("sentry-cocoa/${libs.versions.sentry.cocoa.get()}/Sentry-Dynamic.xcframework/ios-arm64_x86_64-simulator")
         .get().asFile.toString()
     iosSimulatorArm64().binaries.all {
         if (this is org.jetbrains.kotlin.gradle.plugin.mpp.TestExecutable) {
-            linkTaskProvider.configure { dependsOn(":adapter:ios:ext-safe:provisionSentryCocoa") }
+            linkTaskProvider.configure { dependsOn(":adapter:generic:sentry:provisionSentryCocoa") }
             linkerOpts("-F$sentrySimulatorSlice", "-rpath", sentrySimulatorSlice)
         }
     }
@@ -84,6 +84,8 @@ kotlin {
             implementation(project(":adapter:ios:ext-safe"))
             implementation(project(":adapter:ios:app-only"))
             implementation(project(":adapter:ios:ui"))
+            // The crash-reporting seat both platforms share (capability `privacy-security`).
+            implementation(project(":adapter:generic:sentry"))
             implementation(libs.coroutines.core)
             implementation(libs.kermit)
             implementation(libs.compose.runtime)

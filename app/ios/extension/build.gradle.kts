@@ -55,6 +55,8 @@ kotlin {
             // platform-free technology impls (:adapter:generic:app — the Ktor clients).
             implementation(project(":adapter:generic:app"))
             implementation(project(":adapter:ios:ext-safe"))
+            // The crash-reporting seat both platforms share (capability `privacy-security`).
+            implementation(project(":adapter:generic:sentry"))
             // The rig's extension hook reads the launch-time adapters and composes its mocks (`docs/testing.md`, "The
             // launch-time adapters") — only under the same switch as its source directory, never in a shipped
             // extension (`MockContainmentTest`).
