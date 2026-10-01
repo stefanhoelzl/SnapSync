@@ -312,6 +312,11 @@ class SimAppLivePhotoImportBinding : Binding<LivePhotoImportState, StagedLiveImp
 
             override fun marker(ref: AssetRef): MarkerState = markers[ref] ?: MarkerState.NONE
 
+            // Through the reader's resource read — the same read a later install's join makes.
+            override suspend fun primaryFilename(id: AssetId): String? =
+                (IosGalleryReader(Logger.withTag("contract")).resources(setOf(id)) as? GalleryRead.Read)
+                    ?.value?.firstOrNull()?.rawResources?.firstOrNull { it.role == ResourceRole.PRIMARY }?.originalFilename
+
             override suspend fun isLivePhoto(id: AssetId): Boolean? =
                 asset(id)?.let { (it.mediaSubtypes and PHAssetMediaSubtypePhotoLive) != 0UL }
 
