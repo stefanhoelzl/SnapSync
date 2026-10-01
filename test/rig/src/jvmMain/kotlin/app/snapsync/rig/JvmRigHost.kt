@@ -76,7 +76,7 @@ class JvmRigHost private constructor(
                 core = { rig.app.core },
                 // Read per request, never captured: a relaunch replaces the app, and its host with it.
                 host = { rig.app.host },
-                hooks = jvmHooks(rig, publishBoundPort = { bound.complete(it) }),
+                hooks = jvmHooks(rig, publishBoundPort = { bound.complete(it) }, reportBindFailure = { bound.completeExceptionally(BindFailed(port, it)) }),
                 port = port,
             )
             server.start()
@@ -90,9 +90,21 @@ class JvmRigHost private constructor(
                     "the JVM rig host did not bind loopback:$port within $BIND_TIMEOUT — see the `[rig]` log line",
                     timeout,
                 )
+            } catch (failed: BindFailed) {
+                server.stop()
+                scope.cancel()
+                lane.close()
+                throw failed
             }
             return JvmRigHost(rig, actual, server, scope, lane)
         }
+
+        /**
+         * The bind's failure, as the start reports it. Its own type because the engine reports a refused bind as a
+         * cancellation of its job, which the start must not mistake for its caller cancelling it.
+         */
+        private class BindFailed(port: Int, cause: Throwable) :
+            IllegalStateException("the JVM rig host failed to bind loopback:$port — see the `[rig]` log line", cause)
 
         private fun compose(scope: CoroutineScope, backend: RigBackend, lane: kotlinx.coroutines.CoroutineDispatcher): JvmRig {
             // Invite-link hints honoured, as the rig's development controls answer them on a device: this host IS the
@@ -120,7 +132,7 @@ class JvmRigHost private constructor(
             return rig
         }
 
-        private fun jvmHooks(rig: JvmRig, publishBoundPort: (Int) -> Unit): RigHooks {
+        private fun jvmHooks(rig: JvmRig, publishBoundPort: (Int) -> Unit, reportBindFailure: (Throwable) -> Unit): RigHooks {
             val mocks = rig.mocks
             return RigHooks(
                 bootedAt = Clock.System.now().toString(),
@@ -169,6 +181,7 @@ class JvmRigHost private constructor(
                 readGallery = rig.world.mockGalleryReader(),
                 osExtensionEnabled = { null },
                 publishBoundPort = publishBoundPort,
+                reportBindFailure = reportBindFailure,
                 contracts = emptyList(),
                 refusals = jvmRefusals(rig),
                 osRecord = rig.os::record,
