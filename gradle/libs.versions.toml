@@ -43,6 +43,7 @@ android-jvmTarget = "17"
 androidx-activity = "1.13.0"
 androidx-work = "2.12.0"
 firebase-messaging = "25.1.3"
+installreferrer = "2.2"
 androidx-lifecycle = "2.11.0"
 androidx-test-runner = "1.7.0"
 # The open helper SQLDelight's Android driver runs on — the version its own POM resolves.
@@ -87,6 +88,7 @@ androidx-activity-compose = { module = "androidx.activity:activity-compose", ver
 androidx-work-runtime = { module = "androidx.work:work-runtime", version.ref = "androidx-work" }
 androidx-work-testing = { module = "androidx.work:work-testing", version.ref = "androidx-work" }
 firebase-messaging = { module = "com.google.firebase:firebase-messaging", version.ref = "firebase-messaging" }
+installreferrer = { module = "com.android.installreferrer:installreferrer", version.ref = "installreferrer" }
 # The instrumentation runner the Android device tests (`src/androidDeviceTest` on the emulator) run under.
 androidx-test-runner = { module = "androidx.test:runner", version.ref = "androidx-test-runner" }
 androidx-lifecycle-process = { module = "androidx.lifecycle:lifecycle-process", version.ref = "androidx-lifecycle" }

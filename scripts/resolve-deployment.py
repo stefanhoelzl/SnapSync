@@ -159,10 +159,11 @@ INVENTORY = [
     """),
     Key("apnsKeyId", [JSON], doc="APNs Auth Key id — the provider-JWT `kid`."),
     Key("appStoreUrl", [JSON, SITE, PLIST], doc="""
-        The app's App Store page. Read by THREE consumers, which is why it is one value: `GET /join`
-        redirects an app-less visitor here, the site's download button links here, and the device shows
-        it when the backend refuses the build as too old (capability `app-update-required`) — a state whose
-        only remedy is this link.
+        The app's App Store page. Read by TWO consumers, which is why it is one value: the site's download
+        button links here, and the device shows it when the backend refuses the build as too old
+        (capability `app-update-required`) — a state whose only remedy is this link. (`GET /join` once
+        redirected app-less visitors here too; it now serves the one constant event page, which carries the
+        site's button instead.) Rendered to the api bundle as well, which reads it nowhere today.
 
         ⚠️ **The country segment is load-bearing while availability is limited.** Measured 2026-08-28:
         the country-less `apps.apple.com/app/id<id>` resolves to the US storefront and answers **404**,
@@ -174,6 +175,18 @@ INVENTORY = [
 
         Stated here because the JSON that holds the value carries no comments, and the site's own
         hardcoded copy of this URL (which had the correct form) is what the SITE rendering replaces.
+    """),
+    Key("playStoreUrl", [SITE, PROPS], doc="""
+        The app's Google Play page — `appStoreUrl`'s Android counterpart, with the same two readers: the site's
+        Play badge (landing page and event page) and the Android device's update notice (capability
+        `app-update-required`). EMPTY until the Play listing is public (production launch): an empty value
+        shows no badge and gives the Android notice no button, because a closed-testing listing answers every
+        other visitor with Play's "not found".
+
+        When set it MUST be exactly `https://play.google.com/store/apps/details?id=<androidPackageName>`: the
+        event page appends `&referrer=<invite>` to it (capability `join-event` — the install referrer that opens
+        the invite on first launch), so a second query or a foreign URL would break that, and the package it
+        names must be the one the build installs. Not rendered to the api bundle, which links no store.
     """),
     Key("appAttestRootCa", [JSON], doc="""
         Apple's App Attest ROOT CA — the trust anchor every attestation chain is verified against. A
@@ -493,7 +506,18 @@ def validate(flat: dict, name: str) -> str:
             # A literal for a build-scope key is fine; it is simply not read from the environment.
             pass
     validate_android_trust(flat, name, kind)
+    validate_play_store_url(flat, name)
     return kind
+
+
+def validate_play_store_url(flat: dict, name: str) -> None:
+    """Empty (dormant), or exactly the listing of the package this deployment attests — see its inventory doc."""
+    url = flat.get("playStoreUrl", "")
+    if url == "":
+        return
+    expected = f"https://play.google.com/store/apps/details?id={flat.get('androidPackageName')}"
+    if url != expected:
+        fail(f"deployment '{name}': playStoreUrl '{url}' must be empty or exactly '{expected}'")
 
 
 ANDROID_TRUST = {"hardware", "any"}

@@ -21,6 +21,8 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.v2.runComposeUiTest
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.model.CaptureCeiling
+import app.snapsync.model.StoreKind
+import app.snapsync.model.StoreLink
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.EventConfig
 import app.snapsync.model.EventLinkPayload
@@ -127,7 +129,7 @@ class HostStatusActionsTest {
                 permission = this.permission,
                 config = this.config,
                 versionRefusal = MutableStateFlow(refusal),
-                appStoreUrl = STORE_URL,
+                store = StoreLink(STORE_URL, StoreKind.APP_STORE),
             ),
             scope = scope,
             cutoffFormatter = CutoffFormatter(now = { Instant.parse("2026-07-06T12:00:00Z") }, zone = TimeZone.UTC),

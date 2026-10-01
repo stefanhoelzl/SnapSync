@@ -2,16 +2,18 @@ package app.snapsync.android.buildinfo
 
 import android.os.Build
 import app.snapsync.model.DiagnosticEnvironment
+import app.snapsync.model.StoreKind
+import app.snapsync.model.StoreLink
 import app.snapsync.model.uploadersCarried
 import app.snapsync.ports.BuildInfo
 
 /**
  * The [BuildInfo] port on Android: what the running build is. The app module's generated `BuildConfig` carries the
  * build's own constants, which no adapter module can read, so the root hands those in ([appVersion], [uploadHost],
- * [bootLines]); what the platform itself answers — the OS release, the device model — this adapter reads.
+ * [bootLines], [playStoreUrl]); what the platform itself answers — the OS release, the device model — this adapter reads.
  *
- * Android has no OS-driven upload mechanism (the app's uploader is its only one), no App Store page, and no crash
- * channel yet, so it reports nowhere.
+ * Android has no OS-driven upload mechanism (the app's uploader is its only one) and no crash channel yet, so it
+ * reports nowhere. Its store is Google Play — known only once the deployment names the listing's page.
  */
 class AndroidBuildInfo(
     override val appVersion: String,
@@ -24,8 +26,13 @@ class AndroidBuildInfo(
      * backend's FCM sender sends under (the port's name is APNs vocabulary; on Android it is the project id).
      */
     override val apnsEnvironment: String,
+    /**
+     * The build's Google Play page, EMPTY until the listing is public (production launch) — the update notice then
+     * offers no store at all, which beats an offer that lands on Play's "not found" (capability `app-update-required`).
+     */
+    playStoreUrl: String,
 ) : BuildInfo {
-    override val appStoreUrl: String? = null
+    override val store: StoreLink? = playStoreUrl.takeIf { it.isNotEmpty() }?.let { StoreLink(it, StoreKind.GOOGLE_PLAY) }
 
     override val osSupportsOsDrivenUpload: Boolean = false
 

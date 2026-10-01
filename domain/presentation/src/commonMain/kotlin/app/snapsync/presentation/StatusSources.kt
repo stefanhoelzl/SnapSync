@@ -10,6 +10,7 @@ import app.snapsync.feature.membership.readmodel.RenameStatusSource
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
+import app.snapsync.model.StoreLink
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import app.snapsync.model.VersionRefusal
@@ -83,11 +84,11 @@ class StatusSources(
      */
     val versionRefusal: StateFlow<VersionRefusal?> = MutableStateFlow(null),
     /**
-     * This build's App Store page, or `null` when it carries none. A build constant supplied by the
+     * This build's store page, or `null` when it carries none. A build constant supplied by the
      * composition root, not a source — it is here because the ONE screen that needs it is the refusal
      * above, and pairing them is what stops a host wiring the state without the remedy.
      */
-    val appStoreUrl: String? = null,
+    val store: StoreLink? = null,
 )
 
 /**

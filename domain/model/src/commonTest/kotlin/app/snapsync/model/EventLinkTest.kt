@@ -6,6 +6,7 @@ import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class EventLinkTest {
@@ -249,5 +250,53 @@ class EventLinkTest {
     fun `encode with saveToAlbum round-trips`() {
         val payload = success(encodeEventUrl(EventLinkPayload(eventId = eventId, saveToAlbum = true)))
         assertEquals(true, payload.saveToAlbum)
+    }
+
+    // ---- the Google Play install referrer (capability `join-event`) ----
+
+    private fun fragmentOf(link: String) = link.substringAfter('#')
+
+    @Test
+    fun `an install referrer carrying an invite answers its canonical link`() {
+        val link = encodeEventUrl(sample)
+        assertEquals(link, inviteLinkFromInstallReferrer(fragmentOf(link)))
+    }
+
+    @Test
+    fun `a referrer with the hints the page passes on keeps them`() {
+        val link = encodeEventUrl(EventLinkPayload(eventId = eventId, autoJoin = true))
+        assertEquals(link, inviteLinkFromInstallReferrer(fragmentOf(link)))
+    }
+
+    @Test
+    fun `a padded payload is answered in the canonical unpadded form`() {
+        val padded = Base64.UrlSafe.withPadding(Base64.PaddingOption.PRESENT)
+            .encode("""{"eventId":"$eventId"}""".encodeToByteArray())
+        assertEquals(encodeEventUrl(sample), inviteLinkFromInstallReferrer("v=3&d=$padded"))
+    }
+
+    @Test
+    fun `parameters beside the invite are dropped and not passed on`() {
+        val referrer = "v=3&d=${absent("""{"eventId":"$eventId"}""")}&utm_source=elsewhere"
+        assertEquals(encodeEventUrl(sample), inviteLinkFromInstallReferrer(referrer))
+    }
+
+    @Test
+    fun `an organic install carries no invite`() {
+        assertNull(inviteLinkFromInstallReferrer("utm_source=google-play&utm_medium=organic"))
+    }
+
+    @Test
+    fun `a referrer that is not an invite carries none`() {
+        for (referrer in listOf(
+            "",
+            "garbage",
+            "v=2&d=${absent("""{"eventId":"$eventId"}""")}",
+            "v=3&d=not-base64!",
+            "v=3&d=${absent("""{"eventId":"not-a-uuid"}""")}",
+            fragmentOf(encodeEventUrl(sample)).replace("&", "%26"), // encoded twice: Play decodes once
+        )) {
+            assertNull(inviteLinkFromInstallReferrer(referrer), "expected no invite for: $referrer")
+        }
     }
 }

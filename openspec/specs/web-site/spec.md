@@ -3,8 +3,8 @@
 ## Purpose
 Serves anyone who opens SnapSync's address in a browser — a curious guest, a prospective host, an App
 Store reviewer — with one public page that says what SnapSync is, shows the real app, links to the App
-Store, and carries the Privacy Policy, the Terms of Use and a way to get support. It promises that the
-pictures on the site are the same software the App Store listing shows, and that the page is readable by
+Store (and to Google Play once SnapSync is published there), and carries the Privacy Policy, the Terms
+of Use and a way to get support. It promises that the pictures on the site are the same software the App Store listing shows, and that the page is readable by
 anyone, in light or dark mode, with a keyboard and without JavaScript. What the site may and may not
 collect about its visitors is capability `privacy-security`; the page an invite link shows is capability
 `event-site`.
@@ -13,11 +13,17 @@ Decision record: changes/archive/2026-07-15-add-marketing-page
 ## Requirements
 ### Requirement: A public landing page describes SnapSync
 Opening SnapSync's web address in any browser SHALL show a landing page that explains what SnapSync does
-and offers a link to get the app from the App Store. It SHALL need no account, no app and no sign-in.
+and offers a link to get the app from the App Store. Once SnapSync is published on Google Play, the page
+SHALL also offer a link to get it there, beside the App Store link and on every device. Until then, the
+page SHALL NOT offer Google Play. It SHALL need no account, no app and no sign-in.
 
 #### Scenario: A visitor opens the site
 - **WHEN** someone opens SnapSync's web address in a browser
 - **THEN** they see the landing page describing SnapSync, with a link to the App Store
+
+#### Scenario: Both stores are offered once SnapSync is on Google Play
+- **WHEN** SnapSync is published on Google Play and someone opens SnapSync's web address
+- **THEN** the landing page links to SnapSync on both the App Store and Google Play
 
 #### Scenario: The site opens in the browser even with the app installed
 - **WHEN** someone with SnapSync installed opens the site's address (not an invite link) on their iPhone
@@ -82,9 +88,13 @@ Every page of the site SHALL show SnapSync's app icon as its browser-tab icon.
 - **THEN** the browser tab shows the SnapSync app icon
 
 ### Requirement: Links to other sites never replace the SnapSync page
-Every link from the site to another site (App Store, issue tracker, email, Apple's licence terms) SHALL
-open separately, leaving the SnapSync page open where it was.
+Every link from the site to another site (App Store, Google Play, issue tracker, email, Apple's licence
+terms) SHALL open separately, leaving the SnapSync page open where it was.
 
 #### Scenario: Following the App Store link
 - **WHEN** a visitor follows the App Store link from any page of the site
 - **THEN** the App Store opens separately and the SnapSync page stays open
+
+#### Scenario: Following the Google Play link
+- **WHEN** a visitor follows the Google Play link from any page of the site
+- **THEN** Google Play opens separately and the SnapSync page stays open

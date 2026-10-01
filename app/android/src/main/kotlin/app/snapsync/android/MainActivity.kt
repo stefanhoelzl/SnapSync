@@ -16,6 +16,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent(content = root.ui.content())
         root.links.deliverCreated(intent, restored = savedInstanceState != null)
+        root.onScreenCreated()
     }
 
     override fun onNewIntent(intent: Intent) {

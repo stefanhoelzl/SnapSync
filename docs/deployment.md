@@ -29,6 +29,8 @@ deployments/components/build.json      build-scope values: sha (GITHUB_SHA), cha
 deployments/components/policy.json     eventCapacity, eventWindowMaxSeconds, eventLifetimeSeconds,
                                        attestTokenTtlSeconds
 deployments/components/apple.json      bundleId, teamId, apnsKeyId, appStoreUrl, appAttestRootCa
+deployments/components/android.json    androidPackageName, playStoreUrl, the attestation roots/trust/digests,
+                                       the Firebase values
 deployments/components/storage-*.json  storage kind / zone / host / s3Region + the access-key env reference
 deployments/components/prod-core.json  domain + the env references for every secret, shared by prod and
                                        maintenance
@@ -116,6 +118,13 @@ The deployment declares the **names**. Values come from the environment of which
 - APNs: `apnsKeyId` / `teamId` / `bundleId` live in `deployments/components/apple.json`. Update that
   file if the key is rotated. The APNs topic is derived from the bundle id. The key is a one-time
   provisioning for team `E9Z8BADH58`. Decision record: `changes/archive/2026-07-05-push-notification-infra`.
+- Store pages: `appStoreUrl` (`apple.json`) and `playStoreUrl` (`android.json`) reach the site and their
+  platform's build — the site's two badges and each platform's update notice (capability `app-update-required`).
+  `playStoreUrl` is **empty until the Play listing is public** (production launch): empty shows no Play badge,
+  gives the Android notice no button, and leaves the event page's install-referrer path dormant. Setting it — to
+  exactly `https://play.google.com/store/apps/details?id=<androidPackageName>`, which the resolver enforces
+  because the event page appends `&referrer=<invite>` — switches all three on: the site on its next deploy, the
+  Android notice in the next Android build. Decision record: `changes/archive/2026-10-01-play-badge-and-install-referrer`.
 
 ### iOS: the baked values
 

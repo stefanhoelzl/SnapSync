@@ -13,7 +13,8 @@
     "check:fmt": "prettier --check .",
     "check:types": "astro check",
     "check:selfcontained": "deno run --allow-read scripts/check-selfcontained.ts",
-    "check": "npm run check:types && npm run check:fmt && npm run check:selfcontained",
+    "check:unit": "deno test --allow-read scripts/invite.test.ts",
+    "check": "npm run check:types && npm run check:fmt && npm run check:selfcontained && npm run check:unit",
     "deploy": "deno run --allow-read --allow-env --allow-net scripts/deploy.ts",
     "preview": "astro preview"
   },

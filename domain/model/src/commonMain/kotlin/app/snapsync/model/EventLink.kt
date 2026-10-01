@@ -112,6 +112,23 @@ fun decodeEventUrl(raw: String): ConfigDecodeResult {
     return ConfigDecodeResult.Success(payload)
 }
 
+/**
+ * The invite a Google Play install carried, as the event link it came from — or `null` when the install carried none
+ * (capability `join-event`). The event page's Play button hands the invite's fragment payload, exactly `v=3&d=…`, to
+ * Play as the install referrer; Play answers it to the installed app URL-decoded once, so [referrer] is that payload.
+ *
+ * `null` is every install that did not come through an invite's page — above all the ORGANIC one, whose referrer Play
+ * fills in itself (`utm_source=google-play&utm_medium=organic`) — and anything that does not decode as an invite. It
+ * must stop here rather than reach the Links port, where an unparsable link is reported as a damaged invite: every
+ * ordinary install would open on that error. A decoded invite is answered in its canonical form, so it opens exactly as
+ * the tapped link does.
+ */
+fun inviteLinkFromInstallReferrer(referrer: String): String? =
+    when (val decoded = decodeEventUrl(PREFIX + referrer.trim())) {
+        is ConfigDecodeResult.Success -> encodeEventUrl(decoded.payload)
+        is ConfigDecodeResult.Failure -> null
+    }
+
 private fun fail(reason: String) = ConfigDecodeResult.Failure(reason)
 
 /**

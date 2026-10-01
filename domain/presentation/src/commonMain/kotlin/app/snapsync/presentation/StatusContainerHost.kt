@@ -77,6 +77,7 @@ import app.snapsync.model.PendingSwitch
 import app.snapsync.model.RangeForm
 import app.snapsync.model.RenameState
 import app.snapsync.model.ResolvedRange
+import app.snapsync.model.StoreLink
 import app.snapsync.model.ShareCount
 import app.snapsync.model.SyncHealth
 import app.snapsync.model.UiState
@@ -138,7 +139,7 @@ class StatusContainerHost(
     private val attested = sources.attested
     private val pending = sources.pending
     private val versionRefusal = sources.versionRefusal
-    private val appStoreUrl = sources.appStoreUrl
+    private val store = sources.store
 
     private val log = diagnostics.log
     private val onIntentError = diagnostics.onIntentError
@@ -273,7 +274,7 @@ class StatusContainerHost(
                 transientErrorState.value,
                 formState.value,
                 reconfiguringState.value,
-                updateLayerFor(versionRefusal.value, appStoreUrl),
+                updateLayerFor(versionRefusal.value, store),
                 ::resolveRange,
             ).let { layer -> UiState(layer, overlaysState.value.maskedFor(layer), reportDestination) },
             // The container SURVIVES a throwing intent (spec `sync-status`) — and this handler is the
@@ -333,7 +334,7 @@ class StatusContainerHost(
                         values[9] as String?,
                         values[11] as RangeForm,
                         values[12] as Owned<SettingsSurface>,
-                        updateLayerFor(values[13] as VersionRefusal?, appStoreUrl),
+                        updateLayerFor(values[13] as VersionRefusal?, store),
                         ::resolveRange,
                     ).let { layer -> UiState(layer, (values[10] as Overlays).maskedFor(layer), reportDestination) }
                 }
@@ -463,7 +464,7 @@ class StatusContainerHost(
      * does not hold.
      */
     fun onOpenAppStore() = intent {
-        (state.layer as? Layer.UpdateRequired)?.storeUrl?.let { commands.openLink(it) }
+        (state.layer as? Layer.UpdateRequired)?.store?.let { commands.openLink(it.url) }
     }
 
     /**
@@ -991,8 +992,8 @@ private fun JoinPhase.name(): String? = details?.name
  * keeps [reduceFrom] under the tier's parameter ceiling, which may only fall (`docs/architecture.md`) — a
  * budget respected by grouping what belongs together rather than by raising a number.
  */
-private fun updateLayerFor(refusal: VersionRefusal?, appStoreUrl: String?): Layer.UpdateRequired? =
-    refusal?.let { Layer.UpdateRequired(minimumVersion = it.minimumVersion, storeUrl = appStoreUrl) }
+private fun updateLayerFor(refusal: VersionRefusal?, store: StoreLink?): Layer.UpdateRequired? =
+    refusal?.let { Layer.UpdateRequired(minimumVersion = it.minimumVersion, store = store) }
 
 /**
  * What is shown while NO event is configured: the interactive join confirmation, or the create surface.

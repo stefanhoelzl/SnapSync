@@ -247,6 +247,12 @@ Where bindings live: beside their implementations.
 - `PlatformDeviceId`: its contract runs live on `ANDROID_EMU` over `ANDROID_ID` (an offered id is stable and
   canonical), and on the JVM over `NoPlatformDeviceId` (no id is `null`). "The same after a reinstall" is the property
   the id is chosen for and no process can test on itself; it is checked by hand on the emulator.
+- The install referrer on Android (the invite a Play install carried, capability `join-event`): which referrers are an
+  invite is pure and runs on the JVM (`EventLinkTest`, `inviteLinkFromInstallReferrer`); the once-per-install
+  bookkeeping runs on `ANDROID_EMU` over a scripted Play answer behind the reader's internal `ReferrerSource` seam and
+  the real `SharedPreferences` (`AndroidInstallReferrerTest`). It is no port and has no contract — the Links port's
+  promise is unchanged. What the real Play client answers on a Play-installed build is reachable only once the listing
+  is public (production launch), and is checked then by hand.
 - The storage services' fake-driven tests (their answers to what no contract state enters): `:adapter:generic:mock`
   `commonTest`, over the storage mocks — where the services' contracts are bound over the mocks too
   (`StoreContractBindingsTest`, `AppGroupStoreContractBindingsTest`, `ConfigStoreContractBindingTest`), so the mocks

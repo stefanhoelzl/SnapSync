@@ -41,6 +41,15 @@ class AndroidLinks(private val log: Logger) : Links {
         deliver(LinkDelivery(hook, isWebLink, activityType = intent.action, url = url))
     }
 
+    /**
+     * The invite a Google Play install carried ([AndroidInstallReferrer]), as the event link it came from. Delivered as
+     * an ordinary web link: the core treats it exactly as a tapped invite, and never learns where it came from.
+     */
+    @PlatformEntry
+    fun deliverInstallReferrer(url: String) {
+        deliver(LinkDelivery(INSTALL_REFERRER_HOOK, isWebLink = true, activityType = INSTALL_REFERRER_HOOK, url = url))
+    }
+
     private fun deliver(delivery: LinkDelivery) {
         val registered = handlers
         if (registered == null) {
@@ -50,3 +59,6 @@ class AndroidLinks(private val log: Logger) : Links {
         }
     }
 }
+
+/** The hook a Play-carried invite is delivered on — named in the log only. */
+private const val INSTALL_REFERRER_HOOK = "installReferrer"

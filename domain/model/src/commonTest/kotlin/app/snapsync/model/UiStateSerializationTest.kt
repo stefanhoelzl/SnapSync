@@ -40,9 +40,9 @@ class UiStateSerializationTest {
 
     @Test
     fun the_update_required_layer_round_trips() {
-        roundTrip(UiState(Layer.UpdateRequired(minimumVersion = "0.4", storeUrl = "https://apps.apple.com/de/app/id1")))
+        roundTrip(UiState(Layer.UpdateRequired(minimumVersion = "0.4", store = StoreLink("https://apps.apple.com/de/app/id1", StoreKind.APP_STORE))))
         // And with both absences, which are the states the screen renders differently.
-        roundTrip(UiState(Layer.UpdateRequired(minimumVersion = null, storeUrl = null)))
+        roundTrip(UiState(Layer.UpdateRequired(minimumVersion = null, store = null)))
     }
 
     @Test

@@ -2,8 +2,8 @@
 
 ## Purpose
 Serves the web visitor: anyone who opens an event's invite link where SnapSync is not installed — on
-Android, on a computer, or on an iPhone without the app. SnapSync is iPhone-only, but the photos the
-members shared are the visitor's to keep, so the link opens a page that names the event and lets them save
+Android, on a computer, or on an iPhone without the app. Whether or not the visitor ever installs SnapSync,
+the photos the members shared are theirs to keep, so the link opens a page that names the event and lets them save
 all of its photos in one download, with no app and no account, alongside a way to get SnapSync. How an
 invite link reaches the app where it is installed, and what to do after installing, is capability
 `join-event`; what this page may reveal or record is capability `privacy-security`.
@@ -24,11 +24,21 @@ platform, with no install, no account and no sign-in.
 
 ### Requirement: The page always offers the download and the app
 The event page SHALL always offer both a control to download all of the event's photos as one zip file
-and a link to get SnapSync from the App Store, whatever device or browser the visitor uses.
+and a link to get SnapSync from the App Store, whatever device or browser the visitor uses. Once SnapSync
+is published on Google Play, the page SHALL also offer a link to get it there, beside the App Store link
+and on every device. Until then, the page SHALL NOT offer Google Play.
 
 #### Scenario: Both actions are offered
 - **WHEN** the event page is shown for an event with photos
 - **THEN** it offers "download all photos (zip)" and "Get SnapSync"
+
+#### Scenario: Both stores are offered once SnapSync is on Google Play
+- **WHEN** SnapSync is published on Google Play and a visitor opens an event's page on any device
+- **THEN** the page offers SnapSync on both the App Store and Google Play
+
+#### Scenario: No Google Play offer before publication
+- **WHEN** SnapSync is not yet published on Google Play and a visitor opens an event's page
+- **THEN** the page offers the App Store only
 
 ### Requirement: The zip holds every photo the members have shared
 The downloaded zip SHALL contain one file for every photo and video the event's members have shared that
@@ -64,11 +74,16 @@ too large for the browser's memory SHALL fail with a message saying a very large
 - **THEN** the page says the download failed and the download control is available again
 
 ### Requirement: Getting the app does not interrupt a download
-Following "Get SnapSync" while a download is in progress SHALL NOT cancel or restart the download.
+Following either store's "Get SnapSync" link while a download is in progress SHALL NOT cancel or restart
+the download.
 
 #### Scenario: The visitor taps Get SnapSync mid-download
 - **WHEN** a visitor follows "Get SnapSync" while the zip is being prepared
 - **THEN** the App Store opens separately and the download continues
+
+#### Scenario: The visitor follows Google Play mid-download
+- **WHEN** a visitor follows the Google Play link while the zip is being prepared
+- **THEN** Google Play opens separately and the download continues
 
 ### Requirement: An invalid or expired link says so
 The page SHALL say the link is invalid or expired when the link is malformed or its event no longer

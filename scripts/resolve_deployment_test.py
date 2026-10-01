@@ -56,6 +56,7 @@ APPLE = {
 
 ANDROID = {
     "androidPackageName": "test.package",
+    "playStoreUrl": "",
     "androidSigningCertDigests": [],
     "androidAttestationRoots": ["-----BEGIN CERTIFICATE-----\ny\n-----END CERTIFICATE-----"],
     "androidAttestationTrust": "hardware",
@@ -245,8 +246,8 @@ class RenderingTest(unittest.TestCase):
     def test_a_key_reaches_only_its_declared_renderings(self):
         flat = Tree().standard().resolve()
         site = json.loads(rd.render_site(flat))
-        # The site sees the domain and the store link, and nothing else.
-        self.assertEqual(sorted(site), ["appStoreUrl", "domain"])
+        # The site sees the domain and the two store links, and nothing else.
+        self.assertEqual(sorted(site), ["appStoreUrl", "domain", "playStoreUrl"])
         body = rd.nest(rd.project(flat, rd.JSON)); body.pop("sha", None)
         self.assertNotIn("appName", body)  # xcconfig-only
         self.assertNotIn("channel", body)  # xcconfig-only
@@ -551,6 +552,37 @@ class AndroidTrustTest(unittest.TestCase):
         types = rd.render_types(Tree().standard().resolve())
         self.assertIn("readonly androidSigningCertDigests: readonly string[];", types)
         self.assertIn("readonly androidAttestationRoots: readonly string[];", types)
+
+
+class PlayStoreUrlTest(unittest.TestCase):
+    """`playStoreUrl`: empty (dormant) or exactly the attested package's listing — the event page appends a query."""
+
+    LISTING = "https://play.google.com/store/apps/details?id=test.package"
+
+    def props(self, flat):
+        return dict(l.split("=", 1) for l in rd.render_properties(flat).splitlines() if "=" in l and not l.startswith("#"))
+
+    def test_it_reaches_the_site_and_the_android_build_only(self):
+        flat = Tree().standard(playStoreUrl=self.LISTING).resolve()
+        self.assertEqual(json.loads(rd.render_site(flat))["playStoreUrl"], self.LISTING)
+        self.assertEqual(self.props(flat)["playStoreUrl"], self.LISTING)
+        self.assertNotIn("playStoreUrl", rd.nest(rd.project(flat, rd.JSON)))
+        self.assertNotIn("playStoreUrl", rd.project(flat, rd.PLIST))
+
+    def test_empty_is_dormant_and_accepted(self):
+        flat = Tree().standard().resolve()
+        self.assertEqual(json.loads(rd.render_site(flat))["playStoreUrl"], "")
+        self.assertEqual(self.props(flat)["playStoreUrl"], "")
+
+    def test_a_foreign_or_extended_url_is_refused(self):
+        for bad in [
+            "https://play.google.com/store/apps/details?id=other.package",
+            self.LISTING + "&hl=de",
+            "http://play.google.com/store/apps/details?id=test.package",
+            "https://example.invalid/app",
+        ]:
+            with self.assertRaisesRegex(rd.ResolveError, "playStoreUrl"):
+                Tree().standard(playStoreUrl=bad).resolve()
 
 
 class AtomicityTest(unittest.TestCase):

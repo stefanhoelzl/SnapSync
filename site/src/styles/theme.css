@@ -176,9 +176,25 @@ nav a:hover {
 }
 .cta {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
+  justify-content: center;
   align-items: center;
   gap: 12px;
+}
+/* Google's badge art carries its clear space as padding: the padded box is sized so the badge body matches the App
+   Store button's height, and the negative margin lets that clear space overlap the row's gap instead of widening it. */
+.playstore {
+  display: inline-flex;
+  margin: -12px -14px;
+  transition: transform 0.15s ease;
+}
+.playstore:hover {
+  transform: translateY(-2px);
+}
+.playstore img {
+  display: block;
+  height: 74px;
+  width: auto;
 }
 .appstore {
   display: inline-flex;
