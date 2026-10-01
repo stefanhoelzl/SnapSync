@@ -20,11 +20,11 @@
 - [x] 2.2 Move `SentryCrashReporter` and its translation into the module's `commonMain`, replacing the three platform
       reads with `CrashOptions` (release, environment, global tags) and keeping the ⚠️ `dist` comment, now scoped to
       when `dist` is null; verify the module compiles for all three targets
-- [ ] 2.3 Move `provisionSentryCocoa` and the iOS contract binding (`SentryCrashReporterContractTest`,
+- [x] 2.3 Move `provisionSentryCocoa` and the iOS contract binding (`SentryCrashReporterContractTest`,
       `resetProcessStart`) into the module, drop sentry-kmp from `:adapter:ios:ext-safe`, and point `:app:ios` and
       `:app:ios:extension` at the new module; verify `./gradlew compileIosMainKotlinMetadata` and
       `./gradlew :adapter:generic:sentry:iosSimulatorArm64Test` on a Mac (`ssh-mac-build`) pass
-- [ ] 2.4 Add clause `WIRE_BUILD_FACTS_RIDE_THE_EVENT` to `CrashReporterContract` (release, environment, `platform` and
+- [x] 2.4 Add clause `WIRE_BUILD_FACTS_RIDE_THE_EVENT` to `CrashReporterContract` (release, environment, `platform` and
       `process` tags reach the ingest) and bind it on the mock and iOS hosts; verify `ContractCoverageTest` and the iOS
       binding pass
 - [x] 2.5 Update `docs/architecture.md`, the CLAUDE.md Modules list (new module; ext-safe no longer holds the crash
