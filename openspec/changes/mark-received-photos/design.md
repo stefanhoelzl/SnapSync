@@ -178,8 +178,13 @@ The schema is unchanged.
   Adoption reads what the grant shows.
 - **A user renames a photo and removes the mark.** → Same fallback: that photo may arrive again.
 - **The name is visible to users.** → The mark is short, and the sender's stem is kept.
-- **Join latency** on iOS grows with the size of the in-window library. → The read is batched and runs once
-  per join; the join UI already waits for enrollment. Measure on an SE2 with a large window.
+- **Join latency.** A pass reads the name of every library photo dated inside the event's range, whoever took
+  it, at about 3.4 ms a photo. It runs at a join whenever the event already has foreign photos this phone has
+  not recorded, so a late joiner with many photos of their own in the range pays it. Measured on the SE2,
+  2026-10-01: a 30-day event over 5,941 photos took 20.3 s of names in a 21.4 s provision. A typical late join
+  is about 1–2 s. → **Accepted** (user decision, 2026-10-01). A slow join loses or duplicates nothing.
+  Narrowing to ±1 day around the foreign capture times was the rejected alternative: it would miss a received
+  photo whose date had been moved.
 - **Token algorithm drift** would silently stop adoption. → A pinned golden test (D2).
 
 ## Migration Plan
