@@ -1,6 +1,6 @@
 # Shared "archive a signed iOS device app" steps, used by ci.yml → ios-build (a merge gate). The
 # archive it produces is what ios-deliver uploads and what the App Store release later PROMOTES
-# (ios-appstore-promote.yml builds nothing — it promotes an existing build).
+# (promote.yml builds nothing — it promotes an existing build).
 #
 # WHY a COMPOSITE action and not a reusable (workflow_call) workflow: a reusable workflow renames the
 # caller's status-check context to "<job> / <inner-job>", which would rename `ios-build` wherever it is

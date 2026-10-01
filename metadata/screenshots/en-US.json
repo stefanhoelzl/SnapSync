@@ -1,6 +1,6 @@
 {
   "_comment": [
-    "Per-locale headline copy baked onto the App Store screenshots by the release (ios-appstore-promote.yml), keyed by the",
+    "Per-locale headline copy baked onto the App Store screenshots by the release (promote.yml), keyed by the",
     "marketing state (test/integration's Shots.kt) each raw in screenshots/ shows. Version-controlled next to the",
     "rest of the listing, so the copy is reviewable in a PR rather than living only in a CI script.",
     "",

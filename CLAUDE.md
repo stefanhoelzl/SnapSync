@@ -323,14 +323,22 @@ a major jump is a manual `Config.xcconfig` floor bump via a PR), and Android's `
 there until the next merge. `uv run .github/scripts/play_release.py status app.snapsync` (under `secrets-env`)
 lists Play's tracks read-only.
 
-**An App Store release PROMOTES a build you already tested** — the `vX.Y` tag is its receipt, not its
-trigger:
+**A store release PROMOTES a build you already tested** — to the App Store, Google Play, or both, with ONE
+build number; the `vX.Y` tag is its receipt, not its trigger, and is created only once every selected store
+accepted the submission:
 
 ```
-gh workflow run ios-appstore-promote.yml -f build_number=512             # attach, no submit
-gh workflow run ios-appstore-promote.yml -f build_number=512 -f submit=true
+gh workflow run promote.yml -f build_number=2140 -f dry_run=true            # guards + prepare + preflights only
+gh workflow run promote.yml -f build_number=2140                            # App Store (the default)
+gh workflow run promote.yml -f build_number=2140 -f android=true            # App Store + Play's closed track
+gh workflow run promote.yml -f build_number=2140 -f ios=false -f android=true
 ```
 
+- ⚠️ **A promote always submits** — there is no submit flag; the preflights (`asc review doctor`, Play's own
+  edit validation) are the gate. `dry_run` stops after them; it still prepares the App Store version (unpublished).
+  A **failed** run is re-dispatched as is: each submit skips once done, so the rerun completes it.
+- A store left out never gets that version. Play's target track is `PLAY_TRACK` in the workflow (`alpha`, the
+  closed track, until production access).
 - `build_number` is the build's `CFBundleVersion` = `ci.yml`'s `run_number` + 2000 (`BUILD_NUMBER_OFFSET`;
   builds at or below 2000 came from the retired `ios.yml`, numbered by its run).
   Promote the exact build you validated; the store version is derived from it (there is no `version`
@@ -338,7 +346,7 @@ gh workflow run ios-appstore-promote.yml -f build_number=512 -f submit=true
 - ⚠️ **Never push a `vX.Y` tag by hand.** Tags trigger nothing, and a tag you push yourself makes that
   version permanently un-releasable — the guard refuses a version whose tag already exists.
 - ⚠️ **A promote is single-shot per version.** Correcting an already-promoted version's screenshots or
-  release notes is a **manual console upload**.
+  release notes is a **manual console upload** (App Store Connect or the Play Console).
 - ⚠️ `asc review doctor` is **not** the whole preflight: it reported zero blockers on a version that
   `asc review submit` then refused, for a missing `en-US: whatsNew` (run 30632785849). A green gate is
   not a promise the submit will pass.

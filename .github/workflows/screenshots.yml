@@ -18,7 +18,7 @@
 # It uploads **6 RAW captures** (3 states x light/dark) as a workflow ARTIFACT and stops there.
 #
 # RAW ONLY, BY DESIGN. An operator commits these to `screenshots/` and they become the SINGLE SOURCE OF
-# TRUTH for two surfaces, each of which composites its own way: the release (ios-appstore-promote.yml)
+# TRUTH for two surfaces, each of which composites its own way: the release (promote.yml)
 # bakes on the brand band + headline and uploads to App Store Connect; the backend derives small WebP for
 # the landing page. Emitting raws (rather than finished frames) is what lets a headline or a size change
 # re-render WITHOUT a 10-20 minute macOS run. See `changes/archive/…-wire-screenshots-into-listing-and-site`.

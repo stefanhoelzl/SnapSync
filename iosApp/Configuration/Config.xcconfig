@@ -70,7 +70,7 @@
 // so builds auto-advance off the last release tag. The floor is normally left alone; bump it here (via
 // a PR) ONLY to force a MAJOR jump, e.g. 0.1 → 1.0. There is no longer an App Store "trap": main builds
 // reach only the internal TestFlight group (no Beta App Review at any version), and the App Store release
-// channel (ios-appstore-release / .github/workflows/ios-appstore-promote.yml) PROMOTES an existing build
+// channel (ios-appstore-release / .github/workflows/promote.yml) PROMOTES an existing build
 // and derives the store version FROM it — it never overrides MARKETING_VERSION and never builds.
 //
 // ⚠️ THE FLOOR MUST STAY AT OR ABOVE `MIN_APP_VERSION` in `api/src/config.ts`. The backend refuses any
