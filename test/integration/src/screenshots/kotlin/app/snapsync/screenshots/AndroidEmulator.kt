@@ -59,10 +59,12 @@ internal class AndroidEmulator(private val serial: String, override val port: In
     }
 
     /**
-     * Put the status bar in demo mode — again on every launch: right after a CI emulator boots, SystemUI took the
-     * broadcasts but kept the real clock (measured: a capture showed 10:50), and a repeat is harmless.
+     * Put the status bar in demo mode, afresh on every launch. Right after a CI emulator boots, SystemUI took the
+     * broadcasts but kept the real clock (measured: a capture showed 10:50). Repeating the commands on top of an active
+     * demo mode stacked a second Wi-Fi icon there (measured), so each launch leaves demo mode first and re-enters it.
      */
     private fun demoMode() {
+        adb("shell", "am", "broadcast", "-a", "com.android.systemui.demo", "-e", "command", "exit")
         DEMO.forEach { extras -> adb("shell", "am", "broadcast", "-a", "com.android.systemui.demo", *extras.toTypedArray()) }
     }
 
