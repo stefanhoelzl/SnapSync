@@ -24,7 +24,6 @@ import app.snapsync.feature.push.PushRegistration
 import app.snapsync.feature.membership.JoinEvent
 import app.snapsync.feature.membership.toCommit
 import app.snapsync.feature.membership.LeaveEvent
-import app.snapsync.feature.membership.MembershipEntry
 import app.snapsync.feature.membership.ShareSetLoad
 import app.snapsync.feature.membership.ManifestDeviceEnroller
 import app.snapsync.feature.membership.readmodel.MutableRenameStatusSource
@@ -801,16 +800,8 @@ class AppCore internal constructor(
             downloadController = downloadController,
             albumCoordinator = albumCoordinator,
             activeEventId = { services.config.config.value?.eventId },
-            // The order (stop, backend leave, load, adopt, save, start uploads) is `MembershipEntry`'s rule; the
-            // backend leave is awaited here, unlike the leave command's fire-and-forget, as it always was on this path.
-            enterMembership = MembershipEntry(
-                stopUploads = { uploadTransitions.onLeave() },
-                notifyLeave = notifyLeave,
-                loadShareSet = { shareSetLoad.load() },
-                adoptReceived = { cfg -> receivedPhotoAdoption.adopt(cfg) },
-                saveConfig = { cfg -> services.config.save(cfg) },
-                startUploads = { uploadTransitions.onJoin() },
-            )::enter,
+            // The order is `MembershipEntry`'s rule; the backend leave is awaited here, unlike the leave command's.
+            enterMembership = membershipEntry(notifyLeave)::enter,
             saveConfig = { cfg -> services.config.save(cfg) },
             refreshStatus = { refreshStatusSources() },
             // Usable access (`grantsPhotoAccess`): this gate feeds only ensureAlbum's granted
