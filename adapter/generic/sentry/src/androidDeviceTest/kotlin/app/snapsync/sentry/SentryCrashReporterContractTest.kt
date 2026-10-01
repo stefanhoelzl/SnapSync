@@ -14,9 +14,12 @@ import app.snapsync.contracts.Host
 import app.snapsync.contracts.WaitExpired
 import app.snapsync.contracts.verify
 import app.snapsync.model.CrashOptions
+import app.snapsync.ports.CrashReporter
 import co.touchlab.kermit.Logger
+import io.sentry.Sentry as SentryJava
 import io.sentry.kotlin.multiplatform.Sentry
 import java.io.File
+import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
@@ -57,7 +60,7 @@ class SentryCrashReporterContractTest {
             val restart = CrashRestart {
                 resetChannel(wipeCache = false)
                 ingest.open()
-                SentryCrashReporter()
+                SettledStart(SentryCrashReporter())
             }
             if (state != CrashReporterState.ACROSS_A_RESTART) ingest.open()
             val observe = object : CrashObservation {
@@ -74,7 +77,7 @@ class SentryCrashReporterContractTest {
                 }
             }
             val subject = CrashReporterSubject(
-                SentryCrashReporter(),
+                SettledStart(SentryCrashReporter()),
                 CrashOptions(ingest.dsn),
                 observe,
                 restart.takeIf { state == CrashReporterState.ACROSS_A_RESTART },
@@ -97,7 +100,28 @@ class SentryCrashReporterContractTest {
         resetProcessStart()
     }
 
+    /**
+     * The adapter, whose [start] returns only once the SDK's start-up work has run — so a clause's first capture never
+     * races sentry-android's start-time scan of its envelope cache.
+     *
+     * That race is the SDK's, and it loses an event: the scan can open the file the capture is still writing (the
+     * cache writes it in place, no temp-and-rename), fail to parse it, and DELETE it as corrupt ("won't retry").
+     * Harmless where the live send delivers from memory; fatal to `RESTART_CACHED_EVENT_KEEPS_ITS_BUILD`, whose live
+     * send is refused on purpose, so the disk copy is the only one. Measured on CI's emulator: 3 of 40 runs lost the
+     * event this way (sentry-android 8.41.0; upstream main still writes in place). The scan runs on the SDK's
+     * single-threaded executor, queued during init, so a no-op submitted after `start` completes only after it.
+     */
+    private class SettledStart(private val reporter: CrashReporter) : CrashReporter by reporter {
+        override fun start(options: CrashOptions) {
+            reporter.start(options)
+            SentryJava.getCurrentScopes().options.executorService.submit {}.get(SETTLE_SECONDS, TimeUnit.SECONDS)
+        }
+    }
+
     private companion object {
+        /** Past the SDK's own 15 s flush timeout, which a start-time scan may wait out per cached file. */
+        const val SETTLE_SECONDS = 30L
+
         /** As on iOS: past the worst first-send stall measured there, so only a real non-delivery expires. */
         val DELIVERY_DEADLINE = 45.seconds
         const val POLL_MILLIS = 20L
