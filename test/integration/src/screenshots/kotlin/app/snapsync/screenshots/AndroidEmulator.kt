@@ -8,7 +8,7 @@ import kotlin.time.Duration.Companion.seconds
  * live in its private storage on the device, reached through `run-as` — which is why the build must be debuggable (the
  * rig release build is not).
  *
- * On construction it forwards [port] to the app's control channel and puts the status bar in SystemUI's demo mode:
+ * It forwards [port] to the app's control channel, and puts the status bar in SystemUI's demo mode on each launch:
  * 9:41, a full battery, full Wi-Fi, no cellular icon and no notification icons, so no shot renders the wall clock or a
  * stray alert.
  */
@@ -18,10 +18,10 @@ internal class AndroidEmulator(private val serial: String, override val port: In
     init {
         adb("forward", "tcp:$port", "tcp:$APP_PORT")
         adb("shell", "settings", "put", "global", "sysui_demo_allowed", "1")
-        DEMO.forEach { extras -> adb("shell", "am", "broadcast", "-a", "com.android.systemui.demo", *extras.toTypedArray()) }
     }
 
     override suspend fun launch() {
+        demoMode()
         adb("shell", "am", "start", "-W", "-n", "$PACKAGE/$ACTIVITY")
         within(90.seconds, "the app never answered on its rig port $port") { healthy() }
     }
@@ -56,6 +56,14 @@ internal class AndroidEmulator(private val serial: String, override val port: In
 
     override fun delete(path: String) {
         adb("shell", "run-as", PACKAGE, "rm", "-rf", path)
+    }
+
+    /**
+     * Put the status bar in demo mode — again on every launch: right after a CI emulator boots, SystemUI took the
+     * broadcasts but kept the real clock (measured: a capture showed 10:50), and a repeat is harmless.
+     */
+    private fun demoMode() {
+        DEMO.forEach { extras -> adb("shell", "am", "broadcast", "-a", "com.android.systemui.demo", *extras.toTypedArray()) }
     }
 
     private fun adb(vararg args: String): String = run(listOf(adb, "-s", serial) + args)
