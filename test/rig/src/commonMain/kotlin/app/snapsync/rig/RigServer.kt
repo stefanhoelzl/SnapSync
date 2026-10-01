@@ -158,7 +158,6 @@ class RigServer(
                     log.i { boundPort?.let { "stopped listening on $LOOPBACK:$it" } ?: "stopped before binding $LOOPBACK:$port" }
                     return@launch
                 }
-                hooks.reportBindFailure(t)
                 log.e(t) {
                     "bind $LOOPBACK:$port FAILED — the rig is NOT listening, and NO port file was " +
                         "published. On a SIMULATOR the usual cause is a second instance left on the " +
@@ -168,6 +167,9 @@ class RigServer(
                         "(`dvt process-id-for-bundle-id app.snapsync`, then `dvt signal <pid> 9`). " +
                         "The app itself is unaffected."
                 }
+                // Only once the line is written: a host that fails its start on this (the JVM host) must find the
+                // reason already in the log, not racing it from this thread.
+                hooks.reportBindFailure(t)
             }
         }
     }
