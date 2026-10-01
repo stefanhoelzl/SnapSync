@@ -32,6 +32,8 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
@@ -117,7 +119,8 @@ class RigServer(
      * A bind failure is logged at `Error` and **swallowed**: the rig must never be able to break the app
      * under test. But it must not be silent either — a refused connection on the host side is ambiguous
      * between "app not running", "port forward not set up" and "rig failed to bind", and this line, which
-     * is pullable without the rig, is the only thing that separates them.
+     * is pullable without the rig, is the only thing that separates them. A [stop] is not a failure: it logs one
+     * `Info` line.
      */
     fun start() {
         scope.launch {
@@ -148,6 +151,14 @@ class RigServer(
                 // Suspends rather than blocks, so this lane stays free for the engine's own coroutines.
                 awaitCancellation()
             } catch (t: Throwable) {
+                // [stop] cancels this coroutine, mid-bind or while serving: a normal shutdown, not a failure. Asked of
+                // the coroutine rather than of the exception's type, so a bind failure that surfaces as a
+                // cancellation of the engine's own job is still reported below.
+                if (!currentCoroutineContext().isActive) {
+                    log.i { boundPort?.let { "stopped listening on $LOOPBACK:$it" } ?: "stopped before binding $LOOPBACK:$port" }
+                    return@launch
+                }
+                hooks.reportBindFailure(t)
                 log.e(t) {
                     "bind $LOOPBACK:$port FAILED — the rig is NOT listening, and NO port file was " +
                         "published. On a SIMULATOR the usual cause is a second instance left on the " +

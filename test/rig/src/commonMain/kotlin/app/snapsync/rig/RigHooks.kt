@@ -111,6 +111,11 @@ class RigHooks(
      */
     val publishBoundPort: (Int) -> Unit,
     /**
+     * Told when the bind fails — after which [publishBoundPort] is never called. A host that waits for the port (the
+     * JVM host) fails at once with the cause instead of waiting out its bound; a device host has the `Error` line.
+     */
+    val reportBindFailure: (Throwable) -> Unit = {},
+    /**
      * The port contracts this build can run in-app — `POST /contract/<name>`, and `GET /contract` for the ones
      * registered for the host this process is (`docs/architecture.md`). A device entry records what the
      * real implementation asked the operating system and returns the recording to commit verbatim; a
