@@ -51,6 +51,25 @@ class ReinstallIntegrationTest {
         assertTrue(objects().isEmpty())
     }
 
+    @Test
+    fun an_android_rejoin_recognises_the_received_photos_filed_into_the_event_album() = rigTest {
+        // An Android phone's albums are folders, and its event album's folder is no sharing candidate — so the
+        // library read that recognises received photos must reach into it (capability `receiving-photos`).
+        device("album/kind", "kind" to "folder")
+        device("relaunch")
+        val event = createAndJoin("saveToAlbum" to "true")
+        foreignDevice(OTHER, "FA", "FB")
+        downloadAll()
+        eventually(read = { albums().singleOrNull()?.assets?.size }) { it == 2 }
+        val received = libraryTotal()
+
+        device("reinstall")
+        rejoin(event, "saveToAlbum" to "true")
+        downloadAll()
+
+        assertEquals(received, libraryTotal(), "the album's received photos are recognised, not received again")
+    }
+
     /**
      * Open the event's link and confirm its gate with [choices], as a member rejoining after a reinstall does: the
      * confirm raises the photo-access dialog (the reinstall reset the grant), the join goes ahead without waiting for

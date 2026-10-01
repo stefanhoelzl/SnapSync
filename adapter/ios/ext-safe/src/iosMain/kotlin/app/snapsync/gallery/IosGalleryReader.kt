@@ -94,6 +94,10 @@ class IosGalleryReader(private val log: Logger = Logger.withTag("gallery")) : Ga
         }
     }
 
+    // PhotoKit's library holds no folder the member's own photos are kept apart from: the event album is an album
+    // over the camera roll, so the library a reinstall reads is exactly the one [assets] walks.
+    override suspend fun libraryAssets(policy: SelectionPolicy): GalleryRead<List<AssetFacts>> = assets(policy)
+
     override suspend fun assetsById(ids: Set<AssetId>): GalleryRead<List<AssetFacts>> =
         readable { if (ids.isEmpty()) emptyList() else photoKitFacts(fetchById(ids)) }
 

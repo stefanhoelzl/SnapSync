@@ -117,6 +117,7 @@ class UploadTransferServiceTest {
         val exports = mutableListOf<Pair<String, String>>()
         override fun access() = GalleryAccess.GRANTED
         override suspend fun assets(policy: SelectionPolicy): GalleryRead<List<AssetFacts>> = GalleryRead.Read(emptyList())
+        override suspend fun libraryAssets(policy: SelectionPolicy): GalleryRead<List<AssetFacts>> = GalleryRead.Read(emptyList())
         override suspend fun assetsById(ids: Set<AssetId>): GalleryRead<List<AssetFacts>> = GalleryRead.Read(emptyList())
         override suspend fun resources(ids: Set<AssetId>): GalleryRead<List<RawAsset>> = GalleryRead.Read(emptyList())
         override suspend fun albums(): GalleryRead<List<AlbumRecord>> = GalleryRead.Read(emptyList())

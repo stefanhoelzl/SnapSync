@@ -103,5 +103,20 @@ object FolderAlbumContract : Contract<FolderAlbumState, FolderAlbums>("FolderAlb
             val byId = assertIs<GalleryRead.Read<List<AssetFacts>>>(subject.gallery.assetsById(setOf(id)))
             assertEquals(1, byId.value.size, "and in the library once")
         }
+
+        // Last, so no earlier clause's capture window moves.
+        clause("A_PHOTO_IN_AN_ALBUM_IS_STILL_IN_THE_LIBRARY", FolderAlbumState.GRANTED_OWN_PHOTOS_SEEDED) { subject ->
+            val clauseId = "A_PHOTO_IN_AN_ALBUM_IS_STILL_IN_THE_LIBRARY"
+            val policy = PhotoLibrary.policy(name, clauseId)
+            val album = assertNotNull(subject.gallery.createAlbum(title(clauseId)))
+            assertEquals(WriteOutcome.Ok, subject.gallery.addToAlbum(album, subject.seeded))
+            val library = assertIs<GalleryRead.Read<List<AssetFacts>>>(subject.gallery.libraryAssets(policy))
+            assertEquals(
+                subject.seeded,
+                library.value.mapTo(mutableSetOf()) { it.assetId } intersect subject.seeded,
+                "a photo filed into an event album is still the library's: a reinstalled app must find it there " +
+                    "(capability `receiving-photos`)",
+            )
+        }
     }
 }

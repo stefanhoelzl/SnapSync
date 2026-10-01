@@ -45,6 +45,7 @@ class AlbumExclusionsTest {
         var lookups = 0
         override fun access(): GalleryAccess = GalleryAccess.GRANTED
         override suspend fun assets(policy: SelectionPolicy): GalleryRead<List<AssetFacts>> = error("not used")
+        override suspend fun libraryAssets(policy: SelectionPolicy): GalleryRead<List<AssetFacts>> = error("not used")
         override suspend fun assetsById(ids: Set<AssetId>): GalleryRead<List<AssetFacts>> = error("not used")
         override suspend fun resources(ids: Set<AssetId>): GalleryRead<List<RawAsset>> = error("not used")
         override suspend fun albumsById(ids: Set<AlbumId>): GalleryRead<List<AlbumRecord>> = error("not used")

@@ -25,8 +25,8 @@ import app.snapsync.ports.GalleryReader
  *
  * What is read follows the grant, as upload discovery's does ([selectionScope], decision record
  * `changes/selection-is-the-walk`):
- * - **full grant** — one facts read narrowed to the window, then ONE batched resource read for the names (on iOS a
- *   name is a resource: ~3.45 ms a photo, measured SE2);
+ * - **full grant** — one facts read of the whole library (event albums' folders included) narrowed to the window,
+ *   then ONE batched resource read for the names (on iOS a name is a resource: ~3.45 ms a photo, measured SE2);
  * - **partial grant** — the selection snapshot the app already holds, which carries every name: no platform read;
  * - **unread partial grant** — nothing found (an empty map). An unread selection is not an empty one, but adoption
  *   can only miss here, never do harm: a photo it does not recognise is downloaded again, as before this existed. It
@@ -62,7 +62,9 @@ class MarkedPhotoLookup(
     }
 
     private suspend fun fromLibrary(window: SelectionPolicy, known: Set<AssetId>): Map<String, AssetId>? {
-        val facts = (gallery.assets(window) as? GalleryRead.Read)?.value ?: return null
+        // The whole library, not the sharing candidates: on Android a received photo filed into an event album lives in
+        // a folder the candidates leave out, and it must be recognised all the same.
+        val facts = (gallery.libraryAssets(window) as? GalleryRead.Read)?.value ?: return null
         // The reader may return more than the policy (it narrows only what the platform can express); the policy decides.
         val ids = facts.filter { it.assetId !in known && window.admits(it) }.mapTo(mutableSetOf()) { it.assetId }
         if (ids.isEmpty()) return emptyMap()
