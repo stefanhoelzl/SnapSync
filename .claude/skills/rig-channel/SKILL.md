@@ -1,14 +1,14 @@
 ---
 name: rig-channel
 description: >-
-  Drive the app running on the connected iPhone, over HTTP — the build-time-only
+  Drive the app running on a phone (SE2, XS, or the A40), over HTTP — the build-time-only
   control channel (:test:rig, -Psnapsync.rig=true). This is how you join, create,
   leave, reset device state, seed or wipe the photo library, read the selection
   policy, force an OS callback, and read live UiState. Use when the task means
   "join an event on device", "create an event", "seed photos", "wipe the
   gallery", "reset the device", "make the app foreground / silent-push / run the
   background task", "why did no upload cycle run", "read the extension's log", or
-  anything touching /os, /user, /device or usbmux forward 18099 — or the SAME
+  anything touching /os, /user, /device or the rig's port forward — or the SAME
   protocol served by the JVM host over mocks (`:test:rig:runJvmHost`, no
   device, no lock). To install or launch a build first, load `snapsync-device`.
 ---
@@ -27,25 +27,33 @@ served by two hosts") and served by **two hosts**: this app host, and a JVM host
 second way-to-drive that can rot or lie.
 
 To **build** the IPA, load `ssh-mac-build`. To install/launch it, load `snapsync-device` (which has
-you load the global `ios-device` skill first).
+you load the global `device` skill first). On the A40, `snapsync-android` builds, installs and forwards instead;
+everything from "The endpoints" on is the same protocol there.
 
-## Take the device lock first
+## Take the phone's lock first
 
-This skill drives a phone every project on this machine shares, so everything here is inside the
-global `ios-device` guard's fence. Take CodeHydra's `ios-device` lock exactly as that skill describes —
-as a **background** Bash call, **never** under `ch bg` (waiting for the phone is this workspace being
-busy):
+Every phone is shared by every project on this machine, and each is a CodeHydra lock of its own, named
+after it (`SE2`, `XS`, `A40` — the global `device` skill's `devices.json`). Everything here is inside that
+skill's guard: a device command must **name its phone** (`--udid`, `-s`), and this workspace must hold that
+phone's lock. Take it exactly as that skill describes — as a **background** Bash call, **never** under
+`ch bg` (waiting for the phone is this workspace being busy):
 
 ```
-ch lock take ios-device "<why you need the phone>"      # queues FCFS; exits once this workspace holds it
+ch lock take SE2 "<why you need the phone>"      # queues FCFS; exits once this workspace holds it
 ```
 
 The **workspace** holds the lock, not a process: it stays held across calls and turns until you release
-it. `ch lock ls` shows the holder, age, reason and waiters. When the device work is done:
+it. `ch lock ls` shows the holder, age, reason and waiters. When the device work is done — the forward
+stopped first:
 
 ```
-ch lock release ios-device
+ch lock release SE2
 ```
+
+Which iPhone: the **SE2** runs iOS 26.6 — both uploaders, the PhotoKit extension included. The **XS** is on
+iOS 18, so it never runs the extension: only the app's uploader, and `/os/photokit-ext/*` and the extension's
+contract recordings have nothing to reach there. Every on-device measurement this repo cites is the SE2's
+unless it says otherwise.
 
 ## Containment — why this never ships
 
@@ -71,10 +79,20 @@ printf "snapsync.rig=true\n" >> ~/.gradle/gradle.properties
 Then, with the build installed and launched:
 
 ```
-uvx --python 3.14 pymobiledevice3 usbmux forward 18099 18099 &   # backgrounded; it blocks
-B=http://127.0.0.1:18099
+# under `ch bg`, backgrounded: it blocks for as long as the forward is up. <host port> is the PHONE's own
+# (devices.json: SE2 18101, XS 18102), so two phones' rigs can be up at once; 18099 is the app's, on the phone.
+ch bg uvx --python 3.14 pymobiledevice3 usbmux forward <host port> 18099 --udid <udid>
+```
+
+Then, in **every** call that talks to the channel (shell state does not persist between calls):
+
+```
+B=http://127.0.0.1:18101        # the SE2's host port; the XS's is 18102
 curl -sS --max-time 180 "$B/health"
 ```
+
+The guard requires `--udid` on the forward — `usbmux forward` ignores `PYMOBILEDEVICE3_UDID` and reaches
+whichever phone it finds first. Stop the forward before releasing the lock.
 
 ⏱️ **Use a uniform, generous `--max-time` (180 s).** A receipted trigger legitimately blocks until the app
 releases the OS completion handler — after the wake's own work, or (heartbeat) after its whole tail, or on
@@ -82,8 +100,8 @@ the operating system's expiry. No clock of the app's own bounds it any more (`ch
 so a short curl timeout makes a transport failure indistinguishable from a slow wake — the same
 absence-collapse this repo keeps paying for, reintroduced where nobody looks for it.
 
-🔢 **Port 18099 is a DEVICE-ONLY default.** One app instance runs per device, so a fixed port needs no
-discovery. All simulators on a host **share the host's loopback**, so a simulator must override it —
+🔢 **Port 18099 is a DEVICE-ONLY default** — the port the rig binds *on the phone*. One app instance runs per
+device, so a fixed port needs no discovery; the host side is the phone's own port above. All simulators on a host **share the host's loopback**, so a simulator must override it —
 `SIMCTL_CHILD_SNAPSYNC_RIG_PORT=<port>`, because `simctl launch <dev> <bundle> KEY=VAL` passes
 **argv, not environment**. The bind address is `127.0.0.1` and nothing else, gated.
 
@@ -151,7 +169,7 @@ refused every Keychain call. So it runs here, in-app, and every `SecItem*` call 
 recorded with iOS's answer; CI then **replays** that recording against the current adapter on every build.
 
 ```bash
-curl -s -X POST localhost:18099/contract/SecureStore > test/contracts/recordings/SecureStore@IOS_DEVICE_APP.rec
+curl -s -X POST $B/contract/SecureStore > test/contracts/recordings/SecureStore@IOS_DEVICE_APP.rec
 git diff test/contracts/recordings/        # review it like code, then commit it UNEDITED
 ```
 
@@ -187,7 +205,7 @@ re-registers the extension, which makes the OS invoke it; the extension runs the
 cycle and writes the recording back, and the verb answers it:
 
 ```bash
-curl -s --max-time 120 -X POST "localhost:18099/contract/Upload?host=IOS_DEVICE_PHOTOKIT_EXT" \
+curl -s --max-time 120 -X POST "$B/contract/Upload?host=IOS_DEVICE_PHOTOKIT_EXT" \
   > test/contracts/recordings/Upload@IOS_DEVICE_PHOTOKIT_EXT.rec
 ```
 
@@ -261,22 +279,23 @@ get the created jobs back, and move their bytes with `POST /device/upload-jobs/p
 
 ## Driving an event end to end
 
-Everything below assumes a rig build installed and launched (`snapsync-device`) and `usbmux forward 18099`.
+Everything below assumes a rig build installed and launched (`snapsync-device`), the phone's forward up, and `B`
+defined in the same call (see "Building and connecting").
 
 ```
 # JOIN — the warm universal-link path, same decode -> gate -> join a scanned QR takes
-curl -X POST "localhost:18099/os/app/onSceneContinueActivity?arg=https://snapsync.stho.net/join%23v=3&d=<payload>"
+curl -X POST "$B/os/app/onSceneContinueActivity?arg=https://snapsync.stho.net/join%23v=3&d=<payload>"
 
 # CREATE — exactly as a user creates one: mint, then confirm the gate it opens
-curl -X POST "localhost:18099/user/create?name=Trip&startsAt=2026-08-23T00:00&endsAt=2026-08-30T00:00"
-curl -s localhost:18099/device/state | jq '.ui'      # wait for JoiningEvent(eventId, Ready)
-curl -X POST "localhost:18099/user/confirmJoin?cutoff=2026-08-23T00:00:00Z&until=2026-08-30T00:00:00Z&direction=upload&saveToAlbum=false"
+curl -X POST "$B/user/create?name=Trip&startsAt=2026-08-23T00:00&endsAt=2026-08-30T00:00"
+curl -s $B/device/state | jq '.ui'      # wait for JoiningEvent(eventId, Ready)
+curl -X POST "$B/user/confirmJoin?cutoff=2026-08-23T00:00:00Z&until=2026-08-30T00:00:00Z&direction=upload&saveToAlbum=false"
 
 # MINT ONLY — create, read the id, then abandon the gate
-curl -X POST "localhost:18099/user/cancelJoin"
+curl -X POST "$B/user/cancelJoin"
 
 # LEAVE
-curl -X POST localhost:18099/user/leave
+curl -X POST $B/user/leave
 
 # THE REST OF /user (both hosts): rename[?event=]&name=, renameStatusConsumed, confirmSwitch, retryLoad, retryJoin,
 # setRange?[range=wholeEvent|fromNow][&cutoff=…Z][&until=…Z]  (sets the form, commits nothing; cutoff/until = a custom range),
@@ -292,12 +311,12 @@ this device's library and registers this device on someone's real membership.
 ## The photo library
 
 ```
-curl -s "localhost:18099/device/gallery" | jq                      # raw census: total, screenshots, recordings
-curl -s "localhost:18099/device/gallery?cutoff=2026-07-01T00:00:00Z" | jq   # + per-asset policy verdict
-curl -s "localhost:18099/device/gallery?cutoff=…&resources=true" | jq       # + each asset's resources
+curl -s "$B/device/gallery" | jq                      # raw census: total, screenshots, recordings
+curl -s "$B/device/gallery?cutoff=2026-07-01T00:00:00Z" | jq   # + per-asset policy verdict
+curl -s "$B/device/gallery?cutoff=…&resources=true" | jq       # + each asset's resources
 
-curl -X POST "localhost:18099/device/gallery/seed?n=4000&kind=bulk"    # walk-cost: tiny 2001-dated assets
-curl -X POST "localhost:18099/device/gallery/seed?n=20&kind=policy"    # policy probe: +1h, straddling 3 MP
+curl -X POST "$B/device/gallery/seed?n=4000&kind=bulk"    # walk-cost: tiny 2001-dated assets
+curl -X POST "$B/device/gallery/seed?n=20&kind=policy"    # policy probe: +1h, straddling 3 MP
 ```
 
 `kind=policy` seeds assets dated an hour ahead — past any cutoff an event created today can carry — and
@@ -317,7 +336,7 @@ the response for that reason. A fetch under `.limited` can also surface iOS's ow
 ## Emptying the library
 
 ```
-ch bg curl -sS -X POST "localhost:18099/device/gallery/wipe?scope=all"   # all|assets|albums; NO --max-time
+ch bg curl -sS -X POST "$B/device/gallery/wipe?scope=all"   # all|assets|albums; NO --max-time
 ch bg curl -sS -X POST "…/wipe?scope=assets&limit=1"           # one asset — the smallest thing that prompts
       curl -sS --max-time 30 -X POST "…/wipe?scope=assets&limit=0"   # selects nothing — the probe, below
 ```
@@ -368,7 +387,7 @@ because this is the only one that cannot be undone.
 ## Resetting durable state
 
 ```
-curl -X POST localhost:18099/device/reset
+curl -X POST $B/device/reset
 ```
 
 Voids the ledger, the discovery cursor, the membership config (**locally** — no backend is notified), and
@@ -390,12 +409,12 @@ one real.
 
 ```bash
 # REAL photos, a MOCKED backend (the shared zone is never touched) — the smallest coherent such choice:
-curl -s -X POST localhost:18099/device/adapters --data-binary $'backend=mock\nupload-queue=mock\nupload-session=mock\ndownloads=mock\npush=mock\nintegrity=mock\nextension-registry=mock\n'
+curl -s -X POST $B/device/adapters --data-binary $'backend=mock\nupload-queue=mock\nupload-session=mock\ndownloads=mock\npush=mock\nintegrity=mock\nextension-registry=mock\n'
 # → 200 {"written":…,"exiting":true}  — the app EXITS. Launch it again (simulator: `xcrun simctl launch`;
 #   phone: the `snapsync-device` launch step). Every start of any process reads the choice from then on.
-curl -s localhost:18099/health                        # adapters=mocked: backend,…   (or adapters=REFUSED …)
-curl -s -X POST localhost:18099/device/adapters/current
-curl -s -X POST localhost:18099/device/adapters/clear  # back to all real; exits
+curl -s $B/health                        # adapters=mocked: backend,…   (or adapters=REFUSED …)
+curl -s -X POST $B/device/adapters/current
+curl -s -X POST $B/device/adapters/clear  # back to all real; exits
 ```
 
 - **Coherence is checked** (`409` with every broken rule): a mocked backend needs mocked transfers, push service and
@@ -461,7 +480,7 @@ nothing happened. Poll `/device/state`'s `ready.configResolved` instead of sleep
 `connection refused` is ambiguous between "app not running", "port forward not set up" and "the rig
 failed to bind". The rig logs a bind failure at `Error` naming the address and port, and that log is
 pullable **without** the rig (`apps pull … Documents/debug.log`) — read it before guessing. The usual
-cause is a previous instance still alive holding the port; SIGKILL it (the global `ios-device` skill's restart recipe).
+cause is a previous instance still alive holding the port; SIGKILL it (the global `device` skill's restart recipe, in its `ios.md`).
 
 ## Switching an uploader off
 

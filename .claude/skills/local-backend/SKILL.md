@@ -43,7 +43,7 @@ about to exit, and it runs beside your `dev:local` without colliding. It exits w
    a local backend* for the exact commands. A quick tunnel's hostname is random per session, so the IPA
    is rebuilt per session (~1 min incremental Debug).
 3. **Install, launch, then RESET over the channel** — load **`snapsync-device`** (it has you load the
-   global `ios-device` skill, which owns the `ios-device` lock every phone command requires) to sign, install
+   global `device` skill, which owns the per-phone lock — `SE2`, `XS` — every phone command requires) to sign, install
    and launch, then **`rig-channel`** for
    `POST /device/reset`. The reset is not optional; see below.
 
@@ -59,12 +59,16 @@ including going back to production. `SNAPSYNC_RESET_STATE` is **gone**: producti
 job now, on a build made with `-Psnapsync.rig=true` (load **`rig-channel`**):
 
 ```bash
-curl -X POST --max-time 180 localhost:18099/device/reset
+B=http://127.0.0.1:18101          # the phone's host port (devices.json; the SE2's here)
+curl -X POST --max-time 180 $B/device/reset
 ```
 
 It answers `{"reset":true}` once the reset ran (the ledger counts it used to return left the protocol with the
 ledger, 11g2): confirm it took from the screen — the device shows the create/join screen again — and from the
-uploads that follow. Needs `usbmux forward 18099`; see `rig-channel`.
+uploads that follow. Needs the phone's port forward up; see `rig-channel`.
+
+On the **A40** no tunnel is needed: `adb -s <serial> reverse tcp:8080 tcp:8080` makes the phone's loopback the
+host's, exactly as on the emulator — build with `-Psnapsync.deployment=local` (load `snapsync-android`).
 
 ⚠️ Order matters and nothing enforces it: reset **before** leaving. After a reset the device is unjoined,
 so a leave becomes a no-op rather than a `DELETE` aimed at the backend you are departing.

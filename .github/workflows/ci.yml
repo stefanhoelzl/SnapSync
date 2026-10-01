@@ -608,7 +608,7 @@ jobs:
           api-level: 36
           target: google_apis
           arch: x86_64
-          # The phone the `android-emulator` skill creates, and the managed device `android-build` tests on.
+          # The phone the `snapsync-android` skill's emulator models, and the managed device `android-build` tests on.
           profile: pixel_6
           # `swangle_indirect`, not the default SwiftShader GLES: the latter segfaults in its JIT on some hosts
           # (measured on the dev box, emulator 36.1.9 and 37.1.11); the Vulkan path boots on both.

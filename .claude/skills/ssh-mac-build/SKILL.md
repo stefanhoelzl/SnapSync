@@ -3,7 +3,7 @@ name: ssh-mac-build
 description: >-
   Build and test SnapSync on a real macOS runner from Linux — open a session with
   the `ssh-runner` skill, rsync, xcodebuild an unsigned archive for the global
-  `ios-device` skill to sign on Linux, point a build at a local backend, or run
+  `device` skill to sign on Linux, point a build at a local backend, or run
   the iOS simulator tests (iosSimulatorArm64Test) that cannot run on Linux. Use
   whenever the task needs a Mac, an Xcode build, an .xcarchive, an IPA, or the
   SnapSync specifics of signing and provisioning profiles for a dev build.
@@ -22,11 +22,11 @@ skills own the rest:
 - **`ssh-runner`** owns the macOS box, configured by `.ssh-runner.yml` at the repo root: one warm
   runner, many iterations, instead of one CI run per change. Dev infrastructure —
   `workflow_dispatch`-only, no status check, gates nothing.
-- **`ios-device`** owns the device loop — build on the runner, **sign on Linux**, install, launch —
+- **`device`** (global; its `ios.md`) owns the device loop — build on the runner, **sign on Linux**, install, launch —
   configured by `.ios-device.yml` at the repo root. The runner holds **no signing material**.
 - **`asc-portal`** mints provisioning profiles.
 
-To install the IPA, load the global `ios-device` skill, then `snapsync-device` for the SnapSync facts.
+To install the IPA, load the global `device` skill, then `snapsync-device` for the SnapSync facts.
 To drive the running app, load `rig-channel`.
 
 ## The session
@@ -80,7 +80,7 @@ runner is gone at `stop`.
 
 ## 1. Build an UNSIGNED archive — `.ios-device.yml`
 
-Run the global `ios-device` skill's build step (its step 3) unchanged: it runs the `build:` line from
+Run the global `device` skill's build step (`ios.md`, step 2) unchanged: it runs the `build:` line from
 `.ios-device.yml` on the runner, stages the `.app`, dumps each target's build settings, and pulls both
 back to `build/ios-device/`. The build line does two things, in this order:
 
@@ -107,9 +107,15 @@ cost paid once: never wipe `build/` or `.gradle` between iterates (`.ssh-runner.
 them from the sync) and keep the Gradle daemon alive (no `--no-daemon`) — an incremental Debug iterate
 is then ~1 min.
 
-## 2. Sign and install — the global `ios-device` skill
+## 2. Sign and install — the global `device` skill
 
-Steps 4–5 of that skill: `sign` then `install`, both on Linux. There is no SnapSync signing script any
+`ios.md` steps 3–5 of that skill: `sign`, then take the phone and `connect`, then `install` — all on Linux.
+
+⚠️ **Sign with `--device SE2` for now.** `sign` targets every iPhone in `devices.json` by default, and
+SnapSync's profiles list only the SE2 (*Provisioning profiles*, below) — so a bare `sign` refuses. Drop the
+flag once both profiles also list the XS.
+
+There is no SnapSync signing script any
 more. What SnapSync's history taught about signing is now enforced by `sign` itself, and is worth
 knowing when it refuses:
 
@@ -183,13 +189,17 @@ DSN-carrying build onto a device (`docs/deployment.md`).
 ## Provisioning profiles
 
 Same one-time device prerequisites as any dev install (registered UDID + Developer Mode; see the
-global `ios-device` skill). SnapSync needs two `IOS_APP_DEVELOPMENT` profiles: the app (`app.snapsync`)
+global `device` skill's `ios.md`). SnapSync needs two `IOS_APP_DEVELOPMENT` profiles: the app (`app.snapsync`)
 and the extension (`app.snapsync.BackgroundUpload`).
 
 `sign` **fetches them itself** from App Store Connect (the `ASC_*` mappings in `.secrets.yaml`), caches
 them in `~/.cache/ios-device/profiles/`, and picks, per bundle, the unexpired profile that lists the
-connected device and the signing certificate and **grants every claimed entitlement**. There is no baked
+target phones (every iPhone in `devices.json`, or each `--device`) and the signing certificate and **grants every claimed entitlement**. There is no baked
 profile tar and no GitHub secret to refresh.
+
+Both profiles list only the **SE2** (App Store Connect, 2026-10-01), so the XS — registered on the team, on
+iOS 18 — cannot be signed for yet. On its first SnapSync use, re-mint both (load `asc-portal`) listing both
+iPhones: the extension is embedded in every IPA, so its profile must list the XS though the XS never runs it.
 
 Re-mint a profile (load `asc-portal`) when it expires (~yearly), when you register a new device, **or
 when you enable a bundle-id capability** — that last one silently *invalidates* the affected profile

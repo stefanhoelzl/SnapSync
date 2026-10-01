@@ -7,7 +7,7 @@
 # macos-26 minutes are free.
 #
 # The box holds NO signing material. Signing happens on the operator's machine with the global
-# `ios-device` skill's `sign` (rcodesign, certificate via secrets-env, profiles fetched from App Store
+# `device` skill's `sign` (rcodesign, certificate via secrets-env, profiles fetched from App Store
 # Connect), driven by `.ios-device.yml`. Nothing else here needs an identity: `scripts/sim-sign` signs
 # ad hoc, and the simulator tests are unsigned.
 #
@@ -32,7 +32,7 @@ runs-on: macos-26
 # `artifacts/` is where the loop archives. It sits INSIDE the workspace on purpose, so every path in
 # the runbook stays relative — `sync`'s `:` prefix anchors at the workspace, not at `$HOME`, unlike
 # the `scp` the old loop used. Excluding it is what keeps `--delete` from deleting the build you just
-# made on the next push. `ios-device-out/` is the global `ios-device` recipe's staging directory (the
+# made on the next push. `ios-device-out/` is the global `device` skill's iOS staging directory (the
 # unsigned `.app` plus each target's build settings) and is excluded for the same reason.
 #
 # NOTE what is deliberately NOT excluded: `gradle.properties`. The per-session properties

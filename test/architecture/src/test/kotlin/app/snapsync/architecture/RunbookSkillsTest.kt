@@ -13,7 +13,7 @@ import kotlin.test.fail
  * pointer line per skill. That buys ~15k tokens off every session and costs two new ways to rot,
  * both of which this guard closes.
  *
- * 1. **A pointer that reaches nothing.** An agent reads "load the `ios-device` skill", finds no such
+ * 1. **A pointer that reaches nothing.** An agent reads "load the `snapsync-device` skill", finds no such
  *    skill, and proceeds **without** it — executing the very procedure the skill exists to make
  *    safe. Nothing raises. That is the "absence is never silent" law (`docs/architecture.md`)
  *    applied to the seam between the always-loaded file and the on-demand ones.

@@ -4,7 +4,8 @@
 # `changes/timely-background-receiving`, D8). NON-GATING: no CI job runs it — a contract clause cannot express it,
 # because a force-stop kills the process that would observe it, so it is checked from outside, over adb.
 #
-#   scripts/android-force-stop-check [apk]   # an emulator booted and reachable over adb (the `android-emulator` skill)
+#   ANDROID_SERIAL=emulator-5554 scripts/android-force-stop-check [apk]   # an emulator booted and reachable over adb
+#                                                                         # (the `snapsync-android` skill)
 #
 # It installs the rig build, chooses the REAL WorkManager wake (every system but the screen, its lifecycle, the clock
 # and the wake mocked), joins a receive-only event over the mocked backend — which leaves an idle heartbeat pending —

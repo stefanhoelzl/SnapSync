@@ -1,24 +1,27 @@
 ---
 name: snapsync-device
 description: >-
-  SnapSync on the connected iPhone — the project facts that sit on top of the
-  global `ios-device` skill: bundle ids and process names, reading the app's and
-  the extension's logs, verifying that an event link really delivers and that an
-  upload really landed, and the headless per-build loop. Use together with
-  `ios-device` whenever a task touches SnapSync on the physical phone: "install
-  on the phone", "launch the app", "read debug.log", "test on the SE2", "did the
-  upload land", "does the link open the app". To DRIVE a running app — join,
-  create, leave, reset, seed, wipe — load `rig-channel`.
+  SnapSync on an iPhone (SE2 or XS) — the project facts that sit on top of the
+  global `device` skill: bundle ids and process names, which iPhone runs what,
+  reading the app's and the extension's logs, verifying that an event link
+  really delivers and that an upload really landed, and the headless per-build
+  loop. Use together with `device` whenever a task touches SnapSync on a
+  physical iPhone: "install on the phone", "launch the app", "read debug.log",
+  "test on the SE2", "try it on the XS", "did the upload land", "does the link
+  open the app". To DRIVE a running app — join, create, leave, reset, seed,
+  wipe — load `rig-channel`. The A40 (Android) is `snapsync-android`'s.
 ---
 
-# snapsync-device — SnapSync on the phone
+# snapsync-device — SnapSync on an iPhone
 
-⚠️ **Load the global `ios-device` skill first.** It owns everything generic, and this skill repeats
-none of it: the **device lock** (CodeHydra's global `ios-device` lock — take it with a *background* Bash
-call, not under `ch bg`: `ch lock take ios-device "<why>"`; required before any device command, held by
-the workspace until `ch lock release ios-device` at the end of device work), the guard, building on the
-runner, **signing on Linux**, `install`, launch, restart, screenshots, measured timeouts, and the usbmux
-traps. What follows is only what is true of SnapSync.
+⚠️ **Load the global `device` skill first** (its `SKILL.md`, then `ios.md`). It owns everything generic,
+and this skill repeats none of it: the **per-phone lock** (each phone is a CodeHydra lock named after it —
+take it with a *background* Bash call, not under `ch bg`: `ch lock take SE2 "<why>"`; required before any
+command on that phone, held by the workspace until `ch lock release SE2` at the end of device work),
+`connect`, the guard (every device command names its phone: `--udid`), building on the runner, **signing on
+Linux**, `install`, launch, restart, screenshots, measured timeouts, and the usbmux traps. Each phone's UDID
+and host port are in its `devices.json`; this skill does not copy them. What follows is only what is true of
+SnapSync.
 
 To build, load `ssh-mac-build` (the SnapSync half: `.ios-device.yml`, deployments, the rig property). To
 point a build at a local backend, load `local-backend`. To drive a running app, load `rig-channel`.
@@ -35,7 +38,23 @@ triggers an invocation, but you cannot force *when*.
 | extension bundle id | `app.snapsync.BackgroundUpload` |
 | app process (`crash pull --match`, `syslog --process-name`) | `SnapSync` |
 | extension process | `BackgroundUploadExtension` |
-| the SE2's UDID | `00008030-0018703A1A7A402E` (iOS 26.6) |
+
+## Which iPhone
+
+| phone | iOS | what runs |
+|---|---|---|
+| `SE2` | 26.6 | both uploaders: the app's, and the PhotoKit upload extension (≥26.1) under a full grant |
+| `XS` | 18 | the app's uploader only — the extension needs 26.1, so it never runs there |
+
+The SE2 is the reference: every on-device measurement in this repo is the SE2's unless it says otherwise.
+Use the XS for the iOS-18 path (the minimum OS) — e.g. link delivery, where iOS 18 behaves differently
+(*Verifying the event link*, below).
+
+⚠️ **The XS cannot be signed for yet.** SnapSync's two development profiles (`SnapSync Dev Push`,
+`SnapSync Ext Dev Push`) list only the SE2 (App Store Connect, 2026-10-01), and `sign` refuses a profile that
+does not list a target phone — so until then sign with `--device SE2` (`ssh-mac-build`). The extension is embedded in every IPA, so the XS needs **both** re-minted, though it
+never runs the extension. The XS is already a registered device: on its first SnapSync use, load `asc-portal`
+and create a new profile for each bundle id listing both iPhones (`sign` picks the one that expires last).
 
 ⚠️ **SnapSync ignores SIGTERM.** A `dvt launch --kill-existing` layers a new instance on the still-alive
 old one and sticks on a black launch screen. Always use the global skill's SIGKILL-first restart recipe;
@@ -67,7 +86,8 @@ The app and extension are separate processes, each writing its **own** verbatim,
 
 ```bash
 P="uvx --python 3.14 pymobiledevice3"
-timeout 15 $P apps pull app.snapsync Documents/debug.log ./debug.log          # the APP's log
+U=<udid>                                   # the phone's, from devices.json
+timeout 15 $P apps pull app.snapsync Documents/debug.log ./debug.log --udid $U      # the APP's log
 ```
 
 The extension writes `ext-debug.log` into the shared App Group, which is **not** pullable over USB. On a
@@ -156,7 +176,8 @@ group. A wrong group reads as **no device id**, and the id is written once and n
 
 ## The headless per-build loop
 
-Global `ios-device` build (with `snapsync.rig=true`) → `sign` → `install` → `dvt launch app.snapsync` →
+Global `device` build (`ios.md`, with `snapsync.rig=true`) → `sign` → take the phone → `connect` → `install` →
+`dvt launch app.snapsync` →
 join over the channel (`POST /os/app/onSceneContinueActivity?arg=<link>`, using a **fresh event id** you
 created, or the reconcile seeds already-stored photos and nothing uploads) → the OS invokes the upload
 extension on its own cadence → confirm the objects landed in the backend's storage zone.

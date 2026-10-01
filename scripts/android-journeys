@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # The all-real journeys on the Android emulator — the `journeys (android)` CI job, and its reproduction on this Linux
-# box (the `android-emulator` skill boots the emulator first). The Android half of what `scripts/sim-contracts` does on
+# box (the `snapsync-android` skill boots the emulator first). The Android half of what `scripts/sim-contracts` does on
 # the iOS simulator (`docs/testing.md`, "All-real journeys are the contracts' safety net").
 #
 #   ./gradlew :app:android:assembleDebug :test:integration:journeysClasses :test:integration:journeysClasspath \
 #       -Psnapsync.rig=true -Psnapsync.deployment=local
-#   scripts/android-journeys          # an emulator booted and reachable over adb
+#   ANDROID_SERIAL=emulator-5554 scripts/android-journeys   # an emulator booted and reachable over adb; name it
+#                                                          # locally (the device guard, and any phone attached)
 #
 # Built FIRST and separately, so no Gradle daemon holds memory beside the emulator; this script builds nothing. It
 # starts the real backend on the address the `local` deployment bakes in (127.0.0.1:8080, reversed into the emulator),

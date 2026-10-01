@@ -45,7 +45,7 @@ class AndroidTargetPlugin : Plugin<Project> {
                         instrumentationRunnerArguments["fixture"] = TransferFixtureService.FIXTURE_ADDRESS
                         managedDevices {
                             localDevices.create(MANAGED_DEVICE) {
-                                // The phone the screen tests are measured on, and the one the `android-emulator` skill
+                                // The phone the screen tests are measured on, and the one the `snapsync-android` skill
                                 // creates. The GPU mode is the root `gradle.properties`' (SwiftShader's JIT segfaults).
                                 device = "Pixel 6"
                                 apiLevel = version("android-targetSdk").toInt()
