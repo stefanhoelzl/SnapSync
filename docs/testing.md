@@ -36,7 +36,7 @@ The shared `commonTest` runs **once, on the JVM**, under `build`. A platform run
 the adapters and their contract bindings over the platform's own APIs (Keychain, PhotoKit, the native SQLite driver;
 Keystore, MediaStore, WorkManager, DownloadManager). Each platform has the same three CI gates (`ci.yml`): its
 **build** followed on the same runner by its **platform tests** (`ios-build`: the signed archive, then
-`iosPlatformTest`; `android-build`: R8 over the rig build, then `androidPlatformTest`), and its **journeys**
+`iosPlatformTest`; `android-build`: R8 over the plain release, then `androidPlatformTest`), and its **journeys**
 (`journeys (ios)`, `journeys (android)`, section "Journeys").
 
 The shared tests used to run on Kotlin/Native and on ART as well. In their history that caught only test NAMES those

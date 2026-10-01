@@ -83,11 +83,15 @@ android {
     }
     buildTypes {
         release {
-            // R8 over the whole app, as a store build will run it — on the rig build, which links the whole graph
-            // (CI's `android-build` job builds it). The plain release composes the same adapters now; switching R8 on
-            // for it, with the keep rules Firebase and Ktor need, is the store build's (phase 5).
-            isMinifyEnabled = rigEnabled
+            // R8 and resource shrinking on EVERY release, the store build's own: CI's `android-build` builds the plain
+            // release, and `journeys (android)` RUNS the rig release — so every journey exercises R8 output, where a
+            // class reached only by name (the manifest, a service loader, reflection) breaks with a green build.
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            // A rig release is test equipment, never a store build: the debug key signs it so it installs on an
+            // emulator. The plain release stays unsigned here — the store's upload key is its delivery's.
+            if (rigEnabled) signingConfig = signingConfigs.getByName("debug")
         }
     }
     // ---- The control channel (`:test:rig`), contained at COMPILE TIME --------------------------------------------

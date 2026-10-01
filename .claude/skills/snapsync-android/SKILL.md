@@ -203,7 +203,7 @@ ANDROID_SERIAL=emulator-5554 ./gradlew :adapter:android:connectedAndroidDeviceTe
 # reports: adapter/android/build/reports/androidTests/ ; either way the build serves scripts/transfer-fixture.py
 # on the host (build/transfer-fixture.log), reached from the emulator as http://10.0.2.2:8123
 
-./gradlew :app:android:assembleDebug :test:integration:journeysClasses :test:integration:journeysClasspath \
+./gradlew :app:android:assembleRelease :test:integration:journeysClasses :test:integration:journeysClasspath \
     -Psnapsync.rig=true -Psnapsync.deployment=local && ./gradlew --stop
 ANDROID_SERIAL=emulator-5554 JAVA_HOME=<a JDK 25> ADB=$ANDROID_HOME/platform-tools/adb scripts/android-journeys
 # evidence: build/android-journeys/
@@ -223,5 +223,8 @@ run on the A40.
   accepts.
 - ⚠️ Stop the emulator before a full `./gradlew build` on this box: the two together got the Gradle daemon OOM-killed.
 
-To check R8 over the whole graph: `./gradlew :app:android:assembleRelease -Psnapsync.rig=true`, `zipalign` and
-`apksigner sign --ks ~/.android/debug.keystore --ks-pass pass:android` the unsigned APK, install it, and drive it.
+The journeys run the rig **release** build — R8 and resource shrinking as the store build runs them — so a class R8
+removed that is reached only by name fails a journey, not the store. `assembleRelease -Psnapsync.rig=true` signs it with
+the debug key (`apk/release/android-release.apk`), so it installs as the debug build does; it is not debuggable, so
+`run-as` does not reach its stores — use the debug build for that. The plain release stays unsigned (the store's upload
+key is its delivery's).
