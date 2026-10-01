@@ -21,7 +21,7 @@ enum class PlatformDeviceIdState {
  * only a UUID — and a platform that offers none says so with `null`, never an empty or made-up value.
  *
  * "The same after a reinstall" is the property the id is chosen for, and no clause can reach it: a test process cannot
- * outlive its own uninstall. It is checked by hand on the emulator (`android-emulator` skill).
+ * outlive its own uninstall. It is checked by hand on the emulator (`snapsync-android` skill).
  */
 object PlatformDeviceIdContract : Contract<PlatformDeviceIdState, PlatformDeviceId>("PlatformDeviceId") {
 

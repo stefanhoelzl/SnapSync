@@ -631,7 +631,7 @@ MetricKit (`/device/process-metrics` feeds the real handler). Code: `:test:launc
 ### The Android emulator host
 
 The Android rig build (`:app:android` under `-Psnapsync.rig=true`) serves the same protocol from inside the app on an
-emulator, reached over `adb forward tcp:18099 tcp:18099` (load `android-emulator`). It reads its adapter choice from
+emulator or the A40, reached over `adb -s <serial> forward tcp:<host port> tcp:18099` (load `snapsync-android`). It reads its adapter choice from
 the adapters file as the iOS app host does (`device/adapters*` write it, and the app exits), with two differences that
 both come from Android not having every real adapter yet (today it has the screen, the lifecycle, the clock, the
 storage, attestation, the backend, links, the photo library, the system UI, the wakes, the background-time holds, the
