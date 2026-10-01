@@ -307,17 +307,21 @@ reached through these levers (the forge harness was deleted in phase 12). See `d
 **`ui-harness`** skill: `:test:harness-driver` composes the shipped harness root into an offscreen
 Compose scene served over HTTP, so an agent clicks the real buttons and reads back the real pixels.
 
-## Releasing (TestFlight · App Store · screenshots)
+## Releasing (TestFlight · Play internal · App Store · screenshots)
 
 **Contract and rationale live in the specs** — `docs/deployment.md`, `docs/deployment.md`,
 `docs/deployment.md`, `docs/deployment.md`. Read those before changing any of it; what follows is
 only what an operator types.
 
-**Every merge to `main` uploads a signed build to internal TestFlight** (`ios-deliver`),
-automatically and unfiltered — docs-only merges included. It reaches **no external tester**: there is
-no public alpha channel, and the App Store release below is the only path to real users. Each build's
-marketing version is **computed** (`max(floor, latest vX.Y tag with its minor +1)`, integer bump —
-`v0.9 → 0.10`); a major jump is a manual `Config.xcconfig` floor bump via a PR.
+**Every merge to `main` uploads a signed build to internal TestFlight** (`ios-deliver`) **and to Play's
+internal testing track** (`android-deliver`), automatically and unfiltered — docs-only merges included. It
+reaches **no external tester**: there is no public alpha channel, and the App Store release below is the only
+path to real users. Both stores get the SAME version and build number: the marketing version is **computed**
+(`scripts/marketing-version.py`: `max(floor, latest vX.Y tag with its minor +1)`, integer bump — `v0.9 → 0.10`;
+a major jump is a manual `Config.xcconfig` floor bump via a PR), and Android's `versionCode` is the iOS
+`CFBundleVersion`. Play's internal track serves only its latest release, so a branch dispatch replaces `main`'s
+there until the next merge. `uv run .github/scripts/play_release.py status app.snapsync` (under `secrets-env`)
+lists Play's tracks read-only.
 
 **An App Store release PROMOTES a build you already tested** — the `vX.Y` tag is its receipt, not its
 trigger:
@@ -478,7 +482,7 @@ with the proxy task above).
   the app **and** the `.appex` after archiving, so a truncated value or a resource that missed a bundle
   fails the run. Dev/sideload builds carry no DSN, so the SDK never starts there. Bugsink
   ingests no dSYMs: `ios-deliver` parks each main build's dSYMs as a `dsyms-<build>` artifact for
-  offline `atos` symbolication (90-day cap; park longer-lived versions' dSYMs elsewhere at promote
+  offline `atos` symbolication (and `android-deliver` each R8 mapping as `r8-mapping-<build>`, retraced by `/bugsink`) (90-day cap; park longer-lived versions' dSYMs elsewhere at promote
   time). **Triage these crashes with the `/bugsink` skill** (`.claude/skills/bugsink/`, non-gating
   dev infra; read-only apart from ONE write — resolving an issue a shipped fix closes, on
   confirmation, which `/ship` fires from a `Bugsink-Resolves:` commit trailer): it lists

@@ -19,7 +19,8 @@
 #                   the platform-bound tests, `./gradlew iosPlatformTest` on the simulator (the iOS adapters and their
 #                   contract bindings on the test executable, the native SQLite drivers)
 #   android-build   the plain RELEASE build, the store's — R8 and resource shrinking over its whole graph, its R8 mapping
-#                   in app/android/build/outputs/mapping/release/ — then the platform-bound tests,
+#                   in app/android/build/outputs/mapping/release/, and on a delivering run the BUNDLE Play receives
+#                   (the delivery source, as ios-build's archive is) — then the platform-bound tests,
 #                   `./gradlew androidPlatformTest` on a Gradle-managed emulator (the Android adapters' contract bindings)
 #
 #                   Build and tests share a runner because together they stay under the journeys (measured: ~8 min
@@ -34,13 +35,14 @@
 #                   Store listing, backend and site
 #
 # NO HAND-OFFS BETWEEN GATES: each compiles what it needs, so no gate waits on another and a red one skips nothing.
-# The only artifact edge is ios-build → ios-deliver.
+# The only artifact edges are ios-build → ios-deliver and android-build → android-deliver.
 #
-# DELIVERY. `ios-deliver` runs on a push to main or a `workflow_dispatch` of a branch, and `needs: ci`: a red gate —
-# any gate, either platform — stops the TestFlight upload. It posts no required check (it never runs on a PR push, so
-# requiring it would freeze merges) and is therefore free to fail red without blocking anything. A dispatch runs every
-# gate too. It reaches only the INTERNAL `development` group; real users get builds only through the dispatch-driven
-# App Store promotion (ios-appstore-promote.yml).
+# DELIVERY. `ios-deliver` and `android-deliver` run on a push to main or a `workflow_dispatch` of a branch, and each
+# `needs: ci`: a red gate — any gate, either platform — stops BOTH uploads, so one build number (`BUILD_NUMBER_OFFSET`)
+# lands in both stores or neither, barring an upload failure. Neither posts a required check (neither runs on a PR
+# push, so requiring one would freeze merges), so each is free to fail red without blocking anything. A dispatch runs
+# every gate too. They reach only internal testers — TestFlight's `development` group, Play's internal testing track;
+# real users get builds only through the dispatch-driven App Store promotion (ios-appstore-promote.yml).
 #
 # Deployers stay in their own files: deploy.yml (api, site, listing text — main only), ios-appstore-promote.yml,
 # screenshots.yml, nightly-cleanup.yml, ssh-runner-macos.yml.
@@ -51,14 +53,15 @@ on:
     # BRANCHES only. A `vX.Y` tag is a release RECEIPT created by ios-appstore-promote.yml; it triggers nothing.
     branches: ["**"]
   # A DELIBERATE BRANCH DELIVERY (`docs/deployment.md`): dispatch this workflow on any ref and it runs every gate,
-  # archives RELEASE and DELIVERS to internal TestFlight, exactly as a push to main does — the one route to a tester's
-  # phone reachable only through TestFlight. It must be marked distributed (`SNAPSYNC_CHANNEL: release`): the xcconfig
+  # archives RELEASE and DELIVERS to internal TestFlight and the Play internal track, exactly as a push to main does —
+  # the one route to a tester's phone reachable only through the stores. On Play it REPLACES main's internal release
+  # until the next merge: the track serves only its latest. It must be marked distributed (`SNAPSYNC_CHANNEL: release`): the xcconfig
   # renderer emits the crash-reporting DSN only for a distributed build, and without it the in-app bug-report dialog
   # does not open at all (capability `privacy-security`); a TestFlight build must carry production APNs anyway.
   workflow_dispatch:
     inputs:
       what_to_test:
-        description: "TestFlight 'What to Test' note (blank → <branch> (<short sha>))"
+        description: "TestFlight 'What to Test' and Play release note (blank → <branch> (<short sha>))"
         required: false
         type: string
 
@@ -66,7 +69,8 @@ permissions:
   contents: read
 
 env:
-  # THE BUILD NUMBER (`CFBundleVersion`) is this workflow's `run_number` PLUS this offset. Builds were numbered by the
+  # THE BUILD NUMBER (`CFBundleVersion`, and Android's `versionCode` — one number per run, both stores) is this
+  # workflow's `run_number` PLUS this offset. Builds were numbered by the
   # retired ios.yml's run number (about 1100 when it retired), and App Store Connect refuses a build number that is not
   # higher than the last one uploaded for the same version, so a fresh workflow counting from 1 could deliver nothing.
   # The offset keeps the sequence monotonic; ios-appstore-promote.yml maps a number above it back to THIS workflow's
@@ -365,10 +369,10 @@ jobs:
       # Render the deployment BEFORE anything reads it: `Config.xcconfig` hard-`#include`s the generated fragment.
       - name: Resolve the deployment
         run: python3 scripts/resolve-deployment.py prod
-      # MARKETING_VERSION = max(floor, latest vX.Y tag with its minor + 1) (`docs/deployment.md`). The floor is
-      # Config.xcconfig's; the minor bump is INTEGER (v0.9 → 0.10), and max() compares (major, minor) TUPLES so a floor
-      # of 1.0 beats a derived 0.10. A promoted build's store version is DERIVED from this value. A Debug archive
-      # leaves it empty (the floor): it never reaches App Store Connect.
+      # MARKETING_VERSION = max(floor, latest vX.Y tag with its minor + 1) — `scripts/marketing-version.py`, the ONE rule
+      # `android-build` runs too, so both stores receive the same version for the same commit. A promoted build's store
+      # version is DERIVED from this value. A Debug archive leaves it empty (the floor): it never reaches App Store
+      # Connect.
       - name: Compute marketing version
         run: |
           if [ "$BUILD_CONFIG" != "Release" ]; then
@@ -376,34 +380,9 @@ jobs:
             echo "dev/Debug build — marketing version left to the Config.xcconfig floor"
             exit 0
           fi
-          python3 - <<'PY' >> "$GITHUB_ENV"
-          import re, subprocess
-
-          def parse(v):
-              m = re.fullmatch(r"(\d+)\.(\d+)", v.strip())
-              return (int(m.group(1)), int(m.group(2))) if m else None
-
-          floor = None
-          with open("iosApp/Configuration/Config.xcconfig") as f:
-              for line in f:
-                  if line.startswith("MARKETING_VERSION"):
-                      floor = parse(line.split("=", 1)[1])
-                      break
-          assert floor is not None, "MARKETING_VERSION floor not found or not two-part in Config.xcconfig"
-
-          tags = subprocess.run(
-              ["git", "tag", "-l", "v[0-9]*.[0-9]*"], capture_output=True, text=True
-          ).stdout.split()
-          versions = [p for p in (parse(t[1:]) for t in tags) if p is not None]
-          derived = None
-          if versions:
-              major, minor = max(versions)
-              derived = (major, minor + 1)
-
-          major, minor = max([floor] + ([derived] if derived else []))
-          print(f"MARKETING_VERSION_OUT={major}.{minor}")
-          PY
-          echo "computed marketing version: $(grep '^MARKETING_VERSION_OUT=' "$GITHUB_ENV" | tail -1)"
+          VERSION="$(python3 scripts/marketing-version.py)"
+          echo "MARKETING_VERSION_OUT=$VERSION" >> "$GITHUB_ENV"
+          echo "computed marketing version: $VERSION"
       - name: Compute the build number
         run: echo "BUILD_NUMBER=$((GITHUB_RUN_NUMBER + BUILD_NUMBER_OFFSET))" >> "$GITHUB_ENV"
       # Build number = the run number + the offset (see `BUILD_NUMBER_OFFSET`). APNs environment and the DSN are NOT
@@ -513,14 +492,75 @@ jobs:
   android-build:
     runs-on: ubuntu-26.04
     steps:
+      # fetch-tags so the marketing-version computation below can see the release tags (vX.Y).
       - uses: actions/checkout@v7.0.1
+        with:
+          fetch-tags: true
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 25
       - uses: gradle/actions/setup-gradle@v5
-      # The store build: R8 BUILDS over it here; that R8 output RUNS is the journeys' (they run the rig release).
-      - run: ./gradlew :app:android:assembleRelease
+      # The version and build number BOTH stores receive for this run (`docs/deployment.md`): the build number is
+      # ios-build's `CFBundleVersion`, and `scripts/marketing-version.py` is the rule ios-build runs. Off a delivering
+      # run the version stays the Config.xcconfig floor, as on iOS.
+      - name: Compute the version and build number
+        env:
+          DELIVERING: ${{ github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' }}
+        run: |
+          echo "BUILD_NUMBER=$((GITHUB_RUN_NUMBER + BUILD_NUMBER_OFFSET))" >> "$GITHUB_ENV"
+          echo "DELIVERING=$DELIVERING" >> "$GITHUB_ENV"
+          if [ "$DELIVERING" = "true" ]; then
+            VERSION="$(python3 scripts/marketing-version.py)"
+            echo "VERSION_NAME=$VERSION" >> "$GITHUB_ENV"
+            echo "VERSION_ARG=-Psnapsync.versionName=$VERSION" >> "$GITHUB_ENV"
+            echo "computed marketing version: $VERSION"
+          else
+            echo "VERSION_ARG=" >> "$GITHUB_ENV"
+          fi
+      # The store build: R8 BUILDS over it here; that R8 output RUNS is the journeys' (they run the rig release). A
+      # delivering run also builds the BUNDLE Play receives — from this same R8 run, so the mapping kept for it is the
+      # bundle's — marked distributed so the resolver bakes the crash-reporting DSN (`docs/deployment.md`). The channel
+      # and the DSN are this STEP's only, so the platform tests below resolve the ordinary dev channel.
+      - name: Build the store release
+        env:
+          SNAPSYNC_CHANNEL: ${{ (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch') && 'release' || 'dev' }}
+          SENTRY_DSN: ${{ (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch') && secrets.SENTRY_DSN || '' }}
+        run: |
+          TASKS=":app:android:assembleRelease"
+          if [ "$DELIVERING" = "true" ]; then TASKS="$TASKS :app:android:bundleRelease"; fi
+          # $VERSION_ARG is unquoted on purpose: empty, it must be no argument at all.
+          ./gradlew $TASKS -Psnapsync.versionCode="$BUILD_NUMBER" $VERSION_ARG
+      # Assert the BUNDLE carries the DSN — read out of its dex, not off the generator: the DSN once reached a grammar
+      # that truncated it and shipped mute builds with every test green. COMPARED, never echoed.
+      - name: Verify the bundle baked the DSN
+        if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' }}
+        env:
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+        run: |
+          [ -n "$SENTRY_DSN" ] || { echo "::error::the SENTRY_DSN secret is empty"; exit 1; }
+          if unzip -p app/android/build/outputs/bundle/release/android-release.aab 'base/dex/*.dex' | grep -q -a -F "$SENTRY_DSN"; then
+            echo "the bundle carries the resolved DSN"
+          else
+            echo "::error::the bundle's dex does not carry the resolved DSN"; exit 1
+          fi
+      # Hand the UNSIGNED bundle, its R8 mapping and the version it was built with to android-deliver, which signs,
+      # keeps the mapping and uploads. The version travels with the bundle so the release's name cannot disagree.
+      - name: Record the bundle's version
+        if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' }}
+        run: echo "$VERSION_NAME" > app/android/build/outputs/version.txt
+      - name: Upload the bundle for delivery
+        if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' }}
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: android-bundle
+          path: |
+            app/android/build/outputs/bundle/release/android-release.aab
+            app/android/build/outputs/mapping/release/mapping.txt
+            app/android/build/outputs/version.txt
+          # A build intermediate for the next job of this run: one day, then gone.
+          retention-days: 1
+          if-no-files-found: error
       # The platform-bound tests, on this same runner after the build: `:adapter:android`'s device tests on a
       # Gradle-managed Pixel 6 / API 36 emulator, with the upload contract's transfer fixture served on the host by
       # the build. The hosted runner exposes /dev/kvm to root only; the managed emulator needs it.
@@ -763,27 +803,14 @@ jobs:
             -authenticationKeyPath "$ASC_KEY_PATH" \
             -authenticationKeyID "$ASC_KEY_ID" \
             -authenticationKeyIssuerID "$ASC_ISSUER_ID"
-      # The "What to Test" note: `<PR title> (#<num>, <short sha>)`. The repo is rebase-merge-only, so the commits→pulls
-      # association names the PR; the subject is only the no-PR fallback, and an API flake folds into it (a degraded
-      # note must never fail the delivery). A dispatch takes the operator's `what_to_test`, else `<branch> (<sha>)`.
-      # The note reaches the publish step ONLY through $GITHUB_ENV: a PR title inside `${{ }}` in a run block would be
-      # script injection by construction.
+      # The "What to Test" note (`.github/scripts/delivery_note.sh`, the same note android-deliver gives Play). It
+      # reaches the publish step ONLY through $GITHUB_ENV.
       - name: Compose the release note
         env:
           GH_TOKEN: ${{ github.token }}
           WHAT_TO_TEST: ${{ inputs.what_to_test }}
         run: |
-          PULLS=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" 2>/dev/null || echo '[]')
-          SHORT_SHA=${GITHUB_SHA:0:7}
-          if [ -n "$WHAT_TO_TEST" ]; then
-            NOTE="$WHAT_TO_TEST ($SHORT_SHA)"
-          elif [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
-            NOTE="$GITHUB_REF_NAME ($SHORT_SHA)"
-          elif [ "$(jq 'length' <<<"$PULLS")" -gt 0 ]; then
-            NOTE="$(jq -r '.[0].title' <<<"$PULLS") (#$(jq -r '.[0].number' <<<"$PULLS"), $SHORT_SHA)"
-          else
-            NOTE="$(git log -1 --format='%s') ($SHORT_SHA)"
-          fi
+          NOTE="$(bash .github/scripts/delivery_note.sh)"
           echo "note: $NOTE"
           echo "WHATS_NEW=$NOTE" >> "$GITHUB_ENV"
       # Upload + note are ONE atomic publish: codemagic's `publish` uploads, waits for the build to become
@@ -798,3 +825,74 @@ jobs:
           pipx run --spec codemagic-cli-tools app-store-connect publish \
             --path "$RUNNER_TEMP/export/SnapSync.ipa" \
             --whats-new "$WHATS_NEW"
+
+  # Play delivery — the same runs and the same gate as ios-deliver (`needs: ci`), so a build number lands in both
+  # stores or neither, barring an upload failure. It compiles nothing: it signs the bundle android-build built with the
+  # UPLOAD key (Play re-signs it with the app signing key, the one prod's attestation pins) and uploads it to the
+  # INTERNAL testing track, which serves only its latest release — a branch dispatch replaces main's until the next
+  # merge. Like ios-deliver it posts no required check and may fail red without blocking anything.
+  android-deliver:
+    needs: ci
+    if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-26.04
+    steps:
+      # For the release note's fallback, the package name and the Play script.
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 25
+      - name: Compute the version and build number
+        run: |
+          echo "BUILD_NUMBER=$((GITHUB_RUN_NUMBER + BUILD_NUMBER_OFFSET))" >> "$GITHUB_ENV"
+          echo "PACKAGE=$(jq -r .androidPackageName deployments/components/android.json)" >> "$GITHUB_ENV"
+      - name: Download the bundle
+        uses: actions/download-artifact@v8.0.1
+        with:
+          name: android-bundle
+          path: ${{ runner.temp }}/android
+      # Crash-report retracing (capability `privacy-security`): Bugsink takes no mapping, and Play is not given one, so
+      # each delivered build's R8 mapping stays fetchable BY BUILD NUMBER — an Android crash report's `dist` — for the
+      # `/bugsink` skill. 90 days is the platform's maximum, as for `dsyms-<build>`.
+      - name: Publish the R8 mapping for crash retracing
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: r8-mapping-${{ env.BUILD_NUMBER }}
+          path: ${{ runner.temp }}/android/mapping/release/mapping.txt
+          retention-days: 90
+          if-no-files-found: error
+      # The upload key: a PKCS12 store whose one key is aliased `upload`, its password the store's. Written to the
+      # runner's temp only, for this step, and the password reaches jarsigner through the environment.
+      - name: Sign the bundle with the upload key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.PLAY_UPLOAD_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.PLAY_UPLOAD_KEYSTORE_PASSWORD }}
+        run: |
+          KEYSTORE="$RUNNER_TEMP/upload.p12"
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$KEYSTORE"
+          AAB="$RUNNER_TEMP/android/bundle/release/android-release.aab"
+          jarsigner -keystore "$KEYSTORE" -storetype PKCS12 \
+            -storepass:env KEYSTORE_PASSWORD -keypass:env KEYSTORE_PASSWORD \
+            "$AAB" upload
+          rm -f "$KEYSTORE"
+          # `-verify` exits 0 on an UNSIGNED jar too, so its verdict is read, not its status.
+          jarsigner -verify "$AAB" | grep -q '^jar verified\.' || { echo "::error::the bundle is not signed"; exit 1; }
+      - name: Compose the release note
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WHAT_TO_TEST: ${{ inputs.what_to_test }}
+        run: |
+          NOTE="$(bash .github/scripts/delivery_note.sh)"
+          echo "note: $NOTE"
+          echo "RELEASE_NOTE=$NOTE" >> "$GITHUB_ENV"
+      # play_release.py's dependencies are declared inline (PEP 723) and resolved by `uv run`.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.2.0
+      # ONE Play edit: upload, the internal track's one release (named `<version> (<build>)`), commit — or nothing.
+      - name: Upload to the Play internal track with the release note
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          VERSION="$(cat "$RUNNER_TEMP/android/version.txt")"
+          uv run .github/scripts/play_release.py deliver "$PACKAGE" \
+            "$RUNNER_TEMP/android/bundle/release/android-release.aab" internal "$VERSION ($BUILD_NUMBER)" "$RELEASE_NOTE"
