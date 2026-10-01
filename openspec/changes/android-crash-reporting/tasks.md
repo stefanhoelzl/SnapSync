@@ -50,6 +50,8 @@
       build Y, the delivered event says X), bound on `ANDROID_EMU`, `NotRunHere` on iOS; verify it passes under
       `./gradlew androidPlatformTest`, or, if it fails, leave `dist` unset on Android and carry the build number the
       way the clause then proves, recording the outcome in the reporter's KDoc
+- [x] 3.7 Turn release-health sessions off on both platforms in the shared reporter; verify on the emulator that a
+      `release`-channel build launched fresh caches no session and no `session` envelope
 - [x] 3.6 Update `docs/deployment.md`'s DSN section for Android (the escaping JSON rendering, and that only a delivering
       job resolving `channel = release` arms it); verify it names the same gate the resolver enforces
 

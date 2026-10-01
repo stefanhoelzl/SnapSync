@@ -42,8 +42,6 @@ See proposal.md for why. The current state this design starts from:
 - R8 keep rules (5b), the R8 mapping artifact and `/bugsink` retracing (5d).
 - Native (C/C++) crash capture on Android.
 - The Privacy Policy's other Android gaps (push and integrity name Apple only) — Play listing work (5g).
-- Session tracking: sentry-kmp sends release-health sessions by default on both platforms today and Bugsink drops
-  them. Whether to turn them off is a separate question for both platforms and is not changed here.
 
 ## Decisions
 
@@ -134,6 +132,12 @@ is cached, so on Android setting `dist` should stamp the crash-time build. That 
 - Off: screenshot and view-hierarchy attachments and default PII, as on iOS, through the KMP options the shared
   `commonMain` sets (the KMP layer maps them to sentry-android). The KMP failed-request option has no Android mapping;
   sentry-android captures failed requests only through its OkHttp integration, which is not linked.
+- Release-health sessions off on BOTH platforms (*added during implementation, at the user's call*). The KMP default
+  sends one per launch whether or not anything failed — a usage record the spec's "no usage tracking" rules out,
+  which Bugsink drops anyway. Not a contract clause: sentry-android opens a session only for an app in the
+  foreground, so the device-test process never shows one either way (measured: the clause passed with sessions on).
+  Measured instead on the emulator with a `release`-channel build: with sessions on, a launch cached `session.json`
+  and a `session` envelope; off, neither.
 - `sentry-android-ndk` excluded from the dependency: SnapSync ships no native code, it adds native libraries per
   ABI, and its frames would need native symbol files we do not produce.
 
