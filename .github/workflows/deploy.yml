@@ -676,8 +676,8 @@ jobs:
       - uses: actions/checkout@v7.0.1
       # The listing's domain-derived URLs (marketing, support, privacy policy) are RENDERED from the
       # resolved deployment, so the store can never advertise a host the app and backend have moved off
-      # (`docs/deployment.md`). The committed files stay hand-written copy carrying a
-      # `{{domain}}` placeholder; renderings are generated, never committed.
+      # (`docs/deployment.md`). The committed source is metadata/listing/, shared with Google Play;
+      # renderings are generated, never committed.
       - name: Resolve the deployment
         run: python3 scripts/resolve-deployment.py prod
       - name: Fetch pinned asc

@@ -272,7 +272,7 @@ const shots = await Promise.all(
       <p class="eyebrow">Legal</p>
       <h2>Privacy Policy</h2>
       <p class="meta">
-        Last updated 25 September 2026 · Contact:{" "}
+        Last updated 2 October 2026 · Contact:{" "}
         <a
           href="mailto:stefanh+snapsync@posteo.de"
           target="_blank"
@@ -306,9 +306,10 @@ const shots = await Promise.all(
           Screenshots, screen recordings, low-resolution images and videos (such as pictures saved
           from chats), and photos in messaging-app albums are never uploaded. Anyone who holds the
           event's invite link or QR code can join it or download its photos in a browser, so share
-          the invite only with people you want to have them. Photos are stored to make sharing work
-          and are deleted with the event (see below). Legal basis: performance of the service you
-          asked for (GDPR Art. 6(1)(b)).
+          the invite only with people you want to have them. A photo is shared exactly as it was
+          taken, including the details it carries, such as where it was taken, if your camera
+          recorded that. Photos are stored to make sharing work and are deleted with the event (see
+          below). Legal basis: performance of the service you asked for (GDPR Art. 6(1)(b)).
         </li>
         <li>
           <strong>A random device ID.</strong> Each install generates a random identifier so the
@@ -316,16 +317,19 @@ const shots = await Promise.all(
           cannot use it to contact you.
         </li>
         <li>
-          <strong>A push token.</strong> Each time the app starts, Apple gives it a token for silent
-          wake-ups — the app never shows notifications and never asks to. We use the token only to
+          <strong>A push token.</strong> Each time the app starts, your phone's platform gives it a
+          token for silent wake-ups (Apple on iPhone; Google, through Firebase Cloud Messaging, on
+          Android) — the app never shows notifications and never asks to. We use the token only to
           wake your device when new photos are ready in your event. Legal basis: performance of the
           service you asked for (GDPR Art. 6(1)(b)).
         </li>
         <li>
           <strong>An app-integrity check.</strong> The app proves to our server that it is a
-          genuine, unmodified copy of SnapSync (Apple App Attest). This checks the <em>app</em>, not
-          you, and carries no personal information. Legal basis: our legitimate interest in
-          preventing abuse of the service (GDPR Art. 6(1)(f)).
+          genuine, unmodified copy of SnapSync: on iPhone through Apple App Attest; on Android
+          through a key that the phone's secure hardware certifies, which our server checks against
+          Google's public list of revoked certificates (the app sends Google nothing for it). This
+          checks the <em>app</em>, not you, and carries no personal information. Legal basis: our
+          legitimate interest in preventing abuse of the service (GDPR Art. 6(1)(f)).
         </li>
         <li>
           <strong>Automatic crash and error reports.</strong> In versions from the App Store,
@@ -375,15 +379,19 @@ const shots = await Promise.all(
       </p>
 
       <h3>Who processes it for us</h3>
-      <p>We rely on three service providers to run SnapSync:</p>
+      <p>We rely on four service providers to run SnapSync:</p>
       <ul>
         <li>
           <strong>Bunny.net</strong> — hosting, storage, and content delivery for the photos and the
           service.
         </li>
         <li>
-          <strong>Apple</strong> — silent push wake-ups, the app-integrity check, and app
-          distribution.
+          <strong>Apple</strong> — on iPhone: silent push wake-ups, the app-integrity check, and app
+          distribution through the App Store.
+        </li>
+        <li>
+          <strong>Google</strong> — on Android: silent push wake-ups (Firebase Cloud Messaging) and
+          app distribution through Google Play.
         </li>
         <li>
           <strong>Bugsink</strong> — error monitoring: receives the automatic crash and error

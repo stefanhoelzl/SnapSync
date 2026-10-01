@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Composite the committed raw captures (`screenshots/`) into App Store listing images.
+# Composite the committed raw captures into store listing images: the App Store's from `screenshots/`, Google
+# Play's from `screenshots/android/`, both with the same per-locale headlines.
 #
 # The raws are the SINGLE SOURCE OF TRUTH (`docs/deployment.md`); this script is the App
 # Store's rendering of them, and the backend's `deno task shots` is the landing page's. Compositing here —
@@ -11,24 +12,53 @@
 # bars a fetched frame AND a self-drawn bezel alike. Rounded corners imply a device without depicting one.
 #
 # Usage: compose_screenshots.sh [<locale>]     (default: en-US)
-# Env:   RAW_DIR (default: screenshots), OUT_DIR (default: out)
-# Out:   $OUT_DIR/<locale>/NN-<state>.png at exactly 1320x2868 (APP_IPHONE_69).
-#        The layout is what `asc screenshots upload --path` fan-out expects: the immediate children of
-#        --path are locale directories.
+# Env:   TARGET (appstore, the default, or play), RAW_DIR (default: the target's raws), OUT_DIR (default: out)
+# Out:   $OUT_DIR/<locale>/NN-<state>.png
+#        appstore: exactly 1320x2868 (APP_IPHONE_69). The layout is what `asc screenshots upload --path`
+#                  fan-out expects: the immediate children of --path are locale directories.
+#        play:     exactly 1080x1920 (9:16). A raw Android capture (1080x2400) breaks Play's rule that a
+#                  screenshot's long side is at most twice its short side, so it sits on a 9:16 canvas.
+#                  Written with no metadata chunks, so unchanged raws composite to unchanged bytes: the
+#                  delivery compares hashes and uploads only a set that changed.
 set -euo pipefail
 
 LOCALE="${1:-en-US}"
-RAW_DIR="${RAW_DIR:-screenshots}"
+TARGET="${TARGET:-appstore}"
 OUT_DIR="${OUT_DIR:-out}"
 HEADLINES="metadata/screenshots/${LOCALE}.json"
-
-# APP_IPHONE_69 accepts exactly these dimensions; App Store Connect scales this class down to the smaller
-# iPhone listings, so it is the only iPhone set we produce.
-CANVAS_W=1320
-CANVAS_H=2868
-SHOT_W=1120       # the screen within the canvas, leaving a brand margin
-CORNER=44         # proportional to the shot, not the device's real radius — we are not drawing a device
 BRAND="#0E9D6B"   # AppTheme's GreenLight; the light captures sit on the light brand colour
+
+case "$TARGET" in
+  appstore)
+    RAW_DIR="${RAW_DIR:-screenshots}"
+    # APP_IPHONE_69 accepts exactly these dimensions; App Store Connect scales this class down to the smaller
+    # iPhone listings, so it is the only iPhone set we produce.
+    CANVAS_W=1320
+    CANVAS_H=2868
+    SHOT_GEOMETRY="1120x"  # the screen within the canvas, by width, leaving a brand margin
+    CORNER=44         # proportional to the shot, not the device's real radius — we are not drawing a device
+    POINTSIZE=72
+    CAPTION_W=1140
+    HEADLINE_Y=170
+    SHOT_Y=100
+    WRITE_OPTS=()
+    ;;
+  play)
+    RAW_DIR="${RAW_DIR:-screenshots/android}"
+    # Phones only (no tablet set): 9:16 at 1080 wide, Play's recommended size for a phone screenshot.
+    CANVAS_W=1080
+    CANVAS_H=1920
+    SHOT_GEOMETRY="x1600"  # by height: the taller Android screen sets the size; a two-line headline still clears it
+    CORNER=28
+    POINTSIZE=58
+    CAPTION_W=940
+    HEADLINE_Y=80
+    SHOT_Y=60
+    # No time or text chunks: ImageMagick otherwise stamps the run's date into every PNG.
+    WRITE_OPTS=(-strip -define png:exclude-chunk=date,time)
+    ;;
+  *) echo "::error::unknown TARGET '$TARGET' (appstore or play)"; exit 1 ;;
+esac
 
 [ -d "$RAW_DIR" ] || { echo "::error::$RAW_DIR not found — commit the raw captures first"; exit 1; }
 [ -f "$HEADLINES" ] || { echo "::error::$HEADLINES not found"; exit 1; }
@@ -77,7 +107,8 @@ for STATE in create joining in_sync; do
   # ImageMagick 6 does NOT expand `%[fx:…]` inside `-draw` (7 does), so an fx-sized roundrectangle fails
   # there with "non-conforming drawing primitive definition". Computing the geometry in the shell is the
   # portable form — and it is clearer anyway.
-  $IM "$RAW" -resize "${SHOT_W}x" "$TMP/shot.png"
+  $IM "$RAW" -resize "$SHOT_GEOMETRY" "$TMP/shot.png"
+  SHOT_W="$($IDENTIFY -format '%w' "$TMP/shot.png")"
   SHOT_H="$($IDENTIFY -format '%h' "$TMP/shot.png")"
 
   # Rounded corners, never a device frame (see the header). White where the shot shows through.
@@ -91,11 +122,11 @@ for STATE in create joining in_sync; do
   # rather than bleeding off the canvas (`-annotate` neither wraps nor clips safely). Any copy length fits
   # by construction — which is why the headline needs no length gate.
   $IM -size "${CANVAS_W}x${CANVAS_H}" "xc:$BRAND" \
-    "$TMP/rounded.png" -gravity south -geometry +0+100 -compose over -composite \
-    \( -background none -fill white -font "$FONT" -pointsize 72 \
-       -size 1140x -gravity center caption:"$HEADLINE" \) \
-    -gravity north -geometry +0+170 -compose over -composite \
-    "$OUT"
+    "$TMP/rounded.png" -gravity south -geometry "+0+$SHOT_Y" -compose over -composite \
+    \( -background none -fill white -font "$FONT" -pointsize "$POINTSIZE" \
+       -size "${CAPTION_W}x" -gravity center caption:"$HEADLINE" \) \
+    -gravity north -geometry "+0+$HEADLINE_Y" -compose over -composite \
+    ${WRITE_OPTS[@]+"${WRITE_OPTS[@]}"} "$OUT"
   rm -rf "$TMP"
 
   # A wrong size is rejected by App Store Connect, so fail here where the cause is obvious.

@@ -1,4 +1,4 @@
-# App Store / landing-page marketing screenshots. DISPATCH-ONLY and NON-GATING dev infra:
+# The store listings' and landing page's marketing screenshots. DISPATCH-ONLY and NON-GATING dev infra:
 # it posts no status check and never blocks a merge. It changes no product behavior. Its
 # rationale (why it exists at all, and every knob below) lives here so there is no separate capability.
 # The one product-facing PROPERTY — that a committed raw depicts the real screen in a state the real
@@ -16,6 +16,13 @@
 # no downloads), and it rotted between dispatches because nothing ran it. Now each state is one the real
 # reduction reached over the mocks, and the scenario that reaches it gates every build on the JVM host.
 # It uploads **6 RAW captures** (3 states x light/dark) as a workflow ARTIFACT and stops there.
+#
+# ANDROID (the `android` job): the same three states, captured the same way from the Android rig build on an emulator
+# on a Linux runner with KVM — the DEBUG build, because the capture resets the mocked systems' saved state through
+# `run-as`, which reaches only a debuggable app. Its six raws are the artifact `screenshots-android-raw`, committed to
+# `screenshots/android/`; they feed only the Google Play listing (composited with the same headlines by
+# compose_screenshots.sh's `play` target, uploaded by ci.yml's android-deliver on main when they changed). The status
+# bar is SystemUI's demo mode (9:41, full battery and Wi-Fi), set by the capture itself.
 #
 # RAW ONLY, BY DESIGN. An operator commits these to `screenshots/` and they become the SINGLE SOURCE OF
 # TRUTH for two surfaces, each of which composites its own way: the release (promote.yml)
@@ -156,7 +163,7 @@ jobs:
       - name: Capture each state, light and dark
         run: |
           "${JAVA_HOME:+$JAVA_HOME/bin/}java" -Xmx512m -cp "$(cat test/integration/build/screenshots-classpath.txt)" \
-            app.snapsync.screenshots.CaptureShotsKt "$DEVICE" 18099 shots
+            app.snapsync.screenshots.CaptureShotsKt ios "$DEVICE" 18099 shots
 
       # Diagnostics on a failed capture: the app's own log, what the screen showed, and any crash report — so a
       # launch that never answered or a state never reached is attributable, not guessed.
@@ -196,5 +203,73 @@ jobs:
         uses: actions/upload-artifact@v7.0.1
         with:
           name: screenshots-raw
+          path: shots/
+          if-no-files-found: error
+
+  android:
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 25
+      - uses: gradle/actions/setup-gradle@v5
+
+      # The DEBUG rig build (`run-as` needs a debuggable app) against `prod`, for the same reason as above: `in_sync`'s QR
+      # encodes the deployment's invite origin. Every system the shots touch is mocked, so nothing reaches prod. The
+      # capture compiles here too, and the daemons stop before the emulator boots, as in ci.yml's journeys (android).
+      - name: Build the rig app and the capture
+        run: |
+          ./gradlew :app:android:assembleDebug :test:integration:screenshotsClasses :test:integration:screenshotsClasspath \
+            -Psnapsync.rig=true -Psnapsync.deployment=prod
+          ./gradlew --stop
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      # The cache ci.yml's journeys (android) writes on main; restore-only here, as ~/.konan is for the iOS job.
+      - name: Restore the Android system image
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ env.ANDROID_HOME }}/system-images/android-36/google_apis/x86_64
+          key: android-sysimg-36-google_apis-x86_64-
+          restore-keys: android-sysimg-36-google_apis-x86_64-
+      - name: Install the emulator and the system image
+        run: bash .github/scripts/android_sdk_install.sh 'system-images;android-36;google_apis;x86_64'
+      # The emulator the journeys and the `snapsync-android` skill use (pixel_6: 1080x2400). Each script line is its own
+      # shell. On a failed capture the app's log and the screen are kept, since the emulator is gone after this step.
+      - name: Capture each state, light and dark
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -gpu swangle_indirect -memory 3072
+          disable-animations: true
+          script: |
+            $ANDROID_HOME/platform-tools/adb -s emulator-5554 install -r app/android/build/outputs/apk/debug/android-debug.apk
+            java -Xmx512m -cp "$(cat test/integration/build/screenshots-classpath.txt)" app.snapsync.screenshots.CaptureShotsKt android emulator-5554 18199 shots || { mkdir -p evidence; $ANDROID_HOME/platform-tools/adb -s emulator-5554 logcat -d > evidence/logcat.txt; $ANDROID_HOME/platform-tools/adb -s emulator-5554 exec-out screencap -p > evidence/screen.png; exit 1; }
+
+      - name: Upload the evidence
+        if: failure()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: screenshots-android-evidence
+          path: |
+            evidence/
+            shots/
+          if-no-files-found: ignore
+      - name: Check the set is complete
+        run: |
+          COUNT="$(find shots -name '*.png' | wc -l | tr -d ' ')"
+          echo "captured $COUNT shot(s):"; ls -l shots
+          [ "$COUNT" -eq 6 ] || { echo "::error::expected 6 raw captures, got $COUNT"; exit 1; }
+      - name: Upload the raw captures
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: screenshots-android-raw
           path: shots/
           if-no-files-found: error

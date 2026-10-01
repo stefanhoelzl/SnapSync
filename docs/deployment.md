@@ -68,7 +68,7 @@ Renderings, all emitted by one invocation (`python3 scripts/resolve-deployment.p
 | gradle-json | `build/deployment.json` | Gradle, for the Android build's values nobody reviewed (the crash-reporting DSN and environment), in a grammar that escapes |
 | xcconfig | `iosApp/Configuration/Deployment.xcconfig` | Xcode build settings, entitlements, `Info.plist` substitutions. **Literals only** |
 | plist | `iosApp/Configuration/Deployment.plist` | copied into **both** the app and the extension bundle |
-| metadata | `build/metadata/**` | the App Store listing (domain-derived URLs rendered from templates) |
+| metadata | `build/metadata/**` | both stores' listings, rendered from `metadata/listing/` (§6) |
 | site | `site/src/deployment.json` | the Astro site |
 
 `scripts/resolve_deployment_test.py` runs in `ci.yml`'s `metadata` gate, on every push.
@@ -479,9 +479,11 @@ automatically, docs-only merges included. It reaches **no external tester**: the
   The internal track serves only its **latest** release: a branch dispatch replaces `main`'s for internal testers until
   the next merge. (Play's internal app sharing is not used: it re-signs with a key prod's attestation refuses.) The
   mapping is not uploaded to Play; `/bugsink` retraces against the artifact. `play_release.py status <package>` lists
-  every track's releases read-only. Secrets: `PLAY_UPLOAD_KEYSTORE_BASE64` / `PLAY_UPLOAD_KEYSTORE_PASSWORD` (PKCS12,
-  alias `upload`, key password = store password) and `PLAY_SERVICE_ACCOUNT_JSON` (service account `play-ci`; locally
-  `PLAY_SERVICE_ACCOUNT_KEY` through secrets-env).
+  every track's releases read-only. On **`main` only**, the same edit also brings the Play **store listing** in line
+  with the repo (§6, "Google Play listing delivery"); a branch dispatch never touches it. Secrets:
+  `PLAY_UPLOAD_KEYSTORE_BASE64` / `PLAY_UPLOAD_KEYSTORE_PASSWORD` (PKCS12, alias `upload`, key password = store
+  password), `PLAY_SERVICE_ACCOUNT_JSON` (service account `play-ci`; locally `PLAY_SERVICE_ACCOUNT_KEY` through
+  secrets-env) and `PLAY_CONTACT_EMAIL` (the listing's contact email).
 - **Signing**: two persistent certificates imported into an ephemeral keychain in **both** `ios-build`
   and `ios-deliver`: Apple Distribution **and** Apple Development. `archive` also provisions a
   development identity, so without the imported Development cert CI would mint a new one every run and
@@ -592,15 +594,35 @@ Operator rules:
 - Concurrency is ONE group for every promote, queued, never cancelled: the tag is per version, so two builds of one
   version must not race to it, and a cancel between the two submits is the worst place to stop.
 
+### Icons and store art
+
+`scripts/appicon.py` is the icon's one master: its geometry draws every icon and store image, and nothing is traced
+from a bitmap. One run writes:
+- the iPhone icon (`Icon-1024.png`);
+- Android's adaptive launcher icon: VectorDrawables under `app/android/src/main/res/` (gradient background, the mark
+  inside the 66dp safe circle, and a monochrome layer for themed icons);
+- Play's 512×512 icon and 1024×500 feature graphic (`metadata/play/images/`).
+
+Every output is committed and none may be edited by hand. Change the geometry or the colours and re-run.
+`--check` asserts the vector path still matches the raster mark.
+
 ### Listing metadata
 
-- `metadata/version/current/en-US.json` and `metadata/app-info/en-US.json` hold the text: description, keywords,
-  promotional text, support and marketing URLs, name, subtitle and privacy-policy URL. The URLs are
-  **templates** with a domain placeholder, rendered into `build/metadata/` by the resolver. Everything
-  else is edited directly.
+- **One source for both stores.** `metadata/listing/<locale>.json` holds the copy the App Store and Google Play
+  share: the name, the description and the marketing, support and privacy-policy URLs. It also has an `apple`
+  section (subtitle, keywords, promotional text) and a `play` section (short description).
+- **Rendering.** The resolver renders it into `build/metadata/`: App Store Connect's strict-schema files
+  (`app-info/`, `version/current/`) and Play's fields (`play/`: title, short and full description, contact
+  website). No store's file is committed.
+- **Placeholders.** `{{domain}}` is the deployment's domain. Every other `{{word}}` is looked up in the source's
+  `words`, which gives each store its own wording; for example `{{gallery}}` is "Photos app" on the App Store and
+  "phone's gallery" on Play. An unknown word, or one with no wording for a store, fails the resolver before it
+  writes anything.
 - **The listing's validation** (`ci.yml`'s `metadata` gate, every push, no credentials): character
   limits (description ≤ 4000, keywords ≤ 100, promotional text ≤ 170, whatsNew ≤ 4000, subtitle ≤ 30),
-  URL syntax, and **unknown keys**. The tool's schema is closed. That is why the review notes and the
+  URL syntax, and **unknown keys**; then `scripts/validate_play_listing.py` checks Play's half (title ≤ 30, short
+  description ≤ 80, full description ≤ 4000, nothing left unfilled), since Play has no offline validator. The tool's
+  schema is closed. That is why the review notes and the
   screenshot headlines live in their own files: a new key in the canonical files would fail this gate
   and block merges.
 - **`appstore-metadata-apply`** (`deploy.yml`, `main` only, not required): resolves the **editable**
@@ -611,6 +633,28 @@ Operator rules:
   the committed files deliberately do not carry.
 - The `asc` CLI is pinned and SHA-256 verified (`.github/scripts/asc_fetch.sh`). No fastlane, no Ruby.
   App previews (video) are manual.
+
+### Google Play listing delivery
+
+- **Main only, inside the delivery's one edit.** `android-deliver` renders the listing (`build/metadata/play/`),
+  checks it, and stages the committed icon and feature graphic. It composites the phone screenshots from
+  `screenshots/android/` (the `play` target). `play_release.py deliver --listing … --images …` then compares each part
+  with what Play holds, inside the edit that uploads the bundle:
+  - the three text fields, by value;
+  - the contact website, and the contact email from the `PLAY_CONTACT_EMAIL` secret (never committed, never
+    printed);
+  - each image set, by the sha256 Play lists, which is the uploaded file's own (measured).
+
+  Only a difference is written. A merge that changes no copy and no image therefore sends Play nothing to review,
+  and one that does joins whatever review is open. There is ONE edit per run, because committing an edit invalidates
+  every other open one: a separate listing job would race the delivery.
+- **One edit, one fate.** A listing Play rejects fails the delivery too, and nothing lands. The `metadata` gate checks
+  Play's limits on every PR so that this stays theoretical.
+- **Preview before merging.** `uv run .github/scripts/play_release.py listing-diff <package> build/metadata/play <images
+  dir>` (under secrets-env) prints what would change. `--try` also writes it into an edit that is then deleted, never
+  committed, so Play validates it.
+- **Not in the API, so set by hand in the Console:** the privacy-policy URL, the category and every App-content
+  declaration. `metadata/play/declarations.md` records each answer and why.
 
 ### Screenshots
 
@@ -630,6 +674,19 @@ gh workflow run screenshots.yml --ref <branch>          # ~11-19 min
 RID=$(gh run list -w screenshots.yml -L1 --json databaseId -q '.[0].databaseId')
 gh run download "$RID" -n screenshots-raw -D screenshots
 # LOOK AT THEM, then: git add screenshots/ && git commit
+```
+
+**Android** has its own six raws in `screenshots/android/`, the same three states captured the same way from the
+Android rig build on an emulator, by `screenshots.yml`'s `android` job. It uses the DEBUG build, because the capture
+resets the mocked systems' saved state through `run-as`; the status bar is SystemUI's demo mode. They feed only the
+Google Play listing: `compose_screenshots.sh`'s `play` target composites the light set with the same headlines onto a
+1080×1920 (9:16) canvas, since a raw 1080×2400 breaks Play's 2:1 limit, and `android-deliver` uploads them when they
+changed (below). The landing page keeps the iPhone raws. An unchanged UI captures byte-identically on the emulator too.
+
+```
+gh workflow run screenshots.yml --ref <branch>          # both jobs
+RID=$(gh run list -w screenshots.yml -L1 --json databaseId -q '.[0].databaseId')
+gh run download "$RID" -n screenshots-android-raw -D screenshots/android
 ```
 
 ⚠️ **Looking at them is the only check there is.** A system notification ("Ready for Apple
