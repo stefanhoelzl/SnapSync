@@ -557,7 +557,7 @@ jobs:
           - platform: android
             runs-on: ubuntu-26.04
     runs-on: ${{ matrix.runs-on }}
-    # `actions: write`: the iOS cell reclaims its superseded ~/.konan entries on main.
+    # `actions: write`: on main the iOS cell reclaims its superseded ~/.konan entries, the Android cell its system images.
     permissions:
       contents: read
       actions: write
@@ -614,6 +614,39 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+      # The system image is not on the runner image (~1 min to download each run), so it is cached — written on main
+      # only, as ~/.konan is, and keyed by the installed image's fingerprint, so restore and save are split: a stable
+      # primary key would always hit and never pick up a new revision. The emulator itself ships on the runner image.
+      - name: Restore the Android system image
+        if: matrix.platform == 'android'
+        id: sysimg-restore
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ env.ANDROID_HOME }}/system-images/android-36/google_apis/x86_64
+          key: android-sysimg-36-google_apis-x86_64-
+          restore-keys: android-sysimg-36-google_apis-x86_64-
+      # Retried downloads ahead of the emulator action's own, which never retry (`.github/scripts/android_sdk_install.sh`).
+      - name: Install the emulator and the system image
+        if: matrix.platform == 'android'
+        id: sysimg
+        run: bash .github/scripts/android_sdk_install.sh 'system-images;android-36;google_apis;x86_64'
+      - name: Save the Android system image
+        if: matrix.platform == 'android' && github.ref == 'refs/heads/main' && steps.sysimg-restore.outputs.cache-matched-key != format('android-sysimg-36-google_apis-x86_64-{0}', steps.sysimg.outputs.fingerprint)
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ env.ANDROID_HOME }}/system-images/android-36/google_apis/x86_64
+          key: android-sysimg-36-google_apis-x86_64-${{ steps.sysimg.outputs.fingerprint }}
+      # One entry is ~1.5 GB of a full 10 GB budget: drop the revisions the save above superseded.
+      - name: Reclaim superseded system-image entries
+        if: matrix.platform == 'android' && github.ref == 'refs/heads/main'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KEEP: android-sysimg-36-google_apis-x86_64-${{ steps.sysimg.outputs.fingerprint }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/caches?per_page=100&key=android-sysimg-" \
+            --jq ".actions_caches[] | select(.key != \"$KEEP\") | .id" |
+            while read -r id; do gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/caches/$id" --silent; done
       - name: Run the journeys on the emulator
         if: matrix.platform == 'android'
         uses: reactivecircus/android-emulator-runner@v2
