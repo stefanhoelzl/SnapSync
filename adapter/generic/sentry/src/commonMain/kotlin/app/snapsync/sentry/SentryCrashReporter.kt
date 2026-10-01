@@ -34,8 +34,8 @@ import io.sentry.kotlin.multiplatform.protocol.Breadcrumb
  *   breadcrumbs and the SDK's own auto-start are off in this module's Android manifest, which sentry-android reads at
  *   init. ANR reporting stays on: an app frozen until the system closes it is reported (capability
  *   `privacy-security`). The SDK's random per-install `user.id` is the one deliberate identifier (spec: powers
- *   affected-device counts, linked to nothing) — do not scrub it. Bugsink ingests errors only, so tracing stays unset
- *   and replay stays at its off default.
+ *   affected-device counts, linked to nothing) — do not scrub it. Release-health sessions are off (a per-launch
+ *   usage record). Bugsink ingests errors only, so tracing stays unset and replay stays at its off default.
  *
  * **Idempotent across the whole process**, not just this instance: the SDK hub is process-global, and a second
  * init would reset its scope. One instance per process is the composition's rule (`snapSyncProcess`); the flag
@@ -73,6 +73,10 @@ class SentryCrashReporter : CrashReporter {
             // overwrite the build number the crash report recorded when it actually crashed. `crashDist` decides.
             options.dist?.let { sdk.dist = it }
             sdk.sendDefaultPii = false
+            // No release-health sessions: one per launch, sent whether or not anything failed — a record of how the
+            // app is used, which automatic reports must not carry (capability `privacy-security`). Bugsink drops them
+            // anyway; off, they are never created.
+            sdk.enableAutoSessionTracking = false
             sdk.enableCaptureFailedRequests = false
             sdk.attachScreenshot = false
             sdk.attachViewHierarchy = false
