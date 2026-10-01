@@ -3,14 +3,11 @@ package app.snapsync.feature.album
 import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.model.AssetId
 import app.snapsync.model.grantsPhotoAccess
-import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.model.EventConfig
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.admittedAssetIds
-import app.snapsync.model.AssetRef
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.downloads.DownloadService
-import app.snapsync.services.backend.EventUnionSource
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.model.EntryScope
 import app.snapsync.model.invocation
@@ -43,9 +40,10 @@ const val GATHER_BATCH_SIZE: Int = 500
  * Two sets, and only these:
  *  - **own** — the device manifest projection: [LedgerService.manifestRows] admitted by the membership's
  *    **current** policy, exactly what the device tells the event it contributes;
- *  - **foreign** — the event union's other-device assets this device has imported, resolved by ref through
- *    [DownloadService.importedLocalIds]. The store is event-blind; the union is what says an asset is in THIS
- *    event, so an import made for another event is never gathered.
+ *  - **foreign** — the other-device assets of this event's union that this device has imported
+ *    ([DownloadService.importedLocalIdsOf]): every reconcile tags the event's whole foreign union in the store, so
+ *    the store says which imports are in THIS event without a union read of the gather's own, and an import made
+ *    for another event is never gathered.
  *
  * **App-only by construction.** It is a separate class, built only in the app composition, precisely so the
  * extension — which constructs an [AlbumCoordinator] for enqueue-time placement — has nothing to call.
@@ -62,17 +60,14 @@ const val GATHER_BATCH_SIZE: Int = 500
  * It never ensures the album: its triggers do that first, and a gather that also created albums would race
  * the grant subscription's creation into a duplicate. It keeps **no record** of what it placed: adding an
  * asset already in the collection is a no-op (measured, simulator, iOS 26.5), so a repeat costs O(N) and
- * places nothing twice. Best-effort throughout — a failed union read skips only the foreign half, and a
- * failed batch is swallowed by [AlbumCoordinator.place].
+ * places nothing twice. Best-effort throughout — a failed batch is swallowed by [AlbumCoordinator.place].
  */
 class AlbumGather(
     private val configSource: ConfigService,
     private val ledger: LedgerService,
     /** The membership's one selection policy — the same derivation every other consumer uses. */
     private val policyFor: suspend (EventConfig) -> SelectionPolicy,
-    private val union: EventUnionSource,
     private val downloads: DownloadService,
-    private val identity: PersistedDeviceIdentity,
     /** The photo grant: a gather without usable access (`grantsPhotoAccess`) could only fail its adds. */
     private val photoAccess: GalleryAccessState,
     private val coordinator: AlbumCoordinator,
@@ -127,7 +122,7 @@ class AlbumGather(
             !photoAccess.usable -> log.i { "gather: photo access not usable — skipping event=$eventId" }
             else -> {
                 val own = if (coordinator.placesOwnPhotos) ownSet(cfg) else emptyList()
-                val foreign = foreignSet(eventId)
+                val foreign = downloads.importedLocalIdsOf(eventId).sorted()
                 log.i { "gather: placing ${own.size} own and ${foreign.size} received asset(s) for event=$eventId" }
                 own.chunked(batchSize).forEach { batch -> coordinator.place(eventId, batch) }
                 foreign.chunked(batchSize).forEach { batch -> coordinator.placeReceived(eventId, batch) }
@@ -139,15 +134,5 @@ class AlbumGather(
         val rows = ledger.manifestRows()
         val admitted = admittedAssetIds(rows, policyFor(cfg))
         return admitted.sorted()
-    }
-
-    private suspend fun foreignSet(eventId: String): List<AssetId> {
-        val assets = union.union(eventId).getOrElse {
-            log.w(it) { "gather: union read failed for event=$eventId — gathering own photos only" }
-            return emptyList()
-        }
-        val self = identity.deviceId()
-        val refs = assets.filter { it.deviceId != self }.map { AssetRef(it.deviceId, it.assetId) }
-        return downloads.importedLocalIds(refs).values.sorted()
     }
 }

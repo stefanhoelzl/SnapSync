@@ -1,7 +1,6 @@
 package app.snapsync.flow
 
 import app.snapsync.feature.album.AlbumCoordinator
-import app.snapsync.feature.download.DownloadController
 import app.snapsync.feature.membership.SwitchDecision
 import app.snapsync.feature.membership.switchDecision
 import app.snapsync.model.EventConfig
@@ -40,7 +39,8 @@ import app.snapsync.model.EventConfig
  *     leading guard (`event-album`; the grant subscription covers the grant-after-join case).
  *  4. **Reconcile** foreign downloads and **re-register the push token** — concurrently, so a slow
  *     one never blocks the other and each labels its own log lines, but awaited before `run()`
- *     returns (law "A trigger flow never outlives its own run").
+ *     returns (law "A trigger flow never outlives its own run"). The reconcile plans from the union the entry
+ *     already read for its adoption, when it did, so a join reads the union once.
  *
  * This flow issues **no** event-details fetch. It once did, to fill a title a scan could not fetch
  * while offline; a membership can no longer arrive nameless (capability `join-event`), and every
@@ -48,12 +48,17 @@ import app.snapsync.model.EventConfig
  * the event's details, so the fetch was redundant by construction. `Foreground` is the sole trigger
  * that refreshes the membership (capability `join-event`).
  *
- * Port touches ([activeEventId], [enterMembership], [saveConfig], [refreshStatus], [hasUsableAccess]) arrive as
- * `model`-typed effect lambdas built in `compose/`; the album rule lives in its feature
+ * Port touches ([activeEventId], [enterMembership], [saveConfig], [refreshStatus], [hasUsableAccess],
+ * [reconcileDownloads]) arrive as `model`-typed effect lambdas built in `compose/`; the album rule lives in its feature
  * ([AlbumCoordinator]).
  */
 class Provision(
-    private val downloadController: DownloadController,
+    /**
+     * Discover, plan and enqueue the event's foreign downloads (capability `receiving-photos`; a no-op under an
+     * upload-only direction, gated inside the download controller) — from the union [enterMembership] already read
+     * when it did, else reading it.
+     */
+    private val reconcileDownloads: suspend (eventId: String) -> Unit,
     /** The event-album coordinator (capability `event-album`); its `ensureAlbum` owns the opt-in gate. */
     private val albumCoordinator: AlbumCoordinator,
     /** The currently-joined event id, or `null` — the config read (a port touch). */
@@ -102,7 +107,7 @@ class Provision(
         //    flow never outlives its own run"): a join whose reconcile and registration are merely
         //    queued when `run()` returns is a join the caller cannot truthfully report as finished.
         fanOut("Provision") {
-            child("reconcile") { downloadController.reconcile(cfg.eventId) }
+            child("reconcile") { reconcileDownloads(cfg.eventId) }
             child("registerPush") { registerPush() }
         }
     }

@@ -21,6 +21,7 @@ import app.snapsync.services.wake.EventCheck
 import app.snapsync.services.wake.EventChecks
 import app.snapsync.model.StagedResource
 import app.snapsync.model.UnconfirmedImport
+import app.snapsync.model.UnionAsset
 import app.snapsync.model.invocation
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.sync.Mutex
@@ -173,16 +174,6 @@ class DownloadController(
     }
 
     /**
-     * Discover + plan + enqueue, idempotently. Safe to call on join and on every foreground: already-imported and
-     * already-planned assets are no-ops, and only not-yet-staged resources enqueue.
-     *
-     * **It imports nothing** (capability `receiving-photos`, "A failed union fetch still drains the staged imports"):
-     * the import drain is the process tail's first unit ([importReady]), which every caller's wake requests after
-     * its own work — whatever the union answered. A reconcile that drained would be a second import path beside the
-     * tail's, running concurrently with it at foreground, which the single-flight tail exists to rule out (decision
-     * record `changes/own-work-per-wake`, D1).
-     */
-    /**
      * [reconcile], unless the union was read within the hour (capability `receiving-photos`, "New photos are announced
      * by a silent wake, and never only by it"; decision record `changes/timely-background-receiving`, D4): what a
      * background wake runs, so others' photos arrive when no push does, at no more than one union read per hour per
@@ -199,7 +190,25 @@ class DownloadController(
     /** Forget when [eventId]'s union was last read — a leave or a reset, so a re-join reads at once. */
     fun forgetChecks(eventId: String) = checks.clear(eventId)
 
-    suspend fun reconcile(eventId: String) = log.invocation(entryContext, "reconcile", params = "eventId=$eventId") {
+    /**
+     * Discover + plan + enqueue, idempotently. Safe to call on join and on every foreground: already-imported and
+     * already-planned assets are no-ops, and only not-yet-staged resources enqueue.
+     *
+     * **It imports nothing** (capability `receiving-photos`, "A failed union fetch still drains the staged imports"):
+     * the import drain is the process tail's first unit ([importReady]), which every caller's wake requests after
+     * its own work — whatever the union answered. A reconcile that drained would be a second import path beside the
+     * tail's, running concurrently with it at foreground, which the single-flight tail exists to rule out (decision
+     * record `changes/own-work-per-wake`, D1).
+     *
+     * It plans from [known] when a caller read the union in this same act — a join, whose adoption read it seconds
+     * before (`JoinUnion` in the composition) — and reads its own otherwise. Either way it stamps the hour: a union
+     * was read for this event now.
+     */
+    suspend fun reconcile(eventId: String, known: List<UnionAsset>? = null) = log.invocation(
+        entryContext,
+        "reconcile",
+        params = "eventId=$eventId" + if (known != null) " (the join's union)" else "",
+    ) {
         // `!= true` covers BOTH non-answers: an upload-only membership (`false`) and no membership at all
         // (`null`). Neither enables the arm, and neither is inferred from the other.
         if (downloadEnabled() != true) {
@@ -212,7 +221,7 @@ class DownloadController(
         // A failed union fetch costs this wake its DISCOVERY, not its imports: the tail that follows the wake's own
         // work drains what is staged whatever the union answered, because the drain reads only the store and the
         // bytes already on disk.
-        val assets = union.union(eventId).getOrElse {
+        val assets = known ?: union.union(eventId).getOrElse {
             log.w(it) { "union fetch failed — keeping last state; the tail still imports what is staged" }
             return@invocation
         }

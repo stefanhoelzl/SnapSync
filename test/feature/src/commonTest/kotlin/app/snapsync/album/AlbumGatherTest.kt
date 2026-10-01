@@ -9,7 +9,6 @@ import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.feature.support.configService
 import app.snapsync.feature.support.galleryAccess
-import app.snapsync.feature.support.testIdentity
 import app.snapsync.model.AlbumId
 import app.snapsync.model.AlbumKind
 import app.snapsync.model.AlbumRecord
@@ -30,9 +29,8 @@ import app.snapsync.services.gallery.GalleryAlbums
 import app.snapsync.model.AssetRef
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.downloads.DownloadService
-import app.snapsync.services.backend.EventUnionSource
+import app.snapsync.model.PlannedAsset
 import app.snapsync.model.PlannedResource
-import app.snapsync.model.UnionAsset
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
@@ -55,22 +53,17 @@ class AlbumGatherTest {
         private val failingCall: Int? = null,
     ) : GalleryReader by inMemoryGallery(MutableStateFlow(emptyList())) {
         val calls = mutableListOf<List<AssetId>>()
+        /** When set, every add waits for it — a gather holding its lock. */
+        var gate: CompletableDeferred<Unit>? = null
         val added: Set<AssetId> get() = calls.flatten().toSet()
         override suspend fun createAlbum(title: String): AlbumId? = error("the gather never creates an album")
         override suspend fun albumsById(ids: Set<AlbumId>): GalleryRead<List<AlbumRecord>> =
             GalleryRead.Read(ids.map { AlbumRecord(it, "Trip") })
         override suspend fun addToAlbum(album: AlbumId, assets: Set<AssetId>): WriteOutcome {
+            gate?.await()
             calls += assets.toList()
             if (calls.size == failingCall) error("boom")
             return WriteOutcome.Ok
-        }
-    }
-
-    private class GateableUnion(var result: Result<List<UnionAsset>>) : EventUnionSource {
-        var gate: CompletableDeferred<Unit>? = null
-        override suspend fun union(eventId: String): Result<List<UnionAsset>> {
-            gate?.await()
-            return result
         }
     }
 
@@ -89,7 +82,6 @@ class AlbumGatherTest {
     private class Rig(
         cfg: EventConfig?,
         val manager: RecordingAlbumManager,
-        val union: GateableUnion,
         granted: Boolean,
         scope: CoroutineScope,
         kind: AlbumKind = AlbumKind.COLLECTION,
@@ -103,9 +95,7 @@ class AlbumGatherTest {
             configSource = config,
             ledger = ledger,
             policyFor = { c -> selectionPolicyFor(c, suppressedAssetIds = { emptySet() }, albumExcludedAssetIds = { emptySet() }) },
-            union = union,
             downloads = downloads,
-            identity = testIdentity(SELF),
             photoAccess = galleryAccess(grant),
             coordinator = AlbumCoordinator(
                 GalleryAlbums(manager),
@@ -123,22 +113,21 @@ class AlbumGatherTest {
             )
         }
 
-        suspend fun imported(device: String, assetId: String, localId: String) {
+        /** A received photo, imported; [eventId] is the event whose reconcile tagged it, `null` for none. */
+        suspend fun imported(device: String, assetId: String, localId: String, eventId: String? = "E2") {
             val ref = AssetRef(device, AssetId(assetId))
-            downloads.plan(ref, "2026-09-10T00:00:00Z", listOf(PlannedResource("$assetId.heic", "u", "primary", "image/heic", "a.heic")))
+            val resources = listOf(PlannedResource("$assetId.heic", "u", "primary", "image/heic", "a.heic"))
+            downloads.planAll(listOf(PlannedAsset(ref, "2026-09-10T00:00:00Z", resources)), eventId, members = listOf(ref))
             downloads.markImported(ref, AssetId(localId))
         }
     }
 
     private fun CoroutineScope.rig(
         cfg: EventConfig? = config(),
-        union: List<UnionAsset> = emptyList(),
         failingCall: Int? = null,
         granted: Boolean = true,
         kind: AlbumKind = AlbumKind.COLLECTION,
-    ) = Rig(cfg, RecordingAlbumManager(failingCall), GateableUnion(Result.success(union)), granted, this, kind)
-
-    private fun inUnion(device: String, assetId: String) = UnionAsset(device, AssetId(assetId), "2026-09-10T00:00:00Z", emptyList())
+    ) = Rig(cfg, RecordingAlbumManager(failingCall), granted, this, kind)
 
     @Test
     fun `a photo carried over from an earlier event is gathered when this window admits it`() = runTest {
@@ -169,9 +158,9 @@ class AlbumGatherTest {
 
     @Test
     fun `foreign photos in this union are gathered but an import made for another event is not`() = runTest {
-        val r = rig(union = listOf(inUnion("PEER", "IN_UNION"), inUnion(SELF, "MINE")))
+        val r = rig()
         r.imported("PEER", "IN_UNION", "LOCAL-IN")
-        r.imported("PEER", "OTHER_EVENT", "LOCAL-OTHER")
+        r.imported("PEER", "OTHER_EVENT", "LOCAL-OTHER", eventId = "E1")
         r.gather.gather("E2")
         assertEquals(setOf(AssetId("LOCAL-IN")), r.manager.added)
     }
@@ -181,10 +170,10 @@ class AlbumGatherTest {
         // `changes/archive/2026-09-30-android-event-album` D5: on Android the album is the folder received photos
         // live in, and gathering
         // moves them there; an own photo is the camera's file, never the app's to move.
-        val r = rig(union = listOf(inUnion("PEER", "IN_UNION")), kind = AlbumKind.FOLDER)
+        val r = rig(kind = AlbumKind.FOLDER)
         r.own("OWN", "2026-09-10T00:00:00Z")
         r.imported("PEER", "IN_UNION", "LOCAL-IN")
-        r.imported("PEER", "OTHER_EVENT", "LOCAL-OTHER")
+        r.imported("PEER", "OTHER_EVENT", "LOCAL-OTHER", eventId = "E1")
 
         r.gather.gather("E2")
         r.gather.gather("E2")
@@ -193,11 +182,10 @@ class AlbumGatherTest {
     }
 
     @Test
-    fun `a failed union read still gathers the own photos`() = runTest {
+    fun `an import no reconcile of this event tagged is not gathered`() = runTest {
         val r = rig()
-        r.union.result = Result.failure(IllegalStateException("offline"))
         r.own("OWN", "2026-09-10T00:00:00Z")
-        r.imported("PEER", "IN_UNION", "LOCAL-IN")
+        r.imported("PEER", "UNTAGGED", "LOCAL-UNTAGGED", eventId = null)
         r.gather.gather("E2")
         assertEquals(setOf(AssetId("OWN")), r.manager.added)
     }
@@ -240,7 +228,7 @@ class AlbumGatherTest {
     fun `a queued gather runs after the running one and reads the config current when it runs`() = runTest {
         val r = rig()
         r.own("OWN", "2026-09-10T00:00:00Z")
-        val gate = CompletableDeferred<Unit>().also { r.union.gate = it }
+        val gate = CompletableDeferred<Unit>().also { r.manager.gate = it }
         val first = async { r.gather.gather("E2") }
         yield()
         val second = async { r.gather.gather("E2") }
@@ -292,9 +280,5 @@ class AlbumGatherTest {
         r.gather.onAccessObserved(usable = true)
         r.gather.awaitStarted()
         assertTrue(r.manager.calls.isEmpty())
-    }
-
-    private companion object {
-        const val SELF = "SELF-DEVICE"
     }
 }

@@ -46,17 +46,13 @@ class DownloadService(databases: Databases) : SuppressionSource {
     override suspend fun suppressedLocalIds(): Set<AssetId> =
         q.suppressedLocalIds().executeAsList().mapNotNull { it }.toSet()
 
-    // Reads every imported row and filters here: the table holds only the unions of the events this device
-    // has joined, and binding a list of key PAIRS is awkward in SQLDelight. The port is stated by ref, so an
-    // index-driven query can replace this without touching a caller.
-    suspend fun importedLocalIds(refs: Collection<AssetRef>): Map<AssetRef, AssetId> {
-        if (refs.isEmpty()) return emptyMap()
-        val wanted = refs.toSet()
-        return q.selectImportedLocalIds { device, asset, localId -> AssetRef(device, asset) to localId }
-            .executeAsList()
-            .filter { (ref, _) -> ref in wanted }
-            .toMap()
-    }
+    /**
+     * The created local id of every imported photo of [eventId]'s union — the rows the last reconcile of that event
+     * tagged, and the photos adopted for it ([planAll], [adoptAll]). A tag moves with the latest reconcile that saw the
+     * ref, so a photo two events share answers for the one most recently reconciled.
+     */
+    suspend fun importedLocalIdsOf(eventId: String): Set<AssetId> =
+        q.selectImportedLocalIdsOfEvent(eventId).executeAsList().mapNotNull { it }.toSet()
 
     /**
      * True if this foreign asset is **settled** — imported, or settled as permanently unimportable — so
@@ -67,7 +63,9 @@ class DownloadService(databases: Databases) : SuppressionSource {
     suspend fun isSettled(ref: AssetRef): Boolean =
         q.isSettled(ref.sourceDeviceId, ref.sourceAssetId).executeAsOne()
 
-    // One read of every settled ref, filtered here — the same trade as [importedLocalIds], for the same reason.
+    // One read of every settled ref, filtered here: the table holds only the unions of the events this device has
+    // joined, and binding a list of key PAIRS is awkward in SQLDelight. The port is stated by ref, so an index-driven
+    // query can replace this without touching a caller.
     suspend fun settledAmong(refs: Collection<AssetRef>): Set<AssetRef> {
         if (refs.isEmpty()) return emptySet()
         val wanted = refs.toSet()

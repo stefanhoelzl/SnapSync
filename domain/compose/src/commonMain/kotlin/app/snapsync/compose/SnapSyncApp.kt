@@ -428,7 +428,7 @@ class AppCore internal constructor(
     // construction. Started, never awaited, by the act that triggered it.
     val albumGather: AlbumGather by lazy {
         albumGather(
-            services, backend.union, process.entryContext, galleryAccess, albumCoordinator, scope,
+            services, process.entryContext, galleryAccess, albumCoordinator, scope,
             ::selectionPolicyForMembership,
         )
     }
@@ -509,6 +509,9 @@ class AppCore internal constructor(
     val shareSetLoad: ShareSetLoad by lazy { shareSetLoadFor(services, backend.deviceFiles) }
     internal val receivedPhotoAdoption by lazy { receivedPhotoAdoptionFor(services, backend, ports.gallery, this) }
 
+    /** The union one provision has read, handed from its adoption to its reconcile — see [JoinUnion]. */
+    internal val joinUnion = JoinUnion()
+
     // The in-place reconfigure use-case (capability `manage-membership`): rewrite the joined
     // membership's participation fields (direction/cutoff/album) whole, then re-drive the provision-side
     // effects. Upload ARMS on enable but drains on disable (no stop); download reconciles on enable and
@@ -530,7 +533,9 @@ class AppCore internal constructor(
             // Built HERE, not supplied by the shell: the world used to bind provision to a body of its own, so a
             // join in the world never ran `flow/Provision`. Labelled `provisionEvent` so the flow's steps carry it.
             provision = { cfg ->
-                services.log.invocation(process.entryContext, "provisionEvent") { provisionFlow.run(cfg) }
+                joinUnion.during(cfg.eventId) {
+                    services.log.invocation(process.entryContext, "provisionEvent") { provisionFlow.run(cfg) }
+                }
                 albumGather.start("provision", cfg.eventId)
             },
         )
@@ -797,7 +802,9 @@ class AppCore internal constructor(
 
     val provisionFlow: Provision by lazy {
         Provision(
-            downloadController = downloadController,
+            // From the union the entry's adoption read in this same provision, when it did (capability
+            // `receiving-photos`): one union read per join.
+            reconcileDownloads = { eventId -> downloadController.reconcile(eventId, known = joinUnion.take(eventId)) },
             albumCoordinator = albumCoordinator,
             activeEventId = { services.config.config.value?.eventId },
             // The order is `MembershipEntry`'s rule; the backend leave is awaited here, unlike the leave command's.

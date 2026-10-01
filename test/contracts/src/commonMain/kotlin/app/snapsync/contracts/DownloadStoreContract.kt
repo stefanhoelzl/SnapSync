@@ -452,40 +452,50 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadService>("Do
             assertEquals(setOf(AssetId("LOCAL-1")), s.suppressedLocalIds(), "and stays suppressed")
         }
 
-        clause("imported local ids answers an imported ref", DownloadStoreState.EMPTY) { s ->
-            s.plan(ref, "2026-06-30T10:00:00Z", resources())
+        clause("imported local ids of an event answers its imported ref", DownloadStoreState.EMPTY) { s ->
+            s.planAll(listOf(planned(ref)), "EVENT-1", members = listOf(ref))
             s.markImported(ref, AssetId("LOCAL-1"))
-            assertEquals(mapOf(ref to AssetId("LOCAL-1")), s.importedLocalIds(listOf(ref)))
+            assertEquals(setOf(AssetId("LOCAL-1")), s.importedLocalIdsOf("EVENT-1"))
         }
 
-        clause("imported local ids omits a pending ref", DownloadStoreState.EMPTY) { s ->
-            s.plan(ref, "2026-06-30T10:00:00Z", resources())
-            assertTrue(s.importedLocalIds(listOf(ref)).isEmpty())
+        clause("imported local ids of an event omit a pending ref", DownloadStoreState.EMPTY) { s ->
+            s.planAll(listOf(planned(ref)), "EVENT-1", members = listOf(ref))
+            assertTrue(s.importedLocalIdsOf("EVENT-1").isEmpty())
         }
 
-        clause("imported local ids omits an unconfirmed ref", DownloadStoreState.EMPTY) { s ->
-            s.plan(ref, "2026-06-30T10:00:00Z", resources())
+        clause("imported local ids of an event omit an unconfirmed ref", DownloadStoreState.EMPTY) { s ->
+            s.planAll(listOf(planned(ref)), "EVENT-1", members = listOf(ref))
             s.recordCreatedLocalId(ref, AssetId("LOCAL-CREATED"))
             assertTrue(
-                s.importedLocalIds(listOf(ref)).isEmpty(),
+                s.importedLocalIdsOf("EVENT-1").isEmpty(),
                 "a marker without a confirmed import is not yet known to name an asset",
             )
         }
 
-        clause("imported local ids omits unimportable and unknown refs", DownloadStoreState.EMPTY) { s ->
-            s.plan(ref, "2026-06-30T10:00:00Z", resources())
+        clause("imported local ids of an event omit an unimportable ref", DownloadStoreState.EMPTY) { s ->
+            s.planAll(listOf(planned(ref)), "EVENT-1", members = listOf(ref))
             s.settleUnimportable(ref)
-            val unknown = AssetRef("DEVICE-Z", AssetId("NEVER-PLANNED"))
-            assertTrue(s.importedLocalIds(listOf(ref, unknown)).isEmpty())
+            assertTrue(s.importedLocalIdsOf("EVENT-1").isEmpty())
         }
 
-        clause("imported local ids answers only the asked refs", DownloadStoreState.EMPTY) { s ->
+        clause("imported local ids of an event omit another event's and an untagged ref", DownloadStoreState.EMPTY) { s ->
             val other = AssetRef("DEVICE-B", AssetId("ASSET-R"))
-            s.plan(ref, "2026-06-30T10:00:00Z", resources())
-            s.plan(other, "2026-06-30T11:00:00Z", resources())
+            val untagged = AssetRef("DEVICE-C", AssetId("ASSET-S"))
+            s.planAll(listOf(planned(ref)), "EVENT-1", members = listOf(ref))
+            s.planAll(listOf(planned(other)), "EVENT-2", members = listOf(other))
+            s.plan(untagged, "2026-06-30T12:00:00Z", resources())
             s.markImported(ref, AssetId("LOCAL-A"))
             s.markImported(other, AssetId("LOCAL-B"))
-            assertEquals(mapOf(ref to AssetId("LOCAL-A")), s.importedLocalIds(listOf(ref)))
+            s.markImported(untagged, AssetId("LOCAL-C"))
+            assertEquals(setOf(AssetId("LOCAL-A")), s.importedLocalIdsOf("EVENT-1"))
+        }
+
+        clause("an imported ref a later event reconciles answers for that event", DownloadStoreState.EMPTY) { s ->
+            s.planAll(listOf(planned(ref)), "EVENT-1", members = listOf(ref))
+            s.markImported(ref, AssetId("LOCAL-1"))
+            s.planAll(emptyList(), "EVENT-2", members = listOf(ref))
+            assertEquals(setOf(AssetId("LOCAL-1")), s.importedLocalIdsOf("EVENT-2"), "the settled ref is tagged too")
+            assertTrue(s.importedLocalIdsOf("EVENT-1").isEmpty(), "the tag moved")
         }
 
         // --- the batch members a reconcile plans through (one read, one transaction each) ---
@@ -575,7 +585,7 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadService>("Do
             assertEquals(setOf(ref), adopted)
             assertTrue(s.isSettled(ref), "an adopted ref is never planned or downloaded again")
             assertEquals(setOf(AssetId("LOCAL-KEPT")), s.suppressedLocalIds(), "and its asset is never uploaded back")
-            assertEquals(mapOf(ref to AssetId("LOCAL-KEPT")), s.importedLocalIds(listOf(ref)))
+            assertEquals(setOf(AssetId("LOCAL-KEPT")), s.importedLocalIdsOf("EVENT-1"))
             assertEquals(1, s.counts("EVENT-1").imported, "it counts as received for the event it was adopted for")
             assertTrue(s.pendingDownloads().isEmpty() && s.importableAssets().isEmpty() && s.unconfirmedImports().isEmpty())
 
@@ -625,6 +635,7 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadService>("Do
         PlannedResource("ASSET-Q-primary.heic", "https://e/primary", "primary", "image/heic", "IMG.HEIC"),
         PlannedResource("ASSET-Q-live.mov", "https://e/live", "live", "video/quicktime", "IMG.MOV"),
     )
+    private fun planned(ref: AssetRef) = PlannedAsset(ref, "2026-06-30T10:00:00Z", resources())
 
 
 

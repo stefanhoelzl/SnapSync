@@ -17,7 +17,6 @@ sequenceDiagram
   participant Provision
   participant effects
   participant albumCoordinator
-  participant downloadController
   Trigger->>Provision: run(…)
   alt switchDecision(activeEventId(), cfg.eventId) = is SwitchDecision.Enter
     Provision->>effects: enterMembership(…)
@@ -27,7 +26,7 @@ sequenceDiagram
   Provision->>effects: refreshStatus()
   Provision->>albumCoordinator: ensureAlbum(…)
   par concurrent — awaited before the flow returns
-    Provision--)downloadController: reconcile(…)
+    Provision--)effects: reconcileDownloads(…)
     Provision--)effects: registerPush()
   end
 ```
