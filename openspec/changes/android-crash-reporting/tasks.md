@@ -61,5 +61,5 @@
 
 ## 5. Integration
 
-- [ ] 5.1 Run `./gradlew build` and `npx --yes @fission-ai/openspec@1.13.2 validate --specs --strict`; verify both are
+- [x] 5.1 Run `./gradlew build` and `npx --yes @fission-ai/openspec@1.13.2 validate --specs --strict`; verify both are
       green, then push the branch and verify `ci`, `test (ios)` and `test (android)` pass
