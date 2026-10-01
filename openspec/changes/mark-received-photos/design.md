@@ -172,10 +172,14 @@ The schema is unchanged.
 ## Risks / Trade-offs
 
 - **The name may not survive.** iCloud Photos sync, an edit, or an export could lose `originalFilename`.
-  → Adoption only removes duplicates; a lost mark falls back to today's behaviour. Verify on device: sync,
-  edit, and restore to a second device.
-- **The limited selection resets on reinstall** (believed, not measured). → Accepted gap, stated in the spec.
-  Adoption reads what the grant shows.
+  → Adoption only removes duplicates, so a lost mark falls back to today's behaviour.
+  - An **edit** keeps it: measured on the SE2, 2026-10-01, the original resource of an edited received photo is
+    still named `IMG_9200.snapsync-vi72yxeyoh.JPG`.
+  - **iCloud Photos sync** is NOT verified (skipped by decision, 2026-10-01). If it drops the name, a phone
+    restored from iCloud receives those photos again, which is the old gap.
+- **The limited selection resets on reinstall.** Confirmed on the SE2, 2026-10-01: every reinstall reset the grant
+  to `NOT_DETERMINED`, and the selection is part of that grant. → Accepted gap, stated in the spec. Adoption reads
+  what the grant shows.
 - **A user renames a photo and removes the mark.** → Same fallback: that photo may arrive again.
 - **The name is visible to users.** → The mark is short, and the sender's stem is kept.
 - **Join latency.** A pass reads the name of every library photo dated inside the event's range, whoever took
