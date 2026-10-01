@@ -11,7 +11,8 @@ import kotlin.time.Instant
 // The marketing screenshots' states (`docs/deployment.md`, "Screenshots"), each reached the way a person reaches it:
 // the world seeded through the mocks' operator faces, the app driven through the intents a tap produces. So every
 // committed raw is a screen the real reduction reached. `ShotsTest` runs them on the JVM host on every build;
-// `:test:integration:screenshots` runs them against the rig build on a simulator and captures each (`screenshots.yml`).
+// `:test:integration:screenshots` runs them against the rig build on an iOS simulator or an Android emulator and captures
+// each (`screenshots.yml`).
 
 /** One marketing screenshot: its file name's stem, and the screen it settles on. */
 enum class Shot(val id: String, val settled: (RigState) -> Boolean) {
@@ -70,10 +71,17 @@ suspend fun Rig.reach(shot: Shot, relaunch: suspend Rig.() -> Unit): RigState {
         Shot.IN_SYNC -> {
             takePhotos()
             device("backend/next-event-id", "id" to Shot.EVENT_ID)
-            // The uploads below are the extension's cycle; the app's own uploader would take the same photos.
-            extensionUploadsOnly()
+            // Where the host composes the OS-driven extension, its cycle uploads (the app's own uploader would take the
+            // same photos, so it is switched off); where it does not — Android — the app's uploader does, and the
+            // operating system lands its transfers.
+            val osDriven = hasOsDrivenUploader()
+            if (osDriven) extensionUploadsOnly()
             createAndJoin(name = Shot.EVENT_NAME, startsAt = Shot.EVENT_START, endsAt = Shot.EVENT_END)
-            uploadAll()
+            if (osDriven) {
+                uploadAll()
+            } else {
+                landAppUploads(Shot.OWN_PHOTOS)
+            }
             foreignDevice("GUEST", *Array(Shot.THEIR_PHOTOS) { "GUEST-${it + 1}" })
             downloadAll()
             foreground()
@@ -86,4 +94,17 @@ suspend fun Rig.reach(shot: Shot, relaunch: suspend Rig.() -> Unit): RigState {
 private suspend fun Rig.takePhotos() {
     val start = Instant.parse(Shot.EVENT_START + "Z")
     repeat(Shot.OWN_PHOTOS) { i -> addPhoto("IMG-${i + 1}", date = (start + (20 * (i + 1)).minutes).toString()) }
+}
+
+/** Whether this host composes the OS-driven upload extension: the iOS simulator and the JVM host do, Android does not. */
+private suspend fun Rig.hasOsDrivenUploader(): Boolean = "device/uploaders" in client.device().honoured
+
+/** The operating system lands the app uploader's transfers, batch by batch as it creates them, until [total] have. */
+private suspend fun Rig.landAppUploads(total: Int) {
+    while (true) {
+        val uploads = appUploads()
+        if (uploads.created >= total && uploads.live.isEmpty()) return
+        awaitAppUploads(1)
+        completeAppUploads()
+    }
 }

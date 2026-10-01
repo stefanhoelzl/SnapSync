@@ -1,0 +1,33 @@
+{
+  "_comment": [
+    "THE listing copy, for BOTH stores (`docs/deployment.md`, \"Listing metadata\"). scripts/resolve-deployment.py renders",
+    "it into App Store Connect's files (build/metadata/app-info, build/metadata/version/current) and Google Play's",
+    "(build/metadata/play); neither store's files are committed.",
+    "",
+    "Placeholders: {{domain}} is the resolved deployment's domain; every other {{word}} is looked up in `words`, which",
+    "gives each store its own wording (an unknown word, or one missing for a store, fails the render). `apple` and",
+    "`play` hold the fields only one store has. Limits are checked in ci.yml's `metadata` gate: Play's title <=30,",
+    "shortDescription <=80, description <=4000; Apple's by `asc metadata validate`."
+  ],
+  "name": "SnapSync Photos",
+  "description": "The easy way to share photos from any trip or get-together.\n\nStart the event as the trip begins, and everyone's photos land in everyone's library as you go — no waiting until you're home. Scan the QR code to join: your photos flow to the group, and the group's flow to you, right in your {{gallery}}. No group chats, no \"can you send me those.\"\n\nNo account. No sign-up. If you can scan a code, you're in — nobody gets left out.\n\nAnd every photo arrives at full quality, exactly as it was taken — not the shrunk-down version a messaging app sends.\n\nGreat for trips and weekends away, weddings, birthdays, and parties — any time a group takes photos and everyone wants them all.",
+  "urls": {
+    "marketing": "https://{{domain}}",
+    "support": "https://github.com/stefanhoelzl/SnapSync/issues",
+    "privacyPolicy": "https://{{domain}}/#privacy"
+  },
+  "words": {
+    "gallery": {
+      "apple": "Photos app",
+      "play": "phone's gallery"
+    }
+  },
+  "apple": {
+    "subtitle": "Group photos, shared instantly",
+    "keywords": "sharing,group,shared,album,event,trip,travel,wedding,party,vacation,reunion,festival,QR,memories",
+    "promotionalText": "Start an event, share the QR, and everyone's photos land in your library as the trip happens — full quality, no account, no group chats."
+  },
+  "play": {
+    "shortDescription": "Every photo from the trip, in everyone's gallery. No account — just scan a QR."
+  }
+}

@@ -36,6 +36,7 @@ import argparse
 import json
 import os
 import pathlib
+import re
 import sys
 
 # ── The key inventory: the contract of record ──────────────────────────────────────────────────────
@@ -59,7 +60,7 @@ PROPS = "properties"  # build/deployment.properties — Gradle, reviewed literal
 GRADLE_JSON = "gradle-json"  # build/deployment.json — Gradle, for values nobody reviewed
 XCCONFIG = "xcconfig"  # iosApp/Configuration/Deployment.xcconfig — Xcode BUILD SETTINGS only
 PLIST = "plist"  # iosApp/Configuration/Deployment.plist — bundled into app + extension
-METADATA = "metadata"  # build/metadata/** — the App Store listing
+METADATA = "metadata"  # build/metadata/** — both stores' listings (App Store Connect, Google Play)
 SITE = "site"  # site/src/deployment.json
 
 DEVICE_API_PREFIX = "/api/v2"
@@ -864,26 +865,77 @@ def render_types(flat: dict) -> str:
     ])
 
 
-def render_metadata(flat: dict, root: pathlib.Path, out_dir: pathlib.Path) -> list[pathlib.Path]:
-    """Substitute the domain placeholder into the committed listing templates.
+LISTING_STORES = ("apple", "play")
+_PLACEHOLDER = re.compile(r"\{\{([A-Za-z][A-Za-z0-9]*)\}\}")
 
-    Only the domain-derived URL fields carry a placeholder; the listing COPY is never templated, so
-    editing App Store text never requires running a generator.
+
+def _fill(text: str, store: str, domain: str, words: dict, where: str) -> str:
+    """Replace every `{{token}}`: `domain` from the deployment, any other from the listing's `words` for [store]."""
+
+    def one(match: re.Match) -> str:
+        token = match.group(1)
+        if token == "domain":
+            return domain
+        if token not in words:
+            raise ResolveError(f"{where}: unknown placeholder {{{{{token}}}}} (declare it under `words`)")
+        if store not in words[token]:
+            raise ResolveError(f"{where}: the word {token!r} has no {store!r} wording")
+        return words[token][store]
+
+    return _PLACEHOLDER.sub(one, text)
+
+
+def render_metadata(flat: dict, root: pathlib.Path, out_dir: pathlib.Path) -> dict[pathlib.Path, str]:
+    """Render each store's listing from the ONE committed source, `metadata/listing/<locale>.json`.
+
+    App Store Connect gets `asc`'s strict-schema layout (`app-info/<locale>.json`, `version/current/<locale>.json`);
+    Google Play gets `play/<locale>.json` (its listing and contact-website fields, the names its API uses). The copy is
+    shared; `{{domain}}` comes from the deployment and every other placeholder from the listing's `words`, per store.
+    Returned rather than written, so a bad placeholder fails before any rendering is written.
     """
-    written = []
-    src = root / "metadata"
+    out: dict[pathlib.Path, str] = {}
+    src = root / "metadata" / "listing"
     if not src.is_dir():
-        return written
+        return out
     domain = flat["domain"]
-    for path in sorted(src.rglob("*.json")):
-        text = path.read_text()
-        if "{{domain}}" not in text:
-            continue
-        target = out_dir / path.relative_to(src)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(text.replace("{{domain}}", domain))
-        written.append(target)
-    return written
+    for path in sorted(src.glob("*.json")):
+        locale = path.stem
+        listing = json.loads(path.read_text())
+        words = listing.get("words", {})
+        for token, wording in words.items():
+            missing = [s for s in LISTING_STORES if s not in wording]
+            if missing:
+                raise ResolveError(f"{path.name}: the word {token!r} has no wording for {', '.join(missing)}")
+
+        def fill(store: str, text: str, field: str) -> str:
+            return _fill(text, store, domain, words, f"{path.name} {field}")
+
+        urls, apple, play = listing["urls"], listing["apple"], listing["play"]
+        app_info = {
+            "name": fill("apple", listing["name"], "name"),
+            "subtitle": fill("apple", apple["subtitle"], "apple.subtitle"),
+            "privacyPolicyUrl": fill("apple", urls["privacyPolicy"], "urls.privacyPolicy"),
+        }
+        version = {
+            "description": fill("apple", listing["description"], "description"),
+            "keywords": fill("apple", apple["keywords"], "apple.keywords"),
+            "marketingUrl": fill("apple", urls["marketing"], "urls.marketing"),
+            "promotionalText": fill("apple", apple["promotionalText"], "apple.promotionalText"),
+            "supportUrl": fill("apple", urls["support"], "urls.support"),
+        }
+        play_listing = {
+            "title": fill("play", listing["name"], "name"),
+            "shortDescription": fill("play", play["shortDescription"], "play.shortDescription"),
+            "fullDescription": fill("play", listing["description"], "description"),
+            "contactWebsite": fill("play", urls["marketing"], "urls.marketing"),
+        }
+        for rel, body in [
+            (f"app-info/{locale}.json", app_info),
+            (f"version/current/{locale}.json", version),
+            (f"play/{locale}.json", play_listing),
+        ]:
+            out[out_dir / rel] = json.dumps(body, indent=2, ensure_ascii=False) + "\n"
+    return out
 
 
 # ── Entry point ────────────────────────────────────────────────────────────────────────────────────
@@ -905,13 +957,13 @@ def emit(root: pathlib.Path, flat: dict) -> list[pathlib.Path]:
         root / "iosApp/Configuration/Deployment.xcconfig": render_xcconfig(flat),
         root / "iosApp/Configuration/Deployment.plist": render_plist(flat),
         root / "site/src/deployment.json": render_site(flat),
+        **render_metadata(flat, root, root / "build/metadata"),
     }
     written = []
     for path, body in targets.items():
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(body)
         written.append(path)
-    written += render_metadata(flat, root, root / "build/metadata")
     return written
 
 

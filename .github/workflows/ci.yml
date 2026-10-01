@@ -151,8 +151,8 @@ jobs:
       - name: Test the deployment resolver
         run: python3 scripts/resolve_deployment_test.py
       # The App Store listing (`docs/deployment.md`), validated OFFLINE: schema, character limits, URL format. It
-      # validates what will be APPLIED — the resolved files, whose `{{domain}}` placeholders are substituted — not the
-      # committed templates. The apply half is deploy.yml's `appstore-metadata-apply` (main only). `asc` is a pinned,
+      # validates what will be APPLIED — the files the resolver renders from the one listing source
+      # (metadata/listing/), placeholders filled — not the committed source. The apply half is deploy.yml's `appstore-metadata-apply` (main only). `asc` is a pinned,
       # checksum-verified binary (asc_fetch.sh).
       - name: Resolve the deployment
         run: python3 scripts/resolve-deployment.py prod
@@ -160,6 +160,10 @@ jobs:
         run: bash .github/scripts/asc_fetch.sh "$RUNNER_TEMP/asc"
       - name: Validate the App Store listing
         run: '"$RUNNER_TEMP/asc" metadata validate --dir build/metadata'
+      # The Play half of the same rendered listing (one source, metadata/listing/): Play has no offline validator, so
+      # its character limits are ours. The apply half is android-deliver's diff-gated listing update (main only).
+      - name: Validate the Google Play listing
+        run: python3 scripts/validate_play_listing.py build/metadata/play
 
   # The backend's check set (`docs/deployment.md`). The deploy (deploy.yml's `api` job) deliberately does not repeat
   # it: no commit reaches main without this having passed. It once lived in the deploy only, where a PR that broke the
@@ -885,14 +889,40 @@ jobs:
           NOTE="$(bash .github/scripts/delivery_note.sh)"
           echo "note: $NOTE"
           echo "RELEASE_NOTE=$NOTE" >> "$GITHUB_ENV"
+      # THE STORE LISTING (`docs/deployment.md`, "Listing metadata"), on MAIN ONLY: Play's listing is not per-track, so a
+      # dispatched branch's draft copy must never reach it. The text is rendered from metadata/listing/ (and checked
+      # against Play's limits, as the `metadata` gate did), the icon and feature graphic are the committed ones, and the
+      # phone screenshots are composited here from screenshots/android/ with the shared headlines. The upload below
+      # compares each with what Play holds and sends only a difference, so most merges send nothing to review.
+      # ImageMagick 6 is ubuntu's (`convert`); the composite is byte-stable, which is what the comparison relies on.
+      - name: Render the store listing and its images
+        if: github.ref == 'refs/heads/main'
+        run: |
+          set -euo pipefail
+          sudo apt-get -qq update
+          sudo apt-get -qq install -y imagemagick fonts-liberation
+          python3 scripts/resolve-deployment.py prod --quiet
+          python3 scripts/validate_play_listing.py build/metadata/play
+          IMAGES="$RUNNER_TEMP/play-images"
+          mkdir -p "$IMAGES/phoneScreenshots"
+          cp metadata/play/images/icon.png metadata/play/images/featureGraphic.png "$IMAGES/"
+          TARGET=play OUT_DIR="$RUNNER_TEMP/play-shots" bash .github/scripts/compose_screenshots.sh en-US
+          cp "$RUNNER_TEMP/play-shots/en-US/"*.png "$IMAGES/phoneScreenshots/"
+          echo "LISTING_ARGS=--listing build/metadata/play --images $IMAGES" >> "$GITHUB_ENV"
       # play_release.py's dependencies are declared inline (PEP 723) and resolved by `uv run`.
       - name: Install uv
         uses: astral-sh/setup-uv@v10.2.0
-      # ONE Play edit: upload, the internal track's one release (named `<version> (<build>)`), commit — or nothing.
+      # ONE Play edit: upload, the internal track's one release (named `<version> (<build>)`), on main the store listing's
+      # differences, commit — or nothing. A rejected listing therefore fails the delivery too: the edit lands whole or not.
       - name: Upload to the Play internal track with the release note
         env:
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          # The listing's public contact email; a secret only so that it stays out of this public repo.
+          PLAY_CONTACT_EMAIL: ${{ secrets.PLAY_CONTACT_EMAIL }}
         run: |
           VERSION="$(cat "$RUNNER_TEMP/android/version.txt")"
+          # LISTING_ARGS is set on main only (above); unquoted, so on a dispatch it adds no argument at all.
+          # shellcheck disable=SC2086
           uv run .github/scripts/play_release.py deliver "$PACKAGE" \
-            "$RUNNER_TEMP/android/bundle/release/android-release.aab" internal "$VERSION ($BUILD_NUMBER)" "$RELEASE_NOTE"
+            "$RUNNER_TEMP/android/bundle/release/android-release.aab" internal "$VERSION ($BUILD_NUMBER)" "$RELEASE_NOTE" \
+            ${LISTING_ARGS:-}

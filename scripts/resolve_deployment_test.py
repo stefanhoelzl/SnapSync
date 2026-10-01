@@ -598,6 +598,68 @@ class PlayStoreUrlTest(unittest.TestCase):
                 Tree().standard(playStoreUrl=bad).resolve()
 
 
+LISTING = {
+    "name": "App",
+    "description": "Photos land in your {{gallery}}. See https://{{domain}}/help.",
+    "urls": {"marketing": "https://{{domain}}", "support": "https://support.invalid",
+             "privacyPolicy": "https://{{domain}}/#privacy"},
+    "words": {"gallery": {"apple": "Photos app", "play": "gallery"}},
+    "apple": {"subtitle": "Sub", "keywords": "a,b", "promotionalText": "Promo"},
+    "play": {"shortDescription": "Short"},
+}
+
+
+def with_listing(tree, listing):
+    (tree.root / "metadata" / "listing").mkdir(parents=True)
+    (tree.root / "metadata" / "listing" / "en-US.json").write_text(json.dumps(listing))
+    return tree
+
+
+class ListingTest(unittest.TestCase):
+    def render(self, listing=LISTING):
+        t = with_listing(Tree().standard(), listing)
+        rd.emit(t.root, t.resolve())
+        read = lambda rel: json.loads((t.root / "build/metadata" / rel).read_text())  # noqa: E731
+        return read("app-info/en-US.json"), read("version/current/en-US.json"), read("play/en-US.json")
+
+    def test_each_store_gets_its_own_wording_of_the_one_description(self):
+        _, version, play = self.render()
+        self.assertEqual(version["description"], "Photos land in your Photos app. See https://example.invalid/help.")
+        self.assertEqual(play["fullDescription"], "Photos land in your gallery. See https://example.invalid/help.")
+
+    def test_the_asc_files_carry_exactly_its_closed_schema(self):
+        # `asc metadata validate` is strict: one unknown key in these files fails the required `metadata` gate.
+        app_info, version, _ = self.render()
+        self.assertEqual(app_info, {"name": "App", "subtitle": "Sub",
+                                    "privacyPolicyUrl": "https://example.invalid/#privacy"})
+        self.assertEqual(sorted(version), ["description", "keywords", "marketingUrl", "promotionalText", "supportUrl"])
+
+    def test_play_gets_the_name_short_description_and_website(self):
+        _, _, play = self.render()
+        self.assertEqual(play["title"], "App")
+        self.assertEqual(play["shortDescription"], "Short")
+        self.assertEqual(play["contactWebsite"], "https://example.invalid")
+
+    def test_an_unknown_placeholder_fails_and_writes_nothing(self):
+        t = with_listing(Tree().standard(), {**LISTING, "description": "In your {{galery}}"})
+        with self.assertRaisesRegex(rd.ResolveError, "galery"):
+            rd.emit(t.root, t.resolve())
+        self.assertFalse((t.root / "build/metadata").exists())
+        self.assertFalse((t.root / "api/src/deployment.ts").exists())
+
+    def test_a_word_missing_for_one_store_fails(self):
+        with self.assertRaisesRegex(rd.ResolveError, "gallery.*play"):
+            self.render({**LISTING, "words": {"gallery": {"apple": "Photos app"}}})
+
+    def test_nothing_else_under_metadata_is_rendered(self):
+        t = with_listing(Tree().standard(), LISTING)
+        (t.root / "metadata" / "screenshots").mkdir()
+        (t.root / "metadata" / "screenshots" / "en-US.json").write_text('{"x": "https://{{domain}}"}')
+        rd.emit(t.root, t.resolve())
+        rendered = sorted(str(p.relative_to(t.root / "build/metadata")) for p in (t.root / "build/metadata").rglob("*.json"))
+        self.assertEqual(rendered, ["app-info/en-US.json", "play/en-US.json", "version/current/en-US.json"])
+
+
 class AtomicityTest(unittest.TestCase):
     def test_a_failed_resolution_writes_nothing(self):
         t = Tree().standard(doamin="typo")

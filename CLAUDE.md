@@ -92,7 +92,7 @@ domain/ adapter/ ui/ app/ test/   the Gradle modules - mapped under Modules belo
 openspec/       specs/ (contract of record: user-observable outcomes) + changes/archive/ (decision records)
 docs/           architecture.md · testing.md · deployment.md - engineering explanation (app + api), NOT contract
 architecture/   GENERATED diagrams - `./gradlew architectureDiagrams` and commit; stale blocks the PR
-metadata/       App Store listing copy + App Review notes
+metadata/       the listing copy both stores render from (listing/), App Review notes, Play declarations + art
 screenshots/    the 6 committed raw captures both the listing and the site derive from
 scripts/        build and dev tooling (the phones' locks, guard and re-sign are the global `device` skill's)
 .ship/          this repo's half of the global `/ship` skill - gates, PR-title policy,
@@ -362,9 +362,10 @@ gh workflow run promote.yml -f build_number=2140 -f ios=false -f android=true
 **Refreshing the marketing screenshots** — `screenshots/*.png`, 6 raws, 3 states × light/dark, captured from the
 **real app** (the rig build on a simulator, every system mocked but the screen and its foreground life) driven to
 each state by the scenarios in `:test:integration`'s `Shots.kt` — which `ShotsTest` also runs on the JVM host in
-`build`. To add or change a state, change `Shots.kt`.
+`build`. To add or change a state, change `Shots.kt`. The same dispatch's `android` job captures Google Play's six
+in `screenshots/android/` from the emulator (artifact `screenshots-android-raw`); eyeball and commit them the same way.
 Both the App Store listing (at release time) and the `site/` landing page (on merge) derive from these
-committed raws, so refreshing them is a **commit**; nothing regenerates automatically, and a merge to
+committed raws (Google Play's listing from `screenshots/android/`, on the merge that changes them), so refreshing them is a **commit**; nothing regenerates automatically, and a merge to
 `main` uploads nothing to the store.
 
 ```
