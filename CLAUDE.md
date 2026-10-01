@@ -339,6 +339,8 @@ gh workflow run promote.yml -f build_number=2140 -f ios=false -f android=true
   A **failed** run is re-dispatched as is: each submit skips once done, so the rerun completes it.
 - A store left out never gets that version. Play's target track is `PLAY_TRACK` in the workflow (`alpha`, the
   closed track, until production access).
+- ⚠️ While the Play app is still a **draft app**, Play's API refuses a non-draft closed release, so an `android`
+  promote fails at its preflight until the first closed release is sent by hand from the Play Console.
 - `build_number` is the build's `CFBundleVersion` = `ci.yml`'s `run_number` + 2000 (`BUILD_NUMBER_OFFSET`;
   builds at or below 2000 came from the retired `ios.yml`, numbered by its run).
   Promote the exact build you validated; the store version is derived from it (there is no `version`
