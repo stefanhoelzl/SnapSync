@@ -13,6 +13,7 @@ import app.snapsync.model.CaptureDate
 import app.snapsync.model.EventConfig
 import app.snapsync.model.EventEnd
 import app.snapsync.model.EventStart
+import app.snapsync.model.GalleryAccess
 import app.snapsync.model.PlannedAsset
 import app.snapsync.model.PlannedResource
 import app.snapsync.model.RawAsset
@@ -55,10 +56,15 @@ class ReceivedPhotoAdoptionTest {
     private fun received(localId: String, ref: AssetRef): RawAsset =
         LibraryAssets.photo(localId, creationDate = date, resources = listOf(LibraryAssets.primaryResource(ReceivedPhotoName.mark("IMG.HEIC", "k.heic", ref))))
 
-    private class World(union: Result<List<UnionAsset>>, library: List<RawAsset>) {
+    private class World(
+        union: Result<List<UnionAsset>>,
+        library: List<RawAsset>,
+        val grant: MutableStateFlow<GalleryAccess> = MutableStateFlow(GalleryAccess.GRANTED),
+    ) {
         val store = DownloadService(inMemoryDatabases())
-        val unionSource = EventUnionSource { union }
-        val lookup = MarkedPhotoLookup(inMemoryGallery(MutableStateFlow(library))) { SelectionScope.Unrestricted }
+        var unionReads = 0
+        val unionSource = EventUnionSource { unionReads++; union }
+        val lookup = MarkedPhotoLookup(inMemoryGallery(MutableStateFlow(library), grant)) { SelectionScope.Unrestricted }
     }
 
     private fun World.adoption(me: String) = ReceivedPhotoAdoption(unionSource, store, lookup, store::adoptAll, testIdentity(me))
@@ -101,6 +107,33 @@ class ReceivedPhotoAdoptionTest {
         val world = World(Result.success(unionOf(ref("A"))), listOf(received("L-A", ref("A"))))
         ReceivedPhotoAdoption(world.unionSource, world.store, world.lookup, world.store::adoptAll, unreadableIdentity()).adopt(cfg)
         assertTrue(world.store.suppressedLocalIds().isEmpty())
+    }
+
+    @Test
+    fun ensuring_keeps_asking_while_the_library_is_unreadable_then_settles_once() = runTest {
+        // A reinstall's rejoin: the dialog is open at the join, so the first passes read nothing.
+        val world = World(Result.success(unionOf(ref("A"))), listOf(received("L-A", ref("A"))), MutableStateFlow(GalleryAccess.NOT_DETERMINED))
+        val adoption = world.adoption(me)
+        adoption.adopt(cfg)
+        adoption.ensureAdopted(cfg)
+        assertTrue(world.store.suppressedLocalIds().isEmpty(), "nothing readable yet")
+
+        world.grant.value = GalleryAccess.GRANTED
+        adoption.ensureAdopted(cfg)
+        assertEquals(setOf(AssetId("L-A")), world.store.suppressedLocalIds(), "the first readable pass adopts")
+
+        val reads = world.unionReads
+        adoption.ensureAdopted(cfg)
+        assertEquals(reads, world.unionReads, "settled: every later drain is told at once")
+    }
+
+    @Test
+    fun an_unreachable_union_settles_rather_than_holding_every_import() = runTest {
+        val world = World(Result.failure(IllegalStateException("offline")), emptyList())
+        val adoption = world.adoption(me)
+        adoption.ensureAdopted(cfg)
+        adoption.ensureAdopted(cfg)
+        assertEquals(1, world.unionReads)
     }
 
     @Test

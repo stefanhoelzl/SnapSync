@@ -400,7 +400,7 @@ class AppCore internal constructor(
             // Three-valued, no fallback (capability `receiving-photos`): no membership → `null` → no arm.
             downloadEnabled = { services.config.config.value?.direction?.includesDownload },
             checks = services.eventChecks,
-            libraryWritable = { ports.photoAccess.permission.value.grantsPhotoAccess },
+            readyToImport = { importsReady() },
             entryContext = process.entryContext,
         )
     }

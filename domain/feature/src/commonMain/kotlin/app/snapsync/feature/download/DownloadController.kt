@@ -76,14 +76,16 @@ class DownloadController(
     // read stamps it, and [reconcileIfDue] reads the union only when an hour has passed. Required: the bound is what
     // keeps a busy heartbeat from reading a whole union per wake.
     private val checks: EventChecks,
-    // Whether the photo library may be written right now — a usable grant (capability `receiving-photos`). The drain
-    // imports NOTHING without one. Not for the import's sake (the platform would hold a change until the person
-    // answers the dialog, then run it) but for the join's: after a reinstall the rejoin provisions while the access
-    // dialog is still open, and the photos an earlier install received can be recognised only once the library is
-    // readable. An import that ran first would land a second copy of each (measured on the SE2, 2026-09-30: all four
-    // of a rejoin's received photos). The grant's own transition recognises them, then drains (the composition).
-    // Required, and with no default, for the reason [downloadEnabled] has none.
-    private val libraryWritable: () -> Boolean,
+    // Whether the drain may import now (capability `receiving-photos`): a usable grant, AND the current membership's
+    // received photos already recognised by their SnapSync mark (`ReceivedPhotoAdoption.ensureAdopted`, which the
+    // composition runs here — once per membership per process, and again while the library cannot be read). The drain
+    // imports NOTHING otherwise. After a reinstall the rejoin provisions with the access dialog still open, and every
+    // import that overtakes the recognition lands a second copy of a photo the library holds: measured on the SE2 —
+    // without a grant gate all four of a rejoin's photos (2026-09-30), and with one, the foreground that follows the
+    // dialog importing while the grant's own pass was still reading names (2026-10-01). Asked here, every import path
+    // waits for it, whichever trigger reaches the drain first. Required, and with no default, for the reason
+    // [downloadEnabled] has none.
+    private val readyToImport: suspend () -> Boolean,
     private val log: Logger = Logger.withTag("DownloadController"),
     private val entryContext: EntryScope = EntryScope.None,
 ) {
@@ -495,7 +497,7 @@ class DownloadController(
         // resource (an unmapped type, a corrupt staged file). The old batch form could not reach this,
         // because it iterated a fixed list; the per-ref form has to say so explicitly.
         val attempted = mutableSetOf<AssetRef>()
-        if (!libraryWritable()) {
+        if (!readyToImport()) {
             log.i { "import drain skipped — no usable photo grant yet; what is staged stays staged" }
             return
         }

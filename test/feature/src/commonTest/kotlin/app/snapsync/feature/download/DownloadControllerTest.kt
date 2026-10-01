@@ -165,7 +165,7 @@ class DownloadControllerTest {
         disk: Files = RecordingFiles(),
         downloadEnabled: () -> Boolean? = { true },
         checks: EventChecks = EventChecks(inMemoryPreferences(), now = { NOW }),
-        libraryWritable: () -> Boolean = { true },
+        readyToImport: suspend () -> Boolean = { true },
     ): DownloadController {
         val staging = StagingService(disk)
         return DownloadController(
@@ -175,7 +175,7 @@ class DownloadControllerTest {
             // Named from here on: this constructor has grown twice mid-change, and positional
             // arguments silently re-bind when it does.
             stagedBytes = staging,
-            myDeviceId = myDevice, downloadEnabled = downloadEnabled, checks = checks, libraryWritable = libraryWritable,
+            myDeviceId = myDevice, downloadEnabled = downloadEnabled, checks = checks, readyToImport = readyToImport,
         )
     }
 
@@ -283,7 +283,7 @@ class DownloadControllerTest {
         val store = DownloadService(inMemoryDatabases())
         val importer = FakeImporter()
         var granted = false
-        val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, importer = importer, libraryWritable = { granted })
+        val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, importer = importer, readyToImport = { granted })
         val ref = AssetRef("DEVICE-A", AssetId("Q"))
         c.reconcile("event")
         c.onResourceStaged(ref, "Q-primary.heic", "/stage/p")
@@ -295,6 +295,26 @@ class DownloadControllerTest {
 
         granted = true
         c.importReady()
+        assertEquals(listOf(ref), importer.imported)
+    }
+
+    @Test
+    fun every_drain_asks_whether_it_may_import_before_it_claims_anything() = runTest {
+        // The composition answers this by running the membership's adoption first, so no import path can overtake it.
+        val store = DownloadService(inMemoryDatabases())
+        val importer = FakeImporter()
+        val order = mutableListOf<String>()
+        val c = controller(
+            FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, importer = importer,
+            readyToImport = { order += "ready?"; true },
+        )
+        val ref = AssetRef("DEVICE-A", AssetId("Q"))
+        c.reconcile("event")
+        c.onResourceStaged(ref, "Q-primary.heic", "/stage/p")
+        c.onResourceStaged(ref, "Q-live.mov", "/stage/l")
+        order.clear()
+        c.importReady()
+        assertEquals("ready?", order.first(), "asked before the first import")
         assertEquals(listOf(ref), importer.imported)
     }
 

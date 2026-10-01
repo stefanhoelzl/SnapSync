@@ -28,8 +28,11 @@ import app.snapsync.ports.GalleryReader
  * - **full grant** — one facts read narrowed to the window, then ONE batched resource read for the names (on iOS a
  *   name is a resource: ~3.45 ms a photo, measured SE2);
  * - **partial grant** — the selection snapshot the app already holds, which carries every name: no platform read;
- * - **unread partial grant, or no grant** — nothing. An unread selection is not an empty one, but adoption can only
- *   miss here, never do harm: a photo it does not recognise is downloaded again, as before this existed.
+ * - **unread partial grant** — nothing found (an empty map). An unread selection is not an empty one, but adoption
+ *   can only miss here, never do harm: a photo it does not recognise is downloaded again, as before this existed. It
+ *   answers rather than waits, because a background wake never opens the selection observer and its imports must
+ *   not stall behind a read that will not come (limited access is an accepted gap of the spec);
+ * - **no usable grant** — `null`: the library could not be read at all, and the caller asks again once it can.
  */
 class MarkedPhotoLookup(
     private val gallery: GalleryReader,
@@ -37,10 +40,11 @@ class MarkedPhotoLookup(
 ) {
 
     /**
-     * Every marked photo in `[startsAt, endsAt]` outside [known], by the token its name carries. A null [endsAt] (a
-     * membership saved before events carried an end) bounds the window below only.
+     * Every marked photo in `[startsAt, endsAt]` outside [known], by the token its name carries, or `null` when the
+     * library cannot be read. A null [endsAt] (a membership saved before events carried an end) bounds the window
+     * below only.
      */
-    suspend fun markedIn(startsAt: EventStart, endsAt: EventEnd?, known: Set<AssetId>): Map<String, AssetId> {
+    suspend fun markedIn(startsAt: EventStart, endsAt: EventEnd?, known: Set<AssetId>): Map<String, AssetId>? {
         val window = eventWindow(startsAt, endsAt)
         return when (val scope = selectionScope()) {
             is SelectionScope.Scoped -> fromSnapshot(scope.resources, window, known)
@@ -57,8 +61,8 @@ class MarkedPhotoLookup(
             .toMap()
     }
 
-    private suspend fun fromLibrary(window: SelectionPolicy, known: Set<AssetId>): Map<String, AssetId> {
-        val facts = (gallery.assets(window) as? GalleryRead.Read)?.value ?: return emptyMap()
+    private suspend fun fromLibrary(window: SelectionPolicy, known: Set<AssetId>): Map<String, AssetId>? {
+        val facts = (gallery.assets(window) as? GalleryRead.Read)?.value ?: return null
         // The reader may return more than the policy (it narrows only what the platform can express); the policy decides.
         val ids = facts.filter { it.assetId !in known && window.admits(it) }.mapTo(mutableSetOf()) { it.assetId }
         if (ids.isEmpty()) return emptyMap()

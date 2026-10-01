@@ -60,8 +60,14 @@ class ReinstallIntegrationTest {
         openLink(inviteLink(event))
         awaitState { (it.ui.layer as? Layer.JoiningEvent)?.eventId == event }
         join(*choices)
+        // The downloads the rejoin planned finish while the dialog is still open, as they did on the phone.
+        device("downloads/stage")
         val before = adoptions()
+        // Closing the dialog makes the app active: iOS delivers the foreground right after the grant, and on the SE2
+        // its import ran while the grant's adoption was still reading names (2026-10-01). Every import drain now waits
+        // for the membership's adoption (`DownloadControllerTest` pins that order; here the mock's reads are instant).
         permission("GRANTED")
+        os("app", "onForeground")
         // The grant's adoption is the app's answer to it, and it runs before the uploads are armed; a cycle forced
         // here directly (as a test may) must not overtake it, as none can on a phone.
         eventually(read = { adoptions() }) { it > before }

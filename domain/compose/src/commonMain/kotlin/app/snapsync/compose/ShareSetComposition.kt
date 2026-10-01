@@ -54,6 +54,17 @@ internal fun receivedPhotoAdoptionFor(
  * `mark-received-photos`, D4). A top-level extension because `AppCore` is measured (see [shareSetLoadFor]).
  */
 internal suspend fun AppCore.onGrantChanged(permission: GalleryAccess) {
-    services.config.config.value?.takeIf { permission.grantsPhotoAccess }?.let { receivedPhotoAdoption.adopt(it) }
+    val joined = services.config.config.value?.takeIf { permission.grantsPhotoAccess }
+    joined?.let { receivedPhotoAdoption.ensureAdopted(it) }
     uploadTransitions.onPermissionChanged()
+}
+
+/**
+ * Whether the download drain may import now (capability `receiving-photos`): only under a usable grant, and only once
+ * the joined membership's received photos have been recognised — which this runs, so every import path waits for it.
+ */
+internal suspend fun AppCore.importsReady(): Boolean {
+    val usable = ports.photoAccess.permission.value.grantsPhotoAccess
+    if (usable) services.config.config.value?.let { receivedPhotoAdoption.ensureAdopted(it) }
+    return usable
 }

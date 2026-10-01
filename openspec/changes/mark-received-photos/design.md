@@ -101,9 +101,13 @@ the first moment reads an unreadable library. Measured on the SE2, 2026-09-30:
 imported again, and the two ≥ 3 MP ones were shared back.
 
 Two rules make the second moment sufficient:
-- **No import without a usable grant** (`DownloadController.libraryWritable`). Downloads the join planned
-  and staged wait instead of running PhotoKit changes that iOS holds until the dialog is answered, which
-  would race the adoption.
+- **No import before the adoption has run under a usable grant** (`DownloadController.readyToImport`, bound
+  to `ReceivedPhotoAdoption.ensureAdopted`: once per membership per process, serialized, and asked again
+  while the library cannot be read). Every import drain asks it before claiming anything, whichever trigger
+  reaches the drain first. A plain grant gate is not enough. Measured on the SE2, 2026-10-01: closing the
+  dialog makes the app active, and its `onForeground` → reconcile → tail imported both photos while the
+  grant's own pass was still reading names. Downloads the join planned and staged therefore wait. An
+  unreachable union or an unread partial selection settles the pass instead of holding every import behind it.
 - **Adoption settles a planned or staged row that no import has created an asset for** (D7), since by the
   grant the ref is already planned.
 
