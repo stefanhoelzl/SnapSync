@@ -17,15 +17,15 @@
 
 ## 2. Marked imports on both platforms
 
-- [ ] 2.1 iOS `IosPhotoLibraryImporter`: name every resource with `mark(...)` for the request's `ref`, so a Live
+- [x] 2.1 iOS `IosPhotoLibraryImporter`: name every resource with `mark(...)` for the request's `ref`, so a Live
   Photo's video gets the same token. Verify with `./gradlew compileIosMainKotlinMetadata` and a rig-recorded or
   simulator run of the gallery-import contract (2.4).
-- [ ] 2.2 Android `MediaStoreImport`: set `DISPLAY_NAME` to `mark(...)`. Verify with
+- [x] 2.2 Android `MediaStoreImport`: set `DISPLAY_NAME` to `mark(...)`. Verify with
   `./gradlew :adapter:android:compileDebugKotlinAndroid` (or the module's compile task) and the Android device
   test in 2.4.
 - [x] 2.3 Mocks: `InMemoryGallery` / `PhotoLibraryMock` store the name the import supplies, so the JVM world
   shows marked names. Verify with `./gradlew :adapter:generic:mock:jvmTest`.
-- [ ] 2.4 `:test:contracts` gallery-import contract: add a clause that an imported asset reads back, through the
+- [x] 2.4 `:test:contracts` gallery-import contract: add a clause that an imported asset reads back, through the
   reader, with a primary `originalFilename` whose `tokenOf` equals the request ref's token. Bind it on the mock
   (JVM), the simulator app (`IOS_SIM_APP`, live in ios-contracts), and Android (`ANDROID_EMU`, via
   `scripts/android-device-tests`). Verify that `ContractCoverageTest` passes in `./gradlew build` and the clause
@@ -82,7 +82,7 @@
 - [x] 6.1 `device/reinstall` resets the library grant to `NOT_DETERMINED` and leaves the dialog unanswered;
   `ReinstallIntegrationTest` grants only after the rejoin. Verify it reproduces the device failure first (it
   did: 2 shared back, 1 duplicate).
-- [x] 6.2 `DownloadController.libraryWritable` (required, no default): nothing imports without a usable grant.
+- [x] 6.2 `DownloadController.libraryWritable` (since replaced by `readyToImport`, 7.1): nothing imports without a usable grant.
   Verify with `DownloadControllerTest` (`nothing_imports_without_a_usable_grant_…`).
 - [x] 6.3 `adoptPending` statement + `DownloadService.adoptAll` settles unmarked planned/staged rows;
   `DownloadController.settleAdopted` under the mutex, skipping claimed refs; `ReceivedPhotoAdoption.record`.
@@ -92,6 +92,17 @@
   `ReinstallIntegrationTest` green (it logs `adopted 0` at the join, then `adopted 2` at the grant),
   `CompositionSeamTest` and `./gradlew build`.
 - [x] 6.5 Android device tests pin the marked `DISPLAY_NAME` (`AndroidImportContractTest`).
+
+## 7. Adoption before every import drain (found on the SE2, second run)
+
+- [x] 7.1 SE2 2026-10-01: the grant's adoption raced the foreground import. Closing the access dialog makes the
+  app active, `onForeground` → reconcile → tail → `importReady` ran at 07:33:22.000, while the adoption's name
+  read ran 21.998–22.119. It recorded 0, and both photos were imported again. Gate every import drain on
+  "adoption has run under a usable grant for this membership" (`ReceivedPhotoAdoption.ensureAdopted`, once per
+  membership per process, serialized), injected into `DownloadController` in place of `libraryWritable`.
+- [x] 7.2 Order pinned in `DownloadControllerTest` (`every_drain_asks_whether_it_may_import_before_it_claims_anything`)
+  and `ReceivedPhotoAdoptionTest` (`ensuring_keeps_asking_…`, `an_unreachable_union_settles_…`). The JVM cannot
+  reproduce the device interleaving, because mock name reads are instant. `ReinstallIntegrationTest` grants, then foregrounds at once.
 
 ## 5. On-device verification (before archive)
 

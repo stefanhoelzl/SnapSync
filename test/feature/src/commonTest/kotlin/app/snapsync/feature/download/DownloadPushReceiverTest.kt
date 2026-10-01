@@ -62,7 +62,7 @@ class DownloadPushReceiverTest {
             // longer defaults: a permissive default is what let "no membership" mean "download freely".
             downloadEnabled = { true },
             checks = EventChecks(inMemoryPreferences(), now = { kotlin.time.Instant.fromEpochMilliseconds(0) }),
-            libraryWritable = { true },
+            readyToImport = { true },
         )
     }
 

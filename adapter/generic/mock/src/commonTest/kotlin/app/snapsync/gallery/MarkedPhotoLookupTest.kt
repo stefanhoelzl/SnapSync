@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** The join's read of the library's SnapSync-marked photos (capability `receiving-photos`), over the in-memory gallery. */
@@ -85,9 +86,9 @@ class MarkedPhotoLookupTest {
     }
 
     @Test
-    fun an_unread_selection_or_no_grant_finds_nothing() = runTest {
+    fun an_unread_selection_finds_nothing_and_no_grant_reads_nothing() = runTest {
         val gallery = inMemoryGallery(MutableStateFlow(library), MutableStateFlow(GalleryAccess.DENIED))
         assertEquals(emptyMap(), MarkedPhotoLookup(gallery) { SelectionScope.Unread }.markedIn(start, end, emptySet()))
-        assertEquals(emptyMap(), MarkedPhotoLookup(gallery) { SelectionScope.Unrestricted }.markedIn(start, end, emptySet()))
+        assertNull(MarkedPhotoLookup(gallery) { SelectionScope.Unrestricted }.markedIn(start, end, emptySet()), "unreadable")
     }
 }

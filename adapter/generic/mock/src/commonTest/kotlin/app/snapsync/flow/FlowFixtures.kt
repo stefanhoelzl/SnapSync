@@ -60,7 +60,7 @@ internal fun CoroutineScope.flowDownloadController(union: EventUnionSource): Dow
         myDeviceId = "DEV",
         downloadEnabled = { true },
         checks = EventChecks(inMemoryPreferences(), now = { Instant.parse("2026-07-09T12:00:00Z") }),
-        libraryWritable = { true },
+        readyToImport = { true },
     )
 }
 
