@@ -487,6 +487,21 @@ subprojects {
         .configureEach { compilerOptions.allWarningsAsErrors.set(true) }
 }
 
+// ---- Test failure messages ---------------------------------------------------------------------------------------
+//
+// Every test task — JVM `Test`, the Kotlin/Native simulator's — prints a failure in Gradle's FULL format: the
+// assertion's message and its stack down to the test. SHORT, Gradle's default, prints the exception's class and the
+// first frame in the test class, which for a `rigTest { … }` is the `= rigTest {` line: CI then showed
+// `java.lang.AssertionError at EventChecksIntegrationTest.kt:33` and no `expected:<3> but was:<5>`. The simulator
+// runner is worse still — `AssertionError at null:-1` — and a red iOS-only test cannot be re-run from Linux.
+// Set ONCE, here, so a new module's tests are readable the day it has any. A module's own `testLogging` adds to this
+// (the simulator modules turn standard streams on) and does not restate it.
+subprojects {
+    tasks.withType<AbstractTestTask>().configureEach {
+        testLogging { exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL }
+    }
+}
+
 // ---- Kotlin/Native backend threads -----------------------------------------------------------
 //
 // KGP runs every Kotlin/Native link with 4 backend threads by default, and on a host with fewer cores

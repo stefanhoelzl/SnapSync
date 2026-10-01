@@ -77,12 +77,10 @@ kotlin {
     }
 }
 
-// Full failure messages on a simulator run: the Kotlin/Native simulator runner otherwise prints a terse
-// "AssertionError at null:-1" with no expected/actual (config carried over with the re-homed
-// NativeLedgerStoreTest from `:domain:engine`).
+// The simulator run's standard streams, beside the failure messages the root build turns FULL for every test task
+// (config carried over with the re-homed NativeLedgerStoreTest from `:domain:engine`).
 tasks.withType<org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeSimulatorTest>().configureEach {
     testLogging {
-        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
         showStandardStreams = true
     }
 }

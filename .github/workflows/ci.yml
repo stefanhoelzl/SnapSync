@@ -100,6 +100,18 @@ jobs:
           deno-version: v2.x
       # Compose Desktop UI tests render offscreen under -Djava.awt.headless=true, so no X server is needed.
       - run: ./gradlew build
+      # A red test's whole record: the log prints each failure's message and stack (FULL, set in the root build), the
+      # XML results add its standard streams — the rig host's log lines leading up to it — and the HTML reports the rest.
+      - name: Keep the test results
+        if: failure()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          # One artifact per attempt: a re-run's results would otherwise replace the attempt it re-runs.
+          name: build-test-results-${{ github.run_attempt }}
+          path: |
+            **/build/test-results/
+            **/build/reports/tests/
+          if-no-files-found: ignore
 
       # The diagrams freshness check (`docs/architecture.md`). `:tools:diagrams:test` under `build` is its local half;
       # this half regenerates on a clean checkout and asks git, which also catches untracked new files and the

@@ -1,5 +1,4 @@
 import kotlinx.kover.gradle.plugin.dsl.CoverageUnit
-import org.gradle.api.tasks.testing.logging.TestExceptionFormat
 import org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeSimulatorTest
 
 plugins {
@@ -26,11 +25,9 @@ kover {
 }
 
 
-// Full failure messages on a simulator run: the Kotlin/Native simulator runner otherwise prints a terse
-// "AssertionError at null:-1" with no expected/actual.
+// The simulator run's standard streams, beside the failure messages the root build turns FULL for every test task.
 tasks.withType<KotlinNativeSimulatorTest>().configureEach {
     testLogging {
-        exceptionFormat = TestExceptionFormat.FULL
         showStandardStreams = true
     }
 }
