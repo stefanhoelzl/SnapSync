@@ -106,13 +106,15 @@
 
 ## 5. On-device verification (before archive)
 
-- [ ] 5.1 On the SE2 with a full grant:
+- [x] 5.1 On the SE2 with a full grant:
   - ✅ 2026-10-01, third run (build `21fc783fa`, local api/ over a tunnel, fresh event 5–7 Oct, 2 × 4 MP photos from
     a played member): after the uninstall and reinstall the grant was `NOT_DETERMINED`; the rejoin logged `library not
     readable yet` and skipped imports while the dialog was open; after the tap, the first drain logged `adopted 2
     received photo(s) of 2 open foreign ref(s)`. The library stayed at 9606 (no duplicate), and forced extension and
     heartbeat cycles uploaded nothing new (the phone's backend objects stayed at the 4 the earlier failed runs left).
-  - still open: join latency with a LARGE in-window library (this window held 2 photos; the adoption pass took ~0.1 s)
+  - join latency, measured 2026-10-01 (event 1–30 Sep over the SE2's 5,941 September photos, one foreign photo,
+    receive-only): facts 0.27 s, the name read for 5,927 candidates 20.3 s, provision 21.4 s in all — paid on
+    a join that has an open foreign ref. Accepted (design, Risks: Join latency).
   - ⚠️ 2026-09-30 run FAILED: after a reinstall iOS resets the photo grant, so the join provisions under
     `NOT_DETERMINED` and adoption reads nothing (`adopted 0 … 0 marked in window`); all 4 received photos were
     downloaded again and the two ≥3 MP ones were shared back. Needs a design change before re-running.
