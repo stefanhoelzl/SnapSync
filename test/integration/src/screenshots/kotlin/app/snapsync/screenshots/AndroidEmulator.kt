@@ -31,8 +31,14 @@ internal class AndroidEmulator(private val serial: String, override val port: In
         awaitGone()
     }
 
+    /**
+     * The process gone AND its activity records with it. An app that exits by itself (as it does on writing the adapter
+     * choice) can leave its task's record behind for a moment, and an `am start` that lands on it is "delivered to top"
+     * of a dead activity — nothing launches (measured on a CI emulator). A force-stop clears the records synchronously.
+     */
     override suspend fun awaitGone() {
         within(20.seconds, "the app was still running") { attempt("shell", "pidof", PACKAGE) == null }
+        adb("shell", "am", "force-stop", PACKAGE)
     }
 
     /** The system-wide night mode, which the activity's configuration change carries to Compose's dark theme. */
