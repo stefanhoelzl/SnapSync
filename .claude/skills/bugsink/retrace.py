@@ -77,10 +77,10 @@ def blocks(data):
             lines += java_frames((ex.get("stacktrace") or {}).get("frames"))
         yield "exception", lines
     for th in (data.get("threads") or {}).get("values") or []:
-        frames = (th.get("stacktrace") or {}).get("frames")
+        frames = java_frames((th.get("stacktrace") or {}).get("frames"))
         if frames:
             label = f"thread {th.get('name') or th.get('id')}{' (crashed)' if th.get('crashed') else ''}"
-            yield label, [f"{label}:"] + java_frames(frames)
+            yield label, [f"{label}:"] + frames
 
 
 def main():
