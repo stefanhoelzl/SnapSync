@@ -18,8 +18,8 @@
 #   ios-build       the SIGNED device archive — the shipping iosArm64 compile, and the delivery source on main — then
 #                   the platform-bound tests, `./gradlew iosPlatformTest` on the simulator (the iOS adapters and their
 #                   contract bindings on the test executable, the native SQLite drivers)
-#   android-build   R8 over the rig build's whole graph (R8 on the plain release, with the keep rules Firebase and
-#                   Ktor need, is the store build's — phase 5), then the platform-bound tests,
+#   android-build   the plain RELEASE build, the store's — R8 and resource shrinking over its whole graph, its R8 mapping
+#                   in app/android/build/outputs/mapping/release/ — then the platform-bound tests,
 #                   `./gradlew androidPlatformTest` on a Gradle-managed emulator (the Android adapters' contract bindings)
 #
 #                   Build and tests share a runner because together they stay under the journeys (measured: ~8 min
@@ -519,7 +519,8 @@ jobs:
           distribution: temurin
           java-version: 25
       - uses: gradle/actions/setup-gradle@v5
-      - run: ./gradlew :app:android:assembleRelease -Psnapsync.rig=true
+      # The store build: R8 BUILDS over it here; that R8 output RUNS is the journeys' (they run the rig release).
+      - run: ./gradlew :app:android:assembleRelease
       # The platform-bound tests, on this same runner after the build: `:adapter:android`'s device tests on a
       # Gradle-managed Pixel 6 / API 36 emulator, with the upload contract's transfer fixture served on the host by
       # the build. The hosted runner exposes /dev/kvm to root only; the managed emulator needs it.
@@ -598,13 +599,13 @@ jobs:
           family: sim-journeys
           key: ${{ steps.konan.outputs.key }}
 
-      # Android: the rig build baked for the local backend and the journeys' classpath, built BEFORE the emulator
-      # boots and with the daemons stopped after, so the two never hold memory at once; then the emulator and
-      # `scripts/android-journeys`.
+      # Android: the rig RELEASE build (R8 as the store build runs it, so every journey exercises R8 output) baked for
+      # the local backend, and the journeys' classpath, built BEFORE the emulator boots and with the daemons stopped
+      # after, so the two never hold memory at once; then the emulator and `scripts/android-journeys`.
       - name: Build the rig app and the journeys
         if: matrix.platform == 'android'
         run: |
-          ./gradlew :app:android:assembleDebug :test:integration:journeysClasses :test:integration:journeysClasspath \
+          ./gradlew :app:android:assembleRelease :test:integration:journeysClasses :test:integration:journeysClasspath \
             -Psnapsync.rig=true -Psnapsync.deployment=local
           ./gradlew --stop
       - name: Enable KVM

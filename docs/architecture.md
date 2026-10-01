@@ -92,7 +92,8 @@ The `android` target is its own plugin, `snapsync.android` (AGP's `com.android.k
 `jvm`/iOS list (`:adapter:generic:*`, and the rig's `:test:rig`, `:test:launch-adapters`, `:test:contracts`). It
 reads the SDK levels from `libs.versions.toml` (minSdk 30 — scoped storage enforced, one code path, and the level the device tests run at too) and **lowers the bytecode
 to `android-jvmTarget` (17)** while the toolchain stays JDK 25: D8/R8 dexes what the Android compilations emit, and
-R8 over the whole rig graph is built on every push (`ci.yml`'s `android-build`). It declares no host tests —
+R8 over the whole graph is built on every push (`ci.yml`'s `android-build`, the plain release) and run by every
+Android journey (`journeys (android)`, the rig release). It declares no host tests —
 `commonTest` runs on the JVM — and device tests only where a module has `src/androidDeviceTest` (the adapters'
 contract bindings), run on a Gradle-managed emulator by `androidPlatformTest`. The Android app itself is ONE process with ONE composition
 (`:app:android`'s `SnapSyncRoot`, built in `Application.onCreate`) and ONE adapter module (`:adapter:android`):
