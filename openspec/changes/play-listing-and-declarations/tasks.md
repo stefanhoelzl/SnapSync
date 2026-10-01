@@ -23,7 +23,7 @@
 
 - [x] 4.1 Split `CaptureShots.kt` into the shot loop over a `Screen` interface with `Simulator` and `AndroidEmulator` implementations (adb launch/force-stop, `cmd uimode night`, `screencap`, `run-as` state reset, demo-mode status bar). Verify: `./gradlew :test:integration:screenshotsClasses` compiles, and `ShotsTest` still passes in `./gradlew build`.
 - [x] 4.2 Run the Android capture locally on the emulator (`snapsync-android`) and confirm all six raws. Verify: the six PNGs are produced, light and dark differ, and they are eyeballed.
-- [ ] 4.3 Add the `android` job to `screenshots.yml` (ubuntu + KVM, the emulator install ci.yml uses, artifact `screenshots-android-raw`), with the header comment updated. Verify: a dispatch on the branch produces six raws; eyeball them, then commit to `screenshots/android/`.
+- [x] 4.3 Add the `android` job to `screenshots.yml` (ubuntu + KVM, the emulator install ci.yml uses, artifact `screenshots-android-raw`), with the header comment updated. Verify: a dispatch on the branch produces six raws; eyeball them, then commit to `screenshots/android/`.
 - [x] 4.4 Add the `play` target to `compose_screenshots.sh` (1080×1920, the same headlines, `-strip`, no PNG time chunks). Verify: running it twice on the committed raws gives byte-identical outputs and passes Play's ratio check; the composites are eyeballed.
 - [x] 4.5 Update `docs/deployment.md` "Screenshots" and CLAUDE.md's screenshot runbook for the Android raws. Verify: the documented dispatch/download commands match the workflow's artifact names.
 
