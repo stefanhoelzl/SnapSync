@@ -73,7 +73,7 @@ sealed interface Layer {
      * event that is doing nothing, which is the exact failure this state exists to make legible.
      *
      * It is also the only screen in the app whose remedy is outside the app, which is why it carries the
-     * link rather than composing one: see [storeUrl].
+     * link rather than composing one: see [store].
      */
     @Serializable
     data class UpdateRequired(
@@ -84,14 +84,15 @@ sealed interface Layer {
          */
         val minimumVersion: String? = null,
         /**
-         * The App Store page, or `null` when this build carries none.
+         * The build's store page — the App Store on iPhone, Google Play on Android — or `null` when this build
+         * carries none (an Android build before the Play listing is public).
          *
          * Carried rather than composed, and null rather than derived from the bundle id, because the
          * country-less form of that URL is measurably a **404** while availability is limited to one
          * storefront — an offer that looks right and lands nowhere, on the one screen the user reaches
          * because something is already wrong. `null` renders no button.
          */
-        val storeUrl: String? = null,
+        val store: StoreLink? = null,
     ) : Layer
 
     /**

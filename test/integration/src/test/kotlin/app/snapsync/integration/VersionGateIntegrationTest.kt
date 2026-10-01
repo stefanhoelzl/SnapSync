@@ -36,7 +36,7 @@ class VersionGateIntegrationTest {
         val layer = awaitState { it.ui.layer is Layer.UpdateRequired }.ui.layer
         assertIs<Layer.UpdateRequired>(layer)
         assertEquals("0.4", layer.minimumVersion, "the screen names the version the backend named")
-        assertNotNull(layer.storeUrl, "and offers the remedy, or it is a dead end")
+        assertNotNull(layer.store, "and offers the remedy, or it is a dead end")
     }
 
     @Test

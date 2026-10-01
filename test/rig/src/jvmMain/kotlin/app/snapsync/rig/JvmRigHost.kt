@@ -8,6 +8,8 @@ import app.snapsync.mock.BuildInfoMock
 import app.snapsync.mock.DeclaredVersion
 import app.snapsync.mock.UploadNetwork
 import app.snapsync.model.InviteLinkHints
+import app.snapsync.model.StoreKind
+import app.snapsync.model.StoreLink
 import app.snapsync.model.uploadersCarried
 import app.snapsync.services.logs.LogTailService
 import kotlinx.coroutines.CompletableDeferred
@@ -102,7 +104,7 @@ class JvmRigHost private constructor(
                 uploadHost = backend.base,
                 declaredVersion = version,
                 dsn = DSN,
-                appStoreUrl = APP_STORE_URL,
+                store = StoreLink(APP_STORE_URL, StoreKind.APP_STORE),
                 apnsEnvironment = "sandbox",
             )
             val app = JvmApp(scope, mocks) { device ->

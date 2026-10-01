@@ -3,6 +3,8 @@ package app.snapsync.config
 import app.snapsync.logging.appMarketingVersion
 import app.snapsync.logging.deviceDiagnosticEnvironment
 import app.snapsync.model.DiagnosticEnvironment
+import app.snapsync.model.StoreKind
+import app.snapsync.model.StoreLink
 import app.snapsync.model.uploadersCarried
 import app.snapsync.ports.BuildInfo
 
@@ -20,7 +22,7 @@ class IosBuildInfo(
 ) : BuildInfo {
     override val appVersion: String by lazy { appMarketingVersion() }
     override val uploadHost: String by lazy { bakedUploadBase() }
-    override val appStoreUrl: String? by lazy { bakedAppStoreUrl() }
+    override val store: StoreLink? by lazy { bakedAppStoreUrl()?.let { StoreLink(it, StoreKind.APP_STORE) } }
     override val apnsEnvironment: String by lazy { bakedApnsEnv() }
     override val dsn: String? by lazy { bakedSentryDsn() }
     override val diagnostics: DiagnosticEnvironment by lazy {

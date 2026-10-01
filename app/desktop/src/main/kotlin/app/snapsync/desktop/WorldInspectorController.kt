@@ -22,6 +22,8 @@ import app.snapsync.model.Layer
 import app.snapsync.model.ManifestResource
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.SELECTION_CALIBRATION
+import app.snapsync.model.StoreKind
+import app.snapsync.model.StoreLink
 import app.snapsync.model.TransferOutcome
 import app.snapsync.model.UiIntent
 import app.snapsync.model.UiState
@@ -304,7 +306,7 @@ class WorldInspectorController(private val scope: CoroutineScope) {
             uploadHost = BACKEND_BASE,
             declaredVersion = DeclaredVersion(APP_VERSION),
             dsn = DSN,
-            appStoreUrl = APP_STORE_URL,
+            store = StoreLink(APP_STORE_URL, StoreKind.APP_STORE),
             apnsEnvironment = "sandbox",
         )
         return JvmApp(scope, JvmMocks()) { device -> device.adapters(build, attests = true) }

@@ -118,6 +118,8 @@ const favicon = await getImage({ src: appIcon, width: 64, height: 64, format: "p
         <p class="copy">
           © 2026 SnapSync · An independent project · Not affiliated with Apple Inc. "App Store" is a
           trademark of Apple Inc.
+          {deployment.playStoreUrl &&
+            " Google Play and the Google Play logo are trademarks of Google LLC."}
         </p>
       </div>
     </footer>

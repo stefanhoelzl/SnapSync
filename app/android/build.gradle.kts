@@ -50,6 +50,10 @@ android {
             val value = requireNotNull(deployment[key]) { "the resolved deployment rendered no $key" }
             buildConfigField("String", field, "\"$value\"")
         }
+        // The app's Google Play page (capability `app-update-required`: the update notice's one remedy). Empty
+        // until the listing is public (production launch): the notice then offers no store at all.
+        val playStoreUrl = requireNotNull(deployment["playStoreUrl"]) { "the deployment rendered no playStoreUrl" }
+        buildConfigField("String", "PLAY_STORE_URL", "\"$playStoreUrl\"")
         // The event link's host — the resolved deployment's domain without a port (an intent filter with no port
         // matches any, and LINK_ORIGIN carries the local rig's).
         manifestPlaceholders["linkHost"] = requireNotNull(deployment["domain"]).substringBefore(':')

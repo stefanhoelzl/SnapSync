@@ -4,6 +4,8 @@ package app.snapsync.ui
 
 import app.snapsync.model.AlbumKind
 import app.snapsync.model.eventEnd
+import app.snapsync.model.StoreKind
+import app.snapsync.model.StoreLink
 import app.snapsync.model.deletesAt
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.captureCeiling
@@ -215,7 +217,7 @@ class StatusScreenTest {
         var opened: String? = null
         setContent {
             TestStatusScreen(
-                UiState(Layer.UpdateRequired(minimumVersion = "0.4", storeUrl = STORE_URL)),
+                UiState(Layer.UpdateRequired(minimumVersion = "0.4", store = StoreLink(STORE_URL, StoreKind.APP_STORE))),
                 cutoff = fixedCutoff(),
                 actions = testActions(onOpenLink = { opened = it }),
             )
@@ -233,12 +235,28 @@ class StatusScreenTest {
         // lands nowhere, on the screen a member reaches because something is already wrong.
         setContent {
             TestStatusScreen(
-                UiState(Layer.UpdateRequired(minimumVersion = null, storeUrl = null)),
+                UiState(Layer.UpdateRequired(minimumVersion = null, store = null)),
                 cutoff = fixedCutoff(),
             )
         }
         onNodeWithText("A newer version of SnapSync is needed to keep sharing photos.").assertExists()
         onNodeWithText("Open the App Store").assertDoesNotExist()
+        onNodeWithText("Open Google Play").assertDoesNotExist()
+    }
+
+    @Test
+    fun `on Android the update screen offers Google Play by name`() = runComposeUiTest {
+        var opened: String? = null
+        setContent {
+            TestStatusScreen(
+                UiState(Layer.UpdateRequired(minimumVersion = "0.4", store = StoreLink(PLAY_URL, StoreKind.GOOGLE_PLAY))),
+                cutoff = fixedCutoff(),
+                actions = testActions(onOpenLink = { opened = it }),
+            )
+        }
+        onNodeWithText("Open the App Store").assertDoesNotExist()
+        onNodeWithText("Open Google Play").performClick()
+        assertEquals(PLAY_URL, opened)
     }
 
     @Test
@@ -1354,3 +1372,4 @@ private fun phaseAt(
 
 /** The store link a build carries, offered on the update-required screen. */
 private const val STORE_URL = "https://apps.apple.com/de/app/id6781692480"
+private const val PLAY_URL = "https://play.google.com/store/apps/details?id=app.snapsync"

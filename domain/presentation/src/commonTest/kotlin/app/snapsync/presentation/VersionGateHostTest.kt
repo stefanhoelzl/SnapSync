@@ -2,6 +2,8 @@ package app.snapsync.presentation
 
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.model.EventConfig
+import app.snapsync.model.StoreKind
+import app.snapsync.model.StoreLink
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.SyncStatus
 import app.snapsync.model.UserCommands
@@ -48,7 +50,7 @@ class VersionGateHostTest {
             val layer = awaitInternalState().layer
             assertIs<Layer.UpdateRequired>(layer)
             assertEquals("0.4", layer.minimumVersion)
-            assertEquals(STORE_URL, layer.storeUrl, "a screen whose only remedy is a link must carry it")
+            assertEquals(STORE_URL, layer.store?.url, "a screen whose only remedy is a link must carry it")
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -112,7 +114,7 @@ class VersionGateHostTest {
         val host = gateHost(
             backgroundScope,
             MutableStateFlow(VersionRefusal("0.4")),
-            appStoreUrl = null,
+            store = null,
             openLink = { opened += it },
         )
         assertIs<Layer.UpdateRequired>(host.container.stateFlow.value.layer)
@@ -138,7 +140,7 @@ private val GATE_CEILING = captureCeiling("2026-07-13T14:32:11Z")
 private fun gateHost(
     scope: CoroutineScope,
     refusal: MutableStateFlow<VersionRefusal?> = MutableStateFlow(null),
-    appStoreUrl: String? = STORE_URL,
+    store: StoreLink? = StoreLink(STORE_URL, StoreKind.APP_STORE),
     config: EventConfig? = null,
     openLink: (String) -> Unit = {},
 ) = StatusContainerHost(
@@ -149,7 +151,7 @@ private fun gateHost(
         permission = MutableStateFlow(GalleryAccess.GRANTED),
         config = MutableStateFlow(config),
         versionRefusal = refusal,
-        appStoreUrl = appStoreUrl,
+        store = store,
     ),
     scope,
     commands = testCommands(openLink = openLink),

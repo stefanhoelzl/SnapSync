@@ -146,6 +146,7 @@ class SnapSyncRoot(internal val application: Application) {
                 bootLines = listOf("=== app process start ===") + adapters.bootLines,
                 // An FCM token belongs to the Firebase project that issued it: that project is its push environment.
                 apnsEnvironment = firebase.projectId,
+                playStoreUrl = BuildConfig.PLAY_STORE_URL,
             ),
         )
     }
@@ -199,6 +200,19 @@ class SnapSyncRoot(internal val application: Application) {
      * **Compose the graph** — called from `Application.onCreate`, on the main thread: composing registers every entry
      * port's handlers, the lifecycle's process observer among them, before any activity can resume.
      */
+    /** Asked at most once per process — the lazy is the once — from the first screen's creation. */
+    private val installReferrer: Unit by lazy { adapters.installReferrer() }
+
+    /**
+     * **A screen was created** — called by the activity's `onCreate`. The first one in this process asks Play for the
+     * invite the installation carried: from a screen, so a background start (a push, a work) never consumes it with
+     * nothing to open the join screen on.
+     */
+    @PlatformEntry
+    fun onScreenCreated() {
+        installReferrer
+    }
+
     @PlatformEntry
     fun onLaunch() = log.invocation(EntryScope.None, "onLaunch") {
         composed

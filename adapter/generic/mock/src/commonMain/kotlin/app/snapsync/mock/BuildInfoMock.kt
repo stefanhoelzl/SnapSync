@@ -1,6 +1,7 @@
 package app.snapsync.mock
 
 import app.snapsync.model.DiagnosticEnvironment
+import app.snapsync.model.StoreLink
 import app.snapsync.ports.BuildInfo
 
 /**
@@ -15,8 +16,8 @@ class BuildInfoMock(
     val declaredVersion: DeclaredVersion = DeclaredVersion("99.0"),
     /** Where the build reports, or `null` for one that reports nowhere (a dev build keeps its bug report). */
     val dsn: String? = null,
-    /** The build's App Store page — the update-required screen's one remedy. */
-    val appStoreUrl: String? = null,
+    /** The build's store page — the update-required screen's one remedy. */
+    val store: StoreLink? = null,
     /** The APNs environment the build's push tokens belong to. */
     val apnsEnvironment: String = "sandbox",
     val bootLines: List<String> = emptyList(),
@@ -24,7 +25,7 @@ class BuildInfoMock(
     fun port(): BuildInfo = object : BuildInfo {
         override val appVersion: String get() = declaredVersion.value.orEmpty()
         override val uploadHost: String = this@BuildInfoMock.uploadHost
-        override val appStoreUrl: String? = this@BuildInfoMock.appStoreUrl
+        override val store: StoreLink? = this@BuildInfoMock.store
         override val apnsEnvironment: String = this@BuildInfoMock.apnsEnvironment
         override val osSupportsOsDrivenUpload: Boolean = false
         override val diagnostics: DiagnosticEnvironment = DiagnosticEnvironment.UNKNOWN

@@ -1,6 +1,7 @@
 package app.snapsync.ports
 
 import app.snapsync.model.DiagnosticEnvironment
+import app.snapsync.model.StoreLink
 
 /**
  * **What the running build is** — the constants its bundle carries, and the few facts of the running OS a process
@@ -22,10 +23,10 @@ interface BuildInfo : Port {
     val uploadHost: String
 
     /**
-     * This build's App Store page, or `null` when it carries none — the one remedy the update-required screen offers
-     * (capability `app-update-required`).
+     * This build's store page — the App Store on iOS, Google Play on Android — or `null` when it carries none: the one
+     * remedy the update-required screen offers (capability `app-update-required`).
      */
-    val appStoreUrl: String?
+    val store: StoreLink?
 
     /** The APNs environment this build's push tokens belong to (`sandbox` or `production`), fixed at compile time. */
     val apnsEnvironment: String

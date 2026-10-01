@@ -12,6 +12,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.snapsync.model.EVENT_NAME_MAX_LENGTH
+import app.snapsync.model.StoreKind
 import app.snapsync.model.EVENT_WINDOW_MAX_SECONDS
 import kotlin.time.Duration.Companion.seconds
 import app.snapsync.model.Layer
@@ -213,10 +214,16 @@ internal fun UpdateRequiredScreen(layer: Layer.UpdateRequired, onOpenLink: (Stri
                     ?: "A newer version of SnapSync is needed to keep sharing photos.",
             )
         }
-        layer.storeUrl?.let { url ->
+        layer.store?.let { store ->
             Column(modifier = Modifier.fillMaxWidth().padding(24.dp)) {
-                PrimaryButton(label = "Open the App Store", onClick = { onOpenLink(url) })
+                PrimaryButton(label = storeButtonLabel(store.kind), onClick = { onOpenLink(store.url) })
             }
         }
     }
+}
+
+/** The update notice's one button names the store it opens — the one the build is distributed through. */
+private fun storeButtonLabel(kind: StoreKind): String = when (kind) {
+    StoreKind.APP_STORE -> "Open the App Store"
+    StoreKind.GOOGLE_PLAY -> "Open Google Play"
 }

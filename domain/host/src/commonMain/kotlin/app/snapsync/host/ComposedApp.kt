@@ -194,5 +194,5 @@ private fun statusSourcesOf(core: AppCore, ports: AppPorts): StatusSources = Sta
     attested = core.attested,
     pending = MutablePendingJoinSource(),
     versionRefusal = core.versionRefusal,
-    appStoreUrl = ports.process.build.appStoreUrl,
+    store = ports.process.build.store,
 )
