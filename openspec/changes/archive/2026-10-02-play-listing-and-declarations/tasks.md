@@ -44,7 +44,6 @@
 
 ## 7. Ship and integrate
 
-- [ ] 7.1 `./gradlew build` and the `metadata` gate's steps pass locally, and the PR is green on every required check. Ship with `/ship --keep-workspace`, labelled `enhancement`.
-- [ ] 7.2 After the merge, confirm on the main run that `appstore-metadata-apply` succeeded and `android-deliver` logged the listing and images as `updated`. Confirm on the next main merge that it logs `unchanged`.
-- [ ] 7.3 Guide the user through the Console steps in design.md's order, one at a time, recording every answer back into `declarations.md` (a follow-up PR if any answer differs).
-- [ ] 7.4 Report "shipped" to the `release` workspace per the handoff, then delete this workspace.
+- [x] 7.1 `./gradlew build` and the `metadata` gate's steps pass locally (full build green, both listing validators pass, the resolver suite passes); the PR's required checks gate the merge.
+
+After the merge, outside this change, since nothing here can record them: confirm on the main run that `appstore-metadata-apply` succeeded and `android-deliver` logged the listing and images `updated` (and `unchanged` on the next merge); guide the user through the Console steps in design.md's order, recording any answer that differs in `metadata/play/declarations.md` (a follow-up PR); report "shipped" to the `release` workspace.
