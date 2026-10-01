@@ -8,7 +8,7 @@ package app.snapsync.model
  * pure half lives here so it is tested on the JVM.
  *
  * **The packet is the one measured to play** (Galaxy A40, Google Photos 7.84, 2026-09-30; decision record
- * `changes/live-motion-unification` D2): ONE `rdf:Description` carrying both tag sets — the current `Camera:MotionPhoto`
+ * `changes/archive/2026-10-01-live-motion-unification` D2): ONE `rdf:Description` carrying both tag sets — the current `Camera:MotionPhoto`
  * with its `Container:Directory`, and the legacy `GCamera:MicroVideo*` — where either alone already played. The
  * `MotionPhoto` item's mime is `video/mp4` even when the appended bytes are an iPhone QuickTime movie: that exact
  * pairing played unchanged, and no other was measured. `Camera` and `GCamera` are two prefixes for ONE namespace, so
@@ -56,7 +56,7 @@ object MotionPhoto {
  * [jpeg] with the motion-photo XMP for a video of [videoLength] bytes — the file that, with the video appended, is a
  * motion photo — or null when the JPEG cannot carry it: not a JPEG, an XMP packet already describing a motion photo,
  * an XMP packet with no `rdf:RDF` to merge into, or a merged packet too large for its one segment. Null means
- * "import the still as it is" (decision record `changes/live-motion-unification` D6), never a failed import.
+ * "import the still as it is" (decision record `changes/archive/2026-10-01-live-motion-unification` D6), never a failed import.
  *
  * The image data is never touched: only the segments before it change. A JPEG with no XMP gets a new XMP segment
  * after its JFIF/EXIF segments; one with an XMP packet (an iPhone JPEG carries one) gets the motion
