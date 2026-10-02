@@ -76,11 +76,6 @@ class UploadCycle(
     // What the cycle reads from the photo library — the full-enumeration walk and the id-scoped key resolve.
     // Not the transport's: both tiers read the library identically, and only the transfer lifecycle differs.
     private val library: UploadDiscovery,
-    // There is no re-join reconciliation here. The cycle used to detect a membership change nobody
-    // announced (a persisted join marker compared on every run) and re-seed the ledger from the device
-    // listing. Every change of membership is now an explicit app action, and the join loads the ledger
-    // itself (capability `photo-sharing`, "A join loads the ledger from the per-device
-    // listing"), so this cycle reads the ledger it is given and never fetches the listing.
     // Best-effort hook fired once per fully-drained cycle with that cycle's discovery — the device
     // manifest is built from THIS (no second PhotoKit enumeration). `runCatching`ed HERE, so a failed
     // publish never fails a cycle and no root has to remember to catch it. Deliberately NOT bounded by a
@@ -93,15 +88,6 @@ class UploadCycle(
     // `receiving-photos`), which is why it is a Boolean rather than Unit: "the union now lists
     // something new" is a fact only the producer's skip-if-unchanged record knows.
     private val onDiscovery: suspend (eventId: String, policy: SelectionPolicy, manifestVersion: Long) -> Boolean,
-    // The echo-suppression and denylisted-album readers used to be injected HERE, so the cycle could
-    // complete a config-derived policy. They moved to the one derivation in the shared composition
-    // (capability `photo-sharing`), which the membership's policy supplier closes over — so this
-    // cycle no longer reads either port, and cannot get the completion wrong or skip it.
-    //
-    // What made them required with **no default** still holds at their new home, and for the same reason:
-    // `{ emptySet() }` re-uploads every downloaded foreign photo back into the event, or uploads the
-    // member's WhatsApp album into a stranger's. A tier without an album source states that at its call
-    // site, where a reviewer can see it.
     // Event-album placement (capability `event-album`): fired with the `assetId`s (normalized) this cycle is
     // about to enqueue for the FIRST time, so the running process adds those own photos to the event album
     // before their upload jobs exist. Runs in whichever process runs the cycle (extension on ≥26.1, app on
@@ -135,10 +121,11 @@ class UploadCycle(
      * every cycle, forever, with no error and no log line (capability `background-upload`).
      */
     suspend fun run(): CycleResult = units.withLock {
-        val settled = settle()
-        val decided = settled.decide()
-        val outcome = decided.update(enqueue = NEVER_STOP)
-        outcome.publish()
+        val ready = when (val settled = settle()) {
+            is Ready -> settled
+            is CycleOutcome -> return@withLock settled.publish()
+        }
+        update(ready, decide(ready), enqueue = NEVER_STOP).publish()
     }
 
     /**
@@ -155,13 +142,12 @@ class UploadCycle(
         // The walk that immediately preceded this top-up in the same tail hands over what it read, once.
         val handedOver = walked
         walked = emptyMap()
-        when (val settled = settle()) {
-            is Settled.Short -> settled.outcome.result
-            is Settled.Proceeding -> {
-                val enqueued = enqueue(settled.ready, handedOver, stopRequested)
-                if (settled.ready.capHit || enqueued.truncated) CycleResult.PROCESSING else CycleResult.COMPLETED
-            }
+        val ready = when (val settled = settle()) {
+            is Ready -> settled
+            is CycleOutcome -> return@withLock settled.result
         }
+        val enqueued = enqueue(ready, handedOver, stopRequested)
+        if (ready.capHit || enqueued.truncated) CycleResult.PROCESSING else CycleResult.COMPLETED
     }
 
     /**
@@ -179,16 +165,20 @@ class UploadCycle(
      */
     suspend fun walkAndPublish(stopRequested: () -> Boolean): WalkOutcome = units.withLock {
         walked = emptyMap()
-        val decided = settle().decide()
-        if (decided is Decided.Planned && stopRequested()) {
+        val ready = when (val settled = settle()) {
+            is Ready -> settled
+            is CycleOutcome -> return@withLock WalkOutcome.Walked(settled.publish(), addedRows = false)
+        }
+        val plan = decide(ready)
+        if (stopRequested()) {
             log.i { "walk abandoned — the operating system's time is up; nothing it saw is recorded" }
             return@withLock WalkOutcome.Abandoned
         }
-        val outcome = decided.update(enqueue = null)
-        val added = outcome.addedRows()
+        val outcome = update(ready, plan, enqueue = null)
+        val added = outcome.audit.newWork > 0
         // Handed to the top-up this walk makes the tail run next, so a row it just read is created from the handle in
         // hand rather than resolved again (capability `background-upload`). Only when that top-up follows.
-        if (added && decided is Decided.Planned) walked = decided.plan.liveResources.associateBy { it.filename }
+        if (added) walked = plan.liveResources.associateBy { it.filename }
         WalkOutcome.Walked(outcome.publish(), addedRows = added)
     }
 
@@ -215,7 +205,7 @@ class UploadCycle(
                     "skipping cycle — ${gate.detail.ifEmpty { "a required read failed" }}. NOT treating " +
                         "this as a leave; nothing minted, nothing written."
                 }
-                return Settled.Short(CycleOutcome.Unreadable)
+                return CycleOutcome.Unreadable
             }
             CycleGate.NotJoined -> {
                 // Definitively not joined: no item, an item that cannot decode, a missing baked host, or a
@@ -223,7 +213,7 @@ class UploadCycle(
                 // still not this cycle's to clear anything: the leave that got us here cleared the ledger
                 // itself (capability `manage-membership`).
                 log.i { "skipping cycle — no joined event / host" }
-                return Settled.Short(CycleOutcome.NotJoined)
+                return CycleOutcome.NotJoined
             }
             is CycleGate.Withheld -> {
                 // This process may not create now (the extension without a full grant; the app without usable
@@ -234,14 +224,14 @@ class UploadCycle(
                     "cycle withheld — this process may not create now; presented jobs acknowledged, " +
                         "nothing created, nothing published"
                 }
-                return Settled.Short(CycleOutcome.Withheld)
+                return CycleOutcome.Withheld
             }
             is CycleGate.Paused -> {
                 // Admitted, but the echo-suppression store is not ready for this process (capability
                 // `receiving-photos`): uploading without it would send downloaded photos back. Touch NOTHING —
                 // not even the presented results, which the next run acknowledges — and ask to be run again.
                 log.i { "cycle paused (${gate.reason}) — nothing touched; asking to be invoked again" }
-                return Settled.Short(CycleOutcome.Paused(gate.reason))
+                return CycleOutcome.Paused(gate.reason)
             }
             is CycleGate.Run -> gate.config to gate.membership
         }
@@ -266,7 +256,7 @@ class UploadCycle(
         if (!policy.contributes) {
             recreateRetrySpent(engine)
             log.i { "cycle skipped — this membership contributes nothing (direction excludes upload)" }
-            return Settled.Short(CycleOutcome.Declined(eventId, policy, membership.manifestVersion))
+            return CycleOutcome.Declined(eventId, policy, membership.manifestVersion)
         }
 
         // Phase 1 — first failures: re-point the system's single retry at a rebuilt edge URL
@@ -291,9 +281,7 @@ class UploadCycle(
         // departed photo. What the cap costs is only that this cycle cannot enqueue more — and the
         // work it could not re-create rests `DISCOVERED`, which the ledger's work read returns next cycle
         // without needing a walk to re-derive it.
-        return Settled.Proceeding(
-            Ready(eventId, policy, membership.manifestVersion, engine, membership.saveToAlbum, capHit),
-        )
+        return Ready(eventId, policy, membership.manifestVersion, engine, membership.saveToAlbum, capHit)
     }
 
     // --- stage 2: decide -------------------------------------------------------------------------
@@ -308,72 +296,66 @@ class UploadCycle(
      * `markTerminal`, never through a read-then-write. If either property stops holding, deciding here and
      * acting there becomes a duplicate-upload path, and nothing in the compiler will say so.
      */
-    private suspend fun Settled.decide(): Decided = when (this) {
-        is Settled.Short -> Decided.Short(outcome)
-        is Settled.Proceeding -> {
-            // Phase 3 — walk the library: a full enumeration, every cycle. The capture range came in with the
-            // contribution and is passed down, so the walk is scoped at the platform fetch rather than walked
-            // whole and filtered afterwards (capability `photo-sharing`).
-            val discovery = library.discover(ready.policy)
-            log.i { "discovered ${discovery.candidates.size} candidate asset(s)" }
+    private suspend fun decide(ready: Ready): CyclePlan {
+        // Phase 3 — walk the library: a full enumeration, every cycle. The capture range came in with the
+        // contribution and is passed down, so the walk is scoped at the platform fetch rather than walked
+        // whole and filtered afterwards (capability `photo-sharing`).
+        val discovery = library.discover(ready.policy)
+        log.i { "discovered ${discovery.candidates.size} candidate asset(s)" }
 
-            // THE ADMISSION (capability `photo-sharing`): one policy, applied once, deciding the
-            // whole admitted set — the capture-date RANGE (both bounds), the origin exclusions, the echo
-            // suppression, and the album denylist together. Every consumer of this cycle reads the set
-            // below; none re-states a rule, which is what makes the drift that produced the ceiling bug
-            // unrepresentable (see `SelectionPolicy`).
-            //
-            // It stays **authoritative** even though the platform walk narrows its own fetch by some of
-            // the same rules: the walk may return a superset (its predicate is deliberately widened, and a
-            // selection snapshot takes no predicate at all), and this is what makes that optimization
-            // unable to change the admitted set. `resources()` pays the per-asset round-trip ONLY for the
-            // assets it kept.
-            val admitted = EventPhotoSet(ready.policy) { discovery.candidates }.assets()
+        // THE ADMISSION (capability `photo-sharing`): one policy, applied once, deciding the
+        // whole admitted set — the capture-date RANGE (both bounds), the origin exclusions, the echo
+        // suppression, and the album denylist together. Every consumer of this cycle reads the set
+        // below; none re-states a rule, which is what makes the drift that produced the ceiling bug
+        // unrepresentable (see `SelectionPolicy`).
+        //
+        // It stays **authoritative** even though the platform walk narrows its own fetch by some of
+        // the same rules: the walk may return a superset (its predicate is deliberately widened, and a
+        // selection snapshot takes no predicate at all), and this is what makes that optimization
+        // unable to change the admitted set. `resources()` pays the per-asset round-trip ONLY for the
+        // assets it kept.
+        val admitted = EventPhotoSet(ready.policy) { discovery.candidates }.assets()
 
-            // …and of those, only for the assets the ledger does not fully know (capability `photo-sharing`, "A
-            // walk re-reads only the assets the ledger does not fully know"). Every walk is a full enumeration,
-            // so without this each cycle would repeat one synchronous platform round-trip per photo already
-            // recorded — the member's whole in-window library, every cycle. An uploaded resource is immutable
-            // and the ledger keeps no content version, so re-reading a recorded asset could only answer
-            // "already uploaded"; a row that still needs a job is found by the ledger's work read, not by the
-            // walk. An asset with a BARE row is read, because only the walk can fill its detail — which is
-            // also what completes a join-time load that listed only some of an asset's roles.
-            val rows = ledger.manifestRows()
-            val byAsset = rows.groupBy { it.assetId }
-            val fullyKnown = byAsset.filterValues { group -> group.none { it.needsManifestDetail } }.keys
-            val toRead = admitted.filter { it.facts.assetId !in fullyKnown }
-            // The admitted assets whose rows this walk is about to date — the join-time load's bare rows.
-            // They are never enqueued (their bytes are stored), so this walk is the only moment that places
-            // them in the event album (capability `event-album`).
-            val healing = toRead.mapTo(mutableSetOf()) { it.facts.assetId }.filterTo(mutableSetOf()) { id ->
-                byAsset[id]?.any { it.needsManifestDetail } == true
-            }
-            val liveResources = resourcesOf(toRead)
-                .also {
-                    log.i {
-                        "selection policy admitted ${admitted.size} of ${discovery.candidates.size} " +
-                            "candidate(s); ${admitted.size - toRead.size} fully known, ${toRead.size} read " +
-                            "→ ${it.size} resource(s)"
-                    }
-                }
-            val presentAssetIds = discovery.candidates.mapTo(mutableSetOf()) { it.facts.assetId }
-            Decided.Planned(
-                ready,
-                CyclePlan(
-                    liveResources,
-                    skipped = admitted.size - toRead.size,
-                    healing = healing,
-                    departedKeys = if (discovery.fullEnumeration) {
-                        departedKeys(rows, presentAssetIds, ready.policy)
-                    } else {
-                        // A library the platform could not read is no evidence that anything left it
-                        // (capability `photo-sharing`). A read selection snapshot IS authoritative — under a
-                        // partial grant the selection is the gallery — and an unread one never gets here.
-                        emptyList()
-                    },
-                ),
-            )
+        // …and of those, only for the assets the ledger does not fully know (capability `photo-sharing`, "A
+        // walk re-reads only the assets the ledger does not fully know"). Every walk is a full enumeration,
+        // so without this each cycle would repeat one synchronous platform round-trip per photo already
+        // recorded — the member's whole in-window library, every cycle. An uploaded resource is immutable
+        // and the ledger keeps no content version, so re-reading a recorded asset could only answer
+        // "already uploaded"; a row that still needs a job is found by the ledger's work read, not by the
+        // walk. An asset with a BARE row is read, because only the walk can fill its detail — which is
+        // also what completes a join-time load that listed only some of an asset's roles.
+        val rows = ledger.manifestRows()
+        val byAsset = rows.groupBy { it.assetId }
+        val fullyKnown = byAsset.filterValues { group -> group.none { it.needsManifestDetail } }.keys
+        val toRead = admitted.filter { it.facts.assetId !in fullyKnown }
+        // The admitted assets whose rows this walk is about to date — the join-time load's bare rows.
+        // They are never enqueued (their bytes are stored), so this walk is the only moment that places
+        // them in the event album (capability `event-album`).
+        val healing = toRead.mapTo(mutableSetOf()) { it.facts.assetId }.filterTo(mutableSetOf()) { id ->
+            byAsset[id]?.any { it.needsManifestDetail } == true
         }
+        val liveResources = resourcesOf(toRead)
+            .also {
+                log.i {
+                    "selection policy admitted ${admitted.size} of ${discovery.candidates.size} " +
+                        "candidate(s); ${admitted.size - toRead.size} fully known, ${toRead.size} read " +
+                        "→ ${it.size} resource(s)"
+                }
+            }
+        val presentAssetIds = discovery.candidates.mapTo(mutableSetOf()) { it.facts.assetId }
+        return CyclePlan(
+            liveResources,
+            skipped = admitted.size - toRead.size,
+            healing = healing,
+            departedKeys = if (discovery.fullEnumeration) {
+                departedKeys(rows, presentAssetIds, ready.policy)
+            } else {
+                // A library the platform could not read is no evidence that anything left it
+                // (capability `photo-sharing`). A read selection snapshot IS authoritative — under a
+                // partial grant the selection is the gallery — and an unread one never gets here.
+                emptyList()
+            },
+        )
     }
 
     /**
@@ -415,85 +397,74 @@ class UploadCycle(
      * Write what is ours: the walk's deletions, the jobs the platform will accept, and the manifest detail
      * of rows the walk can fill. Nothing here is visible to the event.
      */
-    private suspend fun Decided.update(enqueue: (() -> Boolean)?): CycleOutcome = when (this) {
-        is Decided.Short -> outcome
-        is Decided.Planned -> {
-            val engine = ready.engine
+    private suspend fun update(ready: Ready, plan: CyclePlan, enqueue: (() -> Boolean)?): CycleOutcome.Enumerated {
+        val engine = ready.engine
 
-            // The walk's own deletion (capability `photo-sharing`): the in-window rows of assets an authoritative
-            // walk did not return. Before anything is recorded, and long before `publish` projects the
-            // manifest, so a departed photo is never listed by the cycle that saw it leave.
-            if (plan.departedKeys.isNotEmpty()) {
-                log.i { "${plan.departedKeys.size} row(s) of assets the walk no longer returns — deleting them" }
-                ledger.deleteKeys(plan.departedKeys)
-            }
-
-            // Place the assets whose bare rows this walk is about to date, BEFORE their detail is written:
-            // once dated a row is no longer bare, so a death between the two would leave the photo unplaced
-            // by this path. Placed first, a death before the backfill leaves the row bare and the next walk
-            // places it again — a no-op.
-            placeHealed(ready, plan.healing)
-
-            // RECORD what the walk found; do not act on it. Every admitted resource the engine judges to
-            // be new work gets a `DISCOVERED` row (capability `photo-sharing`), and every already-recorded
-            // one still resting bare gets its manifest detail filled.
-            //
-            // This loop creates no upload job. While it did, it stopped at the platform's job limit — so the
-            // resources past that point were recorded nowhere and only a later walk could find them again.
-            // Nothing here can stop early, so the walk's facts are captured whole.
-            val newWork = mutableListOf<Resource>()
-            var alreadyUploaded = 0
-            for (resource in plan.liveResources) {
-                // The engine decides; nothing is minted here — no request is sent from this loop, and the one
-                // that is sent is minted where the job is created ([createOne]).
-                if (engine.isWork(resource)) {
-                    newWork += resource
-                } else {
-                    alreadyUploaded++
-                    // Enrich a row that predates the manifest detail, or that the join-time load took from a
-                    // filename listing (capability `photo-sharing`). The engine writes nothing on an
-                    // already-uploaded resource, so without this sweep a seeded row would never learn its
-                    // capture date — and the device manifest, projected from the ledger, would silently
-                    // drop this member's photos out of the event union after every join.
-                    //
-                    // A capture date lives only in the photo library and only the walk reads it — which is
-                    // why a bare row's asset is always read, never skipped as fully known.
-                    //
-                    // Idempotent and bare-only: a row already enriched is never rewritten.
-                    ledger.backfillManifestDetail(resource)
-                }
-            }
-            // ONE batch write for the walk's new work, so it lands whole or not at all. The walk skips an asset
-            // whose rows all exist, so recording a Live Photo's primary and then dying before its paired video
-            // would leave the video unrecorded for good; in one transaction there is no such gap.
-            ledger.recordDiscovered(newWork)
-
-            // The resources this walk already read, by key: a row it just recorded is created from the handle in
-            // hand rather than resolved a second time (see [createOne]). A walk run as the tail's ③ creates nothing
-            // ([enqueue] is `null`): the top-up the tail runs next does, from the same handles.
-            val enqueued = enqueue?.let { stop -> enqueue(ready, plan.liveResources.associateBy { it.filename }, stop) }
-                ?: Enqueued(created = 0, truncated = false)
-            // Truncated by either half: the settle pass could not re-create a retry, or this pass could
-            // not create everything the ledger holds. Both mean the same thing to the tail's re-arm — work remains.
-            val truncated = ready.capHit || enqueued.truncated
-            val audit = Enumeration(
-                seen = plan.liveResources.size,
-                skipped = plan.skipped,
-                newWork = newWork.size,
-                alreadyUploaded = alreadyUploaded,
-                deleted = plan.departedKeys.size,
-                truncated = truncated,
-            )
-            if (truncated) CycleOutcome.Truncated(ready, audit) else CycleOutcome.Drained(ready, audit)
+        // The walk's own deletion (capability `photo-sharing`): the in-window rows of assets an authoritative
+        // walk did not return. Before anything is recorded, and long before `publish` projects the
+        // manifest, so a departed photo is never listed by the cycle that saw it leave.
+        if (plan.departedKeys.isNotEmpty()) {
+            log.i { "${plan.departedKeys.size} row(s) of assets the walk no longer returns — deleting them" }
+            ledger.deleteKeys(plan.departedKeys)
         }
-    }
 
-    /** Whether this outcome's walk recorded new `DISCOVERED` rows — what makes the tail run its top-up again. */
-    private fun CycleOutcome.addedRows(): Boolean = when (this) {
-        is CycleOutcome.Truncated -> audit.newWork > 0
-        is CycleOutcome.Drained -> audit.newWork > 0
-        CycleOutcome.Unreadable, CycleOutcome.NotJoined, CycleOutcome.Withheld, is CycleOutcome.Paused,
-        is CycleOutcome.Declined -> false
+        // Place the assets whose bare rows this walk is about to date, BEFORE their detail is written:
+        // once dated a row is no longer bare, so a death between the two would leave the photo unplaced
+        // by this path. Placed first, a death before the backfill leaves the row bare and the next walk
+        // places it again — a no-op.
+        placeHealed(ready, plan.healing)
+
+        // RECORD what the walk found; do not act on it. Every admitted resource the engine judges to
+        // be new work gets a `DISCOVERED` row (capability `photo-sharing`), and every already-recorded
+        // one still resting bare gets its manifest detail filled.
+        //
+        // This loop creates no upload job. While it did, it stopped at the platform's job limit — so the
+        // resources past that point were recorded nowhere and only a later walk could find them again.
+        // Nothing here can stop early, so the walk's facts are captured whole.
+        val newWork = mutableListOf<Resource>()
+        var alreadyUploaded = 0
+        for (resource in plan.liveResources) {
+            // The engine decides; nothing is minted here — no request is sent from this loop, and the one
+            // that is sent is minted where the job is created ([createOne]).
+            if (engine.isWork(resource)) {
+                newWork += resource
+            } else {
+                alreadyUploaded++
+                // Enrich a row that predates the manifest detail, or that the join-time load took from a
+                // filename listing (capability `photo-sharing`). The engine writes nothing on an
+                // already-uploaded resource, so without this sweep a seeded row would never learn its
+                // capture date — and the device manifest, projected from the ledger, would silently
+                // drop this member's photos out of the event union after every join.
+                //
+                // A capture date lives only in the photo library and only the walk reads it — which is
+                // why a bare row's asset is always read, never skipped as fully known.
+                //
+                // Idempotent and bare-only: a row already enriched is never rewritten.
+                ledger.backfillManifestDetail(resource)
+            }
+        }
+        // ONE batch write for the walk's new work, so it lands whole or not at all. The walk skips an asset
+        // whose rows all exist, so recording a Live Photo's primary and then dying before its paired video
+        // would leave the video unrecorded for good; in one transaction there is no such gap.
+        ledger.recordDiscovered(newWork)
+
+        // The resources this walk already read, by key: a row it just recorded is created from the handle in
+        // hand rather than resolved a second time (see [createOne]). A walk run as the tail's ③ creates nothing
+        // ([enqueue] is `null`): the top-up the tail runs next does, from the same handles.
+        val enqueued = enqueue?.let { stop -> enqueue(ready, plan.liveResources.associateBy { it.filename }, stop) }
+            ?: Enqueued(created = 0, truncated = false)
+        // Truncated by either half: the settle pass could not re-create a retry, or this pass could
+        // not create everything the ledger holds. Both mean the same thing to the tail's re-arm — work remains.
+        val truncated = ready.capHit || enqueued.truncated
+        val audit = Enumeration(
+            seen = plan.liveResources.size,
+            skipped = plan.skipped,
+            newWork = newWork.size,
+            alreadyUploaded = alreadyUploaded,
+            deleted = plan.departedKeys.size,
+            truncated = truncated,
+        )
+        return CycleOutcome.Enumerated(ready, audit)
     }
 
     /** What one enqueue pass did, for the outcome that reports it. */
@@ -670,7 +641,7 @@ class UploadCycle(
             // stopped sharing.
             is CycleOutcome.Declined -> writeDeviceManifest(eventId, policy, manifestVersion)
 
-            // The platform stopped accepting jobs partway through — and this cycle publishes anyway.
+            // A walked cycle publishes — even one the platform stopped accepting jobs from partway through.
             //
             // It used to publish nothing, and that is the failure this change exists to remove: a device
             // with more outstanding work than the platform's job limit takes this branch on every cycle,
@@ -681,12 +652,7 @@ class UploadCycle(
             // Nothing about the manifest needs a drained pass. It is a projection of the ledger's settled
             // rows (capability `photo-sharing`) — every row this cycle recorded is already durable, and
             // the declined branch below has always written one without any walk at all.
-            is CycleOutcome.Truncated -> {
-                logEnumeration(audit)
-                writeDeviceManifest(ready.eventId, ready.policy, ready.manifestVersion)
-            }
-
-            is CycleOutcome.Drained -> {
+            is CycleOutcome.Enumerated -> {
                 logEnumeration(audit)
                 writeDeviceManifest(ready.eventId, ready.policy, ready.manifestVersion)
             }
@@ -735,6 +701,9 @@ class UploadCycle(
         val truncated: Boolean,
     )
 
+    /** [settle]'s answer: the [Ready] facts of a cycle that may proceed, or the [CycleOutcome] it already reached. */
+    private sealed interface Settled
+
     /** A settled cycle that may create work: the facts every later stage needs. */
     private class Ready(
         val eventId: String,
@@ -749,25 +718,13 @@ class UploadCycle(
          * the row rests `DISCOVERED` and the ledger's work read returns it next cycle.
          */
         val capHit: Boolean,
-    )
-
-    /** [settle]'s result: either a cycle that may proceed, or one whose outcome is already known. */
-    private sealed interface Settled {
-        class Proceeding(val ready: Ready) : Settled
-        class Short(val outcome: CycleOutcome) : Settled
-    }
-
-    /** [decide]'s result. `Short` forwards an outcome established before the walk. */
-    private sealed interface Decided {
-        class Planned(val ready: Ready, val plan: CyclePlan) : Decided
-        class Short(val outcome: CycleOutcome) : Decided
-    }
+    ) : Settled
 
     /**
      * What a cycle established, and therefore what it may publish. Exhaustive: a new variant stops
      * [publish] compiling until someone decides what it says.
      */
-    private sealed interface CycleOutcome {
+    private sealed interface CycleOutcome : Settled {
         val result: CycleResult
 
         /** A required input could not be read. Nothing was touched. */
@@ -805,7 +762,8 @@ class UploadCycle(
         }
 
         /**
-         * The platform stopped accepting jobs before the ledger's work was exhausted.
+         * The walk was recorded — `PROCESSING` when [Enumeration.truncated]: the platform stopped accepting jobs before
+         * the ledger's work was exhausted.
          *
          * It carries an audit because a truncated cycle is the one whose accounting is needed most: it
          * is the state in which a backlog is accumulating, and without the line a device log shows the
@@ -816,13 +774,8 @@ class UploadCycle(
          * was rejected: it is exactly the cycle whose remaining backlog most needs stating, and an
          * authoritative walk is also what retracts a departed photo.
          */
-        class Truncated(val ready: Ready, val audit: Enumeration) : CycleOutcome {
-            override val result get() = CycleResult.PROCESSING
-        }
-
-        /** Every admitted resource was recorded and every job the platform would take was created. */
-        class Drained(val ready: Ready, val audit: Enumeration) : CycleOutcome {
-            override val result get() = CycleResult.COMPLETED
+        class Enumerated(val ready: Ready, val audit: Enumeration) : CycleOutcome {
+            override val result get() = if (audit.truncated) CycleResult.PROCESSING else CycleResult.COMPLETED
         }
     }
 
@@ -889,28 +842,6 @@ class UploadCycle(
     }
 
     /**
-     * Phase 2 — terminal jobs. EVERY job MUST be acknowledged (the system errors 50008 —
-     * "appex failed to acknowledge jobs for processing state" — for any it presents that we leave
-     * un-acknowledged), so all arms acknowledge, and so does a cycle the direction gate declines: the
-     * obligation is owed to the OS for jobs it already presented, and it does not depend on whether this
-     * membership still contributes.
-     *
-     * Terminal facts no longer arrive here. The platform records them itself, where the platform tells
-     * it, into a row that survives the process ([BackgroundTransfer.drainTerminals]); what comes back is
-     * only work the cycle must still do — a failure whose resource is still live, so it can be re-created
-     * now instead of waiting for a discovery pass to re-derive it.
-     *
-     * The engine is still the thing that decides: `UploadFailed` returns the row to `DISCOVERED` and answers a
-     * freshly-minted request. That the row is already `DISCOVERED` from the adapter's guarded write is
-     * harmless — the record is an idempotent upsert. The record never reaches a settled row either way: the store's record write is
-     * guarded on the done states, so the skip below is an early exit that saves the job, not the ledger's
-     * only protection.
-     *
-     * Creates no job for work not already begun, writes no manifest, and enumerates nothing — which is
-     * what lets a direction-declined cycle run it. The only jobs it can create
-     * are replacements for failures the platform already tried.
-     */
-    /**
      * The **narrow** settle of a withheld cycle (capability `background-upload`, "Settling with the platform is
      * owed regardless of the cycle's other outcomes"): record and acknowledge every terminal job the platform
      * presented — the drain does both — and adjudicate the retry-spent failures it hands back, returning their
@@ -941,6 +872,28 @@ class UploadCycle(
             if (gone) log.i { "presented job ${job.key} has no row — its photo left; answered, nothing written" }
         }
 
+    /**
+     * Phase 2 — terminal jobs. EVERY job MUST be acknowledged (the system errors 50008 —
+     * "appex failed to acknowledge jobs for processing state" — for any it presents that we leave
+     * un-acknowledged), so all arms acknowledge, and so does a cycle the direction gate declines: the
+     * obligation is owed to the OS for jobs it already presented, and it does not depend on whether this
+     * membership still contributes.
+     *
+     * Terminal facts no longer arrive here. The platform records them itself, where the platform tells
+     * it, into a row that survives the process ([BackgroundTransfer.drainTerminals]); what comes back is
+     * only work the cycle must still do — a failure whose resource is still live, so it can be re-created
+     * now instead of waiting for a discovery pass to re-derive it.
+     *
+     * The engine is still the thing that decides: `UploadFailed` returns the row to `DISCOVERED` and answers a
+     * freshly-minted request. That the row is already `DISCOVERED` from the adapter's guarded write is
+     * harmless — the record is an idempotent upsert. The record never reaches a settled row either way: the store's record write is
+     * guarded on the done states, so the skip below is an early exit that saves the job, not the ledger's
+     * only protection.
+     *
+     * Creates no job for work not already begun, writes no manifest, and enumerates nothing — which is
+     * what lets a direction-declined cycle run it. The only jobs it can create
+     * are replacements for failures the platform already tried.
+     */
     private suspend fun recreateRetrySpent(engine: SyncEngine): Boolean {
         var capHit = false
         val returned = platform.drainTerminals()
