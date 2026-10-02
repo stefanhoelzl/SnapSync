@@ -11,8 +11,7 @@ import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
-import app.snapsync.contracts.Recording
-import app.snapsync.contracts.Replayer
+import app.snapsync.contracts.replayerFor
 import app.snapsync.contracts.verify
 import app.snapsync.keychain.contract.RECORDINGS
 import app.snapsync.keychain.contract.ReplayingKeychainApi
@@ -35,15 +34,6 @@ import kotlin.test.Test
  */
 class AttestReplayContractTest {
 
-    private fun replayer(name: String, clauseId: String): Replayer? {
-        val tape = RECORDINGS[name]?.let(Recording::parse) ?: return null
-        return tape.blocks[clauseId]?.let { Replayer(clauseId, it) }
-    }
-
-    private fun missing(name: String, clauseId: String): String =
-        if (RECORDINGS[name] == null) "no recording $name.rec — record it on a device over the rig"
-        else "$name.rec holds no block for $clauseId — re-record"
-
     private val key = object : Binding<DeviceIntegrityState, DeviceIntegrity> {
         override val host = Host.IOS_DEVICE_APP
         override val kind = BindingKind.Replay
@@ -51,8 +41,9 @@ class AttestReplayContractTest {
 
         override fun create(state: DeviceIntegrityState, clauseId: String): Entered<DeviceIntegrity> {
             if (state !in reaches) return Entered.Unreachable("the app process on a device has App Attest")
-            val replayer = replayer(KEY, clauseId) ?: return Entered.Unreachable(missing(KEY, clauseId))
-            return integrityInState(ReplayingAppAttestApi(replayer), state, afterDispose = replayer::assertExhausted)
+            return replayerFor(RECORDINGS, KEY, clauseId) { replayer ->
+                integrityInState(ReplayingAppAttestApi(replayer), state, afterDispose = replayer::assertExhausted)
+            }
         }
     }
 
@@ -66,8 +57,9 @@ class AttestReplayContractTest {
 
         override fun create(state: AttestStoreState, clauseId: String): Entered<AttestStore> {
             if (state !in reaches) return Entered.Unreachable("the entitled app runs unlocked")
-            val replayer = replayer(STORE, clauseId) ?: return Entered.Unreachable(missing(STORE, clauseId))
-            return attestStoreInState(ReplayingKeychainApi(replayer), state, clauseId, afterDispose = replayer::assertExhausted)
+            return replayerFor(RECORDINGS, STORE, clauseId) { replayer ->
+                attestStoreInState(ReplayingKeychainApi(replayer), state, clauseId, afterDispose = replayer::assertExhausted)
+            }
         }
     }
 

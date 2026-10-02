@@ -8,8 +8,7 @@ import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.LinkOpenerContract
 import app.snapsync.contracts.LinkOpenerState
-import app.snapsync.contracts.Recording
-import app.snapsync.contracts.Replayer
+import app.snapsync.contracts.replayerFor
 import app.snapsync.contracts.verify
 import app.snapsync.ports.SystemUi
 import app.snapsync.systemui.IosSystemUi
@@ -26,20 +25,15 @@ import kotlin.test.Test
  */
 class IosLinkOpenerReplayContractTest {
 
-    private val recording = RECORDINGS[RECORDING]?.let(Recording::parse)
-
     private val binding = object : Binding<LinkOpenerState, SystemUi> {
         override val host = Host.IOS_DEVICE_APP
         override val kind = BindingKind.Replay
         override val reaches = setOf(LinkOpenerState.CLAIMED, LinkOpenerState.UNCLAIMED)
 
         override fun create(state: LinkOpenerState, clauseId: String): Entered<SystemUi> {
-            val tape = recording
-                ?: return Entered.Unreachable("no recording $RECORDING.rec — record it on a device over the rig")
-            val block = tape.blocks[clauseId]
-                ?: return Entered.Unreachable("$RECORDING.rec holds no block for $clauseId — re-record")
-            val replayer = Replayer(clauseId, block)
-            return Entered.Ready(IosSystemUi(ReplayingUrlOpenerApi(replayer)), dispose = replayer::assertExhausted)
+            return replayerFor(RECORDINGS, RECORDING, clauseId) { replayer ->
+                Entered.Ready(IosSystemUi(ReplayingUrlOpenerApi(replayer)), dispose = replayer::assertExhausted)
+            }
         }
     }
 

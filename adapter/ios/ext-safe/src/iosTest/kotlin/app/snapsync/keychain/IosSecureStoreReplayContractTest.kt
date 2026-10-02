@@ -4,10 +4,9 @@ import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
-import app.snapsync.contracts.Recording
-import app.snapsync.contracts.Replayer
 import app.snapsync.contracts.SecureStoreContract
 import app.snapsync.contracts.SecureStoreState
+import app.snapsync.contracts.replayerFor
 import app.snapsync.contracts.verify
 import app.snapsync.keychain.contract.DEVICE_UNREACHABLE_INACCESSIBLE
 import app.snapsync.keychain.contract.RECORDINGS
@@ -28,8 +27,6 @@ import kotlin.test.Test
  */
 class IosSecureStoreReplayContractTest {
 
-    private val recording = RECORDINGS[RECORDING]?.let(Recording::parse)
-
     private val binding = object : Binding<SecureStoreState, SecureStore> {
         override val host = Host.IOS_DEVICE_APP
         override val kind = BindingKind.Replay
@@ -41,12 +38,9 @@ class IosSecureStoreReplayContractTest {
 
         override fun create(state: SecureStoreState, clauseId: String): Entered<SecureStore> {
             if (state !in reaches) return Entered.Unreachable(DEVICE_UNREACHABLE_INACCESSIBLE)
-            val tape = recording
-                ?: return Entered.Unreachable("no recording $RECORDING.rec — record it on a device over the rig")
-            val block = tape.blocks[clauseId]
-                ?: return Entered.Unreachable("$RECORDING.rec holds no block for $clauseId — re-record")
-            val replayer = Replayer(clauseId, block)
-            return keychainInState(ReplayingKeychainApi(replayer), state, clauseId, afterDispose = replayer::assertExhausted)
+            return replayerFor(RECORDINGS, RECORDING, clauseId) { replayer ->
+                keychainInState(ReplayingKeychainApi(replayer), state, clauseId, afterDispose = replayer::assertExhausted)
+            }
         }
     }
 

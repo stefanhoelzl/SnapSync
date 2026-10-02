@@ -143,3 +143,25 @@ fun maskKeys(rendered: String, volatile: Set<String>): String =
         val eq = token.indexOf('=')
         if (eq > 0 && token.substring(0, eq) in volatile) "${token.substring(0, eq)}=<masked>" else token
     }
+
+/** Where a device recording is taken, completing "record it … over the rig". */
+const val RECORDED_ON_A_DEVICE: String = "on a device"
+
+/**
+ * A replay binding's entry into one clause: [clauseId]'s block of the recording [name] — its text looked up in
+ * [recordings], the module's generated map — handed to [ready] as a [Replayer]. With no such recording, or no block for
+ * the clause in it, the clause is [Entered.Unreachable], naming what to record ([recordedWhere]) or re-record.
+ */
+inline fun <T> replayerFor(
+    recordings: Map<String, String>,
+    name: String,
+    clauseId: String,
+    recordedWhere: String = RECORDED_ON_A_DEVICE,
+    ready: (Replayer) -> Entered<T>,
+): Entered<T> {
+    val tape = recordings[name]?.let(Recording::parse)
+        ?: return Entered.Unreachable("no recording $name.rec — record it $recordedWhere over the rig")
+    val block = tape.blocks[clauseId]
+        ?: return Entered.Unreachable("$name.rec holds no block for $clauseId — re-record")
+    return ready(Replayer(clauseId, block))
+}
