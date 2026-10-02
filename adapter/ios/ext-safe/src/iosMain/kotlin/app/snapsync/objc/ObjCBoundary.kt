@@ -1,6 +1,12 @@
+@file:OptIn(ExperimentalAtomicApi::class)
+
 package app.snapsync.objc
 
 import co.touchlab.kermit.Logger
+import kotlin.concurrent.atomics.AtomicBoolean
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
+import kotlinx.coroutines.CancellableContinuation
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.CPointer
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -43,6 +49,56 @@ inline fun <R> objcBoundary(log: Logger, name: String, fallback: R, block: () ->
 
 /** [objcBoundary] for a block or delegate method that returns nothing. */
 inline fun objcBoundary(log: Logger, name: String, block: () -> Unit) = objcBoundary(log, name, Unit, block)
+
+/**
+ * Suspend until an Objective-C completion answers — the one coroutine bridge every completion-handler API goes
+ * through. [register] hands the platform its completion, whose body is `objcBoundary(callback) { … }`: what that
+ * body returns resumes the caller, and what it throws resumes the caller with the throw.
+ *
+ * - **Cancellable.** A caller that is cancelled stops waiting at once; the completion that arrives later answers
+ *   nothing. (The platform's work itself is not cancelled — no API here offers that.)
+ * - **Answered once.** A completion the platform calls twice resumes the caller once; the second answer is logged
+ *   and dropped instead of throwing `Already resumed` into Objective-C.
+ */
+suspend inline fun <T> objcCallback(
+    log: Logger,
+    name: String,
+    crossinline register: (ObjCCallback<T>) -> Unit,
+): T = suspendCancellableCoroutine { cont -> register(ObjCCallback(log, name, cont)) }
+
+/** The caller [objcCallback] suspends, as a completion body answers it: resumed at most once. */
+class ObjCCallback<T> @PublishedApi internal constructor(
+    @PublishedApi internal val log: Logger,
+    @PublishedApi internal val name: String,
+    private val cont: CancellableContinuation<T>,
+) {
+    private val answered = AtomicBoolean(false)
+
+    /** Answer [value] — for an answer known before any completion runs (nothing to present, a state already read). */
+    fun resume(value: T) = answer(Result.success(value))
+
+    @PublishedApi
+    internal fun answer(outcome: Result<T>) {
+        if (answered.compareAndSet(expectedValue = false, newValue = true)) {
+            cont.resumeWith(outcome)
+        } else {
+            log.w { "$name: answered twice — the second answer is dropped" }
+        }
+    }
+}
+
+/**
+ * [objcBoundary] for the completion body of an [objcCallback]: [answer] runs at the boundary, and its value — or its
+ * throw — resumes [callback]'s caller once. Nothing unwinds into Objective-C.
+ */
+inline fun <T> objcBoundary(callback: ObjCCallback<T>, answer: () -> T) {
+    val outcome = try {
+        Result.success(answer())
+    } catch (t: Throwable) {
+        Result.failure(t)
+    }
+    objcBoundary(callback.log, callback.name) { callback.answer(outcome) }
+}
 
 /** A failure an Objective-C API reported through its `Boolean`/`NSError**` result. */
 class ObjCFailure(val call: String, val domain: String?, val code: Long?, val description: String?) :

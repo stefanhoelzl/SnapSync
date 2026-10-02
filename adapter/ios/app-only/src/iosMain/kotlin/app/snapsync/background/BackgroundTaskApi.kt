@@ -4,13 +4,12 @@ package app.snapsync.background
 
 import app.snapsync.objc.checkedObjC
 import app.snapsync.objc.objcBoundary
+import app.snapsync.objc.objcCallback
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.coroutines.suspendCancellableCoroutine
 import platform.BackgroundTasks.BGTask
 import platform.BackgroundTasks.BGTaskRequest
 import platform.BackgroundTasks.BGTaskScheduler
-import kotlin.coroutines.resume
 
 /**
  * **The operating-system boundary of [IosWake]**: the `BGTaskScheduler` calls it makes, and the one
@@ -59,11 +58,9 @@ internal object SystemBackgroundTaskApi : BackgroundTaskApi {
 
     override fun cancel(identifier: String) = BGTaskScheduler.sharedScheduler.cancelTaskRequestWithIdentifier(identifier)
 
-    override suspend fun pendingIdentifiers(): List<String> = suspendCancellableCoroutine { cont ->
+    override suspend fun pendingIdentifiers(): List<String> = objcCallback(log, "pendingTaskRequests.completion") { done ->
         BGTaskScheduler.sharedScheduler.getPendingTaskRequestsWithCompletionHandler { requests ->
-            objcBoundary(log, "pendingTaskRequests.completion") {
-                cont.resume(requests.orEmpty().mapNotNull { (it as? BGTaskRequest)?.identifier })
-            }
+            objcBoundary(done) { requests.orEmpty().mapNotNull { (it as? BGTaskRequest)?.identifier } }
         }
     }
 }

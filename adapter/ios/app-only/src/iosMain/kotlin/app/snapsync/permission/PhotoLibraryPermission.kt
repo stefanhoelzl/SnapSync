@@ -4,12 +4,12 @@ import app.snapsync.gallery.currentPhotoPermission
 import app.snapsync.logging.invocation
 import app.snapsync.model.GalleryAccess
 import app.snapsync.objc.objcBoundary
+import app.snapsync.objc.objcCallback
+import app.snapsync.objc.onQueue
 import app.snapsync.ports.PhotoAccessStatusSource
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlin.coroutines.resume
 import platform.Foundation.NSNotification
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSOperationQueue
@@ -20,7 +20,6 @@ import platform.UIKit.UIApplication
 import platform.UIKit.UIApplicationDidBecomeActiveNotification
 import platform.UIKit.UIApplicationState
 import platform.darwin.NSObjectProtocol
-import platform.darwin.dispatch_async
 import platform.darwin.dispatch_get_main_queue
 
 /**
@@ -71,19 +70,13 @@ class PhotoLibraryPermission : PhotoAccessStatusSource {
      * the dialog could present on — the app in the background — it asks nothing and answers the grant as it
      * stands (`Gallery.requestAccess`). The state read hops to the main queue, where UIKit answers it.
      */
-    suspend fun requestAccess(): GalleryAccess = suspendCancellableCoroutine { cont ->
-        dispatch_async(dispatch_get_main_queue()) {
-            objcBoundary(log, "photoPermission.requestAccess") {
-                if (UIApplication.sharedApplication.applicationState == UIApplicationState.UIApplicationStateBackground) {
-                    cont.resume(read())
-                } else {
-                    PHPhotoLibrary.requestAuthorizationForAccessLevel(PHAccessLevelReadWrite) { _ ->
-                        objcBoundary(log, "photoPermission.request.completion") {
-                            val now = read()
-                            state.value = now
-                            cont.resume(now)
-                        }
-                    }
+    suspend fun requestAccess(): GalleryAccess = objcCallback(log, "photoPermission.request.completion") { done ->
+        onQueue(dispatch_get_main_queue(), log, "photoPermission.requestAccess") {
+            if (UIApplication.sharedApplication.applicationState == UIApplicationState.UIApplicationStateBackground) {
+                done.resume(read())
+            } else {
+                PHPhotoLibrary.requestAuthorizationForAccessLevel(PHAccessLevelReadWrite) { _ ->
+                    objcBoundary(done) { read().also { state.value = it } }
                 }
             }
         }
@@ -119,7 +112,7 @@ class PhotoLibraryPermission : PhotoAccessStatusSource {
         // Same main-queue hop and presenter walk as `IosSystemUi.share`, for the same two
         // reasons: UIKit rejects presentation from a covered controller, and presentation asserts the
         // main queue (presenting off-main traps with SIGTRAP) while commands can arrive on any lane.
-        dispatch_async(dispatch_get_main_queue()) { objcBoundary(log, "choosePhotos") {
+        onQueue(dispatch_get_main_queue(), log, "choosePhotos") {
             var presenter = UIApplication.sharedApplication.keyWindow?.rootViewController
             while (presenter?.presentedViewController != null) {
                 presenter = presenter.presentedViewController
@@ -129,7 +122,7 @@ class PhotoLibraryPermission : PhotoAccessStatusSource {
             // category on PHPhotoLibrary — not in Photos, which is why PhotosUI is imported above and
             // why this can only ever be an app-only adapter.
             presenter?.let { PHPhotoLibrary.sharedPhotoLibrary().presentLimitedLibraryPickerFromViewController(it) }
-        } }
+        }
     }
 
     // The one mapping, shared with the extension process (ext-safe `currentPhotoPermission`).

@@ -4,15 +4,14 @@ import app.snapsync.link.SystemUrlOpenerApi
 import app.snapsync.link.UrlOpenerApi
 import app.snapsync.model.Handoff
 import app.snapsync.objc.objcBoundary
+import app.snapsync.objc.objcCallback
+import app.snapsync.objc.onQueue
 import app.snapsync.ports.SystemUi
 import co.touchlab.kermit.Logger
-import kotlin.coroutines.resume
-import kotlin.coroutines.suspendCoroutine
 import platform.Foundation.NSURL
 import platform.UIKit.UIActivityViewController
 import platform.UIKit.UIApplication
 import platform.UIKit.UIApplicationOpenSettingsURLString
-import platform.darwin.dispatch_async
 import platform.darwin.dispatch_get_main_queue
 
 /**
@@ -41,8 +40,8 @@ class IosSystemUi internal constructor(private val urls: UrlOpenerApi) : SystemU
      * The presenter walk (following `presentedViewController` to the top of the presentation stack) is technology
      * mechanics: UIKit rejects presentation from a covered controller.
      */
-    override suspend fun share(text: String): Handoff = suspendCoroutine { done ->
-        dispatch_async(dispatch_get_main_queue()) { objcBoundary(shareLog, "share") {
+    override suspend fun share(text: String): Handoff = objcCallback(shareLog, "share.completion") { done ->
+        onQueue(dispatch_get_main_queue(), shareLog, "share") {
             val activity = UIActivityViewController(activityItems = listOf(text), applicationActivities = null)
             var presenter = UIApplication.sharedApplication.keyWindow?.rootViewController
             while (presenter?.presentedViewController != null) {
@@ -51,11 +50,9 @@ class IosSystemUi internal constructor(private val urls: UrlOpenerApi) : SystemU
             if (presenter == null) {
                 done.resume(Handoff.Refused("no key window to present the share sheet from"))
             } else {
-                presenter.presentViewController(activity, animated = true) {
-                    objcBoundary(shareLog, "share.completion") { done.resume(Handoff.Accepted) }
-                }
+                presenter.presentViewController(activity, animated = true) { objcBoundary(done) { Handoff.Accepted } }
             }
-        } }
+        }
     }
 
     /**
@@ -74,8 +71,8 @@ class IosSystemUi internal constructor(private val urls: UrlOpenerApi) : SystemU
         val target = NSURL.URLWithString(url)
             ?: return Handoff.Refused("'$url' is not a URL iOS can parse — a build misconfiguration")
         // The completion is what Objective-C calls (through SystemUrlOpenerApi): contained, like every such block.
-        val opened = suspendCoroutine { done ->
-            urls.open(target) { accepted -> objcBoundary(linkLog, "openLink.completion") { done.resume(accepted) } }
+        val opened = objcCallback(linkLog, "openLink.completion") { done ->
+            urls.open(target) { accepted -> objcBoundary(done) { accepted } }
         }
         return if (opened) Handoff.Accepted else Handoff.Refused("iOS did not open $url")
     }
@@ -83,10 +80,8 @@ class IosSystemUi internal constructor(private val urls: UrlOpenerApi) : SystemU
     /** Opens this app's page in the Settings app — the `DENIED` affordance (capability `photo-access`). */
     override fun openSettings() {
         val url = NSURL.URLWithString(UIApplicationOpenSettingsURLString) ?: return
-        dispatch_async(dispatch_get_main_queue()) {
-            objcBoundary(settingsLog, "openSettings") {
-                UIApplication.sharedApplication.openURL(url, options = emptyMap<Any?, Any>(), completionHandler = null)
-            }
+        onQueue(dispatch_get_main_queue(), settingsLog, "openSettings") {
+            UIApplication.sharedApplication.openURL(url, options = emptyMap<Any?, Any>(), completionHandler = null)
         }
     }
 }
