@@ -10,8 +10,6 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 |---|---|---|---|
 | `AlbumMapSource` | `:domain:services` | `:domain:services` Current, Migrate, Retry | no |
 | `AppUploadEngine` | `:domain:feature` | `:test:architecture` Engine; `:test:feature` FakeEngine | yes |
-| `AppUploadEvents` | `:domain:feature` | — | no |
-| `AppUploadMechanism` | `:domain:feature` | `:domain:compose` ComposedAppUploader | no |
 | `AttestStore` | `:domain:ports` | `:adapter:generic:mock` InMemoryAttestStore; `:domain:services` AttestState, CachedAttestStore, Item, SharedItem | yes |
 | `AuthenticatedBackend` | `:domain:services` | `:domain:services` CredentialedBackend | no |
 | `Backend` | `:domain:ports` | `:adapter:generic:app` HttpBackend; `:adapter:generic:mock` FakeClient, InMemoryBackend; `:app:jvm` VersionedHttpBackend; `:domain:services` ScriptedBackend; `:test:architecture` Probe | yes |

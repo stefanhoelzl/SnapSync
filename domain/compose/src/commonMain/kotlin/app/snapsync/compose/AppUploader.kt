@@ -1,6 +1,5 @@
 package app.snapsync.compose
 
-import app.snapsync.feature.upload.AppUploadMechanism
 import app.snapsync.feature.upload.UploadCycle
 import app.snapsync.feature.upload.WalkOutcome
 import app.snapsync.model.CycleResult
@@ -16,14 +15,12 @@ import app.snapsync.services.gallery.GalleryDiscovery
  * the one App-Group ledger — every write a guarded single transaction, and an overlap a duplicate upload of the same
  * object, never a loss (decision record `changes/both-uploaders-active`).
  *
- * It was `:app:ios`'s `UrlSessionUploadController` until phase 11f: the root forwarded the core's reads into it and it
- * wired the cycle. Composed here, it reads [core] directly — its services, its ports and the build's constants — and
- * no root supplies anything for it. It holds no trigger, no OS completion handler and no heartbeat — those are the
- * core's.
+ * It reads [core] directly — its services, its ports and the build's constants — so no root supplies anything for it.
+ * It holds **no trigger, no OS completion handler and no heartbeat**: which wake runs what is the core's tail runner's
+ * (decision record `changes/own-work-per-wake`, D1 and D5). Both units pass through the shared cycle's entry gate,
+ * which decides whether this process may create.
  */
-internal fun appUploader(core: AppCore): AppUploadMechanism = ComposedAppUploader(core)
-
-private class ComposedAppUploader(private val core: AppCore) : AppUploadMechanism {
+internal class AppUploader(private val core: AppCore) {
 
     private val app get() = core.services
     private val ports get() = core.ports
@@ -86,12 +83,18 @@ private class ComposedAppUploader(private val core: AppCore) : AppUploadMechanis
         )
     }
 
-    override suspend fun topUp(stopRequested: () -> Boolean): CycleResult =
+    /** The tail's ② — the top-up from the ledger; `stopRequested` is checked between two job creations. */
+    suspend fun topUp(stopRequested: () -> Boolean): CycleResult =
         log.invocation(core.process.entryContext, "url-session.topUp", result = { "$it" }) {
             cycle.topUp(stopRequested)
         }
 
-    override suspend fun walkAndPublish(stopRequested: () -> Boolean): WalkOutcome =
+    /**
+     * The tail's ③ — the walk and the manifest publish, abandoned on a stop (capability `sync-status`, "The discovery
+     * walk is atomic under a stop"). Also a selection change's own work under a partial grant, where the walk is the
+     * selection snapshot.
+     */
+    suspend fun walkAndPublish(stopRequested: () -> Boolean): WalkOutcome =
         log.invocation(core.process.entryContext, "url-session.walkAndPublish", result = { "$it" }) {
             cycle.walkAndPublish(stopRequested)
         }
@@ -101,5 +104,5 @@ private class ComposedAppUploader(private val core: AppCore) : AppUploadMechanis
      * cancelled transfer's terminal is recorded through the guarded write, which matches no row once the leave has
      * cleared the ledger.
      */
-    override suspend fun cancelTransfers() = core.events.uploadTransfer.cancelAll()
+    suspend fun cancelTransfers() = core.events.uploadTransfer.cancelAll()
 }
