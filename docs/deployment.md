@@ -488,8 +488,10 @@ never reaches the internal track (below).
   `android.json` does not list. Setup, measured 2026-10-02: the internal-app-sharing terms must be accepted once in the
   Console (until then every upload is `400 TOS_NOT_ACCEPTED`), the Console's internal-app-sharing settings restrict
   installs to an email list, and each tester's Play Store needs its "Internal app sharing" toggle (Play Store →
-  Settings → About → tap the version seven times → Settings). ⚠️ A sharing build's different signing key also means a
-  different `ANDROID_ID`, so the backend sees it as a **new device**: switching between the Play build and a link
+  Settings → About → tap the version seven times → Settings). ⚠️ A sharing build is signed with another key, so it
+  cannot update the Play-installed app: over it, Play offers to **uninstall** the installed one and then installs
+  the link build (measured 2026-10-02, over the closed-track build), which wipes that install's local state. The
+  different key also means a different `ANDROID_ID`, so the backend sees it as a **new device**: switching between the Play build and a link
   build enrols afresh, and each enrolment counts against an event's device capacity. The
   mapping is not uploaded to Play; `/bugsink` retraces against the artifact. `play_release.py status <package>` lists
   every track's releases read-only. On **`main` only**, the same edit also brings the Play **store listing** in line

@@ -961,6 +961,6 @@ jobs:
             echo "\`$GITHUB_REF_NAME\` at \`${GITHUB_SHA:0:7}\` — $RELEASE_NOTE"
             echo
             echo "Opens in the Play Store on a phone whose account is on the Console's internal-app-sharing list, with"
-            echo "the Store's \"Internal app sharing\" toggle on. A phone holding the Play-installed app must uninstall it first"
-            echo "if Play refuses the different signature."
+            echo "the Store's \"Internal app sharing\" toggle on. Over the Play-installed app, Play offers to uninstall it first"
+            echo "(another signing key): that wipes its local state, and the link build enrols as a new device."
           } >> "$GITHUB_STEP_SUMMARY"
