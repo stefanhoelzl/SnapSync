@@ -593,7 +593,7 @@ Top-level Hono middleware in `src/app.ts`, in this order:
    download page, where possession of the event id is the read capability). The gate normalizes the
    `/api/vN` prefix before matching. `GatedPathPinTest` keeps the client's copy of this list in step.
 
-4. **Device binding** (per route, `actsFor` in `src/app.ts`). The token names the device it was minted for,
+4. **Device binding** (per route, `actsFor` in `src/routes/support.ts`). The token names the device it was minted for,
    and every route that names a device in its path (join, leave, manifest, byte upload, device listing, push
    registration, under v1 and v2 alike) refuses any other id with `403 not this device`, before reading or
    writing anything. It is `403`, not `401`: the credential is valid, and a `401` from a gated route makes
@@ -719,9 +719,10 @@ Decision records: `changes/archive/2026-08-25-record-uploads-in-database`,
 ### Layout
 
 ```
-src/app.ts         createApp({config, db, fetch}): the three gates, v1 + v2 routers, site proxy + AASA
-                   + assetlinks.json,
-                   presignDownloadUrl()
+src/app.ts         createApp({config, db, fetch}): the three gates and the composition of the routers
+src/routes/        the routes as `(deps) => Hono` factories: site.ts (site proxy + AASA + assetlinks.json),
+                   attest.ts, shared.ts, v1.ts, v2.ts, manifest.ts (manifest body parsing) and
+                   support.ts (actsFor, presignDownloadUrl, the routes' shared refusals)
 src/db.ts          the one narrow `Db` port and every statement (capacity insert, atomic publish, union,
                    sweep queries). No schema here
 src/db-libsql.ts   the deployed `Db` (bunny Database)
@@ -733,6 +734,7 @@ src/android-attest.ts  Android Keystore key attestation (Google's verifier's rul
 src/attest-proofs.ts   the mint/renew proofs the routes accept and which verifier each goes to
 src/lifecycle.ts   deleteByMs / clockMs / sweepVerdict, shared with the sweep
 src/push.ts        the silent-wake fan-out's one sender: each token through the service its kind names
+src/push-send.ts   the push senders' shared POST-and-report tail and the PushToken type
 src/apns.ts        ES256 provider JWT + silent push per token, per-token best-effort
 src/fcm.ts         service-account RS256 assertion → OAuth access token + HIGH-priority data message
                    (`eventId` only, collapsed per event) per token; sends only under the configured
