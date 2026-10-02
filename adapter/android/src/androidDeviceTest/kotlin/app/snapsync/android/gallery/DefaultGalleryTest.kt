@@ -1,48 +1,71 @@
 package app.snapsync.android.gallery
 
+import android.database.sqlite.SQLiteDatabase
+import kotlin.test.AfterTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/** The member's default gallery on Android: `DCIM` and every folder under it, matched as SQLite's `LIKE` matches. */
+/**
+ * The member's default gallery on Android: `DCIM` and every folder under it. The selection fragments run as written
+ * against SQLite's own `LIKE` — the matcher MediaStore applies them with — over one row per path.
+ */
 class DefaultGalleryTest {
+
+    private val db = SQLiteDatabase.create(null).apply {
+        execSQL("CREATE TABLE files (relative_path TEXT)")
+        PATHS.forEach { execSQL("INSERT INTO files (relative_path) VALUES (?)", arrayOf(it)) }
+    }
+
+    @AfterTest
+    fun close() = db.close()
+
+    private fun matching(selection: String): Set<String?> =
+        db.rawQuery("SELECT relative_path FROM files WHERE $selection", null).use { c ->
+            buildSet { while (c.moveToNext()) add(if (c.isNull(0)) null else c.getString(0)) }
+        }
 
     @Test
     fun `DCIM and every folder under it are the default gallery`() {
-        assertTrue(DefaultGallery.contains("DCIM/Camera/"))
-        assertTrue(DefaultGallery.contains("DCIM/100ANDRO/"))
-        assertTrue(DefaultGallery.contains("DCIM/OpenCamera/2026/"))
-        assertTrue(DefaultGallery.contains("DCIM/"))
-    }
-
-    @Test
-    fun `case does not matter as it does not to LIKE`() {
-        assertTrue(DefaultGallery.contains("dcim/camera/"))
+        val library = matching(DefaultGallery.SQL)
+        listOf("DCIM/Camera/", "DCIM/100ANDRO/", "DCIM/OpenCamera/2026/", "DCIM/").forEach {
+            assertTrue(it in library, "$it is in the default gallery")
+        }
+        assertTrue("dcim/camera/" in library, "case does not matter, as it does not to LIKE")
+        assertTrue("DCIM/SnapSync/Party/" in library, "an event album is in the library")
     }
 
     @Test
     fun `anything outside DCIM is not`() {
-        assertFalse(DefaultGallery.contains("Pictures/Screenshots/"))
-        assertFalse(DefaultGallery.contains("Pictures/WhatsApp/"))
-        assertFalse(DefaultGallery.contains("Download/"))
-        assertFalse(DefaultGallery.contains("DCIMX/"))
-        assertFalse(DefaultGallery.contains(""))
-        assertFalse(DefaultGallery.contains(null))
+        val library = matching(DefaultGallery.SQL)
+        listOf("Pictures/Screenshots/", "Pictures/WhatsApp/", "Download/", "DCIMX/", "", null).forEach {
+            assertFalse(it in library, "$it is outside the default gallery")
+        }
     }
 
     @Test
-    fun `an event album is in the library but never a candidate to share`() {
-        assertTrue(DefaultGallery.contains("DCIM/SnapSync/Party/"))
-        assertFalse(DefaultGallery.isCandidate("DCIM/SnapSync/Party/"))
-        assertFalse(DefaultGallery.isCandidate("dcim/snapsync/party/"), "matched ignoring case, as LIKE is")
+    fun `the candidates are every DCIM folder but the event albums`() {
+        assertEquals(
+            setOf("DCIM/Camera/", "DCIM/100ANDRO/", "DCIM/OpenCamera/2026/", "DCIM/", "dcim/camera/", "DCIM/SnapSyncX/"),
+            matching(DefaultGallery.CANDIDATE_SQL),
+            "an event album is never a candidate, matched ignoring case; a lookalike of the album root still is",
+        )
+    }
+
+    @Test
+    fun `an event album's folder is recognised ignoring case`() {
         assertTrue(DefaultGallery.isAlbumFolder("DCIM/SnapSync/Party (2)/"))
+        assertTrue(DefaultGallery.isAlbumFolder("dcim/snapsync/party/"))
+        assertFalse(DefaultGallery.isAlbumFolder("DCIM/SnapSyncX/"))
+        assertFalse(DefaultGallery.isAlbumFolder(null))
     }
 
-    @Test
-    fun `every other DCIM folder is a candidate`() {
-        assertTrue(DefaultGallery.isCandidate("DCIM/Camera/"))
-        assertTrue(DefaultGallery.isCandidate("DCIM/SnapSyncX/"), "only the album root is left out, not a lookalike")
-        assertFalse(DefaultGallery.isCandidate("Pictures/SnapSync/Party/"))
-        assertFalse(DefaultGallery.isCandidate(null))
+    private companion object {
+        val PATHS = listOf(
+            "DCIM/Camera/", "DCIM/100ANDRO/", "DCIM/OpenCamera/2026/", "DCIM/", "dcim/camera/", "DCIM/SnapSyncX/",
+            "DCIM/SnapSync/Party/", "dcim/snapsync/party/",
+            "Pictures/Screenshots/", "Pictures/WhatsApp/", "Pictures/SnapSync/Party/", "Download/", "DCIMX/", "", null,
+        )
     }
 }
