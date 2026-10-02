@@ -42,13 +42,14 @@ class JvmRootBootsColdTest {
     /** [text] with every `{ … }` span removed — a lambda's body runs when it is called, not now. */
     private fun outsideLambdas(text: String): String {
         val out = StringBuilder()
-        var depth = 0
-        for (c in text) {
-            when {
-                c == '{' -> depth++
-                c == '}' -> depth--
-                depth == 0 -> out.append(c)
+        var i = 0
+        while (i < text.length) {
+            when (text[i]) {
+                '{' -> i = KotlinDecls.closing(text, i) ?: text.length
+                '}' -> Unit
+                else -> out.append(text[i])
             }
+            i++
         }
         return out.toString()
     }

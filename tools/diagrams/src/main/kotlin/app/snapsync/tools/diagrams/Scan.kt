@@ -66,7 +66,9 @@ fun moduleForFile(relPath: String, modules: List<String>): String? =
 /**
  * Blank out comments (line, nested block, KDoc) with spaces, preserving every character offset and
  * newline, so scans over the result never match commented-out code yet report real line numbers.
- * String literals are preserved (a `//` inside a string is not a comment).
+ * String literals are preserved (a `//` inside a string is not a comment), and so are character literals.
+ * `:test:architecture`'s `ZoneGates.stripComments` blanks by the same rules; the modules share no code, so a
+ * change to one is a change to both.
  */
 fun stripComments(text: String): String {
     val out = StringBuilder(text.length)

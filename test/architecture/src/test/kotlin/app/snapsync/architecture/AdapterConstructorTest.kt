@@ -55,16 +55,7 @@ class AdapterConstructorTest {
         var i = from
         // Skip a primary constructor's parameter list, balancing parentheses.
         val open = code.indexOf('(', i).takeIf { it >= 0 && code.substring(i, it).isBlankHeaderTail() }
-        if (open != null) {
-            var depth = 0
-            i = open
-            while (i < code.length) {
-                if (code[i] == '(') depth++
-                if (code[i] == ')') depth--
-                i++
-                if (depth == 0) break
-            }
-        }
+        if (open != null) i = (KotlinDecls.closing(code, open) ?: (code.length - 1)) + 1
         val rest = code.substring(i)
         val clause = rest.substringBefore('{').substringBefore("\n\n")
         return clause.trim().removePrefix(":").trim()

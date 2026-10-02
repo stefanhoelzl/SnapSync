@@ -114,6 +114,9 @@ internal object ZoneGates {
      * String literals are deliberately **kept**: a literal is code. A log line or a JSON key naming a
      * platform API in the core is exactly the leak the identifier gate is for — the exemption is for
      * prose *about* the code, not for values inside it.
+     *
+     * `:tools:diagrams` blanks comments by the same rules (its `Scan.kt`); the modules share no code, so a
+     * change to one is a change to both.
      */
     fun stripComments(source: String): String {
         val out = StringBuilder(source.length)
@@ -135,13 +138,14 @@ internal object ZoneGates {
                     while (i < source.length && !source.startsWith("\"\"\"", i)) { out.append(source[i]); i++ }
                     if (i < source.length) { out.append("\"\"\""); i += 3 }
                 }
-                c == '"' -> {
+                // A string or a character literal — `'"'` opens no string, which reading it as one would.
+                c in "\"'" -> {
                     out.append(c); i++
-                    while (i < source.length && source[i] != '"') {
+                    while (i < source.length && source[i] != c) {
                         if (source[i] == '\\' && i + 1 < source.length) { out.append(source[i]); i++ }
                         out.append(source[i]); i++
                     }
-                    if (i < source.length) { out.append('"'); i++ }
+                    if (i < source.length) { out.append(c); i++ }
                 }
                 else -> { out.append(c); i++ }
             }
