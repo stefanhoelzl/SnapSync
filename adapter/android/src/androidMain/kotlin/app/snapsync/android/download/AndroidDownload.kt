@@ -7,10 +7,13 @@ import android.content.Intent
 import android.database.Cursor
 import android.net.Uri
 import app.snapsync.model.BeforeListen
+import app.snapsync.model.EntryScope
 import app.snapsync.model.HandlerSlot
 import app.snapsync.model.StartResult
 import app.snapsync.model.TransferOutcome
+import app.snapsync.model.invocation
 import app.snapsync.model.runCatchingCancellable
+import co.touchlab.kermit.Severity
 import app.snapsync.ports.Completion
 import app.snapsync.ports.Download
 import app.snapsync.ports.DownloadHandlers
@@ -97,33 +100,40 @@ class AndroidDownload(
             .setTitle("$RESTARTS_TITLE$restarts")
 
     override suspend fun cancelAll() {
+        log.invocation(EntryScope.None, "download.cancelAll", result = { cancelled: Int -> "$cancelled transfer(s)" }) { cancel() }
+    }
+
+    private fun cancel(): Int {
         val cancelled = synchronized(lock) {
             rows(null) { cursor -> cursor.long(DownloadManager.COLUMN_ID) to cursor.string(DownloadManager.COLUMN_DESCRIPTION) }
                 .onEach { (id, _) -> manager.remove(id) }
         }
         // DownloadManager says nothing about a removal, so every cancelled transfer is reported here, as the port promises.
         cancelled.forEach { (_, tag) -> tag?.let { handlers.orNull("$it's cancel")?.onCompleted(it, "cancelled") } }
-        log.i { "cancelled ${cancelled.size} transfer(s)" }
+        return cancelled.size
     }
 
     /**
      * One completion broadcast as one wake: [DownloadHandlers.onBackgroundEvents] with [completion], the finished rows
      * delivered (the broadcast's own, and any other a missed broadcast left), then the drain report.
      */
-    internal fun deliverBroadcast(id: Long, completion: Completion) {
-        val current = handlers.orNull("a completion broadcast") ?: return completion.complete()
-        current.onBackgroundEvents(completion)
-        val delivered = deliverFinished(null)
-        log.i { "completion broadcast for $id: delivered $delivered finished transfer(s)" }
-        current.onEventsDrained()
-    }
+    internal fun deliverBroadcast(id: Long, completion: Completion) =
+        log.invocation(EntryScope.None, "download.handleEvents", params = "id=$id", result = { "$it finished transfer(s)" }) {
+            val current = handlers.orNull("a completion broadcast") ?: return@invocation 0.also { completion.complete() }
+            current.onBackgroundEvents(completion)
+            deliverFinished(null).also { current.onEventsDrained() }
+        }
 
     /** Deliver every finished row still held (only [id]'s when given), each removed once delivered. Answers how many. */
     private fun deliverFinished(id: Long?): Int = synchronized(lock) {
         val current = handlers.orNull("a finished transfer") ?: return 0
         val finished = rows(id) { it.finishedRow() }.filterNotNull()
         for (row in finished) {
-            runCatchingCancellable { row.deliverTo(current) }
+            runCatchingCancellable {
+                log.invocation(EntryScope.None, "download.didComplete", params = "tag=${row.tag}", severity = Severity.Debug) {
+                    row.deliverTo(current)
+                }
+            }
                 .onFailure { log.w(it) { "${row.tag}: delivering the finished transfer failed" } }
             manager.remove(row.id)
         }

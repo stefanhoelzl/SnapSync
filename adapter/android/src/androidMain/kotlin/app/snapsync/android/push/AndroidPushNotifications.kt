@@ -3,11 +3,13 @@ package app.snapsync.android.push
 import android.content.Context
 import app.snapsync.android.download.OnceCompletion
 import app.snapsync.model.BeforeListen
+import app.snapsync.model.EntryScope
 import app.snapsync.model.HandlerSlot
 import app.snapsync.model.PUSH_KIND_FCM
 import app.snapsync.model.PlatformError
 import app.snapsync.model.PushMessage
 import app.snapsync.model.PushToken
+import app.snapsync.model.invocation
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.Completion
 import app.snapsync.ports.PushHandlers
@@ -144,20 +146,28 @@ class AndroidPushNotifications(
  * here. None — a build that refused at start, or a rig launch whose push service is mocked — runs nothing.
  */
 class SnapSyncMessagingService : FirebaseMessagingService() {
+    private val log = Logger.withTag("push")
 
     // Deprecated with `getToken()` (see `AndroidPushNotifications.register`), and kept with it.
     @Suppress("OVERRIDE_DEPRECATION")
     override fun onNewToken(token: String) {
-        AndroidPushNotifications.registration.value?.deliverToken(token)
+        log.invocation(EntryScope.None, "onNewToken") { AndroidPushNotifications.registration.value?.deliverToken(token) }
     }
 
     override fun onMessageReceived(message: RemoteMessage) {
-        // FCM calls this on its own worker thread and considers the message handled when it returns, so the thread is
-        // held — on a latch, never a coroutine runner — until the core releases the push, at most the budget.
-        val push = AndroidPushNotifications.registration.value ?: return
-        val released = CountDownLatch(1)
-        runCatchingCancellable { push.deliverMessage(message.data, OnceCompletion { released.countDown() }) }
-            .onFailure { Logger.withTag("push").w(it) { "the push could not be handed over" } }
-        released.await(AndroidPushNotifications.MESSAGE_BUDGET_MILLIS, TimeUnit.MILLISECONDS)
+        log.invocation(
+            EntryScope.None,
+            "onMessageReceived",
+            params = "keys=${message.data.keys}",
+            result = { released: Boolean? -> if (released == null) "no composition" else "released=$released" },
+        ) {
+            // FCM calls this on its own worker thread and considers the message handled when it returns, so the thread
+            // is held — on a latch, never a coroutine runner — until the core releases the push, at most the budget.
+            val push = AndroidPushNotifications.registration.value ?: return@invocation null
+            val released = CountDownLatch(1)
+            runCatchingCancellable { push.deliverMessage(message.data, OnceCompletion { released.countDown() }) }
+                .onFailure { log.w(it) { "the push could not be handed over" } }
+            released.await(AndroidPushNotifications.MESSAGE_BUDGET_MILLIS, TimeUnit.MILLISECONDS)
+        }
     }
 }

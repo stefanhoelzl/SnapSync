@@ -2,9 +2,11 @@ package app.snapsync.android.link
 
 import android.content.Intent
 import app.snapsync.model.BeforeListen
+import app.snapsync.model.EntryScope
 import app.snapsync.model.HandlerSlot
 import app.snapsync.model.LinkDelivery
 import app.snapsync.model.PlatformEntry
+import app.snapsync.model.invocation
 import app.snapsync.ports.LinkHandlers
 import app.snapsync.ports.Links
 import co.touchlab.kermit.Logger
@@ -35,18 +37,19 @@ class AndroidLinks(private val log: Logger) : Links {
 
     /** The intent the activity was started or re-delivered with, through [hook]'s path. */
     @PlatformEntry
-    fun deliverIntent(hook: String, intent: Intent?) {
-        val url = intent?.data?.toString() ?: return
-        val isWebLink = intent.action == Intent.ACTION_VIEW && (url.startsWith("https://") || url.startsWith("http://"))
-        deliver(LinkDelivery(hook, isWebLink, activityType = intent.action, url = url))
-    }
+    fun deliverIntent(hook: String, intent: Intent?) =
+        log.invocation(EntryScope.None, hook, params = "action=${intent?.action} data=${intent?.data != null}") {
+            val url = intent?.data?.toString() ?: return@invocation
+            val isWebLink = intent.action == Intent.ACTION_VIEW && (url.startsWith("https://") || url.startsWith("http://"))
+            deliver(LinkDelivery(hook, isWebLink, activityType = intent.action, url = url))
+        }
 
     /**
      * The invite a Google Play install carried ([AndroidInstallReferrer]), as the event link it came from. Delivered as
      * an ordinary web link: the core treats it exactly as a tapped invite, and never learns where it came from.
      */
     @PlatformEntry
-    fun deliverInstallReferrer(url: String) {
+    fun deliverInstallReferrer(url: String) = log.invocation(EntryScope.None, INSTALL_REFERRER_HOOK) {
         deliver(LinkDelivery(INSTALL_REFERRER_HOOK, isWebLink = true, activityType = INSTALL_REFERRER_HOOK, url = url))
     }
 

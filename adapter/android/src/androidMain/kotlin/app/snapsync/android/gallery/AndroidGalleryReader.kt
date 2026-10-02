@@ -123,14 +123,17 @@ open class AndroidGalleryReader(
     override val albumKind: AlbumKind = AlbumKind.FOLDER
 
     override suspend fun createAlbum(title: String): AlbumId? = withContext(Dispatchers.IO) {
+        log.invocation(EntryScope.None, "gallery.createAlbum", params = "title=$title", result = { "$it" }) { newAlbum(title) }
+    }
+
+    private fun newAlbum(title: String): AlbumId {
         val name = folderNameFor(title)
         val path = generateSequence(1) { it + 1 }
             .map { n -> "${DefaultGallery.ALBUM_ROOT}${if (n == 1) name else "$name ($n)"}/" }
             .first { path -> !directoryOf(path).exists() && itemsAnywhere(path).isEmpty() }
         // The directory is what takes the name while the album is still empty (measured: it holds, API 30 and 36).
         if (!directoryOf(path).mkdirs()) log.w { "createAlbum: the directory $path was not created; its name is not reserved" }
-        log.i { "createAlbum '$title' → $path" }
-        path
+        return path
     }
 
     override suspend fun addToAlbum(album: AlbumId, assets: Set<AssetId>): WriteOutcome = withContext(Dispatchers.IO) {

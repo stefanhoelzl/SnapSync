@@ -6,6 +6,7 @@ import android.net.Uri
 import app.snapsync.android.gallery.MediaOriginals
 import app.snapsync.model.BeforeListen
 import app.snapsync.model.ChangeOutcome
+import app.snapsync.model.EntryScope
 import app.snapsync.model.HandlerSlot
 import app.snapsync.model.UploadCreateOutcome
 import app.snapsync.model.UploadError
@@ -15,7 +16,9 @@ import app.snapsync.model.UploadJobState
 import app.snapsync.model.UploadSource
 import app.snapsync.model.UploadSourceKind
 import app.snapsync.model.UploadTarget
+import app.snapsync.model.invocation
 import app.snapsync.model.runCatchingCancellable
+import co.touchlab.kermit.Severity
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.BackgroundTimeHold
 import app.snapsync.ports.Upload
@@ -102,7 +105,10 @@ class AndroidUpload(
         }
     }
 
-    override suspend fun create(source: UploadSource, target: UploadTarget, tag: String): UploadCreateOutcome {
+    override suspend fun create(source: UploadSource, target: UploadTarget, tag: String): UploadCreateOutcome =
+        log.invocation(EntryScope.None, "upload.create", params = "tag=$tag", result = { "$it" }) { start(source, target, tag) }
+
+    private fun start(source: UploadSource, target: UploadTarget, tag: String): UploadCreateOutcome {
         val uri = (source as? UploadSource.Resource)?.handle as? Uri
             ?: return UploadCreateOutcome.FAILED.also { log.w { "$tag: the source is not a MediaStore item" } }
         val path = runCatchingCancellable { URI(target.url).rawPath }.getOrNull()
@@ -142,7 +148,9 @@ class AndroidUpload(
 
     /** Report [tag]'s end once: persisted by the core inline, then dropped from the journal and the live set. */
     private fun finish(tag: String, job: UploadJob) {
-        handlers.orNull("$tag's end")?.onFinished?.invoke(job)
+        log.invocation(EntryScope.None, "upload.didComplete", params = "tag=$tag state=${job.state}", severity = Severity.Debug) {
+            handlers.orNull("$tag's end")?.onFinished?.invoke(job)
+        }
         journal.edit().remove(tag).commit()
         synchronized(live) {
             live.remove(tag)
