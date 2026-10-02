@@ -64,6 +64,7 @@ class LostUploadAckIntegrationTest {
         // that: it happened when the upload was first enqueued, so the completion adds nothing to the album and
         // nothing to do.
         val event = createAndJoin("saveToAlbum" to "true")
+        awaitAlbum() // a cycle places only into an album that exists
         addPhoto("A")
 
         cycle() // places, then creates the job

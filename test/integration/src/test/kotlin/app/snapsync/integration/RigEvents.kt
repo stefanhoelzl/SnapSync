@@ -50,6 +50,13 @@ suspend fun Rig.join(vararg choices: Pair<String, String>): String {
     return awaitState { it.ready.configResolved }.ready.eventId!!
 }
 
+/**
+ * Wait until the event album exists, and answer every album. A join or a Save is reported as soon as its membership is
+ * saved, and the album is ensured only after that — so a test that reads, places into or imports into the album right
+ * after one waits here first.
+ */
+suspend fun Rig.awaitAlbum(): List<Album> = eventually(read = { albums() }) { it.isNotEmpty() }
+
 /** Create an event and join it. Answers its id. */
 suspend fun Rig.createAndJoin(
     vararg choices: Pair<String, String>,

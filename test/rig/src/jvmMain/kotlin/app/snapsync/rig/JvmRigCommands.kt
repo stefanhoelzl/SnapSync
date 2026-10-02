@@ -60,13 +60,19 @@ internal fun jvmDeviceCommands(rig: JvmRig): Map<String, RigCommand> = rig.world
 )
 
 /**
- * The joined event: the one the platform's screen was last shown, or — where no screen shows one — the one the
- * membership file on the device's disk names. `null` when neither does. Both are read as the device holds them, so
- * asking assembles no screen a background launch never built.
+ * The joined event: the one the screen's host currently holds, or — where no screen was built — the one the
+ * membership file on the device's disk names. `null` when neither does. A screen that was shown anything proves its
+ * host assembled, so asking assembles no screen a background launch never built.
+ *
+ * The host's state, never what the screen was last shown: the screen is handed each state by a collector the host
+ * launches, so it can lag the state `/device/state` reports — and a test that has just made the membership file
+ * unreadable would then find no joined event at all.
  */
-internal fun joinedEventId(rig: JvmRig): String? =
-    (rig.mocks.screen.operator.shown.value?.layer as? Layer.Joined)?.membership?.eventId
+internal fun joinedEventId(rig: JvmRig): String? {
+    val screenBuilt = rig.mocks.screen.operator.shown.value != null
+    return (if (screenBuilt) rig.app.host.container.stateFlow.value.layer as? Layer.Joined else null)?.membership?.eventId
         ?: (ConfigService(rig.mocks.disk.port(), rig.mocks.clock.port()).read() as? ConfigRead.Joined)?.config?.eventId
+}
 
 /** What the JVM host refuses of the shared vocabulary, each with its reason. */
 internal fun jvmRefusals(rig: JvmRig): Map<String, String> = rig.world.leverRefusals() + RigVocabulary.adapterRefusals + buildMap {
