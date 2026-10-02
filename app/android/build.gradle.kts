@@ -5,9 +5,13 @@
 // A build WITHOUT `-Psnapsync.rig=true` composes every real Android adapter (`src/prod`), with no crash reporter until
 // phase 5. A rig build composes over an adapter choice of real and mocked systems, with the control channel served
 // in-process (`test/rig/src/android-hook`), reached over `adb forward`.
+import app.snapsync.buildlogic.rigEnabled
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    // The rig switch, `rigEnabled` (`-Psnapsync.rig=true`).
+    id("snapsync.rig")
 }
 
 // The resolved deployment the app talks to (`docs/deployment.md`): `:domain:model` runs the resolver at configuration
@@ -130,8 +134,6 @@ kotlin {
         org.jetbrains.kotlin.gradle.dsl.JvmTarget.fromTarget(libs.versions.android.jvmTarget.get()),
     )
 }
-
-val rigEnabled: Boolean get() = providers.gradleProperty("snapsync.rig").map(String::toBoolean).getOrElse(false)
 
 dependencies {
     // Both together, or neither: the contributed hook and the module it names cannot be half-present.

@@ -1,7 +1,11 @@
+import app.snapsync.buildlogic.rigEnabled
+
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.compose)
+    // The rig switch, `rigEnabled` (`-Psnapsync.rig=true`).
+    id("snapsync.rig")
 }
 
 kotlin {
@@ -41,7 +45,6 @@ kotlin {
     // The contributed directory compiles INTO this module, which is what lets it reach
     // `SnapSyncRoot.app` at `internal` visibility without widening anything to `public`. It is listed in
     // the root build's `appShellSources`, so it is gated like any other shell source.
-    val rigEnabled = providers.gradleProperty("snapsync.rig").map(String::toBoolean).getOrElse(false)
 
     sourceSets {
         // Both together, or neither: the contributed call site and the module it names cannot be
