@@ -167,11 +167,6 @@ class IosGalleryReader(private val log: Logger = Logger.withTag("gallery")) : Ga
     }
 
     /**
-     * Measured: adding an asset that is already in the collection is a no-op (simulator, iOS 26.5), which is what
-     * lets a repeated gather re-add without placing anything twice. See
-     * changes/archive/2026-09-21-album-gathers-retroactively.
-     */
-    /**
      * `PHAssetResourceManager.writeDataForAssetResource` to [to], after removing whatever was there (a prior partial
      * export for the same key). It moved here from the app's `URLSession` uploader in phase 11f: reading a resource's
      * bytes is the photo library's, and the uploader now takes the file.
@@ -193,6 +188,11 @@ class IosGalleryReader(private val log: Logger = Logger.withTag("gallery")) : Ga
         }
     }
 
+    /**
+     * Measured: adding an asset that is already in the collection is a no-op (simulator, iOS 26.5), which is what
+     * lets a repeated gather re-add without placing anything twice. See
+     * changes/archive/2026-09-21-album-gathers-retroactively.
+     */
     override suspend fun addToAlbum(album: AlbumId, assets: Set<AssetId>): WriteOutcome {
         if (assets.isEmpty()) return WriteOutcome.Ok
         val collection = PHAssetCollection.fetchAssetCollectionsWithLocalIdentifiers(listOf(album), null)

@@ -227,7 +227,6 @@ fun WorldInspector(
     }
 }
 
-/** The download session's in-flight transfers, and the three ways the operator lets them finish. */
 /** The app's own uploader, which runs too, over its background session: its transfers wait for the OS to land them. */
 @Composable
 private fun AppUploads(controller: WorldInspectorController, snap: InspectorSnapshot) {
@@ -239,6 +238,7 @@ private fun AppUploads(controller: WorldInspectorController, snap: InspectorSnap
     }
 }
 
+/** The download session's in-flight transfers, and the three ways the operator lets them finish. */
 @Composable
 private fun Downloads(controller: WorldInspectorController, snap: InspectorSnapshot) {
     Button(enabled = snap.downloads.isNotEmpty(), onClick = { controller.stageAllDownloads() }) { Text("Stage all pending") }

@@ -34,11 +34,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
-/**
- * The fan-out orchestration ([resourcesFrom]) exercised off-device — the coverage Move A unlocks. This
- * loop (role filter, `'/'→'_'` normalization, `uploadKey`, metadata assembly) previously lived only in
- * the iOS enumerator; here it runs on JVM and the iOS simulator against a fake raw-asset walk.
- */
 /** The library read over an in-memory gallery holding [assets] — the service the app composes over the gallery. */
 private fun librarySource(assets: List<RawAsset>): CandidateSource = GalleryCandidateSource(inMemoryGallery(MutableStateFlow(assets)))
 
@@ -58,6 +53,11 @@ private suspend fun CandidateSource.resourcesFor(cutoff: String) =
 private suspend fun CandidateSource.readCandidates(policy: SelectionPolicy): List<Candidate> =
     assertIs<CandidateRead.Readable>(candidates(policy), "a granted in-memory gallery always reads").candidates
 
+/**
+ * The fan-out orchestration ([resourcesFrom]) exercised off-device — the coverage Move A unlocks. This
+ * loop (role filter, `'/'→'_'` normalization, `uploadKey`, metadata assembly) previously lived only in
+ * the iOS enumerator; here it runs on JVM and the iOS simulator against a fake raw-asset walk.
+ */
 class RawAssetMappingTest {
 
     // `role = null` is what the platform adapter reports for a resource it carries no role for

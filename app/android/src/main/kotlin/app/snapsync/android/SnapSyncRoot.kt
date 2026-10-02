@@ -200,10 +200,6 @@ class SnapSyncRoot(internal val application: Application) {
     /** The status host, assembled on first touch. `internal` for a rig build's channel. */
     internal val host: StatusContainerHost get() = composed.host
 
-    /**
-     * **Compose the graph** — called from `Application.onCreate`, on the main thread: composing registers every entry
-     * port's handlers, the lifecycle's process observer among them, before any activity can resume.
-     */
     /** Asked at most once per process — the lazy is the once — from the first screen's creation. */
     private val installReferrer: Unit by lazy { adapters.installReferrer() }
 
@@ -217,6 +213,10 @@ class SnapSyncRoot(internal val application: Application) {
         installReferrer
     }
 
+    /**
+     * **Compose the graph** — called from `Application.onCreate`, on the main thread: composing registers every entry
+     * port's handlers, the lifecycle's process observer among them, before any activity can resume.
+     */
     @PlatformEntry
     fun onLaunch() = log.invocation(EntryScope.None, "onLaunch") {
         composed

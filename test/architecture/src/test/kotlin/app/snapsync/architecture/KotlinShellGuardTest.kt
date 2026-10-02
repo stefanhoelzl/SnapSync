@@ -45,14 +45,6 @@ class KotlinShellGuardTest {
         ?: fail("could not locate the repository root")
 
     /**
-     * MUST mirror the root build's `appShellSources` — the detekt gate's scanned roots.
-     *
-     * `test/rig/src/hook` lives in `:test:rig`'s tree but is compiled INTO `:app:ios` under
-     * `-Psnapsync.rig=true`, so it is shell source and is gated as such rather than exempted
-     * (`docs/architecture.md`, "Source contributed into a shell's source set is shell
-     * source for the gates").
-     */
-    /**
      * DERIVED from `appShellSources` in the root build file — the same list the `detektAppShell` task
      * scans — rather than a second copy of it.
      *
@@ -65,6 +57,11 @@ class KotlinShellGuardTest {
      *
      * Parsed from the build script text because `:test:architecture` deliberately depends on no project
      * modules and so has no access to the Gradle model.
+     *
+     * `test/rig/src/hook` lives in `:test:rig`'s tree but is compiled INTO `:app:ios` under
+     * `-Psnapsync.rig=true`, so it is shell source and is gated as such rather than exempted
+     * (`docs/architecture.md`, "Source contributed into a shell's source set is shell
+     * source for the gates").
      */
     private val shellSourceRoots: List<String> = run {
         val build = File(repoRoot, "build.gradle.kts").readText()
