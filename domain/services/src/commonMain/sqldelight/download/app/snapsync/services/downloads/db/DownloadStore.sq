@@ -82,10 +82,6 @@ tagEvent:
 UPDATE downloadAsset SET eventId = :eventId
 WHERE sourceDeviceId = :sourceDeviceId AND sourceAssetId = :sourceAssetId AND eventId IS NOT :eventId;
 
-selectAssetState:
-SELECT state FROM downloadAsset
-WHERE sourceDeviceId = :sourceDeviceId AND sourceAssetId = :sourceAssetId;
-
 markImported:
 UPDATE downloadAsset
 SET state = 'IMPORTED', createdLocalId = :createdLocalId
