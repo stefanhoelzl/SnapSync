@@ -41,8 +41,9 @@
 # `needs: ci`: a red gate — any gate, either platform — stops BOTH uploads, so one build number (`BUILD_NUMBER_OFFSET`)
 # lands in both stores or neither, barring an upload failure. Neither posts a required check (neither runs on a PR
 # push, so requiring one would freeze merges), so each is free to fail red without blocking anything. A dispatch runs
-# every gate too. They reach only internal testers — TestFlight's `development` group, Play's internal testing track;
-# real users get builds only through the dispatch-driven store promotion (promote.yml).
+# every gate too. They reach only internal testers — TestFlight's `development` group; on Play, a push to main reaches
+# the internal testing track and a dispatch an internal-app-sharing link. Real users get builds only through the
+# dispatch-driven store promotion (promote.yml).
 #
 # Deployers stay in their own files: deploy.yml (api, site, listing text — main only), promote.yml,
 # screenshots.yml, nightly-cleanup.yml, ssh-runner-macos.yml.
@@ -53,15 +54,16 @@ on:
     # BRANCHES only. A `vX.Y` tag is a release RECEIPT created by promote.yml; it triggers nothing.
     branches: ["**"]
   # A DELIBERATE BRANCH DELIVERY (`docs/deployment.md`): dispatch this workflow on any ref and it runs every gate,
-  # archives RELEASE and DELIVERS to internal TestFlight and the Play internal track, exactly as a push to main does —
-  # the one route to a tester's phone reachable only through the stores. On Play it REPLACES main's internal release
-  # until the next merge: the track serves only its latest. It must be marked distributed (`SNAPSYNC_CHANNEL: release`): the xcconfig
+  # archives RELEASE and DELIVERS to internal TestFlight, exactly as a push to main does — the one route to a tester's
+  # phone reachable only through the stores. On Play it goes out as an INTERNAL APP SHARING link in the run's summary,
+  # never to the internal track: that track serves only its latest release, so a branch build there replaced main's
+  # for every internal tester until the next merge. It must be marked distributed (`SNAPSYNC_CHANNEL: release`): the xcconfig
   # renderer emits the crash-reporting DSN only for a distributed build, and without it the in-app bug-report dialog
   # does not open at all (capability `privacy-security`); a TestFlight build must carry production APNs anyway.
   workflow_dispatch:
     inputs:
       what_to_test:
-        description: "TestFlight 'What to Test' and Play release note (blank → <branch> (<short sha>))"
+        description: "TestFlight 'What to Test', also shown beside the Play sharing link (blank → <branch> (<short sha>))"
         required: false
         type: string
 
@@ -832,9 +834,10 @@ jobs:
 
   # Play delivery — the same runs and the same gate as ios-deliver (`needs: ci`), so a build number lands in both
   # stores or neither, barring an upload failure. It compiles nothing: it signs the bundle android-build built with the
-  # UPLOAD key (Play re-signs it with the app signing key, the one prod's attestation pins) and uploads it to the
-  # INTERNAL testing track, which serves only its latest release — a branch dispatch replaces main's until the next
-  # merge. Like ios-deliver it posts no required check and may fail red without blocking anything.
+  # UPLOAD key and, on a push to main, uploads it to the INTERNAL testing track (Play re-signs it with the app signing
+  # key). A dispatch uploads it through INTERNAL APP SHARING instead and leaves the track alone, since the track serves
+  # only its latest release; Play re-signs a sharing build with a separate key of its own. Prod's attestation pins
+  # both certificates. Like ios-deliver it posts no required check and may fail red without blocking anything.
   android-deliver:
     needs: ci
     if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' }}
@@ -896,7 +899,7 @@ jobs:
       # compares each with what Play holds and sends only a difference, so most merges send nothing to review.
       # ImageMagick 6 is ubuntu's (`convert`); the composite is byte-stable, which is what the comparison relies on.
       - name: Render the store listing and its images
-        if: github.ref == 'refs/heads/main'
+        if: github.event_name == 'push'
         run: |
           set -euo pipefail
           sudo apt-get -qq update
@@ -912,9 +915,10 @@ jobs:
       # play_release.py's dependencies are declared inline (PEP 723) and resolved by `uv run`.
       - name: Install uv
         uses: astral-sh/setup-uv@v10.2.0
-      # ONE Play edit: upload, the internal track's one release (named `<version> (<build>)`), on main the store listing's
+      # ONE Play edit: upload, the internal track's one release (named `<version> (<build>)`), the store listing's
       # differences, commit — or nothing. A rejected listing therefore fails the delivery too: the edit lands whole or not.
       - name: Upload to the Play internal track with the release note
+        if: github.event_name == 'push'
         env:
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           # The listing's public contact email: the same address as the App Store's review contact, a secret only so
@@ -922,8 +926,41 @@ jobs:
           PLAY_CONTACT_EMAIL: ${{ secrets.ASC_REVIEW_CONTACT_EMAIL }}
         run: |
           VERSION="$(cat "$RUNNER_TEMP/android/version.txt")"
-          # LISTING_ARGS is set on main only (above); unquoted, so on a dispatch it adds no argument at all.
           # shellcheck disable=SC2086
           uv run .github/scripts/play_release.py deliver "$PACKAGE" \
             "$RUNNER_TEMP/android/bundle/release/android-release.aab" internal "$VERSION ($BUILD_NUMBER)" "$RELEASE_NOTE" \
-            ${LISTING_ARGS:-}
+            $LISTING_ARGS
+      # A DISPATCH: no edit, no track, no listing — the bundle goes through internal app sharing, and the install link
+      # goes to the run's summary. The script refuses a build Play signed with a certificate android.json does not
+      # accept, since prod would refuse that app's attestation. Installing needs the Play Store's "Internal app sharing"
+      # toggle on the phone and an address on the Console's tester list (`docs/deployment.md`).
+      - name: Share the bundle through Play internal app sharing
+        id: share
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          uv run .github/scripts/play_release.py share "$PACKAGE" \
+            "$RUNNER_TEMP/android/bundle/release/android-release.aab" deployments/components/android.json
+      - name: Put the install link in the summary
+        if: always() && github.event_name == 'workflow_dispatch' && steps.share.outputs.link != ''
+        env:
+          LINK: ${{ steps.share.outputs.link }}
+          SHARED: ${{ steps.share.outcome }}
+        run: |
+          VERSION="$(cat "$RUNNER_TEMP/android/version.txt")"
+          {
+            echo "## Android build $BUILD_NUMBER — internal app sharing"
+            echo
+            if [ "$SHARED" = success ]; then
+              echo "### [Install $VERSION ($BUILD_NUMBER) from Google Play]($LINK)"
+            else
+              echo "⚠️ **Prod refuses this build's signing certificate** — it installs, but cannot create or join an event: $LINK"
+            fi
+            echo
+            echo "\`$GITHUB_REF_NAME\` at \`${GITHUB_SHA:0:7}\` — $RELEASE_NOTE"
+            echo
+            echo "Opens in the Play Store on a phone whose account is on the Console's internal-app-sharing list, with"
+            echo "the Store's \"Internal app sharing\" toggle on. A phone holding the Play-installed app must uninstall it first"
+            echo "if Play refuses the different signature."
+          } >> "$GITHUB_STEP_SUMMARY"
