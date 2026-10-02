@@ -21,7 +21,6 @@ import app.snapsync.feature.membership.MembershipRefresh
 import app.snapsync.feature.membership.toJoinLoad
 import app.snapsync.feature.push.PushRegistration
 import app.snapsync.feature.membership.JoinEvent
-import app.snapsync.feature.membership.toCommit
 import app.snapsync.feature.membership.LeaveEvent
 import app.snapsync.feature.membership.ShareSetLoad
 import app.snapsync.feature.membership.ManifestDeviceEnroller
@@ -42,7 +41,6 @@ import app.snapsync.services.version.AppVersionGate
 import app.snapsync.feature.upload.PushTailGuard
 import app.snapsync.feature.upload.TailTrigger
 import app.snapsync.services.upload.ExtensionRegistration
-import app.snapsync.services.wake.EventChecks
 import app.snapsync.services.upload.OsDrivenRegistration
 import app.snapsync.ports.ExtensionRegistry
 import app.snapsync.feature.upload.UploadAdmission
@@ -66,9 +64,7 @@ import app.snapsync.model.GalleryAccess
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionScope
 import app.snapsync.model.grantsPhotoAccess
-import app.snapsync.model.JoinCommit
 import app.snapsync.model.UserCommands
-import app.snapsync.model.ReconfigureOutcome
 import app.snapsync.model.UserQueries
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.services.gallery.GalleryAlbums
@@ -83,12 +79,9 @@ import app.snapsync.services.gallery.GalleryCandidateSource
 import app.snapsync.ports.Backend
 import app.snapsync.ports.DeviceIntegrity
 import app.snapsync.services.backend.BackendServices
-import app.snapsync.ports.EntryContext
 import app.snapsync.ports.PhotoAccessStatusSource
-import app.snapsync.model.Handoff
 import app.snapsync.ports.SystemUi
 import app.snapsync.model.invocation
-import co.touchlab.kermit.Logger
 import app.snapsync.ports.ProcessInfo
 import app.snapsync.ports.Wake
 import app.snapsync.ports.DevControls
@@ -115,7 +108,6 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /**
  * **The app process's ports** — everything the app-graph composition consumes, and nothing but ports ([Port]; spec
@@ -265,11 +257,6 @@ class AppCore internal constructor(
         ReadingLedgerCountsSource { LedgerCounts.of(services.ledger.assetProgress()) }
     }
 
-    // The own-device upload TOTAL N (capability `sync-status`): gallery enumeration minus downloaded
-    // foreign photos, scoped by the membership's cutoff and the origin exclusions
-    // (capability `photo-sharing`) — the SAME album lookup the upload cycle gets, because the
-    // two enumerate independently and a rule applied to one and not the other would peg the joined
-    // screen below 100% forever.
     /**
      * The one read seam the app's consumers hold — the grant decides the backing, not the consumer
      * (capability `photo-access`). Built here because choosing between ports by a third port's
@@ -302,11 +289,12 @@ class AppCore internal constructor(
         )
     }
 
-    val gallery: OwnDeviceGalleryStatusSource by lazy {
-        // The two exclusion readers moved to the one derivation below — this source now receives a
-        // finished policy (capability `photo-sharing`).
-        OwnDeviceGalleryStatusSource(candidates)
-    }
+    // The own-device upload TOTAL N (capability `sync-status`): gallery enumeration minus downloaded
+    // foreign photos, scoped by the membership's cutoff and the origin exclusions
+    // (capability `photo-sharing`) — the SAME policy the upload cycle gets, because the
+    // two enumerate independently and a rule applied to one and not the other would peg the joined
+    // screen below 100% forever.
+    val gallery: OwnDeviceGalleryStatusSource by lazy { OwnDeviceGalleryStatusSource(candidates) }
 
     // The join-time shareable-count preview (capability `join-event`): the SAME policy the cycle and
     // `gallery` (N) apply, over the same permission-aware source — so the preview and the total cannot
@@ -648,10 +636,6 @@ class AppCore internal constructor(
         // as recursion to anyone who did not check the arity.
         app.snapsync.model.selectionScope(ports.photoAccess.permission.value, latestSelectionSnapshot.value)
 
-    // Re-read the own-device gallery total (enumeration, downloads suppressed), the ledger counts
-    // (completed + in-flight), and the foreign download line (capability `sync-status`). No membership
-    // → nothing to count; a download-only membership counts 0 too — the source's decision from the
-    // Contribution, not a branch here (the roots pass facts, never branches).
     /**
      * The one derivation, for this composition's status readers (capability `photo-sharing`).
      *
@@ -711,7 +695,7 @@ class AppCore internal constructor(
      * The two port touches it cannot make are built here: the config read, and the one policy
      * derivation.
      */
-    private val statusRefresh: StatusRefresh by lazy {
+    internal val statusRefresh: StatusRefresh by lazy {
         StatusRefresh(
             ledgerCounts = ledgerCounts,
             gallery = gallery,
@@ -722,15 +706,6 @@ class AppCore internal constructor(
             log = services.log,
         )
     }
-
-    /**
-     * Re-read the own-device total, the ledger counts and the foreign-download line, in that order.
-     *
-     * A forwarding call: the order and the no-membership rule are [StatusRefresh]'s, and both are
-     * asserted there. Kept as a method because the world harness and the desktop world inspector drive
-     * this exact entry point — it IS what the shell's foreground entry pulls.
-     */
-    suspend fun refreshStatusSources() = statusRefresh.run()
 
     // ── The OS-callback trigger flows (`docs/architecture.md`, "Rules in features, order in
     // flows"; migration step 8). Each is built here — features referenced directly, port/platform
@@ -754,7 +729,7 @@ class AppCore internal constructor(
             reloadConfig = { services.config.reload() },
             // The upload side's own work at a foreground entry; its top-up and walk are the tail's.
             settleStored = storedUploadSettleFor(services, backend.deviceFiles)::settle,
-            refreshStatus = { refreshStatusSources() },
+            refreshStatus = { statusRefresh.run() },
             activeEventId = { services.config.config.value?.eventId },
             fetchEventDetails = fetchEventDetails,
             refreshAttestation = { attestation.refresh() },
@@ -807,7 +782,7 @@ class AppCore internal constructor(
             // The order is `MembershipEntry`'s rule; the backend leave is awaited here, unlike the leave command's.
             enterMembership = membershipEntry(notifyLeave)::enter,
             saveConfig = { cfg -> services.config.save(cfg) },
-            refreshStatus = { refreshStatusSources() },
+            refreshStatus = { statusRefresh.run() },
             // Usable access (`grantsPhotoAccess`): this gate feeds only ensureAlbum's granted
             // parameter, and album creation works under a LIMITED grant (measured — capability
             // `photo-access`).
@@ -815,24 +790,6 @@ class AppCore internal constructor(
             registerPush = { pushRegistration.reRegister(services) },
         )
     }
-
-    // ── The user-tap command bundle (`docs/architecture.md`, "Commands cross one door"): built and
-    // decorated only here in `compose/`, injected into `StatusContainerHost` by constructor — so
-    // presentation never references a feature command directly. Each command's body is the exact
-    // coordination the shell's individual lambdas used to carry (migration step 8 C3). ────────────────
-
-    /**
-     * Wrap a user tap as a **platform entry point** (spec `privacy-security`; spec
-     * `docs/architecture.md`, "Absence is never silent"). `compose/` is where this must live: it is
-     * where the door law already says command instances are decorated, and it is the only place that
-     * *can* — `:domain:presentation` may not reference `ports/`, so it cannot reach a `EntryContext`.
-     *
-     * The `tap.` namespace is load-bearing, not cosmetic. Without it a device log cannot say whether
-     * work was started by the platform or by the person holding the phone: on Bugsink `SNAPSYNC-3`,
-     * proving that a leave was a manual tap rather than the switch path's backend notify took reading
-     * two source files, because both produce the same downstream lines.
-     */
-    private val tapLog = Logger.withTag("userTap")
 
     /**
      * The **composition lane** this graph's scope runs on, taken from the scope itself rather than
@@ -845,14 +802,9 @@ class AppCore internal constructor(
      * function that never actually suspends (synchronous PhotoKit XPC behind a `suspend` signature is
      * exactly that shape) then runs to completion there.
      *
-     * **A `check`, where an `?: EmptyCoroutineContext` used to stand.** That default was a default lane,
-     * one line above three decorators the law says may not supply one — and it degraded silently and
-     * asymmetrically: `scope.launch(EmptyCoroutineContext)` at least falls back to `Dispatchers.Default`,
-     * but `withContext(EmptyCoroutineContext)` changes dispatcher not at all, so every awaited tap
-     * (`leave`, `commitJoin`, `reconfigure`, `resetRename`, `sendDiagnostics`) would run to completion on
-     * the thread that fired it — the main thread — including `sendDiagnostics`' ~700 KB log read, which
-     * its own comment calls exactly the blocking work the main lane must never see. Nothing anywhere
-     * would say so.
+     * **A `check`, never a default lane**: the decorators may not supply one, and a default degrades silently —
+     * `withContext(EmptyCoroutineContext)` changes dispatcher not at all, so every awaited tap would run to
+     * completion on the thread that fired it, the main thread, including `sendDiagnostics`' ~700 KB log read.
      *
      * Unreachable today: every composition supplies one — the iOS shell's dedicated composition lane, the
      * full-stack harness's `newSingleThreadContext`, `runBlocking`'s event loop under the world runners,
@@ -860,150 +812,25 @@ class AppCore internal constructor(
      * assembly rather than as a main-thread stall nobody attributes (`docs/architecture.md`, "Absence is
      * never silent"; "Dispatcher lanes are fixed by the composition").
      */
-    private val coreLane: CoroutineContext =
+    internal val coreLane: CoroutineContext =
         checkNotNull(scope.coroutineContext[ContinuationInterceptor]) {
             "the composition scope carries no dispatcher: user commands would run on whatever thread " +
                 "fired them, which for an awaited tap is the main thread (law \"Dispatcher lanes are " +
                 "fixed by the composition\" — the composition names the lane, and no default may)"
         }
 
-    /**
-     * A command the caller waits on, run on the composition lane. Used where the screen needs the
-     * outcome in hand — the join gate's `commitJoin` returns whether it joined.
-     */
-    internal suspend fun <T> awaitingOnCoreLane(
-        name: String,
-        params: String = "",
-        result: (T) -> String = { "" },
-        block: suspend () -> T,
-    ): T = withContext(coreLane) {
-        tapLog.invocation(process.entryContext, name, params, result = result) { block() }
-    }
-
-    /**
-     * A fire-and-forget command, run on the composition lane. The tap returns at once and the outcome
-     * rides a status read-model.
-     *
-     * The `invocation` wrap sits INSIDE the launch deliberately: wrapping the launcher instead would
-     * time the hand-off rather than the work, which is how `← tap.create (1ms)` came to be logged
-     * against a multi-second backend mint — the same false duration the OS-callback side stopped reporting when its
-     * handlers began to be held for their work (`hold-os-receipts-until-work-completes`, now `own-work-per-wake`).
-     */
-    private fun detachedOnCoreLane(name: String, params: String = "", block: suspend () -> Unit) {
-        scope.launch(coreLane) { tapLog.invocation(process.entryContext, name, params) { block() } }
-    }
-
-    /**
-     * A command that hands something to the platform's UI — a sheet, a prompt, the Settings page — run on the
-     * composition lane like every other fire-and-forget tap. The main thread is the ADAPTER's to reach: each
-     * platform-UI adapter hops there itself (`docs/architecture.md`, "Dispatcher lanes are fixed by the composition"),
-     * so this graph names no main lane at all. The outcome arrives through a read-model; a hand-off's [Handoff] is
-     * the one return value, and it is only rendered onto the tap's line by [result] — nothing acts on it.
-     */
-    private fun <T> handedToPlatformUi(name: String, result: (T) -> String = { "" }, block: suspend () -> T) {
-        scope.launch(coreLane) { tapLog.invocation(process.entryContext, name, result = result) { block() } }
-    }
+    /** The user-tap command bundle — see [userCommandsFor]. */
+    val userCommands: UserCommands by lazy { userCommandsFor() }
 
     /** The user-query bundle, lane-decorated beside the commands — see [userQueriesFor]. */
     val userQueries: UserQueries by lazy { userQueriesFor() }
-
-    val userCommands: UserCommands by lazy {
-        UserCommands(
-            // Leave: cancel in-flight downloads and drop non-terminal rows (imported photos stay;
-            // suppression rows are permanent), then run the leave use-case (disable producer → notify
-            // the backend it is leaving → clear config/producer). Imported foreign photos are never
-            // touched.
-            leave = {
-                awaitingOnCoreLane<Unit>("tap.leave") {
-                    downloadController.onLeaveOrSwitch()
-                    leaveEvent.leave()
-                }
-            },
-            // Create: mint via the backend; the use-case routes the minted event into the SAME join
-            // gate a scanned QR takes (fire-and-forget; outcomes ride `creationStatus`).
-            create = { name, startsAt, endsAt ->
-                detachedOnCoreLane("tap.create") {
-                    eventCreator.create(name, startsAt.at.iso, endsAt.at.iso)
-                }
-            },
-            // The join gate's commit (capability `join-event`): join (no body, no manifest) then
-            // provision. The outcome is NAMED rather than reduced to a Boolean, because capacity and a
-            // transient failure need different screens: one offers a Retry that may work, the other must
-            // not offer one at all. The same-event no-op is a success.
-            commitJoin = { choice ->
-                awaitingOnCoreLane(
-                    "tap.commitJoin",
-                    params = "eventId=${choice.eventId}",
-                    result = { commit: JoinCommit -> "commit=$commit" },
-                ) { joinEvent.join(choice).toCommit() }
-            },
-            // Share is pure platform (a system sheet over the top view controller). Decorated like the
-            // rest: presenting the sheet is still a tap, and an unattributed line is the thing this
-            // instrumentation exists to eliminate.
-            share = { url ->
-                handedToPlatformUi("tap.share", result = { h: Handoff -> "$h" }) {
-                    tapLog.recordingRefusal("tap.share", ports.systemUi.share(url))
-                }
-            },
-            // Leaving the app for the store page (capability `app-update-required`) — UI lane and
-            // instrumented, like every other platform-surface command.
-            openLink = { url ->
-                handedToPlatformUi("tap.openLink", result = { h: Handoff -> "$h" }) {
-                    tapLog.recordingRefusal("tap.openLink", ports.systemUi.openUrl(url))
-                }
-            },
-            // The permission user-taps (capability `photo-access`), bound to the gallery here so presentation
-            // never names it. Each tap is fire-and-forget: the screen follows the permission read-model StateFlow,
-            // never the gallery's answer.
-            requestAccess = { handedToPlatformUi("tap.requestAccess") { ports.gallery.requestAccess() } },
-            openSettings = { handedToPlatformUi("tap.openSettings") { ports.systemUi.openSettings() } },
-            // The picker presentation is platform surface; the selection outcome arrives only via
-            // the selection-change seam.
-            choosePhotos = { handedToPlatformUi("tap.choosePhotos") { ports.gallery.widenSelection() } },
-            // In-place membership reconfigure (capability `manage-membership`): edit direction/
-            // cutoff/album without leaving. Distinct from `openSettings` (the iOS system settings page).
-            reconfigure = { eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum ->
-                awaitingOnCoreLane(
-                    "tap.reconfigure",
-                    params = "eventId=$eventId",
-                    result = { outcome: ReconfigureOutcome -> "$outcome" },
-                ) {
-                    reconfigureEvent.reconfigure(eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum)
-                }
-            },
-            // Rename the joined event (capability `manage-membership`): unlike `reconfigure`, which edits only
-            // this device's settings, this rewrites the SHARED event — every member picks the new name up
-            // on their next foreground refresh. Fire-and-forget; the outcome rides `renameStatus`.
-            rename = { eventId, name ->
-                detachedOnCoreLane("tap.rename", params = "eventId=$eventId") {
-                    renameEvent.rename(eventId, name)
-                }
-            },
-            // Clear the rename latch once the screen has consumed a terminal status. Instrumented like
-            // the taps even though it is a screen-fired acknowledgement rather than a tap: it mutates
-            // the rename lifecycle, and an unattributed state change is the thing this trail exists to
-            // eliminate.
-            resetRename = { awaitingOnCoreLane<Unit>("tap.resetRename") { renameEvent.reset() } },
-            // The hidden diagnostic dump (capability `privacy-security`), fired once the operator has
-            // written what went wrong: sent where the build reports, kept on the device where it does not —
-            // the process's crash reporting decides, and the answer is logged either way.
-            sendDiagnostics = { note, screen ->
-                // Core lane and awaited: the dump reads both device logs (~700 KB) before it sends or saves,
-                // which is exactly the blocking work the main lane must never see, and the sheet waits on it.
-                awaitingOnCoreLane<Unit>("tap.sendDiagnostics", params = "screen=$screen") {
-                    val result = process.crash.sendDump(collectDiagnosticDump.collect(note, screen))
-                    services.log.i { "diagnostic dump: $result" }
-                }
-            },
-        )
-    }
 
     /**
      * The diagnostic dump assembly (capability `privacy-security`) — reads only, and only what this
      * graph already holds. Composed lazily like everything else here, so an unconfigured build (which
      * never fires the command) never builds it.
      */
-    private val collectDiagnosticDump: CollectDiagnosticDump by lazy {
+    internal val collectDiagnosticDump: CollectDiagnosticDump by lazy {
         CollectDiagnosticDump(
             environment = ports.process.build.diagnostics,
             logs = services.deviceLogs,
@@ -1162,13 +989,3 @@ fun snapSyncApp(
     ports: AppPorts,
     onEventMinted: suspend (eventId: String) -> Unit,
 ): AppCore = AppCore(scope, snapSyncProcess(ports.process), ports, onEventMinted)
-
-/**
- * Records a hand-off to the platform ([SystemUi]) that did not happen. Nothing acts on a [Handoff], but a
- * refusal is logged at `Error`, because the user then tapped and nothing happened — on the update-required screen,
- * to the only remedy the screen offers (`docs/architecture.md`, "Absence is never silent"). `Error` is what
- * reaches the operator from a production build (capability `privacy-security`).
- */
-private fun Logger.recordingRefusal(name: String, handoff: Handoff): Handoff = handoff.also {
-    if (it is Handoff.Refused) e { "$name: nothing was handed off — ${it.reason}" }
-}
