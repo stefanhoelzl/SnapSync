@@ -87,6 +87,12 @@
 # and tested there, and the counter is the ledger's. 410 is the next 10-line step.
 # ⏰ Same caveat: a granularity boundary, not a measurement.
 #
+# LOWERED 410 -> 330 when the user-command and user-query bundles left `AppCore` for
+# `UserCommandsComposition.kt` with their lane decorators (the two fire-and-forget decorators, which had identical
+# bodies, became one), and two pure forwarders (`downloadStatus`, `refreshStatusSources`) went. Re-derived by
+# binary search: 330 passes, 320 fails. This is a whole block leaving, which is the kind of move the paragraph
+# above says moves this number.
+#
 # `buildUponDefaultConfig` is TRUE for the tier tasks (unlike `app-shell.yml`, which is a complete
 # statement of five rules). Listing all ~60 rules in eight files is not maintainable; the cost is that
 # a detekt upgrade activating a new rule starts firing here. That failure lands in the upgrade PR,
@@ -114,7 +120,7 @@ complexity:
     constructorThreshold: 47
   LargeClass:
     active: true
-    threshold: 410
+    threshold: 330
 style:
   ReturnCount:
     active: true

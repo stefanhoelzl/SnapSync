@@ -175,7 +175,7 @@ class CompositionSeamTest {
             "exactly as they run",
         "MembershipEntry.startUploads" to "the sibling UploadTransitions.onJoin() — feature-blindness",
         "ReconfigureEvent.refreshStatus" to
-            "this core's own status refresh (AppCore.refreshStatusSources) — feature-blindness",
+            "this core's own status refresh (AppCore.statusRefresh) — feature-blindness",
         "ReconfigureEvent.armUpload" to "the sibling UploadTransitions.onReconfigure() — feature-blindness",
         "ReconfigureEvent.ensureAlbum" to
             "the sibling AlbumCoordinator's ensure (its PhotoKit touches are the AlbumManager port's)",

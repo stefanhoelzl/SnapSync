@@ -14,9 +14,9 @@ import kotlin.test.fail
  * (synchronous PhotoKit XPC behind a `suspend` signature is exactly that shape) then runs to completion
  * there. So the lane has to be declared where the command is built.
  *
- * Three decorators, **no default**, all on the composition's lane: `awaitingOnCoreLane` (the caller waits on the
- * result), `detachedOnCoreLane` (fire-and-forget, outcome on a read-model), `handedToPlatformUi` (hands something to
- * the platform's UI — the adapter reaches the main thread itself; the composition names no main lane). A command
+ * Two decorators, **no default**, both on the composition's lane: `awaitingOnCoreLane` (the caller waits on the
+ * result) and `detachedOnCoreLane` (fire-and-forget, outcome on a read-model — a hand-off to the platform's UI
+ * included: the adapter reaches the main thread itself, and the composition names no main lane). A command
  * built through none of them does not compile — this gate catches the other half, a command built through none of
  * them *because it was written inline*.
  *
@@ -27,7 +27,7 @@ import kotlin.test.fail
  */
 class CommandLaneTest {
 
-    private val decorators = listOf("awaitingOnCoreLane", "detachedOnCoreLane", "handedToPlatformUi")
+    private val decorators = listOf("awaitingOnCoreLane", "detachedOnCoreLane")
 
     /**
      * The query bundle's ONE admissible decorator (law "Queries cross a lane-gated door"): a query returns a
@@ -48,8 +48,8 @@ class CommandLaneTest {
             .map { it.groupValues[1] }
             .toList()
 
-    /** Where each bundle is built — one file per bundle, both in `compose/`. */
-    private val builtIn = mapOf("UserCommands" to "SnapSyncApp.kt", "UserQueries" to "QueryComposition.kt")
+    /** Where each bundle is built — one file in `compose/`. */
+    private val builtIn = mapOf("UserCommands" to "UserCommandsComposition.kt", "UserQueries" to "UserCommandsComposition.kt")
 
     /** The `<type>(...)` argument block in the one place the bundle is built. */
     private fun built(type: String): String {
@@ -65,7 +65,7 @@ class CommandLaneTest {
         val bundle = built(type)
         // Split into per-argument chunks at the argument indentation the bundle is written with, so a
         // decorator naming one field cannot vouch for its neighbour.
-        val chunks = Regex("""\n {4,12}(\w+) = """).findAll(bundle).toList()
+        val chunks = Regex("""\n {4}(\w+) = """).findAll(bundle).toList()
         assertTrue(chunks.isNotEmpty(), "no arguments parsed from the $type( block")
         return chunks.mapIndexedNotNull { index, match ->
             val to = chunks.getOrNull(index + 1)?.range?.first ?: bundle.length
@@ -99,7 +99,7 @@ class CommandLaneTest {
     fun `the gate sees every command and query the bundles declare`() {
         listOf("UserCommands", "UserQueries").forEach { type ->
             val bundle = built(type)
-            val missing = declared(type).filterNot { Regex("""\n {4,12}$it = """).containsMatchIn(bundle) }
+            val missing = declared(type).filterNot { Regex("""\n {4}$it = """).containsMatchIn(bundle) }
             assertTrue(
                 missing.isEmpty(),
                 "declared in $type but not built in compose/, so the lane gate never sees them: $missing",

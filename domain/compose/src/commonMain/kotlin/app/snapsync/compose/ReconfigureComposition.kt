@@ -13,7 +13,7 @@ import kotlinx.coroutines.launch
 internal fun AppCore.reconfigureEventFor(): ReconfigureEvent =
     ReconfigureEvent(
         configSource = services.config,
-        refreshStatus = { refreshStatusSources() },
+        refreshStatus = { statusRefresh.run() },
         armUpload = { uploadTransitions.onReconfigure() },
         ensureAlbum = { cfg ->
             albumCoordinator.ensureAlbum(
