@@ -316,6 +316,9 @@ def deliver(package: str, bundle: str, track: str, name: str, note: str,
 
 
 def hex_digits(fingerprint: str) -> str:
+    """`AA:BB:…` (android.json) and Play's `SHA256: AA:BB:…` (measured) → bare lower-case hex. The label goes first:
+    its `a256` would otherwise pass as hex."""
+    fingerprint = fingerprint.rsplit(" ", 1)[-1]
     return "".join(c for c in fingerprint.lower() if c in "0123456789abcdef")
 
 
