@@ -85,8 +85,9 @@ class RenameIntegrationTest {
 
         user("rename", "name" to "First")
         awaitRename { it == RenameState.Succeeded }
+        // A user command is an intent: `/user` answers before the reset lands, so the cleared latch is awaited.
         user("renameStatusConsumed")
-        assertEquals(RenameState.Idle, state().joined?.renameState, "the latch is cleared")
+        awaitRename { it == RenameState.Idle }
 
         user("rename", "name" to "Second")
         awaitRename { it == RenameState.Succeeded }
