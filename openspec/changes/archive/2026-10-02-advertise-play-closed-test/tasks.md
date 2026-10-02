@@ -18,4 +18,4 @@
 
 - [x] 3.1 Widen `web-site`'s Purpose ("and to Google Play once SnapSync is published there") to cover the tester steps, directly in `openspec/specs/web-site/spec.md`; verify that `npx --yes @fission-ai/openspec@1.13.2 validate --specs --strict` and `validate advertise-play-closed-test --strict` pass
 - [x] 3.2 `./gradlew build` is not affected (no Kotlin change). Run the `site-build` gate locally (`cd site && npm ci && npm run check && npm run build`) and the resolver's suite; verify both are green
-- [ ] 3.3 With the user's agreement only: on the A40 (under its lock), open an invite's `/join` page, follow the three steps with a test Google account, install, and first launch; verify that the join screen for that event opens. Use an event this workspace created, never someone else's.
+- [x] 3.3 With the user's agreement only: on the A40 (under its lock), open an invite's `/join` page, follow the three steps with a test Google account, install, and first launch; verify that the join screen for that event opens. Use an event this workspace created, never someone else's. — Confirmed working by the user.
