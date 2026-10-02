@@ -1,5 +1,6 @@
 package app.snapsync.screenshots
 
+import app.snapsync.rig.DEFAULT_RIG_PORT
 import java.io.File
 import kotlin.time.Duration.Companion.seconds
 
@@ -78,7 +79,7 @@ internal class AndroidEmulator(private val serial: String, override val port: In
         const val ACTIVITY = "app.snapsync.android.MainActivity"
 
         /** The rig's control channel inside the app (`snapsync-android`). */
-        const val APP_PORT = 18099
+        const val APP_PORT = DEFAULT_RIG_PORT
 
         /** SystemUI demo-mode commands, each a broadcast's extras. */
         val DEMO = listOf(

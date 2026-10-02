@@ -135,7 +135,7 @@ class SimulatorUploadJobQueueContractTest {
 
     private companion object {
         const val BASE_PATH = "/api/v2"
-        const val BASE = "http://127.0.0.1:18099$BASE_PATH"
+        const val BASE = CONTRACT_UPLOAD_BASE
         const val CAP = 3
         val HTTP_SUCCESS = 200..299
     }

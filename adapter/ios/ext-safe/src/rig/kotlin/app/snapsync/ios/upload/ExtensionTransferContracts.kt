@@ -59,7 +59,8 @@ import platform.Photos.PHFetchOptions
 
 /**
  * The upload base the rig build bakes, which the recording's calls name. A device run under any other base is
- * refused: its recording would not replay against this constant.
+ * refused: its recording would not replay against this constant. Its port is `:test:rig`'s `DEFAULT_RIG_PORT`, which
+ * this module cannot depend on; the simulator's job-queue binding reads this constant rather than repeating it.
  */
 internal const val CONTRACT_UPLOAD_BASE: String = "http://127.0.0.1:18099/api/v2"
 
