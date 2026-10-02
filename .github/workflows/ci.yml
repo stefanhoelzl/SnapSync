@@ -152,6 +152,10 @@ jobs:
       # its tests, the PR merged clean, and production kept serving the previous bundle.
       - name: Test the deployment resolver
         run: python3 scripts/resolve_deployment_test.py
+      # The photo-library migration gate `journeys (ios)` waits on (scripts/await-photo-migration.py): its reading of
+      # `assetsd`'s log, tested here because the macOS job only ever exercises the one path the runner takes.
+      - name: Test the photo-library migration gate
+        run: python3 scripts/await_photo_migration_test.py
       # The App Store listing (`docs/deployment.md`), validated OFFLINE: schema, character limits, URL format. It
       # validates what will be APPLIED — the files the resolver renders from the one listing source
       # (metadata/listing/), placeholders filled — not the committed source. The apply half is deploy.yml's `appstore-metadata-apply` (main only). `asc` is a pinned,
