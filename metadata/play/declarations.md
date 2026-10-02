@@ -10,6 +10,8 @@ Facts this file leans on were read from the tree on 2026-10-02:
 - **App Store territories:** App Store Connect's app availability.
 - **What leaves the device:** the Privacy Policy (`site/`, capability `privacy-security`).
 
+Entered in the Console on 2026-10-02, with the first closed release (build 2118).
+
 Two answers are the **operator's explicit choice against the recommendation**: the minimal Data safety form and
 "No" to location sharing. Each is marked below, with what would reopen it.
 
@@ -18,8 +20,8 @@ Two answers are the **operator's explicit choice against the recommendation**: t
 | Field | Answer |
 |---|---|
 | App name | SnapSync Photos (from `metadata/listing/`; written by the delivery) |
-| Category | **Photography** |
-| Tags | none |
+| Category | **Events** (App → Events; chosen in the Console over Photography: the app is for events) |
+| Tags | none (the operator's choice) |
 | Contact email | the `ASC_REVIEW_CONTACT_EMAIL` secret, the App Store review contact (written by the delivery; never committed) |
 | Website | the marketing URL (written by the delivery) |
 | Phone | none |
@@ -89,11 +91,15 @@ Instructions, the Android wording of `metadata/review/notes.md`:
 | Data type | Collected | Shared | Optional | Purpose |
 |---|---|---|---|---|
 | Photos and videos → **Photos** | Yes | No | Yes: joining with sharing off sends none | App functionality |
+| Photos and videos → **Videos** | Yes | No | Yes: joining with sharing off sends none | App functionality |
 | App info and performance → **Crash logs** | Yes | No | No | Analytics (app stability) |
 
 - **"Shared: No".** Play's definition of sharing excludes a transfer the user initiates and expects. Photos reach
   the event's members because the user joined that event with sharing on.
-- **What the minimal form treats as part of those two types, rather than declaring separately:**
+- **Videos are declared in their own right:** the app shares videos as well as photos (capability `photo-sharing`).
+- **Processed ephemerally: No** for every type: photos and videos are stored until the event's photos are deleted,
+  crash reports in Bugsink.
+- **What the minimal form treats as part of those types, rather than declaring separately:**
   - a photo's **location** (its metadata, when the camera recorded it), as part of the photo;
   - the random **install ID** and the **push token**: they exist only to move the event's photos (telling devices
     apart, waking a device for new photos), so they are part of providing the photos;
@@ -112,7 +118,17 @@ Policy already names all of them, so only the form would change.
 The manifest requests `READ_MEDIA_IMAGES`, `READ_MEDIA_VIDEO`, `READ_MEDIA_VISUAL_USER_SELECTED`
 (Android 14+ partial access) and `ACCESS_MEDIA_LOCATION`, plus `READ_EXTERNAL_STORAGE` up to API 32.
 
-**Core use, for the declaration:**
+**As entered** (the Console's form has one field per permission, at most 250 characters each; access answered as
+frequent, not one-off):
+
+- `READ_MEDIA_IMAGES`: *Core feature: every photo a member takes during an event is shared automatically and
+  continuously, also in the background, with the event's other members. The photo picker only grants items picked
+  once, so photos taken later would be missed.*
+- `READ_MEDIA_VIDEO`: *Core feature: every video a member records during an event is shared automatically and
+  continuously, also in the background, with the event's other members. The picker only grants items picked once,
+  so videos recorded later would be missed.*
+
+**Core use, the full argument:**
 
 > SnapSync's core function is sharing, automatically and continuously, every photo a member takes during an event
 > with the event's other members. That includes photos taken after joining, while the app is in the background. This
