@@ -28,9 +28,14 @@ import kotlin.test.assertTrue
  * `X-1`), and the row is opened by whatever path it names at that instant: it can end SUCCESSFUL naming the empty file
  * while the body sits in the other. Measured on API 36: about one run in three.
  *
+ * Each thread also preallocates the whole body before it notices it was stopped, so the file the row names can be of
+ * full length with its tail never written (CI run 36988179834: 256 of 256 bytes, the content wrong). The port fetches
+ * a row the provider ran twice again, under the same tag; this test answers that request too, and judges what it
+ * delivers.
+ *
  * Which thread wins is the download provider's scheduling, so a run may not meet the split; every finish is held to the
- * invariant all the same — the port reports the bytes the file holds, and never a short file as whole. The responses
- * are held until both threads have asked, which is what opens the window.
+ * invariant all the same — the port reports the bytes the file holds, and never a short or unwritten file as whole. The
+ * responses are held until both threads have asked, which is what opens the window.
  */
 class AndroidDownloadRescheduleTest {
 
@@ -59,9 +64,9 @@ class AndroidDownloadRescheduleTest {
 
     @Test
     fun `a download rescheduled while running is never reported whole from a short file`() {
-        val delivered = (0 until RUNS).mapNotNull { run -> raceOnce(run) }
-        assertTrue(delivered.isNotEmpty(), "no run finished at all")
-        delivered.forEach { finished ->
+        val outcomes = (0 until RUNS).mapNotNull { run -> raceOnce(run) }
+        assertTrue(outcomes.isNotEmpty(), "no run finished at all")
+        outcomes.filterIsInstance<DownloadEvent.Finished>().forEach { finished ->
             val read = assertNotNull(finished.body, "${finished.tag}: the file is readable")
             assertEquals(read.size.toLong(), finished.facts.receivedBytes, "${finished.tag}: the bytes received are the file's")
             assertTrue(
@@ -71,8 +76,11 @@ class AndroidDownloadRescheduleTest {
         }
     }
 
-    /** One download rescheduled mid-flight; its finish as the next start delivers it, or null if it did not stay finished. */
-    private fun raceOnce(run: Int): DownloadEvent.Finished? {
+    /**
+     * One download rescheduled mid-flight: its finish as the next start delivers it, its failure if the port refused it
+     * as raced, or null if it did not stay finished.
+     */
+    private fun raceOnce(run: Int): DownloadEvent? {
         removeAllDownloads()
         val download = AndroidDownload(context)
         download.listen(ClauseDownloadHandlers { null }.handlers)
@@ -84,24 +92,44 @@ class AndroidDownloadRescheduleTest {
         second?.answer()
         first.answer()
 
+        settle()
+        // The stopped thread wrote last: the row waits to retry, which a later reconcile would finish. Nothing to judge.
+        if (status() != DownloadManager.STATUS_SUCCESSFUL) return null
+
+        var row = onlyRowId()
+        var delivered = relaunch()
+        // A raced row is fetched again under the same tag, into a fresh row: answer it, and the next start delivers it.
+        repeat(AndroidDownload.MAX_RESTARTS) {
+            val restarted = rowIdOrNull()
+            if (delivered.events.isEmpty() && restarted != null && restarted != row) {
+                row = restarted
+                settle()
+                if (status() == DownloadManager.STATUS_SUCCESSFUL) delivered = relaunch()
+            }
+        }
+        val finished = delivered.events.filterIsInstance<DownloadEvent.Finished>().singleOrNull()
+        val refused = delivered.events.firstOrNull { it is DownloadEvent.Completed && it.error != null }
+        // SUCCESSFUL is not final either: the stopped thread can still write the row back to retry after it was read
+        // (measured on CI: 200 ms later), and an unfinished row is rightly not delivered. Nothing to judge then — but a
+        // row that IS finished must have been delivered, or refused past its restarts.
+        if (finished == null && refused == null) {
+            check(status() != DownloadManager.STATUS_SUCCESSFUL) { "run $run: a finished row was not delivered" }
+        }
+        return finished ?: refused
+    }
+
+    /** Answer every request until the row reads SUCCESSFUL, or [SETTLE_MILLIS] pass. */
+    private fun settle() {
         val deadline = System.currentTimeMillis() + SETTLE_MILLIS
         while (status() != DownloadManager.STATUS_SUCCESSFUL && System.currentTimeMillis() < deadline) {
             arrivals.poll(POLL_MILLIS, TimeUnit.MILLISECONDS)?.answer()
         }
-        // The stopped thread wrote last: the row waits to retry, which a later reconcile would finish. Nothing to judge.
-        if (status() != DownloadManager.STATUS_SUCCESSFUL) return null
-
-        val relaunched = ClauseDownloadHandlers { runCatching { File(it).readBytes() }.getOrNull() }
-        AndroidDownload(context).listen(relaunched.handlers)
-        val finished = relaunched.events.filterIsInstance<DownloadEvent.Finished>().singleOrNull()
-        // SUCCESSFUL is not final either: the stopped thread can still write the row back to retry after it was read
-        // (measured on CI: 200 ms later), and an unfinished row is rightly not delivered. Nothing to judge then — but a
-        // row that IS finished must have been delivered.
-        if (finished == null) {
-            check(status() != DownloadManager.STATUS_SUCCESSFUL) { "run $run: a finished row was not delivered" }
-        }
-        return finished
     }
+
+    /** A fresh process's start: its pass delivers every finished row. */
+    private fun relaunch(): ClauseDownloadHandlers =
+        ClauseDownloadHandlers { runCatching { File(it).readBytes() }.getOrNull() }
+            .also { AndroidDownload(context).listen(it.handlers) }
 
     /** What DownloadManager's own (hidden) resume writes: a `control` change reschedules the row's job. */
     private fun reschedule(id: Long) {
@@ -109,9 +137,10 @@ class AndroidDownloadRescheduleTest {
         context.contentResolver.update(row, ContentValues().apply { put("control", 0) }, null, null)
     }
 
-    private fun onlyRowId(): Long = downloadManager.query(DownloadManager.Query()).use {
-        check(it.moveToFirst()) { "no download row" }
-        it.getLong(it.getColumnIndexOrThrow(DownloadManager.COLUMN_ID))
+    private fun onlyRowId(): Long = checkNotNull(rowIdOrNull()) { "no download row" }
+
+    private fun rowIdOrNull(): Long? = downloadManager.query(DownloadManager.Query()).use {
+        if (it.moveToFirst()) it.getLong(it.getColumnIndexOrThrow(DownloadManager.COLUMN_ID)) else null
     }
 
     private fun status(): Int = downloadManager.query(DownloadManager.Query()).use {
