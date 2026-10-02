@@ -7,23 +7,14 @@
 
 import { importPKCS8, SignJWT } from "jose";
 import type { Config } from "./config.ts";
-
-// Structural fetch type (kept local so app.ts ↔ apns.ts stay import-acyclic).
-type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
-
-/** A device push token as stored in `devices/<id>.json`'s `pushToken`. */
-export type PushToken = { kind: string; token: string; env: string };
-
-/**
- * Per-token outcome. `sent` = APNs returned 2xx; `skipped` = not sendable (non-`apns` kind or an
- * unrecognized `env`), no request made; `failed` = a request error or an APNs non-2xx rejection.
- */
-export type SendOutcome = {
-  token: string;
-  status: "sent" | "skipped" | "failed";
-  code?: number; // APNs HTTP status, when a request was made
-  reason?: string;
-};
+import {
+  type FetchLike,
+  postPush,
+  type PushToken,
+  type SendOutcome,
+  type SilentSender,
+  silentSender,
+} from "./push-send.ts";
 
 const APNS_HOSTS: Record<string, string> = {
   production: "https://api.push.apple.com",
@@ -42,9 +33,7 @@ function silentBody(eventId: string): string {
 // throttles re-signing faster than ~20 min; 50 min sits safely between).
 const JWT_TTL_MS = 50 * 60 * 1000;
 
-export type ApnsSender = {
-  sendSilent(tokens: PushToken[], eventId: string): Promise<SendOutcome[]>;
-};
+export type ApnsSender = SilentSender;
 
 /**
  * Build a sender bound to the APNs credentials in {@link Config}. `fetchImpl` is the upstream fetch
@@ -89,41 +78,28 @@ export function createApnsSender(
     } catch (e) {
       return { token: pt.token, status: "failed", reason: `jwt: ${e}` };
     }
-    try {
-      const res = await fetchImpl(`${host}/3/device/${pt.token}`, {
-        method: "POST",
-        headers: {
-          authorization: `bearer ${jwt}`,
-          "apns-topic": config.apnsTopic,
-          "apns-push-type": "background",
-          // 5 is not a choice: the background push type requires it. 1 deprioritises further and 10 is
-          // refused for this type, so priority is no lever for improving delivery.
-          "apns-priority": "5",
-          // COALESCE BY EVENT. Two wakes for one event are interchangeable by construction — a wake
-          // carries only its event id, and a recipient answers by reconciling that event's whole union
-          // (capability `receiving-photos`) — so collapsing undelivered ones loses no information. It buys
-          // real headroom: Apple throttles background notifications on total volume and documents a
-          // ceiling of two or three per hour, so a burst that would spend several deliveries spends one.
-          // Per-ASSET would be the mistake: it preserves a distinction no recipient reads, at a delivery
-          // each.
-          "apns-collapse-id": eventId,
-          "content-type": "application/json",
-        },
-        body: silentBody(eventId),
-      });
-      // Drain any body so the h2 stream is released (APNs replies empty on success, JSON on error).
-      await res.body?.cancel();
-      return res.ok
-        ? { token: pt.token, status: "sent", code: res.status }
-        : { token: pt.token, status: "failed", code: res.status };
-    } catch (e) {
-      return { token: pt.token, status: "failed", reason: `${e}` };
-    }
+    return await postPush(fetchImpl, pt.token, `${host}/3/device/${pt.token}`, {
+      method: "POST",
+      headers: {
+        authorization: `bearer ${jwt}`,
+        "apns-topic": config.apnsTopic,
+        "apns-push-type": "background",
+        // 5 is not a choice: the background push type requires it. 1 deprioritises further and 10 is
+        // refused for this type, so priority is no lever for improving delivery.
+        "apns-priority": "5",
+        // COALESCE BY EVENT. Two wakes for one event are interchangeable by construction — a wake
+        // carries only its event id, and a recipient answers by reconciling that event's whole union
+        // (capability `receiving-photos`) — so collapsing undelivered ones loses no information. It buys
+        // real headroom: Apple throttles background notifications on total volume and documents a
+        // ceiling of two or three per hour, so a burst that would spend several deliveries spends one.
+        // Per-ASSET would be the mistake: it preserves a distinction no recipient reads, at a delivery
+        // each.
+        "apns-collapse-id": eventId,
+        "content-type": "application/json",
+      },
+      body: silentBody(eventId),
+    });
   }
 
-  return {
-    // Every token is attempted; one token's error/skip never aborts the others. Never throws.
-    sendSilent: (tokens: PushToken[], eventId: string) =>
-      Promise.all(tokens.map((pt) => sendOne(pt, eventId))),
-  };
+  return silentSender(sendOne);
 }

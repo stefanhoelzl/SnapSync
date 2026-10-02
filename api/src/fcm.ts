@@ -7,9 +7,14 @@
 
 import { importPKCS8, SignJWT } from "jose";
 import type { Config } from "./config.ts";
-import type { PushToken, SendOutcome } from "./apns.ts";
-
-type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
+import {
+  type FetchLike,
+  postPush,
+  type PushToken,
+  type SendOutcome,
+  type SilentSender,
+  silentSender,
+} from "./push-send.ts";
 
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const SCOPE = "https://www.googleapis.com/auth/firebase.messaging";
@@ -17,9 +22,7 @@ const ASSERTION_LIFETIME_S = 3600;
 // Google's access tokens live an hour; refresh well inside it, as the APNs provider JWT is.
 const ACCESS_TOKEN_TTL_MS = 50 * 60 * 1000;
 
-export type FcmSender = {
-  sendSilent(tokens: PushToken[], eventId: string): Promise<SendOutcome[]>;
-};
+export type FcmSender = SilentSender;
 
 /** The two fields of a service-account key file the flow needs. */
 type ServiceAccount = { clientEmail: string; privateKey: string };
@@ -120,28 +123,17 @@ export function createFcmSender(
     } catch (e) {
       return { token: pt.token, status: "failed", reason: `auth: ${e}` };
     }
-    try {
-      const res = await fetchImpl(
-        `https://fcm.googleapis.com/v1/projects/${config.fcmProjectId}/messages:send`,
-        {
-          method: "POST",
-          headers: { authorization: `Bearer ${bearer}`, "content-type": "application/json" },
-          body: fcmBody(pt.token, eventId),
-        },
-      );
-      // Drain the body so the connection is released (FCM answers the message name, or an error object).
-      await res.body?.cancel();
-      return res.ok
-        ? { token: pt.token, status: "sent", code: res.status }
-        : { token: pt.token, status: "failed", code: res.status };
-    } catch (e) {
-      return { token: pt.token, status: "failed", reason: `${e}` };
-    }
+    return await postPush(
+      fetchImpl,
+      pt.token,
+      `https://fcm.googleapis.com/v1/projects/${config.fcmProjectId}/messages:send`,
+      {
+        method: "POST",
+        headers: { authorization: `Bearer ${bearer}`, "content-type": "application/json" },
+        body: fcmBody(pt.token, eventId),
+      },
+    );
   }
 
-  return {
-    // Every token is attempted; one token's error/skip never aborts the others. Never throws.
-    sendSilent: (tokens: PushToken[], eventId: string) =>
-      Promise.all(tokens.map((pt) => sendOne(pt, eventId))),
-  };
+  return silentSender(sendOne);
 }

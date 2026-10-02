@@ -170,7 +170,7 @@ import {
   validateUUID,
 } from "./validators.ts";
 import { BUILD_SHA, type Config } from "./config.ts";
-import type { PushToken } from "./apns.ts";
+import type { PushToken } from "./push-send.ts";
 import { createPushSender, unsentSummary } from "./push.ts";
 import {
   bytesToB64,
