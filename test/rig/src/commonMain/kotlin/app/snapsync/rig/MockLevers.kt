@@ -394,19 +394,6 @@ private fun MockWorld.libraryLevers(): Map<String, Lever> = mapOf(
         device.library.operator.delete(album)
         CommandResult.ok("""{"deleted":${jsonString(album)}}""")
     }),
-    // The person renames a `folder` album the app made in a gallery app: its photos move to a folder of the new name.
-    "album/rename" to mocked(MockedSystem.LIBRARY, RigCommand { params, _ ->
-        val album = params["album"]
-        val title = params["title"]
-        when {
-            album == null || title == null -> CommandResult.badRequest("album and title are both required")
-            device.library.operator.albumKind != AlbumKind.FOLDER -> CommandResult.badRequest("only a folder album is renamed where its photos live")
-            else -> {
-                device.library.operator.rename(album, title)
-                CommandResult.ok("""{"renamed":${jsonString(album)},"title":${jsonString(title)}}""")
-            }
-        }
-    }),
     // Every add to an album waits until released (`on=false`) — the photo library's change blocks held.
     "album/hold-adds" to mocked(MockedSystem.LIBRARY, RigCommand { params, _ ->
         val on = flag(params, "on")
