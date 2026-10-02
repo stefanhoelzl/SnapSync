@@ -1,6 +1,8 @@
 package app.snapsync.mock
 
+import app.snapsync.model.BeforeListen
 import app.snapsync.model.CycleResult
+import app.snapsync.model.HandlerSlot
 import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.LinkDelivery
 import app.snapsync.model.PlatformError
@@ -31,17 +33,14 @@ import kotlinx.coroutines.flow.asStateFlow
 // is the platform itself; the handlers are those of the process whose composition registered last, and the operator
 // delivers through them — nothing fires on its own.
 
-private fun <H> H?.registered(port: String): H =
-    checkNotNull(this) { "no process registered for the $port port — nothing would receive this delivery" }
-
 /** The app's foreground life. */
 class LifecycleMock {
-    internal var handlers: LifecycleHandlers? = null
+    internal val handlers = HandlerSlot<LifecycleHandlers>("Lifecycle", BeforeListen.Thrown)
     internal var everActive = false
 
     fun port(): Lifecycle = object : Lifecycle {
         override fun listen(handlers: LifecycleHandlers) {
-            this@LifecycleMock.handlers = handlers
+            this@LifecycleMock.handlers.set(handlers)
         }
     }
 
@@ -55,20 +54,20 @@ class LifecycleOperator internal constructor(private val mock: LifecycleMock) {
     /** The app became active. */
     fun foreground() {
         mock.everActive = true
-        mock.handlers.registered("Lifecycle").onForeground()
+        mock.handlers.require("foreground").onForeground()
     }
 
     /** The app is leaving the active state. */
-    fun background() = mock.handlers.registered("Lifecycle").onBackground()
+    fun background() = mock.handlers.require("background").onBackground()
 }
 
 /** The links the platform opens the app with. */
 class LinksMock {
-    internal var handlers: LinkHandlers? = null
+    internal val handlers = HandlerSlot<LinkHandlers>("Links", BeforeListen.Thrown)
 
     fun port(): Links = object : Links {
         override fun listen(handlers: LinkHandlers) {
-            this@LinksMock.handlers = handlers
+            this@LinksMock.handlers.set(handlers)
         }
     }
 
@@ -81,7 +80,7 @@ class LinksOperator internal constructor(private val mock: LinksMock) {
         deliver(LinkDelivery(hook, isWebLink = true, activityType = WEB_LINK_ACTIVITY, url = url))
 
     /** The platform delivered [delivery], raw. */
-    fun deliver(delivery: LinkDelivery) = mock.handlers.registered("Links").onLink(delivery)
+    fun deliver(delivery: LinkDelivery) = mock.handlers.require("a link").onLink(delivery)
 
     private companion object {
         /** The browsing-web activity type the iOS adapter recognises — a label here; nothing decides on it. */
@@ -95,7 +94,7 @@ class LinksOperator internal constructor(private val mock: LinksMock) {
  * OS answers every launch's request. A process that already holds it is told nothing new.
  */
 class PushServiceMock {
-    internal var handlers: PushHandlers? = null
+    internal val handlers = HandlerSlot<PushHandlers>("PushNotifications", BeforeListen.Thrown)
     internal var registrations = 0
     internal var kind = PUSH_KIND_APNS
 
@@ -107,13 +106,13 @@ class PushServiceMock {
         override val kind: String get() = this@PushServiceMock.kind
 
         override fun listen(handlers: PushHandlers) {
-            this@PushServiceMock.handlers = handlers
+            this@PushServiceMock.handlers.set(handlers)
         }
 
         override fun register() {
             registrations++
             val token = issued ?: return
-            val current = handlers ?: return
+            val current = handlers.orNull("a registration", BeforeListen.Dropped) ?: return
             if (toldTo !== current) {
                 toldTo = current
                 current.onToken(PushToken(token))
@@ -137,7 +136,7 @@ class PushServiceOperator internal constructor(private val mock: PushServiceMock
 
     /** The push service issued this device [token] — kept, and re-delivered to a relaunched process's request. */
     fun deliverToken(token: String) {
-        val handlers = mock.handlers.registered("PushNotifications")
+        val handlers = mock.handlers.require("a token")
         mock.issued = token
         mock.toldTo = handlers
         handlers.onToken(PushToken(token))
@@ -145,11 +144,11 @@ class PushServiceOperator internal constructor(private val mock: PushServiceMock
 
     /** The push service could not issue a token. */
     fun deliverTokenFailure(description: String?) =
-        mock.handlers.registered("PushNotifications").onTokenFailure(description?.let(::PlatformError))
+        mock.handlers.require("a token failure").onTokenFailure(description?.let(::PlatformError))
 
     /** A silent push carrying [payload] arrived, handing [completion]. */
     fun deliverMessage(payload: Map<Any?, *>, completion: Completion) =
-        mock.handlers.registered("PushNotifications").onMessage(PushMessage(payload), completion)
+        mock.handlers.require("a push").onMessage(PushMessage(payload), completion)
 }
 
 /**
@@ -157,7 +156,7 @@ class PushServiceOperator internal constructor(private val mock: PushServiceMock
  * process's: a new process's face starts with nothing shown, as a dead process's scene goes with it.
  */
 class ScreenMock {
-    internal var handlers: UiHandlers? = null
+    internal val handlers = HandlerSlot<UiHandlers>("Ui", BeforeListen.Thrown)
     internal val shown = MutableStateFlow<UiState?>(null)
 
     fun port(): Ui = object : Ui {
@@ -166,7 +165,7 @@ class ScreenMock {
         }
 
         override fun listen(handlers: UiHandlers) {
-            this@ScreenMock.handlers = handlers
+            this@ScreenMock.handlers.set(handlers)
         }
 
         override fun show(state: UiState) {
@@ -182,10 +181,10 @@ class ScreenOperator internal constructor(private val mock: ScreenMock) {
     val shown: StateFlow<UiState?> = mock.shown.asStateFlow()
 
     /** A live screen is about to be built. */
-    fun live() = mock.handlers.registered("Ui").onLive()
+    fun live() = mock.handlers.require("a live screen").onLive()
 
     /** A person did [intent] on the screen. */
-    fun tap(intent: UiIntent) = mock.handlers.registered("Ui").onIntent(intent)
+    fun tap(intent: UiIntent) = mock.handlers.require("a tap").onIntent(intent)
 }
 
 /**
@@ -193,12 +192,12 @@ class ScreenOperator internal constructor(private val mock: ScreenMock) {
  * them, and an operator playing another build sets them — and the per-uploader pin is the channel's to set.
  */
 class DevControlsMock(internal var hints: InviteLinkHints = InviteLinkHints.Ignored) {
-    internal var handlers: DevHandlers? = null
+    internal val handlers = HandlerSlot<DevHandlers>("DevControls", BeforeListen.Thrown)
     internal var pin: UploaderPin? = null
 
     fun port(): DevControls = object : DevControls {
         override fun listen(handlers: DevHandlers) {
-            this@DevControlsMock.handlers = handlers
+            this@DevControlsMock.handlers.set(handlers)
         }
 
         override fun uploaderPin(): UploaderPin? = pin
@@ -221,16 +220,16 @@ class DevControlsOperator internal constructor(private val mock: DevControlsMock
         set(value) { mock.hints = value }
 
     /** The channel's reset. */
-    suspend fun reset() = mock.handlers.registered("DevControls").onReset()
+    suspend fun reset() = mock.handlers.require("a reset").onReset()
 }
 
 /** The operating system's invocations of the upload extension — a separate process's entry port. */
 class ExtensionHostMock {
-    internal var handlers: ExtensionHandlers? = null
+    internal val handlers = HandlerSlot<ExtensionHandlers>("ExtensionHost", BeforeListen.Thrown)
 
     fun port(): ExtensionHost = object : ExtensionHost {
         override fun listen(handlers: ExtensionHandlers) {
-            this@ExtensionHostMock.handlers = handlers
+            this@ExtensionHostMock.handlers.set(handlers)
         }
     }
 
@@ -239,8 +238,8 @@ class ExtensionHostMock {
 
 class ExtensionHostOperator internal constructor(private val mock: ExtensionHostMock) {
     /** The operating system invokes the extension's `process()`. */
-    suspend fun process(): CycleResult = mock.handlers.registered("ExtensionHost").onProcess()
+    suspend fun process(): CycleResult = mock.handlers.require("process()").onProcess()
 
     /** The operating system ends the invocation. */
-    fun terminate() = mock.handlers.registered("ExtensionHost").onTerminate()
+    fun terminate() = mock.handlers.require("notifyTermination()").onTerminate()
 }

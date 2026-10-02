@@ -1,5 +1,7 @@
 package app.snapsync.mock
 
+import app.snapsync.model.BeforeListen
+import app.snapsync.model.HandlerSlot
 import app.snapsync.model.ScheduleResult
 import app.snapsync.model.WakeId
 import app.snapsync.model.WakeTrigger
@@ -25,14 +27,14 @@ class WakeMock(
     internal val supported: Set<WakeId> = setOf(WakeId.Heartbeat),
 ) {
     internal val pending = MutableStateFlow<Map<WakeId, WakeTrigger>>(emptyMap())
-    internal var handlers: WakeHandlers? = null
+    internal val handlers = HandlerSlot<WakeHandlers>("Wake", BeforeListen.Thrown)
     internal var scheduled = 0
 
     fun port(): Wake = object : Wake {
         private val queue = InMemoryWake(pending, supported)
 
         override fun listen(handlers: WakeHandlers) {
-            this@WakeMock.handlers = handlers
+            this@WakeMock.handlers.set(handlers)
         }
 
         override fun schedule(id: WakeId, trigger: WakeTrigger): ScheduleResult =
@@ -55,7 +57,7 @@ class WakeOperator internal constructor(private val mock: WakeMock) {
 
     /** The operating system wakes the app for [id], handing it [completion]. */
     fun fire(id: WakeId, completion: Completion) {
-        val handlers = checkNotNull(mock.handlers) { "no process registered for wakes — nothing would receive this one" }
+        val handlers = mock.handlers.require("a $id wake")
         // Every wake is one-shot: the operating system launching it is what consumes the request.
         mock.pending.value -= id
         handlers.onWake(id, completion)

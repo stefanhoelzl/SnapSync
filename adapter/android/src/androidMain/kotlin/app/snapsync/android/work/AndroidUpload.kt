@@ -4,7 +4,9 @@ import android.content.Context
 import android.content.res.AssetFileDescriptor
 import android.net.Uri
 import app.snapsync.android.gallery.MediaOriginals
+import app.snapsync.model.BeforeListen
 import app.snapsync.model.ChangeOutcome
+import app.snapsync.model.HandlerSlot
 import app.snapsync.model.UploadCreateOutcome
 import app.snapsync.model.UploadError
 import app.snapsync.model.UploadJob
@@ -85,14 +87,13 @@ class AndroidUpload(
     }
     private var hold: BackgroundTimeHold? = null
 
-    @Volatile
-    private var handlers: UploadHandlers? = null
+    private val handlers = HandlerSlot<UploadHandlers>("Upload", BeforeListen.Dropped)
 
     override val accepts: UploadSourceKind = UploadSourceKind.RESOURCE
 
     /** Register the core's handlers, then report what a previous process left unfinished — each as a failure. */
     override fun listen(handlers: UploadHandlers) {
-        this.handlers = handlers
+        this.handlers.set(handlers)
         val orphans = journal.all.mapNotNull { (tag, path) -> (path as? String)?.let { tag to it } }
             .filter { (tag, _) -> !live.containsKey(tag) }
         for ((tag, path) in orphans) {
@@ -141,7 +142,7 @@ class AndroidUpload(
 
     /** Report [tag]'s end once: persisted by the core inline, then dropped from the journal and the live set. */
     private fun finish(tag: String, job: UploadJob) {
-        handlers?.onFinished?.invoke(job)
+        handlers.orNull("$tag's end")?.onFinished?.invoke(job)
         journal.edit().remove(tag).commit()
         synchronized(live) {
             live.remove(tag)

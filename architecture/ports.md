@@ -16,6 +16,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `BackgroundTime` | `:domain:ports` | `:adapter:android` AndroidBackgroundTime; `:adapter:generic:mock` InMemoryBackgroundTime; `:adapter:ios:app-only` IosBackgroundTime | yes |
 | `BackgroundTimeHold` | `:domain:ports` | `:adapter:android` Hold; `:adapter:generic:mock` Hold; `:adapter:ios:app-only` Held, Refused | no |
 | `BackgroundTransfer` | `:domain:services` | `:domain:services` UploadTransferService; `:test:feature` FakePlatform, Library | yes |
+| `BeforeListen` | `:domain:model` | `:domain:model` Dropped, Logged, Thrown | no |
 | `BuildInfo` | `:domain:ports` | `:adapter:android` AndroidBuildInfo; `:adapter:ios:ext-safe` IosBuildInfo | no |
 | `Candidate` | `:domain:model` | `:domain:model` BatchedCandidate, HeldCandidate, LazyCandidate | no |
 | `CandidateRead` | `:domain:model` | `:domain:model` NotReadable, Readable | no |

@@ -1,5 +1,7 @@
 package app.snapsync.link
 
+import app.snapsync.model.BeforeListen
+import app.snapsync.model.HandlerSlot
 import app.snapsync.model.LinkDelivery
 import app.snapsync.model.PlatformEntry
 import app.snapsync.ports.LinkHandlers
@@ -16,11 +18,9 @@ import platform.Foundation.NSUserActivity
  * ran. Whether it is an event link, and what opening one does, is the core's.
  */
 class IosLinks(private val log: Logger) : Links {
-    private var handlers: LinkHandlers? = null
+    private val handlers = HandlerSlot<LinkHandlers>("Links", BeforeListen.Logged(log))
 
-    override fun listen(handlers: LinkHandlers) {
-        this.handlers = handlers
-    }
+    override fun listen(handlers: LinkHandlers) = this.handlers.set(handlers)
 
     /** A restored or continued user activity, through [hook]'s path (a cold launch's, or a running app's). */
     @PlatformEntry
@@ -36,11 +36,6 @@ class IosLinks(private val log: Logger) : Links {
     }
 
     private fun deliver(delivery: LinkDelivery) {
-        val registered = handlers
-        if (registered == null) {
-            log.e { "a link arrived before the Links port was listened to: ${delivery.hook}" }
-        } else {
-            registered.onLink(delivery)
-        }
+        handlers.orNull("a link through ${delivery.hook}")?.onLink(delivery)
     }
 }

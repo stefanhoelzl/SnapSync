@@ -1,6 +1,8 @@
 package app.snapsync.extension
 
+import app.snapsync.model.BeforeListen
 import app.snapsync.model.CycleResult
+import app.snapsync.model.HandlerSlot
 import app.snapsync.model.PlatformEntry
 import app.snapsync.ports.ExtensionHandlers
 import app.snapsync.ports.ExtensionHost
@@ -16,11 +18,9 @@ import kotlinx.coroutines.runBlocking
  * (`MainLaneContainmentTest`) — and answers the platform's raw result ([processingResultRawValue]).
  */
 class IosExtensionHost(private val log: Logger) : ExtensionHost {
-    private var handlers: ExtensionHandlers? = null
+    private val handlers = HandlerSlot<ExtensionHandlers>("ExtensionHost", BeforeListen.Logged(log))
 
-    override fun listen(handlers: ExtensionHandlers) {
-        this.handlers = handlers
-    }
+    override fun listen(handlers: ExtensionHandlers) = this.handlers.set(handlers)
 
     /**
      * One invocation: the handler's cycle, answered as the `PHBackgroundResourceUploadProcessingResult` raw value the
@@ -29,8 +29,7 @@ class IosExtensionHost(private val log: Logger) : ExtensionHost {
      */
     @PlatformEntry
     fun deliverProcess(): Int {
-        val registered = handlers
-        if (registered == null) log.e { "process() arrived before the ExtensionHost port was listened to" }
+        val registered = handlers.orNull("process()")
         val result = if (registered == null) CycleResult.FAILED else runBlocking { registered.onProcess() }
         return result.processingResultRawValue()
     }
@@ -38,7 +37,7 @@ class IosExtensionHost(private val log: Logger) : ExtensionHost {
     /** The end of an invocation — never a kill, which sends nothing. Only recorded. */
     @PlatformEntry
     fun deliverTerminate() {
-        handlers?.onTerminate()
+        handlers.orNull("notifyTermination()", BeforeListen.Dropped)?.onTerminate()
     }
 }
 

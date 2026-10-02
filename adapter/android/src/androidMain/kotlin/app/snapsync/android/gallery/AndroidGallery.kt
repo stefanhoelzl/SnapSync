@@ -7,7 +7,9 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
 import app.snapsync.android.permission.AndroidPhotoPermission
+import app.snapsync.model.BeforeListen
 import app.snapsync.model.GalleryAccess
+import app.snapsync.model.HandlerSlot
 import app.snapsync.model.GalleryRead
 import app.snapsync.model.ImportRequest
 import app.snapsync.model.ImportResult
@@ -44,7 +46,7 @@ class AndroidGallery(
     private val log: Logger = Logger.withTag("gallery"),
 ) : AndroidGalleryReader(context, permission::current, log), Gallery {
 
-    private var handlers: GalleryHandlers? = null
+    private val handlers = HandlerSlot<GalleryHandlers>("Gallery", BeforeListen.Logged(log))
     private var observing = false
     private var observer: ContentObserver? = null
     private val reads = Channel<Unit>(Channel.CONFLATED)
@@ -55,15 +57,15 @@ class AndroidGallery(
             reads.receiveAsFlow().collect {
                 if (observer == null) return@collect
                 val snapshot = readable { items(Query(), candidates = true).map { it.rawAsset() } }
-                if (snapshot is GalleryRead.Read) handlers?.onChanged(SelectionSnapshot(snapshot.value))
+                if (snapshot is GalleryRead.Read) {
+                    handlers.orNull("a selection snapshot", BeforeListen.Dropped)?.onChanged(SelectionSnapshot(snapshot.value))
+                }
             }
         }
         scope.launch { permission.permission.collect { reconcile() } }
     }
 
-    override fun listen(handlers: GalleryHandlers) {
-        this.handlers = handlers
-    }
+    override fun listen(handlers: GalleryHandlers) = this.handlers.set(handlers)
 
     override fun observeChanges(enabled: Boolean) {
         observing = enabled
@@ -75,8 +77,8 @@ class AndroidGallery(
     override suspend fun widenSelection(): GalleryAccess = permission.widenSelection()
 
     override suspend fun import(request: ImportRequest): ImportResult {
-        val handlers = handlers ?: return ImportResult.Failed("no import handlers registered")
-            .also { log.e { "import of ${request.ref.sourceAssetId} before listen — nothing created" } }
+        val handlers = handlers.orNull("the import of ${request.ref.sourceAssetId}")
+            ?: return ImportResult.Failed("no import handlers registered")
         val result = withContext(Dispatchers.IO) {
             importer.import(request) { id -> handlers.onImportPlaceholder(request.ref, id) }
         }

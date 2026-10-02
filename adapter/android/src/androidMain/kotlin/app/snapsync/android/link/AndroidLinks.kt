@@ -1,6 +1,8 @@
 package app.snapsync.android.link
 
 import android.content.Intent
+import app.snapsync.model.BeforeListen
+import app.snapsync.model.HandlerSlot
 import app.snapsync.model.LinkDelivery
 import app.snapsync.model.PlatformEntry
 import app.snapsync.ports.LinkHandlers
@@ -18,11 +20,9 @@ import co.touchlab.kermit.Logger
  * is not a link and is not delivered.
  */
 class AndroidLinks(private val log: Logger) : Links {
-    private var handlers: LinkHandlers? = null
+    private val handlers = HandlerSlot<LinkHandlers>("Links", BeforeListen.Logged(log))
 
-    override fun listen(handlers: LinkHandlers) {
-        this.handlers = handlers
-    }
+    override fun listen(handlers: LinkHandlers) = this.handlers.set(handlers)
 
     /**
      * The intent the activity was created with. A [restored] activity (a rotation, a process the platform brought back)
@@ -51,12 +51,7 @@ class AndroidLinks(private val log: Logger) : Links {
     }
 
     private fun deliver(delivery: LinkDelivery) {
-        val registered = handlers
-        if (registered == null) {
-            log.e { "a link arrived before the Links port was listened to: ${delivery.hook}" }
-        } else {
-            registered.onLink(delivery)
-        }
+        handlers.orNull("a link through ${delivery.hook}")?.onLink(delivery)
     }
 }
 

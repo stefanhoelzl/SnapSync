@@ -2,6 +2,8 @@ package app.snapsync.android.push
 
 import android.content.Context
 import app.snapsync.android.download.OnceCompletion
+import app.snapsync.model.BeforeListen
+import app.snapsync.model.HandlerSlot
 import app.snapsync.model.PUSH_KIND_FCM
 import app.snapsync.model.PlatformError
 import app.snapsync.model.PushMessage
@@ -58,8 +60,7 @@ class AndroidPushNotifications(
 
     private val appContext = context.applicationContext
 
-    @Volatile
-    private var handlers: PushHandlers? = null
+    private val handlers = HandlerSlot<PushHandlers>("PushNotifications", BeforeListen.Dropped)
 
     override val kind: String = PUSH_KIND_FCM
 
@@ -85,7 +86,7 @@ class AndroidPushNotifications(
     }
 
     override fun listen(handlers: PushHandlers) {
-        this.handlers = handlers
+        this.handlers.set(handlers)
         registration.value = this
     }
 
@@ -105,7 +106,7 @@ class AndroidPushNotifications(
             // emulator: "FCM Registration failed!").
             val token = if (task.isSuccessful) task.result?.takeIf { it.isNotBlank() } else null
             if (token != null) {
-                handlers?.onToken(PushToken(token))
+                handlers.orNull("a token")?.onToken(PushToken(token))
             } else {
                 failure(task.exception?.message ?: "FCM issued no token")
             }
@@ -114,18 +115,18 @@ class AndroidPushNotifications(
 
     /** FCM issued (or rotated) this device's token. */
     internal fun deliverToken(token: String) {
-        handlers?.onToken(PushToken(token))
+        handlers.orNull("a token")?.onToken(PushToken(token))
     }
 
     /** A data message arrived; [completion] is released once the push's own work is done. */
     internal fun deliverMessage(data: Map<String, String>, completion: Completion) {
-        val current = handlers ?: return completion.complete()
+        val current = handlers.orNull("a push") ?: return completion.complete()
         current.onMessage(PushMessage(data.toMap<Any?, Any?>()), completion)
     }
 
     private fun failure(reason: String) {
         log.w { "no push token: $reason" }
-        handlers?.onTokenFailure(PlatformError(reason))
+        handlers.orNull("a token failure")?.onTokenFailure(PlatformError(reason))
     }
 
     internal companion object {
