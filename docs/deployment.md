@@ -597,11 +597,13 @@ Operator rules:
   never gets that version. Correcting an already-promoted version's screenshots or release notes is a **manual
   console upload**. A **failed** run leaves no tag and is simply dispatched again: before the Play commit nothing
   was submitted; between the two submits the rerun skips Play; at the tag it skips both.
-- ⚠️ **While the Play app is a DRAFT app** (never published), Play refuses any release outside the internal track
-  that is not itself a draft — measured 2026-10-01: *"Only releases with status draft may be created on draft
-  app."* An `android` promote therefore fails at its Play preflight, before anything is submitted, until the first
-  closed release has been sent for review **by hand in the Play Console** (which needs the listing and declarations
-  complete). After that first publication the workflow's path applies.
+- **The draft-app phase is over.** While the Play app was a draft (never published), Play refused any release
+  outside the internal track that was not itself a draft — measured 2026-10-01: *"Only releases with status draft
+  may be created on draft app."* The first closed release (build 2118) was therefore sent by hand in the Play
+  Console; Google approved it on 2026-10-02, and since then an `android` promote passes Play's preflight (dry run of
+  build 2128, run 37003660144). This only matters again for a brand-new Play app.
+- Play's API can answer a transient `5xx` (a `503` on `edits:validate` was seen 2026-10-02). Nothing was committed;
+  re-dispatching (or re-running the failed job) completes it.
 - ⚠️ `asc review doctor` is not the whole preflight. It once passed a version that `asc review submit`
   then refused (missing `en-US: whatsNew`, run 30632785849). A green gate does not guarantee the submit
   will pass.
