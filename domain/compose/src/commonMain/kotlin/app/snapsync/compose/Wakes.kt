@@ -56,9 +56,6 @@ internal class WakeHold(
         if (expired.load()) granted.end()
     }
 
-    /** Whether Apple has said this wake's time is up. */
-    val hasExpired: Boolean get() = expired.load()
-
     /** Release [handover] on this wake's expiry too — at once, should the expiry already have come. */
     fun guard(handover: OsCompletions.Handover) {
         while (true) {
