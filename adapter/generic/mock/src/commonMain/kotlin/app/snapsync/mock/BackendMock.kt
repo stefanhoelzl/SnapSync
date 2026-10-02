@@ -134,9 +134,7 @@ class BackendOperator internal constructor(private val state: BackendState) {
     // ---- levers ----------------------------------------------------------------------------------
 
     /** Listing, union, event details, rename, join, publish, leave and bytes answer `502`. */
-    var offline: Boolean
-        get() = state.offline
-        set(value) { state.offline = value }
+    var offline: Boolean by state::offline
 
     /**
      * Play the nightly sweep's COMPLETION of [eventId] (capability `event-lifetime`): its memberships and assets go,
@@ -151,19 +149,13 @@ class BackendOperator internal constructor(private val state: BackendState) {
     fun isCompleted(eventId: String): Boolean = state.events[eventId]?.completed == true
 
     /** Only the per-device listing answers `502`. */
-    var failDeviceListing: Boolean
-        get() = state.failDeviceListing
-        set(value) { state.failDeviceListing = value }
+    var failDeviceListing: Boolean by state::failDeviceListing
 
     /** The minimum app version every route demands, or null for a gate that is off. */
-    var minAppVersion: String?
-        get() = state.minAppVersion
-        set(value) { state.minAppVersion = value }
+    var minAppVersion: String? by state::minAppVersion
 
     /** Devices an event admits before its join answers `409`. */
-    var capacity: Int
-        get() = state.capacity
-        set(value) { state.capacity = value }
+    var capacity: Int by state::capacity
 
     /** The next token-bearing call to a gated route is answered `401`, once. */
     fun refuseNextCredential() {
@@ -174,9 +166,7 @@ class BackendOperator internal constructor(private val state: BackendState) {
      * The id the next created event is minted with, once — so a screen that renders it (the invite QR) renders the same
      * every run. `null` mints a random one, as the real backend does.
      */
-    var nextEventId: String?
-        get() = state.nextEventId
-        set(value) { state.nextEventId = value }
+    var nextEventId: String? by state::nextEventId
 
     /** Every [call] waits until [release]: the backend that has not answered yet. */
     fun hold(call: BackendCall) {

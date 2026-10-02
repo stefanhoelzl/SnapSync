@@ -31,6 +31,7 @@ import app.snapsync.model.deviceManifestFromJson
 import app.snapsync.model.encodeToJson
 import kotlinx.datetime.TimeZone
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.Json
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
@@ -63,85 +64,66 @@ private val json = Json { encodeDefaults = true; ignoreUnknownKeys = true }
 /** One system's text: how its durable state is written, and how it is put back. */
 private class Codec(val encode: (MockDevice) -> String?, val restore: (MockDevice, String) -> Unit)
 
-/** A system whose whole state is a few named scalars. */
-private fun scalars(write: (MockDevice) -> Map<String, String>, read: (MockDevice, Map<String, String>) -> Unit) = Codec(
-    encode = { json.encodeToString(StringsDto.serializer(), StringsDto(write(it))) },
-    restore = { device, text -> read(device, json.decodeFromString(StringsDto.serializer(), text).values) },
+/** A system whose state is one [serializer]'s value: [write] reads it off the device, [read] puts it back. */
+private fun <D> codec(serializer: KSerializer<D>, write: (MockDevice) -> D, read: (MockDevice, D) -> Unit) = Codec(
+    encode = { json.encodeToString(serializer, write(it)) },
+    restore = { device, text -> read(device, json.decodeFromString(serializer, text)) },
 )
+
+/** A system whose whole state is a few named scalars. */
+private fun scalars(write: (MockDevice) -> Map<String, String>, read: (MockDevice, Map<String, String>) -> Unit) =
+    codec(StringsDto.serializer(), { StringsDto(write(it)) }, { device, dto -> read(device, dto.values) })
 
 /**
  * Every system that keeps something — the databases (files), the background-time holds, the links and the screen (a
  * process's own) keep nothing here.
  */
 private val CODECS: Map<MockedSystem, Codec> = mapOf(
-    MockedSystem.BACKEND to Codec(
-        encode = { json.encodeToString(BackendDto.serializer(), BackendDto.of(it.backend.state)) },
-        restore = { device, text -> json.decodeFromString(BackendDto.serializer(), text).into(device.backend.state) },
-    ),
-    MockedSystem.LIBRARY to Codec(
-        encode = { json.encodeToString(LibraryDto.serializer(), LibraryDto.of(it.library.state)) },
-        restore = { device, text -> json.decodeFromString(LibraryDto.serializer(), text).into(device.library.state) },
-    ),
-    MockedSystem.FILES to Codec(
-        encode = { json.encodeToString(FilesDto.serializer(), FilesDto.of(it.disk)) },
-        restore = { device, text -> json.decodeFromString(FilesDto.serializer(), text).into(device.disk) },
-    ),
+    MockedSystem.BACKEND to codec(BackendDto.serializer(), { BackendDto.of(it.backend.state) }, { d, dto -> dto.into(d.backend.state) }),
+    MockedSystem.LIBRARY to codec(LibraryDto.serializer(), { LibraryDto.of(it.library.state) }, { d, dto -> dto.into(d.library.state) }),
+    MockedSystem.FILES to codec(FilesDto.serializer(), { FilesDto.of(it.disk) }, { d, dto -> dto.into(d.disk) }),
     MockedSystem.PREFERENCES to scalars({ it.preferences.values.toMap() }, { device, values -> device.preferences.values.putAll(values) }),
-    MockedSystem.KEYCHAIN to Codec(
-        encode = { json.encodeToString(KeychainDto.serializer(), KeychainDto.of(it.keychain.items)) },
-        restore = { device, text -> json.decodeFromString(KeychainDto.serializer(), text).into(device.keychain.items) },
-    ),
-    MockedSystem.INTEGRITY to Codec(
-        encode = { json.encodeToString(EnclaveDto.serializer(), EnclaveDto(it.enclave.keys.generated, it.enclave.keys.held.toList())) },
-        restore = { device, text ->
-            val keys = json.decodeFromString(EnclaveDto.serializer(), text)
+    MockedSystem.KEYCHAIN to codec(KeychainDto.serializer(), { KeychainDto.of(it.keychain.items) }, { d, dto -> dto.into(d.keychain.items) }),
+    MockedSystem.INTEGRITY to codec(
+        EnclaveDto.serializer(),
+        { EnclaveDto(it.enclave.keys.generated, it.enclave.keys.held.toList()) },
+        { device, keys ->
             device.enclave.keys.generated = keys.generated
             device.enclave.keys.held.addAll(keys.held)
         },
     ),
-    MockedSystem.CRASH_REPORTER to Codec(
-        encode = { json.encodeToString(CrashDumpsDto.serializer(), CrashDumpsDto(it.crashReporter.dumps.value.map(CrashDto::of))) },
-        restore = { device, text ->
-            device.crashReporter.dumps.value = json.decodeFromString(CrashDumpsDto.serializer(), text).dumps.map { it.event() }
-        },
+    MockedSystem.CRASH_REPORTER to codec(
+        CrashDumpsDto.serializer(),
+        { CrashDumpsDto(it.crashReporter.dumps.value.map(CrashDto::of)) },
+        { device, dto -> device.crashReporter.dumps.value = dto.dumps.map { it.event() } },
     ),
     MockedSystem.PROCESS_INFO to scalars(
         { mapOf(PROTECTED to it.processInfo.cell.value.name) },
         { device, values -> values[PROTECTED]?.let { device.processInfo.cell.value = Availability.valueOf(it) } },
     ),
-    MockedSystem.CLOCK to Codec(
-        encode = { json.encodeToString(ClockDto.serializer(), ClockDto(it.clock.now.toEpochMilliseconds(), it.clock.zone.id)) },
-        restore = { device, text ->
-            val clock = json.decodeFromString(ClockDto.serializer(), text)
+    MockedSystem.CLOCK to codec(
+        ClockDto.serializer(),
+        { ClockDto(it.clock.now.toEpochMilliseconds(), it.clock.zone.id) },
+        { device, clock ->
             device.clock.now = Instant.fromEpochMilliseconds(clock.nowEpochMillis)
             device.clock.zone = TimeZone.of(clock.zone)
         },
     ),
-    MockedSystem.WAKE to Codec(
-        encode = { json.encodeToString(WakeDto.serializer(), WakeDto.of(it.wakes)) },
-        restore = { device, text -> json.decodeFromString(WakeDto.serializer(), text).into(device.wakes) },
-    ),
+    MockedSystem.WAKE to codec(WakeDto.serializer(), { WakeDto.of(it.wakes) }, { d, dto -> dto.into(d.wakes) }),
     MockedSystem.EXTENSION_REGISTRY to scalars(
         { device -> device.extensionRegistry.record?.let { mapOf(REGISTERED to it.value.toString()) }.orEmpty() },
         { device, values -> values[REGISTERED]?.let { device.extensionRegistry.record?.value = it.toBoolean() } },
     ),
-    MockedSystem.UPLOAD_QUEUE to Codec(
-        encode = { json.encodeToString(QueueDto.serializer(), QueueDto.of(it.uploadQueue)) },
-        restore = { device, text -> json.decodeFromString(QueueDto.serializer(), text).into(device.uploadQueue) },
-    ),
+    MockedSystem.UPLOAD_QUEUE to codec(QueueDto.serializer(), { QueueDto.of(it.uploadQueue) }, { d, dto -> dto.into(d.uploadQueue) }),
     MockedSystem.UPLOAD_SESSION to scalars(
         { mapOf(HANDBACKS to it.uploadSession.handbacks.toString()) },
         { device, values -> values[HANDBACKS]?.let { device.uploadSession.handbacks = it.toInt() } },
     ),
-    MockedSystem.DOWNLOADS to Codec(
-        encode = {
-            json.encodeToString(
-                DownloadsDto.serializer(),
-                DownloadsDto(it.downloads.started.map { s -> StartedDto(s.url, s.description, s.cancelled, s.finished) }),
-            )
-        },
-        restore = { device, text ->
-            json.decodeFromString(DownloadsDto.serializer(), text).started.forEach {
+    MockedSystem.DOWNLOADS to codec(
+        DownloadsDto.serializer(),
+        { DownloadsDto(it.downloads.started.map { s -> StartedDto(s.url, s.description, s.cancelled, s.finished) }) },
+        { device, dto ->
+            dto.started.forEach {
                 device.downloads.started += DownloadSessionMock.Started(it.url, it.description).apply {
                     cancelled = it.cancelled
                     finished = it.finished
@@ -157,13 +139,10 @@ private val CODECS: Map<MockedSystem, Codec> = mapOf(
         { mapOf(REGISTRATIONS to it.pushService.registrations.toString()) },
         { device, values -> values[REGISTRATIONS]?.let { device.pushService.registrations = it.toInt() } },
     ),
-    MockedSystem.SYSTEM_UI to Codec(
-        encode = {
-            val ui = it.systemUi
-            json.encodeToString(SystemUiDto.serializer(), SystemUiDto(ui.shared.value, ui.opened.value, ui.settings.value))
-        },
-        restore = { device, text ->
-            val ui = json.decodeFromString(SystemUiDto.serializer(), text)
+    MockedSystem.SYSTEM_UI to codec(
+        SystemUiDto.serializer(),
+        { SystemUiDto(it.systemUi.shared.value, it.systemUi.opened.value, it.systemUi.settings.value) },
+        { device, ui ->
             device.systemUi.shared.value = ui.shared
             device.systemUi.opened.value = ui.opened
             device.systemUi.settings.value = ui.settings

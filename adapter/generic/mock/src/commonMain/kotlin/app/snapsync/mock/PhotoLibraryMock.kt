@@ -75,14 +75,10 @@ class PhotoLibraryOperator internal constructor(private val state: LibraryState)
     val grant: StateFlow<GalleryAccess> = state.access.asStateFlow()
 
     /** The grant, as the person set it in Settings. */
-    var access: GalleryAccess
-        get() = state.access.value
-        set(value) { state.access.value = value }
+    var access: GalleryAccess by state.access::value
 
     /** What the person answers the permission dialog with, the one time it is asked. */
-    var requestAnswer: GalleryAccess
-        get() = state.answer
-        set(value) { state.answer = value }
+    var requestAnswer: GalleryAccess by state::answer
 
     // ---- the selection observer -------------------------------------------------------------------
 
@@ -115,9 +111,7 @@ class PhotoLibraryOperator internal constructor(private val state: LibraryState)
         set(value) { state.failNextEnumeration = value }
 
     /** Whether a by-identifier read can see the library; when not, every presence answer is `NotReadable`. */
-    var byIdReadable: Boolean
-        get() = state.byIdReadable
-        set(value) { state.byIdReadable = value }
+    var byIdReadable: Boolean by state::byIdReadable
 
     /** How the library answers each import's change, and what was imported. */
     val imports: ImportScript get() = state.imports
@@ -205,9 +199,7 @@ class PhotoLibraryOperator internal constructor(private val state: LibraryState)
      * How this library holds an album: an iPhone's [AlbumKind.COLLECTION] (the default) or an Android phone's
      * [AlbumKind.FOLDER]. Set before composing to play an Android library.
      */
-    var albumKind: AlbumKind
-        get() = state.albumKind
-        set(value) { state.albumKind = value }
+    var albumKind: AlbumKind by state::albumKind
 
     fun releaseEnumeration() {
         state.enumerationHeld?.complete(Unit)

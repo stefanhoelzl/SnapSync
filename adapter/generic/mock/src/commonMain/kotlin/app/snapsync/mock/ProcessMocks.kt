@@ -54,9 +54,7 @@ class ProcessInfoMock(protectedData: Availability = Availability.AVAILABLE) {
 
 class ProcessInfoOperator internal constructor(private val mock: ProcessInfoMock) {
     /** The device's protected data, locked or not. */
-    var protectedData: Availability
-        get() = mock.cell.value
-        set(value) { mock.cell.value = value }
+    var protectedData: Availability by mock.cell::value
 }
 
 /** The device's wall clock and zone — stopped wherever the operator sets it, read at every call. */
@@ -74,9 +72,7 @@ class ClockMock(now: Instant = Instant.fromEpochMilliseconds(0), zone: TimeZone 
 
 class ClockOperator internal constructor(private val mock: ClockMock) {
     /** The time every face reads. */
-    var now: Instant
-        get() = mock.now
-        set(value) { mock.now = value }
+    var now: Instant by mock::now
 }
 
 /** The device's Secure Enclave: its keys outlive a process. Nothing to pull, so no operator face. */
