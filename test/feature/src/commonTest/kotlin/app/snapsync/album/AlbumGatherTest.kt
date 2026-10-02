@@ -35,6 +35,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.yield
 import kotlin.test.Test
@@ -248,7 +249,7 @@ class AlbumGatherTest {
         val r = rig()
         r.own("OWN", "2026-09-10T00:00:00Z")
         r.gather.onAccessObserved(usable = true)
-        r.gather.awaitStarted()
+        advanceUntilIdle()
         assertTrue(r.manager.calls.isEmpty(), "an already-granted cold launch gathers nothing")
     }
 
@@ -258,7 +259,7 @@ class AlbumGatherTest {
         r.own("OWN", "2026-09-10T00:00:00Z")
         r.gather.onAccessObserved(usable = false)
         r.gather.onAccessObserved(usable = true)
-        r.gather.awaitStarted()
+        advanceUntilIdle()
         assertEquals(setOf(AssetId("OWN")), r.manager.added)
     }
 
@@ -269,7 +270,7 @@ class AlbumGatherTest {
         r.gather.onAccessObserved(usable = false)
         r.gather.onAccessObserved(usable = true)
         r.gather.onAccessObserved(usable = true) // LIMITED -> GRANTED
-        r.gather.awaitStarted()
+        advanceUntilIdle()
         assertEquals(1, r.manager.calls.size)
     }
 
@@ -278,7 +279,7 @@ class AlbumGatherTest {
         val r = rig(cfg = null)
         r.gather.onAccessObserved(usable = false)
         r.gather.onAccessObserved(usable = true)
-        r.gather.awaitStarted()
+        advanceUntilIdle()
         assertTrue(r.manager.calls.isEmpty())
     }
 }

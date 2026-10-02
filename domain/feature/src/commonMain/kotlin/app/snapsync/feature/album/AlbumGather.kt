@@ -13,10 +13,6 @@ import app.snapsync.model.EntryScope
 import app.snapsync.model.invocation
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -50,8 +46,7 @@ const val GATHER_BATCH_SIZE: Int = 500
  *
  * **Started, never awaited.** The opt-in acts ([start] from a provision or a reconfigure Save, and
  * [onAccessObserved] from the permission subscription) launch it on the app-lifetime [scope] and return: a
- * join and a Save must not wait on a cost that grows with the photos held. [awaitStarted] exists only for the
- * operator harness and tests, which drive the stack synchronously.
+ * join and a Save must not wait on a cost that grows with the photos held.
  *
  * Where the album is a folder (Android, [AlbumCoordinator.placesOwnPhotos] false) only the foreign set is gathered,
  * and gathering MOVES those photos out of the camera folder into the album
@@ -81,7 +76,6 @@ class AlbumGather(
     // One gather at a time. A gather started while another runs waits, then re-reads the config — so a Save
     // that lands mid-gather is honoured by the queued run rather than lost.
     private val running = Mutex()
-    private val started = MutableStateFlow<Set<Job>>(emptySet())
 
     // Whether access was usable at the previous permission emission; `null` before the first, which is the
     // StateFlow's replay rather than a change.
@@ -89,11 +83,9 @@ class AlbumGather(
 
     /** Start a gather for [eventId], detached. [trigger] names the opt-in act, so the log says why it ran. */
     fun start(trigger: String, eventId: String) {
-        val job = scope.launch {
+        scope.launch {
             log.invocation(entryContext, "albumGather", "trigger=$trigger eventId=$eventId") { gather(eventId) }
         }
-        started.update { it + job }
-        job.invokeOnCompletion { started.update { running -> running - job } }
     }
 
     /**
@@ -107,11 +99,6 @@ class AlbumGather(
         lastUsable = usable
         val eventId = configSource.config.value?.eventId ?: return
         if (usable && wasUsable == false) start("grant", eventId)
-    }
-
-    /** Wait for every gather started so far — for the operator harness and tests only. */
-    suspend fun awaitStarted() {
-        started.value.joinAll()
     }
 
     suspend fun gather(eventId: String) = running.withLock {

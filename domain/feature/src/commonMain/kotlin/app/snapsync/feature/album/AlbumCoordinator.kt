@@ -120,14 +120,15 @@ class AlbumCoordinator(
         if (kind == AlbumKind.FOLDER && store.get(eventId) == album) store.markFilled(eventId)
     }
 
-    /**
-     * Add [assetIds] (the gallery's asset ids) to [eventId]'s album, best-effort. If no album exists yet (the app has not created
-     * it), the add is **skipped** (never created here) — the app's [ensureAlbum] on the permission grant
-     * guarantees the album exists before sync in practice. A failure to add is logged, never thrown.
-     */
     /** Whether the member's own photos go into the album: only where it is a collection, never a folder. */
     val placesOwnPhotos: Boolean get() = kind == AlbumKind.COLLECTION
 
+    /**
+     * Add [assetIds] (the gallery's asset ids) to [eventId]'s album, best-effort — a no-op under [AlbumKind.FOLDER],
+     * where the member's own photos stay where their camera saved them. If no album exists yet (the app has not
+     * created it), the add is **skipped** (never created here) — the app's [ensureAlbum] on the permission grant
+     * guarantees the album exists before sync in practice. A failure to add is logged, never thrown.
+     */
     suspend fun place(eventId: String, assetIds: List<AssetId>) {
         if (assetIds.isEmpty()) return
         if (kind == AlbumKind.FOLDER) return // the member's own photos stay where their camera saved them
