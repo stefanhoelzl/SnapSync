@@ -22,7 +22,7 @@ import co.touchlab.kermit.Logger
  * | [cancelTransfers] | cancel the in-flight transfers and delete their staged files — a **leave** only |
  *
  * The OS wakes do not reach the uploader through this seam: each wake does its own work and hands the rest to the
- * process's tail runner, whose upload units are the [AppUploadMechanism]'s (decision record
+ * process's tail runner, whose upload units are the app uploader's (decision record
  * `changes/own-work-per-wake`, D1). The composition implements this over that runner and that mechanism.
  *
  * None of them clears the ledger or repairs a row: nothing a transition does orphans a `REQUESTED` row, because

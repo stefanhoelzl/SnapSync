@@ -68,14 +68,14 @@ internal fun downloadHandlersOf(core: AppCore): DownloadHandlers = DownloadHandl
 internal fun uploadHandlersOf(core: AppCore): UploadHandlers = UploadHandlers(
     onFinished = { job ->
         core.events.uploadTransfer.recordFinished(job)
-        core.tail.uploadEvents.uploadCompleted()
+        core.tail.uploadCompleted()
     },
     onBackgroundEvents = { completion ->
         core.onTransferEvents("upload", TailTrigger.UPLOAD_SESSION_EVENTS) {
             core.tail.uploadCompletions.adopt(completion)
         }
     },
-    onEventsDrained = { core.tail.uploadEvents.eventsDrained() },
+    onEventsDrained = { core.tail.eventsDrained() },
 )
 
 /**

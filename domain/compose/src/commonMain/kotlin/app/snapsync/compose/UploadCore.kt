@@ -57,7 +57,7 @@ sealed interface UploaderProcess {
 /**
  * What one upload-cycle assembly consumes (`docs/architecture.md`, "One shared composition"): the SERVICES a process
  * built over its ports, plus the thunks whose *call time* is load-bearing. Internal — no root builds one: the app's
- * uploader builds it from its core ([appUploader]), the extension from its own ports ([snapSyncExtension]) — so a
+ * uploader builds it from its core ([AppUploader]), the extension from its own ports ([snapSyncExtension]) — so a
  * member added to the cycle is added here once, and both tiers fail to compile until they answer, instead of one tier
  * silently shipping without it (which is how the app-driven tier once shipped without the direction gate).
  */

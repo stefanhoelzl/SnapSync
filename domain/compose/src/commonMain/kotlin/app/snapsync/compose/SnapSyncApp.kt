@@ -40,7 +40,6 @@ import app.snapsync.feature.status.StatusRefresh
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.services.trust.DeviceAttestation
 import app.snapsync.services.version.AppVersionGate
-import app.snapsync.feature.upload.AppUploadMechanism
 import app.snapsync.feature.upload.PushTailGuard
 import app.snapsync.feature.upload.TailTrigger
 import app.snapsync.services.upload.ExtensionRegistration
@@ -229,7 +228,7 @@ class AppCore internal constructor(
      * The app's uploader (capability `background-upload`) — the app-driven tier on every OS version, over the app's own
      * [AppPorts.appUpload]. Always the real one: a composition whose transport is mocked is driven at that transport.
      */
-    internal val appUploader: AppUploadMechanism by lazy { appUploader(this) }
+    internal val appUploader: AppUploader by lazy { AppUploader(this) }
 
     /**
      * Whether the backend is refusing this build as too old (capability `app-update-required`). NOT lazy: the

@@ -5,8 +5,6 @@ package app.snapsync.compose
 import app.snapsync.ports.EntryContext
 import app.snapsync.feature.download.DownloadController
 import app.snapsync.feature.upload.AppUploadEngine
-import app.snapsync.feature.upload.AppUploadEvents
-import app.snapsync.feature.upload.AppUploadMechanism
 import app.snapsync.feature.upload.CadenceFacts
 import app.snapsync.feature.upload.TailRunner
 import app.snapsync.feature.upload.TailTrigger
@@ -39,7 +37,7 @@ class AppTail internal constructor(
     private val scope: CoroutineScope,
     private val services: AppServices,
     /** The app's uploader — resolved on first use, since it depends on the graph this tail belongs to. */
-    private val appUploader: () -> AppUploadMechanism,
+    private val appUploader: () -> AppUploader,
     /** The process's entry-point seam, which the tail's lines carry. */
     private val entryContext: EntryContext,
     private val downloads: () -> DownloadController,
@@ -59,7 +57,7 @@ class AppTail internal constructor(
     private val foreground = AtomicBoolean(false)
 
     /** The app uploader, resolved at first use — it owns a process-lifetime background session on a device. */
-    private val mechanism: AppUploadMechanism get() = appUploader()
+    private val uploader: AppUploader get() = appUploader()
 
     /** The heartbeat the runner re-arms and a disarm cancels — the process's, over the `Wake` port. */
     private val heartbeat = Heartbeat(services.ports.wake, services.log)
@@ -77,8 +75,8 @@ class AppTail internal constructor(
                     if (signal.awaitUnlessInterrupted(job)) job.await().getOrThrow()
                 }
             },
-            topUp = { stop -> mechanism.topUp(stop) },
-            walkAndPublish = { stop -> mechanism.walkAndPublish(stop) },
+            topUp = { stop -> uploader.topUp(stop) },
+            walkAndPublish = { stop -> uploader.walkAndPublish(stop) },
             // Exactly a full grant: under a partial one the tail reads no library (capability `photo-access`).
             walkPermitted = { services.ports.photoAccess.permission.value == GalleryAccess.GRANTED },
             mayCreate = mayCreate,
@@ -135,7 +133,7 @@ class AppTail internal constructor(
     val appEngine: AppUploadEngine = object : AppUploadEngine {
         override suspend fun arm() = requestDetached(TailTrigger.ARM)
         override suspend fun disarm() = heartbeat.cancel()
-        override suspend fun cancelTransfers() = mechanism.cancelTransfers()
+        override suspend fun cancelTransfers() = uploader.cancelTransfers()
     }
 
     /**
@@ -145,14 +143,19 @@ class AppTail internal constructor(
      */
     val uploadCompletions: OsCompletions = OsCompletions("url-session.onBackgroundSessionEvents", log = services.log)
 
-    /** What the upload transport tells the core — see [AppUploadEvents]. */
-    val uploadEvents: AppUploadEvents = object : AppUploadEvents {
-        // The completion was recorded by the transport already; the runner requests the top-up only on `Admit`.
-        override fun uploadCompleted() = requestDetached(TailTrigger.UPLOAD_COMPLETED)
+    /**
+     * A transfer reached its terminal outcome — **already recorded** by the transport's guarded write — and freed a
+     * slot: the tail's top-up is requested, which the runner runs only while the app may create (capability
+     * `background-upload`, "The delegate records the terminal fact before it returns").
+     */
+    internal fun uploadCompleted() = requestDetached(TailTrigger.UPLOAD_COMPLETED)
 
-        override fun eventsDrained() {
-            scope.launch { uploadCompletions.releaseAfter { } }
-        }
+    /**
+     * The upload session reported every event it had delivered (`urlSessionDidFinishEvents`): the relaunch's own work —
+     * recording the terminals — is done, so the handlers the wake handed over are released.
+     */
+    internal fun eventsDrained() {
+        scope.launch { uploadCompletions.releaseAfter { } }
     }
 
     /**
@@ -163,7 +166,7 @@ class AppTail internal constructor(
     internal suspend fun onSelectionChanged() = services.log.invocation(entryContext, "onSelectionChanged") {
         // Held from before its own work to its tail's end, like any in-process request (see [requestDetached]).
         val hold = hold("onSelectionChanged")
-        runCatchingCancellable { mechanism.walkAndPublish { false } }
+        runCatchingCancellable { uploader.walkAndPublish { false } }
             .onFailure { services.log.w(it) { "the selection change's discovery failed; its tail still runs" } }
         hold.thenTail(TailTrigger.SELECTION_CHANGE)
     }
