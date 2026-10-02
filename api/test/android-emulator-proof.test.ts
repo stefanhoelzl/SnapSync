@@ -15,9 +15,7 @@ import {
   RECORDED_PACKAGE,
   RENEWAL,
 } from "./fixtures/android-emulator-proof.ts";
-import { CONFIG, D, store } from "./support/harness.ts";
-
-const V2 = { "x-snapsync-app-version": "99.0" };
+import { CONFIG, D, store, V2 } from "./support/harness.ts";
 
 /** The local rig's policy, naming the recording's package. */
 const LOCAL: Config = {

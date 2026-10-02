@@ -12,14 +12,12 @@ import {
 } from "../src/attest.ts";
 import { type Config, readConfig } from "../src/config.ts";
 import { ATTESTATION_SAMPLE } from "./fixtures/attestation-sample.ts";
+import { CONFIG as HARNESS_CONFIG, D, E, NOW, V2 } from "./support/harness.ts";
 
 // The gate (capability `privacy-security`). app.test.ts wraps `createApp` so every request carries a
 // token — it proves the gate does not BREAK the routes. This file uses the app RAW, and proves the gate
 // is actually there: that an unauthenticated caller gets nothing, reveals nothing, and writes nothing.
 
-const E = "7a3f9c21-0000-4000-8000-000000000001";
-const D = "11111111-0000-4000-8000-000000000002";
-const NOW = Date.parse("2026-07-14T12:00:00Z");
 const DAY = 24 * 60 * 60 * 1000;
 
 /** A REAL attestation from a REAL device (see the fixture's header). */
@@ -35,37 +33,8 @@ const APPLE_ROOT_CA = readConfig({
   ADMIN_NOTIFY_KEY: "a",
 }).appAttestRootCa;
 
-const CONFIG: Config = {
-  zone: "snapsync-zone",
-  host: "storage.bunnycdn.com",
-  accessKey: "zone-password",
-  s3Region: "de",
-  s3Host: "de-s3.storage.bunnycdn.com",
-  s3Scheme: "https",
-  apnsKeyId: "ABC123KEYID",
-  apnsTeamId: "E9Z8BADH58",
-  apnsPrivateKey: "-----BEGIN PRIVATE KEY-----\nMIG...\n-----END PRIVATE KEY-----\n",
-  apnsTopic: "app.snapsync",
-  fcmProjectId: "",
-  fcmServiceAccountKey: "",
-  attestTokenKey: "test-attest-token-key",
-  databaseUrl: "",
-  databaseToken: "",
-  appAttestRootCa: APPLE_ROOT_CA,
-  androidPackageName: "app.snapsync",
-  androidSigningCertDigests: [],
-  androidAttestationRoots: [],
-  androidAttestationTrust: "hardware" as const,
-  attestTokenTtlSeconds: 30 * DAY / 1000,
-  attestAppId: "E9Z8BADH58.app.snapsync",
-  linkDomain: "snapsync.stho.net",
-  appStoreUrl: "https://apps.apple.com/app/id6781692480",
-  eventCapacity: 10,
-  eventWindowMaxSeconds: 30 * 24 * 60 * 60,
-  eventLifetimeSeconds: 30 * 24 * 60 * 60,
-  maintenance: false,
-  minAppVersion: "0.1",
-};
+/** The harness's config, carrying Apple's real root so a real attestation chain verifies. */
+const CONFIG: Config = { ...HARNESS_CONFIG, appAttestRootCa: APPLE_ROOT_CA };
 
 /** The same config, but claiming the FIXTURE's app — so the real attestation's rpIdHash matches. */
 const SAMPLE_CONFIG: Config = {
@@ -536,9 +505,6 @@ Deno.test("attest: a stale challenge mints no token and stores no key", async ()
   assertEquals(res.status, 401);
   assertEquals(calls.length, 0);
 });
-
-/** `/api/v2` sits behind the version gate, so every v2 request names a version it serves (capability `app-update-required`). */
-const V2 = { "x-snapsync-app-version": "99.0" };
 
 Deno.test("attest: under v2 a stale challenge is 409, never the 401 that means 'drop your token'", async () => {
   const { calls, app: a } = app();

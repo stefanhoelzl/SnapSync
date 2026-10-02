@@ -58,6 +58,14 @@ export const CONFIG = {
 
 export const TOKEN = await mintToken(CONFIG, D, NOW);
 
+/** The header every device request names its app version in — what the v2 version gate reads. */
+export const VERSION_HEADER = "x-snapsync-app-version";
+/**
+ * Headers naming a version every `/api/v2` route serves, for a test whose subject is not the version gate
+ * (capability `app-update-required`).
+ */
+export const V2 = { [VERSION_HEADER]: "99.0" };
+
 /**
  * The `authorization` header of a request made AS `deviceId` — for a test acting for a device other than
  * {@link D}, since a token acts only for the device it was minted for (`actsFor` in `app.ts`). Passed in a

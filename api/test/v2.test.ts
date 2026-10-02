@@ -28,12 +28,12 @@ import {
   rows,
   store,
   storeWithEvent,
+  VERSION_HEADER,
   withFcm,
 } from "./support/harness.ts";
 
 // ── v2 fixtures ────────────────────────────────────────────────────────────────────────────────────
 
-const VERSION_HEADER = "x-snapsync-app-version";
 const CURRENT = "0.1"; // at the configured minimum
 
 /** A third member — an Android phone in the mixed-platform fan-out. */
