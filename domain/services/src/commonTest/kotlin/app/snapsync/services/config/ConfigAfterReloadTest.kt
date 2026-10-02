@@ -47,12 +47,12 @@ class ConfigAfterReloadTest {
 
     @Test
     fun `an unreadable read retains the last good value`() {
-        assertEquals(config, configAfterReload(ConfigRead.Unavailable(status = -1), current = config))
+        assertEquals(config, configAfterReload(ConfigRead.Unavailable("foreign"), current = config))
     }
 
     @Test
     fun `an unreadable read on an empty flow stays empty`() {
-        assertNull(configAfterReload(ConfigRead.Unavailable(status = 257), current = null))
+        assertNull(configAfterReload(ConfigRead.Unavailable("denied"), current = null))
     }
 
     // ---- the three-valued membership (decision record `harden-seam-bug-classes`, D11) ----
@@ -65,7 +65,7 @@ class ConfigAfterReloadTest {
 
     @Test
     fun `an unreadable read keeps the last conclusive membership and is unreadable only without one`() {
-        val unreadable = ConfigRead.Unavailable(status = -1)
+        val unreadable = ConfigRead.Unavailable("foreign")
         assertEquals(MembershipRead.Member(config), membershipAfterReload(unreadable, MembershipRead.Member(config)))
         assertEquals(MembershipRead.NotMember, membershipAfterReload(unreadable, MembershipRead.NotMember))
         assertEquals(MembershipRead.Unreadable, membershipAfterReload(unreadable, MembershipRead.Unreadable))

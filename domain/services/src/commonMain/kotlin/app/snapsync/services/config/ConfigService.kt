@@ -1,13 +1,11 @@
 package app.snapsync.services.config
 
-import app.snapsync.model.ConfigFileRead
 import app.snapsync.model.ConfigRead
 import app.snapsync.model.EventConfig
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
 import app.snapsync.model.MembershipRead
 import app.snapsync.model.encodeConfigFile
-import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.DeletesAt
 import app.snapsync.model.confirmedGone
 import app.snapsync.model.hasEnded
@@ -33,7 +31,7 @@ const val CONFIG_FILE_NAME: String = "eventconfig.json"
  * device reads definitively not joined and rejoins only by re-scanning the invite (capability `photo-sharing`).
  *
  * ⚠️ **"Not found" is solely load-bearing for the leave decision.** Only [FileResult.NotFound] reads as
- * [ConfigFileRead.Missing] — definitively not joined; every other answer ([FileResult.Denied], a locked device's
+ * [ConfigRead.None] — definitively not joined; every other answer ([FileResult.Denied], a locked device's
  * read; [FileResult.AreaUnavailable]; [FileResult.Failed]) is **unreadable**, and the caller defers. The
  * classification behind `NotFound` is the `Files` adapter's, pinned by the `Files` contract's "denied is never
  * not found" clause; widening it is a change to the leave decision.
@@ -98,9 +96,9 @@ class ConfigService(
 
     /** The three-state read (capability `join-event`): the pure `configReadViaFile` over this file, and nothing else. */
     fun read(): ConfigRead {
-        val read = configReadViaFile(readFile())
+        val read = configReadViaFile(files.read(FileArea.SHARED, CONFIG_FILE_NAME))
         if (read is ConfigRead.Unavailable) {
-            log.w { "config file unreadable (status=${read.status}) — NOT 'no config'; caller must defer" }
+            log.w { "config file unreadable (${read.detail}) — NOT 'no config'; caller must defer" }
         }
         return read
     }
@@ -131,17 +129,4 @@ class ConfigService(
 
     /** `null` for both *absent* and *unreadable* — acceptable for the UI-facing [config], never for the reconciler. */
     private fun ConfigRead.joinedOrNull(): EventConfig? = (this as? ConfigRead.Joined)?.config
-
-    private fun readFile(): ConfigFileRead = when (val read = files.read(FileArea.SHARED, CONFIG_FILE_NAME)) {
-        is FileResult.Ok -> read.value.decodeUtf8()?.let { ConfigFileRead.Content(it) }
-            ?: ConfigFileRead.Failed(status = 0, detail = "config file is not UTF-8")
-        FileResult.NotFound -> ConfigFileRead.Missing
-        // A missing area is a provisioning/entitlement failure, not evidence about membership: unreadable.
-        FileResult.AreaUnavailable -> ConfigFileRead.Failed(status = 0, detail = "the shared area is unavailable")
-        is FileResult.Denied -> ConfigFileRead.Failed(status = (read.code ?: 0L).toInt(), detail = read.detail)
-        is FileResult.Failed -> ConfigFileRead.Failed(status = (read.code ?: 0L).toInt(), detail = read.detail)
-    }
-
-    private fun ByteArray.decodeUtf8(): String? =
-        runCatchingCancellable { decodeToString(throwOnInvalidSequence = true) }.getOrNull()
 }

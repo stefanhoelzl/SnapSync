@@ -1,61 +1,54 @@
 package app.snapsync.services.config
 
 import app.snapsync.model.ConfigFileDecode
-import app.snapsync.model.ConfigFileRead
 import app.snapsync.model.ConfigRead
 import app.snapsync.model.EventConfig
+import app.snapsync.model.FileResult
 import app.snapsync.model.MembershipRead
 import app.snapsync.model.decodeConfigFile
+import app.snapsync.model.runCatchingCancellable
 
 /**
- * `ConfigRead.Unavailable.status` sentinel for a config file whose *content* this build cannot
- * positively interpret (`ConfigFileDecode.Foreign`: a future envelope version, or not an envelope).
- * Not an `OSStatus` and not a Cocoa error code — those surfaces report real platform codes; this
- * value marks the decode-side unreadable so a log line can tell the two apart.
- */
-const val CONFIG_FILE_FOREIGN_STATUS: Int = -1
-
-/**
- * `ConfigRead.Unavailable.status` sentinel for a **current-version** envelope whose payload does
- * not decode ([ConfigFileDecode.Unusable]). Unreadable, not a leave: unlike the retired Keychain
- * legacy item (whose undecodability was a known, deliberate re-join path), an unusable file this
- * adapter's own atomic writes should make unreachable is evidence of something unexplained —
- * and an unexplained state must defer, never read as a leave. Distinct from
- * [CONFIG_FILE_FOREIGN_STATUS] so a device log can tell the two apart.
- */
-const val CONFIG_FILE_UNUSABLE_STATUS: Int = -2
-
-/**
- * The file-backed config read, pure so every branch runs in `commonTest`
- * (capability `join-event`):
+ * The file-backed config read — one read of the config file in the shared area, as the `Files` port answered it —
+ * pure so every branch runs in `commonTest` (capability `join-event`):
  *
- * - [ConfigFileRead.Content] → decode via the versioned envelope (`decodeConfigFile`, `model/`):
- *   valid → [ConfigRead.Joined]; same-version-but-unusable → [ConfigRead.Unavailable] with
- *   [CONFIG_FILE_UNUSABLE_STATUS] (an unexplained state defers — see the sentinel's doc); foreign →
- *   [ConfigRead.Unavailable] with [CONFIG_FILE_FOREIGN_STATUS] (a future build's file must never
- *   read as a leave).
- * - [ConfigFileRead.Missing] → [ConfigRead.None], **definitively not joined**, consulting nothing.
- *   Until the Stage-2 change this branch consulted a read-only legacy-Keychain fallback, migrated
- *   any membership it found into the file, and re-checked it (compare-and-repair) — the whole
- *   installed base's update path under the migration's ship-at-once model. That population is
- *   gone: the fallback shipped in 11a, and both it and the finale are ancestors of `v0.1`, the
- *   first App Store release (decision record: `changes/archive/…-retire-legacy-config-fallback` D1).
- * - [ConfigFileRead.Failed] → [ConfigRead.Unavailable] with the platform's status: the file
- *   exists-or-unknowable, which is never evidence of a leave.
+ * - [FileResult.Ok] → decode via the versioned envelope (`decodeConfigFile`, `model/`): valid →
+ *   [ConfigRead.Joined]; same-version-but-unusable → [ConfigRead.Unavailable] (unlike the retired Keychain legacy
+ *   item, whose undecodability was a deliberate re-join path, an unusable file this app's own atomic writes should
+ *   make unreachable is evidence of something unexplained — and an unexplained state defers); foreign →
+ *   [ConfigRead.Unavailable] (a future build's file must never read as a leave); not UTF-8 → [ConfigRead.Unavailable].
+ * - [FileResult.NotFound] → [ConfigRead.None], **definitively not joined**, consulting nothing — the sole road to
+ *   "this device left the event". An App-Group container dies with the install, so this is also what makes a
+ *   reinstall a leave (capability `photo-sharing`). Until the Stage-2 change this branch consulted a read-only
+ *   legacy-Keychain fallback (decision record: `changes/archive/…-retire-legacy-config-fallback` D1); there is no
+ *   second opinion any more, so the `Files` adapter's not-found classification is solely load-bearing: widening it is
+ *   a change to the leave decision, not an error-handling detail.
+ * - every other answer ([FileResult.Denied] — a locked device's read —, [FileResult.AreaUnavailable], a missing
+ *   App-Group entitlement, and [FileResult.Failed]) → [ConfigRead.Unavailable]: the file exists-or-unknowable, which
+ *   is never evidence of a leave.
  *
- * It stays a `:domain` function rather than collapsing into the adapter (`join-event` requires the
- * read algorithm be pure and `commonTest`-covered on both targets): the one decision in the app
- * that can silently log a user out must not be testable on macOS only.
+ * Each [ConfigRead.Unavailable] carries a distinct detail, so a device log can tell the causes apart.
+ *
+ * It stays a `:domain` function rather than collapsing into the service's I/O (`join-event` requires the read
+ * algorithm be pure and `commonTest`-covered on both targets): the one decision in the app that can silently log a
+ * user out must not be testable on macOS only.
  */
-fun configReadViaFile(file: ConfigFileRead): ConfigRead = when (file) {
-    is ConfigFileRead.Content -> when (val decoded = decodeConfigFile(file.text)) {
-        is ConfigFileDecode.Valid -> ConfigRead.Joined(decoded.config)
-        ConfigFileDecode.Unusable -> ConfigRead.Unavailable(CONFIG_FILE_UNUSABLE_STATUS)
-        is ConfigFileDecode.Foreign -> ConfigRead.Unavailable(CONFIG_FILE_FOREIGN_STATUS)
-    }
-    ConfigFileRead.Missing -> ConfigRead.None
-    is ConfigFileRead.Failed -> ConfigRead.Unavailable(file.status)
+fun configReadViaFile(file: FileResult<ByteArray>): ConfigRead = when (file) {
+    is FileResult.Ok -> file.value.decodeUtf8()?.let(::configReadOf) ?: ConfigRead.Unavailable("config file is not UTF-8")
+    FileResult.NotFound -> ConfigRead.None
+    FileResult.AreaUnavailable -> ConfigRead.Unavailable("the shared area is unavailable")
+    is FileResult.Denied -> ConfigRead.Unavailable("denied (code=${file.code}): ${file.detail}")
+    is FileResult.Failed -> ConfigRead.Unavailable("failed (code=${file.code}): ${file.detail}")
 }
+
+private fun configReadOf(text: String): ConfigRead = when (val decoded = decodeConfigFile(text)) {
+    is ConfigFileDecode.Valid -> ConfigRead.Joined(decoded.config)
+    ConfigFileDecode.Unusable -> ConfigRead.Unavailable("config file is unusable: its payload does not decode")
+    is ConfigFileDecode.Foreign -> ConfigRead.Unavailable("config file is foreign: ${decoded.reason}")
+}
+
+private fun ByteArray.decodeUtf8(): String? =
+    runCatchingCancellable { decodeToString(throwOnInvalidSequence = true) }.getOrNull()
 
 /**
  * The next [ConfigService.config] value after a trigger-time re-read (migration step 12: every
