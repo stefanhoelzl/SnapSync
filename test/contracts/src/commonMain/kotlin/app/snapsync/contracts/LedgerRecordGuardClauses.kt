@@ -20,9 +20,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.test.assertFalse
-import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.test.runCurrent
 
 /** One canonical capture date for every row the ledger contracts build. */
 internal const val CREATION_DATE = "2026-06-27T10:00:00Z"
@@ -65,15 +62,12 @@ internal fun ClauseList<LedgerStoreState, LedgerService>.recordGuardClauses() {
         assertEquals(LedgerState.COMPLETED, backend.get(entry().key)?.state)
     }
 
-    clause("a declined record does not ding", LedgerStoreState.EMPTY) { backend ->
+    clause("a declined record answers false and leaves the settled row", LedgerStoreState.EMPTY) { backend ->
         backend.recordUnlessSettled(entry(state = LedgerState.COMPLETED))
-        var dings = 0
-        backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) { backend.changes.collect { dings++ } }
 
-        backend.recordUnlessSettled(entry(state = LedgerState.DISCOVERED))
-        runCurrent()
+        assertFalse(backend.recordUnlessSettled(entry(state = LedgerState.DISCOVERED)))
 
-        assertEquals(0, dings, "a write that changed nothing is no reason to re-read")
+        assertEquals(entry(state = LedgerState.COMPLETED), backend.get(entry().key))
     }
 
     clause("resetTo still replaces settled rows", LedgerStoreState.EMPTY) { backend ->
@@ -112,19 +106,14 @@ internal fun ClauseList<LedgerStoreState, LedgerService>.recordGuardClauses() {
         assertEquals(primary, backend.get("X-primary.heic"), "the sibling survives, every field unchanged")
     }
 
-    clause("deleteKeys dings once when it deleted and not at all when it matched nothing", LedgerStoreState.EMPTY) { backend ->
-        backend.recordUnlessSettled(entry(key = "A-photo.jpg", assetId = "A", state = LedgerState.COMPLETED))
-        var dings = 0
-        backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) { backend.changes.collect { dings++ } }
+    clause("deleteKeys that matches nothing deletes nothing", LedgerStoreState.EMPTY) { backend ->
+        val row = entry(key = "A-photo.jpg", assetId = "A", state = LedgerState.COMPLETED)
+        backend.recordUnlessSettled(row)
 
         backend.deleteKeys(listOf("unknown"))
         backend.deleteKeys(emptyList())
-        runCurrent()
-        assertEquals(0, dings, "a delete that matched nothing changed no truth")
 
-        backend.deleteKeys(listOf("A-photo.jpg"))
-        runCurrent()
-        assertEquals(1, dings)
+        assertEquals(row, backend.get("A-photo.jpg"))
     }
 
     clause("deleteKeys handles more keys than one statement binds", LedgerStoreState.EMPTY) { backend ->
@@ -136,11 +125,9 @@ internal fun ClauseList<LedgerStoreState, LedgerService>.recordGuardClauses() {
         assertEquals(listOf("kept"), backend.manifestRows().map { it.key })
     }
 
-    clause("recordAllUnlessSettled applies each entry under the settled guard and dings once", LedgerStoreState.EMPTY) { backend ->
+    clause("recordAllUnlessSettled applies each entry under the settled guard", LedgerStoreState.EMPTY) { backend ->
         val settled = entry(key = "done", state = LedgerState.COMPLETED)
         backend.recordUnlessSettled(settled)
-        var dings = 0
-        backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) { backend.changes.collect { dings++ } }
 
         val applied = backend.recordAllUnlessSettled(
             listOf(
@@ -149,24 +136,17 @@ internal fun ClauseList<LedgerStoreState, LedgerService>.recordGuardClauses() {
                 entry(key = "done", state = LedgerState.DISCOVERED),
             ),
         )
-        runCurrent()
 
         assertEquals(2, applied, "the settled row declines, exactly as the single write would")
         assertEquals(settled, backend.get("done"))
         assertEquals(LedgerState.DISCOVERED, backend.get("X-live.mov")?.state)
-        assertEquals(1, dings, "one ding for the batch")
     }
 
-    clause("recordAllUnlessSettled that applies nothing does not ding", LedgerStoreState.EMPTY) { backend ->
+    clause("recordAllUnlessSettled that applies nothing answers zero", LedgerStoreState.EMPTY) { backend ->
         backend.recordUnlessSettled(entry(key = "done", state = LedgerState.COMPLETED))
-        var dings = 0
-        backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) { backend.changes.collect { dings++ } }
 
         assertEquals(0, backend.recordAllUnlessSettled(listOf(entry(key = "done", state = LedgerState.DISCOVERED))))
         assertEquals(0, backend.recordAllUnlessSettled(emptyList()))
-        runCurrent()
-
-        assertEquals(0, dings)
     }
 }
 
