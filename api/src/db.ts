@@ -1003,6 +1003,16 @@ export async function deleteDevice(db: Db, deviceId: string): Promise<void> {
   await db.execute(`DELETE FROM devices WHERE device_id = ?`, [deviceId]);
 }
 
+/**
+ * Does this device hold a row? The sweep's guard before it removes a device's emptied byte directory: a
+ * device without one holds no token that can still verify (`collectableDevices` waits for the last to
+ * expire), so it must re-attest — creating the row — before it can upload into that directory again.
+ */
+export async function deviceExists(db: Db, deviceId: string): Promise<boolean> {
+  const { rows } = await db.execute(`SELECT 1 FROM devices WHERE device_id = ?`, [deviceId]);
+  return rows.length > 0;
+}
+
 /** One resource the backend holds for a device, in the terms v2 addresses resources by. */
 export type DeviceResourceRow = { assetId: string; role: string; filename: string };
 

@@ -381,11 +381,15 @@ runtime has no scheduler and a whole-store walk would exceed 50 subrequests / 30
   crash leaves an orphan byte that the next run collects. A device with no membership left loses its
   `devices` row **only after its last token has expired**. Deleting it earlier would push the device into
   a re-attestation loop every night.
-- **Storage it touches:** only `files/devices/`. Never `site/`, and never the legacy `events/` and
-  `devices/*.json` objects (kept as the database migration's rollback path).
+- **Directory step** (last): bunny keeps a directory after its last object is deleted, so a device's
+  emptied `files/devices/<id>/` is removed only if the device has **no `devices` row** (checked after
+  this run's device collection) **and** a fresh re-listing is empty. A directory `DELETE` is recursive.
+  The row is checked first and the directory re-listed right before the delete, because a device without
+  a row must re-attest before it can upload. A live device's empty directory is kept.
+- **Storage it touches:** only `files/devices/`. Never `site/`.
 - **Failure mode:** best-effort per object. A single failed delete is logged and counted. The run exits
   non-zero only on a systemic failure (auth, or storage cannot be listed at all). The summary (events,
-  devices, files deleted and kept, byte sizes, error count) goes to the job's Summary panel.
+  devices, files and dirs deleted and kept, byte sizes, error count) goes to the job's Summary panel.
 - ⚠️ The old guard that refused to sweep an empty store is gone. If the database stops describing this
   zone, the sweep would delete every byte in it.
 

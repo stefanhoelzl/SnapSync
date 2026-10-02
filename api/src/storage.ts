@@ -137,8 +137,8 @@ export async function putObject(
  * object is a directory all the data in it will be recursively deleted as well"
  * (<https://docs.bunny.net/api-reference/storage/manage-files/delete-file>). One call can therefore destroy
  * an arbitrary subtree, and this function cannot tell that from deleting one object. Pass a directory key
- * ONLY when its emptiness has already been established — no caller passes one today — and never a
- * truncated or computed prefix.
+ * ONLY when its emptiness has just been established — the sweep's directory step is the one caller, and
+ * it re-lists the directory immediately before — and never a truncated or computed prefix.
  */
 export async function deleteObject(
   fetchImpl: FetchLike,

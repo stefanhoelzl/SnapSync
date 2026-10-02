@@ -567,12 +567,9 @@ The generated snapshot is `api/schema.sql` (section "Database" below).
   50 subrequests / 30 s CPU) gives each event one `sweepVerdict` (`src/lifecycle.ts`): **drop** the row
   past its delete-by; **complete** an ever-joined event that is empty (no active member) or past its
   clock — memberships (and so `event_assets`) deleted, `closed_at`/`completed_at` stamped, the row
-  kept — then collects unreferenced bytes, and collects a `devices` row only once no token minted for it can still
-  verify. Its delete decision runs in an interactive transaction (primary), not an ordinary read.
+  kept — then collects unreferenced bytes, collects a `devices` row only once no token minted for it can still
+  verify, and removes the emptied `files/devices/<id>/` directory of a device with no row. Its delete decision runs in an interactive transaction (primary), not an ordinary read.
   Details are in `docs/deployment.md`.
-- **Legacy storage objects** (`events/<id>/metadata.json`, `events/<id>/devices/<id>.json[.left]`,
-  `devices/<id>.json`, `devices/<id>.attest.json`) may still exist. Nothing reads or writes them, and
-  the sweep ignores them.
 
 ### The request pipeline
 
