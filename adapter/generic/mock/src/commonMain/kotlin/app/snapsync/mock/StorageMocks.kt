@@ -73,15 +73,6 @@ class FileSystemOperator internal constructor(private val disk: FileSystemMock) 
     }
 
     fun isDenied(area: FileArea, path: String): Boolean = (area to path) in disk.denied
-
-    /**
-     * A temporary file the operating system leaves for a finished transfer, in the private area at [path]: answers the
-     * platform path the transfer's finish hands the app, which the app adopts from.
-     */
-    fun leaveTemporaryFile(path: String, bytes: ByteArray): String {
-        disk.private[path] = bytes
-        return (disk.port().locate(FileArea.PRIVATE, path) as FileResult.Ok).value
-    }
 }
 
 /**
