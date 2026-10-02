@@ -224,13 +224,6 @@ private fun transcribe(src: KtSource, body: Body, guardSlot: Boolean): List<Step
                 index++ // consume the `if` too
             }
 
-            // Single leading guard, region form: sole `<call>?.let { … }` statement.
-            leading && GUARDED.matches(text) -> {
-                val m = GUARDED.find(text)!!
-                if (index != stmts.size - 1) violation(src, stmt.start, "a guarded region that is not the body's sole statement", text)
-                steps += Guarded("only when ${m.groupValues[1]} resolves", transcribeFragment(src, stmt, m.groupValues[3]))
-            }
-
             AWAITED.matches(text) || ISOLATED.matches(text) -> {
                 // A `coroutineScope { … }` region is a BODY, not a fragment: it holds several
                 // statements (one per concurrent branch), so it is re-split and transcribed like any
@@ -238,18 +231,6 @@ private fun transcribe(src: KtSource, body: Body, guardSlot: Boolean): List<Step
                 val open = src.stripped.indexOf('{', stmt.start)
                 val close = skipBalanced(src.stripped, open, '{', '}') - 1
                 steps += Awaited(transcribe(src, Body(open + 1, close), guardSlot = false))
-            }
-
-            LAUNCH.matches(text) || CHILD.matches(text) -> {
-                val inner = (LAUNCH.find(text) ?: CHILD.find(text))!!.groupValues[1].trim()
-                steps += Launch(transcribeFragment(src, stmt, inner, guardSlot = true))
-            }
-
-            BEST_EFFORT.matches(text) -> {
-                val inner = BEST_EFFORT.find(text)!!.groupValues[1].trim()
-                val call = callStep(inner, bestEffort = true)
-                    ?: violation(src, stmt.start, "a best-effort wrap around a non-call", text)
-                steps += call
             }
 
             FAN_OUT.matches(text) -> {
@@ -260,8 +241,12 @@ private fun transcribe(src: KtSource, body: Body, guardSlot: Boolean): List<Step
             WHEN_SUBJECT.matches(text) -> steps += transcribeWhen(src, stmt)
 
             else -> {
-                val call = callStep(text) ?: violation(src, stmt.start, classify(text), text)
-                steps += call
+                // Single leading guard, region form: sole `<call>?.let { … }` statement.
+                if (leading && GUARDED.matches(text) && index != stmts.size - 1) {
+                    violation(src, stmt.start, "a guarded region that is not the body's sole statement", text)
+                }
+                steps += matchForm(src, stmt, text, if (leading) LEADING_BODY_FORMS else BODY_FORMS)
+                    ?: callStep(text) ?: violation(src, stmt.start, classify(text), text)
             }
         }
         index++
@@ -277,21 +262,44 @@ private fun isNullReturnGuard(stmt: String, name: String): Boolean {
         .and(inner.endsWith("return"))
 }
 
+/** The single-expression forms that compose a step around inner work; which of them a position admits is its own. */
+private enum class Form { GUARD, BEST_EFFORT, LAUNCH, CHILD }
+
+/** A body statement past the leading slot: no guard. */
+private val BODY_FORMS = setOf(Form.BEST_EFFORT, Form.LAUNCH, Form.CHILD)
+
+/** The leading statement of a body that has a guard slot. */
+private val LEADING_BODY_FORMS = BODY_FORMS + Form.GUARD
+
+/** A re-parsed fragment: a guarded region or a best-effort call. */
+private val FRAGMENT_FORMS = setOf(Form.GUARD, Form.BEST_EFFORT)
+
+/** A `when` branch: a launch. */
+private val BRANCH_FORMS = setOf(Form.LAUNCH)
+
+/**
+ * The ONE table of composed forms a body, a fragment and a `when` branch share: what [text] transcribes to as one of
+ * [forms], or `null` when it is none of them (the caller then reads it as a plain call).
+ */
+private fun matchForm(src: KtSource, stmt: Stmt, text: String, forms: Set<Form>): Step? {
+    if (Form.GUARD in forms) {
+        GUARDED.find(text)?.let { return Guarded("only when ${it.groupValues[1]} resolves", transcribeFragment(src, stmt, it.groupValues[3])) }
+    }
+    if (Form.BEST_EFFORT in forms) {
+        BEST_EFFORT.find(text)?.let {
+            return callStep(it.groupValues[1].trim(), bestEffort = true)
+                ?: violation(src, stmt.start, "a best-effort wrap around a non-call", text)
+        }
+    }
+    val launch = LAUNCH.find(text)?.takeIf { Form.LAUNCH in forms } ?: CHILD.find(text)?.takeIf { Form.CHILD in forms }
+    return launch?.let { Launch(transcribeFragment(src, stmt, it.groupValues[1].trim())) }
+}
+
 /** Transcribe a re-parsed fragment (a lambda/loop body captured by a statement-level regex). */
-private fun transcribeFragment(src: KtSource, stmt: Stmt, fragment: String, guardSlot: Boolean = false): List<Step> {
+private fun transcribeFragment(src: KtSource, stmt: Stmt, fragment: String): List<Step> {
     val trimmed = fragment.trim()
     // A fragment is a mini-body: try the composed forms first, then a plain call.
-    if (GUARDED.matches(trimmed)) {
-        val m = GUARDED.find(trimmed)!!
-        return listOf(Guarded("only when ${m.groupValues[1]} resolves", transcribeFragment(src, stmt, m.groupValues[3])))
-    }
-    if (BEST_EFFORT.matches(trimmed)) {
-        val inner = BEST_EFFORT.find(trimmed)!!.groupValues[1].trim()
-        val call = callStep(inner, bestEffort = true) ?: violation(src, stmt.start, "a best-effort wrap around a non-call", trimmed)
-        return listOf(call)
-    }
-    val call = callStep(trimmed) ?: violation(src, stmt.start, classify(trimmed), trimmed)
-    return listOf(call)
+    return listOf(matchForm(src, stmt, trimmed, FRAGMENT_FORMS) ?: callStep(trimmed) ?: violation(src, stmt.start, classify(trimmed), trimmed))
 }
 
 private fun transcribeWhen(src: KtSource, stmt: Stmt): Alt {
@@ -308,12 +316,12 @@ private fun transcribeWhen(src: KtSource, stmt: Stmt): Alt {
         val label = bm.groupValues[1]
         val end = if (bi + 1 < matches.size) matches[bi + 1].range.first else branchesText.length
         val branchBody = branchesText.substring(bm.range.last + 1, end).trim()
-        val steps = when {
-            branchBody == "Unit" -> emptyList()
-            LAUNCH.matches(branchBody) ->
-                listOf(Launch(transcribeFragment(src, stmt, LAUNCH.find(branchBody)!!.groupValues[1].trim(), guardSlot = true)))
-            else -> listOf(
-                callStep(branchBody) ?: violation(src, stmt.start, "a `when` branch that is not a single call/launch/Unit", branchBody),
+        val steps = if (branchBody == "Unit") {
+            emptyList()
+        } else {
+            listOf(
+                matchForm(src, stmt, branchBody, BRANCH_FORMS) ?: callStep(branchBody)
+                    ?: violation(src, stmt.start, "a `when` branch that is not a single call/launch/Unit", branchBody),
             )
         }
         branches += label to steps
