@@ -1,9 +1,6 @@
 package app.snapsync.model
 
-import co.touchlab.kermit.LogWriter
-import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
-import co.touchlab.kermit.StaticConfig
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -22,17 +19,10 @@ import kotlin.test.assertEquals
  */
 class LogAtTest {
 
-    private class Capturing : LogWriter() {
-        val lines: MutableList<Pair<Severity, String>> = mutableListOf()
-        override fun log(severity: Severity, message: String, tag: String, throwable: Throwable?) {
-            lines += severity to message
-        }
-    }
-
     @Test
     fun `each severity is emitted at its own level and no other`() {
-        val captured = Capturing()
-        val log = Logger(StaticConfig(minSeverity = Severity.Verbose, logWriterList = listOf(captured)), "test")
+        val captured = CapturingLogWriter()
+        val log = captured.logger()
 
         Severity.entries.forEach { severity -> log.logAt(severity) { "line-${severity.name}" } }
 

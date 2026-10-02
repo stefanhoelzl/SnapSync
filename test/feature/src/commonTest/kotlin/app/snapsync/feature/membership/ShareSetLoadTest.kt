@@ -1,5 +1,6 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.feature.support.CapturingLogWriter
 import app.snapsync.feature.support.TestLedger
 import app.snapsync.feature.support.testIdentity
 import app.snapsync.feature.support.unreadableIdentity
@@ -9,10 +10,7 @@ import app.snapsync.model.LedgerState
 import app.snapsync.services.backend.DeviceFilesSource
 import app.snapsync.services.backend.DeviceListingShapeException
 import app.snapsync.model.StoredResource
-import co.touchlab.kermit.LogWriter
-import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
-import co.touchlab.kermit.loggerConfigInit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -37,14 +35,6 @@ class ShareSetLoadTest {
     }
 
     /** Records what was logged, so a severity can be asserted rather than a message. */
-    private class Recorder : LogWriter() {
-        val severities = mutableListOf<Severity>()
-        override fun log(severity: Severity, message: String, tag: String, throwable: Throwable?) {
-            severities += severity
-        }
-        fun logger() = Logger(loggerConfigInit(this), "ShareSetLoadTest")
-    }
-
     private suspend fun ledgerHolding(vararg rows: LedgerEntry) =
         TestLedger().service.apply { resetTo(rows.toList()) }
 
@@ -103,10 +93,10 @@ class ShareSetLoadTest {
 
     @Test
     fun `a transport failure clears the ledger and warns`() = runTest {
-        val recorder = Recorder()
+        val recorder = CapturingLogWriter()
         val ledger = leftovers()
 
-        ShareSetLoad(FakeFiles(Result.failure(Exception("offline"))), ledger, testIdentity(deviceId), recorder.logger()).load()
+        ShareSetLoad(FakeFiles(Result.failure(Exception("offline"))), ledger, testIdentity(deviceId), recorder.logger("ShareSetLoadTest")).load()
 
         assertTrue(ledger.manifestRows().isEmpty())
         assertEquals(listOf(Severity.Warn), recorder.severities)
@@ -114,11 +104,11 @@ class ShareSetLoadTest {
 
     @Test
     fun `a listing this build cannot read clears the ledger and is an error`() = runTest {
-        val recorder = Recorder()
+        val recorder = CapturingLogWriter()
         val ledger = leftovers()
         val files = FakeFiles(Result.failure(DeviceListingShapeException("v1 shape")))
 
-        ShareSetLoad(files, ledger, testIdentity(deviceId), recorder.logger()).load()
+        ShareSetLoad(files, ledger, testIdentity(deviceId), recorder.logger("ShareSetLoadTest")).load()
 
         assertTrue(ledger.manifestRows().isEmpty())
         assertEquals(listOf(Severity.Error), recorder.severities)
@@ -126,13 +116,13 @@ class ShareSetLoadTest {
 
     @Test
     fun `a listing that never answers times out clears the ledger and warns`() = runTest {
-        val recorder = Recorder()
+        val recorder = CapturingLogWriter()
         val ledger = leftovers()
         val hanging = object : DeviceFilesSource {
             override suspend fun list(deviceId: String): Result<List<StoredResource>> = awaitCancellation()
         }
 
-        ShareSetLoad(hanging, ledger, testIdentity(deviceId), recorder.logger()).load()
+        ShareSetLoad(hanging, ledger, testIdentity(deviceId), recorder.logger("ShareSetLoadTest")).load()
 
         assertTrue(ledger.manifestRows().isEmpty())
         assertEquals(listOf(Severity.Warn), recorder.severities)

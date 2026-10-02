@@ -2,6 +2,7 @@ package app.snapsync.services.gallery
 
 
 
+import app.snapsync.services.CapturingLogWriter
 import app.snapsync.model.AssetId
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.Resource
@@ -12,10 +13,7 @@ import app.snapsync.model.selectionRulesFor
 import app.snapsync.ports.LibraryChangeToken
 import app.snapsync.ports.LibraryChangeTokenRead
 import app.snapsync.ports.PhotoGrantRead
-import co.touchlab.kermit.LogWriter
-import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
-import co.touchlab.kermit.loggerConfigInit
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -79,16 +77,8 @@ class WalkMemoTest {
         }
     }
 
-    private class Recorder : LogWriter() {
-        val lines = mutableListOf<Pair<Severity, String>>()
-        override fun log(severity: Severity, message: String, tag: String, throwable: Throwable?) {
-            lines += severity to message
-        }
-        fun logger() = Logger(loggerConfigInit(this), "WalkMemoTest")
-    }
-
-    private fun memo(library: Library, use: WalkMemoUse = WalkMemoUse.SERVE, log: Recorder = Recorder()) =
-        WalkMemo(library, library.tokens, library.grantRead, use, log.logger())
+    private fun memo(library: Library, use: WalkMemoUse = WalkMemoUse.SERVE, log: CapturingLogWriter = CapturingLogWriter()) =
+        WalkMemo(library, library.tokens, library.grantRead, use, log.logger("WalkMemoTest"))
 
     private fun ids(discovery: Discovery) = discovery.candidates.map { it.facts.assetId }
 
@@ -223,7 +213,7 @@ class WalkMemoTest {
     @Test
     fun `shadow never serves but says whether serving would have been right`() = runTest {
         val library = Library(listOf("A"))
-        val log = Recorder()
+        val log = CapturingLogWriter()
         val memo = memo(library, WalkMemoUse.SHADOW, log)
 
         memo.discover(policy("2026-01-01T00:00:00Z"))

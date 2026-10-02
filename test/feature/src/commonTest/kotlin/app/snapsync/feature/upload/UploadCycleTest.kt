@@ -2,6 +2,7 @@
 
 package app.snapsync.feature.upload
 
+import app.snapsync.feature.support.CapturingLogWriter
 import app.snapsync.feature.support.TestLedger
 import app.snapsync.model.AssetId
 import app.snapsync.model.UploadCreateOutcome
@@ -37,9 +38,7 @@ import app.snapsync.model.RESOURCE_META_MIME
 import app.snapsync.model.TerminalOutcome
 import app.snapsync.model.toLedgerRow
 import co.touchlab.kermit.Logger
-import co.touchlab.kermit.LogWriter
 import co.touchlab.kermit.Severity
-import co.touchlab.kermit.loggerConfigInit
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
 import kotlin.time.Duration.Companion.seconds
@@ -489,18 +488,14 @@ class UploadCycleTest {
      */
     @Test
     fun a_declined_cycle_reports_no_fault() = runTest {
-        val lines = mutableListOf<Pair<Severity, String>>()
-        val recorder = object : LogWriter() {
-            override fun log(severity: Severity, message: String, tag: String, throwable: Throwable?) {
-                lines += severity to message
-            }
-        }
+        val recorder = CapturingLogWriter()
+        val lines = recorder.lines
         val platform = FakePlatform(discovered = listOf(resource("a")))
 
         val result = cycle(
             TestLedger().service, platform,
             policy = SelectionPolicy(listOf(SelectionRule.DenyAll)),
-            log = Logger(loggerConfigInit(recorder), "UploadCycleTest"),
+            log = recorder.logger("UploadCycleTest"),
         ).run()
 
         assertEquals(CycleResult.SKIPPED, result)
