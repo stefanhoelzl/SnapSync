@@ -66,10 +66,10 @@ Instructions, the Android wording of `metadata/review/notes.md`:
 
 ## Content rating (IARC questionnaire)
 
-- **Category, as entered:** **All other app types** ("Alle anderen App-Typen"). The intended category was social and
-  communication (users share photos with the members of an event); see the ratings below.
+- **Category, as entered:** **All other app types** ("Alle anderen App-Typen").
 - **Ratings issued (2026-10-02):** USK 0 · PEGI 3 · ESRB Everyone · ClassInd L (0) · IARC Generic 3+ · Russia 3+ ·
-  South Korea 3+, with **no content descriptors and no interactive elements** listed.
+  South Korea 3+, with **no content descriptors and no interactive elements** listed. The questionnaire WAS answered
+  "users can share content": the issued rating shows no interactive element even so.
 - **Users interact or exchange content:** **Yes**, photos, within a private, invite-only event.
 - **Shares the user's current location with other users:** **No.** *(The operator's choice.)* The app shares no
   location of its own. A photo goes out as it was taken, so it carries the place in its metadata if the camera recorded
