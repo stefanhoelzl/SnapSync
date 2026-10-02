@@ -152,9 +152,8 @@ async function listDirectory(objectsRoot: string, key: string): Promise<Response
         ObjectName: entry.name,
         Length: entry.isDirectory ? 0 : stat.size,
         IsDirectory: entry.isDirectory,
-        // Load-bearing, not decoration: `LastChanged` is the last-write-wins tiebreak between a device's
-        // active and departed manifests (`resolveMembership`) and the sweep's upload-time floor. Both
-        // parse it with `Date.parse`, so an ISO instant is the right shape.
+        // Load-bearing, not decoration: `LastChanged` is the sweep's upload-time floor, which parses
+        // it with `Date.parse`, so an ISO instant is the right shape.
         LastChanged: (stat.mtime ?? new Date(0)).toISOString(),
       });
     }

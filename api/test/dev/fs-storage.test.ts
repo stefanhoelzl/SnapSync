@@ -1,7 +1,7 @@
 // Contract test for the dev filesystem storage shim (`src/dev/fs-storage.ts`).
 //
-// It drives the shim THROUGH `storage.ts` — the same `putObject`/`listDir`/`readObjectText`/`deleteObject`
-// the app and the sweep call — rather than through raw HTTP. That is the whole point: what needs pinning
+// It drives the shim THROUGH `storage.ts` — the same `putObject`/`listDir`/`deleteObject` the app, the
+// sweep and the site deploy call (plus a plain object GET, `readObjectText` below) — rather than through raw HTTP. That is the whole point: what needs pinning
 // is not the shim's surface but that the shim satisfies the expectations its only callers already encode
 // (a `404` meaning "absent", the `BunnyEntry` field set, a byte-exact filename round trip).
 //
@@ -15,14 +15,29 @@ import { storageConfig } from "../../src/config.ts";
 import {
   decodeObjectName,
   deleteObject,
+  type FetchLike,
   listDir,
   putObject,
-  readObjectText,
 } from "../../src/storage.ts";
 import { fsFetch } from "../../src/dev/fs-storage.ts";
 
 const CONFIG = storageConfig("dev-access-key");
 const D = "11111111-0000-4000-8000-000000000002"; // a deviceId
+
+/** GET an object's body text, `null` on a `404` (absent); any other non-OK status throws. */
+async function readObjectText(
+  fetchImpl: FetchLike,
+  config: typeof CONFIG,
+  key: string,
+): Promise<string | null> {
+  const res = await fetchImpl(`https://${config.host}/${config.zone}/${key}`, {
+    method: "GET",
+    headers: { AccessKey: config.accessKey },
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`GET returned ${res.status} for ${key}`);
+  return await res.text();
+}
 
 /** Run `body` against a shim rooted in a fresh temp directory, always cleaned up. */
 async function withStore(
