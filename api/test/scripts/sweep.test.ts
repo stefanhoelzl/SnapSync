@@ -54,55 +54,70 @@ function event(eventId: string, startsAt: string, overrides: Record<string, unkn
 }
 
 /**
- * In-memory bunny native-Storage fake, now covering only what still lives in storage: the photo BYTES
- * and the attestation records. GET a directory LIST of direct children with `LastChanged`; DELETE
- * (idempotent). Every DELETE is recorded in order, so a test can assert both what went and the SEQUENCE.
+ * In-memory bunny native-Storage fake, covering what lives in storage: the photo BYTES and the
+ * directories that hold them. GET a directory LIST of direct children with `LastChanged`; DELETE
+ * (idempotent). As on bunny, a directory OUTLIVES its last object, and a DELETE of a directory key (a
+ * trailing `/`) is RECURSIVE. Every DELETE is recorded in order, so a test can assert both what went and
+ * the SEQUENCE.
  */
 function fake(initial: Record<string, { lc?: string; len?: number }>) {
   const store = new Map<string, { lc: string; len: number }>();
-  for (const [k, v] of Object.entries(initial)) {
+  const dirs = new Set<string>();
+  const put = (k: string, v: { lc?: string; len?: number } = {}) => {
     store.set(k, { lc: v.lc ?? "2026-07-01T00:00:00.000Z", len: v.len ?? 1 });
-  }
+    for (let i = k.indexOf("/"); i !== -1; i = k.indexOf("/", i + 1)) dirs.add(k.slice(0, i + 1));
+  };
+  for (const [k, v] of Object.entries(initial)) put(k, v);
   const deletes: string[] = [];
+  const list = (key: string): Response => {
+    const children = new Map<string, { name: string; dir: boolean; lc: string; len: number }>();
+    let any = false;
+    for (const [k, v] of store) {
+      if (!k.startsWith(key)) continue;
+      any = true;
+      const rest = k.slice(key.length);
+      if (!rest.includes("/")) children.set(rest, { name: rest, dir: false, lc: v.lc, len: v.len });
+    }
+    for (const d of dirs) {
+      if (!d.startsWith(key)) continue;
+      any = true;
+      const rest = d.slice(key.length, -1);
+      if (rest !== "" && !rest.includes("/")) {
+        children.set(rest, { name: rest, dir: true, lc: "", len: 0 });
+      }
+    }
+    if (!any) return new Response("nf", { status: 404 });
+    const entries = [...children.values()].map((e) => ({
+      ObjectName: e.name,
+      IsDirectory: e.dir,
+      Length: e.len,
+      LastChanged: e.lc,
+    }));
+    return new Response(JSON.stringify(entries), { status: 200 });
+  };
+  const remove = (key: string): boolean => {
+    if (!key.endsWith("/")) return store.delete(key);
+    let found = false;
+    for (const k of [...store.keys()]) if (k.startsWith(key)) found = store.delete(k) || found;
+    for (const d of [...dirs]) if (d.startsWith(key)) found = dirs.delete(d) || found;
+    return found;
+  };
   const fetchImpl: FetchLike = (url, init) => {
     const key = url.split(`/${ZONE}/`)[1] ?? "";
     const method = init.method ?? "GET";
-    if (method === "GET" && key.endsWith("/")) {
-      const children = new Map<string, { name: string; dir: boolean; lc: string; len: number }>();
-      let any = false;
-      for (const [k, v] of store) {
-        if (!k.startsWith(key)) continue;
-        any = true;
-        const rest = k.slice(key.length);
-        const slash = rest.indexOf("/");
-        if (slash === -1) children.set(rest, { name: rest, dir: false, lc: v.lc, len: v.len });
-        else {
-          const d = rest.slice(0, slash);
-          if (!children.has(d)) children.set(d, { name: d, dir: true, lc: "", len: 0 });
-        }
-      }
-      if (!any) return Promise.resolve(new Response("nf", { status: 404 }));
-      const entries = [...children.values()].map((e) => ({
-        ObjectName: e.name,
-        IsDirectory: e.dir,
-        Length: e.len,
-        LastChanged: e.lc,
-      }));
-      return Promise.resolve(new Response(JSON.stringify(entries), { status: 200 }));
-    }
+    if (method === "GET" && key.endsWith("/")) return Promise.resolve(list(key));
     if (method === "GET") {
-      const v = store.get(key);
       return Promise.resolve(
-        v ? new Response("", { status: 200 }) : new Response("nf", { status: 404 }),
+        store.has(key) ? new Response("", { status: 200 }) : new Response("nf", { status: 404 }),
       );
     }
     if (method === "DELETE") {
       deletes.push(key);
-      return Promise.resolve(new Response(null, { status: store.delete(key) ? 200 : 404 }));
+      return Promise.resolve(new Response(null, { status: remove(key) ? 200 : 404 }));
     }
     return Promise.resolve(new Response(null, { status: 405 }));
   };
-  return { store, deletes, fetchImpl };
+  return { store, dirs, deletes, put, fetchImpl };
 }
 
 /** A migrated store. */
@@ -286,7 +301,8 @@ Deno.test("asset phase → a COMPLETED event's bytes are collected like a delete
   const { summary } = await run(d, store);
   assertEquals(summary.events.completed, 1);
   assertEquals(summary.files.deleted, { count: 1, bytes: 4 });
-  assertEquals(store.deletes, [`files/devices/${D}/a.heic`]);
+  // The byte, then the directory it emptied (the device holds no row).
+  assertEquals(store.deletes, [`files/devices/${D}/a.heic`, `files/devices/${D}/`]);
   d.close();
 });
 
@@ -572,6 +588,126 @@ Deno.test("site/ prefix is never touched by the sweep", async () => {
   d.close();
 });
 
+// ── DIRECTORY STEP ─────────────────────────────────────────────────────────────────────────────────
+
+/** An EMPTY device directory, as bunny leaves one behind once its last object was deleted. */
+function emptyDir(store: ReturnType<typeof fake>, deviceId: string) {
+  store.dirs.add("files/");
+  store.dirs.add("files/devices/");
+  store.dirs.add(`files/devices/${deviceId}/`);
+}
+
+Deno.test("dirs → an empty directory of a device with no row is removed", async () => {
+  const d = await db();
+  const store = fake({});
+  emptyDir(store, ORPHAN);
+  const { summary } = await run(d, store);
+  assertEquals(summary.dirs, { deleted: 1, kept: 0 });
+  assertEquals(store.deletes, [`files/devices/${ORPHAN}/`]);
+  assert(!store.dirs.has(`files/devices/${ORPHAN}/`));
+  d.close();
+});
+
+Deno.test("dirs → a LIVE device's empty directory is kept: a PUT may land in it any moment", async () => {
+  const d = await db();
+  await enrolDevice(d, D, LIVE_TOKEN);
+  const store = fake({});
+  emptyDir(store, D);
+  const { summary } = await run(d, store);
+  assertEquals(summary.dirs, { deleted: 0, kept: 1 });
+  assertEquals(store.deletes, []);
+  d.close();
+});
+
+Deno.test("dirs → a directory THIS run emptied, of a device it collected, is removed in the same run", async () => {
+  const d = await db();
+  await enrolDevice(d, ORPHAN, DEAD_TOKEN);
+  const store = fake({ [`files/devices/${ORPHAN}/a.heic`]: { lc: "2026-06-01T00:00:00.000Z" } });
+  const { summary } = await run(d, store);
+  assertEquals(summary.devices.deleted, 1);
+  assertEquals(summary.dirs, { deleted: 1, kept: 0 });
+  assertEquals(store.deletes, [`files/devices/${ORPHAN}/a.heic`, `files/devices/${ORPHAN}/`]);
+  d.close();
+});
+
+Deno.test("dirs → a directory still holding bytes is kept, even for a device with no row", async () => {
+  // A referenced byte of a device whose row is gone (its membership survives): the recursive delete
+  // must never take it.
+  const d = await db();
+  const E = "cccccccc-0000-4000-8000-000000000003";
+  await insertEvent(d, event(E, LIVE_STARTS));
+  await member(d, E, D, [`files/devices/${D}/a.heic`]);
+  const store = fake({ [`files/devices/${D}/a.heic`]: { lc: "2026-06-01T00:00:00.000Z" } });
+  const { summary } = await run(d, store);
+  assertEquals(summary.dirs, { deleted: 0, kept: 1 });
+  assert(store.store.has(`files/devices/${D}/a.heic`));
+  assertEquals(store.deletes, []);
+  d.close();
+});
+
+Deno.test("dirs → a byte that lands after the walk is seen by the re-list, and the directory is kept", async () => {
+  // The race the guard exists for: the walk saw the directory empty, but an upload arrived before the
+  // directory step. Its decision rests on a FRESH listing, never on the walk's.
+  const d = await db();
+  const store = fake({});
+  emptyDir(store, ORPHAN);
+  let lists = 0;
+  await runSweep({
+    fetch: (url, init) => {
+      if ((init.method ?? "GET") === "GET" && url.endsWith(`/files/devices/${ORPHAN}/`)) {
+        if (++lists === 2) store.put(`files/devices/${ORPHAN}/late.heic`);
+      }
+      return store.fetchImpl(url, init);
+    },
+    config: CONFIG,
+    db: d,
+    now: () => NOW,
+    dryRun: false,
+    log: () => {},
+  }).then((summary) => assertEquals(summary.dirs, { deleted: 0, kept: 1 }));
+  assertEquals(lists, 2);
+  assert(store.store.has(`files/devices/${ORPHAN}/late.heic`));
+  assertEquals(store.deletes, []);
+  d.close();
+});
+
+Deno.test("dirs → dry-run counts the directories a real run would remove and deletes nothing", async () => {
+  const d = await db();
+  await enrolDevice(d, ORPHAN, DEAD_TOKEN); // collected by this run
+  await enrolDevice(d, D2, LIVE_TOKEN); // live: kept
+  const store = fake({ [`files/devices/${ORPHAN}/a.heic`]: { lc: "2026-06-01T00:00:00.000Z" } });
+  emptyDir(store, D); // no row at all
+  emptyDir(store, D2);
+  const { summary } = await run(d, store, true);
+  assertEquals(summary.dirs, { deleted: 2, kept: 1 });
+  assertEquals(store.deletes, []);
+  assert(store.dirs.has(`files/devices/${D}/`));
+  d.close();
+});
+
+Deno.test("dirs → a failed directory delete is counted as an error and the run continues", async () => {
+  const d = await db();
+  const store = fake({});
+  emptyDir(store, D);
+  emptyDir(store, ORPHAN);
+  const summary = await runSweep({
+    fetch: (url, init) =>
+      (init.method ?? "GET") === "DELETE" && url.endsWith(`/files/devices/${D}/`)
+        ? Promise.resolve(new Response("boom", { status: 500 }))
+        : store.fetchImpl(url, init),
+    config: CONFIG,
+    db: d,
+    now: () => NOW,
+    dryRun: false,
+    log: () => {},
+  });
+  assertEquals(summary.errors, 1);
+  assertEquals(summary.dirs, { deleted: 1, kept: 1 });
+  assert(store.dirs.has(`files/devices/${D}/`));
+  assert(!store.dirs.has(`files/devices/${ORPHAN}/`));
+  d.close();
+});
+
 Deno.test("humanBytes → renders IEC-ish sizes; < 1024 stays bytes", () => {
   assertEquals(humanBytes(0), "0 B");
   assertEquals(humanBytes(512), "512 B");
@@ -586,6 +722,7 @@ Deno.test("formatSummary → one line per tier, files show count and reclaimed s
     events: { deleted: 40, completed: 5, kept: 1 },
     devices: { deleted: 20, kept: 2 },
     files: { deleted: { count: 107, bytes: 12_900_000 }, kept: { count: 10, bytes: 3_100_000 } },
+    dirs: { deleted: 15, kept: 7 },
     errors: 0,
     dryRun: true,
   };
@@ -594,6 +731,7 @@ Deno.test("formatSummary → one line per tier, files show count and reclaimed s
   assertStringIncludes(out, "events    40 deleted   5 completed   1 kept");
   assertStringIncludes(out, "devices   20 deleted   2 kept");
   assertStringIncludes(out, "files     107 (12.3 MB) deleted   10 (3.0 MB) kept");
+  assertStringIncludes(out, "dirs      15 deleted   7 kept");
   assertStringIncludes(out, "errors    0");
   // A real (non-dry) run drops the suffix.
   assertStringIncludes(formatSummary({ ...s, dryRun: false }), "sweep summary:");
@@ -604,6 +742,7 @@ Deno.test("markdownSummary → a GFM table with a row per tier and an errors lin
     events: { deleted: 40, completed: 5, kept: 1 },
     devices: { deleted: 20, kept: 2 },
     files: { deleted: { count: 107, bytes: 12_900_000 }, kept: { count: 10, bytes: 3_100_000 } },
+    dirs: { deleted: 15, kept: 7 },
     errors: 3,
     dryRun: false,
   };
@@ -613,6 +752,7 @@ Deno.test("markdownSummary → a GFM table with a row per tier and an errors lin
   assertStringIncludes(md, "| events | 40 | 5 | 1 |");
   assertStringIncludes(md, "| devices | 20 | — | 2 |");
   assertStringIncludes(md, "| files | 107 (12.3 MB) | — | 10 (3.0 MB) |");
+  assertStringIncludes(md, "| dirs | 15 | — | 7 |");
   assertStringIncludes(md, "**errors:** 3");
   // Dry-run is flagged in the heading.
   assertStringIncludes(markdownSummary({ ...s, dryRun: true }), "(dry-run — nothing deleted)");

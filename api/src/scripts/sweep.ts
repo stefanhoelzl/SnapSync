@@ -36,6 +36,14 @@
 //     device record and its attestation object. No wall-clock age fudge: a live upload is always ≥ its
 //     event's start ≥ the floor.
 //
+//   DIRECTORY step — bunny keeps a directory after its last object goes, so the asset phase leaves an
+//     empty `files/devices/<id>/` behind for every device it empties. Last of all, a device's directory
+//     is removed iff the device holds NO ROW (after this run's device collection) AND a fresh listing is
+//     empty. ⚠️ A directory DELETE is RECURSIVE, so the guard is ordered against an upload landing in
+//     between: a device without a row has no token that can still verify, so it must re-attest (creating
+//     the row), then upload — the row is checked first, then the directory is re-listed, and only an
+//     empty listing is deleted. A live device's empty directory is kept: a PUT may land in it any moment.
+//
 // ⚠️ THERE IS NO LONGER A REFUSAL TO SWEEP AN EMPTY STORE. A guard used to throw when the database held
 // no rows at all while storage held device partitions — the signature of a store whose cutover backfill
 // had not run, and of one this sweep would then read as "nothing is referenced" and empty entirely. It was
@@ -43,10 +51,9 @@
 // wrong-but-populated-store one, and the state it was written for is past. Nothing now stands between a
 // store that does not describe this zone and the deletion of every byte in it.
 //
-// WHAT THIS SWEEP NO LONGER DOES, deliberately: it does not touch the legacy `events/` markers and
-// manifests, or the legacy `devices/<id>.json` configs, that the object-store era wrote. Those objects
-// are the ROLLBACK PATH for this change (design.md D13) — nothing reads them, nothing adds to them, and
-// reclaiming them is a later change's job, not a silent side effect of this one.
+// The sweep touches `files/devices/` and nothing else in the zone. The object-store era's legacy
+// `events/` and `devices/<id>.json` objects have since been reclaimed by hand; nothing reads or writes
+// that layout.
 
 import { readSweepConfig } from "../config.ts";
 import { libsqlDb } from "../db-libsql.ts";
@@ -60,6 +67,7 @@ import {
   deleteDevice,
   deleteEvent,
   deleteResource,
+  deviceExists,
   eventsWithCounts,
   referencedKeys,
 } from "../db.ts";
@@ -73,8 +81,9 @@ export type Tally = { count: number; bytes: number };
  * What one sweep run did — rendered by {@link formatSummary} into the GitHub Actions job log. Three
  * entity tiers, each split deleted/kept: EVENTS (markers + their manifests), DEVICES (a device's global
  * config + attestation records — one device may own two objects, so this counts DEVICES, not records),
- * and FILES (the stored resource byte objects). Files carry both a `count` and a real `bytes` total so
- * the log shows how much storage was actually reclaimed, not just how many objects.
+ * FILES (the stored resource byte objects), and DIRS (the `files/devices/<id>/` directories). Files carry
+ * both a `count` and a real `bytes` total so the log shows how much storage was actually reclaimed, not
+ * just how many objects.
  *
  * The devices tier counts DEVICE ROWS. It used to note "a device counted once regardless of how many of
  * its global config/attestation records exist"; a device now has exactly one record, so there is nothing
@@ -84,6 +93,7 @@ export type SweepSummary = {
   events: { deleted: number; completed: number; kept: number };
   devices: { deleted: number; kept: number };
   files: { deleted: Tally; kept: Tally };
+  dirs: { deleted: number; kept: number };
   errors: number;
   dryRun: boolean;
 };
@@ -109,8 +119,8 @@ function ms(s: string | undefined): number {
 }
 
 /**
- * Run the two-phase sweep. THROWS only on a SYSTEMIC failure (cannot list the top-level `events/` or
- * `files/devices/` directories — an auth failure surfaces here). Per-event and per-object failures are
+ * Run the two-phase sweep and its directory step. THROWS only on a SYSTEMIC failure (cannot list the
+ * top-level `files/devices/` directory — an auth failure surfaces here). Per-event and per-object failures are
  * caught, counted in `summary.errors`, and never abort the run (deletes are idempotent).
  */
 export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
@@ -120,6 +130,7 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
     events: { deleted: 0, completed: 0, kept: 0 },
     devices: { deleted: 0, kept: 0 },
     files: { deleted: { count: 0, bytes: 0 }, kept: { count: 0, bytes: 0 } },
+    dirs: { deleted: 0, kept: 0 },
     errors: 0,
     dryRun,
   };
@@ -180,6 +191,9 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
   // Walk every device's byte partition and collect the unreferenced, below-floor bytes.
   const deviceDirEntries = await listDir(f, config, `files/devices/`);
   const deviceIds = deviceDirEntries.filter((e) => e.IsDirectory).map((e) => e.ObjectName);
+  // The devices whose directory this run leaves holding bytes, or could not finish walking — neither is
+  // a candidate for the directory step.
+  const occupied = new Set<string>();
 
   for (const deviceId of deviceIds) {
     // A device with no active surviving membership has floor `+∞`: nothing of its is above the floor.
@@ -191,6 +205,7 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
         // a percent-encoded filename must still match.
         const key = decodeObjectName(e.ObjectName);
         if (referenced.has(`${deviceId}/${key}`)) {
+          occupied.add(deviceId);
           summary.files.kept.count++;
           summary.files.kept.bytes += e.Length;
           continue;
@@ -198,6 +213,7 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
         const uploadedMs = ms(e.LastChanged);
         // Retain when the upload time is unparseable (fail safe) or at/after the floor (a live upload).
         if (Number.isNaN(uploadedMs) || uploadedMs >= floorMs) {
+          occupied.add(deviceId);
           summary.files.kept.count++;
           summary.files.kept.bytes += e.Length;
           continue;
@@ -217,6 +233,7 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
         summary.files.deleted.bytes += e.Length;
       }
     } catch (e) {
+      occupied.add(deviceId);
       summary.errors++;
       log(`device ${deviceId} byte collection failed (continuing): ${e}`);
     }
@@ -231,7 +248,8 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
   // attestation OBJECT needed collecting even though they held no row; the object is a column now, so
   // there is nothing left for a roster to find.
   const totalDevices = await countDevices(db);
-  for (const deviceId of await collectableDevices(db, new Date(now()).toISOString(), staleIds)) {
+  const collectable = await collectableDevices(db, new Date(now()).toISOString(), staleIds);
+  for (const deviceId of collectable) {
     try {
       if (dryRun) {
         log(`[dry-run] would collect the device record for ${deviceId}`);
@@ -247,7 +265,62 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
   }
   summary.devices.kept = totalDevices - summary.devices.deleted;
 
+  // ── DIRECTORY STEP ──────────────────────────────────────────────────────────────────────────────
+  // Last, so it sees this run's device collection.
+  await removeEmptiedDirs(deps, deviceIds, occupied, new Set(collectable), summary);
+
   return summary;
+}
+
+/**
+ * The directory step (see the header for why the order of its three checks is what makes a RECURSIVE
+ * delete safe): remove each device directory not in `occupied` whose device holds no row and whose
+ * fresh listing is empty. A dry run deletes nothing and counts what a real run would remove.
+ */
+async function removeEmptiedDirs(
+  deps: SweepDeps,
+  deviceIds: readonly string[],
+  occupied: ReadonlySet<string>,
+  collected: ReadonlySet<string>,
+  summary: SweepSummary,
+): Promise<void> {
+  const { fetch: f, config, db, dryRun } = deps;
+  const log = deps.log ?? console.log;
+  for (const deviceId of deviceIds) {
+    if (occupied.has(deviceId)) {
+      summary.dirs.kept++;
+      continue;
+    }
+    try {
+      if (dryRun) {
+        // Nothing was deleted, so neither a re-list nor the row check would see what a real run would:
+        // a row this run's device collection would drop counts as gone, and the walk has already
+        // established that every byte here was a candidate.
+        if (collected.has(deviceId) || !(await deviceExists(db, deviceId))) {
+          log(`[dry-run] would remove dir ${deviceDir(deviceId)}`);
+          summary.dirs.deleted++;
+        } else {
+          summary.dirs.kept++;
+        }
+        continue;
+      }
+      if (await deviceExists(db, deviceId)) {
+        summary.dirs.kept++;
+        continue;
+      }
+      // The listing that decides, taken AFTER the row check — never the one the asset walk used.
+      if ((await listDir(f, config, deviceDir(deviceId))).length > 0) {
+        summary.dirs.kept++;
+        continue;
+      }
+      await deleteObject(f, config, deviceDir(deviceId));
+      summary.dirs.deleted++;
+    } catch (err) {
+      summary.dirs.kept++;
+      summary.errors++;
+      log(`device ${deviceId} dir removal failed (continuing): ${err}`);
+    }
+  }
 }
 
 /** Render a byte count as a human-readable size (`1.2 MB`); IEC-style, `< 1024` stays `N B`. */
@@ -265,7 +338,8 @@ export function humanBytes(n: number): string {
 
 /**
  * Render a {@link SweepSummary} as an aligned, human-readable block for the job log — events, devices,
- * and files each on one line, deleted vs kept, with files showing both object count and reclaimed size.
+ * files and dirs each on one line, deleted vs kept, with files showing both object count and reclaimed
+ * size.
  */
 export function formatSummary(s: SweepSummary): string {
   const file = (t: Tally) => `${t.count} (${humanBytes(t.bytes)})`;
@@ -274,6 +348,7 @@ export function formatSummary(s: SweepSummary): string {
     `  events    ${s.events.deleted} deleted   ${s.events.completed} completed   ${s.events.kept} kept`,
     `  devices   ${s.devices.deleted} deleted   ${s.devices.kept} kept`,
     `  files     ${file(s.files.deleted)} deleted   ${file(s.files.kept)} kept`,
+    `  dirs      ${s.dirs.deleted} deleted   ${s.dirs.kept} kept`,
     `  errors    ${s.errors}`,
   ].join("\n");
 }
@@ -293,6 +368,7 @@ export function markdownSummary(s: SweepSummary): string {
     `| events | ${s.events.deleted} | ${s.events.completed} | ${s.events.kept} |`,
     `| devices | ${s.devices.deleted} | — | ${s.devices.kept} |`,
     `| files | ${file(s.files.deleted)} | — | ${file(s.files.kept)} |`,
+    `| dirs | ${s.dirs.deleted} | — | ${s.dirs.kept} |`,
     ``,
     `**errors:** ${s.errors}`,
     ``,
