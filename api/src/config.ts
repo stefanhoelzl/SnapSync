@@ -235,6 +235,39 @@ function publicFields(
     // Not a deployment fact: every bunny deployment presigns over TLS. Only the filesystem dev rig
     // overrides it, and it does so by building its own Config (`src/dev/config.ts`).
     s3Scheme: "https",
+    ...deploymentFields(d),
+    maintenance: d.maintenance,
+  };
+}
+
+/**
+ * Every field the deployment states for ANY storage kind — the Apple and Android identities, the event limits,
+ * the link domain — plus the shipped minimum app version. Shared by every Config builder, the dev rig's included,
+ * so the rig cannot derive one of them differently from the deployed backend.
+ */
+export function deploymentFields(
+  d: ResolvedDeployment,
+): Pick<
+  Config,
+  | "apnsKeyId"
+  | "apnsTeamId"
+  | "apnsTopic"
+  | "fcmProjectId"
+  | "attestAppId"
+  | "appAttestRootCa"
+  | "androidPackageName"
+  | "androidSigningCertDigests"
+  | "androidAttestationRoots"
+  | "androidAttestationTrust"
+  | "attestTokenTtlSeconds"
+  | "linkDomain"
+  | "appStoreUrl"
+  | "eventCapacity"
+  | "eventWindowMaxSeconds"
+  | "eventLifetimeSeconds"
+  | "minAppVersion"
+> {
+  return {
     apnsKeyId: d.apnsKeyId,
     apnsTeamId: d.teamId,
     // The push topic IS the bundle id, and the attest app id is `<team>.<bundle>` — derive both so they
@@ -250,13 +283,15 @@ function publicFields(
     eventCapacity: d.eventCapacity,
     eventWindowMaxSeconds: d.eventWindowMaxSeconds,
     eventLifetimeSeconds: d.eventLifetimeSeconds,
-    maintenance: d.maintenance,
+    // The local rig serves the same gate as production, so it takes the SHIPPED minimum rather than a
+    // permissive local value: a rig that admitted builds production refuses would hide exactly the failure
+    // the gate exists to surface, and only on device.
     minAppVersion: MIN_APP_VERSION,
   };
 }
 
-/** The Android attestation fields, shared by every Config builder (the dev rig's included). */
-export function androidFields(
+/** The Android attestation fields of {@link deploymentFields}. */
+function androidFields(
   d: ResolvedDeployment,
 ): Pick<
   Config,
