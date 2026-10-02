@@ -123,11 +123,6 @@ export function devConfig(publicHost: string, s3Scheme: string): Config {
   };
 }
 
-/** The directory the shim reads and writes, as the resolved deployment declares it. */
-export function devStoreRoot(fallback: string): string {
-  return isFilesystemDeployment(DEPLOYMENT) ? DEPLOYMENT.storage.root : fallback;
-}
-
 /**
  * The FCM service-account key the developer ran the rig with, or `""`. Read only where the run was granted that one
  * variable (`deno task dev:local` / `dev:tunnel` are); any other launcher of the rig simply sends no FCM push.

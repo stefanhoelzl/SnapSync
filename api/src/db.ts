@@ -299,6 +299,12 @@ export type ManifestAssetEntry = {
  * one version carry one snapshot, so re-applying it is harmless. A publish with NO version (a v2 build that
  * predates it) clears the stored version and is ungated: today's behaviour, and the next versioned publish
  * always wins. `legacy` never touches the column — v1 is frozen.
+ *
+ * ONE STATEMENT PER ASSET AND PER RESOURCE, never one multi-row insert. The deployed store refuses a
+ * statement past 32 766 bound parameters — measured: 32 766 accepted, 40 000 refused with "too many SQL
+ * variables" (`PROBE-FINDINGS.md` §4.3). The obvious optimization, batching the inserts into one
+ * multi-row statement, walks straight into it, and the failure would appear only for a device with a
+ * large library.
  */
 export function publishStatements(
   eventId: string,
@@ -450,17 +456,6 @@ export async function memberCounts(
   );
   return { active: Number(rows[0].active), final: Number(rows[0].final) };
 }
-
-/**
- * The largest number of bound parameters one statement may carry on the deployed store — measured:
- * 32 766 accepted, 40 000 refused with "too many SQL variables" (`PROBE-FINDINGS.md` §4.3).
- *
- * `publishStatements` emits one statement per asset and per resource rather than one multi-row insert,
- * so no single statement approaches this. It is stated here because the obvious optimization — batching
- * the inserts into one multi-row statement — walks straight into it, and the resulting failure would
- * appear only for a device with a large library.
- */
-export const MAX_BOUND_PARAMETERS = 32766;
 
 // ── The byte route's record ───────────────────────────────────────────────────────────────────────
 
