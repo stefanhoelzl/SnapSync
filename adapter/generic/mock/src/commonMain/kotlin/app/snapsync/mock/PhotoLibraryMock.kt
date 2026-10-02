@@ -174,25 +174,23 @@ class PhotoLibraryOperator internal constructor(private val state: LibraryState)
     /** The album folder [assetId] lives in under [AlbumKind.FOLDER], or `null` — the camera folder. */
     fun folderOf(assetId: AssetId): String? = state.folderOf[assetId]
 
-    /** Every add waits until [releaseAdds]. */
-    fun holdAdds() {
-        state.addsHeld = CompletableDeferred()
-    }
+    /** Every add waits until [releaseAdds]. Holding again while held changes nothing. */
+    fun holdAdds() = state.adds.hold()
 
-    fun releaseAdds() {
-        state.addsHeld?.complete(Unit)
-        state.addsHeld = null
-    }
+    fun releaseAdds() = state.adds.release()
 
-    /** Every walk waits until [releaseEnumeration] — a library that has not been enumerated yet. */
-    fun holdEnumeration() {
-        state.enumerationHeld = CompletableDeferred()
-    }
+    /**
+     * Every walk waits until [releaseEnumeration] — a library that has not been enumerated yet. Holding again while
+     * held changes nothing.
+     */
+    fun holdEnumeration() = state.enumeration.hold()
 
     /** Whether walks are held. */
-    val enumerationHeld: Boolean get() = state.enumerationHeld != null
+    val enumerationHeld: Boolean get() = state.enumeration.held
 
     /** A held walk, and every later one, reads. */
+    fun releaseEnumeration() = state.enumeration.release()
+
     // ---- the platform -----------------------------------------------------------------------------
 
     /**
@@ -200,11 +198,6 @@ class PhotoLibraryOperator internal constructor(private val state: LibraryState)
      * [AlbumKind.FOLDER]. Set before composing to play an Android library.
      */
     var albumKind: AlbumKind by state::albumKind
-
-    fun releaseEnumeration() {
-        state.enumerationHeld?.complete(Unit)
-        state.enumerationHeld = null
-    }
 }
 
 /** The photo library's durable state: everything the device keeps, and the one process currently registered with it. */
@@ -234,8 +227,8 @@ internal class LibraryState(
     val createdLog = mutableListOf<Pair<String, String>>()
     val addedLog = mutableListOf<Pair<String, List<AssetId>>>()
     val deletedAlbums = mutableSetOf<String>()
-    var addsHeld: CompletableDeferred<Unit>? = null
-    var enumerationHeld: CompletableDeferred<Unit>? = null
+    val adds = OperatorHold()
+    val enumeration = OperatorHold()
     var failNextEnumeration = false
     var byIdReadable = true
     var albumKind = AlbumKind.COLLECTION
@@ -295,6 +288,8 @@ class ImportScript internal constructor() {
     private val attempts = mutableMapOf<AssetRef, Int>()
 
     private suspend fun park(ref: AssetRef): String? {
+        // A second park would overwrite the first's gate and strand that import: refuse it, loudly.
+        check(parked == null) { "an import is already suspended; resume it before suspending ${ref.sourceAssetId}" }
         val gate = CompletableDeferred<Boolean>()
         parked = gate
         if (suspendedImport.isCompleted) suspendedImport = CompletableDeferred()
