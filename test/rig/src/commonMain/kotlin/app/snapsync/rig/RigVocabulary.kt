@@ -70,7 +70,6 @@ object RigVocabulary {
         "device/album/hold-adds",
         "device/album/kind",
         "device/album/delete",
-        "device/album/rename",
         "device/invite-link-hints",
         "device/foreign-device",
         // The integration surface's observable reads of the world's simulated systems (capability
