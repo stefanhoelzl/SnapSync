@@ -1,9 +1,5 @@
 package app.snapsync.feature.creation.readmodel
 
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-
 /**
  * The create-event lifecycle, kept as its own tiny seam (the join-status twin) so the presentation
  * reduction folds it in without depending on the create orchestration (which pulls ktor). It has
@@ -39,19 +35,4 @@ enum class CreationFailureReason {
 
     /** A transient/server failure (non-2xx other than 400, transport, or parse). */
     SERVER,
-}
-
-/** Read face of the create status — what the presentation reduction consumes. */
-interface CreationStatusSource {
-    val creationStatus: StateFlow<CreationStatus>
-}
-
-/** Settable [CreationStatusSource] the create use-case drives and tests set. */
-class MutableCreationStatusSource(initial: CreationStatus = CreationStatus.Idle) : CreationStatusSource {
-    private val _status = MutableStateFlow(initial)
-    override val creationStatus: StateFlow<CreationStatus> = _status.asStateFlow()
-
-    fun set(value: CreationStatus) {
-        _status.value = value
-    }
 }

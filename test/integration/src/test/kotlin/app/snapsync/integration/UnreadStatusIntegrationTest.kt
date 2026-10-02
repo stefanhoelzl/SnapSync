@@ -27,7 +27,7 @@ import kotlin.test.assertIs
  *
  * Not ported: `an_un_read_download_arm_alone_holds_the_screen_out_of_in_sync`. It needed a partial refresh —
  * the upload arm read, the download arm not — which no entry point performs, so the protocol cannot reach it
- * (design D8). That composed case is **uncovered**; its pieces stay in `InMemoryDownloadStatusSourceTest` and
+ * (design D8). That composed case is **uncovered**; its pieces stay in `StoreDownloadStatusSourceTest` and
  * `LedgerBackedSyncStatusSourceTest`.
  */
 class UnreadStatusIntegrationTest {

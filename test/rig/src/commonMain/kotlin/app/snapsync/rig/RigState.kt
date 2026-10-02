@@ -91,7 +91,7 @@ data class DownloadView(val downloaded: Int, val total: Int, val inFlight: Int)
  */
 internal suspend fun readState(core: AppCore, host: StatusContainerHost, hooks: RigHooks): RigState {
     core.ledgerCounts.refresh()
-    val progress = core.downloadStatus.progress.value
+    val progress = core.downloadStatusSource.progress.value
     // The membership, the invite URL and the inline create error all live INSIDE the UI state now
     // (capability `sync-status`), so the rig reports exactly what the screen is rendering rather
     // than a parallel set of read-models that could disagree with it.

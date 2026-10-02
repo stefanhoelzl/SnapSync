@@ -26,17 +26,11 @@ import app.snapsync.model.decodeEventUrl
 import app.snapsync.model.encodeEventUrl
 import app.snapsync.feature.creation.readmodel.CreationFailureReason
 import app.snapsync.feature.creation.readmodel.CreationStatus
-import app.snapsync.feature.creation.readmodel.CreationStatusSource
-import app.snapsync.feature.creation.readmodel.MutableCreationStatusSource
-import app.snapsync.feature.membership.readmodel.MutableRenameStatusSource
 import app.snapsync.feature.membership.readmodel.RenameFailureReason
 import app.snapsync.feature.membership.readmodel.RenameStatus
-import app.snapsync.feature.membership.readmodel.RenameStatusSource
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.grantsPhotoAccess
 import app.snapsync.feature.download.readmodel.DownloadProgress
-import app.snapsync.feature.download.readmodel.DownloadStatusSource
-import app.snapsync.feature.download.readmodel.InMemoryDownloadStatusSource
 import app.snapsync.model.SyncStatus
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncCounts
@@ -133,9 +127,8 @@ class StatusContainerHost(
     private val syncSource = sources.sync
     private val permission = sources.permission
     private val config = sources.config
-    private val creationStatusSource = sources.creation
-    private val renameStatusSource = sources.rename
-    private val downloadSource = sources.download
+    private val creationStatus = sources.creation
+        private val downloadSource = sources.download
     private val attested = sources.attested
     private val pending = sources.pending
     private val versionRefusal = sources.versionRefusal
@@ -148,7 +141,7 @@ class StatusContainerHost(
     // a property initialized later is null at that moment.
     private val transientErrorState = MutableStateFlow<String?>(null)
     private var transientErrorClear: Job? = null
-    private val renameFlow: StateFlow<RenameStatus> = renameStatusSource.renameStatus
+    private val renameFlow: StateFlow<RenameStatus> = sources.rename
 
     /** The non-idempotent commands claimed while their intent runs — see [guardedIntent]. */
     private val inFlight = MutableStateFlow<Set<Guarded>>(emptySet())
@@ -265,9 +258,9 @@ class StatusContainerHost(
                 config.value,
                 permission.value,
                 syncSource.status.value,
-                creationStatusSource.creationStatus.value,
-                downloadSource.progress.value,
-                pending.state.value,
+                creationStatus.value,
+                downloadSource.value,
+                pending.value,
                 cutoffFormatter.nowCutoff(),
                 attested.value,
                 Owned(renameOwner.value, renameFlow.value),
@@ -306,9 +299,9 @@ class StatusContainerHost(
                     config,
                     permission,
                     syncSource.status,
-                    creationStatusSource.creationStatus,
-                    downloadSource.progress,
-                    pending.state,
+                    creationStatus,
+                    downloadSource,
+                    pending,
                     nowTick,
                     attested,
                     ownedRename,
@@ -396,7 +389,7 @@ class StatusContainerHost(
      * injected [EventCreator] (fire-and-forget): it mints the event and, on success, provisions it
      * through the same path a scanned QR uses (config goes present, the reduction leaves the create
      * layer). Permission is not consulted here — a missing grant surfaces afterward via
-     * `PermissionBlocked`. The in-flight and failure outcomes arrive back through `CreationStatusSource`;
+     * `PermissionBlocked`. The in-flight and failure outcomes arrive back through the creation status read-model;
      * nothing is reduced here.
      *
      * [startsAt] arrives as the screen's **local** wall-clock pick and is converted here, through the same
@@ -611,7 +604,7 @@ class StatusContainerHost(
                     // The two DUPLICATE rungs, first because they outrank every other reading of the same
                     // link — including `autoJoin`, which used to be tested before any of this and would
                     // therefore auto-provision once per delivery.
-                    pending.state.value?.eventId == eventId -> ignoreRepeat(eventId, "a pending join is open")
+                    pending.value?.eventId == eventId -> ignoreRepeat(eventId, "a pending join is open")
                     current?.eventId == eventId -> ignoreRepeat(eventId, "already joined")
                     // A crafted link must not join, switch or start sharing without a tap, so the link's
                     // own `autoJoin` is never the authority — the root's [inviteLinkHints] is.
@@ -663,8 +656,8 @@ class StatusContainerHost(
 
     /** Retry the details fetch after a transient load failure. */
     fun onRetryLoad() = intent {
-        val p = pending.state.value ?: return@intent
-        pending.set(p.copy(phase = JoinPhase.Loading))
+        val p = pending.value ?: return@intent
+        pending.value = p.copy(phase = JoinPhase.Loading)
         loadInto(p.eventId)
     }
 
@@ -700,7 +693,7 @@ class StatusContainerHost(
      * its confirm also asks for photo access is read live once the config is gone ([asksAccessOnJoin]).
      */
     fun onConfirmSwitch() = guardedIntent(Guarded.SwitchLeave) {
-        val p = pending.state.value ?: return@guardedIntent
+        val p = pending.value ?: return@guardedIntent
         if (p.phase.step != JoinPhase.Detailed.Step.Ready) return@guardedIntent
         overlaysState.value = Overlays() // every overlay belongs to the layer being left
         commands.leave()
@@ -731,14 +724,14 @@ class StatusContainerHost(
      * configured. Reached through a **switch**, the leave has already run, so this lands the device in
      * **no event**; the confirmation named the event being left, and rescanning an invite rejoins.
      */
-    fun onCancelJoin() = intent { pending.set(null) }
+    fun onCancelJoin() = intent { pending.value = null }
 
     /**
      * Dismiss the switch confirmation *before* its leave, staying in the current event untouched. The
      * same one-line body as [onCancelJoin], deliberately kept distinct: after this change the two are
      * genuinely different acts — this one keeps the membership, that one ends with none.
      */
-    fun onCancelSwitch() = intent { pending.set(null) }
+    fun onCancelSwitch() = intent { pending.value = null }
 
     /**
      * A create just minted [eventId] (capability `create-event`): route it into the **same**
@@ -756,7 +749,7 @@ class StatusContainerHost(
         // than in the reduction is what keeps the member's edits from being overwritten by every
         // subsequent reduction, and what stops a previous surface's choices leaking into this one.
         formState.value = freshForm()
-        pending.set(PendingJoin(eventId, JoinPhase.Loading))
+        pending.value = PendingJoin(eventId, JoinPhase.Loading)
         loadInto(eventId)
     }
 
@@ -797,8 +790,8 @@ class StatusContainerHost(
             // is one adapter change away from being false, and the cost of it being false is a screen no
             // one can leave. Unlike the retired upload pump's comparable wrapper, this one IS covered: the
             // seam is a constructor parameter, so a test injects a throwing loader directly.
-            if (pending.state.value?.eventId == eventId) {
-                pending.state.value?.let { pending.set(it.copy(phase = JoinPhase.LoadFailed)) }
+            if (pending.value?.eventId == eventId) {
+                pending.update { it?.copy(phase = JoinPhase.LoadFailed) }
             }
             throw t
         }
@@ -822,7 +815,7 @@ class StatusContainerHost(
             JoinLoad.Failed -> JoinPhase.LoadFailed
         }
         // Only apply if this fetch is still the active pending target (not cancelled/superseded).
-        pending.state.value?.let { if (it.eventId == eventId) pending.set(it.copy(phase = phase)) }
+        pending.update { if (it?.eventId == eventId) it.copy(phase = phase) else it }
     }
 
     /**
@@ -835,7 +828,7 @@ class StatusContainerHost(
         JoinPhase.Detailed(event, JoinPhase.Detailed.Step.Ready)
 
     private suspend fun commit() {
-        val p = pending.state.value ?: return
+        val p = pending.value ?: return
         // What is committed is what the reduction RESOLVED — the same value the surface rendered. The
         // screen used to hand these back, which meant the clamping rules ran in a Composable and the
         // committed range was only as correct as the render path that produced it.
@@ -852,7 +845,7 @@ class StatusContainerHost(
         val detailed = p.phase as? JoinPhase.Detailed ?: return
         if (detailed.step != JoinPhase.Detailed.Step.Ready && detailed.step != JoinPhase.Detailed.Step.CommitFailed) return
         val (name, startsAt, endsAt, deletesAt) = detailed.event
-        pending.set(p.copy(phase = JoinPhase.Detailed(detailed.event, JoinPhase.Detailed.Step.Committing)))
+        pending.value = p.copy(phase = JoinPhase.Detailed(detailed.event, JoinPhase.Detailed.Step.Committing))
         // A membership BEGINS here, so its surface state starts here — in one place every new membership passes
         // through, a rejoin of the same event included (capability `sync-status`). A collector watching the
         // config could miss that: it is a StateFlow, and a leave and a rejoin of one event can conflate into A → A.
@@ -877,11 +870,11 @@ class StatusContainerHost(
             //  · it names this event  → the join LANDED; drop the pending join, and the joined screen is the
             //    truth. Retrying would hit `JoinEvent`'s `AlreadyJoined` no-op anyway.
             //  · otherwise            → it never landed; `CommitFailed` pins the Retry that re-runs it.
-            if (pending.state.value?.eventId == p.eventId) {
+            if (pending.value?.eventId == p.eventId) {
                 if (config.value?.eventId == p.eventId) {
-                    pending.set(null)
+                    pending.value = null
                 } else {
-                    pending.set(p.copy(phase = JoinPhase.Detailed(detailed.event, JoinPhase.Detailed.Step.CommitFailed)))
+                    pending.value = p.copy(phase = JoinPhase.Detailed(detailed.event, JoinPhase.Detailed.Step.CommitFailed))
                 }
             }
             // Rethrown, never swallowed: the container's `exceptionHandler` reports it at `Error`, which is
@@ -891,13 +884,13 @@ class StatusContainerHost(
         }
         if (commit == JoinCommit.Committed) {
             // Success: config flips present via ConfigSource → reduces to Joined; drop the overlay.
-            if (pending.state.value?.eventId == p.eventId) pending.set(null)
-        } else if (pending.state.value?.eventId == p.eventId) {
+            if (pending.value?.eventId == p.eventId) pending.value = null
+        } else if (pending.value?.eventId == p.eventId) {
             // The two failures land on DIFFERENT steps, because one is retryable and one is not
             // (capability `join-event`). A full event given the CommitFailed surface would offer a Retry
             // that fails identically every time, with nothing saying why.
             // A CLOSED event is final too, and carries no event facts worth keeping: its own phase, no Retry.
-            pending.set(p.copy(phase = failedPhase(commit, detailed.event)))
+            pending.value = p.copy(phase = failedPhase(commit, detailed.event))
         }
     }
 

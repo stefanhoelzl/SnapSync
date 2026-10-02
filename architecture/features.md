@@ -13,7 +13,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 ## `feature/creation`
 
 - files: `CreateEvent.kt`, `CreationStatus.kt`
-- top-level types: `CreateEvent (class)`, `CreationFailureReason (class)`, `CreationStatus (interface)`, `CreationStatusSource (interface)`, `MutableCreationStatusSource (class)`
+- top-level types: `CreateEvent (class)`, `CreationFailureReason (class)`, `CreationStatus (interface)`
 
 ## `feature/diagnostics`
 
@@ -23,12 +23,12 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 ## `feature/download`
 
 - files: `DownloadController.kt`, `DownloadPushReceiver.kt`, `DownloadStatusSource.kt`, `StoreDownloadStatusSource.kt`
-- top-level types: `DownloadController (class)`, `DownloadProgress (class)`, `DownloadPushReceiver (class)`, `DownloadStatusSource (interface)`, `InMemoryDownloadStatusSource (class)`, `StoreDownloadStatusSource (class)`
+- top-level types: `DownloadController (class)`, `DownloadProgress (class)`, `DownloadPushReceiver (class)`, `DownloadStatusSource (interface)`, `StoreDownloadStatusSource (class)`
 
 ## `feature/membership`
 
 - files: `DeviceEnroller.kt`, `DeviceManifestProducer.kt`, `EventCompletion.kt`, `JoinDetails.kt`, `JoinEvent.kt`, `LeaveEvent.kt`, `MembershipEntry.kt`, `MembershipRefresh.kt`, `ReceivedPhotoAdoption.kt`, `ReconfigureEvent.kt`, `RenameEvent.kt`, `RenameStatus.kt`, `ResetDeviceState.kt`, `ShareSetLoad.kt`, `Steps.kt`, `SwitchDecision.kt`
-- top-level types: `CompletionOutcome (class)`, `DeviceEnroller (interface)`, `DeviceManifestProducer (class)`, `EventCompletion (class)`, `JoinEvent (class)`, `JoinOutcome (class)`, `LeaveEvent (class)`, `ManifestDeviceEnroller (class)`, `MembershipEntry (class)`, `MembershipRefresh (class)`, `MutableRenameStatusSource (class)`, `ReceivedPhotoAdoption (class)`, `ReconfigureEvent (class)`, `RefreshOutcome (class)`, `RenameEvent (class)`, `RenameFailureReason (class)`, `RenameStatus (interface)`, `RenameStatusSource (interface)`, `ResetDeviceState (class)`, `ShareSetLoad (class)`, `Steps (class)`, `SwitchDecision (interface)`
+- top-level types: `CompletionOutcome (class)`, `DeviceEnroller (interface)`, `DeviceManifestProducer (class)`, `EventCompletion (class)`, `JoinEvent (class)`, `JoinOutcome (class)`, `LeaveEvent (class)`, `ManifestDeviceEnroller (class)`, `MembershipEntry (class)`, `MembershipRefresh (class)`, `ReceivedPhotoAdoption (class)`, `ReconfigureEvent (class)`, `RefreshOutcome (class)`, `RenameEvent (class)`, `RenameFailureReason (class)`, `RenameStatus (interface)`, `ResetDeviceState (class)`, `ShareSetLoad (class)`, `Steps (class)`, `SwitchDecision (interface)`
 
 ## `feature/push`
 

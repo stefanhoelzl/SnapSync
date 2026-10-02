@@ -1,9 +1,5 @@
 package app.snapsync.feature.membership.readmodel
 
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-
 /**
  * The rename-event lifecycle (capability `manage-membership`), kept as its own tiny seam like the create and
  * join twins so the presentation reduction folds it in without depending on the rename orchestration
@@ -48,19 +44,4 @@ enum class RenameFailureReason {
 
     /** A transient/server failure (non-2xx other than `400` — including `404` — transport, or parse). */
     SERVER,
-}
-
-/** Read face of the rename status — what the presentation layer consumes. */
-interface RenameStatusSource {
-    val renameStatus: StateFlow<RenameStatus>
-}
-
-/** Settable [RenameStatusSource] the rename use-case drives and tests set. */
-class MutableRenameStatusSource(initial: RenameStatus = RenameStatus.Idle) : RenameStatusSource {
-    private val _status = MutableStateFlow(initial)
-    override val renameStatus: StateFlow<RenameStatus> = _status.asStateFlow()
-
-    fun set(value: RenameStatus) {
-        _status.value = value
-    }
 }

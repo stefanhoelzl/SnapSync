@@ -1,6 +1,5 @@
 package app.snapsync.presentation
 
-import app.snapsync.feature.membership.readmodel.MutableRenameStatusSource
 import app.snapsync.feature.membership.readmodel.RenameStatus
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.model.EventConfig
@@ -71,7 +70,7 @@ class GuardedIntentTest {
     private fun onHost(
         spy: Spy,
         config: MutableStateFlow<EventConfig?>,
-        rename: MutableRenameStatusSource = MutableRenameStatusSource(),
+        rename: MutableStateFlow<RenameStatus> = MutableStateFlow(RenameStatus.Idle),
         body: suspend (StatusContainerHost) -> Unit,
     ) = runTest {
         withContext(Dispatchers.Default) {
@@ -98,7 +97,7 @@ class GuardedIntentTest {
                             },
                             resetRename = {
                                 spy.resets++
-                                rename.set(RenameStatus.Idle)
+                                rename.value = RenameStatus.Idle
                             },
                         ),
                         cutoffFormatter = CutoffFormatter(now = { Instant.parse("2026-07-09T12:00:00Z") }, zone = TimeZone.UTC),
@@ -163,13 +162,13 @@ class GuardedIntentTest {
         // The sheet closes itself on a success. A result that arrived while it was dismissed stayed latched, and
         // reopening the sheet read it as the new edit's outcome and closed at once.
         val spy = Spy()
-        val rename = MutableRenameStatusSource(RenameStatus.Succeeded)
+        val rename = MutableStateFlow<RenameStatus>(RenameStatus.Succeeded)
         onHost(spy, MutableStateFlow(CONFIG), rename) { host ->
             host.surfaces.onRenameOpen()
             host.stateWhere("the rename sheet") { it.overlays.renaming }
 
             assertEquals(1, spy.resets)
-            assertEquals(RenameStatus.Idle, rename.renameStatus.value)
+            assertEquals(RenameStatus.Idle, rename.value)
         }
     }
 }

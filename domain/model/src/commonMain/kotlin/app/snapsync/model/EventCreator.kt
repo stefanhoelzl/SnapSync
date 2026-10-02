@@ -1,8 +1,8 @@
 package app.snapsync.model
 
 /**
- * The command port for creating an event: fire-and-forget, like `SystemUi.openSettings`. It MUST NOT
- * return a value and MUST NOT suspend; the outcome arrives exclusively via [CreationStatusSource]
+ * The command port for creating an event: fire-and-forget, like `SystemUi.openSettings`. It returns
+ * nothing; the outcome arrives exclusively via the creation status read-model
  * (in-flight then either config becoming present, or [CreationStatus.Failed]).
  *
  * [startsAt] is the event's start date — the host's statement of when the event began (capability

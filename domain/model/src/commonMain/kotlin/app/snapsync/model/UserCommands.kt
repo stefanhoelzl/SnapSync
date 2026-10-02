@@ -25,7 +25,7 @@ package app.snapsync.model
  *   config, notify the backend (capability `manage-membership`).
  * - [create] — mint a new event with a name and canonical UTC date **range** (`startsAt`, `endsAt`), then
  *   route it into the join gate (capability `create-event`). Fire-and-forget; outcomes arrive via
- *   `CreationStatusSource`.
+ *   the creation status read-model.
  * - [commitJoin] — join (a bodyless membership write, no manifest) then provision the membership's
  *   capture-date **range** (`minPhotoDate`..`maxPhotoDate`, each clamped to the event window
  *   `startsAt`..`endsAt`), answering a [JoinCommit]: committed (incl. the already-joined no-op), at
@@ -50,7 +50,7 @@ package app.snapsync.model
  *   closing the surface as if it had; the change itself lands via the config read-model.
  * - [rename] — rename the joined event for **every** member (capability `manage-membership`). [eventId] is
  *   the event the heading affordance was opened for; the use-case no-ops if the current membership no
- *   longer matches. Fire-and-forget; the outcome arrives via `RenameStatusSource`, and the new name
+ *   longer matches. Fire-and-forget; the outcome arrives via the rename status read-model, and the new name
  *   lands via the config read-model. Unlike [reconfigure], which changes only this device's settings,
  *   this writes the shared event — but it is still just a command through the one door.
  * - [resetRename] — clear the rename status latch back to `Idle` once the screen has consumed a

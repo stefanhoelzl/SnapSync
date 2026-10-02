@@ -7,7 +7,7 @@ import co.touchlab.kermit.Logger
 import app.snapsync.model.EventCreator
 import app.snapsync.feature.creation.readmodel.CreationFailureReason
 import app.snapsync.feature.creation.readmodel.CreationStatus
-import app.snapsync.feature.creation.readmodel.MutableCreationStatusSource
+import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
  * The create-event use-case: mint an event, then route it into the **same** join gate a scanned QR
@@ -30,7 +30,7 @@ import app.snapsync.feature.creation.readmodel.MutableCreationStatusSource
  */
 class CreateEvent(
     private val client: EventCreation,
-    private val status: MutableCreationStatusSource,
+    private val status: MutableStateFlow<CreationStatus>,
     // Route the minted event into the join gate (the composition root binds this to the container's
     // `onEventCreated`). The `POST /events` already minted the event, so the gate holds a real id and
     // performs a real details load; provision (save config with name + cutoff) happens on confirm.
@@ -46,27 +46,27 @@ class CreateEvent(
         // One create at a time (capability `sync-status`, "A non-idempotent command is in flight before it
         // first suspends"): a second tap that reached the lane while the first mint is out would mint a second
         // event. Checked and set before the first suspension, so on the serial lane nothing can come between.
-        if (status.creationStatus.value == CreationStatus.InFlight) {
+        if (status.value == CreationStatus.InFlight) {
             log.i { "create ignored: one is already in flight" }
             return
         }
-        status.set(CreationStatus.InFlight)
+        status.value = CreationStatus.InFlight
         when (val outcome = client.create(name.trim(), startsAt, endsAt)) {
             is CreateOutcome.Created -> {
                 onMinted(outcome.eventId)
-                status.set(CreationStatus.Idle)
+                status.value = CreationStatus.Idle
             }
             CreateOutcome.InvalidName -> {
                 log.i { "create rejected: invalid name" }
-                status.set(CreationStatus.Failed(CreationFailureReason.INVALID_NAME))
+                status.value = CreationStatus.Failed(CreationFailureReason.INVALID_NAME)
             }
             CreateOutcome.InvalidWindow -> {
                 log.i { "create rejected: invalid date range" }
-                status.set(CreationStatus.Failed(CreationFailureReason.INVALID_WINDOW))
+                status.value = CreationStatus.Failed(CreationFailureReason.INVALID_WINDOW)
             }
             CreateOutcome.Transient -> {
                 log.i { "create failed: transient/server error" }
-                status.set(CreationStatus.Failed(CreationFailureReason.SERVER))
+                status.value = CreationStatus.Failed(CreationFailureReason.SERVER)
             }
         }
     }

@@ -1,8 +1,6 @@
 package app.snapsync.feature.download.readmodel
 
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * Download progress feeding the joined-layer status line's download direction (capability
@@ -40,22 +38,9 @@ data class DownloadProgress(
 /**
  * The seam the presentation container reads for download progress. A `StateFlow` so the screen has a
  * synchronous current value; [refresh] re-reads the counts (foreground entry / after a reconcile or
- * import). The real impl reads the download store; the in-memory impl backs the desktop harness/tests.
+ * import). The real impl reads the download store.
  */
 interface DownloadStatusSource {
     val progress: StateFlow<DownloadProgress>
     suspend fun refresh()
-}
-
-/**
- * A settable in-memory [DownloadStatusSource] for the harness/tests and the default (inert) wiring.
- *
- * Defaults to [DownloadProgress.UNREAD], so a caller that states no progress gets the honest
- * "nothing has been read" rather than a counted-empty union that settles the download arrow.
- */
-class InMemoryDownloadStatusSource(initial: DownloadProgress = DownloadProgress.UNREAD) : DownloadStatusSource {
-    private val _progress = MutableStateFlow(initial)
-    override val progress: StateFlow<DownloadProgress> = _progress.asStateFlow()
-    override suspend fun refresh() = Unit
-    fun set(value: DownloadProgress) { _progress.value = value }
 }

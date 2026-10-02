@@ -17,7 +17,7 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
-import app.snapsync.feature.membership.readmodel.MutableRenameStatusSource
+import kotlinx.coroutines.flow.MutableStateFlow
 import app.snapsync.feature.membership.readmodel.RenameFailureReason
 import app.snapsync.feature.membership.readmodel.RenameStatus
 
@@ -56,7 +56,7 @@ class RenameEventTest {
         source: Membership,
         store: ConfigWrites,
         client: EventRename,
-        status: MutableRenameStatusSource,
+        status: MutableStateFlow<RenameStatus>,
         eventId: String = "E1",
         name: String = "Ana's 30th",
     ): RenameEvent {
@@ -69,7 +69,7 @@ class RenameEventTest {
     @Test
     fun `a successful rename saves the whole config exactly once — with only the name changed`() = runTest {
         val store = ConfigWrites()
-        val status = MutableRenameStatusSource()
+        val status = MutableStateFlow<RenameStatus>(RenameStatus.Idle)
         drive(Membership(current()), store, FakeRename(RenameOutcome.Renamed("Ana's 30th")), status)
 
         val saved = store.saved!!
@@ -77,7 +77,7 @@ class RenameEventTest {
         assertEquals("Ana's 30th", saved.name)
         // Everything else survives — the whole-object save with one field replaced.
         assertEquals(current().copy(name = "Ana's 30th"), saved)
-        assertEquals(RenameStatus.Succeeded, status.renameStatus.value)
+        assertEquals(RenameStatus.Succeeded, status.value)
     }
 
     @Test
@@ -86,7 +86,7 @@ class RenameEventTest {
         // drift from the marker by exactly the whitespace the backend removed.
         val store = ConfigWrites()
         val client = FakeRename(RenameOutcome.Renamed("Ana's 30th"))
-        drive(Membership(current()), store, client, MutableRenameStatusSource(), name = "  Ana's 30th  ")
+        drive(Membership(current()), store, client, MutableStateFlow<RenameStatus>(RenameStatus.Idle), name = "  Ana's 30th  ")
 
         assertEquals("  Ana's 30th  ".trim(), client.sentName) // the client is sent a trimmed value…
         assertEquals("Ana's 30th", store.saved!!.name) // …but what lands is the echo
@@ -95,7 +95,7 @@ class RenameEventTest {
     @Test
     fun `an echo equal to the current name saves nothing`() = runTest {
         val store = ConfigWrites()
-        val status = MutableRenameStatusSource()
+        val status = MutableStateFlow<RenameStatus>(RenameStatus.Idle)
         drive(
             Membership(current(name = "Weekend")),
             store,
@@ -103,7 +103,7 @@ class RenameEventTest {
             status,
         )
         assertEquals(0, store.saveCount) // no needless write, no woken observers
-        assertEquals(RenameStatus.Succeeded, status.renameStatus.value)
+        assertEquals(RenameStatus.Succeeded, status.value)
     }
 
     @Test
@@ -114,7 +114,7 @@ class RenameEventTest {
             Membership(current(eventId = "E2")),
             store,
             FakeRename(RenameOutcome.Renamed("Ana's 30th")),
-            MutableRenameStatusSource(),
+            MutableStateFlow<RenameStatus>(RenameStatus.Idle),
             eventId = "E1",
         )
         assertNull(store.saved)
@@ -124,27 +124,27 @@ class RenameEventTest {
     @Test
     fun `a rename with no membership persists nothing`() = runTest {
         val store = ConfigWrites()
-        drive(Membership(null), store, FakeRename(RenameOutcome.Renamed("Ana's 30th")), MutableRenameStatusSource())
+        drive(Membership(null), store, FakeRename(RenameOutcome.Renamed("Ana's 30th")), MutableStateFlow<RenameStatus>(RenameStatus.Idle))
         assertNull(store.saved)
     }
 
     @Test
     fun `an invalid name fails with the invalid-name reason and persists nothing`() = runTest {
         val store = ConfigWrites()
-        val status = MutableRenameStatusSource()
+        val status = MutableStateFlow<RenameStatus>(RenameStatus.Idle)
         drive(Membership(current()), store, FakeRename(RenameOutcome.InvalidName), status)
 
-        assertEquals(RenameStatus.Failed(RenameFailureReason.INVALID_NAME), status.renameStatus.value)
+        assertEquals(RenameStatus.Failed(RenameFailureReason.INVALID_NAME), status.value)
         assertEquals(0, store.saveCount)
     }
 
     @Test
     fun `a transient failure fails with the server reason and persists nothing`() = runTest {
         val store = ConfigWrites()
-        val status = MutableRenameStatusSource()
+        val status = MutableStateFlow<RenameStatus>(RenameStatus.Idle)
         drive(Membership(current()), store, FakeRename(RenameOutcome.Transient), status)
 
-        assertEquals(RenameStatus.Failed(RenameFailureReason.SERVER), status.renameStatus.value)
+        assertEquals(RenameStatus.Failed(RenameFailureReason.SERVER), status.value)
         assertEquals(0, store.saveCount)
     }
 
@@ -155,7 +155,7 @@ class RenameEventTest {
         // MembershipRefresh's two-witness path — not this one.
         for (outcome in listOf(RenameOutcome.InvalidName, RenameOutcome.Transient)) {
             val store = ConfigWrites()
-            drive(Membership(current()), store, FakeRename(outcome), MutableRenameStatusSource())
+            drive(Membership(current()), store, FakeRename(outcome), MutableStateFlow<RenameStatus>(RenameStatus.Idle))
             assertTrue(!store.cleared, "$outcome cleared the membership config")
             assertNull(store.saved, "$outcome wrote to the membership config")
         }
@@ -164,34 +164,34 @@ class RenameEventTest {
     @Test
     fun `the status sequence is InFlight then a terminal value`() = runTest {
         val seen = mutableListOf<RenameStatus>()
-        val status = MutableRenameStatusSource()
+        val status = MutableStateFlow<RenameStatus>(RenameStatus.Idle)
         val client = object : EventRename {
             override suspend fun rename(eventId: String, name: String): RenameOutcome {
-                seen += status.renameStatus.value // observed from inside the request
+                seen += status.value // observed from inside the request
                 return RenameOutcome.Renamed("Ana's 30th")
             }
         }
         drive(Membership(current()), ConfigWrites(), client, status)
 
         assertEquals(listOf<RenameStatus>(RenameStatus.InFlight), seen.toList())
-        assertEquals(RenameStatus.Succeeded, status.renameStatus.value)
+        assertEquals(RenameStatus.Succeeded, status.value)
     }
 
     @Test
     fun `reset clears the terminal latch back to Idle`() = runTest {
-        val status = MutableRenameStatusSource()
+        val status = MutableStateFlow<RenameStatus>(RenameStatus.Idle)
         val useCase =
             drive(Membership(current()), ConfigWrites(), FakeRename(RenameOutcome.Transient), status)
-        assertEquals(RenameStatus.Failed(RenameFailureReason.SERVER), status.renameStatus.value)
+        assertEquals(RenameStatus.Failed(RenameFailureReason.SERVER), status.value)
 
         useCase.reset()
-        assertEquals(RenameStatus.Idle, status.renameStatus.value)
+        assertEquals(RenameStatus.Idle, status.value)
     }
 
     @Test
     fun `the trimmed name and the event id are what reach the client`() = runTest {
         val client = FakeRename(RenameOutcome.Renamed("Ana's 30th"))
-        drive(Membership(current()), ConfigWrites(), client, MutableRenameStatusSource(), name = "  Ana's 30th ")
+        drive(Membership(current()), ConfigWrites(), client, MutableStateFlow<RenameStatus>(RenameStatus.Idle), name = "  Ana's 30th ")
 
         assertEquals("E1", client.sentEventId)
         assertEquals("Ana's 30th", client.sentName)

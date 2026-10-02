@@ -11,11 +11,10 @@ import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.album.AlbumGather
 import app.snapsync.feature.creation.CreateEvent
 import app.snapsync.model.EventCreator
-import app.snapsync.feature.creation.readmodel.MutableCreationStatusSource
+import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.feature.diagnostics.CollectDiagnosticDump
 import app.snapsync.feature.download.DownloadController
 import app.snapsync.feature.download.DownloadPushReceiver
-import app.snapsync.feature.download.readmodel.DownloadStatusSource
 import app.snapsync.services.downloads.DownloadJobs
 import app.snapsync.feature.download.StoreDownloadStatusSource
 import app.snapsync.feature.membership.MembershipRefresh
@@ -26,7 +25,7 @@ import app.snapsync.feature.membership.toCommit
 import app.snapsync.feature.membership.LeaveEvent
 import app.snapsync.feature.membership.ShareSetLoad
 import app.snapsync.feature.membership.ManifestDeviceEnroller
-import app.snapsync.feature.membership.readmodel.MutableRenameStatusSource
+import app.snapsync.feature.membership.readmodel.RenameStatus
 import app.snapsync.feature.membership.ReconfigureEvent
 import app.snapsync.feature.membership.RenameEvent
 import app.snapsync.feature.membership.ResetDeviceState
@@ -349,7 +348,6 @@ class AppCore internal constructor(
     val downloadStatusSource: StoreDownloadStatusSource by lazy {
         StoreDownloadStatusSource(services.downloadStore, currentEvent = { services.config.config.value?.eventId })
     }
-    val downloadStatus: DownloadStatusSource get() = downloadStatusSource
 
     // Background byte transfers → durable staging. The queue, bounded window, and cancellation
     // lifecycle live in the tested feature; the transport is the shell's adapter thunk.
@@ -566,11 +564,11 @@ class AppCore internal constructor(
     }
 
     /** The create-event status the use-case drives and the container reads (same instance). */
-    val creationStatus: MutableCreationStatusSource = MutableCreationStatusSource()
+    val creationStatus = MutableStateFlow<CreationStatus>(CreationStatus.Idle)
 
     /** The rename status the use-case drives and the container reads (same instance, capability
      *  `manage-membership`) — the create twin, but carrying a success value the screen must clear. */
-    val renameStatus: MutableRenameStatusSource = MutableRenameStatusSource()
+    val renameStatus = MutableStateFlow<RenameStatus>(RenameStatus.Idle)
 
     // The rename use-case (capability `manage-membership`): rewrite the shared event's name on the backend,
     // then fold the ECHOED name into this membership's config. The fifth writer of that config, seated

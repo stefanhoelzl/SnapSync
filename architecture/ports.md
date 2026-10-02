@@ -30,7 +30,6 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `CrashReporter` | `:domain:ports` | `:adapter:generic:mock` InMemoryCrashReporter, Recording; `:adapter:generic:sentry` SentryCrashReporter, SettledStart; `:domain:compose` NoCrashReporter | yes |
 | `CreateOutcome` | `:domain:model` | `:domain:model` Created, InvalidName, InvalidWindow, Transient | no |
 | `CreationStatus` | `:domain:feature` | `:domain:feature` Failed, Idle, InFlight | no |
-| `CreationStatusSource` | `:domain:feature` | `:domain:feature` MutableCreationStatusSource | no |
 | `Credential` | `:domain:services` | `:domain:services` DeviceAttestation, ExtensionCredential, ScriptedCredential | no |
 | `CycleGate` | `:domain:feature` | `:domain:feature` NotJoined, Paused, Run, Skip, Withheld | no |
 | `CycleOutcome` | `:domain:feature` | `:domain:feature` Declined, Enumerated, NotJoined, Paused, Unreadable, Withheld | no |
@@ -44,7 +43,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `DeviceIntegrity` | `:domain:ports` | `:adapter:android` AndroidDeviceIntegrity; `:adapter:generic:mock` FakeKey, InMemoryDeviceIntegrity; `:adapter:ios:ext-safe` IosDeviceIntegrity | yes |
 | `DirectionCount` | `:domain:model` | `:domain:model` Off, Progress | no |
 | `Download` | `:domain:ports` | `:adapter:android` AndroidDownload; `:adapter:generic:mock` Face, InertDownload, NetworkedDownload; `:adapter:ios:app-only` IosDownload; `:domain:services` FakeDownload; `:test:feature` RecordingDownload | yes |
-| `DownloadStatusSource` | `:domain:feature` | `:domain:feature` InMemoryDownloadStatusSource, StoreDownloadStatusSource | yes |
+| `DownloadStatusSource` | `:domain:feature` | `:domain:feature` StoreDownloadStatusSource | no |
 | `DumpResult` | `:domain:model` | `:domain:model` NotSent, Queued, Saved | no |
 | `Enter` | `:domain:feature` | `:domain:feature` Join, LeavePrevious | no |
 | `EntryContext` | `:domain:ports` | `:adapter:generic:mock` Entry; `:adapter:ios:ext-safe` IosEntryContext, IosThreadEntryContext; `:domain:compose` NoEntryContext | no |
@@ -102,7 +101,6 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `RenameOutcome` | `:domain:model` | `:domain:model` InvalidName, Renamed, Transient | no |
 | `RenameState` | `:domain:model` | `:domain:model` Failed, Idle, InFlight, Succeeded | no |
 | `RenameStatus` | `:domain:feature` | `:domain:feature` Failed, Idle, InFlight, Succeeded | no |
-| `RenameStatusSource` | `:domain:feature` | `:domain:feature` MutableRenameStatusSource | no |
 | `Reply` | `:domain:model` | `:domain:model` Malformed, Ok, Refused, Unreachable; `:test:control` Done, Failed, Refused | yes |
 | `ResourceBatch` | `:domain:model` | — | no |
 | `ScheduleResult` | `:domain:model` | `:domain:model` Refused, Scheduled, Unsupported | no |

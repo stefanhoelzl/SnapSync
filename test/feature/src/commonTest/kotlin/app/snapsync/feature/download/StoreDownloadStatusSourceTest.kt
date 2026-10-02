@@ -1,6 +1,7 @@
 package app.snapsync.feature.download
 
 import app.snapsync.mock.inMemoryDatabases
+import app.snapsync.feature.download.readmodel.DownloadProgress
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.PlannedAsset
@@ -11,6 +12,18 @@ import kotlin.test.assertEquals
 import kotlinx.coroutines.test.runTest
 
 class StoreDownloadStatusSourceTest {
+
+    /**
+     * The seed is the whole point and is not tidiness: the joined screen's direction arrows are **conjunctive** —
+     * "In sync" shows exactly when both are hidden — and the download arrow hides when `downloaded >= total`. A
+     * placeholder `(0, 0)` marked *read* satisfies that on its own (the shape behind `SNAPSYNC-14`/`SNAPSYNC-16`).
+     */
+    @Test
+    fun before_a_refresh_it_is_un_read_rather_than_a_counted_empty_union() {
+        val source = StoreDownloadStatusSource(DownloadService(inMemoryDatabases()), currentEvent = { "E1" })
+
+        assertEquals(DownloadProgress.UNREAD, source.progress.value)
+    }
 
     private fun planned(id: String) =
         listOf(PlannedResource("$id-primary.jpg", "u", "primary", "image/jpeg", "$id.JPG"))
