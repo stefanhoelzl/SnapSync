@@ -275,70 +275,8 @@ class CompositionSeamTest {
         val header = Regex("""\bclass\s+$bundle\s*\(""").find(code)
             ?: error("composition seam gate: no `class $bundle(` in $path — the declaration moved, fix the scan")
         val open = header.range.last
-        val body = balanced(code, open) ?: error("composition seam gate: unbalanced `class $bundle(` in $path")
-        return splitTopLevel(code.substring(open + 1, body), ',')
-            .mapNotNull { (text, offset) ->
-                val decl = text.trim()
-                if (decl.isBlank()) return@mapNotNull null
-                val colon = indexOfTopLevel(decl, ':') ?: return@mapNotNull null
-                val name = decl.take(colon).trim().substringAfterLast(' ')
-                val type = decl.substring(colon + 1)
-                    .let { rest -> indexOfTopLevel(rest, '=')?.let { rest.take(it) } ?: rest }
-                    .trim()
-                Field(name, type, code.take(open + 1 + offset).count { it == '\n' } + 1)
-            }
-    }
-
-    /** The index of the `)` closing the `(` at [open], or null. */
-    private fun balanced(code: String, open: Int): Int? {
-        var depth = 0
-        var i = open
-        while (i < code.length) {
-            when (code[i]) {
-                '(' -> depth++
-                ')' -> { depth--; if (depth == 0) return i }
-            }
-            i++
-        }
-        return null
-    }
-
-    /**
-     * Top-level splitting over `(<{[` nesting. `->` is consumed as ONE token so its `>` never reads as
-     * a closing generic bracket — the difference between seeing `() -> Unit` and seeing garbage.
-     */
-    private fun scan(text: String, stop: Char?, onTop: (Int) -> Unit) {
-        var depth = 0
-        var i = 0
-        while (i < text.length) {
-            val c = text[i]
-            when {
-                text.startsWith("->", i) -> { if (depth == 0 && stop == null) onTop(i); i += 2; continue }
-                c == '"' -> { i++; while (i < text.length && text[i] != '"') i++ }
-                c in "(<{[" -> depth++
-                c in ")>}]" -> depth--
-                depth == 0 && stop != null && c == stop -> onTop(i)
-            }
-            i++
-        }
-    }
-
-    private fun splitTopLevel(text: String, separator: Char): List<Pair<String, Int>> {
-        val cuts = mutableListOf<Int>()
-        scan(text, separator) { cuts += it }
-        val parts = mutableListOf<Pair<String, Int>>()
-        var start = 0
-        (cuts + text.length).forEach { cut ->
-            parts += text.substring(start, cut) to start
-            start = cut + 1
-        }
-        return parts
-    }
-
-    private fun indexOfTopLevel(text: String, char: Char): Int? {
-        var found: Int? = null
-        scan(text, char) { if (found == null) found = it }
-        return found
+        KotlinDecls.closing(code, open) ?: error("composition seam gate: unbalanced `class $bundle(` in $path")
+        return KotlinDecls.paramsAt(code, open, bundle).map { Field(it.name, it.type, it.line) }
     }
 
     /**
@@ -503,15 +441,7 @@ class CompositionSeamTest {
         """.trimIndent()
         val code = ZoneGates.stripComments(sample)
         val open = Regex("""\bclass\s+Sample\s*\(""").find(code)!!.range.last
-        val decls = splitTopLevel(code.substring(open + 1, balanced(code, open)!!), ',')
-            .map { it.first.trim() }
-            .filter { it.isNotBlank() }
-            .associate { decl ->
-                val colon = indexOfTopLevel(decl, ':')!!
-                decl.take(colon).trim().substringAfterLast(' ') to
-                    (indexOfTopLevel(decl.substring(colon + 1), '=')
-                        ?.let { decl.substring(colon + 1).take(it) } ?: decl.substring(colon + 1)).trim()
-            }
+        val decls = KotlinDecls.paramsAt(code, open, "Sample").associate { it.name to it.type }
 
         assertEquals(
             setOf("clock", "deviceId", "albumExcluded", "uploadSilentPush", "onEdit", "lane", "log", "counts"),

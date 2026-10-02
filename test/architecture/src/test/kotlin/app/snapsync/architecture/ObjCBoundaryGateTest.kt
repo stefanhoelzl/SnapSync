@@ -164,19 +164,8 @@ class ObjCBoundaryGateTest {
         return out
     }
 
-    private fun closing(code: String, open: Int): Int = matching(code, open, '{', '}')
-    private fun closingParen(code: String, open: Int): Int = matching(code, open, '(', ')')
-
-    private fun matching(code: String, open: Int, up: Char, down: Char): Int {
-        var depth = 0
-        for (i in open until code.length) {
-            when (code[i]) {
-                up -> depth++
-                down -> { depth--; if (depth == 0) return i }
-            }
-        }
-        return code.length - 1
-    }
+    private fun closing(code: String, open: Int): Int = KotlinDecls.closing(code, open) ?: (code.length - 1)
+    private fun closingParen(code: String, open: Int): Int = closing(code, open)
 
     /** [code] with every string literal's content blanked — templates included — so a brace in one is invisible. */
     private fun blankStrings(code: String): String {

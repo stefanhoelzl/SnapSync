@@ -56,17 +56,8 @@ class CommandLaneTest {
         val text = file("/domain/compose/src/commonMain/kotlin/app/snapsync/compose/${builtIn.getValue(type)}").text
         val start = text.indexOf("$type(")
         assertTrue(start >= 0, "compose/ no longer builds a $type bundle — this gate is stale")
-        var depth = 0
-        for (i in start until text.length) {
-            when (text[i]) {
-                '(' -> depth++
-                ')' -> {
-                    depth--
-                    if (depth == 0) return text.substring(start, i + 1)
-                }
-            }
-        }
-        fail("unbalanced $type( block in ${builtIn.getValue(type)}")
+        val close = KotlinDecls.closing(text, start + type.length) ?: fail("unbalanced $type( block in ${builtIn.getValue(type)}")
+        return text.substring(start, close + 1)
     }
 
     /** The fields of [type] built through none of [allowed]. */

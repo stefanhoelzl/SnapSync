@@ -86,16 +86,7 @@ class ConfinementGateTest {
         return null
     }
 
-    private fun closing(code: String, open: Int): Int {
-        var depth = 0
-        for (i in open until code.length) {
-            when (code[i]) {
-                '{' -> depth++
-                '}' -> { depth--; if (depth == 0) return i }
-            }
-        }
-        return code.length - 1
-    }
+    private fun closing(code: String, open: Int): Int = KotlinDecls.closing(code, open) ?: (code.length - 1)
 
     @Test
     fun `every mutable field of an OS-callback class names its lane`() {

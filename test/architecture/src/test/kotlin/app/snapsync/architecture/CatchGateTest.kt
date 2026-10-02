@@ -62,16 +62,8 @@ class CatchGateTest {
     }
 
     /** The text of the block whose `{` is at [open]. */
-    private fun blockBody(code: String, open: Int): String {
-        var depth = 0
-        for (i in open until code.length) {
-            when (code[i]) {
-                '{' -> depth++
-                '}' -> { depth--; if (depth == 0) return code.substring(open + 1, i) }
-            }
-        }
-        return code.substring(open + 1)
-    }
+    private fun blockBody(code: String, open: Int): String =
+        KotlinDecls.closing(code, open)?.let { code.substring(open + 1, it) } ?: code.substring(open + 1)
 
     @Test
     fun `production catch sites keep cancellation`() {

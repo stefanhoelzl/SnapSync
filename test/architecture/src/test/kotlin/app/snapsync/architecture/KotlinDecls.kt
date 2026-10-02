@@ -2,7 +2,8 @@ package app.snapsync.architecture
 
 /**
  * **Just enough declaration parsing for the seam-shape gates** (`docs/architecture.md`): constructor
- * parameter lists, property declarations, and whether a declared type is a function type.
+ * parameter lists, property declarations, whether a declared type is a function type — and the one bracket
+ * matcher every gate that reads a block or an argument list uses ([closing]).
  *
  * Text, not a resolved model, for [SourceScan]'s reasons — it must reach `iosMain`, which has no JVM bytecode.
  * Every caller strips comments first ([ZoneGates.stripComments]), so KDoc that names a field a change deleted
@@ -64,8 +65,9 @@ internal object KotlinDecls {
         return t.startsWith("(") && t.endsWith(")?") && isFunctionType(t.substring(1, t.length - 2))
     }
 
-    private fun paramsAt(code: String, open: Int, owner: String): List<Decl> {
-        val close = balanced(code, open) ?: return emptyList()
+    /** The parameters declared in the list whose `(` is at [open], reported under [owner]. */
+    fun paramsAt(code: String, open: Int, owner: String): List<Decl> {
+        val close = closing(code, open) ?: return emptyList()
         return splitTopLevel(code.substring(open + 1, close)).mapNotNull { (text, offset) ->
             val decl = text.trim()
             if (decl.isBlank()) return@mapNotNull null
@@ -100,20 +102,61 @@ internal object KotlinDecls {
         return code.length
     }
 
-    /** The index of the `)` closing the `(` at [open], or null. */
-    private fun balanced(code: String, open: Int): Int? {
+    /**
+     * The index of the bracket closing the `(`, `{` or `[` at [open], or null when it is never closed. String and
+     * character literals are skipped whole — raw ones and the `${…}` templates inside them included — so a bracket
+     * written in a literal is never counted.
+     */
+    fun closing(code: String, open: Int): Int? {
         var depth = 0
         var i = open
         while (i < code.length) {
-            if (code.startsWith("->", i)) { i += 2; continue }
             when (code[i]) {
-                '"' -> { i++; while (i < code.length && code[i] != '"') { if (code[i] == '\\') i++; i++ } }
+                '"', '\'' -> { i = literalEnd(code, i); continue }
                 '(', '{', '[' -> depth++
                 ')', '}', ']' -> { depth--; if (depth == 0) return i }
             }
             i++
         }
         return null
+    }
+
+    /**
+     * The index just past the literal opening at [at]. A one-line literal that does not close on its line is read
+     * as a lone quote (an apostrophe in prose a caller left in), so it can never swallow the rest of a file.
+     */
+    private fun literalEnd(code: String, at: Int): Int =
+        if (code.startsWith("\"\"\"", at)) rawLiteralEnd(code, at) else lineLiteralEnd(code, at)
+
+    private fun rawLiteralEnd(code: String, at: Int): Int {
+        var i = at + 3
+        while (i < code.length) {
+            when {
+                code.startsWith("\"\"\"", i) -> {
+                    var end = i + 3
+                    while (end < code.length && code[end] == '"') end++ // `""""` ends with a quote in the string
+                    return end
+                }
+                code.startsWith("${'$'}{", i) -> i = (closing(code, i + 1) ?: return code.length) + 1
+                else -> i++
+            }
+        }
+        return code.length
+    }
+
+    private fun lineLiteralEnd(code: String, at: Int): Int {
+        val quote = code[at]
+        var i = at + 1
+        while (i < code.length) {
+            when {
+                code[i] == '\\' -> i += 2
+                code[i] == quote -> return i + 1
+                code[i] == '\n' -> return at + 1
+                quote == '"' && code.startsWith("${'$'}{", i) -> i = (closing(code, i + 1) ?: return at + 1) + 1
+                else -> i++
+            }
+        }
+        return at + 1
     }
 
     private fun scan(text: String, stop: Char?, onTop: (Int) -> Unit) {
