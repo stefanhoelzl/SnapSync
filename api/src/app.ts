@@ -262,6 +262,81 @@ function notThisDevice(c: Context): Response {
   return c.text("not this device", 403);
 }
 
+/**
+ * The path's `deviceId` when it is a UUID the token acts for; otherwise the refusal to return — `400` with the
+ * route's own `invalid` text, or `403` ({@link notThisDevice}). The id is validated BEFORE the binding, so a
+ * malformed id is a `400` whoever asks.
+ */
+function ownDeviceParam(c: Context, invalid: string): string | Response {
+  const deviceId = c.req.param("deviceId") ?? "";
+  if (!validateUUID(deviceId)) return c.text(invalid, 400);
+  return actsFor(c, deviceId) ? deviceId : notThisDevice(c);
+}
+
+/**
+ * The path's `eventId` and `deviceId` when both are UUIDs and the token acts for the device; otherwise the
+ * refusal to return, as {@link ownDeviceParam} — one `invalid` text for either malformed id.
+ */
+function eventAndOwnDeviceParams(
+  c: Context,
+  invalid: string,
+): { eventId: string; deviceId: string } | Response {
+  const eventId = c.req.param("eventId") ?? "";
+  const deviceId = c.req.param("deviceId") ?? "";
+  if (!validateUUID(eventId) || !validateUUID(deviceId)) return c.text(invalid, 400);
+  return actsFor(c, deviceId) ? { eventId, deviceId } : notThisDevice(c);
+}
+
+/** The path's `eventId` when it is a UUID; otherwise the `400 invalid event` to return. */
+function eventParam(c: Context): string | Response {
+  const eventId = c.req.param("eventId") ?? "";
+  return validateUUID(eventId) ? eventId : c.text("invalid event", 400);
+}
+
+/** The request body parsed as JSON, or the `400 invalid body` to return when it is not JSON. */
+async function readJson(c: Context): Promise<{ body: unknown } | Response> {
+  try {
+    return { body: await c.req.json() };
+  } catch {
+    return c.text("invalid body", 400);
+  }
+}
+
+/**
+ * The faithful-outcome answer to a store or upstream failure: logged as `<what>: <error>`, answered `502` —
+ * never mistaken for absence, never a partial success.
+ */
+function upstream502(c: Context, what: string, e: unknown): Response {
+  console.error(`${what}: ${e}`);
+  return c.text("upstream error", 502);
+}
+
+/** `step()`'s value, or — when it throws — the {@link upstream502} (logged under `what`) to return. */
+async function tryUpstream<T>(
+  c: Context,
+  what: string,
+  step: () => Promise<T>,
+): Promise<T | Response> {
+  try {
+    return await step();
+  } catch (e) {
+    return upstream502(c, what, e);
+  }
+}
+
+/** `respond()`'s response, or — when it throws — the {@link upstream502} logged under `what`. */
+async function orUpstream502(
+  c: Context,
+  what: string,
+  respond: () => Promise<Response>,
+): Promise<Response> {
+  try {
+    return await respond();
+  } catch (e) {
+    return upstream502(c, what, e);
+  }
+}
+
 // The browser-facing pages (capabilities `web-site` at `/` and `event-site` at `/join`) are
 // no longer embedded here — they are built by the `site/` Astro module and served by proxying the storage
 // `site/` prefix (capability `web-site`, see `serveSiteObject` + the `/`, `/join`, and `/_astro/*` routes
@@ -531,6 +606,37 @@ async function serveSiteObject(
 }
 
 /**
+ * Stream the request body into ONE bunny native Storage PUT at `key` — pass-through, never buffered or
+ * hashed. `null` once bunny confirmed the stored object; otherwise the `502` to return — `upstream error`
+ * when the PUT itself errored, `upstream rejected` when bunny refused it — logged under the route's `route`.
+ */
+async function streamPut(
+  fetchImpl: FetchLike,
+  config: Config,
+  c: Context,
+  route: string,
+  key: string,
+  contentType: string,
+): Promise<Response | null> {
+  let upstream: Response;
+  try {
+    upstream = await fetchImpl(`https://${config.host}/${config.zone}/${key}`, {
+      method: "PUT",
+      headers: { AccessKey: config.accessKey, "Content-Type": contentType },
+      body: c.req.raw.body, // ReadableStream — streamed straight through, never buffered
+      duplex: "half",
+    } as StreamInit);
+  } catch (e) {
+    return upstream502(c, `${route}: upstream PUT errored for ${key}`, e);
+  }
+  if (!upstream.ok) {
+    console.error(`${route}: bunny returned ${upstream.status} for ${key}`);
+    return c.text("upstream rejected", 502);
+  }
+  return null;
+}
+
+/**
  * Mint an AWS SigV4 **presigned S3 GET URL** for a stored object (the download-URL authority for
  * `docs/architecture.md`): `<s3Scheme>://<s3Host>/<zone>/<key>?X-Amz-…&X-Amz-Signature=…` — `https` in
  * every deployed configuration; only the local dev rig moves it, so it can serve loopback HTTP that a
@@ -613,15 +719,21 @@ export function createApp(
    * case the marker era had to carry is unstateable, because `startsAt`, `endsAt`, `capacity` and
    * `lifetimeSeconds` are `NOT NULL` columns.
    *
-   * THROWS on a store failure, so the route surfaces 502 and never mistakes a transient fault for
-   * absence. That distinction is load-bearing beyond this file: a `404` here is a SEALED deletion, and
-   * `manage-membership`'s two-witness teardown acts on it.
+   * Returns the row, or the response the route answers with: `404 event not found` when absent, and on a
+   * store failure `502` (logged as `<route>: event read failed for <id>`), so the route never mistakes a
+   * transient fault for absence. That distinction is load-bearing beyond this file: a `404` here is a
+   * SEALED deletion, and `manage-membership`'s two-witness teardown acts on it.
    */
   async function gateEvent(
+    c: Context,
     eventId: string,
-  ): Promise<{ kind: "ok"; event: EventRow } | { kind: "absent" }> {
-    const event = await readEvent(db, eventId);
-    return event === null ? { kind: "absent" } : { kind: "ok", event };
+    route: string,
+  ): Promise<EventRow | Response> {
+    try {
+      return await readEvent(db, eventId) ?? c.text("event not found", 404);
+    } catch (e) {
+      return upstream502(c, `${route}: event read failed for ${eventId}`, e);
+    }
   }
 
   /**
@@ -663,8 +775,7 @@ export function createApp(
         );
       return same ? c.body(null, 200) : c.json({ error: "closed" }, 409);
     } catch (e) {
-      console.error(`v2 manifest: declared-set read failed for ${eventId}/${deviceId}: ${e}`);
-      return c.text("upstream error", 502);
+      return upstream502(c, `v2 manifest: declared-set read failed for ${eventId}/${deviceId}`, e);
     }
   }
 
@@ -702,14 +813,27 @@ export function createApp(
         closed: closeAt !== null && results[results.length - 1].rowsAffected > 0,
       };
     } catch (e) {
-      console.error(`v2 manifest: publish failed for ${event.eventId}/${deviceId}: ${e}`);
-      return c.text("upstream error", 502);
+      return upstream502(c, `v2 manifest: publish failed for ${event.eventId}/${deviceId}`, e);
     }
   }
 
   /** The refusal every write to a closed (or completed) event answers (capability `event-lifetime`). */
   function closedRefusal(c: Context) {
     return c.json({ error: "closed" }, 410);
+  }
+
+  /**
+   * What an enrollment that did not admit the device answers — or `null` when it did. The zero-row outcome
+   * has TWO causes and they are told apart rather than collapsed (capability `database`): at capacity is a
+   * `409` the user can act on, absent is a `404` that means something else entirely. A failed enrollment
+   * stays the `502` it already is.
+   */
+  function enrollRefusal(c: Context, outcome: EnrollOutcome | Response): Response | null {
+    if (outcome instanceof Response) return outcome;
+    if (outcome === "no-such-event") return c.text("event not found", 404);
+    if (outcome === "closed") return closedRefusal(c);
+    if (outcome === "full") return c.text("event full", 409);
+    return null;
   }
 
   // Per-device byte WRITE route (`docs/architecture.md`). Mounted under
@@ -733,28 +857,16 @@ export function createApp(
     }
     if (!actsFor(c, deviceId)) return notThisDevice(c);
 
-    const target = `https://${config.host}/${config.zone}/${byteKey(deviceId, filename)}`;
-    const init: StreamInit = {
-      method: "PUT",
-      headers: {
-        AccessKey: config.accessKey,
-        "Content-Type": c.req.header("content-type") ?? "application/octet-stream",
-      },
-      body: c.req.raw.body, // ReadableStream — streamed straight through, never buffered
-      duplex: "half",
-    };
-
-    let upstream: Response;
-    try {
-      upstream = await fetchImpl(target, init);
-    } catch (e) {
-      console.error(`upload: upstream PUT errored for ${byteKey(deviceId, filename)}: ${e}`);
-      return c.text("upstream error", 502);
-    }
-    if (!upstream.ok) {
-      console.error(`upload: bunny returned ${upstream.status} for ${byteKey(deviceId, filename)}`);
-      return c.text("upstream rejected", 502);
-    }
+    const contentType = c.req.header("content-type") ?? "application/octet-stream";
+    const refused = await streamPut(
+      fetchImpl,
+      config,
+      c,
+      "upload",
+      byteKey(deviceId, filename),
+      contentType,
+    );
+    if (refused) return refused;
     // Bunny confirmed the stored object. Record the upload (`docs/architecture.md`) — BEST-EFFORT: this
     // route's success is "the bytes landed", and failing it because a bookkeeping row did not land would
     // turn a successful upload into a retried one.
@@ -1159,13 +1271,9 @@ export function createApp(
     const issuers = new Hono();
     // Attest: verify the attestation, persist the attested public key, mint a token.
     issuers.post("/attest/token", async (c) => {
-      let raw: unknown;
-      try {
-        raw = await c.req.json();
-      } catch {
-        return c.text("invalid body", 400);
-      }
-      const body = parseMintBody(raw, mintShape);
+      const json = await readJson(c);
+      if (json instanceof Response) return json;
+      const body = parseMintBody(json.body, mintShape);
       if (!body) return c.text("invalid body", 400);
       const { deviceId, challenge, proof } = body;
       if (!await challengeIsValid(config, challenge, now())) {
@@ -1185,8 +1293,7 @@ export function createApp(
         // Android's revocation list could not be fetched: "could not look", which the client retries —
         // never the 401 that would send it down a fresh attestation for a verdict nobody reached.
         if (e instanceof RevocationUnavailable) {
-          console.error(`attest: ${deviceId}: ${e.message}`);
-          return c.text("upstream error", 502);
+          return upstream502(c, `attest: ${deviceId}`, e.message);
         }
         console.error(`attest: ${proof.format} attestation rejected for ${deviceId}: ${e}`);
         return c.text("attestation rejected", 401);
@@ -1199,22 +1306,23 @@ export function createApp(
       //
       // PERSIST BEFORE MINTING. A token handed out against a record we failed to write is a credential
       // nothing knows about; the client retries at its next wake, so refusing costs nothing.
-      try {
-        await putAttestation(
-          db,
-          deviceId,
-          {
-            publicKey: bytesToB64(verified.publicKey),
-            platform: verified.platform,
-            environment: verified.environment,
-          },
-          new Date(now()).toISOString(),
-          tokenExpiryIso(config, now()),
-        );
-      } catch (e) {
-        console.error(`attest: could not persist the attestation record for ${deviceId}: ${e}`);
-        return c.text("upstream error", 502);
-      }
+      const persisted = await tryUpstream(
+        c,
+        `attest: could not persist the attestation record for ${deviceId}`,
+        () =>
+          putAttestation(
+            db,
+            deviceId,
+            {
+              publicKey: bytesToB64(verified.publicKey),
+              platform: verified.platform,
+              environment: verified.environment,
+            },
+            new Date(now()).toISOString(),
+            tokenExpiryIso(config, now()),
+          ),
+      );
+      if (persisted instanceof Response) return persisted;
 
       console.info(`attest: ${deviceId} attested (${verified.platform}, ${verified.environment})`);
       return c.json({ token: await mintToken(config, deviceId, now()) }, 201);
@@ -1223,13 +1331,13 @@ export function createApp(
     // Renew: verify an assertion against the stored key, mint a fresh token. No Apple round-trip, so this
     // is cheap enough for the app to attempt at EVERY wake rather than in a narrow window near expiry.
     issuers.post("/attest/renew", async (c) => {
-      let body: { deviceId?: string; assertion?: string; challenge?: string };
-      try {
-        body = await c.req.json();
-      } catch {
-        return c.text("invalid body", 400);
-      }
-      const { deviceId, assertion, challenge } = body;
+      const json = await readJson(c);
+      if (json instanceof Response) return json;
+      const { deviceId, assertion, challenge } = json.body as {
+        deviceId?: string;
+        assertion?: string;
+        challenge?: string;
+      };
       if (!deviceId || !validateUUID(deviceId) || !assertion || !challenge) {
         return c.text("invalid body", 400);
       }
@@ -1237,16 +1345,15 @@ export function createApp(
         return c.text("stale challenge", staleChallengeStatus);
       }
 
-      let record: Awaited<ReturnType<typeof readAttestation>>;
-      try {
-        record = await readAttestation(db, deviceId);
-      } catch (e) {
-        // Absence and "could not ask" are DIFFERENT answers here and must not collapse: absence sends the
-        // device down a full Apple attestation, which is the throttled path, so a database blink must read
-        // as retry-me and not as attest-again.
-        console.error(`renew: could not read the attestation record for ${deviceId}: ${e}`);
-        return c.text("upstream error", 502);
-      }
+      // Absence and "could not ask" are DIFFERENT answers here and must not collapse: absence sends the
+      // device down a full Apple attestation, which is the throttled path, so a database blink must read
+      // as retry-me and not as attest-again.
+      const record = await tryUpstream(
+        c,
+        `renew: could not read the attestation record for ${deviceId}`,
+        () => readAttestation(db, deviceId),
+      );
+      if (record instanceof Response) return record;
       if (record === null) {
         // Two causes, one answer, and the log keeps them apart: a device the backend has never seen, or one
         // whose row the nightly sweep collected. Both mean "attest afresh", which is what the client does.
@@ -1267,20 +1374,16 @@ export function createApp(
       // decides whether this device may still hold a working credential from this value; minting first and
       // writing after would leave the store understating the token's life, and the sweep would then collect
       // a device that is still using it — costing it a full re-attestation.
-      try {
-        const { rowsAffected } = await touchTokenExpiry(
-          db,
-          deviceId,
-          tokenExpiryIso(config, now()),
-        );
-        if (rowsAffected === 0) {
-          // The row went away between the read and this write. Nothing to renew against.
-          console.info(`renew: the attestation record for ${deviceId} vanished mid-renewal`);
-          return c.text("not attested", 401);
-        }
-      } catch (e) {
-        console.error(`renew: could not record the token expiry for ${deviceId}: ${e}`);
-        return c.text("upstream error", 502);
+      const touched = await tryUpstream(
+        c,
+        `renew: could not record the token expiry for ${deviceId}`,
+        () => touchTokenExpiry(db, deviceId, tokenExpiryIso(config, now())),
+      );
+      if (touched instanceof Response) return touched;
+      if (touched.rowsAffected === 0) {
+        // The row went away between the read and this write. Nothing to renew against.
+        console.info(`renew: the attestation record for ${deviceId} vanished mid-renewal`);
+        return c.text("not attested", 401);
       }
 
       return c.json({ token: await mintToken(config, deviceId, now()) }, 201);
@@ -1293,12 +1396,9 @@ export function createApp(
   // possession-is-capability model. Validates the name, mints a server-side UUID, and INSERTs the row.
   // Faithful outcome: 201 only after the store confirms the write; any failure → 502.
   deviceApi.post("/events", async (c) => {
-    let body: unknown;
-    try {
-      body = await c.req.json();
-    } catch {
-      return c.text("invalid body", 400); // not JSON
-    }
+    const json = await readJson(c);
+    if (json instanceof Response) return json;
+    const body = json.body;
     const name = validateEventName((body as { name?: unknown } | null)?.name);
     if (name === null) {
       return c.text("invalid name", 400); // missing/empty/whitespace/too long
@@ -1336,12 +1436,12 @@ export function createApp(
       lifetimeSeconds: config.eventLifetimeSeconds,
     };
 
-    try {
-      await insertEvent(db, event);
-    } catch (e) {
-      console.error(`create: event insert failed for ${event.eventId}: ${e}`);
-      return c.text("upstream error", 502);
-    }
+    const inserted = await tryUpstream(
+      c,
+      `create: event insert failed for ${event.eventId}`,
+      () => insertEvent(db, event),
+    );
+    if (inserted instanceof Response) return inserted;
     // The row exists — only now is the event created.
     return c.json(publicEvent(event), 201);
   });
@@ -1357,20 +1457,17 @@ export function createApp(
   // touch. The 404 a client acts on is therefore always a real deletion, which is what makes it safe as
   // one of the two witnesses the client's self-leave requires (capability `manage-membership`).
   deviceApi.get("/events/:eventId", async (c) => {
-    const eventId = c.req.param("eventId");
-    if (!validateUUID(eventId)) {
-      return c.text("invalid event", 400);
-    }
-    try {
-      const gate = await gateEvent(eventId);
-      if (gate.kind === "absent") return c.text("event not found", 404);
-      // `members` feeds the ended event's waiting line (capability `sync-status`): how many of the active
-      // members have settled what they share. A completed event has none left.
-      return c.json({ ...publicEvent(gate.event), members: await memberCounts(db, eventId) });
-    } catch (e) {
-      console.error(`metadata: event read failed for ${eventId}: ${e}`);
-      return c.text("upstream error", 502);
-    }
+    const eventId = eventParam(c);
+    if (eventId instanceof Response) return eventId;
+    const event = await gateEvent(c, eventId, "metadata");
+    if (event instanceof Response) return event;
+    // `members` feeds the ended event's waiting line (capability `sync-status`): how many of the active
+    // members have settled what they share. A completed event has none left.
+    return await orUpstream502(
+      c,
+      `metadata: event read failed for ${eventId}`,
+      async () => c.json({ ...publicEvent(event), members: await memberCounts(db, eventId) }),
+    );
   });
 
   // Rename an event (capability `manage-membership`). The ONLY route that writes an existing event row, and
@@ -1392,18 +1489,12 @@ export function createApp(
   // Concurrent renames are last-write-wins: bunny has no compare-and-set (the same constraint the
   // device-manifest capacity gate reads and writes under). No ordering guarantee is available or claimed.
   deviceApi.patch("/events/:eventId", async (c) => {
-    const eventId = c.req.param("eventId");
-    if (!validateUUID(eventId)) {
-      return c.text("invalid event", 400);
-    }
-    let body: unknown;
-    try {
-      body = await c.req.json();
-    } catch {
-      return c.text("invalid body", 400); // not JSON
-    }
+    const eventId = eventParam(c);
+    if (eventId instanceof Response) return eventId;
+    const json = await readJson(c);
+    if (json instanceof Response) return json;
     // The SAME validator the create route uses — one rule for what an event may be called.
-    const name = validateEventName((body as { name?: unknown } | null)?.name);
+    const name = validateEventName((json.body as { name?: unknown } | null)?.name);
     if (name === null) {
       return c.text("invalid name", 400); // missing/empty/whitespace/too long
     }
@@ -1411,29 +1502,22 @@ export function createApp(
     // The same existence gate the metadata route serves from: absent → 404 (never a partial
     // rewrite of a row the sweep is about to delete); a transport failure → 502, so a
     // transient fault is never mistaken for absence.
-    let current: EventRow;
-    try {
-      const gate = await gateEvent(eventId);
-      if (gate.kind === "absent") return c.text("event not found", 404);
-      current = gate.event;
-      // A closed event does not change any more, its name included (capability `event-lifetime`).
-      if (current.closedAt) return closedRefusal(c);
-    } catch (e) {
-      console.error(`rename: event read failed for ${eventId}: ${e}`);
-      return c.text("upstream error", 502);
-    }
+    const current = await gateEvent(c, eventId, "rename");
+    if (current instanceof Response) return current;
+    // A closed event does not change any more, its name included (capability `event-lifetime`).
+    if (current.closedAt) return closedRefusal(c);
 
     // ONE column. `renameEvent` is a `SET name = ?` and nothing else — see `db.ts`, where the statement
     // is spelled out in one place precisely because widening it is now a one-word edit.
-    try {
-      const written = await renameEvent(db, eventId, name);
-      // Zero rows means the event was deleted between the gate and the write. Report the absence rather
-      // than a success that renamed nothing.
-      if (written.rowsAffected === 0) return c.text("event not found", 404);
-    } catch (e) {
-      console.error(`rename: update failed for ${eventId}: ${e}`);
-      return c.text("upstream error", 502);
-    }
+    const written = await tryUpstream(
+      c,
+      `rename: update failed for ${eventId}`,
+      () => renameEvent(db, eventId, name),
+    );
+    if (written instanceof Response) return written;
+    // Zero rows means the event was deleted between the gate and the write. Report the absence rather
+    // than a success that renamed nothing.
+    if (written.rowsAffected === 0) return c.text("event not found", 404);
     return c.json(publicEvent({ ...current, name }));
   });
 
@@ -1456,49 +1540,40 @@ export function createApp(
   // enrollments may transiently overshoot, accepted — what is guaranteed is that a request OBSERVING the
   // event at capacity admits no new device.
   v1Only.put("/events/:eventId/devices/:deviceId", async (c) => {
-    const eventId = c.req.param("eventId");
-    const deviceId = c.req.param("deviceId");
-    if (!validateUUID(eventId) || !validateUUID(deviceId)) {
-      return c.text("invalid key", 400);
-    }
-    if (!actsFor(c, deviceId)) return notThisDevice(c);
+    const ids = eventAndOwnDeviceParams(c, "invalid key");
+    if (ids instanceof Response) return ids;
+    const { eventId, deviceId } = ids;
 
     // The manifest is a WIRE FORMAT now, not an object: parse it here rather than streaming it to
     // storage. It is bounded by the device's own library, and the whole point of reading it is that the
     // backend records what it says.
-    let body: { assets?: unknown };
-    try {
-      body = await c.req.json();
-    } catch {
-      return c.text("invalid body", 400);
-    }
-    const assets = parseManifestAssets(body);
+    const json = await readJson(c);
+    if (json instanceof Response) return json;
+    const assets = parseManifestAssets(json.body as { assets?: unknown });
     if (assets === null) return c.text("invalid manifest", 400);
 
     // Enrollment IS the capacity gate, evaluated and applied in ONE conditional statement so concurrent
     // first enrollments cannot overshoot (capability `event-lifetime`). Its zero-row outcome is resolved to
     // `full` or `no-such-event` inside `enroll`, never collapsed into one status.
-    let outcome;
-    try {
-      outcome = await enroll(db, eventId, deviceId, new Date(now()).toISOString());
-    } catch (e) {
-      console.error(`device-manifest: enrollment failed for ${eventId}/${deviceId}: ${e}`);
-      return c.text("upstream error", 502);
-    }
-    if (outcome === "no-such-event") return c.text("event not found", 404);
-    if (outcome === "closed") return closedRefusal(c);
-    if (outcome === "full") return c.text("event full", 409);
+    const outcome = await tryUpstream(
+      c,
+      `device-manifest: enrollment failed for ${eventId}/${deviceId}`,
+      () => enroll(db, eventId, deviceId, new Date(now()).toISOString()),
+    );
+    const refused = enrollRefusal(c, outcome);
+    if (refused) return refused;
 
     // ONE atomic unit: the membership becomes active, the event's asset set for this device is REPLACED
     // wholesale, and every listed resource is upserted. A partial replace must never be observable by
     // the union — which is exactly what a half-applied full-state write would produce.
-    try {
-      await db.batch(publishStatements(eventId, deviceId, assets, { legacy: true }));
-    } catch (e) {
-      console.error(`device-manifest: publish failed for ${eventId}/${deviceId}: ${e}`);
-      return c.text("upstream error", 502);
-    }
-    return c.body(null, 201);
+    return await orUpstream502(
+      c,
+      `device-manifest: publish failed for ${eventId}/${deviceId}`,
+      async () => {
+        await db.batch(publishStatements(eventId, deviceId, assets, { legacy: true }));
+        return c.body(null, 201);
+      },
+    );
   });
 
   // Leave an event (capability `manage-membership`). A STATE CHANGE, and non-destructive: mark the membership
@@ -1510,36 +1585,25 @@ export function createApp(
   // changes nothing and is not an error, so a retried DELETE re-runs
   // harmlessly. Any transport failure → 502.
   deviceApi.delete("/events/:eventId/devices/:deviceId", async (c) => {
-    const eventId = c.req.param("eventId");
-    const deviceId = c.req.param("deviceId");
-    if (!validateUUID(eventId) || !validateUUID(deviceId)) {
-      return c.text("invalid key", 400);
-    }
-    if (!actsFor(c, deviceId)) return notThisDevice(c);
+    const ids = eventAndOwnDeviceParams(c, "invalid key");
+    if (ids instanceof Response) return ids;
+    const { eventId, deviceId } = ids;
 
-    try {
-      // The lifecycle gate (capability `event-lifetime`): an absent event 404s, which the client already
-      // treats as "nothing to leave". A leave DURING grace proceeds: members may still
-      // depart an over-but-not-yet-swept event.
-      const gate = await gateEvent(eventId);
-      if (gate.kind === "absent") return c.text("event not found", 404);
-    } catch (e) {
-      console.error(`leave: event read failed for ${eventId}: ${e}`);
-      return c.text("upstream error", 502);
-    }
+    // The lifecycle gate (capability `event-lifetime`): an absent event 404s, which the client already
+    // treats as "nothing to leave". A leave DURING grace proceeds: members may still
+    // depart an over-but-not-yet-swept event.
+    const event = await gateEvent(c, eventId, "leave");
+    if (event instanceof Response) return event;
 
-    try {
-      // ONE column. The departed-sibling object and its last-write-wins tie-break are gone: membership
-      // is a `state`, so leaving cannot leave a half-renamed pair behind and cannot be double-counted.
-      // The membership's assets are RETAINED, so the union still serves what this device shared.
+    return await orUpstream502(c, `leave: depart failed for ${eventId}/${deviceId}`, async () => {
+      // ONE column. Membership is a `state`, so leaving cannot leave a half-applied pair behind and
+      // cannot be double-counted. The membership's assets are RETAINED, so the union still serves what
+      // this device shared.
       await departMembership(db, eventId, deviceId);
       // Always succeed: the event persists (rejoinable) regardless of how many active members remain,
       // and a leave naming a membership that never existed changes nothing rather than failing.
       return c.body(null, 200);
-    } catch (e) {
-      console.error(`leave: depart failed for ${eventId}/${deviceId}: ${e}`);
-      return c.text("upstream error", 502);
-    }
+    });
   });
 
   // Event-wide UNION read (`docs/architecture.md`). UNGATED by the token — the no-app download page
@@ -1556,22 +1620,15 @@ export function createApp(
   // published manifest is already the event's date-filtered projection, so its asset list is trusted
   // as-is (no re-filtering). Faithful: any read failure → 502, never a partial union. Non-cacheable.
   deviceApi.get("/events/:eventId/files", async (c) => {
-    const eventId = c.req.param("eventId");
-    if (!validateUUID(eventId)) {
-      return c.text("invalid event", 400);
-    }
+    const eventId = eventParam(c);
+    if (eventId instanceof Response) return eventId;
 
     // Gate on the event row (`docs/architecture.md`): absent → 404; a store failure → 502. An event past
     // its window still serves its union — the window closes nothing.
-    try {
-      const gate = await gateEvent(eventId);
-      if (gate.kind === "absent") return c.text("event not found", 404);
-    } catch (e) {
-      console.error(`union: event read failed for ${eventId}: ${e}`);
-      return c.text("upstream error", 502);
-    }
+    const event = await gateEvent(c, eventId, "union");
+    if (event instanceof Response) return event;
 
-    try {
+    return await orUpstream502(c, `union: assembly failed for event ${eventId}`, async () => {
       // ONE query, spanning the event's memberships in BOTH states: a member who has left keeps
       // contributing the photos it already shared, until the event itself is deleted. What this replaces
       // is a fan-out — one directory listing to discover members, then a manifest read AND a byte listing
@@ -1612,10 +1669,7 @@ export function createApp(
 
       c.header("Cache-Control", NO_CACHE); // every `url` is a time-limited presigned S3 URL
       return c.json(assets);
-    } catch (e) {
-      console.error(`union: assembly failed for event ${eventId}: ${e}`);
-      return c.text("upstream error", 502);
-    }
+    });
   });
 
   // List a device's stored resources (`docs/architecture.md`). Served from the backend's own record
@@ -1627,12 +1681,9 @@ export function createApp(
   // `photo-sharing`), and seeding from bytes the backend cannot vouch for would suppress
   // an upload that never happened.
   v1Only.get("/files/devices/:deviceId", async (c) => {
-    const deviceId = c.req.param("deviceId");
-    if (!validateUUID(deviceId)) {
-      return c.text("invalid device", 400);
-    }
-    if (!actsFor(c, deviceId)) return notThisDevice(c);
-    try {
+    const deviceId = ownDeviceParam(c, "invalid device");
+    if (deviceId instanceof Response) return deviceId;
+    return await orUpstream502(c, `list: device listing failed for ${deviceId}`, async () => {
       const stored = await deviceFiles(db, deviceId);
       c.header("Cache-Control", NO_CACHE); // each `url` is a time-limited presigned S3 URL
       const files: FileEntry[] = await Promise.all(stored.map(async (e) => ({
@@ -1642,10 +1693,7 @@ export function createApp(
         url: await presignDownloadUrl(aws, config, deviceId, e.key),
       })));
       return c.json(files);
-    } catch (e) {
-      console.error(`list: device listing failed for ${deviceId}: ${e}`);
-      return c.text("upstream error", 502);
-    }
+    });
   });
 
   // Write a device's config document (`docs/architecture.md`). Gated by DEVICE-ID possession alone
@@ -1653,51 +1701,42 @@ export function createApp(
   // device (`docs/architecture.md`); last-write-wins, and it is not a resource, so it never appears in the
   // per-device listing or the union.
   deviceApi.put("/devices/:deviceId", async (c) => {
-    const deviceId = c.req.param("deviceId");
-    if (!validateUUID(deviceId)) {
-      return c.text("invalid device", 400);
-    }
-    if (!actsFor(c, deviceId)) return notThisDevice(c);
+    const deviceId = ownDeviceParam(c, "invalid device");
+    if (deviceId instanceof Response) return deviceId;
+    const json = await readJson(c);
+    if (json instanceof Response) return json;
+    // A JSON `null` body is no document at all — `invalid body`, like one that is not JSON.
+    if (json.body === null) return c.text("invalid body", 400);
+    const pt = (json.body as { pushToken?: Record<string, unknown> }).pushToken;
     let push: { kind: string; token: string; env: string } | null;
-    try {
-      const body = await c.req.json() as { pushToken?: Record<string, unknown> };
-      const pt = body.pushToken;
-      if (pt === undefined || pt === null) {
-        // An explicit absence: the device is telling us it has no registration. Distinct from a
-        // malformed body, and a legitimate thing to record.
-        push = null;
-      } else if (
-        typeof pt.kind === "string" && typeof pt.token === "string" && typeof pt.env === "string"
-      ) {
-        push = { kind: pt.kind, token: pt.token, env: pt.env };
-      } else {
-        return c.text("invalid pushToken", 400);
-      }
-    } catch {
-      return c.text("invalid body", 400);
+    if (pt === undefined || pt === null) {
+      // An explicit absence: the device is telling us it has no registration. Distinct from a
+      // malformed body, and a legitimate thing to record.
+      push = null;
+    } else if (
+      typeof pt.kind === "string" && typeof pt.token === "string" && typeof pt.env === "string"
+    ) {
+      push = { kind: pt.kind, token: pt.token, env: pt.env };
+    } else {
+      return c.text("invalid pushToken", 400);
     }
     // An UPDATE, never an insert: a `devices` row exists only where the device has attested, and this
     // route cannot attest on its behalf (capability `privacy-security`).
-    try {
-      const { rowsAffected } = await putDeviceRecord(
-        db,
-        deviceId,
-        push,
-        new Date(now()).toISOString(),
-      );
-      if (rowsAffected === 0) {
-        // The token verified — it is ours and unexpired — but we hold no attestation for this device.
-        // `401` is the answer because the remedy is the same one a rejected token has, and the shipped
-        // client already takes it: drop the token, attest afresh (which CREATES the row), and re-send
-        // this registration when a new token arrives. A `201` here would be a silent absence — the device
-        // would believe it is reachable while no push could ever reach it, and it writes its registration
-        // once per OS-delivered token, so nothing would retry.
-        console.info(`config: no attestation on file for ${deviceId} — refusing the registration`);
-        return c.text("unattested", 401);
-      }
-    } catch (e) {
-      console.error(`config: device record write failed for ${deviceId}: ${e}`);
-      return c.text("upstream error", 502);
+    const written = await tryUpstream(
+      c,
+      `config: device record write failed for ${deviceId}`,
+      () => putDeviceRecord(db, deviceId, push, new Date(now()).toISOString()),
+    );
+    if (written instanceof Response) return written;
+    if (written.rowsAffected === 0) {
+      // The token verified — it is ours and unexpired — but we hold no attestation for this device.
+      // `401` is the answer because the remedy is the same one a rejected token has, and the shipped
+      // client already takes it: drop the token, attest afresh (which CREATES the row), and re-send
+      // this registration when a new token arrives. A `201` here would be a silent absence — the device
+      // would believe it is reachable while no push could ever reach it, and it writes its registration
+      // once per OS-delivered token, so nothing would retry.
+      console.info(`config: no attestation on file for ${deviceId} — refusing the registration`);
+      return c.text("unattested", 401);
     }
     return c.body(null, 201);
   });
@@ -1711,29 +1750,21 @@ export function createApp(
   // — always a bare 202 once the gate passed and members were enumerated. Server-chosen payload
   // (the path event id), all members, no exclusion; the uploader fires this via `receiving-photos`.
   v1Only.post("/events/:eventId/notify", async (c) => {
-    const eventId = c.req.param("eventId");
-    if (!validateUUID(eventId)) {
-      return c.text("invalid event", 400);
-    }
+    const eventId = eventParam(c);
+    if (eventId instanceof Response) return eventId;
 
-    try {
-      // The lifecycle gate (capability `event-lifetime`): an expired event reaps here and 404s; an
-      // event in grace still notifies — members keep full sync until expiry.
-      const gate = await gateEvent(eventId);
-      if (gate.kind === "absent") return c.text("event not found", 404);
-    } catch (e) {
-      console.error(`notify: event read failed for ${eventId}: ${e}`);
-      return c.text("upstream error", 502);
-    }
+    // The lifecycle gate (capability `event-lifetime`): an absent event 404s; an event past its window
+    // still notifies — the window closes nothing.
+    const event = await gateEvent(c, eventId, "notify");
+    if (event instanceof Response) return event;
 
     // Enumerate ACTIVE members only — one `state` read. A departed device has left and is not notified.
-    let memberIds: string[];
-    try {
-      memberIds = await membersOf(db, eventId, ["active"]);
-    } catch (e) {
-      console.error(`notify: member read failed for ${eventId}: ${e}`);
-      return c.text("upstream error", 502);
-    }
+    const memberIds = await tryUpstream(
+      c,
+      `notify: member read failed for ${eventId}`,
+      () => membersOf(db, eventId, ["active"]),
+    );
+    if (memberIds instanceof Response) return memberIds;
 
     // Best-effort per-member token read (skips members without a registered token), then fan out.
     const tokens = (await Promise.all(memberIds.map((d) => readPushToken(db, d))))
@@ -1806,12 +1837,11 @@ export function createApp(
   // entirely: v1 had to validate a filename segment for traversal, and here the value never reaches the
   // key, so the rule is not relaxed but made unnecessary.
   v2Only.put("/files/devices/:deviceId/:assetId/:role", async (c) => {
-    const deviceId = c.req.param("deviceId");
+    const deviceId = ownDeviceParam(c, "invalid device");
+    if (deviceId instanceof Response) return deviceId;
     const assetId = c.req.param("assetId");
     const role = c.req.param("role");
     const filename = new URL(c.req.url).searchParams.get("filename");
-    if (!validateUUID(deviceId)) return c.text("invalid device", 400);
-    if (!actsFor(c, deviceId)) return notThisDevice(c);
     if (!validateFilename(assetId)) return c.text("invalid asset", 400);
     // The role vocabulary is CLOSED, and the route validates it rather than storing whatever it is given.
     // v1 could not — its role arrived inside an opaque object name — which is why an unknown role is a
@@ -1825,25 +1855,15 @@ export function createApp(
     // otherwise the first v2 build re-uploads every library it meets.
     const key = legacyKeyFor(assetId, role, filename);
     const contentType = c.req.header("content-type") ?? "application/octet-stream";
-    let upstream: Response;
-    try {
-      upstream = await fetchImpl(
-        `https://${config.host}/${config.zone}/${byteKey(deviceId, key)}`,
-        {
-          method: "PUT",
-          headers: { AccessKey: config.accessKey, "Content-Type": contentType },
-          body: c.req.raw.body, // ReadableStream — streamed straight through, never buffered
-          duplex: "half",
-        } as StreamInit,
-      );
-    } catch (e) {
-      console.error(`v2 upload: upstream PUT errored for ${byteKey(deviceId, key)}: ${e}`);
-      return c.text("upstream error", 502);
-    }
-    if (!upstream.ok) {
-      console.error(`v2 upload: bunny returned ${upstream.status} for ${byteKey(deviceId, key)}`);
-      return c.text("upstream rejected", 502);
-    }
+    const refused = await streamPut(
+      fetchImpl,
+      config,
+      c,
+      "v2 upload",
+      byteKey(deviceId, key),
+      contentType,
+    );
+    if (refused) return refused;
     // NOT best-effort, unlike v1. v1's manifest publish re-creates a missing row on its next cycle, and
     // that repair is what makes swallowing this failure safe there. v2's manifest writes no resource row
     // at all, so nothing would repair it: the bytes would be stored, the backend would not know, the
@@ -1859,12 +1879,12 @@ export function createApp(
     } catch (e) {
       console.error(`v2 upload: completion lookup failed for ${deviceId}/${assetId}/${role}: ${e}`);
     }
-    try {
-      await recordResource(db, { deviceId, assetId, role, key, contentType, filename });
-    } catch (e) {
-      console.error(`v2 upload: could not record ${byteKey(deviceId, key)}: ${e}`);
-      return c.text("upstream error", 502);
-    }
+    const recorded = await tryUpstream(
+      c,
+      `v2 upload: could not record ${byteKey(deviceId, key)}`,
+      () => recordResource(db, { deviceId, assetId, role, key, contentType, filename }),
+    );
+    if (recorded instanceof Response) return recorded;
     // AFTER the commit, and best-effort: this asset is now servable, so the event's other members are
     // woken to come and fetch it (capability `receiving-photos`). The manifest publish cannot
     // announce this — a declaration and its later completion project identical manifest fields, so the
@@ -1890,78 +1910,55 @@ export function createApp(
   // answers "what have you recorded", and its consumer fetches no bytes — minting a presigned link would
   // cost a signature per row for a field nobody follows.
   v2Only.get("/files/devices/:deviceId", async (c) => {
-    const deviceId = c.req.param("deviceId");
-    if (!validateUUID(deviceId)) return c.text("invalid device", 400);
-    if (!actsFor(c, deviceId)) return notThisDevice(c);
-    try {
+    const deviceId = ownDeviceParam(c, "invalid device");
+    if (deviceId instanceof Response) return deviceId;
+    return await orUpstream502(c, `v2 list: device listing failed for ${deviceId}`, async () => {
       const held = await deviceResources(db, deviceId);
       c.header("Cache-Control", NO_CACHE);
       return c.json(held);
-    } catch (e) {
-      console.error(`v2 list: device listing failed for ${deviceId}: ${e}`);
-      return c.text("upstream error", 502);
-    }
+    });
   });
 
   // JOIN — the only route that creates or reactivates a membership, and the only one that decides
   // capacity. In v1 the manifest publish did both, which meant a document describing what a device SHARES
   // also decided whether it was a member: a departed device rejoined merely by publishing.
   v2Only.put("/events/:eventId/devices/:deviceId", async (c) => {
-    const eventId = c.req.param("eventId");
-    const deviceId = c.req.param("deviceId");
-    if (!validateUUID(eventId) || !validateUUID(deviceId)) return c.text("invalid id", 400);
-    if (!actsFor(c, deviceId)) return notThisDevice(c);
-    let outcome: EnrollOutcome;
-    try {
-      outcome = await enroll(db, eventId, deviceId, new Date(now()).toISOString());
-    } catch (e) {
-      console.error(`v2 join: enrollment failed for ${eventId}/${deviceId}: ${e}`);
-      return c.text("upstream error", 502);
-    }
-    // The zero-row outcome has TWO causes and they are told apart rather than collapsed (capability
-    // `database`): at capacity is a `409` the user can act on, absent is a `404` that means something
-    // else entirely.
-    if (outcome === "no-such-event") return c.text("event not found", 404);
-    if (outcome === "closed") return closedRefusal(c);
-    if (outcome === "full") return c.text("event full", 409);
-    return c.body(null, 200);
+    const ids = eventAndOwnDeviceParams(c, "invalid id");
+    if (ids instanceof Response) return ids;
+    const { eventId, deviceId } = ids;
+    const outcome = await tryUpstream(
+      c,
+      `v2 join: enrollment failed for ${eventId}/${deviceId}`,
+      () => enroll(db, eventId, deviceId, new Date(now()).toISOString()),
+    );
+    return enrollRefusal(c, outcome) ?? c.body(null, 200);
   });
 
   // The manifest — CONTRIBUTION ONLY. It replaces the membership's asset set and does nothing else: it
   // enrolls nobody (join owns that) and records no upload (the byte route owns that).
   v2Only.put("/events/:eventId/devices/:deviceId/manifest", async (c) => {
-    const eventId = c.req.param("eventId");
-    const deviceId = c.req.param("deviceId");
-    if (!validateUUID(eventId) || !validateUUID(deviceId)) return c.text("invalid id", 400);
-    if (!actsFor(c, deviceId)) return notThisDevice(c);
-    let parsed: ReturnType<typeof parseManifestBody>;
-    try {
-      parsed = parseManifestBody(await c.req.json());
-    } catch {
-      return c.text("invalid body", 400);
-    }
+    const ids = eventAndOwnDeviceParams(c, "invalid id");
+    if (ids instanceof Response) return ids;
+    const { eventId, deviceId } = ids;
+    const json = await readJson(c);
+    if (json instanceof Response) return json;
+    const parsed = parseManifestBody(json.body);
     if ("invalid" in parsed) return c.text(parsed.invalid, 400);
     const { assets, version, final } = parsed;
-    let event: EventRow;
-    try {
-      const gate = await gateEvent(eventId);
-      if (gate.kind === "absent") return c.text("event not found", 404);
-      event = gate.event;
-    } catch (e) {
-      console.error(`v2 manifest: event read failed for ${eventId}: ${e}`);
-      return c.text("upstream error", 502);
-    }
+    const event = await gateEvent(c, eventId, "v2 manifest");
+    if (event instanceof Response) return event;
     // A manifest from a NON-MEMBER is refused rather than silently joining — the inverse of v1, where
     // publishing was enrolling.
     // A completed event has no members left; its devices are told so, and leave (capability
     // `manage-membership`).
     if (event.completedAt) return closedRefusal(c);
-    try {
-      if (!await isMember(db, eventId, deviceId)) return c.text("not a member", 409);
-    } catch (e) {
-      console.error(`v2 manifest: membership read failed for ${eventId}/${deviceId}: ${e}`);
-      return c.text("upstream error", 502);
-    }
+    const member = await tryUpstream(
+      c,
+      `v2 manifest: membership read failed for ${eventId}/${deviceId}`,
+      () => isMember(db, eventId, deviceId),
+    );
+    if (member instanceof Response) return member;
+    if (!member) return c.text("not a member", 409);
     // A CLOSED event's asset sets are fixed (capability `photo-sharing`, "What a member shares is fixed
     // once the event has closed"): a publish naming the set it already declared changes nothing and is
     // answered as published, so a device whose publish raced the close is not left retrying; any other set
