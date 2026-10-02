@@ -26,7 +26,7 @@
 // the running process (`serve.ts`), after every static import has been evaluated, and is random per
 // session. No schema can source a value that does not exist yet — which is why it stays a parameter.
 
-import { androidFields, DEPLOYMENT, MIN_APP_VERSION } from "../config.ts";
+import { DEPLOYMENT, deploymentFields } from "../config.ts";
 import type { Config } from "../config.ts";
 import { isFilesystemDeployment } from "../deployment.ts";
 
@@ -81,17 +81,13 @@ export function devConfig(publicHost: string, s3Scheme: string): Config {
     s3Region: "dev",
     s3Host: publicHost,
     s3Scheme,
-    apnsKeyId: d.apnsKeyId,
-    apnsTeamId: d.teamId,
     // Left blank deliberately. `createApnsSender` imports the key lazily and catches a signing failure
     // PER TOKEN, so `/events/<id>/notify` still answers 202 with every token reported failed — which is
     // exactly the route's best-effort contract, not a local fake of it.
     apnsPrivateKey: "",
-    apnsTopic: d.bundleId,
     // The local rig sends FCM pushes only when a developer runs it with the key in its environment
     // (`secrets-env` injects it); without one the FCM sender skips every token — the same best-effort
     // contract a deployed backend without the key keeps.
-    fcmProjectId: d.firebaseProjectId,
     fcmServiceAccountKey: devFcmKey(),
     attestTokenKey: DEV_ATTEST_TOKEN_KEY,
     // Blank, and unreachable by construction: the rig builds its `Db` from `node:sqlite` against a local
@@ -101,25 +97,13 @@ export function devConfig(publicHost: string, s3Scheme: string): Config {
     // back on.
     databaseUrl: "",
     databaseToken: "",
-    appAttestRootCa: d.appAttestRootCa,
-    ...androidFields(d),
-    attestTokenTtlSeconds: d.attestTokenTtlSeconds,
-    attestAppId: `${d.teamId}.${d.bundleId}`,
-    linkDomain: d.domain,
-    appStoreUrl: d.appStoreUrl,
-    eventCapacity: d.eventCapacity,
-    eventWindowMaxSeconds: d.eventWindowMaxSeconds,
-    eventLifetimeSeconds: d.eventLifetimeSeconds,
+    ...deploymentFields(d),
     // Never on, and not read from the deployment. The maintenance window exists to bound the interval
     // between a migration landing and the bundle written against it serving (capability
     // `docs/deployment.md`) — and the rig has no publish, no probe and no such interval. Reading `d`
     // here would let a `local` deployment that set the flag produce a rig that refuses every device
     // request, with no pipeline able to lift it.
     maintenance: false,
-    // The local rig serves the same gate as production, so it needs a minimum. It takes the SHIPPED one
-    // rather than a permissive local value: a rig that admitted builds production refuses would hide exactly
-    // the failure the gate exists to surface, and only on device.
-    minAppVersion: MIN_APP_VERSION,
   };
 }
 
