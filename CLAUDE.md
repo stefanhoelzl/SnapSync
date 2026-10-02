@@ -319,8 +319,9 @@ reaches **no external tester**: there is no public alpha channel, and the App St
 path to real users. Both stores get the SAME version and build number: the marketing version is **computed**
 (`scripts/marketing-version.py`: `max(floor, latest vX.Y tag with its minor +1)`, integer bump — `v0.9 → 0.10`;
 a major jump is a manual `Config.xcconfig` floor bump via a PR), and Android's `versionCode` is the iOS
-`CFBundleVersion`. Play's internal track serves only its latest release, so a branch dispatch replaces `main`'s
-there until the next merge. `uv run .github/scripts/play_release.py status app.snapsync` (under `secrets-env`)
+`CFBundleVersion`. Play's internal track serves only its latest release, so only a push to `main` lands there: a
+branch dispatch goes out through Play's **internal app sharing**, its install link in the run's summary
+(`docs/deployment.md` §5). `uv run .github/scripts/play_release.py status app.snapsync` (under `secrets-env`)
 lists Play's tracks read-only.
 
 **A store release PROMOTES a build you already tested** — to the App Store, Google Play, or both, with ONE

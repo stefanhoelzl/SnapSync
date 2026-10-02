@@ -439,7 +439,9 @@ one bundle, or a value truncated by a grammar, fails the run here instead of pro
 
 **Every merge to `main` uploads a signed build to internal TestFlight and to Play's internal testing track**,
 automatically, docs-only merges included. It reaches **no external tester**: the builds go to TestFlight's internal
-`development` group and Play's internal testers only. Real users get builds only through the store release (§6).
+`development` group and Play's internal testers only. Real users get builds only through the store release (§6). A
+**branch dispatch** delivers to TestFlight the same way, but on Play it goes out as an internal-app-sharing link and
+never reaches the internal track (below).
 
 - **`ios-deliver`** (in `ci.yml`, `needs: ci` — every merge gate, both platforms; runs on delivering runs only): downloads and unpacks
   the archive, re-signs and exports an `app-store-connect` IPA **without recompiling**, and uploads it
@@ -471,13 +473,24 @@ automatically, docs-only merges included. It reaches **no external tester**: the
 - **`android-deliver`** (in `ci.yml`, `needs: ci`, the same runs as `ios-deliver`): downloads the bundle
   `android-build` built, keeps its R8 mapping as artifact **`r8-mapping-<build>`** (90 days), signs the bundle with
   `jarsigner` and the **upload key** (Play re-signs it with the Google-held app signing key — the certificate prod's
-  `androidSigningCertDigests` pins — and adds its automatic-protection code), and uploads it with
+  `androidSigningCertDigests` pins — and adds its automatic-protection code). On a **push to `main`** it uploads it with
   `.github/scripts/play_release.py deliver`: ONE Play edit that uploads the bundle, makes it the internal track's one
   release (named `<version> (<build>)`, status `completed`, the same note as TestFlight's cut to Play's 500
   characters) and commits — or, on any failure, is deleted, so nothing half-lands. Not required, no
   `continue-on-error`: a failed upload shows red and blocks nothing, and the next delivery carries a higher number.
-  The internal track serves only its **latest** release: a branch dispatch replaces `main`'s for internal testers until
-  the next merge. (Play's internal app sharing is not used: it re-signs with a key prod's attestation refuses.) The
+  The internal track serves only its **latest** release, so a **branch dispatch** never touches it: it uploads the same
+  signed bundle through **internal app sharing** (`play_release.py share`; no edit, no track, no listing) and puts the
+  install link in the run's summary with the build number, branch and short sha. Play re-signs a sharing build with a
+  second Google-held key, and prod's `androidSigningCertDigests` lists that certificate too — a deliberate widening:
+  without it a link-installed build cannot attest, so it cannot create or join an event, and uploading one needs Play
+  account access anyway. The digest also lands in `/.well-known/assetlinks.json`, so event links open a link-installed
+  app as well. `share` fails the step (the link still reaches the summary, marked) when Play signed with a certificate
+  `android.json` does not list. Setup, measured 2026-10-02: the internal-app-sharing terms must be accepted once in the
+  Console (until then every upload is `400 TOS_NOT_ACCEPTED`), the Console's internal-app-sharing settings restrict
+  installs to an email list, and each tester's Play Store needs its "Internal app sharing" toggle (Play Store →
+  Settings → About → tap the version seven times → Settings). ⚠️ A sharing build's different signing key also means a
+  different `ANDROID_ID`, so the backend sees it as a **new device**: switching between the Play build and a link
+  build enrols afresh, and each enrolment counts against an event's device capacity. The
   mapping is not uploaded to Play; `/bugsink` retraces against the artifact. `play_release.py status <package>` lists
   every track's releases read-only. On **`main` only**, the same edit also brings the Play **store listing** in line
   with the repo (§6, "Google Play listing delivery"); a branch dispatch never touches it. Secrets:
