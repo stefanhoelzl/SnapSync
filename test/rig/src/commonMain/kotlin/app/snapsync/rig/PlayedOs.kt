@@ -121,8 +121,10 @@ class PlayedOs(private val device: MockDevice, private val mocked: (MockedSystem
         if (mocked(MockedSystem.DATABASES)) {
             putJsonArray("databasesOpened") { device.databases.operator.opened.forEach { add(JsonPrimitive(it)) } }
         }
+        // Counted over the operator's copy, never the live area: the app writes the disk from its own thread while this
+        // request runs on the server's, and iterating the live map died half-way on a concurrent stage or release.
         if (mocked(MockedSystem.FILES)) {
-            put("stagedFiles", device.disk.operator.area(FileArea.SHARED).keys.count { it.startsWith("$DOWNLOAD_STAGING_DIR/") })
+            put("stagedFiles", device.disk.operator.paths(FileArea.SHARED).count { it.startsWith("$DOWNLOAD_STAGING_DIR/") })
         }
     }.toString()
 
