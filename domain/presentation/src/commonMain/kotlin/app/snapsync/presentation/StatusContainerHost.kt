@@ -38,7 +38,6 @@ import app.snapsync.model.SyncCounts
 import app.snapsync.model.DirectionCount
 import app.snapsync.model.EventTiming
 import app.snapsync.model.eventTiming
-import app.snapsync.feature.status.readmodel.SyncStatusSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
@@ -50,7 +49,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.getAndUpdate
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
@@ -58,7 +56,6 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.datetime.LocalDateTime
 import org.orbitmvi.orbit.OrbitContainer
 import org.orbitmvi.orbit.OrbitContainerHost
@@ -72,7 +69,6 @@ import app.snapsync.model.PendingSwitch
 import app.snapsync.model.RangeForm
 import app.snapsync.model.RenameState
 import app.snapsync.model.ResolvedRange
-import app.snapsync.model.StoreLink
 import app.snapsync.model.ShareCount
 import app.snapsync.model.SyncHealth
 import app.snapsync.model.UiState
@@ -129,54 +125,26 @@ class StatusContainerHost(
     private val permission = sources.permission
     private val config = sources.config
     private val creationStatus = sources.creation
-        private val downloadSource = sources.download
+    private val downloadSource = sources.download
     private val attested = sources.attested
     private val pending = sources.pending
     private val versionRefusal = sources.versionRefusal
+    private val renameFlow: StateFlow<RenameStatus> = sources.rename
     private val store = sources.store
 
     private val log = diagnostics.log
     private val onIntentError = diagnostics.onIntentError
 
-    // Declared here rather than beside their use because `container`'s initializer reduces over them:
+    // Declared here rather than beside their use because `container`'s initializer reduces over it:
     // a property initialized later is null at that moment.
-    private val transientErrorState = MutableStateFlow<String?>(null)
+    private val local = MutableStateFlow(Local(form = freshForm))
     private var transientErrorClear: Job? = null
-    private val renameFlow: StateFlow<RenameStatus> = sources.rename
 
     /** The non-idempotent commands claimed while their intent runs — see [guardedIntent]. */
     private val inFlight = MutableStateFlow<Set<Guarded>>(emptySet())
 
-    // What is drawn OVER the current layer (see [Overlays]). Presentation-owned like the transient error:
-    // opening a confirmation touches no port and calls no command, so these are container-local intents
-    // that reduce and nothing more. They are state rather than screen-local `remember`s because the
-    // screen SHOWS them (capability `sync-status`).
-    private val overlaysState = MutableStateFlow(Overlays())
-
-    // The member's uncommitted choices. ONE cell, because the two surfaces that ask for them are mutually
-    // exclusive by construction — the join gate needs config ABSENT, the settings surface needs it
-    // PRESENT — and each open re-seeds, so nothing can leak from one surface into the other.
-    private val formState = MutableStateFlow(freshForm())
-
     /** An untouched surface's choices on this phone: all on, the album included. */
-    private fun freshForm(): RangeForm = RangeForm(albumKind = albumKind)
-
-    // Whether the joined layer is showing its settings surface. A flag rather than a `UiState` family, for
-    // the reason `manage-membership` D4 gives: opening is client-side navigation that touches no port.
-    // OWNED by the membership it was opened in (see [Owned]): a switch, a leave or a fresh join cannot carry
-    // it into the next membership, whichever exit path ran (B7).
-    private val reconfiguringState = MutableStateFlow(Owned<SettingsSurface>(null, SettingsSurface.Closed))
-
-    // Which membership the rename status latch belongs to: the event the last rename was fired for. A result for
-    // an event that is no longer the joined one reads as Idle.
-    private val renameOwner = MutableStateFlow<String?>(null)
-    private val ownedRename = combine(renameOwner, renameFlow) { owner, status -> Owned(owner, status) }
-
-    // The shareable count for whichever surface is showing a range (capability `join-event`). Computed
-    // HERE, over the query bundle, and reduced into the range — the screen renders it and asks nothing. It
-    // starts Unavailable (no row) rather than Counting: a count is only "being computed" once one has been
-    // asked for, which `countInto` states itself.
-    private val shareCountState = MutableStateFlow<ShareCount>(ShareCount.Unavailable)
+    private val freshForm: RangeForm get() = RangeForm(albumKind = albumKind)
 
     /**
      * Resolve a form against an event window, in the DEVICE's zone.
@@ -204,7 +172,7 @@ class StatusContainerHost(
             nowLocal = cutoffFormatter.nowLocal(),
             nowAvailable = nowWithinWindow(cutoffFormatter.nowCutoff(), startsAt.at, endsAt?.at),
             toCutoff = cutoffFormatter::toCutoff,
-            shareCount = shareCountState.value,
+            shareCount = local.value.shareCount,
         )
     }
 
@@ -255,22 +223,12 @@ class StatusContainerHost(
         scope.orbitContainer(
             // All seams hold their current truth synchronously, so the first state the screen can ever
             // render derives from real values — never a guess or a placeholder.
-            initialState = reduceFrom(
-                config.value,
-                permission.value,
-                syncSource.status.value,
-                creationStatus.value,
-                downloadSource.value,
-                pending.value,
+            initialState = render(
+                Membership(config.value, permission.value, syncSource.status.value, downloadSource.value, attested.value),
+                Interaction(pending.value, creationStatus.value, renameFlow.value, versionRefusal.value),
+                local.value,
                 cutoffFormatter.nowCutoff(),
-                attested.value,
-                Owned(renameOwner.value, renameFlow.value),
-                transientErrorState.value,
-                formState.value,
-                reconfiguringState.value,
-                updateLayerFor(versionRefusal.value, store),
-                ::resolveRange,
-            ).let { layer -> UiState(layer, overlaysState.value.maskedFor(layer), reportDestination) },
+            ),
             // The container SURVIVES a throwing intent (spec `sync-status`) — and this handler is the
             // whole of what makes it so. It is not a logging convenience: Orbit runs each intent as
             // `runCatchingCancellable { … }.exceptionOrNull()?.let { settings.exceptionHandler?.handleException(…) ?: throw it }`,
@@ -292,47 +250,21 @@ class StatusContainerHost(
             },
         ) {
             intent {
-                // The sources combine into a holder; each new value reduces straight to a UI state.
-                // The only clock-driven input is `nowTick`, and it runs ONLY while an event has not begun
-                // (see above) — every other re-emission is a real source change or a pending-join
-                // transition.
-                combine(
-                    config,
-                    permission,
-                    syncSource.status,
-                    creationStatus,
-                    downloadSource,
-                    pending,
-                    nowTick,
-                    attested,
-                    ownedRename,
-                    transientErrorState,
-                    overlaysState,
-                    formState,
-                    reconfiguringState,
-                    versionRefusal,
-                    // Read through `resolveRange`, not by index: listed so a new count re-reduces the range.
-                    shareCountState,
-                ) { values ->
-                    @Suppress("UNCHECKED_CAST")
-                    reduceFrom(
-                        values[0] as EventConfig?,
-                        values[1] as GalleryAccess,
-                        values[2] as SyncStatus,
-                        values[3] as CreationStatus,
-                        values[4] as DownloadProgress,
-                        values[5] as PendingJoin?,
-                        values[6] as CaptureDate,
-                        values[7] as Boolean,
-                        values[8] as Owned<RenameStatus>,
-                        values[9] as String?,
-                        values[11] as RangeForm,
-                        values[12] as Owned<SettingsSurface>,
-                        updateLayerFor(values[13] as VersionRefusal?, store),
-                        ::resolveRange,
-                    ).let { layer -> UiState(layer, (values[10] as Overlays).maskedFor(layer), reportDestination) }
-                }
-                    .collect { ui -> reduce { ui } }
+                // Each new value reduces straight to a UI state. The only clock-driven input is `nowTick`, and
+                // it runs ONLY while an event has not ended (see above) — every other re-emission is a real
+                // source change or a presentation-owned cell's.
+                combineFlat(
+                    config, permission, syncSource.status, downloadSource, attested,
+                    pending, creationStatus, renameFlow, versionRefusal,
+                    local, nowTick,
+                ) { config, permission, sync, download, attested, pending, creation, rename, refusal, local, now ->
+                    render(
+                        Membership(config, permission, sync, download, attested),
+                        Interaction(pending, creation, rename, refusal),
+                        local,
+                        now,
+                    )
+                }.collect { ui -> reduce { ui } }
             }
             // The shareable count follows the range the showing surface resolves, and the grant (a late
             // first-join grant resolves the count). `collectLatest`: a newer range cancels an older count.
@@ -343,8 +275,8 @@ class StatusContainerHost(
                     .distinctUntilChanged()
                     .collectLatest { key ->
                         if (key == null) return@collectLatest
-                        shareCountState.value = ShareCount.Counting
-                        shareCountState.value = try {
+                        local.update { it.copy(shareCount = ShareCount.Counting) }
+                        val count = try {
                             queries.shareableCount(key.from, key.until)?.let { ShareCount.Ready(it) } ?: ShareCount.Unavailable
                         } catch (e: CancellationException) {
                             throw e
@@ -353,12 +285,28 @@ class StatusContainerHost(
                             log("shareable count failed: ${e.message}")
                             ShareCount.Unavailable
                         }
+                        local.update { it.copy(shareCount = count) }
                     }
             }
         }
 
     /** What the count is recomputed on — the bounds and the grant, never the count itself. */
     private data class CountKey(val from: CaptureCutoff, val until: CaptureCeiling, val grant: GalleryAccess)
+
+    /**
+     * One UI state from the observed inputs, the presentation-owned cells and "now".
+     *
+     * A refused build outranks everything (capability `app-update-required`), config-absent included: it makes no
+     * successful metadata call at all, so every other layer would render something untrue — a joined event that is
+     * not syncing, a create that cannot succeed, a join that cannot commit. Its layer joins the refusal with this
+     * build's store link, a constant, which is why it is assembled here rather than ranked inside [reduceFrom].
+     */
+    private fun render(membership: Membership, interaction: Interaction, local: Local, now: CaptureDate): UiState {
+        val layer = interaction.versionRefusal
+            ?.let { Layer.UpdateRequired(minimumVersion = it.minimumVersion, store = store) }
+            ?: reduceFrom(membership, interaction, local, now, ::resolveRange)
+        return UiState(layer, local.overlays.maskedFor(layer), reportDestination)
+    }
 
 
     /**
@@ -377,11 +325,11 @@ class StatusContainerHost(
      * — the deliberate reading of "self-clearing a few seconds after it LAST appeared".
      */
     private fun showTransientError() {
-        transientErrorState.value = INVALID_LINK_MESSAGE
+        local.update { it.copy(transientError = INVALID_LINK_MESSAGE) }
         transientErrorClear?.cancel()
         transientErrorClear = scope.launch {
             delay(TRANSIENT_ERROR_MILLIS)
-            transientErrorState.value = null
+            local.update { it.copy(transientError = null) }
         }
     }
 
@@ -435,7 +383,7 @@ class StatusContainerHost(
         // Every overlay belongs to the membership being left, so none of them survives it. Resetting the
         // CELL (rather than only hiding them) is what stops a later rejoin from reopening a dialog the
         // member dismissed by leaving.
-        overlaysState.value = Overlays() // every overlay belongs to the layer being left
+        local.update { it.copy(overlays = Overlays()) } // every overlay belongs to the layer being left
         commands.leave()
     }
 
@@ -472,9 +420,9 @@ class StatusContainerHost(
     val surfaces: SurfaceCommands = SurfaceCommands()
 
     inner class SurfaceCommands internal constructor() {
-        fun onConfirmLeaveOpen() = intent { overlaysState.value = overlaysState.value.copy(confirmingLeave = true) }
+        fun onConfirmLeaveOpen() = intent { local.editOverlays { it.copy(confirmingLeave = true) } }
 
-        fun onConfirmLeaveDismiss() = intent { overlaysState.value = overlaysState.value.copy(confirmingLeave = false) }
+        fun onConfirmLeaveDismiss() = intent { local.editOverlays { it.copy(confirmingLeave = false) } }
 
         /**
          * Open the rename sheet on a clean latch: a rename that finished after the sheet was dismissed left its
@@ -482,14 +430,14 @@ class StatusContainerHost(
          */
         fun onRenameOpen() = intent {
             if (renameFlow.value.isTerminal) commands.resetRename()
-            overlaysState.value = overlaysState.value.copy(renaming = true)
+            local.editOverlays { it.copy(renaming = true) }
         }
 
-        fun onRenameDismiss() = intent { overlaysState.value = overlaysState.value.copy(renaming = false) }
+        fun onRenameDismiss() = intent { local.editOverlays { it.copy(renaming = false) } }
 
-        fun onReportBugOpen() = intent { overlaysState.value = overlaysState.value.copy(reportingBug = true) }
+        fun onReportBugOpen() = intent { local.editOverlays { it.copy(reportingBug = true) } }
 
-        fun onReportBugDismiss() = intent { overlaysState.value = overlaysState.value.copy(reportingBug = false) }
+        fun onReportBugDismiss() = intent { local.editOverlays { it.copy(reportingBug = false) } }
 
         /**
          * Open the settings surface, pre-filled from the persisted membership. Seeding HERE rather than
@@ -498,12 +446,12 @@ class StatusContainerHost(
          */
         fun onOpenReconfigure() = intent {
             val config = config.value ?: return@intent
-            formState.value = reconfigureForm(config, cutoffFormatter::toLocal).copy(albumKind = albumKind)
-            reconfiguringState.value = Owned(config.eventId, SettingsSurface.Open)
+            val form = reconfigureForm(config, cutoffFormatter::toLocal).copy(albumKind = albumKind)
+            local.update { it.copy(form = form, settings = Owned(config.eventId, SettingsSurface.Open)) }
         }
 
         /** Cancel the settings surface: the edits are discarded, and no port was ever touched. */
-        fun onCancelReconfigure() = intent { reconfiguringState.value = Owned(null, SettingsSurface.Closed) }
+        fun onCancelReconfigure() = intent { local.setSettings(Owned(null, SettingsSurface.Closed)) }
     }
 
     /**
@@ -514,7 +462,7 @@ class StatusContainerHost(
      * read-model. Unlike [onReconfigure], this writes the SHARED event, but it crosses the same one door.
      */
     fun onRenameEvent(eventId: String, name: String) = guardedIntent(Guarded.Rename) {
-        renameOwner.value = eventId
+        local.update { it.copy(renameOwner = eventId) }
         commands.rename(eventId, name)
     }
 
@@ -543,9 +491,9 @@ class StatusContainerHost(
      */
     fun onReconfigure() = intent {
         val config = config.value ?: return@intent
-        val form = formState.value
+        val form = local.value.form
         val range = resolveRange(form, config.startsAt, config.endsAt, config.maxPhotoDate)
-        reconfiguringState.value = Owned(null, SettingsSurface.Closed)
+        local.setSettings(Owned(null, SettingsSurface.Closed))
         // The id rides with the values so a switch landing mid-edit makes the use-case a no-op rather
         // than overwriting a different membership.
         val outcome = commands.reconfigure(
@@ -553,7 +501,7 @@ class StatusContainerHost(
         )
         // A save that did not land reopens the surface with the member's edits still in hand (the form was never
         // reset) and says so — closing it would read as saved (capability `manage-membership`).
-        if (outcome == ReconfigureOutcome.SaveFailed) reconfiguringState.value = Owned(config.eventId, SettingsSurface.SaveFailed)
+        if (outcome == ReconfigureOutcome.SaveFailed) local.setSettings(Owned(config.eventId, SettingsSurface.SaveFailed))
     }
 
 
@@ -568,22 +516,19 @@ class StatusContainerHost(
     val form: FormEdits = FormEdits()
 
     inner class FormEdits internal constructor() {
-        fun onShareOn(on: Boolean) = intent { formState.value = formState.value.copy(shareOn = on) }
+        fun onShareOn(on: Boolean) = intent { local.editForm { it.copy(shareOn = on) } }
 
-        fun onReceiveOn(on: Boolean) = intent { formState.value = formState.value.copy(receiveOn = on) }
+        fun onReceiveOn(on: Boolean) = intent { local.editForm { it.copy(receiveOn = on) } }
 
-        fun onSaveToAlbum(on: Boolean) = intent { formState.value = formState.value.copy(saveToAlbum = on) }
+        fun onSaveToAlbum(on: Boolean) = intent { local.editForm { it.copy(saveToAlbum = on) } }
 
-        fun onRangePreset(preset: RangeChoice) = intent { formState.value = formState.value.copy(preset = preset) }
+        fun onRangePreset(preset: RangeChoice) = intent { local.editForm { it.copy(preset = preset) } }
 
         /** A custom range from the calendar; a `null` bound keeps the one already picked. */
         fun onRangeCustom(from: LocalDateTime?, until: LocalDateTime?) = intent {
-            val f = formState.value
-            formState.value = f.copy(
-                preset = RangeChoice.CUSTOM,
-                customFrom = from ?: f.customFrom,
-                customUntil = until ?: f.customUntil,
-            )
+            local.editForm { f ->
+                f.copy(preset = RangeChoice.CUSTOM, customFrom = from ?: f.customFrom, customUntil = until ?: f.customUntil)
+            }
         }
     }
 
@@ -696,7 +641,7 @@ class StatusContainerHost(
     fun onConfirmSwitch() = guardedIntent(Guarded.SwitchLeave) {
         val p = pending.value ?: return@guardedIntent
         if (p.phase.step != JoinPhase.Detailed.Step.Ready) return@guardedIntent
-        overlaysState.value = Overlays() // every overlay belongs to the layer being left
+        local.update { it.copy(overlays = Overlays()) } // every overlay belongs to the layer being left
         commands.leave()
     }
 
@@ -749,7 +694,7 @@ class StatusContainerHost(
         // A fresh surface starts from the defaults — all on, the full event window. Seeding HERE rather
         // than in the reduction is what keeps the member's edits from being overwritten by every
         // subsequent reduction, and what stops a previous surface's choices leaking into this one.
-        formState.value = freshForm()
+        local.editForm { freshForm }
         pending.value = PendingJoin(eventId, JoinPhase.Loading)
         loadInto(eventId)
     }
@@ -832,7 +777,7 @@ class StatusContainerHost(
         if (detailed.step != JoinPhase.Detailed.Step.Ready && detailed.step != JoinPhase.Detailed.Step.CommitFailed) return
         val event = detailed.event
         // What is committed is what the reduction RESOLVED — the same value the surface rendered.
-        val form = formState.value
+        val form = local.value.form
         val range = resolveRange(form, event.startsAt, event.endsAt, null)
         val choice = JoinChoice(
             p.eventId, event.name, event.startsAt, event.endsAt, event.deletesAt,
@@ -887,7 +832,7 @@ class StatusContainerHost(
      * could miss that: it is a StateFlow, and a leave and a rejoin of one event can conflate into A → A.
      */
     private suspend fun beginMembership() {
-        reconfiguringState.value = Owned(null, SettingsSurface.Closed)
+        local.setSettings(Owned(null, SettingsSurface.Closed))
         if (renameFlow.value.isTerminal) commands.resetRename()
     }
 
@@ -960,31 +905,6 @@ private const val TRANSIENT_ERROR_MILLIS = 4_000L
 /** The transient invalid-link copy (the screen renders [StatusContainerHost.transientError] verbatim). */
 private const val INVALID_LINK_MESSAGE = "That QR code wasn't valid."
 
-// Config presence is the top rung: without a connected event there is nothing to share, so the create
-// layer replaces everything regardless of permission or snapshot. Once config is present the screen is
-// ALWAYS the joined layer (name · QR · share · leave) — permission and sync activity are moods of the
-// one-line status, never a hero-replacing gate. There is no join-status rung: reconciliation runs in
-// the extension and status is read from the completeness listing.
-/**
- * The refusal and the remedy, joined into the layer that states both — or `null` while this build is
- * being served (capability `app-update-required`).
- *
- * Joined HERE rather than inside [reduceFrom] because the reduction's job is to RANK layers, while these
- * two inputs meet nowhere else: the refusal is observed and the store URL is a build constant. It also
- * keeps [reduceFrom] under the tier's parameter ceiling, which may only fall (`docs/architecture.md`) — a
- * budget respected by grouping what belongs together rather than by raising a number.
- */
-private fun updateLayerFor(refusal: VersionRefusal?, store: StoreLink?): Layer.UpdateRequired? =
-    refusal?.let { Layer.UpdateRequired(minimumVersion = it.minimumVersion, store = store) }
-
-/**
- * What is shown while NO event is configured: the interactive join confirmation, or the create surface.
- *
- * Its own function for the reason [joinedLayer] is — it answers a different question from the
- * precedence table. `reduceFrom` decides WHICH of the three worlds the app is in (refused · unjoined ·
- * joined); this one decides what the unjoined world looks like, and nothing in it consults the health,
- * the permission or the clock.
- */
 /**
  * Whether confirming a join also raises iOS's photo-access dialog (capability `join-event`): no event is
  * configured, and access was never asked — the only state from which iOS can still raise it. From a
@@ -994,6 +914,10 @@ private fun updateLayerFor(refusal: VersionRefusal?, store: StoreLink?): Layer.U
 internal fun asksAccessOnJoin(config: EventConfig?, permission: GalleryAccess): Boolean =
     config == null && permission == GalleryAccess.NOT_DETERMINED
 
+/**
+ * What is shown while NO event is configured: the interactive join confirmation, or the create surface. Nothing in
+ * it consults the health or the clock.
+ */
 private fun unjoinedLayer(
     pending: PendingJoin?,
     creation: CreationStatus,
@@ -1030,37 +954,26 @@ private fun unjoinedLayer(
     }
 }
 
+/**
+ * Which of the worlds the app is in — unjoined (the join gate or the create surface) or joined — and, for the
+ * joined layer, which health rung. Config presence is the top rung: without a connected event there is nothing to
+ * share. Once config is present the screen is ALWAYS the joined layer — permission and sync activity are moods of
+ * the one-line status, never a hero-replacing gate.
+ */
 private fun reduceFrom(
-    config: EventConfig?,
-    permission: GalleryAccess,
-    snapshot: SyncStatus,
-    creation: CreationStatus,
-    download: DownloadProgress,
-    pending: PendingJoin?,
+    membership: Membership,
+    interaction: Interaction,
+    local: Local,
     nowCutoff: CaptureDate,
-    attested: Boolean,
-    ownedRename: Owned<RenameStatus>,
-    // The transient invalid-link error (capability `join-event`). It is an INPUT to the reduction, not a
-    // value beside it: the create screen renders ONE banner, so the create state carries one error value
-    // and this is one of its two causes.
-    transient: String?,
-    // The member's uncommitted choices on whichever decision surface is open, and everything needed to
-    // resolve them: the window comes off the loaded phase (join gate) or the membership (reconfigure).
-    form: RangeForm,
-    ownedSettings: Owned<SettingsSurface>,
-    // The backend's refusal of this build (capability `app-update-required`), already carrying its remedy,
-    // or null while this build is served. Arrives composed — see `updateLayerFor`.
-    updateRequired: Layer.UpdateRequired?,
     resolveAgainst: (RangeForm, EventStart, EventEnd?, CaptureCeiling?) -> ResolvedRange,
 ): Layer {
+    val (config, permission, snapshot, download, attested) = membership
+    val (pending, creation, renameStatus) = interaction
+    val transient = local.transientError
+    val form = local.form
     // Surface state belongs to the membership it was opened in; another membership reads it as closed / idle.
-    val rename = ownedRename.forMembership(config?.eventId, RenameStatus.Idle)
-    val reconfiguring = ownedSettings.forMembership(config?.eventId, SettingsSurface.Closed)
-    // ABOVE config-absent, and above everything else. A refused build makes no successful metadata call
-    // at all, so every layer below would render something untrue: a joined event that is not syncing, a
-    // create that cannot succeed, a join that cannot commit. There is exactly one thing to say and one
-    // thing to do.
-    if (updateRequired != null) return updateRequired
+    val rename = Owned(local.renameOwner, renameStatus).forMembership(config?.eventId, RenameStatus.Idle)
+    val reconfiguring = local.settings.forMembership(config?.eventId, SettingsSurface.Closed)
     if (config == null) return unjoinedLayer(pending, creation, transient, form, permission, resolveAgainst)
     val health = when {
         // Missing permission is the sole attention state — the only reason contribution cannot run. It
@@ -1293,6 +1206,84 @@ private fun failedPhase(commit: JoinCommit, event: EventDetails): JoinPhase = wh
     JoinCommit.Full -> JoinPhase.Detailed(event, JoinPhase.Detailed.Step.EventFull)
     else -> JoinPhase.Detailed(event, JoinPhase.Detailed.Step.CommitFailed)
 }
+
+/** The membership and what its health is read from — observed read-models (see [StatusSources]). */
+private data class Membership(
+    val config: EventConfig?,
+    val permission: GalleryAccess,
+    val sync: SyncStatus,
+    val download: DownloadProgress,
+    val attested: Boolean,
+)
+
+/** The observed outcomes of what the member started: the join gate, a create, a rename — and a refused build. */
+private data class Interaction(
+    val pending: PendingJoin?,
+    val creation: CreationStatus,
+    val rename: RenameStatus,
+    val versionRefusal: VersionRefusal?,
+)
+
+/**
+ * The presentation-owned cells, as one value: what the container itself writes, as distinct from the read-models
+ * it observes. Opening a confirmation or editing the form touches no port and calls no command, so these are
+ * container-local intents that reduce and nothing more — state rather than screen-local `remember`s because the
+ * screen SHOWS them (capability `sync-status`).
+ */
+private data class Local(
+    /**
+     * The transient invalid-link error (capability `join-event`). An INPUT to the reduction, not a value beside it:
+     * the create screen renders ONE banner, so the create state carries one error value and this is one of its
+     * two causes.
+     */
+    val transientError: String? = null,
+    /** What is drawn OVER the current layer (see [Overlays]). */
+    val overlays: Overlays = Overlays(),
+    /**
+     * The member's uncommitted choices. ONE cell, because the two surfaces that ask for them are mutually exclusive
+     * by construction — the join gate needs config ABSENT, the settings surface needs it PRESENT — and each open
+     * re-seeds, so nothing can leak from one surface into the other.
+     */
+    val form: RangeForm,
+    /**
+     * Whether the joined layer is showing its settings surface (`manage-membership` D4: opening is client-side
+     * navigation that touches no port). OWNED by the membership it was opened in (see [Owned]): a switch, a leave
+     * or a fresh join cannot carry it into the next membership, whichever exit path ran (B7).
+     */
+    val settings: Owned<SettingsSurface> = Owned(null, SettingsSurface.Closed),
+    /** The event the last rename was fired for: a rename result for an event no longer joined reads as Idle. */
+    val renameOwner: String? = null,
+    /**
+     * The shareable count for whichever surface is showing a range (capability `join-event`), computed over the
+     * query bundle and reduced into the range. It starts Unavailable (no row) rather than Counting: a count is only
+     * "being computed" once one has been asked for.
+     */
+    val shareCount: ShareCount = ShareCount.Unavailable,
+)
+
+/**
+ * [combine] over eleven flows, typed. The library's typed overloads stop at five, and nesting them is not the same
+ * thing: each level is a stage of its own, so one synchronous change to cells in different levels reaches the
+ * screen as several emissions rather than one. The casts are positional and fixed by this signature.
+ */
+@Suppress("UNCHECKED_CAST", "LongParameterList")
+private fun <A, B, C, D, E, F, G, H, I, J, K, R> combineFlat(
+    a: Flow<A>, b: Flow<B>, c: Flow<C>, d: Flow<D>, e: Flow<E>, f: Flow<F>,
+    g: Flow<G>, h: Flow<H>, i: Flow<I>, j: Flow<J>, k: Flow<K>,
+    transform: (A, B, C, D, E, F, G, H, I, J, K) -> R,
+): Flow<R> = combine(listOf(a, b, c, d, e, f, g, h, i, j, k)) { v ->
+    transform(
+        v[0] as A, v[1] as B, v[2] as C, v[3] as D, v[4] as E, v[5] as F,
+        v[6] as G, v[7] as H, v[8] as I, v[9] as J, v[10] as K,
+    )
+}
+
+private fun MutableStateFlow<Local>.editOverlays(edit: (Overlays) -> Overlays) = update { it.copy(overlays = edit(it.overlays)) }
+
+private fun MutableStateFlow<Local>.editForm(edit: (RangeForm) -> RangeForm) = update { it.copy(form = edit(it.form)) }
+
+private fun MutableStateFlow<Local>.setSettings(settings: Owned<SettingsSurface>) =
+    update { it.copy(settings = settings) }
 
 /** A rename outcome the screen has yet to clear — a fresh surface must not read it as its own. */
 private val RenameStatus.isTerminal: Boolean get() = this is RenameStatus.Succeeded || this is RenameStatus.Failed
