@@ -11,6 +11,7 @@ import app.snapsync.model.PlatformEntry
 import app.snapsync.preferences.IosPreferences
 import app.snapsync.files.IosFiles
 import app.snapsync.config.IosBuildInfo
+import app.snapsync.config.iosBootLines
 import app.snapsync.config.bakedUploadBase
 import app.snapsync.identity.NoPlatformDeviceId
 import app.snapsync.keychain.platformSecureStore
@@ -24,7 +25,6 @@ import app.snapsync.sentry.SentryCrashReporter
 import app.snapsync.compose.DevicePorts
 import app.snapsync.compose.ProcessPorts
 import app.snapsync.time.SystemClock
-import app.snapsync.logging.appBuildVersion
 import app.snapsync.logging.appMarketingVersion
 import app.snapsync.logging.PublicNSLogSink
 import app.snapsync.logging.neverBlockOnStdio
@@ -133,19 +133,10 @@ object UploadExtensionRoot {
                 build = IosBuildInfo(
                     // This process exists only where the OS carries the OS-driven mechanism (iOS ≥26.1).
                     osSupportsOsDrivenUpload = true,
-                    bootLines = listOf(
-                        // The extension is a separate, short-lived process; name it + the build version so its file
-                        // is unambiguous (capability `privacy-security`, D5).
-                        "=== extension process start build=${appBuildVersion()} ===",
-                        // Where this run's log is going — including whether it fell back to this bundle's own
-                        // Documents, in which case no dump will carry it (the sentence is the adapter's).
-                        logDestination.bannerLine,
-                        // The BAKED backend this build uploads to — the same diagnostic the app emits, and it matters
-                        // more here: this process IS the upload path, and pointing a build at a different backend
-                        // without a device reset leaves the ledger claiming everything is already COMPLETED, so the
-                        // cycle enumerates and enqueues nothing with no error anywhere.
-                        "[boot] upload base = ${bakedUploadBase()}",
-                    ),
+                    // Where this run's log is going — including whether it fell back to this bundle's own Documents, in
+                    // which case no dump will carry it (the sentence is the adapter's). The upload base the banner
+                    // names matters more here than in the app: this process IS the upload path.
+                    bootLines = iosBootLines("extension", listOf(logDestination.bannerLine)),
                 ),
             ),
             // The App-Group databases: the ledger, shared with the app (either process may open it read-write and

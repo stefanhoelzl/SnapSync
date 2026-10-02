@@ -26,7 +26,6 @@ import app.snapsync.android.work.AndroidUpload
 import app.snapsync.android.work.AndroidWake
 import app.snapsync.compose.AppCore
 import app.snapsync.android.buildinfo.AndroidBuildInfo
-import app.snapsync.compose.AppPorts
 import app.snapsync.compose.DevicePorts
 import app.snapsync.compose.NoEntryContext
 import app.snapsync.compose.NoProcessMetrics
@@ -167,30 +166,8 @@ class SnapSyncRoot(internal val application: Application) {
         snapSyncHost(
             scope = scope,
             cutoffFormatter = cutoffFormatter,
-            ports = AppPorts(
-                process = processPorts,
-                databases = ports.databases,
-                preferences = ports.preferences,
-                secureStore = ports.secureStore,
-                platformDeviceId = ports.platformDeviceId,
-                photoAccess = ports.photoAccess,
-                gallery = ports.gallery,
-                systemUi = ports.systemUi,
-                download = ports.download,
-                backend = ports.backend,
-                integrity = ports.integrity,
-                // The app's uploader transport — the only uploader Android has (no OS-driven tier).
-                appUpload = ports.appUpload,
-                backgroundTime = ports.backgroundTime,
-                wake = ports.wake,
-                extensionRegistry = ports.extensionRegistry,
-                devControls = adapters.devControls,
-                pushNotifications = ports.pushNotifications,
-                lifecycle = ports.lifecycle,
-                links = ports.links,
-                ui = adapters.ui.value,
-                processInfo = ports.processInfo,
-            ),
+            // The app's uploader transport is the only uploader Android has (no OS-driven tier).
+            ports = ports.appPorts(processPorts, adapters.devControls, adapters.ui.value),
         )
     }
 

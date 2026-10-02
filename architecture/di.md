@@ -18,7 +18,6 @@ Roots found:
 
 | Constructed type | SnapSyncRoot | SnapSyncRoot | UploadExtensionRoot |
 |---|---|---|---|
-| `AppPorts` | x | x | |
 | `BackgroundSessions` | x | x | |
 | `CutoffFormatter` | x | x | |
 | `DevicePorts` | x | x | x |
