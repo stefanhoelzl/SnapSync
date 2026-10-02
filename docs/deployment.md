@@ -29,7 +29,7 @@ deployments/components/build.json      build-scope values: sha (GITHUB_SHA), cha
 deployments/components/policy.json     eventCapacity, eventWindowMaxSeconds, eventLifetimeSeconds,
                                        attestTokenTtlSeconds
 deployments/components/apple.json      bundleId, teamId, apnsKeyId, appStoreUrl, appAttestRootCa
-deployments/components/android.json    androidPackageName, playStoreUrl, the attestation roots/trust/digests,
+deployments/components/android.json    androidPackageName, playStoreUrl, playTestGroupUrl, the attestation roots/trust/digests,
                                        the Firebase values
 deployments/components/storage-*.json  storage kind / zone / host / s3Region + the access-key env reference
 deployments/components/prod-core.json  domain + the env references for every secret, shared by prod and
@@ -126,6 +126,16 @@ The deployment declares the **names**. Values come from the environment of which
   exactly `https://play.google.com/store/apps/details?id=<androidPackageName>`, which the resolver enforces
   because the event page appends `&referrer=<invite>` — switches all three on: the site on its next deploy, the
   Android notice in the next Android build. Decision record: `changes/archive/2026-10-01-play-badge-and-install-referrer`.
+- The Play closed test: `playTestGroupUrl` (`android.json`, site only) names the Google Group that is the closed
+  track's tester list, set only while that test runs and anyone may join it. While it is set, the landing page
+  and the event page show three steps where the Play badge sits — join the group, opt in on
+  `play.google.com/apps/testing/<androidPackageName>`, install from the listing — the last step being the badge
+  itself, so the event page's install referrer works through the steps. The site derives the opt-in page and the
+  listing from `androidPackageName`. So the site has three states: group set → the steps; `playStoreUrl` set →
+  the badge alone; neither → no Google Play at all. The resolver refuses the two set together. **The production
+  switch** is therefore one `android.json` edit — empty `playTestGroupUrl`, set `playStoreUrl` — and, when the
+  production release goes through `promote.yml` rather than the Play Console, `PLAY_TRACK` changed to
+  `production` ("Promote a build you already tested"). Decision record: `changes/advertise-play-closed-test`.
 
 ### iOS: the baked values
 

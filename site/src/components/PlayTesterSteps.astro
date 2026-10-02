@@ -1,0 +1,53 @@
+---
+// The Play closed test's three steps, shown where the Google Play badge will sit once the listing is public
+// (capabilities web-site, event-site). Access to a closed test is list-based — there is no link that admits a stranger
+// — and SnapSync's list is an open Google Group, so a visitor becomes a tester by joining it, opting in on Play, and
+// installing. Step 3 IS the Google Play badge, so on /join the island still gives it the invite as the install
+// referrer (and only it: steps 1 and 2 carry nothing from the page). Placed by PlayOffer.
+//
+// The caveats in the copy are what makes a step silently fail: Play matches the phone's account against the group's
+// members, an opt-in takes minutes to apply, and the closed track is available in Germany only
+// (metadata/play/declarations.md). The badge sits centred under the list, in line with the App Store button above.
+import PlayStoreButton from "./PlayStoreButton.astro";
+
+interface Props {
+  listingUrl: string;
+  groupUrl: string;
+  optInUrl: string;
+}
+const { listingUrl, groupUrl, optInUrl } = Astro.props;
+---
+
+<div class="playtest">
+  <p class="playtest-head">
+    <strong>On Android?</strong> SnapSync is in testing on Google Play. Join in three steps:
+  </p>
+  <ol>
+    <li>
+      <a
+        href={groupUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="Join the SnapSync testers' group (opens in a new tab)"
+      >
+        Join the testers' group
+      </a>{" "}
+      with the Google account your phone's Play Store uses.
+    </li>
+    <li>
+      <a
+        href={optInUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="Become a SnapSync tester on Google Play (opens in a new tab)"
+      >
+        Become a tester
+      </a>{" "}
+      on Google Play. It can take a few minutes to apply.
+    </li>
+    <li>Install SnapSync from Google Play. Available in Germany.</li>
+  </ol>
+  <div class="playtest-badge">
+    <PlayStoreButton listingUrl={listingUrl} />
+  </div>
+</div>

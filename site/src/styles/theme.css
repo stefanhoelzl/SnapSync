@@ -196,6 +196,42 @@ nav a:hover {
   height: 74px;
   width: auto;
 }
+/* The Play closed test's steps (PlayTesterSteps) turn the call-to-action row into a column, below the App
+   Store button, so the row reads "iPhone: one button; Android: three steps". */
+.cta:has(.playtest) {
+  flex-direction: column;
+}
+.playtest {
+  width: 100%;
+  max-width: 30rem;
+  margin-top: 8px;
+  padding: 16px 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  text-align: left;
+  font-size: 0.95rem;
+}
+.playtest-head {
+  margin: 0 0 8px;
+}
+.playtest ol {
+  margin: 0;
+  padding-left: 1.4em;
+  color: var(--muted);
+}
+.playtest li {
+  margin: 6px 0;
+}
+.playtest li > a {
+  font-weight: 600;
+}
+.playtest-badge {
+  display: flex;
+  justify-content: center;
+  margin: 18px 0 6px;
+}
 .appstore {
   display: inline-flex;
   align-items: center;

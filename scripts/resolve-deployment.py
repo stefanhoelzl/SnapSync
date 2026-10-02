@@ -190,15 +190,30 @@ INVENTORY = [
         the invite on first launch), so a second query or a foreign URL would break that, and the package it
         names must be the one the build installs. Not rendered to the api bundle, which links no store.
     """),
+    Key("playTestGroupUrl", [SITE], doc="""
+        The Google Group that IS the Play closed test's tester list — set ONLY while that test runs and anyone
+        may join it (capabilities `web-site`, `event-site`). A personal developer account gets production
+        access only after a closed test, and a closed listing answers every non-tester with Play's "not
+        found", so while this is set the site offers Google Play as three steps where the badge will sit:
+        join this group, opt in on Play's testing page, install from the listing — the last step being the
+        badge itself, so the event page's install referrer works through the steps. The opt-in page and the
+        listing are derived on the site from `androidPackageName`.
+
+        When set it MUST be `https://groups.google.com/g/<group>`, and it MUST NOT be set together with
+        `playStoreUrl`: a published listing with leftover tester steps contradicts the specs, so the
+        production switch — empty this, set that — cannot be merged half-done. Site only: the Android app
+        knows nothing of the test.
+    """),
     Key("appAttestRootCa", [JSON], doc="""
         Apple's App Attest ROOT CA — the trust anchor every attestation chain is verified against. A
         public fact (Apple publishes it), so declaring it exposes nothing, and shipping it in the same
         artifact as the code that reads it means a verification change cannot deploy without its anchor.
     """),
-    Key("androidPackageName", [JSON], doc="""
+    Key("androidPackageName", [JSON, SITE], doc="""
         The Android app's package name (its `applicationId`). What an Android key attestation must name as
         its application (`api/src/android-attest.ts`), and the package the served `assetlinks.json`
-        associates the event link with. The Android counterpart of `bundleId`, kept its own key because
+        associates the event link with. The site derives Play's listing and closed-test opt-in pages from it
+        (`playTestGroupUrl`). The Android counterpart of `bundleId`, kept its own key because
         the two platforms' identifiers are independent facts that merely coincide today.
     """),
     Key("firebaseProjectId", [JSON, PROPS], doc="""
@@ -510,6 +525,7 @@ def validate(flat: dict, name: str) -> str:
             pass
     validate_android_trust(flat, name, kind)
     validate_play_store_url(flat, name)
+    validate_play_test_group_url(flat, name)
     return kind
 
 
@@ -521,6 +537,23 @@ def validate_play_store_url(flat: dict, name: str) -> None:
     expected = f"https://play.google.com/store/apps/details?id={flat.get('androidPackageName')}"
     if url != expected:
         fail(f"deployment '{name}': playStoreUrl '{url}' must be empty or exactly '{expected}'")
+
+
+PLAY_TEST_GROUP = re.compile(r"https://groups\.google\.com/g/[a-z0-9][a-z0-9._-]*")
+
+
+def validate_play_test_group_url(flat: dict, name: str) -> None:
+    """Empty (no closed test advertised), or a Google Group — and never beside a public listing. See its inventory doc."""
+    url = flat.get("playTestGroupUrl", "")
+    if url == "":
+        return
+    if not PLAY_TEST_GROUP.fullmatch(url):
+        fail(f"deployment '{name}': playTestGroupUrl '{url}' must be empty or 'https://groups.google.com/g/<group>'")
+    if flat.get("playStoreUrl", ""):
+        fail(
+            f"deployment '{name}': playTestGroupUrl and playStoreUrl are both set — the closed test's steps "
+            f"end when the listing is public; empty playTestGroupUrl"
+        )
 
 
 ANDROID_TRUST = {"hardware", "any"}

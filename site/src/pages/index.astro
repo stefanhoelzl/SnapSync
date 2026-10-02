@@ -7,8 +7,9 @@
 import { Image, getImage } from "astro:assets";
 import Layout from "../layouts/Layout.astro";
 import AppStoreButton from "../components/AppStoreButton.astro";
-import PlayStoreButton from "../components/PlayStoreButton.astro";
+import PlayOffer from "../components/PlayOffer.astro";
 import deployment from "../deployment.json";
+import { playOfferFor } from "../lib/play";
 
 import createLight from "../../../screenshots/create-light.png";
 import createDark from "../../../screenshots/create-dark.png";
@@ -51,6 +52,8 @@ const shots = await Promise.all(
     darkSrc: (await getImage({ src: s.dark, width: 440, height: 956, format: "webp" })).src,
   })),
 );
+// Google Play is offered — the badge alone or the closed test's steps, whose third step is the badge.
+const playOffered = playOfferFor(deployment).kind !== "none";
 ---
 
 <Layout title="SnapSync — everyone's photos of the moment, together">
@@ -64,7 +67,7 @@ const shots = await Promise.all(
       </p>
       <div class="cta">
         <AppStoreButton />
-        <PlayStoreButton />
+        <PlayOffer />
       </div>
     </div>
   </section>
@@ -360,7 +363,7 @@ const shots = await Promise.all(
           event is looked up only on our own service, and the page sets no cookies, runs no
           tracking, and does not make you a member of the event.
         </li>
-        {deployment.playStoreUrl && (
+        {playOffered && (
           <li>
             <strong>Getting the app on Android from an invite.</strong> If you follow the Google
             Play button on an event page, the page hands that event's invite to Google Play, so that

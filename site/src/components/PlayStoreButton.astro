@@ -1,7 +1,8 @@
 ---
 // The Google Play call-to-action, beside AppStoreButton on every page that offers the app (capabilities web-site,
-// event-site). Renders NOTHING until the resolved deployment names the Play listing (`playStoreUrl`, empty until the
-// listing is public): a closed-testing listing answers every other visitor with Play's "not found".
+// event-site). Placed by PlayOffer, never directly: alone once the listing is public (`playStoreUrl`), as the third of
+// the tester steps while a closed test runs (`playTestGroupUrl`, the listing then derived from the package), and not
+// at all otherwise — a closed-testing listing answers every non-tester with Play's "not found" (src/lib/play.ts).
 //
 // The art is Google's official "Get it on Google Play" badge, unmodified — Google's brand terms require it, where
 // the App Store button is our own. It ships with its clear space as transparent padding, so it is sized by that
@@ -11,19 +12,21 @@
 // On /join the island rewrites this link's href to carry the invite as the install referrer — only the one inside
 // the event view, only for a valid invite (`src/lib/playReferrer.ts`). The markup itself never carries one: the page
 // is byte-identical for every event. target=_blank for the same reason as the App Store button's.
-import deployment from "../deployment.json";
 import badge from "../assets/google-play-badge.png";
+
+interface Props {
+  listingUrl: string;
+}
+const { listingUrl } = Astro.props;
 ---
 
-{deployment.playStoreUrl && (
-  <a
-    class="playstore"
-    href={deployment.playStoreUrl}
-    data-play-store={deployment.playStoreUrl}
-    target="_blank"
-    rel="noopener noreferrer"
-    aria-label="Get SnapSync on Google Play (opens in a new tab)"
-  >
-    <img src={badge.src} width={badge.width} height={badge.height} alt="Get it on Google Play" />
-  </a>
-)}
+<a
+  class="playstore"
+  href={listingUrl}
+  data-play-store={listingUrl}
+  target="_blank"
+  rel="noopener noreferrer"
+  aria-label="Get SnapSync on Google Play (opens in a new tab)"
+>
+  <img src={badge.src} width={badge.width} height={badge.height} alt="Get it on Google Play" />
+</a>

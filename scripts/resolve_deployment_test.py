@@ -57,6 +57,7 @@ APPLE = {
 ANDROID = {
     "androidPackageName": "test.package",
     "playStoreUrl": "",
+    "playTestGroupUrl": "",
     "androidSigningCertDigests": [],
     "androidAttestationRoots": ["-----BEGIN CERTIFICATE-----\ny\n-----END CERTIFICATE-----"],
     "androidAttestationTrust": "hardware",
@@ -246,8 +247,10 @@ class RenderingTest(unittest.TestCase):
     def test_a_key_reaches_only_its_declared_renderings(self):
         flat = Tree().standard().resolve()
         site = json.loads(rd.render_site(flat))
-        # The site sees the domain and the two store links, and nothing else.
-        self.assertEqual(sorted(site), ["appStoreUrl", "domain", "playStoreUrl"])
+        # The site sees the domain, the two store links, and what the Play closed test's steps are built from.
+        self.assertEqual(
+            sorted(site), ["androidPackageName", "appStoreUrl", "domain", "playStoreUrl", "playTestGroupUrl"]
+        )
         body = rd.nest(rd.project(flat, rd.JSON)); body.pop("sha", None)
         self.assertNotIn("appName", body)  # xcconfig-only
         self.assertNotIn("channel", body)  # xcconfig-only
@@ -596,6 +599,42 @@ class PlayStoreUrlTest(unittest.TestCase):
         ]:
             with self.assertRaisesRegex(rd.ResolveError, "playStoreUrl"):
                 Tree().standard(playStoreUrl=bad).resolve()
+
+
+class PlayTestGroupUrlTest(unittest.TestCase):
+    """`playTestGroupUrl`: empty, or a Google Group — and never beside a public listing."""
+
+    GROUP = "https://groups.google.com/g/test-beta"
+
+    def test_it_reaches_the_site_only(self):
+        flat = Tree().standard(playTestGroupUrl=self.GROUP).resolve()
+        site = json.loads(rd.render_site(flat))
+        self.assertEqual(site["playTestGroupUrl"], self.GROUP)
+        self.assertEqual(site["androidPackageName"], "test.package")
+        self.assertNotIn("playTestGroupUrl", rd.render_properties(flat))
+        self.assertNotIn("playTestGroupUrl", rd.nest(rd.project(flat, rd.JSON)))
+        self.assertNotIn("playTestGroupUrl", rd.project(flat, rd.PLIST))
+
+    def test_empty_is_accepted(self):
+        flat = Tree().standard().resolve()
+        self.assertEqual(json.loads(rd.render_site(flat))["playTestGroupUrl"], "")
+
+    def test_a_non_group_url_is_refused(self):
+        for bad in [
+            "https://groups.google.com/g/",
+            "http://groups.google.com/g/test-beta",
+            "https://groups.google.com/g/test-beta/about",
+            "https://play.google.com/apps/testing/test.package",
+        ]:
+            with self.assertRaisesRegex(rd.ResolveError, "playTestGroupUrl"):
+                Tree().standard(playTestGroupUrl=bad).resolve()
+
+    def test_it_is_refused_beside_a_public_listing(self):
+        with self.assertRaisesRegex(rd.ResolveError, "both set"):
+            Tree().standard(
+                playTestGroupUrl=self.GROUP,
+                playStoreUrl="https://play.google.com/store/apps/details?id=test.package",
+            ).resolve()
 
 
 LISTING = {

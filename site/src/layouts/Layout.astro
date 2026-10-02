@@ -1,5 +1,6 @@
 ---
 import deployment from "../deployment.json";
+import { playOfferFor } from "../lib/play";
 // Shared page shell for the whole site (capability web-site): the sticky header (brand + nav), the
 // <main> slot, and the footer. Both the landing page and the /join download page compose from this one
 // layout so they can never drift in brand, theme, or chrome. Nav links point at the landing's sections
@@ -40,6 +41,8 @@ const {
 // favicon entirely — this restores both.
 const brandmark = await getImage({ src: appIcon, width: 192, height: 192, format: "webp" });
 const favicon = await getImage({ src: appIcon, width: 64, height: 64, format: "png" });
+// Google Play is offered — the badge alone or the closed test's steps, whose third step is the badge.
+const playOffered = playOfferFor(deployment).kind !== "none";
 ---
 
 <!doctype html>
@@ -118,8 +121,7 @@ const favicon = await getImage({ src: appIcon, width: 64, height: 64, format: "p
         <p class="copy">
           © 2026 SnapSync · An independent project · Not affiliated with Apple Inc. "App Store" is a
           trademark of Apple Inc.
-          {deployment.playStoreUrl &&
-            " Google Play and the Google Play logo are trademarks of Google LLC."}
+          {playOffered && " Google Play and the Google Play logo are trademarks of Google LLC."}
         </p>
       </div>
     </footer>
