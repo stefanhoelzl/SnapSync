@@ -153,6 +153,9 @@ class OsCompletionIntegrationTest {
         foreignDevice("DEV-F", "FQ")
         reconcile() // the transfer is in flight in the operating system's session
         device("relaunch", "scene" to "false")
+        // A recorded staging requests its own tail at once, and that import would take the bytes out of staging before
+        // the release is read. Failing it keeps them, so the count at the release reads the wake's work alone.
+        device("import/fail-next")
 
         val atRelease = coroutineScope {
             val wake = async { os("app", "onBackgroundTransfers", DOWNLOAD_SESSION) }
