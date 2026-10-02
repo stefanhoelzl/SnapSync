@@ -50,8 +50,16 @@ sealed interface UploaderProcess {
     /** This process's current photo grant — a status read, never a request. */
     val grant: PhotoGrantRead
 
-    class App(val admission: () -> UploadAdmission, override val grant: PhotoGrantRead) : UploaderProcess
-    class Extension(override val grant: PhotoGrantRead) : UploaderProcess
+    /** Whether THIS process may create now (capability `background-upload`), read once per gate. */
+    fun admission(): UploadAdmission
+
+    class App(private val admit: () -> UploadAdmission, override val grant: PhotoGrantRead) : UploaderProcess {
+        override fun admission() = admit()
+    }
+
+    class Extension(override val grant: PhotoGrantRead) : UploaderProcess {
+        override fun admission() = extensionAdmission(grant.current())
+    }
 }
 
 /**
@@ -225,20 +233,8 @@ internal fun uploadCycle(process: ProcessServices, ports: UploadServices): Uploa
  * **port-pure**: one fresh [ConfigService.read] per cycle, the identity probe, the host read, and the
  * root's admission answer — and deliberately nothing else.
  *
- * ⚖️ UNIFICATION DECISION (design D1 of `establish-shared-composition` — the one sanctioned
- * semantic change of migration step 7): the app-driven tier's copy additionally called
- * the config store's `reload()` (then Keychain-backed; today `ConfigService.reload()`)
- * before the read, refreshing the UI-facing `ConfigSource`
- * StateFlow each cycle; the extension's copy did not. The extension's semantics win:
- *  - the spec names the gate's inputs exhaustively (membership read, identity probe, host) — a
- *    StateFlow refresh is a read-model side effect riding in the gate, not gate logic;
- *  - `reload()` exists only on the concrete adapter, not on any port, so it is inexpressible here
- *    by law — and that is the spec's own shape, not a workaround;
- *  - the gate *outcome* is provably unchanged: the controller decided from a second, fresh
- *    `read()` after the reload, identical to reading once;
- *  - the StateFlow's one real staleness case (seeded `null` while locked) is repaired by the
- *    trigger flows' membership re-read (`ConfigService.reload`, migration step 12 — before that,
- *    the app shell's `ProtectedDataGate` unlock hook), which every trigger runs before acting.
+ * It does not refresh the UI-facing membership `StateFlow`: the app-driven tier's copy once did, and the extension's
+ * semantics won (decision record `changes/archive/2026-07-17-establish-shared-composition`, D1).
  */
 private suspend fun readGate(ports: UploadServices): CycleGate {
     val gate = readEntryGate(ports)
@@ -294,12 +290,8 @@ private suspend fun readEntryGate(ports: UploadServices): CycleGate {
             )
         },
         host = ports.host,
-        // Whether THIS process may run (capability `background-upload`): each root states its own answer —
-        // the app from resolution, the extension from its own grant read.
-        admission = when (val process = ports.process) {
-            is UploaderProcess.App -> process.admission()
-            is UploaderProcess.Extension -> extensionAdmission(process.grant.current())
-        },
+        // Each root states its own answer — the app from resolution, the extension from its own grant read.
+        admission = ports.process.admission(),
         // The forensics for a skip: the decision is made in shared code that cannot see WHY the
         // read failed, and an unreadable config is invisible on a device except through this string.
         skipDetail = skipDetail(read, identityFailure, version.exceptionOrNull()),

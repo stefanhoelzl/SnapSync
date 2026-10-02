@@ -107,7 +107,7 @@ class CompositionSeamTest {
      * only through the sibling's own ports.
      */
     private val constructorPins: Map<String, String> = mapOf(
-        "App.admission" to
+        "App.admit" to
             "UploaderProcess.App: the app's admission, bound to AppCore.appUploadAdmission() — grant, selection " +
             "scope and rig pin, all in-process state. The extension's variant is a PhotoGrantRead PORT",
         "AlbumGather.policyFor" to
