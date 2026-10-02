@@ -37,8 +37,7 @@
 # inflation applies to it. `flow/` and `compose/` are carved out into their own tiers: they carry a
 # decision-free law this scope does not.
 #
-# These ceilings are the ones most expected to FALL. `UploadCycle.run` sets the cyclomatic number at
-# 19 on its own.
+# These ceilings are the ones most expected to FALL.
 #
 # `buildUponDefaultConfig` is TRUE for the tier tasks (unlike `app-shell.yml`, which is a complete
 # statement of five rules). Listing all ~60 rules in eight files is not maintainable; the cost is that
@@ -51,7 +50,7 @@ complexity:
     threshold: 19
   CognitiveComplexMethod:
     active: true
-    threshold: 37
+    threshold: 20
   LongMethod:
     active: true
     threshold: 83
