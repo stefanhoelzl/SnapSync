@@ -20,7 +20,7 @@
     // src/scripts/ holds the out-of-bundle programs other workflows invoke (the sweep, the deploy probe).
     // They are type-checked here for the same reason src/dev/ is: a broken one must fail CI rather than
     // surface the next time someone runs it.
-    "check": "deno task config && deno check src/*.ts src/dev/*.ts src/scripts/*.ts src/lint/*.ts",
+    "check": "deno task config && deno check src/*.ts src/routes/*.ts src/dev/*.ts src/scripts/*.ts src/lint/*.ts",
     // The GENERATED schema snapshot (`docs/architecture.md`). `schema` rewrites `api/schema.sql` by
     // replaying `api/migrations/*.sql`; `schema:check` is the CI half and fails when the committed file
     // is not what replaying produces. Deliberately NOT chained to `deno task config`: the generator
