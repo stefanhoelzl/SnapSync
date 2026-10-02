@@ -47,6 +47,19 @@ kotlin {
     iosArm64()
     iosSimulatorArm64()
 
+    // `launchHostMain`: what the two APP hosts share and the JVM host does not — the launch-time adapters' verbs and
+    // the world a launch's mocked systems make (`LaunchHost.kt`). Its own source set because it names
+    // `:test:launch-adapters`, which only the app hosts link.
+    @OptIn(org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi::class)
+    applyDefaultHierarchyTemplate {
+        common {
+            group("launchHost") {
+                group("ios")
+                withCompilations { it.platformType == org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType.androidJvm }
+            }
+        }
+    }
+
     sourceSets {
         commonMain.dependencies {
             // The rig is written against `:domain` types only (AppCore, the read-model StateFlows) plus
@@ -90,19 +103,20 @@ kotlin {
         // `:adapter:ios:ext-safe` for the App-Group directory the identity fallback is planted into. Both
         // are already on `:app:ios`'s compile path, so neither widens what a rig build links — and neither
         // is reachable from a build without `-Psnapsync.rig=true`, which links none of this module.
-        iosMain.dependencies {
-            implementation(project(":adapter:ios:app-only"))
-            implementation(project(":adapter:ios:ext-safe"))
-            // The launch-time adapters the app host's launch reads (`IosLaunchAdapters.kt`, `docs/testing.md`).
+        // The launch-time adapters both app hosts' launches read (`LaunchHost.kt`, `docs/testing.md`).
+        named("launchHostMain").dependencies {
             implementation(project(":test:launch-adapters"))
         }
 
-        // The Android app host (`AndroidRig.kt`): the Android build's real screen and lifecycle adapters, and the
-        // launch-time adapters' port swap its fixed choice composes through. Linked, like the iOS half, only into a
-        // rig build.
+        iosMain.dependencies {
+            implementation(project(":adapter:ios:app-only"))
+            implementation(project(":adapter:ios:ext-safe"))
+        }
+
+        // The Android app host (`AndroidRig.kt`): the Android build's real screen and lifecycle adapters. Linked, like
+        // the iOS half, only into a rig build.
         androidMain.dependencies {
             implementation(project(":adapter:android"))
-            implementation(project(":test:launch-adapters"))
         }
 
         // The JVM host: the JVM root it composes the app with, over the mocks it drives — and the real backend, served
