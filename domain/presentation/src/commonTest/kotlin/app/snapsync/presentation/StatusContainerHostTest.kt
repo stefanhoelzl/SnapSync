@@ -30,10 +30,8 @@ import app.snapsync.model.EventCreator
 import app.snapsync.model.JoinLoad
 import app.snapsync.model.EventCompletionState
 import app.snapsync.model.UserCommands
-import app.snapsync.feature.creation.readmodel.MutableCreationStatusSource
 import app.snapsync.model.GalleryAccess
 import app.snapsync.feature.download.readmodel.DownloadProgress
-import app.snapsync.feature.download.readmodel.InMemoryDownloadStatusSource
 import app.snapsync.model.SyncStatus
 import app.snapsync.model.SyncProgress
 import app.snapsync.feature.status.readmodel.SyncStatusSource
@@ -488,7 +486,7 @@ class StatusContainerHostTest {
         return StatusContainerHost(
             StatusSources(
                 source, FakePermissionSource(GalleryAccess.GRANTED).permission, cfg.config,
-                download = InMemoryDownloadStatusSource(download),
+                download = MutableStateFlow(download),
             ), scope,
             cutoffFormatter = fixedCutoffFormatter(),
             queries = noQueries,
@@ -592,7 +590,7 @@ class StatusContainerHostTest {
         return StatusContainerHost(
             StatusSources(
                 FakeSyncStatusSource(), permission.permission, config.config,
-                creation = MutableCreationStatusSource(creation),
+                creation = MutableStateFlow(creation),
             ), scope,
             commands = testCommands(create = { n, st, en -> scope.launch { creator.create(n, st.at.iso, en.at.iso) } }),
             cutoffFormatter = fixedCutoffFormatter(),
@@ -704,7 +702,7 @@ class StatusContainerHostTest {
     @Test
     fun `a failed create surfaces the inline error and opens no gate`() = runTest {
         val config = FakeConfig(null)
-        val creationStatus = MutableCreationStatusSource()
+        val creationStatus = MutableStateFlow<CreationStatus>(CreationStatus.Idle)
         val host = StatusContainerHost(
             StatusSources(
                 FakeSyncStatusSource(), FakePermissionSource(GalleryAccess.GRANTED).permission,
@@ -719,7 +717,7 @@ class StatusContainerHostTest {
             runOnCreate()
             // The use-case reports a transient failure through the status source and never fires
             // `onMinted` (CreateEventTest pins that) — the inline error shows and no gate opens.
-            creationStatus.set(CreationStatus.Failed(CreationFailureReason.SERVER))
+            creationStatus.value = CreationStatus.Failed(CreationFailureReason.SERVER)
             expectInternalState(screen(Layer.CreateEvent(error = "Couldn't reach the server.")))
             cancelAndIgnoreRemainingItems()
         }
@@ -2194,7 +2192,7 @@ class StatusContainerHostJoinedFactsTest {
         StatusContainerHost(
             StatusSources(
                 source, FakePermissionSource(GalleryAccess.GRANTED).permission, FakeConfig().config,
-                download = InMemoryDownloadStatusSource(DownloadProgress(40, 52, inFlight = 1)),
+                download = MutableStateFlow(DownloadProgress(40, 52, inFlight = 1)),
             ),
             backgroundScope,
             cutoffFormatter = fixedCutoffFormatter(),

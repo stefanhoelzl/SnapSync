@@ -6,10 +6,10 @@ import app.snapsync.compose.AppPorts
 import app.snapsync.compose.ProcessServices
 import app.snapsync.compose.snapSyncApp
 import app.snapsync.presentation.CutoffFormatter
-import app.snapsync.presentation.MutablePendingJoinSource
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.presentation.StatusDiagnostics
 import app.snapsync.presentation.StatusSources
+import kotlinx.coroutines.flow.MutableStateFlow
 import app.snapsync.compose.devHandlers
 import app.snapsync.compose.lifecycleHandlers
 import app.snapsync.compose.pushHandlers
@@ -190,9 +190,9 @@ private fun statusSourcesOf(core: AppCore, ports: AppPorts): StatusSources = Sta
     config = core.membership,
     creation = core.creationStatus,
     rename = core.renameStatus,
-    download = core.downloadStatusSource,
+    download = core.downloadStatusSource.progress,
     attested = core.attested,
-    pending = MutablePendingJoinSource(),
+    pending = MutableStateFlow(null),
     versionRefusal = core.versionRefusal,
     store = ports.process.build.store,
 )

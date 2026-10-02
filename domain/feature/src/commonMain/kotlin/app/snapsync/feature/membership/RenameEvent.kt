@@ -5,7 +5,7 @@ import app.snapsync.services.backend.EventRename
 import app.snapsync.model.RenameOutcome
 
 import co.touchlab.kermit.Logger
-import app.snapsync.feature.membership.readmodel.MutableRenameStatusSource
+import kotlinx.coroutines.flow.MutableStateFlow
 import app.snapsync.feature.membership.readmodel.RenameFailureReason
 import app.snapsync.feature.membership.readmodel.RenameStatus
 
@@ -38,12 +38,12 @@ import app.snapsync.feature.membership.readmodel.RenameStatus
 class RenameEvent(
     private val configSource: ConfigService,
     private val client: EventRename,
-    private val status: MutableRenameStatusSource,
+    private val status: MutableStateFlow<RenameStatus>,
     private val log: Logger = Logger.withTag("RenameEvent"),
 ) {
 
     /**
-     * Rename [eventId] to [name], fire-and-forget: the outcome arrives via [MutableRenameStatusSource].
+     * Rename [eventId] to [name], fire-and-forget: the outcome arrives via the status.
      *
      * The name is trimmed here (the same split `EventCreator`/`CreateEvent` use — the client is a dumb
      * sender), but what is **persisted** is the name the backend echoed, never this trimmed input. The
@@ -54,23 +54,23 @@ class RenameEvent(
     // the hand-off. Still fire-and-forget to the screen — the launch is the caller's, not this class's.
     suspend fun rename(eventId: String, name: String) {
         // One rename at a time, checked before the first suspension — as `CreateEvent` does, for the same reason.
-        if (status.renameStatus.value == RenameStatus.InFlight) {
+        if (status.value == RenameStatus.InFlight) {
             log.i { "rename ignored: one is already in flight" }
             return
         }
-        status.set(RenameStatus.InFlight)
+        status.value = RenameStatus.InFlight
         when (val outcome = client.rename(eventId, name.trim())) {
             is RenameOutcome.Renamed -> {
                 persist(eventId, outcome.name)
-                status.set(RenameStatus.Succeeded)
+                status.value = RenameStatus.Succeeded
             }
             RenameOutcome.InvalidName -> {
                 log.i { "rename rejected: invalid name" }
-                status.set(RenameStatus.Failed(RenameFailureReason.INVALID_NAME))
+                status.value = RenameStatus.Failed(RenameFailureReason.INVALID_NAME)
             }
             RenameOutcome.Transient -> {
                 log.i { "rename failed: transient/server error" }
-                status.set(RenameStatus.Failed(RenameFailureReason.SERVER))
+                status.value = RenameStatus.Failed(RenameFailureReason.SERVER)
             }
         }
     }
@@ -81,7 +81,7 @@ class RenameEvent(
      * re-reading the previous one's outcome.
      */
     fun reset() {
-        status.set(RenameStatus.Idle)
+        status.value = RenameStatus.Idle
     }
 
     /**

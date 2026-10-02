@@ -1,12 +1,8 @@
 package app.snapsync.presentation
 
-import app.snapsync.feature.creation.readmodel.CreationStatusSource
-import app.snapsync.feature.creation.readmodel.MutableCreationStatusSource
+import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.feature.download.readmodel.DownloadProgress
-import app.snapsync.feature.download.readmodel.DownloadStatusSource
-import app.snapsync.feature.download.readmodel.InMemoryDownloadStatusSource
-import app.snapsync.feature.membership.readmodel.MutableRenameStatusSource
-import app.snapsync.feature.membership.readmodel.RenameStatusSource
+import app.snapsync.feature.membership.readmodel.RenameStatus
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
@@ -43,22 +39,21 @@ class StatusSources(
      * The create-status read-model. Inert by default (always `Idle`) so a host that never creates
      * constructs unchanged; the iOS shell injects the instance the create use-case drives.
      */
-    val creation: CreationStatusSource = MutableCreationStatusSource(),
+    val creation: StateFlow<CreationStatus> = MutableStateFlow(CreationStatus.Idle),
     /**
      * The rename-status read-model (capability `manage-membership`), the create twin, with the same inert
      * default for the same reason.
      */
-    val rename: RenameStatusSource = MutableRenameStatusSource(),
+    val rename: StateFlow<RenameStatus> = MutableStateFlow(RenameStatus.Idle),
     /**
      * Download progress (capability `receiving-photos`).
      *
-     * The default is a READ `(0, 0)`, spelled out rather than taken from the fake's own default, and the
-     * distinction is the point: "this host has no download arm" is an ANSWER, while the fake's default
-     * (`DownloadProgress.UNREAD`) means "nothing has been read", which holds the health at `Loading`
-     * forever. A host that never wires downloads means the first; the store-backed source on device
-     * means the second until its first refresh (capability `sync-status`).
+     * The default is a READ `(0, 0)`, and the distinction is the point: "this host has no download arm" is an
+     * ANSWER, while `DownloadProgress.UNREAD` means "nothing has been read", which holds the health at `Loading`
+     * forever. A host that never wires downloads means the first; the store-backed source on device means the
+     * second until its first refresh (capability `sync-status`).
      */
-    val download: DownloadStatusSource = InMemoryDownloadStatusSource(DownloadProgress(0, 0)),
+    val download: StateFlow<DownloadProgress> = MutableStateFlow(DownloadProgress(0, 0)),
     /**
      * Attestation health (capability `privacy-security`): false only when this device's token is
      * UNUSABLE (absent, unreadable, or expired) and the refresh could not obtain one. Never false for a
@@ -73,7 +68,7 @@ class StatusSources(
      * level-triggered: the gate sets it on a decoded interactive event link and clears it on
      * commit/cancel. Injected — defaulting to a fresh instance, which the gate drives.
      */
-    val pending: MutablePendingJoinSource = MutablePendingJoinSource(),
+    val pending: MutableStateFlow<PendingJoin?> = MutableStateFlow(null),
     /**
      * Whether the backend is refusing this build as too old, and the version it named (capability
      * `app-update-required`) — `AppVersionGate.refusal`, written by the core's authenticated backend on every backend answer.
