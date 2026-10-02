@@ -17,7 +17,8 @@
 #                                                 minutes of emulator and R8 per ship; CI runs them
 #                                                 (./gradlew androidPlatformTest, scripts/android-journeys)
 #   check-label                    /ship applies the label as it opens the PR
-#   metadata's other two steps     scripts/resolve_deployment_test.py; the listing validation, which needs
+#   metadata's other three steps   scripts/resolve_deployment_test.py, scripts/await_photo_migration_test.py;
+#                                  the listing validation, which needs
 #                                  the pinned `asc` binary fetched over the network
 #   migration-rehearsal, site-build
 #

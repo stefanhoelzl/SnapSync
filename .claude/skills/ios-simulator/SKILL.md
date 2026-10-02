@@ -247,7 +247,9 @@ and made the job slow and flaky (`changes/archive/2026-09-25-one-simulator-journ
 compile on the build's daemon, every Gradle and Kotlin daemon is stopped, and only then does the simulator boot. A
 fresh simulator's photo library is not writable at boot (`assetsd` migrates it, and its Syndication library, in the
 background), so the app's first write, one `BULK` seed through the rig, is its own `photo library: ready` stage
-before the contracts. Everything lands in `build/sim-contracts/`: `stages`,
+before the contracts; and the system library's BACKGROUND migration, a system task that holds every write while it
+runs (96–184 s measured), is awaited as `photo library: migrated` on its completion event in `assetsd`'s log
+(`scripts/await-photo-migration.py`, whose events log lands in `photo-migration.log`). Everything lands in `build/sim-contracts/`: `stages`,
 `resources.log` (load and memory every 10 s), the backend's output with a line per request, the app's `debug.log`,
 and `crash/`.
 

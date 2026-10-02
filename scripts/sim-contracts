@@ -17,7 +17,9 @@
 # writable when it reports booted: `assetsd` migrates its libraries at utility priority, and the app's first write
 # waits minutes for it (measured: it returned the instant the Syndication library's migration finished). So the
 # app's first write is its own `photo library: ready` stage, one BULK seed (dated 2001, outside every capture
-# window) through the rig, before the first contract.
+# window) through the rig, before the first contract. That covers only the FOREGROUND part of the upgrade: its
+# background part is a system task that holds every write while it runs, so the contracts also wait for its completion
+# event in `assetsd`'s log (`photo library: migrated`, scripts/await-photo-migration.py).
 #
 # It FAILS on: any outcome that fails a run — `Failed(`, `Diverged(`, `NotWithin(` (`docs/architecture.md`,
 # "Outcomes are explicit and none is silent") — any refusal (409: the process is not the simulator app, or it does
@@ -55,6 +57,8 @@ touch "$OUT/.start"
         memory_pressure -Q 2>/dev/null | tail -1
         echo "swap $(sysctl -n vm.swapusage)"
         vm_stat | grep -E 'Pages free|Pageouts|Swapouts'
+        # Who the load is: a booting simulator's is a long tail of its own daemons, not one process (run 37004211450).
+        ps -A -r -o %cpu=,pid=,comm= | head -12
         sleep 10
     done
 ) > "$OUT/resources.log" 2>&1 &
@@ -109,6 +113,9 @@ cleanup() {
     mkdir -p "$OUT/crash/host"
     find "$HOME/Library/Logs/DiagnosticReports" -type f -newer "$OUT/.start" -exec cp {} "$OUT/crash/host/" \; 2>/dev/null
     cp -R "$HOME/Library/Logs/CoreSimulator/$DEVICE" "$OUT/crash/simulator" 2>/dev/null
+    # The whole run's CPU time per process, beside the per-sample view in resources.log.
+    ps -A -o time=,pid=,comm= | awk '{ n = split($1, t, ":"); s = 0; for (i = 1; i <= n; i++) s = s * 60 + t[i];
+        $1 = ""; printf "%9.1f s %s\n", s, $0 }' | sort -rn | head -40 > "$OUT/cpu-time.txt" 2>&1
     xcrun simctl shutdown "$DEVICE" >/dev/null 2>&1; xcrun simctl delete "$DEVICE" >/dev/null 2>&1
 }
 trap cleanup EXIT
@@ -212,6 +219,13 @@ PY
 code="$(curl -sS -o "$OUT/readiness.json" -w '%{http_code}' -X POST "http://127.0.0.1:$PORT/device/gallery/seed?n=1&kind=bulk")"
 [ "$code" = 200 ] || { cat "$OUT/readiness.json"; fail "the photo library never took its first write (HTTP $code)"; }
 stage "photo library: ready"
+# ...and its BACKGROUND migration, which `dasd` may start after that first write returned and which then holds every
+# write for minutes (96–184 s measured): a clause writing meanwhile fails past its `runTest` bound, whichever it is
+# (runs 36868431564, 37004211450). The gate follows `assetsd`'s own log for the task's completion event; see the
+# script for the events and why the Syndication library's task is not awaited.
+python3 scripts/await-photo-migration.py --device "$DEVICE" --log "$OUT/photo-migration.log" \
+    || fail "the photo library's background migration did not settle (events in $OUT/photo-migration.log)"
+stage "photo library: migrated"
 
 stage "contracts: starting"
 curl -sS --max-time 30 "http://127.0.0.1:$PORT/contract" > "$OUT/registry" || fail "GET /contract"
