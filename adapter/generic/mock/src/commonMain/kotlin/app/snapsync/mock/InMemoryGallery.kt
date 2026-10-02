@@ -114,7 +114,7 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
         }
 
     override suspend fun assets(policy: SelectionPolicy): GalleryRead<List<AssetFacts>> {
-        state.enumerationHeld?.await()
+        state.enumeration.await()
         if (state.failNextEnumeration) {
             state.failNextEnumeration = false
             // A platform walk that fails is a failure, not a successful read with no answer (`NotReadable`).
@@ -135,7 +135,7 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
 
     // The whole library, a folder album's photos included (Android's event albums are folders `assets` leaves out).
     override suspend fun libraryAssets(policy: SelectionPolicy): GalleryRead<List<AssetFacts>> {
-        state.enumerationHeld?.await()
+        state.enumeration.await()
         return readable {
             val floor = policy.rules.filterIsInstance<SelectionRule.CaptureAfter>().maxOfOrNull { it.cutoff.at.iso }
             if (policy.rules.any { it.deniesEverything }) {
@@ -179,7 +179,7 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
     }
 
     override suspend fun addToAlbum(album: AlbumId, assets: Set<AssetId>): WriteOutcome {
-        state.addsHeld?.await()
+        state.adds.await()
         state.addedLog += album to assets.toList()
         val target = state.created[album] ?: return WriteOutcome.Failed("album $album does not resolve")
         val held = state.library.value.mapTo(mutableSetOf()) { it.toFacts().assetId }

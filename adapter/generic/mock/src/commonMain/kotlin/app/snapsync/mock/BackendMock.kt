@@ -12,7 +12,6 @@ import app.snapsync.model.ResourceRole
 import app.snapsync.model.UnionAsset
 import app.snapsync.model.isCanonicalAssetId
 import app.snapsync.ports.Backend
-import kotlinx.coroutines.CompletableDeferred
 import kotlin.time.Instant
 
 /**
@@ -170,7 +169,7 @@ class BackendOperator internal constructor(private val state: BackendState) {
 
     /** Every [call] waits until [release]: the backend that has not answered yet. */
     fun hold(call: BackendCall) {
-        if (call !in state.holds) state.holds[call] = CompletableDeferred()
+        state.holds.getOrPut(call, ::OperatorHold).hold()
     }
 
     /** Whether [call] is held. */
@@ -178,7 +177,7 @@ class BackendOperator internal constructor(private val state: BackendState) {
 
     /** A held [call], and every later one, is answered. */
     fun release(call: BackendCall) {
-        state.holds.remove(call)?.complete(Unit)
+        state.holds.remove(call)?.release()
     }
 
     /** The nightly sweep deleting [eventId]: every later read of it is `404`. */
@@ -254,7 +253,7 @@ internal class BackendState(
     var offline = false
     var failDeviceListing = false
     var refuseNextCredential = false
-    val holds = mutableMapOf<BackendCall, CompletableDeferred<Unit>>()
+    val holds = mutableMapOf<BackendCall, OperatorHold>()
     var nextEventId: String? = null
     var minAppVersion: String? = null
     internal var legacyCounter = 0L
