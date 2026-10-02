@@ -1,0 +1,73 @@
+# Boot the Android emulator the journeys and the marketing captures run on, and run `script` on it — the setup ci.yml's
+# `journeys (android)` and screenshots.yml's `android` job share. A COMPOSITE action (step-level), not a reusable
+# workflow, for the reason ios-archive gives: the calling job keeps its name, which is its status-check context.
+#
+# The device: API 36, google_apis, x86_64, the `pixel_6` profile — the phone the `snapsync-android` skill's emulator
+# models and the managed device `android-build` tests on (1080x2400, the size Google Play's captures are taken at).
+#
+# The system image is not on the runner image (~1 min to download each run), so it is cached — written on main only
+# (`save-system-image`, ci.yml's journeys), as ~/.konan is, and keyed by the installed image's fingerprint, so restore
+# and save are split: a stable primary key would always hit and never pick up a new revision. Every other caller
+# restores only. The emulator itself ships on the runner image.
+name: Android emulator
+description: Enable KVM, restore (and optionally save) the system image, boot the emulator and run a script on it.
+
+inputs:
+  script:
+    description: What to run once the emulator is up (reactivecircus/android-emulator-runner's `script`; each line is its own shell).
+    required: true
+  save-system-image:
+    description: "'true' to write the system-image cache and reclaim superseded entries (main only)."
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Enable KVM
+      shell: bash
+      run: |
+        echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+        sudo udevadm control --reload-rules
+        sudo udevadm trigger --name-match=kvm
+    - name: Restore the Android system image
+      id: sysimg-restore
+      uses: actions/cache/restore@v6
+      with:
+        path: ${{ env.ANDROID_HOME }}/system-images/android-36/google_apis/x86_64
+        key: android-sysimg-36-google_apis-x86_64-
+        restore-keys: android-sysimg-36-google_apis-x86_64-
+    # Retried downloads ahead of the emulator action's own, which never retry (`.github/scripts/android_sdk_install.sh`).
+    - name: Install the emulator and the system image
+      id: sysimg
+      shell: bash
+      run: bash .github/scripts/android_sdk_install.sh 'system-images;android-36;google_apis;x86_64'
+    - name: Save the Android system image
+      if: inputs.save-system-image == 'true' && steps.sysimg-restore.outputs.cache-matched-key != format('android-sysimg-36-google_apis-x86_64-{0}', steps.sysimg.outputs.fingerprint)
+      uses: actions/cache/save@v6
+      with:
+        path: ${{ env.ANDROID_HOME }}/system-images/android-36/google_apis/x86_64
+        key: android-sysimg-36-google_apis-x86_64-${{ steps.sysimg.outputs.fingerprint }}
+    # One entry is ~1.5 GB of a full 10 GB budget: drop the revisions the save above superseded.
+    - name: Reclaim superseded system-image entries
+      if: inputs.save-system-image == 'true'
+      continue-on-error: true
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        KEEP: android-sysimg-36-google_apis-x86_64-${{ steps.sysimg.outputs.fingerprint }}
+      run: |
+        gh api "repos/$GITHUB_REPOSITORY/actions/caches?per_page=100&key=android-sysimg-" \
+          --jq ".actions_caches[] | select(.key != \"$KEEP\") | .id" |
+          while read -r id; do gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/caches/$id" --silent; done
+    - name: Boot the emulator and run the script
+      uses: reactivecircus/android-emulator-runner@v2
+      with:
+        api-level: 36
+        target: google_apis
+        arch: x86_64
+        profile: pixel_6
+        # `swangle_indirect`, not the default SwiftShader GLES: the latter segfaults in its JIT on some hosts
+        # (measured on the dev box, emulator 36.1.9 and 37.1.11); the Vulkan path boots on both.
+        emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -gpu swangle_indirect -memory 3072
+        disable-animations: true
+        script: ${{ inputs.script }}
