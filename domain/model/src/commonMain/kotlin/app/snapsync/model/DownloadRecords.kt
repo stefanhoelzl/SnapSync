@@ -17,14 +17,6 @@ enum class DownloadState {
     PENDING,
     IMPORTED,
     UNIMPORTABLE,
-    ;
-
-    /**
-     * The one notion of "done with", matching the store's SQL `NOT IN ('IMPORTED', 'UNIMPORTABLE')`
-     * predicates. Stated by enumeration rather than as `!= PENDING` so a future non-terminal state does
-     * not silently join it.
-     */
-    val isTerminal: Boolean get() = this == IMPORTED || this == UNIMPORTABLE
 }
 
 /**

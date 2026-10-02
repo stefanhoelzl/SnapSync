@@ -57,44 +57,10 @@ class LedgerEntry(
         contentType == other.contentType && originalFilename == other.originalFilename &&
         destinationPath == other.destinationPath
 
-    /**
-     * The same row in [state], every other field unchanged.
-     */
-    fun withState(state: LedgerState): LedgerEntry = LedgerEntry(
-        key = key,
-        assetId = assetId,
-        state = state,
-        creationDate = creationDate,
-        role = role,
-        contentType = contentType,
-        originalFilename = originalFilename,
-        destinationPath = destinationPath,
-    )
-
     override fun hashCode(): Int = key.hashCode()
 
     override fun toString(): String =
         "LedgerEntry($key, assetId=$assetId, $state)"
-}
-
-/**
- * Whether replacing the row [before] with [after] (either `null` for an insert or a delete) changes what the
- * device manifest projects from it — so whether the ledger's **manifest version** advances (capability
- * `photo-sharing`, "The manifest version orders the device's manifest snapshots").
- *
- * The SQLite store decides this in its triggers; this is the same rule for a store that has none (the
- * in-memory stores), stated once so no fake grows its own reading of it. `state` and `destinationPath` are
- * deliberately not compared: the manifest carries no upload state, and a bump per finished upload would
- * force a republish per cycle.
- */
-fun changesManifestProjection(before: LedgerEntry?, after: LedgerEntry?): Boolean {
-    if (before == null || after == null) return before != after
-    return before.key != after.key ||
-        before.assetId != after.assetId ||
-        before.creationDate != after.creationDate ||
-        before.role != after.role ||
-        before.contentType != after.contentType ||
-        before.originalFilename != after.originalFilename
 }
 
 /**
