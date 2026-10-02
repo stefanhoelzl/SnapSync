@@ -5,9 +5,10 @@
 # ///
 """Deliver an Android App Bundle to Google Play over the Play Developer API (v3).
 
-`ci.yml`'s `android-deliver` uploads every delivering run's signed bundle to the INTERNAL testing track, as
-`ios-deliver` uploads to internal TestFlight; `promote.yml` releases an ALREADY-UPLOADED bundle to a further track.
-Every Play change happens inside ONE EDIT, committed once at the end or deleted on any failure, so a run either
+`ci.yml`'s `android-deliver` uploads every push to main's signed bundle to the INTERNAL testing track, as
+`ios-deliver` uploads to internal TestFlight, and a branch dispatch's through INTERNAL APP SHARING (`share`), which
+touches no track; `promote.yml` releases an ALREADY-UPLOADED bundle to a further track.
+Every track or listing change happens inside ONE EDIT, committed once at the end or deleted on any failure, so a run either
 lands whole or changes nothing. Later steps (the diff-gated listing update) are further operations on the same
 `Edit`, not edits of their own: committing one edit invalidates every other open one, so two would race.
 
@@ -18,6 +19,11 @@ lands whole or changes nothing. Later steps (the diff-gated listing update) are 
              Upload the bundle, make it the track's one release named <name> (status `completed`, the note as
              its en-US release notes, cut to Play's 500 characters), bring the store listing in line with
              <dir>s when given (below), commit.
+    share    <package> <bundle> <android component>
+             Upload the bundle through internal app sharing — no edit, no track, nothing committed — and print its
+             install link (`link=` to $GITHUB_OUTPUT too). Play re-signs a sharing build with its own key: fails
+             unless that certificate's digest is in the component's `androidSigningCertDigests`, since prod refuses
+             the attestation of an app signed with any other, so the link would install an app that cannot join.
     listing-diff <package> <listing dir> <images dir> [--try]
              What `deliver` would change in the store listing, then the edit is DELETED. With --try the changes
              are made too — Play validates them — and still never committed.
@@ -309,6 +315,30 @@ def deliver(package: str, bundle: str, track: str, name: str, note: str,
         edit.commit()
 
 
+def hex_digits(fingerprint: str) -> str:
+    return "".join(c for c in fingerprint.lower() if c in "0123456789abcdef")
+
+
+def share(package: str, bundle: str, component: str) -> None:
+    with open(component, encoding="utf-8") as handle:
+        accepted = {hex_digits(d) for d in json.load(handle)["androidSigningCertDigests"]}
+    with open(bundle, "rb") as data:
+        artifact = checked(session().post(
+            f"{UPLOAD_API}/internalappsharing/{package}/artifacts/bundle",
+            params={"uploadType": "media"},
+            headers={"Content-Type": "application/octet-stream"},
+            data=data,
+            timeout=UPLOAD_TIMEOUT,
+        ))
+    link, fingerprint = artifact["downloadUrl"], artifact.get("certificateFingerprint", "")
+    print(f"shared bundle: sha256 {artifact.get('sha256')}, signed by {fingerprint}")
+    output("link", link)
+    if hex_digits(fingerprint) not in accepted:
+        sys.exit(f"::error::Play signed the shared build with {fingerprint!r}, which {component}'s "
+                 f"androidSigningCertDigests does not hold: prod would refuse its attestation. Link: {link}")
+    print(f"link: {link}")
+
+
 def listing_diff(package: str, listing: str, images: str, write: bool) -> None:
     with Edit(session(), package) as edit:
         changed = sync_listing(edit, listing, images, write=write)
@@ -326,6 +356,8 @@ def main(argv: list[str]) -> None:
             deliver(package, bundle, track, name, note)
         case ["deliver", package, bundle, track, name, note, "--listing", listing, "--images", images]:
             deliver(package, bundle, track, name, note, listing, images)
+        case ["share", package, bundle, component]:
+            share(package, bundle, component)
         case ["listing-diff", package, listing, images]:
             listing_diff(package, listing, images, write=False)
         case ["listing-diff", package, listing, images, "--try"]:
