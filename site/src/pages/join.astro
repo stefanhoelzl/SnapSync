@@ -13,7 +13,7 @@
 import deployment from "../deployment.json";
 import Layout from "../layouts/Layout.astro";
 import AppStoreButton from "../components/AppStoreButton.astro";
-import PlayStoreButton from "../components/PlayStoreButton.astro";
+import PlayOffer from "../components/PlayOffer.astro";
 ---
 
 <Layout title="SnapSync — event photos" ogUrl={`https://${deployment.domain}/join`}>
@@ -31,7 +31,7 @@ import PlayStoreButton from "../components/PlayStoreButton.astro";
       </div>
       <div class="cta">
         <AppStoreButton />
-        <PlayStoreButton />
+        <PlayOffer />
       </div>
     </div>
     <div id="invalid" class="hidden">
@@ -41,7 +41,7 @@ import PlayStoreButton from "../components/PlayStoreButton.astro";
       </p>
       <div class="cta">
         <AppStoreButton />
-        <PlayStoreButton />
+        <PlayOffer />
       </div>
     </div>
   </div>

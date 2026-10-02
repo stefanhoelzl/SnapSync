@@ -1,0 +1,20 @@
+---
+// Where every page offers Google Play, beside AppStoreButton (capabilities web-site, event-site): the badge alone once
+// the listing is public, the closed test's tester steps while one runs, nothing otherwise. Which one is decided once,
+// in src/lib/play.ts, from the resolved deployment — so the production switch is a deployment edit, not a code change.
+import deployment from "../deployment.json";
+import { playOfferFor } from "../lib/play";
+import PlayStoreButton from "./PlayStoreButton.astro";
+import PlayTesterSteps from "./PlayTesterSteps.astro";
+
+const offer = playOfferFor(deployment);
+---
+
+{offer.kind === "listing" && <PlayStoreButton listingUrl={offer.listingUrl} />}
+{offer.kind === "testing" && (
+  <PlayTesterSteps
+    listingUrl={offer.listingUrl}
+    groupUrl={offer.groupUrl}
+    optInUrl={offer.optInUrl}
+  />
+)}

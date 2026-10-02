@@ -3,7 +3,8 @@
 ## Purpose
 Serves anyone who opens SnapSync's address in a browser — a curious guest, a prospective host, an App
 Store reviewer — with one public page that says what SnapSync is, shows the real app, links to the App
-Store (and to Google Play once SnapSync is published there), and carries the Privacy Policy, the Terms
+Store (and to Google Play once SnapSync is published there, or the steps to get it there as a tester
+while a closed test runs), and carries the Privacy Policy, the Terms
 of Use and a way to get support. It promises that the pictures on the site are the same software the App Store listing shows, and that the page is readable by
 anyone, in light or dark mode, with a keyboard and without JavaScript. What the site may and may not
 collect about its visitors is capability `privacy-security`; the page an invite link shows is capability

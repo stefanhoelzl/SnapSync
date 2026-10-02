@@ -1,6 +1,7 @@
 {
   "androidPackageName": "app.snapsync",
   "playStoreUrl": "",
+  "playTestGroupUrl": "https://groups.google.com/g/snapsync-beta",
   "androidSigningCertDigests": [
     "F4:3B:72:F0:92:EE:73:F2:5A:7D:1F:0F:BE:FC:83:84:F2:1E:1E:A2:FE:43:64:4F:4E:74:B9:B9:E3:29:34:CE",
     "9E:37:30:5A:35:6A:01:0E:A1:4F:FB:8A:9C:DD:77:59:DC:1A:30:9B:25:EC:27:5D:32:E7:2E:90:D4:12:A9:43"
