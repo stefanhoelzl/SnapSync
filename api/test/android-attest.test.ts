@@ -25,7 +25,7 @@ import {
   RKP_TEE_CA1_ROOT,
   SOFTWARE,
 } from "./fixtures/android-attestation-samples.ts";
-import { CONFIG, createApp, D, NOW, store } from "./support/harness.ts";
+import { CONFIG, createApp, D, NOW, store, V2 } from "./support/harness.ts";
 
 /** The roots every deployed backend pins — read from the committed component, so this tests what ships. */
 const GOOGLE_ROOTS: string[] = JSON.parse(
@@ -327,8 +327,6 @@ Deno.test("android renew: a signature by the attested key over the challenge ver
 });
 
 // ── The routes ──────────────────────────────────────────────────────────────────────────────────────
-
-const V2 = { "x-snapsync-app-version": "99.0" };
 
 Deno.test("route: an Android row renews by its SIGNATURE, and the row says what proved it", async () => {
   const db = await store();

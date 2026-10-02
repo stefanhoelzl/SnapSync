@@ -12,13 +12,13 @@ import { sqliteDb } from "../../src/dev/db-sqlite.ts";
 import { type Db, insertEvent, publishStatements } from "../../src/db.ts";
 import { replay } from "../../src/dev/replay.ts";
 import { DEAD_TOKEN, enrolDevice, LIVE_TOKEN } from "../support/db.ts";
+import { NOW } from "../support/harness.ts";
 
 // The sweep (capability `event-lifetime`) MARKS FROM THE DATABASE and DELETES FROM STORAGE. These
 // tests therefore drive two doubles: a real in-process SQLite for the relational half (so cascades and
 // the queries behave as SQL, not as our idea of SQL) and an in-memory object-store fake for the byte
 // half. NOW is pinned. The sweep holds only the storage AccessKey and the store's credentials — it makes
 // no request to the Edge Script.
-const NOW = Date.parse("2026-07-14T12:00:00Z");
 const ZONE = "test-zone"; // a FIXTURE, deliberately not the real zone
 const CONFIG = {
   zone: ZONE,

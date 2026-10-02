@@ -18,9 +18,9 @@ import {
   recorder,
   rows,
   storeWithEvent,
+  VERSION_HEADER,
 } from "./support/harness.ts";
 
-const VERSION_HEADER = "x-snapsync-app-version";
 const JOIN = (d: string) => `/api/v2/events/${E}/devices/${d}`;
 const MANIFEST = (d: string) => `/api/v2/events/${E}/devices/${d}/manifest`;
 const DETAILS = `/api/v2/events/${E}`;

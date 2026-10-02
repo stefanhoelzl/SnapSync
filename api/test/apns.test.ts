@@ -1,38 +1,7 @@
 import { assert, assertEquals } from "@std/assert";
 import { createApnsSender } from "../src/apns.ts";
 import type { Config } from "../src/config.ts";
-
-// The sender only reads the `apns*` fields; the storage fields are filler for the Config type.
-const BASE: Omit<Config, "apnsPrivateKey"> = {
-  zone: "z",
-  host: "h",
-  accessKey: "k",
-  s3Region: "de",
-  s3Host: "de-s3.storage.bunnycdn.com",
-  s3Scheme: "https",
-  apnsKeyId: "ABC123KEYID",
-  apnsTeamId: "E9Z8BADH58",
-  apnsTopic: "app.snapsync",
-  fcmProjectId: "",
-  fcmServiceAccountKey: "",
-  attestTokenKey: "test-attest-token-key",
-  minAppVersion: "0.1",
-  databaseUrl: "",
-  databaseToken: "",
-  appAttestRootCa: "",
-  androidPackageName: "app.snapsync",
-  androidSigningCertDigests: [],
-  androidAttestationRoots: [],
-  androidAttestationTrust: "hardware" as const,
-  attestTokenTtlSeconds: 30 * 24 * 60 * 60,
-  attestAppId: "E9Z8BADH58.app.snapsync",
-  linkDomain: "snapsync.stho.net",
-  appStoreUrl: "https://apps.apple.com/app/id6781692480",
-  eventCapacity: 10,
-  eventWindowMaxSeconds: 30 * 24 * 60 * 60,
-  eventLifetimeSeconds: 30 * 24 * 60 * 60,
-  maintenance: false,
-};
+import { CONFIG } from "./support/harness.ts";
 
 // A real P-256 key so `crypto.subtle.sign` actually produces a valid ES256 JWT in-test.
 async function genConfig(): Promise<Config> {
@@ -48,7 +17,7 @@ async function genConfig(): Promise<Config> {
   const pem = `-----BEGIN PRIVATE KEY-----\n${
     b64.match(/.{1,64}/g)!.join("\n")
   }\n-----END PRIVATE KEY-----\n`;
-  return { ...BASE, apnsPrivateKey: pem };
+  return { ...CONFIG, apnsPrivateKey: pem };
 }
 
 // A stand-in event id threaded into every send; the sender does not validate it, it just embeds it.
