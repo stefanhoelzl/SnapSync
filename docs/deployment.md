@@ -135,7 +135,7 @@ The deployment declares the **names**. Values come from the environment of which
   the badge alone; neither → no Google Play at all. The resolver refuses the two set together. **The production
   switch** is therefore one `android.json` edit — empty `playTestGroupUrl`, set `playStoreUrl` — and, when the
   production release goes through `promote.yml` rather than the Play Console, `PLAY_TRACK` changed to
-  `production` ("Promote a build you already tested"). Decision record: `changes/advertise-play-closed-test`.
+  `production` ("Promote a build you already tested"). Decision record: `changes/archive/2026-10-02-advertise-play-closed-test`.
 
 ### iOS: the baked values
 
