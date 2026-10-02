@@ -10,6 +10,8 @@
 # Env: ASC (path to the asc binary), ASC_APP_ID, plus asc's auth vars (ASC_KEY_ID / ASC_ISSUER_ID /
 # ASC_PRIVATE_KEY, ASC_BYPASS_KEYCHAIN=1).
 set -euo pipefail
+# shellcheck source=.github/scripts/asc_lib.sh
+source "$(dirname "${BASH_SOURCE[0]}")/asc_lib.sh"
 
 ASC="${ASC:-${RUNNER_TEMP:-/tmp}/asc}"
 APP="${ASC_APP_ID:?ASC_APP_ID is required}"
@@ -23,19 +25,8 @@ if [ ! -d "$DIR" ]; then
   exit 1
 fi
 
-# State gate: only PREPARE_FOR_SUBMISSION / DEVELOPER_REJECTED are editable. Resolve the version
-# string shape-agnostically (the first versionString anywhere in the filtered response — every version
-# returned is already editable, so any is safe).
-versions_json="$("$ASC" versions list --app "$APP" --platform IOS \
-  --state PREPARE_FOR_SUBMISSION,DEVELOPER_REJECTED --output json)"
-version="$(printf '%s' "$versions_json" | jq -r '[.. | .versionString? // empty] | .[0] // empty')"
-
-if [ -z "$version" ]; then
-  echo "No editable App Store version (nothing in PREPARE_FOR_SUBMISSION / DEVELOPER_REJECTED)."
-  echo "Nothing to apply — concluding green."
-  exit 0
-fi
-echo "Editable App Store version: $version"
+# State gate (`asc_lib.sh`): only PREPARE_FOR_SUBMISSION / DEVELOPER_REJECTED are editable; none is a green no-op.
+asc_require_editable_version apply
 
 # The listing is VERSION-INDEPENDENT (version/current) — store versions auto-advance
 # with every release (`docs/deployment.md` derives them from builds), so a version-named

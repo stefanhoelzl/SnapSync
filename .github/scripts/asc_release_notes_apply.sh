@@ -23,6 +23,8 @@
 # Env: ASC (path to the asc binary), ASC_APP_ID, STORE_VERSION, NOTES_FILE, plus asc's auth vars
 # (ASC_KEY_ID / ASC_ISSUER_ID / ASC_PRIVATE_KEY, ASC_BYPASS_KEYCHAIN=1).
 set -euo pipefail
+# shellcheck source=.github/scripts/asc_lib.sh
+source "$(dirname "${BASH_SOURCE[0]}")/asc_lib.sh"
 
 ASC="${ASC:-${RUNNER_TEMP:-/tmp}/asc}"
 APP="${ASC_APP_ID:?ASC_APP_ID is required}"
@@ -33,18 +35,8 @@ LOCALE="en-US"
 [ -s "$NOTES_FILE" ] || { echo "::error::$NOTES_FILE is missing or empty"; exit 1; }
 notes="$(cat "$NOTES_FILE")"
 
-# Resolve the version id by versionString — pinned to ONE object, exactly as
-# asc_review_details_apply.sh does, so the id and the versionString provably came from the same
-# version.
-versions_json="$("$ASC" versions list --app "$APP" --platform IOS --output json)"
-version_id="$(printf '%s' "$versions_json" \
-  | jq -r --arg v "$VERSION" '[.. | objects | select(.id? and (.attributes?.versionString? == $v))] | .[0].id // empty')"
-
-if [ -z "$version_id" ]; then
-  echo "::error::no App Store version record with versionString '$VERSION' — cannot apply release notes"
-  exit 1
-fi
-echo "App Store version '$VERSION' = $version_id"
+# Resolve the version id by versionString (`asc_lib.sh`), pinned to ONE object.
+asc_require_version_id "$VERSION" "release notes"
 
 # find-or-create the locale. App Store Connect normally seeds a new version's localizations from the
 # previous version, so this is a no-op in practice — but a version born without en-US would otherwise

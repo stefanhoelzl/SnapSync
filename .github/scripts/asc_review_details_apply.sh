@@ -15,6 +15,8 @@
 # Env: ASC (path to the asc binary), ASC_APP_ID, STORE_VERSION, CONTACT_{FIRST_NAME,LAST_NAME,EMAIL,PHONE},
 # plus asc's auth vars (ASC_KEY_ID / ASC_ISSUER_ID / ASC_PRIVATE_KEY, ASC_BYPASS_KEYCHAIN=1).
 set -euo pipefail
+# shellcheck source=.github/scripts/asc_lib.sh
+source "$(dirname "${BASH_SOURCE[0]}")/asc_lib.sh"
 
 ASC="${ASC:-${RUNNER_TEMP:-/tmp}/asc}"
 APP="${ASC_APP_ID:?ASC_APP_ID is required}"
@@ -24,17 +26,8 @@ NOTES_FILE="metadata/review/notes.md"
 [ -f "$NOTES_FILE" ] || { echo "::error::$NOTES_FILE not found"; exit 1; }
 notes="$(cat "$NOTES_FILE")"
 
-# Resolve the version id by versionString. Shape-agnostic like asc_metadata_apply.sh, but pinned to ONE
-# object so the id and the versionString provably came from the same version.
-versions_json="$("$ASC" versions list --app "$APP" --platform IOS --output json)"
-version_id="$(printf '%s' "$versions_json" \
-  | jq -r --arg v "$VERSION" '[.. | objects | select(.id? and (.attributes?.versionString? == $v))] | .[0].id // empty')"
-
-if [ -z "$version_id" ]; then
-  echo "::error::no App Store version record with versionString '$VERSION' — cannot apply review details"
-  exit 1
-fi
-echo "App Store version '$VERSION' = $version_id"
+# Resolve the version id by versionString (`asc_lib.sh`), pinned to ONE object.
+asc_require_version_id "$VERSION" "review details"
 
 # find-or-create. details-for-version exits non-zero when none exists, which is not an error here.
 detail_id="$("$ASC" review details-for-version --version-id "$version_id" --output json 2>/dev/null \

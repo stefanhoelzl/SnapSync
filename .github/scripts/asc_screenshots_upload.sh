@@ -18,24 +18,16 @@
 # Env: ASC (path to the asc binary), ASC_APP_ID, plus asc's auth vars (ASC_KEY_ID / ASC_ISSUER_ID /
 # ASC_PRIVATE_KEY, ASC_BYPASS_KEYCHAIN=1). LOCALE defaults to en-US.
 set -euo pipefail
+# shellcheck source=.github/scripts/asc_lib.sh
+source "$(dirname "${BASH_SOURCE[0]}")/asc_lib.sh"
 
 ASC="${ASC:-${RUNNER_TEMP:-/tmp}/asc}"
 APP="${ASC_APP_ID:?ASC_APP_ID is required}"
 LOCALE="${LOCALE:-en-US}"
 DEVICE_TYPE="APP_IPHONE_69"   # 1320x2868; App Store Connect scales this class down to smaller iPhones
 
-# State gate: only PREPARE_FOR_SUBMISSION / DEVELOPER_REJECTED are editable. Resolve the version string
-# shape-agnostically (every version returned is already editable, so any is safe).
-versions_json="$("$ASC" versions list --app "$APP" --platform IOS \
-  --state PREPARE_FOR_SUBMISSION,DEVELOPER_REJECTED --output json)"
-version="$(printf '%s' "$versions_json" | jq -r '[.. | .versionString? // empty] | .[0] // empty')"
-
-if [ -z "$version" ]; then
-  echo "No editable App Store version (nothing in PREPARE_FOR_SUBMISSION / DEVELOPER_REJECTED)."
-  echo "Nothing to upload — concluding green."
-  exit 0
-fi
-echo "Editable App Store version: $version"
+# State gate (`asc_lib.sh`): only PREPARE_FOR_SUBMISSION / DEVELOPER_REJECTED are editable; none is a green no-op.
+asc_require_editable_version upload
 
 # Compose from the committed raws. Fails loudly on a missing raw or a wrong output size.
 OUT_DIR="${RUNNER_TEMP:-/tmp}/shots-out"
