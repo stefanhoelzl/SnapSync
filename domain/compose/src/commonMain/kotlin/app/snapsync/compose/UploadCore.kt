@@ -300,8 +300,8 @@ private suspend fun readEntryGate(ports: UploadServices): CycleGate {
 
 /** The skip line [readGate] hands the cycle: which read failed, and how. */
 private fun skipDetail(read: ConfigRead, identityFailure: Throwable?, versionFailure: Throwable?): String =
-    "protected data unavailable (config status=" +
-        "${(read as? ConfigRead.Unavailable)?.status}, deviceId readable=${identityFailure == null}" +
+    "protected data unavailable (config: " +
+        "${(read as? ConfigRead.Unavailable)?.detail}, deviceId readable=${identityFailure == null}" +
         // Naming WHICH identity failure occurred is the difference between "the device is locked,
         // this will pass" and "this process has no identity and may not create one", which need
         // opposite reactions from whoever reads the log.

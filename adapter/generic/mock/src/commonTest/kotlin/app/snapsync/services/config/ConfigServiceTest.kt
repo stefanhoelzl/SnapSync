@@ -61,7 +61,7 @@ class ConfigServiceTest {
     @Test
     fun `denied and failed reads are unreadable carrying their code`() {
         val denied = service(Answering(FileResult.Denied("locked", code = 257))).read()
-        assertEquals(257, assertIs<ConfigRead.Unavailable>(denied).status)
+        assertTrue("257" in assertIs<ConfigRead.Unavailable>(denied).detail)
         assertIs<ConfigRead.Unavailable>(service(Answering(FileResult.Failed("io"))).read())
         assertIs<ConfigRead.Unavailable>(service(Answering(FileResult.AreaUnavailable)).read())
     }

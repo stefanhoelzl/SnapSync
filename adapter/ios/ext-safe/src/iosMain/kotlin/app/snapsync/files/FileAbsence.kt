@@ -52,8 +52,7 @@ private const val POSIX_EACCES: Long = 13L
  * could only assert integer literals against themselves; here the test can name
  * `NSFileReadNoSuchFileError` and fail if Apple ever moves it.
  *
- * The neutral fact this reports into is `FileResult.NotFound`; the config service turns it into
- * [app.snapsync.model.ConfigFileRead.Missing], and the rule that turns a `Missing` into a leave stays in
+ * The neutral fact this reports into is `FileResult.NotFound`, and the rule that turns it into a leave stays in
  * `configReadViaFile` — nothing about the *decision* moved.
  */
 fun isFileAbsence(domain: String?, code: Long): Boolean = when (domain) {

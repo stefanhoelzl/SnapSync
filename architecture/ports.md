@@ -26,7 +26,6 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `Completion` | `:domain:ports` | `:adapter:android` OnceCompletion, WorkerCompletion; `:adapter:ios:app-only` PushCompletion, Released, SessionCompletion, TaskCompletion; `:app:desktop` NoCompletion; `:test:rig` Handler | yes |
 | `ConfigDecodeResult` | `:domain:model` | `:domain:model` Failure, Success | no |
 | `ConfigFileDecode` | `:domain:model` | `:domain:model` Foreign, Unusable, Valid | no |
-| `ConfigFileRead` | `:domain:model` | `:domain:model` Content, Failed, Missing | no |
 | `ConfigRead` | `:domain:model` | `:domain:model` Joined, None, Unavailable | no |
 | `CrashReporter` | `:domain:ports` | `:adapter:generic:mock` InMemoryCrashReporter, Recording; `:adapter:generic:sentry` SentryCrashReporter, SettledStart; `:domain:compose` NoCrashReporter | yes |
 | `CreateOutcome` | `:domain:model` | `:domain:model` Created, InvalidName, InvalidWindow, Transient | no |

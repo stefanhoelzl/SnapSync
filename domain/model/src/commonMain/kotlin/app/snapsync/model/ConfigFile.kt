@@ -88,6 +88,6 @@ fun decodeConfigFile(text: String): ConfigFileDecode {
 // not fail. Beside its inputs it can assert against the real Cocoa and POSIX constants instead
 // (`docs/architecture.md`, "Ports are the I/O boundary named for the need").
 //
-// What stays here is the neutral vocabulary the adapter reports into: [ConfigFileRead] in `ports/`,
-// whose three cases are the platform-independent fact, and the rule that turns a `Missing` into a
-// leave, which lives in `configReadViaFile`.
+// What stays here is the envelope codec; the platform-independent fact the adapter reports into is
+// the `Files` port's `FileResult`, and the rule that turns its `NotFound` into a leave lives in
+// `configReadViaFile`.
