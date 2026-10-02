@@ -1,5 +1,6 @@
 package app.snapsync.attest
 
+import app.snapsync.objc.ObjCFailure
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertFailsWith
@@ -35,7 +36,7 @@ class IosDeviceIntegrityTest {
      */
     @Test
     fun `a fresh proof on an unavailable service raises with the platform's own error for the key generation`() {
-        val failure = assertFailsWith<IllegalStateException> { runBlocking { integrity.prove("challenge") } }
+        val failure = assertFailsWith<ObjCFailure> { runBlocking { integrity.prove("challenge") } }
 
         assertTrue(
             failure.message.orEmpty().startsWith("App Attest generateKey failed:"),
@@ -52,7 +53,7 @@ class IosDeviceIntegrityTest {
 
     @Test
     fun `a proof by an unusable handle names the assertion step`() {
-        val failure = assertFailsWith<IllegalStateException> {
+        val failure = assertFailsWith<ObjCFailure> {
             runBlocking { integrity.prove("challenge", "no-such-key") }
         }
 

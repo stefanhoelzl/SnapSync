@@ -7,7 +7,6 @@ import app.snapsync.model.ScheduleResult
 import app.snapsync.model.WakeCadence
 import app.snapsync.model.WakeId
 import app.snapsync.model.WakeTrigger
-import app.snapsync.objc.ObjCFailure
 import app.snapsync.objc.objcBoundary
 import app.snapsync.ports.Completion
 import app.snapsync.ports.Wake
@@ -147,8 +146,7 @@ class IosWake internal constructor(
         onSuccess = { ScheduleResult.Scheduled },
         onFailure = {
             log.w(it) { "BGTask submit failed" }
-            val failure = it as? ObjCFailure
-            ScheduleResult.Refused("${failure?.domain}/${failure?.code}")
+            ScheduleResult.Refused(it.message ?: "BGTask submit failed")
         },
     )
 

@@ -2,6 +2,7 @@
 
 package app.snapsync.attest
 
+import app.snapsync.objc.ObjCFailure
 import app.snapsync.objc.objcBoundary
 import app.snapsync.objc.objcCallback
 import app.snapsync.model.Proof
@@ -81,10 +82,7 @@ class IosDeviceIntegrity internal constructor(
             }
         }
 
-    private fun attestError(step: String, error: NSError?): IllegalStateException =
-        IllegalStateException(
-            "App Attest $step failed: domain=${error?.domain} code=${error?.code} ${error?.localizedDescription}",
-        )
+    private fun attestError(step: String, error: NSError?): ObjCFailure = ObjCFailure.of("App Attest $step", error)
 
     /** Apple wants the SHA-256 of the client data; the challenge IS our client data. */
     private fun sha256(value: String): NSData = memScoped {
