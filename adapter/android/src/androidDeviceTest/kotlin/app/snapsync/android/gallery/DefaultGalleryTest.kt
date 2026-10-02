@@ -54,7 +54,7 @@ class DefaultGalleryTest {
     }
 
     @Test
-    fun `an event album's folder is recognised ignoring case`() {
+    fun `the event album folder is recognised ignoring case`() {
         assertTrue(DefaultGallery.isAlbumFolder("DCIM/SnapSync/Party (2)/"))
         assertTrue(DefaultGallery.isAlbumFolder("dcim/snapsync/party/"))
         assertFalse(DefaultGallery.isAlbumFolder("DCIM/SnapSyncX/"))
