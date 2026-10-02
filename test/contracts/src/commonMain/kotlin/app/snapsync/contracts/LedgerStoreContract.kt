@@ -21,9 +21,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.test.assertFalse
-import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.test.runCurrent
 
 /** The ledger contract's state vocabulary. Its clauses have no state distinction yet: every one starts from an empty store. */
 enum class LedgerStoreState { EMPTY }
@@ -156,18 +153,6 @@ object LedgerStoreContract : Contract<LedgerStoreState, LedgerService>("LedgerSe
             assertEquals(emptyList(), backend.pendingResources())
         }
 
-        clause("an applied record dings an active changes collector", LedgerStoreState.EMPTY) { backend ->
-            var dings = 0
-            backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) {
-                backend.changes.collect { dings++ }
-            }
-
-            backend.recordUnlessSettled(entry())
-            runCurrent()
-
-            assertEquals(1, dings)
-        }
-
         clause("writer records are self-contained entries", LedgerStoreState.EMPTY) { backend ->
             val writer = LedgerWriter(backend)
 
@@ -193,16 +178,6 @@ object LedgerStoreContract : Contract<LedgerStoreState, LedgerService>("LedgerSe
             assertEquals(seed[0], backend.get("A-photo.jpg"))
             assertEquals(seed[1], backend.get("B-photo.jpg"))
             assertEquals(LedgerAggregates(pending = 0, completed = 2), backend.aggregates())
-        }
-
-        clause("resetTo dings an active changes collector exactly once", LedgerStoreState.EMPTY) { backend ->
-            var dings = 0
-            backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) { backend.changes.collect { dings++ } }
-
-            backend.resetTo(listOf(entry(key = "A-photo.jpg", assetId = "A", state = LedgerState.COMPLETED)))
-            runCurrent()
-
-            assertEquals(1, dings)
         }
 
         clause("resetTo with an empty baseline empties the store", LedgerStoreState.EMPTY) { backend ->
@@ -308,19 +283,6 @@ object LedgerStoreContract : Contract<LedgerStoreState, LedgerService>("LedgerSe
 
             assertFalse(backend.markTerminal("ghost.heic", TerminalOutcome.COMPLETED))
             assertNull(backend.get("ghost.heic"), "a guarded write never resurrects a pruned row")
-        }
-
-        clause("an applied markTerminal dings an active changes collector", LedgerStoreState.EMPTY) { backend ->
-            LedgerWriter(backend).recordRequested(res("a.heic", "A"))
-            var dings = 0
-            val job = launch(start = CoroutineStart.UNDISPATCHED) { backend.changes.collect { dings++ } }
-            runCurrent()
-
-            backend.markTerminal("a.heic", TerminalOutcome.COMPLETED)
-            runCurrent()
-
-            assertEquals(1, dings, "it changed the truth, so watchers must re-read it")
-            job.cancel()
         }
 
         clause("a completion recorded by the platform settles the photo everywhere at once", LedgerStoreState.EMPTY) { backend ->

@@ -17,9 +17,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 
 /**
@@ -147,14 +145,4 @@ class ShareSetLoadTest {
         assertTrue(ledger.manifestRows().isEmpty())
     }
 
-    @Test
-    fun `a load signals watchers`() = runTest {
-        val ledger = TestLedger().service
-        val signalled = async { ledger.changes.first() }
-        testScheduler.runCurrent()
-
-        ShareSetLoad(FakeFiles(Result.success(emptyList())), ledger, testIdentity(deviceId)).load()
-
-        signalled.await()
-    }
 }

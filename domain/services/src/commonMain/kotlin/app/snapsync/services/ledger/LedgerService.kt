@@ -18,9 +18,6 @@ import app.snapsync.services.databases.AssetIdColumnAdapter
 import app.snapsync.services.databases.openOwned
 import app.snapsync.services.ledger.db.LedgerDatabase
 import app.snapsync.services.ledger.db.LedgerRow
-import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
 
 /** The upload ledger's database file — runtime identity (`docs/architecture.md`, section 9): a device holds it. */
 const val LEDGER_DB_NAME: String = "ledger.db"
@@ -41,13 +38,6 @@ class LedgerService(
 ) : TransferRecord {
 
     private val queries by lazy { LedgerDatabase(databases.openOwned(LEDGER_DB_NAME, LedgerDatabase.Schema)).ledgerQueries }
-
-    private val dings = MutableSharedFlow<Unit>(
-        extraBufferCapacity = 1,
-        onBufferOverflow = BufferOverflow.DROP_OLDEST,
-    )
-
-    val changes: Flow<Unit> = dings
 
     /**
      * The row for [key], or null when there is none.
@@ -88,7 +78,6 @@ class LedgerService(
     /**
      * The guarded record write: the upsert and a `changes()` read in ONE transaction, the same shape as
      * [markTerminal] — the statement carries the done-state guard, and the database says whether it applied.
-     * Dings only when it did: a declined write changed no truth.
      */
     suspend fun recordUnlessSettled(entry: LedgerEntry): Boolean {
         val applied = queries.transactionWithResult {
@@ -99,14 +88,13 @@ class LedgerService(
             )
             queries.changedRows().executeAsOne() > 0L
         }
-        if (applied) dings.tryEmit(Unit)
         return applied
     }
 
     /**
      * Every entry through the same guarded upsert, inside ONE transaction, each applied/declined answer read in
      * that transaction. A throw from any statement rolls back the whole batch, so a walk's discoveries are
-     * never partly recorded. One ding for the batch, and only if something applied.
+     * never partly recorded.
      */
     suspend fun recordAllUnlessSettled(entries: List<LedgerEntry>): Int {
         if (entries.isEmpty()) return 0
@@ -120,7 +108,6 @@ class LedgerService(
                 queries.changedRows().executeAsOne() > 0L
             }
         }
-        if (applied > 0) dings.tryEmit(Unit)
         return applied
     }
 
@@ -210,19 +197,13 @@ class LedgerService(
      * The guarded terminal write. One `UPDATE` and one `changes()` read in ONE transaction — asking the
      * database what it just did, in the same transaction, is what makes "did this apply?" answerable
      * against a writer that takes no lock. Copied deliberately from `DownloadService.applied`,
-     * which solved the identical problem for PhotoKit's change and completion blocks.
-     *
-     * Non-suspending, and it dings only when it applied: a write that matched nothing changed no truth,
-     * so waking every watcher to re-read an unchanged store would be noise.
+     * which solved the identical problem for PhotoKit's change and completion blocks. Non-suspending.
      */
-    override fun markTerminal(key: String, outcome: TerminalOutcome): Boolean {
-        val applied = queries.transactionWithResult {
+    override fun markTerminal(key: String, outcome: TerminalOutcome): Boolean =
+        queries.transactionWithResult {
             queries.markTerminal(outcome.state, key)
             queries.changedRows().executeAsOne() > 0L
         }
-        if (applied) dings.tryEmit(Unit)
-        return applied
-    }
 
     /**
      * The rows that **need an upload job**, in a stable key order — the upload cycle's source of work
@@ -246,27 +227,24 @@ class LedgerService(
 
     /**
      * Delete every row — a deliberate reset (the app re-provisioning config), not a sync write.
-     * Dings [changes] so watchers re-read the now-empty truth.
      */
     suspend fun clear() {
         queries.deleteAll()
-        dings.tryEmit(Unit)
     }
 
     /**
      * Atomically replace the entire store with [entries] (delete-all then insert-all in one
      * transaction): either all prior rows go and all [entries] land, or — on failure — the store is
      * left exactly as it was (no partial baseline is ever observable). Entries are stored verbatim
-     * (the caller supplies `state`; no clock stamping here). Dings [changes]
-     * **once** on success. It applies no precedence — a settled row is replaced like any other. This is a
+     * (the caller supplies `state`; no clock stamping here). It applies no precedence — a settled row is replaced like any other. This is a
      * reset-family op (alongside [clear]) — the app-side
      * join seed uses it; it is **not** a per-key record, and it is owned by that membership use-case
      * (capability `photo-sharing`, "Reader and writer capability split").
      */
     suspend fun resetTo(entries: List<LedgerEntry>) {
         // One transaction: delete-all then insert each. If any statement throws, SQLDelight rolls
-        // back the whole transaction, so the store is left unchanged and the ding below is skipped —
-        // a partial baseline is never observable. One ding on success, like clear(). A plain insert: after
+        // back the whole transaction, so the store is left unchanged — a partial baseline is never
+        // observable. A plain insert: after
         // deleteAll nothing can conflict, and the reset family applies no precedence.
         queries.transaction {
             queries.deleteAll()
@@ -278,7 +256,6 @@ class LedgerService(
                 )
             }
         }
-        dings.tryEmit(Unit)
     }
 
     /**
@@ -292,20 +269,16 @@ class LedgerService(
      * the read never selected — a Live Photo's `COMPLETED` primary, deleted because its paired video's key
      * failed to resolve under a partial grant.
      *
-     * Writes nothing and dings nothing when none of [keys] has a row. Accepts more keys than one storage
+     * Writes nothing when none of [keys] has a row. Accepts more keys than one storage
      * statement binds. A writer-family operation: only the single writer's cycle runs it.
      */
     suspend fun deleteKeys(keys: Collection<String>) {
         if (keys.isEmpty()) return
         // One transaction, chunked: an IN list is one bind variable per key, and a walk can name more rows
-        // than a driver will bind. Dings only when a row went — a delete that matched nothing changed no truth.
-        val deleted = queries.transactionWithResult {
-            keys.toSet().chunked(KEY_CHUNK).sumOf { chunk ->
-                queries.deleteKeys(chunk)
-                queries.changedRows().executeAsOne()
-            }
+        // than a driver will bind.
+        queries.transaction {
+            keys.toSet().chunked(KEY_CHUNK).forEach { chunk -> queries.deleteKeys(chunk) }
         }
-        if (deleted > 0L) dings.tryEmit(Unit)
     }
 
     // The counter itself is maintained by `Ledger.sq`'s triggers, inside each write's own transaction; these
