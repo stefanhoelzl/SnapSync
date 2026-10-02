@@ -65,7 +65,7 @@ class BackendEventDirectory(private val backend: AuthenticatedBackend) : EventDi
                 EventLookup.Failed
             }
         }
-        is Reply.Refused -> if (reply.status == NOT_FOUND) EventLookup.NotFound else EventLookup.Failed
+        is Reply.Refused -> if (reply.status == HttpStatus.NOT_FOUND) EventLookup.NotFound else EventLookup.Failed
         is Reply.Malformed, is Reply.Unreachable -> EventLookup.Failed
     }
 
@@ -85,8 +85,4 @@ class BackendEventDirectory(private val backend: AuthenticatedBackend) : EventDi
      */
     private fun canonicalOrNull(raw: String): CaptureDate? =
         runCatchingCancellable { instantToCutoff(Instant.parse(raw)) }.getOrNull()
-
-    private companion object {
-        const val NOT_FOUND = 404
-    }
 }

@@ -59,20 +59,14 @@ class BackendEventJoin(private val backend: AuthenticatedBackend) : EventJoin {
         when (val reply = backend.joinEvent(eventId, deviceId)) {
             is Reply.Ok -> JoinResult.JOINED
             is Reply.Refused -> when (reply.status) {
-                CONFLICT -> JoinResult.EVENT_FULL
+                HttpStatus.CONFLICT -> JoinResult.EVENT_FULL
                 // A closed (or completed) event admits nobody (capability `event-lifetime`).
-                GONE -> JoinResult.EVENT_CLOSED
-                NOT_FOUND -> JoinResult.EVENT_NOT_FOUND
+                HttpStatus.GONE -> JoinResult.EVENT_CLOSED
+                HttpStatus.NOT_FOUND -> JoinResult.EVENT_NOT_FOUND
                 else -> JoinResult.FAILED
             }
             is Reply.Malformed, is Reply.Unreachable -> JoinResult.FAILED
         }
-
-    private companion object {
-        const val CONFLICT = 409
-        const val GONE = 410
-        const val NOT_FOUND = 404
-    }
 }
 
 /**
@@ -88,13 +82,12 @@ class BackendManifestPublisher(private val backend: AuthenticatedBackend) : Mani
             // A CLOSED event's asset sets are fixed and a COMPLETED one holds none (capability `photo-sharing`): the
             // refusal is final, so it is recorded like a publish — re-sending the same snapshot every cycle could
             // never change the answer.
-            is Reply.Refused -> reply.status == GONE || (reply.status == CONFLICT && CLOSED_MARK in reply.body)
+            is Reply.Refused -> reply.status == HttpStatus.GONE ||
+                (reply.status == HttpStatus.CONFLICT && CLOSED_MARK in reply.body)
             is Reply.Malformed, is Reply.Unreachable -> false
         }
 
     private companion object {
-        const val CONFLICT = 409
-        const val GONE = 410
         const val CLOSED_MARK = "\"closed\""
     }
 }
@@ -115,9 +108,7 @@ class BackendLeaveNotifier(
         val id = runCatchingCancellable { identity.deviceId() }.getOrElse { return Result.failure(it) }
         val reply = backend.leaveEvent(eventId, id)
         // An event the backend no longer holds has nothing left to leave: the leave is as done as it will ever be.
-        if (reply is Reply.Refused && reply.status == LEAVE_NOT_FOUND) return Result.success(Unit)
+        if (reply is Reply.Refused && reply.status == HttpStatus.NOT_FOUND) return Result.success(Unit)
         return reply.toResult("leave $eventId/$id")
     }
 }
-
-private const val LEAVE_NOT_FOUND = 404

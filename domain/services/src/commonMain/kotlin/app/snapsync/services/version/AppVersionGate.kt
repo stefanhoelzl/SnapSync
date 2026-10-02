@@ -3,6 +3,7 @@ package app.snapsync.services.version
 import app.snapsync.model.Reply
 import app.snapsync.model.VersionRefusal
 import app.snapsync.model.minAppVersionFromRefusal
+import app.snapsync.services.backend.HttpStatus
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -41,7 +42,7 @@ class AppVersionGate(
      */
     fun observe(reply: Reply<*>) {
         when {
-            reply is Reply.Refused && reply.status == UPGRADE_REQUIRED -> refused(minAppVersionFromRefusal(reply.body))
+            reply is Reply.Refused && reply.status == HttpStatus.UPGRADE_REQUIRED -> refused(minAppVersionFromRefusal(reply.body))
             reply is Reply.Ok -> served()
         }
     }
@@ -67,9 +68,5 @@ class AppVersionGate(
         if (state.value == null) return
         state.value = null
         log.i { "backend serves this build again" }
-    }
-
-    private companion object {
-        const val UPGRADE_REQUIRED = 426
     }
 }
