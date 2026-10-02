@@ -42,9 +42,12 @@ class EventLinkPayload(
     val saveToAlbum: Boolean? = null,
 )
 
-/** Field-wise equality (not a data class, to match the prior payload's explicit-equality style). */
-internal fun EventLinkPayload.sameAs(other: EventLinkPayload): Boolean =
-    eventId == other.eventId
+/**
+ * Whether the event's range has ended at [now] (capability `event-lifetime`): strictly after its end. An end not yet
+ * learned ([EventConfig.endsAt] `null`) has not passed — the safe reading, since an ended range is what lets a device
+ * settle its share and an event close.
+ */
+fun EventConfig.hasEnded(now: CaptureDate): Boolean = endsAt?.let { now > it.at } == true
 
 /**
  * The **persisted, joined-event state** (distinct from the [EventLinkPayload] wire type): the joined
@@ -147,13 +150,6 @@ internal fun EventLinkPayload.sameAs(other: EventLinkPayload): Boolean =
  * (capability `event-album`), **defaulting to `false`** so a config persisted before this field existed
  * decodes to today's no-album behavior. All fields flow whole-object through serialization.
  */
-/**
- * Whether the event's range has ended at [now] (capability `event-lifetime`): strictly after its end. An end not yet
- * learned ([EventConfig.endsAt] `null`) has not passed — the safe reading, since an ended range is what lets a device
- * settle its share and an event close.
- */
-fun EventConfig.hasEnded(now: CaptureDate): Boolean = endsAt?.let { now > it.at } == true
-
 @Serializable
 data class EventConfig(
     val eventId: String,
