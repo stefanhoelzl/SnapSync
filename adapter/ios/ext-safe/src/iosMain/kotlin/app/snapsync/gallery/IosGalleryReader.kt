@@ -19,6 +19,7 @@ import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.WriteOutcome
 import app.snapsync.model.grantsPhotoAccess
 import app.snapsync.logging.invocation
+import app.snapsync.objc.ObjCFailure
 import app.snapsync.objc.checkedObjC
 import app.snapsync.objc.objcBoundary
 import app.snapsync.objc.objcCallback
@@ -183,7 +184,7 @@ class IosGalleryReader(private val log: Logger = Logger.withTag("gallery")) : Ga
         return if (error == null) {
             WriteOutcome.Ok
         } else {
-            WriteOutcome.Failed("${resource.filename}: ${error.domain}/${error.code} ${error.localizedDescription}")
+            WriteOutcome.Failed("${resource.filename}: ${ObjCFailure.of("writeDataForAssetResource", error).message}")
         }
     }
 
