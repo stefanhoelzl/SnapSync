@@ -480,7 +480,8 @@ never reaches the internal track (below).
   `continue-on-error`: a failed upload shows red and blocks nothing, and the next delivery carries a higher number.
   The internal track serves only its **latest** release, so a **branch dispatch** never touches it: it uploads the same
   signed bundle through **internal app sharing** (`play_release.py share`; no edit, no track, no listing) and puts the
-  install link in the run's summary with the build number, branch and short sha. Play re-signs a sharing build with a
+  install link in the run's summary with the build number, branch and short sha, and a QR code of it (drawn by the
+  public api.qrserver.com, since a summary renders no `data:` image; the link opens only for the Console's email list). Play re-signs a sharing build with a
   second Google-held key, and prod's `androidSigningCertDigests` lists that certificate too — a deliberate widening:
   without it a link-installed build cannot attest, so it cannot create or join an event, and uploading one needs Play
   account access anyway. The digest also lands in `/.well-known/assetlinks.json`, so event links open a link-installed
