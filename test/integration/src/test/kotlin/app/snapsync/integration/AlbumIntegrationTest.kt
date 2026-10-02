@@ -20,6 +20,7 @@ class AlbumIntegrationTest {
     fun enqueued_uploads_are_placed_in_the_album_before_they_finish_and_only_once() = rigTest {
         extensionUploadsOnly()
         createAndJoin("saveToAlbum" to "true", name = "Party")
+        awaitAlbum() // a cycle places only into an album that exists
         addPhoto("A")
         addPhoto("B")
 
@@ -43,6 +44,7 @@ class AlbumIntegrationTest {
         assertEquals(true, gate.form.saveToAlbum, "the album is on by default, as on iPhone")
 
         join()
+        awaitAlbum() // a download imports into the album only once it exists
         addPhoto("A")
         cycle()
         foreignDevice("DEV-F", "FQ")
@@ -72,6 +74,7 @@ class AlbumIntegrationTest {
     fun on_android_a_deleted_album_stays_deleted_until_the_member_turns_it_on_again() = rigTest {
         androidLibrary()
         createAndJoin("saveToAlbum" to "true", name = "Party")
+        awaitAlbum()
         foreignDevice("DEV-F", "FQ")
         downloadAll()
         val first = albums().single()
@@ -94,7 +97,7 @@ class AlbumIntegrationTest {
     @Test
     fun rejoining_the_event_reuses_its_album() = rigTest {
         val event = createAndJoin("saveToAlbum" to "true", name = "Party")
-        assertEquals(1, albums().size)
+        assertEquals(1, awaitAlbum().size)
         leave()
 
         openLink(inviteLink(event))
@@ -115,7 +118,7 @@ class AlbumIntegrationTest {
         // If the Save awaited the gather, it would never land: every add is held.
         user("reconfigure", "saveToAlbum" to "true")
         awaitState { it.joined?.membership?.saveToAlbum == true }
-        assertTrue(albums().single().assets.isEmpty(), "the Save landed with its gather still held")
+        assertTrue(awaitAlbum().single().assets.isEmpty(), "the Save landed with its gather still held")
         device("album/hold-adds", "on" to "false")
         eventually(read = { albums().single().assets }) { it == listOf("A") }
 

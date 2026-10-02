@@ -58,6 +58,7 @@ class ReinstallIntegrationTest {
         device("album/kind", "kind" to "folder")
         device("relaunch")
         val event = createAndJoin("saveToAlbum" to "true")
+        awaitAlbum() // a download imports into the album only once it exists
         foreignDevice(OTHER, "FA", "FB")
         downloadAll()
         eventually(read = { albums().singleOrNull()?.assets?.size }) { it == 2 }
