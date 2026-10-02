@@ -45,16 +45,18 @@ class AlbumMapService(
      * down the ensure-then-remember path, which is why this map is described as a self-healing
      * cache. A wrong null costs one redundant lookup, never a lost photo.
      */
-    fun get(eventId: String): String? = readMap()[eventId]
+    fun get(eventId: String): String? = readMap()?.get(eventId)
 
     /**
      * Remember [albumLocalId] as [eventId]'s album (overwrites any prior mapping). A new album has held nothing yet, so
-     * the event's [filled] mark is cleared.
+     * the event's [filled] mark is cleared. An unreadable map is not written over — that would drop every other
+     * event's album, or orphan a legacy map not migrated yet — so the album is then not remembered this pass.
      */
     fun put(eventId: String, albumLocalId: String) {
-        val updated = readMap().toMutableMap().apply { this[eventId] = albumLocalId }
-        write(json.encodeToString(serializer, updated))
-        if (eventId in readFilled()) writeFilled(readFilled() - eventId)
+        val current = readMap() ?: return log.w { "album=$albumLocalId for event=$eventId not remembered: the map is unreadable" }
+        write(json.encodeToString(serializer, current + (eventId to albumLocalId)))
+        val filled = readFilled() ?: return
+        if (eventId in filled) writeFilled(filled - eventId)
     }
 
     /**
@@ -62,17 +64,19 @@ class AlbumMapService(
      * yet, since an empty folder is no album either way (capability `event-album`; `android-event-album` D4). An
      * unreadable store reads as not filled: the album is then used, never wrongly read as deleted.
      */
-    fun filled(eventId: String): Boolean = eventId in readFilled()
+    fun filled(eventId: String): Boolean = eventId in readFilled().orEmpty()
 
-    /** Mark [eventId]'s album as having held a photo. */
+    /** Mark [eventId]'s album as having held a photo — never over marks it could not read, which it would drop. */
     fun markFilled(eventId: String) {
-        val current = readFilled()
+        val current = readFilled() ?: return log.w { "event-album filled marks unreadable — event=$eventId not marked" }
         if (eventId !in current) writeFilled(current + eventId)
     }
 
-    private fun readFilled(): Set<String> = when (val read = preferences.get(ALBUM_FILLED_KEY)) {
+    /** The filled marks: empty when there are none (or they do not decode), `null` when they cannot be read now. */
+    private fun readFilled(): Set<String>? = when (val read = preferences.get(ALBUM_FILLED_KEY)) {
         is PrefRead.Value -> runCatchingCancellable { json.decodeFromString(filledSerializer, read.value) }.getOrDefault(emptySet())
-        else -> emptySet()
+        PrefRead.Absent -> emptySet()
+        is PrefRead.Unavailable -> null
     }
 
     private fun writeFilled(events: Set<String>) {
@@ -80,17 +84,18 @@ class AlbumMapService(
         if (written != WriteOutcome.Ok) log.w { "could not persist the event-album filled marks ($written)" }
     }
 
-    private fun readMap(): Map<String, String> {
+    /** The map, migrating a legacy one once; `null` when it (or a legacy map not migrated yet) cannot be read now. */
+    private fun readMap(): Map<String, String>? {
         // The shared preferences win whenever they hold anything, so the legacy Keychain item is touched at most
         // once per install: one extra read before the migration, and never again after it.
         val stored = when (val read = preferences.get(ALBUM_MAP_KEY)) {
             is PrefRead.Value -> return decode(read.value)
             PrefRead.Absent -> null
             // Unreadable right now: no map this pass, and no migration over a map that may exist.
-            is PrefRead.Unavailable -> return emptyMap<String, String>()
+            is PrefRead.Unavailable -> return null
                 .also { log.w { "event-album map unreadable (${read.detail}) — no album placement this pass" } }
         }
-        val legacyRead = runCatchingCancellable { secureStore.read(SecureSlots.ALBUM_MAP_LEGACY) }.getOrNull() ?: return emptyMap()
+        val legacyRead = runCatchingCancellable { secureStore.read(SecureSlots.ALBUM_MAP_LEGACY) }.getOrNull() ?: return null
         return when (val source = albumMapSource(stored = stored, legacy = legacyRead)) {
             is AlbumMapSource.Current -> decode(source.raw) // fresh install: nothing anywhere
             is AlbumMapSource.Migrate -> {
@@ -103,7 +108,7 @@ class AlbumMapService(
             // empty — an empty map would silently drop album placement for this import.
             AlbumMapSource.Retry -> {
                 log.w { "legacy album map unreadable — deferring migration; no album placement this pass" }
-                emptyMap()
+                null
             }
         }
     }

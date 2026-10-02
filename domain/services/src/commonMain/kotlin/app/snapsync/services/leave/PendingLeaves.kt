@@ -22,8 +22,11 @@ import kotlinx.coroutines.sync.withLock
  * One file in the shared area, beside the membership: it dies with the install, which is right — a deleted app is a
  * device that never comes back, and the clock covers it.
  *
- * **Never raises.** An unreadable record reads as empty, and a refused write is logged: at worst one leave is not
- * retried and the event waits for its clock, which is where it stood before this existed.
+ * **Never raises, and never writes over what it could not read.** Only an absent record is empty. One that exists but
+ * cannot be read now is left as it is, because writing over it would drop every leave it holds: a leave recorded
+ * meanwhile is held in memory, sent with the rest, and written into the record at its next readable moment. A refused
+ * write is logged: at worst that change is lost and its event waits for its clock, which is where it stood before this
+ * existed.
  */
 class PendingLeaves(
     private val files: Files,
@@ -33,15 +36,21 @@ class PendingLeaves(
     /** Serializes the read-modify-write of the record — a leave and a wake's delivery can run at once. */
     private val mutex = Mutex()
 
+    /** Leaves recorded while the record was unreadable — not on disk yet, so this process still owes them. */
+    private val unwritten = mutableSetOf<String>()
+
     /** Record [eventId] as left and not yet confirmed. Call BEFORE the request, so a kill between the two loses nothing. */
-    suspend fun record(eventId: String) = mutex.withLock { write(read() + eventId) }
+    suspend fun record(eventId: String) = mutex.withLock {
+        unwritten += eventId
+        read()?.let { rewrite(it) }
+    }
 
     /**
      * Send every recorded leave; each the backend confirms is removed. One that fails stays for the next wake. Answers
      * how many are still outstanding.
      */
     suspend fun deliverAll(): Int {
-        val outstanding = mutex.withLock { read() }
+        val outstanding = mutex.withLock { read().orEmpty() + unwritten }
         if (outstanding.isEmpty()) return 0
         val delivered = outstanding.filterTo(mutableSetOf()) { eventId ->
             runCatchingCancellable { notifier.notifyLeaving(eventId).getOrThrow() }
@@ -49,23 +58,29 @@ class PendingLeaves(
                 .isSuccess
         }
         return mutex.withLock {
-            val remaining = read() - delivered
-            write(remaining)
-            remaining.size
+            unwritten -= delivered
+            // Unreadable now: the record keeps the delivered ones too, and a later wake's delivery confirms them again.
+            val stored = read() ?: return@withLock (outstanding - delivered).size
+            rewrite(stored - delivered).size
         }
     }
 
     /** The recorded leaves, for a test or the diagnostic dump. */
-    suspend fun outstanding(): Set<String> = mutex.withLock { read() }
+    suspend fun outstanding(): Set<String> = mutex.withLock { read().orEmpty() + unwritten }
 
-    private fun read(): Set<String> = when (val r = files.read(FileArea.SHARED, PATH)) {
+    /** The recorded leaves: empty when there is no record, `null` when one may exist but cannot be read now. */
+    private fun read(): Set<String>? = when (val r = files.read(FileArea.SHARED, PATH)) {
         is FileResult.Ok -> r.value.decodeToString().lines().map(String::trim).filterTo(mutableSetOf()) { it.isNotEmpty() }
-        else -> emptySet()
+        FileResult.NotFound -> emptySet()
+        else -> null.also { log.w { "the pending-leave record is unreadable ($r) — left as it is" } }
     }
 
-    private fun write(ids: Set<String>) {
+    /** Write [stored] with the [unwritten] leaves folded in; answers what the record now holds. */
+    private fun rewrite(stored: Set<String>): Set<String> {
+        val ids = stored + unwritten
         val written = files.write(FileArea.SHARED, PATH, ids.sorted().joinToString("\n").encodeToByteArray())
-        if (written !is FileResult.Ok) log.w { "the pending-leave record was not written ($written)" }
+        if (written is FileResult.Ok) unwritten.clear() else log.w { "the pending-leave record was not written ($written)" }
+        return ids
     }
 
     private companion object {

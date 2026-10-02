@@ -3,16 +3,19 @@ package app.snapsync.services.album
 import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.PrefRead
+import app.snapsync.model.SecureSlot
+import app.snapsync.model.SecureSlots
+import app.snapsync.model.SecureStoreRead
+import app.snapsync.model.StoredProtection
 import app.snapsync.ports.Preferences
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * REPRODUCTION (branch `bug-pending-leaves-clobber`, not a fix): the album map's two read-modify-writes — [AlbumMapService.markFilled]
- * and [AlbumMapService.put] — over a key that answers [PrefRead.Unavailable] while a write still lands. These assert
- * the INTENDED outcome and fail today. No shipped Preferences adapter answers Unavailable with a write that lands
- * (see the report); [ReadFailing] forces it.
+ * The album map's read-modify-writes — [AlbumMapService.markFilled] and [AlbumMapService.put] — never write over what
+ * they could not read: a key that answers [PrefRead.Unavailable] while a write still lands, or a legacy map whose
+ * migration is deferred. [ReadFailing] forces the first, which no shipped Preferences adapter answers today.
  */
 class AlbumMapReadFailureTest {
 
@@ -34,6 +37,7 @@ class AlbumMapReadFailureTest {
         prefs.failReads = false
 
         assertTrue(service().filled("A"), "A's mark survives")
+        service().markFilled("B")
         assertTrue(service().filled("B"))
     }
 
@@ -46,6 +50,18 @@ class AlbumMapReadFailureTest {
         prefs.failReads = false
 
         assertEquals("album-a", service().get("A"))
+        service().put("B", "album-b")
         assertEquals("album-b", service().get("B"))
+    }
+
+    @Test
+    fun `storing an album while the legacy map is unreadable leaves it to migrate`() {
+        val items = mutableMapOf<SecureSlot,SecureStoreRead.Found>()
+        AlbumMapService(prefs, inMemorySecureStore(items, unavailable = true)).put("B", "album-b")
+
+        items[SecureSlots.ALBUM_MAP_LEGACY] = SecureStoreRead.Found("""{"A":"album-a"}""", StoredProtection.BACKGROUND_READABLE)
+        val readable = AlbumMapService(prefs, inMemorySecureStore(items))
+
+        assertEquals("album-a", readable.get("A"), "the legacy map still migrates")
     }
 }
