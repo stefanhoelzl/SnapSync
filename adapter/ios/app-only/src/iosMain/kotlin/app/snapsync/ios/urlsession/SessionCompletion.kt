@@ -2,10 +2,9 @@
 
 package app.snapsync.ios.urlsession
 
-import app.snapsync.objc.objcBoundary
+import app.snapsync.objc.onQueue
 import app.snapsync.ports.Completion
 import co.touchlab.kermit.Logger
-import platform.darwin.dispatch_async
 import platform.darwin.dispatch_get_main_queue
 import kotlin.concurrent.atomics.AtomicBoolean
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
@@ -29,7 +28,7 @@ internal class SessionCompletion(
 
     override fun complete() {
         if (!released.compareAndSet(expectedValue = false, newValue = true)) return
-        dispatch_async(dispatch_get_main_queue()) { objcBoundary(log, "sessionCompletion.release") { handler() } }
+        onQueue(dispatch_get_main_queue(), log, "sessionCompletion.release", handler)
     }
 
     override fun onExpired(action: () -> Unit) = Unit

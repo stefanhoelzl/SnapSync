@@ -21,13 +21,12 @@ import app.snapsync.model.grantsPhotoAccess
 import app.snapsync.logging.invocation
 import app.snapsync.objc.checkedObjC
 import app.snapsync.objc.objcBoundary
+import app.snapsync.objc.objcCallback
 import app.snapsync.ports.GalleryReader
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
-import kotlin.coroutines.resume
 import platform.Foundation.NSError
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSURL
@@ -176,9 +175,9 @@ class IosGalleryReader(private val log: Logger = Logger.withTag("gallery")) : Ga
             ?: return WriteOutcome.Failed("${resource.filename}: the payload is not a PHAssetResource")
         val file = NSURL.fileURLWithPath(to)
         checkedObjC("removeItemAtURL") { NSFileManager.defaultManager.removeItemAtURL(file, error = it) }
-        val error: NSError? = suspendCancellableCoroutine { cont ->
+        val error: NSError? = objcCallback(log, "export.completion") { done ->
             PHAssetResourceManager.defaultManager().writeDataForAssetResource(handle, toFile = file, options = null) { err ->
-                objcBoundary(log, "export.completion") { cont.resume(err) }
+                objcBoundary(done) { err }
             }
         }
         return if (error == null) {

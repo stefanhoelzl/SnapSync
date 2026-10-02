@@ -4,6 +4,7 @@ import app.snapsync.gallery.Iso8601
 import app.snapsync.gallery.PhotoKitAssetIds
 import app.snapsync.ios.qos.qosLabel
 import app.snapsync.objc.objcBoundary
+import app.snapsync.objc.objcCallback
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.ReceivedPhotoName
@@ -14,7 +15,6 @@ import app.snapsync.ports.GalleryHandlers
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.coroutines.suspendCancellableCoroutine
 import platform.Foundation.NSDate
 import platform.Foundation.NSError
 import platform.Foundation.NSMutableArray
@@ -27,7 +27,6 @@ import platform.Photos.PHPhotosErrorDomain
 import platform.Photos.PHPhotosErrorInvalidResource
 import platform.Photos.PHPhotosErrorMissingResource
 import platform.Photos.PHPhotoLibrary
-import kotlin.coroutines.resume
 
 /**
  * The PhotoKit import behind [app.snapsync.gallery.IosGallery] (capability `receiving-photos`): rebuilds one foreign asset from its
@@ -145,7 +144,7 @@ internal class IosPhotoLibraryImporter(
         // An import that never reports therefore never returns. Its ref stays claimed for the life of the
         // process, so no *absent* answer about it is ever acted on and no second asset is created; the
         // enter/exit trace around the caller is what makes it visible (capability `privacy-security`).
-        return suspendCancellableCoroutine { cont ->
+        return objcCallback(log, "import.completion") { done ->
             PHPhotoLibrary.sharedPhotoLibrary().performChanges(
                 {
                     // Contained (law "ObjC boundaries contain every throw"): a throw here — the marker's SQLite
@@ -158,18 +157,16 @@ internal class IosPhotoLibraryImporter(
                     }
                 },
                 { success, error ->
-                    objcBoundary(log, "import.completion") {
+                    objcBoundary(done) {
                         // Contained twice: the settle has a fallback of its own, so a throw while settling the row
-                        // still resumes the importer's caller instead of leaving it waiting forever on a completion
-                        // that already ran.
-                        val result = objcBoundary(
+                        // answers the importer's caller a failure it can log, rather than the throw itself.
+                        objcBoundary(
                             log,
                             "import.settle",
                             ImportResult.Failed("the import's completion threw (logged above)", consumedResources = success),
                         ) {
                             settle(ref, success, error, created).also { handlers.onImportSettled(ref, it) }
                         }
-                        cont.resume(result)
                     }
                 },
             )

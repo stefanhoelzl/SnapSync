@@ -9,6 +9,7 @@ import app.snapsync.model.runCatchingCancellable
 import app.snapsync.objc.checkedObjC
 import app.snapsync.objc.checkedObjCValue
 import app.snapsync.objc.objcBoundary
+import app.snapsync.objc.objcCallback
 import app.snapsync.model.withExtension
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
@@ -21,7 +22,6 @@ import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.usePinned
 import kotlinx.cinterop.value
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import platform.AVFoundation.AVAssetReader
 import platform.AVFoundation.AVAssetReaderStatusCompleted
@@ -305,9 +305,7 @@ internal class LivePhotoFromMotionPhoto(private val log: Logger) {
             }
             input.markAsFinished()
         }
-        suspendCancellableCoroutine { cont ->
-            writer.finishWritingWithCompletionHandler { objcBoundary(log, "finishWriting") { cont.resume(Unit) } }
-        }
+        objcCallback(log, "finishWriting") { done -> writer.finishWritingWithCompletionHandler { objcBoundary(done) { } } }
         return reader.status == AVAssetReaderStatusCompleted && writer.status == AVAssetWriterStatusCompleted
     }
 

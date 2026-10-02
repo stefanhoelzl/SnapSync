@@ -3,13 +3,11 @@
 package app.snapsync.attest
 
 import app.snapsync.objc.objcBoundary
+import app.snapsync.objc.objcCallback
 import app.snapsync.model.Proof
 import app.snapsync.model.ProofFormat
 import app.snapsync.ports.DeviceIntegrity
 import co.touchlab.kermit.Logger
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
-import kotlin.coroutines.suspendCoroutine
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.allocArrayOf
@@ -61,36 +59,25 @@ class IosDeviceIntegrity internal constructor(
             Proof(handle, ProofFormat.APP_ATTEST, assert(handle, challenge))
         }
 
-    private suspend fun generateKey(): String = suspendCoroutine { cont ->
-        // The completion is what Objective-C calls (through SystemAppAttestApi): contained, like every such block.
+    // Each completion is what Objective-C calls (through SystemAppAttestApi): contained, like every such block, and a
+    // refusal resumes the caller with the platform's error.
+    private suspend fun generateKey(): String = objcCallback(log, "generateKey.completion") { done ->
         service.generateKey { keyId, error ->
-            objcBoundary(log, "generateKey.completion") {
-                if (keyId != null) cont.resume(keyId) else cont.resumeWithException(attestError("generateKey", error))
-            }
+            objcBoundary(done) { keyId ?: throw attestError("generateKey", error) }
         }
     }
 
     private suspend fun attest(keyId: String, challenge: String): ByteArray =
-        suspendCoroutine { cont ->
+        objcCallback(log, "attestKey.completion") { done ->
             service.attestKey(keyId, sha256(challenge)) { data, error ->
-                objcBoundary(log, "attestKey.completion") {
-                    val bytes = data?.toByteArray()
-                    if (bytes != null) cont.resume(bytes) else cont.resumeWithException(attestError("attestKey", error))
-                }
+                objcBoundary(done) { data?.toByteArray() ?: throw attestError("attestKey", error) }
             }
         }
 
     private suspend fun assert(keyId: String, challenge: String): ByteArray =
-        suspendCoroutine { cont ->
+        objcCallback(log, "generateAssertion.completion") { done ->
             service.generateAssertion(keyId, sha256(challenge)) { data, error ->
-                objcBoundary(log, "generateAssertion.completion") {
-                    val bytes = data?.toByteArray()
-                    if (bytes != null) {
-                        cont.resume(bytes)
-                    } else {
-                        cont.resumeWithException(attestError("generateAssertion", error))
-                    }
-                }
+                objcBoundary(done) { data?.toByteArray() ?: throw attestError("generateAssertion", error) }
             }
         }
 
