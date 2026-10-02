@@ -954,6 +954,10 @@ jobs:
             echo
             if [ "$SHARED" = success ]; then
               echo "### [Install $VERSION ($BUILD_NUMBER) from Google Play]($LINK)"
+              # The QR code is drawn by a public generator: GitHub strips data: images and inline SVG from a summary.
+              # The link reaches that service, which is harmless — it opens only for the Console's email list.
+              echo
+              echo "<img alt=\"QR code of the install link\" width=\"300\" src=\"https://api.qrserver.com/v1/create-qr-code/?size=600x600&data=$(jq -rn --arg l "$LINK" '$l|@uri')\">"
             else
               echo "⚠️ **Prod refuses this build's signing certificate** — it installs, but cannot create or join an event: $LINK"
             fi
