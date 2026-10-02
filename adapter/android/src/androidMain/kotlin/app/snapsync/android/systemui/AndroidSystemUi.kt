@@ -6,7 +6,9 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
 import app.snapsync.android.scene.ForegroundActivity
+import app.snapsync.model.EntryScope
 import app.snapsync.model.Handoff
+import app.snapsync.model.invocation
 import app.snapsync.ports.SystemUi
 import app.snapsync.model.runCatchingCancellable
 import co.touchlab.kermit.Logger
@@ -34,17 +36,20 @@ class AndroidSystemUi(
     override suspend fun openUrl(url: String): Handoff =
         start("openUrl", Intent(Intent.ACTION_VIEW, Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE))
 
-    override fun openSettings() {
+    override fun openSettings() = log.invocation(EntryScope.None, "systemUi.openSettings") {
         val settings = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", appContext.packageName, null))
         runCatchingCancellable { launch(settings) }.onFailure { log.w(it) { "openSettings: the platform refused" } }
+        Unit
     }
 
     private suspend fun start(name: String, intent: Intent): Handoff = withContext(Dispatchers.Main) {
-        try {
-            launch(intent)
-            Handoff.Accepted
-        } catch (e: ActivityNotFoundException) {
-            Handoff.Refused("no app claims it: ${e.message}").also { log.i { "$name: $it" } }
+        log.invocation(EntryScope.None, "systemUi.$name", result = { "$it" }) {
+            try {
+                launch(intent)
+                Handoff.Accepted
+            } catch (e: ActivityNotFoundException) {
+                Handoff.Refused("no app claims it: ${e.message}")
+            }
         }
     }
 

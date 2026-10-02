@@ -81,10 +81,17 @@ class AndroidPhotoPermission(
             val key = "snapsync.photoPermission.${requests.incrementAndGet()}"
             var launcher: androidx.activity.result.ActivityResultLauncher<Array<String>>? = null
             launcher = activity.activityResultRegistry.register(key, ActivityResultContracts.RequestMultiplePermissions()) { answers ->
-                launcher?.unregister()
-                record.edit().putBoolean(ASKED, true).apply()
-                val now = current()
-                log.i { "$name answered ${answers.filterValues { it }.keys.map { it.substringAfterLast('.') }} -> $now" }
+                val granted = answers.filterValues { it }.keys.map { it.substringAfterLast('.') }
+                val now = log.invocation(
+                    EntryScope.None,
+                    "photoPermission.$name.completion",
+                    params = "granted=$granted",
+                    result = { access: GalleryAccess -> "$access" },
+                ) {
+                    launcher?.unregister()
+                    record.edit().putBoolean(ASKED, true).apply()
+                    current()
+                }
                 if (cont.isActive) cont.resume(now)
             }
             launcher.launch(requested())

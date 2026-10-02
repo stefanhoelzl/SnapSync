@@ -12,10 +12,12 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import app.snapsync.model.BeforeListen
+import app.snapsync.model.EntryScope
 import app.snapsync.model.HandlerSlot
 import app.snapsync.model.ScheduleResult
 import app.snapsync.model.WakeId
 import app.snapsync.model.WakeTrigger
+import app.snapsync.model.invocation
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.Completion
 import app.snapsync.ports.Wake
@@ -65,7 +67,10 @@ class AndroidWake(context: Context, private val log: Logger = Logger.withTag("wa
         registration.value = this
     }
 
-    override fun schedule(id: WakeId, trigger: WakeTrigger): ScheduleResult = try {
+    override fun schedule(id: WakeId, trigger: WakeTrigger): ScheduleResult =
+        log.invocation(EntryScope.None, "wake.schedule", params = "id=$id", result = { "$it" }) { enqueue(id, trigger) }
+
+    private fun enqueue(id: WakeId, trigger: WakeTrigger): ScheduleResult = try {
         val request = OneTimeWorkRequestBuilder<WakeWorker>()
             .setInputData(workDataOf(ID to id.name))
             .apply { constrain(trigger) }
@@ -101,13 +106,14 @@ class AndroidWake(context: Context, private val log: Logger = Logger.withTag("wa
         }
     }
 
-    override fun cancel(id: WakeId) {
+    override fun cancel(id: WakeId) = log.invocation(EntryScope.None, "wake.cancel", params = "id=$id") {
         work.cancelUniqueWork(nameOf(id))
+        Unit
     }
 
     /** The worker's run: hand the wake to the core, and hold the run open until its completion is released. */
-    internal suspend fun run(id: WakeId) {
-        val registered = handlers.orNull("a $id wake") ?: return
+    internal suspend fun run(id: WakeId) = log.invocation(EntryScope.None, "wake.onTaskLaunched", params = "id=$id") {
+        val registered = handlers.orNull("a $id wake") ?: return@invocation
         val done = CompletableDeferred<Unit>()
         val completion = WorkerCompletion(done)
         running += id

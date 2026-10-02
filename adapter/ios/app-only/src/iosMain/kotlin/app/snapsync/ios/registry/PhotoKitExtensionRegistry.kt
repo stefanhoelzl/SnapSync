@@ -2,6 +2,7 @@
 
 package app.snapsync.ios.registry
 
+import app.snapsync.logging.invocation
 import app.snapsync.model.RegistrationAnswer
 import app.snapsync.model.RegistrationState
 import app.snapsync.objc.ObjCFailure
@@ -11,6 +12,7 @@ import kotlinx.cinterop.cValue
 import platform.Foundation.NSOperatingSystemVersion
 import platform.Foundation.NSProcessInfo
 import co.touchlab.kermit.Logger
+import co.touchlab.kermit.Severity
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSError
@@ -48,8 +50,12 @@ internal class PhotoKitExtensionRegistry(
      */
     override suspend fun setEnabled(enabled: Boolean): RegistrationAnswer {
         if (!supported) return RegistrationAnswer.Unsupported
-        val answer = api.setEnabled(enabled)
-        log.d { "setUploadJobExtensionEnabled($enabled) -> ok=${answer.ok} ${answer.errorDomain}:${answer.errorCode}" }
+        val answer = log.invocation(
+            "setUploadJobExtensionEnabled",
+            params = "enabled=$enabled",
+            severity = Severity.Debug,
+            result = { "ok=${it.ok} ${it.errorDomain}:${it.errorCode}" },
+        ) { api.setEnabled(enabled) }
         return RegistrationAnswer.Answered(answer.ok, answer.errorDomain, answer.errorCode)
     }
 
