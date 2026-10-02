@@ -27,7 +27,7 @@ enum class JoinCommit {
 /**
  * The **user-tap command bundle** (`docs/architecture.md`, "Commands cross one door"): the
  * commands the status screen can fire, so every user tap crosses the same door the OS-callback
- * triggers do. Seated in `model/` (migration step 9): the bundle is pure vocabulary — a record of
+ * triggers do. Seated in `model/`: the bundle is pure vocabulary — a record of
  * command callables with inert defaults — and `model/` is the one zone both `compose/` (which
  * builds the live instance) and `:domain:presentation` (which receives it by constructor) may name;
  * the armed presentation gate forbids presentation referencing `flow/`, and `flow/` itself may
@@ -42,8 +42,8 @@ enum class JoinCommit {
  *
  * No field has a default (law "Function-typed parameters have no defaults in production", capability
  * `docs/architecture.md`): a host that builds this bundle states every command, so one it forgets does not
- * compile. They all used to default to inert, and a host that rebuilt the bundle by hand shipped a
- * "Choose more photos" button that did nothing.
+ * compile — an inert default is how a hand-built bundle ships a "Choose more photos" button that does
+ * nothing.
  *
  * - [leave] — leave the configured event: cancel in-flight downloads, stop the producer, clear the
  *   config, notify the backend (capability `manage-membership`).

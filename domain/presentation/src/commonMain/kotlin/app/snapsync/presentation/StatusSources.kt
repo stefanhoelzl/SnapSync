@@ -95,7 +95,7 @@ class StatusSources(
  */
 class StatusDiagnostics(
     /**
-     * Dev-path abort logging: the headless negative oracle for a `SNAPSYNC_EVENT_LINK` run (autoJoin has
+     * Dev-path abort logging: the headless negative oracle for an `autoJoin` run (it has
      * no UI to show a load/commit failure, and a gate parked on a failed details load has no one watching
      * its dialog). The iOS shell wires it into `debug.log`.
      */

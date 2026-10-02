@@ -51,8 +51,7 @@ data class LedgerCounts(val done: Set<AssetId>, val pending: Set<AssetId>, val r
  * exposes **per-photo done-ness only** — never the ledger's rows nor any write capability — so the status domain keeps no
  * engine dependency and the extension stays the sole ledger writer. [counts] is a
  * level-triggered value; [refresh] re-reads it. It refreshes on **foreground entry**, on each
- * [StatusCountsPoller] tick while foregrounded (migration step 12 — the cross-process ding's
- * replacement), and (app-driven tier) after each pump cycle.
+ * [StatusCountsPoller] tick while foregrounded, and (app-driven tier) after each pump cycle.
  */
 interface LedgerCountsSource {
     val counts: StateFlow<LedgerCounts>
