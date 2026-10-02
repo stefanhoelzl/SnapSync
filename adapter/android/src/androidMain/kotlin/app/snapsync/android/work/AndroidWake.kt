@@ -11,6 +11,8 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
+import app.snapsync.model.BeforeListen
+import app.snapsync.model.HandlerSlot
 import app.snapsync.model.ScheduleResult
 import app.snapsync.model.WakeId
 import app.snapsync.model.WakeTrigger
@@ -56,11 +58,10 @@ class AndroidWake(context: Context, private val log: Logger = Logger.withTag("wa
     private val work = WorkManager.getInstance(context.applicationContext)
     private val running = ConcurrentHashMap.newKeySet<WakeId>()
 
-    @Volatile
-    private var handlers: WakeHandlers? = null
+    private val handlers = HandlerSlot<WakeHandlers>("Wake", BeforeListen.Dropped)
 
     override fun listen(handlers: WakeHandlers) {
-        this.handlers = handlers
+        this.handlers.set(handlers)
         registration.value = this
     }
 
@@ -106,7 +107,7 @@ class AndroidWake(context: Context, private val log: Logger = Logger.withTag("wa
 
     /** The worker's run: hand the wake to the core, and hold the run open until its completion is released. */
     internal suspend fun run(id: WakeId) {
-        val registered = handlers ?: return
+        val registered = handlers.orNull("a $id wake") ?: return
         val done = CompletableDeferred<Unit>()
         val completion = WorkerCompletion(done)
         running += id

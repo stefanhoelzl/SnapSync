@@ -6,7 +6,9 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalContext
+import app.snapsync.model.BeforeListen
 import app.snapsync.model.EntryScope
+import app.snapsync.model.HandlerSlot
 import app.snapsync.model.invocation
 import app.snapsync.model.PlatformEntry
 import app.snapsync.model.UiState
@@ -39,11 +41,9 @@ class AndroidUi(
     private val log: Logger,
 ) : Ui {
     private val shown = MutableStateFlow<UiState?>(null)
-    private var handlers: UiHandlers? = null
+    private val handlers = HandlerSlot<UiHandlers>("Ui", BeforeListen.Thrown)
 
-    override fun listen(handlers: UiHandlers) {
-        this.handlers = handlers
-    }
+    override fun listen(handlers: UiHandlers) = this.handlers.set(handlers)
 
     override fun show(state: UiState) {
         shown.value = state
@@ -52,7 +52,7 @@ class AndroidUi(
     /** The screen an activity is being created with: the live status screen over the composition's handlers. */
     @PlatformEntry
     fun content(): @Composable () -> Unit = log.invocation(EntryScope.None, "onCreateActivity") {
-        val registered = checkNotNull(handlers) { "an activity was created before the Ui port was listened to" }
+        val registered = handlers.require("an activity's creation")
         registered.onLive()
         val actions = statusActions(registered.onIntent)
         val screen: @Composable () -> Unit = {

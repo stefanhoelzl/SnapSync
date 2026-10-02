@@ -2,6 +2,8 @@
 
 package app.snapsync.push
 
+import app.snapsync.model.BeforeListen
+import app.snapsync.model.HandlerSlot
 import app.snapsync.model.PlatformEntry
 import app.snapsync.model.PlatformError
 import app.snapsync.model.PushMessage
@@ -28,13 +30,11 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
  * holds across it.
  */
 class IosPushNotifications(private val log: Logger) : PushNotifications {
-    private var handlers: PushHandlers? = null
+    private val handlers = HandlerSlot<PushHandlers>("PushNotifications", BeforeListen.Logged(log))
 
     override val kind: String = PUSH_KIND_APNS
 
-    override fun listen(handlers: PushHandlers) {
-        this.handlers = handlers
-    }
+    override fun listen(handlers: PushHandlers) = this.handlers.set(handlers)
 
     override fun register() {
         UIApplication.sharedApplication.registerForRemoteNotifications()
@@ -43,13 +43,13 @@ class IosPushNotifications(private val log: Logger) : PushNotifications {
     /** APNs issued this device [hex] — the delegate renders the token's bytes as lowercase hex. */
     @PlatformEntry
     fun deliverToken(hex: String) {
-        registered()?.onToken(PushToken(hex))
+        handlers.orNull("a token")?.onToken(PushToken(hex))
     }
 
     /** APNs could not issue a token; [description] is the platform's error, as it said it. */
     @PlatformEntry
     fun deliverTokenFailure(description: String) {
-        registered()?.onTokenFailure(PlatformError(description))
+        handlers.orNull("a token failure")?.onTokenFailure(PlatformError(description))
     }
 
     /**
@@ -59,14 +59,8 @@ class IosPushNotifications(private val log: Logger) : PushNotifications {
      */
     @PlatformEntry
     fun deliverMessage(payload: Map<Any?, *>, complete: () -> Unit) {
-        val registered = registered()
+        val registered = handlers.orNull("a push")
         if (registered == null) complete() else registered.onMessage(PushMessage(payload), PushCompletion(complete))
-    }
-
-    private fun registered(): PushHandlers? {
-        val registered = handlers
-        if (registered == null) log.e { "a push delivery arrived before the PushNotifications port was listened to" }
-        return registered
     }
 }
 

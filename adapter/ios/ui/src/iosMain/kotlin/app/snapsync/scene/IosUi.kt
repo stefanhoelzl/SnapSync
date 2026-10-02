@@ -5,6 +5,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.window.ComposeUIViewController
 import app.snapsync.logging.invocation
+import app.snapsync.model.BeforeListen
+import app.snapsync.model.HandlerSlot
 import app.snapsync.model.PlatformEntry
 import app.snapsync.model.UiState
 import app.snapsync.ports.Ui
@@ -47,11 +49,9 @@ class IosUi(
     private val log: Logger,
 ) : Ui {
     private val shown = MutableStateFlow<UiState?>(null)
-    private var handlers: UiHandlers? = null
+    private val handlers = HandlerSlot<UiHandlers>("Ui", BeforeListen.Logged(log))
 
-    override fun listen(handlers: UiHandlers) {
-        this.handlers = handlers
-    }
+    override fun listen(handlers: UiHandlers) = this.handlers.set(handlers)
 
     override fun show(state: UiState) {
         shown.value = state
@@ -62,13 +62,12 @@ class IosUi(
     fun viewController(): UIViewController {
         val mode = record.resolve(UIApplication.sharedApplication.applicationState.value)
         return log.invocation("MainViewController", params = "mode=${mode.diagnosticName}") {
-            val registered = handlers
-            when {
-                mode == SceneMode.Deferred -> placeholder()
+            if (mode == SceneMode.Deferred) {
+                placeholder()
+            } else {
                 // The composition registers at launch, before SwiftUI's first pull; a pull before it is a wiring
-                // fault, answered with the placeholder rather than a throw across the ObjC boundary.
-                registered == null -> placeholder().also { log.e { "a live scene was pulled before the Ui port was listened to" } }
-                else -> liveScreen(registered)
+                // fault, logged and answered with the placeholder rather than a throw across the ObjC boundary.
+                handlers.orNull("a live scene's pull")?.let(::liveScreen) ?: placeholder()
             }
         }
     }

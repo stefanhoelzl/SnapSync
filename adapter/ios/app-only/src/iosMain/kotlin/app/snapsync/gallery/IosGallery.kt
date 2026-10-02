@@ -3,7 +3,9 @@ package app.snapsync.gallery
 import app.snapsync.download.IosPhotoLibraryImporter
 import app.snapsync.ios.discovery.libraryChangeTokenOf
 import app.snapsync.ios.qos.photoKitReadLane
+import app.snapsync.model.BeforeListen
 import app.snapsync.model.GalleryAccess
+import app.snapsync.model.HandlerSlot
 import app.snapsync.model.ImportRequest
 import app.snapsync.model.ImportResult
 import app.snapsync.permission.PhotoKitSelection
@@ -19,7 +21,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import platform.Photos.PHPhotoLibrary
-import kotlin.concurrent.Volatile
 
 /**
  * The app's PhotoKit [Gallery]: the shared [IosGalleryReader] every read and album write goes through, plus the
@@ -42,8 +43,7 @@ class IosGallery(
     private val log: Logger = Logger.withTag("gallery"),
 ) : Gallery, GalleryReader by reader {
 
-    @Volatile
-    private var handlers: GalleryHandlers? = null
+    private val handlers = HandlerSlot<GalleryHandlers>("Gallery", BeforeListen.Logged(log))
 
     private val importer = IosPhotoLibraryImporter()
 
@@ -57,12 +57,14 @@ class IosGallery(
 
     init {
         // The lane replays its latest snapshot, so one read before the handlers arrive is kept, not lost.
-        scope.launch { selection.snapshots.collect { snapshot -> handlers?.onChanged(snapshot) } }
+        scope.launch {
+            selection.snapshots.collect { snapshot ->
+                handlers.orNull("a selection snapshot", BeforeListen.Dropped)?.onChanged(snapshot)
+            }
+        }
     }
 
-    override fun listen(handlers: GalleryHandlers) {
-        this.handlers = handlers
-    }
+    override fun listen(handlers: GalleryHandlers) = this.handlers.set(handlers)
 
     override fun observeChanges(enabled: Boolean) = selection.observe(enabled)
 
@@ -75,8 +77,8 @@ class IosGallery(
      * uploaded back, so nothing is created: an error, and an import the caller retries later.
      */
     override suspend fun import(request: ImportRequest): ImportResult {
-        val handlers = handlers ?: return ImportResult.Failed("no import handlers registered")
-            .also { log.e { "import of ${request.ref.sourceAssetId} before listen — nothing created" } }
+        val handlers = handlers.orNull("the import of ${request.ref.sourceAssetId}")
+            ?: return ImportResult.Failed("no import handlers registered")
         return importer.import(request, handlers)
     }
 

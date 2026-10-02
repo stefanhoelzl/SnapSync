@@ -1,7 +1,9 @@
 package app.snapsync.mock
 
 import app.snapsync.model.AssetId
+import app.snapsync.model.BeforeListen
 import app.snapsync.model.ChangeOutcome
+import app.snapsync.model.HandlerSlot
 import app.snapsync.model.StartResult
 import app.snapsync.model.TransferOutcome
 import app.snapsync.model.UploadCreateOutcome
@@ -193,7 +195,7 @@ class UploadQueueOperator internal constructor(private val mock: UploadQueueMock
 class UploadSessionMock(internal val network: UploadNetwork) {
     internal class Transfer(val tag: String, val target: UploadTarget)
 
-    internal var handlers: UploadHandlers? = null
+    internal val handlers = HandlerSlot<UploadHandlers>("Upload", BeforeListen.Thrown)
     internal var handbacks = 0
     internal val live = mutableListOf<Transfer>()
     internal val created = mutableListOf<String>()
@@ -202,7 +204,7 @@ class UploadSessionMock(internal val network: UploadNetwork) {
         override val accepts: UploadSourceKind = UploadSourceKind.FILE
 
         override fun listen(handlers: UploadHandlers) {
-            this@UploadSessionMock.handlers = handlers
+            this@UploadSessionMock.handlers.set(handlers)
         }
 
         override suspend fun create(source: UploadSource, target: UploadTarget, tag: String): UploadCreateOutcome {
@@ -228,7 +230,10 @@ class UploadSessionMock(internal val network: UploadNetwork) {
         /** A cancelled transfer ends, and its end is reported like any other — as the platform's delegate does. */
         override suspend fun cancel(job: UploadJob): ChangeOutcome {
             val transfer = job.handle as? Transfer ?: return ChangeOutcome.Refused(null, "not this session's transfer")
-            if (live.remove(transfer)) handlers?.onFinished(transfer.view(UploadJobState.FAILED, UploadError.Cancelled))
+            if (live.remove(transfer)) {
+                handlers.orNull("a cancelled transfer's end", BeforeListen.Dropped)
+                    ?.onFinished(transfer.view(UploadJobState.FAILED, UploadError.Cancelled))
+            }
             return ChangeOutcome.Applied
         }
     }
@@ -274,7 +279,7 @@ class UploadSessionOperator internal constructor(private val mock: UploadSession
             status in 200..299 -> UploadJobState.SUCCEEDED to null
             else -> UploadJobState.FAILED to UploadError.Http(status)
         }
-        val registered = checkNotNull(mock.handlers) { "no process listened to the upload session" }
+        val registered = mock.handlers.require("a transfer's end")
         with(mock) { registered.onFinished(transfer.view(state, error)) }
     }
 
@@ -283,7 +288,7 @@ class UploadSessionOperator internal constructor(private val mock: UploadSession
      * that landed while no process ran were reported as they happened, so the drain report follows at once.
      */
     fun handBack(completion: Completion) {
-        val registered = checkNotNull(mock.handlers) { "no process listened to the upload session" }
+        val registered = mock.handlers.require("a hand-back")
         registered.onBackgroundEvents(completion)
         mock.handbacks++
         registered.onEventsDrained()
@@ -328,7 +333,7 @@ class DownloadSessionMock(private val temporaryFiles: TemporaryFiles? = null) {
     }
 
     internal val started = mutableListOf<Started>()
-    internal var handlers: DownloadHandlers? = null
+    internal val handlers = HandlerSlot<DownloadHandlers>("Download", BeforeListen.Thrown)
     internal var current: Face? = null
 
     internal inner class Face : Download {
@@ -336,7 +341,7 @@ class DownloadSessionMock(private val temporaryFiles: TemporaryFiles? = null) {
         var realized: Boolean = false
 
         override fun listen(handlers: DownloadHandlers) {
-            this@DownloadSessionMock.handlers = handlers
+            this@DownloadSessionMock.handlers.set(handlers)
             current = this
         }
 
@@ -365,8 +370,7 @@ class DownloadSessionMock(private val temporaryFiles: TemporaryFiles? = null) {
     internal fun leaveTempFile(description: String, bytes: ByteArray? = null): String =
         temporaryFiles?.leave("download-tmp/${description.hashCode().toUInt()}", bytes ?: TEMP_BYTES) ?: "temp:/$description"
 
-    internal fun registered(): DownloadHandlers =
-        checkNotNull(handlers) { "no process listened to the download session — nothing would receive this" }
+    internal fun registered(): DownloadHandlers = handlers.require("a download session event")
 
     companion object {
         /** An ordinary healthy transfer: `200`, no declared length. */
