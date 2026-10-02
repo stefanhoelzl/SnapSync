@@ -45,10 +45,10 @@
 # `core`'s parameter ceiling is already 15 rather than 47.
 #
 # WHAT SETS THE TWO NUMBERS THAT MOVED LAST, so the next reader knows where the slack is not.
-# `CyclomaticComplexMethod` is pinned at 9 by `UploadCore.kt`'s `readGate` (measured 8) and by nothing
-# else — the next-highest in the zone is 6. So this ceiling does NOT fall by moving more wiring out of
-# `SnapSyncApp.kt`; it falls only when the cycle gate's exception-classification policy moves, and that
-# policy is deliberately staying — it is the one piece of logic here the world harness and the
+# `CyclomaticComplexMethod` is pinned at 7 by `UploadCore.kt`'s `readEntryGate` (measured 6, once each
+# uploader process answered its own admission) — the next-highest in the zone is 5. So this ceiling does
+# NOT fall by moving more wiring out of `SnapSyncApp.kt`; it falls only when the cycle gate's
+# exception-classification policy moves, and that policy is deliberately staying — it is the one piece of logic here the world harness and the
 # fake-backed runs drive directly, at 93% coverage, which is what makes it the counterexample: the rest
 # of this zone's logic was worth moving because it was unREACHABLE by any test, not because it was
 # logic. `LargeClass` measures `AppCore`, and was re-derived by binary search at 10-line granularity
@@ -95,10 +95,10 @@
 complexity:
   CyclomaticComplexMethod:
     active: true
-    threshold: 9
+    threshold: 7
   CognitiveComplexMethod:
     active: true
-    threshold: 6
+    threshold: 5
   ComplexCondition:
     active: true
     threshold: 2
