@@ -35,7 +35,8 @@ fail() {
     "$ADB" exec-out screencap -p > "$OUT/failure.png" 2>/dev/null
     exit 1
 }
-stage() { echo "[$(date -u +%H:%M:%S)] $*" | tee -a "$OUT/stages"; }
+# stage, await_backend, run_journeys, print_journey_failures
+. scripts/lib/journeys.sh
 
 [ -f "$APK" ] || fail "no rig APK at $APK — build it first (see the header)"
 [ -f test/integration/build/journeys-classpath.txt ] || fail "the journeys are not compiled — build them first (see the header)"
@@ -73,11 +74,7 @@ done
 "$ADB" forward "tcp:$RIG_PORT" "tcp:$RIG_PORT" >/dev/null || fail "adb forward for the control channel"
 stage "app: installed and granted"
 
-i=0
-until curl -s --max-time 5 -o /dev/null "$BACKEND/events/00000000-0000-4000-8000-000000000000"; do
-    i=$((i + 1)); [ $i -lt 90 ] || { tail -40 "$OUT/backend.log"; fail "the local backend never answered on $BACKEND"; }; sleep 2
-done
-stage "backend: answering"
+await_backend
 
 launch() {
     "$ADB" shell am start -W -n app.snapsync/app.snapsync.android.MainActivity >/dev/null || fail "launch"
@@ -116,15 +113,11 @@ base="$(curl -sS "$RIG/device/state" | python3 -c 'import json,sys; print(json.l
 code="$(curl -sS -o "$OUT/device.json" -w '%{http_code}' "$RIG/device")"
 [ "$code" = 200 ] || { cat "$OUT/device.json"; fail "GET /device answered $code"; }
 
-stage "journeys: starting"
-# A bare JVM on the classpath written at compile time, NOT Gradle — as on iOS, no daemon beside the emulator.
-"${JAVA_HOME:+$JAVA_HOME/bin/}java" -Xmx512m -cp "$(cat test/integration/build/journeys-classpath.txt)" \
-    -Dsnapsync.journey.appA="$RIG" -Dsnapsync.journey.backend="$BACKEND"\
-    org.junit.runner.JUnitCore app.snapsync.journeys.Journeys > "$OUT/journeys.log" 2>&1
+# A bare JVM, NOT Gradle — as on iOS, no daemon beside the emulator.
+run_journeys "$RIG"
 journeys=$?
-stage "journeys: done"
 if [ $journeys -ne 0 ]; then
-    sed -n '/^There w/,/^FAILURES/p' "$OUT/journeys.log" | grep -vE '^[[:space:]]+at ' | head -30
+    print_journey_failures
     fail "a journey failed (log in $OUT)"
 fi
 echo "android-journeys: the journeys passed" | tee "$OUT/result"

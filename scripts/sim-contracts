@@ -45,8 +45,8 @@ set -u
 OUT=build/sim-contracts
 mkdir -p "$OUT"
 fail() { echo "sim-contracts: FAILED — $*" | tee -a "$OUT/result"; exit 1; }
-# A timestamped marker per stage, kept with the evidence, so the job's wall-clock can be attributed.
-stage() { echo "[$(date -u +%H:%M:%S)] $*" | tee -a "$OUT/stages"; }
+# stage, await_backend, run_journeys, print_journey_failures
+. scripts/lib/journeys.sh
 # Crash reports newer than this marker are this run's.
 touch "$OUT/.start"
 
@@ -136,11 +136,7 @@ APP="$(find build/ios/Build/Products -maxdepth 2 -name '*.app' -path '*-iphonesi
 [ -n "$APP" ] || fail "no simulator .app was built"
 scripts/sim-sign "$APP" || fail "sim-sign"
 
-i=0
-until curl -s --max-time 5 -o /dev/null "$BACKEND/events/00000000-0000-4000-8000-000000000000"; do
-    i=$((i + 1)); [ $i -lt 90 ] || { tail -40 "$OUT/backend.log"; fail "the local backend never answered on $BACKEND"; }; sleep 2
-done
-stage "backend: answering"
+await_backend
 
 # Each simulator is this run's alone, and so is its port: every simulator shares the Mac's loopback, so a second
 # instance on the default 18099 fails to bind while a curl reaches the FIRST one and answers plausibly.
@@ -245,20 +241,13 @@ done
 [ $status -eq 0 ] || { cp "$DATA/Documents/debug.log" "$OUT/debug.log" 2>/dev/null; fail "see the outcome tables above"; }
 echo "sim-contracts: every registered contract passed" | tee "$OUT/result"
 
-stage "journeys: starting"
-# The journeys, against the app and the backend. A bare JVM on the classpath written at compile time, NOT Gradle: a
-# Gradle daemon and a test JVM starting next to the live simulator pushed the runner into swap, and the app missed its
-# 5 s HTTP timeout on a request the backend had answered in 132 ms (run 36173548419). A failure is read first as a
-# contract clause nobody wrote.
-"${JAVA_HOME:+$JAVA_HOME/bin/}java" -Xmx512m -cp "$(cat test/integration/build/journeys-classpath.txt)" \
-    -Dsnapsync.journey.appA="http://127.0.0.1:$RIG_PORT" -Dsnapsync.journey.backend="$BACKEND" \
-    org.junit.runner.JUnitCore app.snapsync.journeys.Journeys > "$OUT/journeys.log" 2>&1
+# The journeys, against the app and the backend, on a bare JVM (`scripts/lib/journeys.sh` says why not Gradle). A
+# failure is read first as a contract clause nobody wrote.
+run_journeys "http://127.0.0.1:$RIG_PORT"
 journeys=$?
-stage "journeys: done"
 cp "$DATA/Documents/debug.log" "$OUT/debug.log" 2>/dev/null
 if [ $journeys -ne 0 ]; then
-    # JUnit's own failure section: the test, and the assertion's message, without the stack frames.
-    sed -n '/^There w/,/^FAILURES/p' "$OUT/journeys.log" | grep -vE '^[[:space:]]+at ' | head -30
+    print_journey_failures
     fail "a journey failed (log in $OUT)"
 fi
 echo "sim-contracts: every registered contract passed, and the journeys passed" | tee "$OUT/result"
