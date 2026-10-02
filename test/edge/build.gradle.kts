@@ -17,7 +17,8 @@ plugins {
 // CONSUMER CONTRACT. `LiveEdge` reads two system properties — `snapsync.apiDir` (required) and
 // `snapsync.liveEdgeStore` — and a consumer's test task must depend on [resolveLocalDeployment] and declare
 // the backend's sources as inputs, or a change touching only `api/` leaves that task up-to-date and the
-// suites that exist to catch it never run against it.
+// suites that exist to catch it never run against it. A consumer applies `snapsync.live-edge` and calls
+// `liveEdge.consumedBy(<task>)`, which does all of it.
 kotlin {
     jvmToolchain(libs.versions.jdk.get().toInt())
 }

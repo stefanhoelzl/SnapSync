@@ -45,5 +45,9 @@ gradlePlugin {
             id = "snapsync.ios-rig-sources"
             implementationClass = "app.snapsync.buildlogic.IosRigSourcesPlugin"
         }
+        register("liveEdge") {
+            id = "snapsync.live-edge"
+            implementationClass = "app.snapsync.buildlogic.LiveEdgePlugin"
+        }
     }
 }

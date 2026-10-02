@@ -3,6 +3,8 @@ plugins {
     // The `android` target (`docs/architecture.md`, "Zones inside the core"): the Android app links this module.
     id("snapsync.android")
     alias(libs.plugins.kotlin.serialization)
+    // `runJvmHost` can start the real backend (`liveEdge.consumedBy`, below).
+    id("snapsync.live-edge")
 }
 
 // The dev/test CONTROL CHANNEL (`:test:rig`) — an HTTP server that runs INSIDE the iOS app so an agent
@@ -118,16 +120,15 @@ kotlin {
 // `./gradlew :test:rig:runJvmHost [-Psnapsync.rigBackend=mock|deno] [-Psnapsync.rigPort=N]` — the JVM host for
 // an agent to drive by hand. Prints one `RIG-JVM READY <port>` line once bound, then serves until killed.
 // Tests do not use this: they start a host in-process (`JvmRigHost.start`).
-val apiDir = rootProject.layout.projectDirectory.dir("api")
-tasks.register<JavaExec>("runJvmHost") {
+val runJvmHost = tasks.register<JavaExec>("runJvmHost") {
     group = "application"
     description = "Serves the rig control protocol over the JVM root on loopback (the JVM host)."
     val jvmCompilation = kotlin.jvm().compilations.getByName("main")
     classpath = files(jvmCompilation.output.allOutputs, jvmCompilation.runtimeDependencyFiles)
     mainClass.set("app.snapsync.rig.JvmRigHostMainKt")
-    dependsOn(":test:edge:resolveLocalDeployment")
     systemProperty("snapsync.rigBackend", providers.gradleProperty("snapsync.rigBackend").getOrElse("mock"))
     systemProperty("snapsync.rigPort", providers.gradleProperty("snapsync.rigPort").getOrElse("0"))
-    systemProperty("snapsync.apiDir", apiDir.asFile.absolutePath)
-    systemProperty("snapsync.liveEdgeStore", layout.buildDirectory.dir("live-edge").get().asFile.absolutePath)
 }
+// A run task is never up-to-date (it declares no outputs), so the backend's sources it now declares as inputs change
+// nothing about when it runs; they are the consumer contract's, applied whole rather than in part.
+liveEdge.consumedBy(runJvmHost)

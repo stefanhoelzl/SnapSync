@@ -1,5 +1,7 @@
 plugins {
     alias(libs.plugins.kotlin.jvm)
+    // The JVM host's tests start the real backend (`liveEdge.consumedBy`, below).
+    id("snapsync.live-edge")
 }
 
 // `:test:control` — the typed JVM client of the control channel's protocol (`docs/testing.md`,
@@ -38,15 +40,9 @@ dependencies {
 }
 
 // The JVM host's tests start the real backend for their `deno` half (`:test:edge`'s consumer contract).
-val apiDir = rootProject.layout.projectDirectory.dir("api")
 tasks.test {
     // JUnit 4, not the platform: the contracts module (on the runtime path through the rig) binds kotlin-test to
     // JUnit 4 in its main code, and two kotlin-test framework bindings cannot coexist.
     useJUnit()
-    dependsOn(":test:edge:resolveLocalDeployment")
-    inputs.dir(apiDir.dir("src")).withPropertyName("liveEdgeSources")
-    inputs.dir(apiDir.dir("migrations")).withPropertyName("liveEdgeMigrations")
-    inputs.dir(rootProject.layout.projectDirectory.dir("deployments")).withPropertyName("liveEdgeDeployments")
-    systemProperty("snapsync.apiDir", apiDir.asFile.absolutePath)
-    systemProperty("snapsync.liveEdgeStore", layout.buildDirectory.dir("live-edge").get().asFile.absolutePath)
 }
+liveEdge.consumedBy(tasks.test)

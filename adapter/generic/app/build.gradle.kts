@@ -20,6 +20,8 @@ plugins {
     id("snapsync.coverage")
     // The simulator test run's standard streams, beside its failure messages.
     id("snapsync.simulator-test-output")
+    // `jvmTest` starts the real backend (`liveEdge.consumedBy`, below).
+    id("snapsync.live-edge")
 }
 
 kotlin {
@@ -80,21 +82,10 @@ kotlin {
 //
 // `jvmTest` launches the REAL backend (`api/src/dev/serve.ts --ephemeral`) through `LiveEdge`, so `deno` on
 // PATH is a prerequisite of `./gradlew build` (`docs/testing.md`, "The canonical check and its
-// Kotlin/Native half"). Two things here keep that honest:
-//
-//  - the `local` deployment is RESOLVED first (`:test:edge`'s task): `serve.ts` imports the generated
-//    rendering, and a missing one is a module-not-found rather than a clause failure anyone could read;
-//  - the backend's sources are INPUTS of the test task. Without them a change touching only `api/` leaves this
-//    task up-to-date, and the contracts that exist to catch exactly that change would never run against it.
-val apiDir = rootProject.layout.projectDirectory.dir("api")
-tasks.named<Test>("jvmTest") {
-    dependsOn(":test:edge:resolveLocalDeployment")
-    inputs.dir(apiDir.dir("src")).withPropertyName("liveEdgeSources")
-    inputs.dir(apiDir.dir("migrations")).withPropertyName("liveEdgeMigrations")
-    inputs.dir(rootProject.layout.projectDirectory.dir("deployments")).withPropertyName("liveEdgeDeployments")
-    systemProperty("snapsync.apiDir", apiDir.asFile.absolutePath)
-    systemProperty("snapsync.liveEdgeStore", layout.buildDirectory.dir("live-edge").get().asFile.absolutePath)
-}
+// Kotlin/Native half"). `snapsync.live-edge` keeps that honest: the `local` deployment is resolved first, and the
+// backend's sources are inputs of the test task, so a change touching only `api/` re-runs the contracts that exist
+// to catch it.
+liveEdge.consumedBy(tasks.named<Test>("jvmTest"))
 
 // ---- Coverage bounds (`docs/architecture.md`) ---------------------------------------------
 //
