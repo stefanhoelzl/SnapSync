@@ -6,29 +6,6 @@ import kotlin.test.assertTrue
 import kotlin.test.fail
 
 /**
- * **Runtime identity is pinned** (`docs/architecture.md`; decision record:
- * `pin-runtime-identity-and-zone-gates`).
- *
- * Every literal here is a string the OS or the installed base holds on its side — App-Group
- * container id, Keychain (service, account) pairs, `NSUserDefaults` keys, DB filenames, the
- * device-manifest layout, OS-registered BGTask/URLSession identifiers, framework `baseName`s.
- * Changing one strands or corrupts state on devices already in the field; the worst case (the
- * device-id pair) mints a new device identity and corrupts the event union for every member of an
- * event, remotely unfixably. The migration moves every file these literals live in, and nothing
- * else asserts them (they are `iosMain` defaults, invisible to the JVM loop).
- *
- * Each pin asserts **exactly one** occurrence in production Kotlin with the exact value — so any
- * move that drops, duplicates, or re-values a literal fails this build, and future drift stays
- * single-sited. Non-Kotlin surfaces (entitlements, `Info.plist`, `build.gradle.kts`) carry their
- * own pinned counts; the BGTask ids are pinned in BOTH Kotlin and `Info.plist`, because drift
- * between the two silently kills that background tier (the OS rejects an unpermitted submit and
- * nothing raises) — and the plist's listing must be EXACTLY the pinned set, each registered by the
- * Swift shell, so a retired id left behind fails too.
- *
- * The agreed pin inventory is [DOCUMENTED_INVENTORY]: adding, removing, or re-valuing a pin is a
- * deliberate two-place edit (a pin list AND the inventory), never a casual one.
- */
-/**
  * The shared Keychain access group, as production Kotlin must state it. Held here as a literal
  * rather than imported: this guard is JVM-only and the constant lives in an `iosMain` source set, so
  * the pin is — deliberately — a text assertion about source, exactly like every other pin here.
@@ -86,6 +63,29 @@ private const val WAKE_ADAPTER = "adapter/ios/app-only/src/iosMain/kotlin/app/sn
 /** The app bundle's plist — the one that MUST declare the BGTask listing. */
 private const val APP_PLIST = "iosApp/iosApp/Info.plist"
 
+/**
+ * **Runtime identity is pinned** (`docs/architecture.md`; decision record:
+ * `pin-runtime-identity-and-zone-gates`).
+ *
+ * Every literal here is a string the OS or the installed base holds on its side — App-Group
+ * container id, Keychain (service, account) pairs, `NSUserDefaults` keys, DB filenames, the
+ * device-manifest layout, OS-registered BGTask/URLSession identifiers, framework `baseName`s.
+ * Changing one strands or corrupts state on devices already in the field; the worst case (the
+ * device-id pair) mints a new device identity and corrupts the event union for every member of an
+ * event, remotely unfixably. The migration moves every file these literals live in, and nothing
+ * else asserts them (they are `iosMain` defaults, invisible to the JVM loop).
+ *
+ * Each pin asserts **exactly one** occurrence in production Kotlin with the exact value — so any
+ * move that drops, duplicates, or re-values a literal fails this build, and future drift stays
+ * single-sited. Non-Kotlin surfaces (entitlements, `Info.plist`, `build.gradle.kts`) carry their
+ * own pinned counts; the BGTask ids are pinned in BOTH Kotlin and `Info.plist`, because drift
+ * between the two silently kills that background tier (the OS rejects an unpermitted submit and
+ * nothing raises) — and the plist's listing must be EXACTLY the pinned set, each registered by the
+ * Swift shell, so a retired id left behind fails too.
+ *
+ * The agreed pin inventory is [DOCUMENTED_INVENTORY]: adding, removing, or re-valuing a pin is a
+ * deliberate two-place edit (a pin list AND the inventory), never a casual one.
+ */
 class RuntimeIdentityTest {
 
     private val repoRoot: File = generateSequence(File(".").absoluteFile) { it.parentFile }

@@ -14,16 +14,16 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 
+/** An admitting policy over [cutoff] — the shape the cycle hands the discovery. */
+private suspend fun admitting(cutoff: String): SelectionPolicy =
+    SelectionPolicy(selectionRulesFor(includesUpload = true, cutoff = captureCutoff(cutoff), ceiling = null, suppressedAssetIds = { emptySet() }, albumExcludedAssetIds = { emptySet() }))
+
 /**
  * The read-discipline gate (capability `photo-access`): under a [SelectionScope.Scoped],
  * discovery consumes the snapshot with NO platform read and is authoritative (the selection is the gallery,
  * so de-selecting is deleting); under [SelectionScope.Unrestricted] it delegates unchanged; under
  * [SelectionScope.Unread] it refuses, because every answer it could give would delete rows.
  */
-/** An admitting policy over [cutoff] — the shape the cycle hands the discovery. */
-private suspend fun admitting(cutoff: String): SelectionPolicy =
-    SelectionPolicy(selectionRulesFor(includesUpload = true, cutoff = captureCutoff(cutoff), ceiling = null, suppressedAssetIds = { emptySet() }, albumExcludedAssetIds = { emptySet() }))
-
 class SelectionScopedDiscoveryTest {
 
     private class RecordingDelegate : UploadDiscovery {
