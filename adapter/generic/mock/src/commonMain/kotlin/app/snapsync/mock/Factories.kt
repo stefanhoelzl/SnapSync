@@ -5,7 +5,6 @@ import app.snapsync.ports.AttestStore
 import app.snapsync.ports.Backend
 import app.snapsync.ports.DeviceIntegrity
 import app.snapsync.model.DeviceFile
-import kotlin.time.Instant
 import app.snapsync.ports.CrashReporter
 import app.snapsync.ports.ProcessInfo
 import app.snapsync.model.Availability
@@ -28,18 +27,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 fun inMemoryDeviceIntegrity(available: Boolean = true): DeviceIntegrity = InMemoryDeviceIntegrity(available)
 
 /**
- * The in-memory backend (see [InMemoryBackend]). [storedFiles] is the byte store the OS's uploader writes — a cell
- * the caller holds, keyed by device id; [minimumAppVersion] set is a backend refusing this build.
+ * A [BackendMock]'s port, over a byte store the caller holds: [storedFiles] is what the OS's uploader writes, keyed by
+ * device id; [minimumAppVersion] set is a backend refusing this build. Every other default is [BackendMock]'s.
  */
 fun inMemoryBackend(
     storedFiles: MutableMap<String, MutableSet<DeviceFile>> = mutableMapOf(),
-    capacity: Int = 10,
     minimumAppVersion: String? = null,
-    createdAt: Instant = Instant.fromEpochSeconds(0),
-): Backend = InMemoryBackend(
-    BackendState(storedFiles, capacity, createdAt).also { it.minAppVersion = minimumAppVersion },
-    declared = DeclaredVersion(null),
-)
+): Backend = BackendMock(storedFiles).also { it.operator.minAppVersion = minimumAppVersion }.port()
 
 fun inMemoryAttestStore(token: String? = null, keyId: String? = null): AttestStore =
     InMemoryAttestStore(token, keyId)

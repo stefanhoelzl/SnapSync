@@ -22,16 +22,23 @@ import kotlin.time.Instant
  *
  * The app only ever holds what [port] returns, typed as the [Backend] port; nothing here reaches it otherwise.
  */
-class BackendMock(
-    /** Devices an event admits, active or departed, before a join answers `409`. */
-    capacity: Int = DEFAULT_CAPACITY,
-    /**
-     * The creation time every event it mints is stamped with — carrying milliseconds, as the real backend's
-     * `toISOString()` does, so the app's normalization of it is exercised rather than assumed.
-     */
-    createdAt: Instant = Instant.parse(DEFAULT_CREATED_AT),
-) {
-    internal val state = BackendState(mutableMapOf(), capacity, createdAt)
+class BackendMock internal constructor(internal val state: BackendState) {
+    constructor(
+        /** Devices an event admits, active or departed, before a join answers `409`. */
+        capacity: Int = DEFAULT_CAPACITY,
+        /**
+         * The creation time every event it mints is stamped with — carrying milliseconds, as the real backend's
+         * `toISOString()` does, so the app's normalization of it is exercised rather than assumed.
+         */
+        createdAt: Instant = Instant.parse(DEFAULT_CREATED_AT),
+    ) : this(mutableMapOf(), capacity, createdAt)
+
+    /** Over a byte store [storedFiles] the caller holds — what [inMemoryBackend] hands a contract binding. */
+    internal constructor(
+        storedFiles: MutableMap<String, MutableSet<DeviceFile>>,
+        capacity: Int = DEFAULT_CAPACITY,
+        createdAt: Instant = Instant.parse(DEFAULT_CREATED_AT),
+    ) : this(BackendState(storedFiles, capacity, createdAt))
 
     /** One process's face: [declared] is the version its build declares, read per call. */
     fun port(declared: DeclaredVersion = DeclaredVersion(null)): Backend = InMemoryBackend(state, declared)
