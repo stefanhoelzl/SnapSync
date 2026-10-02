@@ -1,35 +1,13 @@
-import kotlinx.kover.gradle.plugin.dsl.CoverageUnit
-import org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeSimulatorTest
-
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     // The allowed targets, declared once (`docs/architecture.md`, "Zones inside the core").
     id("snapsync.targets")
     alias(libs.plugins.kotlin.serialization)
-    // Coverage measurement (`docs/architecture.md`). Applied here rather than in a
-    // `subprojects {}` block so the instrumented set is readable per module.
-    alias(libs.plugins.kover)
-}
-// Coverage (`docs/architecture.md`). The report is filtered to this module's OWN classes.
-// The crediting edge that lets `:adapter:generic:mock`'s feature tests count toward this module is
-// declared in the ROOT build file, not here: `ModuleSetTest` asserts this file names no module at
-// all, because that absence is the precondition for the platform-free compile error.
-kover {
-    reports {
-        filters {
-            includes {
-                projects.add(":domain:model")
-            }
-        }
-    }
-}
-
-
-// The simulator run's standard streams, beside the failure messages the root build turns FULL for every test task.
-tasks.withType<KotlinNativeSimulatorTest>().configureEach {
-    testLogging {
-        showStandardStreams = true
-    }
+    // Coverage measurement and its floors (`docs/architecture.md`, `snapsync.coverage`). Applied
+    // here rather than in a `subprojects {}` block so the instrumented set is readable per module.
+    id("snapsync.coverage")
+    // The simulator test run's standard streams, beside its failure messages.
+    id("snapsync.simulator-test-output")
 }
 
 // The core'"'"'s `model` zone (`docs/architecture.md`, "The module set withholds; packages organize").
@@ -159,6 +137,11 @@ kotlin {
     }
 }
 
+// Coverage (`docs/architecture.md`). The report is filtered to this module's OWN classes.
+// The crediting edge that lets `:adapter:generic:mock`'s feature tests count toward this module is
+// declared in the ROOT build file, not here: `ModuleSetTest` asserts this file names no module at
+// all, because that absence is the precondition for the platform-free compile error.
+//
 // ---- Coverage bounds (`docs/architecture.md`) ---------------------------------------------
 //
 // A FLOOR on this module's coverage, seeded at what the tree measured when the gate landed, and
@@ -196,28 +179,15 @@ kotlin {
 // `SyncEngineTest` covered it from a module whose instrumentation was off and which credited
 // nothing. Before writing a test for an uncovered method, grep for one - a duplicate written to move a
 // number is worse than the gap it closes.
-kover {
-    reports {
-        total {
-            verify {
-                onCheck = true
-                rule(":domain:model aggregate") {
-                    bound {
-                        minValue = 85
-                        coverageUnits = CoverageUnit.INSTRUCTION
-                    }
-                    // LOWERED 80 -> 78 by the feature → ports cut. Forcing proof: the inline logging helpers
-                    // (`invocation`, `logAt`, `bestEffort`) MOVED here from `ports/` — they must stay `inline`, since
-                    // an invocation's block suspends wherever its call site is a coroutine — and an inline function's
-                    // out-of-line copy, the one Kover measures, is never executed: every call site, the tests'
-                    // included, runs an inlined copy. `InvocationTest` and `LogAtTest` moved with them and still pass;
-                    // the 36 branches they add read uncovered by construction, not by rot.
-                    bound {
-                        minValue = 78
-                        coverageUnits = CoverageUnit.BRANCH
-                    }
-                }
-            }
-        }
-    }
+coverageFloors {
+    aggregate(
+        instruction = 85,
+        // LOWERED 80 -> 78 by the feature → ports cut. Forcing proof: the inline logging helpers
+        // (`invocation`, `logAt`, `bestEffort`) MOVED here from `ports/` — they must stay `inline`, since
+        // an invocation's block suspends wherever its call site is a coroutine — and an inline function's
+        // out-of-line copy, the one Kover measures, is never executed: every call site, the tests'
+        // included, runs an inlined copy. `InvocationTest` and `LogAtTest` moved with them and still pass;
+        // the 36 branches they add read uncovered by construction, not by rot.
+        branch = 78,
+    )
 }

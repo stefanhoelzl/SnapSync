@@ -1,6 +1,3 @@
-import kotlinx.kover.gradle.plugin.dsl.CoverageUnit
-import kotlinx.kover.gradle.plugin.dsl.GroupingEntityType
-
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     // The allowed targets, declared once (`docs/architecture.md`, "Zones inside the core").
@@ -11,24 +8,9 @@ plugins {
     // which is what lets the rig hold no tests. A rig-side DTO was the alternative and was rejected
     // for exactly that reason.
     alias(libs.plugins.kotlin.serialization)
-    // Coverage measurement (`docs/architecture.md`). Applied here rather than in a
-    // `subprojects {}` block so the instrumented set is readable per module.
-    alias(libs.plugins.kover)
-}
-// Coverage (`docs/architecture.md`). `:ui:screens`' tests drive the container host
-// that lives here.
-//
-// The report is filtered back to this module's OWN classes. The crediting edge itself is
-// declared in the ROOT build file: these build scripts are read as TEXT by the zone-diagram
-// generator, which would render the edge backwards.
-kover {
-    reports {
-        filters {
-            includes {
-                projects.add(":domain:presentation")
-            }
-        }
-    }
+    // Coverage measurement and its floors (`docs/architecture.md`, `snapsync.coverage`). Applied
+    // here rather than in a `subprojects {}` block so the instrumented set is readable per module.
+    id("snapsync.coverage")
 }
 
 kotlin {
@@ -54,6 +36,13 @@ kotlin {
     }
 }
 
+// Coverage (`docs/architecture.md`). `:ui:screens`' tests drive the container host
+// that lives here.
+//
+// The report is filtered back to this module's OWN classes. The crediting edge itself is
+// declared in the ROOT build file: these build scripts are read as TEXT by the zone-diagram
+// generator, which would render the edge backwards.
+//
 // ---- Coverage bounds (`docs/architecture.md`) ---------------------------------------------
 //
 // A FLOOR on this module's coverage, seeded at what the tree measured when the gate landed, and
@@ -87,31 +76,9 @@ kotlin {
 // What is left is mostly the default-filling in the state classes' own constructors - so the remaining
 // honest debt is still smaller than the missed-instruction count suggests; grep before writing a test
 // for one, and check whether the thing you are told is unreachable actually is.
-kover {
-    reports {
-        total {
-            verify {
-                onCheck = true
-                rule(":domain:presentation aggregate") {
-                    bound {
-                        minValue = 77
-                        coverageUnits = CoverageUnit.INSTRUCTION
-                    }
-                    bound {
-                        minValue = 44
-                        coverageUnits = CoverageUnit.BRANCH
-                    }
-                }
-                // No per-package BRANCH rule: branch denominators per package run as low as 6 in this
-                // tree, where a single uncovered arm moves the number by 17 points.
-                rule(":domain:presentation package floor") {
-                    groupBy = GroupingEntityType.PACKAGE
-                    bound {
-                        minValue = 77
-                        coverageUnits = CoverageUnit.INSTRUCTION
-                    }
-                }
-            }
-        }
-    }
+coverageFloors {
+    aggregate(instruction = 77, branch = 44)
+    // No per-package BRANCH rule: branch denominators per package run as low as 6 in this
+    // tree, where a single uncovered arm moves the number by 17 points.
+    packageFloor(instruction = 77)
 }

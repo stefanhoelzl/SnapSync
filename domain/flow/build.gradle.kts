@@ -1,21 +1,13 @@
-import kotlinx.kover.gradle.plugin.dsl.CoverageUnit
-import org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeSimulatorTest
-
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     // The allowed targets, declared once (`docs/architecture.md`, "Zones inside the core").
     id("snapsync.targets")
     alias(libs.plugins.kotlin.serialization)
-    // Coverage measurement (`docs/architecture.md`). Applied here rather than in a
-    // `subprojects {}` block so the instrumented set is readable per module.
-    alias(libs.plugins.kover)
-}
-
-// The simulator run's standard streams, beside the failure messages the root build turns FULL for every test task.
-tasks.withType<KotlinNativeSimulatorTest>().configureEach {
-    testLogging {
-        showStandardStreams = true
-    }
+    // Coverage measurement and its floors (`docs/architecture.md`, `snapsync.coverage`). Applied
+    // here rather than in a `subprojects {}` block so the instrumented set is readable per module.
+    id("snapsync.coverage")
+    // The simulator test run's standard streams, beside its failure messages.
+    id("snapsync.simulator-test-output")
 }
 
 // The core'"'"'s `flow` zone (`docs/architecture.md`, "The module set withholds; packages organize").
@@ -50,16 +42,7 @@ kotlin {
 // that lets `:adapter:generic:mock`'s tests count toward this module is declared in the ROOT build
 // file, not here: `ModuleSetTest` asserts a `:domain:*` build file names no module at all, because
 // that absence is the precondition for the platform-free compile error.
-kover {
-    reports {
-        filters {
-            includes {
-                projects.add(":domain:flow")
-            }
-        }
-    }
-}
-
+//
 // Coverage bounds (`docs/architecture.md`). Each number below is a FLOOR that may only RISE:
 // lowering one is a regression and needs a stated forcing proof in the PR. Nothing enforces that — it
 // is a ratchet carried by this contract, exactly as `docs/architecture.md` carries its ceilings at the
@@ -72,22 +55,6 @@ kover {
 //
 // One package, so no floor rule. Every trigger flow is covered; the residue is one inert default
 // lambda on `Provision`.
-kover {
-    reports {
-        total {
-            verify {
-                onCheck = true
-                rule(":domain:flow aggregate") {
-                    bound {
-                        minValue = 97
-                        coverageUnits = CoverageUnit.INSTRUCTION
-                    }
-                    bound {
-                        minValue = 85
-                        coverageUnits = CoverageUnit.BRANCH
-                    }
-                }
-            }
-        }
-    }
+coverageFloors {
+    aggregate(instruction = 97, branch = 85)
 }

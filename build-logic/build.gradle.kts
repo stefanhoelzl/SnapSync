@@ -15,6 +15,8 @@ dependencies {
     compileOnly("org.jetbrains.kotlin:kotlin-gradle-plugin:${libs.versions.kotlin.get()}")
     // compileOnly for the same reason: the Android target is configured through the ONE AGP the root build loaded.
     compileOnly(libs.android.gradle)
+    // compileOnly for the same reason: `snapsync.coverage` configures the ONE Kover plugin the root build loaded.
+    compileOnly("org.jetbrains.kotlinx:kover-gradle-plugin:${libs.versions.kover.get()}")
 }
 
 gradlePlugin {
@@ -26,6 +28,14 @@ gradlePlugin {
         register("android") {
             id = "snapsync.android"
             implementationClass = "app.snapsync.buildlogic.AndroidTargetPlugin"
+        }
+        register("coverage") {
+            id = "snapsync.coverage"
+            implementationClass = "app.snapsync.buildlogic.CoveragePlugin"
+        }
+        register("simulatorTestOutput") {
+            id = "snapsync.simulator-test-output"
+            implementationClass = "app.snapsync.buildlogic.SimulatorTestOutputPlugin"
         }
     }
 }

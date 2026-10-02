@@ -1,22 +1,13 @@
-import kotlinx.kover.gradle.plugin.dsl.CoverageUnit
-import kotlinx.kover.gradle.plugin.dsl.GroupingEntityType
-import org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeSimulatorTest
-
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     // The allowed targets, declared once (`docs/architecture.md`, "Zones inside the core").
     id("snapsync.targets")
     alias(libs.plugins.sqldelight)
-    // Coverage measurement (`docs/architecture.md`). Applied here rather than in a
-    // `subprojects {}` block so the instrumented set is readable per module.
-    alias(libs.plugins.kover)
-}
-
-// The simulator run's standard streams, beside the failure messages the root build turns FULL for every test task.
-tasks.withType<KotlinNativeSimulatorTest>().configureEach {
-    testLogging {
-        showStandardStreams = true
-    }
+    // Coverage measurement and its floors (`docs/architecture.md`, `snapsync.coverage`). Applied
+    // here rather than in a `subprojects {}` block so the instrumented set is readable per module.
+    id("snapsync.coverage")
+    // The simulator test run's standard streams, beside its failure messages.
+    id("snapsync.simulator-test-output")
 }
 
 // The core's `services` zone (`docs/architecture.md`, "Zones inside the core"): the shared capabilities
@@ -96,47 +87,27 @@ sqldelight {
 // Coverage (`docs/architecture.md`). The report is filtered to this module's OWN classes, and the
 // SQLDelight-GENERATED sources are excluded: nobody writes or reviews them, so bounding them ratchets a code
 // generator's output rather than this module's tests.
-kover {
-    reports {
-        filters {
-            includes {
-                projects.add(":domain:services")
-            }
-            excludes {
-                packages("app.snapsync.services.ledger.db", "app.snapsync.services.downloads.db")
-            }
-        }
-    }
-}
-
+//
 // Coverage bounds (`docs/architecture.md`). Each number below is a FLOOR that may only RISE: lowering one
 // is a regression and needs a stated forcing proof in the PR. Seeded from MEASUREMENT on the commit that
 // created this zone (98.6% instructions, 86.9% branches; the thinnest package, `databases`, 93.1%).
 // ENGINE: Kover's default. Most of what counts here runs beside the adapters and in the world, through the
 // crediting edges in the root build file.
+coverageFloors {
+    aggregate(
+        instruction = 98,
+        // 86 -> 89 when the file-backed services joined (measured 89.7%).
+        branch = 89,
+    )
+    packageFloor(instruction = 93)
+}
+
+// SQLDelight's generated packages leave the report (see above).
 kover {
     reports {
-        total {
-            verify {
-                onCheck = true
-                rule(":domain:services aggregate") {
-                    bound {
-                        minValue = 98
-                        coverageUnits = CoverageUnit.INSTRUCTION
-                    }
-                    // 86 -> 89 when the file-backed services joined (measured 89.7%).
-                    bound {
-                        minValue = 89
-                        coverageUnits = CoverageUnit.BRANCH
-                    }
-                }
-                rule(":domain:services package floor") {
-                    groupBy = GroupingEntityType.PACKAGE
-                    bound {
-                        minValue = 93
-                        coverageUnits = CoverageUnit.INSTRUCTION
-                    }
-                }
+        filters {
+            excludes {
+                packages("app.snapsync.services.ledger.db", "app.snapsync.services.downloads.db")
             }
         }
     }

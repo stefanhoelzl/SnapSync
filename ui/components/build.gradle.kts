@@ -1,31 +1,12 @@
-import kotlinx.kover.gradle.plugin.dsl.CoverageUnit
-import kotlinx.kover.gradle.plugin.dsl.GroupingEntityType
-
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     // The allowed targets, declared once (`docs/architecture.md`, "Zones inside the core").
     id("snapsync.targets")
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.compose)
-    // Coverage measurement (`docs/architecture.md`). Applied here rather than in a
-    // `subprojects {}` block so the instrumented set is readable per module.
-    alias(libs.plugins.kover)
-}
-// Coverage (`docs/architecture.md`). `:ui:screens`' Compose tests render the real
-// screens, and rendering a screen is what exercises
-// these components. Without this edge the module reads 48% instead of 95%.
-//
-// The report is filtered back to this module's OWN classes. The crediting edge itself is
-// declared in the ROOT build file: these build scripts are read as TEXT by the zone-diagram
-// generator, which would render the edge backwards.
-kover {
-    reports {
-        filters {
-            includes {
-                projects.add(":ui:components")
-            }
-        }
-    }
+    // Coverage measurement and its floors (`docs/architecture.md`, `snapsync.coverage`). Applied
+    // here rather than in a `subprojects {}` block so the instrumented set is readable per module.
+    id("snapsync.coverage")
 }
 
 kotlin {
@@ -68,6 +49,14 @@ kotlin {
     }
 }
 
+// Coverage (`docs/architecture.md`). `:ui:screens`' Compose tests render the real
+// screens, and rendering a screen is what exercises
+// these components. Without this edge the module reads 48% instead of 95%.
+//
+// The report is filtered back to this module's OWN classes. The crediting edge itself is
+// declared in the ROOT build file: these build scripts are read as TEXT by the zone-diagram
+// generator, which would render the edge backwards.
+//
 // ---- Coverage bounds (`docs/architecture.md`) ---------------------------------------------
 //
 // A FLOOR on this module's coverage, seeded at what the tree measured when the gate landed, and
@@ -92,31 +81,9 @@ kotlin {
 //
 // BRANCH is depressed structurally here - see the note in `:ui:screens`; the same Compose
 // compiler arms apply.
-kover {
-    reports {
-        total {
-            verify {
-                onCheck = true
-                rule(":ui:components aggregate") {
-                    bound {
-                        minValue = 94
-                        coverageUnits = CoverageUnit.INSTRUCTION
-                    }
-                    bound {
-                        minValue = 63
-                        coverageUnits = CoverageUnit.BRANCH
-                    }
-                }
-                // No per-package BRANCH rule: branch denominators per package run as low as 6 in this
-                // tree, where a single uncovered arm moves the number by 17 points.
-                rule(":ui:components package floor") {
-                    groupBy = GroupingEntityType.PACKAGE
-                    bound {
-                        minValue = 94
-                        coverageUnits = CoverageUnit.INSTRUCTION
-                    }
-                }
-            }
-        }
-    }
+coverageFloors {
+    aggregate(instruction = 94, branch = 63)
+    // No per-package BRANCH rule: branch denominators per package run as low as 6 in this
+    // tree, where a single uncovered arm moves the number by 17 points.
+    packageFloor(instruction = 94)
 }
