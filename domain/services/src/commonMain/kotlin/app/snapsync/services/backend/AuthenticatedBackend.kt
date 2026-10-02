@@ -106,7 +106,7 @@ class CredentialedBackend(
     private suspend fun <T> gated(call: suspend (token: String?) -> Reply<T>): Reply<T> {
         val sent = credential.token()
         val first = observed(call(sent))
-        if (sent == null || first !is Reply.Refused || first.status != UNAUTHORIZED) return first
+        if (sent == null || first !is Reply.Refused || first.status != HttpStatus.UNAUTHORIZED) return first
         log.w { "the backend rejected the token this call carried — recovering" }
         val retry = credential.rejected(sent)?.takeIf { it != sent } ?: return first
         log.i { "retrying once with the recovered token" }
@@ -114,8 +114,4 @@ class CredentialedBackend(
     }
 
     private fun <T> observed(reply: Reply<T>): Reply<T> = reply.also { versionGate?.observe(it) }
-
-    private companion object {
-        const val UNAUTHORIZED = 401
-    }
 }

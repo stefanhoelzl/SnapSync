@@ -44,7 +44,7 @@ class BackendEventCreation(private val backend: AuthenticatedBackend) : EventCre
     override suspend fun create(name: String, startsAt: String, endsAt: String?): CreateOutcome =
         when (val reply = backend.createEvent(CreateEventRequest(name, startsAt, endsAt))) {
             is Reply.Ok -> CreateOutcome.Created(eventId = reply.value.eventId, name = reply.value.name)
-            is Reply.Refused -> if (reply.status == BAD_REQUEST) refusal(reply.body) else CreateOutcome.Transient
+            is Reply.Refused -> if (reply.status == HttpStatus.BAD_REQUEST) refusal(reply.body) else CreateOutcome.Transient
             is Reply.Malformed, is Reply.Unreachable -> CreateOutcome.Transient
         }
 
@@ -52,8 +52,6 @@ class BackendEventCreation(private val backend: AuthenticatedBackend) : EventCre
         if (WINDOW_FIELDS.any { it in body }) CreateOutcome.InvalidWindow else CreateOutcome.InvalidName
 
     private companion object {
-        const val BAD_REQUEST = 400
-
         /** The fields a date-range refusal names (`invalid startsAt` / `invalid endsAt`). */
         val WINDOW_FIELDS = listOf("startsAt", "endsAt")
     }
@@ -75,11 +73,7 @@ class BackendEventRename(private val backend: AuthenticatedBackend) : EventRenam
     override suspend fun rename(eventId: String, name: String): RenameOutcome =
         when (val reply = backend.renameEvent(eventId, name)) {
             is Reply.Ok -> reply.value.name?.let { RenameOutcome.Renamed(it) } ?: RenameOutcome.Transient
-            is Reply.Refused -> if (reply.status == BAD_REQUEST) RenameOutcome.InvalidName else RenameOutcome.Transient
+            is Reply.Refused -> if (reply.status == HttpStatus.BAD_REQUEST) RenameOutcome.InvalidName else RenameOutcome.Transient
             is Reply.Malformed, is Reply.Unreachable -> RenameOutcome.Transient
         }
-
-    private companion object {
-        const val BAD_REQUEST = 400
-    }
 }
