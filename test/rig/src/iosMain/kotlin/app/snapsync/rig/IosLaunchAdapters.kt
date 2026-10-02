@@ -6,40 +6,28 @@ import app.snapsync.compose.DevicePorts
 import app.snapsync.config.bakedUploadBase
 import app.snapsync.logging.appMarketingVersion
 import app.snapsync.mock.MockDevice
-import app.snapsync.mock.UploadNetwork
 import app.snapsync.launchadapters.LaunchAdapters
-import app.snapsync.launchadapters.AdapterChoice
 import app.snapsync.launchadapters.AdapterFacts
 import app.snapsync.launchadapters.AdapterFiles
-import app.snapsync.launchadapters.AdapterParse
 import app.snapsync.launchadapters.AdapterProcess
 import app.snapsync.launchadapters.randomDeviceId
 import app.snapsync.mock.MockedSystem
-import app.snapsync.model.ConfigRead
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
-import app.snapsync.model.SecureSlots
-import app.snapsync.model.SecureStoreRead
 import app.snapsync.model.WakeId
 import app.snapsync.ports.WakeHandlers
-import app.snapsync.services.config.ConfigService
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSOperatingSystemVersion
 import platform.Foundation.NSProcessInfo
 import kotlinx.cinterop.cValue
-import kotlin.time.Duration.Companion.milliseconds
 
 private val log = Logger.withTag("rig")
 
@@ -105,115 +93,41 @@ fun rigLaunch(real: DevicePorts): RigLaunch {
     val ports = launch.portsFor(real, AdapterProcess.APP)
     val controls = RigDevControls()
     val device = chosen?.device ?: MockDevice()
-    val world = MockWorld(
-        device = device,
-        mocked = mocked,
-        reach = BackendReach(
-            base = bakedUploadBase(),
-            name = "mock",
-            port = device.backend.port(device.declaredVersion),
-            network = UploadNetwork { url, headers, _ -> device.backend.operator.receive(url, headers) },
-            declared = device.declaredVersion,
-        ).takeIf { MockedSystem.BACKEND in mocked },
-        reachRefusal = REAL_BACKEND,
-        operatorRefusal = { REAL_BACKEND },
-        version = device.declaredVersion.takeIf { MockedSystem.BACKEND in mocked },
-        os = PlayedOs(device) { it in mocked },
-        ownDeviceId = { (ports.secureStore.read(SecureSlots.DEVICE_ID) as? SecureStoreRead.Found)?.value.orEmpty() },
-        joinedEventId = { (ConfigService(ports.files, ports.clock).read() as? ConfigRead.Joined)?.config?.eventId },
-        setInviteLinkHints = { controls.hints = it },
-    )
+    val world = launchWorld(device, mocked, ports, controls, mockBase = bakedUploadBase(), realBackend = REAL_BACKEND)
     return RigLaunch(launch, ports, controls, RigUi(ports.lazies.ui), world, real.files)
 }
 
 /**
- * Write the mocked systems' state every [SAVE_INTERVAL], for the life of the process: the app is the one writer (the
- * extension, in its own process, never writes one), so the next start of any process — a relaunch, a background wake —
- * finds what this one left.
+ * The adapter choice verbs (`launchAdapterCommands`), as the iOS app host serves them: `/device/adapters/current` says
+ * why this launch's choice was refused, if it was; and `/device/adapters/clear` deletes the adapter choice's whole
+ * folder — the choice and every mocked system's state — so the app exits and starts all real.
  */
-private fun keepSaving(chosen: LaunchAdapters.Chosen) {
-    CoroutineScope(SupervisorJob() + Dispatchers.Default).launch {
-        while (isActive) {
-            delay(SAVE_INTERVAL)
-            runCatching { chosen.save() }.onFailure { log.w(it) { "the mocked systems' state was not saved this time" } }
-        }
-    }
-}
-
-/**
- * The adapter choice verbs (`docs/testing.md`, "Launch-time adapters"):
- *
- * - `POST /device/adapters/current` — the adapter choice this launch runs, the file behind it and the folder it lives in, and why it
- *   was refused if it was.
- * - `POST /device/adapters` — the body is the next choice, as the adapters file holds it. An adapter choice that does not parse answers `400`,
- *   an incoherent one `409` with every broken rule, and one written while the device is a member of an event `409`:
- *   a membership would be carried from one set of systems into another — a real event's into a mocked backend, or the
- *   reverse. Written, the state saved, the app EXITS; the next start of any process reads it.
- * - `POST /device/adapters/clear` — delete the adapter choice and every mocked system's state; the app exits, and starts all real.
- */
-fun adapterCommands(launch: RigLaunch): Map<String, RigCommand> = mapOf(
-    "adapters/current" to RigCommand { _, _ -> CommandResult.ok(currentAdapters(launch)) },
-    "adapters" to RigCommand { _, body ->
-        val text = body?.takeIf { it.isNotBlank() }
-            ?: return@RigCommand CommandResult.badRequest("the body is the choice: one `system=mock|real` per line")
-        when (val parsed = AdapterChoice.parse(text)) {
-            is AdapterParse.Invalid -> CommandResult.badRequest(parsed.problems.joinToString("; "))
-            is AdapterParse.Parsed -> {
-                val incoherence = parsed.choice.incoherence()
-                val joined = launch.world.joinedEventId()
-                when {
-                    incoherence.isNotEmpty() -> CommandResult.refused("the adapter choice is not coherent: " + incoherence.joinToString("; "))
-                    joined != null -> CommandResult.refused(
-                        "this device is a member of event $joined; an adapter choice change would carry the membership into another " +
-                            "set of systems. Leave, or reset (POST /device/reset), first",
-                    )
-                    else -> writeAndExit(launch, parsed.choice)
-                }
+fun adapterCommands(launch: RigLaunch): Map<String, RigCommand> = launchAdapterCommands(
+    AdapterVerbs(
+        files = launch.files,
+        world = launch.world,
+        launchLine = launch.uncomposed?.let { "refused" } ?: launch.description,
+        current = {
+            putJsonArray("refusedBecause") { (launch.launch as? LaunchAdapters.Refused)?.reasons.orEmpty().forEach { add(JsonPrimitive(it)) } }
+        },
+        refusal = { choice ->
+            val incoherence = choice.incoherence()
+            if (incoherence.isEmpty()) null else "the adapter choice is not coherent: " + incoherence.joinToString("; ")
+        },
+        save = launch::flush,
+        next = "launch the app again — its next start, and every later one, composes over this adapter choice",
+        clear = {
+            val folder = (launch.files.locate(FileArea.SHARED, AdapterFiles.FOLDER) as? FileResult.Ok)?.value
+            if (folder == null) {
+                Cleared.Failed(CommandResult.refused("the App Group has no location, so there is no adapter choice to clear"))
+            } else {
+                NSFileManager.defaultManager.removeItemAtPath(folder, error = null)
+                Cleared.Done(folder)
             }
-        }
-    },
-    "adapters/clear" to RigCommand { _, _ ->
-        val folder = (launch.files.locate(FileArea.SHARED, AdapterFiles.FOLDER) as? FileResult.Ok)?.value
-            ?: return@RigCommand CommandResult.refused("the App Group has no location, so there is no adapter choice to clear")
-        NSFileManager.defaultManager.removeItemAtPath(folder, error = null)
-        exitSoon()
-        CommandResult.ok("""{"cleared":${jsonString(folder)},"exiting":true}""")
-    },
+        },
+        exit = { platform.posix.exit(0) },
+    ),
 )
-
-private fun writeAndExit(launch: RigLaunch, choice: AdapterChoice): CommandResult {
-    launch.flush()
-    val written = launch.files.write(FileArea.SHARED, AdapterFiles.CHOICE, choice.render().encodeToByteArray())
-    if (written !is FileResult.Ok) return CommandResult(status = 500, body = """{"error":${jsonString("not written: $written")}}""")
-    exitSoon()
-    return CommandResult.ok(
-        buildJsonObject {
-            put("written", choice.toString())
-            put("exiting", true)
-            put("next", "launch the app again — its next start, and every later one, composes over this adapter choice")
-        }.toString(),
-    )
-}
-
-private fun currentAdapters(launch: RigLaunch): String = buildJsonObject {
-    put("launch", launch.uncomposed?.let { "refused" } ?: launch.description)
-    putJsonArray("mocked") { launch.world.mocked.sortedBy { it.ordinal }.forEach { add(JsonPrimitive(it.key)) } }
-    putJsonArray("refusedBecause") { (launch.launch as? LaunchAdapters.Refused)?.reasons.orEmpty().forEach { add(JsonPrimitive(it)) } }
-    put("file", (launch.files.read(FileArea.SHARED, AdapterFiles.CHOICE) as? FileResult.Ok)?.value?.decodeToString())
-    // Where the adapter choice lives, as a platform path: `simctl` does not list an ad-hoc-signed app's App Group, so this is how a
-    // simulator script finds the folder to write an adapter choice into before a launch.
-    put("folder", (launch.files.locate(FileArea.SHARED, AdapterFiles.FOLDER) as? FileResult.Ok)?.value)
-    putJsonArray("systems") { MockedSystem.entries.forEach { add(JsonPrimitive("${it.key}: ${it.what}")) } }
-}.toString()
-
-/** Exit the app once the answer has left — the next start of any process reads what was written. */
-private fun exitSoon() {
-    CoroutineScope(Dispatchers.Default).launch {
-        delay(EXIT_DELAY)
-        log.i { "exiting for the next launch to read its adapter choice" }
-        platform.posix.exit(0)
-    }
-}
 
 /**
  * The app host's refusals of the shared vocabulary for this launch (`docs/testing.md`): every operator lever over a
@@ -251,9 +165,6 @@ fun iosRefusals(launch: RigLaunch): Map<String, String> = buildMap {
 private const val REAL_BACKEND =
     "the backend is REAL on this launch — the shared snap-sync-dev zone, where real users' photos live — so the channel " +
         "never reaches it and has no mock of it to move; mock `backend` (POST /device/adapters) to seed one"
-
-private val SAVE_INTERVAL = 500.milliseconds
-private val EXIT_DELAY = 500.milliseconds
 
 /**
  * Run [start] once the main thread is done with what it is doing now — the root's own initialization, which builds the
