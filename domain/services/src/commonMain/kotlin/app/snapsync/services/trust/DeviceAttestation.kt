@@ -266,21 +266,10 @@ class DeviceAttestation(
      */
     suspend fun refresh() {
         _attested.value = true
-        _attested.value = refreshOutcome()
-    }
-
-    /**
-     * [ensureFresh], reduced to the one fact [attested] carries.
-     *
-     * The second clause is what keeps a *working* device quiet: a refresh that reports `false` still
-     * leaves the device fine if the stored token is usable — it was merely due for renewal, or a
-     * concurrent path already fixed it. (Drained verbatim from the untested app shell at the migration
-     * finale — the rule is the trust feature's, not wiring — and narrowed here from [isStale] to
-     * [isUnusable], which is the `SNAPSYNC-20` correction.)
-     */
-    private suspend fun refreshOutcome(): Boolean {
-        val ok = runCatchingCancellable { ensureFresh() }.getOrDefault(false)
-        return ok || !isUnusable(token())
+        // A refresh that reports `false` still leaves a *working* device fine if the stored token is usable — it was
+        // merely due for renewal, or a concurrent path already fixed it. [isUnusable], never [isStale]: `SNAPSYNC-20`.
+        val renewed = runCatchingCancellable { ensureFresh() }.getOrDefault(false)
+        _attested.value = renewed || !isUnusable(token())
     }
 
     private suspend fun refreshLocked(): Boolean {
