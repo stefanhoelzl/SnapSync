@@ -1,3 +1,5 @@
+@file:OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+
 package app.snapsync.album
 
 import app.snapsync.model.EntryScope
