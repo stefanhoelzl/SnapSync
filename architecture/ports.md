@@ -56,7 +56,6 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `EventLinkDelivery` | `:domain:model` | `:domain:model` Forwarded, NoWebpageUrl, NotBrowsingWeb | no |
 | `EventLookup` | `:domain:model` | `:domain:model` Failed, Found, NotFound | no |
 | `EventRename` | `:domain:services` | `:domain:services` BackendEventRename; `:test:feature` FakeRename | yes |
-| `EventRenamer` | `:domain:feature` | `:domain:feature` RenameEvent | no |
 | `EventTiming` | `:domain:model` | `:domain:model` Ended, Running, Upcoming | no |
 | `EventUnionSource` | `:domain:services` | `:adapter:generic:mock` EmptyUnion; `:domain:services` BackendEventUnionSource; `:test:feature` FakeUnion, RecordingUnion | yes |
 | `ExtensionHost` | `:domain:ports` | `:adapter:ios:ext-safe` ContractRunningExtensionHost, IosExtensionHost; `:test:launch-adapters` UncomposedExtensionHost | yes |
@@ -105,7 +104,6 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `RenameStatus` | `:domain:feature` | `:domain:feature` Failed, Idle, InFlight, Succeeded | no |
 | `RenameStatusSource` | `:domain:feature` | `:domain:feature` MutableRenameStatusSource | no |
 | `Reply` | `:domain:model` | `:domain:model` Malformed, Ok, Refused, Unreachable; `:test:control` Done, Failed, Refused | yes |
-| `ResetRename` | `:domain:feature` | `:domain:feature` NoOpResetRename, RenameEvent | no |
 | `ResourceBatch` | `:domain:model` | — | no |
 | `ScheduleResult` | `:domain:model` | `:domain:model` Refused, Scheduled, Unsupported | no |
 | `SecureStore` | `:domain:ports` | `:adapter:android` AndroidSecureStore; `:adapter:generic:mock` InMemorySecureStore, Legacy, RecordingSecureStore; `:adapter:ios:ext-safe` AppGroupFileSecureStore, IosSecureStore, NoLegacyMap, Recording, SimulatorSecureStore; `:domain:services` MapSecureStore; `:test:feature` LockableSecureStore | yes |

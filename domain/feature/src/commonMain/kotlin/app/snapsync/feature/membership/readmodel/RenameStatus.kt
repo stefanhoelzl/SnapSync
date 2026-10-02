@@ -21,7 +21,7 @@ import kotlinx.coroutines.flow.asStateFlow
  * must close. Inferring that from a return to [Idle] would require the screen to remember it had seen
  * [InFlight], an inference that breaks the moment the sequence changes; so the success is stated.
  *
- * The cost of stating it is that [Succeeded] is a **latch** the screen must clear — hence [ResetRename].
+ * The cost of stating it is that [Succeeded] is a **latch** the screen must clear — hence `RenameEvent.reset`.
  */
 sealed interface RenameStatus {
     data object Idle : RenameStatus
