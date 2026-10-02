@@ -40,7 +40,7 @@ class RenameEvent(
     private val client: EventRename,
     private val status: MutableRenameStatusSource,
     private val log: Logger = Logger.withTag("RenameEvent"),
-) : EventRenamer, ResetRename {
+) {
 
     /**
      * Rename [eventId] to [name], fire-and-forget: the outcome arrives via [MutableRenameStatusSource].
@@ -52,7 +52,7 @@ class RenameEvent(
     // Suspending, and holding no scope: the composition launches this (law "Dispatcher lanes are
     // fixed by the composition"), so the tap's `Logger.invocation` spans the real rename rather than
     // the hand-off. Still fire-and-forget to the screen — the launch is the caller's, not this class's.
-    override suspend fun rename(eventId: String, name: String) {
+    suspend fun rename(eventId: String, name: String) {
         // One rename at a time, checked before the first suspension — as `CreateEvent` does, for the same reason.
         if (status.renameStatus.value == RenameStatus.InFlight) {
             log.i { "rename ignored: one is already in flight" }
@@ -75,8 +75,12 @@ class RenameEvent(
         }
     }
 
-    /** Clear the [RenameStatus.Succeeded] / [RenameStatus.Failed] latch once the screen has read it. */
-    override fun reset() {
+    /**
+     * Return the status to [RenameStatus.Idle] — the latch-clearing half of [RenameStatus.Succeeded]. Fired by the
+     * screen after it consumes a terminal status, so a second rename starts from a clean sequence rather than
+     * re-reading the previous one's outcome.
+     */
+    fun reset() {
         status.set(RenameStatus.Idle)
     }
 
