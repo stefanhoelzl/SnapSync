@@ -74,14 +74,9 @@ jobs:
       # ancient entry, because a hit means restore-keys are never consulted. The run id guarantees the
       # primary misses, so the restore falls through and picks the NEWEST konan entry instead.
       - name: Restore Kotlin/Native (~/.konan)
-        uses: actions/cache/restore@v6
+        uses: ./.github/actions/konan-restore
         with:
-          path: ~/.konan
-          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}-${{ github.run_id }}
-          restore-keys: |
-            konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}-sim-journeys-
-            konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}-
-            konan-${{ runner.os }}-
+          family: sim-journeys
 
       # Render the deployment BEFORE xcodebuild reads it. `Config.xcconfig` hard-`#include`s the
       # GENERATED, gitignored `Deployment.xcconfig` (`docs/deployment.md`), so a build without this step fails
@@ -224,31 +219,13 @@ jobs:
           ./gradlew :app:android:assembleDebug :test:integration:screenshotsClasses :test:integration:screenshotsClasspath \
             -Psnapsync.rig=true -Psnapsync.deployment=prod
           ./gradlew --stop
-      - name: Enable KVM
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-      # The cache ci.yml's journeys (android) writes on main; restore-only here, as ~/.konan is for the iOS job.
-      - name: Restore the Android system image
-        uses: actions/cache/restore@v6
-        with:
-          path: ${{ env.ANDROID_HOME }}/system-images/android-36/google_apis/x86_64
-          key: android-sysimg-36-google_apis-x86_64-
-          restore-keys: android-sysimg-36-google_apis-x86_64-
-      - name: Install the emulator and the system image
-        run: bash .github/scripts/android_sdk_install.sh 'system-images;android-36;google_apis;x86_64'
-      # The emulator the journeys and the `snapsync-android` skill use (pixel_6: 1080x2400). Each script line is its own
-      # shell. On a failed capture the app's log and the screen are kept, since the emulator is gone after this step.
+      # The emulator the journeys and the `snapsync-android` skill use (`.github/actions/android-emulator`: pixel_6,
+      # 1080x2400), over the system image ci.yml's journeys (android) caches on main — restored only here. Each script line
+      # is its own shell. On a failed capture the app's log and the screen are kept, since the emulator is gone after
+      # this step.
       - name: Capture each state, light and dark
-        uses: reactivecircus/android-emulator-runner@v2
+        uses: ./.github/actions/android-emulator
         with:
-          api-level: 36
-          target: google_apis
-          arch: x86_64
-          profile: pixel_6
-          emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -gpu swangle_indirect -memory 3072
-          disable-animations: true
           script: |
             $ANDROID_HOME/platform-tools/adb -s emulator-5554 install -r app/android/build/outputs/apk/debug/android-debug.apk
             java -Xmx512m -cp "$(cat test/integration/build/screenshots-classpath.txt)" app.snapsync.screenshots.CaptureShotsKt android emulator-5554 18199 shots || { mkdir -p evidence; $ANDROID_HOME/platform-tools/adb -s emulator-5554 logcat -d > evidence/logcat.txt; $ANDROID_HOME/platform-tools/adb -s emulator-5554 exec-out screencap -p > evidence/screen.png; exit 1; }
