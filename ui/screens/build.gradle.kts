@@ -1,15 +1,12 @@
-import kotlinx.kover.gradle.plugin.dsl.CoverageUnit
-import kotlinx.kover.gradle.plugin.dsl.GroupingEntityType
-
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     // The allowed targets, declared once (`docs/architecture.md`, "Zones inside the core").
     id("snapsync.targets")
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.compose)
-    // Coverage measurement (`docs/architecture.md`). Applied here rather than in a
-    // `subprojects {}` block so the instrumented set is readable per module.
-    alias(libs.plugins.kover)
+    // Coverage measurement and its floors (`docs/architecture.md`, `snapsync.coverage`). Applied
+    // here rather than in a `subprojects {}` block so the instrumented set is readable per module.
+    id("snapsync.coverage")
 }
 
 kotlin {
@@ -78,31 +75,9 @@ kotlin {
 // default-argument arms onto every `@Composable` declaration line, and many cannot take both
 // paths under test. Read this number against this module's own history, never across the Compose
 // boundary. How much of the gap is unreachable is not yet measured.
-kover {
-    reports {
-        total {
-            verify {
-                onCheck = true
-                rule(":ui:screens aggregate") {
-                    bound {
-                        minValue = 93
-                        coverageUnits = CoverageUnit.INSTRUCTION
-                    }
-                    bound {
-                        minValue = 59
-                        coverageUnits = CoverageUnit.BRANCH
-                    }
-                }
-                // No per-package BRANCH rule: branch denominators per package run as low as 6 in this
-                // tree, where a single uncovered arm moves the number by 17 points.
-                rule(":ui:screens package floor") {
-                    groupBy = GroupingEntityType.PACKAGE
-                    bound {
-                        minValue = 93
-                        coverageUnits = CoverageUnit.INSTRUCTION
-                    }
-                }
-            }
-        }
-    }
+coverageFloors {
+    aggregate(instruction = 93, branch = 59)
+    // No per-package BRANCH rule: branch denominators per package run as low as 6 in this
+    // tree, where a single uncovered arm moves the number by 17 points.
+    packageFloor(instruction = 93)
 }

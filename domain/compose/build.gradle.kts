@@ -1,17 +1,10 @@
-import org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeSimulatorTest
-
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     // The allowed targets, declared once (`docs/architecture.md`, "Zones inside the core").
     id("snapsync.targets")
     alias(libs.plugins.kotlin.serialization)
-}
-
-// The simulator run's standard streams, beside the failure messages the root build turns FULL for every test task.
-tasks.withType<KotlinNativeSimulatorTest>().configureEach {
-    testLogging {
-        showStandardStreams = true
-    }
+    // The simulator test run's standard streams, beside its failure messages.
+    id("snapsync.simulator-test-output")
 }
 
 // The core'"'"'s `compose` zone (`docs/architecture.md`, "The module set withholds; packages organize").

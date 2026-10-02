@@ -1,6 +1,3 @@
-import kotlinx.kover.gradle.plugin.dsl.CoverageUnit
-import kotlinx.kover.gradle.plugin.dsl.GroupingEntityType
-
 // `:adapter:generic:app` (`docs/architecture.md`): platform-free technology implementations of the
 // `:domain` ports — the Ktor HTTP clients, the clock and time zone, and the JVM `Databases` adapter.
 // Named for the technology, placed by linkage: generic code links everywhere (JVM harness, app,
@@ -18,9 +15,11 @@ plugins {
     // The `android` target (`docs/architecture.md`, "Zones inside the core"): the Android app links this module.
     id("snapsync.android")
     alias(libs.plugins.kotlin.serialization)
-    // Coverage measurement (`docs/architecture.md`). Applied here rather than in a
-    // `subprojects {}` block so the instrumented set is readable per module.
-    alias(libs.plugins.kover)
+    // Coverage measurement and its floors (`docs/architecture.md`, `snapsync.coverage`). Applied
+    // here rather than in a `subprojects {}` block so the instrumented set is readable per module.
+    id("snapsync.coverage")
+    // The simulator test run's standard streams, beside its failure messages.
+    id("snapsync.simulator-test-output")
 }
 
 kotlin {
@@ -77,14 +76,6 @@ kotlin {
     }
 }
 
-// The simulator run's standard streams, beside the failure messages the root build turns FULL for every test task
-// (config carried over with the re-homed NativeLedgerStoreTest from `:domain:engine`).
-tasks.withType<org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeSimulatorTest>().configureEach {
-    testLogging {
-        showStandardStreams = true
-    }
-}
-
 // ---- The live edge (`docs/architecture.md`; the backend contracts' `Live` bindings) --------------
 //
 // `jvmTest` launches the REAL backend (`api/src/dev/serve.ts --ephemeral`) through `LiveEdge`, so `deno` on
@@ -131,34 +122,15 @@ tasks.named<Test>("jvmTest") {
 // 0 -> 75 once they were covered, and 75 -> 90 when the ten backend clients became one `HttpBackend` (phase 11c,
 // measured 98.1% for `app.snapsync.http`): its optional-field bodies are read as JSON objects, so the generated
 // serializers' unreachable halves that held the old `app.snapsync.join` at 75 are gone. 90 is `app.snapsync.databases`.
-kover {
-    reports {
-        total {
-            verify {
-                onCheck = true
-                rule(":adapter:generic:app aggregate") {
-                    // 89 -> 96 with `HttpBackend` (measured 96.6%).
-                    bound {
-                        minValue = 96
-                        coverageUnits = CoverageUnit.INSTRUCTION
-                    }
-                    // 56 -> 63 when the SQLDelight stores moved to `:domain:services` (measured 64.0%); 63 -> 78 with
-                    // `HttpBackend` (measured 78.1%).
-                    bound {
-                        minValue = 78
-                        coverageUnits = CoverageUnit.BRANCH
-                    }
-                }
-                // No per-package BRANCH rule: branch denominators per package run as low as 6 in this
-                // tree, where a single uncovered arm moves the number by 17 points.
-                rule(":adapter:generic:app package floor") {
-                    groupBy = GroupingEntityType.PACKAGE
-                    bound {
-                        minValue = 90
-                        coverageUnits = CoverageUnit.INSTRUCTION
-                    }
-                }
-            }
-        }
-    }
+coverageFloors {
+    aggregate(
+        // 89 -> 96 with `HttpBackend` (measured 96.6%).
+        instruction = 96,
+        // 56 -> 63 when the SQLDelight stores moved to `:domain:services` (measured 64.0%); 63 -> 78 with
+        // `HttpBackend` (measured 78.1%).
+        branch = 78,
+    )
+    // No per-package BRANCH rule: branch denominators per package run as low as 6 in this
+    // tree, where a single uncovered arm moves the number by 17 points.
+    packageFloor(instruction = 90)
 }
