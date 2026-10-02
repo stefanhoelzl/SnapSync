@@ -1375,16 +1375,6 @@ class DownloadControllerTest {
         assertEquals(0, union.calls)
     }
 
-    @Test
-    fun forgetting_the_checks_lets_the_next_wake_read_at_once() = runTest {
-        val union = FakeUnion(emptyList())
-        val controller = controller(union)
-        controller.reconcile("event")
-        controller.forgetChecks("event")
-        controller.reconcileIfDue("event")
-        assertEquals(2, union.calls)
-    }
-
     // ---- a join plans from the union its adoption already read (one union read per join) ----
 
     @Test
