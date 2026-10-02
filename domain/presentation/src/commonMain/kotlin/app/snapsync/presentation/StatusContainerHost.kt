@@ -83,8 +83,8 @@ class StatusContainerHost(
     sources: StatusSources,
     private val scope: CoroutineScope,
     // Supplies "now" as a cutoff string and converts a local pick (capability `photo-sharing`).
-    // Injected — with NO default (migration step 9): a default would have to read the system clock
-    // here, which is exactly the through-ports law violation this parameter repays. Production wires
+    // Injected — with NO default: a default would have to read the system clock here, which the
+    // through-ports law forbids. Production wires
     // the `Clock` port (now, and the zone read once); tests pass a fixed instant and zone.
     private val cutoffFormatter: CutoffFormatter,
     // The user-tap **command bundle** (`docs/architecture.md`, "Commands cross one door"):
@@ -101,7 +101,7 @@ class StatusContainerHost(
     // The user-query bundle (`docs/architecture.md`, "Queries cross a lane-gated door"): the join gate's
     // details read and the shareable count. Reads this container INVOKES and reduces on, built and
     // lane-decorated in `compose/` beside the commands — so neither runs a port read on the thread that
-    // asked, which for the count used to be a composable effect on the main thread.
+    // asked.
     private val queries: UserQueries,
     // The two out-channels (see [StatusDiagnostics]): the dev-path log and the intent-error seam.
     diagnostics: StatusDiagnostics,
@@ -318,8 +318,6 @@ class StatusContainerHost(
      * (coalesced with a sticky create failure), `Layer.JoiningEvent.notice` or `Layer.Joined.notice` — but
      * the set-then-clear choreography lives HERE, in presentation (`docs/architecture.md`, "Commands cross
      * one door": multi-step interactions are presentation-owned, and interaction state dies with the UI).
-     * It replaced a one-shot side-effect channel at the migration finale, whose single consumer was the
-     * untested iOS shell.
      *
      * A rejected link while the message is already showing re-arms the full window (the timer restarts)
      * — the deliberate reading of "self-clearing a few seconds after it LAST appeared".
@@ -548,8 +546,7 @@ class StatusContainerHost(
                 val current = config.value
                 when {
                     // The two DUPLICATE rungs, first because they outrank every other reading of the same
-                    // link — including `autoJoin`, which used to be tested before any of this and would
-                    // therefore auto-provision once per delivery.
+                    // link — including `autoJoin`, which tested earlier would auto-provision once per delivery.
                     pending.value?.eventId == eventId -> ignoreRepeat(eventId, "a pending join is open")
                     current?.eventId == eventId -> ignoreRepeat(eventId, "already joined")
                     // A crafted link must not join, switch or start sharing without a tap, so the link's
@@ -562,9 +559,8 @@ class StatusContainerHost(
                             result.payload.direction,
                             result.payload.saveToAlbum,
                         )
-                    // First join → JoiningEvent; a different event while joined → Joined.pendingSwitch.
-                    // One rung now: the rung that told them apart was `current.eventId != eventId`, and the
-                    // same-event case is the duplicate rung above. An `autoJoin` link lands here too when
+                    // First join → JoiningEvent; a different event while joined → Joined.pendingSwitch (the
+                    // same-event case is the duplicate rung above). An `autoJoin` link lands here too when
                     // hints are ignored — an ordinary invite — and says so in the log.
                     else -> {
                         if (result.payload.autoJoin) log("join gate: ignoring the invite-link hints of $eventId")
@@ -734,15 +730,15 @@ class StatusContainerHost(
             // `toJoinLoad` is pure, so the bound lambda cannot throw — but `loadJoinDetails` is an injected
             // `suspend (String) -> JoinLoad` and nothing here can know that. It stays because the invariant
             // is one adapter change away from being false, and the cost of it being false is a screen no
-            // one can leave. Unlike the retired upload pump's comparable wrapper, this one IS covered: the
-            // seam is a constructor parameter, so a test injects a throwing loader directly.
+            // one can leave. It IS covered: the seam is a constructor parameter, so a test injects a
+            // throwing loader directly.
             if (pending.value?.eventId == eventId) {
                 pending.update { it?.copy(phase = JoinPhase.LoadFailed) }
             }
             throw t
         }
         // The headless negative oracle (mirrors autoConfirm's abort line): a gate parked on a failed
-        // details load shows a dialog, but a `SNAPSYNC_EVENT_LINK` launch has no one watching the
+        // details load shows a dialog, but a headless run has no one watching the
         // screen — without this line, `debug.log` shows only the HTTP `404` and the run reads as if
         // the link applied (the documented invented-UUID trap).
         if (load !is JoinLoad.Found) log("join gate: details load did not succeed for $eventId ($load)")
@@ -1084,21 +1080,17 @@ private fun joinedLayer(
 
 // Shown tracks completeness (never lies about "everything up/received"); pulse tracks live activity
 // (never fakes motion). Each arrow derives from ITS OWN COUNTS ALONE — this function does not read the
-// membership's direction, and never force-hides.
+// membership's direction, and never force-hides: an opted-out direction contributes no work and so has a
+// zero total — the upload total is 0 for a non-contributing membership (capability `photo-sharing`), and the
+// download total is 0 for a membership that never reconciles (capability `receiving-photos`) — so the arrows
+// agree with the direction because the counts already do.
 //
-// It used to. An opted-out arm was masked here, and `InSync` collapsed over the "enabled" directions. That
-// is no longer needed, because an opted-out direction now contributes no work and so has a zero total: the
-// upload total is 0 for a non-contributing membership (capability `photo-sharing`), and the
-// download total is 0 for a membership that never reconciles (capability `receiving-photos`, whose total is
-// populated only by that reconcile). The arrows agree with the direction because the counts already do.
-//
-// The mask is not merely redundant now — it was actively harmful, and removing it is the point. A
-// force-hidden arrow can only ever conceal a MISMATCH between the direction contract and what the system is
-// actually doing. Concealing that mismatch is exactly how a download-only membership uploaded its member's
-// camera roll for a full release cycle while this screen read "In sync" (capability `background-upload`): the
-// one surface that would have shown them an upload they never asked for was the surface that hid it. If the
-// counts are right, the arrow is already right; if they are wrong, an arrow the member never asked for is
-// the only signal anyone gets. The display must not assert a contract the system is not keeping.
+// A mask would be harmful, not merely redundant. A force-hidden arrow can only ever conceal a MISMATCH between the
+// direction contract and what the system is actually doing. Concealing that mismatch is exactly how a download-only
+// membership uploaded its member's camera roll for a full release cycle while this screen read "In sync" (capability
+// `background-upload`): the one surface that would have shown them an upload they never asked for was the surface
+// that hid it. If the counts are right, the arrow is already right; if they are wrong, an arrow the member never
+// asked for is the only signal anyone gets. The display must not assert a contract the system is not keeping.
 private fun syncHealth(progress: SyncProgress, download: DownloadProgress): SyncHealth {
     val upload = arrowOf(shown = progress.synced < progress.total, pulsing = progress.pending > 0)
     val downloadArrow = arrowOf(shown = download.downloaded < download.total, pulsing = download.inFlight > 0)

@@ -116,9 +116,8 @@ import kotlinx.coroutines.launch
  * anything else), then the services over these ports ([AppServices]), then the feature graph.
  *
  * No defaults: a port added here is added once, and every root fails to compile until it answers — the phone's, the
- * JVM's and the rig's alike. What used to ride here beside the ports — the services a root built, the build's
- * constants, the coordination lambdas, the main lane — is built by the composition itself, read from [BuildInfo], or
- * owned by the adapter that needs it (a platform-UI adapter reaches its own main thread).
+ * JVM's and the rig's alike. Nothing else rides here: services are built by the composition itself, build constants
+ * are read from [BuildInfo], and a main lane is owned by the adapter that needs it.
  */
 class AppPorts(
     /** The ports every process has exactly one of: crash reporter, log sinks, files, clock, build. */
@@ -195,10 +194,8 @@ class AppPorts(
 )
 
 /**
- * The composed app graph. Every property is `by lazy`, mirroring the composition root's previous
- * lazy web **byte-for-byte in construction timing**: nothing here resolves the device identity or
- * touches a platform store until the same first-use moment the root's own lazies did — the property
- * a locked background launch depends on.
+ * The composed app graph. Every property is `by lazy`: nothing here resolves the device identity or touches a
+ * platform store until its first use — the property a locked background launch depends on.
  */
 class AppCore internal constructor(
     internal val scope: CoroutineScope,
@@ -390,8 +387,7 @@ class AppCore internal constructor(
     }
 
     // The silent-push receiver for the download arm (capability `receiving-photos`); its active-event
-    // guard is the feature's rule. The app shell fans this out with the upload arm's receiver until
-    // the fan-out re-homes (step 8).
+    // guard is the feature's rule.
     val downloadPushReceiver: DownloadPushReceiver by lazy {
         DownloadPushReceiver(
             configSource = services.config,
@@ -515,8 +511,8 @@ class AppCore internal constructor(
             // join gate — passes here, so the album gather is started once the provision returns. It starts
             // HERE rather than inside `flow/Provision`: a flow may not detach work (law "A trigger flow never
             // outlives its own run"), and the gather must not hold up the join (capability `event-album`).
-            // Built HERE, not supplied by the shell: the world used to bind provision to a body of its own, so a
-            // join in the world never ran `flow/Provision`. Labelled `provisionEvent` so the flow's steps carry it.
+            // Built HERE, never supplied by a root, so every composition's join runs `flow/Provision`. Labelled
+            // `provisionEvent` so the flow's steps carry it.
             provision = { cfg ->
                 joinUnion.during(cfg.eventId) {
                     services.log.invocation(process.entryContext, "provisionEvent") { provisionFlow.run(cfg) }
@@ -541,12 +537,9 @@ class AppCore internal constructor(
     // The `GET /events/:id` fetch — the `EventDirectory` port effect the flows coordinate over, built
     // here because a flow may not touch a port directly (law "flow/ never references ports/").
     //
-    // It carries the SEALED outcome, via the same `toJoinLoad` mapping the join gate uses. This used to
-    // flatten to `Found?` with an `as?` cast, deliberately, so that no fetch result could ever be
-    // destructive — "offline", "parse failure", and "the event is gone" arrived as one indistinguishable
-    // `null`. That blindness is now replaced by something strictly stronger rather than merely removed:
-    // the rule requires a definitive `NotFound` AND the membership's own persisted deadline before it
-    // will tear anything down (capability `manage-membership`).
+    // It carries the SEALED outcome, via the same `toJoinLoad` mapping the join gate uses; no fetch result is
+    // destructive on its own — the rule requires a definitive `NotFound` AND the membership's own persisted
+    // deadline before it will tear anything down (capability `manage-membership`).
     private val fetchEventDetails: suspend (eventId: String) -> JoinLoad = { eventId ->
         backend.directory.fetch(eventId).toJoinLoad()
     }
@@ -708,7 +701,7 @@ class AppCore internal constructor(
     }
 
     // ── The OS-callback trigger flows (`docs/architecture.md`, "Rules in features, order in
-    // flows"; migration step 8). Each is built here — features referenced directly, port/platform
+    // flows"). Each is built here — features referenced directly, port/platform
     // touches injected from [ports] — and the shell entry points delegate to them. ────────────────
 
     // The foreground-gated status-counts poll (capability `sync-status`): started by the Foreground flow,
@@ -854,11 +847,11 @@ class AppCore internal constructor(
      * and run the upload **launch reconcile** (capability `background-upload`, "Launch reconciles by
      * comparison; only a join forces the repair").
      *
-     * The launch reconcile is explicit and the upload subscription skips the StateFlow's replayed value. It
-     * used to ride that replay — every UI launch fired a "permission change" that forced the extension's
-     * re-registration, wiping its in-flight jobs on every launch. Launch now compares instead.
+     * The launch reconcile is explicit and the upload subscription skips the StateFlow's replayed value: riding
+     * that replay would fire a "permission change" on every UI launch, forcing the extension's re-registration and
+     * wiping its in-flight jobs.
      *
-     * Deliberately an **explicit step, not `init`** (step 8 C3, restoring the pre-C2 timing): the app
+     * Deliberately an **explicit step, not `init`**: the app
      * shell invokes it from its host-assembly path — the only place the collectors ever installed — so
      * a cold background wake that merely touches [AppCore] runs **no** launch reconcile and installs no
      * collector. Call it once; each call installs a fresh set of collectors. The selection observer is not one of
