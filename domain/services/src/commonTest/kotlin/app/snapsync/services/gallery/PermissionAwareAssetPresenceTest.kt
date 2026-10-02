@@ -3,7 +3,6 @@ package app.snapsync.services.gallery
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetPresence
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.RESOURCE_META_CREATION_DATE
 import app.snapsync.model.Resource
 import app.snapsync.services.gallery.ImportedAssetPresence
 import kotlin.test.Test
@@ -30,16 +29,6 @@ class PermissionAwareAssetPresenceTest {
             queries++
             return localIds.associateWith { verdicts[it] ?: AssetPresence.ABSENT }
         }
-    }
-
-    private fun snapshotOf(vararg ids: String) = ids.map {
-        Resource(
-            "$it-primary.jpg",
-            AssetId(it),
-            "image/jpeg",
-            mapOf(RESOURCE_META_CREATION_DATE to "2026-06-01T00:00:00Z"),
-            Unit,
-        )
     }
 
     private fun source(

@@ -1,6 +1,5 @@
 package app.snapsync.model
 
-import co.touchlab.kermit.LogWriter
 import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
 import co.touchlab.kermit.StaticConfig
@@ -28,13 +27,6 @@ import kotlin.test.assertTrue
  */
 class InvocationTest {
 
-    private class Capturing : LogWriter() {
-        val lines: MutableList<Pair<Severity, String>> = mutableListOf()
-        override fun log(severity: Severity, message: String, tag: String, throwable: Throwable?) {
-            lines += severity to message
-        }
-    }
-
     /** Records the ambient-scope handshake; `enter` answers whether THIS call owns the scope. */
     private class RecordingScope(private val owns: Boolean = true) : EntryScope {
         val entered = mutableListOf<String>()
@@ -48,12 +40,12 @@ class InvocationTest {
         }
     }
 
-    private fun logger(writer: Capturing) =
+    private fun logger(writer: CapturingLogWriter) =
         Logger(StaticConfig(minSeverity = Severity.Verbose, logWriterList = listOf(writer)), "test")
 
     @Test
     fun `a successful call logs enter and exit at the chosen severity and returns the value`() {
-        val captured = Capturing()
+        val captured = CapturingLogWriter()
         val scope = RecordingScope()
 
         val value = logger(captured).invocation(
@@ -78,7 +70,7 @@ class InvocationTest {
     fun `an empty params and an empty result render no parentheses and no equals`() {
         // The call site controls verbosity: a blanket `toString()` of a large or expensive object is
         // exactly what these defaults exist to avoid, so the bare shapes have to stay bare.
-        val captured = Capturing()
+        val captured = CapturingLogWriter()
 
         logger(captured).invocation(RecordingScope(), "process") { }
 
@@ -89,7 +81,7 @@ class InvocationTest {
     @Test
     fun `a per-item entry point’s Debug severity carries through to both routine lines`() {
         // `Debug` is what keeps a large import from flushing the breadcrumb window and rolling the log.
-        val captured = Capturing()
+        val captured = CapturingLogWriter()
 
         logger(captured).invocation(RecordingScope(), "onAssetChanged", severity = Severity.Debug) { }
 
@@ -98,7 +90,7 @@ class InvocationTest {
 
     @Test
     fun `a throw is reported at Warn whatever severity the call site chose and is re-thrown unchanged`() {
-        val captured = Capturing()
+        val captured = CapturingLogWriter()
         val scope = RecordingScope()
         val boom = IllegalStateException("boom")
 
@@ -120,7 +112,7 @@ class InvocationTest {
         val scope = RecordingScope()
 
         assertFailsWith<IllegalStateException> {
-            logger(Capturing()).invocation(scope, "process") { error("boom") }
+            logger(CapturingLogWriter()).invocation(scope, "process") { error("boom") }
         }
 
         assertEquals(listOf(true), scope.exited)
@@ -132,7 +124,7 @@ class InvocationTest {
         // clear the outer call's prefix on the way out.
         val inner = RecordingScope(owns = false)
 
-        logger(Capturing()).invocation(inner, "inner") { }
+        logger(CapturingLogWriter()).invocation(inner, "inner") { }
 
         assertEquals(listOf(false), inner.exited)
     }

@@ -1,5 +1,6 @@
 package app.snapsync.feature.upload
 
+import app.snapsync.feature.support.CapturingLogWriter
 import app.snapsync.feature.support.TestLedger
 import app.snapsync.feature.support.testIdentity
 import app.snapsync.feature.support.unreadableIdentity
@@ -10,10 +11,7 @@ import app.snapsync.model.TerminalOutcome
 import app.snapsync.services.backend.DeviceFilesSource
 import app.snapsync.services.backend.DeviceListingShapeException
 import app.snapsync.model.StoredResource
-import co.touchlab.kermit.LogWriter
-import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
-import co.touchlab.kermit.loggerConfigInit
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -37,14 +35,6 @@ class StoredUploadSettleTest {
             calls++
             return result
         }
-    }
-
-    private class Recorder : LogWriter() {
-        val severities = mutableListOf<Severity>()
-        override fun log(severity: Severity, message: String, tag: String, throwable: Throwable?) {
-            severities += severity
-        }
-        fun logger() = Logger(loggerConfigInit(this), "StoredUploadSettleTest")
     }
 
     private fun listing(vararg keys: String) =
@@ -96,10 +86,10 @@ class StoredUploadSettleTest {
 
     @Test
     fun `a failed listing changes nothing and warns`() = runTest {
-        val recorder = Recorder()
+        val recorder = CapturingLogWriter()
         val ledger = ledgerHolding("A-primary.heic" to LedgerState.REQUESTED)
 
-        StoredUploadSettle(FakeFiles(Result.failure(RuntimeException("offline"))), ledger, identity, recorder.logger())
+        StoredUploadSettle(FakeFiles(Result.failure(RuntimeException("offline"))), ledger, identity, recorder.logger("StoredUploadSettleTest"))
             .settle()
 
         assertEquals(LedgerState.REQUESTED, ledger.get("A-primary.heic")?.state)
@@ -108,11 +98,11 @@ class StoredUploadSettleTest {
 
     @Test
     fun `a listing this build cannot read is an error`() = runTest {
-        val recorder = Recorder()
+        val recorder = CapturingLogWriter()
         val ledger = ledgerHolding("A-primary.heic" to LedgerState.REQUESTED)
         val files = FakeFiles(Result.failure(DeviceListingShapeException("shape")))
 
-        StoredUploadSettle(files, ledger, identity, recorder.logger()).settle()
+        StoredUploadSettle(files, ledger, identity, recorder.logger("StoredUploadSettleTest")).settle()
 
         assertEquals(LedgerState.REQUESTED, ledger.get("A-primary.heic")?.state)
         assertEquals(listOf(Severity.Error), recorder.severities)
@@ -120,13 +110,13 @@ class StoredUploadSettleTest {
 
     @Test
     fun `a listing that never answers times out and changes nothing`() = runTest {
-        val recorder = Recorder()
+        val recorder = CapturingLogWriter()
         val ledger = ledgerHolding("A-primary.heic" to LedgerState.REQUESTED)
         val hanging = object : DeviceFilesSource {
             override suspend fun list(deviceId: String): Result<List<StoredResource>> = awaitCancellation()
         }
 
-        StoredUploadSettle(hanging, ledger, identity, recorder.logger()).settle()
+        StoredUploadSettle(hanging, ledger, identity, recorder.logger("StoredUploadSettleTest")).settle()
 
         assertEquals(LedgerState.REQUESTED, ledger.get("A-primary.heic")?.state)
         assertEquals(listOf(Severity.Warn), recorder.severities)

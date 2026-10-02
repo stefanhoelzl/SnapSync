@@ -6,7 +6,6 @@ import app.snapsync.model.Candidate
 import app.snapsync.model.CandidateRead
 import app.snapsync.model.CaptureDate
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.RESOURCE_META_CREATION_DATE
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.selectionRulesFor
@@ -59,16 +58,6 @@ class PermissionAwareCandidateSourceTest {
     /** The candidates of a read expected to be readable — the assertion is part of each case's claim. */
     private suspend fun CandidateSource.readable(policy: SelectionPolicy): List<Candidate> =
         assertIs<CandidateRead.Readable>(candidates(policy), "expected a readable library").candidates
-
-    private fun snapshotOf(vararg ids: String) = ids.map {
-        Resource(
-            "$it-primary.jpg",
-            AssetId(it),
-            "image/jpeg",
-            mapOf(RESOURCE_META_CREATION_DATE to "2026-06-01T00:00:00Z"),
-            Unit,
-        )
-    }
 
     private fun source(
         permission: GalleryAccess,

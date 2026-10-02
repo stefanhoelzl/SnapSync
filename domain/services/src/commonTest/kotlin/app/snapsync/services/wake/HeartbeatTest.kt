@@ -1,15 +1,13 @@
 package app.snapsync.services.wake
 
+import app.snapsync.services.CapturingLogWriter
 import app.snapsync.model.ScheduleResult
 import app.snapsync.model.WakeCadence
 import app.snapsync.model.WakeId
 import app.snapsync.model.WakeTrigger
 import app.snapsync.ports.Wake
 import app.snapsync.ports.WakeHandlers
-import co.touchlab.kermit.LogWriter
-import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
-import co.touchlab.kermit.StaticConfig
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -48,12 +46,7 @@ class HeartbeatTest {
         }
     }
 
-    private class Capturing : LogWriter() {
-        val warnings = mutableListOf<String>()
-        override fun log(severity: Severity, message: String, tag: String, throwable: Throwable?) {
-            if (severity == Severity.Warn) warnings += message
-        }
-    }
+    private fun CapturingLogWriter.warnings() = lines.filter { it.first == Severity.Warn }.map { it.second }
 
     @Test
     fun `a busy heartbeat asks for a timed wake after a minute that needs the network`() {
@@ -88,10 +81,10 @@ class HeartbeatTest {
 
     @Test
     fun `a platform without a library-change wake is not a failure and watches nothing`() {
-        val captured = Capturing()
+        val captured = CapturingLogWriter()
         val wake = RecordingWake(supported = setOf(WakeId.Heartbeat))
-        assertFalse(Heartbeat(wake, Logger(StaticConfig(logWriterList = listOf(captured)), "test")).watchLibrary())
-        assertTrue(captured.warnings.isEmpty(), "an unsupported wake is said nothing about: ${captured.warnings}")
+        assertFalse(Heartbeat(wake, captured.logger()).watchLibrary())
+        assertTrue(captured.warnings().isEmpty(), "an unsupported wake is said nothing about: ${captured.warnings()}")
     }
 
     @Test
@@ -101,11 +94,11 @@ class HeartbeatTest {
 
     @Test
     fun `a refused wake is said out loud`() {
-        val captured = Capturing()
-        Heartbeat(RecordingWake(refuse = true), Logger(StaticConfig(logWriterList = listOf(captured)), "test")).arm(WakeCadence.BUSY)
+        val captured = CapturingLogWriter()
+        Heartbeat(RecordingWake(refuse = true), captured.logger()).arm(WakeCadence.BUSY)
         assertTrue(
-            captured.warnings.any { "refused" in it && "BGTaskSchedulerErrorDomain/1" in it },
-            "a refused heartbeat uploads only while the app is open; the line is the only evidence: ${captured.warnings}",
+            captured.warnings().any { "refused" in it && "BGTaskSchedulerErrorDomain/1" in it },
+            "a refused heartbeat uploads only while the app is open; the line is the only evidence: ${captured.warnings()}",
         )
     }
 

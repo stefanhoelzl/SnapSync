@@ -1,9 +1,7 @@
 package app.snapsync.services.version
 
-import co.touchlab.kermit.Logger
-import co.touchlab.kermit.LogWriter
+import app.snapsync.services.CapturingLogWriter
 import co.touchlab.kermit.Severity
-import co.touchlab.kermit.loggerConfigInit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -18,15 +16,6 @@ import app.snapsync.model.VersionRefusal
  * reaches crash reporting fires on the TRANSITION rather than on every refused request.
  */
 class AppVersionGateTest {
-
-    private class Recorder : LogWriter() {
-        val lines = mutableListOf<Pair<Severity, String>>()
-        override fun log(severity: Severity, message: String, tag: String, throwable: Throwable?) {
-            lines += severity to message
-        }
-        fun logger() = Logger(loggerConfigInit(this), "AppVersionGateTest")
-        fun errors() = lines.count { it.first >= Severity.Error }
-    }
 
     @Test
     fun a_fresh_gate_is_not_refused() {
@@ -62,30 +51,30 @@ class AppVersionGateTest {
     fun the_fault_is_reported_on_the_transition_only() {
         // A device parked on the update screen keeps calling and keeps being refused. Reporting each one
         // would file a crash-report event per request for a device that is simply out of date.
-        val recorder = Recorder()
-        val gate = AppVersionGate(recorder.logger())
+        val recorder = CapturingLogWriter()
+        val gate = AppVersionGate(recorder.logger("AppVersionGateTest"))
 
         gate.refused("0.4")
         gate.refused("0.4")
         gate.refused("0.4")
 
-        assertEquals(1, recorder.errors(), "one report per transition, not one per refused request")
+        assertEquals(1, recorder.severities.count { it >= Severity.Error }, "one report per transition, not one per refused request")
     }
 
     @Test
     fun a_changed_minimum_is_a_new_transition() {
-        val recorder = Recorder()
-        val gate = AppVersionGate(recorder.logger())
+        val recorder = CapturingLogWriter()
+        val gate = AppVersionGate(recorder.logger("AppVersionGateTest"))
         gate.refused("0.4")
         gate.refused("0.5") // the backend raised its floor while this build sat there
-        assertEquals(2, recorder.errors())
+        assertEquals(2, recorder.severities.count { it >= Severity.Error })
         assertEquals(VersionRefusal("0.5"), gate.refusal.value)
     }
 
     @Test
     fun clearing_an_already_clear_gate_says_nothing() {
-        val recorder = Recorder()
-        val gate = AppVersionGate(recorder.logger())
+        val recorder = CapturingLogWriter()
+        val gate = AppVersionGate(recorder.logger("AppVersionGateTest"))
         gate.served()
         gate.served()
         assertEquals(0, recorder.lines.size, "every served response would otherwise write a line")
