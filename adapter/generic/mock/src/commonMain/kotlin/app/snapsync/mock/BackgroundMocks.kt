@@ -27,7 +27,6 @@ class WakeMock(
     internal val pending = MutableStateFlow<Map<WakeId, WakeTrigger>>(emptyMap())
     internal var handlers: WakeHandlers? = null
     internal var scheduled = 0
-    internal var cancelled = 0
 
     fun port(): Wake = object : Wake {
         private val queue = InMemoryWake(pending, supported)
@@ -40,7 +39,6 @@ class WakeMock(
             queue.schedule(id, trigger).also { if (id == WakeId.Heartbeat && it == ScheduleResult.Scheduled) scheduled++ }
 
         override fun cancel(id: WakeId) {
-            if (id == WakeId.Heartbeat) cancelled++
             queue.cancel(id)
         }
     }
@@ -51,9 +49,6 @@ class WakeMock(
 class WakeOperator internal constructor(private val mock: WakeMock) {
     /** How many heartbeat requests the operating system accepted. */
     val heartbeatsScheduled: Int get() = mock.scheduled
-
-    /** How many heartbeat cancels reached it. */
-    val heartbeatsCancelled: Int get() = mock.cancelled
 
     /** The requests it holds right now. */
     val pendingWakes: Map<WakeId, WakeTrigger> get() = mock.pending.value

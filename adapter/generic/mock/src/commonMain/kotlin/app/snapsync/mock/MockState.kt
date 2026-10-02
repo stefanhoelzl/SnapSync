@@ -272,18 +272,16 @@ private class TriggerDto(
 }
 
 @Serializable
-private class WakeDto(val pending: List<TriggerDto>, val scheduled: Int, val cancelled: Int) {
+private class WakeDto(val pending: List<TriggerDto>, val scheduled: Int) {
     fun into(wakes: WakeMock) {
         wakes.pending.value = pending.associate { WakeId.valueOf(it.id) to it.trigger() }
         wakes.scheduled = scheduled
-        wakes.cancelled = cancelled
     }
 
     companion object {
         fun of(wakes: WakeMock) = WakeDto(
             pending = wakes.pending.value.map { (id, trigger) -> TriggerDto.of(id, trigger) },
             scheduled = wakes.scheduled,
-            cancelled = wakes.cancelled,
         )
     }
 }
@@ -446,7 +444,6 @@ private class BackendDto(
     val deviceConfigs: Map<String, Triple<String, String, String>>,
     val deviceConfigWrites: Map<String, Int>,
     val publishes: List<CountDto>,
-    val refused: List<CountDto>,
     val pushes: List<Triple<String, String, String>>,
     val challenges: List<String>,
     val minted: List<String>,
@@ -476,7 +473,6 @@ private class BackendDto(
         deviceConfigs.forEach { (device, config) -> state.deviceConfigs[device] = PushEndpoint(config.first, config.second, config.third) }
         state.deviceConfigWrites.putAll(deviceConfigWrites)
         publishes.forEach { state.publishes[it.event to it.device] = it.count }
-        refused.forEach { state.refused[it.event to it.device] = it.count }
         pushes.forEach { state.pushes += SentPush(it.first, it.second, it.third) }
         state.challenges.addAll(challenges)
         state.minted.addAll(minted)
@@ -501,7 +497,6 @@ private class BackendDto(
             deviceConfigs = state.deviceConfigs.mapValues { Triple(it.value.kind, it.value.token, it.value.env) },
             deviceConfigWrites = state.deviceConfigWrites.toMap(),
             publishes = state.publishes.map { CountDto(it.key.first, it.key.second, it.value) },
-            refused = state.refused.map { CountDto(it.key.first, it.key.second, it.value) },
             pushes = state.pushes.map { Triple(it.eventId, it.deviceId, it.token) },
             challenges = state.challenges.toList(),
             minted = state.minted.toList(),

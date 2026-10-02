@@ -112,12 +112,6 @@ class BackendOperator internal constructor(private val state: BackendState) {
     /** How many of the devices' reads of each event's details (`GET /events/:id`) reached the backend, by event. */
     val eventReads: Map<String, Int> get() = state.eventReads.toMap()
 
-    /** How many publishes it refused as older than the one it held. */
-    fun refusedPublishesOf(eventId: String, deviceId: String): Int = state.refused[eventId to deviceId] ?: 0
-
-    /** The manifest version it holds for this membership. */
-    fun manifestVersionOf(eventId: String, deviceId: String): Long? = state.memberships[eventId to deviceId]?.manifestVersion
-
     /** Whether [deviceId] has left [eventId]. */
     fun isDeparted(eventId: String, deviceId: String): Boolean = state.memberships[eventId to deviceId]?.departed == true
 
@@ -200,11 +194,6 @@ class BackendOperator internal constructor(private val state: BackendState) {
         state.storedFiles.remove(deviceId)
     }
 
-    /** The backend collecting one of [deviceId]'s objects, by key. */
-    fun collectBytes(deviceId: String, key: String) {
-        state.storedFiles[deviceId]?.removeAll { storedKey(it) == key }
-    }
-
     /**
      * An event registered before start dates existed — no start, which the backend synthesizes from its creation
      * time on read. Returns the id, minted as the backend mints one.
@@ -261,7 +250,6 @@ internal class BackendState(
     /** Reads of each event's union and of its details, as the backend served them — what a device cost it. */
     val unionReads = mutableMapOf<String, Int>()
     val eventReads = mutableMapOf<String, Int>()
-    val refused = mutableMapOf<Pair<String, String>, Int>()
     val pushes = mutableListOf<SentPush>()
     val challenges = mutableSetOf<String>()
     val minted = mutableSetOf<String>()
@@ -327,7 +315,6 @@ internal class BackendState(
         val incoming = manifest.version
         // An older snapshot landing last is answered, and changes nothing: one at least as new is already there.
         if (held != null && incoming != null && incoming < held) {
-            refused[eventId to deviceId] = (refused[eventId to deviceId] ?: 0) + 1
             return PublishOutcome.OLDER
         }
         val before = servable(eventId, deviceId)
