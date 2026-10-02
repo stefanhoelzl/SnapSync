@@ -10,9 +10,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * REPRODUCTION (branch `bug-pending-leaves-clobber`, not a fix): a pending-leave record that exists but cannot be READ
- * right now — while a write still lands — is read as empty, and the read-modify-write then replaces it. These tests
- * assert the INTENDED outcome ("an unreadable record is never overwritten") and fail today.
+ * A pending-leave record that exists but cannot be READ right now — while a write still lands — is never written over:
+ * that would drop every leave it holds, and each one's event would wait for its clock.
  *
  * The in-memory mock's `denied` lever refuses reads AND writes together (what data protection does), so it cannot
  * reach this state; [ReadFailing] fails only the reads, as a transient `Failed` (an I/O error) would.
@@ -38,8 +37,23 @@ class PendingLeavesReadFailureTest {
         files.failReads = true
         leaves.record("C")
         files.failReads = false
+        leaves.record("D")
 
-        assertEquals(setOf("A", "B", "C"), PendingLeaves(files, offline).outstanding())
+        assertEquals(setOf("A", "B", "C", "D"), PendingLeaves(files, offline).outstanding())
+    }
+
+    @Test
+    fun `a leave recorded while the record is unreadable is still sent`() = runTest {
+        val sent = mutableListOf<String>()
+        val leaves = PendingLeaves(files, { eventId -> sent += eventId; Result.success(Unit) })
+        files.failReads = true
+
+        leaves.record("C")
+        assertEquals(0, leaves.deliverAll())
+
+        assertEquals(listOf("C"), sent)
+        files.failReads = false
+        assertEquals(emptySet(), leaves.outstanding())
     }
 
     @Test
@@ -50,7 +64,7 @@ class PendingLeavesReadFailureTest {
         leaves.record("A")
         leaves.record("B")
 
-        leaves.deliverAll()
+        assertEquals(2, leaves.deliverAll())
         files.failReads = false
 
         assertEquals(setOf("A", "B"), PendingLeaves(files, offline).outstanding())
