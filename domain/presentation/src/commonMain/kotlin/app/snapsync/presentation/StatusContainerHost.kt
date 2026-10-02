@@ -14,6 +14,7 @@ import app.snapsync.model.Arrow
 import app.snapsync.model.ConfigDecodeResult
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
+import app.snapsync.model.JoinChoice
 import app.snapsync.model.JoinCommit
 import app.snapsync.model.RangeChoice
 import app.snapsync.model.EventLinkPayload
@@ -480,7 +481,7 @@ class StatusContainerHost(
          * terminal status behind, and the sheet would read it as this edit's outcome and close itself.
          */
         fun onRenameOpen() = intent {
-            if (renameFlow.value is RenameStatus.Succeeded || renameFlow.value is RenameStatus.Failed) commands.resetRename()
+            if (renameFlow.value.isTerminal) commands.resetRename()
             overlaysState.value = overlaysState.value.copy(renaming = true)
         }
 
@@ -801,15 +802,18 @@ class StatusContainerHost(
         // the link applied (the documented invented-UUID trap).
         if (load !is JoinLoad.Found) log("join gate: details load did not succeed for $eventId ($load)")
         val phase = when (load) {
-            // No seed-from-createdAt and no fallback-to-now any more: `startsAt` is ALWAYS present on a
-            // successful load (the backend synthesizes one for legacy markers, and the details source
-            // fails the load rather than invent one), so the default is simply the event's start. The
-            // first of the derivation's two points (the other is `onConfirmSwitch`, after the leave).
+            // `startsAt` is ALWAYS present on a successful load (the backend synthesizes one for legacy markers,
+            // and the details source fails the load rather than invent one). Loaded details always open the
+            // confirm surface; whether its confirm also raises the access dialog is read live
+            // ([asksAccessOnJoin]), so a switch whose leave has just cleared the config needs no re-derivation.
             // A closed (or finished) event is refused before any choice is offered (capability `join-event`).
             is JoinLoad.Found -> if (load.completion.closed) {
                 JoinPhase.Closed
             } else {
-                deriveLoadedPhase(EventDetails(load.name, load.startsAt, load.endsAt, load.deletesAt))
+                JoinPhase.Detailed(
+                    EventDetails(load.name, load.startsAt, load.endsAt, load.deletesAt),
+                    JoinPhase.Detailed.Step.Ready,
+                )
             }
             JoinLoad.NotFound -> JoinPhase.NotFound
             JoinLoad.Failed -> JoinPhase.LoadFailed
@@ -818,43 +822,26 @@ class StatusContainerHost(
         pending.update { if (it?.eventId == eventId) it.copy(phase = phase) else it }
     }
 
-    /**
-     * The gate's **loaded-phase derivation** (capability `join-event`): loaded details always open the
-     * confirm surface. Whether that confirm also raises the access dialog is not a phase — it is read live
-     * from the config and the permission ([asksAccessOnJoin]), so a switch whose leave has just cleared the
-     * config needs no re-derivation to learn it.
-     */
-    private fun deriveLoadedPhase(event: EventDetails): JoinPhase =
-        JoinPhase.Detailed(event, JoinPhase.Detailed.Step.Ready)
-
     private suspend fun commit() {
         val p = pending.value ?: return
-        // What is committed is what the reduction RESOLVED — the same value the surface rendered. The
-        // screen used to hand these back, which meant the clamping rules ran in a Composable and the
-        // committed range was only as correct as the render path that produced it.
-        val event = p.phase.details ?: return
-        val range = resolveRange(formState.value, event.startsAt, event.endsAt, null)
-        val cutoff = range.chosenFrom
-        val until = range.chosenUntil
-        val direction = range.direction
-        val saveToAlbum = formState.value.saveToAlbum
         // Only a loaded (Ready) or previously-failed (CommitFailed) surface can be confirmed; a
         // still-loading/blocked/committing phase ignores the action. Both carry a non-null name, startsAt,
         // endsAt AND deletesAt — so a commit can never reach `JoinEvent` without the floor, the ceiling,
         // and the retention deadline.
         val detailed = p.phase as? JoinPhase.Detailed ?: return
         if (detailed.step != JoinPhase.Detailed.Step.Ready && detailed.step != JoinPhase.Detailed.Step.CommitFailed) return
-        val (name, startsAt, endsAt, deletesAt) = detailed.event
-        pending.value = p.copy(phase = JoinPhase.Detailed(detailed.event, JoinPhase.Detailed.Step.Committing))
-        // A membership BEGINS here, so its surface state starts here — in one place every new membership passes
-        // through, a rejoin of the same event included (capability `sync-status`). A collector watching the
-        // config could miss that: it is a StateFlow, and a leave and a rejoin of one event can conflate into A → A.
-        reconfiguringState.value = Owned(null, SettingsSurface.Closed)
-        if (renameFlow.value is RenameStatus.Succeeded || renameFlow.value is RenameStatus.Failed) commands.resetRename()
+        val event = detailed.event
+        // What is committed is what the reduction RESOLVED — the same value the surface rendered.
+        val form = formState.value
+        val range = resolveRange(form, event.startsAt, event.endsAt, null)
+        val choice = JoinChoice(
+            p.eventId, event.name, event.startsAt, event.endsAt, event.deletesAt,
+            range.chosenFrom, range.chosenUntil, range.direction, form.saveToAlbum,
+        )
+        pending.value = p.copy(phase = JoinPhase.Detailed(event, JoinPhase.Detailed.Step.Committing))
+        beginMembership()
         val commit = try {
-            commands.commitJoin(
-                p.eventId, name, startsAt, endsAt, deletesAt, cutoff, until, direction, saveToAlbum,
-            )
+            commands.commitJoin(choice)
         } catch (cancelled: CancellationException) {
             // Cancellation is teardown, not failure: rethrow before the repair below, or a cancelled
             // commit would rewrite the phase on its way out (the `StatusCountsPoller` shape).
@@ -892,6 +879,16 @@ class StatusContainerHost(
             // A CLOSED event is final too, and carries no event facts worth keeping: its own phase, no Retry.
             pending.value = p.copy(phase = failedPhase(commit, detailed.event))
         }
+    }
+
+    /**
+     * A membership BEGINS here, so its surface state starts here — in one place every new membership passes
+     * through, a rejoin of the same event included (capability `sync-status`). A collector watching the config
+     * could miss that: it is a StateFlow, and a leave and a rejoin of one event can conflate into A → A.
+     */
+    private suspend fun beginMembership() {
+        reconfiguringState.value = Owned(null, SettingsSurface.Closed)
+        if (renameFlow.value.isTerminal) commands.resetRename()
     }
 
     /**
@@ -937,14 +934,9 @@ class StatusContainerHost(
         // match their seeds, but a headless launch should do the minimal, side-effect-free thing, and
         // the link's explicit `saveToAlbum` already exercises album placement without a tap.
         val saveToAlbum = explicitSaveToAlbum ?: false
-        // As in `commit`: a membership begins here, so its surface state starts here — in one place every new membership passes
-        // through, a rejoin of the same event included (capability `sync-status`). A collector watching the
-        // config could miss that: it is a StateFlow, and a leave and a rejoin of one event can conflate into A → A.
-        reconfiguringState.value = Owned(null, SettingsSurface.Closed)
-        if (renameFlow.value is RenameStatus.Succeeded || renameFlow.value is RenameStatus.Failed) commands.resetRename()
+        beginMembership()
         val commit = commands.commitJoin(
-            eventId, load.name, load.startsAt, load.endsAt, load.deletesAt, cutoff, until, direction,
-            saveToAlbum,
+            JoinChoice(eventId, load.name, load.startsAt, load.endsAt, load.deletesAt, cutoff, until, direction, saveToAlbum),
         )
         // The headless path has no surface to park on, so it names the reason in the log instead — the
         // one channel it has. `full` and `failed` are as different here as on the screen: a run that
@@ -967,9 +959,6 @@ private const val TRANSIENT_ERROR_MILLIS = 4_000L
 
 /** The transient invalid-link copy (the screen renders [StatusContainerHost.transientError] verbatim). */
 private const val INVALID_LINK_MESSAGE = "That QR code wasn't valid."
-
-/** The loaded/committing name carried by a phase, if any (for re-issuing the commit on confirm/retry). */
-private fun JoinPhase.name(): String? = details?.name
 
 // Config presence is the top rung: without a connected event there is nothing to share, so the create
 // layer replaces everything regardless of permission or snapshot. Once config is present the screen is
@@ -1304,3 +1293,6 @@ private fun failedPhase(commit: JoinCommit, event: EventDetails): JoinPhase = wh
     JoinCommit.Full -> JoinPhase.Detailed(event, JoinPhase.Detailed.Step.EventFull)
     else -> JoinPhase.Detailed(event, JoinPhase.Detailed.Step.CommitFailed)
 }
+
+/** A rename outcome the screen has yet to clear — a fresh surface must not read it as its own. */
+private val RenameStatus.isTerminal: Boolean get() = this is RenameStatus.Succeeded || this is RenameStatus.Failed

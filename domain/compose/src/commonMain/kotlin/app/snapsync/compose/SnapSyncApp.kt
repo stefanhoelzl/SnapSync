@@ -930,20 +930,12 @@ class AppCore internal constructor(
             // provision. The outcome is NAMED rather than reduced to a Boolean, because capacity and a
             // transient failure need different screens: one offers a Retry that may work, the other must
             // not offer one at all. The same-event no-op is a success.
-            commitJoin = {
-                eventId, name, startsAt, endsAt, deletesAt, minPhotoDate, maxPhotoDate, direction,
-                saveToAlbum,
-                ->
+            commitJoin = { choice ->
                 awaitingOnCoreLane(
                     "tap.commitJoin",
-                    params = "eventId=$eventId",
+                    params = "eventId=${choice.eventId}",
                     result = { commit: JoinCommit -> "commit=$commit" },
-                ) {
-                    joinEvent.join(
-                        eventId, name, startsAt, endsAt, deletesAt, minPhotoDate, maxPhotoDate,
-                        direction, saveToAlbum,
-                    ).toCommit()
-                }
+                ) { joinEvent.join(choice).toCommit() }
             },
             // Share is pure platform (a system sheet over the top view controller). Decorated like the
             // rest: presenting the sheet is still a tap, and an unattributed line is the thing this

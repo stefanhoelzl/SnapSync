@@ -7,11 +7,11 @@ import kotlinx.datetime.LocalDateTime
  *
  * These are the SCREEN's vocabulary and deliberately not the domain's. `model/UserCommands` exists and
  * was considered: it holds eleven commands where this holds eighteen, and the shapes do not correspond.
- * `UserCommands.commitJoin` takes nine arguments including `eventId` and `name`, while [onConfirmJoin]
- * takes four — the container supplies the event's identity from state. [onCancelJoin], [onRetryLoad],
- * [onRenameStatusConsumed] and [onConfirmSwitch] have no domain counterpart at all; they are screen-local
- * flow control. Passing `UserCommands` in would move that adaptation out of the container and into the
- * screen, which would then have to know event ids and domain argument order.
+ * `UserCommands.commitJoin` takes a whole `JoinChoice` including `eventId` and `name`, while
+ * [onConfirmJoin] takes none of them — the container supplies the event's identity from state.
+ * [onCancelJoin], [onRetryLoad], [onRenameStatusConsumed] and [onConfirmSwitch] have no domain counterpart at all;
+ * they are screen-local flow control. Passing `UserCommands` in would move that adaptation out of the
+ * container and into the screen, which would then have to know event ids and domain argument order.
  *
  * NESTED, NOT FLAT. This held all eighteen callbacks as one list, which is where bundling stops helping:
  * a bundle of a bundle has as many fields as it has GROUPS, and the groups here are the surfaces — the

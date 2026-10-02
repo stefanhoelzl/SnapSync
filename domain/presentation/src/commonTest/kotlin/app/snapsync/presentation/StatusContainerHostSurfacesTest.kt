@@ -123,8 +123,8 @@ class StatusContainerHostSurfacesTest {
             rename = { id, name -> spy.renames += id to name },
             resetRename = { spy.renameResets++ },
             sendDiagnostics = sendDiagnostics,
-            commitJoin = { id, _, _, _, _, _, _, _, _ ->
-                onCommitJoin(id)
+            commitJoin = { join ->
+                onCommitJoin(join.eventId)
                 app.snapsync.model.JoinCommit.Committed
             },
         ),

@@ -20,17 +20,7 @@ internal fun counting(count: suspend (CaptureCutoff, CaptureCeiling?) -> Int?): 
 internal fun testCommands(
     leave: suspend () -> Unit = {},
     create: (name: String, startsAt: app.snapsync.model.EventStart, endsAt: app.snapsync.model.EventEnd) -> Unit = { _, _, _ -> },
-    commitJoin: suspend (
-        eventId: String,
-        name: String,
-        startsAt: app.snapsync.model.EventStart,
-        endsAt: app.snapsync.model.EventEnd,
-        deletesAt: app.snapsync.model.DeletesAt,
-        minPhotoDate: CaptureCutoff,
-        maxPhotoDate: CaptureCeiling,
-        direction: app.snapsync.model.Direction,
-        saveToAlbum: Boolean,
-    ) -> app.snapsync.model.JoinCommit = { _, _, _, _, _, _, _, _, _ -> app.snapsync.model.JoinCommit.Failed },
+    commitJoin: suspend (app.snapsync.model.JoinChoice) -> app.snapsync.model.JoinCommit = { _ -> app.snapsync.model.JoinCommit.Failed },
     share: (String) -> Unit = {},
     requestAccess: () -> Unit = {},
     openSettings: () -> Unit = {},

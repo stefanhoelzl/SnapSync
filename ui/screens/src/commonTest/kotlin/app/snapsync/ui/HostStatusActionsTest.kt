@@ -139,8 +139,8 @@ class HostStatusActionsTest {
                     this.config.value = null
                 },
                 create = { name, _, _ -> record("create:$name") },
-                commitJoin = { eventId, _, _, _, _, _, _, direction, album ->
-                    record("commitJoin:$eventId:$direction:$album")
+                commitJoin = { join ->
+                    record("commitJoin:${join.eventId}:${join.direction}:${join.saveToAlbum}")
                     JoinCommit.Failed
                 },
                 share = { record("share:$it") },

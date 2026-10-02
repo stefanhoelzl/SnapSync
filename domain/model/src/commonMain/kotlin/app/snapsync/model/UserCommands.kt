@@ -1,6 +1,30 @@
 package app.snapsync.model
 
 /**
+ * What a join commit did (capability `join-event`).
+ *
+ * A named outcome rather than a Boolean, because the two ways to fail need DIFFERENT screens and a
+ * Boolean cannot carry the difference. [Failed] is transient — the network, the backend, the moment —
+ * and the surface it produces offers a Retry that genuinely may work. [Full] is not: the event is at
+ * capacity, retrying fails identically, and a Retry button there is an invitation to press it forever.
+ * Collapsing them left a member tapping Retry against a wall with nothing telling them what the wall
+ * was.
+ */
+enum class JoinCommit {
+    /** The membership is committed (a re-join of the same event counts — it is already committed). */
+    Committed,
+
+    /** The event is at capacity; no retry can change that. */
+    Full,
+
+    /** The event has closed (capability `event-lifetime`); no retry can change that either. */
+    Closed,
+
+    /** The commit did not land, for a reason that may not hold next time. */
+    Failed,
+}
+
+/**
  * The **user-tap command bundle** (`docs/architecture.md`, "Commands cross one door"): the
  * commands the status screen can fire, so every user tap crosses the same door the OS-callback
  * triggers do. Seated in `model/` (migration step 9): the bundle is pure vocabulary — a record of
@@ -66,44 +90,10 @@ package app.snapsync.model
  *   Present on every build: where the report goes is [UiState.reportDestination], which the sheet states, so
  *   the affordance never suggests a destination the build does not have.
  */
-/**
- * What a join commit did (capability `join-event`).
- *
- * A named outcome rather than a Boolean, because the two ways to fail need DIFFERENT screens and a
- * Boolean cannot carry the difference. [Failed] is transient — the network, the backend, the moment —
- * and the surface it produces offers a Retry that genuinely may work. [Full] is not: the event is at
- * capacity, retrying fails identically, and a Retry button there is an invitation to press it forever.
- * Collapsing them left a member tapping Retry against a wall with nothing telling them what the wall
- * was.
- */
-enum class JoinCommit {
-    /** The membership is committed (a re-join of the same event counts — it is already committed). */
-    Committed,
-
-    /** The event is at capacity; no retry can change that. */
-    Full,
-
-    /** The event has closed (capability `event-lifetime`); no retry can change that either. */
-    Closed,
-
-    /** The commit did not land, for a reason that may not hold next time. */
-    Failed,
-}
-
 class UserCommands(
     val leave: suspend () -> Unit,
     val create: (name: String, startsAt: EventStart, endsAt: EventEnd) -> Unit,
-    val commitJoin: suspend (
-        eventId: String,
-        name: String,
-        startsAt: EventStart,
-        endsAt: EventEnd,
-        deletesAt: DeletesAt,
-        minPhotoDate: CaptureCutoff,
-        maxPhotoDate: CaptureCeiling,
-        direction: Direction,
-        saveToAlbum: Boolean,
-    ) -> JoinCommit,
+    val commitJoin: suspend (JoinChoice) -> JoinCommit,
     val share: (String) -> Unit,
     val requestAccess: () -> Unit,
     val openSettings: () -> Unit,
