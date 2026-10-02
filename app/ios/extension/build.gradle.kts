@@ -1,5 +1,9 @@
+import app.snapsync.buildlogic.rigEnabled
+
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
+    // The rig switch, `rigEnabled` (`-Psnapsync.rig=true`).
+    id("snapsync.rig")
 }
 
 kotlin {
@@ -34,7 +38,6 @@ kotlin {
     // the place of a cycle. Exactly one is on the compile path, so a production extension carries no route to a
     // contract run — and the rig's wrapper reaches only `:adapter:ios:ext-safe`'s rig source set, which that
     // module compiles under the same property.
-    val rigEnabled = providers.gradleProperty("snapsync.rig").map(String::toBoolean).getOrElse(false)
 
     sourceSets {
         iosMain {

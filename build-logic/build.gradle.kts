@@ -37,5 +37,13 @@ gradlePlugin {
             id = "snapsync.simulator-test-output"
             implementationClass = "app.snapsync.buildlogic.SimulatorTestOutputPlugin"
         }
+        register("rig") {
+            id = "snapsync.rig"
+            implementationClass = "app.snapsync.buildlogic.RigPlugin"
+        }
+        register("iosRigSources") {
+            id = "snapsync.ios-rig-sources"
+            implementationClass = "app.snapsync.buildlogic.IosRigSourcesPlugin"
+        }
     }
 }
