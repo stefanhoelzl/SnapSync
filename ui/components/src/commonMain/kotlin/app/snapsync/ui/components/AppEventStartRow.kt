@@ -8,19 +8,12 @@ import kotlinx.datetime.minus
 
 
 /**
- * The design system's human rendering of a wall-clock instant — `14 Jul 2026, 18:00`.
- *
- * Public because a screen sometimes needs to state a date in prose
- * (the Share section's "Shared from …" value), and a screen must never re-derive the app's date format.
- */
-fun appDateTimeLabel(value: LocalDateTime): String = formatStart(value)
-
-/**
  * The design system's human rendering of a DAY, with no time of day — `14 Jul 2026`.
  *
- * Public for the same reason as [appDateTimeLabel], and separate from it because some statements are
- * about a day rather than an instant: the join gate's retention line ("Shared photos are deleted on …",
- * capability `event-lifetime`) would read as false precision with a minute attached.
+ * Public because a screen sometimes needs to state a day in prose, and a screen must never re-derive the app's
+ * date format. A day rather than an instant because some statements are about one: the join gate's retention
+ * line ("Shared photos are deleted on …", capability `event-lifetime`) would read as false precision with a
+ * minute attached.
  */
 fun appDateLabel(value: LocalDateTime): String =
     "${value.day} ${monthAbbrev(value.month.ordinal)} ${value.year}"
