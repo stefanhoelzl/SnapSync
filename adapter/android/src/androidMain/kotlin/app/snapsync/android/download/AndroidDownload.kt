@@ -46,6 +46,12 @@ import kotlinx.coroutines.withTimeoutOrNull
  *   staging tolerates a repeat.
  * - **The bytes received are the file's**, not the row's count: a rescheduled running download can end SUCCESSFUL
  *   naming an empty file ([FinishedRow.facts]), and only the owner's length check stops it being staged.
+ * - **A raced row is fetched again.** The same reschedule can leave the row naming a file of full length whose tail
+ *   was never written (each thread preallocates the whole body before it notices it was stopped), which no length
+ *   check sees. Its trace is a twin: the race is the only way one destination gets a second file ([twinsOf]). A
+ *   finished row with one is delivered only when the two files are byte-identical — both threads wrote the whole body —
+ *   and otherwise restarted here, under the same tag, up to [MAX_RESTARTS] times ([restart]); the owner sees one
+ *   transfer that took longer, not a failure that waits for its next reconcile. Past the cap it fails.
  * - **A 403 is final** (an expired presigned link): the row fails, is reported through `onCompleted` with its reason,
  *   and the next reconcile plans the resource with a fresh link.
  * - **[cancelAll]** removes every row; DownloadManager broadcasts nothing for a removal, so each is reported here.
@@ -70,13 +76,7 @@ class AndroidDownload(
     }
 
     override fun start(url: String, tag: String): StartResult = runCatchingCancellable {
-        val request = DownloadManager.Request(Uri.parse(url))
-            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_HIDDEN)
-            .setDestinationInExternalFilesDir(appContext, DIRECTORY, UUID.randomUUID().toString())
-            .setAllowedOverMetered(true)
-            .setAllowedOverRoaming(true)
-            .setDescription(tag)
-        manager.enqueue(request)
+        manager.enqueue(request(url, tag, restarts = 0))
     }.fold(
         onSuccess = { StartResult.Started },
         onFailure = {
@@ -84,6 +84,16 @@ class AndroidDownload(
             StartResult.NotStarted
         },
     )
+
+    /** [url] into a fresh destination, tagged [tag]; the title carries how often the transfer was [restart]ed. */
+    private fun request(url: String, tag: String, restarts: Int): DownloadManager.Request =
+        DownloadManager.Request(Uri.parse(url))
+            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_HIDDEN)
+            .setDestinationInExternalFilesDir(appContext, DIRECTORY, UUID.randomUUID().toString())
+            .setAllowedOverMetered(true)
+            .setAllowedOverRoaming(true)
+            .setDescription(tag)
+            .setTitle("$RESTARTS_TITLE$restarts")
 
     override suspend fun cancelAll() {
         val cancelled = synchronized(lock) {
@@ -126,11 +136,55 @@ class AndroidDownload(
                 handlers.onCompleted(tag, "DownloadManager reported success with no file")
                 return
             }
-            handlers.onFinished(tag, facts(File(path).length()), path)
+            val file = File(path)
+            val twins = twinsOf(file)
+            val raced = file.name != file.name.take(UUID_LENGTH) || twins.isNotEmpty()
+            val trusted = !raced || twins.isNotEmpty() && twins.all { it.readBytes().contentEquals(file.readBytes()) }
+            // The stopped thread leaves its file behind; the row's own goes with the row.
+            twins.forEach { it.delete() }
+            if (!trusted) {
+                restart(handlers)
+                return
+            }
+            handlers.onFinished(tag, facts(file.length()), path)
             handlers.onCompleted(tag, null)
         } else {
             handlers.onCompleted(tag, "download failed (reason $reason)")
         }
+    }
+
+    /**
+     * The files beside [file] that its row's other thread claimed. Every destination is a fresh UUID ([start]), and the
+     * provider claims `<uuid>-N` only when `<uuid>` already exists — which, for a fresh UUID, only the row's other thread
+     * makes. So a row named `-N`, or one beside a twin, was raced, whichever file it names. Whenever the row can name a
+     * file its successful thread did not write, both files exist by the time it reads SUCCESSFUL: that thread wrote into
+     * the other's file, which had to be claimed first. A twin the stopped thread deletes (it does on an error status) is
+     * gone with the row's file truncated to empty, which [FinishedRow.facts] reports short.
+     */
+    private fun twinsOf(file: File): List<File> {
+        val destination = file.name.take(UUID_LENGTH)
+        return file.parentFile?.listFiles { it.name.startsWith(destination) && it.name != file.name }.orEmpty().toList()
+    }
+
+    /**
+     * Fetch a raced row's [FinishedRow.url] again into a fresh destination under the same tag, so the owner's transfer
+     * stays in flight; the raced row is removed by the caller. Past [MAX_RESTARTS], or when DownloadManager refuses the
+     * request, the transfer fails and the next reconcile plans it again.
+     */
+    private fun FinishedRow.restart(handlers: DownloadHandlers) {
+        val url = url
+        if (url == null || restarts >= MAX_RESTARTS) {
+            log.w { "$tag: DownloadManager ran the transfer twice, $restarts restart(s) already; refusing its file" }
+            handlers.onCompleted(tag, "DownloadManager ran the transfer twice; its file cannot be trusted")
+            return
+        }
+        runCatchingCancellable { manager.enqueue(request(url, tag, restarts + 1)) }.fold(
+            onSuccess = { log.w { "$tag: DownloadManager ran the transfer twice; fetching it again (${restarts + 1})" } },
+            onFailure = {
+                log.w(it) { "$tag: DownloadManager refused the restart" }
+                handlers.onCompleted(tag, "DownloadManager ran the transfer twice and refused its restart")
+            },
+        )
     }
 
     /** Each of this app's rows ([id]'s alone when given), mapped by [read]. DownloadManager answers only this app's. */
@@ -152,6 +206,8 @@ class AndroidDownload(
             localPath = string(DownloadManager.COLUMN_LOCAL_URI)?.let { Uri.parse(it).path },
             total = long(DownloadManager.COLUMN_TOTAL_SIZE_BYTES),
             received = long(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR),
+            url = string(DownloadManager.COLUMN_URI),
+            restarts = string(DownloadManager.COLUMN_TITLE)?.removePrefix(RESTARTS_TITLE)?.toIntOrNull() ?: 0,
         )
     }
 
@@ -163,6 +219,8 @@ class AndroidDownload(
         val localPath: String?,
         val total: Long,
         val received: Long,
+        val url: String?,
+        val restarts: Int,
     ) {
         /**
          * The facts of a successful row whose file holds [onDisk] bytes. The bytes received are the FILE's, never the
@@ -180,6 +238,15 @@ class AndroidDownload(
         /** The subdirectory of the app's external files dir the transfers land in. */
         const val DIRECTORY = "downloads"
         const val HTTP_OK = 200
+
+        /** The length of a destination's name: a UUID's canonical form. */
+        const val UUID_LENGTH = 36
+
+        /** How often a raced transfer is fetched again before it fails. */
+        const val MAX_RESTARTS = 3
+
+        /** The title prefix that counts a row's restarts; the title is the one other field DownloadManager keeps. */
+        const val RESTARTS_TITLE = "restarts:"
 
         /** The adapter the process's composition listened on last; a completion broadcast waits for one. */
         val registration = MutableStateFlow<AndroidDownload?>(null)

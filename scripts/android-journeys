@@ -55,6 +55,13 @@ setsid bash -c 'cd api && exec deno task dev:local' > "$OUT/backend.log" 2>&1 &
 BACKEND_PID=$!
 
 "$ADB" wait-for-device
+# Boot finished AND its broadcasts delivered. DownloadManager's own BOOT_COMPLETED pass reschedules every row it holds,
+# and a row running when it does is run twice at once: a journey started before that pass downloads through the race
+# AndroidDownload has to repair, not the path a member's phone takes (CI run 37005952143). The device tests wait the same.
+timeout 300 bash -c "until [ \"\$('$ADB' shell getprop sys.boot_completed | tr -d '\r')\" = 1 ]; do sleep 2; done" \
+    || fail "the device never finished booting"
+timeout 300 "$ADB" shell am wait-for-broadcast-idle >/dev/null || fail "the device's broadcasts never went idle"
+stage "device: booted, broadcasts idle"
 "$ADB" logcat -c
 "$ADB" uninstall app.snapsync >/dev/null 2>&1
 "$ADB" install -r "$APK" >/dev/null || fail "install $APK"
