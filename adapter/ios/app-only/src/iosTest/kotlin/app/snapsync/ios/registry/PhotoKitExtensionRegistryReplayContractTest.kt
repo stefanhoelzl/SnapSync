@@ -7,11 +7,10 @@ import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
-import app.snapsync.contracts.Recording
-import app.snapsync.contracts.Replayer
 import app.snapsync.contracts.ExtensionRegistryContract
 import app.snapsync.contracts.ExtensionRegistryState
 import app.snapsync.contracts.recordingName
+import app.snapsync.contracts.replayerFor
 import app.snapsync.contracts.verify
 import app.snapsync.model.GalleryAccess
 import app.snapsync.ports.ExtensionRegistry
@@ -27,15 +26,10 @@ import kotlin.test.Test
  */
 class PhotoKitExtensionRegistryReplayContractTest {
 
-    private fun replay(grant: GalleryAccess, state: ExtensionRegistryState, clauseId: String): Entered<ExtensionRegistry> {
-        val name = recordingName(ExtensionRegistryContract.name, Host.IOS_DEVICE_APP, grant)
-        val tape = RECORDINGS[name]?.let(Recording::parse)
-            ?: return Entered.Unreachable("no recording $name.rec — record it on a device over the rig")
-        val block = tape.blocks[clauseId]
-            ?: return Entered.Unreachable("$name.rec holds no block for $clauseId — re-record")
-        val replayer = Replayer(clauseId, block)
-        return registryInState(ReplayingRegistrationApi(replayer), state, afterDispose = replayer::assertExhausted)
-    }
+    private fun replay(grant: GalleryAccess, state: ExtensionRegistryState, clauseId: String): Entered<ExtensionRegistry> =
+        replayerFor(RECORDINGS, recordingName(ExtensionRegistryContract.name, Host.IOS_DEVICE_APP, grant), clauseId) { replayer ->
+            registryInState(ReplayingRegistrationApi(replayer), state, afterDispose = replayer::assertExhausted)
+        }
 
     private val granted = object : Binding<ExtensionRegistryState, ExtensionRegistry> {
         override val host = Host.IOS_DEVICE_APP

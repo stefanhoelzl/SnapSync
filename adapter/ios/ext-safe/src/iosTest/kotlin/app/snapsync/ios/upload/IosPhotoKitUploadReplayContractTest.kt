@@ -4,12 +4,11 @@ import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
-import app.snapsync.contracts.Recording
-import app.snapsync.contracts.Replayer
 import app.snapsync.contracts.UploadContract
 import app.snapsync.contracts.UploadState
 import app.snapsync.contracts.UploadUnderTest
 import app.snapsync.contracts.recordingName
+import app.snapsync.contracts.replayerFor
 import app.snapsync.contracts.verify
 import app.snapsync.keychain.contract.RECORDINGS
 import kotlin.test.Test
@@ -28,7 +27,6 @@ import kotlin.test.Test
 class IosPhotoKitUploadReplayContractTest {
 
     private val name = recordingName(UploadContract.name, Host.IOS_DEVICE_PHOTOKIT_EXT, null)
-    private val recording = RECORDINGS[name]?.let(Recording::parse)
 
     private val binding = object : Binding<UploadState, UploadUnderTest> {
         override val host = Host.IOS_DEVICE_PHOTOKIT_EXT
@@ -37,18 +35,17 @@ class IosPhotoKitUploadReplayContractTest {
 
         override fun create(state: UploadState, clauseId: String): Entered<UploadUnderTest> {
             if (state !in reaches) return Entered.Unreachable(EXTENSION_ONLY_PRESENTED)
-            val tape = recording ?: return Entered.Unreachable("no recording $name.rec — record it inside the extension over the rig")
-            val block = tape.blocks[clauseId] ?: return Entered.Unreachable("$name.rec holds no block for $clauseId — re-record")
-            val replayer = Replayer(clauseId, block)
-            // The preparation the device made across operating-system calls, made again here in one go, in order.
-            for (call in 1 until callsFor(state)) prepareCall(state, clauseId, call, ReplayingUploadJobApi(replayer), ReplayPhoto)
-            return photoKitUploadInState(
-                state = state,
-                api = ReplayingUploadJobApi(replayer),
-                objects = replayingFixtureObjects(replayer),
-                photo = ReplayPhoto,
-                afterDispose = replayer::assertExhausted,
-            )
+            return replayerFor(RECORDINGS, name, clauseId, recordedWhere = "inside the extension") { replayer ->
+                // The preparation the device made across operating-system calls, made again here in one go, in order.
+                for (call in 1 until callsFor(state)) prepareCall(state, clauseId, call, ReplayingUploadJobApi(replayer), ReplayPhoto)
+                photoKitUploadInState(
+                    state = state,
+                    api = ReplayingUploadJobApi(replayer),
+                    objects = replayingFixtureObjects(replayer),
+                    photo = ReplayPhoto,
+                    afterDispose = replayer::assertExhausted,
+                )
+            }
         }
     }
 

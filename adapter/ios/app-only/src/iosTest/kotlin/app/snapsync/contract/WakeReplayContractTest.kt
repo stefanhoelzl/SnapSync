@@ -4,11 +4,10 @@ import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
-import app.snapsync.contracts.Recording
-import app.snapsync.contracts.Replayer
 import app.snapsync.contracts.ScheduledWakes
 import app.snapsync.contracts.WakeContract
 import app.snapsync.contracts.WakeState
+import app.snapsync.contracts.replayerFor
 import app.snapsync.contracts.verify
 import kotlin.test.Test
 
@@ -23,20 +22,15 @@ import kotlin.test.Test
  */
 class WakeReplayContractTest {
 
-    private val recording = RECORDINGS[RECORDING]?.let(Recording::parse)
-
     private val binding = object : Binding<WakeState, ScheduledWakes> {
         override val host = Host.IOS_DEVICE_APP
         override val kind = BindingKind.Replay
         override val reaches = setOf(WakeState.EMPTY)
 
         override fun create(state: WakeState, clauseId: String): Entered<ScheduledWakes> {
-            val tape = recording
-                ?: return Entered.Unreachable("no recording $RECORDING.rec — record it on a device over the rig")
-            val block = tape.blocks[clauseId]
-                ?: return Entered.Unreachable("$RECORDING.rec holds no block for $clauseId — re-record")
-            val replayer = Replayer(clauseId, block)
-            return schedulerInState(ReplayingBackgroundTaskApi(replayer), afterDispose = replayer::assertExhausted)
+            return replayerFor(RECORDINGS, RECORDING, clauseId) { replayer ->
+                schedulerInState(ReplayingBackgroundTaskApi(replayer), afterDispose = replayer::assertExhausted)
+            }
         }
     }
 
