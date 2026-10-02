@@ -1,5 +1,6 @@
 package app.snapsync.config
 
+import app.snapsync.logging.appBuildVersion
 import app.snapsync.logging.appMarketingVersion
 import app.snapsync.logging.deviceDiagnosticEnvironment
 import app.snapsync.model.DiagnosticEnvironment
@@ -35,3 +36,18 @@ class IosBuildInfo(
         deviceDiagnosticEnvironment(uploadersCarried(osSupportsOsDrivenUpload))
     }
 }
+
+/**
+ * An iOS process's boot banner (capability `privacy-security`, D5), the same shape in the app and the upload extension:
+ *
+ * 1. the process and its build version, so a reader who concatenates the app's and the extension's files can tell
+ *    runs apart;
+ * 2. [processLines], what only this process states (the extension: where its log is going);
+ * 3. the BAKED backend this build talks to. It names the one fact that makes an otherwise-silent failure legible: point
+ *    a build at a different backend without a device reset and the ledger still says COMPLETED, so the device uploads
+ *    nothing — no error, no failed request. Read beside the cycle's own `enumeration: N seen, X new, Y
+ *    already-uploaded`, a changed host beside an unchanged ledger names the cause immediately.
+ */
+fun iosBootLines(process: String, processLines: List<String> = emptyList()): List<String> =
+    listOf("=== $process process start build=${appBuildVersion()} ===") + processLines +
+        "[boot] upload base = ${bakedUploadBase()}"

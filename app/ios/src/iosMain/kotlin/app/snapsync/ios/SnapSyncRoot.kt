@@ -35,6 +35,7 @@ import app.snapsync.databases.IosDatabases
 import app.snapsync.background.IosBackgroundTime
 import app.snapsync.background.IosWake
 import app.snapsync.config.IosBuildInfo
+import app.snapsync.config.iosBootLines
 import app.snapsync.config.bakedUploadBase
 import app.snapsync.services.preferences.removeOrphanedJoinMarker
 import app.snapsync.model.PlatformEntry
@@ -43,7 +44,6 @@ import app.snapsync.logging.appLogDestination
 import app.snapsync.sentry.SentryCrashReporter
 import app.snapsync.compose.ProcessPorts
 import app.snapsync.compose.ProcessServices
-import app.snapsync.logging.appBuildVersion
 import app.snapsync.logging.IosEntryContext
 import app.snapsync.logging.PublicNSLogSink
 import app.snapsync.logging.neverBlockOnStdio
@@ -287,17 +287,7 @@ object SnapSyncRoot {
             entryContext = IosEntryContext,
             build = IosBuildInfo(
                 osSupportsOsDrivenUpload = osSupportsOsDrivenUpload,
-                bootLines = listOf(
-                    // Names the process + build version so a reader who concatenates the app/extension files can tell
-                    // runs apart (capability `privacy-security`, D5).
-                    "=== app process start build=${appBuildVersion()} ===",
-                    // The BAKED backend this build talks to. It names the one fact that makes an otherwise-silent
-                    // failure legible: point a build at a different backend without a device reset and the ledger
-                    // still says COMPLETED, so the device uploads nothing — no error, no failed request. Read beside
-                    // the cycle's own `enumeration: N seen, X new, Y already-uploaded`, a changed host beside an
-                    // unchanged ledger names the cause immediately.
-                    "[boot] upload base = ${bakedUploadBase()}",
-                ) + adapters.bootLines,
+                bootLines = iosBootLines("app") + adapters.bootLines,
             ),
         )
     }
@@ -353,46 +343,7 @@ object SnapSyncRoot {
         snapSyncHost(
             scope = scope,
             cutoffFormatter = cutoffFormatter,
-            ports = AppPorts(
-                process = processPorts,
-                // This process's SQLite databases, in the App-Group container: the ledger (shared with the ≥26.1
-                // extension, every write one guarded transaction) and the download store the app alone writes.
-                databases = ports.databases,
-                preferences = ports.preferences,
-                // The protected small-value store — the device id, the attestation token — chosen by COMPILATION
-                // TARGET (`platformSecureStore`): the Keychain on `iosArm64`, an App-Group file on the simulator.
-                secureStore = ports.secureStore,
-                platformDeviceId = ports.platformDeviceId,
-                photoAccess = ports.photoAccess,
-                systemUi = ports.systemUi,
-                // Every photo-library read and write, the partial grant's selection observer (opened at host
-                // assembly only) and the import of foreign photos, whose markers the core's handlers write.
-                gallery = ports.gallery,
-                // The platform's background downloads — an event port the host zone listens to.
-                download = ports.download,
-                // The backend: every need-shaped service is composed over it inside the core.
-                backend = ports.backend,
-                integrity = ports.integrity,
-                // The app's uploader transport: a background `URLSession` on every iOS version.
-                appUpload = ports.appUpload,
-                // The upload extension's registration record, on every OS: below iOS 26.1 the adapter answers
-                // `Unsupported` itself (the version check is its own), so the root holds no `if` around it.
-                extensionRegistry = ports.extensionRegistry,
-                // The build's development controls, from this build's adapter set: inert on every production
-                // build, the control channel's on a rig build (`platformAdapters()`).
-                devControls = adapters.devControls,
-                // The entry ports: each registered by the host zone as this graph is composed, so a delivery in a
-                // background wake finds its handler. The Swift shell forwards each callback to one of them.
-                pushNotifications = ports.pushNotifications,
-                lifecycle = ports.lifecycle,
-                links = ports.links,
-                ui = adapters.ui.value,
-                backgroundTime = ports.backgroundTime,
-                // The operating system's scheduled wakes (`BGTaskScheduler`): the heartbeat the tail re-arms, and — by
-                // the host zone's `listen`, as this graph is composed from `onLaunch` — its launch handler.
-                wake = ports.wake,
-                processInfo = ports.processInfo,
-            ),
+            ports = ports.appPorts(processPorts, adapters.devControls, adapters.ui.value),
         )
     }
 
