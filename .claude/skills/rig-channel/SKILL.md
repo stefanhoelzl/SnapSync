@@ -196,6 +196,12 @@ git diff test/contracts/recordings/        # review it like code, then commit it
   `# file:` header names the file each run belongs in. The full-grant run disables and re-enables the extension
   (wiping in-flight upload jobs), so it answers `409` while the device is a member of an event — reset first
   (`POST /device/reset`), deliberately.
+- **`NetworkMonitor`** records once per network condition, which YOU state — the run never reads it from the adapter
+  under test. Wi-Fi joined: `…/contract/NetworkMonitor?network=online > …/NetworkMonitor@IOS_DEVICE_APP.ONLINE.rec`;
+  then airplane mode on **and Wi-Fi off** (iOS keeps Wi-Fi on in airplane mode once you have re-enabled it there):
+  `…?network=offline > …/NetworkMonitor@IOS_DEVICE_APP.OFFLINE.rec`; then back online. The control channel rides
+  USB, so it keeps answering offline. A `# live …: Failed` line means the phone was not in the stated condition — do
+  not commit that run.
 
 ### Recording INSIDE the upload extension — `?host=IOS_DEVICE_PHOTOKIT_EXT`
 

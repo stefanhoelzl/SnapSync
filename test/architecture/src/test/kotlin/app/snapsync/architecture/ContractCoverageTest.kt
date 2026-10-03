@@ -14,8 +14,9 @@ import kotlin.test.fail
  * gate derives, from source text and the committed recordings:
  *  - every contract (an `object` extending `Contract`, with the name it passes) and its `clause(...)` calls;
  *  - every binding (`: Binding<State, Port>`), its `kind`, `host` and literal `reaches = setOf(...)`;
- *  - every recording (`test/contracts/recordings/<Name>@<HOST>[.<GRANT>].rec`) and its `[CLAUSE_ID]` blocks —
- *    a binding that declares `override val grant = GalleryAccess.X` counts only through its grant's file;
+ *  - every recording (`test/contracts/recordings/<Name>@<HOST>[.<GRANT>|.<PRECONDITION>].rec`) and its `[CLAUSE_ID]`
+ *    blocks — a binding that declares `override val grant = GalleryAccess.X` (or `override val precondition = "X"`)
+ *    counts only through that file;
  *
  * and fails any clause whose state no `Live` binding on a host CI runs declares reachable, and whose id no
  * `Replay` binding's recording holds. A host some `Replay` binding names is a RECORDED host — CI never runs it
@@ -72,7 +73,8 @@ class ContractCoverageTest {
                 ?.map { it.substringAfter('.') }?.toSet()
             BindingDecl(
                 src.path, m.groupValues[1].takeIf { it.isNotEmpty() }, m.groupValues[2], KIND.find(body)?.groupValues?.get(1),
-                HOST.find(body)?.groupValues?.get(1), parsed, raw, GRANT.find(body)?.groupValues?.get(1),
+                HOST.find(body)?.groupValues?.get(1), parsed, raw,
+                GRANT.find(body)?.groupValues?.get(1) ?: PRECONDITION.find(body)?.groupValues?.get(1),
             )
         }
     }
@@ -157,7 +159,7 @@ class ContractCoverageTest {
     fun `every recording names a contract and a host that exist`() {
         val names = contracts.map { it.name }.toSet()
         val bad = recordings.keys.filter { key -> key.substringBefore('@') !in names || '@' !in key }
-        assertTrue(bad.isEmpty(), "recordings named for no contract (expected <Contract>@<HOST>[.<GRANT>].rec): $bad")
+        assertTrue(bad.isEmpty(), "recordings named for no contract (expected <Contract>@<HOST>[.<GRANT>|.<PRECONDITION>].rec): $bad")
     }
 
     @Test
@@ -168,8 +170,8 @@ class ContractCoverageTest {
         val undeclared = recordings.keys.filter { key -> '.' in key.substringAfter('@') && key !in expected }
         assertTrue(
             undeclared.isEmpty(),
-            "recordings carry a grant no Replay binding of that contract and host declares (`override val grant = " +
-                "GalleryAccess.X`), so nothing replays them: $undeclared",
+            "recordings carry a grant or precondition no Replay binding of that contract and host declares (`override " +
+                "val grant = GalleryAccess.X` / `override val precondition = \"X\"`), so nothing replays them: $undeclared",
         )
     }
 
@@ -202,7 +204,7 @@ class ContractCoverageTest {
         )
     }
 
-    /** The recording a binding counts through: `<Contract>@<HOST>`, suffixed `.<GRANT>` where it declares one. */
+    /** The recording a binding counts through: `<Contract>@<HOST>`, suffixed `.<GRANT>` or `.<PRECONDITION>` where it declares one. */
     private fun recordingKey(contract: String, b: BindingDecl): String =
         "$contract@${b.host?.removePrefix("Host.")}" + (b.grant?.let { ".$it" } ?: "")
 
@@ -230,6 +232,7 @@ class ContractCoverageTest {
         val KIND = Regex("""override val kind\s*=\s*BindingKind\.(\w+)""")
         val HOST = Regex("""override val host\s*=\s*(Host\.\w+|currentHost)""")
         val GRANT = Regex("""override val grant\s*=\s*GalleryAccess\.(\w+)""")
+        val PRECONDITION = Regex("""override val precondition\s*=\s*"(\w+)"""")
         val STATE_REF = Regex("""\w+\.\w+""")
         val BLOCK = Regex("""\[(.+)]""")
         val HOST_ENUM = Regex("""enum class Host \{(.*?)\n}""", RegexOption.DOT_MATCHES_ALL)

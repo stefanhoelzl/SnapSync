@@ -79,6 +79,16 @@ interface Binding<K : Enum<K>, T> {
     val grant: GalleryAccess? get() = null
 
     /**
+     * A condition of the device, other than the photo grant, that this binding's run is taken under — one a person
+     * sets on the phone and no binding can enter (the network contract's airplane mode), or `null` where there is none.
+     *
+     * It names the recording exactly as [grant] does, so a host recorded under two conditions keeps two files. Where
+     * declared, it MUST be written as `override val precondition = "X"` — the contract-coverage gate reads it from
+     * source. A binding declares a grant or a precondition, never both.
+     */
+    val precondition: String? get() = null
+
+    /**
      * A FRESH [T] already in [state], or [Entered.Unreachable] naming why this host cannot produce it.
      * [clauseId] is the clause about to run: addresses and seeded values derive from it, and a recording
      * binding opens that clause's block with it.
@@ -105,9 +115,10 @@ fun runEntry(block: suspend () -> Unit) {
 }
 
 /**
- * The committed recording's name, without `.rec`, for [contract] recorded on [host] under [grant]
+ * The committed recording's name, without `.rec`, for [contract] recorded on [host] under [grant] or [precondition]
  * (`docs/architecture.md`, "A recording is one committed plain-text file per contract and host"):
- * `<Contract>@<HOST>` where no grant is declared, `<Contract>@<HOST>.<GRANT>` where one is.
+ * `<Contract>@<HOST>` where neither is declared, `<Contract>@<HOST>.<GRANT>` or `<Contract>@<HOST>.<PRECONDITION>`
+ * where one is.
  */
-fun recordingName(contract: String, host: Host, grant: GalleryAccess?): String =
-    "$contract@${host.name}" + (grant?.let { ".${it.name}" } ?: "")
+fun recordingName(contract: String, host: Host, grant: GalleryAccess?, precondition: String? = null): String =
+    "$contract@${host.name}" + ((grant?.name ?: precondition)?.let { ".$it" } ?: "")

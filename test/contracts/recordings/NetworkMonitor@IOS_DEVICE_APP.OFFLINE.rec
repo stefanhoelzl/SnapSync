@@ -1,0 +1,15 @@
+# contract: NetworkMonitor
+# host: IOS_DEVICE_APP
+# precondition: OFFLINE
+# file: NetworkMonitor@IOS_DEVICE_APP.OFFLINE.rec
+# device: iPhone12,8
+# os: Version 26.6.2 (Build 23G90)
+# build: 1
+# kotlin: 2.4.20
+# recorded: 2026-10-03T18:39:05Z
+# live A_CONNECTED_DEVICE_READS_ONLINE: NotRunHere(this run records the phone OFFLINE; ONLINE is another run's, or no host's)
+# live A_DEVICE_WITHOUT_A_NETWORK_READS_OFFLINE: Passed
+# live A_NETWORK_WITHHELD_FROM_THE_APP_READS_BLOCKED: NotRunHere(this run records the phone OFFLINE; BLOCKED is another run's, or no host's)
+[A_DEVICE_WITHOUT_A_NETWORK_READS_OFFLINE]
+start() -> status=unsatisfied reason=notAvailable
+cancel() -> done

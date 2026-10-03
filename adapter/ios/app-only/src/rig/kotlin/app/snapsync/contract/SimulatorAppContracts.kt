@@ -35,6 +35,7 @@ import app.snapsync.contracts.PhotoAccessState
 import app.snapsync.contracts.PhotoLibrary
 import app.snapsync.contracts.GalleryImportContract
 import app.snapsync.contracts.GalleryImportState
+import app.snapsync.contracts.NetworkMonitorContract
 import app.snapsync.contracts.ProcessInfoContract
 import app.snapsync.contracts.ProcessInfoState
 import app.snapsync.contracts.SEED_COUNT
@@ -103,6 +104,7 @@ fun simulatorAppContracts(): List<InAppContract> = listOf(
     simulatorAppContract(GalleryImportContract, SimAppImporterBinding(), ::refusal),
     simulatorAppContract(LivePhotoImportContract, SimAppLivePhotoImportBinding(), ::refusal),
     simulatorAppContract(ProcessInfoContract, SimAppProcessInfoBinding(), ::hostRefusal),
+    simulatorAppContract(NetworkMonitorContract, SimAppNetworkMonitorBinding(), ::hostRefusal),
     simulatorAppContract(LinkOpenerContract, SimAppLinkOpenerBinding(), ::hostRefusal),
     simulatorAppContract(SharePresenterContract, SimAppSharePresenterBinding(), ::hostRefusal),
     simulatorAppContract(UploadContract, SimAppUploadBinding(), ::refusal),

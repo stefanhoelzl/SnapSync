@@ -7,6 +7,8 @@ import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.DeviceIntegrityContract
 import app.snapsync.contracts.DeviceIntegrityState
 import app.snapsync.contracts.Entered
+import app.snapsync.contracts.NetworkMonitorContract
+import app.snapsync.contracts.NetworkState
 import app.snapsync.contracts.ProcessInfoContract
 import app.snapsync.contracts.ProcessInfoState
 import app.snapsync.contracts.currentHost
@@ -16,11 +18,13 @@ import app.snapsync.ports.AttestStore
 import app.snapsync.ports.DeviceIntegrity
 import app.snapsync.ports.ProcessInfo
 import app.snapsync.model.Availability
+import app.snapsync.model.NetworkAccess
+import app.snapsync.ports.NetworkMonitor
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlin.test.Test
 
 /**
- * The integrity and attest-store doubles and the protected-storage double, held to the contracts their real implementations
+ * The integrity and attest-store doubles, the protected-storage double and the network double, held to the contracts their real implementations
  * satisfy (`docs/architecture.md`). Each double is built at its DEFAULTS for the state, never with a knob
  * turned to make a clause pass: a double the contract catches lying is fixed in the double.
  */
@@ -88,4 +92,17 @@ class AttestContractBindingsTest {
     @Test
     fun `the in-memory process info satisfies the ProcessInfo contract`() =
         verify(ProcessInfoContract, processInfo)
+
+    private val network = object : Binding<NetworkState, NetworkMonitor> {
+        override val host = currentHost
+        override val kind = BindingKind.Fake
+        override val reaches = setOf(NetworkState.ONLINE, NetworkState.OFFLINE, NetworkState.BLOCKED)
+
+        override fun create(state: NetworkState, clauseId: String): Entered<NetworkMonitor> =
+            Entered.Ready(inMemoryNetworkMonitor(MutableStateFlow(NetworkAccess.valueOf(state.name))))
+    }
+
+    @Test
+    fun `the in-memory network satisfies the NetworkMonitor contract`() =
+        verify(NetworkMonitorContract, network)
 }

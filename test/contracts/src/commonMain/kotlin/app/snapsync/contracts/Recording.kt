@@ -6,12 +6,13 @@ package app.snapsync.contracts
  * host"). Input to a clause on replay — never an expectation.
  *
  * Text form, at `test/contracts/recordings/<Contract>@<HOST>.rec`, or `<Contract>@<HOST>.<GRANT>.rec` for a
- * binding that declares the photo grant it ran under ([recordingName]):
+ * binding that declares the photo grant it ran under — `<Contract>@<HOST>.<PRECONDITION>.rec` for one that declares
+ * another condition of the device ([recordingName]):
  *
  * ```
  * # contract: SecureStore
  * # host: IOS_DEVICE_APP
- * # grant: GRANTED        (only where the binding declares one)
+ * # grant: GRANTED        (only where the binding declares one; `precondition:` likewise)
  * # device: iPhone SE (2nd generation)
  * ...
  * [CLAUSE_ID]
@@ -28,6 +29,9 @@ class Recording(val header: List<Pair<String, String>>, val blocks: Map<String, 
 
     /** The photo grant the run held, where its binding declared one. */
     val grant: String? get() = header.firstOrNull { it.first == "grant" }?.second
+
+    /** The condition of the device the run was taken under, where its binding declared one. */
+    val precondition: String? get() = header.firstOrNull { it.first == "precondition" }?.second
 
     fun render(): String = buildString {
         header.forEach { (k, v) -> append("# ").append(k).append(": ").append(v).append('\n') }
