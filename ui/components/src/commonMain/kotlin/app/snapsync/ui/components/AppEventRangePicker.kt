@@ -1,6 +1,14 @@
 package app.snapsync.ui.components
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.semantics.Role
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -41,10 +49,22 @@ import kotlinx.datetime.todayIn
  * endpoint can also be dragged, and a long press then a sweep selects a new range. [bounds] limit the
  * range — days outside them are greyed, and times outside them cannot be settled on.
  *
+ * While the end time is incomplete, its summary is a tap target that calls [onPickEndTime]; each increment of
+ * [showEndTime] brings the time wheels into view and briefly outlines the Until wheels (capability
+ * `create-event`, "The next missing step leads to where it is done"). Starting to move the Until minutes with
+ * the hour blank fills the hour from [currentHour] — the clock's, which this module does not read.
+ *
  * Appearance-free like the rest of the design system's API: the caller hands over values and callbacks only.
  */
 @Composable
-fun AppEventRangePicker(range: EventRange, bounds: RangeBounds, note: String, onChange: (EventRange) -> Unit) {
+fun AppEventRangePicker(
+    range: EventRange,
+    bounds: RangeBounds,
+    note: String,
+    currentHour: () -> Int,
+    endTime: EndTimeGuide = EndTimeGuide.NONE,
+    onChange: (EventRange) -> Unit,
+) {
     val scheme = MaterialTheme.colorScheme
     Surface(
         color = scheme.surface,
@@ -53,9 +73,21 @@ fun AppEventRangePicker(range: EventRange, bounds: RangeBounds, note: String, on
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            RangeEditor(range, bounds, onChange)
+            RangeEditor(range, bounds, currentHour, endTime, onChange)
             Text(text = note, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
         }
+    }
+}
+
+/**
+ * How a caller leads the host to a missing end time: [onPickEndTime] is called when the incomplete end's
+ * summary is tapped (`null`: not a tap target), and each new value of [showRequests] brings the time wheels
+ * into view and outlines the Until wheels.
+ */
+class EndTimeGuide(val showRequests: Int, val onPickEndTime: (() -> Unit)?) {
+    companion object {
+        /** No guidance: the summary is never a tap target and nothing asks for the wheels. */
+        val NONE = EndTimeGuide(showRequests = 0, onPickEndTime = null)
     }
 }
 
@@ -65,20 +97,30 @@ fun AppEventRangePicker(range: EventRange, bounds: RangeBounds, note: String, on
  * differ only in their [bounds].
  */
 @Composable
-internal fun RangeEditor(range: EventRange, bounds: RangeBounds, onChange: (EventRange) -> Unit) {
-    RangeEnds(range)
+internal fun RangeEditor(
+    range: EventRange,
+    bounds: RangeBounds,
+    currentHour: () -> Int,
+    endTime: EndTimeGuide = EndTimeGuide.NONE,
+    onChange: (EventRange) -> Unit,
+) {
+    RangeEnds(range, endTime.onPickEndTime)
     RangeCalendar(range, bounds, onChange)
-    RangeTimes(range, bounds, onChange)
+    RangeTimes(range, bounds, currentHour, endTime.showRequests, onChange)
 }
 
-/** Both ends in words: the start as set, the end as set or as the next thing to do. */
+/**
+ * Both ends in words: the start as set, the end as set or as the next thing to do — and then, given
+ * [onPickEndTime], a button that leads there.
+ */
 @Composable
-private fun RangeEnds(range: EventRange) {
+private fun RangeEnds(range: EventRange, onPickEndTime: (() -> Unit)?) {
     val end = range.until?.let(::formatStart)
         ?: "${appDateLabel(LocalDateTime(range.endDay, range.from.time))}, pick a time"
     Row(modifier = Modifier.fillMaxWidth()) {
         RangeEnd("Starts", formatStart(range.from), set = true, alignEnd = false)
-        RangeEnd("Ends", end, set = range.until != null, alignEnd = true)
+        val toEndTime = onPickEndTime.takeIf { range.until == null }
+        RangeEnd("Ends", end, set = range.until != null, alignEnd = true, onClick = toEndTime)
     }
 }
 
@@ -88,11 +130,13 @@ private fun RowScope.RangeEnd(
     value: String,
     set: Boolean,
     alignEnd: Boolean,
+    onClick: (() -> Unit)? = null,
 ) {
     val scheme = MaterialTheme.colorScheme
     val align = if (alignEnd) TextAlign.End else TextAlign.Start
+    val tappable = onClick?.let { Modifier.clickable(role = Role.Button, onClick = it) } ?: Modifier
     Column(
-        modifier = Modifier.weight(1f),
+        modifier = Modifier.weight(1f).then(tappable),
         horizontalAlignment = if (alignEnd) Alignment.End else Alignment.Start,
     ) {
         Text(caption, style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant, textAlign = align)
@@ -129,11 +173,23 @@ private fun RangeCalendar(range: EventRange, bounds: RangeBounds, onChange: (Eve
 }
 
 @Composable
-private fun RangeTimes(range: EventRange, bounds: RangeBounds, onChange: (EventRange) -> Unit) {
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+private fun RangeTimes(
+    range: EventRange,
+    bounds: RangeBounds,
+    currentHour: () -> Int,
+    showRequests: Int,
+    onChange: (EventRange) -> Unit,
+) {
+    val requester = remember { BringIntoViewRequester() }
+    val highlight = rememberUntilHighlight(showRequests) { requester.bringIntoView() }
+    Row(
+        modifier = Modifier.fillMaxWidth().bringIntoViewRequester(requester),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
         SettlingTimeWheels(
             caption = "From",
-            time = range.from.time,
+            hour = range.from.hour,
+            minute = range.from.minute,
             anchor = range.from.time,
             allowed = { range.fromAllowed(it, bounds) },
             onHour = { onChange(range.settleFromHour(it, bounds)) },
@@ -141,11 +197,43 @@ private fun RangeTimes(range: EventRange, bounds: RangeBounds, onChange: (EventR
         )
         SettlingTimeWheels(
             caption = "Until",
-            time = range.untilTime,
+            hour = range.untilHour,
+            minute = range.untilMinute,
             anchor = range.from.time,
             allowed = { range.untilAllowed(it, bounds) },
             onHour = { onChange(range.settleUntilHour(it, bounds)) },
-            onMinute = { onChange(range.settleUntilMinute(it, bounds)) },
+            onMinute = { onChange(range.settleUntilMinute(it, bounds, currentHour())) },
+            // Moving the minutes with the hour blank means "this hour": the clock's (capability `create-event`).
+            onMinuteDragStart = { if (range.untilHour == null) onChange(range.fillUntilHour(currentHour(), bounds)) },
+            highlight = highlight,
         )
     }
 }
+
+/**
+ * The Until wheels' outline, 0 to 1: on each new [requests] value (none at 0) [reveal] scrolls the wheels into
+ * view, then the outline rises, holds and fades — or, under reduce motion, simply shows and hides.
+ */
+@Composable
+private fun rememberUntilHighlight(requests: Int, reveal: suspend () -> Unit): Float {
+    val reduceMotion = LocalReduceMotion.current
+    val alpha = remember { Animatable(0f) }
+    LaunchedEffect(requests) {
+        if (requests == 0) return@LaunchedEffect
+        reveal()
+        if (reduceMotion) {
+            alpha.snapTo(1f)
+            delay(HIGHLIGHT_HOLD_MS + HIGHLIGHT_FADE_MS)
+            alpha.snapTo(0f)
+        } else {
+            alpha.animateTo(1f, tween(HIGHLIGHT_RISE_MS))
+            delay(HIGHLIGHT_HOLD_MS)
+            alpha.animateTo(0f, tween(HIGHLIGHT_FADE_MS))
+        }
+    }
+    return alpha.value
+}
+
+private const val HIGHLIGHT_RISE_MS = 200
+private const val HIGHLIGHT_HOLD_MS = 700L
+private const val HIGHLIGHT_FADE_MS = 700

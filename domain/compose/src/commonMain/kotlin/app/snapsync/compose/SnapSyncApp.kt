@@ -233,6 +233,12 @@ class AppCore internal constructor(
      */
     val attestation: DeviceAttestation by lazy { attestationFor(services, process.clock, versionGate) }
 
+    /**
+     * The app's foreground life as the create screen's draft follows it (capability `create-event`), stamped by the
+     * lifecycle handlers over the process clock.
+     */
+    val foregroundLife: ForegroundLife = ForegroundLife(process.clock)
+
     /** [versionGate]'s cell, for readers outside the core (the status host), which see no service type. */
     val versionRefusal: StateFlow<VersionRefusal?> get() = versionGate.refusal
 

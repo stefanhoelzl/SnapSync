@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -111,20 +112,26 @@ internal fun rememberCenteredRow(listState: LazyListState, count: Int): Int {
 /**
  * One end's time: its caption over an hour wheel and a minute wheel that scroll and settle independently.
  *
- * [time] `null` is BLANK: the wheels sit over [anchor] (so the first flick moves from a familiar place) but
- * the reading line shows no value, and the first settle of either wheel sets one. [allowed] decides which
- * rows can be settled on; the rest are struck through.
+ * A `null` [hour] or [minute] is BLANK: that wheel sits over [anchor] (so the first flick moves from a familiar
+ * place) but its reading line shows no value until the host drags it, and its first settle sets one. The hour
+ * and the minute are blank independently. [allowed] decides which rows can be settled on; the rest are struck
+ * through. [onMinuteDragStart] hears the host start dragging the minute wheel — where a blank hour is filled.
+ * [highlight] (0 to 1) outlines the wheels in the accent colour, to show the host where a missing time is set.
  */
 @Composable
 internal fun RowScope.SettlingTimeWheels(
     caption: String,
-    time: LocalTime?,
+    hour: Int?,
+    minute: Int?,
     anchor: LocalTime,
     allowed: (LocalTime) -> Boolean,
     onHour: (Int) -> Unit,
     onMinute: (Int) -> Unit,
+    onMinuteDragStart: () -> Unit = {},
+    highlight: Float = 0f,
 ) {
-    val shown = time ?: anchor
+    val shownHour = hour ?: anchor.hour
+    val shape = RoundedCornerShape(12.dp)
     Column(modifier = Modifier.weight(1f)) {
         Text(
             text = caption,
@@ -134,23 +141,28 @@ internal fun RowScope.SettlingTimeWheels(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
+                .clip(shape)
                 .background(MaterialTheme.colorScheme.background)
+                // The "here is where you set it" mark ([highlight] 0..1): an accent outline, gone at 0.
+                .border(2.dp, MaterialTheme.colorScheme.primary.copy(alpha = highlight), shape)
                 .height(WheelRowHeight * WHEEL_VISIBLE_ROWS),
             contentAlignment = Alignment.Center,
         ) {
             SelectionBand()
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 SettlingWheel(
-                    wheel = WheelSpec(HOURS_PER_DAY, shown.hour, blank = time == null, "$caption hour"),
+                    wheel = WheelSpec(HOURS_PER_DAY, shownHour, blank = hour == null, "$caption hour"),
                     allowed = { h -> hourHasAllowedMinute(h, allowed) },
                     onSettle = onHour,
                 )
                 Text(text = ":", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
                 SettlingWheel(
-                    wheel = WheelSpec(MINUTES_PER_HOUR, shown.minute, blank = time == null, "$caption minute"),
-                    allowed = { m -> allowed(LocalTime(shown.hour, m)) },
+                    wheel = WheelSpec(
+                        MINUTES_PER_HOUR, minute ?: anchor.minute, blank = minute == null, "$caption minute",
+                    ),
+                    allowed = { m -> allowed(LocalTime(shownHour, m)) },
                     onSettle = onMinute,
+                    onDragStart = onMinuteDragStart,
                 )
             }
         }
@@ -169,15 +181,22 @@ private class WheelSpec(
  * One controlled wheel. It reports [onSettle] when the host brings it to rest — by a drag or fling that
  * ends off the current value, by any drag at all on a blank wheel (landing back on the anchor still means
  * "this one"), or by tapping a row — and scrolls itself to [WheelSpec.value] whenever that differs from
- * where it rests. Its own scrolls always go TO the value, so they never read as a host's choice.
+ * where it rests. Its own scrolls always go TO the value, so they never read as a host's choice. A blank
+ * wheel shows real values while the host drags it, and reports the drag's start to [onDragStart].
  */
 @Composable
-private fun SettlingWheel(wheel: WheelSpec, allowed: (Int) -> Boolean, onSettle: (Int) -> Unit) {
+private fun SettlingWheel(
+    wheel: WheelSpec,
+    allowed: (Int) -> Boolean,
+    onSettle: (Int) -> Unit,
+    onDragStart: () -> Unit = {},
+) {
     val reduceMotion = LocalReduceMotion.current
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = wheel.value)
     val center = rememberCenteredRow(listState, wheel.count)
     val current by rememberUpdatedState(wheel)
     val settle by rememberUpdatedState(onSettle)
+    val dragStarted by rememberUpdatedState(onDragStart)
     var dragged by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
@@ -194,7 +213,12 @@ private fun SettlingWheel(wheel: WheelSpec, allowed: (Int) -> Boolean, onSettle:
     }
 
     LaunchedEffect(listState) {
-        listState.interactionSource.interactions.collect { if (it is DragInteraction.Start) dragged = true }
+        listState.interactionSource.interactions.collect {
+            if (it is DragInteraction.Start) {
+                dragged = true
+                dragStarted()
+            }
+        }
     }
     LaunchedEffect(listState) {
         snapshotFlow { listState.isScrollInProgress }.filter { !it }.collect {
@@ -209,7 +233,7 @@ private fun SettlingWheel(wheel: WheelSpec, allowed: (Int) -> Boolean, onSettle:
         if (!listState.isScrollInProgress && center != wheel.value) moveTo(wheel.value)
     }
 
-    WheelList(listState, wheel, center, allowed, reduceMotion) { index ->
+    WheelList(listState, wheel, showBlank = wheel.blank && !dragged, center, allowed, reduceMotion) { index ->
         scope.launch { moveTo(index); cameToRest(index) }
     }
 }
@@ -226,6 +250,7 @@ private fun centeredIndex(listState: LazyListState, count: Int): Int {
 private fun WheelList(
     listState: LazyListState,
     wheel: WheelSpec,
+    showBlank: Boolean,
     center: Int,
     allowed: (Int) -> Boolean,
     reduceMotion: Boolean,
@@ -244,7 +269,7 @@ private fun WheelList(
     ) {
         items(wheel.count) { i ->
             SettlingRow(
-                text = if (wheel.blank && i == center) BLANK_LABEL else i.toString().padStart(2, '0'),
+                text = if (showBlank && i == center) BLANK_LABEL else i.toString().padStart(2, '0'),
                 distance = abs(i - center),
                 blocked = !allowed(i),
                 onClick = { onTap(i) },

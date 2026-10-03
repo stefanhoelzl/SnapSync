@@ -49,6 +49,7 @@ class UiStateSerializationTest {
     fun the_create_layers_round_trip() {
         roundTrip(UiState(Layer.CreateEvent()))
         roundTrip(UiState(Layer.CreateEvent(error = "Couldn't reach the server")))
+        roundTrip(UiState(Layer.CreateEvent(draft = CreateDraftSession(activation = 3, epoch = 1))))
         roundTrip(UiState(Layer.CreatingEvent))
     }
 

@@ -2,6 +2,7 @@ package app.snapsync.ui.components
 
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.LocalTime
 
 // What a tap or a drag on the calendar does to the range (capabilities `create-event`, `join-event`). Every
 // result keeps the range inside its [RangeBounds] — the last day never before the start's day nor past the
@@ -51,7 +52,11 @@ internal fun EventRange.lastPickableDay(bounds: RangeBounds): LocalDate? =
  */
 private fun EventRange.restartAt(day: LocalDate, bounds: RangeBounds): EventRange {
     val start = startOn(day, bounds)
-    return EventRange(from = start, untilTime = untilTime.takeUnless { bounds.blankEndTime })
+    return if (bounds.blankEndTime) {
+        EventRange(from = start)
+    } else {
+        EventRange(start, untilHour = untilHour, untilMinute = untilMinute)
+    }
 }
 
 /** The start moved to [day] at its clock time, never before the earliest start. */
@@ -70,11 +75,14 @@ private fun EventRange.withinWindow(bounds: RangeBounds): EventRange =
  * it, or moved to the nearest valid time where it is always set.
  */
 private fun EventRange.keepValidTime(bounds: RangeBounds): EventRange {
-    val time = untilTime ?: return this
+    val hour = untilHour ?: return this
+    val minute = untilMinute
     val kept = when {
-        untilAllowed(time, bounds) -> time
+        // An hour chosen without its minute stays while any of its minutes would be a valid end.
+        minute == null -> if (hourHasAllowedMinute(hour) { untilAllowed(it, bounds) }) LocalTime(hour, 0) else null
+        untilAllowed(LocalTime(hour, minute), bounds) -> LocalTime(hour, minute)
         bounds.blankEndTime -> null
-        else -> nearestTime(time.hour, time.minute) { untilAllowed(it, bounds) }
+        else -> nearestTime(hour, minute) { untilAllowed(it, bounds) }
     }
-    return copy(untilTime = kept)
+    return copy(untilHour = kept?.hour, untilMinute = kept?.minute?.takeIf { minute != null })
 }

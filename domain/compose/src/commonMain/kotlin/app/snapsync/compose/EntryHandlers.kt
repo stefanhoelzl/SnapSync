@@ -36,6 +36,7 @@ fun lifecycleHandlers(core: AppCore, assembleHost: () -> Unit): LifecycleHandler
     return LifecycleHandlers(
         onForeground = {
             log.invocation(entry, "onForeground", params = core.foregroundParams()) {
+                core.foregroundLife.cameBack()
                 core.tail.foregrounded(true)
                 val wake = core.tail.hold("onForeground")
                 // Launched, because the flow is `suspend` (law "A trigger flow never outlives its own run"). The
@@ -51,6 +52,7 @@ fun lifecycleHandlers(core: AppCore, assembleHost: () -> Unit): LifecycleHandler
         },
         onBackground = {
             log.invocation(entry, "onBackground") {
+                core.foregroundLife.left()
                 core.tail.foregrounded(false)
                 core.scope.launch {
                     core.backgroundFlow.run()
