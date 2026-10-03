@@ -184,6 +184,7 @@ private fun progress(done: Int, total: Int) = DirectionCount.Progress(done, tota
 private val inSync = joined(SyncHealth.InSync)
 private val syncing = joined(SyncHealth.Syncing(Arrow.PULSING, Arrow.HIDDEN))
 private val syncPending = joined(SyncHealth.Syncing(Arrow.STATIC, Arrow.HIDDEN))
+private val waitingForWifi = joined(SyncHealth.Syncing(Arrow.STATIC, Arrow.HIDDEN, waitingForWifi = true))
 
 /** Longer than the create screen's clock re-read, so one advance lets an untouched start catch up. */
 private const val FOLLOW_NOW_STEP = 1_100L
@@ -643,6 +644,15 @@ class StatusScreenTest {
 
         onNodeWithText("Synchronization pending…").assertExists()
         onNodeWithText("Synchronization ongoing…").assertDoesNotExist()
+    }
+
+    /** Capability `mobile-data`: photos kept off mobile data on a network that choice avoids say why they wait. */
+    @Test
+    fun `photos held for Wi-Fi read waiting for Wi-Fi`() = runComposeUiTest {
+        setContent { TestStatusScreen(waitingForWifi, cutoff = fixedCutoff()) }
+
+        onNodeWithText("Waiting for Wi-Fi…").assertExists()
+        onNodeWithText("Synchronization pending…").assertDoesNotExist()
     }
 
     // ---- reduce motion (`docs/architecture.md`) ----

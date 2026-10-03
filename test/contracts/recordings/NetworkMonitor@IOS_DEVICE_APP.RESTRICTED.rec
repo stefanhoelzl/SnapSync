@@ -1,0 +1,16 @@
+# contract: NetworkMonitor
+# host: IOS_DEVICE_APP
+# precondition: RESTRICTED
+# file: NetworkMonitor@IOS_DEVICE_APP.RESTRICTED.rec
+# device: iPhone12,8
+# os: Version 26.6.2 (Build 23G90)
+# build: 1
+# kotlin: 2.4.20
+# recorded: 2026-10-03T20:20:49Z
+# live A_CONNECTED_DEVICE_READS_ONLINE: NotRunHere(this run records the phone RESTRICTED; ONLINE is another run's, or no host's)
+# live A_RESTRICTED_NETWORK_READS_ONLINE_AND_RESTRICTED: Passed
+# live A_DEVICE_WITHOUT_A_NETWORK_READS_OFFLINE: NotRunHere(this run records the phone RESTRICTED; OFFLINE is another run's, or no host's)
+# live A_NETWORK_WITHHELD_FROM_THE_APP_READS_BLOCKED: NotRunHere(this run records the phone RESTRICTED; BLOCKED is another run's, or no host's)
+[A_RESTRICTED_NETWORK_READS_ONLINE_AND_RESTRICTED]
+start() -> status=satisfied reason=notAvailable constrained
+cancel() -> done

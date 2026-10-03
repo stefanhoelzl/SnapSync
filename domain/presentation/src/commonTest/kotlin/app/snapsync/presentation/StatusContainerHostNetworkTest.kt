@@ -6,6 +6,7 @@ import app.snapsync.feature.creation.readmodel.CreationFailureReason
 import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.feature.status.readmodel.NetworkStatusSource
 import app.snapsync.feature.status.readmodel.SyncStatusSource
+import app.snapsync.model.Arrow
 import app.snapsync.model.EventConfig
 import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.EventStart
@@ -24,20 +25,20 @@ import app.snapsync.model.deletesAt
 import app.snapsync.model.encodeEventUrl
 import app.snapsync.model.eventEnd
 import app.snapsync.model.eventStart
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertIs
+import kotlin.time.Instant
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.TestScope
-import org.orbitmvi.orbit.test.testWithInternalState
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.TimeZone
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertIs
-import kotlin.time.Instant
+import org.orbitmvi.orbit.test.testWithInternalState
 
 /**
  * The network notice in the reduction (capabilities `sync-status`, `create-event`, `join-event`; decision record
@@ -70,9 +71,10 @@ class StatusContainerHostNetworkTest {
         creation: CreationStatus = CreationStatus.Idle,
         load: suspend (String) -> JoinLoad = { JoinLoad.Failed },
         scope: CoroutineScope = backgroundScope,
+        progress: SyncProgress = SyncProgress(0, 0, 0, 0, false, null),
     ) = StatusContainerHost(
         StatusSources(
-            Sync(SyncStatus.Ready(SyncProgress(0, 0, 0, 0, false, null))),
+            Sync(SyncStatus.Ready(progress)),
             MutableStateFlow(permission),
             MutableStateFlow(config),
             creation = MutableStateFlow(creation),
@@ -134,6 +136,25 @@ class StatusContainerHostNetworkTest {
             runCurrent()
             assertEquals(SyncHealth.InSync, host.health())
         }
+    }
+
+    // ── photos kept off mobile data (capability `mobile-data`) ────────────────────────────────
+
+    /** One upload handed to the platform and not yet done: shown, and in flight. */
+    private val oneUploading = SyncProgress(pending = 1, completed = 0, total = 1, failed = 0, active = true, estimatedRemaining = null)
+
+    @Test
+    fun `photos kept off mobile data on a restricted network wait for Wi-Fi with still arrows`() = runTest {
+        val host = host(FakeNetwork(NetworkAccess.Online(restricted = true)), config = STARTED.copy(mobileData = false), progress = oneUploading)
+        assertEquals(SyncHealth.Syncing(Arrow.STATIC, Arrow.HIDDEN, waitingForWifi = true), host.health())
+    }
+
+    @Test
+    fun `photos allowed on mobile data or a member on Wi-Fi do not wait`() = runTest {
+        val onMobileData = host(FakeNetwork(NetworkAccess.Online(restricted = true)), progress = oneUploading)
+        assertEquals(SyncHealth.Syncing(Arrow.PULSING, Arrow.HIDDEN), onMobileData.health(), "the choice is on")
+        val onWifi = host(FakeNetwork(), config = STARTED.copy(mobileData = false), progress = oneUploading)
+        assertEquals(SyncHealth.Syncing(Arrow.PULSING, Arrow.HIDDEN), onWifi.health(), "the network is unrestricted")
     }
 
     // ── the create layer ─────────────────────────────────────────────────────────────────────

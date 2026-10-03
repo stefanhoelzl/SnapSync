@@ -80,14 +80,7 @@ fun WorldInspector(
             OutlinedButton(onClick = { controller.setPermission(GalleryAccess.LIMITED) }) { Text("Limited") }
             OutlinedButton(onClick = { controller.setPermission(GalleryAccess.GRANTED) }) { Text("Granted") }
         }
-        Text("Network")
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = { controller.setNetwork(NetworkAccess.Online(restricted = false)) }) { Text("Wi-Fi") }
-            // Capability `mobile-data`: mobile data, a hotspot or Low Data Mode — where photos kept off mobile data wait.
-            OutlinedButton(onClick = { controller.setNetwork(NetworkAccess.Online(restricted = true)) }) { Text("Mobile data") }
-            OutlinedButton(onClick = { controller.setNetwork(NetworkAccess.Offline) }) { Text("Offline") }
-            OutlinedButton(onClick = { controller.setNetwork(NetworkAccess.Blocked) }) { Text("Blocked") }
-        }
+        NetworkLevers(controller)
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Next request → ")
             RadioButton(selected = controller.armedGrants, onClick = { controller.armNextRequest(true) })
@@ -308,5 +301,18 @@ private fun Holds(held: Set<String>, onChange: (String, Boolean) -> Unit) {
             Switch(modifier = Modifier.testTag("hold-$hold"), checked = hold in held, onCheckedChange = { onChange(hold, it) })
             Text(if (hold in held) "$hold HELD" else hold)
         }
+    }
+}
+
+/** The device's network, as the operating system reports it to the app. */
+@Composable
+private fun NetworkLevers(controller: WorldInspectorController) {
+    Text("Network")
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedButton(onClick = { controller.setNetwork(NetworkAccess.Online(restricted = false)) }) { Text("Wi-Fi") }
+        // Capability `mobile-data`: mobile data, a hotspot or Low Data Mode — where photos kept off mobile data wait.
+        OutlinedButton(onClick = { controller.setNetwork(NetworkAccess.Online(restricted = true)) }) { Text("Mobile data") }
+        OutlinedButton(onClick = { controller.setNetwork(NetworkAccess.Offline) }) { Text("Offline") }
+        OutlinedButton(onClick = { controller.setNetwork(NetworkAccess.Blocked) }) { Text("Blocked") }
     }
 }

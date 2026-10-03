@@ -22,8 +22,8 @@ import app.snapsync.ui.components.RangeWindow
 // ONE place they are arranged.
 
 /**
- * What a member decides about an event: **do I share** (and which photos), **do I receive**, and **is an
- * album created**.
+ * What a member decides about an event: **do I share** (and which photos), **do I receive**, **is an
+ * album created**, and **may photos use mobile data** (capability `mobile-data`).
  *
  * The join gate and the in-place reconfigure surface ask exactly this, and both render it through here, so
  * the arrangement is written once and the two surfaces cannot drift apart.
@@ -69,6 +69,21 @@ internal fun ColumnScope.ParticipationSections(
         onCheckedChange = actions.onSaveToAlbum,
     ) {
         AppSectionNote(albumNote)
+    }
+    // Capability `mobile-data`: a preference over both directions, so its own card beneath the album; everything else
+    // the app does keeps working on any network, which is why the note speaks of photos only.
+    AppToggleSection(
+        title = "Use mobile data for photos",
+        checked = state.mobileData,
+        onCheckedChange = actions.onMobileData,
+    ) {
+        AppSectionNote(
+            if (state.mobileData) {
+                "Photos are sent and received on any network."
+            } else {
+                "Photos are sent and received only on Wi-Fi."
+            },
+        )
     }
 }
 
@@ -131,6 +146,7 @@ class ParticipationState(
     val shareOn: Boolean get() = form.shareOn
     val receiveOn: Boolean get() = form.receiveOn
     val saveToAlbum: Boolean get() = form.saveToAlbum
+    val mobileData: Boolean get() = form.mobileData
     val albumKind: AlbumKind get() = form.albumKind
     val choices: RangeChoices get() = RangeChoices(form.preset, range.from, range.until)
     val window: RangeWindow get() = RangeWindow(range.windowStart, range.windowEnd, range.nowAvailable)
@@ -142,4 +158,5 @@ class ParticipationActions(
     val onShareOn: (Boolean) -> Unit,
     val onReceiveOn: (Boolean) -> Unit,
     val onSaveToAlbum: (Boolean) -> Unit,
+    val onMobileData: (Boolean) -> Unit,
 )
