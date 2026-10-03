@@ -2,6 +2,7 @@ package app.snapsync.android.network
 
 import android.content.Context
 import android.net.ConnectivityManager
+import android.net.NetworkInfo
 import android.os.ParcelFileDescriptor
 import androidx.test.platform.app.InstrumentationRegistry
 import app.snapsync.contracts.Binding
@@ -13,6 +14,8 @@ import app.snapsync.contracts.NetworkState
 import app.snapsync.contracts.verify
 import app.snapsync.ports.NetworkMonitor
 import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 /**
  * [NetworkMonitorContract] against the real [AndroidNetworkMonitor] on the emulator, each state entered through the
@@ -22,7 +25,8 @@ import kotlin.test.Test
  *    network while the device stays online, as a vendor's per-app network switch sets it.
  *
  * Every entry waits until the platform has applied it — the default network gone, or back — so a clause never races
- * the switch it was entered by; every disposal restores the online device, whatever the clause did.
+ * the switch it was entered by; every disposal restores the online device, whatever the clause did, and so does an
+ * entry that fails part-way.
  */
 class AndroidNetworkMonitorContractTest {
 
@@ -32,6 +36,40 @@ class AndroidNetworkMonitorContractTest {
         override val reaches = setOf(NetworkState.ONLINE, NetworkState.OFFLINE, NetworkState.BLOCKED)
 
         override fun create(state: NetworkState, clauseId: String): Entered<NetworkMonitor> {
+            enter(state)
+            return Entered.Ready(AndroidNetworkMonitor(context), dispose = ::restoreOnline)
+        }
+    }
+
+    @Test
+    fun `the default-network callback satisfies the NetworkMonitor contract`() = verify(NetworkMonitorContract, binding)
+
+    /**
+     * The platform facts [AndroidNetworkMonitor] reads absence by, pinned outright. The contract catches an adapter that
+     * reads `activeNetwork` instead only when the callback happens to arrive after the read; this fails every time the
+     * platform stops telling a block from an absence this way.
+     */
+    @Test
+    @Suppress("DEPRECATION")
+    fun `a blocked network hides from activeNetwork but its info reads BLOCKED while an absent one has no info`() {
+        try {
+            enter(NetworkState.BLOCKED)
+            assertNull(connectivity.activeNetwork, "a blocked app's activeNetwork")
+            assertEquals(NetworkInfo.DetailedState.BLOCKED, connectivity.activeNetworkInfo?.detailedState)
+            restoreOnline()
+            enter(NetworkState.OFFLINE)
+            assertNull(connectivity.activeNetworkInfo, "the active network's info in airplane mode")
+        } finally {
+            restoreOnline()
+        }
+    }
+
+    /**
+     * Puts the emulator in [state]. An entry that fails part-way restores the online device before it throws: a device
+     * left in airplane mode would fail every later device test of the run that needs the network.
+     */
+    private fun enter(state: NetworkState) {
+        try {
             when (state) {
                 NetworkState.ONLINE -> restoreOnline()
                 NetworkState.OFFLINE -> {
@@ -45,12 +83,15 @@ class AndroidNetworkMonitorContractTest {
                     awaitDefaultNetwork(present = false, "the package's firewall deny")
                 }
             }
-            return Entered.Ready(AndroidNetworkMonitor(context), dispose = ::restoreOnline)
+        } catch (failed: Throwable) {
+            try {
+                restoreOnline()
+            } catch (restoring: Throwable) {
+                failed.addSuppressed(restoring)
+            }
+            throw failed
         }
     }
-
-    @Test
-    fun `the default-network callback satisfies the NetworkMonitor contract`() = verify(NetworkMonitorContract, binding)
 
     private fun restoreOnline() {
         shell("cmd connectivity set-package-networking-enabled true ${context.packageName}")
