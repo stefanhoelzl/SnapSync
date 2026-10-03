@@ -5,8 +5,8 @@
 # SUBMITS each, and — last — creates the `vX.Y` tag. There is no submit flag: a promote always submits, and the
 # preflights are the gate. `-f dry_run=true` stops after the preflights (no Play commit, no submit, no tag).
 #
-# STORES ARE CHECKBOXES: `ios` (default on) and `android` (default off until Play has production access, so a
-# promote dispatched from habit keeps releasing iOS alone). Neither selected is refused. A store left out NEVER gets
+# STORES ARE CHECKBOXES: `ios` and `android`, both default on, so a plain dispatch releases one version to both
+# stores. Neither selected is refused. A store left out NEVER gets
 # that version: the tag makes a version single-shot, so its next release is the next version. Play's target track is
 # the constant PLAY_TRACK below — the closed track until production access is granted.
 #
@@ -72,7 +72,7 @@ on:
       android:
         description: "Release to Google Play (the closed track until production access)."
         required: false
-        default: false
+        default: true
         type: boolean
       dry_run:
         description: "Stop after the preflights: no Play commit, no submit, no tag. The App Store version is still prepared."
