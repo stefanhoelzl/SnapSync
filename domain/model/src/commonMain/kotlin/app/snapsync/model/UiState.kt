@@ -100,9 +100,10 @@ sealed interface Layer {
      * (`config == null`) and no create is in flight. Carries an optional pre-formatted inline
      * [error] — the last create failure's copy (sticky until the next attempt) or a transient
      * invalid-link message. Config-absent outranks everything, so this is the top reduction rung.
+     * [draft] is where the screen's draft stands against the app's foreground life ([CreateDraftSession]).
      */
     @Serializable
-    data class CreateEvent(val error: String? = null) : Layer
+    data class CreateEvent(val error: String? = null, val draft: CreateDraftSession = CreateDraftSession()) : Layer
 
     /**
      * A `POST /events` create request is in flight (`config == null`, creation status `InFlight`): a

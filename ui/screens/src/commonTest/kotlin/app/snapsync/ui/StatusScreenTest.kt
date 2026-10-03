@@ -3,6 +3,16 @@
 package app.snapsync.ui
 
 import app.snapsync.model.AlbumKind
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.test.assertIsNotDisplayed
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.semantics.SemanticsActions
+import app.snapsync.model.CreateDraftSession
 import app.snapsync.model.eventEnd
 import app.snapsync.model.StoreKind
 import app.snapsync.model.StoreLink
@@ -174,7 +184,10 @@ private val inSync = joined(SyncHealth.InSync)
 private val syncing = joined(SyncHealth.Syncing(Arrow.PULSING, Arrow.HIDDEN))
 private val syncPending = joined(SyncHealth.Syncing(Arrow.STATIC, Arrow.HIDDEN))
 
-/** A clock the test can move, to prove the start default does not drift. */
+/** Longer than the create screen's clock re-read, so one advance lets an untouched start catch up. */
+private const val FOLLOW_NOW_STEP = 1_100L
+
+/** A clock the test can move: an untouched start follows it, a chosen one does not. */
 private class MovableClock(var instant: Instant) : Clock {
     override fun now(): Instant = instant
 }
@@ -190,12 +203,18 @@ private fun fixedCutoff() = CutoffFormatter(
 private fun CreateScreen(state: UiState, cutoff: CutoffFormatter = fixedCutoff(), actions: StatusActions = testActions()) =
     CompositionLocalProvider(LocalReduceMotion provides true) { TestStatusScreen(state, cutoff = cutoff, actions = actions) }
 
-/** Settle the Until hour wheel by tapping a row next to its reading line (the start's hour, 12). */
+/**
+ * Set the end time to [row]:00 — the Until hour by tapping a row next to its reading line (the start's hour,
+ * 12), then the minute by tapping its blank reading line (which sits over the start's :00). The hour alone
+ * never sets the end.
+ */
 internal fun ComposeUiTest.setUntilHour(row: String) {
     // The wheels sit below the calendar, under the fold of a test window: scroll the FORM (the wheel's own
     // closest scroll parent) so the wheel is in view, then tap the row.
     onNodeWithContentDescription("Until hour", useUnmergedTree = true).performScrollTo()
     onNode(hasText(row) and hasAnyAncestor(hasContentDescription("Until hour")), useUnmergedTree = true).performClick()
+    waitForIdle()
+    onNode(hasText("--") and hasAnyAncestor(hasContentDescription("Until minute")), useUnmergedTree = true).performClick()
     waitForIdle()
 }
 
@@ -349,9 +368,9 @@ class StatusScreenTest {
     }
 
     @Test
-    fun `the start is frozen at first composition and not re-derived at submit`() = runComposeUiTest {
-        // The summary is the screen's statement about what will be sent. A start that silently drifted
-        // between being displayed and being posted would make the screen lie.
+    fun `an untouched start follows the clock while the host types`() = runComposeUiTest {
+        // Capability `create-event`, "The start follows the clock until the host chooses the range": typing the
+        // name is not a choice in the range, and the start shown is the start sent.
         val clock = MovableClock(Instant.parse("2026-07-06T12:00:00Z"))
         var createdFrom: LocalDateTime? = null
         setContent {
@@ -361,13 +380,103 @@ class StatusScreenTest {
                 actions = testActions(onCreateEvent = { _, f, _ -> createdFrom = f }),
             )
         }
-        // Ten minutes pass while the user types.
+        onNode(hasSetTextAction()).performTextInput("My Party")
         clock.instant = Instant.parse("2026-07-06T12:10:00Z")
+        mainClock.advanceTimeBy(FOLLOW_NOW_STEP)
+        onNodeWithText("6 Jul 2026, 12:10").assertExists()
+
+        setUntilHour("13")
+        onNodeWithText("Create event").performClick()
+        assertEquals(LocalDateTime(2026, 7, 6, 12, 10), createdFrom)
+    }
+
+    @Test
+    fun `a choice in the range freezes the start and it is not re-derived at submit`() = runComposeUiTest {
+        // The summary is the screen's statement about what will be sent. A start that silently drifted
+        // after the host chose their range would make the screen lie.
+        val clock = MovableClock(Instant.parse("2026-07-06T12:00:00Z"))
+        var createdFrom: LocalDateTime? = null
+        setContent {
+            CreateScreen(
+                UiState(Layer.CreateEvent()),
+                cutoff = CutoffFormatter(now = clock::now, zone = TimeZone.UTC),
+                actions = testActions(onCreateEvent = { _, f, _ -> createdFrom = f }),
+            )
+        }
         completeForm("My Party")
+        clock.instant = Instant.parse("2026-07-06T12:10:00Z")
+        mainClock.advanceTimeBy(FOLLOW_NOW_STEP)
         onNodeWithText("Create event").performClick()
 
         onNodeWithText("6 Jul 2026, 12:00").assertExists()
         assertEquals(LocalDateTime(2026, 7, 6, 12, 0), createdFrom)
+    }
+
+    @Test
+    fun `a return to the foreground moves an untouched start to now and keeps the name`() = runComposeUiTest {
+        val clock = MovableClock(Instant.parse("2026-07-06T12:00:00Z"))
+        val state = mutableStateOf(UiState(Layer.CreateEvent(draft = CreateDraftSession(activation = 1))))
+        setContent { CreateScreen(state.value, cutoff = CutoffFormatter(now = clock::now, zone = TimeZone.UTC)) }
+        onNode(hasSetTextAction()).performTextInput("My Party")
+
+        clock.instant = Instant.parse("2026-07-06T12:07:00Z")
+        state.value = UiState(Layer.CreateEvent(draft = CreateDraftSession(activation = 2)))
+        waitForIdle()
+
+        onNodeWithText("6 Jul 2026, 12:07").assertExists()
+        assertEquals("My Party", onNode(hasSetTextAction()).fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
+    }
+
+    @Test
+    fun `a short absence keeps a chosen range and a long one starts a fresh draft`() = runComposeUiTest {
+        // Capability `create-event`, "A long absence starts a fresh draft": the session's epoch moves only
+        // after 15 minutes away (the presentation decides that); the screen starts over on a new epoch.
+        val clock = MovableClock(Instant.parse("2026-07-06T12:00:00Z"))
+        val state = mutableStateOf(UiState(Layer.CreateEvent(draft = CreateDraftSession(activation = 1))))
+        setContent { CreateScreen(state.value, cutoff = CutoffFormatter(now = clock::now, zone = TimeZone.UTC)) }
+        completeForm("My Party")
+
+        clock.instant = Instant.parse("2026-07-06T12:10:00Z")
+        state.value = UiState(Layer.CreateEvent(draft = CreateDraftSession(activation = 2)))
+        waitForIdle()
+        onNodeWithText("6 Jul 2026, 12:00").assertExists()
+        onNodeWithText("8 Jul 2026, 13:00").assertExists()
+
+        clock.instant = Instant.parse("2026-07-06T12:40:00Z")
+        state.value = UiState(Layer.CreateEvent(draft = CreateDraftSession(activation = 3, epoch = 1)))
+        waitForIdle()
+        assertEquals("", onNode(hasSetTextAction()).fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
+        onNodeWithText("6 Jul 2026, 12:40").assertExists()
+        onNodeWithText("6 Jul 2026, pick a time").assertExists()
+    }
+
+    @Test
+    fun `tapping the missing name puts the cursor in the name field`() = runComposeUiTest {
+        setContent { CreateScreen(UiState(Layer.CreateEvent())) }
+        onNodeWithText("Name the event").assertHasClickAction().performClick()
+        waitForIdle()
+        onNode(hasSetTextAction()).assertIsFocused()
+    }
+
+    @Test
+    fun `tapping the missing end time brings the end wheels into view without setting a time`() = runComposeUiTest {
+        // A phone-sized viewport, so the wheels start below the fold as they do on a Samsung A-series.
+        setContent { Box(Modifier.size(390.dp, 640.dp)) { CreateScreen(UiState(Layer.CreateEvent())) } }
+        onNode(hasSetTextAction()).performTextInput("My Party")
+        onNodeWithContentDescription("Until hour", useUnmergedTree = true).assertIsNotDisplayed()
+
+        onNodeWithText("Pick an end time").assertHasClickAction().performClick()
+        waitForIdle()
+        onNodeWithContentDescription("Until hour", useUnmergedTree = true).assertIsDisplayed()
+        onNodeWithText("6 Jul 2026, pick a time").assertExists()
+        onNodeWithText("Create event").assertIsNotEnabled()
+    }
+
+    @Test
+    fun `once the end time is set the line above Create is not a button`() = runComposeUiTest {
+        setContent { CreateScreen(UiState(Layer.CreateEvent())) }
+        completeForm("My Party")
+        onNodeWithText("Event lasts 2 days").assert(SemanticsMatcher.keyNotDefined(SemanticsActions.OnClick))
     }
 
     @Test

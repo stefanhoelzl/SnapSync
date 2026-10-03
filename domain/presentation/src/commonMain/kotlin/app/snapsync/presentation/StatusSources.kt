@@ -1,6 +1,7 @@
 package app.snapsync.presentation
 
 import app.snapsync.feature.creation.readmodel.CreationStatus
+import app.snapsync.feature.creation.readmodel.ForegroundReturn
 import app.snapsync.feature.download.readmodel.DownloadProgress
 import app.snapsync.feature.membership.readmodel.RenameStatus
 import app.snapsync.feature.status.readmodel.SyncStatusSource
@@ -84,6 +85,11 @@ class StatusSources(
      * above, and pairing them is what stops a host wiring the state without the remedy.
      */
     val store: StoreLink? = null,
+    /**
+     * The app's latest return to the foreground (capability `create-event`): the create screen's draft follows it.
+     * Defaults to none ever, so a host that never foregrounds keeps one draft.
+     */
+    val foreground: StateFlow<ForegroundReturn> = MutableStateFlow(ForegroundReturn.NONE),
 )
 
 /**

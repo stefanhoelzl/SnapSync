@@ -88,7 +88,8 @@ internal fun RangePickerDialog(
         confirmEnabled = end != null,
     ) {
         if (presets.isNotEmpty()) PresetChips(presets)
-        RangeEditor(range, bounds) { range = it }
+        // A join or settings range always has its end time, so the clock's hour is never needed to fill one.
+        RangeEditor(range, bounds, currentHour = { range.from.hour }) { range = it }
     }
 }
 

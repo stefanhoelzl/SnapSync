@@ -12,8 +12,8 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 
 ## `feature/creation`
 
-- files: `CreateEvent.kt`, `CreationStatus.kt`
-- top-level types: `CreateEvent (class)`, `CreationFailureReason (class)`, `CreationStatus (interface)`
+- files: `CreateEvent.kt`, `CreationStatus.kt`, `ForegroundReturn.kt`
+- top-level types: `CreateEvent (class)`, `CreationFailureReason (class)`, `CreationStatus (interface)`, `ForegroundReturn (class)`
 
 ## `feature/diagnostics`
 

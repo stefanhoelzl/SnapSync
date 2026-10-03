@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
 
 /**
@@ -23,6 +25,9 @@ import androidx.compose.ui.unit.dp
  * and shows several lines at rest, which is what a written account needs — one line would scroll the
  * beginning of the sentence out of view while it is still being typed. Line count is a property of the
  * same input, not grounds for a second component.
+ *
+ * [focusRequester], when given, lets the caller put the cursor in the field (the create screen's "Name the
+ * event" line does).
  */
 @Composable
 fun AppTextField(
@@ -33,6 +38,7 @@ fun AppTextField(
     maxLength: Int = Int.MAX_VALUE,
     singleLine: Boolean = true,
     errorText: String? = null,
+    focusRequester: FocusRequester? = null,
 ) {
     OutlinedTextField(
         value = value,
@@ -49,6 +55,6 @@ fun AppTextField(
             // Room for a few lines at rest, and a ceiling so a long account scrolls within the field
             // rather than growing the sheet under the keyboard.
             Modifier.fillMaxWidth().heightIn(min = 96.dp, max = 160.dp)
-        },
+        }.then(focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier),
     )
 }

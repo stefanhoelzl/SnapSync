@@ -12,18 +12,28 @@ import kotlinx.datetime.LocalTime
 /**
  * What the host has chosen for the event's window so far.
  *
- * The start is always set — preset to the moment the screen opened. The last day ([endDay]) is preset to the
- * start's day, but the TIME on it ([untilTime]) starts blank and must be chosen: an end that arrived complete
- * would be the silent default this screen exists to prevent, so "last day shown, time blank" is a state of
- * its own. [endPending] is which end the next tap on a day moves: while it is set, a tap on or after the
- * start places the last day; once the last day has been placed, the next tap starts a new range.
+ * The start is always set — preset to now. The last day ([endDay]) is preset to the start's day, but the TIME
+ * on it starts blank and must be chosen, hour ([untilHour]) and minute ([untilMinute]) each: an end that
+ * arrived complete would be the silent default this screen exists to prevent, so "last day shown, time blank"
+ * — and "hour chosen, minute blank" — are states of their own. [endPending] is which end the next tap on a day
+ * moves: while it is set, a tap on or after the start places the last day; once the last day has been placed,
+ * the next tap starts a new range.
  */
 data class EventRange(
     val from: LocalDateTime,
     val endDay: LocalDate = from.date,
-    val untilTime: LocalTime? = null,
+    val untilHour: Int? = null,
+    val untilMinute: Int? = null,
     val endPending: Boolean = true,
 ) {
+    /** A range whose end time is already set — what a join or settings surface opens on. */
+    constructor(from: LocalDateTime, endDay: LocalDate, untilTime: LocalTime, endPending: Boolean) :
+        this(from, endDay, untilTime.hour, untilTime.minute, endPending)
+
+    /** The end's time of day, or `null` while its hour or its minute is still blank. */
+    val untilTime: LocalTime?
+        get() = if (untilHour != null && untilMinute != null) LocalTime(untilHour, untilMinute) else null
+
     /** The chosen end, or `null` while its time is still blank. */
     val until: LocalDateTime?
         get() = untilTime?.let { LocalDateTime(endDay, it) }
@@ -39,10 +49,14 @@ internal fun EventRange.untilAllowed(time: LocalTime, bounds: RangeBounds): Bool
 internal fun EventRange.fromAllowed(time: LocalTime, bounds: RangeBounds): Boolean {
     val candidate = LocalDateTime(from.date, time)
     val chosenEnd = until
-    val reachesEnd = if (chosenEnd != null) {
-        chosenEnd > candidate && chosenEnd <= bounds.latestEnd(candidate)
-    } else {
-        endDay <= bounds.latestEnd(candidate).date
+    val chosenHour = untilHour
+    val reachesEnd = when {
+        chosenEnd != null -> chosenEnd > candidate && chosenEnd <= bounds.latestEnd(candidate)
+        // An end hour chosen without its minute must keep a minute that would still be a valid end.
+        chosenHour != null -> hourHasAllowedMinute(chosenHour) { end ->
+            LocalDateTime(endDay, end).let { it > candidate && it <= bounds.latestEnd(candidate) }
+        }
+        else -> endDay <= bounds.latestEnd(candidate).date
     }
     return reachesEnd && bounds.earliest.let { it == null || candidate >= it }
 }
@@ -54,19 +68,38 @@ internal fun EventRange.isValid(bounds: RangeBounds): Boolean {
 }
 
 /**
- * The Until hour wheel settled on [hour]. From a blank end the minutes fill in as `:00`; otherwise they are
- * kept. A value that is not a valid end moves to the nearest one that is (an hour with no valid minute to
- * the nearest hour that has one), so a bad range is unreachable rather than refused.
+ * The Until hour wheel settled on [hour]. It never fills the minute: from a blank minute only the hour is set,
+ * to the nearest hour that has any valid minute. A minute already chosen is kept where it stays valid and
+ * otherwise moves to the nearest valid time, so a bad range is unreachable rather than refused.
  */
-internal fun EventRange.settleUntilHour(hour: Int, bounds: RangeBounds): EventRange =
-    settleUntil(hour, untilTime?.minute ?: 0, bounds)
+internal fun EventRange.settleUntilHour(hour: Int, bounds: RangeBounds): EventRange {
+    val minute = untilMinute ?: return copy(untilHour = null).fillUntilHour(hour, bounds)
+    return settleUntil(hour, minute, bounds)
+}
 
-/** The Until minute wheel settled on [minute]; from a blank end the hour is the one the wheel sat over. */
-internal fun EventRange.settleUntilMinute(minute: Int, bounds: RangeBounds): EventRange =
-    settleUntil(untilTime?.hour ?: from.hour, minute, bounds)
+/**
+ * The Until minute wheel started moving while the hour is blank: the hour fills with [currentHour] — the
+ * clock's — or the nearest hour that has a valid minute. An hour already chosen is kept.
+ */
+internal fun EventRange.fillUntilHour(currentHour: Int, bounds: RangeBounds): EventRange =
+    if (untilHour != null) {
+        this
+    } else {
+        nearestHour(currentHour) { untilAllowed(it, bounds) }?.let { copy(untilHour = it) } ?: this
+    }
+
+/**
+ * The Until minute wheel settled on [minute]. With the hour still blank (a tap rather than a drag) it fills as
+ * [fillUntilHour] does, from [currentHour].
+ */
+internal fun EventRange.settleUntilMinute(minute: Int, bounds: RangeBounds, currentHour: Int): EventRange {
+    val hour = fillUntilHour(currentHour, bounds).untilHour ?: return this
+    return settleUntil(hour, minute, bounds)
+}
 
 private fun EventRange.settleUntil(hour: Int, minute: Int, bounds: RangeBounds): EventRange =
-    nearestTime(hour, minute) { untilAllowed(it, bounds) }?.let { copy(untilTime = it) } ?: this
+    nearestTime(hour, minute) { untilAllowed(it, bounds) }
+        ?.let { copy(untilHour = it.hour, untilMinute = it.minute) } ?: this
 
 /** The From hour wheel settled on [hour]; the minutes are kept where they stay valid. */
 internal fun EventRange.settleFromHour(hour: Int, bounds: RangeBounds): EventRange =
