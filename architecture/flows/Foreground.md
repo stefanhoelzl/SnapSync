@@ -16,13 +16,13 @@ sequenceDiagram
   participant Trigger
   participant Foreground
   participant effects
-  participant statusPoller
+  participant watches
   participant downloadController
   participant membershipRefresh
   Trigger->>Foreground: run(…)
   Foreground->>effects: reloadConfig()
   Foreground->>effects: refreshAttestation()
-  Foreground->>statusPoller: start()
+  Foreground->>watches: start()
   par concurrent — awaited before the flow returns
     Foreground--)effects: settleStored()
     Foreground--)effects: refreshStatus()

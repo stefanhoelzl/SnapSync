@@ -83,6 +83,13 @@ sealed interface AppSyncStatus {
      * upload at all.
      */
     data object CannotVerifyDevice : AppSyncStatus
+
+    /**
+     * The device gives the app no usable network (capability `sync-status`) — [AppNetworkNotice] in the status-line
+     * slot: tappable when [blocked], since the member can allow it in Settings; not when offline, since only
+     * connecting helps.
+     */
+    data class NoNetwork(val blocked: Boolean) : AppSyncStatus
 }
 
 /** Which permission action the attention line offers: request the initial grant, or open Settings. */
@@ -102,7 +109,8 @@ private const val STATIC_ALPHA = 0.38f
  * (no background — e.g. a bare green check for `InSync`, a clock for `NotStarted`); `NeedsAccess` and
  * `CannotVerifyDevice` carry a background, and only `NeedsAccess` is tappable ([onAttentionClick]) —
  * `CannotVerifyDevice` offers the user no action, because there is none. A `Pulsing` arrow animates its
- * opacity; a `Static` arrow is shown dimmed without motion.
+ * opacity; a `Static` arrow is shown dimmed without motion. `NoNetwork` is [AppNetworkNotice]: tappable only when
+ * blocked.
  */
 @Composable
 fun AppStatusLine(
@@ -135,9 +143,17 @@ private fun StatusBody(status: AppSyncStatus, onAttentionClick: () -> Unit) {
                 text = "Sharing starts with the event",
             )
 
-        is AppSyncStatus.NeedsAccess -> NeedsAccessLine(status.prompt, onAttentionClick)
+        is AppSyncStatus.NeedsAccess -> AttentionButton(
+            text = when (status.prompt) {
+                AccessPrompt.ALLOW -> "Allow photo access"
+                AccessPrompt.SETTINGS -> "Turn on full access in Settings"
+            },
+            onClick = onAttentionClick,
+        )
 
         AppSyncStatus.CannotVerifyDevice -> CannotVerifyDeviceLine()
+
+        is AppSyncStatus.NoNetwork -> AppNetworkNotice(blocked = status.blocked, onOpenSettings = onAttentionClick)
     }
 }
 
@@ -202,9 +218,23 @@ private fun SyncingLine(status: AppSyncStatus.Syncing) {
     }
 }
 
+/**
+ * Why the app has no network (capability `sync-status`) — the same pill on every screen that says it: the joined
+ * status line, the create screen's line below Create, the join screen. [blocked]: the member can allow the network
+ * for SnapSync, so the pill is a button opening Settings ([onOpenSettings]); offline: only connecting helps, so it
+ * offers nothing.
+ */
+@Composable
+fun AppNetworkNotice(blocked: Boolean, onOpenSettings: () -> Unit) {
+    if (blocked) AttentionButton(NETWORK_BLOCKED, onOpenSettings) else AttentionNotice(OFFLINE)
+}
+
+private const val NETWORK_BLOCKED = "Network blocked for SnapSync – Open Settings"
+private const val OFFLINE = "You're offline"
+
 /** The tappable attention pill: something the member can fix, so it carries a chevron and a button role. */
 @Composable
-private fun NeedsAccessLine(prompt: AccessPrompt, onClick: () -> Unit) {
+private fun AttentionButton(text: String, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
         color = appAttentionContainer(),
@@ -222,12 +252,11 @@ private fun NeedsAccessLine(prompt: AccessPrompt, onClick: () -> Unit) {
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Icon(Icons.Filled.Warning, contentDescription = null, modifier = Modifier.size(IconSize))
+            // The text yields width, never the chevron: a label that wraps keeps the pill reading as a button.
             Text(
-                text = when (prompt) {
-                    AccessPrompt.ALLOW -> "Allow photo access"
-                    AccessPrompt.SETTINGS -> "Turn on full access in Settings"
-                },
+                text = text,
                 style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.weight(1f, fill = false),
             )
             Icon(
                 Icons.AutoMirrored.Filled.KeyboardArrowRight,
@@ -238,8 +267,27 @@ private fun NeedsAccessLine(prompt: AccessPrompt, onClick: () -> Unit) {
     }
 }
 
+/** The attention pill with nothing to tap: a state the member is told about but cannot act on from here. */
+@Composable
+private fun AttentionNotice(text: String) {
+    Surface(
+        color = appAttentionContainer(),
+        contentColor = appAttentionText(),
+        shape = RoundedCornerShape(999.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 15.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Icon(Icons.Filled.Warning, contentDescription = null, modifier = Modifier.size(IconSize))
+            Text(text = text, style = MaterialTheme.typography.titleMedium)
+        }
+    }
+}
+
 /**
- * The same attention treatment as [NeedsAccessLine] — but NOT tappable, and with no chevron: there is no
+ * The same attention treatment as [AttentionButton] — but NOT tappable, and with no chevron: there is no
  * action the user can take. It clears itself as soon as the device can reach the backend.
  */
 @Composable

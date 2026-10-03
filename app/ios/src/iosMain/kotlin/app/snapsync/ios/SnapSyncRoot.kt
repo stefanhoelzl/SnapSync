@@ -31,6 +31,7 @@ import app.snapsync.ios.urlsession.UPLOAD_SESSION_ID
 import app.snapsync.preferences.IosPreferences
 import app.snapsync.systemui.IosSystemUi
 import app.snapsync.protection.IosProcessInfo
+import app.snapsync.network.IosNetworkMonitor
 import app.snapsync.databases.IosDatabases
 import app.snapsync.background.IosBackgroundTime
 import app.snapsync.background.IosWake
@@ -233,6 +234,8 @@ object SnapSyncRoot {
         integrity = lazy { IosDeviceIntegrity() },
         // Recorded by the background entry points; decides nothing (capability `sync-status`).
         processInfo = lazy { IosProcessInfo() },
+        // The network as iOS reports it to this app, watched only while the app is in front (capability `sync-status`).
+        network = lazy { IosNetworkMonitor() },
         // The backend — ONE `HttpBackend` over the platform's HTTP client, declaring this bundle's version, which every
         // backend call goes through. The credential and the backend's verdicts are the core's (`AppCore.backend`).
         backend = lazy { HttpBackend(darwinHttpClient(), backendHost, appMarketingVersion()) },

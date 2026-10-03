@@ -77,7 +77,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `JoinedSurface` | `:domain:model` | `:domain:model` Reconfigure, Status | no |
 | `Layer` | `:domain:model` | `:domain:model` CreateEvent, CreatingEvent, Joined, JoiningEvent, UpdateRequired | no |
 | `LeaveNotifier` | `:domain:services` | `:domain:services` BackendLeaveNotifier | no |
-| `LedgerCountsSource` | `:domain:feature` | `:domain:feature` MutableLedgerCountsSource, ReadingLedgerCountsSource; `:domain:flow` CountingCounts; `:test:feature` CountingSource | yes |
+| `LedgerCountsSource` | `:domain:feature` | `:adapter:generic:mock` CountingCounts; `:domain:feature` MutableLedgerCountsSource, ReadingLedgerCountsSource; `:test:feature` CountingSource | yes |
 | `LibraryChangeToken` | `:domain:ports` | `:adapter:android` VolumeGenerations; `:adapter:generic:mock` Token; `:adapter:ios:app-only` PhotoKitLibraryChangeToken; `:domain:services` Token | no |
 | `LibraryChangeTokenRead` | `:domain:ports` | — | no |
 | `Lifecycle` | `:domain:ports` | `:adapter:android` AndroidLifecycle; `:adapter:ios:ui` IosLifecycle | no |
@@ -87,6 +87,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `ManifestPublisher` | `:domain:services` | `:domain:services` BackendManifestPublisher; `:test:feature` FakeUploader | yes |
 | `MembershipRead` | `:domain:model` | `:domain:model` Member, NotMember, Unreadable | no |
 | `NetworkMonitor` | `:domain:ports` | `:adapter:android` AndroidNetworkMonitor; `:adapter:generic:mock` InMemoryNetworkMonitor; `:adapter:ios:app-only` IosNetworkMonitor | yes |
+| `NetworkStatusSource` | `:domain:feature` | `:domain:feature` NetworkWatch; `:domain:presentation` AlwaysOnline, FakeNetwork | yes |
 | `PhotoAccessStatusSource` | `:domain:ports` | `:adapter:android` AndroidPhotoPermission; `:adapter:generic:mock` InMemoryPhotoAccess; `:adapter:ios:app-only` PhotoLibraryPermission | yes |
 | `PhotoGrantRead` | `:domain:ports` | — | no |
 | `PlatformDeviceId` | `:domain:ports` | `:adapter:android` AndroidPlatformDeviceId; `:adapter:generic:app` NoPlatformDeviceId | no |
@@ -118,9 +119,9 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `SwitchDecision` | `:domain:feature` | `:domain:feature` Stay | no |
 | `SyncDecision` | `:domain:model` | `:domain:model` AlreadyUploaded | no |
 | `SyncEvent` | `:domain:model` | `:domain:model` ResourceChanged, UploadFailed, UploadStarted | no |
-| `SyncHealth` | `:domain:model` | `:domain:model` InSync, Loading, NeedsAccess, NotStarted, Syncing, Unattested | no |
+| `SyncHealth` | `:domain:model` | `:domain:model` InSync, Loading, NeedsAccess, NoNetwork, NotStarted, Syncing, Unattested | no |
 | `SyncStatus` | `:domain:model` | `:domain:model` Loading, Ready | no |
-| `SyncStatusSource` | `:domain:feature` | `:domain:presentation` FakeSync, FakeSyncStatusSource, IdleSync | yes |
+| `SyncStatusSource` | `:domain:feature` | `:domain:presentation` FakeSync, FakeSyncStatusSource, IdleSync, Sync | yes |
 | `SystemUi` | `:domain:ports` | `:adapter:android` AndroidSystemUi; `:adapter:ios:app-only` IosSystemUi | no |
 | `TimeLeft` | `:domain:model` | `:domain:model` Days, Hours, Minutes, UnderAMinute | no |
 | `TokenOutcome` | `:domain:model` | `:domain:model` ChallengeStale, Minted, NotAttested, Refused, Unreachable | no |

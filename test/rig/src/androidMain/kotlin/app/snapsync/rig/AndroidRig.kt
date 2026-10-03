@@ -265,6 +265,7 @@ private val ANDROID_REAL_ADAPTERS: Set<MockedSystem> = setOf(
     MockedSystem.DOWNLOADS,
     MockedSystem.PUSH,
     MockedSystem.PROCESS_INFO,
+    MockedSystem.NETWORK,
     MockedSystem.CRASH_REPORTER,
 )
 

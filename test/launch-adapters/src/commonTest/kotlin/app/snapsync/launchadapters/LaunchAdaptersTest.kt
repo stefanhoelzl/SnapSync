@@ -1,5 +1,7 @@
 package app.snapsync.launchadapters
 
+import kotlinx.coroutines.flow.first
+import app.snapsync.model.NetworkAccess
 import app.snapsync.compose.DevicePorts
 
 import app.snapsync.mock.ExtensionHostMock
@@ -124,6 +126,23 @@ class LaunchAdaptersTest {
         assertEquals(1, real.systemUi.operator.settingsOpened.value, "a real system reaches the real adapter")
         assertEquals("9.9", chosen.device.declaredVersion.value, "the backend mock hears the build's own version")
         assertEquals(FRESH, chosen.device.ownDeviceId)
+    }
+
+    @Test
+    fun the_network_is_the_mock_s_when_mocked_and_the_real_adapter_s_otherwise() = runTest {
+        write(AdapterFiles.CHOICE, "network=mock\n")
+        val mocked = assertIs<LaunchAdapters.Chosen>(launch())
+        val real = MockDevice().also { it.connectivity.operator.access = NetworkAccess.ONLINE }
+        val ports = mocked.ports(root = AdapterProcess.APP, real = DevicePorts(network = lazy { real.connectivity.port() }))
+        mocked.device.connectivity.operator.access = NetworkAccess.BLOCKED
+        assertEquals(NetworkAccess.BLOCKED, ports.network.watch().first(), "a mocked network answers the mock's lever")
+        assertEquals(listOf(MockedSystem.NETWORK), mocked.save(), "the lever's value is kept for the next launch")
+        assertEquals(NetworkAccess.BLOCKED, assertIs<LaunchAdapters.Chosen>(launch()).device.connectivity.operator.access)
+
+        write(AdapterFiles.CHOICE, "clock=mock\n")
+        val unmocked = assertIs<LaunchAdapters.Chosen>(launch())
+        val realPorts = unmocked.ports(root = AdapterProcess.APP, real = DevicePorts(network = lazy { real.connectivity.port() }))
+        assertEquals(NetworkAccess.ONLINE, realPorts.network.watch().first(), "a real network reaches the real adapter")
     }
 
     @Test

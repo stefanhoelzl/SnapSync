@@ -1,5 +1,6 @@
 package app.snapsync.ui
 
+import app.snapsync.model.NetworkNotice
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -95,6 +96,10 @@ internal fun JoinedLayer(
                             access.onOpenSettings()
                         }
                     }
+                    // A blocked network is SnapSync's own setting (capability `sync-status`); an offline device is not.
+                    if (health is SyncHealth.NoNetwork && health.notice == NetworkNotice.BLOCKED) {
+                        access.onOpenSettings()
+                    }
                 },
             )
             CountsLine(state.counts, state.waiting)
@@ -119,6 +124,7 @@ private fun SyncHealth.toAppSyncStatus(): AppSyncStatus = when (this) {
     is SyncHealth.NeedsAccess -> AppSyncStatus.NeedsAccess(
         if (permission == GalleryAccess.NOT_DETERMINED) AccessPrompt.ALLOW else AccessPrompt.SETTINGS,
     )
+    is SyncHealth.NoNetwork -> AppSyncStatus.NoNetwork(blocked = notice == NetworkNotice.BLOCKED)
     SyncHealth.NotStarted -> AppSyncStatus.NotStarted
     SyncHealth.Unattested -> AppSyncStatus.CannotVerifyDevice
     SyncHealth.Loading -> AppSyncStatus.Loading

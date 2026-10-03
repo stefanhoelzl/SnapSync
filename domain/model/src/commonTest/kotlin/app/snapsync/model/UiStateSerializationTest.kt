@@ -50,6 +50,8 @@ class UiStateSerializationTest {
         roundTrip(UiState(Layer.CreateEvent()))
         roundTrip(UiState(Layer.CreateEvent(error = "Couldn't reach the server")))
         roundTrip(UiState(Layer.CreateEvent(draft = CreateDraftSession(activation = 3, epoch = 1))))
+        roundTrip(UiState(Layer.CreateEvent(error = "Couldn't reach the server", network = NetworkNotice.OFFLINE)))
+        roundTrip(UiState(Layer.CreateEvent(network = NetworkNotice.BLOCKED)))
         roundTrip(UiState(Layer.CreatingEvent))
     }
 
@@ -76,6 +78,8 @@ class UiStateSerializationTest {
         }
         roundTrip(UiState(Layer.JoiningEvent(eventId = "E", phase = JoinPhase.Loading, notice = "That QR code wasn't valid.")))
         roundTrip(UiState(Layer.JoiningEvent(eventId = "E", phase = JoinPhase.Loading, asksAccessOnJoin = true)))
+        roundTrip(UiState(Layer.JoiningEvent(eventId = "E", phase = JoinPhase.LoadFailed, network = NetworkNotice.OFFLINE)))
+        roundTrip(UiState(Layer.JoiningEvent(eventId = "E", phase = JoinPhase.Loading, network = NetworkNotice.BLOCKED)))
     }
 
     @Test
@@ -172,6 +176,8 @@ class UiStateSerializationTest {
     @Test
     fun every_health_and_rename_state_round_trips() {
         val healths = listOf(
+            SyncHealth.NoNetwork(NetworkNotice.OFFLINE),
+            SyncHealth.NoNetwork(NetworkNotice.BLOCKED),
             SyncHealth.NotStarted,
             SyncHealth.Unattested,
             SyncHealth.Loading,

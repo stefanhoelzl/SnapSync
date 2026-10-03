@@ -63,6 +63,12 @@ enum class TailTrigger(val scope: TailScope, val rearms: Boolean) {
     /** Foreground entry: a force-quit cancelled every pending heartbeat, and reopening is when it can be restored. */
     FOREGROUND(TailScope.FULL, rearms = true),
 
+    /**
+     * A missing network came back while the app was in front (capability `sync-status`, "The app says when it cannot
+     * reach the network"): whatever waited for it runs now rather than at the next opening.
+     */
+    NETWORK(TailScope.FULL, rearms = true),
+
     /** A silent push for the active event — the reliable wake, clustered exactly when an event is live. */
     SILENT_PUSH(TailScope.FULL, rearms = true),
 

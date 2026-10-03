@@ -2,6 +2,8 @@
 
 package app.snapsync.ui
 
+import androidx.compose.ui.semantics.SemanticsActions
+import app.snapsync.model.NetworkNotice
 import app.snapsync.model.AlbumKind
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Modifier
@@ -11,7 +13,6 @@ import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertHasClickAction
-import androidx.compose.ui.semantics.SemanticsActions
 import app.snapsync.model.CreateDraftSession
 import app.snapsync.model.eventEnd
 import app.snapsync.model.StoreKind
@@ -728,6 +729,59 @@ class StatusScreenTest {
 
         onNodeWithText("Turn on full access in Settings").assertExists()
         onNodeWithText("Turn on full access in Settings").performClick()
+        assertEquals(1, settingsOpens)
+    }
+
+    // ---- no network (capabilities `sync-status`, `create-event`) ----
+
+    @Test
+    fun `a blocked network's status line opens Settings`() = runComposeUiTest {
+        var settingsOpens = 0
+        setContent {
+            TestStatusScreen(
+                joined(SyncHealth.NoNetwork(NetworkNotice.BLOCKED)),
+                actions = testActions(access = testAccessActions(onOpenSettings = { settingsOpens++ })),
+                cutoff = fixedCutoff(),
+            )
+        }
+        onNodeWithText("Network blocked for SnapSync – Open Settings").performClick()
+        assertEquals(1, settingsOpens)
+    }
+
+    @Test
+    fun `the offline status line offers nothing`() = runComposeUiTest {
+        var settingsOpens = 0
+        setContent {
+            TestStatusScreen(
+                joined(SyncHealth.NoNetwork(NetworkNotice.OFFLINE)),
+                actions = testActions(access = testAccessActions(onOpenSettings = { settingsOpens++ })),
+                cutoff = fixedCutoff(),
+            )
+        }
+        onNodeWithText("You're offline").assertExists().assert(SemanticsMatcher.keyNotDefined(SemanticsActions.OnClick))
+        onNodeWithText("You're offline").performClick()
+        assertEquals(0, settingsOpens)
+    }
+
+    @Test
+    fun `offline Create cannot be tapped and the line below it says so`() = runComposeUiTest {
+        setContent { CreateScreen(UiState(Layer.CreateEvent(error = "Couldn't reach the server.", network = NetworkNotice.OFFLINE))) }
+        completeForm("Party")
+        onNodeWithText("You're offline").assertExists()
+        onNodeWithText("Couldn't reach the server.").assertDoesNotExist()
+        onNodeWithText("Create event").assertIsNotEnabled()
+    }
+
+    @Test
+    fun `blocked the create screen offers SnapSync’s Settings`() = runComposeUiTest {
+        var settingsOpens = 0
+        setContent {
+            CreateScreen(
+                UiState(Layer.CreateEvent(network = NetworkNotice.BLOCKED)),
+                actions = testActions(access = testAccessActions(onOpenSettings = { settingsOpens++ })),
+            )
+        }
+        onNodeWithText("Network blocked for SnapSync – Open Settings").performClick()
         assertEquals(1, settingsOpens)
     }
 

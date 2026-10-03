@@ -4,6 +4,7 @@ import app.snapsync.model.PushEndpoint
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.Availability
+import app.snapsync.model.NetworkAccess
 import app.snapsync.model.CrashEvent
 import app.snapsync.model.CrashLevel
 import app.snapsync.model.CrashOptions
@@ -91,6 +92,7 @@ class MockStateTest {
         assertEquals(1, copy.uploadQueue.operator.created.size)
         assertEquals(true, copy.extensionRegistry.operator.registered)
         assertEquals(Availability.UNAVAILABLE, copy.processInfo.operator.protectedData)
+        assertEquals(NetworkAccess.BLOCKED, copy.connectivity.operator.access)
         assertEquals(listOf("hello"), copy.systemUi.operator.shared.value)
         assertEquals("dump", copy.crashReporter.operator.sent.value.single().message)
         assertEquals(1, copy.enclave.keys.held.size)
@@ -140,6 +142,7 @@ class MockStateTest {
             sendDump(CrashEvent(message = "dump", breadcrumbs = listOf(Crumb(CrashLevel.INFO, "c")), contexts = mapOf("note" to mapOf("text" to "t"))))
         }
         device.processInfo.operator.protectedData = Availability.UNAVAILABLE
+        device.connectivity.operator.access = NetworkAccess.BLOCKED
         device.clock.operator.now = Instant.parse("2026-07-01T12:00:00Z")
         device.clock.zone = TimeZone.of("Europe/Berlin")
         device.wakes.port().schedule(WakeId.Heartbeat, WakeTrigger.After(1.hours, requiresNetwork = true))

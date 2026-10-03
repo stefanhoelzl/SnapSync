@@ -120,6 +120,7 @@ class JvmApp<D>(
             links = ports.entries.links,
             ui = ports.entries.ui,
             processInfo = ports.device.processInfo,
+            network = ports.device.network,
         )
 
         private fun extensionPorts(): ExtensionPorts = ExtensionPorts(

@@ -103,7 +103,15 @@ sealed interface Layer {
      * [draft] is where the screen's draft stands against the app's foreground life ([CreateDraftSession]).
      */
     @Serializable
-    data class CreateEvent(val error: String? = null, val draft: CreateDraftSession = CreateDraftSession()) : Layer
+    data class CreateEvent(
+        val error: String? = null,
+        val draft: CreateDraftSession = CreateDraftSession(),
+        /**
+         * The network is missing (capability `create-event`, "Without a network, Create waits"): the hint line shows
+         * it instead of [error] — which stays, and returns with the network — and Create is unavailable.
+         */
+        val network: NetworkNotice? = null,
+    ) : Layer
 
     /**
      * A `POST /events` create request is in flight (`config == null`, creation status `InFlight`): a
@@ -147,6 +155,12 @@ sealed interface Layer {
          * be false). The surface says so beside its confirm and names the confirm for it.
          */
         val asksAccessOnJoin: Boolean = false,
+        /**
+         * The network is missing (capability `join-event`, "Without a network, the join screen waits for one"): the
+         * surface says so, Join is unavailable while Cancel stays, and a [JoinPhase.LoadFailed] offers no Retry —
+         * the details load by themselves once the network returns.
+         */
+        val network: NetworkNotice? = null,
     ) : Layer
 
     /**
@@ -411,6 +425,15 @@ sealed interface SyncHealth {
     data class NeedsAccess(val permission: GalleryAccess) : SyncHealth
 
     /**
+     * The device gives the app no usable network (capability `sync-status`, "The app says when it cannot reach the
+     * network"). Second in the ladder: below [NeedsAccess] — access decides what is shared, and the member can fix it
+     * offline — and above everything else, [Unattested] included, whose most common cause this names. Tappable only
+     * when [notice] is [NetworkNotice.BLOCKED]: it opens the app's Settings page.
+     */
+    @Serializable
+    data class NoNetwork(val notice: NetworkNotice) : SyncHealth
+
+    /**
      * The event has not begun: the membership's `startsAt` is still in the future (capability
      * `sync-status`). Carries nothing: *when* it starts is the dates line's to say ([Layer.Joined.timing]),
      * so the status line says only what the wait means — sharing starts with the event.
@@ -464,4 +487,27 @@ sealed interface SyncHealth {
      */
     @Serializable
     data class Syncing(val upload: Arrow, val download: Arrow) : SyncHealth
+}
+
+/**
+ * Why the app has no usable network, as the member is told (capability `sync-status`): the two causes a user can tell
+ * apart by what fixes them.
+ */
+@Serializable
+enum class NetworkNotice {
+    /** The device has no network at all — only connecting helps. */
+    OFFLINE,
+
+    /** The operating system withholds the network from this app — a setting of the app's, in Settings. */
+    BLOCKED,
+    ;
+
+    companion object {
+        /** The notice for [access], or `null` when there is nothing to tell. */
+        fun of(access: NetworkAccess): NetworkNotice? = when (access) {
+            NetworkAccess.ONLINE -> null
+            NetworkAccess.OFFLINE -> OFFLINE
+            NetworkAccess.BLOCKED -> BLOCKED
+        }
+    }
 }

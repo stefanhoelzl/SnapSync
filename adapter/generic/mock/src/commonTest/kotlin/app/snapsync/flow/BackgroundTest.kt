@@ -1,5 +1,10 @@
 package app.snapsync.flow
 
+import app.snapsync.services.network.NetworkReadings
+import app.snapsync.mock.NetworkMock
+import app.snapsync.feature.status.ForegroundWatches
+import app.snapsync.model.NetworkAccess
+import app.snapsync.feature.status.NetworkWatch
 import app.snapsync.feature.status.LedgerCounts
 import app.snapsync.feature.status.LedgerCountsSource
 import app.snapsync.feature.status.StatusCountsPoller
@@ -23,8 +28,8 @@ import kotlin.time.Duration.Companion.seconds
  * (capability `sync-status`), and a flow that ordered the stop but never landed it would leave that premise false with
  * nothing to notice.
  *
- * `Background` is constructible from `:domain` alone (a poller over a counts source), unlike its sibling flows whose
- * controller graphs need the fakes in `:adapter:generic:mock`.
+ * It lives beside its sibling flows' tests, over the mocks: the network watch it stops reads the network through its
+ * service, over the network mock's port.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class BackgroundTest {
@@ -52,10 +57,27 @@ class BackgroundTest {
         val whileForegrounded = counts.refreshes
         assertTrue(whileForegrounded > 0, "the poll never ticked, so this test proves nothing")
 
-        Background(statusPoller = poller).run()
+        Background(ForegroundWatches(poller, NetworkWatch(backgroundScope, NetworkReadings(NetworkMock().port())))).run()
 
         advanceTimeBy(30.seconds)
         runCurrent()
         assertEquals(whileForegrounded, counts.refreshes, "the poll ticked after the flow stopped it")
+    }
+
+    @Test
+    fun `a shown network notice is withdrawn and the watch follows nothing more`() = runTest {
+        // Nothing renders the notice in the background, and a return to the foreground must not show a stale one.
+        val network = NetworkMock(NetworkAccess.OFFLINE)
+        val watch = NetworkWatch(backgroundScope, NetworkReadings(network.port()))
+        watch.start()
+        advanceTimeBy(NetworkWatch.DEFAULT_GRACE + 1.seconds)
+        assertEquals(NetworkAccess.OFFLINE, watch.access.value, "the watch never published, so this test proves nothing")
+
+        Background(ForegroundWatches(StatusCountsPoller(backgroundScope, {}), watch)).run()
+
+        assertEquals(NetworkAccess.ONLINE, watch.access.value)
+        network.operator.access = NetworkAccess.BLOCKED
+        advanceTimeBy(NetworkWatch.DEFAULT_GRACE + 1.seconds)
+        assertEquals(NetworkAccess.ONLINE, watch.access.value, "the watch followed the network after the flow stopped it")
     }
 }

@@ -1,5 +1,9 @@
 package app.snapsync.presentation
 
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.Flow
+import app.snapsync.model.NetworkAccess
+import app.snapsync.feature.status.readmodel.NetworkStatusSource
 import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.feature.creation.readmodel.ForegroundReturn
 import app.snapsync.feature.download.readmodel.DownloadProgress
@@ -80,6 +84,12 @@ class StatusSources(
      */
     val versionRefusal: StateFlow<VersionRefusal?> = MutableStateFlow(null),
     /**
+     * Whether the app can reach the network, as the member is told, and when a missing one comes back (capability
+     * `sync-status`, "The app says when it cannot reach the network"). Defaults to always-online, so a host that does
+     * not exercise it constructs unchanged.
+     */
+    val network: NetworkStatusSource = AlwaysOnline,
+    /**
      * This build's store page, or `null` when it carries none. A build constant supplied by the
      * composition root, not a source — it is here because the ONE screen that needs it is the refusal
      * above, and pairing them is what stops a host wiring the state without the remedy.
@@ -118,3 +128,9 @@ class StatusDiagnostics(
      */
     val onIntentError: (Throwable) -> Unit,
 )
+
+/** A host with no network watch: online, and never returning from anything. */
+private object AlwaysOnline : NetworkStatusSource {
+    override val access: StateFlow<NetworkAccess> = MutableStateFlow(NetworkAccess.ONLINE)
+    override val returned: Flow<Unit> = emptyFlow()
+}

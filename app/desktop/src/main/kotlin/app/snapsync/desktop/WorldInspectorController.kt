@@ -1,5 +1,6 @@
 package app.snapsync.desktop
 
+import app.snapsync.model.NetworkAccess
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -142,6 +143,12 @@ class WorldInspectorController(private val scope: CoroutineScope) {
     // ---- membership -------------------------------------------------------------------------------
 
     fun setPermission(status: GalleryAccess) = launchMutation { mocks.library.operator.access = status }
+
+    /**
+     * The device's network as the operating system reports it to the app (capability `sync-status`). The app tells the
+     * member only after the network watch's grace, so a notice appears a few seconds after the lever, as on a phone.
+     */
+    fun setNetwork(access: NetworkAccess) = launchMutation { mocks.connectivity.operator.access = access }
 
     fun armNextRequest(grants: Boolean) {
         armedGrants = grants

@@ -47,7 +47,7 @@ from the adapters file (`rig-channel`'s `device/adapters*`, as on the iOS app ho
 - **A file** may make real only what Android has a real adapter for — today `screen`, `lifecycle`, `clock`, `files`,
   `databases`, `preferences`, `keychain` (the Keystore-sealed secure store), `integrity` (Keystore key attestation),
   `backend` (the real api over OkHttp), `links` (the activity's VIEW intents; `/os` link verbs then deliver through it),
-  `library` (MediaStore — `DCIM` is the member's default gallery), `system-ui`, `wake`, `background-time` and
+  `library` (MediaStore — `DCIM` is the member's default gallery), `network` (the default-network callback), `system-ui`, `wake`, `background-time` and
   `upload-session` (WorkManager, and in-process uploads). Every other system must be named `mock`: an omitted system reads as `real`,
   and a choice leaving one real is refused. Write it while not joined; the app exits, and you start it again
   (`am start`). A file-chosen launch saves its mocks' state, so it survives a force-stop.

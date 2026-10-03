@@ -878,6 +878,7 @@ tail:
 | heartbeat (`Wake`; on iOS the `BGTask` `app.snapsync.upload.heartbeat`, or `app.snapsync.heartbeat.idle` when idle) | none: the wake *is* the tail | full | the cadence rule |
 | limited-grant selection change | snapshot-fed discovery → manifest | full | the cadence rule |
 | foreground | download reconcile, stored-upload settle, staged-byte reclaim, status and membership refresh | full | the cadence rule |
+| the network's return, in the foreground (`NetworkWatch.returned`; `[onNetworkReturned]`) | the foreground's own work, unchanged | full | the cadence rule |
 | membership transition's arm | none (requested detached) | full | the cadence rule |
 | upload completion (admission `Admit` only) | none | ② only | never |
 | download staged in a running process | record the staging | ① only | never |
@@ -947,6 +948,12 @@ SE2), so:
   the change and the baseline path drop a snapshot built under a grant that has since become full.
 - The denylisted-album lookup is asked only under a full grant (it can only answer the empty set otherwise).
 - Ledger counts refresh after tail units only while foregrounded (foreground entry re-reads them anyway).
+- The network is watched only while foregrounded: the `Foreground` flow starts `feature/status`'s `NetworkWatch` beside
+  the counts poller and the `Background` flow stops it, so the `NetworkMonitor` port's cold flow — and the platform's
+  monitor behind it — runs only while a screen shows the result. Presentation reads it as the read-model
+  `NetworkStatusSource`: the access to show (a missing network after the watch's grace, its return at once, `ONLINE`
+  whenever stopped) and `returned`, the moment a shown notice clears (capability `sync-status`; decision record
+  `changes/tell-when-offline`, D1–D2).
 
 **On Android** there is one process and one uploader. The `Wake`, `BackgroundTime` and `Upload` adapters
 (`:adapter:android`'s `work/`) are WorkManager's:

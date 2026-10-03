@@ -1,0 +1,229 @@
+@file:OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+
+package app.snapsync.presentation
+
+import app.snapsync.feature.creation.readmodel.CreationFailureReason
+import app.snapsync.feature.creation.readmodel.CreationStatus
+import app.snapsync.feature.status.readmodel.NetworkStatusSource
+import app.snapsync.feature.status.readmodel.SyncStatusSource
+import app.snapsync.model.EventConfig
+import app.snapsync.model.EventLinkPayload
+import app.snapsync.model.EventStart
+import app.snapsync.model.GalleryAccess
+import app.snapsync.model.JoinLoad
+import app.snapsync.model.JoinPhase
+import app.snapsync.model.Layer
+import app.snapsync.model.NetworkAccess
+import app.snapsync.model.NetworkNotice
+import app.snapsync.model.SyncHealth
+import app.snapsync.model.SyncProgress
+import app.snapsync.model.SyncStatus
+import app.snapsync.model.captureCeiling
+import app.snapsync.model.captureCutoff
+import app.snapsync.model.deletesAt
+import app.snapsync.model.encodeEventUrl
+import app.snapsync.model.eventEnd
+import app.snapsync.model.eventStart
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.test.TestScope
+import org.orbitmvi.orbit.test.testWithInternalState
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
+import kotlinx.datetime.TimeZone
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertIs
+import kotlin.time.Instant
+
+/**
+ * The network notice in the reduction (capabilities `sync-status`, `create-event`, `join-event`; decision record
+ * `changes/tell-when-offline`, D3–D4): its rung in the joined status line, its place on the create and join layers, and
+ * the join reload the network's return triggers — and only that return.
+ */
+class StatusContainerHostNetworkTest {
+
+    private class FakeNetwork(initial: NetworkAccess = NetworkAccess.ONLINE) : NetworkStatusSource {
+        override val access = MutableStateFlow(initial)
+        val returns = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+        override val returned: Flow<Unit> = returns
+
+        /** A shown notice clearing — what the watch publishes on a return. */
+        fun comeBack() {
+            access.value = NetworkAccess.ONLINE
+            returns.tryEmit(Unit)
+        }
+    }
+
+    private class Sync(initial: SyncStatus) : SyncStatusSource {
+        override val status: StateFlow<SyncStatus> = MutableStateFlow(initial)
+    }
+
+    private fun TestScope.host(
+        network: FakeNetwork,
+        config: EventConfig? = STARTED,
+        permission: GalleryAccess = GalleryAccess.GRANTED,
+        attested: Boolean = true,
+        creation: CreationStatus = CreationStatus.Idle,
+        load: suspend (String) -> JoinLoad = { JoinLoad.Failed },
+        scope: CoroutineScope = backgroundScope,
+    ) = StatusContainerHost(
+        StatusSources(
+            Sync(SyncStatus.Ready(SyncProgress(0, 0, 0, 0, false, null))),
+            MutableStateFlow(permission),
+            MutableStateFlow(config),
+            creation = MutableStateFlow(creation),
+            attested = MutableStateFlow(attested),
+            network = network,
+        ),
+        scope,
+        queries = joinDetails(load),
+        commands = testCommands(),
+        cutoffFormatter = CutoffFormatter(now = { NOW }, zone = TimeZone.UTC),
+        diagnostics = testDiagnostics(),
+    )
+
+    /** [block] with the container's intents running, as on a screen — Orbit starts them on create. */
+    private suspend fun TestScope.driving(host: StatusContainerHost, block: suspend () -> Unit) =
+        host.testWithInternalState(this) {
+            runOnCreate()
+            runCurrent()
+            block()
+            cancelAndIgnoreRemainingItems()
+        }
+
+    private fun StatusContainerHost.health(): SyncHealth = (container.stateFlow.value.layer as Layer.Joined).health
+
+    // ── the joined status line ───────────────────────────────────────────────────────────────
+
+    @Test
+    fun `a missing network is the status line with its cause`() = runTest {
+        for ((access, notice) in listOf(NetworkAccess.OFFLINE to NetworkNotice.OFFLINE, NetworkAccess.BLOCKED to NetworkNotice.BLOCKED)) {
+            assertEquals(SyncHealth.NoNetwork(notice), host(FakeNetwork(access)).health())
+        }
+    }
+
+    @Test
+    fun `missing access outranks a missing network`() = runTest {
+        val host = host(FakeNetwork(NetworkAccess.OFFLINE), permission = GalleryAccess.DENIED)
+        assertEquals(SyncHealth.NeedsAccess(GalleryAccess.DENIED), host.health())
+    }
+
+    @Test
+    fun `a missing network outranks a future start and an in-sync device`() = runTest {
+        assertEquals(SyncHealth.NoNetwork(NetworkNotice.OFFLINE), host(FakeNetwork(NetworkAccess.OFFLINE), config = NOT_STARTED).health())
+        val inSync = host(FakeNetwork())
+        assertEquals(SyncHealth.InSync, inSync.health(), "online, the same device is in sync")
+    }
+
+    @Test
+    fun `offline with an expired verification says offline and not cannot-verify`() = runTest {
+        assertEquals(SyncHealth.NoNetwork(NetworkNotice.OFFLINE), host(FakeNetwork(NetworkAccess.OFFLINE), attested = false).health())
+        assertEquals(SyncHealth.Unattested, host(FakeNetwork(), attested = false).health(), "online, the server is to blame")
+    }
+
+    @Test
+    fun `the line clears as soon as the network returns`() = runTest {
+        val network = FakeNetwork(NetworkAccess.BLOCKED)
+        val host = host(network)
+        driving(host) {
+            network.comeBack()
+            runCurrent()
+            assertEquals(SyncHealth.InSync, host.health())
+        }
+    }
+
+    // ── the create layer ─────────────────────────────────────────────────────────────────────
+
+    @Test
+    fun `offline the create layer carries the notice`() = runTest {
+        assertEquals(Layer.CreateEvent(network = NetworkNotice.OFFLINE), host(FakeNetwork(NetworkAccess.OFFLINE), config = null).container.stateFlow.value.layer)
+    }
+
+    @Test
+    fun `a failed create's message is kept under the notice and returns with the network`() = runTest {
+        val network = FakeNetwork(NetworkAccess.OFFLINE)
+        val host = host(network, config = null, creation = CreationStatus.Failed(CreationFailureReason.SERVER))
+        driving(host) {
+            assertEquals(
+                Layer.CreateEvent(error = "Couldn't reach the server.", network = NetworkNotice.OFFLINE),
+                host.container.stateFlow.value.layer,
+            )
+            network.comeBack()
+            runCurrent()
+            assertEquals(Layer.CreateEvent(error = "Couldn't reach the server."), host.container.stateFlow.value.layer)
+        }
+    }
+
+    @Test
+    fun `a create in flight is not interrupted`() = runTest {
+        assertEquals(Layer.CreatingEvent, host(FakeNetwork(NetworkAccess.OFFLINE), config = null, creation = CreationStatus.InFlight).container.stateFlow.value.layer)
+    }
+
+    // ── the join layer ───────────────────────────────────────────────────────────────────────
+
+    @Test
+    fun `an invite opened offline loads by itself once the network returns`() = runTest {
+        val network = FakeNetwork(NetworkAccess.OFFLINE)
+        var loads = 0
+        val host = host(network, config = null, load = { if (loads++ == 0) JoinLoad.Failed else FOUND })
+        driving(host) {
+            host.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT)))
+            runCurrent()
+            val offline = assertIs<Layer.JoiningEvent>(host.container.stateFlow.value.layer)
+            assertEquals(JoinPhase.LoadFailed, offline.phase)
+            assertEquals(NetworkNotice.OFFLINE, offline.network)
+
+            network.comeBack()
+            runCurrent()
+            val loaded = assertIs<Layer.JoiningEvent>(host.container.stateFlow.value.layer)
+            assertIs<JoinPhase.Detailed>(loaded.phase, "the details loaded without a tap")
+            assertEquals(null, loaded.network)
+            assertEquals(2, loads)
+        }
+    }
+
+    @Test
+    fun `a load that failed while online waits for Retry`() = runTest {
+        val network = FakeNetwork()
+        var loads = 0
+        val host = host(network, config = null, load = { loads++; JoinLoad.Failed })
+        driving(host) {
+            host.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT)))
+            runCurrent()
+            assertEquals(JoinPhase.LoadFailed, assertIs<Layer.JoiningEvent>(host.container.stateFlow.value.layer).phase)
+            network.access.value = NetworkAccess.ONLINE // no return: nothing was missing
+            runCurrent()
+            assertEquals(1, loads, "an unreachable server is retried by the member, not by the network watch")
+        }
+    }
+
+    @Test
+    fun `offline after the details loaded the join layer carries the notice`() = runTest {
+        val network = FakeNetwork()
+        val host = host(network, config = null, load = { FOUND })
+        driving(host) {
+            host.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT)))
+            runCurrent()
+            network.access.value = NetworkAccess.BLOCKED
+            runCurrent()
+            val layer = assertIs<Layer.JoiningEvent>(host.container.stateFlow.value.layer)
+            assertIs<JoinPhase.Detailed>(layer.phase)
+            assertEquals(NetworkNotice.BLOCKED, layer.network)
+        }
+    }
+
+    private companion object {
+        const val EVENT = "11111111-1111-4111-8111-111111111111"
+        val NOW: Instant = Instant.parse("2026-07-09T12:00:00Z")
+        val STARTED = EventConfig(EVENT, "Party", captureCutoff("2026-07-06T00:00:00Z"), maxPhotoDate = captureCeiling("2026-07-13T00:00:00Z"))
+        val NOT_STARTED = EventConfig(
+            EVENT, "Party", captureCutoff("2026-07-10T00:00:00Z"),
+            startsAt = EventStart(captureCutoff("2026-07-10T00:00:00Z").at), maxPhotoDate = captureCeiling("2026-07-13T00:00:00Z"),
+        )
+        val FOUND = JoinLoad.Found("Party", eventStart("2026-07-06T00:00:00Z"), eventEnd("2026-07-13T00:00:00Z"), deletesAt("2026-08-05T00:00:00Z"))
+    }
+}
