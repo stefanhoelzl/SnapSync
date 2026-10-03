@@ -1,5 +1,6 @@
 package app.snapsync.presentation
 
+import app.snapsync.model.CreateDraftSession
 import app.snapsync.model.AlbumKind
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.ReportDestination
@@ -131,6 +132,7 @@ class StatusContainerHost(
     private val versionRefusal = sources.versionRefusal
     private val renameFlow: StateFlow<RenameStatus> = sources.rename
     private val store = sources.store
+    private val foreground = sources.foreground
 
     private val log = diagnostics.log
     private val onIntentError = diagnostics.onIntentError
@@ -265,6 +267,12 @@ class StatusContainerHost(
                         now,
                     )
                 }.collect { ui -> reduce { ui } }
+            }
+            // The create draft follows the app's returns to the foreground (capability `create-event`).
+            intent {
+                foreground.collect { back ->
+                    local.update { it.copy(createDraft = it.createDraft.afterReturn(back.count, back.awayFor)) }
+                }
             }
             // The shareable count follows the range the showing surface resolves, and the grant (a late
             // first-join grant resolves the count). `collectLatest`: a newer range cancels an older count.
@@ -916,7 +924,7 @@ internal fun asksAccessOnJoin(config: EventConfig?, permission: GalleryAccess): 
  */
 private fun unjoinedLayer(
     pending: PendingJoin?,
-    creation: CreationStatus,
+    create: Creation,
     transient: String?,
     form: RangeForm,
     permission: GalleryAccess,
@@ -943,12 +951,15 @@ private fun unjoinedLayer(
     // One banner, one value. The TRANSIENT wins while it is showing: a create failure is sticky
     // until the next attempt, so a link scanned in between would otherwise be silently outranked by
     // an older complaint. When it self-clears, the sticky failure shows again.
-    return when (creation) {
+    return when (val creation = create.status) {
         CreationStatus.InFlight -> Layer.CreatingEvent
-        is CreationStatus.Failed -> Layer.CreateEvent(error = transient ?: creation.reason.message())
-        CreationStatus.Idle -> Layer.CreateEvent(error = transient)
+        is CreationStatus.Failed -> Layer.CreateEvent(error = transient ?: creation.reason.message(), draft = create.draft)
+        CreationStatus.Idle -> Layer.CreateEvent(error = transient, draft = create.draft)
     }
 }
+
+/** The create surface's two inputs: the create request's status, and where its draft stands. */
+private class Creation(val status: CreationStatus, val draft: CreateDraftSession)
 
 /**
  * Which of the worlds the app is in — unjoined (the join gate or the create surface) or joined — and, for the
@@ -970,7 +981,9 @@ private fun reduceFrom(
     // Surface state belongs to the membership it was opened in; another membership reads it as closed / idle.
     val rename = Owned(local.renameOwner, renameStatus).forMembership(config?.eventId, RenameStatus.Idle)
     val reconfiguring = local.settings.forMembership(config?.eventId, SettingsSurface.Closed)
-    if (config == null) return unjoinedLayer(pending, creation, transient, form, permission, resolveAgainst)
+    if (config == null) {
+        return unjoinedLayer(pending, Creation(creation, local.createDraft), transient, form, permission, resolveAgainst)
+    }
     val health = when {
         // Missing permission is the sole attention state — the only reason contribution cannot run. It
         // outranks NotStarted because it is the only ACTIONABLE state, and the member must resolve it
@@ -1237,6 +1250,8 @@ private data class Local(
      * re-seeds, so nothing can leak from one surface into the other.
      */
     val form: RangeForm,
+    /** Where the create screen's draft stands against the app's foreground life (capability `create-event`). */
+    val createDraft: CreateDraftSession = CreateDraftSession(),
     /**
      * Whether the joined layer is showing its settings surface (`manage-membership` D4: opening is client-side
      * navigation that touches no port). OWNED by the membership it was opened in (see [Owned]): a switch, a leave

@@ -195,4 +195,5 @@ private fun statusSourcesOf(core: AppCore, ports: AppPorts): StatusSources = Sta
     pending = MutableStateFlow(null),
     versionRefusal = core.versionRefusal,
     store = ports.process.build.store,
+    foreground = core.foregroundLife.returns,
 )

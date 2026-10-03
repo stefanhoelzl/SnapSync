@@ -28,7 +28,14 @@ class EventRangeTest {
         /** A join's window: the event, 20 Jul 18:00 – 25 Jul 18:00, its end time always set. */
         val EVENT = RangeBounds.within(LocalDateTime(2026, 7, 20, 18, 0), LocalDateTime(2026, 7, 25, 18, 0))
         val WHOLE_EVENT = EventRange(LocalDateTime(2026, 7, 20, 18, 0), LocalDate(2026, 7, 25), LocalTime(18, 0), endPending = false)
+
+        /** The clock's hour, as the create screen hands it to a minute settle that has no hour yet. */
+        const val NOW_HOUR = 18
     }
+
+    /** Both end wheels settled: the hour, then the minute. */
+    private fun EventRange.endAt(hour: Int, minute: Int, bounds: RangeBounds = THIRTY_DAYS) =
+        settleUntilHour(hour, bounds).settleUntilMinute(minute, bounds, NOW_HOUR)
 
     private val fresh = EventRange(from = START)
 
@@ -65,7 +72,7 @@ class EventRangeTest {
 
     @Test
     fun `once the last day is placed a tap starts a new range on that day`() {
-        val complete = fresh.pickDay(SUNDAY, THIRTY_DAYS).settleUntilHour(21, THIRTY_DAYS)
+        val complete = fresh.pickDay(SUNDAY, THIRTY_DAYS).endAt(21, 0)
         val restarted = complete.pickDay(LocalDate(2026, 7, 10), THIRTY_DAYS)
         assertEquals(LocalDateTime(2026, 7, 10, 18, 4), restarted.from)
         assertEquals(LocalDate(2026, 7, 10), restarted.endDay)
@@ -75,7 +82,7 @@ class EventRangeTest {
 
     @Test
     fun `dragging the last day moves it and keeps a time that is still valid`() {
-        val set = fresh.pickDay(SUNDAY, THIRTY_DAYS).settleUntilHour(21, THIRTY_DAYS)
+        val set = fresh.pickDay(SUNDAY, THIRTY_DAYS).endAt(21, 0)
         val dragged = set.dragEndTo(LocalDate(2026, 7, 12), THIRTY_DAYS)
         assertEquals(LocalDateTime(2026, 7, 12, 21, 0), dragged.until)
         assertEquals(TODAY, dragged.dragEndTo(LocalDate(2026, 7, 1), THIRTY_DAYS).endDay, "never before the start")
@@ -84,7 +91,7 @@ class EventRangeTest {
 
     @Test
     fun `dragging the start stops at the last day and clears an end time it would pass`() {
-        val set = fresh.pickDay(SUNDAY, THIRTY_DAYS).settleUntilHour(10, THIRTY_DAYS)
+        val set = fresh.pickDay(SUNDAY, THIRTY_DAYS).endAt(10, 0)
         val dragged = set.dragStartTo(LocalDate(2026, 7, 20), THIRTY_DAYS)
         assertEquals(LocalDateTime(2026, 7, 8, 18, 4), dragged.from)
         assertNull(dragged.untilTime, "10:00 on the start's own day would come before it")
@@ -103,21 +110,40 @@ class EventRangeTest {
     }
 
     @Test
-    fun `settling the Until hour from blank fills the minutes as zero`() {
+    fun `settling the Until hour alone does not fill the minute or set the end`() {
         val set = fresh.pickDay(SUNDAY, THIRTY_DAYS).settleUntilHour(21, THIRTY_DAYS)
-        assertEquals(LocalDateTime(2026, 7, 8, 21, 0), set.until)
+        assertEquals(21, set.untilHour)
+        assertNull(set.untilMinute, "choosing the hour must never pre-fill the minute")
+        assertNull(set.until)
     }
 
     @Test
-    fun `settling the Until minute from blank takes the hour the wheel sat over`() {
-        val set = fresh.pickDay(SUNDAY, THIRTY_DAYS).settleUntilMinute(30, THIRTY_DAYS)
-        assertEquals(LocalDateTime(2026, 7, 8, 18, 30), set.until)
+    fun `settling the Until minute with the hour blank takes the clock's hour`() {
+        val set = fresh.pickDay(SUNDAY, THIRTY_DAYS).settleUntilMinute(30, THIRTY_DAYS, currentHour = 20)
+        assertEquals(LocalDateTime(2026, 7, 8, 20, 30), set.until)
+    }
+
+    @Test
+    fun `a minute drag fills a blank hour with the clock's hour and leaves the minute blank`() {
+        val filled = fresh.pickDay(SUNDAY, THIRTY_DAYS).fillUntilHour(20, THIRTY_DAYS)
+        assertEquals(20, filled.untilHour)
+        assertNull(filled.untilMinute)
+        assertNull(filled.until)
+        assertEquals(filled, filled.fillUntilHour(9, THIRTY_DAYS), "an hour already chosen is kept")
+    }
+
+    @Test
+    fun `a clock hour that is no valid end fills the start's hour instead`() {
+        // Same day, start 18:04, the clock at 16: 16 and 17 have no minute after the start, 18 does.
+        val sameDay = fresh.pickDay(TODAY, THIRTY_DAYS)
+        assertEquals(18, sameDay.fillUntilHour(16, THIRTY_DAYS).untilHour)
+        // On the thirtieth day the latest end is 18:04: a clock at 22 lands on the start's hour too.
+        assertEquals(18, fresh.pickDay(LocalDate(2026, 8, 5), THIRTY_DAYS).fillUntilHour(22, THIRTY_DAYS).untilHour)
     }
 
     @Test
     fun `hours and minutes settle independently`() {
-        val set = fresh.pickDay(SUNDAY, THIRTY_DAYS).settleUntilHour(21, THIRTY_DAYS).settleUntilMinute(30, THIRTY_DAYS)
-            .settleUntilHour(22, THIRTY_DAYS)
+        val set = fresh.pickDay(SUNDAY, THIRTY_DAYS).endAt(21, 30).settleUntilHour(22, THIRTY_DAYS)
         assertEquals(LocalDateTime(2026, 7, 8, 22, 30), set.until)
     }
 
@@ -126,15 +152,16 @@ class EventRangeTest {
         val sameDay = fresh.pickDay(TODAY, THIRTY_DAYS)
         // 17:00 has no minute after 18:04, so the hour moves to the nearest one that does, and :00 in that
         // hour is still before the start, so the minutes move to the first valid one.
-        assertEquals(LocalTime(18, 5), sameDay.settleUntilHour(17, THIRTY_DAYS).untilTime)
-        assertEquals(LocalTime(18, 5), sameDay.settleUntilMinute(4, THIRTY_DAYS).untilTime)
+        assertEquals(18, sameDay.settleUntilHour(17, THIRTY_DAYS).untilHour)
+        assertEquals(LocalTime(18, 5), sameDay.endAt(17, 0).untilTime)
+        assertEquals(LocalTime(18, 5), sameDay.settleUntilMinute(4, THIRTY_DAYS, NOW_HOUR).untilTime)
         assertFalse(sameDay.untilAllowed(LocalTime(18, 4), THIRTY_DAYS))
         assertTrue(sameDay.untilAllowed(LocalTime(18, 5), THIRTY_DAYS))
     }
 
     @Test
     fun `a same-day end at 23 is accepted`() {
-        assertEquals(LocalDateTime(2026, 7, 6, 23, 0), fresh.pickDay(TODAY, THIRTY_DAYS).settleUntilHour(23, THIRTY_DAYS).until)
+        assertEquals(LocalDateTime(2026, 7, 6, 23, 0), fresh.pickDay(TODAY, THIRTY_DAYS).endAt(23, 0).until)
     }
 
     @Test
@@ -146,15 +173,15 @@ class EventRangeTest {
     @Test
     fun `on the thirtieth day an end past the window is pulled back to it`() {
         // 18:04 is the last end the window allows; 23 has no valid minute, so the hour moves to 18, where
-        // the blank end's :00 is still inside it.
-        val last = fresh.pickDay(LocalDate(2026, 8, 5), THIRTY_DAYS).settleUntilHour(23, THIRTY_DAYS)
+        // :00 is still inside it.
+        val last = fresh.pickDay(LocalDate(2026, 8, 5), THIRTY_DAYS).endAt(23, 0)
         assertEquals(LocalDateTime(2026, 8, 5, 18, 0), last.until)
         assertFalse(last.untilAllowed(LocalTime(18, 5), THIRTY_DAYS))
     }
 
     @Test
     fun `the start cannot be moved to or past a chosen same-day end`() {
-        val range = fresh.pickDay(TODAY, THIRTY_DAYS).settleUntilHour(20, THIRTY_DAYS)
+        val range = fresh.pickDay(TODAY, THIRTY_DAYS).endAt(20, 0)
         assertEquals(LocalDateTime(2026, 7, 6, 19, 4), range.settleFromHour(21, THIRTY_DAYS).from)
         assertEquals(LocalDateTime(2026, 7, 6, 12, 4), range.settleFromHour(12, THIRTY_DAYS).from)
     }
@@ -162,7 +189,7 @@ class EventRangeTest {
     @Test
     fun `with no valid end on a same-day range the end stays blank`() {
         val late = EventRange(from = LocalDateTime(2026, 7, 6, 23, 59))
-        assertNull(late.settleUntilHour(23, THIRTY_DAYS).untilTime)
+        assertNull(late.settleUntilHour(23, THIRTY_DAYS).untilHour)
     }
 
     // ---- inside an event's window (join and settings) ----
@@ -206,5 +233,21 @@ class EventRangeTest {
     @Test
     fun `days past the event are never offered`() {
         assertEquals(LocalDate(2026, 7, 25), WHOLE_EVENT.lastPickableDay(EVENT))
+    }
+
+    @Test
+    fun `on join every settle keeps the end complete`() {
+        assertEquals(LocalDateTime(2026, 7, 25, 17, 0), WHOLE_EVENT.settleUntilHour(17, EVENT).until)
+        assertEquals(LocalDateTime(2026, 7, 25, 17, 30), WHOLE_EVENT.settleUntilHour(17, EVENT).settleUntilMinute(30, EVENT, NOW_HOUR).until)
+        assertEquals(LocalDateTime(2026, 7, 25, 18, 0), WHOLE_EVENT.settleUntilMinute(30, EVENT, NOW_HOUR).until, "18:30 is past the event")
+        assertTrue(WHOLE_EVENT.settleUntilHour(17, EVENT).isValid(EVENT))
+    }
+
+    @Test
+    fun `an end hour chosen alone stays while one of its minutes is still a valid end`() {
+        val hourOnly = fresh.pickDay(SUNDAY, THIRTY_DAYS).settleUntilHour(10, THIRTY_DAYS)
+        assertEquals(10, hourOnly.dragEndTo(LocalDate(2026, 7, 9), THIRTY_DAYS).untilHour)
+        assertNull(hourOnly.dragStartTo(LocalDate(2026, 7, 8), THIRTY_DAYS).untilHour, "10 on the start's day is before 18:04")
+        assertFalse(hourOnly.dragEndTo(LocalDate(2026, 7, 6), THIRTY_DAYS).untilHour != null)
     }
 }

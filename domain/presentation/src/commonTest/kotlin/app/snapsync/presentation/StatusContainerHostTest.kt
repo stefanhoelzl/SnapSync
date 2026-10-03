@@ -2,6 +2,10 @@
 
 package app.snapsync.presentation
 
+import kotlinx.coroutines.test.runCurrent
+import kotlin.time.Duration.Companion.minutes
+import app.snapsync.model.CreateDraftSession
+import app.snapsync.feature.creation.readmodel.ForegroundReturn
 import app.snapsync.model.step
 import app.snapsync.model.eventStart
 import app.snapsync.model.eventEnd
@@ -64,7 +68,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
-import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.orbitmvi.orbit.test.testWithInternalState
 import app.snapsync.model.EventDetails
@@ -582,12 +585,14 @@ class StatusContainerHostTest {
         permission: FakePermissionSource = FakePermissionSource(GalleryAccess.GRANTED),
         creator: EventCreator = SpyCreator(),
         scope: CoroutineScope,
+        foreground: MutableStateFlow<ForegroundReturn> = MutableStateFlow(ForegroundReturn.NONE),
     ): StatusContainerHost {
         val config = FakeConfig(null)
         return StatusContainerHost(
             StatusSources(
                 FakeSyncStatusSource(), permission.permission, config.config,
                 creation = MutableStateFlow(creation),
+                foreground = foreground,
             ), scope,
             commands = testCommands(create = { n, st, en -> scope.launch { creator.create(n, st.at.iso, en.at.iso) } }),
             cutoffFormatter = fixedCutoffFormatter(),
@@ -600,6 +605,25 @@ class StatusContainerHostTest {
     fun `config absent with idle creation shows the create input`() = runTest {
         val host = createHost(CreationStatus.Idle, scope = backgroundScope)
         assertEquals(screen(Layer.CreateEvent(error = null)), host.container.stateFlow.value)
+    }
+
+    @Test
+    fun `each return to the foreground reaches the create layer and only a long absence starts a fresh draft`() = runTest {
+        // Capability `create-event`, "A long absence starts a fresh draft".
+        val foreground = MutableStateFlow(ForegroundReturn.NONE)
+        val failed = "Couldn't reach the server."
+        createHost(CreationStatus.Failed(CreationFailureReason.SERVER), scope = backgroundScope, foreground = foreground)
+            .testWithInternalState(this) {
+                runOnCreate()
+                foreground.value = ForegroundReturn(1, awayFor = null)
+                expectInternalState(screen(Layer.CreateEvent(failed, CreateDraftSession(activation = 1, epoch = 0))))
+                foreground.value = ForegroundReturn(2, awayFor = 14.minutes + 59.seconds)
+                expectInternalState(screen(Layer.CreateEvent(failed, CreateDraftSession(activation = 2, epoch = 0))))
+                // A fresh draft keeps the failure message: it stays until the next attempt.
+                foreground.value = ForegroundReturn(3, awayFor = 15.minutes)
+                expectInternalState(screen(Layer.CreateEvent(failed, CreateDraftSession(activation = 3, epoch = 1))))
+                cancelAndIgnoreRemainingItems()
+            }
     }
 
     @Test
