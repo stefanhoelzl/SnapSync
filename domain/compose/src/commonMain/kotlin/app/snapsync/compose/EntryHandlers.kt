@@ -77,7 +77,7 @@ fun installNetworkReturns(core: AppCore) {
     val entry: EntryContext = core.process.entryContext
     val log = core.log
     core.scope.launch {
-        core.networkStatus.returned.collect {
+        core.network.status.returned.collect {
             log.invocation(entry, "onNetworkReturned") {
                 val wake = core.tail.hold("onNetworkReturned")
                 core.scope.launch {
