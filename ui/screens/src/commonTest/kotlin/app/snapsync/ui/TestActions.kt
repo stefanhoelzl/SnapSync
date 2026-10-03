@@ -74,7 +74,8 @@ internal fun testParticipationActions(
     onShareOn: (Boolean) -> Unit = {},
     onReceiveOn: (Boolean) -> Unit = {},
     onSaveToAlbum: (Boolean) -> Unit = {},
-) = ParticipationActions(choices, onShareOn, onReceiveOn, onSaveToAlbum)
+    onMobileData: (Boolean) -> Unit = {},
+) = ParticipationActions(choices, onShareOn, onReceiveOn, onSaveToAlbum, onMobileData)
 
 internal fun testRangeChoiceActions(
     onPreset: (app.snapsync.model.RangeChoice) -> Unit = {},

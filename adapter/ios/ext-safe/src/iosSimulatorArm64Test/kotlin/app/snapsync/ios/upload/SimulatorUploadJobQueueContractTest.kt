@@ -55,6 +55,7 @@ class SimulatorUploadJobQueueContractTest {
         )
 
         override fun create(state: UploadState, clauseId: String): Entered<UploadUnderTest> {
+            if (state == UploadState.RESTRICTED_NETWORK) return Entered.Unreachable("a restricted network needs a phone off unrestricted Wi-Fi; a simulator shares its Mac's network (capability `mobile-data`)")
             val jobs = SimulatorJobSets()
             val queue = SimulatorUploadJobQueue(Logger.withTag("contract"), jobs, payloadType = StandInPhoto::class)
             val os = PlayedOs(queue, jobs)

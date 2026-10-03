@@ -86,6 +86,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `LogSink` | `:domain:ports` | `:adapter:android` LogcatSink; `:adapter:generic:mock` Recording; `:adapter:ios:ext-safe` FileLogSink, PublicNSLogSink; `:test:rig` RecordedLog | yes |
 | `ManifestPublisher` | `:domain:services` | `:domain:services` BackendManifestPublisher; `:test:feature` FakeUploader | yes |
 | `MembershipRead` | `:domain:model` | `:domain:model` Member, NotMember, Unreadable | no |
+| `NetworkAccess` | `:domain:model` | `:domain:model` Blocked, Offline, Online | no |
 | `NetworkMonitor` | `:domain:ports` | `:adapter:android` AndroidNetworkMonitor; `:adapter:generic:mock` InMemoryNetworkMonitor; `:adapter:ios:app-only` IosNetworkMonitor | yes |
 | `NetworkStatusSource` | `:domain:feature` | `:domain:feature` NetworkWatch; `:domain:presentation` AlwaysOnline, FakeNetwork | yes |
 | `PhotoAccessStatusSource` | `:domain:ports` | `:adapter:android` AndroidPhotoPermission; `:adapter:generic:mock` InMemoryPhotoAccess; `:adapter:ios:app-only` PhotoLibraryPermission | yes |
@@ -127,7 +128,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `TokenOutcome` | `:domain:model` | `:domain:model` ChallengeStale, Minted, NotAttested, Refused, Unreachable | no |
 | `TransferRecord` | `:domain:services` | `:domain:services` LedgerService, Record | no |
 | `Ui` | `:domain:ports` | `:adapter:android` AndroidUi; `:adapter:ios:ui` IosUi; `:test:rig` RigUi | yes |
-| `UiIntent` | `:domain:model` | `:domain:model` CancelJoin, CancelReconfigure, CancelSwitch, ChoosePhotos, ConfirmJoin, ConfirmLeaveDismiss, ConfirmLeaveOpen, ConfirmSwitch, CreateEvent, LeaveEvent, OpenAppStore, OpenReconfigure, OpenSettings, RangeCustom, RangePreset, ReceiveOn, Reconfigure, RenameDismiss, RenameEvent, RenameOpen, RenameStatusConsumed, ReportBugDismiss, ReportBugOpen, RequestPermission, RetryJoin, RetryLoad, SaveToAlbum, SendDiagnostics, ShareInvite, ShareOn | no |
+| `UiIntent` | `:domain:model` | `:domain:model` CancelJoin, CancelReconfigure, CancelSwitch, ChoosePhotos, ConfirmJoin, ConfirmLeaveDismiss, ConfirmLeaveOpen, ConfirmSwitch, CreateEvent, LeaveEvent, MobileData, OpenAppStore, OpenReconfigure, OpenSettings, RangeCustom, RangePreset, ReceiveOn, Reconfigure, RenameDismiss, RenameEvent, RenameOpen, RenameStatusConsumed, ReportBugDismiss, ReportBugOpen, RequestPermission, RetryJoin, RetryLoad, SaveToAlbum, SendDiagnostics, ShareInvite, ShareOn | no |
 | `Upload` | `:domain:ports` | `:adapter:android` AndroidUpload; `:adapter:generic:mock` NetworkedUpload; `:adapter:ios:app-only` IosUrlSessionUploadPlatform; `:adapter:ios:ext-safe` IosPhotoKitUploadPlatform, PlayedOs, SimulatorUploadJobQueue; `:domain:services` ScriptedUpload | no |
 | `UploadDiscovery` | `:domain:services` | `:domain:feature` RecordingDelegate, SelectionScopedDiscovery; `:domain:services` GalleryDiscovery, Library, Resources, WalkMemo; `:test:feature` FakePlatform, Library | yes |
 | `UploadError` | `:domain:model` | `:domain:model` Cancelled, Http, Network, Unknown | no |

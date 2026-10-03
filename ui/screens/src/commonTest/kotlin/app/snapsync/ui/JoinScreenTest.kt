@@ -116,12 +116,14 @@ class JoinScreenTest {
         onShareOn: (Boolean) -> Unit = {},
         onReceiveOn: (Boolean) -> Unit = {},
         onSaveToAlbum: (Boolean) -> Unit = {},
+        onMobileData: (Boolean) -> Unit = {},
         choices: RangeChoiceActions = testRangeChoiceActions(),
     ) = testParticipationActions(
         choices = choices,
         onShareOn = onShareOn,
         onReceiveOn = onReceiveOn,
         onSaveToAlbum = onSaveToAlbum,
+        onMobileData = onMobileData,
     )
 
     /**
@@ -717,6 +719,29 @@ class JoinScreenTest {
         }
         onNodeWithText("Create an album").performScrollTo().performClick()
         assertEquals(false, saveToAlbum, "a tap from the on-by-default row declines the album")
+    }
+
+    // ---- the mobile-data choice (capability `mobile-data`) ---------------------------------------------
+
+    @Test
+    fun `the mobile-data choice starts on and a tap reports turning it off`() = runComposeUiTest {
+        var mobileData: Boolean? = null
+        setScreen {
+            TestStatusScreen(
+                joining(ready()),
+                cutoff = fixedCutoff(),
+                actions = testActions(participation = participationActions(onMobileData = { mobileData = it })),
+            )
+        }
+        onNodeWithText("Photos are sent and received on any network.").performScrollTo().assertExists()
+        onNodeWithText("Use mobile data for photos").performScrollTo().performClick()
+        assertEquals(false, mobileData, "a tap from the on-by-default row keeps photos off mobile data")
+    }
+
+    @Test
+    fun `with mobile data off the note says photos travel only on Wi-Fi`() = runComposeUiTest {
+        setScreen { TestStatusScreen(joining(ready(), form = RangeForm(mobileData = false)), cutoff = fixedCutoff()) }
+        onNodeWithText("Photos are sent and received only on Wi-Fi.").performScrollTo().assertExists()
     }
 
     // ---- photo access asked on Join (capability `join-event`) -----------------------------------------

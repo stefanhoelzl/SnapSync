@@ -60,6 +60,7 @@ fun statusActions(dispatch: (UiIntent) -> Unit): StatusActions = StatusActions(
         onShareOn = { dispatch(UiIntent.ShareOn(it)) },
         onReceiveOn = { dispatch(UiIntent.ReceiveOn(it)) },
         onSaveToAlbum = { dispatch(UiIntent.SaveToAlbum(it)) },
+        onMobileData = { dispatch(UiIntent.MobileData(it)) },
     ),
     onSendDiagnostics = { note, screen -> dispatch(UiIntent.SendDiagnostics(note, screen)) },
 )

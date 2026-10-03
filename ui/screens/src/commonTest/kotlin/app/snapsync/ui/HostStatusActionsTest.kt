@@ -385,6 +385,9 @@ class HostStatusActionsTest {
         // The album opt-in defaults ON, so the tap turns it off.
         onNodeWithText("Create an album").performScrollTo().performClick()
         awaitState(rig) { it.joining?.form?.saveToAlbum == false }
+        // The mobile-data choice (capability `mobile-data`) defaults ON too.
+        onNodeWithText("Use mobile data for photos").performScrollTo().performClick()
+        awaitState(rig) { it.joining?.form?.mobileData == false }
         // Share off with receive on: a direction only the two switches together can produce.
         onNodeWithText("Share my photos").performScrollTo().performClick()
         awaitState(rig) { it.joining?.form?.shareOn == false }
