@@ -103,7 +103,11 @@ class SimAppNetworkMonitorBinding : Binding<NetworkState, NetworkMonitor> {
     override val reaches = setOf(NetworkState.ONLINE)
 
     override fun create(state: NetworkState, clauseId: String): Entered<NetworkMonitor> =
-        Entered.Ready(IosNetworkMonitor())
+        if (state == NetworkState.ONLINE) {
+            Entered.Ready(IosNetworkMonitor())
+        } else {
+            Entered.Unreachable("the simulator shares its Mac's network, which no binding can take down")
+        }
 }
 
 /** The device online — Wi-Fi joined — recording every `nw_path_monitor` call and iOS's answer. */
