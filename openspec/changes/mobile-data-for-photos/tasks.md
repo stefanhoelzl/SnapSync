@@ -26,17 +26,17 @@
 ## 4. Resuming on Wi-Fi
 
 - [x] 4.1 `WakeTrigger.After.requiresNetwork` → requirement `NONE | ANY | UNRESTRICTED`; `AndroidWake` maps `UNRESTRICTED` to `NetworkType.UNMETERED`, `IosWake` to `requiresNetworkConnectivity = true`; verify with `IosWakeTest` and a `WakeContract` clause on `ANDROID_EMU` (unsatisfied while metered)
-- [ ] 4.2 The upload flow schedules its wake with `UNRESTRICTED` while the choice is off and uploads remain; verify with a flow test over the mocks and an integration test (`rigTest`) in which a held upload completes after the network turns unrestricted with no foreground
+- [x] 4.2 The upload flow schedules its wake with `UNRESTRICTED` while the choice is off and uploads remain; verify with a flow test over the mocks and an integration test (`rigTest`) in which a held upload completes after the network turns unrestricted with no foreground
 
 ## 5. Join, settings and status UI
 
 - [x] 5.1 Join and settings screens: the mobile-data checkbox below the album choice, on by default, with its note when off ("photos are sent and received only on Wi-Fi"); verify with `:ui:screens` click tests and the `statusActions` table
 - [x] 5.2 Status read-model: waiting = arrow shown, none pulsing, choice off, `Online(restricted = true)`; `UiState` carries it and `AppStatusLine` shows "Waiting for Wi-Fi…"; verify with presentation tests and a `:ui:screens` render test, and that `ReadModelImportsTest` still passes
-- [ ] 5.3 World harness: inspector lever for the network (restricted / unrestricted / offline) so every new state is reachable without a device; verify by driving it headlessly with the `ui-harness` skill and reading back the waiting line
+- [x] 5.3 World harness: inspector lever for the network (restricted / unrestricted / offline) so every new state is reachable without a device; verify by driving it headlessly with the `ui-harness` skill and reading back the waiting line
 
 ## 6. Integration and docs
 
-- [ ] 6.1 Integration tests (`:test:integration`, through the rig on the JVM host) for each `mobile-data` scenario: untouched choice uses any network; off holds both directions on a restricted network and releases them when unrestricted; a change governs only later transfers; join/rename/settings keep working while restricted; verify `./gradlew build`
-- [ ] 6.2 `docs/architecture.md` / `docs/testing.md`: the transfer rule's path through the ports and the new contract clauses; verify by review
-- [ ] 6.3 Regenerate `architecture/` (`./gradlew architectureDiagrams`) and commit; verify the freshness test passes
+- [x] 6.1 Integration tests (`:test:integration`, through the rig on the JVM host) for each `mobile-data` scenario: untouched choice uses any network; off holds both directions on a restricted network and releases them when unrestricted; a change governs only later transfers; join/rename/settings keep working while restricted; verify `./gradlew build`
+- [x] 6.2 `docs/architecture.md` / `docs/testing.md`: the transfer rule's path through the ports and the new contract clauses; verify by review
+- [x] 6.3 Regenerate `architecture/` (`./gradlew architectureDiagrams`) and commit; verify the freshness test passes
 - [ ] 6.4 On-device check of the whole feature on the SE2 (Low Data Mode, hotspot) and the A40 (mobile data), once `rig-ios18-crash` also lets the XS run a rig build: join with mobile data off, take a photo, see "Waiting for Wi-Fi…", reach Wi-Fi, see it shared; record the outcome in the PR
