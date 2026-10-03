@@ -468,6 +468,14 @@ jobs:
               echo "$NAME: no sentryDsn, as expected off a distributed channel"
             fi
           done
+      # Kotlin/Native imports every Objective-C class STRONGLY — it has no notion of availability — so a class newer
+      # than a bundle's minimum OS kills that process in dyld on an older iOS, before any of our code runs (a rig build
+      # on the iOS 18 XS, 2026-10-03: `Symbol not found: _OBJC_CLASS_$_PHAssetResourceUploadJob`). Clang, asked per
+      # class at the bundle's own MinimumOSVersion, is the authority on which ones must be weak.
+      - name: Verify no bundle strongly imports a class newer than its minimum OS
+        run: |
+          APP="$RUNNER_TEMP/SnapSync.xcarchive/Products/Applications/SnapSync.app"
+          python3 scripts/check-weak-links.py "$APP" "$APP/Extensions/BackgroundUploadExtension.appex"
       # The platform-bound tests, on this same runner after the archive (`docs/testing.md`, "Where each test runs"):
       # every module's `iosTest` on a booted simulator (iOS 26 runtime on macos-26) — the iOS adapters and their
       # contract bindings on the unentitled test executable (IOS_SIM_KEXE), and the native SQLite drivers behind the

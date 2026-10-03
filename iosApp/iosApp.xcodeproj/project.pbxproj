@@ -356,6 +356,8 @@
 					"-lsqlite3",
 					"-framework",
 					PhotosUI,
+					"-weak_framework",
+					Photos,
 					"-framework",
 					SnapSyncKit,
 				);
@@ -393,6 +395,8 @@
 					"-lsqlite3",
 					"-framework",
 					PhotosUI,
+					"-weak_framework",
+					Photos,
 					"-framework",
 					SnapSyncKit,
 				);

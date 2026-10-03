@@ -111,9 +111,8 @@ is then ~1 min.
 
 `ios.md` steps 3–5 of that skill: `sign`, then take the phone and `connect`, then `install` — all on Linux.
 
-⚠️ **Sign with `--device SE2` for now.** `sign` targets every iPhone in `devices.json` by default, and
-SnapSync's profiles list only the SE2 (*Provisioning profiles*, below) — so a bare `sign` refuses. Drop the
-flag once both profiles also list the XS.
+`sign` targets every iPhone in `devices.json` by default, and SnapSync's profiles list both (*Provisioning
+profiles*, below), so no `--device` is needed.
 
 There is no SnapSync signing script any
 more. What SnapSync's history taught about signing is now enforced by `sign` itself, and is worth
@@ -197,9 +196,9 @@ them in `~/.cache/ios-device/profiles/`, and picks, per bundle, the unexpired pr
 target phones (every iPhone in `devices.json`, or each `--device`) and the signing certificate and **grants every claimed entitlement**. There is no baked
 profile tar and no GitHub secret to refresh.
 
-Both profiles list only the **SE2** (App Store Connect, 2026-10-01), so the XS — registered on the team, on
-iOS 18 — cannot be signed for yet. On its first SnapSync use, re-mint both (load `asc-portal`) listing both
-iPhones: the extension is embedded in every IPA, so its profile must list the XS though the XS never runs it.
+The current profiles, `SnapSync Dev SE2+XS` and `SnapSync Ext Dev SE2+XS` (2026-10-03), list both iPhones. The
+extension is embedded in every IPA, so its profile must list every phone you sign for, though the XS (iOS 18)
+never runs it.
 
 Re-mint a profile (load `asc-portal`) when it expires (~yearly), when you register a new device, **or
 when you enable a bundle-id capability** — that last one silently *invalidates* the affected profile
