@@ -117,14 +117,14 @@ internal fun AppCore.userCommandsFor(): UserCommands = UserCommands(
     // the selection-change seam.
     choosePhotos = { detachedOnCoreLane("tap.choosePhotos") { ports.gallery.widenSelection() } },
     // In-place membership reconfigure (capability `manage-membership`): edit direction/
-    // cutoff/album without leaving. Distinct from `openSettings` (the iOS system settings page).
-    reconfigure = { eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum ->
+    // cutoff/album/mobile data without leaving. Distinct from `openSettings` (the iOS system settings page).
+    reconfigure = { eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum, mobileData ->
         awaitingOnCoreLane(
             "tap.reconfigure",
             params = "eventId=$eventId",
             result = { outcome: ReconfigureOutcome -> "$outcome" },
         ) {
-            reconfigureEvent.reconfigure(eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum)
+            reconfigureEvent.reconfigure(eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum, mobileData)
         }
     },
     // Rename the joined event (capability `manage-membership`): unlike `reconfigure`, which edits only

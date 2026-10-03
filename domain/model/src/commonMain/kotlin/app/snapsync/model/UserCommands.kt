@@ -105,6 +105,7 @@ class UserCommands(
         minPhotoDate: CaptureCutoff,
         maxPhotoDate: CaptureCeiling,
         saveToAlbum: Boolean,
+        mobileData: Boolean,
     ) -> ReconfigureOutcome,
     val rename: (eventId: String, name: String) -> Unit,
     /**

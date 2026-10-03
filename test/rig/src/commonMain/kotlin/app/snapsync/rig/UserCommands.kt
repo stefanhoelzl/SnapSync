@@ -103,6 +103,7 @@ private fun rangeChoices(params: Map<String, String>): List<UiIntent> = buildLis
         add(UiIntent.ReceiveOn(d.includesDownload))
     }
     params["saveToAlbum"]?.let { add(UiIntent.SaveToAlbum(it.toBoolean())) }
+    params["mobileData"]?.let { add(UiIntent.MobileData(it.toBoolean())) }
     // A custom range: either bound may be named alone, and the one left out keeps what was already picked
     // (or the event's own bound, if nothing was).
     val from = params["cutoff"]?.let(::toLocalWallClock)

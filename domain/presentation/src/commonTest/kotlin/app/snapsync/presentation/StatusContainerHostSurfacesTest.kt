@@ -74,6 +74,7 @@ private data class Reconfigure(
     val from: CaptureCutoff,
     val until: CaptureCeiling,
     val saveToAlbum: Boolean,
+    val mobileData: Boolean = true,
 )
 
 private class Spy {
@@ -116,8 +117,8 @@ class StatusContainerHostSurfacesTest {
         StatusSources(FakeSync(), MutableStateFlow(GalleryAccess.GRANTED), config),
         scope,
         commands = testCommands(
-            reconfigure = { id, direction, from, until, album ->
-                spy.reconfigures += Reconfigure(id, direction, from, until, album)
+            reconfigure = { id, direction, from, until, album, mobileData ->
+                spy.reconfigures += Reconfigure(id, direction, from, until, album, mobileData)
                 spy.reconfigureOutcome
             },
             rename = { id, name -> spy.renames += id to name },
@@ -476,6 +477,25 @@ class StatusContainerHostSurfacesTest {
             host.onReconfigure()
             host.stateWhere("the surface closed") { (it.layer as? Layer.Joined)?.surface == JoinedSurface.Status }
             assertEquals(true, spy.reconfigures.single().saveToAlbum)
+        }
+    }
+
+    @Test
+    fun `settings open with the stored mobile-data choice and save the one turned on`() {
+        // Capability `mobile-data`: a membership joined with mobile data off shows it off in settings, and Save
+        // commits the member's change.
+        val spy = Spy()
+        return onHost(spy, config = MutableStateFlow(CONFIG.copy(mobileData = false))) { host ->
+            host.surfaces.onOpenReconfigure()
+            assertEquals(false, host.reconfigureForm().mobileData, "the stored choice is shown as it was saved")
+            host.form.onMobileData(true)
+            host.stateWhere("the mobile-data edit applied") {
+                ((it.layer as? Layer.Joined)?.surface as? JoinedSurface.Reconfigure)?.form?.mobileData == true
+            }
+
+            host.onReconfigure()
+            host.stateWhere("the surface closed") { (it.layer as? Layer.Joined)?.surface == JoinedSurface.Status }
+            assertEquals(true, spy.reconfigures.single().mobileData)
         }
     }
 

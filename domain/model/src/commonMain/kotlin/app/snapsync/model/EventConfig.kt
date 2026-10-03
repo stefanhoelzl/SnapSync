@@ -173,4 +173,13 @@ data class EventConfig(
      * waiting line (capability `sync-status`). `null` until the details first carry them.
      */
     val members: MemberCounts? = null,
-)
+    /**
+     * Whether this membership's photos may travel over mobile data (capability `mobile-data`) — the member's choice
+     * on the join screen and in settings. Defaults to `true`, so a config persisted before it existed decodes to the
+     * behaviour from before the choice: every photo transfer on any network. Read through [transferNetwork].
+     */
+    val mobileData: Boolean = true,
+) {
+    /** The network rule a photo transfer started now carries (capability `mobile-data`). */
+    val transferNetwork: TransferNetwork get() = transferNetworkOf(mobileData)
+}

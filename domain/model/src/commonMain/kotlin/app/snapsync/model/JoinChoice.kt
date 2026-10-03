@@ -18,4 +18,6 @@ data class JoinChoice(
     val maxPhotoDate: CaptureCeiling,
     val direction: Direction,
     val saveToAlbum: Boolean,
+    /** Whether the membership's photos may use mobile data (capability `mobile-data`). */
+    val mobileData: Boolean = true,
 )

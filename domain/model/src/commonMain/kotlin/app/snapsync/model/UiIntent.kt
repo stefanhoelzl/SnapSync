@@ -32,6 +32,7 @@ sealed interface UiIntent {
     data class ShareOn(val on: Boolean) : UiIntent
     data class ReceiveOn(val on: Boolean) : UiIntent
     data class SaveToAlbum(val on: Boolean) : UiIntent
+    data class MobileData(val on: Boolean) : UiIntent
     data class RangePreset(val preset: RangeChoice) : UiIntent
 
     /** A custom range; a `null` bound keeps the one already picked (or the window's, if none was). */

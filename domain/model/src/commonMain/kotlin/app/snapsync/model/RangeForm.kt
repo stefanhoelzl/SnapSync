@@ -5,7 +5,7 @@ import kotlinx.serialization.Serializable
 
 /**
  * A member's **uncommitted choices** on a decision surface — the join gate and the in-place reconfigure
- * ask for the same six (capability `photo-sharing`, `join-event`, `manage-membership`).
+ * ask for the same seven (capability `photo-sharing`, `join-event`, `manage-membership`, `mobile-data`).
  *
  * These used to be seven `mutableStateOf`s held by each screen, declared twice with different seeds. That
  * gave them Compose's lifetime rather than the surface's, which is the wrong one: the join gate advances
@@ -17,10 +17,11 @@ import kotlinx.serialization.Serializable
  * window that arrives late (the details fetch resolving after the surface mounts) is picked up rather
  * than baked in.
  *
- * The defaults are what an UNTOUCHED gate commits, so each is a stance. All three participation values
+ * The defaults are what an UNTOUCHED gate commits, so each is a stance. All four participation values
  * start on — including [saveToAlbum], because the album is the only on-device statement that a set of
  * photos belongs to this event, and a member who decides nothing should get that grouping (capability
- * `event-album`). The headless `autoJoin` path does NOT read these seeds and deliberately keeps its own
+ * `event-album`); and [mobileData], because a member who decides nothing should share and receive exactly as
+ * before the choice existed (capability `mobile-data`). The headless `autoJoin` path does NOT read these seeds and deliberately keeps its own
  * album default off; see `StatusContainerHost.autoConfirm`.
  *
  * [albumKind] is not a choice but the platform's answer: how this phone holds an event album (capability
@@ -33,6 +34,8 @@ data class RangeForm(
     val receiveOn: Boolean = true,
     val saveToAlbum: Boolean = true,
     val albumKind: AlbumKind = AlbumKind.COLLECTION,
+    /** Whether photos may use mobile data (capability `mobile-data`); on, so an untouched gate behaves as before. */
+    val mobileData: Boolean = true,
     val preset: RangeChoice = RangeChoice.WHOLE_EVENT,
     /** The picked start behind [RangeChoice.CUSTOM]; `null` resolves to the window's start. */
     val customFrom: LocalDateTime? = null,

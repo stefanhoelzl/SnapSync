@@ -158,7 +158,7 @@ class HostStatusActionsTest {
                 openSettings = { record("openSettings") },
                 openLink = { record("openLink:$it") },
                 choosePhotos = { record("choosePhotos") },
-                reconfigure = { eventId, _, _, _, _ -> record("reconfigure:$eventId"); ReconfigureOutcome.Saved },
+                reconfigure = { eventId, _, _, _, _, _ -> record("reconfigure:$eventId"); ReconfigureOutcome.Saved },
                 rename = { eventId, name -> record("rename:$eventId:$name") },
                 resetRename = { record("resetRename") },
                 sendDiagnostics = { note, _ -> record("sendDiagnostics:$note") },

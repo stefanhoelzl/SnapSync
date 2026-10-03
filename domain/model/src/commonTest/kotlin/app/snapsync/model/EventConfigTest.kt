@@ -173,6 +173,29 @@ class EventConfigTest {
     }
 
     @Test
+    fun `a legacy config JSON without mobileData decodes to photos on any network`() {
+        // A config written before the choice existed (capability `mobile-data`) carries no `mobileData` key; it must
+        // keep transferring on any network, as it did when it was written.
+        val legacy =
+            """{"eventId":"11111111-1111-4111-8111-111111111111","name":"Birthday","minPhotoDate":"$cutoff","maxPhotoDate":"2099-01-01T00:00:00Z"}"""
+        val decoded = json.decodeFromString(EventConfig.serializer(), legacy)
+        assertEquals(true, decoded.mobileData)
+        assertEquals(TransferNetwork.ANY, decoded.transferNetwork)
+    }
+
+    @Test
+    fun `mobile data off persists and asks for an unrestricted network`() {
+        val config = EventConfig(
+            eventId = "11111111-1111-4111-8111-111111111111",
+            name = "Birthday",
+            minPhotoDate = cutoff, maxPhotoDate = FIXTURE_CEILING,
+            mobileData = false,
+        )
+        assertEquals(config, roundTrip(config))
+        assertEquals(TransferNetwork.UNRESTRICTED_ONLY, roundTrip(config).transferNetwork)
+    }
+
+    @Test
     fun `a config JSON without a name does not decode`() {
         // `name` carries NO default, so the key is required. The point is not the decode failure itself
         // but what having no default buys: `name` is a required CONSTRUCTOR parameter, so no construction

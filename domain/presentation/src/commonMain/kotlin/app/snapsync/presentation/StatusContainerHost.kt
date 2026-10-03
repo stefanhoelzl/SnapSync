@@ -517,7 +517,7 @@ class StatusContainerHost(
         // The id rides with the values so a switch landing mid-edit makes the use-case a no-op rather
         // than overwriting a different membership.
         val outcome = commands.reconfigure(
-            config.eventId, range.direction, range.chosenFrom, range.chosenUntil, form.saveToAlbum,
+            config.eventId, range.direction, range.chosenFrom, range.chosenUntil, form.saveToAlbum, form.mobileData,
         )
         // A save that did not land reopens the surface with the member's edits still in hand (the form was never
         // reset) and says so — closing it would read as saved (capability `manage-membership`).
@@ -541,6 +541,8 @@ class StatusContainerHost(
         fun onReceiveOn(on: Boolean) = intent { local.editForm { it.copy(receiveOn = on) } }
 
         fun onSaveToAlbum(on: Boolean) = intent { local.editForm { it.copy(saveToAlbum = on) } }
+
+        fun onMobileData(on: Boolean) = intent { local.editForm { it.copy(mobileData = on) } }
 
         fun onRangePreset(preset: RangeChoice) = intent { local.editForm { it.copy(preset = preset) } }
 
@@ -799,7 +801,7 @@ class StatusContainerHost(
         val range = resolveRange(form, event.startsAt, event.endsAt, null)
         val choice = JoinChoice(
             p.eventId, event.name, event.startsAt, event.endsAt, event.deletesAt,
-            range.chosenFrom, range.chosenUntil, range.direction, form.saveToAlbum,
+            range.chosenFrom, range.chosenUntil, range.direction, form.saveToAlbum, form.mobileData,
         )
         pending.value = p.copy(phase = JoinPhase.Detailed(event, JoinPhase.Detailed.Step.Committing))
         beginMembership()
