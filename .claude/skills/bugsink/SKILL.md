@@ -245,6 +245,10 @@ python3 .claude/skills/bugsink/retrace.py "$OUT/event.json" "$MAP_DIR"
 Line numbers survive (`-keepattributes SourceFile,LineNumberTable` in `app/android/proguard-rules.pro`), so
 a retraced frame names its real file and line, inlined frames expanded.
 
+An **ANR**'s frames (parsed by sentry-android from ART's thread dump) arrive as `null.q91.a(unavailable:121)`
+in Bugsink: `null.` is the SDK formatting a default-package class R8 produced, and `unavailable` is ART's. Read
+them as `q91.a`; `retrace.py` strips the prefix itself.
+
 **When `r8-mapping-<build>` is gone (expired, or a build no delivering run made): fail loud**, exactly as for
 dSYMs: show the obfuscated frames from `stacktrace_md`, name the build and the missing artifact. Never
 retrace against a *different* build's mapping — R8 renames per build, so the result is confidently wrong.

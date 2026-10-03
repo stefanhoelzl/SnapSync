@@ -54,6 +54,11 @@ def r8_jar(mapping):
 
 def frame_line(fr):
     cls = fr.get("module") or "?"
+    # An ANR's frames come from sentry-android's ThreadDumpParser, which formats `"%s.%s"` over a null
+    # package: a class R8 moved into the default package arrives as `null.q91`. `null` is a Java keyword,
+    # so no real package is named it. ART's `unavailable` filename needs nothing: retrace maps it as is.
+    if cls.startswith("null."):
+        cls = cls[len("null."):]
     fn = fr.get("function") or "?"
     lineno = fr.get("lineno")
     where = f"{fr.get('filename') or 'SourceFile'}:{lineno}" if lineno else (fr.get("filename") or "Unknown Source")
