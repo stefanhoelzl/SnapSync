@@ -2,7 +2,7 @@
 # Run `ssh-runner init --update` after changing the config, then commit and push:
 # the workflow that runs is the one on GitHub, not the one in your working tree.
 # ssh-runner-template: 8
-# ssh-runner-config: 519d0a87909a70d5
+# ssh-runner-config: e77f0e8931ba476a
 name: ssh-runner macos
 run-name: ssh-runner macos ${{ inputs.session_id }}
 
