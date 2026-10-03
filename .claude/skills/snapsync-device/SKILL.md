@@ -50,11 +50,10 @@ The SE2 is the reference: every on-device measurement in this repo is the SE2's 
 Use the XS for the iOS-18 path (the minimum OS) — e.g. link delivery, where iOS 18 behaves differently
 (*Verifying the event link*, below).
 
-⚠️ **The XS cannot be signed for yet.** SnapSync's two development profiles (`SnapSync Dev Push`,
-`SnapSync Ext Dev Push`) list only the SE2 (App Store Connect, 2026-10-01), and `sign` refuses a profile that
-does not list a target phone — so until then sign with `--device SE2` (`ssh-mac-build`). The extension is embedded in every IPA, so the XS needs **both** re-minted, though it
-never runs the extension. The XS is already a registered device: on its first SnapSync use, load `asc-portal`
-and create a new profile for each bundle id listing both iPhones (`sign` picks the one that expires last).
+Both iPhones can be signed for: the development profiles `SnapSync Dev SE2+XS` and `SnapSync Ext Dev SE2+XS`
+(App Store Connect, 2026-10-03) list both, so a bare `sign` targets both. The extension is embedded in every IPA,
+so its profile must list the XS too, though the XS never runs it. A newly registered phone needs both re-minted
+(load `asc-portal`; `sign` picks the one that expires last).
 
 ⚠️ **SnapSync ignores SIGTERM.** A `dvt launch --kill-existing` layers a new instance on the still-alive
 old one and sticks on a black launch screen. Always use the global skill's SIGKILL-first restart recipe;
