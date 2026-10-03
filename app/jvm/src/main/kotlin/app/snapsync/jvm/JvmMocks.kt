@@ -54,6 +54,7 @@ class JvmMocks(
                 secureStore = keychain.port(),
                 integrity = enclave.port(available = attests),
                 processInfo = processInfo.port(),
+                network = connectivity.port(),
                 logSinks = logSinks,
             ),
             entries = JvmEntries(

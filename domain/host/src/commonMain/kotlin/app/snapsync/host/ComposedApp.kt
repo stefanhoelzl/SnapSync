@@ -11,6 +11,7 @@ import app.snapsync.presentation.StatusDiagnostics
 import app.snapsync.presentation.StatusSources
 import kotlinx.coroutines.flow.MutableStateFlow
 import app.snapsync.compose.devHandlers
+import app.snapsync.compose.installNetworkReturns
 import app.snapsync.compose.lifecycleHandlers
 import app.snapsync.compose.pushHandlers
 import app.snapsync.model.EventLinkDelivery
@@ -98,6 +99,8 @@ fun snapSyncHost(
     composed = ComposedApp(core, process, cutoffFormatter) {
         // Host assembly: the permission-grant collectors install ONLY from here (see [ComposedApp]).
         core.installPermissionSubscriptions()
+        // The network's return resumes the app's work while it is in front (capability `sync-status`).
+        installNetworkReturns(core)
         val host = StatusContainerHost(
             statusSourcesOf(core, ports),
             scope = scope,
@@ -194,6 +197,7 @@ private fun statusSourcesOf(core: AppCore, ports: AppPorts): StatusSources = Sta
     attested = core.attested,
     pending = MutableStateFlow(null),
     versionRefusal = core.versionRefusal,
+    network = core.networkStatus,
     store = ports.process.build.store,
     foreground = core.foregroundLife.returns,
 )

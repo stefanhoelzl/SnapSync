@@ -1,6 +1,8 @@
 package app.snapsync.presentation
 
 import app.snapsync.model.CreateDraftSession
+import app.snapsync.model.NetworkNotice
+import app.snapsync.model.NetworkAccess
 import app.snapsync.model.AlbumKind
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.ReportDestination
@@ -130,6 +132,7 @@ class StatusContainerHost(
     private val attested = sources.attested
     private val pending = sources.pending
     private val versionRefusal = sources.versionRefusal
+    private val network = sources.network
     private val renameFlow: StateFlow<RenameStatus> = sources.rename
     private val store = sources.store
     private val foreground = sources.foreground
@@ -226,7 +229,10 @@ class StatusContainerHost(
             // All seams hold their current truth synchronously, so the first state the screen can ever
             // render derives from real values — never a guess or a placeholder.
             initialState = render(
-                Membership(config.value, permission.value, syncSource.status.value, downloadSource.value, attested.value),
+                Membership(
+                    config.value, permission.value, syncSource.status.value, downloadSource.value, attested.value,
+                    network.access.value,
+                ),
                 Interaction(pending.value, creationStatus.value, renameFlow.value, versionRefusal.value),
                 local.value,
                 cutoffFormatter.nowCutoff(),
@@ -256,12 +262,12 @@ class StatusContainerHost(
                 // it runs ONLY while an event has not ended (see above) — every other re-emission is a real
                 // source change or a presentation-owned cell's.
                 combineFlat(
-                    config, permission, syncSource.status, downloadSource, attested,
+                    config, permission, syncSource.status, downloadSource, attested, network.access,
                     pending, creationStatus, renameFlow, versionRefusal,
                     local, nowTick,
-                ) { config, permission, sync, download, attested, pending, creation, rename, refusal, local, now ->
+                ) { config, permission, sync, download, attested, access, pending, creation, rename, refusal, local, now ->
                     render(
-                        Membership(config, permission, sync, download, attested),
+                        Membership(config, permission, sync, download, attested, access),
                         Interaction(pending, creation, rename, refusal),
                         local,
                         now,
@@ -272,6 +278,14 @@ class StatusContainerHost(
             intent {
                 foreground.collect { back ->
                     local.update { it.copy(createDraft = it.createDraft.afterReturn(back.count, back.awayFor)) }
+                }
+            }
+            // A missing network came back (capability `join-event`, "Without a network, the join screen waits for one"):
+            // a join whose details could not load loads them now, untapped. Only on that return — a load that failed
+            // while the network was there (an unreachable server) still waits for the member's Retry.
+            intent {
+                network.returned.collect {
+                    if (pending.value?.phase == JoinPhase.LoadFailed) onRetryLoad()
                 }
             }
             // The shareable count follows the range the showing surface resolves, and the grant (a late
@@ -928,6 +942,7 @@ private fun unjoinedLayer(
     transient: String?,
     form: RangeForm,
     permission: GalleryAccess,
+    network: NetworkNotice?,
     resolveAgainst: (RangeForm, EventStart, EventEnd?, CaptureCeiling?) -> ResolvedRange,
 ): Layer {
     // A pending interactive join outranks the create layer (a switch whose leave already ran also
@@ -946,15 +961,20 @@ private fun unjoinedLayer(
             notice = transient,
             // This rung is reached only with no event configured, so the permission alone decides.
             asksAccessOnJoin = asksAccessOnJoin(null, permission),
+            // Join waits for a network; the screen names why (capability `join-event`).
+            network = network,
         )
     }
     // One banner, one value. The TRANSIENT wins while it is showing: a create failure is sticky
     // until the next attempt, so a link scanned in between would otherwise be silently outranked by
-    // an older complaint. When it self-clears, the sticky failure shows again.
+    // an older complaint. When it self-clears, the sticky failure shows again. A missing network outranks both on
+    // screen, but is carried beside them rather than instead of them, so the failure returns with the network
+    // (capability `create-event`). A create in flight is not interrupted: it ends as any create ends.
     return when (val creation = create.status) {
         CreationStatus.InFlight -> Layer.CreatingEvent
-        is CreationStatus.Failed -> Layer.CreateEvent(error = transient ?: creation.reason.message(), draft = create.draft)
-        CreationStatus.Idle -> Layer.CreateEvent(error = transient, draft = create.draft)
+        is CreationStatus.Failed ->
+            Layer.CreateEvent(error = transient ?: creation.reason.message(), draft = create.draft, network = network)
+        CreationStatus.Idle -> Layer.CreateEvent(error = transient, draft = create.draft, network = network)
     }
 }
 
@@ -974,7 +994,8 @@ private fun reduceFrom(
     nowCutoff: CaptureDate,
     resolveAgainst: (RangeForm, EventStart, EventEnd?, CaptureCeiling?) -> ResolvedRange,
 ): Layer {
-    val (config, permission, snapshot, download, attested) = membership
+    val (config, permission, snapshot, download, attested, access) = membership
+    val network = NetworkNotice.of(access)
     val (pending, creation, renameStatus) = interaction
     val transient = local.transientError
     val form = local.form
@@ -982,7 +1003,8 @@ private fun reduceFrom(
     val rename = Owned(local.renameOwner, renameStatus).forMembership(config?.eventId, RenameStatus.Idle)
     val reconfiguring = local.settings.forMembership(config?.eventId, SettingsSurface.Closed)
     if (config == null) {
-        return unjoinedLayer(pending, Creation(creation, local.createDraft), transient, form, permission, resolveAgainst)
+        val create = Creation(creation, local.createDraft)
+        return unjoinedLayer(pending, create, transient, form, permission, network, resolveAgainst)
     }
     val health = when {
         // Missing permission is the sole attention state — the only reason contribution cannot run. It
@@ -992,6 +1014,11 @@ private fun reduceFrom(
         // partial grant is a working state (capability `photo-access`) — it falls through to
         // the snapshot-derived health exactly like GRANTED.
         !permission.grantsPhotoAccess -> SyncHealth.NeedsAccess(permission)
+        // No usable network (capability `sync-status`, "One status line in a fixed priority"). Below access, which
+        // decides what is shared and can be fixed offline; above everything else — before the start, received photos
+        // cannot arrive either, and a missing network is the true cause of most failed verifications, so it outranks
+        // the vaguer cannot-verify line by rank alone.
+        network != null -> SyncHealth.NoNetwork(network)
         // The event has not begun. Outranks every snapshot-derived value because nothing of this member's
         // CAN be syncing yet — the cutoff floor guarantees it (`minPhotoDate >= startsAt > now`, and a
         // photo cannot be captured in the future) — so a snapshot line would say nothing true that this
@@ -1219,6 +1246,8 @@ private data class Membership(
     val sync: SyncStatus,
     val download: DownloadProgress,
     val attested: Boolean,
+    /** What the member is told about the network — it reaches every layer, not only the joined one. */
+    val network: NetworkAccess,
 )
 
 /** The observed outcomes of what the member started: the join gate, a create, a rename — and a refused build. */
@@ -1269,19 +1298,19 @@ private data class Local(
 )
 
 /**
- * [combine] over eleven flows, typed. The library's typed overloads stop at five, and nesting them is not the same
+ * [combine] over twelve flows, typed. The library's typed overloads stop at five, and nesting them is not the same
  * thing: each level is a stage of its own, so one synchronous change to cells in different levels reaches the
  * screen as several emissions rather than one. The casts are positional and fixed by this signature.
  */
 @Suppress("UNCHECKED_CAST", "LongParameterList")
-private fun <A, B, C, D, E, F, G, H, I, J, K, R> combineFlat(
+private fun <A, B, C, D, E, F, G, H, I, J, K, L, R> combineFlat(
     a: Flow<A>, b: Flow<B>, c: Flow<C>, d: Flow<D>, e: Flow<E>, f: Flow<F>,
-    g: Flow<G>, h: Flow<H>, i: Flow<I>, j: Flow<J>, k: Flow<K>,
-    transform: (A, B, C, D, E, F, G, H, I, J, K) -> R,
-): Flow<R> = combine(listOf(a, b, c, d, e, f, g, h, i, j, k)) { v ->
+    g: Flow<G>, h: Flow<H>, i: Flow<I>, j: Flow<J>, k: Flow<K>, l: Flow<L>,
+    transform: (A, B, C, D, E, F, G, H, I, J, K, L) -> R,
+): Flow<R> = combine(listOf(a, b, c, d, e, f, g, h, i, j, k, l)) { v ->
     transform(
         v[0] as A, v[1] as B, v[2] as C, v[3] as D, v[4] as E, v[5] as F,
-        v[6] as G, v[7] as H, v[8] as I, v[9] as J, v[10] as K,
+        v[6] as G, v[7] as H, v[8] as I, v[9] as J, v[10] as K, v[11] as L,
     )
 }
 

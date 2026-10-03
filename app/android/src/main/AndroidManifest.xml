@@ -6,6 +6,12 @@
     <uses-permission android:name="android.permission.INTERNET" />
 
     <!--
+      Whether the app has a network, and whether Android blocks it for this app (capability `sync-status`): read only
+      while the app is in front, to tell the member. Granted at install; no prompt.
+    -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!--
       The member's photos (capability `photo-access`): full access is images AND video (API 33+), or storage (API
       30-32); API 34+ may grant only a selection. The location permission keeps each original's location in what is
       uploaded (MediaStore redacts it otherwise). Asked for together, only on a deliberate tap.

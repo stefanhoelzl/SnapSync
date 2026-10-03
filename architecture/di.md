@@ -35,6 +35,7 @@ Roots found:
 | `IosGalleryReader` | x | x | x |
 | `IosLifecycle` | x | x | |
 | `IosLinks` | x | x | |
+| `IosNetworkMonitor` | x | x | |
 | `IosPreferences` | x | x | x |
 | `IosProcessInfo` | x | x | |
 | `IosPushNotifications` | x | x | |

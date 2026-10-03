@@ -2,6 +2,11 @@
 
 package app.snapsync.ui
 
+import app.snapsync.model.SyncHealth
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.Flow
+import app.snapsync.feature.status.readmodel.NetworkStatusSource
+import app.snapsync.model.NetworkAccess
 import app.snapsync.presentation.onIntent
 import app.snapsync.presentation.StatusDiagnostics
 import androidx.compose.runtime.CompositionLocalProvider
@@ -112,6 +117,7 @@ class HostStatusActionsTest {
         refusal: VersionRefusal? = null,
         diagnostics: Boolean = false,
         private val details: suspend (String) -> JoinLoad = { OTHER_EVENT },
+        network: NetworkAccess = NetworkAccess.ONLINE,
     ) {
         val config = MutableStateFlow(config)
         val permission = MutableStateFlow(permission)
@@ -130,6 +136,10 @@ class HostStatusActionsTest {
                 config = this.config,
                 versionRefusal = MutableStateFlow(refusal),
                 store = StoreLink(STORE_URL, StoreKind.APP_STORE),
+                network = object : NetworkStatusSource {
+                    override val access: StateFlow<NetworkAccess> = MutableStateFlow(network)
+                    override val returned: Flow<Unit> = emptyFlow()
+                },
             ),
             scope = scope,
             cutoffFormatter = CutoffFormatter(now = { Instant.parse("2026-07-06T12:00:00Z") }, zone = TimeZone.UTC),
@@ -203,7 +213,8 @@ class HostStatusActionsTest {
         refusal: VersionRefusal? = null,
         diagnostics: Boolean = false,
         details: suspend (String) -> JoinLoad = { OTHER_EVENT },
-    ) = Rig(config, permission, refusal, diagnostics, details)
+        network: NetworkAccess = NetworkAccess.ONLINE,
+    ) = Rig(config, permission, refusal, diagnostics, details, network)
 
     private val ready: (UiState) -> Boolean =
         { (it.joining?.phase as? JoinPhase.Detailed)?.step == JoinPhase.Detailed.Step.Ready }
@@ -299,6 +310,24 @@ class HostStatusActionsTest {
         rigTest(rig(config = MEMBERSHIP, permission = GalleryAccess.DENIED)) { rig ->
             awaitState(rig) { it.joined != null }
             onNodeWithText("Turn on full access in Settings").performClick()
+            awaitFired(rig, "openSettings")
+            assertEquals(listOf("openSettings"), rig.fired)
+        }
+
+    @Test
+    fun `a blocked network’s status line opens Settings`() =
+        rigTest(rig(config = MEMBERSHIP, network = NetworkAccess.BLOCKED)) { rig ->
+            awaitState(rig) { (it.layer as? Layer.Joined)?.health is SyncHealth.NoNetwork }
+            onNodeWithText("Network blocked for SnapSync – Open Settings").performClick()
+            awaitFired(rig, "openSettings")
+            assertEquals(listOf("openSettings"), rig.fired)
+        }
+
+    @Test
+    fun `a blocked network’s notice on the create screen opens Settings`() =
+        rigTest(rig(network = NetworkAccess.BLOCKED)) { rig ->
+            awaitState(rig) { (it.layer as? Layer.CreateEvent)?.network != null }
+            onNodeWithText("Network blocked for SnapSync – Open Settings").performClick()
             awaitFired(rig, "openSettings")
             assertEquals(listOf("openSettings"), rig.fired)
         }

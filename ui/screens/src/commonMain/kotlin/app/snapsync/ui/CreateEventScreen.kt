@@ -1,5 +1,8 @@
 package app.snapsync.ui
 
+import androidx.compose.foundation.layout.Box
+import app.snapsync.ui.components.AppNetworkNotice
+import app.snapsync.model.NetworkNotice
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.rememberScrollState
@@ -66,7 +69,7 @@ private val EVENT_WINDOW_MAX_DAYS: Long = EVENT_WINDOW_MAX_SECONDS.seconds.inWho
 internal fun CreateEventScreen(
     state: Layer.CreateEvent,
     draft: CreateDraft,
-    onCreateEvent: (String, LocalDateTime, LocalDateTime) -> Unit,
+    callbacks: CreateCallbacks,
     cutoff: CutoffFormatter,
 ) {
     val nameFocus = remember { FocusRequester() }
@@ -115,7 +118,7 @@ internal fun CreateEventScreen(
                 )
             }
         }
-        CreateActions(state, draft, onCreateEvent, cutoff, guide)
+        CreateActions(state, draft, callbacks, cutoff, guide)
     }
 }
 
@@ -131,15 +134,22 @@ private fun CreateQuestion(question: String, modifier: Modifier = Modifier, answ
     }
 }
 
+/** What the create screen can ask for: the create itself, and SnapSync's Settings page when its network is blocked. */
+internal class CreateCallbacks(
+    val onCreateEvent: (String, LocalDateTime, LocalDateTime) -> Unit,
+    val onOpenSettings: () -> Unit,
+)
+
 /**
  * The pinned bottom: what is still missing (or how long the event lasts), Create, and one line under it —
- * the scan hint, or in its place the failure. A constant height, so nothing here ever covers the picker.
+ * the scan hint, or in its place the failure, or above both a missing network (capability `create-event`), which
+ * also takes Create away. A constant height, so nothing here ever covers the picker.
  */
 @Composable
 private fun CreateActions(
     state: Layer.CreateEvent,
     draft: CreateDraft,
-    onCreateEvent: (String, LocalDateTime, LocalDateTime) -> Unit,
+    callbacks: CreateCallbacks,
     cutoff: CutoffFormatter,
     guide: StepGuide,
 ) {
@@ -157,10 +167,18 @@ private fun CreateActions(
         StatusHint(nextStepLine(step, draft.range.from, until, cutoff), onClick = toStep)
         PrimaryButton(
             label = "Create event",
-            onClick = { if (until != null) onCreateEvent(draft.name, draft.range.from, until) },
-            enabled = createEnabled(draft, cutoff),
+            onClick = { if (until != null) callbacks.onCreateEvent(draft.name, draft.range.from, until) },
+            enabled = createEnabled(draft, cutoff) && state.network == null,
         )
-        StatusHint(error ?: "Or scan a QR code in the Camera app to join one.", isError = error != null)
+        val network = state.network
+        if (network != null) {
+            // The failure an earlier attempt left is kept by the reduction and returns with the network.
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                AppNetworkNotice(blocked = network == NetworkNotice.BLOCKED, onOpenSettings = callbacks.onOpenSettings)
+            }
+        } else {
+            StatusHint(error ?: "Or scan a QR code in the Camera app to join one.", isError = error != null)
+        }
     }
 }
 

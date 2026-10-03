@@ -38,6 +38,8 @@ open class MockDevice(
     val enclave = DeviceIntegrityMock()
     val crashReporter = CrashReporterMock()
     val processInfo = ProcessInfoMock()
+    /** The device's network as the operating system reports it to the app — not [network], an upload's byte route. */
+    val connectivity = NetworkMock()
     val clock = ClockMock()
     val wakes = WakeMock()
     val backgroundTime = BackgroundTimeMock()

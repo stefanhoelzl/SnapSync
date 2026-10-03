@@ -101,6 +101,7 @@ object RigVocabulary {
         "device/backend/refuse-credential",
         "device/backend/wipe-bytes",
         "device/clock/advance",
+        "device/network",
         "device/app-version",
         "device/relaunch",
         "device/reinstall",

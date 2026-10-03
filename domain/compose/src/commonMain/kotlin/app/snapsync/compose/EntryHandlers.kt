@@ -64,6 +64,33 @@ fun lifecycleHandlers(core: AppCore, assembleHost: () -> Unit): LifecycleHandler
 }
 
 /**
+ * The network's return while the app is in front (capability `sync-status`, "The app says when it cannot reach the
+ * network"; decision record `changes/tell-when-offline`, D4): the work opening the app does — the `Foreground` flow,
+ * then the tail — so photos waiting for the network move now, not at the next opening. Its own entry-point label and
+ * [TailTrigger.NETWORK] keep it apart from a foreground entry in the device log; it re-registers no push token, since
+ * nothing about the token changed.
+ *
+ * Installed with the host (its only caller), so a cold background start installs no collector; it fires only while
+ * the network watch runs, which is only in the foreground.
+ */
+fun installNetworkReturns(core: AppCore) {
+    val entry: EntryContext = core.process.entryContext
+    val log = core.log
+    core.scope.launch {
+        core.networkStatus.returned.collect {
+            log.invocation(entry, "onNetworkReturned") {
+                val wake = core.tail.hold("onNetworkReturned")
+                core.scope.launch {
+                    runCatchingCancellable { core.foregroundFlow.run() }
+                        .onFailure { log.w(it) { "network returned: its foreground work failed; its tail still runs" } }
+                    wake.thenTail(TailTrigger.NETWORK)
+                }
+            }
+        }
+    }
+}
+
+/**
  * The push service's handlers (capability `receiving-photos`). **None assembles the host**: a token or a silent push
  * arriving in a background wake installs no permission-grant subscription — everything the push's own work needs is
  * built by the composed graph.

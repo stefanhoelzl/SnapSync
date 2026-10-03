@@ -5,6 +5,7 @@ import app.snapsync.android.attest.AndroidDeviceIntegrity
 import app.snapsync.android.backend.androidHttpClient
 import app.snapsync.android.download.AndroidDownload
 import app.snapsync.android.process.AndroidProcessInfo
+import app.snapsync.android.network.AndroidNetworkMonitor
 import app.snapsync.android.push.AndroidPushNotifications
 import app.snapsync.android.push.FirebaseConfig
 import app.snapsync.android.gallery.AndroidGallery
@@ -120,6 +121,8 @@ class SnapSyncRoot(internal val application: Application) {
         download = lazy { AndroidDownload(application) },
         pushNotifications = lazy { AndroidPushNotifications(application, firebase) },
         processInfo = lazy { AndroidProcessInfo(application) },
+        // The default network and whether Android blocks it for this app (capability `sync-status`).
+        network = lazy { AndroidNetworkMonitor(application) },
         // The crash-reporting seat both platforms share (capability `privacy-security`). It starts only when the build
         // carries a destination — a distributed one — and is never touched otherwise.
         crashReporter = lazy { SentryCrashReporter() },

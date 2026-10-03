@@ -4,7 +4,7 @@ import app.snapsync.model.JoinLoad
 
 import app.snapsync.feature.download.DownloadController
 import app.snapsync.feature.membership.MembershipRefresh
-import app.snapsync.feature.status.StatusCountsPoller
+import app.snapsync.feature.status.ForegroundWatches
 
 /**
  * The **foreground** OS-callback trigger flow (`docs/architecture.md`, "Rules in features, order
@@ -48,7 +48,10 @@ import app.snapsync.feature.status.StatusCountsPoller
  * perfectly good persisted membership. Foreground entry cannot run before the first unlock (the
  * UI requires an unlocked device), so the re-read here always sees readable state.
  *
- * [statusPoller] keeps the counts live *between* entries (capability `sync-status`): the extension
+ * [watches] bundles the counts poll below with the network watch, which follows the network only while the screen is
+ * visible for the same reason (capability `sync-status`, "The app says when it cannot reach the network").
+ *
+ * The status poll keeps the counts live *between* entries (capability `sync-status`): the extension
  * records completions in its own process, and with the Darwin ding gone the foreground-gated poll
  * is what moves the joined screen while the user watches. Start/stop ordering is this flow's and
  * the Background flow's coordination; the cadence is the feature's rule.
@@ -62,8 +65,8 @@ class Foreground(
     /** The membership-refresh rule (capability `join-event`): folds a fetched result, backfills, and on
      *  a CONFIRMED absence performs the teardown itself. */
     private val membershipRefresh: MembershipRefresh,
-    /** The foreground-gated ledger-counts poll (capability `sync-status`); stopped by the Background flow. */
-    private val statusPoller: StatusCountsPoller,
+    /** The foreground-gated counts poll and network watch (capability `sync-status`); Background stops them. */
+    private val watches: ForegroundWatches,
     /** Re-read the persisted membership into the config StateFlow — the port touch, injected. */
     private val reloadConfig: suspend () -> Unit,
     /** Settle the `REQUESTED` rows whose bytes the backend's per-device listing already stores (capability
@@ -93,7 +96,8 @@ class Foreground(
         refreshAttestation()
         // Keep the ledger counts live while the screen is visible (the first tick waits one cadence;
         // the refreshStatus launch below covers "now"). Non-blocking: the poller owns its own scope.
-        statusPoller.start()
+        // ...and tell the member when the network is missing, while the screen is visible (grace: the watch's rule).
+        watches.start()
         // Concurrent AND awaited, so `run()` returns when they are done rather than when they are
         // queued (law "A trigger flow never outlives its own run"). Each still labels its own log
         // lines: `coroutineScope` children escape this trigger's synchronous span exactly as the

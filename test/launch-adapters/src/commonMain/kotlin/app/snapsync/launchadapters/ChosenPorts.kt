@@ -32,6 +32,7 @@ fun chosenPorts(real: DevicePorts.Lazies, choice: AdapterChoice, device: MockDev
         // App Attest exists in the app and never in the extension.
         integrity = pick(MockedSystem.INTEGRITY, real.integrity) { device.enclave.port(available = app) },
         processInfo = pick(MockedSystem.PROCESS_INFO, real.processInfo) { device.processInfo.port() },
+        network = pick(MockedSystem.NETWORK, real.network) { device.connectivity.port() },
         backend = pick(MockedSystem.BACKEND, real.backend) { device.backend.port(device.declaredVersion) },
         backgroundTime = pick(MockedSystem.BACKGROUND_TIME, real.backgroundTime) { device.backgroundTime.port() },
         wake = pick(MockedSystem.WAKE, real.wake) { device.wakes.port() },

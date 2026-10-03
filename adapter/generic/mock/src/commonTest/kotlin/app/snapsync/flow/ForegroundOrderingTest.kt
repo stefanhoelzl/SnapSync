@@ -1,5 +1,14 @@
 package app.snapsync.flow
 
+import kotlinx.coroutines.test.TestScope
+import app.snapsync.services.network.NetworkReadings
+import app.snapsync.feature.status.ForegroundWatches
+import kotlin.time.Duration.Companion.seconds
+import kotlin.test.assertEquals
+import kotlinx.coroutines.test.advanceTimeBy
+import app.snapsync.model.NetworkAccess
+import app.snapsync.mock.NetworkMock
+import app.snapsync.feature.status.NetworkWatch
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.services.leave.PendingLeaves
 
@@ -103,12 +112,29 @@ class ForegroundOrderingTest {
         poller.stop()
     }
 
+    /** The network watch is the Foreground flow's to start (capability `sync-status`): the notice must follow the
+     *  network while the screen is visible, and only then. */
+    @Test
+    fun `run starts the network watch`() = runTest {
+        val network = NetworkMock()
+        val watch = NetworkWatch(backgroundScope, NetworkReadings(network.port()))
+        val poller = StatusCountsPoller(backgroundScope, {})
+        foreground(statusPoller = poller, refreshStatus = {}, networkWatch = watch).run()
+
+        network.operator.access = NetworkAccess.OFFLINE
+        advanceTimeBy(NetworkWatch.DEFAULT_GRACE + 1.seconds)
+        assertEquals(NetworkAccess.OFFLINE, watch.access.value, "the flow left the watch unstarted")
+        poller.stop()
+        watch.stop()
+    }
+
     // ---- scaffolding ----------------------------------------------------------------------------
 
-    private fun CoroutineScope.foreground(
+    private fun TestScope.foreground(
         statusPoller: StatusCountsPoller,
         refreshStatus: suspend () -> Unit,
         settleStoredUploads: suspend () -> Unit = {},
+        networkWatch: NetworkWatch? = null,
     ): Foreground {
         val config = noMembership()
         return Foreground(
@@ -124,7 +150,8 @@ class ForegroundOrderingTest {
                     pendingLeaves = PendingLeaves(inMemoryFiles(), { Result.success(Unit) }),
                 ),
             ),
-            statusPoller = statusPoller,
+            // A network watch on the test's background scope unless a test watches one: it stops with the test.
+            watches = ForegroundWatches(statusPoller, networkWatch ?: NetworkWatch(backgroundScope, NetworkReadings(NetworkMock().port()))),
             reloadConfig = {},
             settleStored = settleStoredUploads,
             refreshStatus = refreshStatus,

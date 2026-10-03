@@ -86,7 +86,7 @@ internal fun ReadyLayout(state: ReadyState, actions: ReadyActions) {
             PrimaryButton(
                 label = if (state.asksAccessOnJoin) "Join & allow photos" else "Join",
                 onClick = actions.onJoin,
-                enabled = state.range.commitEnabled,
+                enabled = state.range.commitEnabled && state.online,
             )
             SecondaryButton(label = "Cancel", onClick = actions.onCancel)
         }
@@ -152,6 +152,8 @@ internal class ReadyState(
     val participation: ParticipationState,
     /** Confirming also raises iOS's photo-access dialog — see [ReadyLayout]. */
     val asksAccessOnJoin: Boolean,
+    /** The app has a network: without one, Join waits — the screen's notice says why (capability `join-event`). */
+    val online: Boolean = true,
 ) {
     /** The join button is enabled on the same rule the reduction commits on. */
     val range: ResolvedRange get() = participation.range

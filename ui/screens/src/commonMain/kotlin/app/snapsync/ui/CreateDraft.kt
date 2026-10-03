@@ -95,6 +95,7 @@ private const val FOLLOW_NOW_MILLIS = 1_000L
 internal fun CreateFlow(
     layer: Layer,
     onCreateEvent: (String, LocalDateTime, LocalDateTime) -> Unit,
+    onOpenSettings: () -> Unit,
     cutoff: CutoffFormatter,
 ) {
     // The creating layer carries no session; the draft keeps the one it was last shown with. A plain holder,
@@ -110,7 +111,7 @@ internal fun CreateFlow(
                 delay(FOLLOW_NOW_MILLIS)
             }
         }
-        CreateEventScreen(layer, draft, onCreateEvent, cutoff)
+        CreateEventScreen(layer, draft, CreateCallbacks(onCreateEvent, onOpenSettings), cutoff)
     } else {
         CreatingEventScreen()
     }

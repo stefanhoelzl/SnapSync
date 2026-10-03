@@ -1,5 +1,6 @@
 package app.snapsync.desktop
 
+import app.snapsync.model.NetworkAccess
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -78,6 +79,12 @@ fun WorldInspector(
             OutlinedButton(onClick = { controller.setPermission(GalleryAccess.DENIED) }) { Text("Denied") }
             OutlinedButton(onClick = { controller.setPermission(GalleryAccess.LIMITED) }) { Text("Limited") }
             OutlinedButton(onClick = { controller.setPermission(GalleryAccess.GRANTED) }) { Text("Granted") }
+        }
+        Text("Network")
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { controller.setNetwork(NetworkAccess.ONLINE) }) { Text("Online") }
+            OutlinedButton(onClick = { controller.setNetwork(NetworkAccess.OFFLINE) }) { Text("Offline") }
+            OutlinedButton(onClick = { controller.setNetwork(NetworkAccess.BLOCKED) }) { Text("Blocked") }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Next request → ")

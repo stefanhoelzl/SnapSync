@@ -69,6 +69,7 @@ class AndroidNetworkMonitorContractTest {
      * left in airplane mode would fail every later device test of the run that needs the network.
      */
     private fun enter(state: NetworkState) {
+        var entered = false
         try {
             when (state) {
                 NetworkState.ONLINE -> restoreOnline()
@@ -83,13 +84,9 @@ class AndroidNetworkMonitorContractTest {
                     awaitDefaultNetwork(present = false, "the package's firewall deny")
                 }
             }
-        } catch (failed: Throwable) {
-            try {
-                restoreOnline()
-            } catch (restoring: Throwable) {
-                failed.addSuppressed(restoring)
-            }
-            throw failed
+            entered = true
+        } finally {
+            if (!entered) restoreOnline()
         }
     }
 

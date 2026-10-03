@@ -588,7 +588,7 @@ There are **no click, semantics or pixel verbs**. Taps and pixels belong to the 
 **A rig build of the real iOS app — on a simulator or the phone — runs with some systems mocked and the rest real,
 chosen at launch** (11h): its launch adapters. The systems are the mocks of `MockDevice`, one key each
 (`MockedSystem`): `backend`, `library`, `files`, `databases`, `preferences`, `keychain`, `integrity`, `crash-reporter`,
-`process-info`, `clock`, `wake`, `background-time`, `extension-registry`, `upload-queue`, `upload-session`,
+`process-info`, `network`, `clock`, `wake`, `background-time`, `extension-registry`, `upload-queue`, `upload-session`,
 `downloads`, `lifecycle`, `links`, `push`, `screen`, `system-ui`. Not among them: the development controls (always the
 channel's), the extension's entry port (the channel already plays its invocations through the real adapter) and
 MetricKit (`/device/process-metrics` feeds the real handler). Code: `:test:launch-adapters`.

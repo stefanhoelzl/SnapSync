@@ -15,7 +15,7 @@ and omitted. Async arrows are concurrent branches, awaited by the enclosing flow
 sequenceDiagram
   participant Trigger
   participant Background
-  participant statusPoller
+  participant watches
   Trigger->>Background: run(…)
-  Background->>statusPoller: stop()
+  Background->>watches: stop()
 ```

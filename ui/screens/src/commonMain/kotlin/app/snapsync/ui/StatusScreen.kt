@@ -381,7 +381,7 @@ private fun ColumnScope.CurrentLayer(
         // ONE branch for both create layers, so the form's draft survives a failed create's round trip
         // through the in-flight screen (capability `create-event`) — see [CreateFlow].
         is Layer.CreateEvent, Layer.CreatingEvent ->
-            CreateFlow(layer, actions.onCreateEvent, cutoff)
+            CreateFlow(layer, actions.onCreateEvent, actions.access.onOpenSettings, cutoff)
         is Layer.JoiningEvent ->
             JoiningEventScreen(
                 layer = layer,
@@ -391,6 +391,7 @@ private fun ColumnScope.CurrentLayer(
                     onCancel = actions.join.onCancelJoin,
                     onRetryLoad = actions.join.onRetryLoad,
                     participation = actions.participation,
+                    onOpenSettings = actions.access.onOpenSettings,
                 ),
             )
         is Layer.Joined ->

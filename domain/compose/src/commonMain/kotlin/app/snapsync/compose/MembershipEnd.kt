@@ -75,4 +75,5 @@ class MembershipEnd internal constructor(private val core: AppCore) {
 }
 
 /** The triggers whose own reason is to ask the event now — their end-of-wake read of its state is not bounded. */
-private val ASKS_THE_EVENT = setOf(TailTrigger.SILENT_PUSH, TailTrigger.FOREGROUND, TailTrigger.ARM)
+private val ASKS_THE_EVENT =
+    setOf(TailTrigger.SILENT_PUSH, TailTrigger.FOREGROUND, TailTrigger.NETWORK, TailTrigger.ARM)

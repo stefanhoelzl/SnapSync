@@ -30,7 +30,11 @@ import app.snapsync.feature.membership.RenameEvent
 import app.snapsync.feature.membership.ResetDeviceState
 import app.snapsync.feature.status.LedgerBackedSyncStatusSource
 import app.snapsync.feature.status.LedgerCounts
+import app.snapsync.feature.status.ForegroundWatches
+import app.snapsync.feature.status.NetworkWatch
+import app.snapsync.services.network.NetworkReadings
 import app.snapsync.feature.status.StatusCountsPoller
+import app.snapsync.feature.status.readmodel.NetworkStatusSource
 import app.snapsync.feature.status.OwnDeviceGalleryStatusSource
 import app.snapsync.feature.status.ReadingLedgerCountsSource
 import app.snapsync.feature.status.ShareableCountSource
@@ -88,6 +92,7 @@ import app.snapsync.ports.DevControls
 import app.snapsync.ports.PushNotifications
 import app.snapsync.ports.Lifecycle
 import app.snapsync.ports.Links
+import app.snapsync.ports.NetworkMonitor
 import app.snapsync.ports.Ui
 import app.snapsync.ports.Download
 import app.snapsync.ports.Upload
@@ -191,6 +196,9 @@ class AppPorts(
     /** What the OS says about this process — whether protected storage is readable right now, recorded by the
      *  background entry points and deciding nothing (capability `sync-status`). */
     val processInfo: ProcessInfo,
+    /** The device's network as the operating system reports it to this app — watched only while the app is in front,
+     *  to tell the member when it has none (capability `sync-status`). */
+    val network: NetworkMonitor,
 )
 
 /**
@@ -720,11 +728,21 @@ class AppCore internal constructor(
         StatusCountsPoller(scope, refreshCheapLocalReads = { statusRefresh.refreshCheapLocalReads() })
     }
 
+    // The foreground-gated network watch (capability `sync-status`): started by the Foreground flow, stopped by the
+    // Background flow, over the port's cold flow — so the platform's monitor runs only while the app is in front.
+    val networkWatch: NetworkWatch by lazy { NetworkWatch(scope, NetworkReadings(ports.network)) }
+
+    /** What runs only while the screen is visible — started by the Foreground flow, stopped by the Background flow. */
+    private val foregroundWatches: ForegroundWatches by lazy { ForegroundWatches(statusCountsPoller, networkWatch) }
+
+    /** What the member is told about the network, and when a missing one returns (capability `sync-status`). */
+    val networkStatus: NetworkStatusSource get() = networkWatch
+
     val foregroundFlow: Foreground by lazy {
         Foreground(
             downloadController = downloadController,
             membershipRefresh = membershipRefresh,
-            statusPoller = statusCountsPoller,
+            watches = foregroundWatches,
             reloadConfig = { services.config.reload() },
             // The upload side's own work at a foreground entry; its top-up and walk are the tail's.
             settleStored = storedUploadSettleFor(services, backend.deviceFiles)::settle,
@@ -736,7 +754,7 @@ class AppCore internal constructor(
     }
 
     val backgroundFlow: Background by lazy {
-        Background(statusPoller = statusCountsPoller)
+        Background(watches = foregroundWatches)
     }
 
     val silentPushFlow: SilentPush by lazy {

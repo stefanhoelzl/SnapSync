@@ -1,5 +1,6 @@
 package app.snapsync.rig
 
+import app.snapsync.model.NetworkAccess
 import app.snapsync.contracts.PhotoLibrary
 import app.snapsync.mock.BackendCall
 import app.snapsync.mock.DownloadSessionMock
@@ -487,6 +488,17 @@ private fun MockWorld.deviceLevers(): Map<String, Lever> = mapOf(
             ?: return@RigCommand CommandResult.badRequest("to must be an ISO instant, was '${params["to"]}'")
         device.clock.operator.now = to
         CommandResult.ok(buildJsonObject { put("now", to.toString()) }.toString())
+    }),
+    // The device's network as the operating system reports it to the app (capability `sync-status`): `access` is
+    // online|offline|blocked — blocked is the network withheld from this app, offline none at all.
+    "network" to mocked(MockedSystem.NETWORK, RigCommand { params, _ ->
+        val access = NetworkAccess.entries.firstOrNull { it.name.equals(params["access"], ignoreCase = true) }
+        if (access == null) {
+            CommandResult.badRequest("access must be one of ${NetworkAccess.entries.joinToString("|")}, was '${params["access"]}'")
+        } else {
+            device.connectivity.operator.access = access
+            CommandResult.ok("""{"network":"${access.name}"}""")
+        }
     }),
     // How this build answers an invite link's dev/test hints: `honoured=false` plays a shipped build, which ignores
     // them; a host starts as a rig build, which honours them. The build's own controls, so on every host.

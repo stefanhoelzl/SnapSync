@@ -1,5 +1,8 @@
 package app.snapsync.ui
 
+import androidx.compose.foundation.layout.padding
+import app.snapsync.ui.components.AppNetworkNotice
+import app.snapsync.model.NetworkNotice
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -52,6 +55,15 @@ internal fun JoiningEventScreen(
         // self-clearing "not valid" message shows on whatever screen the user is on). Above the phase for the
         // joined layer's reason — it is about what the user JUST DID — and it changes nothing below.
         layer.notice?.let { AppErrorBanner(it) }
+        // A missing network (capability `join-event`, "Without a network, the join screen waits for one"): said above
+        // the phase, and every step that would reach the backend — Join, a retried join, a retried load — waits.
+        val network = layer.network
+        if (network != null) {
+            Box(Modifier.fillMaxWidth().padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
+                AppNetworkNotice(blocked = network == NetworkNotice.BLOCKED, onOpenSettings = actions.onOpenSettings)
+            }
+        }
+        val online = network == null
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             // Two levels, and the nesting IS the type: the four phases that carry no event, then the loaded
             // one dispatched on its step. Both `when`s are exhaustive, so a new phase or a new step fails the
@@ -64,12 +76,17 @@ internal fun JoiningEventScreen(
                     onCancel = actions.onCancel,
                 )
                 JoinPhase.Closed -> WallPhase("Event closed", "This event can no longer be joined.", actions.onCancel)
-                JoinPhase.LoadFailed -> LoadFailedPhase(onRetry = actions.onRetryLoad, onCancel = actions.onCancel)
+                // Without a network the details load by themselves once it returns, so there is nothing to retry.
+                JoinPhase.LoadFailed -> if (online) {
+                    LoadFailedPhase(onRetry = actions.onRetryLoad, onCancel = actions.onCancel)
+                } else {
+                    WaitingForNetworkPhase(actions.onCancel)
+                }
                 is JoinPhase.Detailed -> when (phase.step) {
                     // The one step that is a *decision surface* rather than a status-plus-actions surface, so it
                     // owns its whole layout instead of the scaffold every other step opts into.
                     JoinPhase.Detailed.Step.Ready -> ReadyLayout(
-                        state = readyState(phase.event, layer),
+                        state = readyState(phase.event, layer, online),
                         actions = ReadyActions(
                             participation = actions.participation,
                             onJoin = actions.onConfirm,
@@ -83,7 +100,7 @@ internal fun JoiningEventScreen(
                         name = phase.event.name,
                         title = "Couldn't join",
                         body = "Something went wrong. Try again.",
-                        onRetry = actions.onRetryJoin,
+                        onRetry = actions.onRetryJoin.takeIf { online },
                         onCancel = actions.onCancel,
                     )
                     JoinPhase.Detailed.Step.EventFull -> CommitBlockedPhase(
@@ -148,6 +165,24 @@ private fun WallPhase(title: String, body: String, onCancel: () -> Unit) = Phase
                 icon = JoinNoticeInvalid,
                 title = title,
                 body = body,
+            )
+        }
+    },
+    actions = { SecondaryButton(label = "Cancel", onClick = onCancel) },
+)
+
+/**
+ * The details could not load for want of a network (capability `join-event`): the notice above names the cause, and
+ * the details load by themselves once it returns — so the only action is Cancel.
+ */
+@Composable
+private fun WaitingForNetworkPhase(onCancel: () -> Unit) = PhaseScaffold(
+    body = {
+        CenteredBody {
+            AppNoticeCard(
+                icon = JoinNoticeOffline,
+                title = "Waiting for a network",
+                body = "The event loads as soon as you're back online.",
             )
         }
     },
@@ -246,6 +281,7 @@ private fun ColumnScope.CenteredBody(content: @Composable () -> Unit) {
 private fun readyState(
     event: EventDetails,
     layer: Layer.JoiningEvent,
+    online: Boolean,
 ): ReadyState {
     // Non-null by construction on a loaded phase: the reduction resolves the range wherever there is a
     // window, and this surface renders only where there is one.
@@ -261,6 +297,7 @@ private fun readyState(
             rangeLabel = appRangeLabel(range.from, range.until),
         ),
         asksAccessOnJoin = layer.asksAccessOnJoin,
+        online = online,
     )
 }
 
@@ -283,4 +320,6 @@ internal class JoinActions(
     val onRetryLoad: () -> Unit,
     /** The member's edits to the range form, bound to the container's intents. */
     val participation: ParticipationActions,
+    /** SnapSync's Settings page, offered while its network is blocked (capability `join-event`). */
+    val onOpenSettings: () -> Unit,
 )

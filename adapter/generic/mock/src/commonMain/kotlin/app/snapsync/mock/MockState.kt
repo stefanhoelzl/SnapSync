@@ -7,6 +7,7 @@ import app.snapsync.model.AssetFacts
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.Availability
+import app.snapsync.model.NetworkAccess
 import app.snapsync.model.CaptureDate
 import app.snapsync.model.CrashEvent
 import app.snapsync.model.CrashLevel
@@ -101,6 +102,10 @@ private val CODECS: Map<MockedSystem, Codec> = mapOf(
         { mapOf(PROTECTED to it.processInfo.cell.value.name) },
         { device, values -> values[PROTECTED]?.let { device.processInfo.cell.value = Availability.valueOf(it) } },
     ),
+    MockedSystem.NETWORK to scalars(
+        { mapOf(ACCESS to it.connectivity.cell.value.name) },
+        { device, values -> values[ACCESS]?.let { device.connectivity.cell.value = NetworkAccess.valueOf(it) } },
+    ),
     MockedSystem.CLOCK to codec(
         ClockDto.serializer(),
         { ClockDto(it.clock.now.toEpochMilliseconds(), it.clock.zone.id) },
@@ -151,6 +156,7 @@ private val CODECS: Map<MockedSystem, Codec> = mapOf(
 )
 
 private const val PROTECTED = "protectedData"
+private const val ACCESS = "access"
 private const val REGISTERED = "registered"
 private const val HANDBACKS = "handbacks"
 private const val EVER_ACTIVE = "everActive"

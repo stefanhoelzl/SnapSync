@@ -1,5 +1,7 @@
 package app.snapsync.control
 
+import kotlin.time.Duration.Companion.seconds
+import app.snapsync.model.NetworkNotice
 import app.snapsync.model.Layer
 import app.snapsync.rig.JvmRigHost
 import app.snapsync.rig.RigVocabulary
@@ -53,6 +55,22 @@ class JvmHostProtocolTest {
             check(deadline.hasNotPassedNow()) { "the delivered token never reached the backend" }
             kotlinx.coroutines.delay(50)
         }
+    }
+
+    /**
+     * The network lever moves what the screen says, through the network the app watches while in front (capability
+     * `sync-status`): every value reaches the reduced state, a missing network after the watch's grace.
+     */
+    @Test
+    fun the_network_lever_reaches_the_screen_in_every_value() = onHost { client ->
+        client.os("app", "onForeground").done()
+        client.deviceVerb("network", mapOf("access" to "offline")).done()
+        client.awaitState(15.seconds) { (it.ui.layer as? Layer.CreateEvent)?.network == NetworkNotice.OFFLINE }
+        client.deviceVerb("network", mapOf("access" to "blocked")).done()
+        client.awaitState { (it.ui.layer as? Layer.CreateEvent)?.network == NetworkNotice.BLOCKED }
+        client.deviceVerb("network", mapOf("access" to "online")).done()
+        client.awaitState { (it.ui.layer as? Layer.CreateEvent)?.network == null }
+        assertEquals(400, assertIs<Reply.Failed>(client.deviceVerb("network", mapOf("access" to "flaky"))).status)
     }
 
     @Test

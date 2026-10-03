@@ -2,6 +2,7 @@
 
 package app.snapsync.ui
 
+import app.snapsync.model.NetworkNotice
 import app.snapsync.model.AlbumKind
 import app.snapsync.model.ShareCount
 import app.snapsync.model.captureCeiling
@@ -219,6 +220,63 @@ class JoinScreenTest {
         onNodeWithText("Retry").assertExists()
         onNodeWithText("Retry").performClick()
         assertEquals(1, retried)
+    }
+
+    // ---- without a network (capability `join-event`, "Without a network, the join screen waits for one") ----
+
+    private fun UiState.withNetwork(notice: NetworkNotice) =
+        copy(layer = (layer as Layer.JoiningEvent).copy(network = notice))
+
+    @Test
+    fun `offline a failed load waits for the network with Cancel only`() = runComposeUiTest {
+        setScreen { TestStatusScreen(joining(JoinPhase.LoadFailed).withNetwork(NetworkNotice.OFFLINE), cutoff = fixedCutoff()) }
+        onNodeWithText("You're offline").assertExists()
+        onNodeWithText("Waiting for a network").assertExists()
+        onNodeWithText("Retry").assertDoesNotExist()
+        onNodeWithText("Cancel").assertExists()
+    }
+
+    @Test
+    fun `without a network Join cannot be tapped and Cancel can`() = runComposeUiTest {
+        var cancelled = 0
+        setScreen {
+            TestStatusScreen(
+                joining(phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES))
+                    .withNetwork(NetworkNotice.OFFLINE),
+                cutoff = fixedCutoff(),
+                actions = testActions(join = testJoinGateActions(onCancelJoin = { cancelled++ })),
+            )
+        }
+        onNodeWithText("Join").assertIsNotEnabled()
+        onNodeWithText("Cancel").performClick()
+        assertEquals(1, cancelled)
+    }
+
+    @Test
+    fun `a blocked network offers SnapSync's Settings`() = runComposeUiTest {
+        var settingsOpens = 0
+        setScreen {
+            TestStatusScreen(
+                joining(JoinPhase.LoadFailed).withNetwork(NetworkNotice.BLOCKED),
+                cutoff = fixedCutoff(),
+                actions = testActions(access = testAccessActions(onOpenSettings = { settingsOpens++ })),
+            )
+        }
+        onNodeWithText("Network blocked for SnapSync – Open Settings").performClick()
+        assertEquals(1, settingsOpens)
+    }
+
+    @Test
+    fun `without a network a failed commit offers no Retry`() = runComposeUiTest {
+        setScreen {
+            TestStatusScreen(
+                joining(phaseAt(JoinPhase.Detailed.Step.CommitFailed, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES))
+                    .withNetwork(NetworkNotice.OFFLINE),
+                cutoff = fixedCutoff(),
+            )
+        }
+        onNodeWithText("Retry").assertDoesNotExist()
+        onNodeWithText("Cancel").assertExists()
     }
 
     @Test
