@@ -252,6 +252,11 @@ Where bindings live: beside their implementations.
 - `PlatformDeviceId`: its contract runs live on `ANDROID_EMU` over `ANDROID_ID` (an offered id is stable and
   canonical), and on the JVM over `NoPlatformDeviceId` (no id is `null`). "The same after a reinstall" is the property
   the id is chosen for and no process can test on itself; it is checked by hand on the emulator.
+- `NetworkMonitor`: live on `ANDROID_EMU` in all three states — online, airplane mode (offline), and the package
+  denied by the `OEM_DENY_3` firewall chain (blocked), each entered by the binding through `cmd connectivity`; live on
+  `IOS_SIM_APP` online; recorded on the SE2 online and in airplane mode, once each (`.ONLINE.rec`, `.OFFLINE.rec`).
+  iOS's blocked path (the per-app Cellular switch) has no host — no phone the project drives has a SIM — so its
+  mapping is pinned by `IosNetworkMonitorTest` and documented, unmeasured, on `IosNetworkMonitor`.
 - The install referrer on Android (the invite a Play install carried, capability `join-event`): which referrers are an
   invite is pure and runs on the JVM (`EventLinkTest`, `inviteLinkFromInstallReferrer`); the once-per-install
   bookkeeping runs on `ANDROID_EMU` over a scripted Play answer behind the reader's internal `ReferrerSource` seam and
@@ -381,7 +386,9 @@ recording is input to a clause, never an expectation.
   clause id.
 - A missing recording, or a missing block for a declared-reachable clause, is `Failed`, not `NotRunHere`.
 - Files: `test/contracts/recordings/<Contract>@<HOST>.rec`, or `<Contract>@<HOST>.<GRANT>.rec` when the
-  binding declares a grant (for example `UploadExtensionRegistry@IOS_DEVICE_APP.LIMITED.rec`). Each file
+  binding declares a grant (for example `UploadExtensionRegistry@IOS_DEVICE_APP.LIMITED.rec`), or
+  `<Contract>@<HOST>.<PRECONDITION>.rec` when it declares another condition of the device a person sets before the
+  run (`NetworkMonitor@IOS_DEVICE_APP.OFFLINE.rec`: airplane mode). Each file
   has a provenance header, then one `[CLAUSE_ID]` block per clause, sorted, of `call -> answer` lines. A
   run overwrites the file. **Commit it unedited.** Git holds its history, and an iOS update that changes
   an answer shows up as a diff on the same host.

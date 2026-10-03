@@ -352,7 +352,7 @@ system it stands in for. The contract code **is** the specification of a port's 
 - **Every clause runs against something real** on some host: a `Live` binding CI runs, or a committed
   device recording. `ContractCoverageTest` enforces this.
 - Hosts CI cannot reach are **recorded at the OS boundary** on a device (through the rig, under
-  `-Psnapsync.rig=true`) into `test/contracts/recordings/<Contract>@<HOST>[.<GRANT>].rec`, and
+  `-Psnapsync.rig=true`) into `test/contracts/recordings/<Contract>@<HOST>[.<GRANT>|.<PRECONDITION>].rec`, and
   **replayed** against the current adapter on every build. An adapter recorded this way routes its OS
   calls through an `internal` seam (`KeychainApi`, `AppAttestApi`, `BackgroundTaskApi`, ...).
 

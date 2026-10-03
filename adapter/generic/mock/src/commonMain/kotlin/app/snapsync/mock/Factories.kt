@@ -8,6 +8,8 @@ import app.snapsync.model.DeviceFile
 import app.snapsync.ports.CrashReporter
 import app.snapsync.ports.ProcessInfo
 import app.snapsync.model.Availability
+import app.snapsync.model.NetworkAccess
+import app.snapsync.ports.NetworkMonitor
 import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
@@ -49,3 +51,6 @@ fun inMemoryCrashReporter(): CrashReporter = InMemoryCrashReporter()
 fun inMemoryProcessInfo(
     protectedData: MutableStateFlow<Availability> = MutableStateFlow(Availability.AVAILABLE),
 ): ProcessInfo = InMemoryProcessInfo(protectedData)
+
+/** [access] is the caller's own cell: what the operating system reports about the network. */
+fun inMemoryNetworkMonitor(access: MutableStateFlow<NetworkAccess>): NetworkMonitor = InMemoryNetworkMonitor(access)

@@ -9,6 +9,7 @@ import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.InAppContract
 import app.snapsync.contracts.LinkOpenerContract
+import app.snapsync.contracts.NetworkMonitorContract
 import app.snapsync.contracts.LinkOpenerState
 import app.snapsync.contracts.Recorder
 import app.snapsync.contracts.Replayer
@@ -90,6 +91,7 @@ fun appDeviceContracts(refusal: () -> String? = { null }): List<InAppContract> =
     },
     InAppContract(WakeContract.name, Host.IOS_DEVICE_APP) { recordScheduler() },
     InAppContract(ExtensionRegistryContract.name, Host.IOS_DEVICE_APP) { recordRegistry(refusal) },
+    InAppContract(NetworkMonitorContract.name, Host.IOS_DEVICE_APP) { params -> recordNetwork(params) },
 )
 
 /**
@@ -109,13 +111,14 @@ private fun recordRegistry(refusal: () -> String?): String = when (val grant = c
 
 /**
  * Runs [contract] against this app's real platform through the recording binding [binding] builds, under
- * [grant] where the binding declares one, and renders the recording.
+ * [grant] or [precondition] where the binding declares one, and renders the recording.
  *
  * It refuses on a simulator: a recording taken there would be filed under the device's name.
  */
-private fun <K : Enum<K>, T> recordAppOnDevice(
+internal fun <K : Enum<K>, T> recordAppOnDevice(
     contract: Contract<K, T>,
     grant: GalleryAccess?,
+    precondition: String? = null,
     binding: (Recorder) -> Binding<K, T>,
 ): String {
     if (NSProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] != null) {
@@ -126,9 +129,9 @@ private fun <K : Enum<K>, T> recordAppOnDevice(
     val results = run(contract, binding(recorder))
     val env = deviceDiagnosticEnvironment(uploadTier = "n/a")
     val header = listOf("contract" to contract.name, "host" to Host.IOS_DEVICE_APP.name) +
-        listOfNotNull(grant?.let { "grant" to it.name }) +
+        listOfNotNull(grant?.let { "grant" to it.name }, precondition?.let { "precondition" to it }) +
         listOf(
-            "file" to recordingName(contract.name, Host.IOS_DEVICE_APP, grant) + ".rec",
+            "file" to recordingName(contract.name, Host.IOS_DEVICE_APP, grant, precondition) + ".rec",
             "device" to env.deviceModel,
             "os" to env.osVersion,
             "build" to env.buildNumber,

@@ -8,6 +8,8 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <!-- The download contract's hidden transfers: without it DownloadManager refuses a VISIBILITY_HIDDEN request. -->
     <uses-permission android:name="android.permission.DOWNLOAD_WITHOUT_NOTIFICATION" />
+    <!-- The network contract: the default-network callback and the active network's info. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <!-- The upload contract's loopback fixture is plain HTTP on the host's loopback, 10.0.2.2 from the emulator
          (build-logic's TransferFixtureService). -->
