@@ -6,21 +6,22 @@ import app.snapsync.logging.invocation
 import app.snapsync.model.ScheduleResult
 import app.snapsync.model.WakeCadence
 import app.snapsync.model.WakeId
+import app.snapsync.model.WakeNetwork
 import app.snapsync.model.WakeTrigger
 import app.snapsync.objc.objcBoundary
 import app.snapsync.ports.Completion
 import app.snapsync.ports.Wake
 import app.snapsync.ports.WakeHandlers
 import co.touchlab.kermit.Logger
+import kotlin.concurrent.atomics.AtomicBoolean
+import kotlin.concurrent.atomics.AtomicReference
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.BackgroundTasks.BGAppRefreshTaskRequest
 import platform.BackgroundTasks.BGProcessingTaskRequest
 import platform.BackgroundTasks.BGTask
 import platform.Foundation.NSDate
 import platform.Foundation.dateWithTimeIntervalSinceNow
-import kotlin.concurrent.atomics.AtomicBoolean
-import kotlin.concurrent.atomics.AtomicReference
-import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
 /**
  * The iOS [Wake]: `BGTaskScheduler`. The heartbeat is one-shot and rides one of two task kinds by its cadence
@@ -137,7 +138,9 @@ class IosWake internal constructor(
 
     private fun processing(after: WakeTrigger.After?, earliestSeconds: Double) =
         BGProcessingTaskRequest(HEARTBEAT_TASK_IDENTIFIER).apply {
-            requiresNetworkConnectivity = after?.requiresNetwork ?: true
+            // BGTaskScheduler can ask only for SOME network, so an unrestricted requirement waits for any connection: the
+            // transfers the wake runs carry their own request flags and hold themselves (capability `mobile-data`).
+            requiresNetworkConnectivity = after?.network?.let { it != WakeNetwork.NONE } ?: true
             requiresExternalPower = false
             earliestBeginDate = NSDate.dateWithTimeIntervalSinceNow(earliestSeconds)
         }

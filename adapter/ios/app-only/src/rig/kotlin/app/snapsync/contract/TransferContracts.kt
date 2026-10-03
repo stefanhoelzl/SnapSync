@@ -22,6 +22,7 @@ import app.snapsync.download.IosDownload
 import app.snapsync.gallery.IosGalleryReader
 import app.snapsync.ios.urlsession.IosUrlSessionUploadPlatform
 import app.snapsync.model.Resource
+import app.snapsync.model.TransferNetwork
 import app.snapsync.model.UploadCreateOutcome
 import app.snapsync.model.UploadJob
 import app.snapsync.model.UploadJobSet
@@ -165,7 +166,7 @@ class SimAppUploadBinding : Binding<UploadState, UploadUnderTest>, RunParameters
                 repeat(CAP) { n ->
                     val key = UploadContract.key(clauseId, n = n + 1)
                     val url = base + UploadContract.path(clauseId, FixtureAnswer.Hold, n = n + 1)
-                    val created = platform.create(usable(key), UploadTarget(url, mapOf("Content-Type" to "image/jpeg")), key)
+                    val created = platform.create(usable(key), UploadTarget(url, mapOf("Content-Type" to "image/jpeg"), TransferNetwork.ANY), key)
                     check(created == UploadCreateOutcome.CREATED) { "filling the cap: transfer ${n + 1} was $created" }
                 }
             }

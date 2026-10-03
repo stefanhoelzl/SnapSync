@@ -7,6 +7,7 @@ import android.net.Uri
 import app.snapsync.android.storage.context
 import app.snapsync.contracts.ClauseDownloadHandlers
 import app.snapsync.contracts.DownloadEvent
+import app.snapsync.model.TransferNetwork
 import java.io.File
 import java.net.InetAddress
 import java.net.ServerSocket
@@ -84,7 +85,7 @@ class AndroidDownloadRescheduleTest {
         removeAllDownloads()
         val download = AndroidDownload(context)
         download.listen(ClauseDownloadHandlers { null }.handlers)
-        download.start("http://127.0.0.1:${server.localPort}/reschedule-$run", "d-reschedule-$run")
+        download.start("http://127.0.0.1:${server.localPort}/reschedule-$run", "d-reschedule-$run", TransferNetwork.ANY)
         val first = checkNotNull(arrivals.poll(ARRIVAL_SECONDS, TimeUnit.SECONDS)) { "run $run: the download never asked" }
         reschedule(onlyRowId())
         val second = arrivals.poll(ARRIVAL_SECONDS, TimeUnit.SECONDS)

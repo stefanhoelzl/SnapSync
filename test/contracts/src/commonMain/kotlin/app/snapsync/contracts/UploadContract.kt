@@ -3,6 +3,7 @@ package app.snapsync.contracts
 import app.snapsync.model.AssetId
 import app.snapsync.model.ChangeOutcome
 import app.snapsync.model.ResourceRole
+import app.snapsync.model.TransferNetwork
 import app.snapsync.model.UploadCreateOutcome
 import app.snapsync.model.UploadJob
 import app.snapsync.model.UploadJobSet
@@ -42,6 +43,12 @@ enum class UploadState {
 
     /** A transfer refused again after its free retry to the identical destination, presented as terminal. */
     PRESENTED_RETRY_SPENT,
+
+    /**
+     * Nothing in flight, and the device on a restricted network (capability `mobile-data`) — mobile data, a metered
+     * Wi-Fi, a hotspot, Low Data Mode — which the binding can lift ([UploadUnderTest.liftRestriction]).
+     */
+    RESTRICTED_NETWORK,
 }
 
 /**
@@ -63,6 +70,8 @@ class UploadUnderTest(
     val unusable: (key: String) -> UploadSource,
     val ended: () -> List<UploadJob>,
     val objects: FixtureObjects,
+    /** Puts the device back on an unrestricted network; required of a binding that reaches [UploadState.RESTRICTED_NETWORK]. */
+    val liftRestriction: (suspend () -> Unit)? = null,
 )
 
 /**
@@ -103,7 +112,8 @@ object UploadContract : Contract<UploadState, UploadUnderTest>("Upload") {
     private val ACCEPT = FixtureAnswer.Respond(200)
     private val REJECT = FixtureAnswer.Respond(500)
 
-    private fun UploadUnderTest.target(route: String) = UploadTarget(base + route, mapOf("Content-Type" to CONTENT_TYPE))
+    private fun UploadUnderTest.target(route: String, network: TransferNetwork = TransferNetwork.ANY) =
+        UploadTarget(base + route, mapOf("Content-Type" to CONTENT_TYPE), network)
 
     private fun UploadUnderTest.destination(route: String) = destinationPathOf(base + route)
 
@@ -143,6 +153,26 @@ object UploadContract : Contract<UploadState, UploadUnderTest>("Upload") {
             assertEquals(subject.destination(route), ended.destinationPath, "a job is told of under its destination")
             assertTrue(ended.tag == null || ended.tag == key(id), "and, where the platform keeps one, its tag")
             assertEquals(ChangeOutcome.Applied, subject.upload.acknowledge(ended), "a presented end is acknowledged")
+        }
+
+        clause("A_TRANSFER_HELD_TO_UNRESTRICTED_NETWORKS_WAITS_FOR_ONE", UploadState.RESTRICTED_NETWORK) { subject ->
+            val id = "A_TRANSFER_HELD_TO_UNRESTRICTED_NETWORKS_WAITS_FOR_ONE"
+            val lift = assertNotNull(subject.liftRestriction, "a binding that reaches a restricted network can lift it")
+            val route = path(id, ACCEPT)
+            assertEquals(
+                UploadCreateOutcome.CREATED,
+                subject.upload.create(subject.usable(key(id)), subject.target(route, TransferNetwork.UNRESTRICTED_ONLY), key(id)),
+                "a held transfer is still a job: the platform keeps it until the network allows it",
+            )
+            heldSettle()
+            assertNull(subject.objects.landed(route), "a transfer held to unrestricted networks sends nothing on a restricted one")
+            assertTrue(subject.jobsAt(route).none { it.state == UploadJobState.SUCCEEDED || it.state == UploadJobState.FAILED })
+            lift()
+            awaitWithin {
+                subject.objects.landed(route) != null &&
+                    subject.jobsAt(route).any { it.state == UploadJobState.SUCCEEDED }
+            }
+            subject.jobsAt(route).filter { it.state == UploadJobState.SUCCEEDED }.forEach { subject.upload.acknowledge(it) }
         }
 
         clause("CREATE_KEEPS_CONTENT_TYPE", UploadState.IDLE) { subject ->

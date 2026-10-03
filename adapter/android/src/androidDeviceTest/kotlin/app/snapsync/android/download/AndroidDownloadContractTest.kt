@@ -4,6 +4,7 @@ import android.app.DownloadManager
 import android.content.Context
 import android.content.IntentFilter
 import androidx.test.platform.app.InstrumentationRegistry
+import app.snapsync.android.network.MeteredWifi
 import app.snapsync.android.storage.context
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
@@ -17,6 +18,7 @@ import app.snapsync.contracts.FixtureAnswer
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.verify
 import app.snapsync.model.StartResult
+import app.snapsync.model.TransferNetwork
 import java.io.File
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -60,17 +62,23 @@ class AndroidDownloadContractTest {
     private val download = object : Binding<DownloadState, DownloadUnderTest> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
-        override val reaches = setOf(DownloadState.READY)
+        override val reaches = setOf(DownloadState.READY, DownloadState.RESTRICTED_NETWORK)
 
         override fun create(state: DownloadState, clauseId: String): Entered<DownloadUnderTest> {
             removeAllDownloads()
+            // The fixture is the host's, reached over the emulator's Wi-Fi: metering the Wi-Fi meters the transfer.
+            if (state == DownloadState.RESTRICTED_NETWORK) MeteredWifi.enter()
             return Entered.Ready(
                 DownloadUnderTest(
                     open = { AndroidDownload(context) },
                     base = fixture(),
                     readTemp = { path -> runCatching { File(path).readBytes() }.getOrNull() },
+                    liftRestriction = { MeteredWifi.lift() },
                 ),
-            ) { removeAllDownloads() }
+            ) {
+                removeAllDownloads()
+                if (state == DownloadState.RESTRICTED_NETWORK) MeteredWifi.lift()
+            }
         }
     }
 
@@ -84,7 +92,7 @@ class AndroidDownloadContractTest {
         val first = AndroidDownload(context)
         first.listen(ClauseDownloadHandlers { null }.handlers)
         val path = DownloadContract.path("MISSED_BROADCAST", FixtureAnswer.Respond(HTTP_OK, length = MISSED_LENGTH))
-        assertEquals(StartResult.Started, first.start(fixture() + path, "d-missed"))
+        assertEquals(StartResult.Started, first.start(fixture() + path, "d-missed", TransferNetwork.ANY))
         withTimeout(TRANSFER_WAIT_MILLIS) {
             while (!finished()) delay(POLL_MILLIS)
         }

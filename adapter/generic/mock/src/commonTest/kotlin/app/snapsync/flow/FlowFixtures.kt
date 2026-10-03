@@ -1,16 +1,16 @@
 package app.snapsync.flow
 
-import app.snapsync.mock.inMemoryPreferences
-import app.snapsync.services.wake.EventChecks
+import app.snapsync.feature.download.DownloadController
 import app.snapsync.mock.fixedClock
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.mock.inMemoryFiles
-import app.snapsync.feature.download.DownloadController
+import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetPresence
 import app.snapsync.model.ImportRequest
 import app.snapsync.model.ImportResult
 import app.snapsync.model.StartResult
+import app.snapsync.model.TransferNetwork
 import app.snapsync.ports.Download
 import app.snapsync.ports.DownloadHandlers
 import app.snapsync.ports.GalleryImport
@@ -21,8 +21,9 @@ import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.gallery.GalleryImporter
 import app.snapsync.services.gallery.ImportedAssetPresence
 import app.snapsync.services.staging.StagingService
-import kotlinx.coroutines.CoroutineScope
+import app.snapsync.services.wake.EventChecks
 import kotlin.time.Instant
+import kotlinx.coroutines.CoroutineScope
 
 // The flows' collaborators, as the composition builds them: the REAL download controller and its services, over ports
 // that do nothing — these tests are about a flow's ordering, and none of them downloads or imports.
@@ -30,7 +31,7 @@ import kotlin.time.Instant
 /** A download session that holds nothing and starts nothing. */
 private object InertDownload : Download {
     override fun listen(handlers: DownloadHandlers) = Unit
-    override fun start(url: String, tag: String): StartResult = StartResult.NotStarted
+    override fun start(url: String, tag: String, network: TransferNetwork): StartResult = StartResult.NotStarted
     override suspend fun cancelAll() = Unit
 }
 
@@ -51,7 +52,7 @@ internal fun CoroutineScope.flowDownloadController(union: EventUnionSource): Dow
     return DownloadController(
         union = union,
         store = DownloadService(inMemoryDatabases()),
-        jobs = DownloadJobs(this, staging, InertDownload, onStaged = { _, _, _ -> }),
+        jobs = DownloadJobs(this, staging, InertDownload, onStaged = { _, _, _ -> }, network = { TransferNetwork.ANY }),
         importer = GalleryImporter(NoImports, staging),
         presence = UnknownPresence,
         eventAlbum = { null },

@@ -1,43 +1,44 @@
 package app.snapsync.services.downloads
 
 import app.snapsync.model.AssetId
-import app.snapsync.model.StartResult
-import app.snapsync.ports.Download
-import app.snapsync.services.staging.DOWNLOAD_STAGING_DIR
-import app.snapsync.services.staging.StagingService
+import app.snapsync.model.AssetRef
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
 import app.snapsync.model.FileTail
-import app.snapsync.ports.Files
-import app.snapsync.ports.DownloadHandlers
-import app.snapsync.model.TransferOutcome
-
-import app.snapsync.model.AssetRef
 import app.snapsync.model.PendingDownload
 import app.snapsync.model.PlannedResource
+import app.snapsync.model.StartResult
+import app.snapsync.model.TransferNetwork
+import app.snapsync.model.TransferOutcome
+import app.snapsync.ports.Download
+import app.snapsync.ports.DownloadHandlers
+import app.snapsync.ports.Files
+import app.snapsync.services.staging.DOWNLOAD_STAGING_DIR
+import app.snapsync.services.staging.StagingService
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.yield
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.joinAll
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelChildren
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.test.TestScope
-import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.yield
 
 /**
  * The download client's orchestration, exercised without an iOS runtime (capability `receiving-photos`):
@@ -63,7 +64,7 @@ class DownloadJobsTest {
     private class FakeDownload : Download {
         lateinit var jobs: DownloadJobs
 
-        class Started(val url: String, val description: String) {
+        class Started(val url: String, val description: String, val network: TransferNetwork = TransferNetwork.ANY) {
             var cancelled = false
         }
 
@@ -78,8 +79,8 @@ class DownloadJobsTest {
 
         override fun listen(handlers: DownloadHandlers) = Unit
 
-        override fun start(url: String, tag: String): StartResult {
-            started += Started(url, tag)
+        override fun start(url: String, tag: String, network: TransferNetwork): StartResult {
+            started += Started(url, tag, network)
             return StartResult.Started
         }
 
@@ -121,11 +122,15 @@ class DownloadJobsTest {
         /** What a staged resource is delivered to; a test swaps it to model a slow or stalled import. */
         var deliver: suspend (AssetRef, String, String) -> Unit = { ref, key, path -> staged += Triple(ref, key, path) }
 
+        /** The member's mobile-data rule as the composition reads it when a download starts. */
+        var network: TransferNetwork = TransferNetwork.ANY
+
         val jobs = DownloadJobs(
             scope = scope,
             staging = StagingService(AcceptingFiles),
             download = transport,
             onStaged = { ref, key, path -> deliver(ref, key, path) },
+            network = { network },
         ).also { transport.jobs = it }
     }
 
@@ -134,6 +139,25 @@ class DownloadJobsTest {
             ref = AssetRef("DEVICE-A", AssetId(assetId)),
             resource = PlannedResource(key, url, "primary", "image/heic", "IMG.HEIC"),
         )
+
+    // ---- the member's mobile-data rule (capability `mobile-data`) -------------------------------------
+
+    /** Each download carries the rule in force when it STARTED: a later change governs only the ones after it. */
+    @Test
+    fun a_download_carries_the_rule_it_started_under() = runTest {
+        val h = Harness(this)
+        h.network = TransferNetwork.UNRESTRICTED_ONLY
+        h.jobs.enqueue(listOf(pending("A", "a-primary.heic")))
+        h.network = TransferNetwork.ANY
+        h.jobs.enqueue(listOf(pending("B", "b-primary.heic")))
+
+        assertEquals(
+            listOf(TransferNetwork.UNRESTRICTED_ONLY, TransferNetwork.ANY),
+            h.transport.started.map { it.network },
+            "the first keeps the rule it started under; only the second sees the change",
+        )
+        coroutineContext.cancelChildren()
+    }
 
     // ---- the imports a wake announces are all awaited, whichever thread registered them -----------------
 

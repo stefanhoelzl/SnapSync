@@ -51,16 +51,27 @@ private val REASONS = mapOf(
     nw_path_unsatisfied_reason_vpn_inactive to "vpnInactive",
 )
 
-/** A reading by Network.framework's names; a value no name covers is kept as its number, so nothing is lost. */
+/**
+ * A reading by Network.framework's names; a value no name covers is kept as its number, so nothing is lost. The two
+ * restriction flags are written only when set, so a recording made before they were read — every flag false on the
+ * phone's ordinary Wi-Fi — still replays as recorded.
+ */
 private fun PathReading.render(): String =
-    "status=${STATUSES[status] ?: status} reason=${REASONS[reason] ?: reason}"
+    "status=${STATUSES[status] ?: status} reason=${REASONS[reason] ?: reason}" +
+        (if (expensive) " expensive" else "") + (if (constrained) " constrained" else "")
 
 private fun String.parseReading(): PathReading {
     fun value(key: String, names: Map<UInt, String>): UInt {
         val text = substringAfter("$key=").substringBefore(' ')
         return names.entries.firstOrNull { it.value == text }?.key ?: text.toUInt()
     }
-    return PathReading(value("status", STATUSES), value("reason", REASONS))
+    val words = split(' ')
+    return PathReading(
+        value("status", STATUSES),
+        value("reason", REASONS),
+        expensive = "expensive" in words,
+        constrained = "constrained" in words,
+    )
 }
 
 /**
@@ -121,6 +132,20 @@ internal class DeviceNetworkOnlineBinding(private val recorder: Recorder) : Bind
         recordingIn(state, NetworkState.ONLINE, recorder, clauseId)
 }
 
+/**
+ * The device on a restricted network (capability `mobile-data`) — another phone's personal hotspot, or Low Data Mode
+ * on its Wi-Fi — recording every `nw_path_monitor` call and iOS's answer.
+ */
+internal class DeviceNetworkRestrictedBinding(private val recorder: Recorder) : Binding<NetworkState, NetworkMonitor> {
+    override val host = Host.IOS_DEVICE_APP
+    override val kind = BindingKind.Live
+    override val reaches = setOf(NetworkState.RESTRICTED)
+    override val precondition = "RESTRICTED"
+
+    override fun create(state: NetworkState, clauseId: String): Entered<NetworkMonitor> =
+        recordingIn(state, NetworkState.RESTRICTED, recorder, clauseId)
+}
+
 /** The device in airplane mode, Wi-Fi off too, recording every `nw_path_monitor` call and iOS's answer. */
 internal class DeviceNetworkOfflineBinding(private val recorder: Recorder) : Binding<NetworkState, NetworkMonitor> {
     override val host = Host.IOS_DEVICE_APP
@@ -143,14 +168,16 @@ private fun recordingIn(state: NetworkState, held: NetworkState, recorder: Recor
 }
 
 /**
- * Runs the network contract under the condition the person recording states — `?network=online` or
- * `?network=offline` — which they set on the phone first: a binding cannot take a phone offline, and reading the
+ * Runs the network contract under the condition the person recording states — `?network=online`,
+ * `?network=restricted` or `?network=offline` — which they set on the phone first: a binding cannot take a phone offline, and reading the
  * condition through the adapter under test would file whatever it answers as the truth. A clause then fails when the
  * phone was not in the stated condition, and that recording is not committed.
  */
 internal fun recordNetwork(params: Map<String, String>): String = when (params["network"]) {
     "online" -> recordAppOnDevice(NetworkMonitorContract, null, "ONLINE") { DeviceNetworkOnlineBinding(it) }
     "offline" -> recordAppOnDevice(NetworkMonitorContract, null, "OFFLINE") { DeviceNetworkOfflineBinding(it) }
+    "restricted" -> recordAppOnDevice(NetworkMonitorContract, null, "RESTRICTED") { DeviceNetworkRestrictedBinding(it) }
     else -> CONTRACT_REFUSED +
-        "state the phone's condition: ?network=online (Wi-Fi joined) or ?network=offline (airplane mode, Wi-Fi off).\n"
+        "state the phone's condition: ?network=online (Wi-Fi joined), ?network=restricted (a personal hotspot, or Low " +
+        "Data Mode on its Wi-Fi) or ?network=offline (airplane mode, Wi-Fi off).\n"
 }

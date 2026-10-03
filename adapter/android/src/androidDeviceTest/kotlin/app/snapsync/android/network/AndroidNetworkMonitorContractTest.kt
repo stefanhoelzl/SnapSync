@@ -21,6 +21,8 @@ import kotlin.test.assertNull
  * [NetworkMonitorContract] against the real [AndroidNetworkMonitor] on the emulator, each state entered through the
  * platform's own shell commands — the ones a person's switches stand behind:
  *  - OFFLINE: airplane mode, which takes the emulator's Wi-Fi and cellular down together;
+ *  - RESTRICTED: the emulator's Wi-Fi marked metered by the network policy service — what a person's "metered" switch
+ *    on a Wi-Fi network sets, and what the emulated cellular network always is (capability `mobile-data`);
  *  - BLOCKED: the connectivity service's `OEM_DENY_3` firewall chain with this package denied — a block of THIS app's
  *    network while the device stays online, as a vendor's per-app network switch sets it.
  *
@@ -33,7 +35,7 @@ class AndroidNetworkMonitorContractTest {
     private val binding = object : Binding<NetworkState, NetworkMonitor> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
-        override val reaches = setOf(NetworkState.ONLINE, NetworkState.OFFLINE, NetworkState.BLOCKED)
+        override val reaches = NetworkState.entries.toSet()
 
         override fun create(state: NetworkState, clauseId: String): Entered<NetworkMonitor> {
             enter(state)
@@ -73,6 +75,10 @@ class AndroidNetworkMonitorContractTest {
         try {
             when (state) {
                 NetworkState.ONLINE -> restoreOnline()
+                NetworkState.RESTRICTED -> {
+                    restoreOnline()
+                    MeteredWifi.enter()
+                }
                 NetworkState.OFFLINE -> {
                     shell("cmd connectivity airplane-mode enable")
                     awaitDefaultNetwork(present = false, "airplane mode")
@@ -95,6 +101,7 @@ class AndroidNetworkMonitorContractTest {
         shell("cmd connectivity set-chain3-enabled false")
         shell("cmd connectivity airplane-mode disable")
         awaitDefaultNetwork(present = true, "an online device")
+        MeteredWifi.lift()
     }
 
     private companion object {

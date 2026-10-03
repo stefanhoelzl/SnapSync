@@ -7,10 +7,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
 /**
- * The device's network as the operating system reports it to this app: online, offline, or withheld from the app. Each
+ * The device's network as the operating system reports it to this app: online (restricted or not), offline, or withheld
+ * from the app. Each
  * collection opens on the access at that moment and sees every change the operator makes after it.
  */
-class NetworkMock(access: NetworkAccess = NetworkAccess.ONLINE) {
+class NetworkMock(access: NetworkAccess = NetworkAccess.Online(restricted = false)) {
     internal val cell = MutableStateFlow(access)
 
     fun port(): NetworkMonitor = InMemoryNetworkMonitor(cell)
@@ -19,7 +20,10 @@ class NetworkMock(access: NetworkAccess = NetworkAccess.ONLINE) {
 }
 
 class NetworkOperator internal constructor(private val mock: NetworkMock) {
-    /** What the operating system reports: switch it to take the device offline, or to withhold the network from the app. */
+    /**
+     * What the operating system reports: switch it to take the device offline, to withhold the network from the app, or
+     * to put it on a restricted network (mobile data, a hotspot, Low Data Mode — capability `mobile-data`).
+     */
     var access: NetworkAccess by mock.cell::value
 }
 

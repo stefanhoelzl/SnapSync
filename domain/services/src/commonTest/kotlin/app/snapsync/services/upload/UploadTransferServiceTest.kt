@@ -1,7 +1,7 @@
 package app.snapsync.services.upload
 
-import app.snapsync.model.AlbumKind
 import app.snapsync.model.AlbumId
+import app.snapsync.model.AlbumKind
 import app.snapsync.model.AlbumRecord
 import app.snapsync.model.AssetFacts
 import app.snapsync.model.AssetId
@@ -18,6 +18,7 @@ import app.snapsync.model.RawAsset
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.TerminalOutcome
+import app.snapsync.model.TransferNetwork
 import app.snapsync.model.UploadCreateOutcome
 import app.snapsync.model.UploadJob
 import app.snapsync.model.UploadJobSet
@@ -27,17 +28,17 @@ import app.snapsync.model.UploadSource
 import app.snapsync.model.UploadSourceKind
 import app.snapsync.model.UploadTarget
 import app.snapsync.model.WriteOutcome
-import app.snapsync.services.gallery.Discovery
 import app.snapsync.ports.Files
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.Upload
-import app.snapsync.services.gallery.UploadDiscovery
 import app.snapsync.ports.UploadHandlers
-import kotlinx.coroutines.test.runTest
+import app.snapsync.services.gallery.Discovery
+import app.snapsync.services.gallery.UploadDiscovery
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlinx.coroutines.test.runTest
 
 /**
  * The upload service over the thin `Upload` port (capability `background-upload`): the settling, recording and
@@ -60,12 +61,14 @@ class UploadTransferServiceTest {
     ) : Upload {
         val calls = mutableListOf<String>()
         val created = mutableListOf<Pair<UploadSource, String>>()
+        val networks = mutableListOf<TransferNetwork>()
 
         override fun listen(handlers: UploadHandlers) = Unit
 
         override suspend fun create(source: UploadSource, target: UploadTarget, tag: String): UploadCreateOutcome {
             calls += "create($tag)"
             created += source to tag
+            networks += target.network
             return createAnswer
         }
 
@@ -161,7 +164,8 @@ class UploadTransferServiceTest {
         resources: UploadDiscovery = Resources(),
         library: GalleryReader = Library(),
         files: Files = SharedArea(),
-    ) = UploadTransferService(upload, record, resources, library, files)
+        network: () -> TransferNetwork = { TransferNetwork.ANY },
+    ) = UploadTransferService(upload, record, resources, library, files, network)
 
     @Test
     fun `a presented success is recorded COMPLETED and acknowledged and not handed up`() = runTest {
@@ -316,6 +320,20 @@ class UploadTransferServiceTest {
         upload.offered = listOf(job(UploadJobState.FAILED))
         transfer.retryJob(gone, UploadRequest("", emptyMap(), Resource("A-primary.jpg", AssetId("A"), "", emptyMap(), Unit)))
         assertTrue(upload.calls.none { it.startsWith("retry") })
+    }
+
+    /** Capability `mobile-data`: a job carries the rule in force when it is CREATED; a later change governs later jobs. */
+    @Test
+    fun `a job carries the network rule in force when it is created`() = runTest {
+        var rule = TransferNetwork.UNRESTRICTED_ONLY
+        val upload = ScriptedUpload()
+        val transfer = service(upload, network = { rule })
+        val a = Resource("A-primary.jpg", AssetId("A"), "image/jpeg", emptyMap(), "handle")
+        val b = Resource("B-primary.jpg", AssetId("B"), "image/jpeg", emptyMap(), "handle")
+        transfer.createJob(UploadRequest(url, emptyMap(), a), a)
+        rule = TransferNetwork.ANY
+        transfer.createJob(UploadRequest(url, emptyMap(), b), b)
+        assertEquals(listOf(TransferNetwork.UNRESTRICTED_ONLY, TransferNetwork.ANY), upload.networks)
     }
 
     @Test

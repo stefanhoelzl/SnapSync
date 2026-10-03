@@ -21,8 +21,13 @@ import platform.Foundation.NSURLSessionConfiguration
  * `discretionary=false` is the load-bearing one to keep: left `true`, the OS defers a transfer to windows it
  * considers favourable — in practice Wi-Fi and charging — and a download can sit indefinitely. With
  * `allowsCellularAccess=true` beside it, the pair says "run now, on whatever network you have", which is
- * what event photos need. (Both are only ever hints: a session created while the app is already in the
- * background is treated as discretionary regardless.)
+ * what event photos need by default. (Both are only ever hints: a session created while the app is already in
+ * the background is treated as discretionary regardless.)
+ *
+ * The session stays cellular-allowed even for a member who keeps photos off mobile data (capability
+ * `mobile-data`): a session flag would bind every transfer in it, while the choice belongs to each transfer from
+ * the moment it is created. That transfer's own request narrows it instead (`applyTransferNetwork`) — iOS honours
+ * the stricter of the two, measured 2026-10-03.
  */
 internal actual fun transferSessionConfiguration(identifier: String): NSURLSessionConfiguration =
     NSURLSessionConfiguration.backgroundSessionConfigurationWithIdentifier(identifier).apply {

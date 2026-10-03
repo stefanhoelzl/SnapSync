@@ -51,6 +51,19 @@ class NetworkReplayContractTest {
         override fun create(state: NetworkState, clauseId: String) = replay.create(clauseId)
     }
 
+    private val restricted = object : Binding<NetworkState, NetworkMonitor> {
+        override val host = Host.IOS_DEVICE_APP
+        override val kind = BindingKind.Replay
+        override val reaches = setOf(NetworkState.RESTRICTED)
+        override val precondition = "RESTRICTED"
+        private val replay = ReplayBinding(precondition)
+
+        override fun create(state: NetworkState, clauseId: String) = replay.create(clauseId)
+    }
+
+    @Test
+    fun `the recorded restricted device satisfies the NetworkMonitor contract`() = verify(NetworkMonitorContract, restricted)
+
     @Test
     fun `the recorded online device satisfies the NetworkMonitor contract`() = verify(NetworkMonitorContract, online)
 

@@ -10,7 +10,7 @@
 
 - [ ] 2.1 Turn `NetworkAccess` into `Online(restricted) | Offline | Blocked` and update every `when` the `network-connection` branch added (the offline banner ignores the flag); verify `./gradlew build` is green
 - [ ] 2.2 `IosNetworkMonitor`: restricted = `nw_path_is_expensive || nw_path_is_constrained` through the `NetworkPathApi` seam; verify with `IosNetworkMonitorTest` cases for expensive, constrained and neither
-- [ ] 2.3 `AndroidNetworkMonitor`: restricted = default network lacks `NET_CAPABILITY_NOT_METERED`, or Data Saver is on while metered; verify with its device test on the emulator (`cmd netpolicy set metered-network AndroidWifi true`, `cmd netpolicy set restrict-background true`)
+- [x] 2.3 `AndroidNetworkMonitor`: restricted = default network lacks `NET_CAPABILITY_NOT_METERED`, or Data Saver is on while metered; verify with its device test on the emulator (`cmd netpolicy set metered-network AndroidWifi true`, `cmd netpolicy set restrict-background true`)
 - [ ] 2.4 `NetworkMock` lever for restricted, and `NetworkMonitorContract` clauses for restricted/unrestricted; verify `ContractCoverageTest` passes with the emulator binding live and the SE2 recordings (Low Data, hotspot) committed via `POST /contract/NetworkMonitor`
 
 ## 3. Transfers carry the rule

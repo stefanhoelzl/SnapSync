@@ -24,8 +24,11 @@ sealed interface UploadSource {
     data class File(val path: String) : UploadSource
 }
 
-/** Where an upload job sends its bytes: the destination URL and the request headers. */
-data class UploadTarget(val url: String, val headers: Map<String, String>)
+/**
+ * Where an upload job sends its bytes: the destination URL and the request headers — and which networks the platform
+ * may send them over ([network], capability `mobile-data`), fixed when the job is created.
+ */
+data class UploadTarget(val url: String, val headers: Map<String, String>, val network: TransferNetwork)
 
 /**
  * Outcome of a create attempt. [CREATED] → the platform job exists (record `UploadStarted`); [LIMIT_EXCEEDED] → the

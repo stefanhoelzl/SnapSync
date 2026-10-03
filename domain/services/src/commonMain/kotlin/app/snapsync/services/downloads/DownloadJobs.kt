@@ -1,5 +1,6 @@
 package app.snapsync.services.downloads
 
+import app.snapsync.model.TransferNetwork
 import app.snapsync.model.AssetId
 import app.snapsync.model.ConfinedTo
 import app.snapsync.model.isCanonicalAssetId
@@ -114,6 +115,11 @@ class DownloadJobs(
      * not this callback's — it is the process tail's first unit.
      */
     private val onStaged: suspend (AssetRef, resourceKey: String, stagedPath: String) -> Unit,
+    /**
+     * The networks a download started NOW may use (capability `mobile-data`) — read as each one starts, so a change of
+     * the member's choice governs only the downloads that start after it.
+     */
+    private val network: () -> TransferNetwork,
     private val log: Logger = Logger.withTag("DownloadJobs"),
     // The ambient entry-point prefix, so every line a background-events wake causes traces back to it.
     private val entryContext: EntryScope = EntryScope.None,
@@ -293,7 +299,7 @@ class DownloadJobs(
                 log.w { "skipping unfetchable download url for ${next.resource.resourceKey}" }
                 continue
             }
-            when (download.start(next.resource.url, tag)) {
+            when (download.start(next.resource.url, tag, network())) {
                 StartResult.Started -> inFlight += tag
                 StartResult.NotStarted -> log.w { "the download was not started for ${next.resource.resourceKey} — left pending" }
             }

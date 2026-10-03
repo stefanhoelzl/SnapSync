@@ -96,10 +96,17 @@ class AttestContractBindingsTest {
     private val network = object : Binding<NetworkState, NetworkMonitor> {
         override val host = currentHost
         override val kind = BindingKind.Fake
-        override val reaches = setOf(NetworkState.ONLINE, NetworkState.OFFLINE, NetworkState.BLOCKED)
+        override val reaches = NetworkState.entries.toSet()
 
         override fun create(state: NetworkState, clauseId: String): Entered<NetworkMonitor> =
-            Entered.Ready(inMemoryNetworkMonitor(MutableStateFlow(NetworkAccess.valueOf(state.name))))
+            Entered.Ready(inMemoryNetworkMonitor(MutableStateFlow(accessIn(state))))
+
+        private fun accessIn(state: NetworkState): NetworkAccess = when (state) {
+            NetworkState.ONLINE -> NetworkAccess.Online(restricted = false)
+            NetworkState.RESTRICTED -> NetworkAccess.Online(restricted = true)
+            NetworkState.OFFLINE -> NetworkAccess.Offline
+            NetworkState.BLOCKED -> NetworkAccess.Blocked
+        }
     }
 
     @Test

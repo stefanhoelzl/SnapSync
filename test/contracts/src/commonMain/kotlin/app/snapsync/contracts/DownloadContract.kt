@@ -3,6 +3,7 @@
 package app.snapsync.contracts
 
 import app.snapsync.model.StartResult
+import app.snapsync.model.TransferNetwork
 import app.snapsync.model.TransferOutcome
 import app.snapsync.ports.Completion
 import app.snapsync.ports.Download
@@ -14,8 +15,17 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
-/** A download port has no state a clause distinguishes: every clause opens a fresh one. */
-enum class DownloadState { READY }
+/** The state a clause opens its fresh port in. */
+enum class DownloadState {
+    /** Any network the device has; every other clause's. */
+    READY,
+
+    /**
+     * The device on a restricted network (capability `mobile-data`) — mobile data, a metered Wi-Fi, a hotspot, Low Data
+     * Mode — which the binding can lift ([DownloadUnderTest.liftRestriction]).
+     */
+    RESTRICTED_NETWORK,
+}
 
 /**
  * The port as a clause receives it. [open] builds a fresh [Download] the clause listens to — its handlers are the
@@ -27,6 +37,8 @@ class DownloadUnderTest(
     val open: () -> Download,
     val base: String,
     val readTemp: (path: String) -> ByteArray?,
+    /** Puts the device back on an unrestricted network; required of a binding that reaches [DownloadState.RESTRICTED_NETWORK]. */
+    val liftRestriction: (suspend () -> Unit)? = null,
 )
 
 /** One thing the port told its owner, in the order it was told. */
@@ -79,7 +91,7 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
         val owner = ClauseDownloadHandlers(readTemp)
         val download = open()
         download.listen(owner.handlers)
-        assertEquals(StartResult.Started, download.start(base + path(clauseId, answer), "d-$clauseId"), "a fetchable URL starts")
+        assertEquals(StartResult.Started, download.start(base + path(clauseId, answer), "d-$clauseId", TransferNetwork.ANY), "a fetchable URL starts")
         awaitWithin { owner.events.any { it is DownloadEvent.Completed } }
         return owner.events
     }
@@ -150,7 +162,7 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
             val owner = ClauseDownloadHandlers(subject.readTemp)
             val download = subject.open()
             download.listen(owner.handlers)
-            assertEquals(StartResult.Started, download.start(subject.base + path(id, FixtureAnswer.Hold), "d-$id"))
+            assertEquals(StartResult.Started, download.start(subject.base + path(id, FixtureAnswer.Hold), "d-$id", TransferNetwork.ANY))
             download.cancelAll()
             awaitWithin { owner.events.any { it is DownloadEvent.Completed } }
             assertNotNull(owner.events.filterIsInstance<DownloadEvent.Completed>().single().error, "cancelled: an error")
@@ -164,9 +176,26 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
             download.listen(owner.handlers)
             download.cancelAll()
             val tag = "d-$id"
-            assertEquals(StartResult.Started, download.start(subject.base + path(id, FixtureAnswer.Respond(200, length = 8)), tag))
+            assertEquals(StartResult.Started, download.start(subject.base + path(id, FixtureAnswer.Respond(200, length = 8)), tag, TransferNetwork.ANY))
             awaitWithin { owner.events.any { it is DownloadEvent.Completed } }
             assertEquals(DownloadEvent.Completed(tag, null), owner.events.last(), "a transfer after the cancel is untouched")
+        }
+
+        clause("A_TRANSFER_HELD_TO_UNRESTRICTED_NETWORKS_WAITS_FOR_ONE", DownloadState.RESTRICTED_NETWORK) { subject ->
+            val id = "A_TRANSFER_HELD_TO_UNRESTRICTED_NETWORKS_WAITS_FOR_ONE"
+            val lift = assertNotNull(subject.liftRestriction, "a binding that reaches a restricted network can lift it")
+            val owner = ClauseDownloadHandlers(subject.readTemp)
+            val download = subject.open()
+            download.listen(owner.handlers)
+            val tag = "d-$id"
+            val route = subject.base + path(id, FixtureAnswer.Respond(200, length = 8))
+            assertEquals(StartResult.Started, download.start(route, tag, TransferNetwork.UNRESTRICTED_ONLY))
+            heldSettle()
+            assertEquals(emptyList(), owner.events, "a transfer held to unrestricted networks does not run on a restricted one")
+            lift()
+            awaitWithin { owner.events.any { it is DownloadEvent.Completed } }
+            assertEquals(DownloadEvent.Completed(tag, null), owner.events.last(), "it runs once the network allows it")
+            assertEquals(200, owner.events.filterIsInstance<DownloadEvent.Finished>().single().facts.statusCode)
         }
 
         clause("UNUSABLE_URL_NEVER_FINISHES", DownloadState.READY) { subject ->
@@ -178,7 +207,7 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
             // "started, then failed" because they converge — so either answer is honest, and what is asserted is the
             // convergence: nothing finished, and a transfer that did start completes with an error. Measured
             // 2026-09-23 (iOS 26.5 simulator): `NSURL.URLWithString("")` is NOT nil, so the real session starts one.
-            when (download.start("", "d-$id")) {
+            when (download.start("", "d-$id", TransferNetwork.ANY)) {
                 StartResult.NotStarted -> {
                     transferSettle()
                     assertEquals(emptyList(), owner.events, "a transfer never started tells its owner nothing")

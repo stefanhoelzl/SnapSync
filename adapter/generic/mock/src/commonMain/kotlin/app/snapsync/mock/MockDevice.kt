@@ -3,7 +3,9 @@ package app.snapsync.mock
 import app.snapsync.model.FileArea
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.InviteLinkHints
+import app.snapsync.model.NetworkAccess
 import app.snapsync.model.SecureSlots
+import app.snapsync.model.TransferNetwork
 
 /**
  * **The device as mocks** (`docs/testing.md`, "Mocks"): one mock per external system, each holding what that system
@@ -46,9 +48,14 @@ open class MockDevice(
     val extensionRegistry = ExtensionRegistryMock(supported = osDrivenUpload)
     /** Where an OS-performed upload lands: the backend mock's byte route, unless the caller routes it elsewhere. */
     private val uploadNetwork = network ?: UploadNetwork { url, headers, _ -> backend.operator.receive(url, headers) }
-    val uploadQueue = UploadQueueMock(uploadNetwork, acceptsAnyHandle = acceptsAnyUploadHandle)
-    val uploadSession = UploadSessionMock(uploadNetwork)
-    val downloads = DownloadSessionMock(temporaryFiles ?: TemporaryFiles.on(disk.port()))
+    /** The device's network as the operating system reports it to the app (online, restricted, offline, blocked). */
+    val connectivity = NetworkMock()
+    private val onRestrictedNetwork: () -> Boolean = { connectivity.cell.value == NetworkAccess.Online(restricted = true) }
+    private val holdsUnrestrictedOnly: (TransferNetwork) -> Boolean =
+        { rule -> rule == TransferNetwork.UNRESTRICTED_ONLY && onRestrictedNetwork() }
+    val uploadQueue = UploadQueueMock(uploadNetwork, acceptsAnyHandle = acceptsAnyUploadHandle, restricted = onRestrictedNetwork)
+    val uploadSession = UploadSessionMock(uploadNetwork, held = holdsUnrestrictedOnly)
+    val downloads = DownloadSessionMock(temporaryFiles ?: TemporaryFiles.on(disk.port()), held = holdsUnrestrictedOnly)
     val lifecycle = LifecycleMock()
     val links = LinksMock()
     val pushService = PushServiceMock()

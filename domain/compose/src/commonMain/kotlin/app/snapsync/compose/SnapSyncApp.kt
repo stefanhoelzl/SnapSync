@@ -1,5 +1,6 @@
 package app.snapsync.compose
 
+import app.snapsync.model.transferNetworkOf
 import app.snapsync.services.gallery.PermissionAwareCandidateSource
 
 import app.snapsync.services.gallery.PermissionAwareAssetPresence
@@ -365,6 +366,7 @@ class AppCore internal constructor(
                 val recorded = downloadController.onResourceStaged(ref, key, path)
                 if (recorded) tail.requestDetached(TailTrigger.DOWNLOAD_STAGED)
             },
+            network = { transferNetworkOf(services.config.config.value) },
             entryContext = process.entryContext,
         )
     }

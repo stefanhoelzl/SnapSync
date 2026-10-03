@@ -30,21 +30,32 @@ class IosNetworkMonitorTest {
 
     @Test
     fun `a satisfied path is online and so is a satisfiable one`() {
-        assertEquals(NetworkAccess.ONLINE, networkAccessOf(reading(nw_path_status_satisfied)))
-        assertEquals(NetworkAccess.ONLINE, networkAccessOf(reading(nw_path_status_satisfiable)))
+        assertEquals(NetworkAccess.Online(restricted = false), networkAccessOf(reading(nw_path_status_satisfied)))
+        assertEquals(NetworkAccess.Online(restricted = false), networkAccessOf(reading(nw_path_status_satisfiable)))
+    }
+
+    @Test
+    fun `an expensive or constrained path is online and restricted`() {
+        // Capability `mobile-data`: cellular or a hotspot (expensive), Low Data Mode (constrained), or both.
+        val online = nw_path_status_satisfied
+        val none = nw_path_unsatisfied_reason_not_available
+        assertEquals(NetworkAccess.Online(restricted = true), networkAccessOf(PathReading(online, none, expensive = true)))
+        assertEquals(NetworkAccess.Online(restricted = true), networkAccessOf(PathReading(online, none, constrained = true)))
+        assertEquals(NetworkAccess.Online(restricted = true), networkAccessOf(PathReading(online, none, expensive = true, constrained = true)))
+        assertEquals(NetworkAccess.Online(restricted = false), networkAccessOf(PathReading(online, none)))
     }
 
     @Test
     fun `a path denied to the app is blocked`() {
-        assertEquals(NetworkAccess.BLOCKED, networkAccessOf(reading(nw_path_status_unsatisfied, nw_path_unsatisfied_reason_cellular_denied)))
-        assertEquals(NetworkAccess.BLOCKED, networkAccessOf(reading(nw_path_status_unsatisfied, nw_path_unsatisfied_reason_wifi_denied)))
+        assertEquals(NetworkAccess.Blocked, networkAccessOf(reading(nw_path_status_unsatisfied, nw_path_unsatisfied_reason_cellular_denied)))
+        assertEquals(NetworkAccess.Blocked, networkAccessOf(reading(nw_path_status_unsatisfied, nw_path_unsatisfied_reason_wifi_denied)))
     }
 
     @Test
     fun `any other unsatisfied path is offline and so is an invalid one`() {
-        assertEquals(NetworkAccess.OFFLINE, networkAccessOf(reading(nw_path_status_unsatisfied)))
-        assertEquals(NetworkAccess.OFFLINE, networkAccessOf(reading(nw_path_status_unsatisfied, nw_path_unsatisfied_reason_local_network_denied)))
-        assertEquals(NetworkAccess.OFFLINE, networkAccessOf(reading(nw_path_status_invalid)))
+        assertEquals(NetworkAccess.Offline, networkAccessOf(reading(nw_path_status_unsatisfied)))
+        assertEquals(NetworkAccess.Offline, networkAccessOf(reading(nw_path_status_unsatisfied, nw_path_unsatisfied_reason_local_network_denied)))
+        assertEquals(NetworkAccess.Offline, networkAccessOf(reading(nw_path_status_invalid)))
     }
 
     @Test
@@ -60,8 +71,8 @@ class IosNetworkMonitorTest {
         }
         val monitor = IosNetworkMonitor(paths)
 
-        assertEquals(NetworkAccess.ONLINE, monitor.watch().first())
-        assertEquals(listOf(NetworkAccess.ONLINE, NetworkAccess.BLOCKED), monitor.watch().take(2).toList())
+        assertEquals(NetworkAccess.Online(restricted = false), monitor.watch().first())
+        assertEquals(listOf(NetworkAccess.Online(restricted = false), NetworkAccess.Blocked), monitor.watch().take(2).toList())
         assertEquals(2, stopped)
     }
 }

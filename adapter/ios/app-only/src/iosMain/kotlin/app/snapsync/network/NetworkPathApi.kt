@@ -7,6 +7,8 @@ import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Network.nw_path_get_status
 import platform.Network.nw_path_get_unsatisfied_reason
+import platform.Network.nw_path_is_constrained
+import platform.Network.nw_path_is_expensive
 import platform.Network.nw_path_monitor_cancel
 import platform.Network.nw_path_monitor_create
 import platform.Network.nw_path_monitor_set_queue
@@ -14,8 +16,11 @@ import platform.Network.nw_path_monitor_set_update_handler
 import platform.Network.nw_path_monitor_start
 import platform.darwin.dispatch_queue_create
 
-/** One path a monitor reported: `nw_path_get_status` and `nw_path_get_unsatisfied_reason`, as Network.framework spells them. */
-internal data class PathReading(val status: UInt, val reason: UInt)
+/**
+ * One path a monitor reported: `nw_path_get_status`, `nw_path_get_unsatisfied_reason`, `nw_path_is_expensive` and
+ * `nw_path_is_constrained`, as Network.framework spells them.
+ */
+internal data class PathReading(val status: UInt, val reason: UInt, val expensive: Boolean = false, val constrained: Boolean = false)
 
 /**
  * **The operating-system boundary of [IosNetworkMonitor]**: the `nw_path_monitor` it runs, reduced to the two values
@@ -42,7 +47,14 @@ internal object SystemNetworkPathApi : NetworkPathApi {
         nw_path_monitor_set_queue(monitor, dispatch_queue_create("app.snapsync.network", null))
         nw_path_monitor_set_update_handler(monitor) { path ->
             objcBoundary(log, "pathMonitor.update") {
-                onPath(PathReading(nw_path_get_status(path), nw_path_get_unsatisfied_reason(path)))
+                onPath(
+                    PathReading(
+                        nw_path_get_status(path),
+                        nw_path_get_unsatisfied_reason(path),
+                        expensive = nw_path_is_expensive(path),
+                        constrained = nw_path_is_constrained(path),
+                    ),
+                )
             }
         }
         nw_path_monitor_start(monitor)

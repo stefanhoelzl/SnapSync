@@ -1,12 +1,14 @@
 package app.snapsync.services.wake
 
-import app.snapsync.services.CapturingLogWriter
 import app.snapsync.model.ScheduleResult
+import app.snapsync.model.TransferNetwork
 import app.snapsync.model.WakeCadence
 import app.snapsync.model.WakeId
+import app.snapsync.model.WakeNetwork
 import app.snapsync.model.WakeTrigger
 import app.snapsync.ports.Wake
 import app.snapsync.ports.WakeHandlers
+import app.snapsync.services.CapturingLogWriter
 import co.touchlab.kermit.Severity
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -54,7 +56,7 @@ class HeartbeatTest {
         Heartbeat(wake).arm(WakeCadence.BUSY)
         assertEquals(
             listOf<Pair<WakeId, WakeTrigger>>(
-                WakeId.Heartbeat to WakeTrigger.After(earliest = 60.seconds, requiresNetwork = true, cadence = WakeCadence.BUSY),
+                WakeId.Heartbeat to WakeTrigger.After(earliest = 60.seconds, network = WakeNetwork.ANY, cadence = WakeCadence.BUSY),
             ),
             wake.scheduled,
         )
@@ -66,9 +68,26 @@ class HeartbeatTest {
         Heartbeat(wake).arm(WakeCadence.IDLE)
         assertEquals(
             listOf<Pair<WakeId, WakeTrigger>>(
-                WakeId.Heartbeat to WakeTrigger.After(earliest = 1.hours, requiresNetwork = true, cadence = WakeCadence.IDLE),
+                WakeId.Heartbeat to WakeTrigger.After(earliest = 1.hours, network = WakeNetwork.ANY, cadence = WakeCadence.IDLE),
             ),
             wake.scheduled,
+        )
+    }
+
+    /**
+     * Capability `mobile-data`: a member who keeps photos off mobile data gets a busy heartbeat that waits for an
+     * unrestricted network — the transfers it runs would wait anyway, and on Android it is what resumes them on Wi-Fi —
+     * while an idle one, which moves no photo, keeps waiting for any connection.
+     */
+    @Test
+    fun `with photos kept off mobile data a busy heartbeat waits for an unrestricted network and an idle one does not`() {
+        val wake = RecordingWake()
+        val heartbeat = Heartbeat(wake, transferNetwork = { TransferNetwork.UNRESTRICTED_ONLY })
+        heartbeat.arm(WakeCadence.BUSY)
+        heartbeat.arm(WakeCadence.IDLE)
+        assertEquals(
+            listOf(WakeNetwork.UNRESTRICTED, WakeNetwork.ANY),
+            wake.scheduled.map { (it.second as WakeTrigger.After).network },
         )
     }
 
@@ -83,7 +102,7 @@ class HeartbeatTest {
     fun `a platform without a library-change wake is not a failure and watches nothing`() {
         val captured = CapturingLogWriter()
         val wake = RecordingWake(supported = setOf(WakeId.Heartbeat))
-        assertFalse(Heartbeat(wake, captured.logger()).watchLibrary())
+        assertFalse(Heartbeat(wake, log = captured.logger()).watchLibrary())
         assertTrue(captured.warnings().isEmpty(), "an unsupported wake is said nothing about: ${captured.warnings()}")
     }
 
@@ -95,7 +114,7 @@ class HeartbeatTest {
     @Test
     fun `a refused wake is said out loud`() {
         val captured = CapturingLogWriter()
-        Heartbeat(RecordingWake(refuse = true), captured.logger()).arm(WakeCadence.BUSY)
+        Heartbeat(RecordingWake(refuse = true), log = captured.logger()).arm(WakeCadence.BUSY)
         assertTrue(
             captured.warnings().any { "refused" in it && "BGTaskSchedulerErrorDomain/1" in it },
             "a refused heartbeat uploads only while the app is open; the line is the only evidence: ${captured.warnings()}",

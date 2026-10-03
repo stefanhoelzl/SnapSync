@@ -13,6 +13,7 @@ import app.snapsync.model.AssetRef
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
 import app.snapsync.model.StartResult
+import app.snapsync.model.TransferNetwork
 import app.snapsync.ports.Databases
 import app.snapsync.ports.DbOpen
 import app.snapsync.ports.Download
@@ -59,7 +60,7 @@ class InMemoryAssetPresence(
 class RecordingDownload(var accept: Boolean = true) : Download {
 
     /** One start request: the url and the transfer's opaque tag. */
-    data class Start(val url: String, val tag: String) {
+    data class Start(val url: String, val tag: String, val network: TransferNetwork = TransferNetwork.ANY) {
         /** The asset the tag names — the tag's first two fields (device id, asset id). */
         val ref: AssetRef get() = tag.split(TAG_SEPARATOR).let { AssetRef(it[0], AssetId(it[1])) }
 
@@ -75,8 +76,8 @@ class RecordingDownload(var accept: Boolean = true) : Download {
 
     override fun listen(handlers: DownloadHandlers) = Unit
 
-    override fun start(url: String, tag: String): StartResult {
-        started += Start(url, tag)
+    override fun start(url: String, tag: String, network: TransferNetwork): StartResult {
+        started += Start(url, tag, network)
         return if (accept) StartResult.Started else StartResult.NotStarted
     }
 
@@ -95,7 +96,8 @@ fun downloadJobs(
     scope: CoroutineScope,
     download: Download = RecordingDownload(),
     staging: StagingService = StagingService(RecordingFiles()),
-): DownloadJobs = DownloadJobs(scope, staging, download, onStaged = { _, _, _ -> })
+    network: () -> TransferNetwork = { TransferNetwork.ANY },
+): DownloadJobs = DownloadJobs(scope, staging, download, onStaged = { _, _, _ -> }, network = network)
 
 /**
  * [Databases] over real in-memory SQLite that records every statement a service's driver ran, and the transaction it

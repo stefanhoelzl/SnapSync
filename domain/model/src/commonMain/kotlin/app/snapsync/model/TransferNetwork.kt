@@ -20,3 +20,11 @@ enum class TransferNetwork {
 /** The rule for a membership whose photos may ([mobileData] = true) or may not use mobile data. */
 fun transferNetworkOf(mobileData: Boolean): TransferNetwork =
     if (mobileData) TransferNetwork.ANY else TransferNetwork.UNRESTRICTED_ONLY
+
+/**
+ * The rule a transfer created now carries, from the membership as this process last read it. A membership it cannot
+ * read gets the STRICTER rule: holding a transfer for Wi-Fi only delays it, while sending it over mobile data the
+ * member refused cannot be taken back.
+ */
+fun transferNetworkOf(membership: EventConfig?): TransferNetwork =
+    membership?.transferNetwork ?: TransferNetwork.UNRESTRICTED_ONLY

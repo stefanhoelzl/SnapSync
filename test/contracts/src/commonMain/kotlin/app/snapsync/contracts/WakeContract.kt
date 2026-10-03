@@ -3,6 +3,7 @@ package app.snapsync.contracts
 import app.snapsync.model.ScheduleResult
 import app.snapsync.model.WakeCadence
 import app.snapsync.model.WakeId
+import app.snapsync.model.WakeNetwork
 import app.snapsync.model.WakeTrigger
 import app.snapsync.ports.Wake
 import kotlin.test.assertEquals
@@ -39,14 +40,14 @@ class ScheduledWakes(
 object WakeContract : Contract<WakeState, ScheduledWakes>("BackgroundScheduler") {
 
     /** The heartbeat's busy trigger, as the `Heartbeat` service asks for it. */
-    private val HEARTBEAT = WakeTrigger.After(earliest = 60.seconds, requiresNetwork = true)
+    private val HEARTBEAT = WakeTrigger.After(earliest = 60.seconds, network = WakeNetwork.ANY)
 
     /**
      * The heartbeat's idle trigger. An adapter may carry it on another task kind than [HEARTBEAT] (iOS: an app refresh
      * beside the processing task), so the two must still replace each other: one timed wake pending at a time, or an
      * idle re-arm leaves the busy wake standing and the cadence never drops.
      */
-    private val IDLE = WakeTrigger.After(earliest = 1.hours, requiresNetwork = true, cadence = WakeCadence.IDLE)
+    private val IDLE = WakeTrigger.After(earliest = 1.hours, network = WakeNetwork.ANY, cadence = WakeCadence.IDLE)
 
     override val clauses = clauses {
 
