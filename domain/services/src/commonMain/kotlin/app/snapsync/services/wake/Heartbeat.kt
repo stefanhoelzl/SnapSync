@@ -38,7 +38,7 @@ class Heartbeat(
      * this wake is what resumes it once the phone reaches Wi-Fi. An idle heartbeat moves no photo, so it keeps waiting
      * for any connection, and silent wakes are unaffected.
      */
-    private val transferNetwork: () -> TransferNetwork = { TransferNetwork.ANY },
+    private val transferNetwork: () -> TransferNetwork,
     private val log: Logger = Logger.withTag("Heartbeat"),
 ) {
     /**

@@ -67,17 +67,17 @@ class BackgroundTest {
     @Test
     fun `a shown network notice is withdrawn and the watch follows nothing more`() = runTest {
         // Nothing renders the notice in the background, and a return to the foreground must not show a stale one.
-        val network = NetworkMock(NetworkAccess.OFFLINE)
+        val network = NetworkMock(NetworkAccess.Offline)
         val watch = NetworkWatch(backgroundScope, NetworkReadings(network.port()))
         watch.start()
         advanceTimeBy(NetworkWatch.DEFAULT_GRACE + 1.seconds)
-        assertEquals(NetworkAccess.OFFLINE, watch.access.value, "the watch never published, so this test proves nothing")
+        assertEquals(NetworkAccess.Offline, watch.access.value, "the watch never published, so this test proves nothing")
 
         Background(ForegroundWatches(StatusCountsPoller(backgroundScope, {}), watch)).run()
 
-        assertEquals(NetworkAccess.ONLINE, watch.access.value)
-        network.operator.access = NetworkAccess.BLOCKED
+        assertEquals(NetworkAccess.Online(restricted = false), watch.access.value)
+        network.operator.access = NetworkAccess.Blocked
         advanceTimeBy(NetworkWatch.DEFAULT_GRACE + 1.seconds)
-        assertEquals(NetworkAccess.ONLINE, watch.access.value, "the watch followed the network after the flow stopped it")
+        assertEquals(NetworkAccess.Online(restricted = false), watch.access.value, "the watch followed the network after the flow stopped it")
     }
 }

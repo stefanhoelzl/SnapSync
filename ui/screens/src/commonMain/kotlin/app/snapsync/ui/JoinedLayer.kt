@@ -130,7 +130,7 @@ private fun SyncHealth.toAppSyncStatus(): AppSyncStatus = when (this) {
     SyncHealth.Loading -> AppSyncStatus.Loading
     SyncHealth.InSync -> AppSyncStatus.InSync
     // Since the step-9 Arrow/ArrowLevel unification both sides speak `model/`'s Arrow — no mapping.
-    is SyncHealth.Syncing -> AppSyncStatus.Syncing(upload, download)
+    is SyncHealth.Syncing -> AppSyncStatus.Syncing(upload, download, waitingForWifi)
 }
 
 /**

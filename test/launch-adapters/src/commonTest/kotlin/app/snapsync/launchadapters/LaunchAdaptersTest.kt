@@ -132,17 +132,17 @@ class LaunchAdaptersTest {
     fun the_network_is_the_mock_s_when_mocked_and_the_real_adapter_s_otherwise() = runTest {
         write(AdapterFiles.CHOICE, "network=mock\n")
         val mocked = assertIs<LaunchAdapters.Chosen>(launch())
-        val real = MockDevice().also { it.connectivity.operator.access = NetworkAccess.ONLINE }
+        val real = MockDevice().also { it.connectivity.operator.access = NetworkAccess.Online(restricted = false) }
         val ports = mocked.ports(root = AdapterProcess.APP, real = DevicePorts(network = lazy { real.connectivity.port() }))
-        mocked.device.connectivity.operator.access = NetworkAccess.BLOCKED
-        assertEquals(NetworkAccess.BLOCKED, ports.network.watch().first(), "a mocked network answers the mock's lever")
+        mocked.device.connectivity.operator.access = NetworkAccess.Blocked
+        assertEquals(NetworkAccess.Blocked, ports.network.watch().first(), "a mocked network answers the mock's lever")
         assertEquals(listOf(MockedSystem.NETWORK), mocked.save(), "the lever's value is kept for the next launch")
-        assertEquals(NetworkAccess.BLOCKED, assertIs<LaunchAdapters.Chosen>(launch()).device.connectivity.operator.access)
+        assertEquals(NetworkAccess.Blocked, assertIs<LaunchAdapters.Chosen>(launch()).device.connectivity.operator.access)
 
         write(AdapterFiles.CHOICE, "clock=mock\n")
         val unmocked = assertIs<LaunchAdapters.Chosen>(launch())
         val realPorts = unmocked.ports(root = AdapterProcess.APP, real = DevicePorts(network = lazy { real.connectivity.port() }))
-        assertEquals(NetworkAccess.ONLINE, realPorts.network.watch().first(), "a real network reaches the real adapter")
+        assertEquals(NetworkAccess.Online(restricted = false), realPorts.network.watch().first(), "a real network reaches the real adapter")
     }
 
     @Test

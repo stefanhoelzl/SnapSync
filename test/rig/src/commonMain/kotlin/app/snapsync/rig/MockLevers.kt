@@ -490,14 +490,16 @@ private fun MockWorld.deviceLevers(): Map<String, Lever> = mapOf(
         CommandResult.ok(buildJsonObject { put("now", to.toString()) }.toString())
     }),
     // The device's network as the operating system reports it to the app (capability `sync-status`): `access` is
-    // online|offline|blocked — blocked is the network withheld from this app, offline none at all.
+    // online|restricted|offline|blocked — restricted is mobile data, a hotspot or Low Data Mode (capability
+    // `mobile-data`), blocked the network withheld from this app, offline none at all.
     "network" to mocked(MockedSystem.NETWORK, RigCommand { params, _ ->
-        val access = NetworkAccess.entries.firstOrNull { it.name.equals(params["access"], ignoreCase = true) }
+        val name = params["access"]?.lowercase()
+        val access = NETWORK_ACCESSES[name]
         if (access == null) {
-            CommandResult.badRequest("access must be one of ${NetworkAccess.entries.joinToString("|")}, was '${params["access"]}'")
+            CommandResult.badRequest("access must be one of ${NETWORK_ACCESSES.keys.joinToString("|")}, was '${params["access"]}'")
         } else {
             device.connectivity.operator.access = access
-            CommandResult.ok("""{"network":"${access.name}"}""")
+            CommandResult.ok("""{"network":"$name"}""")
         }
     }),
     // How this build answers an invite link's dev/test hints: `honoured=false` plays a shipped build, which ignores
@@ -729,3 +731,11 @@ private const val FOREIGN_EVENT_START = "2026-01-01T00:00:00Z"
 
 /** The app host's bulk-seed date: 2001-09-09, before any event can start. */
 private const val BULK_DATE = "2001-09-09T01:46:40Z"
+
+/** The `network` lever's accesses, by the name a caller passes. */
+private val NETWORK_ACCESSES: Map<String, NetworkAccess> = mapOf(
+    "online" to NetworkAccess.Online(restricted = false),
+    "restricted" to NetworkAccess.Online(restricted = true),
+    "offline" to NetworkAccess.Offline,
+    "blocked" to NetworkAccess.Blocked,
+)

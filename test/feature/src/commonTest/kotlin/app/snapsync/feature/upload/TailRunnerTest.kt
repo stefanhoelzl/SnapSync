@@ -1,20 +1,14 @@
 package app.snapsync.feature.upload
 
+import app.snapsync.model.CycleResult
 import app.snapsync.model.ScheduleResult
+import app.snapsync.model.TransferNetwork
 import app.snapsync.model.WakeCadence
 import app.snapsync.model.WakeId
 import app.snapsync.model.WakeTrigger
 import app.snapsync.ports.Wake
 import app.snapsync.ports.WakeHandlers
 import app.snapsync.services.wake.Heartbeat
-import app.snapsync.model.CycleResult
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.async
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.test.TestScope
-import kotlinx.coroutines.test.runCurrent
-import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -22,6 +16,13 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeout
 
 /**
  * The tail runner's rules (capability `sync-status`, "Each OS wake does its own work, then hands the rest to one
@@ -52,6 +53,7 @@ class TailRunnerTest {
 
                 override fun cancel(id: WakeId) = Unit
             },
+            transferNetwork = { TransferNetwork.ANY },
         )
     }
 

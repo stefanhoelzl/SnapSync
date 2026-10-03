@@ -1042,7 +1042,11 @@ private fun reduceFrom(
         // member to join an event with foreign photos outstanding would meet it through this arm on
         // their first launch (`SNAPSYNC-14`, `SNAPSYNC-16`; capability `sync-status`).
         !download.read -> SyncHealth.Loading
-        snapshot is SyncStatus.Ready -> syncHealth(snapshot.progress, download)
+        // Photos kept off mobile data wait while the phone is on a network the choice avoids (capability `mobile-data`):
+        // from the CURRENT choice, so after turning mobile data back on the few transfers still holding the old rule
+        // read as pending, not waiting (decision record `mobile-data-for-photos`, D7).
+        snapshot is SyncStatus.Ready ->
+            syncHealth(snapshot.progress, download, heldForWifi = !config.mobileData && access == NetworkAccess.Online(restricted = true))
         else -> SyncHealth.Loading
     }
     // A pending join for a DIFFERENT event while joined is a switch confirmation over the joined screen.
@@ -1133,13 +1137,14 @@ private fun joinedLayer(
 // `background-upload`): the one surface that would have shown them an upload they never asked for was the surface
 // that hid it. If the counts are right, the arrow is already right; if they are wrong, an arrow the member never
 // asked for is the only signal anyone gets. The display must not assert a contract the system is not keeping.
-private fun syncHealth(progress: SyncProgress, download: DownloadProgress): SyncHealth {
-    val upload = arrowOf(shown = progress.synced < progress.total, pulsing = progress.pending > 0)
-    val downloadArrow = arrowOf(shown = download.downloaded < download.total, pulsing = download.inFlight > 0)
+private fun syncHealth(progress: SyncProgress, download: DownloadProgress, heldForWifi: Boolean): SyncHealth {
+    // A held transfer is handed to the platform and so counts as in flight, but it is not RUNNING: no arrow pulses.
+    val upload = arrowOf(shown = progress.synced < progress.total, pulsing = progress.pending > 0 && !heldForWifi)
+    val downloadArrow = arrowOf(shown = download.downloaded < download.total, pulsing = download.inFlight > 0 && !heldForWifi)
     return if (upload == Arrow.HIDDEN && downloadArrow == Arrow.HIDDEN) {
         SyncHealth.InSync
     } else {
-        SyncHealth.Syncing(upload = upload, download = downloadArrow)
+        SyncHealth.Syncing(upload = upload, download = downloadArrow, waitingForWifi = heldForWifi)
     }
 }
 

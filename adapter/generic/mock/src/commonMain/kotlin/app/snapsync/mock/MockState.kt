@@ -105,8 +105,8 @@ private val CODECS: Map<MockedSystem, Codec> = mapOf(
         { device, values -> values[PROTECTED]?.let { device.processInfo.cell.value = Availability.valueOf(it) } },
     ),
     MockedSystem.NETWORK to scalars(
-        { mapOf(ACCESS to it.connectivity.cell.value.name) },
-        { device, values -> values[ACCESS]?.let { device.connectivity.cell.value = NetworkAccess.valueOf(it) } },
+        { mapOf(ACCESS to accessName(it.connectivity.cell.value)) },
+        { device, values -> values[ACCESS]?.let { device.connectivity.cell.value = accessNamed(it) } },
     ),
     MockedSystem.CLOCK to codec(
         ClockDto.serializer(),
@@ -618,4 +618,18 @@ private class LibraryDto(
             imported = state.imports.imported.map(RefDto::of),
         )
     }
+}
+
+/** A network access as the state file spells it — the names the enum this replaced wrote, plus RESTRICTED. */
+private fun accessName(access: NetworkAccess): String = when (access) {
+    is NetworkAccess.Online -> if (access.restricted) "RESTRICTED" else "ONLINE"
+    NetworkAccess.Offline -> "OFFLINE"
+    NetworkAccess.Blocked -> "BLOCKED"
+}
+
+private fun accessNamed(name: String): NetworkAccess = when (name) {
+    "RESTRICTED" -> NetworkAccess.Online(restricted = true)
+    "OFFLINE" -> NetworkAccess.Offline
+    "BLOCKED" -> NetworkAccess.Blocked
+    else -> NetworkAccess.Online(restricted = false)
 }

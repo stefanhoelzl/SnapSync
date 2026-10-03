@@ -484,9 +484,13 @@ sealed interface SyncHealth {
      * Work remaining in at least one direction. Each arrow is shown by completeness and pulses by live
      * activity (spec: sync-status): [upload] from `synced < total` (shown) × `pending > 0` (pulse),
      * [download] from `downloaded < total` (shown) × `inFlight > 0` (pulse).
+     *
+     * [waitingForWifi] (capability `mobile-data`): the member keeps photos off mobile data and the phone is on a
+     * network that choice avoids, so nothing can be running — the arrows stay still, whatever is handed to the platform,
+     * and the line says the photos wait for Wi-Fi.
      */
     @Serializable
-    data class Syncing(val upload: Arrow, val download: Arrow) : SyncHealth
+    data class Syncing(val upload: Arrow, val download: Arrow, val waitingForWifi: Boolean = false) : SyncHealth
 }
 
 /**
@@ -505,9 +509,9 @@ enum class NetworkNotice {
     companion object {
         /** The notice for [access], or `null` when there is nothing to tell. */
         fun of(access: NetworkAccess): NetworkNotice? = when (access) {
-            NetworkAccess.ONLINE -> null
-            NetworkAccess.OFFLINE -> OFFLINE
-            NetworkAccess.BLOCKED -> BLOCKED
+            is NetworkAccess.Online -> null
+            NetworkAccess.Offline -> OFFLINE
+            NetworkAccess.Blocked -> BLOCKED
         }
     }
 }

@@ -111,7 +111,7 @@ class ExtensionEntryTest {
         secureStore = secureStore,
         platformDeviceId = { null },
         gallery = library.port(),
-        upload = UploadQueueMock(UploadNetwork { _, _, _ -> error("no upload is expected") }).port(),
+        upload = UploadQueueMock(UploadNetwork { _, _, _ -> error("no upload is expected") }, restricted = { false }).port(),
         backend = backend,
         host = host.port(),
     )

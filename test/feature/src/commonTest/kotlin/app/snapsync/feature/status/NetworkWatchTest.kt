@@ -33,66 +33,66 @@ class NetworkWatchTest {
     fun a_two_second_drop_publishes_nothing() = runTest {
         val watch = watching()
         val returns = returnsOf(watch)
-        network.operator.access = NetworkAccess.OFFLINE
+        network.operator.access = NetworkAccess.Offline
         advanceTimeBy(2.seconds)
-        network.operator.access = NetworkAccess.ONLINE
+        network.operator.access = NetworkAccess.Online(restricted = false)
         advanceTimeBy(10.seconds)
-        assertEquals(NetworkAccess.ONLINE, watch.access.value)
+        assertEquals(NetworkAccess.Online(restricted = false), watch.access.value)
         assertEquals(emptyList(), returns, "nothing was shown, so nothing returned")
     }
 
     @Test
     fun a_six_second_drop_publishes_offline_after_the_grace() = runTest {
         val watch = watching()
-        network.operator.access = NetworkAccess.OFFLINE
+        network.operator.access = NetworkAccess.Offline
         advanceTimeBy(4.9.seconds)
-        assertEquals(NetworkAccess.ONLINE, watch.access.value, "still inside the grace")
+        assertEquals(NetworkAccess.Online(restricted = false), watch.access.value, "still inside the grace")
         advanceTimeBy(1.seconds)
-        assertEquals(NetworkAccess.OFFLINE, watch.access.value)
+        assertEquals(NetworkAccess.Offline, watch.access.value)
     }
 
     @Test
     fun the_return_clears_at_once_and_is_announced_once() = runTest {
         val watch = watching()
         val returns = returnsOf(watch)
-        network.operator.access = NetworkAccess.OFFLINE
+        network.operator.access = NetworkAccess.Offline
         advanceTimeBy(6.seconds)
-        network.operator.access = NetworkAccess.ONLINE
+        network.operator.access = NetworkAccess.Online(restricted = false)
         runCurrent()
-        assertEquals(NetworkAccess.ONLINE, watch.access.value)
+        assertEquals(NetworkAccess.Online(restricted = false), watch.access.value)
         assertEquals(1, returns.size)
     }
 
     @Test
     fun a_changed_cause_after_a_shown_warning_is_immediate() = runTest {
         val watch = watching()
-        network.operator.access = NetworkAccess.OFFLINE
+        network.operator.access = NetworkAccess.Offline
         advanceTimeBy(6.seconds)
-        network.operator.access = NetworkAccess.BLOCKED
+        network.operator.access = NetworkAccess.Blocked
         runCurrent()
-        assertEquals(NetworkAccess.BLOCKED, watch.access.value)
+        assertEquals(NetworkAccess.Blocked, watch.access.value)
     }
 
     @Test
     fun opening_offline_waits_the_same_grace() = runTest {
-        network.operator.access = NetworkAccess.BLOCKED
+        network.operator.access = NetworkAccess.Blocked
         val watch = watching()
-        assertEquals(NetworkAccess.ONLINE, watch.access.value, "the first reading is held like any other")
+        assertEquals(NetworkAccess.Online(restricted = false), watch.access.value, "the first reading is held like any other")
         advanceTimeBy(6.seconds)
-        assertEquals(NetworkAccess.BLOCKED, watch.access.value)
+        assertEquals(NetworkAccess.Blocked, watch.access.value)
     }
 
     @Test
     fun stop_resets_to_online_without_announcing_a_return_and_stops_following() = runTest {
         val watch = watching()
         val returns = returnsOf(watch)
-        network.operator.access = NetworkAccess.OFFLINE
+        network.operator.access = NetworkAccess.Offline
         advanceTimeBy(6.seconds)
         watch.stop()
-        assertEquals(NetworkAccess.ONLINE, watch.access.value)
-        network.operator.access = NetworkAccess.BLOCKED
+        assertEquals(NetworkAccess.Online(restricted = false), watch.access.value)
+        network.operator.access = NetworkAccess.Blocked
         advanceTimeBy(10.seconds)
-        assertEquals(NetworkAccess.ONLINE, watch.access.value, "a stopped watch follows nothing")
+        assertEquals(NetworkAccess.Online(restricted = false), watch.access.value, "a stopped watch follows nothing")
         assertEquals(emptyList(), returns, "a reset is not a return")
     }
 
@@ -101,9 +101,9 @@ class NetworkWatchTest {
         val watch = watching()
         watch.start()
         val returns = returnsOf(watch)
-        network.operator.access = NetworkAccess.OFFLINE
+        network.operator.access = NetworkAccess.Offline
         advanceTimeBy(6.seconds)
-        network.operator.access = NetworkAccess.ONLINE
+        network.operator.access = NetworkAccess.Online(restricted = false)
         runCurrent()
         assertEquals(1, returns.size, "one watch, one return")
     }
