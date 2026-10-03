@@ -562,17 +562,17 @@ Decision records: `changes/archive/2026-07-14-gate-testflight-on-tests`,
 
 ```
 gh workflow run promote.yml -f build_number=2140 -f dry_run=true            # stop after the preflights
-gh workflow run promote.yml -f build_number=2140                            # App Store only (the default)
-gh workflow run promote.yml -f build_number=2140 -f android=true            # App Store + Google Play
-gh workflow run promote.yml -f build_number=2140 -f ios=false -f android=true
+gh workflow run promote.yml -f build_number=2140                            # App Store + Google Play (the default)
+gh workflow run promote.yml -f build_number=2140 -f android=false           # App Store only
+gh workflow run promote.yml -f build_number=2140 -f ios=false               # Google Play only
 ```
 
 `build_number` is the build's `CFBundleVersion` and its Android `versionCode`: `ci.yml`'s `run_number` + 2000
 (`BUILD_NUMBER_OFFSET`), or, for a build at or below 2000, the retired `ios.yml`'s `run_number`.
 There is no `version` input: the store version is **derived** from the build's own marketing version, read from
 App Store Connect's build N **for either store** (Play's API carries no version name; both platforms build one
-version line). The stores are checkboxes: `ios` (default on) and `android` (default off until Play grants
-production access); neither is refused. Play's target is the workflow constant `PLAY_TRACK`, today `alpha` (closed
+version line). The stores are checkboxes: `ios` and `android`, both default on; neither is
+refused. Play's target is the workflow constant `PLAY_TRACK`, today `alpha` (closed
 testing). A promote **always submits**; there is no submit flag. The workflow is a single `ubuntu` job: no Xcode,
 no Gradle, no signing, only the existing Admin ASC key and Play service account. Order of steps:
 

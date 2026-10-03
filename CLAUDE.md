@@ -330,9 +330,9 @@ accepted the submission:
 
 ```
 gh workflow run promote.yml -f build_number=2140 -f dry_run=true            # guards + prepare + preflights only
-gh workflow run promote.yml -f build_number=2140                            # App Store (the default)
-gh workflow run promote.yml -f build_number=2140 -f android=true            # App Store + Play's closed track
-gh workflow run promote.yml -f build_number=2140 -f ios=false -f android=true
+gh workflow run promote.yml -f build_number=2140                            # App Store + Play's closed track (the default)
+gh workflow run promote.yml -f build_number=2140 -f android=false           # App Store only
+gh workflow run promote.yml -f build_number=2140 -f ios=false               # Play only
 ```
 
 - ⚠️ **A promote always submits** — there is no submit flag; the preflights (`asc review doctor`, Play's own
