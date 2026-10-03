@@ -113,6 +113,7 @@ class CollectDiagnosticDump(
                 put("shares_from", config.minPhotoDate.at.iso)
                 put("shares_until", config.maxPhotoDate.at.iso)
                 put("save_to_album", config.saveToAlbum.toString())
+                put("mobile_data", config.mobileData.toString())
             }
         }
 

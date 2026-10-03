@@ -118,6 +118,22 @@ class JvmHostProtocolTest {
         assertTrue("unavailable on this backend" in offline.reason, offline.reason)
     }
 
+    /** The mobile-data choice (capability `mobile-data`) is set at the join and changed in settings over the channel. */
+    @Test
+    fun the_mobile_data_choice_is_driven_at_the_join_and_in_settings() = onHost { client ->
+        client.user(
+            "create",
+            mapOf("name" to "Data", "startsAt" to "2026-05-25T00:00:00", "endsAt" to "2026-06-20T00:00:00"),
+        ).done()
+        client.awaitState { (it.ui.layer as? Layer.JoiningEvent)?.range != null }
+        client.user("confirmJoin", mapOf("mobileData" to "false")).done()
+        val joined = client.awaitState { it.ready.configResolved }
+        assertEquals(false, (joined.ui.layer as Layer.Joined).membership.mobileData, "joined with mobile data off")
+
+        client.user("reconfigure", mapOf("mobileData" to "true")).done()
+        client.awaitState { (it.ui.layer as? Layer.Joined)?.membership?.mobileData == true }
+    }
+
     /**
      * The whole path a person takes, over the protocol: create an event, confirm the join the create opens, add a
      * photo, run the extension's cycle, let the "OS" finish the transfer, and see the object on the backend.

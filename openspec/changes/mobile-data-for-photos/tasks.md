@@ -2,9 +2,9 @@
 
 ## 1. The membership's choice
 
-- [ ] 1.1 Add `mobileData: Boolean = true` to `EventConfig` (KDoc: capability `mobile-data`, default = today's behaviour) and `TransferNetwork { ANY, UNRESTRICTED_ONLY }` with its derivation from the config in `model/`; verify with a `model/` commonTest that an old config JSON without the field decodes to `ANY`
-- [ ] 1.2 Carry the choice through the join form and `confirmJoin` (`JoinChoice`/`RangeForm`/`UserCommands`) and the reconfigure save, written into `EventConfig` like `saveToAlbum`; verify with feature tests (`:test:feature`) that join and settings save persist it and that a failed save applies nothing
-- [ ] 1.3 Expose it on the control channel (`/user/confirmJoin?mobileData=`, the settings command) and in `/device/state`'s form; verify through a `:test:control` test on the JVM host
+- [x] 1.1 Add `mobileData: Boolean = true` to `EventConfig` (KDoc: capability `mobile-data`, default = today's behaviour) and `TransferNetwork { ANY, UNRESTRICTED_ONLY }` with its derivation from the config in `model/`; verify with a `model/` commonTest that an old config JSON without the field decodes to `ANY`
+- [x] 1.2 Carry the choice through the join form and `confirmJoin` (`JoinChoice`/`RangeForm`/`UserCommands`) and the reconfigure save, written into `EventConfig` like `saveToAlbum`; verify with feature tests (`:test:feature`) that join and settings save persist it and that a failed save applies nothing
+- [x] 1.3 Expose it on the control channel (`/user/confirmJoin?mobileData=`, the settings command) and in `/device/state`'s form; verify through a `:test:control` test on the JVM host
 
 ## 2. Network state: restricted
 

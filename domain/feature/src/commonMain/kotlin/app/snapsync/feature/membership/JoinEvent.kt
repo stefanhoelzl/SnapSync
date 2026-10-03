@@ -108,6 +108,7 @@ class JoinEvent(
                 deletesAt = choice.deletesAt,
                 direction = choice.direction,
                 saveToAlbum = choice.saveToAlbum,
+                mobileData = choice.mobileData,
             ),
         )
         return JoinOutcome.Committed

@@ -193,6 +193,18 @@ fun `a full event is reported apart from a failure`() = runTest {
     }
 
     @Test
+    fun `join persists the mobile-data choice`() = runTest {
+        // Capability `mobile-data`: the choice made on the join screen is the membership's from its first transfer.
+        for (mobileData in listOf(true, false)) {
+            val provisioned = mutableListOf<EventConfig>()
+            joinEvent(config = null, provisioned = provisioned).join(
+                JoinChoice(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false, mobileData),
+            )
+            assertEquals(mobileData, provisioned.single().mobileData)
+        }
+    }
+
+    @Test
     fun `join persists the chosen capture-date cutoff`() = runTest {
         val provisioned = mutableListOf<EventConfig>()
         joinEvent(config = null, provisioned = provisioned)
