@@ -252,9 +252,17 @@ Where bindings live: beside their implementations.
 - `PlatformDeviceId`: its contract runs live on `ANDROID_EMU` over `ANDROID_ID` (an offered id is stable and
   canonical), and on the JVM over `NoPlatformDeviceId` (no id is `null`). "The same after a reinstall" is the property
   the id is chosen for and no process can test on itself; it is checked by hand on the emulator.
-- `NetworkMonitor`: live on `ANDROID_EMU` in all three states — online, airplane mode (offline), and the package
-  denied by the `OEM_DENY_3` firewall chain (blocked), each entered by the binding through `cmd connectivity`; live on
-  `IOS_SIM_APP` online; recorded on the SE2 online and in airplane mode, once each (`.ONLINE.rec`, `.OFFLINE.rec`).
+- `NetworkMonitor`: live on `ANDROID_EMU` in all four states — online, restricted (the emulator's Wi-Fi marked metered
+  through `cmd netpolicy`), airplane mode (offline), and the package denied by the `OEM_DENY_3` firewall chain
+  (blocked), each entered by the binding through the platform's shell; live on `IOS_SIM_APP` online; recorded on the SE2
+  online, in Low Data Mode (restricted) and in airplane mode, once each (`.ONLINE.rec`, `.RESTRICTED.rec`, `.OFFLINE.rec`).
+- A transfer held to unrestricted networks (capability `mobile-data`): `Upload`'s and `Download`'s
+  `A_TRANSFER_HELD_TO_UNRESTRICTED_NETWORKS_WAITS_FOR_ONE` run live on `ANDROID_EMU` (metered Wi-Fi, via the shared
+  `MeteredWifi` entry) and over the transfer mocks; `AndroidWorkContractTest` pins that an unrestricted wake waits out a
+  metered network. iOS has no host for them — the simulator shares its Mac's network, and the device's transfer
+  recordings go to the rig's loopback receiver, which no network restriction touches — so the iOS request flags are
+  pinned by `UploadUrlRequestTest` and what iOS does with them is the measurement recorded in
+  `changes/mobile-data-for-photos/design.md` (SE2: Low Data Mode and a hotspot; XS: cellular).
   iOS's blocked path (the per-app Cellular switch) has no host — no phone the project drives has a SIM — so its
   mapping is pinned by `IosNetworkMonitorTest` and documented, unmeasured, on `IosNetworkMonitor`.
 - The install referrer on Android (the invite a Play install carried, capability `join-event`): which referrers are an
