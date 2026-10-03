@@ -16,6 +16,7 @@ import app.snapsync.model.EntryScope
 import app.snapsync.model.HandlerSlot
 import app.snapsync.model.ScheduleResult
 import app.snapsync.model.WakeId
+import app.snapsync.model.WakeNetwork
 import app.snapsync.model.WakeTrigger
 import app.snapsync.model.invocation
 import app.snapsync.model.runCatchingCancellable
@@ -92,8 +93,13 @@ class AndroidWake(context: Context, private val log: Logger = Logger.withTag("wa
         when (trigger) {
             is WakeTrigger.After -> {
                 setInitialDelay(trigger.earliest.toJavaDuration())
-                if (trigger.requiresNetwork) {
-                    setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+                when (trigger.network) {
+                    WakeNetwork.NONE -> Unit
+                    WakeNetwork.ANY -> setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+                    // Capability `mobile-data`: WorkManager's own unmetered constraint, which stays unsatisfied on
+                    // cellular and a metered Wi-Fi (measured on the API 36 emulator, 2026-10-03).
+                    WakeNetwork.UNRESTRICTED ->
+                        setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.UNMETERED).build())
                 }
             }
             is WakeTrigger.LibraryChange -> setConstraints(

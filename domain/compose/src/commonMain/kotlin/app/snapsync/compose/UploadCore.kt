@@ -1,5 +1,6 @@
 package app.snapsync.compose
 
+import app.snapsync.model.transferNetworkOf
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.membership.DeviceManifestProducer
@@ -168,6 +169,7 @@ internal fun uploadCycle(process: ProcessServices, ports: UploadServices): Uploa
         resources = library,
         gallery = ports.gallery,
         files = process.files,
+        network = { transferNetworkOf(ports.config.config.value) },
         log = ports.log,
         entryContext = process.entryContext,
     )

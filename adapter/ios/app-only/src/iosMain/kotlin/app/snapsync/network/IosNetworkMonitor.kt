@@ -38,12 +38,17 @@ class IosNetworkMonitor internal constructor(private val paths: NetworkPathApi) 
  * A path as an access. `satisfiable` — no path yet, but a connection attempt would bring one up (a dormant cellular
  * interface, an on-demand VPN) — is online: the app's next request is that attempt. `invalid` is a monitor with no
  * path, read as offline rather than guessed online.
+ *
+ * Restricted (capability `mobile-data`) is iOS's own pair: `expensive` — cellular, or Wi-Fi from a personal hotspot —
+ * or `constrained` — Low Data Mode on the current network. They are the conditions a photo request's
+ * `allowsExpensiveNetworkAccess` / `allowsConstrainedNetworkAccess` hold it back on, so the screen and the transfers
+ * read the same thing.
  */
 internal fun networkAccessOf(path: PathReading): NetworkAccess = when (path.status) {
-    nw_path_status_satisfied, nw_path_status_satisfiable -> NetworkAccess.ONLINE
+    nw_path_status_satisfied, nw_path_status_satisfiable -> NetworkAccess.Online(restricted = path.expensive || path.constrained)
     nw_path_status_unsatisfied -> when (path.reason) {
-        nw_path_unsatisfied_reason_cellular_denied, nw_path_unsatisfied_reason_wifi_denied -> NetworkAccess.BLOCKED
-        else -> NetworkAccess.OFFLINE
+        nw_path_unsatisfied_reason_cellular_denied, nw_path_unsatisfied_reason_wifi_denied -> NetworkAccess.Blocked
+        else -> NetworkAccess.Offline
     }
-    else -> NetworkAccess.OFFLINE
+    else -> NetworkAccess.Offline
 }

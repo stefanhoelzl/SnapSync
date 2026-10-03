@@ -12,6 +12,7 @@ import app.snapsync.model.UploadJobState
 import app.snapsync.model.UploadRequest
 import app.snapsync.model.UploadSource
 import app.snapsync.model.UploadSourceKind
+import app.snapsync.model.TransferNetwork
 import app.snapsync.model.UploadTarget
 import app.snapsync.model.WriteOutcome
 import app.snapsync.model.assetIdFromUploadKey
@@ -57,6 +58,11 @@ class UploadTransferService(
     private val gallery: GalleryReader,
     /** The shared area a file uploader's exported bytes wait in ([UPLOAD_STAGING_DIR]). */
     private val files: Files,
+    /**
+     * The networks a job created or re-pointed NOW may use (capability `mobile-data`) — read at that moment, so a change
+     * of the member's choice governs the jobs that start after it, never the ones already handed to the platform.
+     */
+    private val network: () -> TransferNetwork,
     private val log: Logger = Logger.withTag("UploadTransfer"),
     private val entryContext: EntryScope = EntryScope.None,
 ) : BackgroundTransfer {
@@ -153,7 +159,7 @@ class UploadTransferService(
                 log.w { "retryJob: malformed destination URL for ${job.key} — not retrying" }
                 return@invocation
             }
-            val answer = upload.retry(offered, UploadTarget(request.url, request.headers))
+            val answer = upload.retry(offered, UploadTarget(request.url, request.headers, network()))
             if (answer is ChangeOutcome.Refused) {
                 log.w { "retryJob: the retry was refused for ${job.key} (code=${answer.code} ${answer.detail})" }
             }
@@ -171,7 +177,7 @@ class UploadTransferService(
                 log.w { "createJob: malformed destination URL — not creating" }
                 return@invocation UploadCreateOutcome.FAILED
             }
-            val target = UploadTarget(request.url, request.headers)
+            val target = UploadTarget(request.url, request.headers, network())
             when (upload.accepts) {
                 UploadSourceKind.RESOURCE -> upload.create(UploadSource.Resource(resource.data), target, resource.filename)
                 UploadSourceKind.FILE -> createFromFile(resource, target)

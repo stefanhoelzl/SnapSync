@@ -109,7 +109,15 @@ internal suspend fun awaitWithin(within: Duration = TRANSFER_BOUND, condition: s
 /** A real-time pause, for asserting that something did NOT happen after a thing that did. */
 internal suspend fun transferSettle() = withContext(Dispatchers.Default) { delay(TRANSFER_SETTLE) }
 
+/**
+ * A longer real-time pause, for asserting that a transfer HELD to unrestricted networks did not run on a restricted one
+ * (capability `mobile-data`): every unheld transfer over loopback ends well inside it, so a held one still open after it
+ * is held, not slow.
+ */
+internal suspend fun heldSettle() = withContext(Dispatchers.Default) { delay(HELD_SETTLE) }
+
 /** Generous for a few kilobytes over loopback on a shared CI runner; expiry reads `NotWithin`, never `Passed`. */
 internal val TRANSFER_BOUND: Duration = 20.seconds
 private val TRANSFER_POLL = 25.milliseconds
 private val TRANSFER_SETTLE = 750.milliseconds
+private val HELD_SETTLE = 5.seconds

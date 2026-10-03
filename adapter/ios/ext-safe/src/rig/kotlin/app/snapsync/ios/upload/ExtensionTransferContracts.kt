@@ -24,6 +24,7 @@ import app.snapsync.contracts.runEntry
 import app.snapsync.gallery.currentPhotoPermission
 import app.snapsync.logging.deviceDiagnosticEnvironment
 import app.snapsync.model.GalleryAccess
+import app.snapsync.model.TransferNetwork
 import app.snapsync.model.UploadCreateOutcome
 import app.snapsync.model.UploadJob
 import app.snapsync.model.UploadJobSet
@@ -78,7 +79,7 @@ internal fun callsFor(state: UploadState): Int = when (state) {
 
 /** The target a presented state's prepared transfer is created (and retried) with. */
 private fun preparedTarget(clauseId: String, state: UploadState) =
-    UploadTarget(CONTRACT_UPLOAD_BASE + UploadContract.preparedRoute(clauseId, state), mapOf("Content-Type" to UploadContract.CONTENT_TYPE))
+    UploadTarget(CONTRACT_UPLOAD_BASE + UploadContract.preparedRoute(clauseId, state), mapOf("Content-Type" to UploadContract.CONTENT_TYPE), TransferNetwork.ANY)
 
 /**
  * Preparation call [call] (1-based, below [callsFor]) of [state]'s transfer, over [api]: call 1 creates it; call 2 of a

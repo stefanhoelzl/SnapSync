@@ -2,22 +2,23 @@
 
 package app.snapsync.compose
 
-import app.snapsync.ports.EntryContext
 import app.snapsync.feature.download.DownloadController
 import app.snapsync.feature.upload.AppUploadEngine
 import app.snapsync.feature.upload.CadenceFacts
 import app.snapsync.feature.upload.TailRunner
 import app.snapsync.feature.upload.TailTrigger
 import app.snapsync.model.GalleryAccess
+import app.snapsync.model.invocation
 import app.snapsync.model.runCatchingCancellable
+import app.snapsync.model.transferNetworkOf
+import app.snapsync.ports.EntryContext
 import app.snapsync.services.wake.Heartbeat
 import app.snapsync.services.wake.OsCompletions
-import app.snapsync.model.invocation
+import kotlin.concurrent.atomics.AtomicBoolean
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
-import kotlin.concurrent.atomics.AtomicBoolean
-import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
 /**
  * The app process's **opportunistic tail** as composed, and everything that reaches it without an OS handler of its
@@ -60,7 +61,11 @@ class AppTail internal constructor(
     private val uploader: AppUploader get() = appUploader()
 
     /** The heartbeat the runner re-arms and a disarm cancels — the process's, over the `Wake` port. */
-    private val heartbeat = Heartbeat(services.ports.wake, services.log)
+    private val heartbeat = Heartbeat(
+        services.ports.wake,
+        transferNetwork = { transferNetworkOf(services.config.config.value) },
+        log = services.log,
+    )
 
     /** The one tail runner of this process. */
     val runner: TailRunner by lazy {

@@ -4,10 +4,13 @@ import android.content.Context
 import android.content.res.AssetFileDescriptor
 import android.net.Uri
 import app.snapsync.android.gallery.MediaOriginals
+import app.snapsync.android.network.AndroidNetworkMonitor
 import app.snapsync.model.BeforeListen
 import app.snapsync.model.ChangeOutcome
 import app.snapsync.model.EntryScope
 import app.snapsync.model.HandlerSlot
+import app.snapsync.model.NetworkAccess
+import app.snapsync.model.TransferNetwork
 import app.snapsync.model.UploadCreateOutcome
 import app.snapsync.model.UploadError
 import app.snapsync.model.UploadJob
@@ -18,12 +21,12 @@ import app.snapsync.model.UploadSourceKind
 import app.snapsync.model.UploadTarget
 import app.snapsync.model.invocation
 import app.snapsync.model.runCatchingCancellable
-import co.touchlab.kermit.Severity
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.BackgroundTimeHold
 import app.snapsync.ports.Upload
 import app.snapsync.ports.UploadHandlers
 import co.touchlab.kermit.Logger
+import co.touchlab.kermit.Severity
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
@@ -45,6 +48,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.ConnectionPool
@@ -61,6 +65,13 @@ import okhttp3.ConnectionPool
  *   so its row is retried rather than waiting on a transfer that no longer exists. A large video stopped mid-way
  *   restarts from the beginning on the next run.
  *
+ * **A transfer held to unrestricted networks** ([TransferNetwork.UNRESTRICTED_ONLY], capability `mobile-data`) waits,
+ * before it sends a byte, until the default network is unmetered and not withheld — the platform holds nothing here
+ * (measured on the API 36 emulator, 2026-10-03: an in-process PUT goes out on cellular and metered Wi-Fi alike), so this
+ * adapter plays the part `nsurlsessiond` plays on iOS and the core sees the same created-but-unfinished job either way.
+ * A wait the background-time hold outlives ends like any other transfer it stops: reported failed, and re-created by a
+ * later run — the upload flow's wake for that run asks for an unmetered network.
+ *
  * At most [MAX_LIVE] transfers run at once; the next create answers [UploadCreateOutcome.LIMIT_EXCEEDED]. Every end is
  * reported inline through [UploadHandlers.onFinished], once. There are no platform-held jobs to present: no retry is
  * offered, no terminal job waits for an acknowledgement.
@@ -73,6 +84,10 @@ class AndroidUpload(
     private val maxLive: Int = MAX_LIVE,
     /** The journal's preferences file; a binding names its own, so two instances share one to play a relaunch. */
     journalName: String = JOURNAL,
+    /** Returns once the phone is on an unmetered network this app may use — what a held transfer waits for. */
+    private val unrestricted: suspend () -> Unit = AndroidNetworkMonitor(context).let { monitor ->
+        { monitor.watch().first { it == NetworkAccess.Online(restricted = false) } }
+    },
 ) : Upload {
 
     private val appContext = context.applicationContext
@@ -169,6 +184,7 @@ class AndroidUpload(
 
         suspend fun run(uri: Uri, target: UploadTarget) {
             val (state, error) = try {
+                if (target.network == TransferNetwork.UNRESTRICTED_ONLY) awaitUnrestricted()
                 val status = put(uri, target)
                 if (status in 200..299) UploadJobState.SUCCEEDED to null else UploadJobState.FAILED to UploadError.Http(status)
             } catch (e: CancellationException) {
@@ -184,6 +200,11 @@ class AndroidUpload(
                 UploadJobState.FAILED to UploadError.Unknown("${e::class.simpleName}: ${e.message}")
             }
             report(state, error)
+        }
+
+        private suspend fun awaitUnrestricted() {
+            log.i { "$tag: held for an unmetered network (capability `mobile-data`)" }
+            unrestricted()
         }
 
         private suspend fun report(state: UploadJobState, error: UploadError?) {

@@ -7,8 +7,14 @@ import kotlin.test.assertEquals
 
 /** The states a device's network can be found in, as far as a clause cares. */
 enum class NetworkState {
-    /** The device has a network this app may use. */
+    /** The device has a network this app may use, and it is neither costly nor data-restricted. */
     ONLINE,
+
+    /**
+     * The device has a network this app may use, but a restricted one (capability `mobile-data`): mobile data, a
+     * personal hotspot or a metered Wi-Fi, or Low Data Mode / Data Saver in force.
+     */
+    RESTRICTED,
 
     /** The device has no network at all (airplane mode). */
     OFFLINE,
@@ -29,15 +35,19 @@ object NetworkMonitorContract : Contract<NetworkState, NetworkMonitor>("NetworkM
     override val clauses = clauses {
 
         clause("A_CONNECTED_DEVICE_READS_ONLINE", NetworkState.ONLINE) { monitor ->
-            assertEquals(NetworkAccess.ONLINE, monitor.firstReading())
+            assertEquals(NetworkAccess.Online(restricted = false), monitor.firstReading())
+        }
+
+        clause("A_RESTRICTED_NETWORK_READS_ONLINE_AND_RESTRICTED", NetworkState.RESTRICTED) { monitor ->
+            assertEquals(NetworkAccess.Online(restricted = true), monitor.firstReading())
         }
 
         clause("A_DEVICE_WITHOUT_A_NETWORK_READS_OFFLINE", NetworkState.OFFLINE) { monitor ->
-            assertEquals(NetworkAccess.OFFLINE, monitor.firstReading())
+            assertEquals(NetworkAccess.Offline, monitor.firstReading())
         }
 
         clause("A_NETWORK_WITHHELD_FROM_THE_APP_READS_BLOCKED", NetworkState.BLOCKED) { monitor ->
-            assertEquals(NetworkAccess.BLOCKED, monitor.firstReading())
+            assertEquals(NetworkAccess.Blocked, monitor.firstReading())
         }
     }
 

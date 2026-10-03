@@ -3,10 +3,12 @@
 package app.snapsync.download
 
 import app.snapsync.ios.urlsession.SessionCompletion
+import app.snapsync.ios.upload.applyTransferNetwork
 import app.snapsync.ios.urlsession.transferSessionConfiguration
 import app.snapsync.logging.invocation
 import app.snapsync.model.PlatformEntry
 import app.snapsync.model.StartResult
+import app.snapsync.model.TransferNetwork
 import app.snapsync.model.TransferOutcome
 import app.snapsync.objc.checkedObjCValue
 import app.snapsync.objc.objcBoundary
@@ -20,6 +22,7 @@ import platform.Foundation.NSError
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSFileSize
 import platform.Foundation.NSHTTPURLResponse
+import platform.Foundation.NSMutableURLRequest
 import platform.Foundation.NSNumber
 import platform.Foundation.NSOperationQueue
 import platform.Foundation.NSURL
@@ -39,7 +42,8 @@ import kotlin.coroutines.resume
 const val DOWNLOAD_SESSION_ID = "app.snapsync.download.bg"
 
 /**
- * The iOS [Download] (capability `receiving-photos`): a `URLSession` (Wi-Fi *and* cellular, non-discretionary) which on
+ * The iOS [Download] (capability `receiving-photos`): a `URLSession` (non-discretionary; Wi-Fi and cellular unless a
+ * transfer's own request holds it to an unrestricted network — capability `mobile-data`) which on
  * every shipped binary is a **background** session that keeps downloading while the app is suspended and relaunches it
  * on completion. The binding is fixed by the compilation target — see [transferSessionConfiguration] for what
  * `iosSimulatorArm64` gets instead, and for the properties a run on that target does **not** evidence.
@@ -70,7 +74,8 @@ class IosDownload(private val log: Logger = Logger.withTag("Download")) : Downlo
      * The session, built when first wanted: on the first transfer, or on a `handleEventsForBackgroundURLSession`
      * relaunch, where it must exist for the OS to deliver the pending completions to its delegate. Built from
      * [transferSessionConfiguration] — background on every shipped binary, default on `iosSimulatorArm64` — whose
-     * policy (Wi-Fi *and* cellular, no discretionary deferral, relaunch on completion) is declared there.
+     * policy (cellular allowed, no discretionary deferral, relaunch on completion) is declared there; a transfer's own
+     * request narrows the networks it may use ([start]).
      */
     private fun session(): NSURLSession {
         current.load()?.let { return it }
@@ -82,9 +87,12 @@ class IosDownload(private val log: Logger = Logger.withTag("Download")) : Downlo
         return if (current.compareAndSet(null, built)) built else checkNotNull(current.load())
     }
 
-    override fun start(url: String, tag: String): StartResult {
+    override fun start(url: String, tag: String, network: TransferNetwork): StartResult {
         val nsUrl = NSURL.URLWithString(url) ?: return StartResult.NotStarted
-        val task = session().downloadTaskWithURL(nsUrl)
+        // The member's mobile-data choice rides on the request (capability `mobile-data`), so this transfer keeps the
+        // rule it started with while the one session carries others under another.
+        val request = NSMutableURLRequest(uRL = nsUrl).apply { applyTransferNetwork(network) }
+        val task = session().downloadTaskWithRequest(request)
         task.taskDescription = tag
         task.resume()
         return StartResult.Started

@@ -30,16 +30,31 @@ enum class WakeCadence {
     IDLE,
 }
 
+/** The network a timed wake waits for. */
+enum class WakeNetwork {
+    /** None: the wake may run offline. */
+    NONE,
+
+    /** Any connection. */
+    ANY,
+
+    /**
+     * A network that is neither costly nor data-restricted (capability `mobile-data`) — what a member who keeps photos
+     * off mobile data needs before the wake's transfers can run. A platform that cannot express it waits for [ANY].
+     */
+    UNRESTRICTED,
+}
+
 /** When the operating system may deliver a scheduled wake. */
 sealed interface WakeTrigger {
     /**
-     * No sooner than [earliest] from now, and only with a network connection when [requiresNetwork]. [cadence] says
-     * how urgently: an adapter may carry the two on different task kinds, and a request of one replaces a pending one
-     * of the other — one timed wake is pending at a time.
+     * No sooner than [earliest] from now, and only once [network] is there. [cadence] says how urgently: an adapter may
+     * carry the two on different task kinds, and a request of one replaces a pending one of the other — one timed wake
+     * is pending at a time.
      */
     data class After(
         val earliest: Duration,
-        val requiresNetwork: Boolean,
+        val network: WakeNetwork,
         val cadence: WakeCadence = WakeCadence.BUSY,
     ) : WakeTrigger
 

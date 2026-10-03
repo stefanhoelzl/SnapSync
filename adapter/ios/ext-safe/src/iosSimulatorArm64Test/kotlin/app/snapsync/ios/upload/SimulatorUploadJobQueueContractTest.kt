@@ -16,6 +16,7 @@ import app.snapsync.contracts.UploadUnderTest
 import app.snapsync.contracts.runEntry
 import app.snapsync.contracts.verify
 import app.snapsync.model.ChangeOutcome
+import app.snapsync.model.TransferNetwork
 import app.snapsync.model.UploadCreateOutcome
 import app.snapsync.model.UploadJob
 import app.snapsync.model.UploadJobSet
@@ -62,7 +63,7 @@ class SimulatorUploadJobQueueContractTest {
                     jobs.beginCycle(emptyList(), jobLimit = CAP)
                     repeat(CAP) { n ->
                         val url = BASE + UploadContract.path(clauseId, FixtureAnswer.Hold, n = n + 1)
-                        val created = os.create(UploadSource.Resource(StandInPhoto), UploadTarget(url, emptyMap()), UploadContract.key(clauseId, n + 1))
+                        val created = os.create(UploadSource.Resource(StandInPhoto), UploadTarget(url, emptyMap(), TransferNetwork.ANY), UploadContract.key(clauseId, n + 1))
                         check(created == UploadCreateOutcome.CREATED)
                     }
                 }
@@ -83,7 +84,7 @@ class SimulatorUploadJobQueueContractTest {
 
     /** Enters a presented state as the OS leaves it: the clause's transfer already settled. */
     private suspend fun presentPrepared(state: UploadState, clauseId: String, jobs: SimulatorJobSets, os: PlayedOs) {
-        val target = UploadTarget(BASE + UploadContract.preparedRoute(clauseId, state), mapOf("Content-Type" to UploadContract.CONTENT_TYPE))
+        val target = UploadTarget(BASE + UploadContract.preparedRoute(clauseId, state), mapOf("Content-Type" to UploadContract.CONTENT_TYPE), TransferNetwork.ANY)
         check(os.create(UploadSource.Resource(StandInPhoto), target, UploadContract.key(clauseId)) == UploadCreateOutcome.CREATED)
         if (state == UploadState.PRESENTED_RETRY_SPENT) {
             val offered = os.jobs(UploadJobSet.RETRY_OFFERED).first { it.destinationPath == destinationPathOf(target.url) }

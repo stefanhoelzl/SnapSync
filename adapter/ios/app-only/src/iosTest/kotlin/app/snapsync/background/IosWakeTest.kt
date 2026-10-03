@@ -5,6 +5,7 @@ package app.snapsync.background
 import app.snapsync.model.ScheduleResult
 import app.snapsync.model.WakeCadence
 import app.snapsync.model.WakeId
+import app.snapsync.model.WakeNetwork
 import app.snapsync.model.WakeTrigger
 import app.snapsync.ports.Completion
 import app.snapsync.ports.WakeHandlers
@@ -54,7 +55,7 @@ class IosWakeTest {
     private val wake =
         IosWake(Logger(StaticConfig(minSeverity = Severity.Verbose, logWriterList = listOf(captured)), "test"))
 
-    private val heartbeat = WakeTrigger.After(earliest = 60.seconds, requiresNetwork = true)
+    private val heartbeat = WakeTrigger.After(earliest = 60.seconds, network = WakeNetwork.ANY)
 
     @Test
     fun `a refused submit is reported rather than swallowed`() {
@@ -99,7 +100,7 @@ class IosWakeTest {
 
     // ---- the two task kinds (decision record `changes/timely-background-receiving`, D2) ------------------------------
 
-    private val idle = WakeTrigger.After(earliest = 1.hours, requiresNetwork = true, cadence = WakeCadence.IDLE)
+    private val idle = WakeTrigger.After(earliest = 1.hours, network = WakeNetwork.ANY, cadence = WakeCadence.IDLE)
 
     @Test
     fun `an idle heartbeat withdraws the busy one and asks for an app refresh`() {

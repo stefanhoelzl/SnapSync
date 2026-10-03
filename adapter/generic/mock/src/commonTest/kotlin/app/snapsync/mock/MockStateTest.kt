@@ -1,6 +1,5 @@
 package app.snapsync.mock
 
-import app.snapsync.model.PushEndpoint
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.Availability
@@ -13,16 +12,17 @@ import app.snapsync.model.Crumb
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.FileArea
 import app.snapsync.model.GalleryAccess
+import app.snapsync.model.PushEndpoint
 import app.snapsync.model.Reply
 import app.snapsync.model.SecureSlots
+import app.snapsync.model.TransferNetwork
 import app.snapsync.model.UploadError
 import app.snapsync.model.UploadSource
 import app.snapsync.model.UploadTarget
 import app.snapsync.model.WakeId
+import app.snapsync.model.WakeNetwork
 import app.snapsync.model.WakeTrigger
 import app.snapsync.ports.CrashHandlers
-import kotlinx.coroutines.test.runTest
-import kotlinx.datetime.TimeZone
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -30,6 +30,8 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Instant
+import kotlinx.coroutines.test.runTest
+import kotlinx.datetime.TimeZone
 
 /**
  * Every mocked system's durable state survives its text (`docs/testing.md`, "Launch-time adapters"): a device
@@ -87,7 +89,7 @@ class MockStateTest {
         assertTrue(copy.disk.operator.isDenied(FileArea.PRIVATE, "secret"))
         assertEquals(Instant.parse("2026-07-01T12:00:00Z"), copy.clock.operator.now)
         assertEquals(TimeZone.of("Europe/Berlin"), copy.clock.port().timeZone())
-        assertEquals(mapOf(WakeId.Heartbeat to WakeTrigger.After(1.hours, requiresNetwork = true)), copy.wakes.operator.pendingWakes)
+        assertEquals(mapOf(WakeId.Heartbeat to WakeTrigger.After(1.hours, network = WakeNetwork.ANY)), copy.wakes.operator.pendingWakes)
         assertEquals(listOf("A1-primary.jpg"), copy.uploadQueue.operator.liveJobKeys())
         assertEquals(1, copy.uploadQueue.operator.created.size)
         assertEquals(true, copy.extensionRegistry.operator.registered)
@@ -145,16 +147,20 @@ class MockStateTest {
         device.connectivity.operator.access = NetworkAccess.BLOCKED
         device.clock.operator.now = Instant.parse("2026-07-01T12:00:00Z")
         device.clock.zone = TimeZone.of("Europe/Berlin")
-        device.wakes.port().schedule(WakeId.Heartbeat, WakeTrigger.After(1.hours, requiresNetwork = true))
+        device.wakes.port().schedule(WakeId.Heartbeat, WakeTrigger.After(1.hours, network = WakeNetwork.ANY))
         device.extensionRegistry.port().setEnabled(true)
         device.uploadQueue.port().create(
             UploadSource.Resource(Unit),
-            UploadTarget("https://x/api/v2/files/devices/$DEVICE/A1/primary?filename=A1-primary.jpg", mapOf("Content-Type" to "image/jpeg")),
+            UploadTarget(
+                "https://x/api/v2/files/devices/$DEVICE/A1/primary?filename=A1-primary.jpg",
+                mapOf("Content-Type" to "image/jpeg"),
+                TransferNetwork.UNRESTRICTED_ONLY,
+            ),
             "A1-primary.jpg",
         )
         device.uploadQueue.operator.failJob("A1-primary.jpg", UploadError.Http(503))
         device.uploadSession.handbacks = 2
-        device.downloads.port().start("https://in-memory.store/D2/F1", "F1-primary")
+        device.downloads.port().start("https://in-memory.store/D2/F1", "F1-primary", TransferNetwork.UNRESTRICTED_ONLY)
         device.lifecycle.everActive = true
         device.pushService.port().register()
         device.systemUi.port().share("hello")

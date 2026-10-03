@@ -13,6 +13,7 @@ import app.snapsync.model.UploadJobSet
 import app.snapsync.model.UploadJobState
 import app.snapsync.model.UploadSource
 import app.snapsync.model.UploadSourceKind
+import app.snapsync.model.TransferNetwork
 import app.snapsync.model.UploadTarget
 import app.snapsync.model.assetIdFromUploadKey
 import app.snapsync.model.destinationPathOf
@@ -58,8 +59,15 @@ class CreatedUpload(val filename: String, val contentType: String) {
  *   any other status fails it with that status, and no answer fails it with [UploadError.Network].
  * - `failJob` fails a job with a chosen error. A first failure is offered for its single free retry; a failure after
  *   it is presented as terminal and handed back for re-creation.
+ * - While [restricted] — the device on mobile data, a hotspot or under Low Data Mode — the OS performs NO job, whatever
+ *   its request's network rule (measured on the SE2, iOS 26.6.2, 2026-10-03: PhotoKit held a job on a hotspot and in
+ *   Low Data Mode with no rule set; capability `mobile-data`): `completeJob` leaves it pending.
  */
-class UploadQueueMock(internal val network: UploadNetwork, private val acceptsAnyHandle: Boolean = false) {
+class UploadQueueMock(
+    internal val network: UploadNetwork,
+    private val acceptsAnyHandle: Boolean = false,
+    internal val restricted: () -> Boolean = { false },
+) {
     internal class Job(val key: String, val contentType: String, val data: Any, var target: UploadTarget) {
         var state: UploadJobState = UploadJobState.PENDING
         var error: UploadError? = null
@@ -151,9 +159,13 @@ class UploadQueueOperator internal constructor(private val mock: UploadQueueMock
     /** The keys of every live (in-flight or terminal-unacknowledged) job. */
     fun liveJobKeys(): List<String> = mock.jobs.map { it.key }
 
-    /** The OS performs a pending job's request over the network, and the job settles on the answer. */
+    /**
+     * The OS performs a pending job's request over the network, and the job settles on the answer — unless the device is
+     * on a restricted network, where the OS holds every job (see [UploadQueueMock]) and this leaves it pending.
+     */
     suspend fun completeJob(key: String) {
         val j = mock.jobs.firstOrNull { it.key == key && it.state == UploadJobState.PENDING } ?: return
+        if (mock.restricted()) return
         val status = mock.network.put(j.target.url, j.target.headers, TRANSFERRED_BYTES)
         when {
             status == null -> {
@@ -190,9 +202,15 @@ class UploadQueueOperator internal constructor(private val mock: UploadQueueMock
  * when asked. The transfers are the OS's, so they outlive a process: a relaunched app's handlers hear their ends.
  *
  * The operator plays the OS's network ([UploadSessionOperator.complete]): a transfer lands on [network] as the
- * backend's byte route receives it, and its answer is reported to the process that registered last.
+ * backend's byte route receives it, and its answer is reported to the process that registered last. A transfer whose
+ * request keeps it off the device's current network ([held], capability `mobile-data`) is not performed: it stays live
+ * until the network allows it.
  */
-class UploadSessionMock(internal val network: UploadNetwork) {
+class UploadSessionMock(
+    internal val network: UploadNetwork,
+    /** Whether the device's network holds a transfer created under this rule (capability `mobile-data`). */
+    internal val held: (TransferNetwork) -> Boolean = { false },
+) {
     internal class Transfer(val tag: String, val target: UploadTarget)
 
     internal val handlers = HandlerSlot<UploadHandlers>("Upload", BeforeListen.Thrown)
@@ -272,6 +290,7 @@ class UploadSessionOperator internal constructor(private val mock: UploadSession
      */
     suspend fun complete(key: String) {
         val transfer = mock.live.firstOrNull { it.tag == key } ?: return
+        if (mock.held(transfer.target.network)) return
         val status = mock.network.put(transfer.target.url, transfer.target.headers, TRANSFERRED_BYTES)
         mock.live.remove(transfer)
         val (state, error) = when {
@@ -324,10 +343,14 @@ fun interface TemporaryFiles {
  * The finish mirrors the real `URLSession` delegate, including the ordering the integrity check depends on: the facts
  * and a temporary file, then the completion, whether or not anything went wrong — which is what frees the window slot.
  */
-class DownloadSessionMock(private val temporaryFiles: TemporaryFiles? = null) {
+class DownloadSessionMock(
+    private val temporaryFiles: TemporaryFiles? = null,
+    /** Whether the device's network holds a transfer started under this rule (capability `mobile-data`). */
+    internal val held: (TransferNetwork) -> Boolean = { false },
+) {
 
-    /** A transfer the session holds, until it finishes or is cancelled. */
-    class Started(val url: String, val description: String) {
+    /** A transfer the session holds, until it finishes or is cancelled; [network] is the rule it was started under. */
+    class Started(val url: String, val description: String, val network: TransferNetwork = TransferNetwork.ANY) {
         var cancelled: Boolean = false
         var finished: Boolean = false
     }
@@ -345,10 +368,10 @@ class DownloadSessionMock(private val temporaryFiles: TemporaryFiles? = null) {
             current = this
         }
 
-        override fun start(url: String, tag: String): StartResult {
+        override fun start(url: String, tag: String, network: TransferNetwork): StartResult {
             realized = true
             if (url.isBlank()) return StartResult.NotStarted
-            started += Started(url, tag)
+            started += Started(url, tag, network)
             return StartResult.Started
         }
 
@@ -406,9 +429,11 @@ class DownloadSessionOperator internal constructor(private val mock: DownloadSes
     /**
      * A finish for [description], as the real delegate delivers one: the facts and a temporary file, then the
      * completion. A rejected [outcome] leaves the resource un-staged. The file holds [bytes] when given — the
-     * operator choosing what the transfer brought, e.g. a real motion photo — and a minimal JPEG otherwise.
+     * operator choosing what the transfer brought, e.g. a real motion photo — and a minimal JPEG otherwise. A transfer
+     * the device's network holds ([DownloadSessionMock.held]) does not finish: the OS would not run it.
      */
     fun finish(description: String, outcome: TransferOutcome = DownloadSessionMock.HEALTHY, bytes: ByteArray? = null) {
+        if (mock.started.any { it.description == description && !it.cancelled && !it.finished && mock.held(it.network) }) return
         mock.started.filter { it.description == description }.forEach { it.finished = true }
         mock.registered().onFinished(description, outcome, mock.leaveTempFile(description, bytes))
         mock.registered().onCompleted(description, null)

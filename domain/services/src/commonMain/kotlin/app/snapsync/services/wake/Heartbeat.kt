@@ -1,8 +1,10 @@
 package app.snapsync.services.wake
 
 import app.snapsync.model.ScheduleResult
+import app.snapsync.model.TransferNetwork
 import app.snapsync.model.WakeCadence
 import app.snapsync.model.WakeId
+import app.snapsync.model.WakeNetwork
 import app.snapsync.model.WakeTrigger
 import app.snapsync.ports.Wake
 import co.touchlab.kermit.Logger
@@ -29,6 +31,14 @@ import kotlin.time.Duration.Companion.seconds
  */
 class Heartbeat(
     private val wake: Wake,
+    /**
+     * The networks the membership's photo transfers may use (capability `mobile-data`), read at each arm: a BUSY
+     * heartbeat for a member who keeps photos off mobile data waits for an unrestricted network, because the transfers
+     * it would run wait for one anyway — and where nothing else holds an upload for it (Android's in-process uploader)
+     * this wake is what resumes it once the phone reaches Wi-Fi. An idle heartbeat moves no photo, so it keeps waiting
+     * for any connection, and silent wakes are unaffected.
+     */
+    private val transferNetwork: () -> TransferNetwork = { TransferNetwork.ANY },
     private val log: Logger = Logger.withTag("Heartbeat"),
 ) {
     /**
@@ -36,9 +46,11 @@ class Heartbeat(
      * requests are idempotent, so a repeated arm replaces the pending request rather than stacking one.
      */
     fun arm(cadence: WakeCadence) {
-        val trigger = triggerAt(cadence)
+        val trigger = triggerAt(cadence, transferNetwork())
         // The field's only record of the cadence a device keeps (decision record `changes/timely-background-receiving`).
-        if (request(WakeId.Heartbeat, trigger)) log.i { "heartbeat armed: ${cadence.name.lowercase()}, no sooner than ${trigger.earliest}" }
+        if (request(WakeId.Heartbeat, trigger)) {
+            log.i { "heartbeat armed: ${cadence.name.lowercase()}, no sooner than ${trigger.earliest}, network ${trigger.network}" }
+        }
     }
 
     /**
@@ -79,10 +91,15 @@ class Heartbeat(
         /**
          * The heartbeat's trigger at [cadence]. It needs the network (its work uploads and reads the event) and not
          * external power, so the operating system grants windows often enough to drain a first whole-library upload.
+         * A busy one for photos held to unrestricted networks ([transfers]) waits for such a network.
          */
-        fun triggerAt(cadence: WakeCadence): WakeTrigger.After = when (cadence) {
-            WakeCadence.BUSY -> WakeTrigger.After(earliest = BUSY_EARLIEST, requiresNetwork = true, cadence = cadence)
-            WakeCadence.IDLE -> WakeTrigger.After(earliest = IDLE_EARLIEST, requiresNetwork = true, cadence = cadence)
+        fun triggerAt(cadence: WakeCadence, transfers: TransferNetwork = TransferNetwork.ANY): WakeTrigger.After = when (cadence) {
+            WakeCadence.BUSY -> WakeTrigger.After(
+                earliest = BUSY_EARLIEST,
+                network = if (transfers == TransferNetwork.UNRESTRICTED_ONLY) WakeNetwork.UNRESTRICTED else WakeNetwork.ANY,
+                cadence = cadence,
+            )
+            WakeCadence.IDLE -> WakeTrigger.After(earliest = IDLE_EARLIEST, network = WakeNetwork.ANY, cadence = cadence)
         }
     }
 }

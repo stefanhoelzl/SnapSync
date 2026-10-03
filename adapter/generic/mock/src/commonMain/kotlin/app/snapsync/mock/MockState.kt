@@ -2,7 +2,6 @@
 
 package app.snapsync.mock
 
-import app.snapsync.model.PushEndpoint
 import app.snapsync.model.AssetFacts
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
@@ -15,6 +14,7 @@ import app.snapsync.model.Crumb
 import app.snapsync.model.DeviceFile
 import app.snapsync.model.FileArea
 import app.snapsync.model.GalleryAccess
+import app.snapsync.model.PushEndpoint
 import app.snapsync.model.RawAsset
 import app.snapsync.model.RawResource
 import app.snapsync.model.ResourceRole
@@ -22,22 +22,24 @@ import app.snapsync.model.SecureSlot
 import app.snapsync.model.SecureSlots
 import app.snapsync.model.SecureStoreRead
 import app.snapsync.model.StoredProtection
+import app.snapsync.model.TransferNetwork
 import app.snapsync.model.UploadError
 import app.snapsync.model.UploadJobState
 import app.snapsync.model.UploadTarget
-import app.snapsync.model.WakeId
 import app.snapsync.model.WakeCadence
+import app.snapsync.model.WakeId
+import app.snapsync.model.WakeNetwork
 import app.snapsync.model.WakeTrigger
 import app.snapsync.model.deviceManifestFromJson
 import app.snapsync.model.encodeToJson
-import kotlinx.datetime.TimeZone
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.KSerializer
-import kotlinx.serialization.json.Json
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Instant
+import kotlinx.datetime.TimeZone
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 
 /**
  * **What a mocked system keeps, as text** (`docs/testing.md`, "Launch-time adapters") — the durable state each mock
@@ -126,10 +128,10 @@ private val CODECS: Map<MockedSystem, Codec> = mapOf(
     ),
     MockedSystem.DOWNLOADS to codec(
         DownloadsDto.serializer(),
-        { DownloadsDto(it.downloads.started.map { s -> StartedDto(s.url, s.description, s.cancelled, s.finished) }) },
+        { DownloadsDto(it.downloads.started.map { s -> StartedDto(s.url, s.description, s.cancelled, s.finished, s.network.name) }) },
         { device, dto ->
             dto.started.forEach {
-                device.downloads.started += DownloadSessionMock.Started(it.url, it.description).apply {
+                device.downloads.started += DownloadSessionMock.Started(it.url, it.description, TransferNetwork.valueOf(it.network)).apply {
                     cancelled = it.cancelled
                     finished = it.finished
                 }
@@ -220,7 +222,14 @@ private class ClockDto(val nowEpochMillis: Long, val zone: String)
 private class SystemUiDto(val shared: List<String>, val opened: List<String>, val settings: Int)
 
 @Serializable
-private class StartedDto(val url: String, val description: String, val cancelled: Boolean, val finished: Boolean)
+private class StartedDto(
+    val url: String,
+    val description: String,
+    val cancelled: Boolean,
+    val finished: Boolean,
+    /** The rule the transfer started under; a state saved before rules existed reads as any network. */
+    val network: String = TransferNetwork.ANY.name,
+)
 
 @Serializable
 private class DownloadsDto(val started: List<StartedDto>)
@@ -230,15 +239,17 @@ private class TriggerDto(
     val id: String,
     val kind: String,
     val earliestMillis: Long? = null,
+    /** The pre-`mobile-data` form: `true` read as [WakeNetwork.ANY], `false` as [WakeNetwork.NONE]. */
     val requiresNetwork: Boolean? = null,
     val maxDelayMillis: Long? = null,
     val cadence: String? = null,
+    val network: String? = null,
 ) {
     fun trigger(): WakeTrigger = when (kind) {
         LIBRARY_CHANGE -> WakeTrigger.LibraryChange(maxDelayMillis!!.milliseconds)
         else -> WakeTrigger.After(
             earliestMillis!!.milliseconds,
-            requiresNetwork == true,
+            network?.let(WakeNetwork::valueOf) ?: if (requiresNetwork == true) WakeNetwork.ANY else WakeNetwork.NONE,
             cadence?.let(WakeCadence::valueOf) ?: WakeCadence.BUSY,
         )
     }
@@ -249,7 +260,7 @@ private class TriggerDto(
 
         fun of(id: WakeId, trigger: WakeTrigger): TriggerDto = when (trigger) {
             is WakeTrigger.After -> TriggerDto(
-                id.name, AFTER, trigger.earliest.inWholeMilliseconds, trigger.requiresNetwork, cadence = trigger.cadence.name,
+                id.name, AFTER, trigger.earliest.inWholeMilliseconds, cadence = trigger.cadence.name, network = trigger.network.name,
             )
             is WakeTrigger.LibraryChange -> TriggerDto(id.name, LIBRARY_CHANGE, maxDelayMillis = trigger.maxDelay.inWholeMilliseconds)
         }
@@ -340,6 +351,8 @@ private class JobDto(
     val state: String,
     val error: ErrorDto?,
     val retriedOnce: Boolean,
+    /** The rule the job was created under; a state saved before rules existed reads as any network. */
+    val network: String = TransferNetwork.ANY.name,
 )
 
 @Serializable
@@ -353,7 +366,9 @@ private class QueueDto(
         // A job's payload is the platform resource the process that created it held; what the queue keeps across the
         // process is the request. A restored job carries this platform's placeholder handle.
         jobs.forEach {
-            queue.jobs += UploadQueueMock.Job(it.key, it.contentType, Unit, UploadTarget(it.url, it.headers)).apply {
+            queue.jobs += UploadQueueMock.Job(
+                it.key, it.contentType, Unit, UploadTarget(it.url, it.headers, TransferNetwork.valueOf(it.network)),
+            ).apply {
                 state = UploadJobState.valueOf(it.state)
                 error = it.error?.error()
                 retriedOnce = it.retriedOnce
@@ -367,7 +382,10 @@ private class QueueDto(
     companion object {
         fun of(queue: UploadQueueMock) = QueueDto(
             jobs = queue.jobs.map {
-                JobDto(it.key, it.contentType, it.target.url, it.target.headers, it.state.name, it.error?.let(ErrorDto::of), it.retriedOnce)
+                JobDto(
+                    it.key, it.contentType, it.target.url, it.target.headers, it.state.name, it.error?.let(ErrorDto::of),
+                    it.retriedOnce, it.target.network.name,
+                )
             },
             created = queue.created.map { it.filename to it.contentType },
             jobLimit = queue.jobLimit,

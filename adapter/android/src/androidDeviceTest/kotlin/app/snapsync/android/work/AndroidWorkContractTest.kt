@@ -5,6 +5,7 @@ import android.provider.MediaStore
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.work.WorkManager
 import app.snapsync.android.gallery.MediaStoreSeeder
+import app.snapsync.android.network.MeteredWifi
 import app.snapsync.android.storage.context
 import app.snapsync.contracts.BackgroundTimeContract
 import app.snapsync.contracts.BackgroundTimeState
@@ -25,6 +26,7 @@ import app.snapsync.contracts.runEntry
 import app.snapsync.contracts.verify
 import app.snapsync.model.AssetId
 import app.snapsync.model.ScheduleResult
+import app.snapsync.model.TransferNetwork
 import app.snapsync.model.UploadCreateOutcome
 import app.snapsync.model.UploadJob
 import app.snapsync.model.UploadJobSet
@@ -32,6 +34,7 @@ import app.snapsync.model.UploadJobState
 import app.snapsync.model.UploadSource
 import app.snapsync.model.UploadTarget
 import app.snapsync.model.WakeId
+import app.snapsync.model.WakeNetwork
 import app.snapsync.model.WakeTrigger
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.UploadHandlers
@@ -94,13 +97,15 @@ class AndroidWorkContractTest {
     private val upload = object : Binding<UploadState, UploadUnderTest> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
-        override val reaches = setOf(UploadState.IDLE, UploadState.AT_CAP)
+        override val reaches = setOf(UploadState.IDLE, UploadState.AT_CAP, UploadState.RESTRICTED_NETWORK)
 
         override fun create(state: UploadState, clauseId: String): Entered<UploadUnderTest> {
             if (state in UploadContract.PRESENTED) {
                 return Entered.Unreachable("Android reports every transfer's end as it happens; nothing is presented")
             }
             val base = fixture()
+            // The fixture is the host's, reached over the emulator's Wi-Fi: metering the Wi-Fi meters the transfer.
+            if (state == UploadState.RESTRICTED_NETWORK) MeteredWifi.enter()
             val seeded = mutableSetOf<AssetId>()
             val ended = Collections.synchronizedList(mutableListOf<UploadJob>())
             val adapter = AndroidUpload(context, AndroidBackgroundTime(context), maxLive = CAP, journalName = "contract.$clauseId")
@@ -115,7 +120,8 @@ class AndroidWorkContractTest {
                     repeat(CAP) { n ->
                         val key = UploadContract.key(clauseId, n = n + 1)
                         val url = base + UploadContract.path(clauseId, FixtureAnswer.Hold, n = n + 1)
-                        val created = adapter.create(usable(key), UploadTarget(url, mapOf("Content-Type" to "image/jpeg")), key)
+                        val target = UploadTarget(url, mapOf("Content-Type" to "image/jpeg"), TransferNetwork.ANY)
+                        val created = adapter.create(usable(key), target, key)
                         check(created == UploadCreateOutcome.CREATED) { "filling the cap: transfer ${n + 1} was $created" }
                     }
                 }
@@ -128,10 +134,12 @@ class AndroidWorkContractTest {
                     unusable = { UploadSource.File("/nonexistent/$it") },
                     ended = { synchronized(ended) { ended.toList() } },
                     objects = landedAt(base),
+                    liftRestriction = { MeteredWifi.lift() },
                 ),
             ) {
                 runEntry { adapter.jobs(UploadJobSet.IN_FLIGHT).forEach { adapter.cancel(it) } }
                 MediaStoreSeeder.delete(seeded)
+                if (state == UploadState.RESTRICTED_NETWORK) MeteredWifi.lift()
             }
         }
     }
@@ -165,11 +173,40 @@ class AndroidWorkContractTest {
         }
     }
 
+    /**
+     * Capability `mobile-data`: a wake that waits for an unrestricted network (a busy heartbeat for a member who keeps
+     * photos off mobile data) does not run on a metered one, and runs once the network is unmetered — WorkManager's own
+     * unmetered constraint, which is what resumes a held upload on Android.
+     */
+    @Test
+    fun `an unrestricted wake waits out a metered network and runs on an unmetered one`() {
+        val ran = CompletableDeferred<Unit>()
+        val adapter = AndroidWake(context)
+        adapter.listen(
+            WakeHandlers { _, completion ->
+                ran.complete(Unit)
+                completion.complete()
+            },
+        )
+        MeteredWifi.enter()
+        try {
+            adapter.schedule(WakeId.Heartbeat, WakeTrigger.After(Duration.ZERO, network = WakeNetwork.UNRESTRICTED))
+            val early = runBlocking { withTimeoutOrNull(HELD_MILLIS) { ran.await() } }
+            assertEquals(null, early, "the wake ran on a metered network")
+            MeteredWifi.lift()
+            val later = runBlocking { withTimeoutOrNull(WAIT_MILLIS) { ran.await() } }
+            assertEquals(Unit, later, "the wake did not run once the network was unmetered")
+        } finally {
+            MeteredWifi.lift()
+            adapter.cancel(WakeId.Heartbeat)
+        }
+    }
+
     @Test
     fun `a wake re-armed from inside its own run is not cancelled by it`() {
         val done = CompletableDeferred<Boolean>()
         val adapter = AndroidWake(context)
-        val later = WakeTrigger.After(1.hours, requiresNetwork = false)
+        val later = WakeTrigger.After(1.hours, network = WakeNetwork.NONE)
         adapter.listen(
             WakeHandlers { id, completion ->
                 var expired = false
@@ -180,7 +217,7 @@ class AndroidWorkContractTest {
                 completion.complete()
             },
         )
-        adapter.schedule(WakeId.Heartbeat, WakeTrigger.After(Duration.ZERO, requiresNetwork = false))
+        adapter.schedule(WakeId.Heartbeat, WakeTrigger.After(Duration.ZERO, network = WakeNetwork.NONE))
         try {
             val survived = runBlocking { withTimeoutOrNull(WAIT_MILLIS) { done.await() } }
             assertEquals(true, survived, "the running wake finished rather than being stopped by its own re-arm")
@@ -206,7 +243,7 @@ class AndroidWorkContractTest {
             runBlocking {
                 val uri = ContentUris.withAppendedId(MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), seeded.single().value.toLong())
                 val url = base + UploadContract.path("RELAUNCH", FixtureAnswer.Hold)
-                assertEquals(UploadCreateOutcome.CREATED, first.create(UploadSource.Resource(uri), UploadTarget(url, emptyMap()), key))
+                assertEquals(UploadCreateOutcome.CREATED, first.create(UploadSource.Resource(uri), UploadTarget(url, emptyMap(), TransferNetwork.ANY), key))
             }
             // The next process: a fresh adapter over the same journal, knowing nothing live.
             val reported = mutableListOf<UploadJob>()
@@ -244,6 +281,9 @@ class AndroidWorkContractTest {
 
         /** How long a wake the operating system owes is waited for: a library change is due within its 1 s delay. */
         const val WAIT_MILLIS = 60_000L
+
+        /** How long an unrestricted wake must stay unrun on a metered network — beyond a constraint-free wake's start. */
+        const val HELD_MILLIS = 10_000L
 
         /** Long enough for a REPLACE to have cancelled a running wake, and for its re-arm to be recorded. */
         const val REPLACE_WINDOW_MILLIS = 1_000L

@@ -17,6 +17,7 @@ import app.snapsync.contracts.currentHost
 import app.snapsync.contracts.runEntry
 import app.snapsync.contracts.verify
 import app.snapsync.model.StartResult
+import app.snapsync.model.TransferNetwork
 import app.snapsync.model.TransferOutcome
 import app.snapsync.model.UploadCreateOutcome
 import app.snapsync.model.UploadError
@@ -34,7 +35,8 @@ import kotlin.test.Test
  * A mock has no network, so each binding PLAYS it — the role the loopback fixture server plays for the live bindings.
  * It answers every transfer the way the clause's route says, through the mock's own operator face: an accepting upload
  * is `completeJob`, a refusing one `failJob`, a download `finish` with the outcome the route describes, and a held route
- * is never answered.
+ * is never answered. On a restricted network (capability `mobile-data`) it plays the device's network too: the mocks
+ * hold what the network holds, and the binding's lift answers what they held.
  */
 class TransferContractBindingsTest {
 
@@ -58,13 +60,20 @@ class TransferContractBindingsTest {
                 if (result != UploadCreateOutcome.CREATED) return@also
                 val path = route(target.url)
                 keyAt[path] = tag
-                when (val answer = TransferFixture.answerOf(path)) {
-                    is FixtureAnswer.Respond ->
-                        if (answer.status in 200..299) mock.operator.completeJob(tag)
-                        else mock.operator.failJob(tag, UploadError.Http(answer.status))
-                    FixtureAnswer.Hold, null -> Unit
-                }
+                answer(tag, path)
             }
+
+        private suspend fun answer(tag: String, path: String) {
+            when (val answer = TransferFixture.answerOf(path)) {
+                is FixtureAnswer.Respond ->
+                    if (answer.status in 200..299) mock.operator.completeJob(tag)
+                    else mock.operator.failJob(tag, UploadError.Http(answer.status))
+                FixtureAnswer.Hold, null -> Unit
+            }
+        }
+
+        /** The network allows again: every job it held is answered the way its route says. */
+        suspend fun answerHeld() = keyAt.forEach { (path, tag) -> answer(tag, path) }
 
         /** What landed at [path]: bytes the mock transferred there, under the type its job was created with. */
         val objects = FixtureObjects { path ->
@@ -86,14 +95,19 @@ class TransferContractBindingsTest {
     private val upload = object : Binding<UploadState, UploadUnderTest> {
         override val host = currentHost
         override val kind = BindingKind.Fake
-        override val reaches = setOf(UploadState.IDLE, UploadState.AT_CAP)
+        override val reaches = setOf(UploadState.IDLE, UploadState.AT_CAP, UploadState.RESTRICTED_NETWORK)
 
         override fun create(state: UploadState, clauseId: String): Entered<UploadUnderTest> {
             if (state in UploadContract.PRESENTED) {
                 return Entered.Unreachable("the upload queue mock settles a transfer at once and presents none later")
             }
             val received = mutableSetOf<String>()
-            val networked = NetworkedUpload(UploadQueueMock(recordingNetwork(received)), received, ::routeOf)
+            var restricted = state == UploadState.RESTRICTED_NETWORK
+            val networked = NetworkedUpload(
+                UploadQueueMock(recordingNetwork(received), restricted = { restricted }),
+                received,
+                ::routeOf,
+            )
             if (state == UploadState.AT_CAP) {
                 networked.mock.operator.jobLimit = CAP
                 // Fill the cap with transfers to routes that never answer.
@@ -101,7 +115,7 @@ class TransferContractBindingsTest {
                     repeat(CAP) { n ->
                         val key = UploadContract.key(clauseId, n = n + 1)
                         val url = base + UploadContract.path(clauseId, FixtureAnswer.Hold, n = n + 1)
-                        check(networked.create(UploadSource.Resource(Unit), UploadTarget(url, emptyMap()), key) == UploadCreateOutcome.CREATED)
+                        check(networked.create(UploadSource.Resource(Unit), UploadTarget(url, emptyMap(), TransferNetwork.ANY), key) == UploadCreateOutcome.CREATED)
                     }
                 }
             }
@@ -114,6 +128,10 @@ class TransferContractBindingsTest {
                     unusable = { UploadSource.Resource(NotThisPlatformsHandle) },
                     ended = { emptyList<UploadJob>() },
                     objects = networked.objects,
+                    liftRestriction = {
+                        restricted = false
+                        networked.answerHeld()
+                    },
                 ),
             )
         }
@@ -125,9 +143,21 @@ class TransferContractBindingsTest {
         private val bodies: MutableMap<String, ByteArray>,
         private val double: Download = mock.port(),
     ) : Download by double {
-        override fun start(url: String, tag: String): StartResult {
-            val started = double.start(url, tag)
+        private val urls = mutableMapOf<String, String>()
+
+        override fun start(url: String, tag: String, network: TransferNetwork): StartResult {
+            val started = double.start(url, tag, network)
             if (started != StartResult.Started) return started
+            urls[tag] = url
+            answer(tag, url)
+            return started
+        }
+
+        /** The network allows again: every transfer it held is answered the way its route says. */
+        fun answerHeld() = urls.forEach { (tag, url) -> answer(tag, url) }
+
+        private fun answer(tag: String, url: String) {
+            if (mock.operator.inFlight().none { it.description == tag }) return
             when (val answer = TransferFixture.answerOf(routeOf(url))) {
                 is FixtureAnswer.Respond -> {
                     val sent = if (answer.short) answer.length / 2 else answer.length
@@ -143,20 +173,30 @@ class TransferContractBindingsTest {
                 }
                 FixtureAnswer.Hold, null -> Unit
             }
-            return started
         }
     }
 
     private val download = object : Binding<DownloadState, DownloadUnderTest> {
         override val host = currentHost
         override val kind = BindingKind.Fake
-        override val reaches = setOf(DownloadState.READY)
+        override val reaches = setOf(DownloadState.READY, DownloadState.RESTRICTED_NETWORK)
 
         override fun create(state: DownloadState, clauseId: String): Entered<DownloadUnderTest> {
             // The temporary files the mock hands over, as the network the binding plays filled them.
             val bodies = mutableMapOf<String, ByteArray>()
+            var restricted = state == DownloadState.RESTRICTED_NETWORK
+            val opened = mutableListOf<NetworkedDownload>()
+            val held: (TransferNetwork) -> Boolean = { rule -> restricted && rule == TransferNetwork.UNRESTRICTED_ONLY }
             return Entered.Ready(
-                DownloadUnderTest(open = { NetworkedDownload(DownloadSessionMock(), bodies) }, base = base, readTemp = { bodies[it] }),
+                DownloadUnderTest(
+                    open = { NetworkedDownload(DownloadSessionMock(held = held), bodies).also { opened += it } },
+                    base = base,
+                    readTemp = { bodies[it] },
+                    liftRestriction = {
+                        restricted = false
+                        opened.forEach { it.answerHeld() }
+                    },
+                ),
             )
         }
     }
