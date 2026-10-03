@@ -43,7 +43,7 @@ class NetworkWatch(
     private val grace: Duration = DEFAULT_GRACE,
 ) : NetworkStatusSource {
 
-    private val state = MutableStateFlow(NetworkAccess.ONLINE)
+    private val state = MutableStateFlow<NetworkAccess>(NetworkAccess.Online(restricted = false))
     private val returns = MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     private var job: Job? = null
 
@@ -56,7 +56,7 @@ class NetworkWatch(
         job = scope.launch {
             // Latest: a newer reading cancels a missing network's pending grace, so a return inside it publishes nothing.
             readings.watch().collectLatest { reading ->
-                if (reading != NetworkAccess.ONLINE && state.value == NetworkAccess.ONLINE) delay(grace)
+                if (reading !is NetworkAccess.Online && state.value is NetworkAccess.Online) delay(grace)
                 publish(reading)
             }
         }
@@ -66,13 +66,13 @@ class NetworkWatch(
     fun stop() {
         job?.cancel()
         job = null
-        state.value = NetworkAccess.ONLINE
+        state.value = NetworkAccess.Online(restricted = false)
     }
 
     private fun publish(reading: NetworkAccess) {
         val was = state.value
         state.value = reading
-        if (was != NetworkAccess.ONLINE && reading == NetworkAccess.ONLINE) returns.tryEmit(Unit)
+        if (was !is NetworkAccess.Online && reading is NetworkAccess.Online) returns.tryEmit(Unit)
     }
 
     companion object {

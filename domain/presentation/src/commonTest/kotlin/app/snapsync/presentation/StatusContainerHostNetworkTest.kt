@@ -46,14 +46,14 @@ import kotlin.time.Instant
  */
 class StatusContainerHostNetworkTest {
 
-    private class FakeNetwork(initial: NetworkAccess = NetworkAccess.ONLINE) : NetworkStatusSource {
+    private class FakeNetwork(initial: NetworkAccess = NetworkAccess.Online(restricted = false)) : NetworkStatusSource {
         override val access = MutableStateFlow(initial)
         val returns = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
         override val returned: Flow<Unit> = returns
 
         /** A shown notice clearing — what the watch publishes on a return. */
         fun comeBack() {
-            access.value = NetworkAccess.ONLINE
+            access.value = NetworkAccess.Online(restricted = false)
             returns.tryEmit(Unit)
         }
     }
@@ -101,33 +101,33 @@ class StatusContainerHostNetworkTest {
 
     @Test
     fun `a missing network is the status line with its cause`() = runTest {
-        for ((access, notice) in listOf(NetworkAccess.OFFLINE to NetworkNotice.OFFLINE, NetworkAccess.BLOCKED to NetworkNotice.BLOCKED)) {
+        for ((access, notice) in listOf(NetworkAccess.Offline to NetworkNotice.OFFLINE, NetworkAccess.Blocked to NetworkNotice.BLOCKED)) {
             assertEquals(SyncHealth.NoNetwork(notice), host(FakeNetwork(access)).health())
         }
     }
 
     @Test
     fun `missing access outranks a missing network`() = runTest {
-        val host = host(FakeNetwork(NetworkAccess.OFFLINE), permission = GalleryAccess.DENIED)
+        val host = host(FakeNetwork(NetworkAccess.Offline), permission = GalleryAccess.DENIED)
         assertEquals(SyncHealth.NeedsAccess(GalleryAccess.DENIED), host.health())
     }
 
     @Test
     fun `a missing network outranks a future start and an in-sync device`() = runTest {
-        assertEquals(SyncHealth.NoNetwork(NetworkNotice.OFFLINE), host(FakeNetwork(NetworkAccess.OFFLINE), config = NOT_STARTED).health())
+        assertEquals(SyncHealth.NoNetwork(NetworkNotice.OFFLINE), host(FakeNetwork(NetworkAccess.Offline), config = NOT_STARTED).health())
         val inSync = host(FakeNetwork())
         assertEquals(SyncHealth.InSync, inSync.health(), "online, the same device is in sync")
     }
 
     @Test
     fun `offline with an expired verification says offline and not cannot-verify`() = runTest {
-        assertEquals(SyncHealth.NoNetwork(NetworkNotice.OFFLINE), host(FakeNetwork(NetworkAccess.OFFLINE), attested = false).health())
+        assertEquals(SyncHealth.NoNetwork(NetworkNotice.OFFLINE), host(FakeNetwork(NetworkAccess.Offline), attested = false).health())
         assertEquals(SyncHealth.Unattested, host(FakeNetwork(), attested = false).health(), "online, the server is to blame")
     }
 
     @Test
     fun `the line clears as soon as the network returns`() = runTest {
-        val network = FakeNetwork(NetworkAccess.BLOCKED)
+        val network = FakeNetwork(NetworkAccess.Blocked)
         val host = host(network)
         driving(host) {
             network.comeBack()
@@ -140,12 +140,12 @@ class StatusContainerHostNetworkTest {
 
     @Test
     fun `offline the create layer carries the notice`() = runTest {
-        assertEquals(Layer.CreateEvent(network = NetworkNotice.OFFLINE), host(FakeNetwork(NetworkAccess.OFFLINE), config = null).container.stateFlow.value.layer)
+        assertEquals(Layer.CreateEvent(network = NetworkNotice.OFFLINE), host(FakeNetwork(NetworkAccess.Offline), config = null).container.stateFlow.value.layer)
     }
 
     @Test
     fun `a failed create's message is kept under the notice and returns with the network`() = runTest {
-        val network = FakeNetwork(NetworkAccess.OFFLINE)
+        val network = FakeNetwork(NetworkAccess.Offline)
         val host = host(network, config = null, creation = CreationStatus.Failed(CreationFailureReason.SERVER))
         driving(host) {
             assertEquals(
@@ -160,14 +160,14 @@ class StatusContainerHostNetworkTest {
 
     @Test
     fun `a create in flight is not interrupted`() = runTest {
-        assertEquals(Layer.CreatingEvent, host(FakeNetwork(NetworkAccess.OFFLINE), config = null, creation = CreationStatus.InFlight).container.stateFlow.value.layer)
+        assertEquals(Layer.CreatingEvent, host(FakeNetwork(NetworkAccess.Offline), config = null, creation = CreationStatus.InFlight).container.stateFlow.value.layer)
     }
 
     // ── the join layer ───────────────────────────────────────────────────────────────────────
 
     @Test
     fun `an invite opened offline loads by itself once the network returns`() = runTest {
-        val network = FakeNetwork(NetworkAccess.OFFLINE)
+        val network = FakeNetwork(NetworkAccess.Offline)
         var loads = 0
         val host = host(network, config = null, load = { if (loads++ == 0) JoinLoad.Failed else FOUND })
         driving(host) {
@@ -195,7 +195,7 @@ class StatusContainerHostNetworkTest {
             host.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT)))
             runCurrent()
             assertEquals(JoinPhase.LoadFailed, assertIs<Layer.JoiningEvent>(host.container.stateFlow.value.layer).phase)
-            network.access.value = NetworkAccess.ONLINE // no return: nothing was missing
+            network.access.value = NetworkAccess.Online(restricted = false) // no return: nothing was missing
             runCurrent()
             assertEquals(1, loads, "an unreachable server is retried by the member, not by the network watch")
         }
@@ -208,7 +208,7 @@ class StatusContainerHostNetworkTest {
         driving(host) {
             host.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT)))
             runCurrent()
-            network.access.value = NetworkAccess.BLOCKED
+            network.access.value = NetworkAccess.Blocked
             runCurrent()
             val layer = assertIs<Layer.JoiningEvent>(host.container.stateFlow.value.layer)
             assertIs<JoinPhase.Detailed>(layer.phase)

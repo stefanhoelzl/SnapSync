@@ -66,7 +66,7 @@ class CreatedUpload(val filename: String, val contentType: String) {
 class UploadQueueMock(
     internal val network: UploadNetwork,
     private val acceptsAnyHandle: Boolean = false,
-    internal val restricted: () -> Boolean = { false },
+    internal val restricted: () -> Boolean,
 ) {
     internal class Job(val key: String, val contentType: String, val data: Any, var target: UploadTarget) {
         var state: UploadJobState = UploadJobState.PENDING
@@ -209,7 +209,7 @@ class UploadQueueOperator internal constructor(private val mock: UploadQueueMock
 class UploadSessionMock(
     internal val network: UploadNetwork,
     /** Whether the device's network holds a transfer created under this rule (capability `mobile-data`). */
-    internal val held: (TransferNetwork) -> Boolean = { false },
+    internal val held: (TransferNetwork) -> Boolean,
 ) {
     internal class Transfer(val tag: String, val target: UploadTarget)
 
@@ -346,7 +346,7 @@ fun interface TemporaryFiles {
 class DownloadSessionMock(
     private val temporaryFiles: TemporaryFiles? = null,
     /** Whether the device's network holds a transfer started under this rule (capability `mobile-data`). */
-    internal val held: (TransferNetwork) -> Boolean = { false },
+    internal val held: (TransferNetwork) -> Boolean,
 ) {
 
     /** A transfer the session holds, until it finishes or is cancelled; [network] is the rule it was started under. */

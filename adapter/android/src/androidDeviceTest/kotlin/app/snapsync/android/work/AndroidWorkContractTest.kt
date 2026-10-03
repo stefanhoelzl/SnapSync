@@ -6,6 +6,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.work.WorkManager
 import app.snapsync.android.gallery.MediaStoreSeeder
 import app.snapsync.android.network.MeteredWifi
+import app.snapsync.android.network.awaitUnrestrictedNetwork
 import app.snapsync.android.storage.context
 import app.snapsync.contracts.BackgroundTimeContract
 import app.snapsync.contracts.BackgroundTimeState
@@ -108,7 +109,13 @@ class AndroidWorkContractTest {
             if (state == UploadState.RESTRICTED_NETWORK) MeteredWifi.enter()
             val seeded = mutableSetOf<AssetId>()
             val ended = Collections.synchronizedList(mutableListOf<UploadJob>())
-            val adapter = AndroidUpload(context, AndroidBackgroundTime(context), maxLive = CAP, journalName = "contract.$clauseId")
+            val adapter = AndroidUpload(
+                context,
+                AndroidBackgroundTime(context),
+                maxLive = CAP,
+                journalName = "contract.$clauseId",
+                unrestricted = awaitUnrestrictedNetwork(context),
+            )
             adapter.listen(UploadHandlers(onFinished = { ended += it }, onBackgroundEvents = { it.complete() }, onEventsDrained = {}))
             val usable: suspend (String) -> UploadSource = { _ ->
                 val id = MediaStoreSeeder.seed(MediaStoreSeeder.CAMERA, "2001-01-01T12:00:00Z", count = 1).single()
@@ -235,7 +242,7 @@ class AndroidWorkContractTest {
     fun `a transfer a dead process left is reported failed at the next start`() {
         val base = fixture()
         val journal = "contract.relaunch"
-        val first = AndroidUpload(context, AndroidBackgroundTime(context), journalName = journal)
+        val first = AndroidUpload(context, AndroidBackgroundTime(context), journalName = journal, unrestricted = awaitUnrestrictedNetwork(context))
         first.listen(UploadHandlers(onFinished = {}, onBackgroundEvents = { it.complete() }, onEventsDrained = {}))
         val seeded = MediaStoreSeeder.seed(MediaStoreSeeder.CAMERA, "2001-01-03T12:00:00Z", count = 1)
         val key = UploadContract.key("RELAUNCH")
@@ -247,7 +254,7 @@ class AndroidWorkContractTest {
             }
             // The next process: a fresh adapter over the same journal, knowing nothing live.
             val reported = mutableListOf<UploadJob>()
-            AndroidUpload(context, AndroidBackgroundTime(context), journalName = journal)
+            AndroidUpload(context, AndroidBackgroundTime(context), journalName = journal, unrestricted = awaitUnrestrictedNetwork(context))
                 .listen(UploadHandlers(onFinished = { reported += it }, onBackgroundEvents = { it.complete() }, onEventsDrained = {}))
             val job = assertNotNull(reported.singleOrNull { it.tag == key }, "the orphaned transfer is reported: $reported")
             assertTrue(job.state == UploadJobState.FAILED, "as a failure, so its row is retried")

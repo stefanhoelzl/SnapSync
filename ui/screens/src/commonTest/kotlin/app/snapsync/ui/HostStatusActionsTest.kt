@@ -117,7 +117,7 @@ class HostStatusActionsTest {
         refusal: VersionRefusal? = null,
         diagnostics: Boolean = false,
         private val details: suspend (String) -> JoinLoad = { OTHER_EVENT },
-        network: NetworkAccess = NetworkAccess.ONLINE,
+        network: NetworkAccess = NetworkAccess.Online(restricted = false),
     ) {
         val config = MutableStateFlow(config)
         val permission = MutableStateFlow(permission)
@@ -213,7 +213,7 @@ class HostStatusActionsTest {
         refusal: VersionRefusal? = null,
         diagnostics: Boolean = false,
         details: suspend (String) -> JoinLoad = { OTHER_EVENT },
-        network: NetworkAccess = NetworkAccess.ONLINE,
+        network: NetworkAccess = NetworkAccess.Online(restricted = false),
     ) = Rig(config, permission, refusal, diagnostics, details, network)
 
     private val ready: (UiState) -> Boolean =
@@ -316,7 +316,7 @@ class HostStatusActionsTest {
 
     @Test
     fun `a blocked network’s status line opens Settings`() =
-        rigTest(rig(config = MEMBERSHIP, network = NetworkAccess.BLOCKED)) { rig ->
+        rigTest(rig(config = MEMBERSHIP, network = NetworkAccess.Blocked)) { rig ->
             awaitState(rig) { (it.layer as? Layer.Joined)?.health is SyncHealth.NoNetwork }
             onNodeWithText("Network blocked for SnapSync – Open Settings").performClick()
             awaitFired(rig, "openSettings")
@@ -325,7 +325,7 @@ class HostStatusActionsTest {
 
     @Test
     fun `a blocked network’s notice on the create screen opens Settings`() =
-        rigTest(rig(network = NetworkAccess.BLOCKED)) { rig ->
+        rigTest(rig(network = NetworkAccess.Blocked)) { rig ->
             awaitState(rig) { (it.layer as? Layer.CreateEvent)?.network != null }
             onNodeWithText("Network blocked for SnapSync – Open Settings").performClick()
             awaitFired(rig, "openSettings")

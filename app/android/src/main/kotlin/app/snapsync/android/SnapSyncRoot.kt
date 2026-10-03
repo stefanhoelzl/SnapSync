@@ -3,15 +3,17 @@ package app.snapsync.android
 import android.app.Application
 import app.snapsync.android.attest.AndroidDeviceIntegrity
 import app.snapsync.android.backend.androidHttpClient
+import app.snapsync.android.buildinfo.AndroidBuildInfo
 import app.snapsync.android.download.AndroidDownload
-import app.snapsync.android.process.AndroidProcessInfo
-import app.snapsync.android.network.AndroidNetworkMonitor
-import app.snapsync.android.push.AndroidPushNotifications
-import app.snapsync.android.push.FirebaseConfig
 import app.snapsync.android.gallery.AndroidGallery
 import app.snapsync.android.link.AndroidLinks
 import app.snapsync.android.logging.LogcatSink
+import app.snapsync.android.network.AndroidNetworkMonitor
+import app.snapsync.android.network.awaitUnrestrictedNetwork
 import app.snapsync.android.permission.AndroidPhotoPermission
+import app.snapsync.android.process.AndroidProcessInfo
+import app.snapsync.android.push.AndroidPushNotifications
+import app.snapsync.android.push.FirebaseConfig
 import app.snapsync.android.scene.AndroidLifecycle
 import app.snapsync.android.scene.AndroidUi
 import app.snapsync.android.scene.ForegroundActivity
@@ -26,7 +28,6 @@ import app.snapsync.android.work.AndroidBackgroundTime
 import app.snapsync.android.work.AndroidUpload
 import app.snapsync.android.work.AndroidWake
 import app.snapsync.compose.AppCore
-import app.snapsync.android.buildinfo.AndroidBuildInfo
 import app.snapsync.compose.DevicePorts
 import app.snapsync.compose.NoEntryContext
 import app.snapsync.compose.NoProcessMetrics
@@ -117,7 +118,9 @@ class SnapSyncRoot(internal val application: Application) {
         wake = lazy { AndroidWake(application) },
         backgroundTime = lazy { AndroidBackgroundTime(application) },
         // Its transfers hold this launch's background time — the real one, or the mock a rig launch chose.
-        appUpload = lazy { AndroidUpload(application, ports.backgroundTime) },
+        appUpload = lazy {
+            AndroidUpload(application, ports.backgroundTime, unrestricted = awaitUnrestrictedNetwork(application))
+        },
         download = lazy { AndroidDownload(application) },
         pushNotifications = lazy { AndroidPushNotifications(application, firebase) },
         processInfo = lazy { AndroidProcessInfo(application) },

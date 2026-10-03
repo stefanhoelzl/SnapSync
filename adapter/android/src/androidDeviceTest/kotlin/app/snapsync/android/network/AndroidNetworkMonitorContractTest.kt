@@ -35,7 +35,7 @@ class AndroidNetworkMonitorContractTest {
     private val binding = object : Binding<NetworkState, NetworkMonitor> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
-        override val reaches = NetworkState.entries.toSet()
+        override val reaches = setOf(NetworkState.ONLINE, NetworkState.RESTRICTED, NetworkState.OFFLINE, NetworkState.BLOCKED)
 
         override fun create(state: NetworkState, clauseId: String): Entered<NetworkMonitor> {
             enter(state)

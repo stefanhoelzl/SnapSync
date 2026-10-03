@@ -54,8 +54,11 @@ sealed interface AppSyncStatus {
     /** Everything shared and received — settled (no arrows). */
     data object InSync : AppSyncStatus
 
-    /** Work remaining; each arrow is [Arrow.HIDDEN]/[Arrow.STATIC]/[Arrow.PULSING]. */
-    data class Syncing(val upload: Arrow, val download: Arrow) : AppSyncStatus
+    /**
+     * Work remaining; each arrow is [Arrow.HIDDEN]/[Arrow.STATIC]/[Arrow.PULSING]. [waitingForWifi]: the photos wait
+     * for Wi-Fi because the member keeps them off mobile data (capability `mobile-data`).
+     */
+    data class Syncing(val upload: Arrow, val download: Arrow, val waitingForWifi: Boolean = false) : AppSyncStatus
 
     /**
      * The event has not begun (capability `sync-status`). Informational, not actionable: flat (no
@@ -213,7 +216,11 @@ private fun SyncingLine(status: AppSyncStatus.Syncing) {
         }
         ArrowIcon(Icons.Filled.ArrowUpward, "uploading", status.upload, pulseAlpha)
         ArrowIcon(Icons.Filled.ArrowDownward, "downloading", status.download, pulseAlpha)
-        val label = if (ongoing) "Synchronization ongoing…" else "Synchronization pending…"
+        val label = when {
+            ongoing -> "Synchronization ongoing…"
+            status.waitingForWifi -> "Waiting for Wi-Fi…"
+            else -> "Synchronization pending…"
+        }
         LineText(label, MaterialTheme.colorScheme.onSurface)
     }
 }

@@ -4,12 +4,10 @@ import android.content.Context
 import android.content.res.AssetFileDescriptor
 import android.net.Uri
 import app.snapsync.android.gallery.MediaOriginals
-import app.snapsync.android.network.AndroidNetworkMonitor
 import app.snapsync.model.BeforeListen
 import app.snapsync.model.ChangeOutcome
 import app.snapsync.model.EntryScope
 import app.snapsync.model.HandlerSlot
-import app.snapsync.model.NetworkAccess
 import app.snapsync.model.TransferNetwork
 import app.snapsync.model.UploadCreateOutcome
 import app.snapsync.model.UploadError
@@ -48,7 +46,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.ConnectionPool
@@ -84,10 +81,11 @@ class AndroidUpload(
     private val maxLive: Int = MAX_LIVE,
     /** The journal's preferences file; a binding names its own, so two instances share one to play a relaunch. */
     journalName: String = JOURNAL,
-    /** Returns once the phone is on an unmetered network this app may use — what a held transfer waits for. */
-    private val unrestricted: suspend () -> Unit = AndroidNetworkMonitor(context).let { monitor ->
-        { monitor.watch().first { it == NetworkAccess.Online(restricted = false) } }
-    },
+    /**
+     * Returns once the phone is on an unmetered network this app may use — what a held transfer waits for
+     * ([awaitUnrestrictedNetwork] on a device).
+     */
+    private val unrestricted: suspend () -> Unit,
 ) : Upload {
 
     private val appContext = context.applicationContext

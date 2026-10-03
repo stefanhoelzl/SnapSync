@@ -10,6 +10,7 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 
 /**
  * The Android [NetworkMonitor]: the app's DEFAULT network, as `ConnectivityManager`'s default-network callback reports
@@ -120,3 +121,12 @@ internal class DefaultNetworkReading {
 private fun NetworkCapabilities.isMetered(): Boolean =
     !hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED) &&
         !hasCapability(NetworkCapabilities.NET_CAPABILITY_TEMPORARILY_NOT_METERED)
+
+/**
+ * Suspends until the phone's default network is unmetered and not withheld from this app — what an upload held to
+ * unrestricted networks waits for before it sends a byte (capability `mobile-data`).
+ */
+fun awaitUnrestrictedNetwork(context: Context): suspend () -> Unit {
+    val monitor = AndroidNetworkMonitor(context)
+    return { monitor.watch().first { it == NetworkAccess.Online(restricted = false) } }
+}

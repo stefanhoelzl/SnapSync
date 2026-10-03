@@ -131,6 +131,6 @@ class StatusDiagnostics(
 
 /** A host with no network watch: online, and never returning from anything. */
 private object AlwaysOnline : NetworkStatusSource {
-    override val access: StateFlow<NetworkAccess> = MutableStateFlow(NetworkAccess.ONLINE)
+    override val access: StateFlow<NetworkAccess> = MutableStateFlow(NetworkAccess.Online(restricted = false))
     override val returned: Flow<Unit> = emptyFlow()
 }

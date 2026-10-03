@@ -121,9 +121,9 @@ class ForegroundOrderingTest {
         val poller = StatusCountsPoller(backgroundScope, {})
         foreground(statusPoller = poller, refreshStatus = {}, networkWatch = watch).run()
 
-        network.operator.access = NetworkAccess.OFFLINE
+        network.operator.access = NetworkAccess.Offline
         advanceTimeBy(NetworkWatch.DEFAULT_GRACE + 1.seconds)
-        assertEquals(NetworkAccess.OFFLINE, watch.access.value, "the flow left the watch unstarted")
+        assertEquals(NetworkAccess.Offline, watch.access.value, "the flow left the watch unstarted")
         poller.stop()
         watch.stop()
     }

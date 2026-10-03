@@ -53,7 +53,7 @@ class HeartbeatTest {
     @Test
     fun `a busy heartbeat asks for a timed wake after a minute that needs the network`() {
         val wake = RecordingWake()
-        Heartbeat(wake).arm(WakeCadence.BUSY)
+        Heartbeat(wake, ANY_NETWORK).arm(WakeCadence.BUSY)
         assertEquals(
             listOf<Pair<WakeId, WakeTrigger>>(
                 WakeId.Heartbeat to WakeTrigger.After(earliest = 60.seconds, network = WakeNetwork.ANY, cadence = WakeCadence.BUSY),
@@ -65,7 +65,7 @@ class HeartbeatTest {
     @Test
     fun `an idle heartbeat asks for a timed wake after an hour that needs the network`() {
         val wake = RecordingWake()
-        Heartbeat(wake).arm(WakeCadence.IDLE)
+        Heartbeat(wake, ANY_NETWORK).arm(WakeCadence.IDLE)
         assertEquals(
             listOf<Pair<WakeId, WakeTrigger>>(
                 WakeId.Heartbeat to WakeTrigger.After(earliest = 1.hours, network = WakeNetwork.ANY, cadence = WakeCadence.IDLE),
@@ -94,7 +94,7 @@ class HeartbeatTest {
     @Test
     fun `watching the library asks for a library-change wake and answers that one stands`() {
         val wake = RecordingWake()
-        assertTrue(Heartbeat(wake).watchLibrary())
+        assertTrue(Heartbeat(wake, ANY_NETWORK).watchLibrary())
         assertEquals(listOf<Pair<WakeId, WakeTrigger>>(WakeId.LibraryChanged to WakeTrigger.LibraryChange(maxDelay = 60.seconds)), wake.scheduled)
     }
 
@@ -102,19 +102,19 @@ class HeartbeatTest {
     fun `a platform without a library-change wake is not a failure and watches nothing`() {
         val captured = CapturingLogWriter()
         val wake = RecordingWake(supported = setOf(WakeId.Heartbeat))
-        assertFalse(Heartbeat(wake, log = captured.logger()).watchLibrary())
+        assertFalse(Heartbeat(wake, ANY_NETWORK, log = captured.logger()).watchLibrary())
         assertTrue(captured.warnings().isEmpty(), "an unsupported wake is said nothing about: ${captured.warnings()}")
     }
 
     @Test
     fun `a refused library watch watches nothing`() {
-        assertFalse(Heartbeat(RecordingWake(refuse = true)).watchLibrary())
+        assertFalse(Heartbeat(RecordingWake(refuse = true), ANY_NETWORK).watchLibrary())
     }
 
     @Test
     fun `a refused wake is said out loud`() {
         val captured = CapturingLogWriter()
-        Heartbeat(RecordingWake(refuse = true), log = captured.logger()).arm(WakeCadence.BUSY)
+        Heartbeat(RecordingWake(refuse = true), ANY_NETWORK, log = captured.logger()).arm(WakeCadence.BUSY)
         assertTrue(
             captured.warnings().any { "refused" in it && "BGTaskSchedulerErrorDomain/1" in it },
             "a refused heartbeat uploads only while the app is open; the line is the only evidence: ${captured.warnings()}",
@@ -124,7 +124,10 @@ class HeartbeatTest {
     @Test
     fun `cancelling withdraws every wake`() {
         val wake = RecordingWake(supported = setOf(WakeId.Heartbeat))
-        Heartbeat(wake).cancel()
+        Heartbeat(wake, ANY_NETWORK).cancel()
         assertEquals(WakeId.entries.toList(), wake.cancelled)
     }
 }
+
+/** A membership whose photos may use any network — every heartbeat test but the `mobile-data` one. */
+private val ANY_NETWORK: () -> TransferNetwork = { TransferNetwork.ANY }

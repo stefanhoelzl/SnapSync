@@ -82,9 +82,11 @@ fun WorldInspector(
         }
         Text("Network")
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = { controller.setNetwork(NetworkAccess.ONLINE) }) { Text("Online") }
-            OutlinedButton(onClick = { controller.setNetwork(NetworkAccess.OFFLINE) }) { Text("Offline") }
-            OutlinedButton(onClick = { controller.setNetwork(NetworkAccess.BLOCKED) }) { Text("Blocked") }
+            OutlinedButton(onClick = { controller.setNetwork(NetworkAccess.Online(restricted = false)) }) { Text("Wi-Fi") }
+            // Capability `mobile-data`: mobile data, a hotspot or Low Data Mode — where photos kept off mobile data wait.
+            OutlinedButton(onClick = { controller.setNetwork(NetworkAccess.Online(restricted = true)) }) { Text("Mobile data") }
+            OutlinedButton(onClick = { controller.setNetwork(NetworkAccess.Offline) }) { Text("Offline") }
+            OutlinedButton(onClick = { controller.setNetwork(NetworkAccess.Blocked) }) { Text("Blocked") }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Next request → ")
