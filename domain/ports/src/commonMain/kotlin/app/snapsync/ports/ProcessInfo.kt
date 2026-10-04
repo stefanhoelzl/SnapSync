@@ -1,6 +1,7 @@
 package app.snapsync.ports
 
 import app.snapsync.model.Availability
+import app.snapsync.model.MemoryFootprint
 
 /**
  * What the operating system says about this process right now (capability `sync-status`) — ONE external system,
@@ -14,8 +15,15 @@ import app.snapsync.model.Availability
  *
  * Named for the need: iOS answers with `UIApplication.isProtectedDataAvailable`; an Android binding would ask
  * whether the user has unlocked since boot.
+ *
+ * [memoryFootprint]: what the platform charges this process for in memory right now. The app records it as it
+ * settles in the background, for the process-metric report that later says a suspended app was ended for memory
+ * (capability `privacy-security`). `null` where nothing is answered.
  */
 interface ProcessInfo : Port {
     /** Whether protected storage can be read right now. May hop to whatever thread the platform requires. */
     suspend fun protectedDataAvailable(): Availability
+
+    /** This process's own memory accounting, or `null` where the platform's is not read. Any thread; never blocks. */
+    fun memoryFootprint(): MemoryFootprint?
 }

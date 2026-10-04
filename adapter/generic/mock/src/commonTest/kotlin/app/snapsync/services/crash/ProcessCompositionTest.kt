@@ -193,6 +193,30 @@ class ProcessCompositionTest {
     }
 
     @Test
+    fun a_report_carries_the_footprints_the_app_recorded_before_it_was_last_suspended() {
+        val reporter = Recording()
+        snapSyncProcess(ports(reporter, NoProcessMetrics, "https://key@ingest/1")).footprints
+            .record("entering background", app.snapsync.model.MemoryFootprint(83_574_000))
+        // The report arrives in a LATER process, which reads what the earlier one kept.
+        val later = snapSyncProcess(ports(reporter, NoProcessMetrics, "https://key@ingest/1"))
+        later.processAccount.handle(
+            ProcessMetricReport(mapOf("applicationExitMetrics.backgroundExitData.cumulativeMemoryPressureExitCount" to "1")),
+        )
+        val context = assertNotNull(reporter.contexts[app.snapsync.model.PROCESS_METRIC_CONTEXT])
+        val newest = assertNotNull(context["${app.snapsync.model.FOOTPRINT_FIELD_PREFIX}.0"], "the reading rides: $context")
+        assertTrue("entering background: footprint 83574 kB" in newest, newest)
+        assertEquals("1", context["applicationExitMetrics.backgroundExitData.cumulativeMemoryPressureExitCount"])
+    }
+
+    @Test
+    fun a_report_with_nothing_recorded_carries_only_itself() {
+        val reporter = Recording()
+        val process = snapSyncProcess(ports(reporter, NoProcessMetrics, "https://key@ingest/1"))
+        process.processAccount.handle(ProcessMetricReport(mapOf("timeStampBegin" to "x")))
+        assertEquals(mapOf("timeStampBegin" to "x"), reporter.contexts[app.snapsync.model.PROCESS_METRIC_CONTEXT])
+    }
+
+    @Test
     fun describing_the_process_starts_a_reporting_channel_itself() {
         val crash = CrashReporting(inMemoryCrashReporter(started, dumps), BuildInfoMock(dsn = "https://key@ingest/1").port(), NoEntryContext, inMemoryFiles())
         assertFalse(started.value)

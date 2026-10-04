@@ -154,6 +154,24 @@ class ProcessMetricsTest {
     }
 
     @Test
+    fun `a crossing report says its breadcrumbs are the delivering launch's - as the last line before its crossings`() {
+        // SNAPSYNC-38: the report arrives a launch later, so its events' breadcrumbs are not the ended process's.
+        val emissions = processMetricEmissions(report(exit("backgroundExitData", "cumulativeAppWatchdogExitCount", 2)))
+        assertEquals(
+            listOf(Severity.Info, Severity.Info, Severity.Error),
+            emissions.map { it.severity },
+            "the report's line, the note, then the crossing — so the note is every crossing event's last breadcrumb",
+        )
+        assertEquals(PROCESS_METRIC_DELIVERY_NOTE, emissions[1].message)
+        assertEquals(null, emissions[1].reason, "the note is no reason, so it names nothing in the context")
+    }
+
+    @Test
+    fun `a quiet report carries no delivery note - it reaches no event`() {
+        assertTrue(processMetricEmissions(report()).none { it.message == PROCESS_METRIC_DELIVERY_NOTE })
+    }
+
+    @Test
     fun `the crossing message is stable across differing counts so occurrences group`() {
         val one = crossing(report(exit("backgroundExitData", "cumulativeAppWatchdogExitCount", 1)))
         val many = crossing(report(exit("backgroundExitData", "cumulativeAppWatchdogExitCount", 14)))

@@ -3,6 +3,7 @@ package app.snapsync.mock
 import app.snapsync.model.Availability
 import app.snapsync.model.CrashEvent
 import app.snapsync.model.Handoff
+import app.snapsync.model.MemoryFootprint
 import app.snapsync.ports.Clock
 import app.snapsync.ports.CrashReporter
 import app.snapsync.ports.DeviceIntegrity
@@ -47,8 +48,9 @@ class CrashReporterOperator internal constructor(mock: CrashReporterMock) {
 /** What the OS says about the device: whether protected data is readable. */
 class ProcessInfoMock(protectedData: Availability = Availability.AVAILABLE) {
     internal val cell = MutableStateFlow(protectedData)
+    internal val footprint = MutableStateFlow<MemoryFootprint?>(DEFAULT_FOOTPRINT)
 
-    fun port(): ProcessInfo = InMemoryProcessInfo(cell)
+    fun port(): ProcessInfo = InMemoryProcessInfo(cell, footprint)
 
     val operator: ProcessInfoOperator = ProcessInfoOperator(this)
 }
@@ -56,6 +58,9 @@ class ProcessInfoMock(protectedData: Availability = Availability.AVAILABLE) {
 class ProcessInfoOperator internal constructor(private val mock: ProcessInfoMock) {
     /** The device's protected data, locked or not. */
     var protectedData: Availability by mock.cell::value
+
+    /** The process's memory footprint, as the app reads it when it records one; `null` reads as none answered. */
+    var footprint: MemoryFootprint? by mock.footprint::value
 }
 
 /** The device's wall clock and zone — stopped wherever the operator sets it, read at every call. */

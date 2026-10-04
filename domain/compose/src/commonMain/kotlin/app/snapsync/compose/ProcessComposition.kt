@@ -11,6 +11,7 @@ import app.snapsync.ports.EntryContext
 import app.snapsync.ports.MetricHandlers
 import app.snapsync.ports.ProcessMetrics
 import app.snapsync.services.crash.CrashReporting
+import app.snapsync.services.crash.FootprintTrail
 import app.snapsync.services.crash.ProcessAccount
 import app.snapsync.services.logs.SinkLogWriter
 import co.touchlab.kermit.LogWriter
@@ -60,6 +61,11 @@ class ProcessServices internal constructor(
      * which drives a synthetic report through this very instance, so the path the OS drives is the path a test drives.
      */
     val processAccount: ProcessAccount,
+    /**
+     * The app's own memory readings, which [processAccount] attaches to the next report. Only the app records them —
+     * it is the process the platform's reports describe.
+     */
+    val footprints: FootprintTrail,
     /** The process's one [Files]. */
     val files: Files,
     /** The process's one [Clock]. */
@@ -112,9 +118,10 @@ fun snapSyncProcess(ports: ProcessPorts): ProcessServices {
     val writers = listOfNotNull(SinkLogWriter(ports.logSinks, ports.entryContext), crash.logWriter)
     val ownsGlobalLogger = ports.logSinks.isNotEmpty()
     if (ownsGlobalLogger) Logger.setLogWriters(writers)
+    val footprints = FootprintTrail(ports.files, ports.clock)
     val services = ProcessServices(
-        crash, ProcessAccount(crash), ports.files, ports.clock, ports.entryContext, writers, ports.build,
-        ownsGlobalLogger,
+        crash, ProcessAccount(crash, footprints), footprints, ports.files, ports.clock, ports.entryContext, writers,
+        ports.build, ownsGlobalLogger,
     )
     val boot = services.logger("process")
     ports.build.bootLines.forEach { line -> boot.i { line } }

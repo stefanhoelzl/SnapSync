@@ -44,6 +44,11 @@ internal class WakeHold(
     private val log: Logger,
     /** The end-of-wake step, run once this wake's tail has ended — see `AppTail`'s `finish`. */
     private val finish: suspend (TailTrigger) -> Unit,
+    /**
+     * The last act before the hold ends — the moment iOS may suspend the process — handed the wake's label: where the
+     * app reads its own memory footprint (`AppTail`'s `settling`).
+     */
+    private val settling: (label: String) -> Unit,
 ) {
     private val expired = AtomicBoolean(false)
     private val guarded = AtomicReference<List<OsCompletions.Handover>>(emptyList())
@@ -79,7 +84,11 @@ internal class WakeHold(
                 finishAfter(trigger)
             }
         } finally {
-            end()
+            try {
+                settling(label)
+            } finally {
+                end()
+            }
         }
     }
 

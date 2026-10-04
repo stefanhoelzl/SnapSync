@@ -83,7 +83,7 @@ class AttestContractBindingsTest {
     private val processInfo = object : Binding<ProcessInfoState, ProcessInfo> {
         override val host = currentHost
         override val kind = BindingKind.Fake
-        override val reaches = setOf(ProcessInfoState.UNLOCKED)
+        override val reaches = setOf(ProcessInfoState.UNLOCKED, ProcessInfoState.MEMORY_ACCOUNTED)
 
         override fun create(state: ProcessInfoState, clauseId: String): Entered<ProcessInfo> =
             Entered.Ready(inMemoryProcessInfo(MutableStateFlow(Availability.AVAILABLE)))
