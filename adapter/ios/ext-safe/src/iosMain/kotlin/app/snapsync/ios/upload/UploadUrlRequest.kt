@@ -35,7 +35,7 @@ fun uploadUrlRequest(url: NSURL, target: UploadTarget): NSMutableURLRequest {
  * Mode). Per request, never per session: one background session carries transfers under both rules, and a transfer
  * keeps the rule it was created with.
  *
- * Measured 2026-10-03 (`openspec/changes/mobile-data-for-photos/design.md`): a background-session upload or download
+ * Measured 2026-10-03 (`openspec/changes/archive/2026-10-04-mobile-data-for-photos/design.md`): a background-session upload or download
  * with these flags waits on a hotspot, in Low Data Mode (SE2, iOS 26.6.2) and on cellular (XS, iOS 18.7.10), and
  * completes within seconds of an unrestricted Wi-Fi; without them it completes at once on each. A PhotoKit upload job
  * is held on a hotspot and in Low Data Mode by iOS itself whatever its destination request says — the flags matter

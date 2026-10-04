@@ -262,7 +262,7 @@ Where bindings live: beside their implementations.
   metered network. iOS has no host for them — the simulator shares its Mac's network, and the device's transfer
   recordings go to the rig's loopback receiver, which no network restriction touches — so the iOS request flags are
   pinned by `UploadUrlRequestTest` and what iOS does with them is the measurement recorded in
-  `changes/mobile-data-for-photos/design.md` (SE2: Low Data Mode and a hotspot; XS: cellular).
+  `changes/archive/2026-10-04-mobile-data-for-photos/design.md` (SE2: Low Data Mode and a hotspot; XS: cellular).
   iOS's blocked path (the per-app Cellular switch) has no host — no phone the project drives has a SIM — so its
   mapping is pinned by `IosNetworkMonitorTest` and documented, unmeasured, on `IosNetworkMonitor`.
 - The install referrer on Android (the invite a Play install carried, capability `join-event`): which referrers are an

@@ -187,7 +187,9 @@ recordings, GIFs and pictures saved from chat apps, capability `photo-sharing`) 
 being shared; with it off, it SHALL say that nothing of the user's leaves the phone and hide the range.
 With both switches off, Join SHALL be disabled and the reason stated beside it. The screen SHALL also offer
 the event-album choice (capability `event-album`), whose note names only the photos the current switches would
-collect — on Android only received photos ever are.
+collect — on Android only received photos ever are — and the choice whether photos may use mobile data
+(capability `mobile-data`), switched on, whose note says, when it is off, that photos are sent and received
+only on Wi-Fi.
 
 #### Scenario: Both switches start on
 - **WHEN** the join screen has loaded an event
@@ -208,6 +210,14 @@ collect — on Android only received photos ever are.
 #### Scenario: The album choice on Android
 - **WHEN** the join screen has loaded an event on an Android phone
 - **THEN** it offers the two switches, the range, and the album choice switched on, whose note names the photos they receive
+
+#### Scenario: The mobile-data choice starts on
+- **WHEN** the join screen has loaded an event
+- **THEN** it offers the choice to use mobile data for photos, switched on
+
+#### Scenario: Joining with mobile data off
+- **WHEN** the user turns the mobile-data choice off and joins
+- **THEN** the screen has said that photos are sent and received only on Wi-Fi, and the membership's photos travel only on Wi-Fi (capability `mobile-data`)
 
 ### Requirement: The shared capture range always has a lower bound inside the event window
 With sharing on, the join screen SHALL let the user choose the range of capture dates they share,
