@@ -3,6 +3,7 @@
 package app.snapsync.background
 
 import app.snapsync.model.ScheduleResult
+import kotlinx.coroutines.runBlocking
 import app.snapsync.model.WakeCadence
 import app.snapsync.model.WakeId
 import app.snapsync.model.WakeNetwork
@@ -58,7 +59,7 @@ class IosWakeTest {
     private val heartbeat = WakeTrigger.After(earliest = 60.seconds, network = WakeNetwork.ANY)
 
     @Test
-    fun `a refused submit is reported rather than swallowed`() {
+    fun `a refused submit is reported rather than swallowed`() = runBlocking {
         // A test binary's plist permits no identifier, so the submit is refused — as on a device whose plist drifted.
         assertIs<ScheduleResult.Refused>(wake.schedule(WakeId.Heartbeat, heartbeat))
         assertTrue(
@@ -71,7 +72,7 @@ class IosWakeTest {
     }
 
     @Test
-    fun `iOS has no library-change wake`() {
+    fun `iOS has no library-change wake`() = runBlocking {
         val answer = wake.schedule(WakeId.LibraryChanged, WakeTrigger.LibraryChange(60.seconds))
         assertEquals(ScheduleResult.Unsupported, answer)
         wake.cancel(WakeId.LibraryChanged)
@@ -103,7 +104,7 @@ class IosWakeTest {
     private val idle = WakeTrigger.After(earliest = 1.hours, network = WakeNetwork.ANY, cadence = WakeCadence.IDLE)
 
     @Test
-    fun `an idle heartbeat withdraws the busy one and asks for an app refresh`() {
+    fun `an idle heartbeat withdraws the busy one and asks for an app refresh`() = runBlocking {
         val tasks = FakeTasks()
         IosWake(Logger.withTag("test"), tasks).schedule(WakeId.Heartbeat, idle)
         assertEquals(
@@ -113,7 +114,7 @@ class IosWakeTest {
     }
 
     @Test
-    fun `a busy heartbeat withdraws the idle one and asks for processing`() {
+    fun `a busy heartbeat withdraws the idle one and asks for processing`() = runBlocking {
         val tasks = FakeTasks()
         IosWake(Logger.withTag("test"), tasks).schedule(WakeId.Heartbeat, heartbeat)
         assertEquals(
@@ -123,7 +124,7 @@ class IosWakeTest {
     }
 
     @Test
-    fun `a refused refresh is reported and nothing else is asked for`() {
+    fun `a refused refresh is reported and nothing else is asked for`() = runBlocking {
         // No fallback: with Background App Refresh off iOS drops a processing request as well (measured on the SE2).
         val tasks = FakeTasks(refuseRefresh = true)
         val answer = IosWake(Logger(StaticConfig(logWriterList = listOf(captured)), "test"), tasks)

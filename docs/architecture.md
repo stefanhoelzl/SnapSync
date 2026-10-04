@@ -887,8 +887,8 @@ tail:
 (re-create retry-spent failures, enqueue known `DISCOVERED` rows), ③ discovery walk → manifest publish, full
 grant only; when ③ added rows it runs ② once more. Under a partial grant it runs ① and ② only, and ② resolves
 from the in-memory selection snapshot (withheld while it is unread). A request while a tail runs **joins** it:
-the runner makes exactly one more pass covering the union of the joiners' units, and each joiner awaits it and
-applies its own re-arm to the outcome. A throwing unit fails the tail and every waiter. Own work runs
+the runner makes exactly one more pass covering the union of the joiners' units, and each joiner awaits it. The
+tail is re-armed **once**, by the request that drove it, if any of its requests re-arms, before any of them returns. A throwing unit fails the tail and every waiter. Own work runs
 **outside** the runner, so no wake waits behind another wake's walk. The download reconcile never imports; ①
 is the only drain, plus the once-per-process interrupted-import sweep at host assembly (same per-asset claims).
 There is no download backstop task any more.

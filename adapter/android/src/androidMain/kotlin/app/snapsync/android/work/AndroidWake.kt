@@ -10,6 +10,7 @@ import androidx.work.OneTimeWorkRequest
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import androidx.work.await
 import androidx.work.workDataOf
 import app.snapsync.model.BeforeListen
 import app.snapsync.model.EntryScope
@@ -25,7 +26,6 @@ import app.snapsync.ports.Wake
 import app.snapsync.ports.WakeHandlers
 import co.touchlab.kermit.Logger
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.ExecutionException
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.time.toJavaDuration
@@ -68,10 +68,10 @@ class AndroidWake(context: Context, private val log: Logger = Logger.withTag("wa
         registration.value = this
     }
 
-    override fun schedule(id: WakeId, trigger: WakeTrigger): ScheduleResult =
+    override suspend fun schedule(id: WakeId, trigger: WakeTrigger): ScheduleResult =
         log.invocation(EntryScope.None, "wake.schedule", params = "id=$id", result = { "$it" }) { enqueue(id, trigger) }
 
-    private fun enqueue(id: WakeId, trigger: WakeTrigger): ScheduleResult = try {
+    private suspend fun enqueue(id: WakeId, trigger: WakeTrigger): ScheduleResult = try {
         val request = OneTimeWorkRequestBuilder<WakeWorker>()
             .setInputData(workDataOf(ID to id.name))
             .apply { constrain(trigger) }
@@ -80,12 +80,16 @@ class AndroidWake(context: Context, private val log: Logger = Logger.withTag("wa
         // Awaited: WorkManager enqueues asynchronously, and a content-URI trigger observes only once its job is
         // registered with the platform — so answering before that missed a change made right after, and an enqueue
         // that failed later was never reported. `Scheduled` now means the platform holds the request.
-        work.enqueueUniqueWork(nameOf(id), policy, request).result.get()
+        // Suspended for, never blocked on: the caller is often the main thread, and WorkManager runs its operations
+        // one at a time — behind a burst of other work, a blocking wait here froze the app into an ANR (SNAPSYNC-40).
+        work.enqueueUniqueWork(nameOf(id), policy, request).await()
         ScheduleResult.Scheduled
-    } catch (e: IllegalStateException) {
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        // Thrown by the enqueue itself (an `IllegalStateException`), or the failure the operation reported — its
+        // cause, which `await` rethrows unwrapped.
         ScheduleResult.Refused("${e::class.simpleName}: ${e.message}")
-    } catch (e: ExecutionException) {
-        ScheduleResult.Refused("${e.cause?.let { it::class.simpleName }}: ${e.cause?.message}")
     }
 
     /** [trigger] as WorkManager's delay and constraints. */

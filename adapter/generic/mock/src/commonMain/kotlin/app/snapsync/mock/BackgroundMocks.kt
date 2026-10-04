@@ -37,7 +37,7 @@ class WakeMock(
             this@WakeMock.handlers.set(handlers)
         }
 
-        override fun schedule(id: WakeId, trigger: WakeTrigger): ScheduleResult =
+        override suspend fun schedule(id: WakeId, trigger: WakeTrigger): ScheduleResult =
             queue.schedule(id, trigger).also { if (id == WakeId.Heartbeat && it == ScheduleResult.Scheduled) scheduled++ }
 
         override fun cancel(id: WakeId) {

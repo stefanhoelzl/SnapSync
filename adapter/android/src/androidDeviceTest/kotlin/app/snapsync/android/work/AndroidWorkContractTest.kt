@@ -165,10 +165,7 @@ class AndroidWorkContractTest {
         val woken = CompletableDeferred<WakeId>()
         val adapter = AndroidWake(context)
         adapter.listen(WakeHandlers { id, completion -> woken.complete(id); completion.complete() })
-        val watched = adapter.schedule(
-            WakeId.LibraryChanged,
-            WakeTrigger.LibraryChange(maxDelay = 1.seconds),
-        )
+        val watched = runBlocking { adapter.schedule(WakeId.LibraryChanged, WakeTrigger.LibraryChange(maxDelay = 1.seconds)) }
         assertEquals(ScheduleResult.Scheduled, watched)
         val seeded = MediaStoreSeeder.seed(MediaStoreSeeder.CAMERA, "2001-01-02T12:00:00Z", count = 1)
         try {
@@ -197,7 +194,7 @@ class AndroidWorkContractTest {
         )
         MeteredWifi.enter()
         try {
-            adapter.schedule(WakeId.Heartbeat, WakeTrigger.After(Duration.ZERO, network = WakeNetwork.UNRESTRICTED))
+            runBlocking { adapter.schedule(WakeId.Heartbeat, WakeTrigger.After(Duration.ZERO, network = WakeNetwork.UNRESTRICTED)) }
             val early = runBlocking { withTimeoutOrNull(HELD_MILLIS) { ran.await() } }
             assertEquals(null, early, "the wake ran on a metered network")
             MeteredWifi.lift()
@@ -218,13 +215,13 @@ class AndroidWorkContractTest {
             WakeHandlers { id, completion ->
                 var expired = false
                 completion.onExpired { expired = true }
-                adapter.schedule(id, later)
+                runBlocking { adapter.schedule(id, later) }
                 Thread.sleep(REPLACE_WINDOW_MILLIS) // long enough for a REPLACE to have cancelled this very run
                 done.complete(!expired)
                 completion.complete()
             },
         )
-        adapter.schedule(WakeId.Heartbeat, WakeTrigger.After(Duration.ZERO, network = WakeNetwork.NONE))
+        runBlocking { adapter.schedule(WakeId.Heartbeat, WakeTrigger.After(Duration.ZERO, network = WakeNetwork.NONE)) }
         try {
             val survived = runBlocking { withTimeoutOrNull(WAIT_MILLIS) { done.await() } }
             assertEquals(true, survived, "the running wake finished rather than being stopped by its own re-arm")

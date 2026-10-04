@@ -24,8 +24,12 @@ interface Wake : Listenable<WakeHandlers> {
     /**
      * Ask for [id] to wake the app when [trigger] allows. Idempotent: a request for an [id] already pending replaces
      * it rather than stacking a second one.
+     *
+     * Suspending, because an answer may take the platform a while: Android's is only true once WorkManager has
+     * registered the request, and an Android caller is often on the main thread, where waiting by blocking froze the
+     * app (SNAPSYNC-40). An adapter suspends for that answer and never blocks its caller's thread.
      */
-    fun schedule(id: WakeId, trigger: WakeTrigger): ScheduleResult
+    suspend fun schedule(id: WakeId, trigger: WakeTrigger): ScheduleResult
 
     /** Withdraw any pending request for [id]. Cancelling nothing is not a failure. */
     fun cancel(id: WakeId)
