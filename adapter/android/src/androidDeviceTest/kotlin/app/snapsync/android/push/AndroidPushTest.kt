@@ -49,8 +49,11 @@ class AndroidPushTest {
         override val kind = BindingKind.Live
         override val reaches = setOf(ProcessInfoState.UNLOCKED)
 
-        override fun create(state: ProcessInfoState, clauseId: String): Entered<ProcessInfo> =
-            Entered.Ready(AndroidProcessInfo(context))
+        override fun create(state: ProcessInfoState, clauseId: String): Entered<ProcessInfo> = when (state) {
+            ProcessInfoState.UNLOCKED -> Entered.Ready(AndroidProcessInfo(context))
+            ProcessInfoState.MEMORY_ACCOUNTED ->
+                Entered.Unreachable("Android accounts no footprint to the process: no process-metric provider reads one")
+        }
     }
 
     @Test
