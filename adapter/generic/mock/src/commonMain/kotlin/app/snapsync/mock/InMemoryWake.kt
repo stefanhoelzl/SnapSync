@@ -7,6 +7,7 @@ import app.snapsync.ports.Wake
 import app.snapsync.ports.WakeHandlers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
+import kotlin.concurrent.Volatile
 
 /**
  * An honest in-memory [Wake] over the caller's [pending] cell — the system's queue of wake requests, which holds at
@@ -20,7 +21,7 @@ internal class InMemoryWake(
     private val pending: MutableStateFlow<Map<WakeId, WakeTrigger>>,
     private val supported: Set<WakeId>,
 ) : Wake {
-    private var handlers: WakeHandlers? = null
+    @Volatile private var handlers: WakeHandlers? = null
 
     override fun listen(handlers: WakeHandlers) {
         this.handlers = handlers

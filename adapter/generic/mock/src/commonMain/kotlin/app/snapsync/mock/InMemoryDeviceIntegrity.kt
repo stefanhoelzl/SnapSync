@@ -37,15 +37,31 @@ internal class InMemoryDeviceIntegrity(
             return Proof(key, ProofFormat.APP_ATTEST, "attestation:$key:$challenge".encodeToByteArray())
         }
         check(available) { "App Attest generateAssertion failed: unsupported in this process" }
-        check(handle in keys.held) { "App Attest generateAssertion failed: no such key $handle" }
+        check(keys.holds(handle)) { "App Attest generateAssertion failed: no such key $handle" }
         return Proof(handle, ProofFormat.APP_ATTEST, "assertion:$handle:$challenge".encodeToByteArray())
     }
 }
 
-/** The keys a device's Secure Enclave holds: distinct per creation, and there for every process of the device. */
+/**
+ * The keys a device's Secure Enclave holds: distinct per creation, and there for every process of the device — each
+ * on its own thread, so every read and write is [locked].
+ */
 internal class EnclaveKeys {
-    internal var generated = 0
-    val held = mutableSetOf<String>()
+    private val lock = mockLock()
+    private var generated = 0
+    private val held = mutableSetOf<String>()
 
-    fun create(): String = "in-memory-key-${++generated}".also { held += it }
+    fun <T> locked(block: () -> T): T = lock.locked(block)
+
+    fun create(): String = locked { "in-memory-key-${++generated}".also { held += it } }
+
+    fun holds(handle: String): Boolean = locked { handle in held }
+
+    /** How many keys were ever generated, and the ones held — what the device keeps. */
+    fun snapshot(): Pair<Int, List<String>> = locked { generated to held.toList() }
+
+    fun restore(generated: Int, held: List<String>) = locked {
+        this.generated = generated
+        this.held.addAll(held)
+    }
 }

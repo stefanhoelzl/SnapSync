@@ -12,6 +12,7 @@ import app.snapsync.model.ResourceRole
 import app.snapsync.model.UnionAsset
 import app.snapsync.model.isCanonicalAssetId
 import app.snapsync.ports.Backend
+import kotlin.concurrent.Volatile
 import kotlin.time.Instant
 
 /**
@@ -55,7 +56,9 @@ class BackendMock internal constructor(internal val state: BackendState) {
  * The marketing version a build declares on every call — a cell rather than a constant so an operator can play the
  * member updating the app in place. `null` declares none, which an armed gate refuses.
  */
-class DeclaredVersion(var value: String?)
+class DeclaredVersion(value: String?) {
+    @Volatile var value: String? = value
+}
 
 /** The backend calls an operator can hold unanswered — each one a screen the app shows only while it waits. */
 enum class BackendCall(val key: String) {
@@ -89,46 +92,46 @@ class BackendOperator internal constructor(private val state: BackendState) {
     // ---- reads -----------------------------------------------------------------------------------
 
     /** The object keys stored for [deviceId]. */
-    fun objectsOf(deviceId: String): Set<String> = state.storedFiles[deviceId].orEmpty().mapTo(mutableSetOf(), ::storedKey)
+    fun objectsOf(deviceId: String): Set<String> = state.locked { state.storedFiles[deviceId].orEmpty().mapTo(mutableSetOf(), ::storedKey) }
 
     /** The event's union — every member's complete assets, departed members included; `null` for an unknown event. */
-    fun unionOf(eventId: String): List<UnionAsset>? = state.union(eventId)?.map { (deviceId, asset) ->
-        UnionAsset(deviceId, asset.assetId, asset.creationDate, emptyList())
+    fun unionOf(eventId: String): List<UnionAsset>? = state.locked {
+        state.union(eventId)?.map { (deviceId, asset) -> UnionAsset(deviceId, asset.assetId, asset.creationDate, emptyList()) }
     }
 
     /** Whether the backend holds [eventId]. */
-    fun isRegistered(eventId: String): Boolean = eventId in state.events
+    fun isRegistered(eventId: String): Boolean = state.locked { eventId in state.events }
 
     /** The name the backend serves for [eventId]. */
-    fun eventNameOf(eventId: String): String? = state.events[eventId]?.name
+    fun eventNameOf(eventId: String): String? = state.locked { state.events[eventId]?.name }
 
     /**
      * The manifest the backend holds for [deviceId] in [eventId] — an empty one for a member that has published nothing,
      * as a joined device's membership declares no asset — or null when it holds no membership.
      */
     fun manifestOf(eventId: String, deviceId: String): DeviceManifest? =
-        state.memberships[eventId to deviceId]?.let { it.manifest ?: DeviceManifest(deviceId, emptyList()) }
+        state.locked { state.memberships[eventId to deviceId]?.let { it.manifest ?: DeviceManifest(deviceId, emptyList()) } }
 
     /** How many publishes the backend applied for this membership. */
-    fun publishesOf(eventId: String, deviceId: String): Int = state.publishes[eventId to deviceId] ?: 0
+    fun publishesOf(eventId: String, deviceId: String): Int = state.locked { state.publishes[eventId to deviceId] ?: 0 }
 
     /** How many of the devices' reads of each event's union (`GET /events/:id/files`) reached the backend, by event. */
-    val unionReads: Map<String, Int> get() = state.unionReads.toMap()
+    val unionReads: Map<String, Int> get() = state.locked { state.unionReads.toMap() }
 
     /** How many of the devices' reads of each event's details (`GET /events/:id`) reached the backend, by event. */
-    val eventReads: Map<String, Int> get() = state.eventReads.toMap()
+    val eventReads: Map<String, Int> get() = state.locked { state.eventReads.toMap() }
 
     /** Whether [deviceId] has left [eventId]. */
-    fun isDeparted(eventId: String, deviceId: String): Boolean = state.memberships[eventId to deviceId]?.departed == true
+    fun isDeparted(eventId: String, deviceId: String): Boolean = state.locked { state.memberships[eventId to deviceId]?.departed == true }
 
     /** The push registration [deviceId] stored, or null. */
-    fun deviceConfigOf(deviceId: String): PushEndpoint? = state.deviceConfigs[deviceId]
+    fun deviceConfigOf(deviceId: String): PushEndpoint? = state.locked { state.deviceConfigs[deviceId] }
 
     /** How many push registrations it stored for [deviceId] — the config is last-write-wins, this count is not. */
-    fun deviceConfigWritesOf(deviceId: String): Int = state.deviceConfigWrites[deviceId] ?: 0
+    fun deviceConfigWritesOf(deviceId: String): Int = state.locked { state.deviceConfigWrites[deviceId] ?: 0 }
 
     /** Every push it would have sent, in order. It delivers none: the operating system's side is played elsewhere. */
-    fun pushesSent(): List<SentPush> = state.pushes.toList()
+    fun pushesSent(): List<SentPush> = state.locked { state.pushes.toList() }
 
     // ---- levers ----------------------------------------------------------------------------------
 
@@ -139,13 +142,13 @@ class BackendOperator internal constructor(private val state: BackendState) {
      * Play the nightly sweep's COMPLETION of [eventId] (capability `event-lifetime`): its memberships and assets go,
      * its record stays and answers "completed".
      */
-    fun complete(eventId: String) = state.complete(eventId)
+    fun complete(eventId: String) = state.locked { state.complete(eventId) }
 
     /** Whether [eventId] has closed. */
-    fun isClosed(eventId: String): Boolean = state.events[eventId]?.closed == true
+    fun isClosed(eventId: String): Boolean = state.locked { state.events[eventId]?.closed == true }
 
     /** Whether [eventId] was completed. */
-    fun isCompleted(eventId: String): Boolean = state.events[eventId]?.completed == true
+    fun isCompleted(eventId: String): Boolean = state.locked { state.events[eventId]?.completed == true }
 
     /** Only the per-device listing answers `502`. */
     var failDeviceListing: Boolean by state::failDeviceListing
@@ -169,32 +172,32 @@ class BackendOperator internal constructor(private val state: BackendState) {
 
     /** Every [call] waits until [release]: the backend that has not answered yet. */
     fun hold(call: BackendCall) {
-        state.holds.getOrPut(call, ::OperatorHold).hold()
+        state.locked { state.holds.getOrPut(call, ::OperatorHold) }.hold()
     }
 
     /** Whether [call] is held. */
-    fun isHeld(call: BackendCall): Boolean = call in state.holds
+    fun isHeld(call: BackendCall): Boolean = state.locked { call in state.holds }
 
     /** A held [call], and every later one, is answered. */
     fun release(call: BackendCall) {
-        state.holds.remove(call)?.release()
+        state.locked { state.holds.remove(call) }?.release()
     }
 
     /** The nightly sweep deleting [eventId]: every later read of it is `404`. */
     fun sweepEvent(eventId: String) {
-        state.events.remove(eventId)
+        state.locked { state.events.remove(eventId) }
     }
 
     /** A storage reset wiping every byte object of [deviceId]. */
     fun wipeBytes(deviceId: String) {
-        state.storedFiles.remove(deviceId)
+        state.locked { state.storedFiles.remove(deviceId) }
     }
 
     /**
      * An event registered before start dates existed — no start, which the backend synthesizes from its creation
      * time on read. Returns the id, minted as the backend mints one.
      */
-    fun registerLegacyEvent(name: String): String = state.registerLegacy(name)
+    fun registerLegacyEvent(name: String): String = state.locked { state.registerLegacy(name) }
 
     // ---- the operating system's transfer of bytes ------------------------------------------------
 
@@ -202,24 +205,31 @@ class BackendOperator internal constructor(private val state: BackendState) {
      * The byte route, as an OS transfer reaches it: `PUT <base>/files/devices/<device>/<asset>/<role>?filename=…` with
      * [headers]. Answers the HTTP status the backend would, or stores the object and answers `201`.
      */
-    fun receive(url: String, headers: Map<String, String>): Int = state.receive(url, headers)
+    fun receive(url: String, headers: Map<String, String>): Int = state.locked { state.receive(url, headers) }
 
     /** One resource's bytes land for [deviceId] — the byte route without the request. */
     fun deposit(deviceId: String, assetId: AssetId, role: ResourceRole, filename: String) {
-        state.deposit(deviceId, DeviceFile(assetId, role, filename))
+        state.locked { state.deposit(deviceId, DeviceFile(assetId, role, filename)) }
     }
 }
 
 /**
  * The backend's durable state, as the real `api/` keeps it in its database and byte store. Every [BackendMock.port]
- * and the [BackendOperator] read and write this one value.
+ * and the [BackendOperator] read and write this one value, each request and each operator read [locked] whole — the
+ * transaction a real backend runs a request in.
  */
 internal class BackendState(
     /** The byte store, by device: what the byte route stored. */
     val storedFiles: MutableMap<String, MutableSet<DeviceFile>>,
-    var capacity: Int,
+    capacity: Int,
     val createdAt: Instant,
 ) {
+    private val lock = mockLock()
+
+    fun <T> locked(block: () -> T): T = lock.locked(block)
+
+    @Volatile var capacity: Int = capacity
+
     class Event(
         var name: String,
         val createdAt: Instant,
@@ -250,17 +260,17 @@ internal class BackendState(
     val challenges = mutableSetOf<String>()
     val minted = mutableSetOf<String>()
 
-    var offline = false
-    var failDeviceListing = false
-    var refuseNextCredential = false
+    @Volatile var offline = false
+    @Volatile var failDeviceListing = false
+    @Volatile var refuseNextCredential = false
     val holds = mutableMapOf<BackendCall, OperatorHold>()
-    var nextEventId: String? = null
-    var minAppVersion: String? = null
+    @Volatile var nextEventId: String? = null
+    @Volatile var minAppVersion: String? = null
     internal var legacyCounter = 0L
 
-    /** Wait while an operator holds [call]. */
+    /** Wait while an operator holds [call] — outside the lock, which the operator's release needs. */
     suspend fun awaitRelease(call: BackendCall) {
-        holds[call]?.await()
+        locked { holds[call] }?.await()
     }
 
     fun issueChallenge(): String = "in-memory-challenge-${challenges.size + 1}".also { challenges += it }

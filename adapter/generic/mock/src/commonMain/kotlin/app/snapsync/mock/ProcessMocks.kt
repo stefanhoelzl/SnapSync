@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.datetime.TimeZone
 import kotlin.time.Instant
+import kotlin.concurrent.Volatile
 
 // The mocks of what the platform tells a process about itself, and what it takes off the process's hands
 // (`docs/testing.md`, "Mocks"): each a durable state, a port-typed face per process, and an operator face.
@@ -59,8 +60,8 @@ class ProcessInfoOperator internal constructor(private val mock: ProcessInfoMock
 
 /** The device's wall clock and zone — stopped wherever the operator sets it, read at every call. */
 class ClockMock(now: Instant = Instant.fromEpochMilliseconds(0), zone: TimeZone = TimeZone.UTC) {
-    internal var zone: TimeZone = zone
-    internal var now: Instant = now
+    @Volatile internal var zone: TimeZone = zone
+    @Volatile internal var now: Instant = now
 
     fun port(): Clock = object : Clock {
         override fun now(): Instant = this@ClockMock.now

@@ -7,6 +7,7 @@ import app.snapsync.model.DumpResult
 import app.snapsync.ports.CrashHandlers
 import app.snapsync.ports.CrashReporter
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlin.concurrent.Volatile
 
 /**
  * An honest in-memory [CrashReporter]: flips a constructor-injected cell on [start] and appends every dump [sendDump]
@@ -25,7 +26,7 @@ internal class InMemoryCrashReporter(
 
     constructor() : this(MutableStateFlow(false), MutableStateFlow(emptyList()))
 
-    private var handlers: CrashHandlers? = null
+    @Volatile private var handlers: CrashHandlers? = null
 
     override fun listen(handlers: CrashHandlers) {
         this.handlers = handlers
