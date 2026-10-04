@@ -28,6 +28,7 @@ import app.snapsync.ports.UiHandlers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlin.concurrent.Volatile
 
 // The entry ports' mocks (`docs/testing.md`, "Mocks"): the platform side of each event port. What survives a relaunch
 // is the platform itself; the handlers are those of the process whose composition registered last, and the operator
@@ -36,7 +37,7 @@ import kotlinx.coroutines.flow.asStateFlow
 /** The app's foreground life. */
 class LifecycleMock {
     internal val handlers = HandlerSlot<LifecycleHandlers>("Lifecycle", BeforeListen.Thrown)
-    internal var everActive = false
+    @Volatile internal var everActive = false
 
     fun port(): Lifecycle = object : Lifecycle {
         override fun listen(handlers: LifecycleHandlers) {
@@ -95,12 +96,12 @@ class LinksOperator internal constructor(private val mock: LinksMock) {
  */
 class PushServiceMock {
     internal val handlers = HandlerSlot<PushHandlers>("PushNotifications", BeforeListen.Thrown)
-    internal var registrations = 0
-    internal var kind = PUSH_KIND_APNS
+    @Volatile internal var registrations = 0
+    @Volatile internal var kind = PUSH_KIND_APNS
 
     /** The token this device was issued, and which process's handlers have been told it. */
-    internal var issued: String? = null
-    internal var toldTo: PushHandlers? = null
+    @Volatile internal var issued: String? = null
+    @Volatile internal var toldTo: PushHandlers? = null
 
     fun port(): PushNotifications = object : PushNotifications {
         override val kind: String get() = this@PushServiceMock.kind
@@ -193,7 +194,7 @@ class ScreenOperator internal constructor(private val mock: ScreenMock) {
  */
 class DevControlsMock(internal var hints: InviteLinkHints = InviteLinkHints.Ignored) {
     internal val handlers = HandlerSlot<DevHandlers>("DevControls", BeforeListen.Thrown)
-    internal var pin: UploaderPin? = null
+    @Volatile internal var pin: UploaderPin? = null
 
     fun port(): DevControls = object : DevControls {
         override fun listen(handlers: DevHandlers) {

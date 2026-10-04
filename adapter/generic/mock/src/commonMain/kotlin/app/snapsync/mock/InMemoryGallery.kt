@@ -26,6 +26,7 @@ import app.snapsync.model.toFacts
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryHandlers
 import app.snapsync.ports.LibraryChangeToken
+import kotlinx.coroutines.flow.update
 
 /**
  * The honest in-memory [Gallery] (`docs/architecture.md`) — one process's face of a [LibraryState], held to the
@@ -85,17 +86,19 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
         }
         val ref = request.ref
         state.imports.attempt(ref)
-        val attempt = state.attempts.getOrElse(ref) { 0 } + 1
-        state.attempts[ref] = attempt
+        val attempt = state.locked { (state.attempts.getOrElse(ref) { 0 } + 1).also { state.attempts[ref] = it } }
         fun settle(outcome: ImportResult) = outcome.also { handlers.onImportSettled(ref, it) }
         state.answers.beforeChange(ref)?.let { return settle(ImportResult.Failed(it)) }
         val suffix = if (attempt == 1) "" else "-$attempt"
         val createdLocalId = AssetId("imported-${ref.sourceDeviceId}-${ref.sourceAssetId}$suffix")
         handlers.onImportPlaceholder(ref, createdLocalId)
         state.answers.beforeCommit(ref)?.let { return settle(ImportResult.Failed(it, placeholder = createdLocalId)) }
-        state.library.value = state.library.value + createdAsset(createdLocalId, request.ref, request.resources, request.creationDate)
-        state.ownImports += createdLocalId
-        if (state.albumKind == AlbumKind.FOLDER) request.album?.takeIf { it in state.created }?.let { state.folderOf[createdLocalId] = it }
+        val created = createdAsset(createdLocalId, request.ref, request.resources, request.creationDate)
+        state.locked {
+            state.library.update { it + created }
+            state.ownImports += createdLocalId
+            if (state.albumKind == AlbumKind.FOLDER) request.album?.takeIf { it in state.created }?.let { state.folderOf[createdLocalId] = it }
+        }
         state.answers.afterCommit(ref)?.let { return settle(ImportResult.Failed(it, placeholder = createdLocalId)) }
         return settle(ImportResult.Imported(createdLocalId))
     }
@@ -115,8 +118,7 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
 
     override suspend fun assets(policy: SelectionPolicy): GalleryRead<List<AssetFacts>> {
         state.enumeration.await()
-        if (state.failNextEnumeration) {
-            state.failNextEnumeration = false
+        if (state.locked { state.failNextEnumeration.also { state.failNextEnumeration = false } }) {
             // A platform walk that fails is a failure, not a successful read with no answer (`NotReadable`).
             error("the operator forced this enumeration to fail")
         }
@@ -125,9 +127,10 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
                 emptyList()
             } else {
                 val floor = policy.rules.filterIsInstance<SelectionRule.CaptureAfter>().maxOfOrNull { it.cutoff.at.iso }
+                val inFolders = state.locked { state.folderOf.keys.toSet() }
                 state.library.value
                     .filter { floor == null || it.creationDate >= floor }
-                    .filter { it.assetId !in state.folderOf }
+                    .filter { it.assetId !in inFolders }
                     .map { it.toFacts() }
             }
         }
@@ -158,7 +161,8 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
     override suspend fun albums(): GalleryRead<List<AlbumRecord>> = readable { allAlbums().map { it.first } }
 
     override suspend fun albumsById(ids: Set<AlbumId>): GalleryRead<List<AlbumRecord>> = readable {
-        allAlbums().map { it.first }.filter { it.id in ids && it.id !in state.deletedAlbums }
+        val deleted = state.locked { state.deletedAlbums.toSet() }
+        allAlbums().map { it.first }.filter { it.id in ids && it.id !in deleted }
     }
 
     override val albumKind: AlbumKind get() = state.albumKind
@@ -172,27 +176,31 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
     }
 
     override suspend fun createAlbum(title: String): AlbumId? {
-        val id = "album-${state.albumCounter++}"
-        state.created[id] = LibraryState.Album(title)
-        state.createdLog += id to title
-        return id
+        return state.locked {
+            val id = "album-${state.albumCounter++}"
+            state.created[id] = LibraryState.Album(title)
+            state.createdLog += id to title
+            id
+        }
     }
 
     override suspend fun addToAlbum(album: AlbumId, assets: Set<AssetId>): WriteOutcome {
         state.adds.await()
-        state.addedLog += album to assets.toList()
-        val target = state.created[album] ?: return WriteOutcome.Failed("album $album does not resolve")
-        val held = state.library.value.mapTo(mutableSetOf()) { it.toFacts().assetId }
-        when (state.albumKind) {
-            AlbumKind.COLLECTION -> target.members += assets.filter { it in held }
-            // A move of what this library imported; anything else is skipped, as the platform refuses it.
-            AlbumKind.FOLDER -> assets.filter { it in held && it in state.ownImports }.forEach { state.folderOf[it] = album }
+        return state.locked {
+            state.addedLog += album to assets.toList()
+            val target = state.created[album] ?: return@locked WriteOutcome.Failed("album $album does not resolve")
+            val held = state.library.value.mapTo(mutableSetOf()) { it.toFacts().assetId }
+            when (state.albumKind) {
+                AlbumKind.COLLECTION -> target.members += assets.filter { it in held }
+                // A move of what this library imported; anything else is skipped, as the platform refuses it.
+                AlbumKind.FOLDER -> assets.filter { it in held && it in state.ownImports }.forEach { state.folderOf[it] = album }
+            }
+            WriteOutcome.Ok
         }
-        return WriteOutcome.Ok
     }
 
     override suspend fun requestAccess(): GalleryAccess {
-        if (state.access.value == GalleryAccess.NOT_DETERMINED) state.access.value = state.answer
+        state.access.compareAndSet(GalleryAccess.NOT_DETERMINED, state.answer)
         return state.access.value
     }
 
@@ -204,7 +212,9 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
         state.userAlbums.value.map { (title, members) -> AlbumRecord("user-album:$title", title) to members }
 
     /** The app's albums: every one under [AlbumKind.COLLECTION]; under [AlbumKind.FOLDER] only a folder holding a photo. */
-    private fun createdAlbums(): List<Pair<AlbumRecord, Set<AssetId>>> = when (state.albumKind) {
+    private fun createdAlbums(): List<Pair<AlbumRecord, Set<AssetId>>> = state.locked { createdAlbumsLocked() }
+
+    private fun createdAlbumsLocked(): List<Pair<AlbumRecord, Set<AssetId>>> = when (state.albumKind) {
         AlbumKind.COLLECTION -> state.created.map { (id, album) -> AlbumRecord(id, album.title) to album.members.toSet() }
         AlbumKind.FOLDER -> {
             val held = state.library.value.mapTo(mutableSetOf()) { it.assetId }

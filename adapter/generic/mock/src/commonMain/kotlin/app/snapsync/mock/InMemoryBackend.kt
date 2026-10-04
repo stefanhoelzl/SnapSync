@@ -68,28 +68,32 @@ internal class InMemoryBackend(
         Reply.Refused(UNAUTHORIZED, "not attested")
     }
 
-    override suspend fun createEvent(token: String?, req: CreateEventRequest): Reply<EventCreated> = gated(token) {
-        state.awaitRelease(BackendCall.CREATE)
-        val name = req.name.trim()
-        val startsAt = parse(req.startsAt)
-        val endsAt = req.endsAt?.let(::parse) ?: startsAt?.plus(WINDOW_DAYS.days)
-        when {
-            name.isEmpty() || name.length > MAX_NAME_LENGTH -> Reply.Refused(BAD_REQUEST, "invalid name")
-            startsAt == null -> Reply.Refused(BAD_REQUEST, "invalid startsAt")
-            endsAt == null || endsAt < startsAt || endsAt > startsAt + WINDOW_DAYS.days ->
-                Reply.Refused(BAD_REQUEST, "invalid endsAt")
-            else -> {
-                val eventId = state.nextEventId?.also { state.nextEventId = null } ?: Uuid.random().toString()
-                state.events[eventId] = BackendState.Event(name, state.createdAt, startsAt, endsAt)
-                Reply.Ok(EventCreated(eventId, name))
+    override suspend fun createEvent(token: String?, req: CreateEventRequest): Reply<EventCreated> =
+        held(BackendCall.CREATE, token, gated = true) {
+            val name = req.name.trim()
+            val startsAt = parse(req.startsAt)
+            val endsAt = req.endsAt?.let(::parse) ?: startsAt?.plus(WINDOW_DAYS.days)
+            when {
+                name.isEmpty() || name.length > MAX_NAME_LENGTH -> Reply.Refused(BAD_REQUEST, "invalid name")
+                startsAt == null -> Reply.Refused(BAD_REQUEST, "invalid startsAt")
+                endsAt == null || endsAt < startsAt || endsAt > startsAt + WINDOW_DAYS.days ->
+                    Reply.Refused(BAD_REQUEST, "invalid endsAt")
+                else -> {
+                    val eventId = state.nextEventId?.also { state.nextEventId = null } ?: Uuid.random().toString()
+                    state.events[eventId] = BackendState.Event(name, state.createdAt, startsAt, endsAt)
+                    Reply.Ok(EventCreated(eventId, name))
+                }
             }
         }
-    }
 
-    override suspend fun getEvent(eventId: String): Reply<EventMeta> = online {
-        state.eventReads[eventId] = (state.eventReads[eventId] ?: 0) + 1
-        state.awaitRelease(BackendCall.EVENT)
-        val event = state.events[eventId] ?: return@online notFound()
+    // The read is counted when it reaches the backend, before an operator's hold answers it.
+    override suspend fun getEvent(eventId: String): Reply<EventMeta> = held(
+        BackendCall.EVENT,
+        token = null,
+        online = true,
+        arrived = { state.eventReads[eventId] = (state.eventReads[eventId] ?: 0) + 1 },
+    ) {
+        val event = state.events[eventId] ?: return@held notFound()
         val startsAt = event.startsAt ?: event.createdAt
         Reply.Ok(
             EventMeta(
@@ -117,16 +121,16 @@ internal class InMemoryBackend(
         Reply.Ok(EventRenamed(trimmed))
     }
 
-    override suspend fun joinEvent(token: String?, eventId: String, deviceId: String): Reply<Unit> = gated(token) {
-        state.awaitRelease(BackendCall.JOIN)
-        if (state.offline) return@gated offline()
-        when (state.join(eventId, deviceId)) {
-            BackendState.JoinOutcome.NO_SUCH_EVENT -> notFound()
-            BackendState.JoinOutcome.FULL -> Reply.Refused(CONFLICT, "event full")
-            BackendState.JoinOutcome.CLOSED -> closed()
-            BackendState.JoinOutcome.ENROLLED -> Reply.Ok(Unit)
+    override suspend fun joinEvent(token: String?, eventId: String, deviceId: String): Reply<Unit> =
+        held(BackendCall.JOIN, token, gated = true) {
+            if (state.offline) return@held offline()
+            when (state.join(eventId, deviceId)) {
+                BackendState.JoinOutcome.NO_SUCH_EVENT -> notFound()
+                BackendState.JoinOutcome.FULL -> Reply.Refused(CONFLICT, "event full")
+                BackendState.JoinOutcome.CLOSED -> closed()
+                BackendState.JoinOutcome.ENROLLED -> Reply.Ok(Unit)
+            }
         }
-    }
 
     override suspend fun publishManifest(
         token: String?,
@@ -144,13 +148,13 @@ internal class InMemoryBackend(
         }
     }
 
-    override suspend fun leaveEvent(token: String?, eventId: String, deviceId: String): Reply<Unit> = gated(token) {
-        state.awaitRelease(BackendCall.LEAVE)
-        if (state.offline) return@gated offline()
-        if (eventId !in state.events) return@gated notFound()
-        state.memberships[eventId to deviceId]?.departed = true
-        Reply.Ok(Unit)
-    }
+    override suspend fun leaveEvent(token: String?, eventId: String, deviceId: String): Reply<Unit> =
+        held(BackendCall.LEAVE, token, gated = true) {
+            if (state.offline) return@held offline()
+            if (eventId !in state.events) return@held notFound()
+            state.memberships[eventId to deviceId]?.departed = true
+            Reply.Ok(Unit)
+        }
 
     override suspend fun eventFiles(eventId: String): Reply<List<UnionAsset>> = online {
         state.unionReads[eventId] = (state.unionReads[eventId] ?: 0) + 1
@@ -181,19 +185,46 @@ internal class InMemoryBackend(
             Reply.Ok(Unit)
         }
 
-    private inline fun <T> served(answer: () -> Reply<T>): Reply<T> =
-        state.refusalFor(declared.value)?.let { Reply.Refused(UPGRADE_REQUIRED, it) } ?: answer()
+    // Every request is answered under the backend's lock, whole — the transaction a real backend runs it in.
+    private inline fun <T> served(crossinline answer: () -> Reply<T>): Reply<T> =
+        state.locked { refusal(token = null) ?: answer() }
 
-    private inline fun <T> online(answer: () -> Reply<T>): Reply<T> = served { if (state.offline) offline() else answer() }
+    private inline fun <T> online(crossinline answer: () -> Reply<T>): Reply<T> =
+        state.locked { refusal(token = null, online = true) ?: answer() }
 
-    private inline fun <T> gated(token: String?, answer: () -> Reply<T>): Reply<T> = served {
-        when {
+    private inline fun <T> gated(token: String?, crossinline answer: () -> Reply<T>): Reply<T> =
+        state.locked { refusal(token, gated = true) ?: answer() }
+
+    /**
+     * A route an operator can [hold][BackendCall]: refused as the route is, then — once [arrived] is recorded — the
+     * hold waited on, then answered. Two locked steps with the wait between them, unlocked: the operator's release
+     * takes the lock.
+     */
+    private suspend inline fun <T> held(
+        call: BackendCall,
+        token: String?,
+        gated: Boolean = false,
+        online: Boolean = false,
+        crossinline arrived: () -> Unit = {},
+        crossinline answer: () -> Reply<T>,
+    ): Reply<T> {
+        state.locked { refusal<T>(token, gated, online) ?: run { arrived(); null } }?.let { return it }
+        state.awaitRelease(call)
+        return state.locked { answer() }
+    }
+
+    /** What the route answers before its own work, if anything: the version gate, then offline or the credential. */
+    private fun <T> refusal(token: String?, gated: Boolean = false, online: Boolean = false): Reply<T>? {
+        state.refusalFor(declared.value)?.let { return Reply.Refused(UPGRADE_REQUIRED, it) }
+        return when {
+            online && state.offline -> offline()
+            !gated -> null
             token != null && state.refuseNextCredential -> {
                 state.refuseNextCredential = false
                 Reply.Refused(UNAUTHORIZED, "credential rejected")
             }
             token != null && token !in state.minted -> Reply.Refused(UNAUTHORIZED, "invalid token")
-            else -> answer()
+            else -> null
         }
     }
 

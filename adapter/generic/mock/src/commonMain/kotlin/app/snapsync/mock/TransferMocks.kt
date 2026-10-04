@@ -25,6 +25,7 @@ import app.snapsync.ports.DownloadHandlers
 import app.snapsync.ports.Files
 import app.snapsync.ports.Upload
 import app.snapsync.ports.UploadHandlers
+import kotlin.concurrent.Volatile
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 
@@ -74,10 +75,16 @@ class UploadQueueMock(
         var retriedOnce: Boolean = false
     }
 
+    // The app creates and settles jobs from its thread while the operator plays the OS from another: the jobs, and
+    // each job's state, are only touched under this lock — never across the network.
+    private val lock = mockLock()
+
+    internal fun <T> locked(block: () -> T): T = lock.locked(block)
+
     internal val jobs = mutableListOf<Job>()
     internal val created = mutableListOf<CreatedUpload>()
-    internal var jobLimit = Int.MAX_VALUE
-    internal var failCreate = false
+    @Volatile internal var jobLimit = Int.MAX_VALUE
+    @Volatile internal var failCreate = false
 
     private val face: Upload = object : Upload {
         override val accepts: UploadSourceKind = UploadSourceKind.RESOURCE
@@ -85,30 +92,34 @@ class UploadQueueMock(
         /** The queue raises no events: its terminal jobs are presented when asked, as PhotoKit's are. */
         override fun listen(handlers: UploadHandlers) = Unit
 
-        override suspend fun jobs(set: UploadJobSet): List<UploadJob> = when (set) {
-            UploadJobSet.RETRY_OFFERED -> jobs.filter { it.state == UploadJobState.FAILED && !it.retriedOnce }
-            UploadJobSet.TERMINAL -> jobs.filter {
-                it.state == UploadJobState.SUCCEEDED || (it.state == UploadJobState.FAILED && it.retriedOnce)
-            }
-            UploadJobSet.IN_FLIGHT -> jobs.filter { it.state == UploadJobState.PENDING }
-        }.map { it.view() }
+        override suspend fun jobs(set: UploadJobSet): List<UploadJob> = locked {
+            when (set) {
+                UploadJobSet.RETRY_OFFERED -> jobs.filter { it.state == UploadJobState.FAILED && !it.retriedOnce }
+                UploadJobSet.TERMINAL -> jobs.filter {
+                    it.state == UploadJobState.SUCCEEDED || (it.state == UploadJobState.FAILED && it.retriedOnce)
+                }
+                UploadJobSet.IN_FLIGHT -> jobs.filter { it.state == UploadJobState.PENDING }
+            }.map { it.view() }
+        }
 
         override suspend fun retry(job: UploadJob, target: UploadTarget): ChangeOutcome {
             val j = job.handle as? Job ?: return ChangeOutcome.Refused(null, "not this queue's job")
-            j.retriedOnce = true
-            j.target = target
-            j.state = UploadJobState.PENDING
-            j.error = null
+            locked {
+                j.retriedOnce = true
+                j.target = target
+                j.state = UploadJobState.PENDING
+                j.error = null
+            }
             return ChangeOutcome.Applied
         }
 
         override suspend fun acknowledge(job: UploadJob): ChangeOutcome {
-            jobs.remove(job.handle)
+            locked { jobs.remove(job.handle) }
             return ChangeOutcome.Applied
         }
 
         override suspend fun cancel(job: UploadJob): ChangeOutcome {
-            jobs.remove(job.handle)
+            locked { jobs.remove(job.handle) }
             return ChangeOutcome.Applied
         }
 
@@ -116,12 +127,14 @@ class UploadQueueMock(
             if (failCreate) return UploadCreateOutcome.FAILED
             val data = (source as? UploadSource.Resource)?.handle ?: return UploadCreateOutcome.FAILED
             if (data != Unit && !acceptsAnyHandle) return UploadCreateOutcome.FAILED
-            if (jobs.size >= jobLimit) return UploadCreateOutcome.LIMIT_EXCEEDED
             val contentType = target.headers.entries.firstOrNull { it.key.equals("Content-Type", ignoreCase = true) }?.value
                 ?: "application/octet-stream"
-            jobs.add(Job(tag, contentType, data, target))
-            created.add(CreatedUpload(tag, contentType))
-            return UploadCreateOutcome.CREATED
+            return locked {
+                if (jobs.size >= jobLimit) return@locked UploadCreateOutcome.LIMIT_EXCEEDED
+                jobs.add(Job(tag, contentType, data, target))
+                created.add(CreatedUpload(tag, contentType))
+                UploadCreateOutcome.CREATED
+            }
         }
     }
 
@@ -154,19 +167,25 @@ class UploadQueueOperator internal constructor(private val mock: UploadQueueMock
         set(value) { mock.failCreate = value }
 
     /** Every job created, in order (retry chains show as repeated keys). */
-    val created: List<CreatedUpload> get() = mock.created.toList()
+    val created: List<CreatedUpload> get() = mock.locked { mock.created.toList() }
 
     /** The keys of every live (in-flight or terminal-unacknowledged) job. */
-    fun liveJobKeys(): List<String> = mock.jobs.map { it.key }
+    fun liveJobKeys(): List<String> = mock.locked { mock.jobs.map { it.key } }
 
     /**
      * The OS performs a pending job's request over the network, and the job settles on the answer — unless the device is
      * on a restricted network, where the OS holds every job (see [UploadQueueMock]) and this leaves it pending.
      */
     suspend fun completeJob(key: String) {
-        val j = mock.jobs.firstOrNull { it.key == key && it.state == UploadJobState.PENDING } ?: return
+        val (j, target) = mock.locked {
+            mock.jobs.firstOrNull { it.key == key && it.state == UploadJobState.PENDING }?.let { it to it.target }
+        } ?: return
         if (mock.restricted()) return
-        val status = mock.network.put(j.target.url, j.target.headers, TRANSFERRED_BYTES)
+        val status = mock.network.put(target.url, target.headers, TRANSFERRED_BYTES)
+        mock.locked { settle(j, status) }
+    }
+
+    private fun settle(j: UploadQueueMock.Job, status: Int?) {
         when {
             status == null -> {
                 j.state = UploadJobState.FAILED
@@ -181,8 +200,8 @@ class UploadQueueOperator internal constructor(private val mock: UploadQueueMock
     }
 
     /** A pending job fails with a chosen [error], driving the real retry chain next cycle. */
-    fun failJob(key: String, error: UploadError) {
-        val j = mock.jobs.firstOrNull { it.key == key && it.state == UploadJobState.PENDING } ?: return
+    fun failJob(key: String, error: UploadError) = mock.locked {
+        val j = mock.jobs.firstOrNull { it.key == key && it.state == UploadJobState.PENDING } ?: return@locked
         j.state = UploadJobState.FAILED
         j.error = error
     }
@@ -213,8 +232,14 @@ class UploadSessionMock(
 ) {
     internal class Transfer(val tag: String, val target: UploadTarget)
 
+    // The app creates transfers from its thread while the operator lands them from another; never held across the
+    // network or a call into the app's handlers.
+    private val lock = mockLock()
+
+    internal fun <T> locked(block: () -> T): T = lock.locked(block)
+
     internal val handlers = HandlerSlot<UploadHandlers>("Upload", BeforeListen.Thrown)
-    internal var handbacks = 0
+    @Volatile internal var handbacks = 0
     internal val live = mutableListOf<Transfer>()
     internal val created = mutableListOf<String>()
 
@@ -227,15 +252,17 @@ class UploadSessionMock(
 
         override suspend fun create(source: UploadSource, target: UploadTarget, tag: String): UploadCreateOutcome {
             if (source !is UploadSource.File) return UploadCreateOutcome.FAILED
-            if (live.size >= LIVE_CAP) return UploadCreateOutcome.LIMIT_EXCEEDED
-            live += Transfer(tag, target)
-            created += tag
-            return UploadCreateOutcome.CREATED
+            return locked {
+                if (live.size >= LIVE_CAP) return@locked UploadCreateOutcome.LIMIT_EXCEEDED
+                live += Transfer(tag, target)
+                created += tag
+                UploadCreateOutcome.CREATED
+            }
         }
 
         /** Only in-flight transfers are known: a terminal one is reported as it ends, and none is offered a retry. */
         override suspend fun jobs(set: UploadJobSet): List<UploadJob> = when (set) {
-            UploadJobSet.IN_FLIGHT -> live.map { it.view(UploadJobState.PENDING, null) }
+            UploadJobSet.IN_FLIGHT -> locked { live.map { it.view(UploadJobState.PENDING, null) } }
             UploadJobSet.RETRY_OFFERED, UploadJobSet.TERMINAL -> emptyList()
         }
 
@@ -248,7 +275,7 @@ class UploadSessionMock(
         /** A cancelled transfer ends, and its end is reported like any other — as the platform's delegate does. */
         override suspend fun cancel(job: UploadJob): ChangeOutcome {
             val transfer = job.handle as? Transfer ?: return ChangeOutcome.Refused(null, "not this session's transfer")
-            if (live.remove(transfer)) {
+            if (locked { live.remove(transfer) }) {
                 handlers.orNull("a cancelled transfer's end", BeforeListen.Dropped)
                     ?.onFinished(transfer.view(UploadJobState.FAILED, UploadError.Cancelled))
             }
@@ -279,20 +306,20 @@ class UploadSessionOperator internal constructor(private val mock: UploadSession
     val handbacks: Int get() = mock.handbacks
 
     /** The tags (upload keys) of the transfers still in flight. */
-    fun liveKeys(): List<String> = mock.live.map { it.tag }
+    fun liveKeys(): List<String> = mock.locked { mock.live.map { it.tag } }
 
     /** Every transfer created, in order, by its tag (a re-created failure shows as a repeated key). */
-    val created: List<String> get() = mock.created.toList()
+    val created: List<String> get() = mock.locked { mock.created.toList() }
 
     /**
      * The OS performs the live transfer tagged [key] over the network, and reports its end to the process that
      * registered last — at once, as a running app's session delegate hears it.
      */
     suspend fun complete(key: String) {
-        val transfer = mock.live.firstOrNull { it.tag == key } ?: return
+        val transfer = mock.locked { mock.live.firstOrNull { it.tag == key } } ?: return
         if (mock.held(transfer.target.network)) return
         val status = mock.network.put(transfer.target.url, transfer.target.headers, TRANSFERRED_BYTES)
-        mock.live.remove(transfer)
+        mock.locked { mock.live.remove(transfer) }
         val (state, error) = when {
             status == null -> UploadJobState.FAILED to UploadError.Network
             status in 200..299 -> UploadJobState.SUCCEEDED to null
@@ -351,17 +378,23 @@ class DownloadSessionMock(
 
     /** A transfer the session holds, until it finishes or is cancelled; [network] is the rule it was started under. */
     class Started(val url: String, val description: String, val network: TransferNetwork = TransferNetwork.ANY) {
-        var cancelled: Boolean = false
-        var finished: Boolean = false
+        @Volatile var cancelled: Boolean = false
+        @Volatile var finished: Boolean = false
     }
+
+    // The app starts and cancels from its thread while the operator finishes from another; never held across a call
+    // into the app's handlers.
+    private val lock = mockLock()
+
+    internal fun <T> locked(block: () -> T): T = lock.locked(block)
 
     internal val started = mutableListOf<Started>()
     internal val handlers = HandlerSlot<DownloadHandlers>("Download", BeforeListen.Thrown)
-    internal var current: Face? = null
+    @Volatile internal var current: Face? = null
 
     internal inner class Face : Download {
         /** Whether this process has brought the session up — by starting, cancelling, or being handed its events. */
-        var realized: Boolean = false
+        @Volatile var realized: Boolean = false
 
         override fun listen(handlers: DownloadHandlers) {
             this@DownloadSessionMock.handlers.set(handlers)
@@ -371,17 +404,15 @@ class DownloadSessionMock(
         override fun start(url: String, tag: String, network: TransferNetwork): StartResult {
             realized = true
             if (url.isBlank()) return StartResult.NotStarted
-            started += Started(url, tag, network)
+            locked { started += Started(url, tag, network) }
             return StartResult.Started
         }
 
         /** Cancels every transfer the session holds — a dead process's included — each completing with an error. */
         override suspend fun cancelAll() {
             realized = true
-            started.filterNot { it.cancelled }.forEach {
-                it.cancelled = true
-                registered().onCompleted(it.description, "cancelled")
-            }
+            val cancelled = locked { started.filterNot { it.cancelled }.onEach { it.cancelled = true } }
+            cancelled.forEach { registered().onCompleted(it.description, "cancelled") }
         }
     }
 
@@ -417,14 +448,14 @@ class DownloadSessionMock(
 /** The operating system's side of the download session, played: it finishes transfers and hands events back. */
 class DownloadSessionOperator internal constructor(private val mock: DownloadSessionMock) {
     /** Every transfer ever started, cancelled ones included. */
-    val started: List<DownloadSessionMock.Started> get() = mock.started.toList()
+    val started: List<DownloadSessionMock.Started> get() = mock.locked { mock.started.toList() }
 
     /** Whether the running process has brought the session up. */
     val realized: Boolean get() = mock.current?.realized == true
 
     /** The transfers still awaiting a finish, de-duplicated by tag. */
     fun inFlight(): List<DownloadSessionMock.Started> =
-        mock.started.filterNot { it.cancelled || it.finished }.distinctBy { it.description }
+        mock.locked { mock.started.filterNot { it.cancelled || it.finished }.distinctBy { it.description } }
 
     /**
      * A finish for [description], as the real delegate delivers one: the facts and a temporary file, then the
@@ -433,8 +464,12 @@ class DownloadSessionOperator internal constructor(private val mock: DownloadSes
      * the device's network holds ([DownloadSessionMock.held]) does not finish: the OS would not run it.
      */
     fun finish(description: String, outcome: TransferOutcome = DownloadSessionMock.HEALTHY, bytes: ByteArray? = null) {
-        if (mock.started.any { it.description == description && !it.cancelled && !it.finished && mock.held(it.network) }) return
-        mock.started.filter { it.description == description }.forEach { it.finished = true }
+        val runs = mock.locked {
+            val held = mock.started.any { it.description == description && !it.cancelled && !it.finished && mock.held(it.network) }
+            if (!held) mock.started.filter { it.description == description }.forEach { it.finished = true }
+            !held
+        }
+        if (!runs) return
         mock.registered().onFinished(description, outcome, mock.leaveTempFile(description, bytes))
         mock.registered().onCompleted(description, null)
     }

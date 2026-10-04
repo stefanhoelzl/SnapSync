@@ -97,7 +97,7 @@ class MockStateTest {
         assertEquals(NetworkAccess.Blocked, copy.connectivity.operator.access)
         assertEquals(listOf("hello"), copy.systemUi.operator.shared.value)
         assertEquals("dump", copy.crashReporter.operator.sent.value.single().message)
-        assertEquals(1, copy.enclave.keys.held.size)
+        assertEquals(1, copy.enclave.keys.snapshot().second.size)
         assertEquals("v", (copy.keychain.items[SLOT])?.value)
     }
 
@@ -130,7 +130,7 @@ class MockStateTest {
         val gallery = device.library.port()
         val album = checkNotNull(gallery.createAlbum("Party"))
         gallery.addToAlbum(album, setOf(AssetId("A1")))
-        device.library.state.imports.imported += AssetRef("D2", AssetId("F1"))
+        device.library.state.imports.restoreImported(listOf(AssetRef("D2", AssetId("F1"))))
 
         device.disk.operator.write(FileArea.SHARED, "eventconfig.json", "{}".encodeToByteArray())
         device.disk.operator.write(FileArea.PRIVATE, "secret", byteArrayOf(0, 1, 2, -1))

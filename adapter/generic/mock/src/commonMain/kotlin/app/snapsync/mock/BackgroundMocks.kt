@@ -13,6 +13,7 @@ import app.snapsync.ports.WakeHandlers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlin.concurrent.Volatile
 
 // The mocks of the operating system's background execution (`docs/testing.md`, "Mocks"): when it wakes the app, how
 // long it keeps it awake, and whether it runs the upload extension. Nothing here fires on its own — the operator plays
@@ -28,7 +29,7 @@ class WakeMock(
 ) {
     internal val pending = MutableStateFlow<Map<WakeId, WakeTrigger>>(emptyMap())
     internal val handlers = HandlerSlot<WakeHandlers>("Wake", BeforeListen.Thrown)
-    internal var scheduled = 0
+    @Volatile internal var scheduled = 0
 
     fun port(): Wake = object : Wake {
         private val queue = InMemoryWake(pending, supported)

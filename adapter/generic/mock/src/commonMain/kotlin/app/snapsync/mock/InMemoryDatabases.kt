@@ -27,15 +27,20 @@ internal class InMemoryDatabases(
     private val directory: String? = null,
 ) : Databases {
 
+    // Both processes open from their own threads, and an inspector reads [opened] from another: the opens are one at a
+    // time, as a file's create-or-migrate is.
+    private val lock = mockLock()
+
     private val held = mutableMapOf<String, SqlDriver>()
 
-    /** Every open asked for, by name, in order. */
-    val opened = mutableListOf<String>()
+    private val openLog = mutableListOf<String>()
 
-    override fun open(name: String, schema: SqlSchema<QueryResult.Value<Unit>>, readOnly: Boolean): DbOpen {
-        opened += name
-        refusals[name]?.let { return it }
-        return runCatchingCancellable { if (readOnly) openReadOnly(name, schema) else openReadWrite(name, schema) }
+    /** Every open asked for, by name, in order. */
+    val opened: List<String> get() = lock.locked { openLog.toList() }
+
+    override fun open(name: String, schema: SqlSchema<QueryResult.Value<Unit>>, readOnly: Boolean): DbOpen = lock.locked {
+        openLog += name
+        refusals[name] ?: runCatchingCancellable { if (readOnly) openReadOnly(name, schema) else openReadWrite(name, schema) }
             .getOrElse { DbOpen.Failed("${it::class.simpleName}: ${it.message}") }
     }
 
@@ -70,7 +75,7 @@ internal class InMemoryDatabases(
      */
     fun deleteAll() {
         check(directory == null) { "deleting file-backed databases is not modelled; the app host's uninstall deletes them" }
-        held.clear()
+        lock.locked { held.clear() }
     }
 
     /** A database a file already holds — another process's, or an earlier launch's — opened and kept. */

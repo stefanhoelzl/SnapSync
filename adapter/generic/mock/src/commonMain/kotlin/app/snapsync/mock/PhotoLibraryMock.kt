@@ -14,6 +14,8 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlin.concurrent.Volatile
 
 /**
  * **The photo library's mock** (`docs/testing.md`, "Mocks"): the library the device keeps — its assets, the grant,
@@ -61,12 +63,14 @@ class PhotoLibraryOperator internal constructor(private val state: LibraryState)
         state.library.value = assets
     }
 
+    // The app imports into the same cell from its own thread: each change is one atomic update, never a read and a
+    // write another change can land between.
     fun add(asset: RawAsset) {
-        state.library.value = state.library.value + asset
+        state.library.update { it + asset }
     }
 
     fun remove(assetId: AssetId) {
-        state.library.value = state.library.value.filterNot { it.assetId == assetId }
+        state.library.update { library -> library.filterNot { it.assetId == assetId } }
     }
 
     // ---- the grant --------------------------------------------------------------------------------
@@ -119,13 +123,14 @@ class PhotoLibraryOperator internal constructor(private val state: LibraryState)
     // ---- albums -----------------------------------------------------------------------------------
 
     /** Every album the app created, in order: (album id, title). */
-    val created: List<Pair<String, String>> get() = state.createdLog.toList()
+    val created: List<Pair<String, String>> get() = state.locked { state.createdLog.toList() }
 
     /** Every add the app made, in order: (album id, the assets asked for). */
-    val added: List<Pair<String, List<AssetId>>> get() = state.addedLog.toList()
+    val added: List<Pair<String, List<AssetId>>> get() = state.locked { state.addedLog.toList() }
 
     /** Every asset id the app asked to add to [albumId], across all adds, in order. */
-    fun assetsIn(albumId: String): List<AssetId> = state.addedLog.filter { it.first == albumId }.flatMap { it.second }
+    fun assetsIn(albumId: String): List<AssetId> =
+        state.locked { state.addedLog.filter { it.first == albumId }.flatMap { it.second } }
 
     /**
      * The photos in the app's album [albumId]: under [AlbumKind.COLLECTION] every asset it was asked to add, in order
@@ -135,14 +140,14 @@ class PhotoLibraryOperator internal constructor(private val state: LibraryState)
         AlbumKind.COLLECTION -> assetsIn(albumId)
         AlbumKind.FOLDER -> {
             val held = state.library.value.mapTo(mutableSetOf()) { it.assetId }
-            state.folderOf.filter { (asset, folder) -> folder == albumId && asset in held }.keys.sortedBy { it.value }
+            state.locked { state.folderOf.filter { (asset, folder) -> folder == albumId && asset in held }.keys.sortedBy { it.value } }
         }
     }
 
     /** Put [assetId] into an album some other app made, titled [title] — e.g. `placeIn("WhatsApp", "A1")`. */
     fun placeIn(title: String, assetId: String) {
         val cell = checkNotNull(state.writableAlbums) { "this library's other-app albums are a read-only cell" }
-        cell.value = cell.value + (title to (cell.value[title].orEmpty() + AssetId(assetId)))
+        cell.update { albums -> albums + (title to (albums[title].orEmpty() + AssetId(assetId))) }
     }
 
     /**
@@ -151,11 +156,11 @@ class PhotoLibraryOperator internal constructor(private val state: LibraryState)
      */
     fun delete(albumId: String) {
         when (state.albumKind) {
-            AlbumKind.COLLECTION -> state.deletedAlbums += albumId
-            AlbumKind.FOLDER -> {
-                val inside = state.folderOf.filterValues { it == albumId }.keys
+            AlbumKind.COLLECTION -> state.locked { state.deletedAlbums += albumId }
+            AlbumKind.FOLDER -> state.locked {
+                val inside = state.folderOf.filterValues { it == albumId }.keys.toSet()
                 state.folderOf.keys.removeAll(inside)
-                state.library.value = state.library.value.filterNot { it.assetId in inside }
+                state.library.update { library -> library.filterNot { it.assetId in inside } }
             }
         }
     }
@@ -166,13 +171,15 @@ class PhotoLibraryOperator internal constructor(private val state: LibraryState)
      */
     fun rename(albumId: String, newTitle: String) {
         check(state.albumKind == AlbumKind.FOLDER) { "a collection album's title is not where its photos live" }
-        val renamed = "renamed-${state.albumCounter++}"
-        state.created[renamed] = LibraryState.Album(newTitle)
-        state.folderOf.entries.filter { it.value == albumId }.forEach { it.setValue(renamed) }
+        state.locked {
+            val renamed = "renamed-${state.albumCounter++}"
+            state.created[renamed] = LibraryState.Album(newTitle)
+            state.folderOf.entries.filter { it.value == albumId }.forEach { it.setValue(renamed) }
+        }
     }
 
     /** The album folder [assetId] lives in under [AlbumKind.FOLDER], or `null` — the camera folder. */
-    fun folderOf(assetId: AssetId): String? = state.folderOf[assetId]
+    fun folderOf(assetId: AssetId): String? = state.locked { state.folderOf[assetId] }
 
     /** Every add waits until [releaseAdds]. Holding again while held changes nothing. */
     fun holdAdds() = state.adds.hold()
@@ -200,26 +207,36 @@ class PhotoLibraryOperator internal constructor(private val state: LibraryState)
     var albumKind: AlbumKind by state::albumKind
 }
 
-/** The photo library's durable state: everything the device keeps, and the one process currently registered with it. */
+/**
+ * The photo library's durable state: everything the device keeps, and the one process currently registered with it.
+ * The cells guard themselves; the albums, their logs and the attempts are [locked] — the app writes them from its own
+ * thread while an inspector reads them from another.
+ */
 internal class LibraryState(
     val library: MutableStateFlow<List<RawAsset>>,
     val access: MutableStateFlow<GalleryAccess>,
     val userAlbums: StateFlow<Map<String, Set<AssetId>>>,
-    var answer: GalleryAccess,
+    answer: GalleryAccess,
     /** How the library answers each change; `null` is the [imports] script's answers. */
     answers: LibraryChangeAnswers?,
 ) {
+    private val lock = mockLock()
+
+    fun <T> locked(block: () -> T): T = lock.locked(block)
+
+    @Volatile var answer: GalleryAccess = answer
+
     class Album(val title: String, val members: MutableSet<AssetId> = mutableSetOf())
 
     /** The process whose composition registered last — its handlers, and whether its selection observer is open. */
     class Listener(val face: Any, val handlers: GalleryHandlers) {
-        var observing: Boolean = false
+        @Volatile var observing: Boolean = false
     }
 
     val imports = ImportScript()
     val selection = MutableStateFlow<List<RawAsset>?>(null)
     val answers: LibraryChangeAnswers = answers ?: imports.answers
-    var listener: Listener? = null
+    @Volatile var listener: Listener? = null
 
     val attempts = mutableMapOf<AssetRef, Int>()
     var albumCounter = 0
@@ -229,9 +246,9 @@ internal class LibraryState(
     val deletedAlbums = mutableSetOf<String>()
     val adds = OperatorHold()
     val enumeration = OperatorHold()
-    var failNextEnumeration = false
-    var byIdReadable = true
-    var albumKind = AlbumKind.COLLECTION
+    @Volatile var failNextEnumeration = false
+    @Volatile var byIdReadable = true
+    @Volatile var albumKind = AlbumKind.COLLECTION
 
     /** Under [AlbumKind.FOLDER], the app's album folder each photo in one lives in; a photo in none is in the camera folder. */
     val folderOf = mutableMapOf<AssetId, AlbumId>()
@@ -251,17 +268,23 @@ internal class LibraryState(
  * holds it after the commit (the asset exists, the report never comes — the shape a process death leaves).
  */
 class ImportScript internal constructor() {
+    // The operator scripts and reads from its thread while the app imports on another.
+    private val lock = mockLock()
+
+    private val importedRefs = mutableListOf<AssetRef>()
 
     /** The source refs imported, one entry per created asset (so a repeat shows up twice). */
-    val imported: MutableList<AssetRef> = mutableListOf()
+    val imported: List<AssetRef> get() = lock.locked { importedRefs.toList() }
 
-    var failNextImport: Boolean = false
+    internal fun restoreImported(refs: List<AssetRef>) = lock.locked { importedRefs.addAll(refs) }
 
-    var failNextImportAfterCreating: Boolean = false
+    @Volatile var failNextImport: Boolean = false
 
-    var suspendNextImport: Boolean = false
+    @Volatile var failNextImportAfterCreating: Boolean = false
 
-    var suspendNextImportAfterCommit: Boolean = false
+    @Volatile var suspendNextImport: Boolean = false
+
+    @Volatile var suspendNextImportAfterCommit: Boolean = false
 
     private var parked: CompletableDeferred<Boolean>? = null
 
@@ -269,13 +292,12 @@ class ImportScript internal constructor() {
      * Completes once an import has actually parked, so a caller awaits the live transaction rather than guessing at a
      * delay. **Replaced on every park**: a completed deferred would hand a second waiter the STALE ref at once.
      */
-    var suspendedImport: CompletableDeferred<AssetRef> = CompletableDeferred()
+    @Volatile var suspendedImport: CompletableDeferred<AssetRef> = CompletableDeferred()
         private set
 
     /** Deliver the parked import's outcome: on [succeeded] the asset lands; otherwise its marker is cleared. */
     fun resumeSuspendedImport(succeeded: Boolean) {
-        val gate = parked ?: error("no import is suspended")
-        parked = null
+        val gate = lock.locked { parked.also { parked = null } } ?: error("no import is suspended")
         gate.complete(succeeded)
     }
 
@@ -288,12 +310,15 @@ class ImportScript internal constructor() {
     private val attempts = mutableMapOf<AssetRef, Int>()
 
     private suspend fun park(ref: AssetRef): String? {
-        // A second park would overwrite the first's gate and strand that import: refuse it, loudly.
-        check(parked == null) { "an import is already suspended; resume it before suspending ${ref.sourceAssetId}" }
         val gate = CompletableDeferred<Boolean>()
-        parked = gate
-        if (suspendedImport.isCompleted) suspendedImport = CompletableDeferred()
-        suspendedImport.complete(ref)
+        val announced = lock.locked {
+            // A second park would overwrite the first's gate and strand that import: refuse it, loudly.
+            check(parked == null) { "an import is already suspended; resume it before suspending ${ref.sourceAssetId}" }
+            parked = gate
+            if (suspendedImport.isCompleted) suspendedImport = CompletableDeferred()
+            suspendedImport
+        }
+        announced.complete(ref)
         return if (gate.await()) null else "suspended import resumed as failed"
     }
 
@@ -311,7 +336,7 @@ class ImportScript internal constructor() {
         }
 
         override suspend fun afterCommit(ref: AssetRef): String? {
-            imported += ref
+            lock.locked { importedRefs += ref }
             if (suspendNextImportAfterCommit) {
                 suspendNextImportAfterCommit = false
                 park(ref)?.let { return it }
@@ -324,8 +349,7 @@ class ImportScript internal constructor() {
 
     /** Counts an import of [ref] against [attemptCap], raising at the cap. */
     internal fun attempt(ref: AssetRef) {
-        val attempt = attempts.getOrElse(ref) { 0 } + 1
-        attempts[ref] = attempt
+        val attempt = lock.locked { (attempts.getOrElse(ref) { 0 } + 1).also { attempts[ref] = it } }
         check(attempt <= attemptCap) {
             "imported ${ref.sourceAssetId} $attempt times (cap $attemptCap) — the drain is live-locking " +
                 "on one ref instead of offering it once"

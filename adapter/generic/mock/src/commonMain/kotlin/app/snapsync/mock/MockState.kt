@@ -82,18 +82,27 @@ private fun scalars(write: (MockDevice) -> Map<String, String>, read: (MockDevic
  * process's own) keep nothing here.
  */
 private val CODECS: Map<MockedSystem, Codec> = mapOf(
-    MockedSystem.BACKEND to codec(BackendDto.serializer(), { BackendDto.of(it.backend.state) }, { d, dto -> dto.into(d.backend.state) }),
-    MockedSystem.LIBRARY to codec(LibraryDto.serializer(), { LibraryDto.of(it.library.state) }, { d, dto -> dto.into(d.library.state) }),
+    MockedSystem.BACKEND to codec(
+        BackendDto.serializer(),
+        { it.backend.state.locked { BackendDto.of(it.backend.state) } },
+        { d, dto -> d.backend.state.locked { dto.into(d.backend.state) } },
+    ),
+    MockedSystem.LIBRARY to codec(
+        LibraryDto.serializer(),
+        { it.library.state.locked { LibraryDto.of(it.library.state) } },
+        { d, dto -> d.library.state.locked { dto.into(d.library.state) } },
+    ),
     MockedSystem.FILES to codec(FilesDto.serializer(), { FilesDto.of(it.disk) }, { d, dto -> dto.into(d.disk) }),
-    MockedSystem.PREFERENCES to scalars({ it.preferences.values.toMap() }, { device, values -> device.preferences.values.putAll(values) }),
-    MockedSystem.KEYCHAIN to codec(KeychainDto.serializer(), { KeychainDto.of(it.keychain.items) }, { d, dto -> dto.into(d.keychain.items) }),
+    MockedSystem.PREFERENCES to scalars({ it.preferences.values.snapshot() }, { device, values -> device.preferences.values.putAll(values) }),
+    MockedSystem.KEYCHAIN to codec(
+        KeychainDto.serializer(),
+        { KeychainDto.of(it.keychain.items.snapshot()) },
+        { d, dto -> dto.into(d.keychain.items) },
+    ),
     MockedSystem.INTEGRITY to codec(
         EnclaveDto.serializer(),
-        { EnclaveDto(it.enclave.keys.generated, it.enclave.keys.held.toList()) },
-        { device, keys ->
-            device.enclave.keys.generated = keys.generated
-            device.enclave.keys.held.addAll(keys.held)
-        },
+        { it.enclave.keys.snapshot().let { (generated, held) -> EnclaveDto(generated, held) } },
+        { device, keys -> device.enclave.keys.restore(keys.generated, keys.held) },
     ),
     MockedSystem.CRASH_REPORTER to codec(
         CrashDumpsDto.serializer(),
@@ -121,19 +130,28 @@ private val CODECS: Map<MockedSystem, Codec> = mapOf(
         { device -> device.extensionRegistry.record?.let { mapOf(REGISTERED to it.value.toString()) }.orEmpty() },
         { device, values -> values[REGISTERED]?.let { device.extensionRegistry.record?.value = it.toBoolean() } },
     ),
-    MockedSystem.UPLOAD_QUEUE to codec(QueueDto.serializer(), { QueueDto.of(it.uploadQueue) }, { d, dto -> dto.into(d.uploadQueue) }),
+    MockedSystem.UPLOAD_QUEUE to codec(
+        QueueDto.serializer(),
+        { it.uploadQueue.locked { QueueDto.of(it.uploadQueue) } },
+        { d, dto -> d.uploadQueue.locked { dto.into(d.uploadQueue) } },
+    ),
     MockedSystem.UPLOAD_SESSION to scalars(
         { mapOf(HANDBACKS to it.uploadSession.handbacks.toString()) },
         { device, values -> values[HANDBACKS]?.let { device.uploadSession.handbacks = it.toInt() } },
     ),
     MockedSystem.DOWNLOADS to codec(
         DownloadsDto.serializer(),
-        { DownloadsDto(it.downloads.started.map { s -> StartedDto(s.url, s.description, s.cancelled, s.finished, s.network.name) }) },
+        { device ->
+            val started = device.downloads.locked { device.downloads.started.toList() }
+            DownloadsDto(started.map { StartedDto(it.url, it.description, it.cancelled, it.finished, it.network.name) })
+        },
         { device, dto ->
-            dto.started.forEach {
-                device.downloads.started += DownloadSessionMock.Started(it.url, it.description, TransferNetwork.valueOf(it.network)).apply {
-                    cancelled = it.cancelled
-                    finished = it.finished
+            device.downloads.locked {
+                dto.started.forEach {
+                    device.downloads.started += DownloadSessionMock.Started(it.url, it.description, TransferNetwork.valueOf(it.network)).apply {
+                        cancelled = it.cancelled
+                        finished = it.finished
+                    }
                 }
             }
         },
@@ -172,14 +190,14 @@ private class FilesDto(val shared: Map<String, String>, val private: Map<String,
     fun into(disk: FileSystemMock) {
         disk.shared.putAll(shared.mapValues { Base64.decode(it.value) })
         disk.private.putAll(private.mapValues { Base64.decode(it.value) })
-        disk.denied.addAll(denied.map { FileArea.valueOf(it.first) to it.second })
+        disk.denied.putAll(denied.associate { (FileArea.valueOf(it.first) to it.second) to Unit })
     }
 
     companion object {
         fun of(disk: FileSystemMock) = FilesDto(
-            shared = disk.shared.mapValues { Base64.encode(it.value) },
-            private = disk.private.mapValues { Base64.encode(it.value) },
-            denied = disk.denied.map { it.first.name to it.second },
+            shared = disk.shared.snapshot().mapValues { Base64.encode(it.value) },
+            private = disk.private.snapshot().mapValues { Base64.encode(it.value) },
+            denied = disk.denied.snapshot().keys.map { it.first.name to it.second },
         )
     }
 }
@@ -597,7 +615,7 @@ private class LibraryDto(
         state.deletedAlbums.addAll(deletedAlbums)
         state.failNextEnumeration = failNextEnumeration
         state.byIdReadable = byIdReadable
-        state.imports.imported.addAll(imported.map { it.ref() })
+        state.imports.restoreImported(imported.map { it.ref() })
     }
 
     companion object {
