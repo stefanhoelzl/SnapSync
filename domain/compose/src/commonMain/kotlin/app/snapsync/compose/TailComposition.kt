@@ -115,7 +115,20 @@ class AppTail internal constructor(
 
     /** A hold on the process's background time for [label], whose expiry stops this tail. */
     internal fun hold(label: String): WakeHold =
-        WakeHold(label, services.ports.backgroundTime, runner, services.log, finish)
+        WakeHold(label, services.ports.backgroundTime, runner, services.log, finish, settling = ::settling)
+
+    /**
+     * Read the app's own memory footprint into the trail the next process-metric report carries (capability
+     * `privacy-security`) — at [moment], as the app enters the background or a wake's work ends there. Only in the
+     * background: that is where the platform ends a process for memory, and the last reading before a suspension is
+     * the one a report about that suspension needs, so foreground readings would only push it out of the trail.
+     */
+    internal fun recordFootprint(moment: String) {
+        if (foreground.load()) return
+        services.ports.processInfo.memoryFootprint()?.let { services.process.footprints.record(moment, it) }
+    }
+
+    private fun settling(label: String) = recordFootprint("after $label")
 
     /**
      * The heartbeat wake's hand-over — it holds no [WakeHold] of its own: its tail, then the end-of-wake step. A tail
@@ -128,6 +141,7 @@ class AppTail internal constructor(
             .onFailure {
                 services.log.w(it) { "runWake($id): the end-of-wake step failed; the next wake runs it again" }
             }
+        recordFootprint("after runWake($id)")
     }
 
     /**

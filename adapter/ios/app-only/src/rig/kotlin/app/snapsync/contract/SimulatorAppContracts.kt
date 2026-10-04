@@ -343,12 +343,13 @@ class SimAppLivePhotoImportBinding : Binding<LivePhotoImportState, StagedLiveImp
 /**
  * `UIApplication.isProtectedDataAvailable` in a running app — the one host with a `UIApplication` a CI job
  * reaches (a test executable has none). The app is running and the simulator implements no data protection, so
- * this host presents only `UNLOCKED`; no host presents the locked state at all (`ProcessInfoContract`).
+ * this host presents `UNLOCKED` and never the locked state, which no host presents (`ProcessInfoContract`); and the
+ * simulator's kernel accounts the app's memory as a device's does, so it presents `MEMORY_ACCOUNTED` too.
  */
 class SimAppProcessInfoBinding : Binding<ProcessInfoState, ProcessInfo> {
     override val host = Host.IOS_SIM_APP
     override val kind = BindingKind.Live
-    override val reaches = setOf(ProcessInfoState.UNLOCKED)
+    override val reaches = setOf(ProcessInfoState.UNLOCKED, ProcessInfoState.MEMORY_ACCOUNTED)
 
     override fun create(state: ProcessInfoState, clauseId: String): Entered<ProcessInfo> =
         Entered.Ready(IosProcessInfo())

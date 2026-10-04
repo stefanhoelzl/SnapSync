@@ -57,6 +57,7 @@ fun lifecycleHandlers(core: AppCore, assembleHost: () -> Unit): LifecycleHandler
                 core.scope.launch {
                     core.backgroundFlow.run()
                     log.i { "=== app entering background ===" }
+                    core.tail.recordFootprint("entering background")
                 }
             }
         },

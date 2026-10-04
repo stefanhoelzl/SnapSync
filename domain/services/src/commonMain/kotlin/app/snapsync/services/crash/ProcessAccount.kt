@@ -21,11 +21,15 @@ import co.touchlab.kermit.Logger
  * turns into an event through the logging seam — so the context has to be standing by then, or the very event this
  * exists to explain would arrive without its explanation.
  *
+ * The context also carries the [footprints] the app recorded before it was last suspended — the ended process's own
+ * last readings, which no report states — for a reader telling a footprint that spiked from one that was always high.
+ *
  * Runs INLINE on the thread the provider delivers on (`ProcessMetrics`: delivery is one-shot, and a process woken
- * briefly may be killed before deferred work runs). It does no I/O of its own beyond the log.
+ * briefly may be killed before deferred work runs). Its only I/O beyond the log is reading that one small file.
  */
 class ProcessAccount(
     private val crash: CrashReporting,
+    private val footprints: FootprintTrail,
     private val log: Logger = Logger.withTag("processMetrics"),
 ) {
 
@@ -35,9 +39,8 @@ class ProcessAccount(
         // a derived fact can ride alongside the measured ones. Each crossing's message names its own reason; the
         // context names them all, so every event of one report shows what else crossed that day.
         val reasons = emissions.mapNotNull { it.reason }
-        crash.describeProcess(
-            if (reasons.isEmpty()) report else ProcessMetricReport(report.fields + (REASONS_KEY to reasons.joinToString(","))),
-        )
+        val crossed = if (reasons.isEmpty()) emptyMap() else mapOf(REASONS_KEY to reasons.joinToString(","))
+        crash.describeProcess(ProcessMetricReport(report.fields + crossed + footprints.fields()))
         // Each emission carries Kermit's own severity, so this renders without deciding. An `Error` here is what
         // the channel carries onward as the event.
         emissions.forEach { emission -> log.log(emission.severity, log.tag, null, emission.message) }

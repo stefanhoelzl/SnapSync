@@ -107,6 +107,18 @@ data class ProcessMetricEmission(
 const val PROCESS_METRIC_CROSSED_PREFIX: String = "process metric crossed: "
 
 /**
+ * The line logged just before a report's crossings, so it is the last breadcrumb every crossing event carries.
+ *
+ * A report arrives on a LATER launch than the one it describes — measured: the day after, ~1 s into whichever launch
+ * happened next — so an event's breadcrumbs are that delivering launch's lines, never the ended process's. Read as
+ * the process's last moments they mislead (SNAPSYNC-38), and the event cannot shed them: the channel shapes an
+ * event's breadcrumbs, it does not remove them. So the event says so, at the point a reader reaches the trail's end.
+ */
+const val PROCESS_METRIC_DELIVERY_NOTE: String =
+    "process metrics: the breadcrumbs above are from the launch that DELIVERED this report, not from the process " +
+        "it describes; that process's own last memory readings are the context's $FOOTPRINT_FIELD_PREFIX.* fields"
+
+/**
  * What to emit for [report]: always one line describing it, plus one crossing line **per reason** it crosses on.
  *
  * A crossing is: any non-normal exit tally present with a non-zero value (a background memory-pressure exit only
@@ -118,6 +130,8 @@ const val PROCESS_METRIC_CROSSED_PREFIX: String = "process metric crossed: "
  * A reason is reported once per report however large its count, so a relaunch storm is still one event naming
  * the reason, its count in the report. This is not suppression: a tally is not an error, and crossing is what
  * constitutes one. Nothing is ever withheld once this function has decided it.
+ *
+ * A report that crosses also emits [PROCESS_METRIC_DELIVERY_NOTE], between the line and the crossings.
  */
 fun processMetricEmissions(report: ProcessMetricReport): List<ProcessMetricEmission> {
     val line = ProcessMetricEmission(
@@ -127,7 +141,8 @@ fun processMetricEmissions(report: ProcessMetricReport): List<ProcessMetricEmiss
     val crossings = (exitReasons(report) + hangReasons(report)).sorted().map { reason ->
         ProcessMetricEmission(severity = Severity.Error, message = PROCESS_METRIC_CROSSED_PREFIX + reason, reason = reason)
     }
-    return listOf(line) + crossings
+    if (crossings.isEmpty()) return listOf(line)
+    return listOf(line, ProcessMetricEmission(severity = Severity.Info, message = PROCESS_METRIC_DELIVERY_NOTE)) + crossings
 }
 
 /** Every non-normal exit tally carrying a non-zero count, named by its own key's leaf. */

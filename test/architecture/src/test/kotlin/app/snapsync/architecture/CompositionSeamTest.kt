@@ -230,6 +230,9 @@ class CompositionSeamTest {
             "this core's own end-of-wake step (MembershipEnd.endOfWake: the bounded photo check, then EventCompletion.finish), " +
             "run after the tail rather than inside it",
         "WakeHold.finish" to "AppTail.finish, forwarded to each wake's hold — the same end-of-wake step",
+        "WakeHold.settling" to
+            "this core's own footprint reading (AppTail.recordFootprint, given the wake's label) — it reaches the ProcessInfo " +
+            "port and the FootprintTrail service in AppTail itself; the hold only says when",
         "EventCompletion.publishFinal" to
             "the sibling uploader's walkAndPublish (its discovery and publish are ports) — feature-blindness",
         "EventCompletion.everythingReceived" to
