@@ -59,6 +59,30 @@ const val HANG_HISTOGRAM_PREFIX: String = "applicationResponsivenessMetrics.hist
 const val HANG_CEILING_MS: Long = 1_000L
 
 /**
+ * The exit tally that crosses only when **we** made it likely: the system reclaimed the app while it was suspended.
+ *
+ * iOS ends suspended apps whenever the foreground needs memory, largest first, so a background memory-pressure exit
+ * is the platform working as designed — every one of the first four on the board (SNAPSYNC-38, 2026-09/10) came from
+ * a day with 1–18 s of background time and a suspended footprint of 28–117 MB. What is ours to answer for is the
+ * footprint, so the tally crosses only alongside a suspended footprint above [SUSPENDED_MEMORY_CEILING_KB]. The
+ * tally the app causes outright, `cumulativeMemoryResourceLimitExitCount`, is untouched and always crosses.
+ */
+const val BACKGROUND_MEMORY_PRESSURE_EXIT: String = "backgroundExitData.cumulativeMemoryPressureExitCount"
+
+/** Where the reported period's average suspended footprint lives (`"83574 kB"`). */
+const val SUSPENDED_MEMORY_KEY: String = "memoryMetrics.averageSuspendedMemory.averageValue"
+
+/**
+ * The average suspended footprint, in kB, above which a background memory-pressure exit is worth reporting.
+ *
+ * **150 MB, a starting point calibrated like [HANG_CEILING_MS]**: just above the highest value the four
+ * memory-pressure reports on the board carried (117 MB), so the measured baseline stays quiet and a footprint
+ * that grows past it fires. A footprint the report does not state, or states in a unit not understood here,
+ * **crosses** — an unknown cannot show the exit was the platform's alone.
+ */
+const val SUSPENDED_MEMORY_CEILING_KB: Long = 150_000L
+
+/**
  * One thing to emit for a report — a severity and a line, exactly as [RegistrationOutcome] does it.
  *
  * Emissions rather than a verdict, on purpose: the caller becomes a loop with **no conditional**, so
@@ -68,46 +92,42 @@ const val HANG_CEILING_MS: Long = 1_000L
 data class ProcessMetricEmission(
     val severity: Severity,
     val message: String,
-    /** Why this crossed, for the transport to carry as tags. Empty on the routine per-report line. */
-    val reasons: List<String> = emptyList(),
+    /** Why this crossed, for the report's context. Null on the routine per-report line. */
+    val reason: String? = null,
 )
 
-/** The fixed message every crossing carries, so all of them group as one issue rather than many. */
-const val PROCESS_METRIC_CROSSED_MESSAGE: String = "process exit threshold crossed"
+/**
+ * What every crossing's message starts with; the reason follows, so each reason groups as **its own** issue.
+ *
+ * One fixed message for every crossing (the first shape) put a hang under an issue titled as an exit and made the
+ * issue list one undifferentiated entry. A message per reason has neither problem and none of the explosion a
+ * message naming a report's *combination* of reasons would: each crossing names exactly one, and a counter a
+ * future OS adds becomes a new issue by itself.
+ */
+const val PROCESS_METRIC_CROSSED_PREFIX: String = "process metric crossed: "
 
 /**
- * What to emit for [report]: always one line describing it, plus one crossing line when it earns one.
+ * What to emit for [report]: always one line describing it, plus one crossing line **per reason** it crosses on.
  *
- * **The report is the unit.** A report crossing on three counters yields ONE crossing emission naming
- * three reasons, never three emissions — the transport groups by message text, so per-counter events
- * would split one cause across issues, and a message naming the combination would split it further.
+ * A crossing is: any non-normal exit tally present with a non-zero value (a background memory-pressure exit only
+ * alongside a suspended footprint above [SUSPENDED_MEMORY_CEILING_KB]), or any hang bucket at or above
+ * [HANG_CEILING_MS] that actually happened. Deliberately **every** other non-normal tally, including ones whose
+ * meaning is not yet established — including them is how their meaning gets measured, and excluding them
+ * preserves the unknown indefinitely.
  *
- * A crossing is: any non-normal exit tally present with a non-zero value, or any hang bucket at or
- * above [HANG_CEILING_MS] that actually happened. Deliberately **every** non-normal tally, including
- * ones whose meaning is not yet established — including them is how their meaning gets measured, and
- * excluding them preserves the unknown indefinitely.
- *
- * This is not suppression: a tally is not an error, and crossing is what constitutes one. Nothing is
- * ever withheld once this function has decided it.
+ * A reason is reported once per report however large its count, so a relaunch storm is still one event naming
+ * the reason, its count in the report. This is not suppression: a tally is not an error, and crossing is what
+ * constitutes one. Nothing is ever withheld once this function has decided it.
  */
 fun processMetricEmissions(report: ProcessMetricReport): List<ProcessMetricEmission> {
-    val reasons = (exitReasons(report) + hangReasons(report)).sorted()
     val line = ProcessMetricEmission(
         severity = Severity.Info,
         message = "process metrics: ${describe(report)}",
     )
-    return if (reasons.isEmpty()) {
-        listOf(line)
-    } else {
-        listOf(
-            line,
-            ProcessMetricEmission(
-                severity = Severity.Error,
-                message = PROCESS_METRIC_CROSSED_MESSAGE,
-                reasons = reasons,
-            ),
-        )
+    val crossings = (exitReasons(report) + hangReasons(report)).sorted().map { reason ->
+        ProcessMetricEmission(severity = Severity.Error, message = PROCESS_METRIC_CROSSED_PREFIX + reason, reason = reason)
     }
+    return listOf(line) + crossings
 }
 
 /** Every non-normal exit tally carrying a non-zero count, named by its own key's leaf. */
@@ -117,6 +137,29 @@ private fun exitReasons(report: ProcessMetricReport): List<String> =
         .filterNot { (key, _) -> key.endsWith(NORMAL_EXIT_SUFFIX) }
         .filter { (_, value) -> (value.trim().toLongOrNull() ?: 0L) > 0L }
         .map { (key, _) -> key.removePrefix("$PROCESS_EXIT_PREFIX.") }
+        .filterNot { it == BACKGROUND_MEMORY_PRESSURE_EXIT && suspendedFootprintWithinCeiling(report) }
+
+/** Whether the report states a suspended footprint at or below the ceiling; an unstated one is not. */
+private fun suspendedFootprintWithinCeiling(report: ProcessMetricReport): Boolean {
+    val kilobytes = kilobytesOf(report.fields[SUSPENDED_MEMORY_KEY]) ?: return false
+    return kilobytes <= SUSPENDED_MEMORY_CEILING_KB
+}
+
+/**
+ * A platform-rendered quantity of memory (`"83574 kB"`) as kB, or `null` when it is not one understood here — the
+ * same posture as [millisOf]. Decimal units, as the platform's information-storage measurements are.
+ */
+private fun kilobytesOf(raw: String?): Long? {
+    val text = raw?.trim() ?: return null
+    val number = text.takeWhile { it.isDigit() || it == '.' }
+    val amount = number.toDoubleOrNull() ?: return null
+    return when (text.removePrefix(number).trim()) {
+        "kB", "KB" -> amount.toLong()
+        "MB" -> (amount * 1_000).toLong()
+        "GB" -> (amount * 1_000_000).toLong()
+        else -> null
+    }
+}
 
 /**
  * Hang buckets that both happened and reached the ceiling.

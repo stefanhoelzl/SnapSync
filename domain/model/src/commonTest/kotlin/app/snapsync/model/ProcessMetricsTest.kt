@@ -24,8 +24,10 @@ class ProcessMetricsTest {
 
     private fun report(vararg pairs: Pair<String, String>) = ProcessMetricReport(mapOf(*pairs))
 
-    private fun crossing(report: ProcessMetricReport) =
-        processMetricEmissions(report).singleOrNull { it.severity == Severity.Error }
+    private fun crossings(report: ProcessMetricReport) =
+        processMetricEmissions(report).filter { it.severity == Severity.Error }
+
+    private fun crossing(report: ProcessMetricReport) = crossings(report).singleOrNull()
 
     // ── Flattening ────────────────────────────────────────────────────────────────────────────────
 
@@ -75,7 +77,7 @@ class ProcessMetricsTest {
         )
         assertEquals(1, emissions.size)
         assertEquals(Severity.Info, emissions.single().severity)
-        assertTrue(emissions.single().reasons.isEmpty())
+        assertEquals(null, emissions.single().reason)
     }
 
     @Test
@@ -113,9 +115,10 @@ class ProcessMetricsTest {
         )
         for (area in listOf("foregroundExitData", "backgroundExitData")) {
             for (counter in counters) {
-                val crossed = crossing(report(exit(area, counter, 1)))
+                // A stated footprint over the ceiling, so the background memory-pressure gate is open too.
+                val crossed = crossing(report(exit(area, counter, 1), SUSPENDED_MEMORY_KEY to "200000 kB"))
                 assertTrue(crossed != null, "$area.$counter should cross but did not")
-                assertEquals(listOf("$area.$counter"), crossed.reasons)
+                assertEquals("$area.$counter", crossed.reason)
             }
         }
     }
@@ -126,22 +129,28 @@ class ProcessMetricsTest {
         // counter a future OS adds is reported without any change here.
         val crossed = crossing(report(exit("backgroundExitData", "cumulativeSomethingNewExitCount", 1)))
         assertTrue(crossed != null)
-        assertEquals(listOf("backgroundExitData.cumulativeSomethingNewExitCount"), crossed.reasons)
+        assertEquals("backgroundExitData.cumulativeSomethingNewExitCount", crossed.reason)
     }
 
     @Test
-    fun `several crossing counters produce exactly one emission naming all of them`() {
-        // The report is the unit. Per-counter events would split one cause across issues.
-        val emissions = processMetricEmissions(
+    fun `several crossing counters produce one emission each - every one naming its own reason`() {
+        // One issue per failure mode: a message per reason groups each on its own, and never a combination.
+        val crossed = crossings(
             report(
                 exit("foregroundExitData", "cumulativeMemoryResourceLimitExitCount", 1),
                 exit("foregroundExitData", "cumulativeAbnormalExitCount", 6),
                 exit("backgroundExitData", "cumulativeAppWatchdogExitCount", 2),
             ),
         )
-        val crossed = emissions.filter { it.severity == Severity.Error }
-        assertEquals(1, crossed.size)
-        assertEquals(3, crossed.single().reasons.size)
+        assertEquals(
+            listOf(
+                "backgroundExitData.cumulativeAppWatchdogExitCount",
+                "foregroundExitData.cumulativeAbnormalExitCount",
+                "foregroundExitData.cumulativeMemoryResourceLimitExitCount",
+            ),
+            crossed.map { it.reason },
+        )
+        assertEquals(crossed.map { PROCESS_METRIC_CROSSED_PREFIX + it.reason }, crossed.map { it.message })
     }
 
     @Test
@@ -149,7 +158,69 @@ class ProcessMetricsTest {
         val one = crossing(report(exit("backgroundExitData", "cumulativeAppWatchdogExitCount", 1)))
         val many = crossing(report(exit("backgroundExitData", "cumulativeAppWatchdogExitCount", 14)))
         assertEquals(one?.message, many?.message)
-        assertEquals(PROCESS_METRIC_CROSSED_MESSAGE, one?.message)
+        assertEquals("${PROCESS_METRIC_CROSSED_PREFIX}backgroundExitData.cumulativeAppWatchdogExitCount", one?.message)
+    }
+
+    @Test
+    fun `a hang and an exit in one report land in different issues`() {
+        // The first shape titled a hang as an exit (SNAPSYNC-38).
+        val crossed = crossings(
+            report(exit("foregroundExitData", "cumulativeAppWatchdogExitCount", 1), *hangBucket(0, 1, "1689 ms")),
+        )
+        assertEquals(2, crossed.map { it.message }.distinct().size)
+    }
+
+    // ── Background memory pressure ────────────────────────────────────────────────────────────────
+
+    private fun memoryPressure(suspended: String?) = crossing(
+        report(
+            *listOfNotNull(
+                exit("backgroundExitData", "cumulativeMemoryPressureExitCount", 1),
+                suspended?.let { SUSPENDED_MEMORY_KEY to it },
+            ).toTypedArray(),
+        ),
+    )
+
+    @Test
+    fun `a background memory-pressure exit with the measured suspended footprints does not cross`() {
+        // The four SNAPSYNC-38 reports, 2026-09/10: the platform reclaiming a suspended app, nothing of ours.
+        for (footprint in listOf("28290 kB", "42277 kB", "83574 kB", "116773 kB")) {
+            assertEquals(null, memoryPressure(footprint), footprint)
+        }
+    }
+
+    @Test
+    fun `a background memory-pressure exit crosses once the suspended footprint passes the ceiling`() {
+        assertEquals(null, memoryPressure("$SUSPENDED_MEMORY_CEILING_KB kB"))
+        assertEquals(BACKGROUND_MEMORY_PRESSURE_EXIT, memoryPressure("${SUSPENDED_MEMORY_CEILING_KB + 1} kB")?.reason)
+        assertEquals(BACKGROUND_MEMORY_PRESSURE_EXIT, memoryPressure("0.2 GB")?.reason)
+    }
+
+    @Test
+    fun `a background memory-pressure exit with no understood footprint crosses`() {
+        // An unknown cannot show the exit was the platform's alone.
+        assertEquals(BACKGROUND_MEMORY_PRESSURE_EXIT, memoryPressure(null)?.reason)
+        assertEquals(BACKGROUND_MEMORY_PRESSURE_EXIT, memoryPressure("9 furlongs")?.reason)
+    }
+
+    @Test
+    fun `a foreground memory-pressure exit crosses whatever the suspended footprint`() {
+        val crossed = crossing(
+            report(exit("foregroundExitData", "cumulativeMemoryPressureExitCount", 1), SUSPENDED_MEMORY_KEY to "1 kB"),
+        )
+        assertEquals("foregroundExitData.cumulativeMemoryPressureExitCount", crossed?.reason)
+    }
+
+    @Test
+    fun `a gated memory-pressure exit does not hold back another reason`() {
+        val crossed = crossings(
+            report(
+                exit("backgroundExitData", "cumulativeMemoryPressureExitCount", 1),
+                exit("backgroundExitData", "cumulativeMemoryResourceLimitExitCount", 1),
+                SUSPENDED_MEMORY_KEY to "83574 kB",
+            ),
+        )
+        assertEquals(listOf("backgroundExitData.cumulativeMemoryResourceLimitExitCount"), crossed.map { it.reason })
     }
 
     @Test
@@ -219,7 +290,7 @@ class ProcessMetricsTest {
         val crossed = crossing(
             report(*hangBucket(0, 1, "2000 ms"), *hangBucket(1, 3, "4000 ms")),
         )
-        assertEquals(1, crossed?.reasons?.size)
+        assertEquals("appHangAtOrAbove${HANG_CEILING_MS}ms", crossed?.reason)
     }
 
     @Test
