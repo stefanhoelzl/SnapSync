@@ -84,7 +84,7 @@ fun deviceCommands(
             else -> {
                 val report = ProcessMetricReport(fields)
                 handleReport(report)
-                val reasons = processMetricEmissions(report).flatMap { it.reasons }
+                val reasons = processMetricEmissions(report).mapNotNull { it.reason }
                 CommandResult.ok(
                     """{"fields":${fields.size},"crossed":${reasons.isNotEmpty()},""" +
                         """"reasons":${jsonArray(reasons)}}""",

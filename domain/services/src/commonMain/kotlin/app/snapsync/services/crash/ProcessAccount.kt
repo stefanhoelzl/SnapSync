@@ -11,11 +11,11 @@ import co.touchlab.kermit.Logger
  * ```
  *   report ──┬─► device log        one line per report, always, on every build
  *            ├─► reporting context the standing account, riding every later event AND any crash
- *            └─► reporting event   only when the rule says it crossed
+ *            └─► reporting event   one per reason the rule says it crossed on
  * ```
  *
  * The rule itself — what is worth reporting — is `model/`'s [processMetricEmissions], which returns emissions
- * (severity, text, reasons); this loops over them.
+ * (severity, text, reason); this loops over them.
  *
  * The context is attached **before** the emissions are logged. A crossing is logged at `Error`, which the channel
  * turns into an event through the logging seam — so the context has to be standing by then, or the very event this
@@ -32,9 +32,9 @@ class ProcessAccount(
     fun handle(report: ProcessMetricReport) {
         val emissions = processMetricEmissions(report)
         // Why it crossed, carried WITH the report rather than as transport tags. The vocabulary is open precisely so
-        // a derived fact can ride alongside the measured ones, and it keeps the crossing's message fixed — which is
-        // what makes every occurrence group into one issue.
-        val reasons = emissions.flatMap { it.reasons }.distinct()
+        // a derived fact can ride alongside the measured ones. Each crossing's message names its own reason; the
+        // context names them all, so every event of one report shows what else crossed that day.
+        val reasons = emissions.mapNotNull { it.reason }
         crash.describeProcess(
             if (reasons.isEmpty()) report else ProcessMetricReport(report.fields + (REASONS_KEY to reasons.joinToString(","))),
         )
