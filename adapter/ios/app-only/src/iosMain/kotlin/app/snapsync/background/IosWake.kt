@@ -81,7 +81,7 @@ class IosWake internal constructor(
         if (!accepted) log.e { "BGTask $identifier was not registered — is it in Info.plist?" }
     }
 
-    override fun schedule(id: WakeId, trigger: WakeTrigger): ScheduleResult =
+    override suspend fun schedule(id: WakeId, trigger: WakeTrigger): ScheduleResult =
         log.invocation("wake.schedule", params = "id=$id") {
             when (id) {
                 WakeId.Heartbeat -> submit(trigger)

@@ -26,7 +26,7 @@ internal class InMemoryWake(
         this.handlers = handlers
     }
 
-    override fun schedule(id: WakeId, trigger: WakeTrigger): ScheduleResult {
+    override suspend fun schedule(id: WakeId, trigger: WakeTrigger): ScheduleResult {
         if (id !in supported) return ScheduleResult.Unsupported
         pending.update { it + (id to trigger) }
         return ScheduleResult.Scheduled

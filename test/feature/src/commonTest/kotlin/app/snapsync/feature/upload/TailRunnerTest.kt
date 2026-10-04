@@ -38,6 +38,8 @@ class TailRunnerTest {
      * heartbeat service. By default the platform has no library-change wake — iOS; [watchesLibrary] is Android.
      */
     private class Scheduler(private val watchesLibrary: Boolean = false) {
+        /** When set, a heartbeat request waits on it — a platform slow to say it holds the request. */
+        var armGate: CompletableDeferred<Unit>? = null
         /** The cadence of every heartbeat the re-arm requested, in order. */
         val cadences = mutableListOf<WakeCadence>()
         val scheduled: Int get() = cadences.size
@@ -45,8 +47,11 @@ class TailRunnerTest {
         val heartbeat = Heartbeat(
             object : Wake {
                 override fun listen(handlers: WakeHandlers) = Unit
-                override fun schedule(id: WakeId, trigger: WakeTrigger): ScheduleResult = when (id) {
-                    WakeId.Heartbeat -> ScheduleResult.Scheduled.also { cadences += (trigger as WakeTrigger.After).cadence }
+                override suspend fun schedule(id: WakeId, trigger: WakeTrigger): ScheduleResult = when (id) {
+                    WakeId.Heartbeat -> {
+                        armGate?.await()
+                        ScheduleResult.Scheduled.also { cadences += (trigger as WakeTrigger.After).cadence }
+                    }
                     WakeId.LibraryChanged ->
                         if (watchesLibrary) ScheduleResult.Scheduled.also { watched++ } else ScheduleResult.Unsupported
                 }
@@ -231,7 +236,7 @@ class TailRunnerTest {
             units.ran,
             "exactly one further pass, covering all three, and no second tail",
         )
-        assertEquals(3, scheduler.scheduled, "foreground, push and heartbeat each re-arm; the completion does not")
+        assertEquals(1, scheduler.scheduled, "foreground, push and heartbeat share the tail's one re-arm")
     }
 
     @Test
@@ -268,9 +273,66 @@ class TailRunnerTest {
         assertEquals(CycleResult.SKIPPED, heartbeat.await()?.result)
         arm.await()
         assertEquals(
-            listOf(WakeCadence.IDLE, WakeCadence.IDLE), scheduler.cadences,
-            "a joined membership that contributes nothing still looks in — for others' photos and the close",
+            listOf(WakeCadence.IDLE), scheduler.cadences,
+            "a joined membership that contributes nothing still looks in — for others' photos and the close — once",
         )
+    }
+
+    @Test
+    fun `a burst of re-arming joiners re-arms the tail once and watches the library once`() = runTest {
+        // SNAPSYNC-40: a long tail collected dozens of waiting wakes and pushes; each re-armed on its own when it
+        // ended — two platform calls apiece, on Android's main thread — and the burst froze the app.
+        val units = Units().apply { topUpGate = CompletableDeferred() }
+        val scheduler = Scheduler(watchesLibrary = true)
+        val tail = runner(units, scheduler)
+        val first = async { tail.request(TailTrigger.UPLOAD_COMPLETED) }
+        runCurrent()
+        val joiners = List(50) { async { tail.request(if (it % 2 == 0) TailTrigger.SILENT_PUSH else TailTrigger.HEARTBEAT) } }
+        runCurrent()
+        units.topUpGate!!.complete(Unit)
+        units.topUpGate = null
+        first.await()
+        joiners.forEach { it.await() }
+        assertEquals(1, scheduler.scheduled, "one heartbeat request for the whole tail")
+        assertEquals(1, scheduler.watched, "one library watch for the whole tail")
+        assertEquals(2, units.ran.count { it == "topUp" }, "and, as before, exactly one more pass")
+    }
+
+    @Test
+    fun `a tail started by a trigger that never re-arms is re-armed for the joiner that does`() = runTest {
+        val units = Units().apply { topUpGate = CompletableDeferred() }
+        val scheduler = Scheduler(watchesLibrary = true)
+        val tail = runner(units, scheduler)
+        val completion = async { tail.request(TailTrigger.UPLOAD_COMPLETED) }
+        runCurrent()
+        val push = async { tail.request(TailTrigger.SILENT_PUSH) }
+        runCurrent()
+        units.topUpGate!!.complete(Unit)
+        units.topUpGate = null
+        completion.await()
+        push.await()
+        assertEquals(1, scheduler.scheduled, "the push's re-arm is made, by the request that drove the tail")
+        assertEquals(1, scheduler.watched, "at the push's scope: a full tail renews the library watch")
+    }
+
+    @Test
+    fun `a joiner returns only once the tail has been re-armed`() = runTest {
+        val units = Units().apply { topUpGate = CompletableDeferred() }
+        val scheduler = Scheduler().apply { armGate = CompletableDeferred() }
+        val tail = runner(units, scheduler)
+        val starter = async { tail.request(TailTrigger.FOREGROUND) }
+        runCurrent()
+        val heartbeat = async { tail.request(TailTrigger.HEARTBEAT) }
+        runCurrent()
+        units.topUpGate!!.complete(Unit)
+        units.topUpGate = null
+        runCurrent()
+        assertFalse(heartbeat.isCompleted, "a wake's completion is not released before its next heartbeat is requested")
+        assertFalse(starter.isCompleted)
+        scheduler.armGate!!.complete(Unit)
+        heartbeat.await()
+        starter.await()
+        assertEquals(1, scheduler.scheduled)
     }
 
     // ---- staged imports left over (declared in phase 11f) ------------------------------------------------

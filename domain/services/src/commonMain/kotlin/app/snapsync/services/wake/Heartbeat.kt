@@ -45,7 +45,7 @@ class Heartbeat(
      * Ensure the next heartbeat is requested. One-shot on every platform, so this is called to re-submit; the port's
      * requests are idempotent, so a repeated arm replaces the pending request rather than stacking one.
      */
-    fun arm(cadence: WakeCadence) {
+    suspend fun arm(cadence: WakeCadence) {
         val trigger = triggerAt(cadence, transferNetwork())
         // The field's only record of the cadence a device keeps (decision record `changes/timely-background-receiving`).
         if (request(WakeId.Heartbeat, trigger)) {
@@ -57,9 +57,9 @@ class Heartbeat(
      * Ensure a library-change wake is requested, and answer whether one now stands — `false` where the platform has
      * none (iOS) or refused it. One-shot like the heartbeat, and idempotent.
      */
-    fun watchLibrary(): Boolean = request(WakeId.LibraryChanged, WakeTrigger.LibraryChange(maxDelay = LIBRARY_CHANGE_DELAY))
+    suspend fun watchLibrary(): Boolean = request(WakeId.LibraryChanged, WakeTrigger.LibraryChange(maxDelay = LIBRARY_CHANGE_DELAY))
 
-    private fun request(id: WakeId, trigger: WakeTrigger): Boolean = when (val answer = wake.schedule(id, trigger)) {
+    private suspend fun request(id: WakeId, trigger: WakeTrigger): Boolean = when (val answer = wake.schedule(id, trigger)) {
         ScheduleResult.Scheduled -> true
         ScheduleResult.Unsupported -> false
         // Not silent (`docs/architecture.md`, "Absence is never silent"): a refused heartbeat is a device that

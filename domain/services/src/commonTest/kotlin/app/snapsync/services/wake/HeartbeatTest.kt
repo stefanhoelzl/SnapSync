@@ -16,6 +16,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.test.runTest
 
 /**
  * The heartbeat over the `Wake` port (capability `background-upload`): what it asks for, that it asks for every wake
@@ -34,7 +35,7 @@ class HeartbeatTest {
 
         override fun listen(handlers: WakeHandlers) = Unit
 
-        override fun schedule(id: WakeId, trigger: WakeTrigger): ScheduleResult {
+        override suspend fun schedule(id: WakeId, trigger: WakeTrigger): ScheduleResult {
             scheduled += id to trigger
             return when {
                 id !in supported -> ScheduleResult.Unsupported
@@ -51,7 +52,7 @@ class HeartbeatTest {
     private fun CapturingLogWriter.warnings() = lines.filter { it.first == Severity.Warn }.map { it.second }
 
     @Test
-    fun `a busy heartbeat asks for a timed wake after a minute that needs the network`() {
+    fun `a busy heartbeat asks for a timed wake after a minute that needs the network`() = runTest {
         val wake = RecordingWake()
         Heartbeat(wake, ANY_NETWORK).arm(WakeCadence.BUSY)
         assertEquals(
@@ -63,7 +64,7 @@ class HeartbeatTest {
     }
 
     @Test
-    fun `an idle heartbeat asks for a timed wake after an hour that needs the network`() {
+    fun `an idle heartbeat asks for a timed wake after an hour that needs the network`() = runTest {
         val wake = RecordingWake()
         Heartbeat(wake, ANY_NETWORK).arm(WakeCadence.IDLE)
         assertEquals(
@@ -80,7 +81,7 @@ class HeartbeatTest {
      * while an idle one, which moves no photo, keeps waiting for any connection.
      */
     @Test
-    fun `with photos kept off mobile data a busy heartbeat waits for an unrestricted network and an idle one does not`() {
+    fun `with photos kept off mobile data a busy heartbeat waits for an unrestricted network and an idle one does not`() = runTest {
         val wake = RecordingWake()
         val heartbeat = Heartbeat(wake, transferNetwork = { TransferNetwork.UNRESTRICTED_ONLY })
         heartbeat.arm(WakeCadence.BUSY)
@@ -92,14 +93,14 @@ class HeartbeatTest {
     }
 
     @Test
-    fun `watching the library asks for a library-change wake and answers that one stands`() {
+    fun `watching the library asks for a library-change wake and answers that one stands`() = runTest {
         val wake = RecordingWake()
         assertTrue(Heartbeat(wake, ANY_NETWORK).watchLibrary())
         assertEquals(listOf<Pair<WakeId, WakeTrigger>>(WakeId.LibraryChanged to WakeTrigger.LibraryChange(maxDelay = 60.seconds)), wake.scheduled)
     }
 
     @Test
-    fun `a platform without a library-change wake is not a failure and watches nothing`() {
+    fun `a platform without a library-change wake is not a failure and watches nothing`() = runTest {
         val captured = CapturingLogWriter()
         val wake = RecordingWake(supported = setOf(WakeId.Heartbeat))
         assertFalse(Heartbeat(wake, ANY_NETWORK, log = captured.logger()).watchLibrary())
@@ -107,12 +108,12 @@ class HeartbeatTest {
     }
 
     @Test
-    fun `a refused library watch watches nothing`() {
+    fun `a refused library watch watches nothing`() = runTest {
         assertFalse(Heartbeat(RecordingWake(refuse = true), ANY_NETWORK).watchLibrary())
     }
 
     @Test
-    fun `a refused wake is said out loud`() {
+    fun `a refused wake is said out loud`() = runTest {
         val captured = CapturingLogWriter()
         Heartbeat(RecordingWake(refuse = true), ANY_NETWORK, log = captured.logger()).arm(WakeCadence.BUSY)
         assertTrue(

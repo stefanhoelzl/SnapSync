@@ -20,7 +20,7 @@ import kotlinx.coroutines.test.runTest
 class InMemoryWakeTest {
 
     @Test
-    fun `a wake the platform lacks is unsupported and queues nothing`() {
+    fun `a wake the platform lacks is unsupported and queues nothing`() = runTest {
         val pending = MutableStateFlow<Map<WakeId, WakeTrigger>>(emptyMap())
         val wake = inMemoryWake(pending, supported = setOf(WakeId.Heartbeat))
         var woken = 0

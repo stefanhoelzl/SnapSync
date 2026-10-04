@@ -162,10 +162,10 @@ data class TailOutcome(val result: CycleResult, val cut: Boolean)
  * **Single-flight, and joining keeps its obligations.** At most one tail runs; the ledger's writer family would
  * double-write otherwise. A request arriving while one runs **joins** it: the running tail makes exactly one more
  * pass, covering the union of the scopes the joiners need, however many joined — no request is lost, no second tail starts,
- * nothing is queued. The joiner awaits that tail, **including** the pass it requested, and then applies **its own**
- * trigger's re-arm to the tail's outcome (a caller that returned at once could not be what a `BGTask` is held for,
- * and would skip its one-shot re-submission — both measured in the field under the pump). The decision to end and
- * the clearing of the running state are one step under [mutex], so a request can never slip between them.
+ * nothing is queued. The joiner awaits that tail, **including** the pass it requested, and its re-arm (a caller that
+ * returned at once could not be what a `BGTask` is held for, and would skip its one-shot re-submission — both
+ * measured in the field under the pump). The decision to end and the clearing of the running state are one step
+ * under [mutex], so a request can never slip between them.
  *
  * **Cooperative stop.** [stop] is Apple's "time is up", forwarded; it only sets a flag and returns. The unit in
  * flight completes — every unit receives `stopRequested` and stops at its own next boundary (between two imports,
@@ -177,7 +177,11 @@ data class TailOutcome(val result: CycleResult, val cut: Boolean)
  * **Rules carried over from the pump.** `PROCESSING` never busy-loops: a truncated ② is not re-run for that reason
  * alone (a completion or the heartbeat re-requests it); the ③ → ② loop runs only because ③ recorded rows.
  *
- * **The re-arm** is [heartbeatCadence] over the tail's outcome, the staged imports still waiting ([importsRemain]),
+ * **The re-arm is made once per tail**, by the request that drove it, after the tail ends and before any of its
+ * requests returns — whenever **any** of them was a re-arming trigger, the starter or a joiner. Every request of one
+ * tail would compute the same cadence from the same outcome, and each request replaces the last, so a re-arm per
+ * request only repeated the platform calls — on Android a burst of them, on the main thread, after a long tail
+ * (SNAPSYNC-40). It is [heartbeatCadence] over the tail's outcome, the staged imports still waiting ([importsRemain]),
  * the library watch and the [cadenceFacts]: a heartbeat stays pending — busy or idle — for as long as the device is
  * joined, whatever the upload units answered (decision record `changes/timely-background-receiving`, D1). It is
  * exhaustive over [CycleResult] and made outside [mutex]. A
@@ -245,9 +249,7 @@ class TailRunner(
                 log.i { "upload completed; the app may not create now — recorded, no top-up requested" }
                 return@invocation null
             }
-            val outcome = admit(trigger)
-            if (trigger.rearms) rearm(trigger, outcome)
-            outcome
+            admit(trigger)
         }
 
     /**
@@ -272,21 +274,38 @@ class TailRunner(
         }
     }
 
-    /** Joins the running tail, or starts one and drives it here. */
+    /**
+     * Joins the running tail, or starts one and drives it here; either way returns once the tail has ended and been
+     * re-armed. The driver re-arms once, for every request the tail served; a joiner awaits that.
+     */
     private suspend fun admit(trigger: TailTrigger): TailOutcome {
         val (run, joined) = mutex.withLock {
             val running = current.load()
             if (running != null) {
                 running.pending = running.pending?.let { it + trigger.scope } ?: trigger.scope
+                running.served(trigger)
                 // A joiner is work waiting: an import the running unit is merely awaiting must not hold it back.
                 running.interrupt()
                 running to true
             } else {
-                Run(trigger.scope).also { current.store(it) } to false
+                Run(trigger.scope).also { it.served(trigger); current.store(it) } to false
             }
         }
-        if (joined) log.i { "$trigger joined the running tail; it makes one more ${run.pending} pass" }
-        return if (joined) run.done.await() else withContext(InsideTail(this)) { drive(run) }
+        if (joined) {
+            log.i { "$trigger joined the running tail; it makes one more ${run.pending} pass" }
+            val outcome = run.done.await()
+            run.rearmed.await()
+            return outcome
+        }
+        val outcome = withContext(InsideTail(this)) { drive(run) }
+        try {
+            // Read under the lock: no request joins once the tail has ended, and this is the last write's reader.
+            val (scope, requests) = mutex.withLock { run.rearmScope to run.rearmRequests }
+            if (scope != null) rearm(scope, requests, outcome)
+        } finally {
+            run.rearmed.complete(Unit)
+        }
+        return outcome
     }
 
     private suspend fun drive(run: Run): TailOutcome {
@@ -395,9 +414,10 @@ class TailRunner(
      * which answers it `Unsupported`) the confirmed OS uploader is what stands in for it. Then [heartbeatCadence] picks
      * busy, idle or nothing, and the heartbeat is armed at that cadence — replacing the pending one.
      */
-    private suspend fun rearm(trigger: TailTrigger, outcome: TailOutcome) {
+    private suspend fun rearm(scope: TailScope, requests: Int, outcome: TailOutcome) {
+        if (requests > 1) log.i { "one re-arm for the tail's $requests re-arming requests" }
         val contributes = outcome.result != CycleResult.SKIPPED
-        val watched = trigger.scope != TailScope.IMPORT && contributes && heartbeat.watchLibrary()
+        val watched = scope != TailScope.IMPORT && contributes && heartbeat.watchLibrary()
         val cadence = heartbeatCadence(
             facts = cadenceFacts(),
             leftWork = outcome.result.leftWork,
@@ -421,6 +441,23 @@ class TailRunner(
 
         /** Guarded by [mutex]. */
         var pending: TailScope? = null
+
+        /** The union of the re-arming requests' scopes, or `null` while none re-arms. Guarded by [mutex]. */
+        var rearmScope: TailScope? = null
+
+        /** How many of this tail's requests re-arm — for the log alone. Guarded by [mutex]. */
+        var rearmRequests = 0
+
+        /** Completed once the driver has re-armed (or found nothing to re-arm): what a joiner awaits last. */
+        val rearmed = CompletableDeferred<Unit>()
+
+        /** Under [mutex]: [trigger] is one of the requests this tail answers. */
+        fun served(trigger: TailTrigger) {
+            if (!trigger.rearms) return
+            rearmScope = rearmScope?.let { it + trigger.scope } ?: trigger.scope
+            rearmRequests++
+        }
+
         val stop = AtomicBoolean(false)
         val stopRequested: () -> Boolean = { stop.load() }
 
