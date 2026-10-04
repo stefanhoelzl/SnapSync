@@ -24,7 +24,8 @@ background on its own wake-ups, iOS's background-upload completions, the silent 
 cause, and on every opening of the app. On Android the app SHALL upload in the background when a photo is
 added to the library, on its own wake-ups while photos remain to upload, and on every opening of the app;
 Android has no uploader of its own that works while the app is not running. The app SHALL NOT hold uploads
-back for Wi-Fi or external power; the phone's system MAY still schedule the app's background work at its
+back for Wi-Fi or external power, except that a member who chose not to use mobile data for photos has
+their uploads wait for an unrestricted Wi-Fi (capability `mobile-data`); the phone's system MAY still schedule the app's background work at its
 discretion, for example to save battery.
 
 #### Scenario: A photo taken with the app closed reaches the event
@@ -47,6 +48,10 @@ discretion, for example to save battery.
 - **WHEN** an Android member who has not opened the app for days takes an in-range photo with the camera
   app
 - **THEN** it is uploaded in the background, once Android lets the app run
+
+#### Scenario: Uploads wait for Wi-Fi when the member chose so
+- **WHEN** a sharing member with mobile data off takes an in-range photo while on mobile data and never opens the app
+- **THEN** the photo is uploaded in the background once the phone is on an unrestricted Wi-Fi
 
 ### Requirement: A force-quit pauses the app's own background uploading only until the next opening
 

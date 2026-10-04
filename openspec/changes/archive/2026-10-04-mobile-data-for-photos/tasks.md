@@ -20,7 +20,7 @@
 - [x] 3.3 iOS: `uploadUrlRequest` sets `allowsCellularAccess`/`allowsExpensiveNetworkAccess`/`allowsConstrainedNetworkAccess` from the rule; `IosDownload.start` builds a request with the same flags; verify with `compileIosMainKotlinMetadata` and iosTest unit tests of the request builders
 - [x] 3.4 Android downloads: `AndroidDownload` maps `UNRESTRICTED_ONLY` to `setAllowedOverMetered(false)`; verify with a `DownloadContract` clause live on `ANDROID_EMU` (held on metered Wi-Fi and cellular, completes on unmetered)
 - [x] 3.5 Android uploads: `AndroidUpload` holds an `UNRESTRICTED_ONLY` PUT until the default network is unmetered and not Data-Saver-restricted; verify with an `UploadContract` clause live on `ANDROID_EMU` that reaches the fixture over a real (non-loopback) route, so metering applies
-- [ ] 3.6 Record the iOS `Upload`/`Download` restricted clauses on the SE2 (Low Data Mode, hotspot) and commit the recordings unedited; verify the replay passes in `iosPlatformTest`
+- [x] 3.6 iOS held behaviour, without a contract host: no recording can show a hold (the simulator's network is never restricted; the device's transfer recordings go to the rig's loopback receiver, which no restriction touches) — so the request flags are pinned by `UploadUrlRequestTest`, the held behaviour is the SE2/XS measurement in design.md and the on-device check (6.4), and the held clauses run live on `ANDROID_EMU` and over the mocks; documented in `docs/testing.md`
 - [x] 3.7 Update KDoc of `TransferSessions.kt` (its "run now, on whatever network you have" rationale) and `IosDownload` to name the per-request rule; verify by review
 
 ## 4. Resuming on Wi-Fi

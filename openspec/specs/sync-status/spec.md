@@ -206,8 +206,9 @@ nothing to do SHALL settle to "In sync".
 While work remains, the status line SHALL show an upload arrow when some of the member's photos are
 not yet shared and a download arrow when some of the others' photos have not yet arrived. An arrow
 SHALL pulse while a transfer in its direction is actually running and stay still while work waits; the
-line SHALL read "Synchronization ongoing…" when any arrow pulses and "Synchronization pending…"
-otherwise. "In sync" SHALL be shown exactly when neither arrow is shown. A direction the member switched
+line SHALL read "Synchronization ongoing…" when any arrow pulses, "Waiting for Wi-Fi…" when no arrow
+pulses and the work waits because the member chose not to use mobile data for photos and the phone is on a
+network that choice avoids (capability `mobile-data`), and "Synchronization pending…" otherwise. "In sync" SHALL be shown exactly when neither arrow is shown. A direction the member switched
 off has no work and therefore no arrow — but if the app ever does work in a switched-off direction, that
 arrow SHALL be shown rather than hidden.
 
@@ -227,6 +228,14 @@ arrow SHALL be shown rather than hidden.
 #### Scenario: Work in a switched-off direction is not masked
 - **WHEN** a receive-only member's device nevertheless has uploads outstanding
 - **THEN** the upload arrow is shown and the line does not read "In sync"
+
+#### Scenario: Photos waiting for Wi-Fi are named
+- **WHEN** a member with mobile data off is on mobile data and has a photo waiting to upload
+- **THEN** a still upload arrow is shown with "Waiting for Wi-Fi…"
+
+#### Scenario: Reaching Wi-Fi replaces the waiting line
+- **WHEN** that member's phone joins an unrestricted Wi-Fi while the app is open
+- **THEN** the waiting line is replaced by "Synchronization ongoing…" while the photo uploads
 
 ### Requirement: Progress counts only what this membership shares
 

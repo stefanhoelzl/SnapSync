@@ -1044,7 +1044,7 @@ private fun reduceFrom(
         !download.read -> SyncHealth.Loading
         // Photos kept off mobile data wait while the phone is on a network the choice avoids (capability `mobile-data`):
         // from the CURRENT choice, so after turning mobile data back on the few transfers still holding the old rule
-        // read as pending, not waiting (decision record `mobile-data-for-photos`, D7).
+        // read as pending, not waiting (decision record `changes/archive/2026-10-04-mobile-data-for-photos`, D7).
         snapshot is SyncStatus.Ready ->
             syncHealth(snapshot.progress, download, heldForWifi = !config.mobileData && access == NetworkAccess.Online(restricted = true))
         else -> SyncHealth.Loading

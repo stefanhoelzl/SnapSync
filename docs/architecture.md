@@ -956,7 +956,7 @@ SE2), so:
   `changes/tell-when-offline`, D1–D2). `Online` carries whether the network is restricted (mobile data, a hotspot,
   Low Data Mode / Data Saver), which the status line reads for "Waiting for Wi-Fi…" (capability `mobile-data`).
 - **A photo transfer carries the member's network rule** (capability `mobile-data`; decision record
-  `changes/mobile-data-for-photos`): `TransferNetwork`, read from the membership the moment a transfer is CREATED and
+  `changes/archive/2026-10-04-mobile-data-for-photos`): `TransferNetwork`, read from the membership the moment a transfer is CREATED and
   handed over on `UploadTarget.network` / `Download.start` — so a change of the choice governs only later transfers,
   with no state of its own. Whoever owns "when may this run" honours it: iOS's request flags (`applyTransferNetwork`,
   one builder for both upload tiers and the download), `DownloadManager`'s metered flag, and on Android's in-process

@@ -7,7 +7,7 @@ package app.snapsync.model
  * [UNRESTRICTED_ONLY] asks the platform to hold the transfer off every network it treats as restricted: mobile data,
  * a personal hotspot or any other costly (metered) network, and a network under Low Data Mode (iOS) or Data Saver
  * (Android). Who honours it differs per path — the request flags on iOS, `DownloadManager` and the upload adapter's
- * own wait on Android; `openspec/changes/mobile-data-for-photos/design.md` records what was measured.
+ * own wait on Android; `openspec/changes/archive/2026-10-04-mobile-data-for-photos/design.md` records what was measured.
  */
 enum class TransferNetwork {
     /** Any network the phone offers — the behaviour without the choice. */

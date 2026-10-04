@@ -72,8 +72,8 @@ that finds the event missing SHALL NOT end it.
 
 ### Requirement: A member changes their settings without leaving
 Until the event closes (capability `event-lifetime`), the joined screen SHALL offer a settings action
-that opens the same choices as the join screen — share and receive switches, the capture range, and the
-album — pre-filled with the membership's current settings under the event's name. A saved
+that opens the same choices as the join screen — share and receive switches, the capture range, the
+album, and whether photos may use mobile data (capability `mobile-data`) — pre-filled with the membership's current settings under the event's name. A saved
 range equal to the event's whole window SHALL show as the whole event, and any other as a custom range.
 Save SHALL apply all changes at once, without a confirmation dialog; Cancel SHALL discard them. Both
 switches off SHALL disable Save with the reason stated. Changed range bounds SHALL stay within the event's
@@ -109,6 +109,10 @@ close.
 - **WHEN** a member opens the joined screen of an event that has closed
 - **THEN** no settings action is offered, and what they share and receive stays as it was
 
+#### Scenario: Settings show the mobile-data choice
+- **WHEN** a member who joined with mobile data off opens settings
+- **THEN** the mobile-data choice is shown off
+
 ### Requirement: Settings explain what a change does
 The settings screen SHALL show the live count of photos that will be shared (as on the join screen,
 capability `join-event`). It SHALL state that sharing less stops listing those photos to the event while
@@ -136,7 +140,9 @@ shared. Narrowing the range or turning sharing off SHALL stop listing the exclud
 members who already received them SHALL keep them, and a later widening SHALL bring them back to the
 event. Turning sharing off SHALL let uploads already under way finish and count as shared; turning
 receiving off SHALL stop downloads under way at once. Photos the member already received SHALL be
-unaffected by any change.
+unaffected by any change. Changing whether photos may use mobile data SHALL govern every transfer that
+starts after Save, while a transfer already under way keeps the rule it started with (capability
+`mobile-data`).
 
 #### Scenario: Turning sharing on starts right away
 - **WHEN** a receive-only member turns sharing on, with photo access granted, and saves
@@ -165,6 +171,10 @@ unaffected by any change.
 #### Scenario: Turning receiving off stops downloads
 - **WHEN** a member turns receiving off while the event's photos are downloading
 - **THEN** those downloads stop and no further photos arrive
+
+#### Scenario: Turning mobile data off governs what starts next
+- **WHEN** a member on mobile data turns the mobile-data choice off and saves
+- **THEN** no photo transfer starts over mobile data from then on, and transfers already under way are not cancelled
 
 ### Requirement: A settings change that cannot be saved says so and applies nothing
 If the new settings cannot be saved, the settings screen SHALL stay open with the member's unsaved
