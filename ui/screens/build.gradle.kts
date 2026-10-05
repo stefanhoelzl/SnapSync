@@ -67,7 +67,7 @@ compose.resources {
 // one is a `values-<lang>/strings.xml` in BOTH UI modules plus its tag here; `./gradlew nativeStrings` then writes
 // what each OS needs to offer it.
 nativeStrings {
-    locales.set(listOf("en"))
+    locales.set(listOf("en", "de"))
     otherResources.add(rootProject.file("ui/components/src/commonMain/composeResources"))
 }
 

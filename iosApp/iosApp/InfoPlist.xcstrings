@@ -9,6 +9,12 @@
             "state" : "translated",
             "value" : "SnapSync shares the photos you take during an event with its members and saves theirs to your gallery."
           }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SnapSync teilt die Fotos, die du während eines Events aufnimmst, mit den anderen und speichert ihre in deiner Galerie."
+          }
         }
       }
     }
