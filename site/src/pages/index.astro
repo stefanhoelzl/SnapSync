@@ -2,7 +2,7 @@
 // The marketing landing page (capability `web-site`), built on the shared Layout. It carries the
 // marketing content, the Privacy Policy (#privacy) and Terms of Use (#terms) App Store review requires,
 // and the app screenshots — processed at build time by astro:assets from the committed raws in the
-// repo-root screenshots/ dir (the same source of truth the App Store listing is composited from) and
+// repo-root screenshots/ios/ dir (the same source of truth the App Store listing is composited from) and
 // emitted as fingerprinted, same-origin WebP. Zero client JS, zero off-origin subresources.
 //
 // Its words are the store listing's, read at build time, so the site and the stores cannot drift apart
@@ -20,12 +20,12 @@ import listing from "../../../metadata/listing/en-US.json";
 import shotCopy from "../../../metadata/screenshots/en-US.json";
 import heroArt from "../../../metadata/graphic/site-hero.png";
 import heroNarrow from "../../../metadata/graphic/site-hero-narrow.png";
-import createLight from "../../../screenshots/create-light.png";
-import createDark from "../../../screenshots/create-dark.png";
-import joiningLight from "../../../screenshots/joining-light.png";
-import joiningDark from "../../../screenshots/joining-dark.png";
-import inSyncLight from "../../../screenshots/in_sync-light.png";
-import inSyncDark from "../../../screenshots/in_sync-dark.png";
+import createLight from "../../../screenshots/ios/create-light.png";
+import createDark from "../../../screenshots/ios/create-dark.png";
+import joiningLight from "../../../screenshots/ios/joining-light.png";
+import joiningDark from "../../../screenshots/ios/joining-dark.png";
+import inSyncLight from "../../../screenshots/ios/in_sync-light.png";
+import inSyncDark from "../../../screenshots/ios/in_sync-dark.png";
 
 const screens = [
   {

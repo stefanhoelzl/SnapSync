@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Composite the committed raw captures into store listing images: the App Store's from `screenshots/`, Google
+# Composite the committed raw captures into store listing images: the App Store's from `screenshots/ios/`, Google
 # Play's from `screenshots/android/`, both with the same per-locale headlines.
 #
 # The raws are the SINGLE SOURCE OF TRUTH (`docs/deployment.md`); this script is the App
@@ -32,17 +32,19 @@ LOCALE="${1:-en-US}"
 TARGET="${TARGET:-appstore}"
 OUT_DIR="${OUT_DIR:-out}"
 HEADLINES="metadata/screenshots/${LOCALE}.json"
-BRAND="#0E9D6B"   # AppTheme's GreenLight; the light captures sit on the light brand colour
+# The light captures sit on the use-case graphic's green gradient (metadata/graphic/bg-<target>.png, rendered at
+# exactly this target's canvas by metadata/graphic/render.py), so all four frames of a set share one background.
 
 case "$TARGET" in
   appstore)
-    RAW_DIR="${RAW_DIR:-screenshots}"
+    RAW_DIR="${RAW_DIR:-screenshots/ios}"
     CONCEPT="metadata/graphic/frame-appstore.png"
+    CANVAS_BG="metadata/graphic/bg-appstore.png"
     # APP_IPHONE_69 accepts exactly these dimensions; App Store Connect scales this class down to the smaller
     # iPhone listings, so it is the only iPhone set we produce.
     CANVAS_W=1320
     CANVAS_H=2868
-    SHOT_GEOMETRY="1120x"  # the screen within the canvas, by width, leaving a brand margin
+    SHOT_GEOMETRY="1120x"  # the screen within the canvas, by width, leaving a green margin
     CORNER=44         # proportional to the shot, not the device's real radius — we are not drawing a device
     POINTSIZE=72
     CAPTION_W=1140
@@ -53,6 +55,7 @@ case "$TARGET" in
   play)
     RAW_DIR="${RAW_DIR:-screenshots/android}"
     CONCEPT="metadata/graphic/frame-play.png"
+    CANVAS_BG="metadata/graphic/bg-play.png"
     # Phones only (no tablet set): 9:16 at 1080 wide, Play's recommended size for a phone screenshot.
     CANVAS_W=1080
     CANVAS_H=1920
@@ -70,6 +73,7 @@ esac
 
 [ -d "$RAW_DIR" ] || { echo "::error::$RAW_DIR not found — commit the raw captures first"; exit 1; }
 [ -f "$HEADLINES" ] || { echo "::error::$HEADLINES not found"; exit 1; }
+[ -f "$CANVAS_BG" ] || { echo "::error::missing $CANVAS_BG — run metadata/graphic/render.py"; exit 1; }
 
 # ImageMagick cannot resolve font ALIASES; it needs a font FILE path. This runs on UBUNTU (the composite
 # moved off the macOS capture runner), so the macOS system fonts the capture workflow used are gone.
@@ -133,12 +137,12 @@ for STATE in create joining in_sync; do
     -draw "roundrectangle 0,0,$((SHOT_W - 1)),$((SHOT_H - 1)),$CORNER,$CORNER" "$TMP/mask.png"
   $IM "$TMP/shot.png" "$TMP/mask.png" -alpha off -compose CopyOpacity -composite "$TMP/rounded.png"
 
-  # Brand canvas + the rounded shot + the headline.
+  # The gradient canvas + the rounded shot + the headline.
   #
   # `caption:` word-WRAPS inside a fixed box at a fixed pointsize, so a long headline becomes two lines
   # rather than bleeding off the canvas (`-annotate` neither wraps nor clips safely). Any copy length fits
   # by construction — which is why the headline needs no length gate.
-  $IM -size "${CANVAS_W}x${CANVAS_H}" "xc:$BRAND" \
+  $IM "$CANVAS_BG" \
     "$TMP/rounded.png" -gravity south -geometry "+0+$SHOT_Y" -compose over -composite \
     \( -background none -fill white -font "$FONT" -pointsize "$POINTSIZE" \
        -size "${CAPTION_W}x" -gravity center caption:"$HEADLINE" \) \
