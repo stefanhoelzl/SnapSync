@@ -7,7 +7,7 @@ answer here first, in a PR, then in the Console.
 
 Facts this file leans on were read from the tree on 2026-10-02:
 - **Permissions:** the merged release manifest of `:app:android` (`processReleaseMainManifest`).
-- **App Store territories:** App Store Connect's app availability.
+- **App Store territories:** App Store Connect's app availability (re-read 2026-10-05, when both stores widened).
 - **What leaves the device:** the Privacy Policy (`site/`, capability `privacy-security`).
 
 Entered in the Console on 2026-10-02, with the first closed release (build 2118).
@@ -178,9 +178,10 @@ form in a way that promises features the app does not have.
 
 ## Countries and regions
 
-**Germany only**, the same as the App Store. App Store Connect, read 2026-10-02: available in 1 of 175 territories
-(`DEU`), and not automatically in new territories. Set it on each track that is published (closed testing, then
-production). Widen both stores together.
+**Worldwide**, the same as the App Store, widened in both stores on 2026-10-05 (until then Germany only: App Store
+Connect, read 2026-10-02, listed 1 of 175 territories, `DEU`). Set it on each track that is published (closed
+testing, then production). Change both stores together, and the App Store link's country segment with them
+(`appStoreUrl` in `scripts/resolve-deployment.py`).
 
 ## Pre-launch report
 

@@ -167,13 +167,12 @@ INVENTORY = [
         redirected app-less visitors here too; it now serves the one constant event page, which carries the
         site's button instead.) Rendered to the api bundle as well, which reads it nowhere today.
 
-        ⚠️ **The country segment is load-bearing while availability is limited.** Measured 2026-08-28:
-        the country-less `apps.apple.com/app/id<id>` resolves to the US storefront and answers **404**,
-        because the app is released to Germany only; `apps.apple.com/de/app/id<id>` answers 200. The
-        country-less form was what `GET /join` had been redirecting app-less visitors to — a dead page
-        at the end of every shared link. Drop the `/de/` only when availability actually widens, and note
-        that a US-storefront visitor following a `/de/` link is shown a "not available in your country"
-        page, which is a true statement rather than a 404.
+        ⚠️ **No country segment.** The country-less `apps.apple.com/app/id<id>` resolves to the visitor's
+        own storefront, which is right only while the app is offered in every storefront a visitor may
+        come from. While availability was Germany-only (until 2026-10-05) it answered **404** outside
+        Germany (measured 2026-08-28), and the value carried `/de/` instead. If availability ever narrows
+        again, put a country segment back: a visitor outside it is then shown a "not available in your
+        country" page, a true statement rather than a 404.
 
         Stated here because the JSON that holds the value carries no comments, and the site's own
         hardcoded copy of this URL (which had the correct form) is what the SITE rendering replaces.

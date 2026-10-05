@@ -6,8 +6,7 @@
 // referrer (and only it: steps 1 and 2 carry nothing from the page). Placed by PlayOffer.
 //
 // The caveats in the copy are what makes a step silently fail: Play matches the phone's account against the group's
-// members, an opt-in takes minutes to apply, and the closed track is available in Germany only
-// (metadata/play/declarations.md). The badge sits centred under the list, in line with the App Store button above.
+// members, and an opt-in takes minutes to apply. The badge sits centred under the list, in line with the App Store button above.
 import PlayStoreButton from "./PlayStoreButton.astro";
 
 interface Props {
@@ -45,7 +44,7 @@ const { listingUrl, groupUrl, optInUrl } = Astro.props;
       </a>{" "}
       on Google Play. It can take a few minutes to apply.
     </li>
-    <li>Install SnapSync from Google Play. Available in Germany.</li>
+    <li>Install SnapSync from Google Play.</li>
   </ol>
   <div class="playtest-badge">
     <PlayStoreButton listingUrl={listingUrl} />
