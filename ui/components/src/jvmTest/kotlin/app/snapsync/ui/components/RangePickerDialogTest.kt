@@ -48,9 +48,9 @@ class RangePickerDialogTest {
     fun `the title is a heading and both ends' wheels show the chosen range`() {
         setDialog()
         rule.onNodeWithText("Which photos to share").assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
-        rule.onNodeWithContentDescription("From hour", useUnmergedTree = true)
+        rule.onNodeWithContentDescription("Start hour", useUnmergedTree = true)
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "18"))
-        rule.onNodeWithContentDescription("Until hour", useUnmergedTree = true)
+        rule.onNodeWithContentDescription("End hour", useUnmergedTree = true)
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "18"))
     }
 
@@ -66,7 +66,7 @@ class RangePickerDialogTest {
     @Test
     fun `OK unchanged reports the range it opened on`() {
         setDialog()
-        rule.onNodeWithText("OK").performClick()
+        rule.onNodeWithText("Save").performClick()
         assertEquals(START to END, confirmed)
     }
 
@@ -74,9 +74,9 @@ class RangePickerDialogTest {
     fun `a first tap starts a new range and OK waits for its last day`() {
         setDialog()
         rule.onNodeWithContentDescription("Friday 13 March 2026").performClick()
-        rule.onNodeWithText("OK").assertIsNotEnabled()
+        rule.onNodeWithText("Save").assertIsNotEnabled()
         rule.onNodeWithContentDescription("Sunday 15 March 2026").performClick()
-        rule.onNodeWithText("OK").assertIsEnabled().performClick()
+        rule.onNodeWithText("Save").assertIsEnabled().performClick()
         assertEquals(LocalDateTime(2026, 3, 13, 18, 0) to LocalDateTime(2026, 3, 15, 18, 0), confirmed)
     }
 
@@ -87,7 +87,7 @@ class RangePickerDialogTest {
             swipe(center, center - Offset(width * 3f, 0f), durationMillis = 300) // three columns back: Tuesday 17
         }
         rule.waitForIdle()
-        rule.onNodeWithText("OK").performClick()
+        rule.onNodeWithText("Save").performClick()
         assertEquals(START to LocalDateTime(2026, 3, 17, 18, 0), confirmed)
     }
 

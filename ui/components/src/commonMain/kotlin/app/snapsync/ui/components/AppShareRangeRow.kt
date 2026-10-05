@@ -116,7 +116,7 @@ fun AppShareRangeRow(
             bounds = RangeBounds.within(window.start, window.end),
             title = "Which photos to share",
             presets = buildList {
-                add(presetChip("Whole event", RangeChoice.WHOLE_EVENT, choices, actions) { picking = false })
+                add(presetChip("The whole event", RangeChoice.WHOLE_EVENT, choices, actions) { picking = false })
                 if (window.nowAvailable) {
                     add(presetChip("From now", RangeChoice.FROM_NOW, choices, actions) { picking = false })
                 }

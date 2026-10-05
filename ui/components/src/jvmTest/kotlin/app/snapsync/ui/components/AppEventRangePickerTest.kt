@@ -57,9 +57,9 @@ class AppEventRangePickerTest {
     fun `the last day starts on the start's day with its time blank`() {
         setPicker()
         rule.onNodeWithText("10 Mar 2026, pick a time").assertExists()
-        rule.onNodeWithContentDescription("Until hour", useUnmergedTree = true)
+        rule.onNodeWithContentDescription("End hour", useUnmergedTree = true)
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "not set"))
-        rule.onNodeWithContentDescription("From hour", useUnmergedTree = true)
+        rule.onNodeWithContentDescription("Start hour", useUnmergedTree = true)
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "09"))
     }
 
@@ -78,13 +78,13 @@ class AppEventRangePickerTest {
         setPicker()
         rule.onNodeWithContentDescription("Thursday 12 March 2026").performClick()
         // The blank wheel sits over the start's 09, so 10 is the row just below the reading line.
-        rule.onNode(hasText("10") and hasAnyAncestor(hasContentDescription("Until hour")), useUnmergedTree = true)
+        rule.onNode(hasText("10") and hasAnyAncestor(hasContentDescription("End hour")), useUnmergedTree = true)
             .performClick()
         rule.waitForIdle()
         assertEquals(10, range.untilHour)
         assertNull(range.until)
         rule.onNodeWithText("12 Mar 2026, pick a time").assertExists()
-        rule.onNodeWithContentDescription("Until minute", useUnmergedTree = true)
+        rule.onNodeWithContentDescription("End minute", useUnmergedTree = true)
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "not set"))
     }
 
@@ -92,7 +92,7 @@ class AppEventRangePickerTest {
     fun `dragging the blank Until minutes fills the clock's hour and shows minutes while moving`() {
         setPicker()
         rule.onNodeWithContentDescription("Thursday 12 March 2026").performClick()
-        val minutes = rule.onNodeWithContentDescription("Until minute", useUnmergedTree = true)
+        val minutes = rule.onNodeWithContentDescription("End minute", useUnmergedTree = true)
         minutes.performTouchInput {
             down(center)
             moveBy(androidx.compose.ui.geometry.Offset(0f, -height / 2f))
@@ -134,7 +134,7 @@ class AppEventRangePickerTest {
     @Test
     fun `a same-day end before the start cannot be tapped`() {
         setPicker()
-        rule.onNode(hasText("08") and hasAnyAncestor(hasContentDescription("Until hour")), useUnmergedTree = true)
+        rule.onNode(hasText("08") and hasAnyAncestor(hasContentDescription("End hour")), useUnmergedTree = true)
             .onParent().assertIsNotEnabled()
     }
 

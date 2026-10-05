@@ -149,7 +149,7 @@ private fun StatusBody(status: AppSyncStatus, onAttentionClick: () -> Unit) {
         is AppSyncStatus.NeedsAccess -> AttentionButton(
             text = when (status.prompt) {
                 AccessPrompt.ALLOW -> "Allow photo access"
-                AccessPrompt.SETTINGS -> "Turn on full access in Settings"
+                AccessPrompt.SETTINGS -> "Allow photo access in Settings"
             },
             onClick = onAttentionClick,
         )
@@ -214,8 +214,8 @@ private fun SyncingLine(status: AppSyncStatus.Syncing) {
         } else {
             1f
         }
-        ArrowIcon(Icons.Filled.ArrowUpward, "uploading", status.upload, pulseAlpha)
-        ArrowIcon(Icons.Filled.ArrowDownward, "downloading", status.download, pulseAlpha)
+        ArrowIcon(Icons.Filled.ArrowUpward, "sharing", status.upload, pulseAlpha)
+        ArrowIcon(Icons.Filled.ArrowDownward, "receiving", status.download, pulseAlpha)
         val label = when {
             ongoing -> "Synchronization ongoing…"
             status.waitingForWifi -> "Waiting for Wi-Fi…"

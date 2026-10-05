@@ -170,12 +170,12 @@ class StatusContainerHostNetworkTest {
         val host = host(network, config = null, creation = CreationStatus.Failed(CreationFailureReason.SERVER))
         driving(host) {
             assertEquals(
-                Layer.CreateEvent(error = "Couldn't reach the server.", network = NetworkNotice.OFFLINE),
+                Layer.CreateEvent(error = "Couldn't connect. Check your connection and try again.", network = NetworkNotice.OFFLINE),
                 host.container.stateFlow.value.layer,
             )
             network.comeBack()
             runCurrent()
-            assertEquals(Layer.CreateEvent(error = "Couldn't reach the server."), host.container.stateFlow.value.layer)
+            assertEquals(Layer.CreateEvent(error = "Couldn't connect. Check your connection and try again."), host.container.stateFlow.value.layer)
         }
     }
 

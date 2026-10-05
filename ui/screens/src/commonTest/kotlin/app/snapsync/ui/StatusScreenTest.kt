@@ -213,10 +213,10 @@ private fun CreateScreen(state: UiState, cutoff: CutoffFormatter = fixedCutoff()
 internal fun ComposeUiTest.setUntilHour(row: String) {
     // The wheels sit below the calendar, under the fold of a test window: scroll the FORM (the wheel's own
     // closest scroll parent) so the wheel is in view, then tap the row.
-    onNodeWithContentDescription("Until hour", useUnmergedTree = true).performScrollTo()
-    onNode(hasText(row) and hasAnyAncestor(hasContentDescription("Until hour")), useUnmergedTree = true).performClick()
+    onNodeWithContentDescription("End hour", useUnmergedTree = true).performScrollTo()
+    onNode(hasText(row) and hasAnyAncestor(hasContentDescription("End hour")), useUnmergedTree = true).performClick()
     waitForIdle()
-    onNode(hasText("--") and hasAnyAncestor(hasContentDescription("Until minute")), useUnmergedTree = true).performClick()
+    onNode(hasText("--") and hasAnyAncestor(hasContentDescription("End minute")), useUnmergedTree = true).performClick()
     waitForIdle()
 }
 
@@ -307,24 +307,24 @@ class StatusScreenTest {
     fun `create screen shows the name input and the scan-to-join hint`() = runComposeUiTest {
         setContent { CreateScreen(UiState(Layer.CreateEvent())) }
 
-        onNodeWithText("Start an event").assertExists()
-        onNodeWithText("Or scan a QR code in the Camera app to join one.").assertExists()
-        onNodeWithText("Event name").assertExists()
+        onNodeWithText("Create an event").assertExists()
+        onNodeWithText("To join an event instead, scan its QR code with your camera.").assertExists()
+        onNodeWithText("e.g. Anna's birthday").assertExists()
         onNodeWithText("Create event").assertExists()
     }
 
     @Test
     fun `invalid deeplink error shows below Create in place of the scan hint`() = runComposeUiTest {
-        setContent { CreateScreen(UiState(Layer.CreateEvent(error = "That QR code wasn't valid."))) }
-        onNodeWithText("That QR code wasn't valid.").assertExists()
-        onNodeWithText("Or scan a QR code in the Camera app to join one.").assertDoesNotExist()
+        setContent { CreateScreen(UiState(Layer.CreateEvent(error = "That QR code isn't a SnapSync event."))) }
+        onNodeWithText("That QR code isn't a SnapSync event.").assertExists()
+        onNodeWithText("To join an event instead, scan its QR code with your camera.").assertDoesNotExist()
     }
 
     @Test
     fun `a create failure shows below Create in place of the scan hint`() = runComposeUiTest {
-        setContent { CreateScreen(UiState(Layer.CreateEvent(error = "Couldn't reach the server."))) }
-        onNodeWithText("Couldn't reach the server.").assertExists()
-        onNodeWithText("Or scan a QR code in the Camera app to join one.").assertDoesNotExist()
+        setContent { CreateScreen(UiState(Layer.CreateEvent(error = "Couldn't connect. Check your connection and try again."))) }
+        onNodeWithText("Couldn't connect. Check your connection and try again.").assertExists()
+        onNodeWithText("To join an event instead, scan its QR code with your camera.").assertDoesNotExist()
     }
 
     @Test
@@ -332,7 +332,7 @@ class StatusScreenTest {
         setContent { CreateScreen(UiState(Layer.CreateEvent())) }
         onNodeWithText("6 Jul 2026, 12:00").assertExists()
         onNodeWithText("6 Jul 2026, pick a time").assertExists()
-        onNodeWithContentDescription("Until hour", useUnmergedTree = true)
+        onNodeWithContentDescription("End hour", useUnmergedTree = true)
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "not set"))
     }
 
@@ -465,11 +465,11 @@ class StatusScreenTest {
         // A phone-sized viewport, so the wheels start below the fold as they do on a Samsung A-series.
         setContent { Box(Modifier.size(390.dp, 640.dp)) { CreateScreen(UiState(Layer.CreateEvent())) } }
         onNode(hasSetTextAction()).performTextInput("My Party")
-        onNodeWithContentDescription("Until hour", useUnmergedTree = true).assertIsNotDisplayed()
+        onNodeWithContentDescription("End hour", useUnmergedTree = true).assertIsNotDisplayed()
 
         onNodeWithText("Pick an end time").assertHasClickAction().performClick()
         waitForIdle()
-        onNodeWithContentDescription("Until hour", useUnmergedTree = true).assertIsDisplayed()
+        onNodeWithContentDescription("End hour", useUnmergedTree = true).assertIsDisplayed()
         onNodeWithText("6 Jul 2026, pick a time").assertExists()
         onNodeWithText("Create event").assertIsNotEnabled()
     }
@@ -501,12 +501,12 @@ class StatusScreenTest {
     fun `all four time wheels are on the screen with the calendar`() = runComposeUiTest {
         setContent { CreateScreen(UiState(Layer.CreateEvent())) }
         onNodeWithText("July 2026").assertExists()
-        onNodeWithContentDescription("From hour", useUnmergedTree = true)
+        onNodeWithContentDescription("Start hour", useUnmergedTree = true)
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "12"))
-        onNodeWithContentDescription("From minute", useUnmergedTree = true)
+        onNodeWithContentDescription("Start minute", useUnmergedTree = true)
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "00"))
-        onNodeWithContentDescription("Until hour", useUnmergedTree = true).assertExists()
-        onNodeWithContentDescription("Until minute", useUnmergedTree = true).assertExists()
+        onNodeWithContentDescription("End hour", useUnmergedTree = true).assertExists()
+        onNodeWithContentDescription("End minute", useUnmergedTree = true).assertExists()
     }
 
     @Test
@@ -551,10 +551,10 @@ class StatusScreenTest {
         state.value = UiState(Layer.CreatingEvent)
         waitForIdle()
         clock.instant = Instant.parse("2026-07-09T08:30:00Z")
-        state.value = UiState(Layer.CreateEvent(error = "Couldn't reach the server."))
+        state.value = UiState(Layer.CreateEvent(error = "Couldn't connect. Check your connection and try again."))
         waitForIdle()
 
-        onNodeWithText("Couldn't reach the server.").assertExists()
+        onNodeWithText("Couldn't connect. Check your connection and try again.").assertExists()
         assertEquals("My Party", onNode(hasSetTextAction()).fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
         onNodeWithText("6 Jul 2026, 12:00").assertExists()
         onNodeWithText("8 Jul 2026, 13:00").assertExists()
@@ -617,7 +617,7 @@ class StatusScreenTest {
 
         onNodeWithText("Creating your event …").assertExists()
         onNode(hasAnyProgressIndication()).assertExists()
-        onNodeWithText("Event name").assertDoesNotExist()
+        onNodeWithText("e.g. Anna's birthday").assertDoesNotExist()
     }
 
     // ---- joined layer: status line ----
@@ -737,8 +737,8 @@ class StatusScreenTest {
              cutoff = fixedCutoff())
         }
 
-        onNodeWithText("Turn on full access in Settings").assertExists()
-        onNodeWithText("Turn on full access in Settings").performClick()
+        onNodeWithText("Allow photo access in Settings").assertExists()
+        onNodeWithText("Allow photo access in Settings").performClick()
         assertEquals(1, settingsOpens)
     }
 
@@ -775,10 +775,10 @@ class StatusScreenTest {
 
     @Test
     fun `offline Create cannot be tapped and the line below it says so`() = runComposeUiTest {
-        setContent { CreateScreen(UiState(Layer.CreateEvent(error = "Couldn't reach the server.", network = NetworkNotice.OFFLINE))) }
+        setContent { CreateScreen(UiState(Layer.CreateEvent(error = "Couldn't connect. Check your connection and try again.", network = NetworkNotice.OFFLINE))) }
         completeForm("Party")
         onNodeWithText("You're offline").assertExists()
-        onNodeWithText("Couldn't reach the server.").assertDoesNotExist()
+        onNodeWithText("Couldn't connect. Check your connection and try again.").assertDoesNotExist()
         onNodeWithText("Create event").assertIsNotEnabled()
     }
 
@@ -1317,7 +1317,7 @@ class StatusScreenTest {
         setContent {
             TestStatusScreen(reconfiguring(withAlbum, RangeForm(saveToAlbum = true)), cutoff = fixedCutoff())
         }
-        onNodeWithText("including the ones already synced", substring = true).assertExists()
+        onNodeWithText("including the ones you already have", substring = true).assertExists()
         onNodeWithText("from now on", substring = true).assertDoesNotExist()
     }
 
@@ -1332,7 +1332,7 @@ class StatusScreenTest {
             )
         }
         onNodeWithText("including the ones already received", substring = true).assertExists()
-        onNodeWithText("Your own photos stay in your camera folder", substring = true).assertExists()
+        onNodeWithText("Your own photos stay where they are", substring = true).assertExists()
     }
 
     @Test

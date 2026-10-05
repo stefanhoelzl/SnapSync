@@ -25,6 +25,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.state.ToggleableState
+import androidx.compose.ui.test.isSelectable
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
@@ -200,7 +202,7 @@ class JoinScreenTest {
     @Test
     fun `not-found phase blocks the join`() = runComposeUiTest {
         setScreen { TestStatusScreen(joining(JoinPhase.NotFound), cutoff = fixedCutoff()) }
-        onNodeWithText("Invalid invite").assertExists()
+        onNodeWithText("Event not found").assertExists()
         onNodeWithText("Join").assertDoesNotExist()
         onNodeWithText("Cancel").assertExists()
     }
@@ -333,7 +335,7 @@ class JoinScreenTest {
     fun `share on states the exclusions share off states that nothing leaves`() = runComposeUiTest {
         setScreen { TestStatusScreen(joining(ready()), cutoff = fixedCutoff()) }
         onNodeWithText(
-            "Screenshots, screen recordings, GIFs and pictures saved from chat apps are never shared.",
+            "Screenshots, screen recordings, GIFs and photos saved from chat apps are never shared.",
         ).assertExists()
     }
 
@@ -405,7 +407,7 @@ class JoinScreenTest {
         onNodeWithText("Share my photos").assertToggle(ToggleableState.Off)
         onNodeWithText("Receive everyone's photos").assertToggle(ToggleableState.Off)
         onNodeWithText(
-            "Turn on sharing or receiving — a membership that does neither does nothing.",
+            "Turn on sharing or receiving. With both off, joining does nothing.",
         ).assertExists()
         onNodeWithText("Join").assertIsNotEnabled()
         assertEquals(0, confirmed)
@@ -429,7 +431,7 @@ class JoinScreenTest {
         setScreen { TestStatusScreen(joining(ready()), cutoff = fixedCutoff()) }
         onNodeWithContentDescription("Change which photos are shared").performClick()
         onNodeWithText("Which photos to share").assertExists()
-        onNodeWithText("Whole event").assertIsRadio().assertIsSelected()
+        onNode(hasText("The whole event") and isSelectable()).assertIsRadio().assertIsSelected()
         onNodeWithText("From now").assertIsRadio().assertIsNotSelected()
     }
 
@@ -441,7 +443,7 @@ class JoinScreenTest {
             TestStatusScreen(joining(ready(start = eventStart("2026-07-10T00:00:00Z"))), cutoff = fixedCutoff())
         }
         onNodeWithContentDescription("Change which photos are shared").performClick()
-        onNodeWithText("Whole event").assertExists()
+        onNode(hasText("The whole event") and isSelectable()).assertExists()
         onNodeWithText("From now").assertDoesNotExist()
     }
 
@@ -478,7 +480,7 @@ class JoinScreenTest {
             )
         }
         onNodeWithContentDescription("Change which photos are shared").performClick()
-        onNodeWithText("OK").performClick()
+        onNodeWithText("Save").performClick()
         // Opened on the chosen range and confirmed unchanged: the window itself, as a custom range.
         assertEquals(LocalDateTime(2026, 7, 4, 18, 0) to LocalDateTime(2026, 7, 20, 18, 0), picked)
     }
@@ -653,7 +655,7 @@ class JoinScreenTest {
         }
         onNodeWithText("Create an album").performScrollTo().assertToggle(ToggleableState.On)
         onNodeWithText(
-            "Photos you receive are collected in an album named after the event. Your own photos stay in your camera folder.",
+            "Photos you receive are collected in an album named after the event. Your own photos stay where they are.",
         ).assertExists()
     }
 
@@ -733,7 +735,7 @@ class JoinScreenTest {
                 actions = testActions(participation = participationActions(onMobileData = { mobileData = it })),
             )
         }
-        onNodeWithText("Photos are sent and received on any network.").performScrollTo().assertExists()
+        onNodeWithText("Photos are shared and received on any network.").performScrollTo().assertExists()
         onNodeWithText("Use mobile data for photos").performScrollTo().performClick()
         assertEquals(false, mobileData, "a tap from the on-by-default row keeps photos off mobile data")
     }
@@ -741,7 +743,7 @@ class JoinScreenTest {
     @Test
     fun `with mobile data off the note says photos travel only on Wi-Fi`() = runComposeUiTest {
         setScreen { TestStatusScreen(joining(ready(), form = RangeForm(mobileData = false)), cutoff = fixedCutoff()) }
-        onNodeWithText("Photos are sent and received only on Wi-Fi.").performScrollTo().assertExists()
+        onNodeWithText("Photos are shared and received only on Wi-Fi.").performScrollTo().assertExists()
     }
 
     // ---- photo access asked on Join (capability `join-event`) -----------------------------------------
@@ -781,7 +783,7 @@ class JoinScreenTest {
         onNodeWithContentDescription("What joining does with your photos").performClick()
         onNodeWithText("What joining does").assertExists()
         onNodeWithText("Your photos are shared automatically").assertExists()
-        onNodeWithText("SnapSync needs your photo library").assertExists()
+        onNodeWithText("SnapSync needs access to your photos").assertExists()
         onNodeWithText("Allow all photos, or pick which to share").assertExists()
         onNodeWithText("Only photos in the range you chose").assertExists()
         onNodeWithText("Got it").performClick()
@@ -917,7 +919,7 @@ class JoinScreenTest {
                 )
             )
         }
-        onNodeWithText("This invite is invalid or the event no longer exists.").assertExists()
+        onNodeWithText("This link is invalid, or the event no longer exists.").assertExists()
         onNodeWithText("OK").performClick()
         assertEquals(1, cancelled)
     }

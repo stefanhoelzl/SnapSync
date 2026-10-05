@@ -71,8 +71,8 @@ internal fun JoiningEventScreen(
             when (phase) {
                 JoinPhase.Loading -> LoadingPhase()
                 JoinPhase.NotFound -> WallPhase(
-                    title = "Invalid invite",
-                    body = "This invite is invalid or the event no longer exists.",
+                    title = "Event not found",
+                    body = "This link is invalid, or the event no longer exists.",
                     onCancel = actions.onCancel,
                 )
                 JoinPhase.Closed -> WallPhase("Event closed", "This event can no longer be joined.", actions.onCancel)
@@ -106,7 +106,7 @@ internal fun JoiningEventScreen(
                     JoinPhase.Detailed.Step.EventFull -> CommitBlockedPhase(
                         name = phase.event.name,
                         title = "This event is full",
-                        body = "It has reached the number of devices it can hold, so there is no room to join.",
+                        body = "No more members can join it.",
                         onRetry = null,
                         onCancel = actions.onCancel,
                     )

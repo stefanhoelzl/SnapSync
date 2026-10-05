@@ -11,9 +11,15 @@
 # only when it is "an actual photograph of the genuine Apple product and not an artist's rendering" — which
 # bars a fetched frame AND a self-drawn bezel alike. Rounded corners imply a device without depicting one.
 #
+# THE CONCEPT FRAME. Each set opens with the use-case graphic (metadata/graphic/, rendered and committed by
+# metadata/graphic/render.py at exactly this target's canvas size), copied as is: it carries its own words, so no
+# headline is added. Its phones are drawn GENERIC — no Dynamic Island, no Apple layout — for the same guideline
+# as above. CONCEPT_FRAME=off leaves it out of a target (the fallback if App Review objects to it).
+#
 # Usage: compose_screenshots.sh [<locale>]     (default: en-US)
-# Env:   TARGET (appstore, the default, or play), RAW_DIR (default: the target's raws), OUT_DIR (default: out)
-# Out:   $OUT_DIR/<locale>/NN-<state>.png
+# Env:   TARGET (appstore, the default, or play), RAW_DIR (default: the target's raws), OUT_DIR (default: out),
+#        CONCEPT_FRAME (on, the default, or off)
+# Out:   $OUT_DIR/<locale>/01-graphic.png, then $OUT_DIR/<locale>/NN-<state>.png
 #        appstore: exactly 1320x2868 (APP_IPHONE_69). The layout is what `asc screenshots upload --path`
 #                  fan-out expects: the immediate children of --path are locale directories.
 #        play:     exactly 1080x1920 (9:16). A raw Android capture (1080x2400) breaks Play's rule that a
@@ -31,6 +37,7 @@ BRAND="#0E9D6B"   # AppTheme's GreenLight; the light captures sit on the light b
 case "$TARGET" in
   appstore)
     RAW_DIR="${RAW_DIR:-screenshots}"
+    CONCEPT="metadata/graphic/frame-appstore.png"
     # APP_IPHONE_69 accepts exactly these dimensions; App Store Connect scales this class down to the smaller
     # iPhone listings, so it is the only iPhone set we produce.
     CANVAS_W=1320
@@ -45,6 +52,7 @@ case "$TARGET" in
     ;;
   play)
     RAW_DIR="${RAW_DIR:-screenshots/android}"
+    CONCEPT="metadata/graphic/frame-play.png"
     # Phones only (no tablet set): 9:16 at 1080 wide, Play's recommended size for a phone screenshot.
     CANVAS_W=1080
     CANVAS_H=1920
@@ -93,6 +101,15 @@ mkdir -p "$OUT_DIR/$LOCALE"
 
 # `NN-` orders the set on the listing; App Store Connect honours upload order per set.
 i=0
+if [ "${CONCEPT_FRAME:-on}" = "on" ]; then
+  [ -f "$CONCEPT" ] || { echo "::error::missing $CONCEPT — run metadata/graphic/render.py"; exit 1; }
+  i=1
+  OUT="$OUT_DIR/$LOCALE/01-graphic.png"
+  $IM "$CONCEPT" ${WRITE_OPTS[@]+"${WRITE_OPTS[@]}"} "$OUT"
+  GOT="$($IDENTIFY -format '%wx%h' "$OUT")"
+  [ "$GOT" = "${CANVAS_W}x${CANVAS_H}" ] || { echo "::error::$OUT is $GOT, expected ${CANVAS_W}x${CANVAS_H}"; exit 1; }
+  echo "composed $OUT  (the use-case graphic)"
+fi
 for STATE in create joining in_sync; do
   i=$((i + 1))
   RAW="$RAW_DIR/${STATE}-light.png"   # the listing takes the light set; dark is for the landing page

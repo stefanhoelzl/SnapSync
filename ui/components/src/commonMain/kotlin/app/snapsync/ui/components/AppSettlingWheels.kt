@@ -110,6 +110,12 @@ internal fun rememberCenteredRow(listState: LazyListState, count: Int): Int {
 }
 
 /**
+ * What one end's wheels are called: the [shown] caption above them ("Starts"), and the [spoken] name a screen
+ * reader gives the two wheels ("Start hour", "Start minute"). One value, so a wheel pair carries one label.
+ */
+internal data class WheelCaption(val shown: String, val spoken: String = shown)
+
+/**
  * One end's time: its caption over an hour wheel and a minute wheel that scroll and settle independently.
  *
  * A `null` [hour] or [minute] is BLANK: that wheel sits over [anchor] (so the first flick moves from a familiar
@@ -120,7 +126,7 @@ internal fun rememberCenteredRow(listState: LazyListState, count: Int): Int {
  */
 @Composable
 internal fun RowScope.SettlingTimeWheels(
-    caption: String,
+    caption: WheelCaption,
     hour: Int?,
     minute: Int?,
     anchor: LocalTime,
@@ -134,7 +140,7 @@ internal fun RowScope.SettlingTimeWheels(
     val shape = RoundedCornerShape(12.dp)
     Column(modifier = Modifier.weight(1f)) {
         Text(
-            text = caption,
+            text = caption.shown,
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -151,14 +157,14 @@ internal fun RowScope.SettlingTimeWheels(
             SelectionBand()
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 SettlingWheel(
-                    wheel = WheelSpec(HOURS_PER_DAY, shownHour, blank = hour == null, "$caption hour"),
+                    wheel = WheelSpec(HOURS_PER_DAY, shownHour, blank = hour == null, "${caption.spoken} hour"),
                     allowed = { h -> hourHasAllowedMinute(h, allowed) },
                     onSettle = onHour,
                 )
                 Text(text = ":", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
                 SettlingWheel(
                     wheel = WheelSpec(
-                        MINUTES_PER_HOUR, minute ?: anchor.minute, blank = minute == null, "$caption minute",
+                        MINUTES_PER_HOUR, minute ?: anchor.minute, blank = minute == null, "${caption.spoken} minute",
                     ),
                     allowed = { m -> allowed(LocalTime(shownHour, m)) },
                     onSettle = onMinute,

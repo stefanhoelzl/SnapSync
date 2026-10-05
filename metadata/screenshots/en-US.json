@@ -12,11 +12,19 @@
     "No length limit applies: unlike `keywords` (<=100) these are not Apple fields, and the compositor's",
     "`caption:` word-wraps inside a fixed box, so any copy length fits by construction.",
     "",
-    "Changing a headline needs NO macOS run — the release re-composites from the committed raws."
+    "Changing a headline needs NO macOS run — the release re-composites from the committed raws.",
+    "",
+    "`tagline` is the graphic's headline and support line (metadata/graphic/ renders it into the Play feature graphic,",
+    "the first store screenshot and the site hero) and the landing page's hero. Changing it needs a re-render of the",
+    "graphic (metadata/graphic/render); a build check fails until the committed renders carry the new words."
   ],
   "headlines": {
-    "create": "Start an event in seconds",
-    "joining": "One scan — everyone's in",
-    "in_sync": "Every photo, shared automatically"
+    "create": "Create an event",
+    "joining": "Your family and friends join",
+    "in_sync": "Photos arrive on their own"
+  },
+  "tagline": {
+    "headline": "Every photo, in your gallery.",
+    "support": "Just join an event, and your family and friends' photos arrive in your gallery."
   }
 }

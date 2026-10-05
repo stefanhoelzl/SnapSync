@@ -85,8 +85,8 @@ internal fun CreateEventScreen(
     Column(modifier = Modifier.fillMaxSize()) {
         // Identity, pinned to the top so it holds its place across the form / creating swap.
         AppEventHeaderHost(
-            title = "Start an event",
-            subtitle = "Everyone's photos, one shared place.",
+            title = "Create an event",
+            subtitle = "Every photo, in your gallery.",
         )
         Column(
             modifier = Modifier
@@ -99,7 +99,7 @@ internal fun CreateEventScreen(
                 AppTextField(
                     value = draft.name,
                     onValueChange = { draft.name = it },
-                    placeholder = "Event name",
+                    placeholder = "e.g. Anna's birthday",
                     maxLength = EVENT_NAME_MAX_LENGTH,
                     focusRequester = nameFocus,
                 )
@@ -110,8 +110,8 @@ internal fun CreateEventScreen(
                     bounds = RangeBounds.lastingAtMost(cutoff::latestEnd),
                     // The truthfulness line: this window is the event's capture-date bound (capability
                     // `photo-sharing`) — stated once, where it is set — and the one limit on it.
-                    note = "Only photos taken during this window are shared — the range every guest starts " +
-                        "from. An event can last up to $EVENT_WINDOW_MAX_DAYS days.",
+                    note = "Only photos taken between these dates are shared. An event can last up to " +
+                        "$EVENT_WINDOW_MAX_DAYS days.",
                     currentHour = { cutoff.nowLocal().hour },
                     endTime = EndTimeGuide(showRequests = endTimeRequests, onPickEndTime = guide.toEndTime),
                     onChange = draft::choose,
@@ -177,7 +177,7 @@ private fun CreateActions(
                 AppNetworkNotice(blocked = network == NetworkNotice.BLOCKED, onOpenSettings = callbacks.onOpenSettings)
             }
         } else {
-            StatusHint(error ?: "Or scan a QR code in the Camera app to join one.", isError = error != null)
+            StatusHint(error ?: "To join an event instead, scan its QR code with your camera.", isError = error != null)
         }
     }
 }
@@ -209,8 +209,8 @@ private fun createEnabled(draft: CreateDraft, cutoff: CutoffFormatter): Boolean 
 internal fun CreatingEventScreen() {
     Column(modifier = Modifier.fillMaxSize()) {
         AppEventHeaderHost(
-            title = "Start an event",
-            subtitle = "Everyone's photos, one shared place.",
+            title = "Create an event",
+            subtitle = "Every photo, in your gallery.",
         )
         Column(
             modifier = Modifier.weight(1f).fillMaxWidth(),

@@ -57,7 +57,7 @@ internal fun ColumnScope.ParticipationSections(
         )
         AppSectionNote(
             if (state.receiveOn) {
-                "Photos others share arrive in your library automatically."
+                "Photos others share arrive in your gallery on their own."
             } else {
                 "You won't receive the event's photos."
             },
@@ -79,9 +79,9 @@ internal fun ColumnScope.ParticipationSections(
     ) {
         AppSectionNote(
             if (state.mobileData) {
-                "Photos are sent and received on any network."
+                "Photos are shared and received on any network."
             } else {
-                "Photos are sent and received only on Wi-Fi."
+                "Photos are shared and received only on Wi-Fi."
             },
         )
     }
@@ -112,7 +112,7 @@ private fun ColumnScope.ShareBody(state: ParticipationState, actions: Participat
     // guarantee of what gets through: the policy cannot infer capture-origin, so it removes only what is
     // certainly not a capture and ADMITS ON DOUBT. "Screenshots … are never shared" is exactly true; "only
     // photos you took are shared" would not be.
-    AppSectionNote("Screenshots, screen recordings, GIFs and pictures saved from chat apps are never shared.")
+    AppSectionNote("Screenshots, screen recordings, GIFs and photos saved from chat apps are never shared.")
 }
 
 /**

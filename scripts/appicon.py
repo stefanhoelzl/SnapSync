@@ -15,8 +15,9 @@ a bitmap:
     foreground inside the 66dp safe circle, and a monochrome layer for themed icons
     (VectorDrawables — the mark becomes ONE even-odd path, so it needs no density
     buckets);
-  * the Play listing's 512×512 icon and 1024×500 feature graphic (raster, in
-    metadata/play/images/, committed so the delivery uploads exactly the bytes it hashes).
+  * the Play listing's 512×512 icon (raster, in metadata/play/images/, committed so the delivery uploads
+    exactly the bytes it hashes). The listing's 1024×500 feature graphic there is the use-case graphic,
+    rendered by metadata/graphic/render.py.
 
     python3 scripts/appicon.py            # writes every output above
     python3 scripts/appicon.py --preview  # plus a contact sheet at OS sizes
@@ -26,7 +27,7 @@ a bitmap:
 import math
 import pathlib
 import sys
-from PIL import Image, ImageChops, ImageDraw, ImageFont
+from PIL import Image, ImageChops, ImageDraw
 
 SS = 4  # supersampling factor; the mark is downsampled from 4096² for clean edges
 
@@ -53,16 +54,6 @@ PLAY_IMAGES = ROOT / "metadata/play/images"
 # centred 66dp circle, so the whole mark must fit inside it.
 ADAPTIVE = 108.0
 SAFE_RADIUS = 33.0
-
-# The feature graphic's words. The name is the listing's; the tagline is the App Store subtitle.
-NAME = "SnapSync Photos"
-TAGLINE = "Group photos, shared instantly"
-# The same face the store screenshots' headlines are set in (compose_screenshots.sh).
-FONTS = [
-    "/usr/share/fonts/truetype/liberation/LiberationSans-{}.ttf",
-    "/usr/share/fonts/liberation-sans/LiberationSans-{}.ttf",
-]
-
 
 # ── Raster ─────────────────────────────────────────────────────────────────────────────
 
@@ -271,31 +262,6 @@ def android_files():
 # ── Play ───────────────────────────────────────────────────────────────────────────────
 
 
-def _font(style, size):
-    for pattern in FONTS:
-        path = pathlib.Path(pattern.format(style))
-        if path.is_file():
-            return ImageFont.truetype(str(path), size)
-    sys.exit(f"error: Liberation Sans {style} not found (install fonts-liberation)")
-
-
-def feature_graphic():
-    """Play's 1024×500 feature graphic: the mark, the name and the tagline on the icon's gradient."""
-    width, height = 1024, 500
-    img = _gradient(width, height)
-    mark, gap = 280, 40
-    name, tagline = _font("Bold", 64), _font("Regular", 34)
-    draw = ImageDraw.Draw(img)
-    words = max(draw.textlength(NAME, font=name), draw.textlength(TAGLINE, font=tagline))
-    # the group (mark, gap, words) centred, so neither edge crowds it
-    start = round((width - (mark + gap + words)) / 2)
-    img.paste(Image.new("RGB", (mark, mark), GLYPH), (start, (height - mark) // 2), mark_mask(mark))
-    left = start + mark + gap
-    draw.text((left, height // 2 - 8), NAME, font=name, fill=GLYPH, anchor="ls")
-    draw.text((left, height // 2 + 48), TAGLINE, font=tagline, fill=GLYPH, anchor="ls")
-    return img
-
-
 def check():
     size = 512
     raster, vector = mark_mask(size), _vector_mask(size)
@@ -323,8 +289,7 @@ if __name__ == "__main__":
 
     PLAY_IMAGES.mkdir(parents=True, exist_ok=True)
     render(512).save(PLAY_IMAGES / "icon.png")
-    feature_graphic().save(PLAY_IMAGES / "featureGraphic.png")
-    print("wrote metadata/play/images/icon.png (512x512) and featureGraphic.png (1024x500)")
+    print("wrote metadata/play/images/icon.png (512x512)")
 
     if "--preview" in sys.argv:
         sizes = [180, 120, 87, 80, 60, 58, 40, 29]

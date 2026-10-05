@@ -29,10 +29,10 @@ fun AppEventHeaderCompact(title: String, subtitle: String) =
 
 /**
  * The **compact host header** for the create-event surface: the SnapSync mark as its app-icon badge,
- * a small tracked eyebrow naming the verb ("HOST AN EVENT"), the title noticeably large beneath it, and
- * one warm line under that. Same shape and rank as [AppEventHeaderCompact] — the *invitation* header the
- * join gate leads with — so the two surfaces read as one product hosting two verbs: a guest is invited;
- * a host founds. Only the eyebrow differs.
+ * the title noticeably large beside it ("Create an event"), and one warm line under that. Same shape and
+ * rank as [AppEventHeaderCompact] — the *invitation* header the join gate leads with — but with NO eyebrow:
+ * the title already names the verb, and the glossary's verb is "create", not "host"
+ * (`metadata/messaging.md`), so a label repeating it above added a word and said it worse.
  *
  * It is deliberately the compact (badge-beside-text, left-aligned) form rather than a full-height centered
  * hero: the create surface's body is a short form, and keeping identity to one line-pair leaves the form —
@@ -43,12 +43,13 @@ fun AppEventHeaderCompact(title: String, subtitle: String) =
  */
 @Composable
 fun AppEventHeaderHost(title: String, subtitle: String) =
-    AppIdentityHeader("HOST AN EVENT", title, subtitle)
+    AppIdentityHeader(eyebrow = null, title = title, subtitle = subtitle)
 
 /**
  * The shape both headers above are, and the one any other surface needing identity-plus-a-statement
- * uses: the SnapSync mark as an app-icon badge, a small tracked [eyebrow] naming what this surface IS,
- * the [title] noticeably large beneath it, and one line of [subtitle] under that.
+ * uses: the SnapSync mark as an app-icon badge, an optional small tracked [eyebrow] naming what this
+ * surface IS, the [title] noticeably large beneath it, and one line of [subtitle] under that. A surface
+ * whose title already says what it is passes no eyebrow (create, event settings).
  *
  * Extracted because the two headers were byte-identical apart from that one string — their own docs said
  * "only the eyebrow differs" — and because reaching for the nearest existing header put **"HOST AN
@@ -57,7 +58,7 @@ fun AppEventHeaderHost(title: String, subtitle: String) =
  * eyebrow as a parameter is what makes that possible without a third copy of this Row.
  */
 @Composable
-fun AppIdentityHeader(eyebrow: String, title: String, subtitle: String) {
+fun AppIdentityHeader(eyebrow: String?, title: String, subtitle: String) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -65,11 +66,13 @@ fun AppIdentityHeader(eyebrow: String, title: String, subtitle: String) {
     ) {
         AppMarkBadge(size = 54.dp)
         Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-            Text(
-                text = eyebrow,
-                style = eyebrowTextStyle(),
-                color = appAccentText(),
-            )
+            if (eyebrow != null) {
+                Text(
+                    text = eyebrow,
+                    style = eyebrowTextStyle(),
+                    color = appAccentText(),
+                )
+            }
             Text(
                 text = title,
                 style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
