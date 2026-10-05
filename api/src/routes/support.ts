@@ -142,6 +142,34 @@ export async function orUpstream502(
 // RequestInit + the streaming-body flag required when `body` is a ReadableStream.
 type StreamInit = RequestInit & { duplex?: "half" };
 
+/**
+ * `body`, passed through unchanged, with a record of whether READING it failed. A storage PUT that throws
+ * cannot say whose side broke: a phone whose upload dies mid-body (a weak mobile uplink — measured
+ * 2026-10-05, 34 such lines in one quarter hour from two phones on one carrier) surfaces as the same
+ * fetch rejection as storage being unreachable. Only the reader of the incoming stream sees which.
+ */
+function watchedBody(body: ReadableStream<Uint8Array> | null) {
+  const watch = { clientAborted: false, body: body as ReadableStream<Uint8Array> | null };
+  if (!body) return watch;
+  const reader = body.getReader();
+  watch.body = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      let chunk: ReadableStreamReadResult<Uint8Array>;
+      try {
+        chunk = await reader.read();
+      } catch (e) {
+        watch.clientAborted = true;
+        controller.error(e);
+        return;
+      }
+      if (chunk.done) controller.close();
+      else controller.enqueue(chunk.value);
+    },
+    cancel: (reason) => reader.cancel(reason),
+  });
+  return watch;
+}
+
 // 7 days — the S3 presign maximum. The device re-presigns (re-reads the union) on every foreground well
 // within this window, so a queued background download that outlives one URL self-heals with a fresh one.
 const PRESIGN_EXPIRY_SECONDS = 604800;
@@ -156,6 +184,8 @@ export const NO_CACHE = "no-store, no-cache, max-age=0";
  * Stream the request body into ONE bunny native Storage PUT at `key` — pass-through, never buffered or
  * hashed. `null` once bunny confirmed the stored object; otherwise the `502` to return — `upstream error`
  * when the PUT itself errored, `upstream rejected` when bunny refused it — logged under the route's `route`.
+ * A PUT that errored because the CLIENT's body broke off is logged as that, at info: it is the network
+ * between the phone and the edge, which the device's retry absorbs, not a fault of ours or of storage.
  */
 export async function streamPut(
   fetchImpl: FetchLike,
@@ -165,16 +195,19 @@ export async function streamPut(
   key: string,
   contentType: string,
 ): Promise<Response | null> {
+  const watch = watchedBody(c.req.raw.body);
   let upstream: Response;
   try {
     upstream = await fetchImpl(`https://${config.host}/${config.zone}/${key}`, {
       method: "PUT",
       headers: { AccessKey: config.accessKey, "Content-Type": contentType },
-      body: c.req.raw.body, // ReadableStream — streamed straight through, never buffered
+      body: watch.body, // ReadableStream — streamed straight through, never buffered
       duplex: "half",
     } as StreamInit);
   } catch (e) {
-    return upstream502(c, `${route}: upstream PUT errored for ${key}`, e);
+    if (!watch.clientAborted) return upstream502(c, `${route}: upstream PUT errored for ${key}`, e);
+    console.log(`${route}: client aborted the upload of ${key}: ${e}`);
+    return c.text("upstream error", 502);
   }
   if (!upstream.ok) {
     console.error(`${route}: bunny returned ${upstream.status} for ${key}`);

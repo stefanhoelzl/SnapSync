@@ -255,6 +255,61 @@ Deno.test("byte PUT → a database failure FAILS the request (nothing repairs it
   assertEquals(res.status, 502);
 });
 
+/** What `run` logged, by level — console.log and console.error swapped out for its duration. */
+async function logsOf(run: () => Promise<unknown>) {
+  const logged = { info: [] as string[], error: [] as string[] };
+  const { log, error } = console;
+  console.log = (...a: unknown[]) => logged.info.push(a.join(" "));
+  console.error = (...a: unknown[]) => logged.error.push(a.join(" "));
+  try {
+    await run();
+  } finally {
+    Object.assign(console, { log, error });
+  }
+  return logged;
+}
+
+// A storage fake that consumes the body as a real PUT would, so a broken body surfaces where it does live.
+const draining: Parameters<typeof v2>[0]["fetch"] = async (_url, init) => {
+  await new Response(init?.body).arrayBuffer();
+  return new Response(null, { status: 201 });
+};
+
+Deno.test("byte PUT → a client whose body breaks off is logged as aborting, at info, not as a storage error", async () => {
+  // A weak mobile uplink: the phone's upload dies mid-body. That is the network the device's retry
+  // absorbs, so it must not read as storage failing, nor fill the script's log ring at error level.
+  const db = await store();
+  const body = new ReadableStream<Uint8Array>({
+    start(c) {
+      c.enqueue(new Uint8Array([1, 2, 3]));
+      c.error(new Error("error reading a body from connection"));
+    },
+  });
+  let status = 0;
+  const logged = await logsOf(async () => {
+    const res = await v2({ config: CONFIG, db, fetch: draining })
+      .request(BYTE_PATH, { method: "PUT", body, duplex: "half" } as RequestInit);
+    status = res.status;
+  });
+  assertEquals(status, 502);
+  assertEquals(logged.error, []);
+  assertEquals(logged.info.length, 1);
+  assert(logged.info[0].startsWith("v2 upload: client aborted the upload of "), logged.info[0]);
+  assertEquals((await rows(db, `SELECT * FROM resources`)).length, 0);
+  db.close();
+});
+
+Deno.test("byte PUT → storage erroring on an intact body is still an error", async () => {
+  const db = await store();
+  const logged = await logsOf(async () => {
+    await v2({ config: CONFIG, db, fetch: recorder({ throws: true }).fetchImpl })
+      .request(BYTE_PATH, { method: "PUT", body: "bytes" });
+  });
+  assertEquals(logged.error.length, 1);
+  assert(logged.error[0].startsWith("v2 upload: upstream PUT errored for "), logged.error[0]);
+  db.close();
+});
+
 // ── GET the per-device listing ─────────────────────────────────────────────────────────────────────
 
 Deno.test("listing → answers in identity terms and mints no url", async () => {
