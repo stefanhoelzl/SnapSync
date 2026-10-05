@@ -2,23 +2,33 @@
 // version's router, so there is one implementation and no possibility of the two drifting apart.
 
 import { Hono } from "hono";
+import { verifyToken } from "../attest.ts";
 import {
   departMembership,
+  downloadKey,
   type EventRow,
   insertEvent,
+  logUnionFetch,
   memberCounts,
   putDeviceRecord,
   renameEvent,
+  unionPosition,
   unionRows,
 } from "../db.ts";
+import { RESOURCE_ROLES } from "../legacy-v1.ts";
+import { splitVersion } from "../version.ts";
 import {
   canonicalPlusSeconds,
   validateEndsAt,
   validateEventName,
+  validateFilename,
   validateStartsAt,
+  validateUUID,
 } from "../validators.ts";
 import {
   closedRefusal,
+  deviceOrigin,
+  downloadPath,
   eventAndOwnDeviceParams,
   eventParam,
   gateEvent,
@@ -39,8 +49,29 @@ type UnionResource = {
   contentType: string;
   key: string;
   filename: string;
-  url: string;
+  /** Absent under `urls=false`: the client builds the stable address itself (D1). */
+  url?: string;
 };
+
+/**
+ * Why a client read the union, as it says in `SnapSync-Trigger` (capability `privacy-security`, "The service
+ * records who reads an event's photo list"). A value outside this list is recorded as unknown, never
+ * refused: a future client must not lose its reads to a vocabulary this backend has not learnt yet.
+ */
+const UNION_TRIGGERS = [
+  "push",
+  "wake",
+  "foreground",
+  "join",
+  "grant",
+  "reconfigure",
+  "leave-check",
+] as const;
+
+/** The response header naming the position a union answer covers (decision record D3). */
+export const CURSOR_HEADER = "SnapSync-Cursor";
+/** The request header naming why the client reads (decision record D5). */
+export const TRIGGER_HEADER = "SnapSync-Trigger";
 type UnionAsset = {
   deviceId: string;
   assetId: string;
@@ -227,21 +258,52 @@ export function sharedRoutes({ config, db, now, aws }: RouteDeps): Hono {
   // owning deviceId (the endpoint is identity-blind — own-vs-foreign skip is the client's concern). The
   // published manifest is already the event's date-filtered projection, so its asset list is trusted
   // as-is (no re-filtering). Faithful: any read failure → 502, never a partial union. Non-cacheable.
+  //
+  // INCREMENTAL (decision record `changes/incremental-union`, D3–D5), additively — a caller that sends
+  // nothing new gets the answer it always got:
+  //   * `cursor=<n>` serves only assets the union log says were gained after position `n`; without it, the
+  //     whole union. Either way `SnapSync-Cursor` names the position the answer covers.
+  //   * `urls=false` omits every `url`: the client builds the stable address itself. Otherwise `url` is,
+  //     under v2, that stable address (it redirects to a presign per download), and under v1 the 7-day
+  //     presign v1's frozen contract asserts.
+  //   * a bearer token is OPTIONAL: present, it must verify (`401` otherwise, so the app re-attests) and
+  //     names the reading device in the log; absent, the read is anonymous and nothing about the reader
+  //     is kept (capability `privacy-security`, "A web visitor leaves no trace in the event").
   deviceApi.get("/events/:eventId/files", async (c) => {
     const eventId = eventParam(c);
     if (eventId instanceof Response) return eventId;
+
+    const query = new URL(c.req.url).searchParams;
+    const rawCursor = query.get("cursor");
+    if (rawCursor !== null && !/^\d{1,15}$/.test(rawCursor)) return c.text("invalid cursor", 400);
+    const after = rawCursor === null ? undefined : Number(rawCursor);
+    const withUrls = query.get("urls") !== "false";
+
+    const auth = c.req.header("authorization") ?? "";
+    let reader: string | null = null;
+    if (auth !== "") {
+      const token = auth.startsWith("Bearer ") ? auth.slice("Bearer ".length).trim() : "";
+      reader = token ? await verifyToken(config, token, now()) : null;
+      if (reader === null) return c.text("unattested", 401);
+    }
+    const said = c.req.header(TRIGGER_HEADER) ?? "";
+    const trigger = (UNION_TRIGGERS as readonly string[]).includes(said) ? said : null;
 
     // Gate on the event row (`docs/architecture.md`): absent → 404; a store failure → 502. An event past
     // its window still serves its union — the window closes nothing.
     const event = await gateEvent(db, c, eventId, "union");
     if (event instanceof Response) return event;
 
+    const version = splitVersion(new URL(c.req.url).pathname).version;
     return await orUpstream502(c, `union: assembly failed for event ${eventId}`, async () => {
+      // The position FIRST, then the rows (`unionPosition`): a gain that commits in between is served
+      // again by the next delta — a duplicate the client dedups — never skipped.
+      const position = await unionPosition(db, eventId);
       // ONE query, spanning the event's memberships in BOTH states: a member who has left keeps
       // contributing the photos it already shared, until the event itself is deleted. What this replaces
       // is a fan-out — one directory listing to discover members, then a manifest read AND a byte listing
       // per member — whose cost grew with the event and which no index could help.
-      const rows = await unionRows(db, eventId);
+      const rows = await unionRows(db, eventId, after);
 
       // Group by (device, asset), keeping each asset's resources together and dropping any asset that
       // names a resource the backend has not recorded as uploaded. That check IS the completeness
@@ -256,6 +318,16 @@ export function sharedRoutes({ config, db, now, aws }: RouteDeps): Hono {
         byAsset.set(id, slot);
       }
 
+      const urlOf = async (r: typeof rows[number]): Promise<string | undefined> => {
+        if (!withUrls) return undefined;
+        // v1 is FROZEN for builds older than 0.4: its contract asserts the presign (decision record D3).
+        // From `key`, never `filename`: the object is stored under its key, and a capture name that
+        // differs would presign a URL that 404s at download while everything else looked right.
+        if (version === 1) return await presignDownloadUrl(aws, config, r.deviceId, r.key);
+        return `${deviceOrigin(config)}/api/v${version}${
+          downloadPath(eventId, r.deviceId, r.assetId, r.role)
+        }`;
+      };
       const assets: UnionAsset[] = [];
       for (const { row, resources } of byAsset.values()) {
         if (resources.length === 0 || resources.some((r) => !r.present)) continue;
@@ -263,20 +335,65 @@ export function sharedRoutes({ config, db, now, aws }: RouteDeps): Hono {
           deviceId: row.deviceId,
           assetId: row.assetId,
           creationDate: row.creationDate,
-          resources: await Promise.all(resources.map(async (r) => ({
-            role: r.role,
-            contentType: r.contentType,
-            key: r.key,
-            filename: r.filename,
-            // From `key`, never `filename`: the object is stored under its key, and a capture name that
-            // differs would presign a URL that 404s at download while everything else looked right.
-            url: await presignDownloadUrl(aws, config, r.deviceId, r.key),
-          }))),
+          resources: await Promise.all(resources.map(async (r) => {
+            const url = await urlOf(r);
+            return {
+              role: r.role,
+              contentType: r.contentType,
+              key: r.key,
+              filename: r.filename,
+              ...(url === undefined ? {} : { url }),
+            };
+          })),
         });
       }
 
-      c.header("Cache-Control", NO_CACHE); // every `url` is a time-limited presigned S3 URL
+      // Best-effort: the record of a read never costs the read (capability `privacy-security`).
+      try {
+        await logUnionFetch(db, {
+          eventId,
+          deviceId: reader,
+          trigger,
+          from: after ?? null,
+          to: position,
+          served: assets.length,
+          at: new Date(now()).toISOString(),
+        });
+      } catch (e) {
+        console.error(`union: could not log the read of ${eventId} (best-effort): ${e}`);
+      }
+
+      c.header("Cache-Control", NO_CACHE); // a `url` may be a time-limited presign; a cursor is a moment
+      c.header(CURSOR_HEADER, String(position));
       return c.json(assets);
+    });
+  });
+
+  // DOWNLOAD one resource of an event's union (decision record `changes/incremental-union`, D1–D2): `302`
+  // to a freshly presigned S3 GET, so no union read signs anything and a signature is minted per download
+  // started. UNGATED like the union — the event id is the read capability — and exempt from the version
+  // gate (`app.ts`): the OS download transports that fetch it send no app header. `404` when the event no
+  // longer declares the asset with this role or its bytes are not recorded (a withdrawal stops the link,
+  // capability `privacy-security`). The redirect is never cached: bunny's pull zone fronts this script,
+  // and a cached 302 would hand out a stale signature.
+  //
+  // The signature keeps S3's 7-day maximum on purpose (D2): an iOS background session resumes from the
+  // redirect TARGET and never revisits this route (measured), so a shorter one turns a resume after an
+  // outage into a restart.
+  deviceApi.get("/events/:eventId/files/devices/:deviceId/:assetId/:role", async (c) => {
+    const eventId = eventParam(c);
+    if (eventId instanceof Response) return eventId;
+    const deviceId = c.req.param("deviceId");
+    const assetId = c.req.param("assetId");
+    const role = c.req.param("role");
+    if (!validateUUID(deviceId) || !validateFilename(assetId) || !RESOURCE_ROLES.includes(role)) {
+      return c.text("not found", 404);
+    }
+    return await orUpstream502(c, `download: lookup failed for ${eventId}`, async () => {
+      const key = await downloadKey(db, eventId, deviceId, assetId, role);
+      c.header("Cache-Control", NO_CACHE);
+      if (key === null) return c.text("not found", 404);
+      return c.redirect(await presignDownloadUrl(aws, config, deviceId, key), 302);
     });
   });
 

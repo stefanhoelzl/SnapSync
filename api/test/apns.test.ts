@@ -66,6 +66,18 @@ Deno.test("sender → the event id rides alongside the aps object as a top-level
   assertEquals(body.aps, { "content-available": 1 }); // aps unchanged
 });
 
+Deno.test("sender → a wake for a gain names its union position as a top-level seq", async () => {
+  // Decision record `changes/incremental-union`, D6: a device already at the position reads nothing.
+  const config = await genConfig();
+  const { calls, fetchImpl } = recorder();
+  await createApnsSender(config, fetchImpl)
+    .sendSilent([{ kind: "apns", token: "T", env: "production" }], EVT, 42);
+  assertEquals(
+    calls[0].init.body,
+    JSON.stringify({ aps: { "content-available": 1 }, eventId: EVT, seq: 42 }),
+  );
+});
+
 Deno.test("sender → sandbox token targets api.sandbox.push.apple.com", async () => {
   const config = await genConfig();
   const { calls, fetchImpl } = recorder();

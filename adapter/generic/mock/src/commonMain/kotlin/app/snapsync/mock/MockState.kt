@@ -469,6 +469,13 @@ private class BackendDto(
     val challenges: List<String>,
     val minted: List<String>,
     val levers: BackendLeversDto,
+    // The union log and its counter (decision record `changes/incremental-union`, D4): a device keeps its cursor across
+    // a relaunch, so the positions it points into must survive one too. Defaulted, so a state saved before them loads.
+    val unionLog: List<UnionChangeDto> = emptyList(),
+    val nextSeq: Long = 1,
+    val fetches: Map<String, List<UnionFetchDto>> = emptyMap(),
+    /** Each push's announced position, by index into [pushes]; absent for a state saved before positions. */
+    val pushSeqs: List<Long?> = emptyList(),
 ) {
     fun into(state: BackendState) {
         storedFiles.forEach { (device, files) ->
@@ -494,7 +501,12 @@ private class BackendDto(
         deviceConfigs.forEach { (device, config) -> state.deviceConfigs[device] = PushEndpoint(config.first, config.second, config.third) }
         state.deviceConfigWrites.putAll(deviceConfigWrites)
         publishes.forEach { state.publishes[it.event to it.device] = it.count }
-        pushes.forEach { state.pushes += SentPush(it.first, it.second, it.third) }
+        pushes.forEachIndexed { i, push -> state.pushes += SentPush(push.first, push.second, push.third, pushSeqs.getOrNull(i)) }
+        unionLog.forEach { state.changes += BackendState.Change(it.seq, it.event, it.device, AssetId(it.asset), it.gained) }
+        state.nextSeq = nextSeq
+        fetches.forEach { (event, list) ->
+            state.fetches[event] = list.mapTo(mutableListOf()) { UnionFetch(it.device, it.trigger, it.from, it.to, it.served) }
+        }
         state.challenges.addAll(challenges)
         state.minted.addAll(minted)
     }
@@ -519,6 +531,12 @@ private class BackendDto(
             deviceConfigWrites = state.deviceConfigWrites.toMap(),
             publishes = state.publishes.map { CountDto(it.key.first, it.key.second, it.value) },
             pushes = state.pushes.map { Triple(it.eventId, it.deviceId, it.token) },
+            pushSeqs = state.pushes.map { it.seq },
+            unionLog = state.changes.map { UnionChangeDto(it.seq, it.eventId, it.deviceId, it.assetId.value, it.gained) },
+            nextSeq = state.nextSeq,
+            fetches = state.fetches.mapValues { (_, list) ->
+                list.map { UnionFetchDto(it.deviceId, it.trigger, it.from, it.to, it.served) }
+            },
             challenges = state.challenges.toList(),
             minted = state.minted.toList(),
             levers = BackendLeversDto(
@@ -532,6 +550,12 @@ private class BackendDto(
         )
     }
 }
+
+@Serializable
+private class UnionChangeDto(val seq: Long, val event: String, val device: String, val asset: String, val gained: Boolean)
+
+@Serializable
+private class UnionFetchDto(val device: String?, val trigger: String?, val from: Long?, val to: Long, val served: Int)
 
 @Serializable
 private class ResourceDto(val role: String?, val contentType: String, val filename: String)

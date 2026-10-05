@@ -1,5 +1,6 @@
 package app.snapsync.flow
 
+import app.snapsync.model.UnionTrigger
 import app.snapsync.model.JoinLoad
 
 import app.snapsync.feature.download.DownloadController
@@ -111,7 +112,7 @@ class Foreground(
             child("refreshStatus") { refreshStatus() }
             // Foreground discovery (capability `receiving-photos`): pick up foreign photos, plan and enqueue. It
             // imports nothing — the staged imports are the tail's first unit, requested after this flow returns.
-            child("reconcile") { activeEventId()?.let { downloadController.reconcile(it) } }
+            child("reconcile") { activeEventId()?.let { downloadController.reconcile(it, UnionTrigger.FOREGROUND) } }
             // The staged-byte backlog reclaim (capability `receiving-photos`): free the files of assets
             // whose import is confirmed but whose resource rows predate per-asset release, so a received
             // photo is not stored twice — as a library asset and as a staged file — forever.

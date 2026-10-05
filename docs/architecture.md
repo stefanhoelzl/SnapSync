@@ -572,6 +572,9 @@ event_assets  (event_id, device_id -> memberships CASCADE), asset_id, creation_d
 resources     (device_id, asset_id, role) PK, key UNIQUE per device, content_type, filename
 devices       device_id, created_at, attest_* (NOT NULL; attest_platform ios|android, what proved the
               key), push_* (nullable together)
+union_log     seq AUTOINCREMENT, (event_id -> events CASCADE), kind in {gained, removed, fetch},
+              device_id?, asset_id?, trigger?, cursor_from?, cursor_to?, served?, at
+              + index (event_id, seq)
 ```
 
 The generated snapshot is `api/schema.sql` (section "Database" below).
@@ -599,6 +602,16 @@ The generated snapshot is `api/schema.sql` (section "Database" below).
   route's path carries no event. It also lets one byte serve two events during a switch.
 - **Row existence is the upload record.** There is no upload-state column, and the backend records only
   bytes it watched arrive. "Pending" = declared by a manifest with no `resources` row.
+- **The union log is what makes a union read incremental** (`changes/incremental-union`). Its `seq` is
+  the cursor a client reads from. A `gained` row is written exactly where the server already learns that
+  the union gained an asset, which is also where the push fires: the v2 byte route (the events
+  `eventsCompletedBy` answered, committed in ONE batch with the `resources` row) and the v2 publish (the
+  `gained` set of `publishUnionChanges`, inside the publish batch under its version and closed-event
+  gates). The publish also logs `removed` for a servable asset it stops declaring or leaves incomplete;
+  no read serves those. A delta is the `gained` rows past the cursor, put through the union's own
+  declaration and completeness filter. Every union read logs a `fetch` row, best-effort. The log is
+  deleted when an event completes (with the photos, capability `privacy-security`), and cascades with
+  the event row. v1's writes log nothing (v1 is frozen); their assets reach v2 readers through full reads.
 - **A `devices` row exists iff the device attested.** Push registration is an `UPDATE` and never
   creates a row.
 - **Bounds** (policy in `deployments/components/policy.json`): capture window `[startsAt, endsAt]` of
@@ -610,7 +623,7 @@ The generated snapshot is `api/schema.sql` (section "Database" below).
 - The **nightly sweep** (`src/scripts/sweep.ts`, a GitHub Actions workflow, since Edge caps requests at
   50 subrequests / 30 s CPU) gives each event one `sweepVerdict` (`src/lifecycle.ts`): **drop** the row
   past its delete-by; **complete** an ever-joined event that is empty (no active member) or past its
-  clock — memberships (and so `event_assets`) deleted, `closed_at`/`completed_at` stamped, the row
+  clock — memberships (and so `event_assets`) and the union log deleted, `closed_at`/`completed_at` stamped, the row
   kept — then collects unreferenced bytes, collects a `devices` row only once no token minted for it can still
   verify, and removes the emptied `files/devices/<id>/` directory of a device with no row. Its delete decision runs in an interactive transaction (primary), not an ordinary read.
   Details are in `docs/deployment.md`.
@@ -630,9 +643,13 @@ Top-level Hono middleware in `src/app.ts`, in this order:
    no Apple call), because it sits on the streaming upload hot path. A route that needs the device record
    reads it itself afterwards. The **closed list** of exceptions: the three `/api/vN/attest/*` issuers;
    `OPTIONS` anywhere; `GET`/`HEAD` on `/`, `/join`, `/.well-known/apple-app-site-association`,
-   `/health`; and `GET`/`HEAD` on `/api/vN/events/<id>` and `/api/vN/events/<id>/files` (the no-app
-   download page, where possession of the event id is the read capability). The gate normalizes the
-   `/api/vN` prefix before matching. `GatedPathPinTest` keeps the client's copy of this list in step.
+   `/health`; `GET`/`HEAD` on `/api/vN/events/<id>` and `/api/vN/events/<id>/files` (the no-app
+   download page, where possession of the event id is the read capability); and `GET`/`HEAD` on the
+   download redirect `/api/vN/events/<id>/files/devices/<d>/<asset>/<role>` (`isDownloadRedirect`, which
+   the version gate exempts too: the OS's download transports fetch it with no app header). The gate
+   normalizes the `/api/vN` prefix before matching. The union read checks a token **itself** when one is
+   sent (`401` for a bad one), so its `401` is a verdict on that token although the gate never runs
+   (`verifiesToken` on the client). `GatedPathPinTest` keeps the client's copy of this list in step.
 
 4. **Device binding** (per route, `actsFor` in `src/routes/support.ts`). The token names the device it was minted for,
    and every route that names a device in its path (join, leave, manifest, byte upload, device listing, push
@@ -666,7 +683,8 @@ not listed is `404` (no `405`) and makes no upstream request.
 | `PUT` | `/events/<eventId>/devices/<deviceId>/manifest` | **contribution**: full-state replace of the membership's asset set in one transaction, ordered by `version`; `final` stored only after `endsAt`; the publish leaving every active member final closes the event and wakes its members; writes no resource rows; enrols nobody | `200` (applied, or refused as older with nothing written, or the same set to a closed event) · `400` · `404` · `409` not a member · `409 {error:"closed"}` changed set to a closed event · `410` completed · `502` |
 | `PUT` | `/files/devices/<deviceId>/<assetId>/<role>?filename=<name>` | streams bytes to storage (never buffered), then records the `resources` row. **A failed record fails the request.** If this completed an asset, wakes the declaring events' other members | `201` · `400` bad role / missing filename · `502` (`OPTIONS` → `204`) |
 | `GET` | `/files/devices/<deviceId>` | what the backend holds for me, from the DB | `200 [{assetId, role, filename}]` · `502` |
-| `GET`/`HEAD` | `/events/<eventId>/files` (ungated) | the event union: one query over active and departed members; an asset is included only when **every declared role** has a resource (a set comparison, not a count) | `200 [{deviceId, assetId, creationDate, resources:[{role, contentType, key, filename, url}]}]` · `404` · `502` |
+| `GET`/`HEAD` | `/events/<eventId>/files[?cursor=<n>][&urls=false]` (ungated; an optional bearer token is verified) | the event union: one query over active and departed members; an asset is included only when **every declared role** has a resource (a set comparison, not a count). `cursor` serves only assets the union log says were gained after it (`changes/incremental-union`); `urls=false` omits `url`, which is otherwise the download redirect's absolute address. Every answer carries `SnapSync-Cursor: <n>`, the position it covers. The `SnapSync-Trigger` header (`push`·`wake`·`foreground`·`join`·`grant`·`reconfigure`·`leave-check`) and the verified device, if any, go into the read's `fetch` log row, best-effort | `200 [{deviceId, assetId, creationDate, resources:[{role, contentType, key, filename, url?}]}]` · `400` bad cursor · `401` a sent token that does not verify · `404` · `502` |
+| `GET`/`HEAD` | `/events/<eventId>/files/devices/<deviceId>/<assetId>/<role>` (ungated, exempt from the version gate) | the **download redirect**: the stored key of that role, when the event still declares the asset with it and its bytes are recorded; each segment percent-encoded | `302` to a 7-day presign, `Cache-Control: no-store, no-cache, max-age=0` · `404` · `502` |
 | `PUT` | `/devices/<deviceId>` `{pushToken: {kind, token, env}}` (`kind` is the push adapter's — `apns` or `fcm`) or explicit absence | updates the push columns | `201` · `400` · **`401` when no row was affected** (device never attested; the client re-attests and re-sends) · `502` |
 
 Served at the root under no version: `OPTIONS` on any path (`204`, no resumable upload advertised, so
@@ -683,10 +701,17 @@ from the storage `site/` prefix), the AASA and `/.well-known/assetlinks.json` (A
   or absent) is disambiguated by a follow-up read (`409` vs `404`).
 - **Presigned URLs.** SigV4 query-signed S3 `GET`, path-style
   `https://<s3-host>/<zone>/files/devices/<deviceId>/<key>`, 7-day expiry, signed with the zone name as
-  access key id and the storage password as secret. Minted fresh on every response by one builder, so
-  listings agree by construction.
+  access key id and the storage password as secret. Minted by one builder: under v2 only by the download
+  redirect, one per download started; under v1 (frozen) on every union and listing response. The 7 days
+  stay on purpose: an iOS background session resumes from the redirect target and never revisits the
+  redirect (measured, `changes/incremental-union` D2).
+- **The device-facing origin** of a redirect URL comes from the deployment's `domain` (`deviceOrigin`:
+  `http` for a loopback literal, `https` otherwise), never from the request, which behind the pull zone
+  promises nothing.
 - **Wakes are best-effort and bounded.** The recipient set (active members with a push token) is one
-  query, and the push happens **after** the transaction commits. A failed, skipped or timed-out push
+  query, and the push happens **after** the transaction commits. A wake for a gain carries the union
+  position (`seq`: top-level on APNs, a string `data` field on FCM) read after the commit, so a device
+  whose cursor is already there reads nothing; the close wake carries none. A failed, skipped or timed-out push
   never changes the response. The byte upload wakes when its resource was the last missing declared
   role. The manifest publish wakes only when it made an asset **newly** fetchable (a widening that
   re-admits stored bytes). Otherwise nobody is woken (iOS allows only a few background pushes an hour).
@@ -712,6 +737,10 @@ its wire tests (`v1.test.ts`) must pass **unmodified** across any schema migrati
   upload). There is no `version`.
 - `POST /events/<eventId>/notify` exists (`202`, best-effort fan-out to active members).
 - `GET /files/devices/<deviceId>` returns `[{filename, url}]`.
+- The union's default `url` stays the 7-day **presign** (`changes/incremental-union` D3): `v1.test.ts`
+  asserts it. `urls=false` and `cursor` are additive on v1 too (the event page reads through v1). v1's
+  byte route and publish write no union-log rows, so a pre-0.4 member's photos reach v2 readers only
+  through full reads.
 - A stale attest challenge is `401` (v2: `409`). There is no version gate.
 - `/attest/token`'s body is flat, `{deviceId, keyId, attestation, challenge}`, and App Attest only.
 
@@ -729,7 +758,8 @@ its wire tests (`v1.test.ts`) must pass **unmodified** across any schema migrati
   publish stamps only `closed_at`, the byte route only `last_landed_at`, the sweep `closed_at` and
   `completed_at`), `memberships` by join/leave (the publish writes only `manifest_version` and
   `final`, and join only clears them),
-  `event_assets` by the manifest publish, `resources` by the byte upload, and `devices` by attestation
+  `event_assets` by the manifest publish, `resources` by the byte upload, `union_log` by the byte upload
+  and the publish (`gained`/`removed`) and the union read (`fetch`), and `devices` by attestation
   and the config write, each naming only its own column group. The sweep otherwise only deletes. v1's extra writes
   are a bounded, named exemption, and no new version gets one. **review** (plus route tests).
 - **Capacity is one conditional insert**, never read-then-write. Measured: 10 racing devices for 3

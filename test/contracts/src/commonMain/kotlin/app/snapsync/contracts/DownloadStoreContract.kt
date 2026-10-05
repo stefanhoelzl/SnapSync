@@ -628,6 +628,67 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadService>("Do
             assertTrue(s.adoptAll(emptyList(), "EVENT-1").isEmpty())
             assertEquals(0, s.counts().stillArriving)
         }
+
+        // --- the union position (decision record `changes/incremental-union`, D6) ---
+
+        clause("a plan stores the union position it covered for its event", DownloadStoreState.EMPTY) { s ->
+            assertEquals(null, s.union.cursor("EVENT-1"), "no position before any read")
+            s.planAll(listOf(planned(ref)), "EVENT-1", members = listOf(ref), cursor = 7)
+            assertEquals(7, s.union.cursor("EVENT-1"))
+            assertEquals(null, s.union.cursor("EVENT-2"), "a position is per event")
+            s.planAll(emptyList(), "EVENT-1", cursor = 9)
+            assertEquals(9, s.union.cursor("EVENT-1"), "a read that served nothing new still moves it")
+        }
+
+        clause("a leave's prune forgets every position, so every next read is a full one", DownloadStoreState.EMPTY) { s ->
+            s.planAll(emptyList(), "EVENT-1", cursor = 3)
+            s.planAll(emptyList(), "EVENT-2", cursor = 4)
+            s.pruneNonTerminal(protecting = emptySet())
+            assertEquals(null, s.union.cursor("EVENT-1"))
+            assertEquals(null, s.union.cursor("EVENT-2"))
+        }
+
+        // --- a full read prunes what was withdrawn before it arrived (D7) ---
+
+        clause("a withdrawn row not yet received is pruned with the paths it stranded", DownloadStoreState.EMPTY) { s ->
+            s.planAll(listOf(planned(ref)), "EVENT-1", members = listOf(ref))
+            s.markStaged(ref, "ASSET-Q-primary.heic", "/stage/primary.heic")
+
+            val stranded = s.union.pruneWithdrawn("EVENT-1", listed = emptySet(), protecting = emptySet())
+
+            assertEquals(listOf("/stage/primary.heic"), stranded)
+            assertTrue(s.pendingDownloads().isEmpty(), "its work is gone")
+            assertFalse(s.isSettled(ref), "deleted, not settled — a photo that comes back is planned again")
+            s.planAll(listOf(planned(ref)), "EVENT-1", members = listOf(ref))
+            assertEquals(2, s.pendingDownloads().size)
+        }
+
+        clause("a withdrawal prune keeps what is listed, received, judged, claimed or another event's", DownloadStoreState.EMPTY) { s ->
+            fun r(id: String) = AssetRef("DEVICE-A", AssetId(id))
+            val listed = r("LISTED")
+            val imported = r("IMPORTED")
+            val unimportable = r("UNIMPORTABLE")
+            val claimed = r("CLAIMED")
+            val marked = r("MARKED")
+            val otherEvent = r("OTHER")
+            val all = listOf(listed, imported, unimportable, claimed, marked)
+            s.planAll(all.map(::planned), "EVENT-1", members = all)
+            s.planAll(listOf(planned(otherEvent)), "EVENT-2", members = listOf(otherEvent))
+            s.markImported(imported, AssetId("L-IMPORTED"))
+            s.settleUnimportable(unimportable)
+            s.recordCreatedLocalId(marked, AssetId("L-MARKED"))
+
+            s.union.pruneWithdrawn("EVENT-1", listed = setOf(listed), protecting = setOf(claimed))
+
+            assertTrue(s.isSettled(imported) && s.isSettled(unimportable), "a received or judged row stays")
+            assertEquals(
+                setOf(listed, claimed, marked),
+                (s.pendingDownloads().mapTo(mutableSetOf()) { it.ref } + s.unconfirmedImports().map { it.ref }) - otherEvent,
+                "listed, claimed and marker-carrying rows keep their work",
+            )
+            s.union.pruneWithdrawn("EVENT-1", listed = emptySet(), protecting = emptySet())
+            assertTrue(otherEvent in s.pendingDownloads().map { it.ref }, "another event's row is not this read's to judge")
+        }
     }
 
     private val ref = AssetRef("DEVICE-A", AssetId("ASSET-Q"))

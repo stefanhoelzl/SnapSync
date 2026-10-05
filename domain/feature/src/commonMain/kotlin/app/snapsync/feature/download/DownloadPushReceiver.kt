@@ -1,5 +1,6 @@
 package app.snapsync.feature.download
 
+import app.snapsync.model.UnionTrigger
 import app.snapsync.services.config.ConfigService
 import app.snapsync.model.MembershipRead
 import co.touchlab.kermit.Logger
@@ -12,6 +13,11 @@ import co.touchlab.kermit.Logger
  * local-only, capability `manage-membership`) and so keeps pushing this device — reconciling it would
  * silently re-pull its new photos. A push arriving with **no** event configured is likewise a no-op.
  *
+ * The push names the union position it announces ([onSilentPush]'s `announced`, decision record
+ * `changes/incremental-union`, D6): the reconcile reads only what was gained since this device's stored position, and
+ * nothing at all when that position is already at or past the announced one — so a burst of pushes after one read
+ * costs no further reads.
+ *
  * It **suspends** until `reconcile`'s synchronous portion (the union read + download enqueue) completes,
  * so the app-shell can hold the OS background-fetch completion handler until the transfers are enqueued
  * (they then continue in the background). Non-throwing on a union failure — `reconcile` keeps last-good
@@ -23,7 +29,7 @@ class DownloadPushReceiver(
     private val controller: DownloadController,
     private val log: Logger = Logger.withTag("DownloadPushReceiver"),
 ) {
-    suspend fun onSilentPush(eventId: String) {
+    suspend fun onSilentPush(eventId: String, announced: Long? = null) {
         val active = when (val membership = configSource.membership) {
             is MembershipRead.Member -> membership.config.eventId
             MembershipRead.NotMember -> null
@@ -39,6 +45,6 @@ class DownloadPushReceiver(
             return
         }
         log.i { "silent push for active event $eventId — reconciling" }
-        controller.reconcile(eventId)
+        controller.reconcile(eventId, UnionTrigger.PUSH, announced)
     }
 }

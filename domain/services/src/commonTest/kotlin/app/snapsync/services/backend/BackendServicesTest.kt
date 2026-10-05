@@ -15,6 +15,8 @@ import app.snapsync.model.Reply
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.StoredResource
 import app.snapsync.model.UnionAsset
+import app.snapsync.model.UnionPage
+import app.snapsync.model.UnionTrigger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -173,9 +175,10 @@ class BackendServicesTest {
 
     @Test
     fun the_union_is_served_or_a_failure_never_an_empty_one() = runTest {
-        val asset = UnionAsset("D", AssetId("A"), "c", emptyList())
-        assertEquals(listOf(asset), servicesAnswering(Reply.Ok(listOf(asset))).union.union("E").getOrThrow())
-        assertTrue(servicesAnswering(Reply.Refused(404, "")).union.union("E").isFailure)
-        assertTrue(servicesAnswering(offline).union.union("E").isFailure)
+        val page = UnionPage(listOf(UnionAsset("D", AssetId("A"), "c", emptyList())), cursor = 7)
+        suspend fun read(reply: Reply<*>) = servicesAnswering(reply).union.union("E", 3, UnionTrigger.PUSH)
+        assertEquals(page, read(Reply.Ok(page)).getOrThrow())
+        assertTrue(read(Reply.Refused(404, "")).isFailure)
+        assertTrue(read(offline).isFailure)
     }
 }

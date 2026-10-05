@@ -29,8 +29,19 @@ class MockEntryDriver(private val device: MockDevice, private val os: PlayedOs) 
 
     override fun pushTokenFailure(description: String) = device.pushService.operator.deliverTokenFailure(description)
 
-    override fun silentPush(eventId: String?, done: () -> Unit) =
-        device.pushService.operator.deliverMessage(mapOf("eventId" to eventId), os.completion(done))
+    /**
+     * The push the backend sent for [eventId], as APNs delivers it: the event, and the union position the backend's last
+     * wake for it announced (decision record `changes/incremental-union`, D6) — none when it sent none, as for an event
+     * whose union never grew, or when the backend behind the port is not the mock.
+     */
+    override fun silentPush(eventId: String?, done: () -> Unit) {
+        val seq = device.backend.operator.pushesSent().lastOrNull { it.eventId == eventId }?.seq
+        val payload = buildMap<Any?, Any?> {
+            put("eventId", eventId)
+            seq?.let { put("seq", it) }
+        }
+        device.pushService.operator.deliverMessage(payload, os.completion(done))
+    }
 
     override fun continueLink(url: String) = device.links.operator.open(url)
 

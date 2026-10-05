@@ -297,8 +297,10 @@ export function createApp(
   // accidental one. CI cannot configure the pull zone (that needs the account key), so this header is the
   // only lever, and its behaviour is verified THROUGH the pull zone rather than at the origin.
   //
-  // Downloads are unaffected by construction: presigned S3 URLs are fetched straight from bunny's S3
-  // endpoint and never reach this script.
+  // Downloads now pass through here (decision record `changes/incremental-union`, D1): each starts at the
+  // redirect route, which reads the store, so a maintenance window answers it `503` too. A download that
+  // already took its redirect is unaffected — its presigned URL goes straight to bunny's S3 endpoint — and
+  // one refused here is retried (Android) or re-enqueued by the next reconcile (iOS).
   if (config.maintenance) {
     // `next` is deliberately never called: this middleware SHORT-CIRCUITS, so no handler runs and no
     // upstream request is made. `async` because Hono's middleware signature returns a promise.
@@ -328,8 +330,11 @@ export function createApp(
   // v1 is exempt. It is spoken by builds that predate this header and cannot be updated to send it, so
   // requiring it there would refuse the entire install base at once.
   app.use("*", async (c, next) => {
-    const { version } = splitVersion(new URL(c.req.url).pathname);
+    const { version, path } = splitVersion(new URL(c.req.url).pathname);
     if (version !== 2) return await next();
+    // The download redirect is exempt too (decision record `changes/incremental-union`, D1): the OS download
+    // transports fetch it and send no app header, and a build too old for v2 never learns such a link.
+    if (isDownloadRedirect(c.req.method, path)) return await next();
     const declared = c.req.header("x-snapsync-app-version");
     // ABSENT, UNPARSEABLE and TOO OLD collapse into one answer, deliberately. All three mean the caller
     // cannot be trusted to speak v2, and the remedy is identical — install a build that can — so no
@@ -414,11 +419,17 @@ export function createApp(
     // perpetual read grant (no per-event opt-in, no rate limit).
     const publicRead = (method === "GET" || method === "HEAD") &&
       (/^\/events\/[^/]+$/.test(path) || /^\/events\/[^/]+\/files$/.test(path));
+    // The union's own token is OPTIONAL rather than absent (decision record `changes/incremental-union`,
+    // D5): the route verifies one when it is sent, to name the reader in its log, and answers `401` for a
+    // bad one itself — this gate never sees it, because the read is public either way.
+    // The DOWNLOAD REDIRECT (D1) is the third public read, by the same capability: it resolves one resource
+    // of the union an eventId already lists, and answers with a presigned link like those the union
+    // carried inline before — so it opens nothing the union read did not.
     if (
       method === "OPTIONS" ||
       path.startsWith("/attest/") ||
       ((method === "GET" || method === "HEAD") && publicGet) ||
-      publicRead
+      publicRead || isDownloadRedirect(method, path)
     ) {
       return await next();
     }
@@ -472,4 +483,14 @@ export function createApp(
   app.route("/api/v1", v1);
   app.route("/api/v2", v2);
   return app;
+}
+
+/**
+ * The download redirect's shape (decision record `changes/incremental-union`, D1), GET/HEAD only — the
+ * one route both gates exempt by path, so they must agree on it: one predicate, not two regexes.
+ * `/events/<e>/files/devices/<d>/<asset>/<role>`, with each segment percent-encoded, so none holds a `/`.
+ */
+function isDownloadRedirect(method: string, path: string): boolean {
+  return (method === "GET" || method === "HEAD") &&
+    /^\/events\/[^/]+\/files\/devices\/[^/]+\/[^/]+\/[^/]+$/.test(path);
 }

@@ -1,6 +1,6 @@
 package app.snapsync.compose
 
-import app.snapsync.model.UnionAsset
+import app.snapsync.model.UnionPage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.update
@@ -16,7 +16,7 @@ import kotlinx.coroutines.flow.update
  * no adoption) leaves the reconcile to read its own.
  */
 internal class JoinUnion {
-    private class Held(val eventId: String, val assets: List<UnionAsset>? = null)
+    private class Held(val eventId: String, val page: UnionPage? = null)
 
     private val held = MutableStateFlow<Held?>(null)
 
@@ -29,10 +29,10 @@ internal class JoinUnion {
         }
     }
 
-    fun offer(eventId: String, assets: List<UnionAsset>) =
-        held.update { current -> if (current?.eventId == eventId) Held(eventId, assets) else current }
+    fun offer(eventId: String, page: UnionPage) =
+        held.update { current -> if (current?.eventId == eventId) Held(eventId, page) else current }
 
-    fun take(eventId: String): List<UnionAsset>? =
+    fun take(eventId: String): UnionPage? =
         held.getAndUpdate { current -> if (current?.eventId == eventId) Held(eventId) else current }
-            ?.takeIf { it.eventId == eventId }?.assets
+            ?.takeIf { it.eventId == eventId }?.page
 }

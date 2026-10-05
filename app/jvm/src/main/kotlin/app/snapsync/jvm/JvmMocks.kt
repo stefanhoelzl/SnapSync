@@ -5,6 +5,8 @@ import app.snapsync.mock.BuildInfoMock
 import app.snapsync.mock.DeclaredVersion
 import app.snapsync.mock.MockDevice
 import app.snapsync.mock.UploadNetwork
+import app.snapsync.model.UnionTrigger
+import app.snapsync.model.UnionPage
 import app.snapsync.model.PushEndpoint
 import app.snapsync.model.CreateEventRequest
 import app.snapsync.model.DeviceFile
@@ -16,7 +18,6 @@ import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.MintRequest
 import app.snapsync.model.RenewRequest
 import app.snapsync.model.Reply
-import app.snapsync.model.UnionAsset
 import app.snapsync.ports.Backend
 import app.snapsync.ports.LogSink
 import io.ktor.client.HttpClient
@@ -115,7 +116,8 @@ class VersionedHttpBackend(
     ): Reply<Unit> = http().publishManifest(token, eventId, deviceId, manifest)
     override suspend fun leaveEvent(token: String?, eventId: String, deviceId: String): Reply<Unit> =
         http().leaveEvent(token, eventId, deviceId)
-    override suspend fun eventFiles(eventId: String): Reply<List<UnionAsset>> = http().eventFiles(eventId)
+    override suspend fun eventFiles(token: String?, eventId: String, cursor: Long?, trigger: UnionTrigger): Reply<UnionPage> =
+        http().eventFiles(token, eventId, cursor, trigger)
     override suspend fun deviceFiles(token: String?, deviceId: String): Reply<List<DeviceFile>> =
         http().deviceFiles(token, deviceId)
     override suspend fun putDeviceConfig(token: String?, deviceId: String, push: PushEndpoint): Reply<Unit> =

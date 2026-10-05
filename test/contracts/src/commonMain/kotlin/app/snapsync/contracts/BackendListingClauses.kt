@@ -1,8 +1,11 @@
 package app.snapsync.contracts
 
 import app.snapsync.model.AssetId
+import app.snapsync.model.DeviceManifest
 import app.snapsync.model.Reply
 import app.snapsync.model.ResourceRole
+import app.snapsync.model.UnionPage
+import app.snapsync.model.UnionTrigger
 import app.snapsync.model.uploadKey
 import app.snapsync.ports.Backend
 import kotlin.test.assertEquals
@@ -13,16 +16,16 @@ import kotlin.test.assertTrue
 internal fun ClauseList<BackendState, EdgeSubject<Backend>>.listingClauses() {
 
     clause("UNION_AN_UNKNOWN_EVENT_IS_REFUSED", BackendState.NO_SUCH_EVENT) { s ->
-        assertIs<Reply.Refused>(s.port.eventFiles(s.seeded.eventId), "absent is a refusal, never an empty union")
+        assertIs<Reply.Refused>(s.union(), "absent is a refusal, never an empty union")
     }
 
     clause("UNION_AN_EMPTY_EVENT_IS_EMPTY", BackendState.EVENT_EXISTS) { s ->
-        assertEquals(emptyList(), assertOk(s.port.eventFiles(s.seeded.eventId)))
+        assertEquals(emptyList(), assertOk(s.union()).assets)
     }
 
     clause("UNION_A_COMPLETE_ASSET_IS_LISTED_UNDER_ITS_DEVICE", BackendState.UNION_COMPLETE_ASSET) { s ->
         val asset = s.seeded.asset!!
-        val listed = assertOk(s.port.eventFiles(s.seeded.eventId)).single()
+        val listed = assertOk(s.union()).assets.single()
         assertEquals(s.seeded.deviceId, listed.deviceId)
         assertEquals(asset.assetId, listed.assetId)
         assertEquals(asset.creationDate, listed.creationDate)
@@ -35,7 +38,44 @@ internal fun ClauseList<BackendState, EdgeSubject<Backend>>.listingClauses() {
     }
 
     clause("UNION_AN_INCOMPLETE_ASSET_IS_OMITTED", BackendState.UNION_INCOMPLETE_ASSET) { s ->
-        assertEquals(emptyList(), assertOk(s.port.eventFiles(s.seeded.eventId)), "never half a photo")
+        assertEquals(emptyList(), assertOk(s.union()).assets, "never half a photo")
+    }
+
+    // Incremental reads (decision record `changes/incremental-union`, D3–D4): a full read names the position it
+    // covers, and a read from that position serves only what the union gained after it.
+    clause("UNION_A_READ_FROM_ITS_POSITION_SERVES_ONLY_WHAT_WAS_GAINED_SINCE", BackendState.MEMBER_WITH_TWO_UPLOADED_ASSETS) { s ->
+        val (event, device) = s.seeded.eventId to s.seeded.deviceId
+        assertOk(s.port.publishManifest(s.token, event, device, DeviceManifest(device, listOf(BackendContract.FIRST.manifestEntry()))))
+        val position = assertOk(s.union()).cursor
+        assertEquals(emptyList(), assertOk(s.union(position)).assets, "nothing was gained since")
+        assertOk(
+            s.port.publishManifest(
+                s.token,
+                event,
+                device,
+                DeviceManifest(device, listOf(BackendContract.FIRST.manifestEntry(), BackendContract.SECOND.manifestEntry())),
+            ),
+        )
+        val delta = assertOk(s.union(position))
+        assertEquals(listOf(BackendContract.SECOND.assetId), delta.assets.map { it.assetId }, "only the gain")
+        assertTrue(delta.cursor > position, "the position moved past the gain")
+    }
+
+    clause("UNION_AN_ASSET_WITHDRAWN_AFTER_ITS_GAIN_IS_NOT_SERVED_FROM_BEFORE_IT", BackendState.MEMBER_WITH_TWO_UPLOADED_ASSETS) { s ->
+        val (event, device) = s.seeded.eventId to s.seeded.deviceId
+        val position = assertOk(s.union()).cursor
+        assertOk(s.port.publishManifest(s.token, event, device, DeviceManifest(device, listOf(BackendContract.FIRST.manifestEntry()))))
+        assertOk(s.port.publishManifest(s.token, event, device, DeviceManifest(device, emptyList())))
+        assertEquals(emptyList(), assertOk(s.union(position)).assets, "a delta serves only what the union still holds")
+    }
+
+    // Public, but a token it is SENT is verified, so its 401 is a verdict on that token (D5).
+    clause("UNION_A_SENT_TOKEN_THE_BACKEND_NEVER_ISSUED_IS_REFUSED", BackendState.FOREIGN_TOKEN) { s ->
+        assertRefused(UNAUTHORIZED, s.port.eventFiles(s.token, s.seeded.eventId, null, UnionTrigger.FOREGROUND))
+    }
+
+    clause("UNION_IS_SERVED_WITHOUT_A_TOKEN", BackendState.EVENT_EXISTS) { s ->
+        assertOk(s.port.eventFiles(null, s.seeded.eventId, null, UnionTrigger.FOREGROUND))
     }
 
     clause("DEVICE_FILES_A_FRESH_DEVICE_HOLDS_NOTHING", BackendState.SERVING) { s ->
@@ -53,3 +93,7 @@ internal fun ClauseList<BackendState, EdgeSubject<Backend>>.listingClauses() {
         assertEquals(asset.key(ResourceRole.PRIMARY), uploadKey(listed.assetId, listed.role, listed.filename), "the key recomposes exactly")
     }
 }
+
+/** A read of this state's event union as its member reads it, from [cursor] (`null`: all of it). */
+private suspend fun EdgeSubject<Backend>.union(cursor: Long? = null): Reply<UnionPage> =
+    port.eventFiles(token, seeded.eventId, cursor, if (cursor == null) UnionTrigger.FOREGROUND else UnionTrigger.PUSH)

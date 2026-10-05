@@ -44,9 +44,12 @@ function serviceAccount(raw: string): ServiceAccount | null {
  * can wake a dozing phone, and collapsed per event — two wakes for one event are interchangeable, exactly as the APNs
  * collapse id treats them.
  */
-export function fcmBody(token: string, eventId: string): string {
+export function fcmBody(token: string, eventId: string, seq?: number): string {
+  // A wake for a photo names the union position it announces (decision record `changes/incremental-union`,
+  // D6). FCM data values are strings, so it rides as one; the close wake carries none.
+  const data = seq === undefined ? { eventId } : { eventId, seq: String(seq) };
   return JSON.stringify({
-    message: { token, data: { eventId }, android: { priority: "HIGH", collapse_key: eventId } },
+    message: { token, data, android: { priority: "HIGH", collapse_key: eventId } },
   });
 }
 
@@ -108,7 +111,7 @@ export function createFcmSender(
     return json.access_token;
   }
 
-  async function sendOne(pt: PushToken, eventId: string): Promise<SendOutcome> {
+  async function sendOne(pt: PushToken, eventId: string, seq?: number): Promise<SendOutcome> {
     if (pt.kind !== "fcm") return { token: pt.token, status: "skipped", reason: `kind ${pt.kind}` };
     if (!account) {
       return { token: pt.token, status: "skipped", reason: "no FCM service account configured" };
@@ -130,7 +133,7 @@ export function createFcmSender(
       {
         method: "POST",
         headers: { authorization: `Bearer ${bearer}`, "content-type": "application/json" },
-        body: fcmBody(pt.token, eventId),
+        body: fcmBody(pt.token, eventId, seq),
       },
     );
   }

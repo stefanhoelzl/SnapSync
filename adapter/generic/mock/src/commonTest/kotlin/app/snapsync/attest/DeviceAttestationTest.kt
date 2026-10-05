@@ -3,6 +3,8 @@
 package app.snapsync.attest
 
 import app.snapsync.mock.inMemorySecureStore
+import app.snapsync.model.UnionTrigger
+import app.snapsync.model.UnionPage
 import app.snapsync.model.DeviceIdentityRole
 import app.snapsync.ports.PlatformDeviceId
 import app.snapsync.services.identity.PersistedDeviceIdentity
@@ -21,7 +23,6 @@ import app.snapsync.model.RenewRequest
 import app.snapsync.model.Reply
 import app.snapsync.mock.fixedClock
 import app.snapsync.model.TokenOutcome
-import app.snapsync.model.UnionAsset
 import app.snapsync.ports.AttestStore
 import app.snapsync.ports.Backend
 import app.snapsync.ports.DeviceIntegrity
@@ -120,7 +121,8 @@ private class FakeClient(
     override suspend fun publishManifest(token: String?, eventId: String, deviceId: String, manifest: DeviceManifest): Reply<Unit> =
         unused()
     override suspend fun leaveEvent(token: String?, eventId: String, deviceId: String): Reply<Unit> = unused()
-    override suspend fun eventFiles(eventId: String): Reply<List<UnionAsset>> = unused()
+    override suspend fun eventFiles(token: String?, eventId: String, cursor: Long?, trigger: UnionTrigger): Reply<UnionPage> =
+        unused()
     override suspend fun deviceFiles(token: String?, deviceId: String): Reply<List<DeviceFile>> = unused()
     override suspend fun putDeviceConfig(token: String?, deviceId: String, push: PushEndpoint): Reply<Unit> = unused()
 

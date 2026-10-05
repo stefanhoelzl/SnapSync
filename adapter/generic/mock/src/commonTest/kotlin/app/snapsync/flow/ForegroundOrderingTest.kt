@@ -1,6 +1,8 @@
 package app.snapsync.flow
 
 import kotlinx.coroutines.test.TestScope
+import app.snapsync.model.UnionTrigger
+import app.snapsync.model.UnionPage
 import app.snapsync.services.network.NetworkReadings
 import app.snapsync.feature.status.ForegroundWatches
 import kotlin.time.Duration.Companion.seconds
@@ -19,7 +21,6 @@ import app.snapsync.feature.status.StatusCountsPoller
 import app.snapsync.feature.status.MutableLedgerCountsSource
 import app.snapsync.model.JoinLoad
 import app.snapsync.services.backend.EventUnionSource
-import app.snapsync.model.UnionAsset
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -165,6 +166,7 @@ class ForegroundOrderingTest {
     }
 
     private object EmptyUnion : EventUnionSource {
-        override suspend fun union(eventId: String): Result<List<UnionAsset>> = Result.success(emptyList())
+        override suspend fun union(eventId: String, cursor: Long?, trigger: UnionTrigger): Result<UnionPage> =
+            Result.success(UnionPage(emptyList(), 0))
     }
 }

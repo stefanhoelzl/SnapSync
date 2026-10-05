@@ -240,6 +240,35 @@ export async function presignDownloadUrl(
   return signed.url;
 }
 
+/**
+ * The device-facing origin this backend is reached at (decision record `changes/incremental-union`, D1),
+ * derived from the deployment's domain exactly as every client derives its upload base
+ * (`scripts/resolve-deployment.py`'s `upload_scheme`): `http` for a loopback literal, `https` otherwise.
+ * From configuration, never from the request: behind the pull zone the request's own host is not a
+ * promise, and a redirect URL is handed to builds that keep it for days.
+ */
+export function deviceOrigin(config: Config): string {
+  const host = config.linkDomain.split(":")[0];
+  const loopback = host === "localhost" || host === "::1" || /^127\.\d+\.\d+\.\d+$/.test(host);
+  return `${loopback ? "http" : "https"}://${config.linkDomain}`;
+}
+
+/**
+ * The stable address of one resource of an event's union (decision record `changes/incremental-union`,
+ * D1): the upload path behind the event, each identity segment percent-encoded. It answers `302` to a
+ * freshly presigned URL. Clients build the same path themselves; this one is what an old build's `url`
+ * field carries.
+ */
+export function downloadPath(
+  eventId: string,
+  deviceId: string,
+  assetId: string,
+  role: string,
+): string {
+  const seg = encodeURIComponent;
+  return `/events/${seg(eventId)}/files/devices/${seg(deviceId)}/${seg(assetId)}/${seg(role)}`;
+}
+
 // ── THE EVENT-LIMITS GATE (capability `event-lifetime`) ───────────────────────────────────────────
 //
 // Every event-scoped route resolves its event through `gateEvent` below: one row read. The lifecycle

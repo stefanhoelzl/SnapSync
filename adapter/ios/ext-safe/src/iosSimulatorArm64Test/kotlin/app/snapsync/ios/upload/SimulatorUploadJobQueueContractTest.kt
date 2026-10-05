@@ -121,7 +121,8 @@ class SimulatorUploadJobQueueContractTest {
             val path = destinationPathOf(target.url).removePrefix(BASE_PATH)
             val contentType = target.headers.entries.firstOrNull { it.key.equals("Content-Type", true) }?.value
             when (val answer = TransferFixture.answerOf(path)) {
-                FixtureAnswer.Hold, null -> Unit
+                // No upload clause redirects.
+                is FixtureAnswer.Redirect, FixtureAnswer.Hold, null -> Unit
                 is FixtureAnswer.Respond -> if (answer.status in HTTP_SUCCESS) {
                     landed[path] = Landed(contentType)
                     jobs.present(FinishedUploadJob(target.url, SimulatorJobAction.ACKNOWLEDGE, UploadJobState.SUCCEEDED, null, null, contentType))

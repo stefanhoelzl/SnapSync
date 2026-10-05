@@ -103,6 +103,49 @@ class UnionAsset(
 )
 
 /**
+ * One answer of the event-wide union (decision record `changes/incremental-union`, D3): its [assets] — all of them for a
+ * full read, only those gained after the cursor it was asked from for a delta — and the [cursor] it covers, which the
+ * next delta starts from. The cursor is the backend's; the app stores it and sends it back, and reads nothing into it
+ * beyond its order.
+ */
+class UnionPage(val assets: List<UnionAsset>, val cursor: Long)
+
+/**
+ * Why the app reads the union (decision record `changes/incremental-union`, D5–D6) — what it tells the backend, which
+ * records it (capability `privacy-security`, "The service records who reads an event's photo list"), and whether the
+ * read is [full]. A push and a background wake read only what is new; every other reason reads everything, because
+ * someone waits on the answer or a decision rests on it.
+ */
+enum class UnionTrigger(val wire: String, val full: Boolean) {
+    /** A silent push announced a photo. */
+    PUSH("push", full = false),
+
+    /** A background wake with no push behind it. */
+    WAKE("wake", full = false),
+
+    /** The app came to the foreground: the member is looking, and a full read heals anything a delta missed. */
+    FOREGROUND("foreground", full = true),
+
+    /** Joining an event. */
+    JOIN("join", full = true),
+
+    /** Photo access became usable: the received photos already in the library are recognised against all of it. */
+    GRANT("grant", full = true),
+
+    /** A settings change began receiving, with no position for a membership that never received. */
+    RECONFIGURE("reconfigure", full = true),
+
+    /** Whether a closed event has given this device everything — the one decision where doubt must keep it. */
+    LEAVE_CHECK("leave-check", full = true),
+}
+
+/** The response header naming the position a union answer covers. */
+const val UNION_CURSOR_HEADER: String = "SnapSync-Cursor"
+
+/** The request header naming why the app reads the union. */
+const val UNION_TRIGGER_HEADER: String = "SnapSync-Trigger"
+
+/**
  * `POST /attest/token` — a fresh attestation of [keyId] over [challenge], in [format]: the backend verifies it by the
  * verifier the format names. For [ProofFormat.ANDROID_KEY], [attestation] is the certificate chain, leaf first, as
  * concatenated DER (each certificate is self-delimiting), and [keyId] is this device's own name for the key — the

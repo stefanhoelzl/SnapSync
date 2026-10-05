@@ -69,7 +69,8 @@ internal fun TransferOutcome.mayBeStaged(): Boolean {
 }
 
 /**
- * A presigned S3 link the background session can actually fetch. `NSURL` happily parses a hostless or
+ * A download link the background session can actually fetch — the backend's stable per-resource address, which
+ * redirects to a freshly presigned S3 link per attempt (decision record `changes/incremental-union`, D1). `NSURL` happily parses a hostless or
  * non-HTTP string, and handing one to a background session raises an uncatchable Objective-C exception —
  * so the guard lives here, where it is testable, not at the edge.
  */
@@ -257,7 +258,7 @@ class DownloadJobs(
             val tag = encodeTag(it.ref, it.resource.resourceKey)
             // Running already: its bytes are on the way; a second transfer would only fetch them twice.
             if (tag in inFlight) return@forEach
-            // Queued already: keep its place, take the fresher entry (a re-plan may have re-presigned the url).
+            // Queued already: keep its place, take the fresher entry (a re-plan may carry a different url).
             queued[tag] = it
         }
         pump()
@@ -294,7 +295,7 @@ class DownloadJobs(
             val tag = queued.keys.firstOrNull() ?: break
             val next = queued.remove(tag) ?: break
             if (!isFetchableUrl(next.resource.url)) {
-                // Pending, not failed: a later reconcile re-presigns the url (`receiving-photos`), and a
+                // Pending, not failed: a later reconcile re-plans the url (`receiving-photos`), and a
                 // permanently-bad one is skipped again rather than aborting the process.
                 log.w { "skipping unfetchable download url for ${next.resource.resourceKey}" }
                 continue

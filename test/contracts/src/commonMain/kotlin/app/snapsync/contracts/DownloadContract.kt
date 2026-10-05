@@ -109,6 +109,20 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
             assertEquals(DownloadEvent.Completed("d-$id", null), events.last(), "then completed without an error")
         }
 
+        clause("A_REDIRECT_IS_FOLLOWED_TO_THE_BODY", DownloadState.READY) { subject ->
+            // A download URL may name a route that answers `302` to where the bytes are (an edge route redirecting to a
+            // freshly presigned object URL). The port follows it on its own and reports the TARGET's answer: the facts
+            // and the body are the final response's, never the redirect's.
+            val id = "A_REDIRECT_IS_FOLLOWED_TO_THE_BODY"
+            val events = subject.transfer(id, FixtureAnswer.Redirect(FixtureAnswer.Respond(200, length = 1024)))
+            val finished = events.first() as? DownloadEvent.Finished
+            assertNotNull(finished, "the redirect is followed to a finish, then the completion: $events")
+            assertEquals("d-$id", finished.tag, "reported under the tag it was started with")
+            assertEquals(TransferOutcome(200, 1024, 1024), finished.facts, "judged on the target's facts")
+            assertContentEquals(TransferFixture.body(1024), finished.body, "the temporary file holds the target's body")
+            assertEquals(DownloadEvent.Completed("d-$id", null), events.last(), "then completed without an error")
+        }
+
         clause("AN_ERROR_STATUS_IS_A_FINISHED_TRANSFER_OF_ITS_BODY", DownloadState.READY) { subject ->
             // Two honest shapes, one outcome. A background `URLSession` reports an HTTP error as a SUCCESSFUL transfer of
             // the error body, with a nil completion error — the port reports the status, and the owner's integrity

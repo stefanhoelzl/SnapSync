@@ -11,6 +11,7 @@ import app.snapsync.contracts.currentHost
 import app.snapsync.services.logs.LogTailService
 import app.snapsync.presentation.StatusContainerHost
 import co.touchlab.kermit.Logger
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCall
@@ -285,6 +286,11 @@ class RigServer(
             is FixtureAnswer.Respond -> {
                 val contentType = request.headers["Content-Type"]
                 if (request.httpMethod.value == "PUT" && answer.status in 200..299) hooks.recordLanded(route, contentType)
+                respondText("", status = HttpStatusCode.fromValue(answer.status))
+            }
+            // No upload clause redirects; answered as the grammar says, so the receiver never misreads a route.
+            is FixtureAnswer.Redirect -> {
+                response.headers.append(HttpHeaders.Location, UPLOAD_BASE_PATH + TransferFixture.redirectTarget(route, answer))
                 respondText("", status = HttpStatusCode.fromValue(answer.status))
             }
             null -> respondText("not a fixture route: $route\n", status = HttpStatusCode.NotFound)

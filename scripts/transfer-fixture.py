@@ -12,6 +12,7 @@ The grammar is `TransferFixture` in :test:contracts — change both or neither:
     GET|PUT /<Contract>/<CLAUSE_ID>/<name>/s404-n0-nolen     answer 404; a GET's body carries no Content-Length
     GET     /<Contract>/<CLAUSE_ID>/<name>/s200-n64-short    answer 200 declaring 64 bytes, send 32, close
     GET|PUT /<Contract>/<CLAUSE_ID>/<name>/hold              never answer (closed after HOLD_SECONDS)
+    GET     /<Contract>/<CLAUSE_ID>/<name>/r302-s200-n64-len answer 302, Location: the same route ending in s200-n64-len
     GET /_landed/<route>                                     200 {"contentType": …} if a 2xx PUT landed there, else 404
     GET /_health                                             200, once the server is up
 
@@ -28,6 +29,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 SEGMENT = re.compile(r"s(\d{3})-n(\d+)-(len|nolen|short)")
+REDIRECT = re.compile(r"r(3\d{2})-(.+)")
 # Longer than any clause waits, so a held transfer ends by its clause's cancel, not by this; bounded so a transfer a
 # clause leaked cannot hold the job.
 HOLD_SECONDS = 60
@@ -40,6 +42,11 @@ def answer_of(path):
     segment = path.split("?", 1)[0].rsplit("/", 1)[-1]
     if segment == "hold":
         return "hold"
+    r = REDIRECT.fullmatch(segment)
+    if r:
+        if not SEGMENT.fullmatch(r.group(2)):
+            return None
+        return "redirect", int(r.group(1)), r.group(2)
     m = SEGMENT.fullmatch(segment)
     if not m:
         return None
@@ -82,6 +89,8 @@ class Handler(BaseHTTPRequestHandler):
         if answer == "hold":
             time.sleep(HOLD_SECONDS)
             return
+        if answer[0] == "redirect":
+            return self._redirect(answer[1], answer[2])
         status, length, mode = answer
         if mode == "short":
             self.send_response(status)
@@ -92,6 +101,16 @@ class Handler(BaseHTTPRequestHandler):
             return
         self._send(status, body(length), declare=mode == "len")
 
+    def _redirect(self, status, target):
+        # Absolute, as a presigned object URL is. Behind a tunnel the scheme is the tunnel's (X-Forwarded-Proto).
+        scheme = self.headers.get("X-Forwarded-Proto") or "http"
+        path = self.path.split("?", 1)[0].rsplit("/", 1)[0] + "/" + target
+        self.send_response(status)
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Location", "%s://%s%s" % (scheme, self.headers.get("Host"), path))
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
     def do_PUT(self):
         size = int(self.headers.get("Content-Length") or 0)
         self.rfile.read(size)
@@ -101,6 +120,8 @@ class Handler(BaseHTTPRequestHandler):
         if answer == "hold":
             time.sleep(HOLD_SECONDS)
             return
+        if answer[0] == "redirect":
+            return self._redirect(answer[1], answer[2])
         status = answer[0]
         if 200 <= status < 300:
             with lock:

@@ -11,7 +11,9 @@ import app.snapsync.model.MintRequest
 import app.snapsync.model.RenewRequest
 import app.snapsync.model.Reply
 import app.snapsync.model.UnionAsset
+import app.snapsync.model.UnionPage
 import app.snapsync.model.UnionResource
+import app.snapsync.model.UnionTrigger
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.uploadKey
 import app.snapsync.ports.Backend
@@ -156,22 +158,30 @@ internal class InMemoryBackend(
             Reply.Ok(Unit)
         }
 
-    override suspend fun eventFiles(eventId: String): Reply<List<UnionAsset>> = online {
-        state.unionReads[eventId] = (state.unionReads[eventId] ?: 0) + 1
-        val union = state.union(eventId) ?: return@online notFound()
-        Reply.Ok(
-            union.map { (deviceId, asset) ->
-                UnionAsset(
-                    deviceId = deviceId,
-                    assetId = asset.assetId,
-                    creationDate = asset.creationDate,
-                    resources = asset.resources.map {
-                        UnionResource(it.key, BackendState.syntheticUrl(deviceId, it.key), it.role.wire, it.contentType, it.filename)
+    // Public, but a token it is sent is verified — a rejected one is `401`, as on the real route — and names the reader
+    // in the log (decision record `changes/incremental-union`, D5). Each resource's url is its download handle.
+    override suspend fun eventFiles(token: String?, eventId: String, cursor: Long?, trigger: UnionTrigger): Reply<UnionPage> =
+        state.locked {
+            refusal<UnionPage>(token, gated = true, online = true)?.let { return@locked it }
+            state.unionReads[eventId] = (state.unionReads[eventId] ?: 0) + 1
+            val reader = token?.substringBefore('.')
+            val (union, position) = state.unionPage(eventId, cursor, reader, trigger.wire) ?: return@locked notFound()
+            Reply.Ok(
+                UnionPage(
+                    union.map { (deviceId, asset) ->
+                        UnionAsset(
+                            deviceId = deviceId,
+                            assetId = asset.assetId,
+                            creationDate = asset.creationDate,
+                            resources = asset.resources.map {
+                                UnionResource(it.key, BackendState.syntheticUrl(deviceId, it.key), it.role.wire, it.contentType, it.filename)
+                            },
+                        )
                     },
-                )
-            },
-        )
-    }
+                    position,
+                ),
+            )
+        }
 
     override suspend fun deviceFiles(token: String?, deviceId: String): Reply<List<DeviceFile>> = gated(token) {
         if (state.offline || state.failDeviceListing) return@gated offline()

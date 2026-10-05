@@ -19,9 +19,13 @@ export type SendOutcome = {
   reason?: string;
 };
 
-/** A sender of silent wakes for one event to a batch of tokens. Never throws. */
+/**
+ * A sender of silent wakes for one event to a batch of tokens. Never throws. `seq`, when given, is the union
+ * position the wake announces (decision record `changes/incremental-union`, D6): a device whose cursor is
+ * already there reads nothing. The close wake announces none.
+ */
 export type SilentSender = {
-  sendSilent(tokens: PushToken[], eventId: string): Promise<SendOutcome[]>;
+  sendSilent(tokens: PushToken[], eventId: string, seq?: number): Promise<SendOutcome[]>;
 };
 
 /**
@@ -48,10 +52,10 @@ export async function postPush(
 
 /** Every token is attempted; one token's error/skip never aborts the others. Never throws. */
 export function silentSender(
-  sendOne: (pt: PushToken, eventId: string) => Promise<SendOutcome>,
+  sendOne: (pt: PushToken, eventId: string, seq?: number) => Promise<SendOutcome>,
 ): SilentSender {
   return {
-    sendSilent: (tokens: PushToken[], eventId: string) =>
-      Promise.all(tokens.map((pt) => sendOne(pt, eventId))),
+    sendSilent: (tokens: PushToken[], eventId: string, seq?: number) =>
+      Promise.all(tokens.map((pt) => sendOne(pt, eventId, seq))),
   };
 }

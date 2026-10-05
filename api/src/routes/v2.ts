@@ -8,13 +8,15 @@ import {
   enroll,
   type EventRow,
   eventsCompletedBy,
+  gainedStatements,
   isMember,
   type ManifestAssetEntry,
-  publishAddsFetchableAsset,
   publishStatements,
+  publishUnionChanges,
   pushTokensForEvent,
-  recordResource,
+  recordResourceStatement,
   stampLanded,
+  unionPosition,
 } from "../db.ts";
 import { legacyKeyFor, RESOURCE_ROLES } from "../legacy-v1.ts";
 import { unsentSummary } from "../push.ts";
@@ -83,6 +85,7 @@ export function v2Routes({ fetchImpl, config, db, now, pushSender }: RouteDeps):
     assets: ManifestAssetEntry[],
     version: number | null,
     final: boolean,
+    changes: { gained: string[]; removed: string[] },
   ): Promise<{ won: boolean; closed: boolean } | Response> {
     const nowMs = now();
     const ended = nowMs > Date.parse(event.endsAt);
@@ -94,6 +97,7 @@ export function v2Routes({ fetchImpl, config, db, now, pushSender }: RouteDeps):
           version,
           final: final && ended,
           closeAt,
+          log: { ...changes, at: new Date(nowMs).toISOString() },
         }),
       );
       return {
@@ -119,12 +123,27 @@ export function v2Routes({ fetchImpl, config, db, now, pushSender }: RouteDeps):
    * inside the device's own upload cycle under an OS deadline, so a hung APNs connection here would make
    * the device time out a write that actually committed — and the next cycle would skip it as unchanged.
    */
-  async function notifyMembers(eventId: string, publisherId: string): Promise<void> {
+  async function notifyMembers(
+    eventId: string,
+    publisherId: string,
+    announce: "gain" | "close",
+  ): Promise<void> {
     try {
       const tokens = await pushTokensForEvent(db, eventId, publisherId);
       if (tokens.length === 0) return;
+      // A wake for a gain names the union position it announces (decision record
+      // `changes/incremental-union`, D6), read AFTER the commit: the event's last gain, at or past the one
+      // this caller logged. A failed read sends the wake without one, which the device reads as before.
+      let seq: number | undefined;
+      if (announce === "gain") {
+        try {
+          seq = await unionPosition(db, eventId);
+        } catch (e) {
+          console.error(`v2 notify: position read failed for ${eventId}, waking without one: ${e}`);
+        }
+      }
       const outcomes = await Promise.race([
-        pushSender.sendSilent(tokens, eventId),
+        pushSender.sendSilent(tokens, eventId, seq),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error("fan-out timed out")), FANOUT_TIMEOUT_MS)
         ),
@@ -203,10 +222,18 @@ export function v2Routes({ fetchImpl, config, db, now, pushSender }: RouteDeps):
     } catch (e) {
       console.error(`v2 upload: completion lookup failed for ${deviceId}/${assetId}/${role}: ${e}`);
     }
+    // The record and the union-log rows it causes commit as ONE batch (decision record
+    // `changes/incremental-union`, D4): a gain logged for bytes never recorded would announce what no read
+    // can serve, and a record whose gain was lost would leave the asset out of every delta.
+    const landedAt = new Date(now()).toISOString();
     const recorded = await tryUpstream(
       c,
       `v2 upload: could not record ${byteKey(deviceId, key)}`,
-      () => recordResource(db, { deviceId, assetId, role, key, contentType, filename }),
+      () =>
+        db.batch([
+          recordResourceStatement({ deviceId, assetId, role, key, contentType, filename }),
+          ...gainedStatements(completed, deviceId, assetId, landedAt),
+        ]),
     );
     if (recorded instanceof Response) return recorded;
     // AFTER the commit, and best-effort: this asset is now servable, so the event's other members are
@@ -217,11 +244,11 @@ export function v2Routes({ fetchImpl, config, db, now, pushSender }: RouteDeps):
     // last arrival at the latest. Best-effort like the wake — the bytes are stored and recorded, and a
     // lost stamp only lets the clock run from an earlier arrival or the range end.
     try {
-      await stampLanded(db, completed, new Date(now()).toISOString());
+      await stampLanded(db, completed, landedAt);
     } catch (e) {
       console.error(`v2 upload: could not stamp the landing for ${completed.join(",")}: ${e}`);
     }
-    for (const eventId of completed) await notifyMembers(eventId, deviceId);
+    for (const eventId of completed) await notifyMembers(eventId, deviceId, "gain");
     return c.body(null, 201);
   });
 
@@ -294,9 +321,12 @@ export function v2Routes({ fetchImpl, config, db, now, pushSender }: RouteDeps):
     // photo they cannot fetch while spending an allowance APNs caps at two or three per hour. The case
     // that does earn a wake is a WIDENING: a membership re-admits assets it already uploaded, so the union
     // grows with no byte moving. A read failure degrades to "wake nobody" rather than failing the publish.
-    let addsFetchable = false;
+    // The same comparison also yields what this publish REMOVES from the union; both are written into the
+    // union log inside the publish batch (decision record `changes/incremental-union`, D4). A read failure
+    // logs nothing: the members' next full read still finds the asset.
+    let changes: { gained: string[]; removed: string[] } = { gained: [], removed: [] };
     try {
-      addsFetchable = await publishAddsFetchableAsset(
+      changes = await publishUnionChanges(
         db,
         eventId,
         deviceId,
@@ -305,11 +335,12 @@ export function v2Routes({ fetchImpl, config, db, now, pushSender }: RouteDeps):
     } catch (e) {
       console.error(`v2 manifest: fetchability lookup failed for ${eventId}/${deviceId}: ${e}`);
     }
+    const addsFetchable = changes.gained.length > 0;
     // ORDERED by the body's manifest version, inside the one transaction (see `publishStatements`): the
     // first statement's count is the verdict. A refused publish is an ORDINARY outcome of the app and the
     // upload extension publishing at once — a snapshot at least as new is already stored — so it answers
     // `200` like a won one, and the device treats it as published.
-    const applied = await applyPublish(c, event, deviceId, assets, version, final);
+    const applied = await applyPublish(c, event, deviceId, assets, version, final, changes);
     if (applied instanceof Response) return applied;
     const { won, closed } = applied;
     if (!won) {
@@ -323,7 +354,9 @@ export function v2Routes({ fetchImpl, config, db, now, pushSender }: RouteDeps):
     // The close wakes every member once (capability `receiving-photos`): every byte may already have
     // landed, so no landing would wake anyone, and each device must learn the close to finish and leave.
     // The publisher is skipped like any fan-out — it made the close and learns it from its own next read.
-    if ((won && addsFetchable) || closed) await notifyMembers(eventId, deviceId);
+    if ((won && addsFetchable) || closed) {
+      await notifyMembers(eventId, deviceId, won && addsFetchable ? "gain" : "close");
+    }
     if (closed) console.info(`v2 manifest: event ${eventId} closed by ${deviceId}`);
     return c.body(null, 200);
   });

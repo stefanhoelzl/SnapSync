@@ -91,3 +91,18 @@ CREATE TABLE resources (
   -- key — it earns its place by indexing the sweep's lookup, which addresses a row by object name.
   UNIQUE (device_id, key)
 ) STRICT;
+
+CREATE TABLE union_log (
+  seq         INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_id    TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  kind        TEXT NOT NULL,
+  device_id   TEXT,
+  asset_id    TEXT,
+  trigger     TEXT,
+  cursor_from INTEGER,
+  cursor_to   INTEGER,
+  served      INTEGER,
+  at          TEXT NOT NULL
+) STRICT;
+
+CREATE INDEX union_log_by_event_seq ON union_log (event_id, seq);
