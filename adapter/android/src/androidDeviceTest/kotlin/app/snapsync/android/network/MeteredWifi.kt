@@ -9,7 +9,8 @@ import androidx.test.platform.app.InstrumentationRegistry
 /**
  * The emulator's Wi-Fi as a RESTRICTED network (capability `mobile-data`), the way a person's "metered" switch on a
  * Wi-Fi network makes it one: the network policy service's per-SSID override, entered and lifted from the shell. The
- * override reconnects the Wi-Fi as a new network, so each switch waits until the platform reports the result.
+ * override reconnects the Wi-Fi as a new network, so each switch waits until the platform reports the result — and
+ * first requires the emulator to have a Wi-Fi at all ([EmulatorNetwork.requireWifi]), so a boot without one fails as such.
  *
  * Measured on the API 36 emulator, 2026-10-03: `NET_CAPABILITY_NOT_METERED` leaves the Wi-Fi with the override; the
  * service answers 255 either way and applies it. Lifting it reconnects the Wi-Fi too, as a new network, with cellular
@@ -26,11 +27,13 @@ internal object MeteredWifi {
     private val connectivity: ConnectivityManager get() = context.getSystemService(ConnectivityManager::class.java)
 
     fun enter() {
+        EmulatorNetwork.requireWifi()
         shell("cmd netpolicy set metered-network $EMULATOR_WIFI true")
         awaitUnmetered(false, "a metered Wi-Fi")
     }
 
     fun lift() {
+        EmulatorNetwork.requireWifi()
         shell("cmd netpolicy set metered-network $EMULATOR_WIFI undefined")
         awaitUnmetered(true, "an unmetered Wi-Fi")
     }
@@ -40,7 +43,9 @@ internal object MeteredWifi {
         while (connectivity.getNetworkCapabilities(connectivity.activeNetwork)
                 ?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED) != unmetered
         ) {
-            check(System.currentTimeMillis() < deadline) { "the emulator did not reach $entering within ${SETTLE_MILLIS}ms" }
+            check(System.currentTimeMillis() < deadline) {
+                "the emulator did not reach $entering within ${SETTLE_MILLIS}ms (networks: ${EmulatorNetwork.describe()})"
+            }
             Thread.sleep(POLL_MILLIS)
         }
     }
