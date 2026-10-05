@@ -19,6 +19,7 @@ import app.snapsync.ports.LogSink
 import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.ports.Preferences
 import app.snapsync.ports.NetworkMonitor
+import app.snapsync.ports.DeviceConditions
 import app.snapsync.ports.ProcessInfo
 import app.snapsync.ports.PushNotifications
 import app.snapsync.ports.SecureStore
@@ -60,6 +61,7 @@ class JvmDevice(
     val integrity: DeviceIntegrity,
     val processInfo: ProcessInfo,
     val network: NetworkMonitor,
+    val deviceConditions: DeviceConditions,
     /**
      * Where the app process's log lines go. None by default: a JVM hosts many "processes", and a process that supplies
      * sinks takes over the VM's global writer list (`ProcessPorts.logSinks`). A caller that reads the app's log back

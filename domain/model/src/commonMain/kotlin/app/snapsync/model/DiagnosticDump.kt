@@ -14,11 +14,14 @@ package app.snapsync.model
  * | part | worst case |
  * |---|---|
  * | these log tails, plus JSON escaping (measured ~1% on log text) | ≈ 707,000 |
- * | note, state, ledger, message (fixed keys; the longest value is a 100-char event name) | ≤ 4,000 |
+ * | note, state, ledger, message (fixed keys; the longest values a 100-char event name and the device facts¹) | ≤ 4,000 |
  * | [MAX_BREADCRUMBS] breadcrumbs × ([BREADCRUMB_TEXT_BYTES], up to 2× once JSON-escaped, + ~300 B each) | ≤ 133,000 |
  * | `process_metrics`, tags, user, release | ≤ 8,000 |
  * | the SDK's own contexts, current-thread stack and debug images (an allowance, not a cap) | ≤ 100,000 |
  * | **total**, against 1,048,576 | **≈ 952,000** |
+ *
+ * ¹ each device fact at worst `failed (<reason>)`, the reason cut to [DIAGNOSTIC_FAILURE_REASON_CHARS]; the worst case is
+ * pinned by `CollectDiagnosticDumpTest`.
  *
  * The `CrashReporter` contract's worst-case clause sends this event to an ingest that refuses anything over
  * the ceiling, so an SDK upgrade that grows its share fails a clause rather than a device. Measured 2026-09-23
@@ -32,6 +35,31 @@ package app.snapsync.model
  * allow. The two move together or not at all.
  */
 const val DIAGNOSTIC_LOG_BUDGET_BYTES: Int = 700_000
+
+/**
+ * The longest reason a failed device fact carries in a report (capability `privacy-security`): a platform message can
+ * be arbitrarily long, and the state section's share of the whole-event sum (see [DIAGNOSTIC_LOG_BUDGET_BYTES]) is
+ * fixed.
+ */
+const val DIAGNOSTIC_FAILURE_REASON_CHARS: Int = 80
+
+/** The state-section keys a report's device and screen facts are written under (capability `privacy-security`). */
+object DiagnosticKeys {
+    const val NETWORK = "network"
+    const val POWER_SAVING = "power_saving"
+    const val BACKGROUND_REFRESH = "background_refresh"
+    const val STANDBY_BUCKET = "standby_bucket"
+    const val BATTERY_OPTIMIZATION_EXEMPT = "battery_optimization_exempt"
+    const val BATTERY_PERCENT = "battery_percent"
+    const val BATTERY_CHARGING = "battery_charging"
+    const val THERMAL = "thermal"
+    const val DEVICE_ID = "device_id"
+    const val TIME_ZONE = "time_zone"
+    const val MEMORY_FOOTPRINT_MB = "memory_footprint_mb"
+    const val SELECTION_PHOTOS = "selection_photos"
+    const val SHOWN_SHARED = "shown_shared"
+    const val SHOWN_RECEIVED = "shown_received"
+}
 
 /**
  * One operator-initiated diagnostic dump (capability `privacy-security`): five labelled sections,

@@ -117,6 +117,10 @@ private val CODECS: Map<MockedSystem, Codec> = mapOf(
         { mapOf(ACCESS to accessName(it.connectivity.cell.value)) },
         { device, values -> values[ACCESS]?.let { device.connectivity.cell.value = accessNamed(it) } },
     ),
+    MockedSystem.DEVICE_CONDITIONS to scalars(
+        { DeviceConditionsText.encode(it.deviceConditions.cell.value) },
+        { device, values -> device.deviceConditions.cell.value = DeviceConditionsText.apply(device.deviceConditions.cell.value, values) },
+    ),
     MockedSystem.CLOCK to codec(
         ClockDto.serializer(),
         { ClockDto(it.clock.now.toEpochMilliseconds(), it.clock.zone.id) },

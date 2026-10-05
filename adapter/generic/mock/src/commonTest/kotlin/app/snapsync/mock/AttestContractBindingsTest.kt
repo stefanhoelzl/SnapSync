@@ -7,6 +7,8 @@ import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.DeviceIntegrityContract
 import app.snapsync.contracts.DeviceIntegrityState
 import app.snapsync.contracts.Entered
+import app.snapsync.contracts.DeviceConditionsContract
+import app.snapsync.contracts.DeviceConditionsState
 import app.snapsync.contracts.NetworkMonitorContract
 import app.snapsync.contracts.NetworkState
 import app.snapsync.contracts.ProcessInfoContract
@@ -20,11 +22,12 @@ import app.snapsync.ports.ProcessInfo
 import app.snapsync.model.Availability
 import app.snapsync.model.NetworkAccess
 import app.snapsync.ports.NetworkMonitor
+import app.snapsync.ports.DeviceConditions
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlin.test.Test
 
 /**
- * The integrity and attest-store doubles, the protected-storage double and the network double, held to the contracts their real implementations
+ * The integrity and attest-store doubles, the protected-storage double, the network double and the device-conditions double, held to the contracts their real implementations
  * satisfy (`docs/architecture.md`). Each double is built at its DEFAULTS for the state, never with a knob
  * turned to make a clause pass: a double the contract catches lying is fixed in the double.
  */
@@ -112,4 +115,20 @@ class AttestContractBindingsTest {
     @Test
     fun `the in-memory network satisfies the NetworkMonitor contract`() =
         verify(NetworkMonitorContract, network)
+
+    private val deviceConditions = object : Binding<DeviceConditionsState, DeviceConditions> {
+        override val host = currentHost
+        override val kind = BindingKind.Fake
+        // At its defaults the double is an iPhone; Android's facts would need a knob turned, which a binding may not.
+        override val reaches = setOf(DeviceConditionsState.IPHONE)
+
+        override fun create(state: DeviceConditionsState, clauseId: String): Entered<DeviceConditions> = when (state) {
+            DeviceConditionsState.IPHONE -> Entered.Ready(DeviceConditionsMock().port())
+            DeviceConditionsState.ANDROID -> Entered.Unreachable("the double opens as an iPhone")
+        }
+    }
+
+    @Test
+    fun `the in-memory device conditions satisfy the DeviceConditions contract`() =
+        verify(DeviceConditionsContract, deviceConditions)
 }

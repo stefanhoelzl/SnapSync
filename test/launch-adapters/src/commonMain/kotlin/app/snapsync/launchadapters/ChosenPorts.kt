@@ -33,6 +33,7 @@ fun chosenPorts(real: DevicePorts.Lazies, choice: AdapterChoice, device: MockDev
         integrity = pick(MockedSystem.INTEGRITY, real.integrity) { device.enclave.port(available = app) },
         processInfo = pick(MockedSystem.PROCESS_INFO, real.processInfo) { device.processInfo.port() },
         network = pick(MockedSystem.NETWORK, real.network) { device.connectivity.port() },
+        deviceConditions = pick(MockedSystem.DEVICE_CONDITIONS, real.deviceConditions) { device.deviceConditions.port() },
         backend = pick(MockedSystem.BACKEND, real.backend) { device.backend.port(device.declaredVersion) },
         backgroundTime = pick(MockedSystem.BACKGROUND_TIME, real.backgroundTime) { device.backgroundTime.port() },
         wake = pick(MockedSystem.WAKE, real.wake) { device.wakes.port() },

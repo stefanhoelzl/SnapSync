@@ -102,6 +102,7 @@ object RigVocabulary {
         "device/backend/wipe-bytes",
         "device/clock/advance",
         "device/network",
+        "device/conditions",
         "device/app-version",
         "device/relaunch",
         "device/reinstall",

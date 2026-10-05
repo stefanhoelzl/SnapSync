@@ -256,6 +256,12 @@ Where bindings live: beside their implementations.
   through `cmd netpolicy`), airplane mode (offline), and the package denied by the `OEM_DENY_3` firewall chain
   (blocked), each entered by the binding through the platform's shell; live on `IOS_SIM_APP` online; recorded on the SE2
   online, in Low Data Mode (restricted) and in airplane mode, once each (`.ONLINE.rec`, `.RESTRICTED.rec`, `.OFFLINE.rec`).
+- `DeviceConditions` (what a bug report says about power saving, the battery, the thermal state and the background
+  allowance, capability `privacy-security`): live on `ANDROID_EMU` as an Android device and on `IOS_SIM_APP` as an
+  iPhone, each clause holding a platform to its own facts and to answering the other's unsupported. The simulator has
+  no battery, so its battery reads failed — the contract holds the battery only to its range. That `IosDeviceConditions`
+  leaves `UIDevice`'s battery monitoring as it found it is unobservable through the port and is stated on the adapter;
+  how a report renders each fact, and a read that stalls, run on the JVM (`CollectDiagnosticDumpTest`).
 - A transfer held to unrestricted networks (capability `mobile-data`): `Upload`'s and `Download`'s
   `A_TRANSFER_HELD_TO_UNRESTRICTED_NETWORKS_WAITS_FOR_ONE` run live on `ANDROID_EMU` (metered Wi-Fi, via the shared
   `MeteredWifi` entry) and over the transfer mocks; `AndroidWorkContractTest` pins that an unrestricted wake waits out a

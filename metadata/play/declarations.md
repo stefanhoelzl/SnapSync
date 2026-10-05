@@ -96,6 +96,8 @@ Instructions, the Android wording of `metadata/review/notes.md`:
 | Photos and videos → **Photos** | Yes | No | Yes: joining with sharing off sends none | App functionality |
 | Photos and videos → **Videos** | Yes | No | Yes: joining with sharing off sends none | App functionality |
 | App info and performance → **Crash logs** | Yes | No | No | Analytics (app stability) |
+| App info and performance → **Diagnostics** | Yes | No | as set in the Console | as set in the Console |
+| App info and performance → **Other app performance data** | Yes | No | as set in the Console | as set in the Console |
 
 - **"Shared: No".** Play's definition of sharing excludes a transfer the user initiates and expects. Photos reach
   the event's members because the user joined that event with sharing on.
@@ -111,12 +113,18 @@ Instructions, the Android wording of `metadata/review/notes.md`:
     browsers anonymously; deleted with the event's photos — capability `privacy-security`): **diagnostics**, covered by
     the diagnostics already declared in both stores (decided 2026-10-05, `changes/incremental-union`). It is not app
     interactions: it records the app's own sync traffic, never what the member does.
+- **Diagnostics and other app performance data** were already declared in the Console (recorded here 2026-10-05,
+  when this file was found listing only crash logs). They cover the **device state** a user-sent bug report carries —
+  network access, power saving, background allowance, battery level and charging, thermal state, time zone and the
+  app's memory footprint (capability `privacy-security`, changes/archive/2026-10-05-device-state-in-bug-reports) — battery life being
+  Play's own example of diagnostics. The Optional and Purpose columns were not copied from the Console; read them
+  there before relying on this table.
 - **Security:** data is **encrypted in transit** (HTTPS only).
 - **Deletion:** users **can request deletion** at the contact email, and an event's photos are deleted automatically
   once everyone has them, never later than 30 days after the event is created or starts.
 - **Accounts:** none; the app has no account creation.
 
-**Reopen** if Play's review says this is under-declared (location, the device or other IDs, or diagnostics). Then
+**Reopen** if Play's review says this is under-declared (location, or the device or other IDs). Then
 declare the named type with its purpose and change the content rating's location answer in the same step. The Privacy
 Policy already names all of them, so only the form would change.
 

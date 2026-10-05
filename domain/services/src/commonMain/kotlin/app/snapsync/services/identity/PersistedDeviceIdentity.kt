@@ -4,6 +4,7 @@ import app.snapsync.model.DeviceIdResult
 import app.snapsync.model.DeviceIdentityRole
 import app.snapsync.model.SecureSlots
 import app.snapsync.model.SecureStoreResolution
+import app.snapsync.model.SecureStoreRead
 import app.snapsync.model.DeviceIdentityAbsent
 import app.snapsync.ports.PlatformDeviceId
 import app.snapsync.ports.SecureStore
@@ -46,12 +47,13 @@ class PersistedDeviceIdentity(
      * the store no longer holds). A lazy whose initializer throws is retried on the next access, so only a success
      * is kept (`DeviceIdentityRetryTest` pins that stdlib property).
      */
-    private val resolved: DeviceIdResult.Id by lazy {
+    private val resolution: Lazy<DeviceIdResult.Id> = lazy {
         when (val result = resolveOnce()) {
             is DeviceIdResult.Id -> result
             else -> throw NotResolved(result)
         }
     }
+    private val resolved: DeviceIdResult.Id by resolution
 
     /** A resolution that did not produce an id — thrown out of the lazy so it is not kept, caught in [resolve]. */
     private class NotResolved(val result: DeviceIdResult) : RuntimeException()
@@ -61,6 +63,22 @@ class PersistedDeviceIdentity(
         resolved
     } catch (failure: NotResolved) {
         failure.result
+    }
+
+    /**
+     * The id this install already has, **never minting or writing one** — for a reader that must not create an
+     * identity as a side effect: a bug report (capability `privacy-security`). This process's resolution when it has
+     * one; otherwise the shared slot as it stands, the legacy slot left unread (adopting from it is a write) and no protection migrated.
+     * [DeviceIdResult.AbsentNotMintable] here means only "none stored yet", whatever this process's role.
+     */
+    fun current(): DeviceIdResult {
+        if (resolution.isInitialized()) return resolution.value
+        // The store's raw read, not `readExisting`: that one upgrades an item's protection in place, which is a write.
+        return when (val read = store.read(SecureSlots.DEVICE_ID)) {
+            is SecureStoreRead.Found -> DeviceIdResult.Id(read.value, DeviceIdResult.Via.READ)
+            SecureStoreRead.Absent -> DeviceIdResult.AbsentNotMintable
+            is SecureStoreRead.Unavailable -> DeviceIdResult.Unavailable(read.detail)
+        }
     }
 
     private fun resolveOnce(): DeviceIdResult {

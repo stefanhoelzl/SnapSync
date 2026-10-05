@@ -35,6 +35,8 @@ import app.snapsync.contracts.PhotoAccessState
 import app.snapsync.contracts.PhotoLibrary
 import app.snapsync.contracts.GalleryImportContract
 import app.snapsync.contracts.GalleryImportState
+import app.snapsync.contracts.DeviceConditionsContract
+import app.snapsync.contracts.DeviceConditionsState
 import app.snapsync.contracts.NetworkMonitorContract
 import app.snapsync.contracts.ProcessInfoContract
 import app.snapsync.contracts.ProcessInfoState
@@ -57,6 +59,8 @@ import app.snapsync.model.AssetRef
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.ProcessInfo
 import app.snapsync.protection.IosProcessInfo
+import app.snapsync.device.IosDeviceConditions
+import app.snapsync.ports.DeviceConditions
 import app.snapsync.model.StagedResource
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
@@ -105,6 +109,7 @@ fun simulatorAppContracts(): List<InAppContract> = listOf(
     simulatorAppContract(LivePhotoImportContract, SimAppLivePhotoImportBinding(), ::refusal),
     simulatorAppContract(ProcessInfoContract, SimAppProcessInfoBinding(), ::hostRefusal),
     simulatorAppContract(NetworkMonitorContract, SimAppNetworkMonitorBinding(), ::hostRefusal),
+    simulatorAppContract(DeviceConditionsContract, SimAppDeviceConditionsBinding(), ::hostRefusal),
     simulatorAppContract(LinkOpenerContract, SimAppLinkOpenerBinding(), ::hostRefusal),
     simulatorAppContract(SharePresenterContract, SimAppSharePresenterBinding(), ::hostRefusal),
     simulatorAppContract(UploadContract, SimAppUploadBinding(), ::refusal),
@@ -353,6 +358,22 @@ class SimAppProcessInfoBinding : Binding<ProcessInfoState, ProcessInfo> {
 
     override fun create(state: ProcessInfoState, clauseId: String): Entered<ProcessInfo> =
         Entered.Ready(IosProcessInfo())
+}
+
+/**
+ * The real [IosDeviceConditions] in the simulator app — the one CI host with a `UIApplication` and a `UIDevice` a
+ * binding may read (a test executable has neither). An iPhone, so it presents `IPHONE` and never `ANDROID`. The
+ * simulator has no battery, so its level and state answer failed — which the contract allows for exactly this host.
+ */
+class SimAppDeviceConditionsBinding : Binding<DeviceConditionsState, DeviceConditions> {
+    override val host = Host.IOS_SIM_APP
+    override val kind = BindingKind.Live
+    override val reaches = setOf(DeviceConditionsState.IPHONE)
+
+    override fun create(state: DeviceConditionsState, clauseId: String): Entered<DeviceConditions> = when (state) {
+        DeviceConditionsState.IPHONE -> Entered.Ready(IosDeviceConditions())
+        DeviceConditionsState.ANDROID -> Entered.Unreachable("an iPhone is not Android")
+    }
 }
 
 /**

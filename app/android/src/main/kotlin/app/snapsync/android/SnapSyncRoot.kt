@@ -9,6 +9,7 @@ import app.snapsync.android.gallery.AndroidGallery
 import app.snapsync.android.link.AndroidLinks
 import app.snapsync.android.logging.LogcatSink
 import app.snapsync.android.network.AndroidNetworkMonitor
+import app.snapsync.android.device.AndroidDeviceConditions
 import app.snapsync.android.network.awaitUnrestrictedNetwork
 import app.snapsync.android.permission.AndroidPhotoPermission
 import app.snapsync.android.process.AndroidProcessInfo
@@ -126,6 +127,9 @@ class SnapSyncRoot(internal val application: Application) {
         processInfo = lazy { AndroidProcessInfo(application) },
         // The default network and whether Android blocks it for this app (capability `sync-status`).
         network = lazy { AndroidNetworkMonitor(application) },
+        // Battery Saver, the standby bucket, the battery and the thermal status — read only for a bug report (capability
+        // `privacy-security`).
+        deviceConditions = lazy { AndroidDeviceConditions(application) },
         // The crash-reporting seat both platforms share (capability `privacy-security`). It starts only when the build
         // carries a destination — a distributed one — and is never touched otherwise.
         crashReporter = lazy { SentryCrashReporter() },

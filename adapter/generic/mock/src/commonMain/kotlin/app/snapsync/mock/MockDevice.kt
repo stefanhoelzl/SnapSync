@@ -42,6 +42,8 @@ open class MockDevice(
     val processInfo = ProcessInfoMock()
     /** The device's network as the operating system reports it to the app — not [network], an upload's byte route. */
     val connectivity = NetworkMock()
+    /** The device's power saving, battery, thermal state and background allowance, read for a bug report. */
+    val deviceConditions = DeviceConditionsMock()
     val clock = ClockMock()
     val wakes = WakeMock()
     val backgroundTime = BackgroundTimeMock()

@@ -1,5 +1,7 @@
 package app.snapsync.presentation
 
+import app.snapsync.model.DiagnosticKeys
+import app.snapsync.model.ReportContext
 import app.snapsync.model.AlbumKind
 import app.snapsync.model.ReportDestination
 import app.snapsync.model.ReconfigureOutcome
@@ -83,7 +85,7 @@ private class Spy {
     var renameResets = 0
     val reconfigures = mutableListOf<Reconfigure>()
     var reconfigureOutcome = ReconfigureOutcome.Saved
-    val diagnostics = mutableListOf<Pair<String, String>>()
+    val diagnostics = mutableListOf<Pair<String, ReportContext>>()
 }
 
 /**
@@ -109,7 +111,7 @@ class StatusContainerHostSurfacesTest {
         scope: CoroutineScope,
         spy: Spy = Spy(),
         config: MutableStateFlow<EventConfig?> = MutableStateFlow(CONFIG),
-        sendDiagnostics: suspend (String, String) -> ReportOutcome = { _, _ -> ReportOutcome.SENT },
+        sendDiagnostics: suspend (String, ReportContext) -> ReportOutcome = { _, _ -> ReportOutcome.SENT },
         queries: UserQueries = noQueries,
         onCommitJoin: suspend (eventId: String) -> Unit = {},
         reportDestination: ReportDestination = ReportDestination.DEVELOPER,
@@ -163,7 +165,7 @@ class StatusContainerHostSurfacesTest {
     private fun onHost(
         spy: Spy = Spy(),
         config: MutableStateFlow<EventConfig?> = MutableStateFlow(CONFIG),
-        sendDiagnostics: suspend (String, String) -> ReportOutcome = { _, _ -> ReportOutcome.SENT },
+        sendDiagnostics: suspend (String, ReportContext) -> ReportOutcome = { _, _ -> ReportOutcome.SENT },
         queries: UserQueries = noQueries,
         onCommitJoin: suspend (eventId: String) -> Unit = {},
         reportDestination: ReportDestination = ReportDestination.DEVELOPER,
@@ -613,7 +615,9 @@ class StatusContainerHostSurfacesTest {
             withTimeout(5.seconds) {
                 while (spy.diagnostics.isEmpty()) kotlinx.coroutines.yield()
             }
-            assertEquals(listOf("photos are not arriving" to "joined"), spy.diagnostics)
+            // The host's default membership is in sync with nothing to count: the counts line it shows rides along.
+            val shown = mapOf(DiagnosticKeys.SHOWN_SHARED to "0/0", DiagnosticKeys.SHOWN_RECEIVED to "0/0")
+            assertEquals(listOf("photos are not arriving" to ReportContext("joined", shown)), spy.diagnostics)
         }
     }
 }

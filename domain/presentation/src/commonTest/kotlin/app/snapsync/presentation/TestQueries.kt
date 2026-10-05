@@ -1,5 +1,6 @@
 package app.snapsync.presentation
 
+import app.snapsync.model.ReportContext
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.JoinLoad
@@ -35,7 +36,7 @@ internal fun testCommands(
     ) -> app.snapsync.model.ReconfigureOutcome = { _, _, _, _, _, _ -> app.snapsync.model.ReconfigureOutcome.Saved },
     rename: (eventId: String, name: String) -> Unit = { _, _ -> },
     resetRename: suspend () -> Unit = {},
-    sendDiagnostics: suspend (note: String, screen: String) -> app.snapsync.model.ReportOutcome = { _, _ -> app.snapsync.model.ReportOutcome.SENT },
+    sendDiagnostics: suspend (note: String, context: ReportContext) -> app.snapsync.model.ReportOutcome = { _, _ -> app.snapsync.model.ReportOutcome.SENT },
 ) = app.snapsync.model.UserCommands(
     leave, create, commitJoin, share, requestAccess, openSettings, openLink,
     choosePhotos = {}, // no presentation test is about the picker; its binding is the shells' and compose/'s

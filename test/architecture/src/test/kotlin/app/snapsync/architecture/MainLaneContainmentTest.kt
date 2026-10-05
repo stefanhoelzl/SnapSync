@@ -61,6 +61,10 @@ class MainLaneContainmentTest {
         // adapter: the core's entries ask the `ProcessInfo` port, and this adapter names the lane itself.
         "/adapter/ios/app-only/src/iosMain/kotlin/app/snapsync/protection/IosProcessInfo.kt" to
             "UIApplication.isProtectedDataAvailable",
+        // Reads the main-thread-only `UIDevice` battery (switching battery monitoring on and back off in the same hop)
+        // and `UIApplication.backgroundRefreshStatus` for a bug report (capability `privacy-security`).
+        "/adapter/ios/app-only/src/iosMain/kotlin/app/snapsync/device/IosDeviceConditions.kt" to
+            "UIDevice battery + UIApplication.backgroundRefreshStatus",
         // The hand-off contracts' simulator-app binding (rig-gated): disposing a clause dismisses the share
         // sheet it presented, and UIKit dismissal is main-thread-only like the presentation it undoes.
         "/adapter/ios/app-only/src/rig/kotlin/app/snapsync/contract/HandoffContracts.kt" to
