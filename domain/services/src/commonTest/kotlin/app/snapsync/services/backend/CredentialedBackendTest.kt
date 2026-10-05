@@ -85,7 +85,7 @@ class CredentialedBackendTest {
         // A recovery that answers the very token that was rejected is no reason to send it again.
         val same = ScriptedCredential("T1", recovered = "T1")
         val again = ScriptedBackend { _, _ -> unauthorized }
-        CredentialedBackend(again, same, versionGate = null).leaveEvent("E", "D")
+        CredentialedBackend(again, same, versionGate = null).leaveEvent("E", "D", received = false)
         assertEquals(listOf("leave T1"), again.calls)
     }
 

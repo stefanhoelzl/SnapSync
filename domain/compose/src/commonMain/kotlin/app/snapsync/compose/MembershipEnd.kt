@@ -1,5 +1,6 @@
 package app.snapsync.compose
 
+import app.snapsync.model.EventConfig
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.feature.upload.TailTrigger
 import app.snapsync.feature.membership.EventCompletion
@@ -59,18 +60,36 @@ class MembershipEnd internal constructor(private val core: AppCore) {
     }
 
     /**
-     * The backend-leave effect: recorded first (idempotent — the leave command recorded it already), then every
+     * The backend-leave effect: recorded first (replacing the leave command's own record with [received]), then every
      * outstanding leave is sent. One the backend does not confirm stays recorded, and the next wake's [completion]
      * sends it again — a finished event is deleted once everyone has LEFT, so a lost leave is no longer harmless.
      */
-    suspend fun notifyLeave(eventId: String) {
+    suspend fun notifyLeave(eventId: String, received: Boolean) {
         // A re-join asks the event at once: its bounded background checks start over.
         core.services.eventChecks.clear(eventId)
-        pendingLeaves.record(eventId)
+        pendingLeaves.record(eventId, received)
         val outstanding = pendingLeaves.deliverAll()
         if (outstanding > 0) {
             core.services.log.i { "leave of $eventId not confirmed yet — $outstanding retried on the next wake" }
         }
+    }
+
+    /**
+     * Whether this device holds every photo of the others in the membership [left] describes — what every leave tells
+     * the backend (capability `manage-membership`). A membership that does not receive has nothing to wait for.
+     */
+    suspend fun everythingReceived(left: EventConfig): Boolean =
+        !left.direction.includesDownload || core.downloadController.holdsEveryForeignPhoto(left.eventId)
+
+    /**
+     * The backend leave of a switch's previous membership — still the saved one when it runs — saying whether it had
+     * everything, as every leave does: only after its range has ended, and a doubt is a no.
+     */
+    suspend fun notifySwitchLeave(eventId: String) {
+        val previous = core.services.config.config.value?.takeIf { it.eventId == eventId }
+        val received = previous != null && core.services.config.hasEnded(previous) &&
+            runCatchingCancellable { everythingReceived(previous) }.getOrDefault(false)
+        notifyLeave(eventId, received)
     }
 }
 

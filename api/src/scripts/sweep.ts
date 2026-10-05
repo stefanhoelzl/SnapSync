@@ -16,7 +16,7 @@
 //
 //   EVENT phase — each event gets one `sweepVerdict` (`lifecycle.ts`). DROP past its derived delete-by
 //     (`max(createdAt, startsAt) + lifetimeSeconds` — the GUARANTEE): one `DELETE`, the cascade takes
-//     memberships and assets. COMPLETE once it is finished — EMPTY (ever joined, nobody active left;
+//     memberships and assets. COMPLETE once it is finished — EMPTY (ever joined, nobody still present;
 //     dependable now that devices retry a leave until it lands) or past the CLOCK (`max(endsAt,
 //     lastLandedAt) + 3 days`, ever joined): memberships and assets go, the row stays until DROP so a
 //     device still joined is told "completed". No notification is sent — see the delete site for why.

@@ -73,11 +73,11 @@ internal fun ClauseList<BackendState, EdgeSubject<Backend>>.membershipClauses() 
     }
 
     clause("LEAVE_A_MEMBER_LEAVES", BackendState.MEMBER) { s ->
-        assertOk(s.port.leaveEvent(s.token, s.seeded.eventId, s.seeded.deviceId))
+        assertOk(s.port.leaveEvent(s.token, s.seeded.eventId, s.seeded.deviceId, received = false))
     }
 
     clause("LEAVE_AN_UNKNOWN_EVENT_IS_REFUSED", BackendState.NO_SUCH_EVENT) { s ->
-        assertIs<Reply.Refused>(s.port.leaveEvent(s.token, s.seeded.eventId, s.seeded.deviceId), "the backend says the event is gone")
+        assertIs<Reply.Refused>(s.port.leaveEvent(s.token, s.seeded.eventId, s.seeded.deviceId, received = false), "the backend says the event is gone")
     }
 
     clause("DEVICE_CONFIG_A_PUSH_TOKEN_IS_PUBLISHED", BackendState.SERVING) { s ->

@@ -1,5 +1,7 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.model.EventConfig
+import app.snapsync.model.runCatchingCancellable
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.leave.PendingLeaves
 import co.touchlab.kermit.Logger
@@ -12,10 +14,18 @@ import kotlinx.coroutines.launch
  *
  * It does four things, in order: (1) **stop** the upload producer, (2) **clear the upload ledger**,
  * (3) **clear the persisted config**, then (4) **notify the backend** this device is leaving (via the
- * `LeaveNotifier` port — the backend renames the device's manifest to its departed `.left.json` sibling and
- * reaps/GCs the event when the last member leaves). The `eventId` is snapshotted **synchronously before**
- * the clears (from [ConfigService]) and passed into the notify, so the notify still targets the correct
- * event even though the config is already gone.
+ * `LeaveNotifier` port — the backend records the membership as gone, keeps what it shared, and closes an ended event
+ * the leave leaves with nobody unsettled). The membership is snapshotted **synchronously before** the clears (from
+ * [ConfigService]) and passed into the notify, so the notify still targets the correct event even though the config
+ * is already gone.
+ *
+ * **Every leave says whether this device has everything** (capability `manage-membership`): the member's own and the
+ * app's once the event is finished for it are the same leave, so the backend never tells them apart — it records
+ * `done` for a member that left having everything and `left` otherwise. Only receiving is the device's to say (the
+ * backend judges its share itself), and only after the event's range has ended can a member have everything; before
+ * it the answer is `false` without asking. Asking reads the event's photos over the network, so it is asked in the
+ * background notify, never before the teardown; a doubt — offline, an unreadable union, a kill before the answer —
+ * is `false`.
  *
  * **Leaving clears the upload ledger** — a deliberate reversal of the rule that no lifecycle transition
  * destroys dedup state (capabilities `photo-sharing`, `background-upload`). The ledger is the current
@@ -56,7 +66,12 @@ class LeaveEvent(
     private val stopUploads: suspend () -> Unit,
     /** Clear the upload ledger — the store's reset family, callable without the `LedgerWriter`. */
     private val clearLedger: suspend () -> Unit,
-    private val notifyLeave: suspend (eventId: String) -> Unit,
+    private val notifyLeave: suspend (eventId: String, received: Boolean) -> Unit,
+    /**
+     * Whether this device holds every photo of the others in the membership [EventConfig] describes — the sibling
+     * download controller's answer (feature-blindness), asked with the snapshot because the config is gone by then.
+     */
+    private val everythingReceived: suspend (EventConfig) -> Boolean,
     private val scope: CoroutineScope,
     /**
      * Where the leave is recorded as owed to the backend BEFORE anything is torn down (capability `event-lifetime`,
@@ -70,15 +85,21 @@ class LeaveEvent(
     suspend fun leave() {
         // Snapshot the eventId synchronously BEFORE the clears so the backgrounded notify targets the
         // right event even though the config is gone by the time it runs (no race on the cleared cell).
-        val eventId = config.config.value?.eventId
+        val current = config.config.value
+        val eventId = current?.eventId
+        val ended = current != null && config.hasEnded(current)
         if (eventId != null) steps.bestEffort("record the leave") { pendingLeaves.record(eventId) }
         steps.bestEffort("stop uploads") { stopUploads() }
         steps.bestEffort("clear upload ledger") { clearLedger() }
         steps.bestEffort("clear config") { config.clear() }
         // Fire-and-forget on the app-lifetime scope: the local teardown (and thus the screen flip) never
         // waits on the DELETE. Dispatched unconditionally after the clears (a failed clear does not gate it).
-        if (eventId != null) {
-            scope.launch { steps.bestEffort("notify backend") { notifyLeave(eventId) } }
+        if (current != null) {
+            scope.launch {
+                val received = ended &&
+                    runCatchingCancellable { everythingReceived(current) }.getOrDefault(false)
+                steps.bestEffort("notify backend") { notifyLeave(current.eventId, received) }
+            }
         }
     }
 

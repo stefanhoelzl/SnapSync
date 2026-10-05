@@ -4,10 +4,10 @@
 import { Hono } from "hono";
 import { verifyToken } from "../attest.ts";
 import {
-  departMembership,
   downloadKey,
   type EventRow,
   insertEvent,
+  leaveStatements,
   logUnionFetch,
   memberCounts,
   putDeviceRecord,
@@ -34,6 +34,7 @@ import {
   gateEvent,
   NO_CACHE,
   noteAppVersion,
+  notifyMembers,
   orUpstream502,
   ownDeviceParam,
   presignDownloadUrl,
@@ -81,7 +82,8 @@ type UnionAsset = {
 };
 
 /** The routes both versions serve, built over `deps`. */
-export function sharedRoutes({ config, db, now, aws }: RouteDeps): Hono {
+export function sharedRoutes(deps: RouteDeps): Hono {
+  const { config, db, now, aws } = deps;
   // SHARED: routes whose contract is identical under every version. Mounted into each version's router,
   // so there is one implementation and no possibility of the two drifting apart.
   const deviceApi = new Hono();
@@ -216,18 +218,23 @@ export function sharedRoutes({ config, db, now, aws }: RouteDeps): Hono {
     return c.json(publicEvent({ ...current, name }));
   });
 
-  // Leave an event (capability `manage-membership`). A STATE CHANGE, and non-destructive: mark the membership
-  // `departed`. GATED on the event row (absent → 404; read failure → 502). The membership's assets are
-  // RETAINED, so the union still serves what the device shared, and the route returns 200 REGARDLESS of
-  // remaining membership — the event survives until it expires and is deleted by the nightly sweep
-  // (capability `event-lifetime`), which also collects the bytes. No last-member reap, no leave-time
-  // garbage collection. Idempotent: a repeated leave, or one naming a membership that never existed,
-  // changes nothing and is not an error, so a retried DELETE re-runs
-  // harmlessly. Any transport failure → 502.
+  // Leave an event (capability `manage-membership`). A STATE CHANGE, and non-destructive: the membership becomes
+  // `done` or `left` (see `leaveStatements`) — `done` only when it had settled, every role it declared has landed,
+  // and the device says `?received=true` (it holds every photo of the others; anything but `true` is "no"). GATED
+  // on the event row (absent → 404; read failure → 502). The membership's assets are RETAINED, so the union still
+  // serves what the device shared, and the route returns 200 REGARDLESS of remaining membership — the event
+  // survives until the nightly sweep completes or deletes it (capability `event-lifetime`), which also collects
+  // the bytes. Idempotent: a repeated leave, or one naming a membership that never existed, changes nothing and
+  // is not an error, so a retried DELETE re-runs harmlessly. Any transport failure → 502.
+  //
+  // After the event's range has ended, the leave that takes away the last member still `sharing` CLOSES the
+  // event (capability `event-lifetime`, "A finished event closes": every member still in it has settled), and
+  // wakes the members still in it once, as the publish that closes does.
   deviceApi.delete("/events/:eventId/devices/:deviceId", async (c) => {
     const ids = eventAndOwnDeviceParams(c, "invalid key");
     if (ids instanceof Response) return ids;
     const { eventId, deviceId } = ids;
+    const received = c.req.query("received") === "true";
 
     // The lifecycle gate (capability `event-lifetime`): an absent event 404s, which the client already
     // treats as "nothing to leave". A leave DURING grace proceeds: members may still
@@ -235,15 +242,30 @@ export function sharedRoutes({ config, db, now, aws }: RouteDeps): Hono {
     const event = await gateEvent(db, c, eventId, "leave");
     if (event instanceof Response) return event;
 
-    return await orUpstream502(c, `leave: depart failed for ${eventId}/${deviceId}`, async () => {
-      // ONE column. Membership is a `state`, so leaving cannot leave a half-applied pair behind and
-      // cannot be double-counted. The membership's assets are RETAINED, so the union still serves what
-      // this device shared.
-      await departMembership(db, eventId, deviceId);
-      // Always succeed: the event persists (rejoinable) regardless of how many active members remain,
-      // and a leave naming a membership that never existed changes nothing rather than failing.
-      return c.body(null, 200);
-    });
+    const nowMs = now();
+    // A closed event cannot close again, and before the end nothing closes.
+    const closeAt = !event.closedAt && nowMs > Date.parse(event.endsAt)
+      ? new Date(nowMs).toISOString()
+      : null;
+    const closed = await tryUpstream(
+      c,
+      `leave: depart failed for ${eventId}/${deviceId}`,
+      async () => {
+        // ONE column, one batch. Membership is a `state`, so leaving cannot leave a half-applied pair behind
+        // and cannot be double-counted; the close stamp runs last and sees it.
+        const results = await db.batch(leaveStatements(eventId, deviceId, received, closeAt));
+        return closeAt !== null && results[results.length - 1].rowsAffected > 0;
+      },
+    );
+    if (closed instanceof Response) return closed;
+    // AFTER the commit, and best-effort: the members still in it must learn the close to finish and leave.
+    if (closed) {
+      console.info(`leave: event ${eventId} closed by ${deviceId} leaving`);
+      await notifyMembers(deps, eventId, deviceId, "close");
+    }
+    // Always succeed: the event persists (rejoinable while open) regardless of how many members remain,
+    // and a leave naming a membership that never existed changes nothing rather than failing.
+    return c.body(null, 200);
   });
 
   // Event-wide UNION read (`docs/architecture.md`). UNGATED by the token — the no-app download page

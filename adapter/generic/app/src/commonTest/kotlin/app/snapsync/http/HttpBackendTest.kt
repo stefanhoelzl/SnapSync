@@ -120,7 +120,7 @@ class HttpBackendTest {
             { backend.renameEvent("T", "E", "n") },
             { backend.joinEvent("T", "E", "D") },
             { backend.publishManifest("T", "E", "D", manifest) },
-            { backend.leaveEvent("T", "E", "D") },
+            { backend.leaveEvent("T", "E", "D", received = false) },
             { backend.deviceFiles("T", "D") },
             { backend.putDeviceConfig("T", "D", PushEndpoint("apns", "t", "sandbox")) },
             { backend.eventFiles("T", "E", null, UnionTrigger.FOREGROUND) },
@@ -245,9 +245,11 @@ class HttpBackendTest {
     }
 
     @Test
-    fun leave_deletes_the_membership() = runTest {
-        backend().leaveEvent("T", "E", "D")
+    fun leave_deletes_the_membership_saying_whether_it_received_everything() = runTest {
+        backend().leaveEvent("T", "E", "D", received = true)
+        backend().leaveEvent("T", "E", "D", received = false)
         assertEquals("DELETE /api/v2/events/E/devices/D", "${sent[0].method} ${sent[0].path}")
+        assertEquals(listOf("received=true", "received=false"), sent.map { it.query })
     }
 
     @Test
@@ -334,7 +336,7 @@ class HttpBackendTest {
     @Test
     fun a_transport_failure_is_unreachable_and_never_thrown() = runTest {
         val failure = IllegalStateException("offline")
-        val reply = backend(fail = failure).leaveEvent("T", "E", "D")
+        val reply = backend(fail = failure).leaveEvent("T", "E", "D", received = false)
         assertIs<Reply.Unreachable>(reply)
         assertEquals("offline", reply.cause.message)
     }

@@ -235,7 +235,7 @@ Deno.test("manifest publish → enrolls the device and records its assets, 201",
       E,
       D,
     ]),
-    [{ state: "active" }],
+    [{ state: "sharing" }],
   );
   assertEquals(
     (await rows(db, `SELECT asset_id FROM event_assets WHERE event_id=?`, [E])).length,
@@ -924,7 +924,7 @@ Deno.test("leave → marks the membership departed and keeps its assets", async 
   );
   assertEquals(res.status, 200);
   assertEquals(await rows(db, `SELECT state FROM memberships WHERE device_id=?`, [D]), [{
-    state: "departed",
+    state: "left",
   }]);
   assertEquals((await rows(db, `SELECT * FROM event_assets WHERE device_id=?`, [D])).length, 1);
   db.close();

@@ -40,7 +40,8 @@ internal class ScriptedBackend(var answer: (route: String, token: String?) -> Re
     override suspend fun joinEvent(token: String?, eventId: String, deviceId: String): Reply<Unit> = call("join", token)
     override suspend fun publishManifest(token: String?, eventId: String, deviceId: String, manifest: DeviceManifest): Reply<Unit> =
         call("manifest", token)
-    override suspend fun leaveEvent(token: String?, eventId: String, deviceId: String): Reply<Unit> = call("leave", token)
+    override suspend fun leaveEvent(token: String?, eventId: String, deviceId: String, received: Boolean): Reply<Unit> =
+        call("leave", token)
     override suspend fun eventFiles(token: String?, eventId: String, cursor: Long?, trigger: UnionTrigger): Reply<UnionPage> =
         call("union", token)
     override suspend fun deviceFiles(token: String?, deviceId: String): Reply<List<DeviceFile>> = call("files", token)

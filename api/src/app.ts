@@ -88,7 +88,7 @@
 //       creates the row), and re-sends the registration when the new credential arrives. A 201 here would
 //       be a silent absence — the device would believe it is reachable while no push could reach it.
 //   POST /api/v1/events/:eventId/notify
-//     → a fixed SILENT (content-available) push to every ACTIVE member (departed members are skipped).
+//     → a fixed SILENT (content-available) push to every PRESENT member (members who left are skipped).
 //       GATED on the event row (404/502). Members come from one query, each member's token from its row;
 //       the fan-out is best-effort — a member with no registered token is skipped and a per-token failure
 //       never fails the request. Bare 202; 502 only if the member read fails.
@@ -111,16 +111,18 @@
 //       have ever enrolled — leaving frees no slot, a rejoin reuses its own — and a zero-row outcome is
 //       disambiguated into 409-vs-404 by a follow-up read rather than collapsed. Capacity is the ONLY
 //       refusal; enrollment is never closed by time, however long after `endsAt` it arrives. The write is
-//       ONE ATOMIC BATCH: membership → active, the membership's assets REPLACED with exactly what the body
+//       ONE ATOMIC BATCH: a membership that had left → sharing, the membership's assets REPLACED with exactly what the body
 //       lists (an omitted asset is removed), each named resource upserted with `uploaded` MONOTONE.
 //   DELETE /api/v1/events/:eventId/devices/:deviceId
-//     → LEAVE (capability `manage-membership`): marks the membership `departed`. GATED on the event row
-//       (404/502), idempotent, and NON-DESTRUCTIVE — the assets are RETAINED, so the union keeps serving
-//       what the device shared. No reap here and no leave-time GC. When this was the last active member
-//       the event becomes EMPTY and the nightly sweep reclaims it on its next run.
+//     → LEAVE (capability `manage-membership`): the membership becomes `done` or `left` (`?received=true`
+//       is the device's word that it holds every photo of the others). GATED on the event row (404/502),
+//       idempotent, and NON-DESTRUCTIVE — the assets are RETAINED, so the union keeps serving what the
+//       device shared. No reap here and no leave-time GC. When this was the last member still present the
+//       event becomes EMPTY and the nightly sweep reclaims it on its next run; after the end, the leave of
+//       the last member still `sharing` closes the event.
 //   GET /api/v1/events/:eventId/files
-//     → the event-wide UNION, as ONE query joining the event's assets to their resources across ACTIVE
-//       AND DEPARTED memberships (a member who left keeps contributing what it already shared). An asset
+//     → the event-wide UNION, as ONE query joining the event's assets to their resources across EVERY
+//       membership, present or gone (a member who left keeps contributing what it already shared). An asset
 //       naming a resource with no recorded upload is dropped — the PRIMARY completeness mechanism, since
 //       a manifest declares what its device will provide rather than what it has already uploaded.
 //       Faithful: any read failure → 502, never a partial union. UNGATED
@@ -141,8 +143,8 @@
 //
 // The nightly sweep (capability `event-lifetime`, run out-of-edge from GitHub Actions) is the ONLY
 // deleter. It reclaims an event past its derived delete-by (`max(createdAt, startsAt) + lifetimeSeconds`
-// — the guarantee) or EMPTY (ever joined, no active member left — opportunistic, since a leave whose
-// DELETE never landed keeps a membership active). No route reaps on touch, even past the deadline: that
+// — the guarantee) or EMPTY (ever joined, no member still present — opportunistic, since a leave whose
+// DELETE never landed keeps a membership present). No route reaps on touch, even past the deadline: that
 // is what makes a 404 a REAL deletion, and therefore safe as one of the two witnesses the client's
 // self-leave requires (capability `manage-membership`).
 //

@@ -129,11 +129,11 @@ class BackendServicesTest {
 
     @Test
     fun leaving_is_best_effort_and_never_throws() = runTest {
-        assertTrue(servicesAnswering(Reply.Ok(Unit)).leave.notifyLeaving("E").isSuccess)
+        assertTrue(servicesAnswering(Reply.Ok(Unit)).leave.notifyLeaving("E", received = false).isSuccess)
         // An event the backend no longer holds has nothing left to leave: done, so a recorded leave stops retrying.
-        assertTrue(servicesAnswering(Reply.Refused(404, "")).leave.notifyLeaving("E").isSuccess)
-        assertTrue(servicesAnswering(Reply.Refused(502, "")).leave.notifyLeaving("E").isFailure)
-        assertTrue(servicesAnswering(offline).leave.notifyLeaving("E").isFailure)
+        assertTrue(servicesAnswering(Reply.Refused(404, "")).leave.notifyLeaving("E", received = false).isSuccess)
+        assertTrue(servicesAnswering(Reply.Refused(502, "")).leave.notifyLeaving("E", received = false).isFailure)
+        assertTrue(servicesAnswering(offline).leave.notifyLeaving("E", received = false).isFailure)
     }
 
     @Test
@@ -142,10 +142,10 @@ class BackendServicesTest {
         val services = servicesAnswering(Reply.Ok(Unit), store)
         val leave = services.leave
         assertEquals(0, store.reads, "building the service reads no identity — a locked launch composes it")
-        leave.notifyLeaving("E")
+        leave.notifyLeaving("E", received = false)
         assertTrue(store.reads > 0, "the call resolves the identity")
         val locked = servicesAnswering(Reply.Ok(Unit), MapSecureStore(unavailable = true))
-        assertTrue(locked.leave.notifyLeaving("E").isFailure)
+        assertTrue(locked.leave.notifyLeaving("E", received = false).isFailure)
         assertTrue(locked.pushTokens.publish(app.snapsync.model.PushEndpoint("apns", "t", "e")).isFailure)
     }
 

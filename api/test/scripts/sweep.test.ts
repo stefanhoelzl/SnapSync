@@ -134,7 +134,7 @@ async function member(
   eventId: string,
   deviceId: string,
   keys: string[],
-  state: "active" | "departed" = "active",
+  state: "sharing" | "left" = "sharing",
 ) {
   await d.execute(
     `INSERT INTO memberships (event_id, device_id, state, joined_at) VALUES (?, ?, ?, '2026-07-01T00:00:00Z')`,
@@ -162,9 +162,9 @@ async function member(
     { legacy: true },
   ));
   // The legacy publish re-activates the membership, which a departed fixture must not be.
-  if (state === "departed") {
+  if (state === "left") {
     await d.execute(
-      `UPDATE memberships SET state = 'departed' WHERE event_id = ? AND device_id = ?`,
+      `UPDATE memberships SET state = 'left' WHERE event_id = ? AND device_id = ?`,
       [
         eventId,
         deviceId,
@@ -226,8 +226,8 @@ Deno.test("event phase → an EMPTIED event is COMPLETED early: memberships gone
   const d = await db();
   const E = "cccccccc-0000-4000-8000-000000000003";
   await insertEvent(d, event(E, LIVE_STARTS));
-  await member(d, E, D, [`files/devices/${D}/a.heic`], "departed");
-  await member(d, E, D2, [], "departed");
+  await member(d, E, D, [`files/devices/${D}/a.heic`], "left");
+  await member(d, E, D2, [], "left");
   const { summary } = await run(d, fake({}));
   assertEquals(summary.events, { deleted: 0, completed: 1, kept: 0 });
   // The row stays until its deadline so a device still joined is told "completed", not "not found".
@@ -297,7 +297,7 @@ Deno.test("asset phase → a COMPLETED event's bytes are collected like a delete
   const d = await db();
   const E = "cccccccc-0000-4000-8000-000000000003";
   await insertEvent(d, event(E, LIVE_STARTS));
-  await member(d, E, D, [`files/devices/${D}/a.heic`], "departed");
+  await member(d, E, D, [`files/devices/${D}/a.heic`], "left");
   const store = fake({ [`files/devices/${D}/a.heic`]: { lc: "2026-07-02T00:00:00.000Z", len: 4 } });
   const { summary } = await run(d, store);
   assertEquals(summary.events.completed, 1);
@@ -311,7 +311,7 @@ Deno.test("dry-run → a completion is counted and nothing is written", async ()
   const d = await db();
   const E = "cccccccc-0000-4000-8000-000000000003";
   await insertEvent(d, event(E, LIVE_STARTS));
-  await member(d, E, D, [`files/devices/${D}/a.heic`], "departed");
+  await member(d, E, D, [`files/devices/${D}/a.heic`], "left");
   const store = fake({ [`files/devices/${D}/a.heic`]: { lc: "2026-07-02T00:00:00.000Z", len: 4 } });
   const { summary } = await run(d, store, true);
   assertEquals(summary.events.completed, 1);
@@ -326,7 +326,7 @@ Deno.test("event phase → ONE active member keeps a within-deadline event alive
   const d = await db();
   const E = "cccccccc-0000-4000-8000-000000000003";
   await insertEvent(d, event(E, LIVE_STARTS));
-  await member(d, E, D, [], "departed");
+  await member(d, E, D, [], "left");
   await member(d, E, D2, []);
   const { summary } = await run(d, fake({}));
   assertEquals(summary.events, { deleted: 0, completed: 0, kept: 1 });
@@ -470,7 +470,7 @@ Deno.test("asset phase → a DEPARTED member of a surviving event keeps its byte
   const d = await db();
   const E = "cccccccc-0000-4000-8000-000000000003";
   await insertEvent(d, event(E, LIVE_STARTS));
-  await member(d, E, D, [`files/devices/${D}/a.heic`], "departed");
+  await member(d, E, D, [`files/devices/${D}/a.heic`], "left");
   // A second, ACTIVE member: an event whose every member has departed is EMPTY and would be reclaimed,
   // taking the departed member's bytes with it — which is a different rule than the one under test.
   await member(d, E, D2, []);

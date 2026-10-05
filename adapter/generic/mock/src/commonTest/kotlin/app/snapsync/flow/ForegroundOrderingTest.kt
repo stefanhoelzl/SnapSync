@@ -146,9 +146,10 @@ class ForegroundOrderingTest {
                     config = config,
                     stopUploads = {},
                     clearLedger = {},
-                    notifyLeave = {},
+                    notifyLeave = { _, _ -> },
+                    everythingReceived = { false },
                     scope = this,
-                    pendingLeaves = PendingLeaves(inMemoryFiles(), { Result.success(Unit) }),
+                    pendingLeaves = PendingLeaves(inMemoryFiles(), { _, _ -> Result.success(Unit) }),
                 ),
             ),
             // A network watch on the test's background scope unless a test watches one: it stops with the test.

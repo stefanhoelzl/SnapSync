@@ -62,10 +62,11 @@ CREATE TABLE events (
 , closed_at TEXT, completed_at TEXT, last_landed_at TEXT) STRICT;
 
 CREATE TABLE memberships (
-  event_id  TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-  device_id TEXT NOT NULL,
-  state     TEXT NOT NULL,
-  joined_at TEXT NOT NULL, manifest_version INTEGER, final INTEGER,
+  event_id         TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  device_id        TEXT NOT NULL,
+  state            TEXT NOT NULL CHECK (state IN ('sharing', 'settled', 'done', 'left')),
+  joined_at        TEXT NOT NULL,
+  manifest_version INTEGER,
   PRIMARY KEY (event_id, device_id)
 ) STRICT;
 

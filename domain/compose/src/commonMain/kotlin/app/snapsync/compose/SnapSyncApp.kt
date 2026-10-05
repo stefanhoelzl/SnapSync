@@ -480,13 +480,6 @@ class AppCore internal constructor(
         )
     }
 
-    /**
-     * The backend-leave effect the leave use-case and the switch path both fire (capability `manage-membership`),
-     * recorded and delivered through [PendingLeaves] — see [membershipEnd]. Built here because `flow/Provision` may
-     * not name a port or a service at all (law "flow/ never references ports/").
-     */
-    private val notifyLeave: suspend (eventId: String) -> Unit = { eventId -> membershipEnd.notifyLeave(eventId) }
-
     /** How a membership ends on its own, and how a leave reaches the backend — see [MembershipEnd]. */
     val membershipEnd: MembershipEnd by lazy { MembershipEnd(this) }
 
@@ -499,7 +492,8 @@ class AppCore internal constructor(
             stopUploads = { uploadTransitions.onLeave() },
             clearLedger = { services.ledger.clear() },
             scope = scope,
-            notifyLeave = notifyLeave,
+            notifyLeave = membershipEnd::notifyLeave,
+            everythingReceived = membershipEnd::everythingReceived,
             pendingLeaves = membershipEnd.pendingLeaves,
         )
     }
@@ -795,7 +789,7 @@ class AppCore internal constructor(
             albumCoordinator = albumCoordinator,
             activeEventId = { services.config.config.value?.eventId },
             // The order is `MembershipEntry`'s rule; the backend leave is awaited here, unlike the leave command's.
-            enterMembership = membershipEntry(notifyLeave)::enter,
+            enterMembership = membershipEntry(membershipEnd::notifySwitchLeave)::enter,
             saveConfig = { cfg -> services.config.save(cfg) },
             refreshStatus = { statusRefresh.run() },
             // Usable access (`grantsPhotoAccess`): this gate feeds only ensureAlbum's granted

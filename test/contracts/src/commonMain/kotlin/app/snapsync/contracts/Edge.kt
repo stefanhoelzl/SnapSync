@@ -108,7 +108,8 @@ interface BackendSetup {
 
     /** Joins fresh devices until the backend answers `409` — capacity without restating the backend's configured one. */
     suspend fun fillToCapacity(eventId: String)
-    suspend fun publish(eventId: String, deviceId: String, assets: List<SeededAsset>)
+    /** Publish [deviceId]'s manifest — declaring its share settled when [final]. */
+    suspend fun publish(eventId: String, deviceId: String, assets: List<SeededAsset>, final: Boolean = false)
 
     /** The asset ids the event's union serves — a read of the public surface, as a member makes it. */
     suspend fun unionAssetIds(eventId: String): Set<AssetId>
@@ -164,8 +165,8 @@ class EdgeSetup(private val client: HttpClient, base: String) : BackendSetup {
         error("setup step 'fill to capacity': still admitting after $MAX_CAPACITY_PROBE joins")
     }
 
-    override suspend fun publish(eventId: String, deviceId: String, assets: List<SeededAsset>) {
-        val manifest = DeviceManifest(deviceId, assets.map { it.manifestEntry() })
+    override suspend fun publish(eventId: String, deviceId: String, assets: List<SeededAsset>, final: Boolean) {
+        val manifest = DeviceManifest(deviceId, assets.map { it.manifestEntry() }, final = final)
         checked(
             "publish manifest",
             client.put("$base/events/$eventId/devices/$deviceId/manifest") {

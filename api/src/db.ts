@@ -151,7 +151,32 @@ export async function renameEvent(db: Db, eventId: string, name: string): Promis
 
 // ── Memberships and the capacity gate ─────────────────────────────────────────────────────────────
 
-export type MembershipState = "active" | "departed";
+/**
+ * Where a member stands (capabilities `event-lifetime`, `manage-membership`; migration 0008). `sharing` and
+ * `settled` are PRESENT — still in the event; `done` and `left` are GONE, and are told apart for observability
+ * only: everything the backend decides treats them alike.
+ */
+export type MembershipState = "sharing" | "settled" | "done" | "left";
+
+/** The states of a member still in the event, as a SQL list — what every "who is still here" read selects. */
+const PRESENT = `('sharing', 'settled')`;
+
+/**
+ * The close stamp (capability `event-lifetime`, "A finished event closes"): stamp `closeAt` once no member is
+ * still `sharing` and at least one has `settled`. Every writer that can move the last member out of `sharing` —
+ * the publish that settles it, the leave that takes it away — runs it LAST in its own batch, so it sees that
+ * batch's write; its count is the writer's "just closed" verdict. An event nobody is present in is not closed
+ * here; the sweep completes it instead.
+ */
+function closeStatement(eventId: string, closeAt: string): Statement {
+  return {
+    sql: `UPDATE events SET closed_at = ?
+           WHERE id = ? AND closed_at IS NULL
+             AND EXISTS (SELECT 1 FROM memberships WHERE event_id = ? AND state = 'settled')
+             AND NOT EXISTS (SELECT 1 FROM memberships WHERE event_id = ? AND state = 'sharing')`,
+    args: [closeAt, eventId, eventId, eventId],
+  };
+}
 
 /**
  * The capacity gate, as ONE conditional statement (capability `event-lifetime`, design.md D5).
@@ -167,8 +192,8 @@ export type MembershipState = "active" | "departed";
  * NULL for a missing event. Callers MUST disambiguate with `readEvent` rather than pick one; see `enroll`.
  * A CLOSED event admits nobody, a returning device included (capability `event-lifetime`).
  *
- * A (re)join CLEARS `manifest_version` and `final`. `final` because a rejoined device has settled nothing
- * yet for its new membership. `manifest_version` — the one column the join writes that the manifest publish owns, and
+ * A (re)join puts the membership back to `sharing` and CLEARS `manifest_version`. `sharing` because a rejoined
+ * device has settled nothing yet for its new membership. `manifest_version` — the one column the join writes that the manifest publish owns, and
  * the named one-writer exception in `database`. A join starts a new sequence of manifests: the device's
  * version counter lives in its local ledger database while its identity (a Keychain item) outlives that
  * database, so a re-joined device whose counter restarted would otherwise have every publish refused as
@@ -177,14 +202,14 @@ export type MembershipState = "active" | "departed";
  */
 const ENROLL = `
   INSERT INTO memberships (event_id, device_id, state, joined_at)
-  SELECT ?, ?, 'active', ?
+  SELECT ?, ?, 'sharing', ?
   WHERE EXISTS (SELECT 1 FROM events WHERE id = ? AND closed_at IS NULL)
     AND (
       EXISTS (SELECT 1 FROM memberships WHERE event_id = ? AND device_id = ?)
       OR (SELECT COUNT(*) FROM memberships WHERE event_id = ?)
          < (SELECT capacity FROM events WHERE id = ?)
     )
-  ON CONFLICT (event_id, device_id) DO UPDATE SET state = 'active', manifest_version = NULL, final = NULL`;
+  ON CONFLICT (event_id, device_id) DO UPDATE SET state = 'sharing', manifest_version = NULL`;
 
 /**
  * What an enrollment attempt resolved to — the four answers a route must tell apart. `closed` covers a
@@ -219,28 +244,65 @@ export async function enroll(
 }
 
 /**
- * Leave: mark the membership `departed`. Idempotent — a repeated leave, or one naming a membership that
- * never existed, changes nothing and is not an error. The membership's assets are RETAINED, so the union
- * keeps serving what the device shared before it left.
+ * The statements a leave applies, in order — to be run as ONE atomic unit (capability `manage-membership`).
+ *
+ * The membership becomes `done` when it left having everything — it had `settled`, every role it declared has
+ * landed, and the device says it [received] every photo of the others — and `left` otherwise. The backend judges
+ * the first two itself; only receiving is the device's word, because only the device can see its library. A leave
+ * is the same request however it was made (the member's own, or the app's once the event is finished for it).
+ *
+ * Only a PRESENT membership moves, so a repeated leave keeps the state its first one recorded, and a leave naming
+ * a membership that never existed changes nothing; neither is an error. The membership's assets are RETAINED,
+ * so the union keeps serving what the device shared before it left.
+ *
+ * With [closeAt] (the event's range has ended), the close stamp runs LAST: the leave that takes away the last
+ * member still `sharing` closes the event (capability `event-lifetime`, "A finished event closes" — every member
+ * STILL IN IT has settled). Its count is the leave's "just closed" verdict.
  */
-export async function departMembership(db: Db, eventId: string, deviceId: string): Promise<void> {
-  await db.execute(
-    `UPDATE memberships SET state = 'departed' WHERE event_id = ? AND device_id = ?`,
-    [eventId, deviceId],
-  );
+export function leaveStatements(
+  eventId: string,
+  deviceId: string,
+  received: boolean,
+  closeAt: string | null,
+): Statement[] {
+  const out: Statement[] = [{
+    sql: `UPDATE memberships
+             SET state = CASE
+               WHEN ? AND state = 'settled' AND NOT EXISTS (
+                 SELECT 1 FROM event_assets ea, json_each(ea.roles) r
+                  WHERE ea.event_id = memberships.event_id AND ea.device_id = memberships.device_id
+                    AND NOT EXISTS (SELECT 1 FROM resources rs
+                                     WHERE rs.device_id = ea.device_id AND rs.asset_id = ea.asset_id
+                                       AND rs.role = r.value)
+               ) THEN 'done'
+               ELSE 'left'
+             END
+           WHERE event_id = ? AND device_id = ? AND state IN ${PRESENT}`,
+    args: [received ? 1 : 0, eventId, deviceId],
+  }];
+  if (closeAt) out.push(closeStatement(eventId, closeAt));
+  return out;
 }
 
-/** The event's members in the requested states. One column read — no timestamps, no tie-break. */
-export async function membersOf(
+/** The membership's state, or `null` when this device holds none in this event. */
+export async function membershipState(
   db: Db,
   eventId: string,
-  states: readonly MembershipState[],
-): Promise<string[]> {
-  const placeholders = states.map(() => "?").join(", ");
+  deviceId: string,
+): Promise<MembershipState | null> {
   const { rows } = await db.execute(
-    `SELECT device_id FROM memberships WHERE event_id = ? AND state IN (${placeholders})
+    `SELECT state FROM memberships WHERE event_id = ? AND device_id = ?`,
+    [eventId, deviceId],
+  );
+  return rows.length === 0 ? null : String(rows[0].state) as MembershipState;
+}
+
+/** The event's members still in it (`sharing` or `settled`). One column read — no timestamps, no tie-break. */
+export async function presentMembers(db: Db, eventId: string): Promise<string[]> {
+  const { rows } = await db.execute(
+    `SELECT device_id FROM memberships WHERE event_id = ? AND state IN ${PRESENT}
      ORDER BY device_id`,
-    [eventId, ...states],
+    [eventId],
   );
   return rows.map((r) => String(r.device_id));
 }
@@ -278,7 +340,7 @@ export type ManifestAssetEntry = {
  * from "one of its two resources has not arrived": `resources` holds only what arrived, and one row
  * proves nothing about whether a second is still owed.
  *
- * ADDITIONALLY, under `legacy` (the v1 route only): the membership becomes `active`, and each listed
+ * ADDITIONALLY, under `legacy` (the v1 route only): a membership that had left is back to `sharing`, and each listed
  * resource is upserted. Both are behaviours v2 does not have and v1 keeps unchanged — v1 is spoken by
  * builds that cannot be updated, so its behaviour is frozen rather than corrected (capability
  * `database`, "Each table has exactly one writer, on the current API version").
@@ -315,11 +377,11 @@ export function publishStatements(
     | {
       legacy: false;
       version: number | null;
-      /** The device declares its asset set settled (capability `photo-sharing`). */
+      /** The device declares its asset set settled (capability `photo-sharing`) → `settled`, else `sharing`. */
       final?: boolean;
       /**
-       * Set only once the event's range has ended: the instant a publish that leaves every active
-       * membership final stamps as the event's close. `null` → the publish cannot close the event.
+       * Set only once the event's range has ended: the instant a publish that leaves no member `sharing`
+       * stamps as the event's close. `null` → the publish cannot close the event.
        */
       closeAt?: string | null;
       /**
@@ -335,7 +397,8 @@ export function publishStatements(
   let gateArgs: unknown[] = [];
   if (opts.legacy) {
     out.push({
-      sql: `UPDATE memberships SET state = 'active' WHERE event_id = ? AND device_id = ?`,
+      sql: `UPDATE memberships SET state = 'sharing'
+            WHERE event_id = ? AND device_id = ? AND state NOT IN ${PRESENT}`,
       args: [eventId, deviceId],
     });
   } else if (opts.version === null) {
@@ -411,24 +474,16 @@ export function publishStatements(
     }
   }
   if (!opts.legacy) {
-    // The device's own declaration, gated like the asset set so a refused (older) publish cannot flip it.
+    // The device's own declaration, gated like the asset set so a refused (older) publish cannot flip it. It
+    // follows each publish both ways, and moves only a PRESENT membership: a member that left stays gone.
     out.push({
-      sql: `UPDATE memberships SET final = ? WHERE event_id = ? AND device_id = ?${gate}`,
-      args: [opts.final ? 1 : 0, eventId, deviceId, ...gateArgs],
+      sql: `UPDATE memberships SET state = ?
+            WHERE event_id = ? AND device_id = ? AND state IN ${PRESENT}${gate}`,
+      args: [opts.final ? "settled" : "sharing", eventId, deviceId, ...gateArgs],
     });
-    // LAST, so it sees this publish's flag: the publish that leaves every ACTIVE membership final closes
-    // the event. Its count is the route's "just closed" verdict — it fires the one close wake. An event
-    // with no active membership is not closed here; the sweep completes it instead.
-    if (opts.closeAt) {
-      out.push({
-        sql: `UPDATE events SET closed_at = ?
-               WHERE id = ? AND closed_at IS NULL
-                 AND EXISTS (SELECT 1 FROM memberships WHERE event_id = ? AND state = 'active')
-                 AND NOT EXISTS (SELECT 1 FROM memberships
-                                  WHERE event_id = ? AND state = 'active' AND COALESCE(final, 0) = 0)`,
-        args: [opts.closeAt, eventId, eventId, eventId],
-      });
-    }
+    // LAST, so it sees this publish's state: the publish that leaves no member `sharing` closes the event.
+    // Its count is the route's "just closed" verdict — it fires the one close wake.
+    if (opts.closeAt) out.push(closeStatement(eventId, opts.closeAt));
   }
   return out;
 }
@@ -463,14 +518,17 @@ export async function stampLanded(db: Db, eventIds: readonly string[], at: strin
   );
 }
 
-/** An event's active membership counts — `final` of `active` (capability `sync-status`, the waiting line). */
+/**
+ * An event's present membership counts — `final` (the `settled`) of `active` (everyone still in it) (capability
+ * `sync-status`, the waiting line). The wire names predate the states and are kept.
+ */
 export async function memberCounts(
   db: Db,
   eventId: string,
 ): Promise<{ active: number; final: number }> {
   const { rows } = await db.execute(
-    `SELECT COUNT(*) AS active, COALESCE(SUM(COALESCE(final, 0)), 0) AS final
-       FROM memberships WHERE event_id = ? AND state = 'active'`,
+    `SELECT COUNT(*) AS active, COALESCE(SUM(state = 'settled'), 0) AS final
+       FROM memberships WHERE event_id = ? AND state IN ${PRESENT}`,
     [eventId],
   );
   return { active: Number(rows[0].active), final: Number(rows[0].final) };
@@ -664,7 +722,7 @@ export type UnionResourceRow = {
 };
 
 /**
- * One row per DECLARED role of every asset the event's memberships name — `active` AND `departed`, so a
+ * One row per DECLARED role of every asset the event's memberships name — present AND gone, so a
  * member who has left keeps contributing what it already shared.
  *
  * The row set is driven by `event_assets.roles` (what the manifest says the asset is made of) and the
@@ -1018,7 +1076,7 @@ export async function eventsWithCounts(
   const { rows } = await db.execute(
     `SELECT e.*,
             (SELECT COUNT(*) FROM memberships m WHERE m.event_id = e.id) AS total,
-            (SELECT COUNT(*) FROM memberships m WHERE m.event_id = e.id AND m.state = 'active')
+            (SELECT COUNT(*) FROM memberships m WHERE m.event_id = e.id AND m.state IN ${PRESENT})
               AS active
      FROM events e
      ORDER BY e.id`,
@@ -1061,7 +1119,7 @@ export async function completeEvent(tx: Db, eventId: string, at: string): Promis
 
 /**
  * Every byte key still referenced by a surviving event, as `${deviceId}/${key}` — the asset phase's root
- * set. Spans memberships in BOTH states: a departed member's photos stay in the union while its event
+ * set. Spans memberships in EVERY state: a member's photos stay in the union after it left, while its event
  * lives, so its bytes must stay too.
  */
 export async function referencedKeys(
@@ -1082,9 +1140,9 @@ export async function referencedKeys(
 }
 
 /**
- * Each device's retention floor: the earliest `startsAt` over the surviving events it is an ACTIVE
- * member of. `startsAt` is in the canonical cutoff form — fixed width, UTC, second precision — so the
- * lexicographic minimum IS the earliest instant. (`createdAt` is NOT, which is why `deleteByMs` parses.) A device with no active surviving membership is absent here, which the caller reads as `+∞`
+ * Each device's retention floor: the earliest `startsAt` over the surviving events it is still PRESENT
+ * in (`sharing` or `settled`). `startsAt` is in the canonical cutoff form — fixed width, UTC, second precision — so the
+ * lexicographic minimum IS the earliest instant. (`createdAt` is NOT, which is why `deleteByMs` parses.) A device with no present surviving membership is absent here, which the caller reads as `+∞`
  * — nothing of its is above the floor, so nothing is protected by it.
  */
 export async function activeFloors(
@@ -1095,7 +1153,7 @@ export async function activeFloors(
     `SELECT m.device_id, m.event_id, e.starts_at
      FROM memberships m
      JOIN events e ON e.id = m.event_id
-     WHERE m.state = 'active'`,
+     WHERE m.state IN ${PRESENT}`,
   );
   const out = new Map<string, string>();
   for (const r of rows) {
@@ -1210,7 +1268,7 @@ export async function deviceResources(db: Db, deviceId: string): Promise<DeviceR
   }));
 }
 
-/** Whether this device holds a membership in this event, in either state. */
+/** Whether this device holds a membership in this event, in any state. */
 export async function isMember(db: Db, eventId: string, deviceId: string): Promise<boolean> {
   const { rows } = await db.execute(
     `SELECT 1 FROM memberships WHERE event_id = ? AND device_id = ? LIMIT 1`,
@@ -1238,7 +1296,7 @@ export async function pushTokensForEvent(
     `SELECT dr.push_kind, dr.push_token, dr.push_env
      FROM memberships m
      JOIN devices dr ON dr.device_id = m.device_id
-     WHERE m.event_id = ? AND m.state = 'active'
+     WHERE m.event_id = ? AND m.state IN ${PRESENT}
        AND dr.push_token IS NOT NULL AND dr.push_kind IS NOT NULL AND dr.push_env IS NOT NULL
        AND m.device_id IS NOT ?
      ORDER BY m.device_id`,
