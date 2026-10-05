@@ -19,7 +19,7 @@
 
 ## 3. The redirect contract clause
 
-- [ ] 3.1 Finish the working-tree draft (`DownloadContract.A_REDIRECT_IS_FOLLOWED_TO_THE_BODY`, the fixture's `r3xx` route and its grammar twin, the bindings' exhaustive `when`s) and run `./gradlew build`; verify green, and `androidPlatformTest` green on the emulator
+- [x] 3.1 Finish the working-tree draft (`DownloadContract.A_REDIRECT_IS_FOLLOWED_TO_THE_BODY`, the fixture's `r3xx` route and its grammar twin, the bindings' exhaustive `when`s) and run `./gradlew build`; verify green, and `androidPlatformTest` green on the emulator
 - [x] 3.2 Record in `docs/testing.md` that the iOS background session's redirect and resume behaviour are a measured fact without a contract host (no URLSession seam in `IosDownload`), citing design.md's Measured table; verify by review
 
 ## 4. The app reads incrementally
