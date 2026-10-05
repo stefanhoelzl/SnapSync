@@ -115,8 +115,8 @@ class VersionedHttpBackend(
         deviceId: String,
         manifest: DeviceManifest,
     ): Reply<Unit> = http().publishManifest(token, eventId, deviceId, manifest)
-    override suspend fun leaveEvent(token: String?, eventId: String, deviceId: String): Reply<Unit> =
-        http().leaveEvent(token, eventId, deviceId)
+    override suspend fun leaveEvent(token: String?, eventId: String, deviceId: String, received: Boolean): Reply<Unit> =
+        http().leaveEvent(token, eventId, deviceId, received)
     override suspend fun eventFiles(token: String?, eventId: String, cursor: Long?, trigger: UnionTrigger): Reply<UnionPage> =
         http().eventFiles(token, eventId, cursor, trigger)
     override suspend fun deviceFiles(token: String?, deviceId: String): Reply<List<DeviceFile>> =

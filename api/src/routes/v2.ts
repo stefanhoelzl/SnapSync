@@ -13,13 +13,10 @@ import {
   type ManifestAssetEntry,
   publishStatements,
   publishUnionChanges,
-  pushTokensForEvent,
   recordResourceStatement,
   stampLanded,
-  unionPosition,
 } from "../db.ts";
 import { legacyKeyFor, RESOURCE_ROLES } from "../legacy-v1.ts";
-import { unsentSummary } from "../push.ts";
 import { byteKey } from "../storage.ts";
 import { validateFilename } from "../validators.ts";
 import { parseManifestBody } from "./manifest.ts";
@@ -30,6 +27,7 @@ import {
   gateEvent,
   NO_CACHE,
   noteAppVersion,
+  notifyMembers,
   orUpstream502,
   ownDeviceParam,
   readJson,
@@ -39,15 +37,9 @@ import {
   upstream502,
 } from "./support.ts";
 
-// The v2 fan-out's own bound. Generous next to the work (one push per other member, at most the event's
-// capacity, sent in parallel over one HTTP/2 connection) but well inside the device's 12-second budget for
-// the publish that carries it — so a stalled APNs socket costs a notification, never the write. Each push
-// is also a subrequest, and Edge allows 50 per request: the capacity is bounded by that, not by this
-// (`docs/deployment.md`, "Edge Scripting limits worth knowing").
-const FANOUT_TIMEOUT_MS = 4000;
-
 /** The routes only `/api/v2` serves, built over `deps`. */
-export function v2Routes({ fetchImpl, config, db, now, pushSender }: RouteDeps): Hono {
+export function v2Routes(deps: RouteDeps): Hono {
+  const { fetchImpl, config, db, now } = deps;
   /**
    * A publish to a CLOSED event (capability `photo-sharing`, "What a member shares is fixed once the event
    * has closed"): the set it already declared is answered as published and changes nothing, so a device
@@ -108,55 +100,6 @@ export function v2Routes({ fetchImpl, config, db, now, pushSender }: RouteDeps):
       };
     } catch (e) {
       return upstream502(c, `v2 manifest: publish failed for ${event.eventId}/${deviceId}`, e);
-    }
-  }
-
-  /**
-   * The v2 fan-out: wake the event's other active members so they read the union.
-   *
-   * BEST-EFFORT inside a faithful write. The caller's response is its transaction's outcome and is never
-   * changed by a push that failed, was skipped for a member with no token, or timed out — the same split
-   * the byte route already draws for its database write. A failed notification costs one member a delayed
-   * download, which the next foreground read repairs; failing the publish would cost the manifest itself,
-   * and the device's skip-if-unchanged would then not retry it.
-   *
-   * BOUNDED, because bounded member count does not bound a stalled socket. The publish runs synchronously
-   * inside the device's own upload cycle under an OS deadline, so a hung APNs connection here would make
-   * the device time out a write that actually committed — and the next cycle would skip it as unchanged.
-   */
-  async function notifyMembers(
-    eventId: string,
-    publisherId: string,
-    announce: "gain" | "close",
-  ): Promise<void> {
-    try {
-      const tokens = await pushTokensForEvent(db, eventId, publisherId);
-      if (tokens.length === 0) return;
-      // A wake for a gain names the union position it announces (decision record
-      // `changes/incremental-union`, D6), read AFTER the commit: the event's last gain, at or past the one
-      // this caller logged. A failed read sends the wake without one, which the device reads as before.
-      let seq: number | undefined;
-      if (announce === "gain") {
-        try {
-          seq = await unionPosition(db, eventId);
-        } catch (e) {
-          console.error(`v2 notify: position read failed for ${eventId}, waking without one: ${e}`);
-        }
-      }
-      const outcomes = await Promise.race([
-        pushSender.sendSilent(tokens, eventId, seq),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("fan-out timed out")), FANOUT_TIMEOUT_MS)
-        ),
-      ]);
-      const sent = outcomes.filter((o) => o.status === "sent").length;
-      console.info(
-        `v2 notify: event ${eventId} — ${tokens.length} recipients, ${sent} pushed${
-          unsentSummary(outcomes)
-        }`,
-      );
-    } catch (e) {
-      console.error(`v2 notify: fan-out failed for ${eventId} (best-effort, publish stands): ${e}`);
     }
   }
 
@@ -249,7 +192,7 @@ export function v2Routes({ fetchImpl, config, db, now, pushSender }: RouteDeps):
     } catch (e) {
       console.error(`v2 upload: could not stamp the landing for ${completed.join(",")}: ${e}`);
     }
-    for (const eventId of completed) await notifyMembers(eventId, deviceId, "gain");
+    for (const eventId of completed) await notifyMembers(deps, eventId, deviceId, "gain");
     return c.body(null, 201);
   });
 
@@ -358,7 +301,7 @@ export function v2Routes({ fetchImpl, config, db, now, pushSender }: RouteDeps):
     // landed, so no landing would wake anyone, and each device must learn the close to finish and leave.
     // The publisher is skipped like any fan-out — it made the close and learns it from its own next read.
     if ((won && addsFetchable) || closed) {
-      await notifyMembers(eventId, deviceId, won && addsFetchable ? "gain" : "close");
+      await notifyMembers(deps, eventId, deviceId, won && addsFetchable ? "gain" : "close");
     }
     if (closed) console.info(`v2 manifest: event ${eventId} closed by ${deviceId}`);
     return c.body(null, 200);

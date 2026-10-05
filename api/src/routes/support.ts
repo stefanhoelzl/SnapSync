@@ -6,9 +6,17 @@
 import type { Context } from "hono";
 import type { AwsClient } from "aws4fetch";
 import type { Config } from "../config.ts";
-import { type Db, type EnrollOutcome, type EventRow, readEvent, recordAppVersion } from "../db.ts";
+import {
+  type Db,
+  type EnrollOutcome,
+  type EventRow,
+  pushTokensForEvent,
+  readEvent,
+  recordAppVersion,
+  unionPosition,
+} from "../db.ts";
 import { deleteByMs } from "../lifecycle.ts";
-import type { PushSender } from "../push.ts";
+import { type PushSender, unsentSummary } from "../push.ts";
 import { byteKey, type FetchLike } from "../storage.ts";
 import { canonicalFromMs, validateUUID } from "../validators.ts";
 import { APP_VERSION_HEADER, recordableVersion, splitVersion } from "../version.ts";
@@ -373,5 +381,64 @@ export async function noteAppVersion(
     console.error(
       `${what}: could not record app version ${declared} for ${deviceId} (best-effort): ${e}`,
     );
+  }
+}
+
+// The fan-out's own bound. Generous next to the work (one push per other member, at most the event's
+// capacity, sent in parallel over one HTTP/2 connection) but well inside the device's 12-second budget for
+// the request that carries it — so a stalled APNs socket costs a notification, never the write. Each push
+// is also a subrequest, and Edge allows 50 per request: the capacity is bounded by that, not by this
+// (`docs/deployment.md`, "Edge Scripting limits worth knowing").
+const FANOUT_TIMEOUT_MS = 4000;
+
+/**
+ * The fan-out: wake the event's other PRESENT members (`sharing` or `settled`) so they read the union — after a
+ * publish or a byte that made something fetchable (`gain`), and after the publish or leave that closed the event
+ * (`close`, which carries no union position).
+ *
+ * BEST-EFFORT inside a faithful write. The caller's response is its transaction's outcome and is never
+ * changed by a push that failed, was skipped for a member with no token, or timed out — the same split
+ * the byte route already draws for its database write. A failed notification costs one member a delayed
+ * download, which the next foreground read repairs; failing the publish would cost the manifest itself,
+ * and the device's skip-if-unchanged would then not retry it.
+ *
+ * BOUNDED, because bounded member count does not bound a stalled socket. The publish runs synchronously
+ * inside the device's own upload cycle under an OS deadline, so a hung APNs connection here would make
+ * the device time out a write that actually committed — and the next cycle would skip it as unchanged.
+ */
+export async function notifyMembers(
+  { db, pushSender }: Pick<RouteDeps, "db" | "pushSender">,
+  eventId: string,
+  publisherId: string,
+  announce: "gain" | "close",
+): Promise<void> {
+  try {
+    const tokens = await pushTokensForEvent(db, eventId, publisherId);
+    if (tokens.length === 0) return;
+    // A wake for a gain names the union position it announces (decision record
+    // `changes/incremental-union`, D6), read AFTER the commit: the event's last gain, at or past the one
+    // this caller logged. A failed read sends the wake without one, which the device reads as before.
+    let seq: number | undefined;
+    if (announce === "gain") {
+      try {
+        seq = await unionPosition(db, eventId);
+      } catch (e) {
+        console.error(`v2 notify: position read failed for ${eventId}, waking without one: ${e}`);
+      }
+    }
+    const outcomes = await Promise.race([
+      pushSender.sendSilent(tokens, eventId, seq),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("fan-out timed out")), FANOUT_TIMEOUT_MS)
+      ),
+    ]);
+    const sent = outcomes.filter((o) => o.status === "sent").length;
+    console.info(
+      `v2 notify: event ${eventId} — ${tokens.length} recipients, ${sent} pushed${
+        unsentSummary(outcomes)
+      }`,
+    );
+  } catch (e) {
+    console.error(`v2 notify: fan-out failed for ${eventId} (best-effort, the write stands): ${e}`);
   }
 }

@@ -61,8 +61,12 @@ interface Backend : Port {
     /** `PUT /events/<eventId>/devices/<deviceId>/manifest` — replace what a member shares. */
     suspend fun publishManifest(token: String?, eventId: String, deviceId: String, manifest: DeviceManifest): Reply<Unit>
 
-    /** `DELETE /events/<eventId>/devices/<deviceId>` — end a membership. */
-    suspend fun leaveEvent(token: String?, eventId: String, deviceId: String): Reply<Unit>
+    /**
+     * `DELETE /events/<eventId>/devices/<deviceId>?received=<received>` — end a membership. [received] is the
+     * device's word that it holds every photo of the others; the backend judges the rest of "left having
+     * everything" itself.
+     */
+    suspend fun leaveEvent(token: String?, eventId: String, deviceId: String, received: Boolean): Reply<Unit>
 
     /**
      * `GET /events/<eventId>/files` — the event-wide union of complete assets; public, authorized by the id alone. From

@@ -33,9 +33,26 @@ internal fun ClauseList<BackendState, EdgeSubject<Backend>>.completionClauses() 
         assertEquals(MemberCounts(active = 1, settled = 1), meta.members)
     }
 
+    clause("LEAVE_THE_LAST_UNSETTLED_MEMBER_LEAVING_CLOSES_THE_EVENT", BackendState.ENDED_BESIDE_A_SETTLED_MEMBER) { s ->
+        assertNull(assertOk(s.port.getEvent(s.seeded.eventId)).closedAt, "the event waits for the unsettled member")
+        assertOk(s.port.leaveEvent(s.token, s.seeded.eventId, s.seeded.deviceId, received = false))
+        val meta = assertOk(s.port.getEvent(s.seeded.eventId))
+        assertNotNull(meta.closedAt, "every member still in the event has settled")
+        assertEquals(MemberCounts(active = 1, settled = 1), meta.members)
+    }
+
+    clause("LEAVE_FROM_A_CLOSED_EVENT_KEEPS_ITS_CLOSE", BackendState.ENDED_BESIDE_A_SETTLED_MEMBER) { s ->
+        settle(s)
+        // The device settled last, so the event closed: its leave afterwards changes nothing about the close.
+        val closed = assertOk(s.port.getEvent(s.seeded.eventId)).closedAt
+        assertNotNull(closed)
+        assertOk(s.port.leaveEvent(s.token, s.seeded.eventId, s.seeded.deviceId, received = true))
+        assertEquals(closed, assertOk(s.port.getEvent(s.seeded.eventId)).closedAt)
+    }
+
     clause("JOIN_A_CLOSED_EVENT_IS_GONE_EVEN_FOR_A_RETURNING_DEVICE", BackendState.ENDED_MEMBER) { s ->
         settle(s)
-        assertOk(s.port.leaveEvent(s.token, s.seeded.eventId, s.seeded.deviceId))
+        assertOk(s.port.leaveEvent(s.token, s.seeded.eventId, s.seeded.deviceId, received = false))
         assertRefused(GONE, s.port.joinEvent(s.token, s.seeded.eventId, s.seeded.deviceId), "closed, never full")
     }
 

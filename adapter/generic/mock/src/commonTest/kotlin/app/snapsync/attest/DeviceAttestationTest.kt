@@ -120,7 +120,7 @@ private class FakeClient(
     override suspend fun joinEvent(token: String?, eventId: String, deviceId: String): Reply<Unit> = unused()
     override suspend fun publishManifest(token: String?, eventId: String, deviceId: String, manifest: DeviceManifest): Reply<Unit> =
         unused()
-    override suspend fun leaveEvent(token: String?, eventId: String, deviceId: String): Reply<Unit> = unused()
+    override suspend fun leaveEvent(token: String?, eventId: String, deviceId: String, received: Boolean): Reply<Unit> = unused()
     override suspend fun eventFiles(token: String?, eventId: String, cursor: Long?, trigger: UnionTrigger): Reply<UnionPage> =
         unused()
     override suspend fun deviceFiles(token: String?, deviceId: String): Reply<List<DeviceFile>> = unused()

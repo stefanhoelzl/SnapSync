@@ -1,6 +1,7 @@
 // Early event completion (capability `event-lifetime`; decision record `changes/early-event-completion`):
-// a device declares its manifest FINAL after the range has ended; the publish that leaves every active
-// membership final CLOSES the event and wakes its members once; a closed event refuses joins, renames and
+// a device declares its manifest FINAL after the range has ended, which makes its membership `settled`; the
+// publish or leave that leaves no member `sharing` CLOSES the event and wakes its members once; a leave records
+// `done` or `left`; a closed event refuses joins, renames and
 // any change to a member's asset set; a COMPLETED event (the sweep's verdict) keeps its row and answers
 // "completed". The sweep's own rules are in `scripts/sweep.test.ts`.
 import { assertEquals } from "@std/assert";
@@ -82,7 +83,7 @@ Deno.test("final → before the range has ended a final flag is ignored and noth
     body: body([ASSET], { final: true }),
   });
   assertEquals(res.status, 200);
-  assertEquals((await rows(db, `SELECT final FROM memberships`))[0].final, 0);
+  assertEquals((await rows(db, `SELECT state FROM memberships`))[0].state, "sharing");
   assertEquals(await closedAt(db), null);
   db.close();
 });
@@ -100,7 +101,7 @@ Deno.test("final → a non-boolean final is 400 and writes nothing", async () =>
   db.close();
 });
 
-Deno.test("close → the publish that makes the LAST active member final closes the event and wakes once", async () => {
+Deno.test("close → the publish that settles the LAST sharing member closes the event and wakes once", async () => {
   const db = await storeWithEvent(ENDED);
   const { app, pushed } = await twoMembers(db);
 
@@ -112,7 +113,7 @@ Deno.test("close → the publish that makes the LAST active member final closes 
   });
   assertEquals(await closedAt(db), null);
 
-  // D settles: every active member is final → closed, and D2 (the other member) is woken once.
+  // D settles: no member is sharing any more → closed, and D2 (the other member) is woken once.
   const res = await app.request(MANIFEST(D), {
     method: "PUT",
     body: body([ASSET], { final: true }),
@@ -129,7 +130,7 @@ Deno.test("close → the publish that makes the LAST active member final closes 
   db.close();
 });
 
-Deno.test("close → a departed member is not waited for", async () => {
+Deno.test("close → a member that left is not waited for", async () => {
   const db = await storeWithEvent(ENDED);
   const { app } = await twoMembers(db);
   await app.request(JOIN(D2), { method: "DELETE", headers: await as(D2) });
@@ -180,7 +181,7 @@ Deno.test("closed → the same asset set is a 200 no-op; a changed one is refuse
   db.close();
 });
 
-Deno.test("rejoin → clears the final flag while the event is open", async () => {
+Deno.test("rejoin → a settled member that left is back to sharing while the event is open", async () => {
   const db = await storeWithEvent(ENDED);
   const { app } = await twoMembers(db);
   await app.request(MANIFEST(D2), {
@@ -190,8 +191,8 @@ Deno.test("rejoin → clears the final flag while the event is open", async () =
   });
   await app.request(JOIN(D2), { method: "DELETE", headers: await as(D2) });
   await app.request(JOIN(D2), { method: "PUT", headers: await as(D2) });
-  const r = await rows(db, `SELECT final FROM memberships WHERE device_id = ?`, [D2]);
-  assertEquals(r[0].final, null);
+  const r = await rows(db, `SELECT state FROM memberships WHERE device_id = ?`, [D2]);
+  assertEquals(r[0].state, "sharing");
   db.close();
 });
 
@@ -231,5 +232,122 @@ Deno.test("completed → details answer 200 with completedAt; a publish is 410; 
   );
   // A pending leave retried against a completed event is answered, so the device stops retrying.
   assertEquals((await app.request(JOIN(D), { method: "DELETE" })).status, 200);
+  db.close();
+});
+
+// ── The leave: `done` or `left`, and the close it can make ────────────────────────────────────────
+
+const LEAVE = (d: string, received?: boolean) =>
+  received === undefined ? JOIN(d) : `${JOIN(d)}?received=${received}`;
+
+async function stateOf(db: Store, d: string): Promise<unknown> {
+  return (await rows(db, `SELECT state FROM memberships WHERE device_id = ?`, [d]))[0].state;
+}
+
+/** D shares ASSET and settles; with `landed`, its bytes have arrived. D2 stays sharing, so nothing closes. */
+async function settledD(db: Store, landed: boolean) {
+  const ctx = await twoMembers(db);
+  await ctx.app.request(MANIFEST(D), { method: "PUT", body: body([ASSET], { final: true }) });
+  if (landed) await ctx.app.request(BYTE_PATH, { method: "PUT", body: "x" });
+  assertEquals(await stateOf(db, D), "settled");
+  return ctx;
+}
+
+Deno.test("leave → settled, every declared role landed, and everything received → done", async () => {
+  const db = await storeWithEvent(ENDED);
+  const { app } = await settledD(db, true);
+  assertEquals((await app.request(LEAVE(D, true), { method: "DELETE" })).status, 200);
+  assertEquals(await stateOf(db, D), "done");
+  db.close();
+});
+
+Deno.test("leave → a declared role that never landed makes it left, whatever the device says", async () => {
+  const db = await storeWithEvent(ENDED);
+  const { app } = await settledD(db, false);
+  await app.request(LEAVE(D, true), { method: "DELETE" });
+  assertEquals(await stateOf(db, D), "left");
+  db.close();
+});
+
+Deno.test("leave → without received=true it is left, even with its share delivered", async () => {
+  for (const received of [false, undefined]) {
+    const db = await storeWithEvent(ENDED);
+    const { app } = await settledD(db, true);
+    await app.request(LEAVE(D, received), { method: "DELETE" });
+    assertEquals(await stateOf(db, D), "left");
+    db.close();
+  }
+});
+
+Deno.test("leave → a member still sharing is left, whatever the device says", async () => {
+  const db = await storeWithEvent(ENDED);
+  const { app } = await twoMembers(db);
+  await app.request(LEAVE(D, true), { method: "DELETE" });
+  assertEquals(await stateOf(db, D), "left");
+  db.close();
+});
+
+Deno.test("leave → a repeated leave keeps the state the first one recorded", async () => {
+  const db = await storeWithEvent(ENDED);
+  const { app } = await settledD(db, true);
+  await app.request(LEAVE(D, true), { method: "DELETE" });
+  assertEquals((await app.request(LEAVE(D, false), { method: "DELETE" })).status, 200);
+  assertEquals(await stateOf(db, D), "done");
+  db.close();
+});
+
+Deno.test("close → the leave that takes away the LAST sharing member closes the event and wakes once", async () => {
+  const db = await storeWithEvent(ENDED);
+  const { app, pushed } = await twoMembers(db);
+  // D2 settles; D is still sharing, so nothing closes.
+  await app.request(MANIFEST(D2), {
+    method: "PUT",
+    body: body([], { final: true }),
+    headers: await as(D2),
+  });
+  assertEquals(await closedAt(db), null);
+  // D leaves without settling: every member still in the event has settled → closed, D2 woken once.
+  assertEquals((await app.request(LEAVE(D), { method: "DELETE" })).status, 200);
+  assertEquals(await closedAt(db), new Date(NOW).toISOString());
+  assertEquals(pushed, ["recipient"]);
+  const details = await (await app.request(DETAILS)).json() as Record<string, unknown>;
+  assertEquals(details.members, { active: 1, final: 1 });
+  db.close();
+});
+
+Deno.test("close → a leave closes nothing while a member is still sharing, or before the end", async () => {
+  // Ended, but D2 is still sharing after D leaves.
+  const ended = await storeWithEvent(ENDED);
+  const one = await settledD(ended, true);
+  const before = one.pushed.length; // the landing woke D2 already
+  await one.app.request(LEAVE(D, true), { method: "DELETE" });
+  assertEquals(await closedAt(ended), null);
+  assertEquals(one.pushed.length, before);
+  ended.close();
+
+  // Not ended: nobody can have settled, so nothing closes even when everyone is gone.
+  const open = await storeWithEvent();
+  const two = await twoMembers(open);
+  await two.app.request(LEAVE(D), { method: "DELETE" });
+  await two.app.request(LEAVE(D2), { method: "DELETE", headers: await as(D2) });
+  assertEquals(await closedAt(open), null);
+  open.close();
+});
+
+Deno.test("publish → the settled state follows the publish both ways until the close", async () => {
+  const db = await storeWithEvent(ENDED);
+  const { app } = await settledD(db, false);
+  await app.request(MANIFEST(D), { method: "PUT", body: body([ASSET], { final: false }) });
+  assertEquals(await stateOf(db, D), "sharing");
+  db.close();
+});
+
+Deno.test("publish → a member that left stays gone, whatever it declares", async () => {
+  const db = await storeWithEvent(ENDED);
+  const { app } = await twoMembers(db);
+  await app.request(LEAVE(D), { method: "DELETE" });
+  await app.request(MANIFEST(D), { method: "PUT", body: body([], { final: true }) });
+  assertEquals(await stateOf(db, D), "left");
+  assertEquals(await closedAt(db), null);
   db.close();
 });

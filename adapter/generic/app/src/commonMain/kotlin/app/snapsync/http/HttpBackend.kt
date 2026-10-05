@@ -192,8 +192,8 @@ class HttpBackend(
     ): Reply<Unit> =
         exchange(HttpMethod.Put, "/events/$eventId/devices/$deviceId/manifest", token, body = manifest.encodeToJson()) { }
 
-    override suspend fun leaveEvent(token: String?, eventId: String, deviceId: String): Reply<Unit> =
-        exchange(HttpMethod.Delete, "/events/$eventId/devices/$deviceId", token) { }
+    override suspend fun leaveEvent(token: String?, eventId: String, deviceId: String, received: Boolean): Reply<Unit> =
+        exchange(HttpMethod.Delete, "/events/$eventId/devices/$deviceId?received=$received", token) { }
 
     // A missing or unreadable position is Malformed: a page the app could not continue from is no page.
     override suspend fun eventFiles(

@@ -372,6 +372,22 @@ internal class BackendState(
         return PublishOutcome.APPLIED
     }
 
+    /**
+     * A leave: the membership is gone, and keeps what it shared in the union. The leave that takes away the last member
+     * still unsettled closes the event and wakes the members still in it once, as the real route does. Whether the
+     * member left having everything (`done` or `left` on the real backend) is observable through no route, so the mock
+     * keeps no record of it.
+     */
+    fun leave(eventId: String, deviceId: String) {
+        val membership = memberships[eventId to deviceId]?.takeUnless { it.departed } ?: return
+        membership.departed = true
+        val event = events[eventId] ?: return
+        if (!event.closed && closesNow(eventId)) {
+            event.closed = true
+            notifyMembers(eventId, deviceId)
+        }
+    }
+
     private fun closesNow(eventId: String): Boolean {
         val active = memberships.filter { (key, m) -> key.first == eventId && !m.departed }.values
         return active.isNotEmpty() && active.all { it.manifest?.final == true }

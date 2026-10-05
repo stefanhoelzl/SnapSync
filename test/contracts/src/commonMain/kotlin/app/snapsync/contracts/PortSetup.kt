@@ -47,8 +47,9 @@ class PortSetup(
         error("setup step 'fill to capacity': still admitting after $MAX_CAPACITY_PROBE joins")
     }
 
-    override suspend fun publish(eventId: String, deviceId: String, assets: List<SeededAsset>) {
-        checked("publish manifest", backend.publishManifest(null, eventId, deviceId, DeviceManifest(deviceId, assets.map { it.manifestEntry() })))
+    override suspend fun publish(eventId: String, deviceId: String, assets: List<SeededAsset>, final: Boolean) {
+        val manifest = DeviceManifest(deviceId, assets.map { it.manifestEntry() }, final = final)
+        checked("publish manifest", backend.publishManifest(null, eventId, deviceId, manifest))
     }
 
     override suspend fun unionAssetIds(eventId: String): Set<AssetId> =

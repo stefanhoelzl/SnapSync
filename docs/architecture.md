@@ -565,8 +565,8 @@ believe the upload landed.
 ```
 events        id, name, created_at, starts_at, ends_at, capacity, lifetime_seconds,
               closed_at?, completed_at?, last_landed_at?
-memberships   (event_id -> events CASCADE, device_id), state in {active, departed}, joined_at, manifest_version?,
-              final?
+memberships   (event_id -> events CASCADE, device_id), state in {sharing, settled, done, left} (CHECK),
+              joined_at, manifest_version?
 event_assets  (event_id, device_id -> memberships CASCADE), asset_id, creation_date, roles (JSON array)
               + index (device_id, asset_id)
 resources     (device_id, asset_id, role) PK, key UNIQUE per device, content_type, filename
@@ -584,9 +584,9 @@ The generated snapshot is `api/schema.sql` (section "Database" below).
   for self-leave. A **completed** event (below) keeps its row until its deadline precisely so it can
   answer "completed" instead of `404`.
 - **Early completion** (`changes/early-event-completion`). After `ends_at` each device publishes its
-  manifest with `final: true` — its share is settled; the bytes may still be uploading. The publish
-  that leaves every **active** membership final stamps `closed_at` in the same batch and wakes the
-  members once (no landing would, when every byte is already there). `closed_at` is final: a closed
+  manifest with `final: true` — its membership becomes `settled`; the bytes may still be uploading. The
+  publish or leave that leaves no member `sharing` (and at least one `settled`) stamps `closed_at` in the
+  same batch and wakes the members still in it once (no landing would, when every byte is already there). `closed_at` is final: a closed
   event refuses join and rename `410 {error:"closed"}`, and a manifest whose asset set differs from
   the stored one `409 {error:"closed"}` (the identical set is a `200` no-op, and the batch itself is
   gated on the close). Each device then leaves on its own once it holds everything
@@ -596,8 +596,14 @@ The generated snapshot is `api/schema.sql` (section "Database" below).
   (`PendingLeaves`) and re-sent by every wake until the backend confirms it — which is what makes
   EMPTY dependable. The byte route stamps `last_landed_at`; the **clock** is
   `max(ends_at, last_landed_at) + 3 days`.
-- **Membership is a column** (`active`/`departed`), never inferred from objects. A departed member's
-  assets stay in the union.
+- **Membership is one state column** (migration 0008), never inferred from objects: `sharing` (joined,
+  not settled), `settled` (its last publish after the end declared its share settled; it follows each
+  publish both ways), `done` (left having everything: settled, every declared role landed, and the
+  device's `?received=true` — it holds every photo of the others), `left` (left with anything missing).
+  `sharing`/`settled` are PRESENT (pushed, counted in the waiting line, they hold or make the close);
+  `done`/`left` are GONE, and are told apart for observability only — nothing decides on the difference.
+  A manual leave and the app's own leave are the same request. A gone member's assets stay in the
+  union; a join puts any state back to `sharing`.
 - **`resources` sits outside the event cascade** and is device-scoped. This is forced: the byte
   route's path carries no event. It also lets one byte serve two events during a switch.
 - **Row existence is the upload record.** There is no upload-state column, and the backend records only
@@ -617,12 +623,12 @@ The generated snapshot is `api/schema.sql` (section "Database" below).
 - **Bounds** (policy in `deployments/components/policy.json`): capture window `[startsAt, endsAt]` of
   at most 30 days, which bounds uploads only and closes nothing. Lifetime `lifetime_seconds` (30 days)
   is stamped as a duration. The delete-by is derived per read as `max(createdAt, startsAt) + lifetime`
-  (`src/lifecycle.ts`, shared with the sweep). `capacity` ever-enrolled devices (active ∪ departed;
+  (`src/lifecycle.ts`, shared with the sweep). `capacity` ever-enrolled devices (every state;
   leaving frees nothing, rejoin reuses the slot) is the only refusal, `409`. It is 40 in the policy,
   bounded by Edge's subrequest limit (`deployment.md`, "Edge Scripting limits worth knowing").
 - The **nightly sweep** (`src/scripts/sweep.ts`, a GitHub Actions workflow, since Edge caps requests at
   50 subrequests / 30 s CPU) gives each event one `sweepVerdict` (`src/lifecycle.ts`): **drop** the row
-  past its delete-by; **complete** an ever-joined event that is empty (no active member) or past its
+  past its delete-by; **complete** an ever-joined event that is empty (no member present) or past its
   clock — memberships (and so `event_assets`) and the union log deleted, `closed_at`/`completed_at` stamped, the row
   kept — then collects unreferenced bytes, collects a `devices` row only once no token minted for it can still
   verify, and removes the emptied `files/devices/<id>/` directory of a device with no row. Its delete decision runs in an interactive transaction (primary), not an ordinary read.
@@ -679,11 +685,11 @@ not listed is `404` (no `405`) and makes no upstream request.
 | `GET`/`HEAD` | `/events/<eventId>` (ungated) | metadata; `deletesAt` derived per response; `closedAt`, `completedAt`, `members {active, final}` | `200` (a completed event too, with `completedAt`) · `404` sealed absence · `502` read failure |
 | `PATCH` | `/events/<eventId>` `{name}` | the only write to an existing event row; last-write-wins; no ownership check | `200` (metadata shape) · `400` · `404` · `410` closed · `502` |
 | `PUT` | `/events/<eventId>/devices/<deviceId>` | **join**: the only route that creates or reactivates a membership; one conditional capacity insert; clears `manifest_version` and `final`; idempotent | `200` · `404` · `409` at capacity · `410` closed · `502` |
-| `DELETE` | `/events/<eventId>/devices/<deviceId>` | **leave**: `state = departed`; idempotent (a completed event answers `200` too); assets retained; frees no slot | `200` · `404` · `502` |
-| `PUT` | `/events/<eventId>/devices/<deviceId>/manifest` | **contribution**: full-state replace of the membership's asset set in one transaction, ordered by `version`; `final` stored only after `endsAt`; the publish leaving every active member final closes the event and wakes its members; writes no resource rows; enrols nobody | `200` (applied, or refused as older with nothing written, or the same set to a closed event) · `400` · `404` · `409` not a member · `409 {error:"closed"}` changed set to a closed event · `410` completed · `502` |
+| `DELETE` | `/events/<eventId>/devices/<deviceId>` | **leave** (`?received=true\|false`): a present membership becomes `done` or `left`; after `endsAt` the leave that leaves no member `sharing` closes the event and wakes the rest; idempotent, a repeated leave keeps the first state (a completed event answers `200` too); assets retained; frees no slot | `200` · `404` · `502` |
+| `PUT` | `/events/<eventId>/devices/<deviceId>/manifest` | **contribution**: full-state replace of the membership's asset set in one transaction, ordered by `version`; `final` → `settled`, honoured only after `endsAt` and only for a present membership; the publish leaving no member `sharing` closes the event and wakes its members; writes no resource rows; enrols nobody | `200` (applied, or refused as older with nothing written, or the same set to a closed event) · `400` · `404` · `409` not a member · `409 {error:"closed"}` changed set to a closed event · `410` completed · `502` |
 | `PUT` | `/files/devices/<deviceId>/<assetId>/<role>?filename=<name>` | streams bytes to storage (never buffered), then records the `resources` row. **A failed record fails the request.** If this completed an asset, wakes the declaring events' other members | `201` · `400` bad role / missing filename · `502` (`OPTIONS` → `204`) |
 | `GET` | `/files/devices/<deviceId>` | what the backend holds for me, from the DB | `200 [{assetId, role, filename}]` · `502` |
-| `GET`/`HEAD` | `/events/<eventId>/files[?cursor=<n>][&urls=false]` (ungated; an optional bearer token is verified) | the event union: one query over active and departed members; an asset is included only when **every declared role** has a resource (a set comparison, not a count). `cursor` serves only assets the union log says were gained after it (`changes/incremental-union`); `urls=false` omits `url`, which is otherwise the download redirect's absolute address. Every answer carries `SnapSync-Cursor: <n>`, the position it covers. The `SnapSync-Trigger` header (`push`·`wake`·`foreground`·`join`·`grant`·`reconfigure`·`leave-check`) and the verified device, if any, go into the read's `fetch` log row, best-effort | `200 [{deviceId, assetId, creationDate, resources:[{role, contentType, key, filename, url?}]}]` · `400` bad cursor · `401` a sent token that does not verify · `404` · `502` |
+| `GET`/`HEAD` | `/events/<eventId>/files[?cursor=<n>][&urls=false]` (ungated; an optional bearer token is verified) | the event union: one query over every membership, present or gone; an asset is included only when **every declared role** has a resource (a set comparison, not a count). `cursor` serves only assets the union log says were gained after it (`changes/incremental-union`); `urls=false` omits `url`, which is otherwise the download redirect's absolute address. Every answer carries `SnapSync-Cursor: <n>`, the position it covers. The `SnapSync-Trigger` header (`push`·`wake`·`foreground`·`join`·`grant`·`reconfigure`·`leave-check`) and the verified device, if any, go into the read's `fetch` log row, best-effort | `200 [{deviceId, assetId, creationDate, resources:[{role, contentType, key, filename, url?}]}]` · `400` bad cursor · `401` a sent token that does not verify · `404` · `502` |
 | `GET`/`HEAD` | `/events/<eventId>/files/devices/<deviceId>/<assetId>/<role>` (ungated, exempt from the version gate) | the **download redirect**: the stored key of that role, when the event still declares the asset with it and its bytes are recorded; each segment percent-encoded | `302` to a 7-day presign, `Cache-Control: no-store, no-cache, max-age=0` · `404` · `502` |
 | `PUT` | `/devices/<deviceId>` `{pushToken: {kind, token, env}}` (`kind` is the push adapter's — `apns` or `fcm`) or explicit absence | updates the push columns | `201` · `400` · **`401` when no row was affected** (device never attested; the client re-attests and re-sends) · `502` |
 
@@ -708,7 +714,7 @@ from the storage `site/` prefix), the AASA and `/.well-known/assetlinks.json` (A
 - **The device-facing origin** of a redirect URL comes from the deployment's `domain` (`deviceOrigin`:
   `http` for a loopback literal, `https` otherwise), never from the request, which behind the pull zone
   promises nothing.
-- **Wakes are best-effort and bounded.** The recipient set (active members with a push token) is one
+- **Wakes are best-effort and bounded.** The recipient set (present members with a push token) is one
   query, and the push happens **after** the transaction commits. A wake for a gain carries the union
   position (`seq`: top-level on APNs, a string `data` field on FCM) read after the commit, so a device
   whose cursor is already there reads nothing; the close wake carries none. A failed, skipped or timed-out push
@@ -735,7 +741,7 @@ its wire tests (`v1.test.ts`) must pass **unmodified** across any schema migrati
 - `PUT /events/<eventId>/devices/<deviceId>` **is** the manifest publish **and** the enrollment
   (capacity `409`). It also upserts resource rows monotonically (a later publish cannot un-say an
   upload). There is no `version`.
-- `POST /events/<eventId>/notify` exists (`202`, best-effort fan-out to active members).
+- `POST /events/<eventId>/notify` exists (`202`, best-effort fan-out to present members).
 - `GET /files/devices/<deviceId>` returns `[{filename, url}]`.
 - The union's default `url` stays the 7-day **presign** (`changes/incremental-union` D3): `v1.test.ts`
   asserts it. `urls=false` and `cursor` are additive on v1 too (the event page reads through v1). v1's

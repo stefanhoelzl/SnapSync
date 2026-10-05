@@ -37,11 +37,14 @@ class PendingLeaves(
     private val mutex = Mutex()
 
     /** Leaves recorded while the record was unreadable — not on disk yet, so this process still owes them. */
-    private val unwritten = mutableSetOf<String>()
+    private val unwritten = mutableMapOf<String, Boolean>()
 
-    /** Record [eventId] as left and not yet confirmed. Call BEFORE the request, so a kill between the two loses nothing. */
-    suspend fun record(eventId: String) = mutex.withLock {
-        unwritten += eventId
+    /**
+     * Record [eventId] as left and not yet confirmed, with whether this device [received] every photo of the others —
+     * replacing what an earlier record of it said. Call BEFORE the request, so a kill between the two loses nothing.
+     */
+    suspend fun record(eventId: String, received: Boolean = false) = mutex.withLock {
+        unwritten[eventId] = received
         read()?.let { rewrite(it) }
     }
 
@@ -52,39 +55,53 @@ class PendingLeaves(
     suspend fun deliverAll(): Int {
         val outstanding = mutex.withLock { read().orEmpty() + unwritten }
         if (outstanding.isEmpty()) return 0
-        val delivered = outstanding.filterTo(mutableSetOf()) { eventId ->
-            runCatchingCancellable { notifier.notifyLeaving(eventId).getOrThrow() }
+        val delivered = outstanding.filter { (eventId, received) ->
+            runCatchingCancellable { notifier.notifyLeaving(eventId, received).getOrThrow() }
                 .onFailure { log.i { "leave of $eventId not confirmed yet ($it) — retried on the next wake" } }
                 .isSuccess
         }
         return mutex.withLock {
-            unwritten -= delivered
+            // Only what was delivered AS SENT: a record replaced meanwhile is still owed.
+            delivered.forEach { (eventId, received) -> if (unwritten[eventId] == received) unwritten.remove(eventId) }
             // Unreadable now: the record keeps the delivered ones too, and a later wake's delivery confirms them again.
-            val stored = read() ?: return@withLock (outstanding - delivered).size
-            rewrite(stored - delivered).size
+            val stored = read() ?: return@withLock (outstanding - delivered.keys).size
+            rewrite(stored.filterNot { (eventId, received) -> delivered[eventId] == received }).size
         }
     }
 
     /** The recorded leaves, for a test or the diagnostic dump. */
-    suspend fun outstanding(): Set<String> = mutex.withLock { read().orEmpty() + unwritten }
+    suspend fun outstanding(): Set<String> = mutex.withLock { (read().orEmpty() + unwritten).keys }
+
+    /** Whether the recorded leave of [eventId] says it received everything; `null` when none is recorded. */
+    suspend fun received(eventId: String): Boolean? = mutex.withLock { (read().orEmpty() + unwritten)[eventId] }
 
     /** The recorded leaves: empty when there is no record, `null` when one may exist but cannot be read now. */
-    private fun read(): Set<String>? = when (val r = files.read(FileArea.SHARED, PATH)) {
-        is FileResult.Ok -> r.value.decodeToString().lines().map(String::trim).filterTo(mutableSetOf()) { it.isNotEmpty() }
-        FileResult.NotFound -> emptySet()
+    private fun read(): Map<String, Boolean>? = when (val r = files.read(FileArea.SHARED, PATH)) {
+        is FileResult.Ok -> r.value.decodeToString().lines().map(String::trim).filter { it.isNotEmpty() }
+            .associate { line -> line.substringBefore(' ') to (line.substringAfter(' ', "") == RECEIVED) }
+        FileResult.NotFound -> emptyMap()
         else -> null.also { log.w { "the pending-leave record is unreadable ($r) — left as it is" } }
     }
 
     /** Write [stored] with the [unwritten] leaves folded in; answers what the record now holds. */
-    private fun rewrite(stored: Set<String>): Set<String> {
-        val ids = stored + unwritten
-        val written = files.write(FileArea.SHARED, PATH, ids.sorted().joinToString("\n").encodeToByteArray())
-        if (written is FileResult.Ok) unwritten.clear() else log.w { "the pending-leave record was not written ($written)" }
-        return ids
+    private fun rewrite(stored: Map<String, Boolean>): Map<String, Boolean> {
+        val leaves = stored + unwritten
+        val text = leaves.entries.sortedBy { it.key }
+            .map { (eventId, received) -> if (received) "$eventId $RECEIVED" else eventId }
+        val written = files.write(FileArea.SHARED, PATH, text.joinToString("\n").encodeToByteArray())
+        if (written is FileResult.Ok) {
+            unwritten.clear()
+        } else {
+            log.w { "the pending-leave record was not written ($written)" }
+        }
+        return leaves
     }
 
     private companion object {
         /** Runtime identity: installed devices hold their record at this path. */
         const val PATH = "membership/pending-leaves.txt"
+
+        /** The marker of a leave that received everything; a line without it — every older record — did not. */
+        const val RECEIVED = "received"
     }
 }

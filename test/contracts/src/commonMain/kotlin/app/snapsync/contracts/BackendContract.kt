@@ -44,6 +44,12 @@ enum class BackendState {
 
     /** An event whose range has ENDED, and the one device that joined it — nobody has settled yet. */
     ENDED_MEMBER,
+
+    /**
+     * An event whose range has ENDED, the device that joined it and has not settled, and a second member that has
+     * settled — so the event waits for the device alone.
+     */
+    ENDED_BESIDE_A_SETTLED_MEMBER,
 }
 
 /**
@@ -81,7 +87,8 @@ object BackendContract : Contract<BackendState, EdgeSubject<Backend>>("Backend")
     }
 
     private suspend fun seedEvent(state: BackendState, clauseId: String, setup: BackendSetup): Seeded {
-        val event = setup.createEvent("contract $clauseId", ended = state == BackendState.ENDED_MEMBER)
+        val ended = state == BackendState.ENDED_MEMBER || state == BackendState.ENDED_BESIDE_A_SETTLED_MEMBER
+        val event = setup.createEvent("contract $clauseId", ended = ended)
         val device = setup.freshId()
         val identity = when (state) {
             BackendState.VERSION_REFUSED -> ClientIdentity(REFUSED_APP_VERSION, token = null)
@@ -96,6 +103,12 @@ object BackendContract : Contract<BackendState, EdgeSubject<Backend>>("Backend")
         when (state) {
             BackendState.EVENT_FULL -> setup.fillToCapacity(event.eventId)
             BackendState.MEMBER, BackendState.ENDED_MEMBER -> setup.join(event.eventId, device)
+            BackendState.ENDED_BESIDE_A_SETTLED_MEMBER -> {
+                setup.join(event.eventId, device)
+                val settled = setup.freshId()
+                setup.join(event.eventId, settled)
+                setup.publish(event.eventId, settled, emptyList(), final = true)
+            }
             BackendState.MEMBER_WITH_TWO_UPLOADED_ASSETS -> {
                 setup.join(event.eventId, device)
                 setup.upload(device, FIRST, ResourceRole.PRIMARY)

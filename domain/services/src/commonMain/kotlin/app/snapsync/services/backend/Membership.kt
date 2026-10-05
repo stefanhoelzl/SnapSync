@@ -31,9 +31,10 @@ fun interface ManifestPublisher {
 }
 
 /**
- * Tells the shared event that **this device is leaving it** (capability `manage-membership`). The event then renames
- * this device's manifest to its departed `.left.json` sibling and, once the last active member has gone, reaps the
- * event and garbage-collects its now-unreferenced bytes.
+ * Tells the shared event that **this device is leaving it** (capability `manage-membership`), and whether it holds
+ * every photo of the others ([received]). The backend records the membership as gone — `done` when it left having
+ * everything, `left` otherwise — keeps what it shared in the union, and closes an ended event the leave leaves with
+ * nobody still unsettled.
  *
  * **This device, always — which is why no `deviceId` crosses it.** The identity doing the leaving is a per-process
  * constant, never a choice the caller makes; taking it as a parameter would widen the service to "make any device
@@ -45,7 +46,7 @@ fun interface ManifestPublisher {
  */
 fun interface LeaveNotifier {
     /** Announce that this device has left [eventId]. Never throws; failure arrives as a failed [Result]. */
-    suspend fun notifyLeaving(eventId: String): Result<Unit>
+    suspend fun notifyLeaving(eventId: String, received: Boolean): Result<Unit>
 }
 
 /**
@@ -104,9 +105,9 @@ class BackendLeaveNotifier(
     private val identity: PersistedDeviceIdentity,
 ) : LeaveNotifier {
 
-    override suspend fun notifyLeaving(eventId: String): Result<Unit> {
+    override suspend fun notifyLeaving(eventId: String, received: Boolean): Result<Unit> {
         val id = runCatchingCancellable { identity.deviceId() }.getOrElse { return Result.failure(it) }
-        val reply = backend.leaveEvent(eventId, id)
+        val reply = backend.leaveEvent(eventId, id, received)
         // An event the backend no longer holds has nothing left to leave: the leave is as done as it will ever be.
         if (reply is Reply.Refused && reply.status == HttpStatus.NOT_FOUND) return Result.success(Unit)
         return reply.toResult("leave $eventId/$id")

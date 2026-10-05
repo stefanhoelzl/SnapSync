@@ -349,7 +349,7 @@ Deno.test("join → enrolls the device, and joining twice is harmless", async ()
     D,
   ]);
   assertEquals(m.length, 1);
-  assertEquals(m[0].state, "active");
+  assertEquals(m[0].state, "sharing");
   db.close();
 });
 
@@ -430,7 +430,7 @@ Deno.test("manifest → does not reactivate a departed membership", async () => 
     E,
     D,
   ]);
-  assertEquals(m[0].state, "departed");
+  assertEquals(m[0].state, "left");
   db.close();
 });
 

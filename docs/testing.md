@@ -451,7 +451,9 @@ build the same classes over caller-held cells.
 - **The backend mock** (`BackendMock`) is the JVM default backend. Its port face answers in the backend's own
   vocabulary and declares the version its build declares (`DeclaredVersion`, a cell an operator may change to play
   an update in place). It holds the real backend's rules the contract checks and the ones it does not: membership is
-  one record with an active/departed state, the union spans departed members, capacity counts every device ever
+  one record with an active/departed state (the real backend's `done`/`left` split is observable through no route,
+  so the mock keeps none), the union spans departed members, the publish or leave that leaves no active member
+  unsettled closes the event, capacity counts every device ever
   enrolled, a rejoin clears the stored manifest version, a strictly older manifest is answered and changes nothing,
   names are 1–100 characters, and a write that makes something newly servable records a silent push to every other
   active member holding a token (`pushesSent`, the APNs mock). Bytes are not a port route: an OS upload reaches the

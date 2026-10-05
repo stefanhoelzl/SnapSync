@@ -646,7 +646,7 @@ Deno.test("config: a device with no attestation on file is refused, and nothing 
 // ── Leave is rename-only (capability `event-leave-endpoint`) ─────────────────────────────────────────
 
 Deno.test("leave: the departing device's record + attestation are RETAINED (no leave-time GC)", async () => {
-  // Leaving is non-destructive: it marks the membership `departed` and returns 200, touching neither the
+  // Leaving is non-destructive: it marks the membership `left` and returns 200, touching neither the
   // device's push registration nor its attestation — one row now holds both. A fully-orphaned device is collected only by the nightly sweep
   // (capability `event-lifetime`), never by leave — which is what lets a device rejoin, or join a
   // different event, without re-attesting.
@@ -662,7 +662,7 @@ Deno.test("leave: the departing device's record + attestation are RETAINED (no l
     lifetimeSeconds: 30 * 24 * 60 * 60,
   });
   await db.execute(
-    `INSERT INTO memberships (event_id, device_id, state, joined_at) VALUES (?, ?, 'active', 'x')`,
+    `INSERT INTO memberships (event_id, device_id, state, joined_at) VALUES (?, ?, 'sharing', 'x')`,
     [E2, D],
   );
   await enrolDevice(db, D);
@@ -679,7 +679,7 @@ Deno.test("leave: the departing device's record + attestation are RETAINED (no l
   assertEquals(res.status, 200);
   assertEquals(
     (await db.execute(`SELECT state FROM memberships WHERE device_id = ?`, [D])).rows,
-    [{ state: "departed" }],
+    [{ state: "left" }],
   );
   // The record survives — attestation and all, since they are one row now …
   assertEquals(
@@ -750,7 +750,7 @@ async function victimStore() {
     [D],
   );
   await db.execute(
-    `INSERT INTO memberships (event_id, device_id, state, joined_at) VALUES (?, ?, 'active', 'x')`,
+    `INSERT INTO memberships (event_id, device_id, state, joined_at) VALUES (?, ?, 'sharing', 'x')`,
     [E, D],
   );
   await db.execute(

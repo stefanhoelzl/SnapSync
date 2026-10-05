@@ -10,6 +10,7 @@ import app.snapsync.feature.support.configService
 import app.snapsync.feature.support.persistedConfig
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
+import app.snapsync.model.eventEnd
 import app.snapsync.model.EventConfig
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -45,8 +46,9 @@ class LeaveEventTest {
             config = configService(joined("E1"), files),
             stopUploads = { order += "disable" },
             clearLedger = { order += "ledger" },
-            notifyLeave = { id -> order += "notify"; notifiedWith = id },
+            notifyLeave = { id, _ -> order += "notify"; notifiedWith = id },
             scope = backgroundScope,
+            everythingReceived = { false },
             pendingLeaves = inertPendingLeaves(),
         ).leave()
         runCurrent() // let the fire-and-forget notify run
@@ -69,8 +71,9 @@ class LeaveEventTest {
             config = configService(joined("E5"), files),
             stopUploads = { order += "disable" },
             clearLedger = { throw RuntimeException("sqlite busy") },
-            notifyLeave = { order += "notify" },
+            notifyLeave = { _, _ -> order += "notify" },
             scope = backgroundScope,
+            everythingReceived = { false },
             pendingLeaves = inertPendingLeaves(),
         ).leave()
         runCurrent()
@@ -91,8 +94,9 @@ class LeaveEventTest {
             config = configService(joined("E7"), files),
             stopUploads = {},
             clearLedger = {},
-            notifyLeave = { id -> notifyStartedWith = id; neverCompletes.await() /* hangs */ },
+            notifyLeave = { id, _ -> notifyStartedWith = id; neverCompletes.await() /* hangs */ },
             scope = backgroundScope,
+            everythingReceived = { false },
             pendingLeaves = inertPendingLeaves(),
         ).leave() // returns promptly despite the notify below never completing
         runCurrent() // let the backgrounded notify start (and then hang)
@@ -115,8 +119,9 @@ class LeaveEventTest {
             config = configService(joined("E2"), files),
             stopUploads = { disabled = true },
             clearLedger = {},
-            notifyLeave = { notified = true },
+            notifyLeave = { _, _ -> notified = true },
             scope = backgroundScope,
+            everythingReceived = { false },
             pendingLeaves = inertPendingLeaves(),
         ).leave()
         runCurrent()
@@ -136,8 +141,9 @@ class LeaveEventTest {
             config = configService(joined("E3"), files),
             stopUploads = { order += "disable" },
             clearLedger = {},
-            notifyLeave = { throw RuntimeException("offline") },
+            notifyLeave = { _, _ -> throw RuntimeException("offline") },
             scope = backgroundScope,
+            everythingReceived = { false },
             pendingLeaves = inertPendingLeaves(),
         ).leave()
         runCurrent()
@@ -157,8 +163,9 @@ class LeaveEventTest {
             config = configService(joined("E4"), files),
             stopUploads = { throw RuntimeException("photokit") },
             clearLedger = {},
-            notifyLeave = {},
+            notifyLeave = { _, _ -> },
             scope = backgroundScope,
+            everythingReceived = { false },
             pendingLeaves = inertPendingLeaves(),
         ).leave()
 
@@ -175,8 +182,9 @@ class LeaveEventTest {
             config = configService(joined(null), files),
             stopUploads = {},
             clearLedger = {},
-            notifyLeave = { notified = true },
+            notifyLeave = { _, _ -> notified = true },
             scope = backgroundScope,
+            everythingReceived = { false },
             pendingLeaves = inertPendingLeaves(),
         ).leave()
         runCurrent()
@@ -185,5 +193,51 @@ class LeaveEventTest {
         assertTrue(files.configCleared)
         assertNull(files.persistedConfig())
         assertFalse(notified)
+    }
+
+    // ── Every leave says whether it has everything (capability `manage-membership`) ─────────────────────────────
+
+    /** [joined], with a range that ended before the test clock's now. */
+    private fun ended(eventId: String) = joined(eventId)!!.copy(endsAt = eventEnd("2026-06-10T12:00:00Z"))
+
+    private suspend fun kotlinx.coroutines.test.TestScope.leaveAnswering(
+        config: EventConfig,
+        everythingReceived: suspend (EventConfig) -> Boolean,
+    ): Pair<Boolean?, EventConfig?> {
+        var sent: Boolean? = null
+        var asked: EventConfig? = null
+        LeaveEvent(
+            config = configService(config, membershipFiles()),
+            stopUploads = {},
+            clearLedger = {},
+            notifyLeave = { _, received -> sent = received },
+            scope = backgroundScope,
+            everythingReceived = { cfg -> asked = cfg; everythingReceived(cfg) },
+            pendingLeaves = inertPendingLeaves(),
+        ).leave()
+        runCurrent()
+        return sent to asked
+    }
+
+    @Test
+    fun `after the end the leave says what the downloads answer about the membership it left`() = runTest {
+        val (sent, asked) = leaveAnswering(ended("E8")) { true }
+        assertEquals(true, sent)
+        // Asked with the snapshot, though the config is cleared by the time the background notify runs.
+        assertEquals("E8", asked?.eventId)
+        assertFalse(leaveAnswering(ended("E9")) { false }.first!!)
+    }
+
+    @Test
+    fun `before the end the leave says no without asking`() = runTest {
+        val (sent, asked) = leaveAnswering(joined("E10")!!) { true }
+        assertEquals(false, sent)
+        assertNull(asked)
+    }
+
+    @Test
+    fun `a doubt about the downloads is a no`() = runTest {
+        val (sent, _) = leaveAnswering(ended("E11")) { throw RuntimeException("union unreadable") }
+        assertEquals(false, sent)
     }
 }

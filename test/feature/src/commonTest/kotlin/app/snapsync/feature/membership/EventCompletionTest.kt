@@ -87,7 +87,7 @@ class EventCompletionTest {
         var fetches = 0
         var finalPublishes = 0
         val leavesSent = mutableListOf<String>()
-        val pendingLeaves = PendingLeaves(inMemoryFiles(), { id -> leavesSent += id; Result.success(Unit) })
+        val pendingLeaves = PendingLeaves(inMemoryFiles(), { id, _ -> leavesSent += id; Result.success(Unit) })
         var clock: Instant = Instant.parse(now)
         val checks = EventChecks(inMemoryPreferences(), now = { clock })
 
@@ -111,7 +111,8 @@ class EventCompletionTest {
             config = config,
             stopUploads = {},
             clearLedger = {},
-            notifyLeave = {},
+            notifyLeave = { _, _ -> },
+            everythingReceived = { false },
             scope = this,
             pendingLeaves = inertPendingLeaves(),
         )

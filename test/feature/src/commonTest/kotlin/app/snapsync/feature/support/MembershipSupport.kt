@@ -23,4 +23,4 @@ class ConfigWrites(val files: RecordingFiles = RecordingFiles()) {
  * A [PendingLeaves] over fresh in-memory files whose backend confirms every leave — for a test whose subject leaves
  * but does not assert what reaches the backend.
  */
-fun inertPendingLeaves(): PendingLeaves = PendingLeaves(inMemoryFiles(), { Result.success(Unit) })
+fun inertPendingLeaves(): PendingLeaves = PendingLeaves(inMemoryFiles(), { _, _ -> Result.success(Unit) })

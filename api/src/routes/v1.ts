@@ -5,7 +5,7 @@ import { Hono } from "hono";
 import {
   deviceFiles,
   enroll,
-  membersOf,
+  presentMembers,
   publishStatements,
   pushTokensForEvent,
   recordResource,
@@ -208,7 +208,7 @@ export function v1Routes({ fetchImpl, config, db, now, aws, pushSender }: RouteD
   });
 
   // Notify an event's members (capabilities `docs/architecture.md`, `receiving-photos`). GATED on the event row
-  // (absent → 404, read failure → 502). Enumerate the ACTIVE members with one query — departed members
+  // (absent → 404, read failure → 502). Enumerate the PRESENT members with one query — members who left
   // are skipped, which is what makes leaving stop the pushes without stopping the union; a read failure
   // → 502 (nothing enumerable). Then BEST-EFFORT: read every active member's registered push token in ONE
   // statement (no registration → skipped; a failed read → nobody pushed) and send a silent
@@ -226,11 +226,11 @@ export function v1Routes({ fetchImpl, config, db, now, aws, pushSender }: RouteD
     const event = await gateEvent(db, c, eventId, "notify");
     if (event instanceof Response) return event;
 
-    // Enumerate ACTIVE members only — one `state` read. A departed device has left and is not notified.
+    // Enumerate PRESENT members only — one `state` read. A device that left is not notified.
     const memberIds = await tryUpstream(
       c,
       `notify: member read failed for ${eventId}`,
-      () => membersOf(db, eventId, ["active"]),
+      () => presentMembers(db, eventId),
     );
     if (memberIds instanceof Response) return memberIds;
 

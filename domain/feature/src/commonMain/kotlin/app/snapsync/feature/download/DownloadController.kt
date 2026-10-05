@@ -164,8 +164,16 @@ class DownloadController(
      * keeps the member. Always a FULL read (decision record `changes/incremental-union`, D6): it runs only once the
      * event has closed, so its union no longer changes, and it is the one decision where doubt must keep the member.
      */
-    suspend fun everythingReceived(eventId: String): Boolean {
-        if (downloadEnabled() != true) return true
+    suspend fun everythingReceived(eventId: String): Boolean =
+        downloadEnabled() != true || holdsEveryForeignPhoto(eventId)
+
+    /**
+     * [everythingReceived] for a membership that receives, asked without the joined configuration — what a leave asks
+     * once it has cleared that configuration (capability `manage-membership`): every foreign asset the event serves is
+     * settled here and nothing waits to download or import. A union that cannot be read answers `false`. A FULL read
+     * too, for the same reason: doubt must not report a member that lacks photos as having everything.
+     */
+    suspend fun holdsEveryForeignPhoto(eventId: String): Boolean {
         val assets = union.union(eventId, null, UnionTrigger.LEAVE_CHECK).getOrElse { return false }.assets
         val foreign = assets.filter { it.deviceId != myDeviceId }.map { AssetRef(it.deviceId, it.assetId) }
         return mutex.withLock {

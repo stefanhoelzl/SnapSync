@@ -163,6 +163,9 @@ class CompositionSeamTest {
         "LeaveEvent.notifyLeave" to
             "compose/'s best-effort wrapper over the LeaveNotifier PORT, which logs a failed Result rather " +
             "than failing the leave — the port is where the network crossing is declared",
+        "LeaveEvent.everythingReceived" to
+            "the sibling DownloadController.holdsEveryForeignPhoto (its union read is the EventUnionSource service), " +
+            "asked of the snapshotted membership since the config is cleared by then — feature-blindness",
         "MembershipEntry.stopUploads" to "the sibling UploadTransitions.onLeave() — feature-blindness",
         "MembershipEntry.notifyLeave" to "the same best-effort wrapper as LeaveEvent.notifyLeave, over the LeaveNotifier port",
         "MembershipEntry.loadShareSet" to

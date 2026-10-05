@@ -39,7 +39,8 @@ import kotlin.uuid.Uuid
  *   start synthesized from its creation time on read, as the real backend does.
  * - **Membership** is one record per device with an active/departed state. A join creates or reactivates it and
  *   clears its stored manifest version; capacity counts every device ever enrolled, active or departed — leaving
- *   frees no slot. A leave marks the record departed and nothing else: the member's photos stay in the union.
+ *   frees no slot. A leave marks the record departed: the member's photos stay in the union, and the leave that takes
+ *   away the last member still unsettled closes the event, as a publish that settles it does.
  * - **The manifest** replaces the member's asset set, active or departed, and reactivates nobody; a strictly older
  *   version is answered as a success and changes nothing.
  * - **Credentials:** a call carrying no token is served — the local rig's enrolment fallback — as is one carrying a
@@ -150,11 +151,11 @@ internal class InMemoryBackend(
         }
     }
 
-    override suspend fun leaveEvent(token: String?, eventId: String, deviceId: String): Reply<Unit> =
+    override suspend fun leaveEvent(token: String?, eventId: String, deviceId: String, received: Boolean): Reply<Unit> =
         held(BackendCall.LEAVE, token, gated = true) {
             if (state.offline) return@held offline()
             if (eventId !in state.events) return@held notFound()
-            state.memberships[eventId to deviceId]?.departed = true
+            state.leave(eventId, deviceId)
             Reply.Ok(Unit)
         }
 
