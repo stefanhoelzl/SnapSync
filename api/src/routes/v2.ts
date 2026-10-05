@@ -36,9 +36,11 @@ import {
   upstream502,
 } from "./support.ts";
 
-// The v2 fan-out's own bound. Generous next to the work (capacity is 10, and the sends are parallel over
-// one HTTP/2 connection) but well inside the device's 12-second budget for the publish that carries it —
-// so a stalled APNs socket costs a notification, never the write.
+// The v2 fan-out's own bound. Generous next to the work (one push per other member, at most the event's
+// capacity, sent in parallel over one HTTP/2 connection) but well inside the device's 12-second budget for
+// the publish that carries it — so a stalled APNs socket costs a notification, never the write. Each push
+// is also a subrequest, and Edge allows 50 per request: the capacity is bounded by that, not by this
+// (`docs/deployment.md`, "Edge Scripting limits worth knowing").
 const FANOUT_TIMEOUT_MS = 4000;
 
 /** The routes only `/api/v2` serves, built over `deps`. */

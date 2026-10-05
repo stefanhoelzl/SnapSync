@@ -1122,6 +1122,40 @@ Deno.test("notify → an event with no members notifies vacuously; 202, no push"
   db.close();
 });
 
+Deno.test("notify → the token read is ONE statement however many members the event has", async () => {
+  // Every statement is a subrequest on Edge, which allows 50 per request: a read per member put this
+  // route over that wall at about 24 members (`docs/deployment.md`). So the statements a notify makes
+  // must not grow with the event — only the pushes do.
+  async function statementsFor(members: number) {
+    const db = await storeWithEvent({ capacity: 40 });
+    const ids = Array.from(
+      { length: members },
+      (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
+    );
+    for (const id of ids) {
+      await publish(db, id, []);
+      await registerToken(db, id, `token-${id}`);
+    }
+    let statements = 0;
+    const counting: Db = {
+      execute: (sql, args) => (statements++, db.execute(sql, args)),
+      batch: (s) => (statements++, db.batch(s)),
+      transaction: (fn) => db.transaction(fn),
+    };
+    const { pushed, fetchImpl } = apnsRecorder();
+    const res = await createApp({ config: await apnsConfig(), db: counting, fetch: fetchImpl })
+      .request(
+        `/api/v1/events/${E}/notify`,
+        { method: "POST" },
+      );
+    assertEquals(res.status, 202);
+    assertEquals(pushed.length, members);
+    db.close();
+    return statements;
+  }
+  assertEquals(await statementsFor(40), await statementsFor(2));
+});
+
 Deno.test("notify → unknown event → 404, no push; wrong method → 404", async () => {
   const empty = await store();
   const db = await storeWithEvent();

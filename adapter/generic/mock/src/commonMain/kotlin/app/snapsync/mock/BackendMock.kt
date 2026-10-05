@@ -47,7 +47,7 @@ class BackendMock internal constructor(internal val state: BackendState) {
     val operator: BackendOperator = BackendOperator(state)
 
     companion object {
-        const val DEFAULT_CAPACITY: Int = 10
+        const val DEFAULT_CAPACITY: Int = 40
         const val DEFAULT_CREATED_AT: String = "2026-01-01T00:00:00.000Z"
     }
 }
