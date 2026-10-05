@@ -1,5 +1,5 @@
 """SnapSync's use-case graphic: two phones on the brand green — one camera takes a photo, and it arrives in
-the other phone's gallery (`metadata/messaging.md`; decision record: changes/archive/*-refresh-marketing-wording).
+the other phone's gallery (`metadata/messaging.md`; decision record: changes/archive/2026-10-05-refresh-marketing-wording).
 
 This module only builds HTML. `render.py` opens each layout in headless Chromium and writes the committed PNGs
 (the look — perspective, depth, glow — needs a browser engine; a plain SVG rasteriser drops CSS 3D). Nothing

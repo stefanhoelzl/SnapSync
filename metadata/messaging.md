@@ -2,7 +2,7 @@
 
 The living reference for every user-facing word: the store listings, the screenshots, the site, the join
 page and the app. It derives from MISSION in `openspec/config.yaml` (who SnapSync is for and what it
-promises); the decisions behind it are recorded in `openspec/changes/archive/*-refresh-marketing-wording/`
+promises); the decisions behind it are recorded in `openspec/changes/archive/2026-10-05-refresh-marketing-wording/`
 (`wording.md` there holds the full settled copy). Change the wording here first, then the surfaces.
 
 Where the shared strings live: `metadata/listing/en-US.json` (both store listings) and
