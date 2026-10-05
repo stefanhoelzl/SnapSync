@@ -209,8 +209,8 @@ as a codec for little gain.
 - [The trigger and install id per read are new data about app activity] → `privacy-security`'s new
   requirement, the Privacy Policy update, and a review of the App Store privacy answers and Play's Data
   safety form ship in the same release.
-- [Cross-host edge→S3 redirects and hours-long iOS outages are unmeasured] → verified on device before
-  shipping (tasks), with the dev backend's real S3.
+- [The cross-host edge→S3 redirect is unmeasured] → one download on the SE2 after deploy (tasks). An
+  hours-long outage is not re-measured: with 7-day signatures it exercises only iOS's existing resume.
 
 ## Migration Plan
 
