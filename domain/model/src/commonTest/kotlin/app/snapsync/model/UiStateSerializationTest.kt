@@ -48,9 +48,9 @@ class UiStateSerializationTest {
     @Test
     fun the_create_layers_round_trip() {
         roundTrip(UiState(Layer.CreateEvent()))
-        roundTrip(UiState(Layer.CreateEvent(error = "Couldn't reach the server")))
+        roundTrip(UiState(Layer.CreateEvent(error = ScreenMessage.CREATE_FAILED)))
         roundTrip(UiState(Layer.CreateEvent(draft = CreateDraftSession(activation = 3, epoch = 1))))
-        roundTrip(UiState(Layer.CreateEvent(error = "Couldn't reach the server", network = NetworkNotice.OFFLINE)))
+        roundTrip(UiState(Layer.CreateEvent(error = ScreenMessage.CREATE_FAILED, network = NetworkNotice.OFFLINE)))
         roundTrip(UiState(Layer.CreateEvent(network = NetworkNotice.BLOCKED)))
         roundTrip(UiState(Layer.CreatingEvent))
     }
@@ -76,7 +76,7 @@ class UiStateSerializationTest {
         for (phase in listOf(JoinPhase.Loading, JoinPhase.NotFound, JoinPhase.LoadFailed)) {
             roundTrip(UiState(Layer.JoiningEvent(eventId = "E", phase = phase)))
         }
-        roundTrip(UiState(Layer.JoiningEvent(eventId = "E", phase = JoinPhase.Loading, notice = "That QR code wasn't valid.")))
+        roundTrip(UiState(Layer.JoiningEvent(eventId = "E", phase = JoinPhase.Loading, notice = ScreenMessage.INVALID_LINK)))
         roundTrip(UiState(Layer.JoiningEvent(eventId = "E", phase = JoinPhase.Loading, asksAccessOnJoin = true)))
         roundTrip(UiState(Layer.JoiningEvent(eventId = "E", phase = JoinPhase.LoadFailed, network = NetworkNotice.OFFLINE)))
         roundTrip(UiState(Layer.JoiningEvent(eventId = "E", phase = JoinPhase.Loading, network = NetworkNotice.BLOCKED)))
@@ -104,7 +104,7 @@ class UiStateSerializationTest {
                     health = SyncHealth.NeedsAccess(GalleryAccess.DENIED),
                     timing = EventTiming.Ended,
                     canChoosePhotos = true,
-                    notice = "something worth saying",
+                    notice = ScreenMessage.INVALID_LINK,
                 ),
             ),
         )
@@ -166,7 +166,7 @@ class UiStateSerializationTest {
                     inviteUrl = "https://snapsync.stho.net/join#v=3&d=x",
                     health = SyncHealth.Syncing(upload = Arrow.PULSING, download = Arrow.STATIC),
                     pendingSwitch = PendingSwitch("F", joinPhase(JoinPhase.Detailed.Step.CommitFailed, details)),
-                    renameState = RenameState.Failed("the name is taken"),
+                    renameState = RenameState.Failed(ScreenMessage.RENAME_NAME_REFUSED),
                     surface = JoinedSurface.Reconfigure(customForm, range(ShareCount.Ready(7)), saveFailed = true),
                 ),
             ),

@@ -6,6 +6,7 @@ import app.snapsync.feature.creation.readmodel.CreationFailureReason
 import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.feature.status.readmodel.NetworkStatusSource
 import app.snapsync.feature.status.readmodel.SyncStatusSource
+import app.snapsync.model.ScreenMessage
 import app.snapsync.model.Arrow
 import app.snapsync.model.EventConfig
 import app.snapsync.model.EventLinkPayload
@@ -170,12 +171,12 @@ class StatusContainerHostNetworkTest {
         val host = host(network, config = null, creation = CreationStatus.Failed(CreationFailureReason.SERVER))
         driving(host) {
             assertEquals(
-                Layer.CreateEvent(error = "Couldn't connect. Check your connection and try again.", network = NetworkNotice.OFFLINE),
+                Layer.CreateEvent(error = ScreenMessage.CREATE_FAILED, network = NetworkNotice.OFFLINE),
                 host.container.stateFlow.value.layer,
             )
             network.comeBack()
             runCurrent()
-            assertEquals(Layer.CreateEvent(error = "Couldn't connect. Check your connection and try again."), host.container.stateFlow.value.layer)
+            assertEquals(Layer.CreateEvent(error = ScreenMessage.CREATE_FAILED), host.container.stateFlow.value.layer)
         }
     }
 

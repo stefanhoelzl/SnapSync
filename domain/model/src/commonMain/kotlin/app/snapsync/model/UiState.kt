@@ -137,14 +137,14 @@ sealed interface Layer {
 
     /**
      * The create-event landing layer (create-event), shown while no event is connected
-     * (`config == null`) and no create is in flight. Carries an optional pre-formatted inline
-     * [error] — the last create failure's copy (sticky until the next attempt) or a transient
-     * invalid-link message. Config-absent outranks everything, so this is the top reduction rung.
+     * (`config == null`) and no create is in flight. Carries an optional inline
+     * [error] — the last create failure (sticky until the next attempt) or a transient
+     * invalid link. Config-absent outranks everything, so this is the top reduction rung.
      * [draft] is where the screen's draft stands against the app's foreground life ([CreateDraftSession]).
      */
     @Serializable
     data class CreateEvent(
-        val error: String? = null,
+        val error: ScreenMessage? = null,
         val draft: CreateDraftSession = CreateDraftSession(),
         /**
          * The network is missing (capability `create-event`, "Without a network, Create waits"): the hint line shows
@@ -187,7 +187,7 @@ sealed interface Layer {
          * (capability `join-event`), the same cell [Joined.notice] and [CreateEvent.error] read: a bad
          * link is rejected wherever it arrives, so the message reaches whichever layer is showing.
          */
-        val notice: String? = null,
+        val notice: ScreenMessage? = null,
         /**
          * Confirming this join also raises iOS's photo-access dialog (capability `join-event`,
          * `photo-access`): no event is configured and access was never asked — the sole state from which
@@ -270,7 +270,7 @@ sealed interface Layer {
          * "that code wasn't valid" are different answers, and the member could only see the first
          * (`docs/architecture.md`, "Absence is never silent").
          */
-        val notice: String? = null,
+        val notice: ScreenMessage? = null,
         /**
          * The event has CLOSED (capability `event-lifetime`): the joined layer offers only Leave — no invite, share,
          * settings or rename — while its last photos arrive; the membership then ends on its own.
@@ -312,7 +312,7 @@ sealed interface RenameState {
 
     /** The request failed; the dialog stays open with [message] in a banner, never a reddened field. */
     @Serializable
-    data class Failed(val message: String) : RenameState
+    data class Failed(val message: ScreenMessage) : RenameState
 }
 
 /** Which body the joined layer shows. */
@@ -554,4 +554,29 @@ enum class NetworkNotice {
             NetworkAccess.Blocked -> BLOCKED
         }
     }
+}
+
+/**
+ * A message the screen shows, as a FACT: `ui/` alone turns it into words, so no sentence is written in the
+ * domain and every one can be translated (`docs/architecture.md`, "Localization").
+ */
+@Serializable
+enum class ScreenMessage {
+    /** A delivered link that is not a SnapSync event (capability `join-event`). */
+    INVALID_LINK,
+
+    /** The backend refused the new event's name (capability `create-event`). */
+    CREATE_NAME_REFUSED,
+
+    /** The backend refused the new event's dates — its limit has shrunk since this build (capability `create-event`). */
+    CREATE_DATES_REFUSED,
+
+    /** The create request failed for any other reason (capability `create-event`). */
+    CREATE_FAILED,
+
+    /** The backend refused the event's new name (capability `manage-membership`). */
+    RENAME_NAME_REFUSED,
+
+    /** The rename failed for any other reason (capability `manage-membership`). */
+    RENAME_FAILED,
 }

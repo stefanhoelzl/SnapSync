@@ -1,6 +1,8 @@
 package app.snapsync.ui.components
 
 import androidx.compose.foundation.background
+import kotlinx.datetime.LocalTime
+import kotlinx.datetime.LocalDateTime
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -42,6 +44,12 @@ import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.daysUntil
 import kotlinx.datetime.plus
+import app.snapsync.ui.components.resources.Res
+import app.snapsync.ui.components.resources.calendar_day_today
+import app.snapsync.ui.components.resources.calendar_next_month
+import app.snapsync.ui.components.resources.calendar_previous_month
+import app.snapsync.ui.components.resources.calendar_weekdays
+import org.jetbrains.compose.resources.stringResource
 
 
 // `internal` rather than `private` throughout: Kotlin's top-level `private` is FILE-private, and this
@@ -126,16 +134,8 @@ private fun RangeDayCell(
         !enabled -> scheme.onSurfaceVariant.copy(alpha = 0.35f)
         else -> scheme.onSurface
     }
-    val label = buildString {
-        append(weekdayName(date))
-        append(' ')
-        append(date.day)
-        append(' ')
-        append(monthName(date.month.ordinal.plus(1)))
-        append(' ')
-        append(date.year)
-        if (position.isToday) append(", today")
-    }
+    val spoken = LocalDateFormats.current.format(LocalDateTime(date, LocalTime(0, 0)), "yMMMMEEEEd")
+    val label = if (position.isToday) stringResource(Res.string.calendar_day_today, spoken) else spoken
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -203,15 +203,15 @@ internal fun MonthHeader(month: LocalDate, onPrev: () -> Unit, onNext: () -> Uni
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ChevronButton(Icons.AutoMirrored.Filled.KeyboardArrowLeft, "Previous month", onPrev)
+        ChevronButton(Icons.AutoMirrored.Filled.KeyboardArrowLeft, stringResource(Res.string.calendar_previous_month), onPrev)
         Text(
-            text = "${monthName(month.month.ordinal.plus(1))} ${month.year}",
+            text = LocalDateFormats.current.format(LocalDateTime(month, LocalTime(0, 0)), "yMMMM"),
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
             color = scheme.onSurface,
             textAlign = TextAlign.Center,
             modifier = Modifier.weight(1f),
         )
-        ChevronButton(Icons.AutoMirrored.Filled.KeyboardArrowRight, "Next month", onNext)
+        ChevronButton(Icons.AutoMirrored.Filled.KeyboardArrowRight, stringResource(Res.string.calendar_next_month), onNext)
     }
 }
 
@@ -234,17 +234,24 @@ private fun ChevronButton(
     }
 }
 
-/** The Monday-start weekday labels, one per column, aligned with the grid beneath. */
+/** The Monday-start weekday labels, one per column, aligned with the grid beneath — the locale's narrow names. */
 @Composable
 internal fun WeekdayHeader() {
-    // One merged, static node so assistive tech reads the row once ("Mo Tu We …") rather than seven
-    // stray one-letter stops between the month header and the day buttons.
+    val dates = LocalDateFormats.current
+    val week = (0..6).map { LocalDateTime(A_MONDAY.plus(it, DateTimeUnit.DAY), LocalTime(0, 0)) }
+    val spoken = stringResource(
+        Res.string.calendar_weekdays,
+        dates.format(week.first(), "EEEE"),
+        dates.format(week.last(), "EEEE"),
+    )
+    // One merged, static node so assistive tech reads the row once ("Weekdays, Monday to Sunday") rather than
+    // seven stray one-letter stops between the month header and the day buttons.
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .semantics(mergeDescendants = true) { contentDescription = "Weekdays, Monday to Sunday" },
+            .semantics(mergeDescendants = true) { contentDescription = spoken },
     ) {
-        for (label in listOf("Mo", "Tu", "We", "Th", "Fr", "Sa", "Su")) {
+        for (label in week.map { dates.format(it, "EEEEE") }) {
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelMedium,
@@ -289,3 +296,6 @@ internal class DayInRange(
     val inRange: Boolean,
     val isToday: Boolean,
 )
+
+/** Any Monday: the header names a week's days from it. */
+private val A_MONDAY = LocalDate(2024, 1, 1)

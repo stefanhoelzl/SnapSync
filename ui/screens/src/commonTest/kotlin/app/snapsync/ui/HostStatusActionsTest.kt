@@ -67,6 +67,43 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.datetime.TimeZone
 import app.snapsync.model.VersionRefusal
+import app.snapsync.ui.resources.Res
+import app.snapsync.ui.components.resources.Res as ComponentRes
+import app.snapsync.ui.components.resources.menu
+import app.snapsync.ui.components.resources.network_blocked
+import app.snapsync.ui.components.resources.share_range_change
+import app.snapsync.ui.components.resources.status_allow_access
+import app.snapsync.ui.components.resources.status_allow_access_settings
+import app.snapsync.ui.resources.album_toggle
+import app.snapsync.ui.resources.allow_full_access
+import app.snapsync.ui.resources.cancel
+import app.snapsync.ui.resources.choose_more_photos
+import app.snapsync.ui.resources.create_button
+import app.snapsync.ui.resources.event_settings
+import app.snapsync.ui.resources.join_access_dismiss
+import app.snapsync.ui.resources.join_access_info
+import app.snapsync.ui.resources.join_button
+import app.snapsync.ui.resources.join_button_allow
+import app.snapsync.ui.resources.leave_cancel
+import app.snapsync.ui.resources.leave_confirm
+import app.snapsync.ui.resources.leave_event
+import app.snapsync.ui.resources.menu_privacy
+import app.snapsync.ui.resources.menu_website
+import app.snapsync.ui.resources.mobile_data_toggle
+import app.snapsync.ui.resources.range_from_now
+import app.snapsync.ui.resources.range_whole_event
+import app.snapsync.ui.resources.receive_toggle
+import app.snapsync.ui.resources.rename_event
+import app.snapsync.ui.resources.report_placeholder
+import app.snapsync.ui.resources.report_problem
+import app.snapsync.ui.resources.report_send
+import app.snapsync.ui.resources.report_sent
+import app.snapsync.ui.resources.retry
+import app.snapsync.ui.resources.save
+import app.snapsync.ui.resources.share_invite
+import app.snapsync.ui.resources.share_toggle
+import app.snapsync.ui.resources.store_app_store
+import app.snapsync.ui.resources.switch_confirm
 
 /** The event the joined tests are members of. */
 private const val JOINED_ID = "11111111-1111-4111-8111-111111111111"
@@ -230,7 +267,7 @@ class HostStatusActionsTest {
     fun `the store button opens the store link through the container`() =
         rigTest(rig(refusal = VersionRefusal("0.4"))) { rig ->
             awaitState(rig) { it.layer is Layer.UpdateRequired }
-            onNodeWithText("Open the App Store").performClick()
+            onNodeWithText(str(Res.string.store_app_store)).performClick()
             awaitFired(rig, "openLink:$STORE_URL")
         }
 
@@ -240,15 +277,15 @@ class HostStatusActionsTest {
     fun `leave opens its confirmation — Stay dismisses it — and Leave fires the leave`() =
         rigTest(rig(config = MEMBERSHIP)) { rig ->
             awaitState(rig) { it.joined != null }
-            onNodeWithContentDescription("Leave event").performClick()
+            onNodeWithContentDescription(str(Res.string.leave_event)).performClick()
             awaitState(rig) { it.overlays.confirmingLeave }
-            onNodeWithText("Stay").performClick()
+            onNodeWithText(str(Res.string.leave_cancel)).performClick()
             awaitState(rig) { !it.overlays.confirmingLeave }
             assertEquals(emptyList(), rig.fired)
 
-            onNodeWithContentDescription("Leave event").performClick()
+            onNodeWithContentDescription(str(Res.string.leave_event)).performClick()
             awaitState(rig) { it.overlays.confirmingLeave }
-            onNodeWithText("Leave").performClick()
+            onNodeWithText(str(Res.string.leave_confirm)).performClick()
             awaitFired(rig, "leave")
         }
 
@@ -257,7 +294,7 @@ class HostStatusActionsTest {
         rigTest(rig(config = MEMBERSHIP)) { rig ->
             awaitState(rig) { it.joined != null }
             val invite = rig.state.joined!!.inviteUrl
-            onNodeWithContentDescription("Share invite link").performClick()
+            onNodeWithContentDescription(str(Res.string.share_invite)).performClick()
             awaitFired(rig, "share:$invite")
         }
 
@@ -265,18 +302,18 @@ class HostStatusActionsTest {
     fun `the pen opens the rename sheet — Cancel dismisses it — and Save renames`() =
         rigTest(rig(config = MEMBERSHIP)) { rig ->
             awaitState(rig) { it.joined != null }
-            onNodeWithContentDescription("Rename event").performClick()
+            onNodeWithContentDescription(str(Res.string.rename_event)).performClick()
             awaitState(rig) { it.overlays.renaming }
-            onNodeWithText("Cancel").performClick()
+            onNodeWithText(str(Res.string.cancel)).performClick()
             awaitState(rig) { !it.overlays.renaming }
             // Dismissing also clears the rename latch.
             awaitFired(rig, "resetRename")
 
-            onNodeWithContentDescription("Rename event").performClick()
+            onNodeWithContentDescription(str(Res.string.rename_event)).performClick()
             awaitState(rig) { it.overlays.renaming }
             onNode(hasSetTextAction()).performTextClearance()
             onNode(hasSetTextAction()).performTextInput("Anna's Party")
-            onNodeWithText("Save").performClick()
+            onNodeWithText(str(Res.string.save)).performClick()
             awaitFired(rig, "rename:$JOINED_ID:Anna's Party")
         }
 
@@ -284,15 +321,15 @@ class HostStatusActionsTest {
     fun `the gear opens the settings surface — Cancel closes it — and Save reconfigures`() =
         rigTest(rig(config = MEMBERSHIP)) { rig ->
             awaitState(rig) { it.joined != null }
-            onNodeWithContentDescription("Event settings").performClick()
+            onNodeWithContentDescription(str(Res.string.event_settings)).performClick()
             awaitState(rig) { it.joined?.surface is JoinedSurface.Reconfigure }
-            onNodeWithText("Cancel").performClick()
+            onNodeWithText(str(Res.string.cancel)).performClick()
             awaitState(rig) { it.joined != null && it.joined?.surface !is JoinedSurface.Reconfigure }
             assertEquals(emptyList(), rig.fired)
 
-            onNodeWithContentDescription("Event settings").performClick()
+            onNodeWithContentDescription(str(Res.string.event_settings)).performClick()
             awaitState(rig) { it.joined?.surface is JoinedSurface.Reconfigure }
-            onNodeWithText("Save").performClick()
+            onNodeWithText(str(Res.string.save)).performClick()
             awaitFired(rig, "reconfigure:$JOINED_ID")
         }
 
@@ -302,7 +339,7 @@ class HostStatusActionsTest {
     fun `a never-asked grant’s prompt requests access`() =
         rigTest(rig(config = MEMBERSHIP, permission = GalleryAccess.NOT_DETERMINED)) { rig ->
             awaitState(rig) { it.joined != null }
-            onNodeWithText("Allow photo access").performClick()
+            onNodeWithText(str(ComponentRes.string.status_allow_access)).performClick()
             awaitFired(rig, "requestAccess")
             assertEquals(listOf("requestAccess"), rig.fired)
         }
@@ -311,7 +348,7 @@ class HostStatusActionsTest {
     fun `a denied grant’s prompt opens Settings`() =
         rigTest(rig(config = MEMBERSHIP, permission = GalleryAccess.DENIED)) { rig ->
             awaitState(rig) { it.joined != null }
-            onNodeWithText("Allow photo access in Settings").performClick()
+            onNodeWithText(str(ComponentRes.string.status_allow_access_settings)).performClick()
             awaitFired(rig, "openSettings")
             assertEquals(listOf("openSettings"), rig.fired)
         }
@@ -320,7 +357,7 @@ class HostStatusActionsTest {
     fun `a blocked network’s status line opens Settings`() =
         rigTest(rig(config = MEMBERSHIP, network = NetworkAccess.Blocked)) { rig ->
             awaitState(rig) { (it.layer as? Layer.Joined)?.health is SyncHealth.NoNetwork }
-            onNodeWithText("Network blocked for SnapSync – Open Settings").performClick()
+            onNodeWithText(str(ComponentRes.string.network_blocked)).performClick()
             awaitFired(rig, "openSettings")
             assertEquals(listOf("openSettings"), rig.fired)
         }
@@ -329,7 +366,7 @@ class HostStatusActionsTest {
     fun `a blocked network’s notice on the create screen opens Settings`() =
         rigTest(rig(network = NetworkAccess.Blocked)) { rig ->
             awaitState(rig) { (it.layer as? Layer.CreateEvent)?.network != null }
-            onNodeWithText("Network blocked for SnapSync – Open Settings").performClick()
+            onNodeWithText(str(ComponentRes.string.network_blocked)).performClick()
             awaitFired(rig, "openSettings")
             assertEquals(listOf("openSettings"), rig.fired)
         }
@@ -338,10 +375,10 @@ class HostStatusActionsTest {
     fun `a partial grant offers the picker and Settings — each its own`() =
         rigTest(rig(config = MEMBERSHIP, permission = GalleryAccess.LIMITED)) { rig ->
             awaitState(rig) { it.joined?.canChoosePhotos == true }
-            onNodeWithText("Choose more photos").performClick()
+            onNodeWithText(str(Res.string.choose_more_photos)).performClick()
             awaitFired(rig, "choosePhotos")
             assertEquals(listOf("choosePhotos"), rig.fired)
-            onNodeWithText("Allow full access").performClick()
+            onNodeWithText(str(Res.string.allow_full_access)).performClick()
             awaitFired(rig, "openSettings")
         }
 
@@ -352,7 +389,7 @@ class HostStatusActionsTest {
         awaitState(rig) { it.layer is Layer.CreateEvent }
         // Create is enabled only once the range is complete too (capability `create-event`).
         completeForm("My Party")
-        onNodeWithText("Create event").performClick()
+        onNodeWithText(str(Res.string.create_button)).performClick()
         awaitFired(rig, "create:My Party")
     }
 
@@ -364,37 +401,37 @@ class HostStatusActionsTest {
         awaitState(rig, ready)
 
         // Each range edit, so a preset crossed with a custom pick lands in the wrong field.
-        onNodeWithContentDescription("Change which photos are shared").performClick()
-        onNodeWithText("From now").performClick()
+        onNodeWithContentDescription(str(ComponentRes.string.share_range_change)).performClick()
+        onNodeWithText(str(Res.string.range_from_now)).performClick()
         awaitState(rig) { it.joining?.form?.preset == RangeChoice.FROM_NOW }
-        onNodeWithContentDescription("Change which photos are shared").performClick()
-        onNodeWithText("Save").performClick()
+        onNodeWithContentDescription(str(ComponentRes.string.share_range_change)).performClick()
+        onNodeWithText(str(Res.string.save)).performClick()
         awaitState(rig) {
             it.joining?.form?.let { f -> f.preset == RangeChoice.CUSTOM && f.customFrom != null && f.customUntil != null } == true
         }
-        onNodeWithContentDescription("Change which photos are shared").performClick()
-        onNode(hasText("The whole event") and isSelectable()).performClick()
+        onNodeWithContentDescription(str(ComponentRes.string.share_range_change)).performClick()
+        onNode(hasText(str(Res.string.range_whole_event)) and isSelectable()).performClick()
         awaitState(rig) { it.joining?.form?.preset == RangeChoice.WHOLE_EVENT }
         // The participation switches, likewise one field each.
-        onNodeWithText("Share my photos").performScrollTo().performClick()
+        onNodeWithText(str(Res.string.share_toggle)).performScrollTo().performClick()
         awaitState(rig) { it.joining?.form?.shareOn == false }
-        onNodeWithText("Share my photos").performScrollTo().performClick()
+        onNodeWithText(str(Res.string.share_toggle)).performScrollTo().performClick()
         awaitState(rig) { it.joining?.form?.shareOn == true }
-        onNodeWithText("Receive everyone's photos").performScrollTo().performClick()
+        onNodeWithText(str(Res.string.receive_toggle)).performScrollTo().performClick()
         awaitState(rig) { it.joining?.form?.receiveOn == false }
-        onNodeWithText("Receive everyone's photos").performScrollTo().performClick()
+        onNodeWithText(str(Res.string.receive_toggle)).performScrollTo().performClick()
         awaitState(rig) { it.joining?.form?.receiveOn == true }
         // The album opt-in defaults ON, so the tap turns it off.
-        onNodeWithText("Create an album").performScrollTo().performClick()
+        onNodeWithText(str(Res.string.album_toggle)).performScrollTo().performClick()
         awaitState(rig) { it.joining?.form?.saveToAlbum == false }
         // The mobile-data choice (capability `mobile-data`) defaults ON too.
-        onNodeWithText("Use mobile data for photos").performScrollTo().performClick()
+        onNodeWithText(str(Res.string.mobile_data_toggle)).performScrollTo().performClick()
         awaitState(rig) { it.joining?.form?.mobileData == false }
         // Share off with receive on: a direction only the two switches together can produce.
-        onNodeWithText("Share my photos").performScrollTo().performClick()
+        onNodeWithText(str(Res.string.share_toggle)).performScrollTo().performClick()
         awaitState(rig) { it.joining?.form?.shareOn == false }
 
-        onNodeWithText("Join").performClick()
+        onNodeWithText(str(Res.string.join_button)).performClick()
         waitUntil(timeoutMillis = 5_000) { rig.fired.any { it.startsWith("commitJoin:") } }
         assertEquals(listOf("commitJoin:$OTHER_ID:DownloadOnly:false"), rig.fired)
     }
@@ -403,7 +440,7 @@ class HostStatusActionsTest {
     fun `Cancel discards the pending join without committing`() = rigTest(rig()) { rig ->
         rig.host.onOpenUrl(linkTo(OTHER_ID))
         awaitState(rig, ready)
-        onNodeWithText("Cancel").performClick()
+        onNodeWithText(str(Res.string.cancel)).performClick()
         awaitState(rig) { it.layer is Layer.CreateEvent }
         assertEquals(emptyList(), rig.fired)
     }
@@ -414,10 +451,10 @@ class HostStatusActionsTest {
             rig.host.onOpenUrl(linkTo(OTHER_ID))
             awaitState(rig, ready)
             // The explanation is on request, and reading it raises nothing.
-            onNodeWithContentDescription("What joining does with your photos").performClick()
-            onNodeWithText("Got it").performClick()
+            onNodeWithContentDescription(str(Res.string.join_access_info)).performClick()
+            onNodeWithText(str(Res.string.join_access_dismiss)).performClick()
             assertEquals(emptyList(), rig.fired)
-            onNodeWithText("Join & allow photos").performClick()
+            onNodeWithText(str(Res.string.join_button_allow)).performClick()
             waitUntil(timeoutMillis = 5_000) { rig.fired.any { it.startsWith("commitJoin:") } }
             assertEquals("requestAccess", rig.fired.first())
         }
@@ -428,7 +465,7 @@ class HostStatusActionsTest {
         rigTest(rig(details = { if (++loads == 1) JoinLoad.Failed else OTHER_EVENT })) { rig ->
             rig.host.onOpenUrl(linkTo(OTHER_ID))
             awaitState(rig) { it.joining?.phase == JoinPhase.LoadFailed }
-            onNodeWithText("Retry").performClick()
+            onNodeWithText(str(Res.string.retry)).performClick()
             awaitState(rig, ready)
             assertEquals(2, loads)
         }
@@ -438,9 +475,9 @@ class HostStatusActionsTest {
     fun `Retry after a failed commit commits again`() = rigTest(rig()) { rig ->
         rig.host.onOpenUrl(linkTo(OTHER_ID))
         awaitState(rig, ready)
-        onNodeWithText("Join").performClick()
+        onNodeWithText(str(Res.string.join_button)).performClick()
         awaitState(rig) { (it.joining?.phase as? JoinPhase.Detailed)?.step == JoinPhase.Detailed.Step.CommitFailed }
-        onNodeWithText("Retry").performClick()
+        onNodeWithText(str(Res.string.retry)).performClick()
         waitUntil(timeoutMillis = 5_000) { rig.fired.count { it.startsWith("commitJoin:") } == 2 }
     }
 
@@ -451,13 +488,13 @@ class HostStatusActionsTest {
         rigTest(rig(config = MEMBERSHIP)) { rig ->
             rig.host.onOpenUrl(linkTo(OTHER_ID))
             awaitState(rig) { it.joined?.pendingSwitch != null }
-            onNodeWithText("Cancel").performClick()
+            onNodeWithText(str(Res.string.cancel)).performClick()
             awaitState(rig) { it.joined != null && it.joined?.pendingSwitch == null }
             assertEquals(emptyList(), rig.fired)
 
             rig.host.onOpenUrl(linkTo(OTHER_ID))
             awaitState(rig) { it.joined?.pendingSwitch != null }
-            onNodeWithText("Switch").performClick()
+            onNodeWithText(str(Res.string.switch_confirm)).performClick()
             awaitFired(rig, "leave")
             // The leave cleared the membership, so the gate re-renders as the new event's own join surface.
             awaitState(rig) { it.joining?.eventId == OTHER_ID }
@@ -469,29 +506,29 @@ class HostStatusActionsTest {
     fun `the menu's report opens the sheet — Send sends — and the word on it can be tapped away`() =
         rigTest(rig(diagnostics = true)) { rig ->
             awaitState(rig) { it.layer is Layer.CreateEvent }
-            onNodeWithContentDescription("Menu").performClick()
+            onNodeWithContentDescription(str(ComponentRes.string.menu)).performClick()
             awaitState(rig) { it.overlays.menuOpen }
-            onNodeWithText("Report a problem").performClick()
+            onNodeWithText(str(Res.string.report_problem)).performClick()
             awaitState(rig) { it.overlays.reportingBug && !it.overlays.menuOpen }
-            onNodeWithText("What went wrong, and what were you doing?").performTextInput("No photos arrive")
-            onNodeWithText("Send").performClick()
+            onNodeWithText(str(Res.string.report_placeholder)).performTextInput("No photos arrive")
+            onNodeWithText(str(Res.string.report_send)).performClick()
             awaitFired(rig, "sendDiagnostics:No photos arrive")
             awaitState(rig) { it.overlays.reportNotice == app.snapsync.model.ReportOutcome.SENT }
-            onNodeWithText("Thanks — your report was sent.").performClick()
+            onNodeWithText(str(Res.string.report_sent)).performClick()
             awaitState(rig) { it.overlays.reportNotice == null }
         }
 
     @Test
     fun `the menu's links open their pages through the container`() = rigTest(rig(config = MEMBERSHIP)) { rig ->
         awaitState(rig) { it.joined != null }
-        onNodeWithContentDescription("Menu").performClick()
+        onNodeWithContentDescription(str(ComponentRes.string.menu)).performClick()
         awaitState(rig) { it.overlays.menuOpen }
-        onNodeWithText("Privacy policy").performClick()
+        onNodeWithText(str(Res.string.menu_privacy)).performClick()
         awaitFired(rig, "openLink:${app.snapsync.model.AppLink.PRIVACY_POLICY.url}")
         awaitState(rig) { !it.overlays.menuOpen }
-        onNodeWithContentDescription("Menu").performClick()
+        onNodeWithContentDescription(str(ComponentRes.string.menu)).performClick()
         awaitState(rig) { it.overlays.menuOpen }
-        onNodeWithText("Website").performClick()
+        onNodeWithText(str(Res.string.menu_website)).performClick()
         awaitFired(rig, "openLink:${app.snapsync.model.AppLink.WEBSITE.url}")
     }
 
@@ -503,13 +540,13 @@ class HostStatusActionsTest {
             awaitState(rig) { it.layer is Layer.CreateEvent }
             onNodeWithText("SNAPSYNC").performTouchInput { doubleClick() }
             awaitState(rig) { it.overlays.reportingBug }
-            onNodeWithText("Cancel").performClick()
+            onNodeWithText(str(Res.string.cancel)).performClick()
             awaitState(rig) { !it.overlays.reportingBug }
 
             onNodeWithText("SNAPSYNC").performTouchInput { doubleClick() }
             awaitState(rig) { it.overlays.reportingBug }
-            onNodeWithText("What went wrong, and what were you doing?").performTextInput("It froze")
-            onNodeWithText("Send").performClick()
+            onNodeWithText(str(Res.string.report_placeholder)).performTextInput("It froze")
+            onNodeWithText(str(Res.string.report_send)).performClick()
             awaitFired(rig, "sendDiagnostics:It froze")
             awaitState(rig) { !it.overlays.reportingBug }
         }

@@ -36,6 +36,32 @@ import app.snapsync.ui.components.AppNotice
 import app.snapsync.ui.components.DialogCopy
 import app.snapsync.ui.components.ScreenHeading
 import app.snapsync.ui.components.PromptField
+import app.snapsync.ui.resources.Res
+import app.snapsync.ui.resources.app_name
+import app.snapsync.ui.resources.cancel
+import app.snapsync.ui.resources.event_name_placeholder
+import app.snapsync.ui.resources.event_settings
+import app.snapsync.ui.resources.leave_body
+import app.snapsync.ui.resources.leave_cancel
+import app.snapsync.ui.resources.leave_confirm
+import app.snapsync.ui.resources.leave_event
+import app.snapsync.ui.resources.leave_title
+import app.snapsync.ui.resources.menu_privacy
+import app.snapsync.ui.resources.menu_version
+import app.snapsync.ui.resources.menu_website
+import app.snapsync.ui.resources.rename_body
+import app.snapsync.ui.resources.rename_event
+import app.snapsync.ui.resources.report_body_developer
+import app.snapsync.ui.resources.report_body_device
+import app.snapsync.ui.resources.report_not_sent
+import app.snapsync.ui.resources.report_placeholder
+import app.snapsync.ui.resources.report_problem
+import app.snapsync.ui.resources.report_saved
+import app.snapsync.ui.resources.report_send
+import app.snapsync.ui.resources.report_sent
+import app.snapsync.ui.resources.save
+import app.snapsync.ui.resources.share_invite
+import org.jetbrains.compose.resources.stringResource
 
 
 /**
@@ -102,7 +128,7 @@ fun StatusScreen(
             Box(modifier = Modifier.fillMaxSize()) {
                 // The app-name nav label is always "SnapSync"; the joined event's name is the prominent heading.
                 ScreenLayout(
-                    title = "SnapSync",
+                    title = stringResource(Res.string.app_name),
                     // The rename pen rides with the heading it edits. Unlike the hidden double-tap below, it is a
                     // real control and appears in the accessibility tree. Not suppressed during a pending switch,
                     // for the same reasons the settings gear is not: `RenameEvent` guards the `eventId` itself,
@@ -113,7 +139,7 @@ fun StatusScreen(
                         ScreenHeading(
                             text = joined.membership.name,
                             onEdit = if (chrome.canRename) actions.surfaces.onRenameOpen else null,
-                            editDescription = "Rename event",
+                            editDescription = stringResource(Res.string.rename_event),
                             details = { JoinedHeadingDetails(joined, cutoff) },
                         )
                     },
@@ -145,27 +171,30 @@ fun StatusScreen(
  */
 @Composable
 private fun ColumnScope.AppMenu(build: BuildLabel, actions: MenuActions) {
-    AppMenuHeader("SnapSync")
-    AppMenuItem(icon = AppMenuIcon.REPORT, label = "Report a problem", onClick = actions.onReportBug)
+    AppMenuHeader(stringResource(Res.string.app_name))
+    AppMenuItem(icon = AppMenuIcon.REPORT, label = stringResource(Res.string.report_problem), onClick = actions.onReportBug)
     AppMenuDivider()
-    AppMenuItem(icon = AppMenuIcon.WEBSITE, label = "Website", onClick = { actions.onOpenLink(AppLink.WEBSITE) })
+    AppMenuItem(icon = AppMenuIcon.WEBSITE, label = stringResource(Res.string.menu_website), onClick = { actions.onOpenLink(AppLink.WEBSITE) })
     AppMenuItem(
         icon = AppMenuIcon.PRIVACY,
-        label = "Privacy policy",
+        label = stringResource(Res.string.menu_privacy),
         onClick = { actions.onOpenLink(AppLink.PRIVACY_POLICY) },
     )
-    AppMenuFooter("Version ${build.version} (${build.buildNumber})")
+    AppMenuFooter(stringResource(Res.string.menu_version, build.version, build.buildNumber))
 }
 
 /**
  * The word on a confirmed report (capability `privacy-security`): what became of it, and never more — "sent" is a
  * hand-off, so it claims no delivery, and the failure is told calmly.
  */
-internal fun reportNoticeText(outcome: ReportOutcome): String = when (outcome) {
-    ReportOutcome.SENT -> "Thanks — your report was sent."
-    ReportOutcome.SAVED -> "Your report was saved on this device."
-    ReportOutcome.NOT_SENT -> "Your report couldn't be sent. Please try again later."
-}
+@Composable
+internal fun reportNoticeText(outcome: ReportOutcome): String = stringResource(
+    when (outcome) {
+        ReportOutcome.SENT -> Res.string.report_sent
+        ReportOutcome.SAVED -> Res.string.report_saved
+        ReportOutcome.NOT_SENT -> Res.string.report_not_sent
+    },
+)
 
 /**
  * What the status screen's own chrome shows, derived once.
@@ -261,11 +290,10 @@ private fun StatusOverlays(state: UiState, actions: StatusActions) {
 private fun LeaveConfirmDialog(actions: StatusActions) {
     AppDestructiveConfirmDialog(
         copy = DialogCopy(
-            title = "Leave this event?",
-            body = "You'll stop sharing and receiving photos. Photos already in your " +
-            "gallery stay.",
-            confirmLabel = "Leave",
-            cancelLabel = "Stay",
+            title = stringResource(Res.string.leave_title),
+            body = stringResource(Res.string.leave_body),
+            confirmLabel = stringResource(Res.string.leave_confirm),
+            cancelLabel = stringResource(Res.string.leave_cancel),
         ),
         onConfirm = actions.joined.onLeaveEvent,
         onDismiss = actions.surfaces.onConfirmLeaveDismiss,
@@ -300,22 +328,22 @@ private fun RenameSheet(
     }
     AppTextPromptSheet(
         copy = DialogCopy(
-            title = "Rename event",
-            body = "Everyone in the event sees the new name.",
-            confirmLabel = "Save",
-            cancelLabel = "Cancel",
+            title = stringResource(Res.string.rename_event),
+            body = stringResource(Res.string.rename_body),
+            confirmLabel = stringResource(Res.string.save),
+            cancelLabel = stringResource(Res.string.cancel),
         ),
         field = PromptField(
-            placeholder = "Event name",
+            placeholder = stringResource(Res.string.event_name_placeholder),
             initialValue = membership.name,
             // The backend's own bound (capability `event-creation`), enforced by the input so an
             // over-long name is unreachable rather than rejected on a round trip. The SAME constant the
             // create form caps at — it was a bare literal here, which is how the two could have drifted.
             maxLength = EVENT_NAME_MAX_LENGTH,
             busy = renameState == RenameState.InFlight,
-            // The copy arrives already formatted: turning a failure REASON into words is the reduction's
-            // job, exactly as it is for the create layer's twin (capability `manage-membership`).
-            error = (renameState as? RenameState.Failed)?.message,
+            // The reduction names the failure; the words are this screen's, as for the create layer's twin
+            // (capability `manage-membership`).
+            error = (renameState as? RenameState.Failed)?.message?.text(),
         ),
         // The id rides with the name so a switch landing mid-edit makes the use-case a no-op
         // rather than renaming a different event.
@@ -350,24 +378,22 @@ private fun BugReportSheet(
     AppTextPromptSheet(
         copy = when (destination) {
             ReportDestination.DEVELOPER -> DialogCopy(
-                title = "Report a problem",
-                body = "Sent with the app's recent activity log and sync state to the developer's " +
-                    "error-tracking service.",
-                confirmLabel = "Send",
-                cancelLabel = "Cancel",
+                title = stringResource(Res.string.report_problem),
+                body = stringResource(Res.string.report_body_developer),
+                confirmLabel = stringResource(Res.string.report_send),
+                cancelLabel = stringResource(Res.string.cancel),
             )
             // A build that reports nowhere keeps the report on the phone, and says so — it never suggests a
             // destination it does not have (capability `privacy-security`).
             ReportDestination.THIS_DEVICE -> DialogCopy(
-                title = "Report a problem",
-                body = "Saved on this device with the app's recent activity log and sync state. " +
-                    "Nothing is sent.",
-                confirmLabel = "Save",
-                cancelLabel = "Cancel",
+                title = stringResource(Res.string.report_problem),
+                body = stringResource(Res.string.report_body_device),
+                confirmLabel = stringResource(Res.string.save),
+                cancelLabel = stringResource(Res.string.cancel),
             )
         },
         field = PromptField(
-            placeholder = "What went wrong, and what were you doing?",
+            placeholder = stringResource(Res.string.report_placeholder),
             // The description titles the report in the error-tracking service, so it is bounded to
             // stay readable in a list of issues (capability `privacy-security`).
             maxLength = 200,
@@ -401,10 +427,10 @@ private fun JoinedBottomActions(actions: StatusActions, closed: Boolean) {
     // IS having a membership, and the invite URL is derived from it. A CLOSED event admits nobody and changes
     // nothing any more, so it offers neither (capability `manage-membership`).
     if (!closed) {
-        SettingsButton(description = "Event settings", onClick = actions.surfaces.onOpenReconfigure)
-        ShareButton(description = "Share invite link", onClick = actions.joined.onShareInvite)
+        SettingsButton(description = stringResource(Res.string.event_settings), onClick = actions.surfaces.onOpenReconfigure)
+        ShareButton(description = stringResource(Res.string.share_invite), onClick = actions.joined.onShareInvite)
     }
-    LeaveButton(description = "Leave event", onClick = actions.surfaces.onConfirmLeaveOpen)
+    LeaveButton(description = stringResource(Res.string.leave_event), onClick = actions.surfaces.onConfirmLeaveOpen)
 }
 
 /**

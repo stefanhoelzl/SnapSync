@@ -37,6 +37,9 @@ class AndroidTargetPlugin : Plugin<Project> {
                 compileSdk = version("android-compileSdk").toInt()
                 minSdk = version("android-minSdk").toInt()
                 compilerOptions.jvmTarget.set(JvmTarget.fromTarget(version("android-jvmTarget")))
+                // A module with strings (`docs/architecture.md`, "Localization") must package them: the KMP
+                // Android library ships no resources unless asked, and the app then renders every string blank.
+                if (project.file("src/commonMain/composeResources").isDirectory) androidResources.enable = true
                 if (hasDeviceTests(project)) {
                     // The `test` tree names the source set `androidDeviceTest`. It would also pull in a `commonTest`,
                     // which is why a module declares device tests only where it holds no common tests (the adapters).

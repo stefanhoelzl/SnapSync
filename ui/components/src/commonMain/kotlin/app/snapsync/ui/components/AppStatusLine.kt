@@ -36,6 +36,22 @@ import app.snapsync.model.Arrow
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.vector.ImageVector
+import app.snapsync.ui.components.resources.Res
+import app.snapsync.ui.components.resources.cannot_verify_detail
+import app.snapsync.ui.components.resources.cannot_verify_title
+import app.snapsync.ui.components.resources.network_blocked
+import app.snapsync.ui.components.resources.network_offline
+import app.snapsync.ui.components.resources.status_allow_access
+import app.snapsync.ui.components.resources.status_allow_access_settings
+import app.snapsync.ui.components.resources.status_in_sync
+import app.snapsync.ui.components.resources.status_not_started
+import app.snapsync.ui.components.resources.status_receiving
+import app.snapsync.ui.components.resources.status_sharing
+import app.snapsync.ui.components.resources.status_sync_ongoing
+import app.snapsync.ui.components.resources.status_sync_pending
+import app.snapsync.ui.components.resources.status_syncing
+import app.snapsync.ui.components.resources.status_waiting_wifi
+import org.jetbrains.compose.resources.stringResource
 
 
 /** One half-cycle of the in-flight arrow's pulse, in milliseconds. */
@@ -128,13 +144,13 @@ fun AppStatusLine(
 private fun StatusBody(status: AppSyncStatus, onAttentionClick: () -> Unit) {
     when (status) {
         AppSyncStatus.Loading ->
-            LineText("Syncing…", MaterialTheme.colorScheme.onSurfaceVariant)
+            LineText(stringResource(Res.string.status_syncing), MaterialTheme.colorScheme.onSurfaceVariant)
 
         AppSyncStatus.InSync ->
             IconLine(
                 icon = Icons.Filled.Check, // a bare checkmark, no filled disc behind it
                 tint = MaterialTheme.colorScheme.primary,
-                text = "In sync",
+                text = stringResource(Res.string.status_in_sync),
             )
 
         is AppSyncStatus.Syncing -> SyncingLine(status)
@@ -143,13 +159,13 @@ private fun StatusBody(status: AppSyncStatus, onAttentionClick: () -> Unit) {
             IconLine(
                 icon = Icons.Filled.Schedule, // a clock: the event exists, it simply has not begun
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                text = "Sharing starts with the event",
+                text = stringResource(Res.string.status_not_started),
             )
 
         is AppSyncStatus.NeedsAccess -> AttentionButton(
             text = when (status.prompt) {
-                AccessPrompt.ALLOW -> "Allow photo access"
-                AccessPrompt.SETTINGS -> "Allow photo access in Settings"
+                AccessPrompt.ALLOW -> stringResource(Res.string.status_allow_access)
+                AccessPrompt.SETTINGS -> stringResource(Res.string.status_allow_access_settings)
             },
             onClick = onAttentionClick,
         )
@@ -214,12 +230,12 @@ private fun SyncingLine(status: AppSyncStatus.Syncing) {
         } else {
             1f
         }
-        ArrowIcon(Icons.Filled.ArrowUpward, "sharing", status.upload, pulseAlpha)
-        ArrowIcon(Icons.Filled.ArrowDownward, "receiving", status.download, pulseAlpha)
+        ArrowIcon(Icons.Filled.ArrowUpward, stringResource(Res.string.status_sharing), status.upload, pulseAlpha)
+        ArrowIcon(Icons.Filled.ArrowDownward, stringResource(Res.string.status_receiving), status.download, pulseAlpha)
         val label = when {
-            ongoing -> "Synchronization ongoing…"
-            status.waitingForWifi -> "Waiting for Wi-Fi…"
-            else -> "Synchronization pending…"
+            ongoing -> stringResource(Res.string.status_sync_ongoing)
+            status.waitingForWifi -> stringResource(Res.string.status_waiting_wifi)
+            else -> stringResource(Res.string.status_sync_pending)
         }
         LineText(label, MaterialTheme.colorScheme.onSurface)
     }
@@ -233,11 +249,12 @@ private fun SyncingLine(status: AppSyncStatus.Syncing) {
  */
 @Composable
 fun AppNetworkNotice(blocked: Boolean, onOpenSettings: () -> Unit) {
-    if (blocked) AttentionButton(NETWORK_BLOCKED, onOpenSettings) else AttentionNotice(OFFLINE)
+    if (blocked) {
+        AttentionButton(stringResource(Res.string.network_blocked), onOpenSettings)
+    } else {
+        AttentionNotice(stringResource(Res.string.network_offline))
+    }
 }
-
-private const val NETWORK_BLOCKED = "Network blocked for SnapSync – Open Settings"
-private const val OFFLINE = "You're offline"
 
 /** The tappable attention pill: something the member can fix, so it carries a chevron and a button role. */
 @Composable
@@ -321,11 +338,11 @@ private fun CannotVerifyDeviceLine() {
             // contentColor; no scheme line is touched here.)
             Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
                 Text(
-                    text = "Can't verify this device — sharing is paused",
+                    text = stringResource(Res.string.cannot_verify_title),
                     style = MaterialTheme.typography.titleMedium,
                 )
                 Text(
-                    text = "Still retrying — your photos aren't lost.",
+                    text = stringResource(Res.string.cannot_verify_detail),
                     style = MaterialTheme.typography.bodySmall,
                 )
             }

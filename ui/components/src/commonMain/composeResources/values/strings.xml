@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The design system's own words (`docs/architecture.md`, "Localization"). This file is the BASE language;
+  a translation is values-<lang>/strings.xml with the same names. A screen's words live in :ui:screens.
+-->
+<resources>
+    <!-- The language these strings are in: every date reads in it too (DateFormats). A translation sets its own. -->
+    <string name="date_language">en</string>
+
+    <!-- An event's dates (appDateRangeLabel). %1$s etc. are dates and times the device's locale formats. -->
+    <string name="date_range_open">From %1$s</string>
+    <string name="date_range_today">Today %1$s – %2$s</string>
+    <string name="date_range_one_day">%1$s %2$s – %3$s</string>
+    <string name="date_span">%1$s – %2$s</string>
+    <string name="date_time_span">%1$s, %2$s–%3$s</string>
+
+    <!-- The range picker's calendar. -->
+    <string name="calendar_previous_month">Previous month</string>
+    <string name="calendar_next_month">Next month</string>
+    <!-- Spoken for the weekday header: the first and last weekday's full names. -->
+    <string name="calendar_weekdays">Weekdays, %1$s to %2$s</string>
+    <!-- Spoken for today's cell: %1$s is its full date. -->
+    <string name="calendar_day_today">%1$s, today</string>
+    <string name="range_starts">Starts</string>
+    <string name="range_ends">Ends</string>
+    <!-- %1$s is the end day, before its time is chosen. -->
+    <string name="range_end_pick_time">%1$s, pick a time</string>
+    <!-- The time wheels' spoken names: "Start hour", "End minute". -->
+    <string name="wheel_start_hour">Start hour</string>
+    <string name="wheel_start_minute">Start minute</string>
+    <string name="wheel_end_hour">End hour</string>
+    <string name="wheel_end_minute">End minute</string>
+    <string name="wheel_not_set">not set</string>
+    <string name="picker_cancel">Cancel</string>
+    <string name="picker_save">Save</string>
+
+    <!-- The which-photos row of the join and settings screens. -->
+    <string name="share_range_change">Change which photos are shared</string>
+    <string name="share_range_title">Which photos to share</string>
+    <string name="share_range_whole_event">The whole event</string>
+    <string name="share_range_from_now">From now</string>
+
+    <!-- The one-line sync status. -->
+    <string name="status_syncing">Syncing…</string>
+    <string name="status_in_sync">In sync</string>
+    <string name="status_not_started">Sharing starts with the event</string>
+    <string name="status_allow_access">Allow photo access</string>
+    <string name="status_allow_access_settings">Allow photo access in Settings</string>
+    <string name="status_sharing">sharing</string>
+    <string name="status_receiving">receiving</string>
+    <string name="status_sync_ongoing">Synchronization ongoing…</string>
+    <string name="status_waiting_wifi">Waiting for Wi-Fi…</string>
+    <string name="status_sync_pending">Synchronization pending…</string>
+    <string name="network_blocked">Network blocked for SnapSync – Open Settings</string>
+    <string name="network_offline">You're offline</string>
+    <!-- No remedy to offer: say only what is true of every cause — the app keeps trying, nothing is lost. -->
+    <string name="cannot_verify_title">Can't verify this device — sharing is paused</string>
+    <string name="cannot_verify_detail">Still retrying — your photos aren't lost.</string>
+
+    <string name="menu">Menu</string>
+    <string name="invited_eyebrow">YOU'RE INVITED</string>
+</resources>

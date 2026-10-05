@@ -25,6 +25,29 @@ import app.snapsync.ui.components.SecondaryButton
 import app.snapsync.ui.components.StatusHint
 import androidx.compose.foundation.layout.ColumnScope
 import app.snapsync.ui.components.DialogCopy
+import app.snapsync.ui.resources.Res
+import app.snapsync.ui.resources.album_existing
+import app.snapsync.ui.resources.album_folder_receive_existing
+import app.snapsync.ui.resources.album_none
+import app.snapsync.ui.resources.cancel
+import app.snapsync.ui.resources.event_closed_body
+import app.snapsync.ui.resources.event_closed_title
+import app.snapsync.ui.resources.event_not_found_body
+import app.snapsync.ui.resources.event_not_found_title
+import app.snapsync.ui.resources.event_settings
+import app.snapsync.ui.resources.join_both_off
+import app.snapsync.ui.resources.load_failed_body
+import app.snapsync.ui.resources.load_failed_title
+import app.snapsync.ui.resources.ok
+import app.snapsync.ui.resources.retry
+import app.snapsync.ui.resources.save
+import app.snapsync.ui.resources.settings_save_failed
+import app.snapsync.ui.resources.settings_stop_sharing_note
+import app.snapsync.ui.resources.switch_body
+import app.snapsync.ui.resources.switch_confirm
+import app.snapsync.ui.resources.switch_title
+import app.snapsync.ui.resources.this_event
+import org.jetbrains.compose.resources.stringResource
 
 // In-place membership reconfigure (capability `manage-membership`) and the switch confirmation
 // that guards a change of event.
@@ -73,10 +96,10 @@ internal fun ReconfigureScreen(
         ) {
             // Read-only header: which event's settings these are. No eyebrow: this is not an invitation, so the
             // join gate's "YOU'RE INVITED" header does not belong here, and the subtitle already says what it is.
-            AppIdentityHeader(eyebrow = null, title = membership.name, subtitle = "Event settings")
+            AppIdentityHeader(eyebrow = null, title = membership.name, subtitle = stringResource(Res.string.event_settings))
             // The last Save did not land (capability `manage-membership`): the edits are still here, and
             // nothing about the membership changed — said plainly, so the member knows a retry is safe.
-            if (surface.saveFailed) StatusHint("Your settings couldn't be saved, so nothing changed. Try again.")
+            if (surface.saveFailed) StatusHint(stringResource(Res.string.settings_save_failed))
 
             ParticipationSections(
                 state = ParticipationState(
@@ -137,7 +160,7 @@ internal fun SwitchDialog(
     onCancelSwitch: () -> Unit,
     onRetryLoad: () -> Unit,
 ) {
-    val current = currentEventName ?: "this event"
+    val current = currentEventName ?: stringResource(Res.string.this_event)
     when (val phase = switch.phase) {
         // Only the Ready step opens a confirmation here. The others are unreachable in this overlay and
         // are collapsed deliberately below, each with the reason it cannot occur.
@@ -153,10 +176,10 @@ internal fun SwitchDialog(
                 // follows — and shows no shareable count, there being no chosen range to count yet
                 // (capability `join-event`).
                 copy = DialogCopy(
-                    title = "Switch events?",
-                    confirmLabel = "Switch",
-                    cancelLabel = "Cancel",
-                    body = "You'll leave \"$current\" and join \"${phase.event.name}\".",
+                    title = stringResource(Res.string.switch_title),
+                    confirmLabel = stringResource(Res.string.switch_confirm),
+                    cancelLabel = stringResource(Res.string.cancel),
+                    body = stringResource(Res.string.switch_body, current, phase.event.name),
                 ),
                 onConfirm = onConfirmSwitch,
                 onDismiss = onCancelSwitch,
@@ -165,10 +188,10 @@ internal fun SwitchDialog(
         JoinPhase.NotFound ->
             AppConfirmDialog(
                 copy = DialogCopy(
-                    title = "Event not found",
-                    body = "This link is invalid, or the event no longer exists.",
-                    confirmLabel = "OK",
-                    cancelLabel = "Cancel",
+                    title = stringResource(Res.string.event_not_found_title),
+                    body = stringResource(Res.string.event_not_found_body),
+                    confirmLabel = stringResource(Res.string.ok),
+                    cancelLabel = stringResource(Res.string.cancel),
                 ),
                 onConfirm = onCancelSwitch,
                 onDismiss = onCancelSwitch,
@@ -177,10 +200,10 @@ internal fun SwitchDialog(
         JoinPhase.Closed ->
             AppConfirmDialog(
                 copy = DialogCopy(
-                    title = "Event closed",
-                    body = "This event can no longer be joined.",
-                    confirmLabel = "OK",
-                    cancelLabel = "Cancel",
+                    title = stringResource(Res.string.event_closed_title),
+                    body = stringResource(Res.string.event_closed_body),
+                    confirmLabel = stringResource(Res.string.ok),
+                    cancelLabel = stringResource(Res.string.cancel),
                 ),
                 onConfirm = onCancelSwitch,
                 onDismiss = onCancelSwitch,
@@ -188,10 +211,10 @@ internal fun SwitchDialog(
         JoinPhase.LoadFailed ->
             AppConfirmDialog(
                 copy = DialogCopy(
-                    title = "Couldn't load the event",
-                    body = "Check your connection and try again.",
-                    confirmLabel = "Retry",
-                    cancelLabel = "Cancel",
+                    title = stringResource(Res.string.load_failed_title),
+                    body = stringResource(Res.string.load_failed_body),
+                    confirmLabel = stringResource(Res.string.retry),
+                    cancelLabel = stringResource(Res.string.cancel),
                 ),
                 onConfirm = onRetryLoad,
                 onDismiss = onCancelSwitch,
@@ -207,14 +230,15 @@ internal fun SwitchDialog(
  * already-synced photos are included. "Synced", not "shared and received": this note does not vary with the
  * switches, and must not name a feed the membership lacks.
  */
-private fun reconfigureAlbumNote(saveToAlbum: Boolean, kind: AlbumKind): String = when {
-    !saveToAlbum -> "No album is created."
-    // A folder album (Android) holds only what is received, and gathering moves the received photos into it.
-    kind == AlbumKind.FOLDER ->
-        "Photos you receive are collected in an album named after the event, including the ones already received. " +
-            "Your own photos stay where they are."
-    else -> "Photos are collected in an album named after the event, including the ones you already have."
-}
+@Composable
+private fun reconfigureAlbumNote(saveToAlbum: Boolean, kind: AlbumKind): String = stringResource(
+    when {
+        !saveToAlbum -> Res.string.album_none
+        // A folder album (Android) holds only what is received, and gathering moves the received photos into it.
+        kind == AlbumKind.FOLDER -> Res.string.album_folder_receive_existing
+        else -> Res.string.album_existing
+    },
+)
 
 /**
  * Save and Cancel, over the standing statement of what changing these settings does.
@@ -233,16 +257,9 @@ private fun ColumnScope.SaveActions(enabled: Boolean, onSave: () -> Unit, onCanc
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        StatusHint(
-            "Photos you stop sharing won't reach anyone new; whoever already has them keeps them. " +
-                "Photos you've received stay.",
-        )
-        if (!enabled) {
-            StatusHint(
-                "Turn on sharing or receiving. With both off, joining does nothing.",
-            )
-        }
-        PrimaryButton(label = "Save", onClick = onSave, enabled = enabled)
-        SecondaryButton(label = "Cancel", onClick = onCancel)
+        StatusHint(stringResource(Res.string.settings_stop_sharing_note))
+        if (!enabled) StatusHint(stringResource(Res.string.join_both_off))
+        PrimaryButton(label = stringResource(Res.string.save), onClick = onSave, enabled = enabled)
+        SecondaryButton(label = stringResource(Res.string.cancel), onClick = onCancel)
     }
 }

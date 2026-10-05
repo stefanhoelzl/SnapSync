@@ -34,6 +34,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.Dp
+import app.snapsync.ui.components.resources.Res
+import app.snapsync.ui.components.resources.menu
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * Owns the screen's convention-bearing structure: edge insets, the small app-name nav label, an
@@ -135,7 +138,7 @@ private fun TitleRow(title: String, onDoubleTap: (() -> Unit)?, onMenu: (() -> U
             IconButton(onClick = onMenu, modifier = Modifier.align(Alignment.CenterStart).offset(x = (-12).dp)) {
                 Icon(
                     imageVector = Icons.Filled.Menu,
-                    contentDescription = "Menu",
+                    contentDescription = stringResource(Res.string.menu),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }

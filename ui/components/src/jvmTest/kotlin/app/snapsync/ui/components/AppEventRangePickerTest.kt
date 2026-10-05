@@ -31,6 +31,11 @@ import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.plus
 import org.junit.Rule
+import app.snapsync.ui.components.resources.Res
+import app.snapsync.ui.components.resources.range_end_pick_time
+import app.snapsync.ui.components.resources.wheel_end_hour
+import app.snapsync.ui.components.resources.wheel_end_minute
+import app.snapsync.ui.components.resources.wheel_start_hour
 
 /**
  * The inline [AppEventRangePicker] (capability `create-event`): the calendar's tap cycle, an end time that
@@ -56,43 +61,43 @@ class AppEventRangePickerTest {
     @Test
     fun `the last day starts on the start's day with its time blank`() {
         setPicker()
-        rule.onNodeWithText("10 Mar 2026, pick a time").assertExists()
-        rule.onNodeWithContentDescription("End hour", useUnmergedTree = true)
+        rule.onNodeWithText(str(Res.string.range_end_pick_time, "10 Mar 2026")).assertExists()
+        rule.onNodeWithContentDescription(str(Res.string.wheel_end_hour), useUnmergedTree = true)
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "not set"))
-        rule.onNodeWithContentDescription("Start hour", useUnmergedTree = true)
+        rule.onNodeWithContentDescription(str(Res.string.wheel_start_hour), useUnmergedTree = true)
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "09"))
     }
 
     @Test
     fun `the first tap on a later day places the last day and leaves its time blank`() {
         setPicker()
-        rule.onNodeWithContentDescription("Thursday 12 March 2026").performClick()
+        rule.onNodeWithContentDescription("Thursday, 12 March 2026").performClick()
         rule.waitForIdle()
         assertEquals(LocalDate(2026, 3, 12), range.endDay)
         assertNull(range.untilTime)
-        rule.onNodeWithText("12 Mar 2026, pick a time").assertExists()
+        rule.onNodeWithText(str(Res.string.range_end_pick_time, "12 Mar 2026")).assertExists()
     }
 
     @Test
     fun `tapping a Until hour row sets the hour but leaves the minute and the end unset`() {
         setPicker()
-        rule.onNodeWithContentDescription("Thursday 12 March 2026").performClick()
+        rule.onNodeWithContentDescription("Thursday, 12 March 2026").performClick()
         // The blank wheel sits over the start's 09, so 10 is the row just below the reading line.
-        rule.onNode(hasText("10") and hasAnyAncestor(hasContentDescription("End hour")), useUnmergedTree = true)
+        rule.onNode(hasText("10") and hasAnyAncestor(hasContentDescription(str(Res.string.wheel_end_hour))), useUnmergedTree = true)
             .performClick()
         rule.waitForIdle()
         assertEquals(10, range.untilHour)
         assertNull(range.until)
-        rule.onNodeWithText("12 Mar 2026, pick a time").assertExists()
-        rule.onNodeWithContentDescription("End minute", useUnmergedTree = true)
+        rule.onNodeWithText(str(Res.string.range_end_pick_time, "12 Mar 2026")).assertExists()
+        rule.onNodeWithContentDescription(str(Res.string.wheel_end_minute), useUnmergedTree = true)
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "not set"))
     }
 
     @Test
     fun `dragging the blank Until minutes fills the clock's hour and shows minutes while moving`() {
         setPicker()
-        rule.onNodeWithContentDescription("Thursday 12 March 2026").performClick()
-        val minutes = rule.onNodeWithContentDescription("End minute", useUnmergedTree = true)
+        rule.onNodeWithContentDescription("Thursday, 12 March 2026").performClick()
+        val minutes = rule.onNodeWithContentDescription(str(Res.string.wheel_end_minute), useUnmergedTree = true)
         minutes.performTouchInput {
             down(center)
             moveBy(androidx.compose.ui.geometry.Offset(0f, -height / 2f))
@@ -110,7 +115,7 @@ class AppEventRangePickerTest {
     fun `the unset end's summary is a button that asks for the end time`() {
         var asked = 0
         setPicker(EndTimeGuide(showRequests = 0, onPickEndTime = { asked++ }))
-        rule.onNodeWithText("10 Mar 2026, pick a time").performClick()
+        rule.onNodeWithText(str(Res.string.range_end_pick_time, "10 Mar 2026")).performClick()
         assertEquals(1, asked)
     }
 
@@ -127,22 +132,22 @@ class AppEventRangePickerTest {
     @Test
     fun `while the last day is pending, days past the window are disabled`() {
         setPicker()
-        rule.onNodeWithContentDescription("Friday 20 March 2026").assertIsEnabled()     // exactly the limit
-        rule.onNodeWithContentDescription("Saturday 21 March 2026").assertIsNotEnabled() // one day past it
+        rule.onNodeWithContentDescription("Friday, 20 March 2026").assertIsEnabled()     // exactly the limit
+        rule.onNodeWithContentDescription("Saturday, 21 March 2026").assertIsNotEnabled() // one day past it
     }
 
     @Test
     fun `a same-day end before the start cannot be tapped`() {
         setPicker()
-        rule.onNode(hasText("08") and hasAnyAncestor(hasContentDescription("End hour")), useUnmergedTree = true)
+        rule.onNode(hasText("08") and hasAnyAncestor(hasContentDescription(str(Res.string.wheel_end_hour))), useUnmergedTree = true)
             .onParent().assertIsNotEnabled()
     }
 
     @Test
     fun `dragging the last day moves it`() {
         setPicker()
-        rule.onNodeWithContentDescription("Thursday 12 March 2026").performClick()
-        rule.onNodeWithContentDescription("Thursday 12 March 2026").performTouchInput {
+        rule.onNodeWithContentDescription("Thursday, 12 March 2026").performClick()
+        rule.onNodeWithContentDescription("Thursday, 12 March 2026").performTouchInput {
             val to = centerRight + androidx.compose.ui.geometry.Offset(width * 2f, 0f) // two columns on: Saturday
             swipe(center, to, durationMillis = 300)
         }
@@ -154,7 +159,7 @@ class AppEventRangePickerTest {
     @Test
     fun `a long press then a sweep selects a new range`() {
         setPicker()
-        rule.onNodeWithContentDescription("Monday 16 March 2026").performTouchInput {
+        rule.onNodeWithContentDescription("Monday, 16 March 2026").performTouchInput {
             down(center)
             advanceEventTime(viewConfiguration.longPressTimeoutMillis + 100)
             moveBy(androidx.compose.ui.geometry.Offset(width * 2f, 0f))
@@ -169,8 +174,8 @@ class AppEventRangePickerTest {
     @Test
     fun `each day cell announces its full date and the ends report selected`() {
         setPicker()
-        rule.onNodeWithContentDescription("Tuesday 10 March 2026").assertIsSelected()
-        rule.onNodeWithContentDescription("Monday 9 March 2026").assertIsNotSelected()
+        rule.onNodeWithContentDescription("Tuesday, 10 March 2026").assertIsSelected()
+        rule.onNodeWithContentDescription("Monday, 9 March 2026").assertIsNotSelected()
     }
 
     private fun setPicker(endTime: EndTimeGuide = EndTimeGuide.NONE) {

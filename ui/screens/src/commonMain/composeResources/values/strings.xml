@@ -1,0 +1,200 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The screens' words (`docs/architecture.md`, "Localization"). This file is the BASE language; a translation is
+  values-<lang>/strings.xml with the same names. The design system's own words live in :ui:components.
+  Keys prefixed ios_ / android_ are text the OS shows outside the app's screens; the build generates the
+  platforms' own files from them (`./gradlew nativeStrings`).
+-->
+<resources>
+    <string name="app_name">SnapSync</string>
+    <!-- The one warm line the identity headers allow themselves, on create and on every join phase. -->
+    <string name="hero_subtitle">Every photo, in your gallery.</string>
+    <string name="cancel">Cancel</string>
+    <string name="save">Save</string>
+    <string name="retry">Retry</string>
+    <string name="ok">OK</string>
+
+    <!-- A duration by its coarsest whole unit: "Event lasts 2 weeks", "ends in 5 hours". -->
+    <plurals name="duration_weeks">
+        <item quantity="one">%1$d week</item>
+        <item quantity="other">%1$d weeks</item>
+    </plurals>
+    <plurals name="duration_days">
+        <item quantity="one">%1$d day</item>
+        <item quantity="other">%1$d days</item>
+    </plurals>
+    <plurals name="duration_hours">
+        <item quantity="one">%1$d hour</item>
+        <item quantity="other">%1$d hours</item>
+    </plurals>
+    <plurals name="duration_minutes">
+        <item quantity="one">%1$d minute</item>
+        <item quantity="other">%1$d minutes</item>
+    </plurals>
+    <!-- The joined screen's short form: "ends in 5 min". -->
+    <plurals name="duration_minutes_short">
+        <item quantity="one">%1$d min</item>
+        <item quantity="other">%1$d min</item>
+    </plurals>
+    <string name="duration_under_a_minute">less than a minute</string>
+
+    <!-- Messages the app shows as facts (ScreenMessage). -->
+    <string name="message_invalid_link">That QR code isn't a SnapSync event.</string>
+    <!-- The client already blocks the knowable name rules, so a refusal is one it can't name: say what to try. -->
+    <string name="message_create_name_refused">That name wasn't accepted. Try a different one.</string>
+    <!-- Reached only when the backend's limit has shrunk since this build: say it is the dates, not the name. -->
+    <string name="message_create_dates_refused">Those dates weren't accepted. Try a shorter range.</string>
+    <string name="message_create_failed">Couldn't connect. Check your connection and try again.</string>
+    <string name="message_rename_name_refused">That name wasn't accepted. Try a shorter one.</string>
+    <string name="message_rename_failed">Couldn't rename the event. Check your connection and try again.</string>
+
+    <!-- Create an event. -->
+    <string name="create_title">Create an event</string>
+    <string name="create_name_question">What's it called?</string>
+    <string name="create_name_placeholder">e.g. Anna's birthday</string>
+    <string name="create_when_question">When is it?</string>
+    <!-- %1$d is the longest an event may last, in days. -->
+    <string name="create_window_note">Only photos taken between these dates are shared. An event can last up to %1$d days.</string>
+    <string name="create_button">Create event</string>
+    <string name="create_join_hint">To join an event instead, scan its QR code with your camera.</string>
+    <string name="create_step_name">Name the event</string>
+    <string name="create_step_end_time">Pick an end time</string>
+    <!-- %1$s is a duration: "2 weeks". -->
+    <string name="create_lasts">Event lasts %1$s</string>
+    <string name="creating">Creating your event …</string>
+
+    <!-- The backend refuses this build as too old. -->
+    <string name="update_eyebrow">UPDATE NEEDED</string>
+    <string name="update_title">Update SnapSync</string>
+    <string name="update_subtitle">This version can no longer reach the event.</string>
+    <string name="update_headline">Time to update</string>
+    <!-- %1$s is the oldest version the backend serves. -->
+    <string name="update_detail_version">SnapSync %1$s or newer is needed to keep sharing photos.</string>
+    <string name="update_detail">A newer version of SnapSync is needed to keep sharing photos.</string>
+    <string name="store_app_store">Open the App Store</string>
+    <string name="store_google_play">Open Google Play</string>
+
+    <!-- The join surface. -->
+    <string name="join_access_notice">iOS asks for access to your photos next</string>
+    <string name="join_access_info">What joining does with your photos</string>
+    <string name="join_access_sheet_title">What joining does</string>
+    <string name="join_access_dismiss">Got it</string>
+    <string name="join_both_off">Turn on sharing or receiving. With both off, joining does nothing.</string>
+    <string name="join_button_allow">Join &amp; allow photos</string>
+    <string name="join_button">Join</string>
+    <string name="access_shared_title">Your photos are shared automatically</string>
+    <string name="access_shared_body">Photos you take during the event arrive in everyone's gallery.</string>
+    <string name="access_library_title">SnapSync needs access to your photos</string>
+    <string name="access_library_body">To share yours, and to save the group's photos to your gallery.</string>
+    <string name="access_choose_title">Allow all photos, or pick which to share</string>
+    <string name="access_choose_body">Choosing specific photos works too — and you can add more anytime.</string>
+    <string name="access_range_title">Only photos in the range you chose</string>
+    <string name="access_range_body">Nothing older is shared.</string>
+
+    <!-- What the event album collects, named exactly for the switches that are on. -->
+    <string name="album_none">No album is created.</string>
+    <string name="album_folder_receive">Photos you receive are collected in an album named after the event. Your own photos stay where they are.</string>
+    <string name="album_folder_nothing">You won't receive photos, so nothing is collected.</string>
+    <string name="album_share_and_receive">Photos you share and photos you receive are collected in an album named after the event.</string>
+    <string name="album_share">Photos you share are collected in an album named after the event.</string>
+    <string name="album_receive">Photos you receive are collected in an album named after the event.</string>
+    <string name="album_nothing">Nothing is shared or received, so nothing is collected.</string>
+    <string name="album_folder_receive_existing">Photos you receive are collected in an album named after the event, including the ones already received. Your own photos stay where they are.</string>
+    <string name="album_existing">Photos are collected in an album named after the event, including the ones you already have.</string>
+
+    <!-- The participation switches, on the join and settings screens. -->
+    <string name="share_toggle">Share my photos</string>
+    <!-- Names the SOURCE, never "save to your library": that reads as backing up your own photos. -->
+    <string name="receive_toggle">Receive everyone's photos</string>
+    <string name="receive_on_note">Photos others share arrive in your gallery on their own.</string>
+    <string name="receive_off_note">You won't receive the event's photos.</string>
+    <string name="album_toggle">Create an album</string>
+    <string name="mobile_data_toggle">Use mobile data for photos</string>
+    <string name="mobile_data_on_note">Photos are shared and received on any network.</string>
+    <string name="mobile_data_off_note">Photos are shared and received only on Wi-Fi.</string>
+    <string name="share_off_note">Nothing of yours leaves this phone.</string>
+    <string name="share_zero_note">New photos you take will be shared as you go.</string>
+    <!-- What is SUBTRACTED, never a promise of what gets through: the app cannot tell a camera photo apart. -->
+    <string name="share_exclusions_note">Screenshots, screen recordings, GIFs and photos saved from chat apps are never shared.</string>
+    <string name="range_whole_event">The whole event</string>
+    <string name="range_from_now">From now</string>
+    <string name="range_custom">Custom range</string>
+    <!-- %1$s is the range's name ("The whole event"). -->
+    <string name="share_detail_counting">%1$s · counting your photos…</string>
+    <plurals name="share_detail_count">
+        <item quantity="one">%1$s · %2$d photo from your gallery</item>
+        <item quantity="other">%1$s · %2$d photos from your gallery</item>
+    </plurals>
+
+    <!-- The joined screen. -->
+    <string name="rename_event">Rename event</string>
+    <string name="joined_statement">You've joined this event</string>
+    <!-- %1$s is a duration: "2 days". -->
+    <string name="timing_starts_in">starts in %1$s</string>
+    <string name="timing_ends_in">ends in %1$s</string>
+    <string name="timing_ended">ended</string>
+    <string name="invite_eyebrow">Invite others</string>
+    <!-- Addressed to the member holding the phone: "others" names nobody the reader could be. -->
+    <string name="invite_caption">Others join by scanning this with their camera</string>
+    <string name="choose_more_photos">Choose more photos</string>
+    <string name="allow_full_access">Allow full access</string>
+    <!-- The counts line: "12/15 shared · 40 received". -->
+    <string name="counts_line">%1$s · %2$s</string>
+    <string name="counts_shared_progress">%1$d/%2$d shared</string>
+    <string name="counts_shared">%1$d shared</string>
+    <string name="counts_not_sharing">Not sharing</string>
+    <string name="counts_received_progress">%1$d/%2$d received</string>
+    <string name="counts_received">%1$d received</string>
+    <string name="counts_not_receiving">Not receiving</string>
+    <string name="waiting_members">Waiting for %1$d of %2$d members</string>
+    <string name="event_settings">Event settings</string>
+    <string name="share_invite">Share invite link</string>
+    <string name="leave_event">Leave event</string>
+    <string name="leave_title">Leave this event?</string>
+    <string name="leave_body">You'll stop sharing and receiving photos. Photos already in your gallery stay.</string>
+    <string name="leave_confirm">Leave</string>
+    <string name="leave_cancel">Stay</string>
+    <string name="rename_body">Everyone in the event sees the new name.</string>
+    <string name="event_name_placeholder">Event name</string>
+
+    <!-- The app menu and the problem report. -->
+    <string name="report_problem">Report a problem</string>
+    <string name="menu_website">Website</string>
+    <string name="menu_privacy">Privacy policy</string>
+    <!-- %1$s is the version, %2$s the build number. -->
+    <string name="menu_version">Version %1$s (%2$s)</string>
+    <!-- "Sent" is a hand-off: it claims no delivery. -->
+    <string name="report_sent">Thanks — your report was sent.</string>
+    <string name="report_saved">Your report was saved on this device.</string>
+    <string name="report_not_sent">Your report couldn't be sent. Please try again later.</string>
+    <string name="report_body_developer">Sent with the app's recent activity log and sync state to the developer's error-tracking service.</string>
+    <string name="report_body_device">Saved on this device with the app's recent activity log and sync state. Nothing is sent.</string>
+    <string name="report_send">Send</string>
+    <string name="report_placeholder">What went wrong, and what were you doing?</string>
+
+    <!-- The join phases. -->
+    <string name="event_not_found_title">Event not found</string>
+    <string name="event_not_found_body">This link is invalid, or the event no longer exists.</string>
+    <string name="event_closed_title">Event closed</string>
+    <string name="event_closed_body">This event can no longer be joined.</string>
+    <string name="join_failed_title">Couldn't join</string>
+    <string name="join_failed_body">Something went wrong. Try again.</string>
+    <string name="event_full_title">This event is full</string>
+    <string name="event_full_body">No more members can join it.</string>
+    <string name="loading_event">Loading event details …</string>
+    <string name="waiting_network_title">Waiting for a network</string>
+    <string name="waiting_network_body">The event loads as soon as you're back online.</string>
+    <string name="load_failed_title">Couldn't load the event</string>
+    <string name="load_failed_body">Check your connection and try again.</string>
+    <string name="joining">Joining …</string>
+
+    <!-- The event's settings, and switching events. -->
+    <string name="settings_save_failed">Your settings couldn't be saved, so nothing changed. Try again.</string>
+    <!-- Implies no deletion: a member who already has a photo keeps it. -->
+    <string name="settings_stop_sharing_note">Photos you stop sharing won't reach anyone new; whoever already has them keeps them. Photos you've received stay.</string>
+    <string name="switch_title">Switch events?</string>
+    <string name="switch_confirm">Switch</string>
+    <!-- %1$s is the current event's name, %2$s the new one's. -->
+    <string name="switch_body">You'll leave "%1$s" and join "%2$s".</string>
+    <string name="this_event">this event</string>
+</resources>

@@ -24,6 +24,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.snapsync.model.RangeChoice
 import kotlinx.datetime.LocalDateTime
+import app.snapsync.ui.components.resources.Res
+import app.snapsync.ui.components.resources.share_range_change
+import app.snapsync.ui.components.resources.share_range_from_now
+import app.snapsync.ui.components.resources.share_range_title
+import app.snapsync.ui.components.resources.share_range_whole_event
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * The capture-date range as the member has CHOSEN it: the [preset], and the [from]/[until] it resolves to.
@@ -105,20 +111,22 @@ fun AppShareRangeRow(
                 )
             }
             IconButton(onClick = { picking = true }) {
-                Icon(Icons.Filled.Edit, contentDescription = "Change which photos are shared")
+                Icon(Icons.Filled.Edit, contentDescription = stringResource(Res.string.share_range_change))
             }
         }
     }
 
     if (picking) {
+        val wholeEvent = stringResource(Res.string.share_range_whole_event)
+        val fromNow = stringResource(Res.string.share_range_from_now)
         RangePickerDialog(
             initial = EventRange(choices.from, choices.until.date, choices.until.time, endPending = false),
             bounds = RangeBounds.within(window.start, window.end),
-            title = "Which photos to share",
+            title = stringResource(Res.string.share_range_title),
             presets = buildList {
-                add(presetChip("The whole event", RangeChoice.WHOLE_EVENT, choices, actions) { picking = false })
+                add(presetChip(wholeEvent, RangeChoice.WHOLE_EVENT, choices, actions) { picking = false })
                 if (window.nowAvailable) {
-                    add(presetChip("From now", RangeChoice.FROM_NOW, choices, actions) { picking = false })
+                    add(presetChip(fromNow, RangeChoice.FROM_NOW, choices, actions) { picking = false })
                 }
             },
             onDismiss = { picking = false },
