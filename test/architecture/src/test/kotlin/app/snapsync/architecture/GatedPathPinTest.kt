@@ -62,9 +62,16 @@ class GatedPathPinTest {
         assertFalse(isGatedRequest("OPTIONS", "/api/v2/events"))
     }
 
+    /** `isPublicEventRead`, the gate's event reads, from its declaration to its closing brace. */
+    private fun eventReads(): String {
+        val fn = app.readText().substringAfter("function isPublicEventRead(", "")
+        assertTrue(fn.isNotEmpty() && "isPublicEventRead(method, path)" in gate(), "the gate's event reads moved — re-point this pin")
+        return fn.substringBefore("\n}")
+    }
+
     @Test
     fun `the two public event reads are ungated only as reads`() {
-        val gate = gate()
+        val gate = eventReads()
         val reads = Regex("""/\^(\\/events\\/\[\^/]\+(?:\\/files)?)\$/""").findAll(gate).map { it.groupValues[1] }.toList()
         assertEquals(2, reads.size, "the backend's public event reads changed shape — update `isGatedRequest` and this pin: $reads")
         assertTrue(Regex("""\(method === "GET" \|\| method === "HEAD"\) &&\s*\(/\^""").containsMatchIn(gate), "the event reads are no longer GET/HEAD-only")
@@ -89,7 +96,7 @@ class GatedPathPinTest {
                 .containsMatchIn(fn.substringBefore("\n}")),
             "the backend's download-redirect shape changed — update `isGatedRequest` and this pin",
         )
-        assertTrue(Regex("""isDownloadRedirect\(method, path\)""").containsMatchIn(gate()), "the token gate no longer exempts it")
+        assertTrue(Regex("""isDownloadRedirect\(method, path\)""").containsMatchIn(eventReads()), "the token gate no longer exempts it")
         assertFalse(isGatedRequest("GET", "/api/v2/events/E1/files/devices/D1/A/primary"))
         assertTrue(isGatedRequest("PUT", "/api/v2/events/E1/files/devices/D1/A/primary"))
     }
