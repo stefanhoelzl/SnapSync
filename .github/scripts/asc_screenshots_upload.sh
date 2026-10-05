@@ -31,7 +31,7 @@ asc_require_editable_version upload
 
 # Compose from the committed raws. Fails loudly on a missing raw or a wrong output size.
 OUT_DIR="${RUNNER_TEMP:-/tmp}/shots-out"
-RAW_DIR=screenshots OUT_DIR="$OUT_DIR" bash .github/scripts/compose_screenshots.sh "$LOCALE"
+RAW_DIR=screenshots/ios OUT_DIR="$OUT_DIR" bash .github/scripts/compose_screenshots.sh "$LOCALE"
 
 # Show the plan before mutating a public listing. --dry-run reports what would be uploaded/deleted.
 echo "=== dry run ==="

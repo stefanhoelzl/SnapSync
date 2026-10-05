@@ -48,5 +48,5 @@ The wording to apply is in `wording.md`; the graphic to build is in `reference/`
 
 ## 7. Re-capture and integration
 
-- [ ] 7.1 Run `screenshots.yml` against the branch, download both raw sets, check each one by eye per the runbook, and commit `screenshots/` and `screenshots/android/`. Verify that the create and joining captures show the new wording
-- [ ] 7.2 Run the full set locally: `./gradlew build`, the site build, the compositor for both targets, and `openspec validate --strict` for the change. Then review the rendered App Store and Play sets and the landing page against `reference/` and `wording.md`
+- [x] 7.1 Run `screenshots.yml` against the branch, download both raw sets, check each one by eye per the runbook, and commit `screenshots/` and `screenshots/android/`. Verify that the create and joining captures show the new wording
+- [x] 7.2 Run the full set locally: `./gradlew build`, the site build, the compositor for both targets, and `openspec validate --strict` for the change. Then review the rendered App Store and Play sets and the landing page against `reference/` and `wording.md`

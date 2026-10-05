@@ -72,7 +72,7 @@ Rejected because it is exactly the "artist's rendering" the guideline bars.
 **D5 — The concept frame is a pre-rendered image the compositor puts first.** `compose_screenshots.sh`
 emits `01-graphic.png` from the committed render for its target and canvas size. The app captures
 follow as `02-…` to `04-…` with their headlines, as today. The graphic carries its own text, so the
-compositor adds none. Both targets get the frame. Unchanged inputs must still produce unchanged bytes,
+compositor adds none. Both targets get the frame. Every frame of a set sits on the graphic's green gradient (a committed background render per store), not on the flat brand green the compositor used before, so the four frames read as one set and match the Play banner and the site header. Unchanged inputs must still produce unchanged bytes,
 because the Play delivery uploads only a set whose hashes changed.
 
 **D6 — `words` leaves the listing.** "Gallery" is now the same on both stores, so the `{{gallery}}`

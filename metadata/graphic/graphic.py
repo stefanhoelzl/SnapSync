@@ -170,6 +170,12 @@ LAYOUTS = {
     # same headline and support line over its left half as real text (selectable, translatable, read aloud).
     "site-hero": dict(w=1100, h=400, scale=2, out="metadata/graphic/site-hero.png", copy=False,
         stage_css="left:600px;top:0;transform:scale(.8);transform-origin:0 0", bg="70% 100% at 74% 55%"),
+    # The store screenshots' background (`compose_screenshots.sh` lays each app capture on it), so every frame of a
+    # store's set shares the graphic's green — the same gradient as the first frame, without its phones or words.
+    "bg-appstore": dict(w=440, h=956, scale=3, out="metadata/graphic/bg-appstore.png", copy=False, stage=False,
+        bg="80% 60% at 55% 55%"),
+    "bg-play": dict(w=360, h=640, scale=3, out="metadata/graphic/bg-play.png", copy=False, stage=False,
+        bg="80% 60% at 55% 60%"),
     # The same hero on a phone-width page: the phones alone, centred, on a TRANSPARENT background — the page
     # paints the green behind both the words and the picture, so there is no seam between them.
     "site-hero-narrow": dict(w=360, h=250, scale=3, out="metadata/graphic/site-hero-narrow.png", copy=False,
@@ -191,5 +197,6 @@ def page(layout, tagline):
     return (f'<!doctype html><meta charset="utf-8"><style>{CSS}</style>{page_bg}<body>'
             f'<svg width="0" height="0" style="position:absolute">{scenes()}</svg>'
             f'<div class="canvas" style="width:{L["w"]}px;height:{L["h"]}px;{bg}">{copy}'
-            + stage().replace('<div class="stage">', f'<div class="stage" style="{L["stage_css"]}">', 1)
+            + (stage().replace('<div class="stage">', f'<div class="stage" style="{L["stage_css"]}">', 1)
+               if L.get("stage", True) else "")
             + '</div>')

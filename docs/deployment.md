@@ -609,7 +609,7 @@ no Gradle, no signing, only the existing Admin ASC key and Play service account.
 6. With `ios`, unless already submitted: find or create the `X.Y` version record and attach the build (idempotent).
    A **newly created** record gets the committed copyright (year of first publication). An existing record's
    copyright is left alone. Upload the listing screenshots — the use-case graphic first, then the app captures
-   composed from `screenshots/*.png` + `metadata/screenshots/en-US.json` (ImageMagick) — only an **editable** version is written to, and the set is
+   composed from `screenshots/ios/*.png` + `metadata/screenshots/en-US.json` (ImageMagick) — only an **editable** version is written to, and the set is
    **replaced**. Apply the `en-US` `whatsNew` and the App Review details (notes from `metadata/review/notes.md`;
    contact details from secrets because the repo is public; "no demo account").
 7. **Preflight** every selected store before either submit: `asc review doctor` must report no blocking check;
@@ -662,11 +662,13 @@ Every output is committed and none may be edited by hand. Change the geometry or
 
 **The use-case graphic** is the other store art: two generic phones on the brand green, one camera taking a photo
 and it arriving in the other's gallery, with the tagline. `metadata/graphic/graphic.py` builds it as HTML and
-`uv run metadata/graphic/render.py` renders it in headless Chromium into five committed PNGs: Play's 1024×500
+`uv run metadata/graphic/render.py` renders it in headless Chromium into seven committed PNGs: Play's 1024×500
 feature graphic (`metadata/play/images/featureGraphic.png`), the first store screenshot for each store
 (`metadata/graphic/frame-appstore.png` 1320×2868, `frame-play.png` 1080×1920) and the landing page's hero
 (`metadata/graphic/site-hero.png`, the feature graphic's composition without words, which the page sets as text,
-and `site-hero-narrow.png`, the phones alone on a transparent background for phone-width pages). Its words are the `tagline` in `metadata/screenshots/en-US.json`; each render
+and `site-hero-narrow.png`, the phones alone on a transparent background for phone-width pages),
+and the store screenshots' background for each store (`bg-appstore.png`, `bg-play.png`): the graphic's gradient alone,
+which `compose_screenshots.sh` lays every app capture on, so all four frames of a set share one green. Its words are the `tagline` in `metadata/screenshots/en-US.json`; each render
 carries the tagline it was made with, and the `metadata` gate (`metadata/graphic/check.py`) fails when the JSON has
 moved on without a re-render. The phones must stay generic (no Dynamic Island, no Apple layout): Apple allows its
 hardware in listing images only as a photograph of the real product.
@@ -723,7 +725,7 @@ hardware in listing images only as a photograph of the real product.
 
 ### Screenshots
 
-Six committed raws in `screenshots/` (3 states × light/dark) feed **both** the App Store listing
+Six committed raws in `screenshots/ios/` (3 states × light/dark) feed **both** the App Store listing
 (uploaded at promote time only) and the `site/` landing page (on merge). A merge that changes them
 changes **no** listing. Each capture is the **real app** — the rig build on a simulator — in a state its real
 reduction reached: `screenshots.yml` sets its launch adapters to mock every system but the screen and the app's
@@ -737,7 +739,7 @@ host inside `build`, so they cannot rot between dispatches.
 ```
 gh workflow run screenshots.yml --ref <branch>          # ~11-19 min
 RID=$(gh run list -w screenshots.yml -L1 --json databaseId -q '.[0].databaseId')
-gh run download "$RID" -n screenshots-raw -D screenshots
+gh run download "$RID" -n screenshots-raw -D screenshots/ios   # refuses to overwrite: download elsewhere and copy
 # LOOK AT THEM, then: git add screenshots/ && git commit
 ```
 

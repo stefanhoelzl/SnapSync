@@ -95,7 +95,7 @@ openspec/       specs/ (contract of record: user-observable outcomes) + changes/
 docs/           architecture.md · testing.md · deployment.md - engineering explanation (app + api), NOT contract
 architecture/   GENERATED diagrams - `./gradlew architectureDiagrams` and commit; stale blocks the PR
 metadata/       the listing copy both stores render from (listing/), App Review notes, Play declarations + art
-screenshots/    the 6 committed raw captures both the listing and the site derive from
+screenshots/    the committed raw captures: ios/ (the App Store listing and the site) and android/ (Google Play)
 scripts/        build and dev tooling (the phones' locks, guard and re-sign are the global `device` skill's)
 .ship/          this repo's half of the global `/ship` skill - gates, PR-title policy,
                 post-merge hook, merge budgets (contract: `~/.claude/skills/ship/hooks.md`)
@@ -361,7 +361,7 @@ gh workflow run promote.yml -f build_number=2140 -f ios=false               # Pl
     --repo stefanhoelzl/SnapSync --target <origin-sha> --previous vX.Y
   ```
 
-**Refreshing the marketing screenshots** — `screenshots/*.png`, 6 raws, 3 states × light/dark, captured from the
+**Refreshing the marketing screenshots** — `screenshots/ios/*.png`, 6 raws, 3 states × light/dark, captured from the
 **real app** (the rig build on a simulator, every system mocked but the screen and its foreground life) driven to
 each state by the scenarios in `:test:integration`'s `Shots.kt` — which `ShotsTest` also runs on the JVM host in
 `build`. To add or change a state, change `Shots.kt`. The same dispatch's `android` job captures Google Play's six
@@ -373,7 +373,7 @@ committed raws (Google Play's listing from `screenshots/android/`, on the merge 
 ```
 gh workflow run screenshots.yml --ref <branch>          # ~11-19 min
 RID=$(gh run list -w screenshots.yml -L1 --json databaseId -q '.[0].databaseId')
-gh run download "$RID" -n screenshots-raw -D screenshots
+gh run download "$RID" -n screenshots-raw -D screenshots/ios   # refuses to overwrite: download elsewhere and copy
 # LOOK AT THEM (below), then:
 git add screenshots/ && git commit
 ```
