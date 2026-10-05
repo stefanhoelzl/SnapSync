@@ -4,13 +4,22 @@
 // and the app screenshots — processed at build time by astro:assets from the committed raws in the
 // repo-root screenshots/ dir (the same source of truth the App Store listing is composited from) and
 // emitted as fingerprinted, same-origin WebP. Zero client JS, zero off-origin subresources.
+//
+// Its words are the store listing's, read at build time, so the site and the stores cannot drift apart
+// (metadata/messaging.md): the hero is the Google Play header — the use-case graphic (metadata/graphic/) with
+// the tagline and its support line set over it as real text — each screenshot's caption is the headline the
+// stores show over it, and the three sections below are the description's. Only the privacy block (pillar P3)
+// is the site's own. The banner is the same in light and dark mode — it is not a screenshot.
 import { Image, getImage } from "astro:assets";
 import Layout from "../layouts/Layout.astro";
 import AppStoreButton from "../components/AppStoreButton.astro";
 import PlayOffer from "../components/PlayOffer.astro";
 import deployment from "../deployment.json";
 import { playOfferFor } from "../lib/play";
-
+import listing from "../../../metadata/listing/en-US.json";
+import shotCopy from "../../../metadata/screenshots/en-US.json";
+import heroArt from "../../../metadata/graphic/site-hero.png";
+import heroNarrow from "../../../metadata/graphic/site-hero-narrow.png";
 import createLight from "../../../screenshots/create-light.png";
 import createDark from "../../../screenshots/create-dark.png";
 import joiningLight from "../../../screenshots/joining-light.png";
@@ -22,26 +31,22 @@ const screens = [
   {
     light: createLight,
     dark: createDark,
-    alt: "The SnapSync start screen, naming a new event and choosing when it begins.",
-    title: "Start an event",
-    sub: "Name it, pick when it begins.",
+    alt: "The SnapSync create screen, naming a new event and choosing its dates.",
+    title: shotCopy.headlines.create,
   },
   {
     light: joiningLight,
     dark: joiningDark,
     alt: "The join screen a scanned QR code opens, showing the event name and what will be shared.",
-    title: "Scan to join",
-    sub: "See what you'll share before you do.",
+    title: shotCopy.headlines.joining,
   },
   {
     light: inSyncLight,
     dark: inSyncDark,
-    alt: "The event screen showing its QR code to share and an in-sync confirmation.",
-    title: "Everyone's in sync",
-    sub: "Share the code; photos flow both ways.",
+    alt: "The event screen showing its QR code for others to join, and that everything has arrived.",
+    title: shotCopy.headlines.in_sync,
   },
 ];
-
 // One <picture> per screenshot, exactly as the original landing page did: the browser serves ONE image
 // per the prefers-color-scheme media query — never a CSS display toggle, which lost the specificity fight
 // with `.shots img{display:block}` and rendered both themes at once. The light capture is the <img>
@@ -52,19 +57,46 @@ const shots = await Promise.all(
     darkSrc: (await getImage({ src: s.dark, width: 440, height: 956, format: "webp" })).src,
   })),
 );
+// The description's sections, after its headline and opening paragraph: "Heading\nBody" blocks.
+const sections = listing.description
+  .split("\n\n")
+  .slice(2)
+  .map((block) => {
+    const [heading, ...body] = block.split("\n");
+    return { heading, body: body.join(" ") };
+  });
+// On a phone-width page the banner stacks the words above the phones; that picture is its own render, the phones
+// alone on a transparent background, so the page's green runs behind both without a seam.
+const heroNarrowSrc = (await getImage({ src: heroNarrow, width: 720, format: "webp" })).src;
+// The tagline breaks after its comma, as the graphic sets it ("Every photo, / in your gallery.").
+const heroLines = shotCopy.tagline.headline.split(", ");
 // Google Play is offered — the badge alone or the closed test's steps, whose third step is the badge.
 const playOffered = playOfferFor(deployment).kind !== "none";
 ---
 
-<Layout title="SnapSync — everyone's photos of the moment, together">
+<Layout title={`SnapSync — ${shotCopy.tagline.headline}`}>
   <section class="hero">
     <div class="wrap">
-      <span class="brandmark lg" role="img" aria-label="SnapSync"></span>
-      <h1>Everyone's photos of the moment, together.</h1>
-      <p class="lede">
-        Scan the event's QR, and every photo the group takes lands in everyone's library —
-        automatically.
-      </p>
+      <div class="banner">
+        <picture>
+          <source media="(max-width: 700px)" srcset={heroNarrowSrc} />
+          <Image
+            class="banner-art"
+            src={heroArt}
+            alt="Two phones: one takes a photo of a sunset, and it appears in the other phone's gallery."
+            width={1100}
+            height={400}
+            densities={[1, 2]}
+          />
+        </picture>
+        <div class="banner-copy">
+          <h1>
+            {heroLines[0]},<br />
+            {heroLines[1]}
+          </h1>
+          <p>{shotCopy.tagline.support}</p>
+        </div>
+      </div>
       <div class="cta">
         <AppStoreButton />
         <PlayOffer />
@@ -72,12 +104,8 @@ const playOffered = playOfferFor(deployment).kind !== "none";
     </div>
   </section>
 
-  <section id="screens">
+  <section id="how">
     <div class="wrap">
-      <p class="eyebrow" style="text-align:center">
-        The app
-      </p>
-      <h2 style="text-align:center">Three screens. That's the whole thing.</h2>
       <div class="shots" tabindex="0" role="group" aria-label="Screenshots of SnapSync, scrollable">
         {shots.map((s) => (
           <figure>
@@ -85,113 +113,31 @@ const playOffered = playOfferFor(deployment).kind !== "none";
               <source srcset={s.darkSrc} media="(prefers-color-scheme: dark)" />
               <Image src={s.light} alt={s.alt} width={440} height={956} loading="lazy" />
             </picture>
-            <figcaption>
-              {s.title}
-              <span>{s.sub}</span>
-            </figcaption>
+            <figcaption>{s.title}</figcaption>
           </figure>
         ))}
       </div>
     </div>
   </section>
 
-  <section id="how" class="band">
+  <section id="what" class="band">
     <div class="wrap">
-      <p class="eyebrow" style="text-align:center">
-        How it works
-      </p>
-      <h2 style="text-align:center">Three steps. No account.</h2>
-      <div class="flow">
-        <div class="step">
-          <span class="n">01</span>
-          <div class="art">
-            <svg
-              width="72"
-              height="72"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="var(--green)"
-              stroke-width="1.7"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <rect x="4" y="4" width="6.6" height="6.6" rx="1.6"></rect>
-              <rect x="13.4" y="4" width="6.6" height="6.6" rx="1.6"></rect>
-              <rect x="4" y="13.4" width="6.6" height="6.6" rx="1.6"></rect>
-              <g fill="var(--green)" stroke="none">
-                <rect x="13.6" y="13.6" width="2.8" height="2.8" rx=".6"></rect>
-                <rect x="17.2" y="17.2" width="2.8" height="2.8" rx=".6"></rect>
-              </g>
-            </svg>
+      <div class="grid">
+        {sections.map((s) => (
+          <div class="card">
+            <h3>{s.heading}</h3>
+            <p>{s.body}</p>
           </div>
-          <h3>Scan the event QR</h3>
-          <p>Point your camera at the host's code to join. That's the whole sign-up.</p>
-        </div>
-        <div class="step">
-          <span class="n">02</span>
-          <div class="art">
-            <svg
-              width="72"
-              height="72"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="var(--green)"
-              stroke-width="1.7"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <rect x="3.5" y="2.6" width="17" height="12" rx="2.6"></rect>
-              <circle cx="8" cy="7" r="1.5"></circle>
-              <path d="M3.9 12.6l3.7-3.4 3.1 2.9 2.7-2.3 4.2 4"></path>
-              <path d="M12 21.8V16"></path>
-              <path d="M9.2 18.8 12 16l2.8 2.8"></path>
-            </svg>
-          </div>
-          <h3>Your photos flow in</h3>
-          <p>
-            Only pictures taken during the event's dates go to it — or a narrower range you pick.
-            Screenshots, screen recordings and pictures saved from chats stay out.
-          </p>
-        </div>
-        <div class="step">
-          <span class="n">03</span>
-          <div class="art">
-            <svg
-              width="72"
-              height="72"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="var(--green)"
-              stroke-width="1.7"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <rect x="3.5" y="2.6" width="17" height="12" rx="2.6"></rect>
-              <circle cx="8" cy="7" r="1.5"></circle>
-              <path d="M3.9 12.6l3.7-3.4 3.1 2.9 2.7-2.3 4.2 4"></path>
-              <path d="M12 16v5.8"></path>
-              <path d="M9.2 19 12 21.8l2.8-2.8"></path>
-            </svg>
-          </div>
-          <h3>Everyone's arrive in your library</h3>
-          <p>
-            The whole group's photos of the moment land right in your camera roll. No shared album
-            to check.
-          </p>
-        </div>
+        ))}
       </div>
     </div>
   </section>
 
   <section id="privacy-story">
     <div class="wrap">
-      <p class="eyebrow" style="text-align:center">
-        Private by design
-      </p>
-      <h2 style="text-align:center">Your camera roll stays yours.</h2>
+      <h2 style="text-align:center">Private by design</h2>
       <p class="center" style="color:var(--muted)">
-        SnapSync was built so a guest can share the moment without handing over their photo library.
-        It shares only what belongs to the event — and nothing about you.
+        Only your group, only photos from the event.
       </p>
       <div class="grid">
         <div class="card">
@@ -210,7 +156,7 @@ const playOffered = playOfferFor(deployment).kind !== "none";
             <line x1="22" y1="8" x2="17" y2="13"></line>
           </svg>
           <h3>No account</h3>
-          <p>No email, no password, no profile. You join an event by scanning it.</p>
+          <p>No email, no password, no profile.</p>
         </div>
         <div class="card">
           <svg
@@ -226,8 +172,8 @@ const playOffered = playOfferFor(deployment).kind !== "none";
             <circle cx="12" cy="10" r="2.4"></circle>
             <path d="M12 12.4V16"></path>
           </svg>
-          <h3>Anonymous by design</h3>
-          <p>Your device is a random ID — never your name, number, or contacts.</p>
+          <h3>Anonymous</h3>
+          <p>No name, email or phone number is ever asked for.</p>
         </div>
         <div class="card">
           <svg
@@ -244,25 +190,8 @@ const playOffered = playOfferFor(deployment).kind !== "none";
             <line x1="8" y1="2.5" x2="8" y2="6"></line>
             <line x1="16" y1="2.5" x2="16" y2="6"></line>
           </svg>
-          <h3>Event-scoped</h3>
-          <p>Photos are shared to that one event and reach only people who have its invite.</p>
-        </div>
-        <div class="card">
-          <svg
-            class="ic"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.8"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <path d="M9.9 5A9.8 9.8 0 0 1 12 4.8c6 0 10 7.2 10 7.2a17 17 0 0 1-2.2 3.1M6.6 6.6A17 17 0 0 0 2 12s4 7.2 10 7.2a9.6 9.6 0 0 0 5.4-1.6"></path>
-            <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"></path>
-            <line x1="3" y1="3" x2="21" y2="21"></line>
-          </svg>
-          <h3>No tracking</h3>
-          <p>No ads, no analytics, no cookies. This site sets nothing on your device.</p>
+          <h3>Only event photos</h3>
+          <p>Screenshots and photos saved from chats stay out.</p>
         </div>
       </div>
     </div>

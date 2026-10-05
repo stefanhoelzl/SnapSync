@@ -263,7 +263,7 @@ private fun LeaveConfirmDialog(actions: StatusActions) {
         copy = DialogCopy(
             title = "Leave this event?",
             body = "You'll stop sharing and receiving photos. Photos already in your " +
-            "library stay.",
+            "gallery stay.",
             confirmLabel = "Leave",
             cancelLabel = "Stay",
         ),

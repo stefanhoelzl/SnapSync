@@ -611,7 +611,7 @@ class StatusContainerHostTest {
     fun `each return to the foreground reaches the create layer and only a long absence starts a fresh draft`() = runTest {
         // Capability `create-event`, "A long absence starts a fresh draft".
         val foreground = MutableStateFlow(ForegroundReturn.NONE)
-        val failed = "Couldn't reach the server."
+        val failed = "Couldn't connect. Check your connection and try again."
         createHost(CreationStatus.Failed(CreationFailureReason.SERVER), scope = backgroundScope, foreground = foreground)
             .testWithInternalState(this) {
                 runOnCreate()
@@ -646,7 +646,7 @@ class StatusContainerHostTest {
     @Test
     fun `config absent with a server failure shows the input with the server error`() = runTest {
         val host = createHost(CreationStatus.Failed(CreationFailureReason.SERVER), scope = backgroundScope)
-        assertEquals(screen(Layer.CreateEvent(error = "Couldn't reach the server.")), host.container.stateFlow.value)
+        assertEquals(screen(Layer.CreateEvent(error = "Couldn't connect. Check your connection and try again.")), host.container.stateFlow.value)
     }
 
     @Test
@@ -739,7 +739,7 @@ class StatusContainerHostTest {
             // The use-case reports a transient failure through the status source and never fires
             // `onMinted` (CreateEventTest pins that) — the inline error shows and no gate opens.
             creationStatus.value = CreationStatus.Failed(CreationFailureReason.SERVER)
-            expectInternalState(screen(Layer.CreateEvent(error = "Couldn't reach the server.")))
+            expectInternalState(screen(Layer.CreateEvent(error = "Couldn't connect. Check your connection and try again.")))
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -1544,7 +1544,7 @@ class StatusContainerHostTest {
             containerHost.onOpenUrl("not a config link").join()
             runCurrent()
             assertEquals(
-                "That QR code wasn't valid.",
+                "That QR code isn't a SnapSync event.",
                 (containerHost.container.stateFlow.value.layer as Layer.CreateEvent).error,
             )
             // …and it self-clears a few seconds after it last appeared — the delay runs on this
@@ -1646,7 +1646,7 @@ class StatusContainerHostTest {
             containerHost.onOpenUrl("not a config link").join()
             runCurrent()
             assertEquals(
-                "That QR code wasn't valid.",
+                "That QR code isn't a SnapSync event.",
                 (containerHost.container.stateFlow.value.layer as Layer.Joined).notice,
             )
             // …and it self-clears on the same window the create layer's does — one choreography, both layers.
@@ -1959,7 +1959,7 @@ class StatusContainerHostJoinGateTest {
             runCurrent()
             val flashed = containerHost.container.stateFlow.value
             assertJoining(flashed, EVENT_ID, ready)
-            assertEquals("That QR code wasn't valid.", (flashed.layer as Layer.JoiningEvent).notice)
+            assertEquals("That QR code isn't a SnapSync event.", (flashed.layer as Layer.JoiningEvent).notice)
 
             advanceTimeBy(5_000)
             runCurrent()

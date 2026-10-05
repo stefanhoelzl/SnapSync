@@ -6,9 +6,11 @@ via TestFlight. Join an event by scanning its QR, and your photos taken since a 
 app is test equipment, not a product.
 
 **Mission** (full form + decision record: `openspec/config.yaml` context /
-`changes/archive/2026-07-21-align-specs-with-mission`): joined users easily share the photos they take during a
-**short-lived event** (days/weeks — celebrations, holidays, trips), synced gallery-to-gallery; you never
-care how photos arrive, you just look at your own gallery. No accounts; simple setup; the host picks the
+`changes/archive/2026-07-21-align-specs-with-mission`): **family and friends** — small groups who know each
+other — easily share the photos they take during a **short-lived event** (a spontaneous afternoon to a few
+weeks — a day out, a party, a holiday), synced gallery-to-gallery; you never care how photos arrive, you just
+look at your own gallery. No accounts and no name asked — a member stays anonymous; creating or joining takes
+seconds. Marketing copy follows `metadata/messaging.md` (principles + glossary). The host picks the
 event's **date range** at creation (at most **30 days** long), and that **end** is the capture-date ceiling —
 it bounds which photos may be uploaded and does not by itself close anything, so a guest who scans days late
 still joins and contributes their in-window photos **until the event closes**. After the end each device

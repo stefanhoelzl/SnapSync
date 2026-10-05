@@ -973,7 +973,7 @@ private const val TRANSIENT_ERROR_MILLIS = 4_000L
 private const val REPORT_NOTICE_MILLIS = 4_000L
 
 /** The transient invalid-link copy (the screen renders [StatusContainerHost.transientError] verbatim). */
-private const val INVALID_LINK_MESSAGE = "That QR code wasn't valid."
+private const val INVALID_LINK_MESSAGE = "That QR code isn't a SnapSync event."
 
 /**
  * Whether confirming a join also raises iOS's photo-access dialog (capability `join-event`): no event is
@@ -1255,7 +1255,7 @@ private fun CreationFailureReason.message(): String = when (this) {
     // Unreachable from this build's picker, which cannot exceed the window it was built with — so it
     // arrives only when the backend's limit has since shrunk. Say it is the dates, not the name.
     CreationFailureReason.INVALID_WINDOW -> "Those dates weren't accepted. Try a shorter range."
-    CreationFailureReason.SERVER -> "Couldn't reach the server."
+    CreationFailureReason.SERVER -> "Couldn't connect. Check your connection and try again."
 }
 
 /**

@@ -57,7 +57,7 @@ internal fun ReadyLayout(state: ReadyState, actions: ReadyActions) {
                 title = state.eventName,
                 // The one warm line the surface allows itself — the eyebrow above already says
                 // "you're invited", so this states what the invitation IS.
-                subtitle = "Everyone's photos, one shared place.",
+                subtitle = "Every photo, in your gallery.",
             )
             ParticipationSections(
                 state = state.participation,
@@ -81,7 +81,7 @@ internal fun ReadyLayout(state: ReadyState, actions: ReadyActions) {
             // Both switches off is a membership that does nothing. Say why Join is unavailable rather than
             // moving a switch the guest didn't touch.
             if (!state.range.commitEnabled) {
-                StatusHint("Turn on sharing or receiving — a membership that does neither does nothing.")
+                StatusHint("Turn on sharing or receiving. With both off, joining does nothing.")
             }
             PrimaryButton(
                 label = if (state.asksAccessOnJoin) "Join & allow photos" else "Join",
@@ -104,13 +104,13 @@ private fun AccessExplanation() {
     AppAccessPoint(
         icon = JoinAccessShare,
         title = "Your photos are shared automatically",
-        body = "The photos you take show up for everyone in the event.",
+        body = "Photos you take during the event arrive in everyone's gallery.",
         divider = false,
     )
     AppAccessPoint(
         icon = JoinAccessLibrary,
-        title = "SnapSync needs your photo library",
-        body = "To share yours, and to save the photos other members send you.",
+        title = "SnapSync needs access to your photos",
+        body = "To share yours, and to save the group's photos to your gallery.",
     )
     AppAccessPoint(
         icon = JoinAccessChoose,
@@ -134,7 +134,7 @@ private fun joinAlbumNote(participation: ParticipationState): String = with(part
         !saveToAlbum -> "No album is created."
         albumKind == AlbumKind.FOLDER && receiveOn ->
             "Photos you receive are collected in an album named after the event. " +
-                "Your own photos stay in your camera folder."
+                "Your own photos stay where they are."
         albumKind == AlbumKind.FOLDER -> "You won't receive photos, so nothing is collected."
         shareOn && receiveOn ->
             "Photos you share and photos you receive are collected in an album named after the event."

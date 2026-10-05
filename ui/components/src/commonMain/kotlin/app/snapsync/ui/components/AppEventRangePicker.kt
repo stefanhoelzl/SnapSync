@@ -187,7 +187,7 @@ private fun RangeTimes(
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         SettlingTimeWheels(
-            caption = "From",
+            caption = WheelCaption("Starts", spoken = "Start"),
             hour = range.from.hour,
             minute = range.from.minute,
             anchor = range.from.time,
@@ -196,7 +196,7 @@ private fun RangeTimes(
             onMinute = { onChange(range.settleFromMinute(it, bounds)) },
         )
         SettlingTimeWheels(
-            caption = "Until",
+            caption = WheelCaption("Ends", spoken = "End"),
             hour = range.untilHour,
             minute = range.untilMinute,
             anchor = range.from.time,

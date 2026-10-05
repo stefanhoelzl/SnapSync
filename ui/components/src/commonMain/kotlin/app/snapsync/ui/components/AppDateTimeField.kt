@@ -184,7 +184,7 @@ private fun PickerDialogShell(
                     ) {
                         Box(Modifier.weight(1f)) { SecondaryButton(label = "Cancel", onClick = onDismiss) }
                         Box(Modifier.weight(1f)) {
-                            PrimaryButton(label = "OK", onClick = onConfirm, enabled = confirmEnabled)
+                            PrimaryButton(label = "Save", onClick = onConfirm, enabled = confirmEnabled)
                         }
                     }
                 }

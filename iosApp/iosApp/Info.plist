@@ -51,7 +51,7 @@
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>SnapSync syncs your photos with the events you join — sharing yours and saving the event's photos to your library.</string>
+	<string>SnapSync shares the photos you take during an event with its members and saves theirs to your gallery.</string>
 	<!-- Under a LIMITED (partial) grant iOS otherwise auto-presents its "Select More Photos / Keep
 	     Current Selection" alert the first time the app touches the library in each session. SnapSync
 	     re-fetches on every foreground and reconcile, so that alert fires over and over and makes the

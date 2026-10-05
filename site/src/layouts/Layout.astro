@@ -1,6 +1,7 @@
 ---
 import deployment from "../deployment.json";
 import { playOfferFor } from "../lib/play";
+import listing from "../../../metadata/listing/en-US.json";
 // Shared page shell for the whole site (capability web-site): the sticky header (brand + nav), the
 // <main> slot, and the footer. Both the landing page and the /join download page compose from this one
 // layout so they can never drift in brand, theme, or chrome. Nav links point at the landing's sections
@@ -27,11 +28,7 @@ interface Props {
 // `python3 scripts/resolve-deployment.py <deployment>` before building.
 const ORIGIN = `https://${deployment.domain}`;
 
-const {
-  title,
-  description = "Share the photos from an event — every photo the group takes lands in everyone's library.",
-  ogUrl = `${ORIGIN}/`,
-} = Astro.props;
+const { title, description = listing.play.shortDescription, ogUrl = `${ORIGIN}/` } = Astro.props;
 
 // The real app icon, emitted same-origin (astro:assets → _astro/…, so the web-site self-containment
 // invariant holds). Two derived sizes from the one committed source of truth (Icon-1024.png): a 192px

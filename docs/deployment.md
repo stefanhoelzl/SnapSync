@@ -608,8 +608,8 @@ no Gradle, no signing, only the existing Admin ASC key and Play service account.
 5. Derive the release notes for both stores (§7). Apple's over 4000 characters fails here, having changed nothing.
 6. With `ios`, unless already submitted: find or create the `X.Y` version record and attach the build (idempotent).
    A **newly created** record gets the committed copyright (year of first publication). An existing record's
-   copyright is left alone. Upload the listing screenshots, composed from `screenshots/*.png` +
-   `metadata/screenshots/en-US.json` (ImageMagick) — only an **editable** version is written to, and the set is
+   copyright is left alone. Upload the listing screenshots — the use-case graphic first, then the app captures
+   composed from `screenshots/*.png` + `metadata/screenshots/en-US.json` (ImageMagick) — only an **editable** version is written to, and the set is
    **replaced**. Apply the `en-US` `whatsNew` and the App Review details (notes from `metadata/review/notes.md`;
    contact details from secrets because the repo is public; "no demo account").
 7. **Preflight** every selected store before either submit: `asc review doctor` must report no blocking check;
@@ -655,10 +655,21 @@ from a bitmap. One run writes:
 - the iPhone icon (`Icon-1024.png`);
 - Android's adaptive launcher icon: VectorDrawables under `app/android/src/main/res/` (gradient background, the mark
   inside the 66dp safe circle, and a monochrome layer for themed icons);
-- Play's 512×512 icon and 1024×500 feature graphic (`metadata/play/images/`).
+- Play's 512×512 icon (`metadata/play/images/icon.png`).
 
 Every output is committed and none may be edited by hand. Change the geometry or the colours and re-run.
 `--check` asserts the vector path still matches the raster mark.
+
+**The use-case graphic** is the other store art: two generic phones on the brand green, one camera taking a photo
+and it arriving in the other's gallery, with the tagline. `metadata/graphic/graphic.py` builds it as HTML and
+`uv run metadata/graphic/render.py` renders it in headless Chromium into five committed PNGs: Play's 1024×500
+feature graphic (`metadata/play/images/featureGraphic.png`), the first store screenshot for each store
+(`metadata/graphic/frame-appstore.png` 1320×2868, `frame-play.png` 1080×1920) and the landing page's hero
+(`metadata/graphic/site-hero.png`, the feature graphic's composition without words, which the page sets as text,
+and `site-hero-narrow.png`, the phones alone on a transparent background for phone-width pages). Its words are the `tagline` in `metadata/screenshots/en-US.json`; each render
+carries the tagline it was made with, and the `metadata` gate (`metadata/graphic/check.py`) fails when the JSON has
+moved on without a re-render. The phones must stay generic (no Dynamic Island, no Apple layout): Apple allows its
+hardware in listing images only as a photograph of the real product.
 
 ### Listing metadata
 
@@ -668,10 +679,10 @@ Every output is committed and none may be edited by hand. Change the geometry or
 - **Rendering.** The resolver renders it into `build/metadata/`: App Store Connect's strict-schema files
   (`app-info/`, `version/current/`) and Play's fields (`play/`: title, short and full description, contact
   website). No store's file is committed.
-- **Placeholders.** `{{domain}}` is the deployment's domain. Every other `{{word}}` is looked up in the source's
-  `words`, which gives each store its own wording; for example `{{gallery}}` is "Photos app" on the App Store and
-  "phone's gallery" on Play. An unknown word, or one with no wording for a store, fails the resolver before it
-  writes anything.
+- **Placeholders.** `{{domain}}` is the deployment's domain. Any other `{{word}}` is looked up in the source's
+  optional `words`, which gives each store its own wording. None is used today: the copy says "gallery" on both
+  stores (`metadata/messaging.md`, the wording reference every surface follows). An unknown word, or one with no
+  wording for a store, fails the resolver before it writes anything.
 - **The listing's validation** (`ci.yml`'s `metadata` gate, every push, no credentials): character
   limits (description ≤ 4000, keywords ≤ 100, promotional text ≤ 170, whatsNew ≤ 4000, subtitle ≤ 30),
   URL syntax, and **unknown keys**; then `scripts/validate_play_listing.py` checks Play's half (title ≤ 30, short
@@ -733,7 +744,8 @@ gh run download "$RID" -n screenshots-raw -D screenshots
 **Android** has its own six raws in `screenshots/android/`, the same three states captured the same way from the
 Android rig build on an emulator, by `screenshots.yml`'s `android` job. It uses the DEBUG build, because the capture
 resets the mocked systems' saved state through `run-as`; the status bar is SystemUI's demo mode. They feed only the
-Google Play listing: `compose_screenshots.sh`'s `play` target composites the light set with the same headlines onto a
+Google Play listing: `compose_screenshots.sh`'s `play` target puts the use-case graphic first (`CONCEPT_FRAME=off`
+leaves it out of a target), then composites the light set with the same headlines onto a
 1080×1920 (9:16) canvas, since a raw 1080×2400 breaks Play's 2:1 limit, and `android-deliver` uploads them when they
 changed (below). The landing page keeps the iPhone raws. An unchanged UI captures byte-identically on the emulator too.
 

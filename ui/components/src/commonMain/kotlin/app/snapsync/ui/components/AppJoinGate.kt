@@ -52,7 +52,7 @@ import androidx.compose.ui.unit.dp
  */
 
 /** The one warm line the invitation hero allows itself, shared across every phase that shows it. */
-const val JOIN_HERO_SUBTITLE = "Everyone's photos, one shared place."
+const val JOIN_HERO_SUBTITLE = "Every photo, in your gallery."
 
 /**
  * The **invitation hero in its loading state**: the mark badge and the "YOU'RE INVITED" eyebrow are already

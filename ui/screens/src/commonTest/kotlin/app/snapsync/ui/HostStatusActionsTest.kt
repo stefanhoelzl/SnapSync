@@ -12,6 +12,8 @@ import app.snapsync.presentation.StatusDiagnostics
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.test.isSelectable
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.doubleClick
@@ -309,7 +311,7 @@ class HostStatusActionsTest {
     fun `a denied grant’s prompt opens Settings`() =
         rigTest(rig(config = MEMBERSHIP, permission = GalleryAccess.DENIED)) { rig ->
             awaitState(rig) { it.joined != null }
-            onNodeWithText("Turn on full access in Settings").performClick()
+            onNodeWithText("Allow photo access in Settings").performClick()
             awaitFired(rig, "openSettings")
             assertEquals(listOf("openSettings"), rig.fired)
         }
@@ -366,12 +368,12 @@ class HostStatusActionsTest {
         onNodeWithText("From now").performClick()
         awaitState(rig) { it.joining?.form?.preset == RangeChoice.FROM_NOW }
         onNodeWithContentDescription("Change which photos are shared").performClick()
-        onNodeWithText("OK").performClick()
+        onNodeWithText("Save").performClick()
         awaitState(rig) {
             it.joining?.form?.let { f -> f.preset == RangeChoice.CUSTOM && f.customFrom != null && f.customUntil != null } == true
         }
         onNodeWithContentDescription("Change which photos are shared").performClick()
-        onNodeWithText("Whole event").performClick()
+        onNode(hasText("The whole event") and isSelectable()).performClick()
         awaitState(rig) { it.joining?.form?.preset == RangeChoice.WHOLE_EVENT }
         // The participation switches, likewise one field each.
         onNodeWithText("Share my photos").performScrollTo().performClick()

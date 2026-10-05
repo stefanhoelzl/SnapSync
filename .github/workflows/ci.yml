@@ -156,6 +156,10 @@ jobs:
       # `assetsd`'s log, tested here because the macOS job only ever exercises the one path the runner takes.
       - name: Test the photo-library migration gate
         run: python3 scripts/await_photo_migration_test.py
+      # The use-case graphic (metadata/graphic/): its renders are committed, not built here, so this catches a tagline
+      # changed in metadata/screenshots/en-US.json without re-running metadata/graphic/render.py.
+      - name: Check the graphic renders carry the current tagline
+        run: python3 metadata/graphic/check.py
       # The App Store listing (`docs/deployment.md`), validated OFFLINE: schema, character limits, URL format. It
       # validates what will be APPLIED — the files the resolver renders from the one listing source
       # (metadata/listing/), placeholders filled — not the committed source. The apply half is deploy.yml's `appstore-metadata-apply` (main only). `asc` is a pinned,

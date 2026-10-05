@@ -19,7 +19,7 @@ import app.snapsync.model.PendingSwitch
 import app.snapsync.model.UiState
 import app.snapsync.ui.components.AppConfirmDialog
 import app.snapsync.ui.components.AppDestructiveConfirmDialog
-import app.snapsync.ui.components.AppEventHeaderCompact
+import app.snapsync.ui.components.AppIdentityHeader
 import app.snapsync.ui.components.PrimaryButton
 import app.snapsync.ui.components.SecondaryButton
 import app.snapsync.ui.components.StatusHint
@@ -71,8 +71,9 @@ internal fun ReconfigureScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            // Read-only header: which event's settings these are.
-            AppEventHeaderCompact(title = membership.name, subtitle = "Event settings")
+            // Read-only header: which event's settings these are. No eyebrow: this is not an invitation, so the
+            // join gate's "YOU'RE INVITED" header does not belong here, and the subtitle already says what it is.
+            AppIdentityHeader(eyebrow = null, title = membership.name, subtitle = "Event settings")
             // The last Save did not land (capability `manage-membership`): the edits are still here, and
             // nothing about the membership changed — said plainly, so the member knows a retry is safe.
             if (surface.saveFailed) StatusHint("Your settings couldn't be saved, so nothing changed. Try again.")
@@ -164,8 +165,8 @@ internal fun SwitchDialog(
         JoinPhase.NotFound ->
             AppConfirmDialog(
                 copy = DialogCopy(
-                    title = "Invite not found",
-                    body = "This invite is invalid or the event no longer exists.",
+                    title = "Event not found",
+                    body = "This link is invalid, or the event no longer exists.",
                     confirmLabel = "OK",
                     cancelLabel = "Cancel",
                 ),
@@ -211,8 +212,8 @@ private fun reconfigureAlbumNote(saveToAlbum: Boolean, kind: AlbumKind): String 
     // A folder album (Android) holds only what is received, and gathering moves the received photos into it.
     kind == AlbumKind.FOLDER ->
         "Photos you receive are collected in an album named after the event, including the ones already received. " +
-            "Your own photos stay in your camera folder."
-    else -> "Photos are collected in an album named after the event, including the ones already synced."
+            "Your own photos stay where they are."
+    else -> "Photos are collected in an album named after the event, including the ones you already have."
 }
 
 /**
@@ -233,12 +234,12 @@ private fun ColumnScope.SaveActions(enabled: Boolean, onSave: () -> Unit, onCanc
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         StatusHint(
-            "Sharing less stops listing those photos to the event — anyone who already received " +
-                "them keeps them. Photos you've received stay.",
+            "Photos you stop sharing won't reach anyone new; whoever already has them keeps them. " +
+                "Photos you've received stay.",
         )
         if (!enabled) {
             StatusHint(
-                "Turn on sharing or receiving — a membership that does neither does nothing.",
+                "Turn on sharing or receiving. With both off, joining does nothing.",
             )
         }
         PrimaryButton(label = "Save", onClick = onSave, enabled = enabled)
