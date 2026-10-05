@@ -29,7 +29,7 @@
 --
 -- A past departure cannot tell whether the device had received everything; the backfill accepts that a few
 -- historical `done` rows may overstate it.
-CREATE TEMP TABLE _memberships_0008 (
+CREATE TABLE _memberships_0008 (
   event_id         TEXT NOT NULL,
   device_id        TEXT NOT NULL,
   state            TEXT NOT NULL,
