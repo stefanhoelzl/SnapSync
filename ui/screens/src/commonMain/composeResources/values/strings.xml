@@ -7,6 +7,14 @@
 -->
 <resources>
     <string name="app_name">SnapSync</string>
+
+    <!-- Shown by the OS, not by a screen: generated into the platforms' own files (`./gradlew nativeStrings`). -->
+    <!-- iOS's photo-access prompt (Info.plist NSPhotoLibraryUsageDescription). -->
+    <string name="ios_NSPhotoLibraryUsageDescription">SnapSync shares the photos you take during an event with its members and saves theirs to your gallery.</string>
+    <!-- Android's notification channel, in the system's notification settings. -->
+    <string name="android_notification_channel_sharing">Sharing photos</string>
+    <!-- Android's notification while photos transfer in the background. -->
+    <string name="android_notification_sharing">Sharing photos</string>
     <!-- The one warm line the identity headers allow themselves, on create and on every join phase. -->
     <string name="hero_subtitle">Every photo, in your gallery.</string>
     <string name="cancel">Cancel</string>
