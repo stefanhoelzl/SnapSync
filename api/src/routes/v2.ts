@@ -29,6 +29,7 @@ import {
   eventAndOwnDeviceParams,
   gateEvent,
   NO_CACHE,
+  noteAppVersion,
   orUpstream502,
   ownDeviceParam,
   readJson,
@@ -277,6 +278,7 @@ export function v2Routes({ fetchImpl, config, db, now, pushSender }: RouteDeps):
     const ids = eventAndOwnDeviceParams(c, "invalid id");
     if (ids instanceof Response) return ids;
     const { eventId, deviceId } = ids;
+    await noteAppVersion(c, db, deviceId, "v2 join");
     const outcome = await tryUpstream(
       c,
       `v2 join: enrollment failed for ${eventId}/${deviceId}`,
@@ -291,6 +293,7 @@ export function v2Routes({ fetchImpl, config, db, now, pushSender }: RouteDeps):
     const ids = eventAndOwnDeviceParams(c, "invalid id");
     if (ids instanceof Response) return ids;
     const { eventId, deviceId } = ids;
+    await noteAppVersion(c, db, deviceId, "v2 manifest");
     const json = await readJson(c);
     if (json instanceof Response) return json;
     const parsed = parseManifestBody(json.body);

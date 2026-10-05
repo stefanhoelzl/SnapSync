@@ -68,10 +68,12 @@ import {
   deleteEvent,
   deleteResource,
   deviceExists,
+  deviceVersions,
   eventsWithCounts,
   referencedKeys,
 } from "../db.ts";
 import { sweepVerdict } from "../lifecycle.ts";
+import { compareVersions } from "../version.ts";
 import type { Config } from "../config.ts";
 
 /** A count of storage objects plus their total size in bytes (summed from each entry's `Length`). */
@@ -85,6 +87,9 @@ export type Tally = { count: number; bytes: number };
  * both a `count` and a real `bytes` total so the log shows how much storage was actually reclaimed, not
  * just how many objects.
  *
+ * Beside the tiers, `versions` counts the KEPT devices by app version and platform — what raising
+ * `minAppVersion` would lock out (capability `app-update-required`).
+ *
  * The devices tier counts DEVICE ROWS. It used to note "a device counted once regardless of how many of
  * its global config/attestation records exist"; a device now has exactly one record, so there is nothing
  * left to disambiguate.
@@ -92,6 +97,8 @@ export type Tally = { count: number; bytes: number };
 export type SweepSummary = {
   events: { deleted: number; completed: number; kept: number };
   devices: { deleted: number; kept: number };
+  /** The kept devices counted by app version and platform — see {@link versionTable}. */
+  versions: VersionRow[];
   files: { deleted: Tally; kept: Tally };
   dirs: { deleted: number; kept: number };
   errors: number;
@@ -129,6 +136,7 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
   const summary: SweepSummary = {
     events: { deleted: 0, completed: 0, kept: 0 },
     devices: { deleted: 0, kept: 0 },
+    versions: [],
     files: { deleted: { count: 0, bytes: 0 }, kept: { count: 0, bytes: 0 } },
     dirs: { deleted: 0, kept: 0 },
     errors: 0,
@@ -249,21 +257,35 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
   // there is nothing left for a roster to find.
   const totalDevices = await countDevices(db);
   const collectable = await collectableDevices(db, new Date(now()).toISOString(), staleIds);
+  // The devices counted deleted — collected, or in a dry run would be — so the version table counts the
+  // same kept set as the devices tier.
+  const collected = new Set<string>();
   for (const deviceId of collectable) {
     try {
       if (dryRun) {
         log(`[dry-run] would collect the device record for ${deviceId}`);
         summary.devices.deleted++;
+        collected.add(deviceId);
         continue;
       }
       await deleteDevice(db, deviceId);
       summary.devices.deleted++;
+      collected.add(deviceId);
     } catch (err) {
       summary.errors++;
       log(`device ${deviceId} record collection failed (continuing): ${err}`);
     }
   }
   summary.devices.kept = totalDevices - summary.devices.deleted;
+  // Diagnostics only: a failed read loses the table, never the run.
+  try {
+    summary.versions = versionTable(
+      (await deviceVersions(db)).filter((d) => !collected.has(d.deviceId)),
+    );
+  } catch (err) {
+    summary.errors++;
+    log(`device version read failed (continuing): ${err}`);
+  }
 
   // ── DIRECTORY STEP ──────────────────────────────────────────────────────────────────────────────
   // Last, so it sees this run's device collection.
@@ -323,6 +345,46 @@ async function removeEmptiedDirs(
   }
 }
 
+/**
+ * One row of the version table: how many kept devices last declared `version` (capability
+ * `app-update-required`), per platform. `version` is `null` for a device that never declared one since
+ * the column existed — a v1-only build, or one not seen since.
+ */
+export type VersionRow = { version: string | null; ios: number; android: number };
+
+/**
+ * Count devices by version and platform: newest version first, the versionless row last. What raising
+ * `minAppVersion` would lock out is read off the rows below the new minimum.
+ */
+export function versionTable(
+  devices: readonly { appVersion: string | null; platform: string }[],
+): VersionRow[] {
+  const rows = new Map<string | null, VersionRow>();
+  for (const d of devices) {
+    const row = rows.get(d.appVersion) ?? { version: d.appVersion, ios: 0, android: 0 };
+    if (d.platform === "android") row.android++;
+    else row.ios++;
+    rows.set(d.appVersion, row);
+  }
+  return [...rows.values()].sort((a, b) =>
+    a.version === null ? 1 : b.version === null ? -1 : compareVersions(b.version, a.version)
+  );
+}
+
+/** The version table's rows as label + per-platform counts, closed by a total row. */
+function versionLines(
+  rows: readonly VersionRow[],
+): { label: string; ios: number; android: number }[] {
+  const total = rows.reduce((t, r) => ({ ios: t.ios + r.ios, android: t.android + r.android }), {
+    ios: 0,
+    android: 0,
+  });
+  return [
+    ...rows.map((r) => ({ label: r.version ?? "unknown", ios: r.ios, android: r.android })),
+    { label: "total", ...total },
+  ];
+}
+
 /** Render a byte count as a human-readable size (`1.2 MB`); IEC-style, `< 1024` stays `N B`. */
 export function humanBytes(n: number): string {
   if (n < 1024) return `${n} B`;
@@ -350,6 +412,11 @@ export function formatSummary(s: SweepSummary): string {
     `  files     ${file(s.files.deleted)} deleted   ${file(s.files.kept)} kept`,
     `  dirs      ${s.dirs.deleted} deleted   ${s.dirs.kept} kept`,
     `  errors    ${s.errors}`,
+    `  app versions (kept devices)`,
+    `    ${"version".padEnd(10)}${"ios".padStart(6)}${"android".padStart(9)}`,
+    ...versionLines(s.versions).map((l) =>
+      `    ${l.label.padEnd(10)}${String(l.ios).padStart(6)}${String(l.android).padStart(9)}`
+    ),
   ].join("\n");
 }
 
@@ -371,6 +438,16 @@ export function markdownSummary(s: SweepSummary): string {
     `| dirs | ${s.dirs.deleted} | — | ${s.dirs.kept} |`,
     ``,
     `**errors:** ${s.errors}`,
+    ``,
+    `### App versions (kept devices)`,
+    ``,
+    `| version | ios | android |`,
+    `| --- | --- | --- |`,
+    ...versionLines(s.versions).map((l) =>
+      l.label === "total"
+        ? `| **total** | **${l.ios}** | **${l.android}** |`
+        : `| ${l.label} | ${l.ios} | ${l.android} |`
+    ),
     ``,
   ].join("\n");
 }

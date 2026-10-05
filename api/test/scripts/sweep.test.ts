@@ -5,11 +5,12 @@ import {
   markdownSummary,
   runSweep,
   type SweepSummary,
+  versionTable,
 } from "../../src/scripts/sweep.ts";
 import type { Config } from "../../src/config.ts";
 import type { FetchLike } from "../../src/storage.ts";
 import { sqliteDb } from "../../src/dev/db-sqlite.ts";
-import { type Db, insertEvent, publishStatements } from "../../src/db.ts";
+import { type Db, insertEvent, publishStatements, recordAppVersion } from "../../src/db.ts";
 import { replay } from "../../src/dev/replay.ts";
 import { DEAD_TOKEN, enrolDevice, LIVE_TOKEN } from "../support/db.ts";
 import { NOW } from "../support/harness.ts";
@@ -721,6 +722,7 @@ Deno.test("formatSummary → one line per tier, files show count and reclaimed s
   const s: SweepSummary = {
     events: { deleted: 40, completed: 5, kept: 1 },
     devices: { deleted: 20, kept: 2 },
+    versions: [{ version: "0.12", ios: 31, android: 4 }, { version: null, ios: 9, android: 0 }],
     files: { deleted: { count: 107, bytes: 12_900_000 }, kept: { count: 10, bytes: 3_100_000 } },
     dirs: { deleted: 15, kept: 7 },
     errors: 0,
@@ -733,6 +735,10 @@ Deno.test("formatSummary → one line per tier, files show count and reclaimed s
   assertStringIncludes(out, "files     107 (12.3 MB) deleted   10 (3.0 MB) kept");
   assertStringIncludes(out, "dirs      15 deleted   7 kept");
   assertStringIncludes(out, "errors    0");
+  assertStringIncludes(out, "    version      ios  android");
+  assertStringIncludes(out, "    0.12          31        4");
+  assertStringIncludes(out, "    unknown        9        0");
+  assertStringIncludes(out, "    total         40        4");
   // A real (non-dry) run drops the suffix.
   assertStringIncludes(formatSummary({ ...s, dryRun: false }), "sweep summary:");
 });
@@ -741,6 +747,7 @@ Deno.test("markdownSummary → a GFM table with a row per tier and an errors lin
   const s: SweepSummary = {
     events: { deleted: 40, completed: 5, kept: 1 },
     devices: { deleted: 20, kept: 2 },
+    versions: [{ version: "0.12", ios: 31, android: 4 }, { version: null, ios: 9, android: 0 }],
     files: { deleted: { count: 107, bytes: 12_900_000 }, kept: { count: 10, bytes: 3_100_000 } },
     dirs: { deleted: 15, kept: 7 },
     errors: 3,
@@ -754,9 +761,51 @@ Deno.test("markdownSummary → a GFM table with a row per tier and an errors lin
   assertStringIncludes(md, "| files | 107 (12.3 MB) | — | 10 (3.0 MB) |");
   assertStringIncludes(md, "| dirs | 15 | — | 7 |");
   assertStringIncludes(md, "**errors:** 3");
+  assertStringIncludes(md, "| version | ios | android |");
+  assertStringIncludes(md, "| 0.12 | 31 | 4 |");
+  assertStringIncludes(md, "| unknown | 9 | 0 |");
+  assertStringIncludes(md, "| **total** | **40** | **4** |");
   // Dry-run is flagged in the heading.
   assertStringIncludes(markdownSummary({ ...s, dryRun: true }), "(dry-run — nothing deleted)");
 });
+
+Deno.test("versionTable → newest version first by number, unknown last, counted per platform", () => {
+  assertEquals(
+    versionTable([
+      { appVersion: "0.9", platform: "ios" },
+      { appVersion: null, platform: "ios" },
+      { appVersion: "0.10", platform: "android" },
+      { appVersion: "0.10", platform: "ios" },
+      { appVersion: "0.9", platform: "ios" },
+    ]),
+    [
+      // 0.10 above 0.9: a string sort would put it below.
+      { version: "0.10", ios: 1, android: 1 },
+      { version: "0.9", ios: 2, android: 0 },
+      { version: null, ios: 1, android: 0 },
+    ],
+  );
+  assertEquals(versionTable([]), []);
+});
+
+for (const dryRun of [false, true]) {
+  Deno.test(`runSweep → the version table counts only the devices it keeps (dryRun=${dryRun})`, async () => {
+    const d = await db();
+    await enrolDevice(d, D, LIVE_TOKEN);
+    await recordAppVersion(d, D, "0.12");
+    await enrolDevice(d, D2, LIVE_TOKEN);
+    // A device the sweep collects: absent from the table in a real run and a dry one alike.
+    await enrolDevice(d, ORPHAN, DEAD_TOKEN);
+    await recordAppVersion(d, ORPHAN, "0.11");
+    const { summary } = await run(d, fake({}), dryRun);
+    assertEquals(summary.devices, { deleted: 1, kept: 2 });
+    assertEquals(summary.versions, [
+      { version: "0.12", ios: 1, android: 0 },
+      { version: null, ios: 1, android: 0 },
+    ]);
+    d.close();
+  });
+}
 
 // The browser-facing site (capability `web-site`) lives under a `site/` prefix, co-tenant with the private
 // data in the same zone. The sweep is PREFIX-SCOPED — it enumerates only `events/`, `files/devices/` and

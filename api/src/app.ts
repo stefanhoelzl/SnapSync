@@ -163,7 +163,7 @@
 
 import { Hono } from "hono";
 import { AwsClient } from "aws4fetch";
-import { compareVersions, splitVersion } from "./version.ts";
+import { APP_VERSION_HEADER, compareVersions, splitVersion } from "./version.ts";
 import { BUILD_SHA, type Config } from "./config.ts";
 import { createPushSender } from "./push.ts";
 import { verifyToken } from "./attest.ts";
@@ -335,7 +335,7 @@ export function createApp(
     // The download redirect is exempt too (decision record `changes/incremental-union`, D1): the OS download
     // transports fetch it and send no app header, and a build too old for v2 never learns such a link.
     if (isDownloadRedirect(c.req.method, path)) return await next();
-    const declared = c.req.header("x-snapsync-app-version");
+    const declared = c.req.header(APP_VERSION_HEADER);
     // ABSENT, UNPARSEABLE and TOO OLD collapse into one answer, deliberately. All three mean the caller
     // cannot be trusted to speak v2, and the remedy is identical — install a build that can — so no
     // consequence distinguishes them and nothing is lost by giving them one status.

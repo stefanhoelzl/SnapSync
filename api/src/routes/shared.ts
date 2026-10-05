@@ -33,6 +33,7 @@ import {
   eventParam,
   gateEvent,
   NO_CACHE,
+  noteAppVersion,
   orUpstream502,
   ownDeviceParam,
   presignDownloadUrl,
@@ -362,6 +363,7 @@ export function sharedRoutes({ config, db, now, aws }: RouteDeps): Hono {
       } catch (e) {
         console.error(`union: could not log the read of ${eventId} (best-effort): ${e}`);
       }
+      if (reader !== null) await noteAppVersion(c, db, reader, "union");
 
       c.header("Cache-Control", NO_CACHE); // a `url` may be a time-limited presign; a cursor is a moment
       c.header(CURSOR_HEADER, String(position));
