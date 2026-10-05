@@ -417,19 +417,13 @@ export function createApp(
     // ungated read; `attest.test.ts` pins both directions. Decision record:
     // `changes/web-event-download`. This is an accepted, eyes-open widening: a leaked eventId becomes a
     // perpetual read grant (no per-event opt-in, no rate limit).
-    const publicRead = (method === "GET" || method === "HEAD") &&
-      (/^\/events\/[^/]+$/.test(path) || /^\/events\/[^/]+\/files$/.test(path));
-    // The union's own token is OPTIONAL rather than absent (decision record `changes/incremental-union`,
-    // D5): the route verifies one when it is sent, to name the reader in its log, and answers `401` for a
-    // bad one itself — this gate never sees it, because the read is public either way.
-    // The DOWNLOAD REDIRECT (D1) is the third public read, by the same capability: it resolves one resource
-    // of the union an eventId already lists, and answers with a presigned link like those the union
-    // carried inline before — so it opens nothing the union read did not.
+    // The reads themselves are `isPublicEventRead`, below the app, so this middleware's own branches stay
+    // within the complexity ceiling.
     if (
       method === "OPTIONS" ||
       path.startsWith("/attest/") ||
       ((method === "GET" || method === "HEAD") && publicGet) ||
-      publicRead || isDownloadRedirect(method, path)
+      isPublicEventRead(method, path)
     ) {
       return await next();
     }
@@ -483,6 +477,22 @@ export function createApp(
   app.route("/api/v1", v1);
   app.route("/api/v2", v2);
   return app;
+}
+
+/**
+ * The event reads the token gate serves without a token, by eventId-possession alone (see the gate's comment):
+ * GET/HEAD on the event's details `/events/<id>` and its union `/events/<id>/files`, and the download redirect.
+ * The union's own token is OPTIONAL rather than absent (decision record `changes/incremental-union`, D5): the
+ * route verifies one when it is sent, to name the reader in its log, and answers `401` for a bad one itself —
+ * the gate never sees it, because the read is public either way. The DOWNLOAD REDIRECT (D1) is the third
+ * public read, by the same capability: it resolves one resource of the union an eventId already lists, and
+ * answers with a presigned link like those the union carried inline before — so it opens nothing the union
+ * read did not.
+ */
+function isPublicEventRead(method: string, path: string): boolean {
+  return ((method === "GET" || method === "HEAD") &&
+    (/^\/events\/[^/]+$/.test(path) || /^\/events\/[^/]+\/files$/.test(path))) ||
+    isDownloadRedirect(method, path);
 }
 
 /**
