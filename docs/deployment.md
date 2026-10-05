@@ -357,7 +357,8 @@ Decision records: `changes/archive/2026-08-25-record-uploads-in-database`,
 - **The subrequest limit bounds `eventCapacity`.** Every libSQL call and every push is a subrequest, and
   the wake after a photo lands goes to every other member: a v2 byte upload or manifest publish costs
   about capacity + 5 (storage PUT, three or four statements, the token query, one push per other member,
-  sometimes an FCM token fetch), v1 notify about capacity + 3. Capacity 40 leaves headroom; past about 45
+  sometimes an FCM token fetch; the publish one more, recording the app version), v1 notify about
+  capacity + 3. The byte upload records no app version for exactly this reason. Capacity 40 leaves headroom; past about 45
   the pushes over the limit fail as fetch errors the sender records as `failed`, so members silently miss
   wakes while the write still stands. Raising it further needs the fan-out split across requests, not a
   config edit. Decision record: `changes/archive/2026-10-05-raise-event-capacity`.
@@ -397,7 +398,10 @@ runtime has no scheduler and a whole-store walk would exceed 50 subrequests / 30
 - **Storage it touches:** only `files/devices/`. Never `site/`.
 - **Failure mode:** best-effort per object. A single failed delete is logged and counted. The run exits
   non-zero only on a systemic failure (auth, or storage cannot be listed at all). The summary (events,
-  devices, files and dirs deleted and kept, byte sizes, error count) goes to the job's Summary panel.
+  devices, files and dirs deleted and kept, byte sizes, error count) goes to the job's Summary panel,
+  followed by the kept devices counted by app version (rows, newest first, `unknown` for a row that never
+  declared one) and platform (`ios` / `android` columns), with a total row — read it before raising
+  `minAppVersion`.
 - ⚠️ The old guard that refused to sweep an empty store is gone. If the database stops describing this
   zone, the sweep would delete every byte in it.
 

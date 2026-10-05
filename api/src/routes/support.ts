@@ -6,11 +6,12 @@
 import type { Context } from "hono";
 import type { AwsClient } from "aws4fetch";
 import type { Config } from "../config.ts";
-import { type Db, type EnrollOutcome, type EventRow, readEvent } from "../db.ts";
+import { type Db, type EnrollOutcome, type EventRow, readEvent, recordAppVersion } from "../db.ts";
 import { deleteByMs } from "../lifecycle.ts";
 import type { PushSender } from "../push.ts";
 import { byteKey, type FetchLike } from "../storage.ts";
 import { canonicalFromMs, validateUUID } from "../validators.ts";
+import { APP_VERSION_HEADER, recordableVersion, splitVersion } from "../version.ts";
 
 /** What a route factory is built over: `createApp`'s dependencies, resolved once. */
 export type RouteDeps = {
@@ -339,4 +340,38 @@ export function enrollRefusal(c: Context, outcome: EnrollOutcome | Response): Re
   if (outcome === "closed") return closedRefusal(c);
   if (outcome === "full") return c.text("event full", 409);
   return null;
+}
+
+/**
+ * The app version this request declared, as a device row keeps it — or `null` off v2 (v1 builds declare
+ * none, and only v2 runs the version gate that parses it) or when it is not {@link recordableVersion}.
+ */
+export function declaredAppVersion(c: Context): string | null {
+  if (splitVersion(new URL(c.req.url).pathname).version !== 2) return null;
+  return recordableVersion(c.req.header(APP_VERSION_HEADER));
+}
+
+/**
+ * Keep the app version this request declared on `deviceId`'s row (capability `app-update-required`).
+ *
+ * Best-effort: the record of a version never costs the request it rode in on. Called by the join, the
+ * manifest publish and a union read that carries a verified token — never by every gated route, because
+ * each statement is an Edge subrequest and the byte route's fan-out already spends most of the 50
+ * (`docs/deployment.md`).
+ */
+export async function noteAppVersion(
+  c: Context,
+  db: Db,
+  deviceId: string,
+  what: string,
+): Promise<void> {
+  const declared = declaredAppVersion(c);
+  if (declared === null) return;
+  try {
+    await recordAppVersion(db, deviceId, declared);
+  } catch (e) {
+    console.error(
+      `${what}: could not record app version ${declared} for ${deviceId} (best-effort): ${e}`,
+    );
+  }
 }

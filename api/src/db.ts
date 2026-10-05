@@ -827,6 +827,10 @@ export type AttestPlatform = "ios" | "android";
  * Names ONLY the attestation columns in the conflict clause, so a re-attestation cannot disturb a push
  * registration — and leaves `created_at` alone, so it keeps meaning *first* attested rather than *most
  * recently* attested.
+ *
+ * `appVersion` is the version the minting request declared ({@link recordAppVersion}), so a row is never
+ * versionless between its mint and the device's first recording call. `null` (a v1 mint, which declares
+ * none) keeps whatever the row already held.
  */
 export async function putAttestation(
   db: Db,
@@ -834,17 +838,19 @@ export async function putAttestation(
   attestation: DeviceAttestation,
   at: string,
   tokenExpiresAt: string,
+  appVersion: string | null = null,
 ): Promise<void> {
   await db.execute(
     `INSERT INTO devices (device_id, created_at, attest_key, attest_platform, attest_env, attested_at,
-                          attest_token_expires_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)
+                          attest_token_expires_at, app_version)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (device_id) DO UPDATE SET
        attest_key              = excluded.attest_key,
        attest_platform         = excluded.attest_platform,
        attest_env              = excluded.attest_env,
        attested_at             = excluded.attested_at,
-       attest_token_expires_at = excluded.attest_token_expires_at`,
+       attest_token_expires_at = excluded.attest_token_expires_at,
+       app_version             = COALESCE(excluded.app_version, devices.app_version)`,
     [
       deviceId,
       at,
@@ -853,6 +859,7 @@ export async function putAttestation(
       attestation.environment,
       at,
       tokenExpiresAt,
+      appVersion,
     ],
   );
 }
@@ -908,6 +915,38 @@ export async function touchTokenExpiry(
     [expiresAt, deviceId],
   );
   return { rowsAffected };
+}
+
+// ── Devices: the app version ──────────────────────────────────────────────────────────────────────
+
+/**
+ * Keep the version the device last declared (capability `app-update-required`). The `IS NOT` clause makes
+ * an unchanged version a read, not a write, so the routes that call this on every visit rewrite the row
+ * only when the device upgraded (or rolled back). A device with no row is left alone: only the mint
+ * creates one.
+ */
+export async function recordAppVersion(
+  db: Db,
+  deviceId: string,
+  appVersion: string,
+): Promise<void> {
+  await db.execute(
+    `UPDATE devices SET app_version = ? WHERE device_id = ? AND app_version IS NOT ?`,
+    [appVersion, deviceId, appVersion],
+  );
+}
+
+/** One device row's version and platform — what the sweep's version table counts. */
+export type DeviceVersion = { deviceId: string; appVersion: string | null; platform: string };
+
+/** Every device row's version and platform. */
+export async function deviceVersions(db: Db): Promise<DeviceVersion[]> {
+  const { rows } = await db.execute(`SELECT device_id, app_version, attest_platform FROM devices`);
+  return rows.map((r) => ({
+    deviceId: String(r.device_id),
+    appVersion: r.app_version === null ? null : String(r.app_version),
+    platform: String(r.attest_platform),
+  }));
 }
 
 // ── Devices: the push-registration group ──────────────────────────────────────────────────────────

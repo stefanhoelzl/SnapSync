@@ -1,0 +1,20 @@
+-- ═══════════════════════════════════════════════════════════════════════════════════════════════════
+-- 0007 — THE APP VERSION A DEVICE LAST DECLARED (capability `app-update-required`)
+--
+-- ⚠️ FROZEN ONCE APPLIED, like every migration here: the runner records a checksum of these bytes, so
+-- editing this file makes every later apply refuse as `modified` history. A correction is a NEW file.
+--
+-- WHY: every v2 request declares the app's marketing version, and the version gate reads it — but nothing
+-- kept it, so raising `minAppVersion` meant guessing how many live devices it would lock out, and a device
+-- misbehaving in the field could not be matched to its build. The row now keeps the last version the
+-- device declared, and the nightly sweep's summary counts the kept devices by version and platform.
+--
+-- ADDITIVE AND DERIVES NOTHING. Every existing row lands NULL, which is the truth: no version was ever
+-- recorded for it. A device that speaks only v1 stays NULL (v1 builds predate the header). No copy, no
+-- rebuild — the column is inert under the previous bundle, which never names it.
+--
+-- Writers (`recordAppVersion` / `putAttestation`), only on v2 and only where the token or the attestation
+-- names the device: the mint, the join, the manifest publish, and the union read that carries a token. NOT
+-- every gated request: each statement is an Edge subrequest, and the byte route's fan-out already spends
+-- most of the 50 (`docs/deployment.md`).
+ALTER TABLE devices ADD COLUMN app_version TEXT;

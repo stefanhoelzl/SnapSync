@@ -13,7 +13,14 @@ import {
 import { type MintShape, parseMintBody, verifyMintProof, verifyRenewal } from "../attest-proofs.ts";
 import { putAttestation, readAttestation, touchTokenExpiry } from "../db.ts";
 import { validateUUID } from "../validators.ts";
-import { NO_CACHE, readJson, type RouteDeps, tryUpstream, upstream502 } from "./support.ts";
+import {
+  declaredAppVersion,
+  NO_CACHE,
+  readJson,
+  type RouteDeps,
+  tryUpstream,
+  upstream502,
+} from "./support.ts";
 
 // The two token ISSUERS, built once per version (capability `privacy-security`). The only difference is how
 // a stale challenge is refused: v1, which is frozen, keeps its `401`; v2 answers `409 stale challenge`,
@@ -89,6 +96,7 @@ export function attestRoutes(
           },
           new Date(now()).toISOString(),
           tokenExpiryIso(config, now()),
+          declaredAppVersion(c),
         ),
     );
     if (persisted instanceof Response) return persisted;

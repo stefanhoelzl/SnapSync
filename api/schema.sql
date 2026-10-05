@@ -28,7 +28,7 @@ CREATE TABLE devices (
   push_token              TEXT,
   push_env                TEXT,
   push_updated_at         TEXT
-, attest_platform TEXT NOT NULL DEFAULT 'ios') STRICT;
+, attest_platform TEXT NOT NULL DEFAULT 'ios', app_version TEXT) STRICT;
 
 CREATE TABLE event_assets (
   event_id      TEXT NOT NULL,

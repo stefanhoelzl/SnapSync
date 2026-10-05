@@ -571,7 +571,7 @@ event_assets  (event_id, device_id -> memberships CASCADE), asset_id, creation_d
               + index (device_id, asset_id)
 resources     (device_id, asset_id, role) PK, key UNIQUE per device, content_type, filename
 devices       device_id, created_at, attest_* (NOT NULL; attest_platform ios|android, what proved the
-              key), push_* (nullable together)
+              key), push_* (nullable together), app_version? (the last v2 version declared)
 union_log     seq AUTOINCREMENT, (event_id -> events CASCADE), kind in {gained, removed, fetch},
               device_id?, asset_id?, trigger?, cursor_from?, cursor_to?, served?, at
               + index (event_id, seq)
@@ -760,7 +760,10 @@ its wire tests (`v1.test.ts`) must pass **unmodified** across any schema migrati
   `final`, and join only clears them),
   `event_assets` by the manifest publish, `resources` by the byte upload, `union_log` by the byte upload
   and the publish (`gained`/`removed`) and the union read (`fetch`), and `devices` by attestation
-  and the config write, each naming only its own column group. The sweep otherwise only deletes. v1's extra writes
+  and the config write, each naming only its own column group — except `app_version`, which the mint,
+  the join, the manifest publish and a union read with a verified token all keep current from the
+  version header (best-effort, a write only when it changed; never the byte route, whose fan-out has
+  no subrequest to spare). The sweep otherwise only deletes. v1's extra writes
   are a bounded, named exemption, and no new version gets one. **review** (plus route tests).
 - **Capacity is one conditional insert**, never read-then-write. Measured: 10 racing devices for 3
   slots gave 10 under read-then-write and exactly 3 here.

@@ -15,7 +15,7 @@ import {
   RECORDED_PACKAGE,
   RENEWAL,
 } from "./fixtures/android-emulator-proof.ts";
-import { CONFIG, D, store, V2 } from "./support/harness.ts";
+import { CONFIG, D, store, V2, VERSION_HEADER } from "./support/harness.ts";
 
 /** The local rig's policy, naming the recording's package. */
 const LOCAL: Config = {
@@ -73,6 +73,12 @@ Deno.test("emulator proof: the local rig accepts the adapter's attestation and r
   const record = await readAttestation(db, D);
   assertEquals(record?.platform, "android");
   assertEquals(record?.environment, "software");
+  // The mint records the version the request declared, so the row is never versionless.
+  assertEquals(
+    (await db.execute(`SELECT app_version FROM devices WHERE device_id = ?`, [D])).rows[0]
+      .app_version,
+    V2[VERSION_HEADER],
+  );
 });
 
 Deno.test("emulator proof: the adapter's renewal signature renews that attestation", async () => {

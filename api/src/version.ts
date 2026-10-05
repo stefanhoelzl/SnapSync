@@ -7,6 +7,9 @@
 // because nothing fails when two copies disagree about what counts as a version prefix — a request simply
 // gets gated by one and not the other.
 
+/** The header every v2 request declares the app's marketing version in (capability `app-update-required`). */
+export const APP_VERSION_HEADER = "x-snapsync-app-version";
+
 /** The API version a request is addressed to, or `null` when its path carries no version prefix. */
 export type ApiVersion = 1 | 2;
 
@@ -61,4 +64,16 @@ export function compareVersions(a: string, b: string): number {
     if (d !== 0) return d;
   }
   return 0;
+}
+
+/**
+ * The declared version as the device row stores it, or `null` when it is not worth storing: absent, not
+ * an `X.Y…` version, or longer than any real one. The bound is what makes storing a caller's header safe —
+ * the gate admits any parseable version at or above the minimum, and a parseable string has no length
+ * limit of its own.
+ */
+export function recordableVersion(declared: string | undefined): string | null {
+  const trimmed = declared?.trim();
+  if (!trimmed || trimmed.length > 32 || !/^\d+(\.\d+)*$/.test(trimmed)) return null;
+  return trimmed;
 }
