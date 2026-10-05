@@ -6,6 +6,7 @@ import app.snapsync.ports.Clock
 import app.snapsync.ports.CrashReporter
 import app.snapsync.ports.Databases
 import app.snapsync.ports.DevControls
+import app.snapsync.ports.DeviceConditions
 import app.snapsync.ports.DeviceIntegrity
 import app.snapsync.ports.Download
 import app.snapsync.ports.ExtensionRegistry
@@ -49,6 +50,8 @@ class DevicePorts(
     processInfo: Lazy<ProcessInfo> = absent("processInfo"),
     /** The device's network as the operating system reports it to this app — the app process's only. */
     network: Lazy<NetworkMonitor> = absent("network"),
+    /** The device's power, battery, thermal state and background allowance, read for a bug report — the app's only. */
+    deviceConditions: Lazy<DeviceConditions> = absent("deviceConditions"),
     backend: Lazy<Backend> = absent("backend"),
     backgroundTime: Lazy<BackgroundTime> = absent("backgroundTime"),
     wake: Lazy<Wake> = absent("wake"),
@@ -72,7 +75,7 @@ class DevicePorts(
     /** The constructor's lazies, so an adapter choice can hand the real ones through untouched. */
     val lazies: Lazies = Lazies(
         clock, crashReporter, files, databases, preferences, secureStore, platformDeviceId, integrity, processInfo,
-        network, backend,
+        network, deviceConditions, backend,
         backgroundTime, wake, extensionRegistry, gallery, galleryReader, photoAccess, appUpload, cycleUpload, download,
         systemUi, lifecycle, links, pushNotifications, ui,
     )
@@ -87,6 +90,7 @@ class DevicePorts(
     val integrity: DeviceIntegrity by integrity
     val processInfo: ProcessInfo by processInfo
     val network: NetworkMonitor by network
+    val deviceConditions: DeviceConditions by deviceConditions
     val backend: Backend by backend
     val backgroundTime: BackgroundTime by backgroundTime
     val wake: Wake by wake
@@ -148,6 +152,7 @@ class DevicePorts(
         wake = wake,
         processInfo = processInfo,
         network = network,
+        deviceConditions = deviceConditions,
     )
 
     /** One lazy per port, as the constructor took them. */
@@ -162,6 +167,7 @@ class DevicePorts(
         val integrity: Lazy<DeviceIntegrity>,
         val processInfo: Lazy<ProcessInfo>,
         val network: Lazy<NetworkMonitor>,
+        val deviceConditions: Lazy<DeviceConditions>,
         val backend: Lazy<Backend>,
         val backgroundTime: Lazy<BackgroundTime>,
         val wake: Lazy<Wake>,

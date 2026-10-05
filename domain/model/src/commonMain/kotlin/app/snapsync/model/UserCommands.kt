@@ -84,9 +84,9 @@ enum class JoinCommit {
  *   the device on a build that reports nowhere (capability `privacy-security`), fired from the report sheet
  *   once the user has written what went wrong, and answering what became of it ([ReportOutcome]) so the app
  *   can say so. `note` is that description, already trimmed and length-bounded by the sheet — it
- *   titles the report, so two reports about different problems arrive as different issues. `screen` is
- *   an opaque label for the surface it was sent from, supplied by the UI (the domain enumerates no
- *   screens); it is the only way a screen-local surface, which touches no port, reaches a report.
+ *   titles the report, so two reports about different problems arrive as different issues. `context` is
+ *   [ReportContext]: an opaque label for the surface it was sent from (the domain enumerates no screens — the
+ *   only way a screen-local surface, which touches no port, reaches a report), and what that surface showed.
  *   Present on every build: where the report goes is [UiState.reportDestination], which the sheet states, so
  *   the affordance never suggests a destination the build does not have.
  */
@@ -115,5 +115,5 @@ class UserCommands(
      * previous `Succeeded` still latched.
      */
     val resetRename: suspend () -> Unit,
-    val sendDiagnostics: suspend (note: String, screen: String) -> ReportOutcome,
+    val sendDiagnostics: suspend (note: String, context: ReportContext) -> ReportOutcome,
 )

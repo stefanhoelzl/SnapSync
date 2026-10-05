@@ -1,5 +1,6 @@
 package app.snapsync.rig
 
+import app.snapsync.mock.DeviceConditionsText
 import app.snapsync.model.NetworkAccess
 import app.snapsync.contracts.PhotoLibrary
 import app.snapsync.mock.BackendCall
@@ -501,6 +502,27 @@ private fun MockWorld.deviceLevers(): Map<String, Lever> = mapOf(
             device.connectivity.operator.access = access
             CommandResult.ok("""{"network":"$name"}""")
         }
+    }),
+    // The device's power saving, battery, thermal state and background allowance, as a bug report reads them
+    // (capability `privacy-security`): each parameter is a report key (power_saving, background_refresh, standby_bucket,
+    // battery_optimization_exempt, battery_percent, battery_charging, thermal) set to a value, `unsupported` or
+    // `failed:<reason>`; a field not named keeps its value. `hold=true` leaves every read unanswered until `hold=false`.
+    "conditions" to mocked(MockedSystem.DEVICE_CONDITIONS, RigCommand { params, _ ->
+        val unknown = params.keys - DeviceConditionsText.keys - "hold"
+        val hold = params["hold"]?.let { it.toBooleanStrictOrNull() ?: return@RigCommand CommandResult.badRequest("hold must be true|false") }
+        if (unknown.isNotEmpty()) return@RigCommand CommandResult.badRequest("unknown fields $unknown; known: ${DeviceConditionsText.keys}")
+        val operator = device.deviceConditions.operator
+        runCatching { DeviceConditionsText.apply(operator.reading, params - "hold") }.fold(
+            onSuccess = { reading ->
+                operator.reading = reading
+                hold?.let { operator.holding = it }
+                CommandResult.ok(buildJsonObject {
+                    DeviceConditionsText.encode(reading).forEach { (key, value) -> put(key, value) }
+                    put("hold", operator.holding)
+                }.toString())
+            },
+            onFailure = { CommandResult.badRequest(it.message.orEmpty().replace("\"", "'")) },
+        )
     }),
     // How this build answers an invite link's dev/test hints: `honoured=false` plays a shipped build, which ignores
     // them; a host starts as a rig build, which honours them. The build's own controls, so on every host.

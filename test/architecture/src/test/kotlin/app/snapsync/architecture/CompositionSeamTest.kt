@@ -132,6 +132,9 @@ class CompositionSeamTest {
             "retry's request carries, since the other process may have renewed it (capability `background-upload`)",
         "CollectDiagnosticDump.uploadFacts" to
             "two strings computed from this core's own upload resolution (registrable, admission) for the dump",
+        "CollectDiagnosticDump.appFacts" to
+            "the bug report's facts only this core holds — the device id (never minted), the clock's zone, the process " +
+            "footprint and the selection snapshot's size — each a direct read mapped to a Fact by model/",
         "DownloadController.downloadEnabled" to
             "the membership's direction, three-valued (no membership → null → no arm), derived in compose/ over " +
             "the ConfigService the composition already reads",

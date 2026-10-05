@@ -56,6 +56,7 @@ class JvmMocks(
                 integrity = enclave.port(available = attests),
                 processInfo = processInfo.port(),
                 network = connectivity.port(),
+                deviceConditions = deviceConditions.port(),
                 logSinks = logSinks,
             ),
             entries = JvmEntries(

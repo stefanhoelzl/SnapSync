@@ -145,11 +145,11 @@ internal fun AppCore.userCommandsFor(): UserCommands = UserCommands(
     // The diagnostic dump (capability `privacy-security`), fired once the user has
     // written what went wrong: sent where the build reports, kept on the device where it does not —
     // the process's crash reporting decides, and the answer is logged either way.
-    sendDiagnostics = { note, screen ->
+    sendDiagnostics = { note, context ->
         // Core lane and awaited: the dump reads both device logs (~700 KB) before it sends or saves,
         // which is exactly the blocking work the main lane must never see, and the sheet waits on it.
-        awaitingOnCoreLane<ReportOutcome>("tap.sendDiagnostics", params = "screen=$screen") {
-            val result = process.crash.sendDump(collectDiagnosticDump.collect(note, screen))
+        awaitingOnCoreLane<ReportOutcome>("tap.sendDiagnostics", params = "screen=${context.screen}") {
+            val result = process.crash.sendDump(collectDiagnosticDump.collect(note, context))
             services.log.i { "diagnostic dump: $result" }
             // What the user is told (capability `privacy-security`): handed off, kept here, or neither.
             result.outcome

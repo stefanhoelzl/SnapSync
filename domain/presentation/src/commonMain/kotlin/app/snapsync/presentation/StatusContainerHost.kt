@@ -38,6 +38,8 @@ import app.snapsync.feature.download.readmodel.DownloadProgress
 import app.snapsync.model.SyncStatus
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncCounts
+import app.snapsync.model.DiagnosticKeys
+import app.snapsync.model.ReportContext
 import app.snapsync.model.DirectionCount
 import app.snapsync.model.EventTiming
 import app.snapsync.model.eventTiming
@@ -521,9 +523,10 @@ class StatusContainerHost(
 
     /**
      * Send the diagnostic dump (capability `privacy-security`) with the operator's account of the
-     * problem — already trimmed and length-bounded by the sheet that collected it — and an opaque label
-     * for the surface it was sent from (the screen, which only the screen itself can name). On a build that
-     * reports nowhere the report is kept on the device instead ([UiState.reportDestination] says which).
+     * problem — already trimmed and length-bounded by the sheet that collected it — an opaque label for the
+     * surface it was sent from (the screen, which only the screen itself can name), and the counts that surface
+     * showed, taken from the state this host last reduced ([shownCounts]). On a build that reports nowhere the report
+     * is kept on the device instead ([UiState.reportDestination] says which).
      * Once it has been handed off, the app briefly says what became of it ([Overlays.reportNotice]) — sent, saved,
      * or neither — and makes no delivery claim (the channel may queue and retransmit). A command that failed
      * outright is "neither": the user confirmed a report, and silence would read as sent.
@@ -531,7 +534,7 @@ class StatusContainerHost(
     val onSendDiagnostics: (String, String) -> Unit = { note, screen ->
         intent {
             val outcome = try {
-                commands.sendDiagnostics(note, screen)
+                commands.sendDiagnostics(note, ReportContext(screen, shownCounts(state)))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -1216,6 +1219,21 @@ private fun syncCounts(progress: SyncProgress, download: DownloadProgress, direc
             DirectionCount.Progress(done = minOf(download.downloaded, download.total), total = download.total)
         },
     )
+
+/**
+ * The counts line as the screen showed it (capability `privacy-security`), for a bug report: `<done>/<total>` or `off`
+ * per direction, taken from the reduced [UiState] itself rather than re-derived, because a report exists to catch the
+ * screen disagreeing with the stores. Empty when no counts line was showing — not joined, or a status line in its place.
+ */
+internal fun shownCounts(state: UiState): Map<String, String> {
+    val counts = (state.layer as? Layer.Joined)?.counts ?: return emptyMap()
+    return mapOf(DiagnosticKeys.SHOWN_SHARED to counts.shared.shown(), DiagnosticKeys.SHOWN_RECEIVED to counts.received.shown())
+}
+
+private fun DirectionCount.shown(): String = when (this) {
+    DirectionCount.Off -> "off"
+    is DirectionCount.Progress -> "$done/$total"
+}
 
 private fun arrowOf(shown: Boolean, pulsing: Boolean): Arrow =
     if (!shown) Arrow.HIDDEN else if (pulsing) Arrow.PULSING else Arrow.STATIC

@@ -175,8 +175,8 @@
     <string name="report_sent">Thanks — your report was sent.</string>
     <string name="report_saved">Your report was saved on this device.</string>
     <string name="report_not_sent">Your report couldn't be sent. Please try again later.</string>
-    <string name="report_body_developer">Sent with the app's recent activity log and sync state to the developer's error-tracking service.</string>
-    <string name="report_body_device">Saved on this device with the app's recent activity log and sync state. Nothing is sent.</string>
+    <string name="report_body_developer">Sent with the app's recent activity log, sync state and device state to the developer's error-tracking service.</string>
+    <string name="report_body_device">Saved on this device with the app's recent activity log, sync state and device state. Nothing is sent.</string>
     <string name="report_send">Send</string>
     <string name="report_placeholder">What went wrong, and what were you doing?</string>
 

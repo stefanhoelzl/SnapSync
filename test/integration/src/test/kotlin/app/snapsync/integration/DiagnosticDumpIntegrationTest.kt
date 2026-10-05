@@ -2,6 +2,8 @@ package app.snapsync.integration
 
 import app.snapsync.model.BuildLabel
 import app.snapsync.model.DIAGNOSTIC_LOG_BUDGET_BYTES
+import app.snapsync.model.DiagnosticKeys
+import app.snapsync.model.DirectionCount
 import app.snapsync.model.ReportOutcome
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.int
@@ -10,6 +12,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -86,6 +89,54 @@ class DiagnosticDumpIntegrationTest {
         assertEquals("1", dump.ledger["photos_completed"])
         assertEquals("0", dump.ledger["photos_pending"])
         assertEquals("true", dump.state["joined"])
+    }
+
+    @Test
+    fun a_dump_carries_the_device_state_the_operating_system_reports() = rigTest {
+        createAndJoin()
+        device("network", "access" to "restricted")
+        device(
+            "conditions",
+            "power_saving" to "true",
+            "background_refresh" to "unsupported",
+            "standby_bucket" to "rare",
+            "thermal" to "failed:no thermal service",
+        )
+
+        sendDiagnostics(NOTE)
+
+        val state = awaitDumps(1).single().state
+        assertEquals("online_restricted", state[DiagnosticKeys.NETWORK])
+        assertEquals("true", state[DiagnosticKeys.POWER_SAVING])
+        assertEquals("rare", state[DiagnosticKeys.STANDBY_BUCKET])
+        assertEquals("failed (no thermal service)", state[DiagnosticKeys.THERMAL])
+        assertFalse(DiagnosticKeys.BACKGROUND_REFRESH in state, "a fact the platform lacks is left out: $state")
+        assertTrue(state[DiagnosticKeys.DEVICE_ID].orEmpty().isNotBlank(), "the device id the app resolved: $state")
+        assertTrue(DiagnosticKeys.TIME_ZONE in state, "the device's zone: $state")
+    }
+
+    @Test
+    fun a_dump_carries_the_counts_the_screen_showed() = rigTest {
+        extensionUploadsOnly()
+        createAndJoin()
+        addPhoto("CAM")
+        cycle()
+        completeJobs(primaryKey("CAM"))
+        cycle()
+        // Whatever the screen shows at the tap — the report's claim is "what the member saw", not a number.
+        val counts = awaitState { it.joined?.counts != null }.joined!!.counts!!
+
+        sendDiagnostics(NOTE)
+
+        val dump = awaitDumps(1).single()
+        assertEquals(counts.shared.shown(), dump.state[DiagnosticKeys.SHOWN_SHARED])
+        assertEquals(counts.received.shown(), dump.state[DiagnosticKeys.SHOWN_RECEIVED])
+        assertEquals("1", dump.ledger["photos_completed"], "beside the store's own count, which may differ from it")
+    }
+
+    private fun DirectionCount.shown(): String = when (this) {
+        DirectionCount.Off -> "off"
+        is DirectionCount.Progress -> "$done/$total"
     }
 
     @Test

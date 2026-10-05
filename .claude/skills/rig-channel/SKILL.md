@@ -409,7 +409,7 @@ leaving behind. There is no coordinator imposing that order now that each comman
 
 A rig build can run with **some systems mocked and the rest real**, chosen at launch (`docs/testing.md`, "Launch-time
 adapters"). The systems: `backend library files databases preferences keychain integrity crash-reporter process-info network
-clock wake background-time extension-registry upload-queue upload-session downloads lifecycle links push screen
+device-conditions clock wake background-time extension-registry upload-queue upload-session downloads lifecycle links push screen
 system-ui`. The adapter choice is the file `rig/adapters` in the App Group: one `system=mock|real` per line, a missing
 one real.
 
@@ -569,7 +569,10 @@ curl -s localhost:<port>/device            # honoured + refused (reasons) for TH
     `backend/refuse-credential`, `backend/wipe-bytes[?device=]`;
   - OS and library: `clock/advance?to=<instant>`, `network?access=online|offline|blocked` (what the OS reports to
     the app; a notice follows after the watch's ~5 s grace, and only while the app is foregrounded — pair `offline`
-    with `backend/offline?on=true` to play a network that is really gone), `app-version?version=`, `relaunch[?scene=false]`, `selection/change?assets=a,b`,
+    with `backend/offline?on=true` to play a network that is really gone), `conditions?<key>=<value>|unsupported|failed:<reason>[&hold=true|false]`
+    (power saving, battery, thermal state and background allowance as a bug report reads them; the keys are the report's —
+    `power_saving`, `background_refresh`, `standby_bucket`, `battery_optimization_exempt`, `battery_percent`,
+    `battery_charging`, `thermal`; `hold=true` leaves every read unanswered), `app-version?version=`, `relaunch[?scene=false]`, `selection/change?assets=a,b`,
     `gallery/add?id=&date=&kind=photo|low-res|screenshot|screen-recording|hd-video|live-photo|gif`,
     `gallery/remove?id=`, `gallery/fail-next-enumeration`, `gallery/hold-enumeration?on=` (every walk waits — the
     status screen before anything is counted), `import/suspend-next[?afterCommit=true]`, `import/await-parked`,

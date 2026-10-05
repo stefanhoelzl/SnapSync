@@ -20,6 +20,7 @@ enum class MockedSystem(val key: String, val what: String) {
     CRASH_REPORTER("crash-reporter", "the crash reporter's channel"),
     PROCESS_INFO("process-info", "the protected-data availability"),
     NETWORK("network", "the device's network as the operating system reports it to the app"),
+    DEVICE_CONDITIONS("device-conditions", "the device's power saving, battery, thermal state and background allowance"),
     CLOCK("clock", "the wall clock and zone"),
     WAKE("wake", "the operating system's scheduled wakes"),
     BACKGROUND_TIME("background-time", "the operating system's background-time holds"),

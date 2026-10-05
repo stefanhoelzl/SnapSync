@@ -27,6 +27,7 @@ Roots found:
 | `IosBackgroundTime` | x | x | |
 | `IosBuildInfo` | x | x | x |
 | `IosDatabases` | x | x | x |
+| `IosDeviceConditions` | x | x | |
 | `IosDeviceIntegrity` | x | x | |
 | `IosDownload` | x | x | |
 | `IosExtensionHost` | | | x |

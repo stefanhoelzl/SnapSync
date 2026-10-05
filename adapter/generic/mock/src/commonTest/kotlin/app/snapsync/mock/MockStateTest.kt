@@ -99,6 +99,7 @@ class MockStateTest {
         assertEquals(true, copy.extensionRegistry.operator.registered)
         assertEquals(Availability.UNAVAILABLE, copy.processInfo.operator.protectedData)
         assertEquals(NetworkAccess.Blocked, copy.connectivity.operator.access)
+        assertEquals(CONDITIONS, copy.deviceConditions.operator.reading)
         assertEquals(listOf("hello"), copy.systemUi.operator.shared.value)
         assertEquals("dump", copy.crashReporter.operator.sent.value.single().message)
         assertEquals(1, copy.enclave.keys.snapshot().second.size)
@@ -149,6 +150,7 @@ class MockStateTest {
         }
         device.processInfo.operator.protectedData = Availability.UNAVAILABLE
         device.connectivity.operator.access = NetworkAccess.Blocked
+        device.deviceConditions.operator.reading = CONDITIONS
         device.clock.operator.now = Instant.parse("2026-07-01T12:00:00Z")
         device.clock.zone = TimeZone.of("Europe/Berlin")
         device.wakes.port().schedule(WakeId.Heartbeat, WakeTrigger.After(1.hours, network = WakeNetwork.ANY))
@@ -184,4 +186,9 @@ class MockStateTest {
         /** One of the app's own Keychain slots — a restore puts an item back only at a slot the app addresses. */
         val SLOT = SecureSlots.ATTEST_TOKEN
     }
+
+    private val CONDITIONS = DeviceConditionsMock.TYPICAL.copy(
+        powerSaving = app.snapsync.model.Fact.Known(true),
+        thermal = app.snapsync.model.Fact.Failed("thermal: no answer"),
+    )
 }

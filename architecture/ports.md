@@ -38,6 +38,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `Databases` | `:domain:ports` | `:adapter:android` AndroidDatabases; `:adapter:generic:app` JdbcDatabases; `:adapter:generic:mock` InMemoryDatabases; `:adapter:ios:ext-safe` IosDatabases; `:domain:services` Failing, Scripted; `:test:feature` RecordingDatabases | yes |
 | `DbOpen` | `:domain:ports` | `:domain:ports` Failed, Missing, OldSchema, Opened | no |
 | `DevControls` | `:domain:ports` | `:adapter:generic:app` InertDevControls; `:test:rig` RigDevControls | yes |
+| `DeviceConditions` | `:domain:ports` | `:adapter:android` AndroidDeviceConditions; `:adapter:generic:mock` InMemoryDeviceConditions; `:adapter:ios:app-only` IosDeviceConditions | yes |
 | `DeviceEnroller` | `:domain:feature` | `:domain:feature` ManifestDeviceEnroller; `:test:feature` FakeEnroller | yes |
 | `DeviceFilesSource` | `:domain:services` | `:domain:services` BackendDeviceFilesSource; `:test:feature` FakeFiles | yes |
 | `DeviceIdResult` | `:domain:model` | `:domain:model` AbsentNotMintable, Id, Unavailable | no |
@@ -61,6 +62,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `ExtensionHost` | `:domain:ports` | `:adapter:ios:ext-safe` ContractRunningExtensionHost, IosExtensionHost; `:test:launch-adapters` UncomposedExtensionHost | yes |
 | `ExtensionRegistration` | `:domain:services` | `:domain:services` OsDrivenRegistration; `:test:architecture` PlatformRegistration; `:test:feature` FakeRegistration | yes |
 | `ExtensionRegistry` | `:domain:ports` | `:adapter:android` AndroidExtensionRegistry; `:adapter:generic:mock` InMemoryExtensionRegistry; `:adapter:ios:app-only` PhotoKitExtensionRegistry, SimulatorExtensionRegistry; `:domain:services` RecordingRegistry | yes |
+| `Fact` | `:domain:model` | `:domain:model` Failed, Known, Unsupported | no |
 | `FetchedJob` | `:domain:services` | `:domain:services` AcknowledgeToDrain, Emit | no |
 | `FileResult` | `:domain:model` | `:domain:model` AreaUnavailable, Denied, Failed, NotFound, Ok | no |
 | `Files` | `:domain:ports` | `:adapter:android` AndroidFiles; `:adapter:generic:app` JvmFiles; `:adapter:generic:mock` Answering, InMemoryFiles, ReadFailing; `:adapter:ios:ext-safe` IosFiles; `:domain:services` AcceptingFiles, Adopting, SharedArea; `:test:feature` RecordingFiles, ThrowingDeletes | yes |

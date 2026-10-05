@@ -15,6 +15,8 @@ import app.snapsync.feature.creation.CreateEvent
 import app.snapsync.model.EventCreator
 import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.feature.diagnostics.CollectDiagnosticDump
+import app.snapsync.model.Fact
+import app.snapsync.model.selectionPhotos
 import app.snapsync.feature.download.DownloadController
 import app.snapsync.feature.download.DownloadPushReceiver
 import app.snapsync.services.downloads.DownloadJobs
@@ -85,6 +87,7 @@ import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.ports.SystemUi
 import app.snapsync.model.invocation
 import app.snapsync.ports.ProcessInfo
+import app.snapsync.ports.DeviceConditions
 import app.snapsync.ports.Wake
 import app.snapsync.ports.DevControls
 import app.snapsync.ports.PushNotifications
@@ -197,6 +200,9 @@ class AppPorts(
     /** The device's network as the operating system reports it to this app — watched only while the app is in front,
      *  to tell the member when it has none (capability `sync-status`). */
     val network: NetworkMonitor,
+    /** The device's power, battery, thermal state and background allowance — read only for a bug report
+     *  (capability `privacy-security`). */
+    val deviceConditions: DeviceConditions,
 )
 
 /**
@@ -834,27 +840,12 @@ class AppCore internal constructor(
     /** The user-query bundle, lane-decorated beside the commands — see [userQueriesFor]. */
     val userQueries: UserQueries by lazy { userQueriesFor() }
 
-    /**
-     * The diagnostic dump assembly (capability `privacy-security`) — reads only, and only what this
-     * graph already holds. Composed lazily like everything else here, so an unconfigured build (which
-     * never fires the command) never builds it.
-     */
-    internal val collectDiagnosticDump: CollectDiagnosticDump by lazy {
-        CollectDiagnosticDump(
-            environment = ports.process.build.diagnostics,
-            logs = services.deviceLogs,
-            ledger = services.ledger,
-            downloads = services.downloadStore,
-            config = services.config,
-            permission = galleryAccess,
-            uploadFacts = {
-                mapOf(
-                    "extension_registrable" to extensionRegistrableNow().toString(),
-                    "app_admission" to appUploadAdmission().name,
-                )
-            },
-        )
-    }
+    /** The diagnostic dump assembly (capability `privacy-security`) — see [diagnosticDumpFor]. */
+    internal val collectDiagnosticDump: CollectDiagnosticDump by lazy { diagnosticDumpFor() }
+
+    /** How many photos a partial grant's selection holds, for a bug report — the snapshot cell is this core's. */
+    internal fun selectionPhotosNow(): Fact<Int> =
+        selectionPhotos(ports.photoAccess.permission.value, latestSelectionSnapshot.value)
 
     /**
      * Install the **port-state-transition subscriptions** on the permission StateFlow (spec

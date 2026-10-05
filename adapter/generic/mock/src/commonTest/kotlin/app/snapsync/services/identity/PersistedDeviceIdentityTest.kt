@@ -269,4 +269,38 @@ class PersistedDeviceIdentityTest {
             "both processes resolve ONE id",
         )
     }
+
+    // ---- current(): the report's read, which never creates an identity -------------------------
+
+    @Test
+    fun `current never mints or writes when nothing is stored — even in the minting role`() {
+        val identity = identity(DeviceIdentityRole.MINTING)
+
+        assertEquals(DeviceIdResult.AbsentNotMintable, identity.current())
+        assertTrue(store.untouched(), "a report's read must not create the identity it reports")
+        assertEquals(0, store.readsOf(LEGACY), "adopting from the legacy slot is a write; current never reads it")
+    }
+
+    @Test
+    fun `current answers the stored id without migrating its protection`() {
+        store.answers[SHARED] = found("device-42", StoredProtection.RESTRICTED)
+
+        assertEquals(DeviceIdResult.Id("device-42", DeviceIdResult.Via.READ), identity(DeviceIdentityRole.MINTING).current())
+        assertTrue(store.untouched(), "an item filed under the old protection is left for the app's own read to upgrade")
+    }
+
+    @Test
+    fun `current answers this process's own resolution once it has one`() {
+        val identity = identity(DeviceIdentityRole.MINTING)
+        val minted = identity.resolve()
+
+        assertEquals(minted, identity.current())
+    }
+
+    @Test
+    fun `current reports a store that cannot be read`() {
+        store.answers[SHARED] = SecureStoreRead.Unavailable(LOCKED)
+
+        assertEquals(DeviceIdResult.Unavailable(LOCKED), identity(DeviceIdentityRole.MINTING).current())
+    }
 }

@@ -121,6 +121,7 @@ class JvmApp<D>(
             ui = ports.entries.ui,
             processInfo = ports.device.processInfo,
             network = ports.device.network,
+            deviceConditions = ports.device.deviceConditions,
         )
 
         private fun extensionPorts(): ExtensionPorts = ExtensionPorts(
