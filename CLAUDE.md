@@ -443,7 +443,7 @@ with the proxy task above).
 
 ## Localization
 
-English only, built for more (`docs/architecture.md`, "Localization"). **Never write a word a person reads as a
+English and German, built for more (`docs/architecture.md`, "Localization"). **Never write a word a person reads as a
 string literal** in `:ui:*`: put it in that module's `composeResources/values/strings.xml` and read it with
 `stringResource` (the `HardCodedUiText` detekt rule fails the build otherwise). The domain carries facts
 (`ScreenMessage`, `CoarseDuration`), never sentences, and dates go through `DateFormats`, never a hand-written

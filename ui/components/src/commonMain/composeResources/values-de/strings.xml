@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- German: values/strings.xml is the base and explains each string. -->
+<resources>
+    <string name="date_language">de</string>
+
+    <string name="date_range_open">Ab %1$s</string>
+    <string name="date_range_today">Heute %1$s – %2$s</string>
+    <string name="date_range_one_day">%1$s %2$s – %3$s</string>
+    <string name="date_span">%1$s – %2$s</string>
+    <string name="date_time_span">%1$s, %2$s–%3$s</string>
+
+    <string name="calendar_previous_month">Vorheriger Monat</string>
+    <string name="calendar_next_month">Nächster Monat</string>
+    <string name="calendar_weekdays">Wochentage, %1$s bis %2$s</string>
+    <string name="calendar_day_today">%1$s, heute</string>
+    <string name="range_starts">Beginn</string>
+    <string name="range_ends">Ende</string>
+    <string name="range_end_pick_time">%1$s, Uhrzeit wählen</string>
+    <string name="wheel_start_hour">Startstunde</string>
+    <string name="wheel_start_minute">Startminute</string>
+    <string name="wheel_end_hour">Endstunde</string>
+    <string name="wheel_end_minute">Endminute</string>
+    <string name="wheel_not_set">nicht festgelegt</string>
+    <string name="picker_cancel">Abbrechen</string>
+    <string name="picker_save">Speichern</string>
+
+    <string name="share_range_change">Ändern, welche Fotos geteilt werden</string>
+    <string name="share_range_title">Welche Fotos geteilt werden</string>
+    <string name="share_range_whole_event">Das ganze Event</string>
+    <string name="share_range_from_now">Ab jetzt</string>
+
+    <string name="status_syncing">Wird synchronisiert …</string>
+    <string name="status_in_sync">Alles synchronisiert</string>
+    <string name="status_not_started">Das Teilen beginnt mit dem Event</string>
+    <string name="status_allow_access">Fotozugriff erlauben</string>
+    <string name="status_allow_access_settings">Fotozugriff in den Einstellungen erlauben</string>
+    <string name="status_sharing">teilen</string>
+    <string name="status_receiving">empfangen</string>
+    <string name="status_sync_ongoing">Synchronisierung läuft …</string>
+    <string name="status_waiting_wifi">Warte auf WLAN …</string>
+    <string name="status_sync_pending">Synchronisierung ausstehend …</string>
+    <string name="network_blocked">Netzwerk für SnapSync blockiert – Einstellungen öffnen</string>
+    <string name="network_offline">Du bist offline</string>
+    <string name="cannot_verify_title">Dieses Gerät kann nicht verifiziert werden – das Teilen ist pausiert</string>
+    <string name="cannot_verify_detail">Wird weiter versucht – deine Fotos gehen nicht verloren.</string>
+
+    <string name="menu">Menü</string>
+    <string name="invited_eyebrow">DU BIST EINGELADEN</string>
+</resources>

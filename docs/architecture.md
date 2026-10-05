@@ -488,7 +488,7 @@ Cupertino) or a swap of the QR library changes one module.
 
 ### Localization
 
-The app ships in English only, and is built so that another language is a translated file rather than a
+The app ships in English (the base) and German, and is built so that another language is a translated file rather than a
 code change.
 
 - **Every word a person reads is a string resource.** `:ui:screens` and `:ui:components` each carry

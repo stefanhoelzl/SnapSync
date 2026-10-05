@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  German: values/strings.xml is the base and explains each string. A duration ("2 Tage") is spliced in as a
+  nominative, so every sentence holding one is worded to take it unchanged ("noch 2 Tage", never "in 2 Tagen").
+-->
+<resources>
+    <string name="app_name">SnapSync</string>
+
+    <string name="ios_NSPhotoLibraryUsageDescription">SnapSync teilt die Fotos, die du während eines Events aufnimmst, mit den anderen und speichert ihre in deiner Galerie.</string>
+    <string name="android_notification_channel_sharing">Fotos teilen</string>
+    <string name="android_notification_sharing">Fotos werden geteilt</string>
+    <string name="hero_subtitle">Alle Fotos, in deiner Galerie.</string>
+    <string name="cancel">Abbrechen</string>
+    <string name="save">Speichern</string>
+    <string name="retry">Erneut versuchen</string>
+    <string name="ok">OK</string>
+
+    <plurals name="duration_weeks">
+        <item quantity="one">%1$d Woche</item>
+        <item quantity="other">%1$d Wochen</item>
+    </plurals>
+    <plurals name="duration_days">
+        <item quantity="one">%1$d Tag</item>
+        <item quantity="other">%1$d Tage</item>
+    </plurals>
+    <plurals name="duration_hours">
+        <item quantity="one">%1$d Stunde</item>
+        <item quantity="other">%1$d Stunden</item>
+    </plurals>
+    <plurals name="duration_minutes">
+        <item quantity="one">%1$d Minute</item>
+        <item quantity="other">%1$d Minuten</item>
+    </plurals>
+    <plurals name="duration_minutes_short">
+        <item quantity="one">%1$d Min.</item>
+        <item quantity="other">%1$d Min.</item>
+    </plurals>
+    <string name="duration_under_a_minute">weniger als eine Minute</string>
+
+    <string name="message_invalid_link">Dieser QR-Code gehört zu keinem SnapSync-Event.</string>
+    <string name="message_create_name_refused">Dieser Name wurde nicht akzeptiert. Versuch einen anderen.</string>
+    <string name="message_create_dates_refused">Diese Daten wurden nicht akzeptiert. Versuch einen kürzeren Zeitraum.</string>
+    <string name="message_create_failed">Keine Verbindung. Prüf deine Verbindung und versuch es noch einmal.</string>
+    <string name="message_rename_name_refused">Dieser Name wurde nicht akzeptiert. Versuch einen kürzeren.</string>
+    <string name="message_rename_failed">Das Event konnte nicht umbenannt werden. Prüf deine Verbindung und versuch es noch einmal.</string>
+
+    <string name="create_title">Event erstellen</string>
+    <string name="create_name_question">Wie heißt es?</string>
+    <string name="create_name_placeholder">z. B. Annas Geburtstag</string>
+    <string name="create_when_question">Wann ist es?</string>
+    <string name="create_window_note">Nur Fotos, die zwischen diesen Daten aufgenommen werden, werden geteilt. Ein Event kann bis zu %1$d Tage dauern.</string>
+    <string name="create_button">Event erstellen</string>
+    <string name="create_join_hint">Um stattdessen einem Event beizutreten, scanne seinen QR-Code mit deiner Kamera.</string>
+    <string name="create_step_name">Event benennen</string>
+    <string name="create_step_end_time">Endzeit wählen</string>
+    <string name="create_lasts">Dauer: %1$s</string>
+    <string name="creating">Dein Event wird erstellt …</string>
+
+    <string name="update_eyebrow">UPDATE NÖTIG</string>
+    <string name="update_title">SnapSync aktualisieren</string>
+    <string name="update_subtitle">Diese Version erreicht das Event nicht mehr.</string>
+    <string name="update_headline">Zeit für ein Update</string>
+    <string name="update_detail_version">SnapSync %1$s oder neuer wird benötigt, um weiter Fotos zu teilen.</string>
+    <string name="update_detail">Eine neuere Version von SnapSync wird benötigt, um weiter Fotos zu teilen.</string>
+    <string name="store_app_store">App Store öffnen</string>
+    <string name="store_google_play">Google Play öffnen</string>
+
+    <string name="join_access_notice">Als Nächstes fragt iOS nach Zugriff auf deine Fotos</string>
+    <string name="join_access_info">Was der Beitritt mit deinen Fotos macht</string>
+    <string name="join_access_sheet_title">Was der Beitritt bewirkt</string>
+    <string name="join_access_dismiss">Verstanden</string>
+    <string name="join_both_off">Schalte Teilen oder Empfangen ein. Wenn beides aus ist, bewirkt der Beitritt nichts.</string>
+    <string name="join_button_allow">Beitreten &amp; Fotos erlauben</string>
+    <string name="join_button">Beitreten</string>
+    <string name="access_shared_title">Deine Fotos werden automatisch geteilt</string>
+    <string name="access_shared_body">Fotos, die du während des Events aufnimmst, landen in der Galerie aller anderen.</string>
+    <string name="access_library_title">SnapSync braucht Zugriff auf deine Fotos</string>
+    <string name="access_library_body">Um deine zu teilen und die Fotos der Gruppe in deiner Galerie zu speichern.</string>
+    <string name="access_choose_title">Alle Fotos erlauben oder auswählen, welche geteilt werden</string>
+    <string name="access_choose_body">Auch eine Auswahl funktioniert – und du kannst jederzeit weitere hinzufügen.</string>
+    <string name="access_range_title">Nur Fotos aus dem gewählten Zeitraum</string>
+    <string name="access_range_body">Nichts Älteres wird geteilt.</string>
+
+    <string name="album_none">Es wird kein Album erstellt.</string>
+    <string name="album_folder_receive">Fotos, die du empfängst, werden in einem Album mit dem Namen des Events gesammelt. Deine eigenen Fotos bleiben, wo sie sind.</string>
+    <string name="album_folder_nothing">Du empfängst keine Fotos, also wird nichts gesammelt.</string>
+    <string name="album_share_and_receive">Fotos, die du teilst und empfängst, werden in einem Album mit dem Namen des Events gesammelt.</string>
+    <string name="album_share">Fotos, die du teilst, werden in einem Album mit dem Namen des Events gesammelt.</string>
+    <string name="album_receive">Fotos, die du empfängst, werden in einem Album mit dem Namen des Events gesammelt.</string>
+    <string name="album_nothing">Es wird nichts geteilt oder empfangen, also wird nichts gesammelt.</string>
+    <string name="album_folder_receive_existing">Fotos, die du empfängst, werden in einem Album mit dem Namen des Events gesammelt, auch die bereits empfangenen. Deine eigenen Fotos bleiben, wo sie sind.</string>
+    <string name="album_existing">Fotos werden in einem Album mit dem Namen des Events gesammelt, auch die, die du schon hast.</string>
+
+    <string name="share_toggle">Meine Fotos teilen</string>
+    <string name="receive_toggle">Fotos empfangen</string>
+    <string name="receive_on_note">Fotos, die andere teilen, landen von selbst in deiner Galerie.</string>
+    <string name="receive_off_note">Du empfängst die Fotos des Events nicht.</string>
+    <string name="album_toggle">Album erstellen</string>
+    <string name="mobile_data_toggle">Mobile Daten für Fotos nutzen</string>
+    <string name="mobile_data_on_note">Fotos werden in jedem Netz geteilt und empfangen.</string>
+    <string name="mobile_data_off_note">Fotos werden nur im WLAN geteilt und empfangen.</string>
+    <string name="share_off_note">Nichts von dir verlässt dieses Handy.</string>
+    <string name="share_zero_note">Neue Fotos, die du aufnimmst, werden laufend geteilt.</string>
+    <string name="share_exclusions_note">Screenshots, Bildschirmaufnahmen, GIFs und aus Chat-Apps gespeicherte Fotos werden nie geteilt.</string>
+    <string name="range_whole_event">Das ganze Event</string>
+    <string name="range_from_now">Ab jetzt</string>
+    <string name="range_custom">Eigener Zeitraum</string>
+    <string name="share_detail_counting">%1$s · deine Fotos werden gezählt …</string>
+    <plurals name="share_detail_count">
+        <item quantity="one">%1$s · %2$d Foto aus deiner Galerie</item>
+        <item quantity="other">%1$s · %2$d Fotos aus deiner Galerie</item>
+    </plurals>
+
+    <string name="rename_event">Event umbenennen</string>
+    <string name="joined_statement">Du bist diesem Event beigetreten</string>
+    <string name="timing_starts_in">noch %1$s bis zum Start</string>
+    <string name="timing_ends_in">noch %1$s</string>
+    <string name="timing_ended">beendet</string>
+    <string name="invite_eyebrow">Andere einladen</string>
+    <string name="invite_caption">Andere treten bei, indem sie das mit ihrer Kamera scannen</string>
+    <string name="choose_more_photos">Weitere Fotos auswählen</string>
+    <string name="allow_full_access">Vollen Zugriff erlauben</string>
+    <string name="counts_line">%1$s · %2$s</string>
+    <string name="counts_shared_progress">%1$d/%2$d geteilt</string>
+    <string name="counts_shared">%1$d geteilt</string>
+    <string name="counts_not_sharing">Teilen aus</string>
+    <string name="counts_received_progress">%1$d/%2$d empfangen</string>
+    <string name="counts_received">%1$d empfangen</string>
+    <string name="counts_not_receiving">Empfangen aus</string>
+    <string name="waiting_members">Warte auf %1$d von %2$d Mitgliedern</string>
+    <string name="event_settings">Event-Einstellungen</string>
+    <string name="share_invite">Einladungslink teilen</string>
+    <string name="leave_event">Event verlassen</string>
+    <string name="leave_title">Dieses Event verlassen?</string>
+    <string name="leave_body">Du teilst und empfängst dann keine Fotos mehr. Fotos, die schon in deiner Galerie sind, bleiben dort.</string>
+    <string name="leave_confirm">Verlassen</string>
+    <string name="leave_cancel">Bleiben</string>
+    <string name="rename_body">Alle im Event sehen den neuen Namen.</string>
+    <string name="event_name_placeholder">Name des Events</string>
+
+    <string name="report_problem">Problem melden</string>
+    <string name="menu_website">Website</string>
+    <string name="menu_privacy">Datenschutzerklärung</string>
+    <string name="menu_version">Version %1$s (%2$s)</string>
+    <string name="report_sent">Danke – deine Meldung wurde gesendet.</string>
+    <string name="report_saved">Deine Meldung wurde auf diesem Gerät gespeichert.</string>
+    <string name="report_not_sent">Deine Meldung konnte nicht gesendet werden. Bitte versuch es später noch einmal.</string>
+    <string name="report_body_developer">Wird mit dem aktuellen Aktivitätsprotokoll und Sync-Status der App an den Fehlerdienst des Entwicklers gesendet.</string>
+    <string name="report_body_device">Wird mit dem aktuellen Aktivitätsprotokoll und Sync-Status der App auf diesem Gerät gespeichert. Es wird nichts gesendet.</string>
+    <string name="report_send">Senden</string>
+    <string name="report_placeholder">Was ist schiefgelaufen, und was hast du gerade gemacht?</string>
+
+    <string name="event_not_found_title">Event nicht gefunden</string>
+    <string name="event_not_found_body">Dieser Link ist ungültig, oder das Event existiert nicht mehr.</string>
+    <string name="event_closed_title">Event geschlossen</string>
+    <string name="event_closed_body">Diesem Event kann man nicht mehr beitreten.</string>
+    <string name="join_failed_title">Beitritt fehlgeschlagen</string>
+    <string name="join_failed_body">Etwas ist schiefgelaufen. Versuch es noch einmal.</string>
+    <string name="event_full_title">Dieses Event ist voll</string>
+    <string name="event_full_body">Es können keine weiteren Mitglieder beitreten.</string>
+    <string name="loading_event">Event-Details werden geladen …</string>
+    <string name="waiting_network_title">Warte auf ein Netzwerk</string>
+    <string name="waiting_network_body">Das Event lädt, sobald du wieder online bist.</string>
+    <string name="load_failed_title">Event konnte nicht geladen werden</string>
+    <string name="load_failed_body">Prüf deine Verbindung und versuch es noch einmal.</string>
+    <string name="joining">Beitreten …</string>
+
+    <string name="settings_save_failed">Deine Einstellungen konnten nicht gespeichert werden, es hat sich also nichts geändert. Versuch es noch einmal.</string>
+    <string name="settings_stop_sharing_note">Fotos, die du nicht mehr teilst, erreichen niemanden mehr neu; wer sie schon hat, behält sie. Empfangene Fotos bleiben.</string>
+    <string name="switch_title">Event wechseln?</string>
+    <string name="switch_confirm">Wechseln</string>
+    <string name="switch_body">Du verlässt „%1$s“ und trittst „%2$s“ bei.</string>
+    <string name="this_event">dieses Event</string>
+</resources>
