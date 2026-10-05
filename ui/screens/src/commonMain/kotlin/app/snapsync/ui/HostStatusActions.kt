@@ -62,5 +62,12 @@ fun statusActions(dispatch: (UiIntent) -> Unit): StatusActions = StatusActions(
         onSaveToAlbum = { dispatch(UiIntent.SaveToAlbum(it)) },
         onMobileData = { dispatch(UiIntent.MobileData(it)) },
     ),
-    onSendDiagnostics = { note, screen -> dispatch(UiIntent.SendDiagnostics(note, screen)) },
+    menu = MenuActions(
+        onSendDiagnostics = { note, screen -> dispatch(UiIntent.SendDiagnostics(note, screen)) },
+        onMenuOpen = { dispatch(UiIntent.MenuOpen) },
+        onMenuDismiss = { dispatch(UiIntent.MenuDismiss) },
+        onReportBug = { dispatch(UiIntent.MenuReportBug) },
+        onOpenLink = { dispatch(UiIntent.OpenLink(it)) },
+        onReportNoticeDismiss = { dispatch(UiIntent.ReportNoticeDismiss) },
+    ),
 )

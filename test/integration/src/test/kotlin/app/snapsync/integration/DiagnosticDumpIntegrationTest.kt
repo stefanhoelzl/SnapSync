@@ -1,6 +1,8 @@
 package app.snapsync.integration
 
+import app.snapsync.model.BuildLabel
 import app.snapsync.model.DIAGNOSTIC_LOG_BUDGET_BYTES
+import app.snapsync.model.ReportOutcome
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
@@ -146,5 +148,24 @@ class DiagnosticDumpIntegrationTest {
         sendDiagnostics("stuck on $eventId since Tuesday")
 
         assertEquals("stuck on $eventId since Tuesday", awaitDumps(1).single().note)
+    }
+
+    @Test
+    fun a_sent_report_is_told_as_sent_and_the_word_clears_itself() = rigTest {
+        // What the user is told once the dump is handed off (capability `privacy-security`): "sent", never more.
+        createAndJoin()
+
+        sendDiagnostics(NOTE)
+
+        awaitDumps(1)
+        awaitState { it.ui.overlays.reportNotice == ReportOutcome.SENT }
+        awaitState { it.ui.overlays.reportNotice == null }
+    }
+
+    @Test
+    fun the_screen_names_the_running_build() = rigTest {
+        // The app menu's footer (capability `sync-status`) reads the build the composition was handed, not a guess.
+        val build = awaitState { it.ui.build != BuildLabel.UNKNOWN }.ui.build
+        assertTrue(build.version.isNotBlank() && build.version != BuildLabel.UNKNOWN.version, "the version: $build")
     }
 }

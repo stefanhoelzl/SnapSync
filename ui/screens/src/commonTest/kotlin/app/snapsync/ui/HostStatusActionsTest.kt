@@ -161,7 +161,7 @@ class HostStatusActionsTest {
                 reconfigure = { eventId, _, _, _, _, _ -> record("reconfigure:$eventId"); ReconfigureOutcome.Saved },
                 rename = { eventId, name -> record("rename:$eventId:$name") },
                 resetRename = { record("resetRename") },
-                sendDiagnostics = { note, _ -> record("sendDiagnostics:$note") },
+                sendDiagnostics = { note, _ -> record("sendDiagnostics:$note"); app.snapsync.model.ReportOutcome.SENT },
             ),
             queries = UserQueries(loadJoinDetails = { details(it) }, shareableCount = { _, _ -> null }),
             diagnostics = StatusDiagnostics(log = {}, onIntentError = {}),
@@ -460,6 +460,38 @@ class HostStatusActionsTest {
             // The leave cleared the membership, so the gate re-renders as the new event's own join surface.
             awaitState(rig) { it.joining?.eventId == OTHER_ID }
         }
+
+    // ---- the app menu (capabilities `sync-status`, `privacy-security`) ----
+
+    @Test
+    fun `the menu's report opens the sheet — Send sends — and the word on it can be tapped away`() =
+        rigTest(rig(diagnostics = true)) { rig ->
+            awaitState(rig) { it.layer is Layer.CreateEvent }
+            onNodeWithContentDescription("Menu").performClick()
+            awaitState(rig) { it.overlays.menuOpen }
+            onNodeWithText("Report a problem").performClick()
+            awaitState(rig) { it.overlays.reportingBug && !it.overlays.menuOpen }
+            onNodeWithText("What went wrong, and what were you doing?").performTextInput("No photos arrive")
+            onNodeWithText("Send").performClick()
+            awaitFired(rig, "sendDiagnostics:No photos arrive")
+            awaitState(rig) { it.overlays.reportNotice == app.snapsync.model.ReportOutcome.SENT }
+            onNodeWithText("Thanks — your report was sent.").performClick()
+            awaitState(rig) { it.overlays.reportNotice == null }
+        }
+
+    @Test
+    fun `the menu's links open their pages through the container`() = rigTest(rig(config = MEMBERSHIP)) { rig ->
+        awaitState(rig) { it.joined != null }
+        onNodeWithContentDescription("Menu").performClick()
+        awaitState(rig) { it.overlays.menuOpen }
+        onNodeWithText("Privacy policy").performClick()
+        awaitFired(rig, "openLink:${app.snapsync.model.AppLink.PRIVACY_POLICY.url}")
+        awaitState(rig) { !it.overlays.menuOpen }
+        onNodeWithContentDescription("Menu").performClick()
+        awaitState(rig) { it.overlays.menuOpen }
+        onNodeWithText("Website").performClick()
+        awaitFired(rig, "openLink:${app.snapsync.model.AppLink.WEBSITE.url}")
+    }
 
     // ---- the hidden bug report (capability `privacy-security`) ----
 

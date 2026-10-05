@@ -81,9 +81,9 @@ enum class JoinCommit {
  *   terminal value. Needed because `RenameStatus` carries a success value where `CreationStatus`
  *   deliberately does not: a rename changes no layer, so nothing else would clear it.
  * - [sendDiagnostics] — send this device's diagnostic dump to the operator's reporting channel, or keep it on
- *   the device on a build that reports nowhere (capability `privacy-security`), fired by the hidden double-tap
- *   once the operator has written
- *   what went wrong. `note` is that description, already trimmed and length-bounded by the sheet — it
+ *   the device on a build that reports nowhere (capability `privacy-security`), fired from the report sheet
+ *   once the user has written what went wrong, and answering what became of it ([ReportOutcome]) so the app
+ *   can say so. `note` is that description, already trimmed and length-bounded by the sheet — it
  *   titles the report, so two reports about different problems arrive as different issues. `screen` is
  *   an opaque label for the surface it was sent from, supplied by the UI (the domain enumerates no
  *   screens); it is the only way a screen-local surface, which touches no port, reaches a report.
@@ -115,5 +115,5 @@ class UserCommands(
      * previous `Succeeded` still latched.
      */
     val resetRename: suspend () -> Unit,
-    val sendDiagnostics: suspend (note: String, screen: String) -> Unit,
+    val sendDiagnostics: suspend (note: String, screen: String) -> ReportOutcome,
 )

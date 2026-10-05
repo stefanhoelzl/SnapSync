@@ -22,7 +22,42 @@ data class UiState(
     val overlays: Overlays = Overlays(),
     /** Where a bug report goes on this build — what the report sheet says, and what its button reads. */
     val reportDestination: ReportDestination = ReportDestination.DEVELOPER,
+    /** Which build this is — the app menu's footer (capability `sync-status`). A constant of the build. */
+    val build: BuildLabel = BuildLabel.UNKNOWN,
 )
+
+/**
+ * The build's version and build number as the app menu shows them (capability `sync-status`). Off-device
+ * compositions know neither and say so ([UNKNOWN]) rather than showing a number nobody built.
+ */
+@Serializable
+data class BuildLabel(val version: String, val buildNumber: String) {
+    companion object {
+        val UNKNOWN: BuildLabel = BuildLabel(version = "unknown", buildNumber = "unknown")
+    }
+}
+
+/**
+ * What became of a bug report the user confirmed (capability `privacy-security`), as the app briefly says it: handed
+ * to the reporting service, kept on this device, or neither. [SENT] is a hand-off, never a delivery — the channel
+ * may queue and retry, and nothing reports back.
+ */
+@Serializable
+enum class ReportOutcome { SENT, SAVED, NOT_SENT }
+
+/**
+ * Whether [this] layer offers the app menu (capability `sync-status`): everywhere except the event-settings surface
+ * and while a join or a create is in progress. Loading an invite's details is a fetch, not a join, so it keeps the
+ * menu. One rule, read by the reduction (which masks an open menu where it is not offered) and the screen (which
+ * draws the button), so the two cannot disagree.
+ */
+val Layer.offersMenu: Boolean
+    get() = when (this) {
+        Layer.CreatingEvent -> false
+        is Layer.Joined -> surface !is JoinedSurface.Reconfigure
+        is Layer.JoiningEvent -> (phase as? JoinPhase.Detailed)?.step != JoinPhase.Detailed.Step.Committing
+        else -> true
+    }
 
 /**
  * Where a bug report goes (capability `privacy-security`) — a constant of the build: a distributed build sends it to
@@ -36,8 +71,8 @@ enum class ReportDestination { DEVELOPER, THIS_DEVICE }
  *
  * They have nothing in common as features (they belong to four capabilities); what groups them is the
  * only thing the layout cares about, which is that each is drawn over whatever body rendered. They live
- * here rather than on a layer because the diagnostic sheet's gesture is on the app-name label, which
- * **every** layer renders: a flag on `Joined` alone could not express it.
+ * here rather than on a layer because the app menu and the report sheet are reachable from (nearly)
+ * **every** layer: a flag on `Joined` alone could not express them.
  *
  * What is TYPED into a sheet stays in the sheet (capability `sync-status`, the stated IME
  * exception): the presence and the seed are state, the characters since it opened are not.
@@ -49,10 +84,15 @@ data class Overlays(
     /** The rename dialog, opened by the pen beside the heading (capability `manage-membership`). */
     val renaming: Boolean = false,
     /**
-     * The diagnostic-dump sheet (capability `privacy-security`), opened by a double-tap on the
-     * app-name label. Reachable from every layer, which is why this bundle is not layer-scoped.
+     * The diagnostic-dump sheet (capability `privacy-security`), opened from the app menu's "Report a problem" or
+     * by the hidden double-tap on the app-name label. Reachable from every layer, which is why this bundle is not
+     * layer-scoped.
      */
     val reportingBug: Boolean = false,
+    /** The app menu's drawer (capability `sync-status`); never shown where the layer does not [offersMenu]. */
+    val menuOpen: Boolean = false,
+    /** The brief word on the last confirmed report (capability `privacy-security`), until it clears or is tapped. */
+    val reportNotice: ReportOutcome? = null,
 )
 
 /**

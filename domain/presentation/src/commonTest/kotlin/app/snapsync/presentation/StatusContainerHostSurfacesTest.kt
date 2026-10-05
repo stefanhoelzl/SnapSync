@@ -3,6 +3,7 @@ package app.snapsync.presentation
 import app.snapsync.model.AlbumKind
 import app.snapsync.model.ReportDestination
 import app.snapsync.model.ReconfigureOutcome
+import app.snapsync.model.ReportOutcome
 import app.snapsync.model.UserQueries
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
@@ -108,7 +109,7 @@ class StatusContainerHostSurfacesTest {
         scope: CoroutineScope,
         spy: Spy = Spy(),
         config: MutableStateFlow<EventConfig?> = MutableStateFlow(CONFIG),
-        sendDiagnostics: suspend (String, String) -> Unit = { _, _ -> },
+        sendDiagnostics: suspend (String, String) -> ReportOutcome = { _, _ -> ReportOutcome.SENT },
         queries: UserQueries = noQueries,
         onCommitJoin: suspend (eventId: String) -> Unit = {},
         reportDestination: ReportDestination = ReportDestination.DEVELOPER,
@@ -162,7 +163,7 @@ class StatusContainerHostSurfacesTest {
     private fun onHost(
         spy: Spy = Spy(),
         config: MutableStateFlow<EventConfig?> = MutableStateFlow(CONFIG),
-        sendDiagnostics: suspend (String, String) -> Unit = { _, _ -> },
+        sendDiagnostics: suspend (String, String) -> ReportOutcome = { _, _ -> ReportOutcome.SENT },
         queries: UserQueries = noQueries,
         onCommitJoin: suspend (eventId: String) -> Unit = {},
         reportDestination: ReportDestination = ReportDestination.DEVELOPER,
@@ -607,7 +608,7 @@ class StatusContainerHostSurfacesTest {
     @Test
     fun `a build with a channel forwards the note and the surface it was sent from`() {
         val spy = Spy()
-        return onHost(spy, sendDiagnostics = { note, screen -> spy.diagnostics += note to screen }) { host ->
+        return onHost(spy, sendDiagnostics = { note, screen -> spy.diagnostics += note to screen; ReportOutcome.SENT }) { host ->
             host.onSendDiagnostics("photos are not arriving", "joined")
             withTimeout(5.seconds) {
                 while (spy.diagnostics.isEmpty()) kotlinx.coroutines.yield()

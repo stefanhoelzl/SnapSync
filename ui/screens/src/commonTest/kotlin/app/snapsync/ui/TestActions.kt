@@ -27,7 +27,17 @@ internal fun testActions(
     onOpenLink: (String) -> Unit = {},
     participation: ParticipationActions = testParticipationActions(),
     onSendDiagnostics: (note: String, screen: String) -> Unit = { _, _ -> },
-) = StatusActions(join, joined, access, switch, surfaces, onCreateEvent, onOpenLink, participation, onSendDiagnostics)
+    menu: MenuActions = testMenuActions(onSendDiagnostics = onSendDiagnostics),
+) = StatusActions(join, joined, access, switch, surfaces, onCreateEvent, onOpenLink, participation, menu)
+
+internal fun testMenuActions(
+    onSendDiagnostics: (note: String, screen: String) -> Unit = { _, _ -> },
+    onMenuOpen: () -> Unit = {},
+    onMenuDismiss: () -> Unit = {},
+    onReportBug: () -> Unit = {},
+    onOpenLink: (app.snapsync.model.AppLink) -> Unit = {},
+    onReportNoticeDismiss: () -> Unit = {},
+) = MenuActions(onSendDiagnostics, onMenuOpen, onMenuDismiss, onReportBug, onOpenLink, onReportNoticeDismiss)
 
 internal fun testJoinGateActions(
     onConfirmJoin: () -> Unit = {},

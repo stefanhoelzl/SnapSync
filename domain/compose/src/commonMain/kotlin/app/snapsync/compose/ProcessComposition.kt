@@ -1,5 +1,6 @@
 package app.snapsync.compose
 
+import app.snapsync.model.BuildLabel
 import app.snapsync.model.ReportDestination
 import app.snapsync.ports.BuildInfo
 import app.snapsync.ports.Clock
@@ -96,6 +97,10 @@ class ProcessServices internal constructor(
     /** Where a bug report goes on this build (capability `privacy-security`): sent where it reports, else kept here. */
     val reportDestination: ReportDestination
         get() = if (crash.isConfigured) ReportDestination.DEVELOPER else ReportDestination.THIS_DEVICE
+
+    /** Which build this is, as the app menu shows it (capability `sync-status`). */
+    val buildLabel: BuildLabel
+        get() = BuildLabel(version = build.appVersion, buildNumber = build.diagnostics.buildNumber)
 }
 
 /**

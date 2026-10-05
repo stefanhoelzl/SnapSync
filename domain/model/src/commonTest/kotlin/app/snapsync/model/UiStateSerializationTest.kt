@@ -216,10 +216,13 @@ class UiStateSerializationTest {
         for (form in one) {
             roundTrip(UiState(Layer.JoiningEvent(eventId = "E", phase = JoinPhase.Loading, form = form)))
         }
-        val overlays = listOf(Overlays(confirmingLeave = true), Overlays(renaming = true), Overlays(reportingBug = true))
+        val overlays = listOf(Overlays(confirmingLeave = true), Overlays(renaming = true), Overlays(reportingBug = true)) +
+            Overlays(menuOpen = true) + ReportOutcome.entries.map { Overlays(reportNotice = it) }
         for (overlay in overlays) {
             roundTrip(UiState(Layer.CreateEvent(), overlay))
         }
+        // The build constants the menu's footer and the report sheet read.
+        roundTrip(UiState(Layer.CreateEvent(), reportDestination = ReportDestination.THIS_DEVICE, build = BuildLabel("0.12", "2140")))
         // The range's defaulted count, at its default.
         roundTrip(
             UiState(

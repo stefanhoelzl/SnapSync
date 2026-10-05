@@ -112,6 +112,8 @@ fun snapSyncHost(
             inviteLinkHints = ports.devControls.inviteLinkHints(),
             // Where a bug report goes on this build — the sheet says it (capability `privacy-security`).
             reportDestination = process.reportDestination,
+            // Which build this is — the app menu's footer (capability `sync-status`).
+            build = process.buildLabel,
             // How this phone holds an event album (capability `event-album`) — the photo library's own answer.
             albumKind = ports.gallery.albumKind,
             diagnostics = StatusDiagnostics(
