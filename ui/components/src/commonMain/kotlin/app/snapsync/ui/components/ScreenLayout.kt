@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
@@ -16,6 +18,7 @@ import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -39,6 +42,10 @@ import androidx.compose.ui.unit.Dp
  * across the width. Screens supply one or more action composables; this container row-arranges them
  * centered with consistent spacing, so the screen never hardcodes anchor or row geometry (spec: docs/architecture.md).
  *
+ * [onMenu] opens the app menu (capability `sync-status`) from a button at the start of the title row; `null` draws no
+ * button — the screens that withhold the menu — while the row keeps its height, so the label never moves between
+ * them.
+ *
  * [onEditHeading] is the heading's edit affordance (capability `manage-membership`). It is the deliberate
  * OPPOSITE of [onTitleDoubleTap]: a visible control with click semantics and an accessibility label,
  * because renaming an event is something a member should be able to find. The two never collide — they
@@ -56,6 +63,7 @@ fun ScreenLayout(
     bottomActions: (@Composable () -> Unit)?,
     contentPinsActionCluster: Boolean,
     onTitleDoubleTap: (() -> Unit)?,
+    onMenu: (() -> Unit)?,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -71,12 +79,14 @@ fun ScreenLayout(
                 )
                 .padding(
                     start = 24.dp,
-                    top = 24.dp,
+                    // The title row is a full touch target tall (see [TitleRow]); this keeps the label where a
+                    // 24.dp margin over a bare label put it.
+                    top = TITLE_ROW_TOP,
                     end = 24.dp,
                     bottom = if (contentPinsActionCluster) 0.dp else 24.dp,
                 ),
         ) {
-            NavTitle(title, onTitleDoubleTap, bottomPadding = if (heading == null) 12.dp else 4.dp)
+            TitleRow(title, onTitleDoubleTap, onMenu)
             if (heading != null) {
                 Heading(heading, bottomPadding = if (heading.details == null) 12.dp else 4.dp)
                 heading.details?.let { details ->
@@ -108,16 +118,43 @@ fun ScreenLayout(
     }
 }
 
+/** The padding above the title row: a 24.dp margin over the label, less the touch target's slack above it. */
+private val TITLE_ROW_TOP = 10.dp
+
+/**
+ * The title row: the app-name label, centred across the full width whatever sits beside it, and the menu button at
+ * its start. One touch target tall ([TITLE_ROW_HEIGHT]) on every screen, button or not.
+ */
+@Composable
+private fun TitleRow(title: String, onDoubleTap: (() -> Unit)?, onMenu: (() -> Unit)?) {
+    Box(modifier = Modifier.fillMaxWidth().heightIn(min = TITLE_ROW_HEIGHT), contentAlignment = Alignment.Center) {
+        NavTitle(title, onDoubleTap)
+        if (onMenu != null) {
+            // Pulled into the margin by the icon's own inset, so the glyph — not the touch target — lines up with
+            // the screen's 24.dp edge.
+            IconButton(onClick = onMenu, modifier = Modifier.align(Alignment.CenterStart).offset(x = (-12).dp)) {
+                Icon(
+                    imageVector = Icons.Filled.Menu,
+                    contentDescription = "Menu",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+private val TITLE_ROW_HEIGHT = 48.dp
+
 /**
  * The small app-name nav label — always present, top-anchored (mockup `.navtitle`).
  *
- * [onDoubleTap] is the hidden operator affordance (capability `privacy-security`), and it is
+ * [onDoubleTap] is the hidden second way to the report sheet (capability `privacy-security`), and it is
  * deliberately a raw pointer-input gesture rather than `combinedClickable`: that would add click
  * semantics and a role to a label that must stay invisible to assistive tech and to a UI test that has
  * not been told where to look.
  */
 @Composable
-private fun NavTitle(title: String, onDoubleTap: (() -> Unit)?, bottomPadding: Dp) {
+private fun NavTitle(title: String, onDoubleTap: (() -> Unit)?) {
     Text(
         text = title.uppercase(),
         style = MaterialTheme.typography.labelLarge.copy(
@@ -127,8 +164,6 @@ private fun NavTitle(title: String, onDoubleTap: (() -> Unit)?, bottomPadding: D
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         textAlign = TextAlign.Center,
         modifier = Modifier
-            .fillMaxWidth()
-            .padding(bottom = bottomPadding)
             .then(
                 onDoubleTap?.let { tap ->
                     Modifier.pointerInput(tap) {

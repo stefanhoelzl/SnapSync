@@ -24,6 +24,17 @@ sealed interface UiIntent {
     data object RenameDismiss : UiIntent
     data object ReportBugOpen : UiIntent
     data object ReportBugDismiss : UiIntent
+
+    /** The app menu (capability `sync-status`): open it, close it, and its "Report a problem" row. */
+    data object MenuOpen : UiIntent
+    data object MenuDismiss : UiIntent
+    data object MenuReportBug : UiIntent
+
+    /** One of the app menu's links, opened outside the app. */
+    data class OpenLink(val link: AppLink) : UiIntent
+
+    /** The brief word on a sent report, tapped away before it cleared itself. */
+    data object ReportNoticeDismiss : UiIntent
     data object OpenReconfigure : UiIntent
     data object CancelReconfigure : UiIntent
     data class RenameEvent(val eventId: String, val name: String) : UiIntent

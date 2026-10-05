@@ -78,6 +78,9 @@ import app.snapsync.model.UiState
 import app.snapsync.model.details
 import app.snapsync.model.step
 import app.snapsync.model.VersionRefusal
+import app.snapsync.model.AppLink
+import app.snapsync.model.BuildLabel
+import app.snapsync.model.ReportOutcome
 
 class StatusContainerHost(
     // Every read-model this container reduces over (see [StatusSources]). Bundled because they are one
@@ -117,6 +120,8 @@ class StatusContainerHost(
     // Where a bug report goes on this build (capability `privacy-security`) — a constant the composition states,
     // carried on every `UiState` so the sheet says it. Defaulted to the distributed build's answer.
     private val reportDestination: ReportDestination = ReportDestination.DEVELOPER,
+    // Which build this is (capability `sync-status`) — the app menu's footer, a constant the composition states.
+    private val build: BuildLabel = BuildLabel.UNKNOWN,
     // How this phone holds an event album (capability `event-album`): the photo library's own answer, which the
     // composition reads once and the surfaces' album note follows. Defaulted to the iPhone's answer.
     private val albumKind: AlbumKind = AlbumKind.COLLECTION,
@@ -144,6 +149,7 @@ class StatusContainerHost(
     // a property initialized later is null at that moment.
     private val local = MutableStateFlow(Local(form = freshForm))
     private var transientErrorClear: Job? = null
+    private var reportNoticeClear: Job? = null
 
     /** The non-idempotent commands claimed while their intent runs — see [guardedIntent]. */
     private val inFlight = MutableStateFlow<Set<Guarded>>(emptySet())
@@ -327,7 +333,7 @@ class StatusContainerHost(
         val layer = interaction.versionRefusal
             ?.let { Layer.UpdateRequired(minimumVersion = it.minimumVersion, store = store) }
             ?: reduceFrom(membership, interaction, local, now, ::resolveRange)
-        return UiState(layer, local.overlays.maskedFor(layer), reportDestination)
+        return UiState(layer, local.overlays.maskedFor(layer), reportDestination, build)
     }
 
 
@@ -459,6 +465,29 @@ class StatusContainerHost(
 
         fun onReportBugDismiss() = intent { local.editOverlays { it.copy(reportingBug = false) } }
 
+        /** The app menu (capability `sync-status`). Where the layer does not offer it, an open flag is masked. */
+        fun onMenuOpen() = intent { local.editOverlays { it.copy(menuOpen = true) } }
+
+        fun onMenuDismiss() = intent { local.editOverlays { it.copy(menuOpen = false) } }
+
+        /** The menu's "Report a problem": the menu gives way to the sheet in one edit, so the two never stack. */
+        fun onMenuReportBug() = intent { local.editOverlays { it.copy(menuOpen = false, reportingBug = true) } }
+
+        /**
+         * One of the menu's links, opened outside the app (capability `sync-status`). The menu closes first, so
+         * coming back finds the screen rather than the drawer; a refused hand-off is logged by the command.
+         */
+        fun onOpenLink(link: AppLink) = intent {
+            local.editOverlays { it.copy(menuOpen = false) }
+            commands.openLink(link.url)
+        }
+
+        /** The report's brief word, tapped away before it cleared itself. */
+        fun onReportNoticeDismiss() = intent {
+            reportNoticeClear?.cancel()
+            local.editOverlays { it.copy(reportNotice = null) }
+        }
+
         /**
          * Open the settings surface, pre-filled from the persisted membership. Seeding HERE rather than
          * in the reduction is what makes the pre-fill a SNAPSHOT: a foreground refresh landing mid-edit
@@ -494,11 +523,29 @@ class StatusContainerHost(
      * problem — already trimmed and length-bounded by the sheet that collected it — and an opaque label
      * for the surface it was sent from (the screen, which only the screen itself can name). On a build that
      * reports nowhere the report is kept on the device instead ([UiState.reportDestination] says which).
-     * Fire-and-forget: `UiState` is unaffected, and no delivery claim is made (the channel may queue and
-     * retransmit).
+     * Once it has been handed off, the app briefly says what became of it ([Overlays.reportNotice]) — sent, saved,
+     * or neither — and makes no delivery claim (the channel may queue and retransmit). A command that failed
+     * outright is "neither": the user confirmed a report, and silence would read as sent.
      */
-    val onSendDiagnostics: (String, String) -> Unit =
-        { note, screen -> intent { commands.sendDiagnostics(note, screen) } }
+    val onSendDiagnostics: (String, String) -> Unit = { note, screen ->
+        intent {
+            val outcome = try {
+                commands.sendDiagnostics(note, screen)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                onIntentError(e)
+                ReportOutcome.NOT_SENT
+            }
+            // Shown, then cleared after a moment; a later report's word replaces an earlier one's.
+            local.editOverlays { it.copy(reportNotice = outcome) }
+            reportNoticeClear?.cancel()
+            reportNoticeClear = scope.launch {
+                delay(REPORT_NOTICE_MILLIS)
+                local.editOverlays { it.copy(reportNotice = null) }
+            }
+        }
+    }
 
     /**
      * Apply a reconfigure of the joined membership (capability `manage-membership`), confirmed on
@@ -921,6 +968,9 @@ private const val NOT_STARTED_TICK_MILLIS = 60_000L
 
 /** How long the transient invalid-link error stays on screen after it last appeared. */
 private const val TRANSIENT_ERROR_MILLIS = 4_000L
+
+/** How long the word on a sent report stays (capability `privacy-security`): long enough to read, then gone. */
+private const val REPORT_NOTICE_MILLIS = 4_000L
 
 /** The transient invalid-link copy (the screen renders [StatusContainerHost.transientError] verbatim). */
 private const val INVALID_LINK_MESSAGE = "That QR code wasn't valid."

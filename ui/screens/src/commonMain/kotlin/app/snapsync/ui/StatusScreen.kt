@@ -17,7 +17,22 @@ import app.snapsync.ui.components.LeaveButton
 import app.snapsync.ui.components.ScreenLayout
 import app.snapsync.ui.components.SettingsButton
 import app.snapsync.ui.components.ShareButton
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import app.snapsync.model.AppLink
+import app.snapsync.model.BuildLabel
+import app.snapsync.model.ReportOutcome
+import app.snapsync.model.offersMenu
+import app.snapsync.ui.components.AppMenuDivider
+import app.snapsync.ui.components.AppMenuDrawer
+import app.snapsync.ui.components.AppMenuFooter
+import app.snapsync.ui.components.AppMenuHeader
+import app.snapsync.ui.components.AppMenuIcon
+import app.snapsync.ui.components.AppMenuItem
+import app.snapsync.ui.components.AppNotice
 import app.snapsync.ui.components.DialogCopy
 import app.snapsync.ui.components.ScreenHeading
 import app.snapsync.ui.components.PromptField
@@ -77,33 +92,79 @@ fun StatusScreen(
         }
 
 
-        // The app-name nav label is always "SnapSync"; the joined event's name is the prominent heading.
-        ScreenLayout(
-            title = "SnapSync",
-            // The rename pen rides with the heading it edits. Unlike the hidden double-tap below, it is a
-            // real control and appears in the accessibility tree. Not suppressed during a pending switch,
-            // for the same reasons the settings gear is not: `RenameEvent` guards the `eventId` itself,
-            // and suppressing here also hid the pen for the whole of a join's own commit.
-            // Beneath it, that this device has joined and the event's dates (capability `sync-status`).
-            heading = (state.layer as? Layer.Joined)
-                ?.takeIf { chrome.showsJoinedChrome }?.let { joined ->
-                ScreenHeading(
-                    text = joined.membership.name,
-                    onEdit = if (chrome.canRename) actions.surfaces.onRenameOpen else null,
-                    editDescription = "Rename event",
-                    details = { JoinedHeadingDetails(joined, cutoff) },
-                )
-            },
-            bottomActions = bottomActions,
-            contentPinsActionCluster = chrome.pinsActionCluster,
-            // Hidden, and only where there is a channel to send to.
-            onTitleDoubleTap = actions.surfaces.onReportBugOpen,
+        // The app menu (capability `sync-status`) is drawn over the whole screen; where the layer withholds it, the
+        // title row draws no button and the reduction keeps the drawer shut.
+        AppMenuDrawer(
+            open = state.overlays.menuOpen,
+            onDismiss = actions.menu.onMenuDismiss,
+            menu = { AppMenu(state.build, actions.menu) },
         ) {
-            CurrentLayer(state = state, chrome = chrome, cutoff = cutoff, actions = actions)
+            Box(modifier = Modifier.fillMaxSize()) {
+                // The app-name nav label is always "SnapSync"; the joined event's name is the prominent heading.
+                ScreenLayout(
+                    title = "SnapSync",
+                    // The rename pen rides with the heading it edits. Unlike the hidden double-tap below, it is a
+                    // real control and appears in the accessibility tree. Not suppressed during a pending switch,
+                    // for the same reasons the settings gear is not: `RenameEvent` guards the `eventId` itself,
+                    // and suppressing here also hid the pen for the whole of a join's own commit.
+                    // Beneath it, that this device has joined and the event's dates (capability `sync-status`).
+                    heading = (state.layer as? Layer.Joined)
+                        ?.takeIf { chrome.showsJoinedChrome }?.let { joined ->
+                        ScreenHeading(
+                            text = joined.membership.name,
+                            onEdit = if (chrome.canRename) actions.surfaces.onRenameOpen else null,
+                            editDescription = "Rename event",
+                            details = { JoinedHeadingDetails(joined, cutoff) },
+                        )
+                    },
+                    bottomActions = bottomActions,
+                    contentPinsActionCluster = chrome.pinsActionCluster,
+                    // The hidden second way to the report sheet; the menu's "Report a problem" is the visible one.
+                    onTitleDoubleTap = actions.surfaces.onReportBugOpen,
+                    onMenu = actions.menu.onMenuOpen.takeIf { state.layer.offersMenu },
+                ) {
+                    CurrentLayer(state = state, chrome = chrome, cutoff = cutoff, actions = actions)
+                }
+                state.overlays.reportNotice?.let { outcome ->
+                    AppNotice(
+                        text = reportNoticeText(outcome),
+                        onDismiss = actions.menu.onReportNoticeDismiss,
+                        modifier = Modifier.align(Alignment.BottomCenter),
+                    )
+                }
+            }
         }
         // The overlays sit ON TOP of whatever layer rendered above.
         StatusOverlays(state = state, actions = actions)
     }
+}
+
+/**
+ * The app menu's rows (capability `sync-status`): the report set apart at the top, then the site's pages, then which
+ * build this is — shown, never a control.
+ */
+@Composable
+private fun ColumnScope.AppMenu(build: BuildLabel, actions: MenuActions) {
+    AppMenuHeader("SnapSync")
+    AppMenuItem(icon = AppMenuIcon.REPORT, label = "Report a problem", onClick = actions.onReportBug)
+    AppMenuDivider()
+    AppMenuItem(icon = AppMenuIcon.WEBSITE, label = "Website", onClick = { actions.onOpenLink(AppLink.WEBSITE) })
+    AppMenuItem(
+        icon = AppMenuIcon.PRIVACY,
+        label = "Privacy policy",
+        onClick = { actions.onOpenLink(AppLink.PRIVACY_POLICY) },
+    )
+    AppMenuFooter("Version ${build.version} (${build.buildNumber})")
+}
+
+/**
+ * The word on a confirmed report (capability `privacy-security`): what became of it, and never more — "sent" is a
+ * hand-off, so it claims no delivery, and the failure is told calmly.
+ */
+internal fun reportNoticeText(outcome: ReportOutcome): String = when (outcome) {
+    ReportOutcome.SENT -> "Thanks — your report was sent."
+    ReportOutcome.SAVED -> "Your report was saved on this device."
+    ReportOutcome.NOT_SENT -> "Your report couldn't be sent. Please try again later."
 }
 
 /**
@@ -181,7 +242,7 @@ private fun StatusOverlays(state: UiState, actions: StatusActions) {
         RenameSheet(joined.membership, joined.renameState, actions)
     }
     if (overlays.reportingBug) {
-        BugReportSheet(actions, actions.onSendDiagnostics, screenLabel(state), state.reportDestination)
+        BugReportSheet(actions, actions.menu.onSendDiagnostics, screenLabel(state), state.reportDestination)
     }
     // A switch confirmation over the joined screen (scanning a different event while joined).
     joined?.pendingSwitch?.let { switch ->

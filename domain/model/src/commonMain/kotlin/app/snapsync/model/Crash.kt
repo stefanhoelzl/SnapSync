@@ -108,6 +108,14 @@ sealed interface DumpResult {
     data class NotSent(val reason: String) : DumpResult
 }
 
+/** What the user is told became of their report (capability `privacy-security`): a hand-off, never a delivery. */
+val DumpResult.outcome: ReportOutcome
+    get() = when (this) {
+        DumpResult.Queued -> ReportOutcome.SENT
+        is DumpResult.Saved -> ReportOutcome.SAVED
+        is DumpResult.NotSent -> ReportOutcome.NOT_SENT
+    }
+
 /** Where a build that reports nowhere keeps the latest report: its own files' PRIVATE area, replaced each time. */
 const val SAVED_DIAGNOSTIC_REPORT_PATH: String = "diagnostic-report.json"
 

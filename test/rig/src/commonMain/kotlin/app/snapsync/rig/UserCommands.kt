@@ -158,6 +158,19 @@ fun excludedUserCommands(): Map<String, String> = mapOf(
         "opens the diagnostic sheet and touches no port; the send itself is wired as `/user/sendDiagnostics`.",
     "onReportBugDismiss" to
         "dismisses that sheet, which the channel never opens.",
+    "onMenuOpen" to
+        "opens the app menu and touches no port; what the menu leads to is wired or excluded on its own — the " +
+        "report as `/user/sendDiagnostics`, the links as onOpenLink below.",
+    "onMenuDismiss" to
+        "dismisses the app menu, which the channel never opens.",
+    "onMenuReportBug" to
+        "swaps the app menu for the diagnostic sheet and touches no port; the send is `/user/sendDiagnostics`.",
+    "onOpenLink" to
+        "leaves the app for the browser, backgrounding the process under test — the reason onOpenAppStore is " +
+        "excluded. Where each link points is pinned by the model's own test.",
+    "onReportNoticeDismiss" to
+        "clears the word on a sent report before its own timeout and touches no port; the word itself is in " +
+        "/device/state after `/user/sendDiagnostics`.",
     "onShareInvite" to
         "presents a UIActivityViewController and leaves the modal on screen for a finger to dismiss. " +
         "The presentation itself is SharePresenterContract, run live by POST /contract/SharePresenter; the " +

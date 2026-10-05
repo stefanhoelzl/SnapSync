@@ -5,6 +5,8 @@ import app.snapsync.feature.membership.toJoinLoad
 import app.snapsync.model.Handoff
 import app.snapsync.model.JoinCommit
 import app.snapsync.model.ReconfigureOutcome
+import app.snapsync.model.ReportOutcome
+import app.snapsync.model.outcome
 import app.snapsync.model.UserCommands
 import app.snapsync.model.UserQueries
 import app.snapsync.model.invocation
@@ -140,15 +142,17 @@ internal fun AppCore.userCommandsFor(): UserCommands = UserCommands(
     // the rename lifecycle, and an unattributed state change is the thing this trail exists to
     // eliminate.
     resetRename = { awaitingOnCoreLane<Unit>("tap.resetRename") { renameEvent.reset() } },
-    // The hidden diagnostic dump (capability `privacy-security`), fired once the operator has
+    // The diagnostic dump (capability `privacy-security`), fired once the user has
     // written what went wrong: sent where the build reports, kept on the device where it does not —
     // the process's crash reporting decides, and the answer is logged either way.
     sendDiagnostics = { note, screen ->
         // Core lane and awaited: the dump reads both device logs (~700 KB) before it sends or saves,
         // which is exactly the blocking work the main lane must never see, and the sheet waits on it.
-        awaitingOnCoreLane<Unit>("tap.sendDiagnostics", params = "screen=$screen") {
+        awaitingOnCoreLane<ReportOutcome>("tap.sendDiagnostics", params = "screen=$screen") {
             val result = process.crash.sendDump(collectDiagnosticDump.collect(note, screen))
             services.log.i { "diagnostic dump: $result" }
+            // What the user is told (capability `privacy-security`): handed off, kept here, or neither.
+            result.outcome
         }
     },
 )

@@ -29,6 +29,7 @@ import app.snapsync.rig.RigState
 import app.snapsync.ui.AccessActions
 import app.snapsync.ui.JoinGateActions
 import app.snapsync.ui.JoinedActions
+import app.snapsync.ui.MenuActions
 import app.snapsync.ui.ParticipationActions
 import app.snapsync.ui.StatusActions
 import app.snapsync.ui.StatusScreen
@@ -180,7 +181,14 @@ private fun mirrorActions(
             onSaveToAlbum = { on -> post("setRange", "saveToAlbum" to on.toString())() },
             onMobileData = { on -> post("setRange", "mobileData" to on.toString())() },
         ),
-        onSendDiagnostics = { text, screen -> post("sendDiagnostics", "note" to text, "screen" to screen)() },
+        menu = MenuActions(
+            onSendDiagnostics = { text, screen -> post("sendDiagnostics", "note" to text, "screen" to screen)() },
+            onMenuOpen = inert("open menu"),
+            onMenuDismiss = inert("dismiss menu"),
+            onReportBug = inert("open bug report from the menu"),
+            onOpenLink = { link -> note("open ${link.url}: the mirror opens no browser") },
+            onReportNoticeDismiss = inert("dismiss report notice"),
+        ),
     )
 }
 

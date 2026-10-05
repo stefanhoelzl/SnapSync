@@ -41,6 +41,7 @@ class ScreenHeadingTest {
                     bottomActions = null,
                     contentPinsActionCluster = false,
                     onTitleDoubleTap = null,
+                    onMenu = null,
                 ) {}
             } }
         }

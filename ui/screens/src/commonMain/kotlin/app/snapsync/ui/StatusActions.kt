@@ -1,5 +1,6 @@
 package app.snapsync.ui
 
+import app.snapsync.model.AppLink
 import kotlinx.datetime.LocalDateTime
 
 /**
@@ -25,8 +26,8 @@ import kotlinx.datetime.LocalDateTime
  * (`HostStatusActions.kt`), over its container, so a new action is wired once and a forgotten one does not
  * compile.
  *
- * [onSendDiagnostics] is wired on every build: a build with no reporting channel keeps the report on the device,
- * and the sheet says so (`UiState.reportDestination`, capability `privacy-security`).
+ * [MenuActions.onSendDiagnostics] is wired on every build: a build with no reporting channel keeps the report on the
+ * device, and the sheet says so (`UiState.reportDestination`, capability `privacy-security`).
  */
 class StatusActions(
     val join: JoinGateActions,
@@ -57,13 +58,26 @@ class StatusActions(
      * surfaces ask for the same seven, so they are one bundle rather than two identical sets.
      */
     val participation: ParticipationActions,
-    // The hidden diagnostic dump (capability `privacy-security`): fired by a double-tap on the app-name
-    // label, carrying what the operator wrote about the problem and the surface they wrote it from.
-    //
-    // NULLABLE rather than defaulting to an inert lambda, and that is a contract rather than a
-    // convenience: a build with no reporting channel must wire no gesture at all, because an affordance
-    // that silently does nothing is the one outcome `privacy-security` forbids.
+    /** The app menu (capability `sync-status`), the report it leads to, and the word on a sent report. */
+    val menu: MenuActions,
+)
+
+/**
+ * What the APP MENU asks for (capability `sync-status`): opening and closing it, its rows, sending the report it leads
+ * to, and tapping away the word on a sent report (capability `privacy-security`). A group of its own because every
+ * layer that offers the menu asks the same things.
+ */
+class MenuActions(
+    // The diagnostic dump (capability `privacy-security`): fired by the report sheet — opened from the menu's
+    // "Report a problem" or the hidden double-tap on the app-name label — carrying what the user wrote and the
+    // surface they wrote it from. Here because the menu is the report's way in; the gesture is the second one.
     val onSendDiagnostics: (note: String, screen: String) -> Unit,
+    val onMenuOpen: () -> Unit,
+    val onMenuDismiss: () -> Unit,
+    /** "Report a problem": the menu gives way to the report sheet. */
+    val onReportBug: () -> Unit,
+    val onOpenLink: (AppLink) -> Unit,
+    val onReportNoticeDismiss: () -> Unit,
 )
 
 /**
@@ -137,9 +151,9 @@ class SurfaceActions(
     val onOpenReconfigure: () -> Unit,
     val onCancelReconfigure: () -> Unit,
     /**
-     * The diagnostic sheet (capability `privacy-security`). Here with the other overlays rather than
-     * on the joined layer's group, because its gesture is on the app-name label, which EVERY layer
-     * renders — the same reason its flag is not layer-scoped in the state.
+     * The diagnostic sheet (capability `privacy-security`), by its hidden gesture. Here with the other overlays
+     * rather than on the joined layer's group, because the gesture is on the app-name label, which EVERY layer
+     * renders — the same reason its flag is not layer-scoped in the state. The menu's way in is [MenuActions].
      */
     val onReportBugOpen: () -> Unit,
     val onReportBugDismiss: () -> Unit,
