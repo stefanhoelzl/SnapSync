@@ -2,6 +2,8 @@ package app.snapsync.android.network
 
 import android.content.Context
 import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.net.NetworkInfo
 import android.os.ParcelFileDescriptor
 import androidx.test.platform.app.InstrumentationRegistry
@@ -26,9 +28,9 @@ import kotlin.test.assertNull
  *  - BLOCKED: the connectivity service's `OEM_DENY_3` firewall chain with this package denied — a block of THIS app's
  *    network while the device stays online, as a vendor's per-app network switch sets it.
  *
- * Every entry waits until the platform has applied it — the default network gone, or back — so a clause never races
- * the switch it was entered by; every disposal restores the online device, whatever the clause did, and so does an
- * entry that fails part-way.
+ * Every entry waits until the platform has applied it — every network gone, the default withheld, or back — so a
+ * clause never races the switch it was entered by; every disposal restores the online device, whatever the clause
+ * did, and so does an entry that fails part-way.
  */
 class AndroidNetworkMonitorContractTest {
 
@@ -81,7 +83,7 @@ class AndroidNetworkMonitorContractTest {
                 }
                 NetworkState.OFFLINE -> {
                     shell("cmd connectivity airplane-mode enable")
-                    awaitDefaultNetwork(present = false, "airplane mode")
+                    awaitNoNetwork()
                 }
                 NetworkState.BLOCKED -> {
                     restoreOnline()
@@ -127,5 +129,24 @@ class AndroidNetworkMonitorContractTest {
                 Thread.sleep(POLL_MILLIS)
             }
         }
+
+        /**
+         * Waits until airplane mode has taken EVERY network down, not just the default one. The radios go one at a
+         * time: on a loaded emulator Wi-Fi can go while cellular still lives, so the default reads `null` for a moment,
+         * then cellular takes over, then it goes too (measured on CI, run 37210658344). A monitor started in that gap
+         * reads the dying cellular network or registers after it is gone, and its first reading is `Online` or never
+         * comes — a race of the entry, not a fact about the adapter.
+         */
+        @Suppress("DEPRECATION")
+        fun awaitNoNetwork() {
+            val deadline = System.currentTimeMillis() + SETTLE_MILLIS
+            while (connectivity.activeNetworkInfo != null || connectivity.allNetworks.any(::carriesInternet)) {
+                check(System.currentTimeMillis() < deadline) { "the emulator did not reach airplane mode within ${SETTLE_MILLIS}ms" }
+                Thread.sleep(POLL_MILLIS)
+            }
+        }
+
+        private fun carriesInternet(network: Network): Boolean =
+            connectivity.getNetworkCapabilities(network)?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
     }
 }

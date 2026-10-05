@@ -11,8 +11,10 @@ import androidx.test.platform.app.InstrumentationRegistry
  * Wi-Fi network makes it one: the network policy service's per-SSID override, entered and lifted from the shell. The
  * override reconnects the Wi-Fi as a new network, so each switch waits until the platform reports the result.
  *
- * Measured on the API 36 emulator, 2026-10-03: `NET_CAPABILITY_NOT_METERED` leaves the Wi-Fi with the override and comes
- * back without a reconnect when it is lifted; the service answers 255 either way and applies it.
+ * Measured on the API 36 emulator, 2026-10-03: `NET_CAPABILITY_NOT_METERED` leaves the Wi-Fi with the override; the
+ * service answers 255 either way and applies it. Lifting it reconnects the Wi-Fi too, as a new network, with cellular
+ * the default in between (measured on CI, run 37210658344, and locally 2026-10-04) — so a lift's wait holds until the
+ * reconnected Wi-Fi is the default again, since the cellular one reads metered.
  */
 internal object MeteredWifi {
     /** The SSID of the emulator's simulated Wi-Fi. */
