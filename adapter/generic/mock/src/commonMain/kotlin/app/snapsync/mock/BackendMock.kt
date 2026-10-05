@@ -384,7 +384,7 @@ internal class BackendState(
         val event = events[eventId] ?: return
         if (!event.closed && closesNow(eventId)) {
             event.closed = true
-            notifyMembers(eventId, deviceId)
+            notifyMembers(eventId, deviceId, announce = false)
         }
     }
 
