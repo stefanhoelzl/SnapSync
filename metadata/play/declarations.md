@@ -178,10 +178,11 @@ form in a way that promises features the app does not have.
 
 ## Countries and regions
 
-**Worldwide**, the same as the App Store, widened in both stores on 2026-10-05 (until then Germany only: App Store
+**Worldwide except mainland China**, the same as the App Store, widened in both stores on 2026-10-05 (until then Germany only: App Store
 Connect, read 2026-10-02, listed 1 of 175 territories, `DEU`). Set it on each track that is published (closed
 testing, then production). Change both stores together, and the App Store link's country segment with them
-(`appStoreUrl` in `scripts/resolve-deployment.py`).
+(`appStoreUrl` in `scripts/resolve-deployment.py`). Mainland China stays out: Apple requires an ICP filing for an app
+there, and Firebase Cloud Messaging, the Android wake-up, is unreachable there.
 
 ## Pre-launch report
 
