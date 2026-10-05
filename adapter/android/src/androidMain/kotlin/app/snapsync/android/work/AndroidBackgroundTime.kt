@@ -20,6 +20,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import app.snapsync.adapter.android.R
 
 /**
  * The Android [BackgroundTime] (capability `background-upload`): "keep this process running while I finish, and tell
@@ -111,10 +112,12 @@ class HoldWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
 
     override suspend fun getForegroundInfo(): ForegroundInfo {
         val manager = applicationContext.getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(NotificationChannel(CHANNEL, "Sharing photos", NotificationManager.IMPORTANCE_MIN))
+        // The words are generated from the screens' strings (`docs/architecture.md`, "Localization").
+        val channelName = applicationContext.getString(R.string.notification_channel_sharing)
+        manager.createNotificationChannel(NotificationChannel(CHANNEL, channelName, NotificationManager.IMPORTANCE_MIN))
         val notification = Notification.Builder(applicationContext, CHANNEL)
             .setSmallIcon(android.R.drawable.stat_sys_upload)
-            .setContentTitle("Sharing photos")
+            .setContentTitle(applicationContext.getString(R.string.notification_sharing))
             .build()
         return ForegroundInfo(NOTIFICATION_ID, notification)
     }

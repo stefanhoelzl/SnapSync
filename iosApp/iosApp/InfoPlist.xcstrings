@@ -1,0 +1,17 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "NSPhotoLibraryUsageDescription" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SnapSync shares the photos you take during an event with its members and saves theirs to your gallery."
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

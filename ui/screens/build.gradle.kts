@@ -7,6 +7,9 @@ plugins {
     // Coverage measurement and its floors (`docs/architecture.md`, `snapsync.coverage`). Applied
     // here rather than in a `subprojects {}` block so the instrumented set is readable per module.
     id("snapsync.coverage")
+    // The text the OS shows outside the screens, generated from this module's strings (`docs/architecture.md`,
+    // "Localization").
+    id("snapsync.native-strings")
 }
 
 kotlin {
@@ -58,6 +61,14 @@ kotlin {
 compose.resources {
     packageOfResClass = "app.snapsync.ui.resources"
     publicResClass = false
+}
+
+// The languages the app ships (`docs/architecture.md`, "Localization"): the first is the base, in `values/`. Adding
+// one is a `values-<lang>/strings.xml` in BOTH UI modules plus its tag here; `./gradlew nativeStrings` then writes
+// what each OS needs to offer it.
+nativeStrings {
+    locales.set(listOf("en"))
+    otherResources.add(rootProject.file("ui/components/src/commonMain/composeResources"))
 }
 
 // ---- Coverage bounds (`docs/architecture.md`) ---------------------------------------------

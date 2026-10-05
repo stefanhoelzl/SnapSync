@@ -29,6 +29,10 @@ gradlePlugin {
             id = "snapsync.android"
             implementationClass = "app.snapsync.buildlogic.AndroidTargetPlugin"
         }
+        register("native-strings") {
+            id = "snapsync.native-strings"
+            implementationClass = "app.snapsync.buildlogic.NativeStringsPlugin"
+        }
         register("coverage") {
             id = "snapsync.coverage"
             implementationClass = "app.snapsync.buildlogic.CoveragePlugin"
