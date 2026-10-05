@@ -34,6 +34,16 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.time.Instant
+import app.snapsync.ui.resources.Res
+import app.snapsync.ui.components.resources.Res as ComponentRes
+import app.snapsync.ui.components.resources.menu
+import app.snapsync.ui.resources.menu_privacy
+import app.snapsync.ui.resources.menu_version
+import app.snapsync.ui.resources.menu_website
+import app.snapsync.ui.resources.report_problem
+import app.snapsync.ui.resources.report_sent
+import app.snapsync.ui.resources.report_saved
+import app.snapsync.ui.resources.report_not_sent
 
 /**
  * The app menu and the word on a sent report, as drawn (capabilities `sync-status`, `privacy-security`): the button
@@ -57,8 +67,8 @@ class AppMenuScreenTest {
         setContent {
             TestStatusScreen(UiState(Layer.CreateEvent()), cutoff, testActions(menu = testMenuActions(onMenuOpen = { opened++ })))
         }
-        onNodeWithText("Report a problem").assertDoesNotExist()
-        onNodeWithContentDescription("Menu").performClick()
+        onNodeWithText(str(Res.string.report_problem)).assertDoesNotExist()
+        onNodeWithContentDescription(str(ComponentRes.string.menu)).performClick()
         assertEquals(1, opened)
     }
 
@@ -66,13 +76,13 @@ class AppMenuScreenTest {
     fun `no menu button while a create or a join is in progress`() = runComposeUiTest {
         var state by androidx.compose.runtime.mutableStateOf(UiState(Layer.CreatingEvent))
         setContent { TestStatusScreen(state, cutoff) }
-        onNodeWithContentDescription("Menu").assertDoesNotExist()
+        onNodeWithContentDescription(str(ComponentRes.string.menu)).assertDoesNotExist()
         state = UiState(Layer.JoiningEvent(eventId = "E", phase = joinPhase(JoinPhase.Detailed.Step.Committing, details)))
         waitForIdle()
-        onNodeWithContentDescription("Menu").assertDoesNotExist()
+        onNodeWithContentDescription(str(ComponentRes.string.menu)).assertDoesNotExist()
         state = UiState(Layer.JoiningEvent(eventId = "E", phase = JoinPhase.LoadFailed))
         waitForIdle()
-        onNodeWithContentDescription("Menu").assertExists()
+        onNodeWithContentDescription(str(ComponentRes.string.menu)).assertExists()
     }
 
     @Test
@@ -92,11 +102,11 @@ class AppMenuScreenTest {
                 )
             }
             waitForIdle()
-            onNodeWithText("Report a problem").performClick()
-            onNodeWithText("Website").performClick()
-            onNodeWithText("Privacy policy").performClick()
+            onNodeWithText(str(Res.string.report_problem)).performClick()
+            onNodeWithText(str(Res.string.menu_website)).performClick()
+            onNodeWithText(str(Res.string.menu_privacy)).performClick()
             assertEquals(listOf("report", AppLink.WEBSITE.name, AppLink.PRIVACY_POLICY.name), asked)
-            val footer = onNodeWithText("Version 0.12 (2140)").fetchSemanticsNode()
+            val footer = onNodeWithText(str(Res.string.menu_version, "0.12", "2140")).fetchSemanticsNode()
             assertFalse(hasClickAction().matches(footer), "the build line is shown, never a control")
         }
 
@@ -126,10 +136,15 @@ class AppMenuScreenTest {
         for (outcome in ReportOutcome.entries) {
             state = UiState(Layer.CreateEvent(), Overlays(reportNotice = outcome))
             waitForIdle()
-            onNode(hasText(reportNoticeText(outcome))).assertExists()
+            onNode(hasText(str(noticeOf(outcome)))).assertExists()
         }
-        onNodeWithText(reportNoticeText(ReportOutcome.NOT_SENT)).performClick()
+        onNodeWithText(str(Res.string.report_not_sent)).performClick()
         assertEquals(1, dismissed)
-        assertEquals("Thanks — your report was sent.", reportNoticeText(ReportOutcome.SENT))
     }
+}
+
+private fun noticeOf(outcome: ReportOutcome) = when (outcome) {
+    ReportOutcome.SENT -> Res.string.report_sent
+    ReportOutcome.SAVED -> Res.string.report_saved
+    ReportOutcome.NOT_SENT -> Res.string.report_not_sent
 }

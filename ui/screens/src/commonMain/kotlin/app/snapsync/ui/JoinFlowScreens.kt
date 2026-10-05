@@ -20,7 +20,6 @@ import app.snapsync.ui.components.AppErrorBanner
 import app.snapsync.ui.components.AppInvitationHeaderLoading
 import app.snapsync.ui.components.AppJoinProgress
 import app.snapsync.ui.components.AppNoticeCard
-import app.snapsync.ui.components.JOIN_HERO_SUBTITLE
 import app.snapsync.ui.components.JoinNoticeFailed
 import app.snapsync.ui.components.JoinNoticeInvalid
 import app.snapsync.ui.components.JoinNoticeOffline
@@ -28,6 +27,25 @@ import app.snapsync.ui.components.AppEventHeaderCompact
 import app.snapsync.ui.components.appRangeLabel
 import app.snapsync.ui.components.PrimaryButton
 import app.snapsync.ui.components.SecondaryButton
+import app.snapsync.ui.resources.Res
+import app.snapsync.ui.resources.event_closed_body
+import app.snapsync.ui.resources.event_closed_title
+import app.snapsync.ui.resources.event_full_body
+import app.snapsync.ui.resources.event_full_title
+import app.snapsync.ui.resources.event_not_found_body
+import app.snapsync.ui.resources.event_not_found_title
+import app.snapsync.ui.resources.hero_subtitle
+import app.snapsync.ui.resources.join_failed_body
+import app.snapsync.ui.resources.join_failed_title
+import app.snapsync.ui.resources.joining
+import app.snapsync.ui.resources.load_failed_body
+import app.snapsync.ui.resources.load_failed_title
+import app.snapsync.ui.resources.loading_event
+import app.snapsync.ui.resources.retry
+import app.snapsync.ui.resources.waiting_network_body
+import app.snapsync.ui.resources.waiting_network_title
+import org.jetbrains.compose.resources.stringResource
+import app.snapsync.ui.resources.cancel
 
 // The join gate (capability `join-event`): the full-screen surface a scanned link opens, and the
 // status-plus-actions phases it dispatches over. The Ready decision surface lives in
@@ -54,7 +72,7 @@ internal fun JoiningEventScreen(
         // A rejected event link that arrived while this surface is open (capability `join-event`: the
         // self-clearing "not valid" message shows on whatever screen the user is on). Above the phase for the
         // joined layer's reason — it is about what the user JUST DID — and it changes nothing below.
-        layer.notice?.let { AppErrorBanner(it) }
+        layer.notice?.let { AppErrorBanner(it.text()) }
         // A missing network (capability `join-event`, "Without a network, the join screen waits for one"): said above
         // the phase, and every step that would reach the backend — Join, a retried join, a retried load — waits.
         val network = layer.network
@@ -71,11 +89,15 @@ internal fun JoiningEventScreen(
             when (phase) {
                 JoinPhase.Loading -> LoadingPhase()
                 JoinPhase.NotFound -> WallPhase(
-                    title = "Event not found",
-                    body = "This link is invalid, or the event no longer exists.",
+                    title = stringResource(Res.string.event_not_found_title),
+                    body = stringResource(Res.string.event_not_found_body),
                     onCancel = actions.onCancel,
                 )
-                JoinPhase.Closed -> WallPhase("Event closed", "This event can no longer be joined.", actions.onCancel)
+                JoinPhase.Closed -> WallPhase(
+                    stringResource(Res.string.event_closed_title),
+                    stringResource(Res.string.event_closed_body),
+                    actions.onCancel,
+                )
                 // Without a network the details load by themselves once it returns, so there is nothing to retry.
                 JoinPhase.LoadFailed -> if (online) {
                     LoadFailedPhase(onRetry = actions.onRetryLoad, onCancel = actions.onCancel)
@@ -98,15 +120,15 @@ internal fun JoiningEventScreen(
                     // whether a Retry is offered at all — see [CommitBlockedPhase].
                     JoinPhase.Detailed.Step.CommitFailed -> CommitBlockedPhase(
                         name = phase.event.name,
-                        title = "Couldn't join",
-                        body = "Something went wrong. Try again.",
+                        title = stringResource(Res.string.join_failed_title),
+                        body = stringResource(Res.string.join_failed_body),
                         onRetry = actions.onRetryJoin.takeIf { online },
                         onCancel = actions.onCancel,
                     )
                     JoinPhase.Detailed.Step.EventFull -> CommitBlockedPhase(
                         name = phase.event.name,
-                        title = "This event is full",
-                        body = "No more members can join it.",
+                        title = stringResource(Res.string.event_full_title),
+                        body = stringResource(Res.string.event_full_body),
                         onRetry = null,
                         onCancel = actions.onCancel,
                     )
@@ -147,8 +169,8 @@ private fun PhaseScaffold(
 @Composable
 private fun LoadingPhase() = PhaseScaffold(
     body = {
-        AppInvitationHeaderLoading(subtitle = JOIN_HERO_SUBTITLE)
-        CenteredBody { AppJoinProgress("Loading event details …") }
+        AppInvitationHeaderLoading(subtitle = stringResource(Res.string.hero_subtitle))
+        CenteredBody { AppJoinProgress(stringResource(Res.string.loading_event)) }
     },
 )
 
@@ -168,7 +190,7 @@ private fun WallPhase(title: String, body: String, onCancel: () -> Unit) = Phase
             )
         }
     },
-    actions = { SecondaryButton(label = "Cancel", onClick = onCancel) },
+    actions = { SecondaryButton(label = stringResource(Res.string.cancel), onClick = onCancel) },
 )
 
 /**
@@ -181,12 +203,12 @@ private fun WaitingForNetworkPhase(onCancel: () -> Unit) = PhaseScaffold(
         CenteredBody {
             AppNoticeCard(
                 icon = JoinNoticeOffline,
-                title = "Waiting for a network",
-                body = "The event loads as soon as you're back online.",
+                title = stringResource(Res.string.waiting_network_title),
+                body = stringResource(Res.string.waiting_network_body),
             )
         }
     },
-    actions = { SecondaryButton(label = "Cancel", onClick = onCancel) },
+    actions = { SecondaryButton(label = stringResource(Res.string.cancel), onClick = onCancel) },
 )
 
 /**
@@ -199,14 +221,14 @@ private fun LoadFailedPhase(onRetry: () -> Unit, onCancel: () -> Unit) = PhaseSc
         CenteredBody {
             AppNoticeCard(
                 icon = JoinNoticeOffline,
-                title = "Couldn't load the event",
-                body = "Check your connection and try again.",
+                title = stringResource(Res.string.load_failed_title),
+                body = stringResource(Res.string.load_failed_body),
             )
         }
     },
     actions = {
-        PrimaryButton(label = "Retry", onClick = onRetry)
-        SecondaryButton(label = "Cancel", onClick = onCancel)
+        PrimaryButton(label = stringResource(Res.string.retry), onClick = onRetry)
+        SecondaryButton(label = stringResource(Res.string.cancel), onClick = onCancel)
     },
 )
 
@@ -217,8 +239,8 @@ private fun LoadFailedPhase(onRetry: () -> Unit, onCancel: () -> Unit) = PhaseSc
 @Composable
 private fun CommittingPhase(name: String) = PhaseScaffold(
     body = {
-        AppEventHeaderCompact(title = name, subtitle = JOIN_HERO_SUBTITLE)
-        CenteredBody { AppJoinProgress("Joining …") }
+        AppEventHeaderCompact(title = name, subtitle = stringResource(Res.string.hero_subtitle))
+        CenteredBody { AppJoinProgress(stringResource(Res.string.joining)) }
     },
 )
 
@@ -244,14 +266,14 @@ private fun CommitBlockedPhase(
     onCancel: () -> Unit,
 ) = PhaseScaffold(
     body = {
-        AppEventHeaderCompact(title = name, subtitle = JOIN_HERO_SUBTITLE)
+        AppEventHeaderCompact(title = name, subtitle = stringResource(Res.string.hero_subtitle))
         CenteredBody {
             AppNoticeCard(icon = JoinNoticeFailed, title = title, body = body)
         }
     },
     actions = {
-        onRetry?.let { PrimaryButton(label = "Retry", onClick = it) }
-        SecondaryButton(label = "Cancel", onClick = onCancel)
+        onRetry?.let { PrimaryButton(label = stringResource(Res.string.retry), onClick = it) }
+        SecondaryButton(label = stringResource(Res.string.cancel), onClick = onCancel)
     },
 )
 
@@ -278,6 +300,7 @@ private fun ColumnScope.CenteredBody(content: @Composable () -> Unit) {
  * rather than "what does this screen draw", and burying it in a `when` branch made the dispatcher above
  * unreadable as a dispatcher.
  */
+@Composable
 private fun readyState(
     event: EventDetails,
     layer: Layer.JoiningEvent,

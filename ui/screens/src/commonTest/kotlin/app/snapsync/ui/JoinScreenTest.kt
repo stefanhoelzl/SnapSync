@@ -65,6 +65,54 @@ import kotlin.test.assertEquals
 import kotlinx.datetime.TimeZone
 import app.snapsync.ui.JoinGateActions
 import app.snapsync.ui.SwitchActions
+import app.snapsync.ui.resources.Res
+import app.snapsync.ui.components.resources.Res as ComponentRes
+import app.snapsync.ui.components.resources.network_blocked
+import app.snapsync.ui.components.resources.network_offline
+import app.snapsync.ui.components.resources.share_range_change
+import app.snapsync.ui.components.resources.share_range_title
+import app.snapsync.ui.resources.access_choose_title
+import app.snapsync.ui.resources.access_library_title
+import app.snapsync.ui.resources.access_range_title
+import app.snapsync.ui.resources.access_shared_title
+import app.snapsync.ui.resources.album_folder_nothing
+import app.snapsync.ui.resources.album_none
+import app.snapsync.ui.resources.album_share
+import app.snapsync.ui.resources.album_toggle
+import app.snapsync.ui.resources.cancel
+import app.snapsync.ui.resources.duration_days
+import app.snapsync.ui.resources.event_closed_body
+import app.snapsync.ui.resources.event_closed_title
+import app.snapsync.ui.resources.event_full_title
+import app.snapsync.ui.resources.event_not_found_body
+import app.snapsync.ui.resources.event_not_found_title
+import app.snapsync.ui.resources.join_access_dismiss
+import app.snapsync.ui.resources.join_access_info
+import app.snapsync.ui.resources.join_access_notice
+import app.snapsync.ui.resources.join_access_sheet_title
+import app.snapsync.ui.resources.join_button
+import app.snapsync.ui.resources.join_button_allow
+import app.snapsync.ui.resources.join_failed_title
+import app.snapsync.ui.resources.loading_event
+import app.snapsync.ui.resources.mobile_data_off_note
+import app.snapsync.ui.resources.mobile_data_on_note
+import app.snapsync.ui.resources.mobile_data_toggle
+import app.snapsync.ui.resources.ok
+import app.snapsync.ui.resources.range_custom
+import app.snapsync.ui.resources.range_from_now
+import app.snapsync.ui.resources.range_whole_event
+import app.snapsync.ui.resources.receive_toggle
+import app.snapsync.ui.resources.retry
+import app.snapsync.ui.resources.save
+import app.snapsync.ui.resources.share_detail_count
+import app.snapsync.ui.resources.share_detail_counting
+import app.snapsync.ui.resources.share_off_note
+import app.snapsync.ui.resources.share_toggle
+import app.snapsync.ui.resources.share_zero_note
+import app.snapsync.ui.resources.switch_body
+import app.snapsync.ui.resources.switch_confirm
+import app.snapsync.ui.resources.switch_title
+import app.snapsync.ui.resources.waiting_network_title
 
 /**
  * The **redesigned join gate** with a capture-date RANGE (capabilities `join-event`,
@@ -195,34 +243,34 @@ class JoinScreenTest {
     @Test
     fun `loading phase shows the loading label and no Join`() = runComposeUiTest {
         setScreen { TestStatusScreen(joining(JoinPhase.Loading), cutoff = fixedCutoff()) }
-        onNodeWithText("Loading event details …").assertExists()
-        onNodeWithText("Join").assertDoesNotExist()
+        onNodeWithText(str(Res.string.loading_event)).assertExists()
+        onNodeWithText(str(Res.string.join_button)).assertDoesNotExist()
     }
 
     @Test
     fun `not-found phase blocks the join`() = runComposeUiTest {
         setScreen { TestStatusScreen(joining(JoinPhase.NotFound), cutoff = fixedCutoff()) }
-        onNodeWithText("Event not found").assertExists()
-        onNodeWithText("Join").assertDoesNotExist()
-        onNodeWithText("Cancel").assertExists()
+        onNodeWithText(str(Res.string.event_not_found_title)).assertExists()
+        onNodeWithText(str(Res.string.join_button)).assertDoesNotExist()
+        onNodeWithText(str(Res.string.cancel)).assertExists()
     }
 
     @Test
     fun `closed phase refuses the join with no Retry`() = runComposeUiTest {
         setScreen { TestStatusScreen(joining(JoinPhase.Closed), cutoff = fixedCutoff()) }
-        onNodeWithText("Event closed").assertExists()
-        onNodeWithText("This event can no longer be joined.").assertExists()
-        onNodeWithText("Join").assertDoesNotExist()
-        onNodeWithText("Retry").assertDoesNotExist()
-        onNodeWithText("Cancel").assertExists()
+        onNodeWithText(str(Res.string.event_closed_title)).assertExists()
+        onNodeWithText(str(Res.string.event_closed_body)).assertExists()
+        onNodeWithText(str(Res.string.join_button)).assertDoesNotExist()
+        onNodeWithText(str(Res.string.retry)).assertDoesNotExist()
+        onNodeWithText(str(Res.string.cancel)).assertExists()
     }
 
     @Test
     fun `load-failed phase offers Retry`() = runComposeUiTest {
         var retried = 0
         setScreen { TestStatusScreen(joining(JoinPhase.LoadFailed), cutoff = fixedCutoff(), actions = testActions(join = testJoinGateActions(onRetryLoad = { retried++ }))) }
-        onNodeWithText("Retry").assertExists()
-        onNodeWithText("Retry").performClick()
+        onNodeWithText(str(Res.string.retry)).assertExists()
+        onNodeWithText(str(Res.string.retry)).performClick()
         assertEquals(1, retried)
     }
 
@@ -234,10 +282,10 @@ class JoinScreenTest {
     @Test
     fun `offline a failed load waits for the network with Cancel only`() = runComposeUiTest {
         setScreen { TestStatusScreen(joining(JoinPhase.LoadFailed).withNetwork(NetworkNotice.OFFLINE), cutoff = fixedCutoff()) }
-        onNodeWithText("You're offline").assertExists()
-        onNodeWithText("Waiting for a network").assertExists()
-        onNodeWithText("Retry").assertDoesNotExist()
-        onNodeWithText("Cancel").assertExists()
+        onNodeWithText(str(ComponentRes.string.network_offline)).assertExists()
+        onNodeWithText(str(Res.string.waiting_network_title)).assertExists()
+        onNodeWithText(str(Res.string.retry)).assertDoesNotExist()
+        onNodeWithText(str(Res.string.cancel)).assertExists()
     }
 
     @Test
@@ -251,8 +299,8 @@ class JoinScreenTest {
                 actions = testActions(join = testJoinGateActions(onCancelJoin = { cancelled++ })),
             )
         }
-        onNodeWithText("Join").assertIsNotEnabled()
-        onNodeWithText("Cancel").performClick()
+        onNodeWithText(str(Res.string.join_button)).assertIsNotEnabled()
+        onNodeWithText(str(Res.string.cancel)).performClick()
         assertEquals(1, cancelled)
     }
 
@@ -266,7 +314,7 @@ class JoinScreenTest {
                 actions = testActions(access = testAccessActions(onOpenSettings = { settingsOpens++ })),
             )
         }
-        onNodeWithText("Network blocked for SnapSync – Open Settings").performClick()
+        onNodeWithText(str(ComponentRes.string.network_blocked)).performClick()
         assertEquals(1, settingsOpens)
     }
 
@@ -279,8 +327,8 @@ class JoinScreenTest {
                 cutoff = fixedCutoff(),
             )
         }
-        onNodeWithText("Retry").assertDoesNotExist()
-        onNodeWithText("Cancel").assertExists()
+        onNodeWithText(str(Res.string.retry)).assertDoesNotExist()
+        onNodeWithText(str(Res.string.cancel)).assertExists()
     }
 
     @Test
@@ -297,8 +345,8 @@ class JoinScreenTest {
                 )
             )
         }
-        onNodeWithText("Couldn't join").assertExists()
-        onNodeWithText("Retry").performClick()
+        onNodeWithText(str(Res.string.join_failed_title)).assertExists()
+        onNodeWithText(str(Res.string.retry)).performClick()
         assertEquals(1, retried)
     }
 
@@ -315,9 +363,9 @@ class JoinScreenTest {
                 actions = testActions(join = testJoinGateActions(onRetryJoin = { retried++ })),
             )
         }
-        onNodeWithText("This event is full").assertExists()
-        onNodeWithText("Retry").assertDoesNotExist()
-        onNodeWithText("Cancel").assertExists()
+        onNodeWithText(str(Res.string.event_full_title)).assertExists()
+        onNodeWithText(str(Res.string.retry)).assertDoesNotExist()
+        onNodeWithText(str(Res.string.cancel)).assertExists()
         assertEquals(0, retried)
     }
 
@@ -327,8 +375,8 @@ class JoinScreenTest {
     fun `ready shows the two switch sections — both on by default`() = runComposeUiTest {
         setScreen { TestStatusScreen(joining(ready()), cutoff = fixedCutoff()) }
         onNodeWithText("Anna's Wedding").assertExists()
-        onNodeWithText("Share my photos").assertIsSwitch().assertToggle(ToggleableState.On)
-        onNodeWithText("Receive everyone's photos").assertIsSwitch().assertToggle(ToggleableState.On)
+        onNodeWithText(str(Res.string.share_toggle)).assertIsSwitch().assertToggle(ToggleableState.On)
+        onNodeWithText(str(Res.string.receive_toggle)).assertIsSwitch().assertToggle(ToggleableState.On)
     }
 
     @Test
@@ -344,9 +392,9 @@ class JoinScreenTest {
         setScreen {
             TestStatusScreen(joining(ready(), form = RangeForm(shareOn = false)), cutoff = fixedCutoff())
         }
-        onNodeWithText("Share my photos").assertToggle(ToggleableState.Off)
-        onNodeWithText("Receive everyone's photos").assertToggle(ToggleableState.On)
-        onNodeWithText("Nothing of yours leaves this phone.").assertExists()
+        onNodeWithText(str(Res.string.share_toggle)).assertToggle(ToggleableState.Off)
+        onNodeWithText(str(Res.string.receive_toggle)).assertToggle(ToggleableState.On)
+        onNodeWithText(str(Res.string.share_off_note)).assertExists()
     }
 
     @Test
@@ -355,9 +403,9 @@ class JoinScreenTest {
         setScreen {
             TestStatusScreen(joining(ready()), cutoff = fixedCutoff(), actions = testActions(join = testJoinGateActions(onConfirmJoin = { confirmed++ })))
         }
-        onNodeWithText("Share my photos").assertToggle(ToggleableState.On)
-        onNodeWithText("Receive everyone's photos").performScrollTo().assertToggle(ToggleableState.On)
-        onNodeWithText("Join").performClick()
+        onNodeWithText(str(Res.string.share_toggle)).assertToggle(ToggleableState.On)
+        onNodeWithText(str(Res.string.receive_toggle)).performScrollTo().assertToggle(ToggleableState.On)
+        onNodeWithText(str(Res.string.join_button)).performClick()
         assertEquals(1, confirmed)
     }
 
@@ -373,7 +421,7 @@ class JoinScreenTest {
         }
         // The expanded range selector sits between Share and Receive, so Receive is below the offscreen
         // viewport — scroll it into view before the click (Compose's performClick does not auto-scroll).
-        onNodeWithText("Receive everyone's photos").performScrollTo().performClick()
+        onNodeWithText(str(Res.string.receive_toggle)).performScrollTo().performClick()
         // What that DERIVES to (UploadOnly) is `directionOf`'s answer, tested in RangeResolutionTest.
         // What this surface owes is that the tap reached the form at all.
         assertEquals(false, receiveOn)
@@ -389,7 +437,7 @@ class JoinScreenTest {
                 actions = testActions(participation = participationActions(onShareOn = { shareOn = it })),
             )
         }
-        onNodeWithText("Share my photos").performClick()
+        onNodeWithText(str(Res.string.share_toggle)).performClick()
         assertEquals(false, shareOn)
     }
 
@@ -404,12 +452,12 @@ class JoinScreenTest {
             )
         }
         // Both off is representable and does nothing: neither switch silently flips the other.
-        onNodeWithText("Share my photos").assertToggle(ToggleableState.Off)
-        onNodeWithText("Receive everyone's photos").assertToggle(ToggleableState.Off)
+        onNodeWithText(str(Res.string.share_toggle)).assertToggle(ToggleableState.Off)
+        onNodeWithText(str(Res.string.receive_toggle)).assertToggle(ToggleableState.Off)
         onNodeWithText(
             "Turn on sharing or receiving. With both off, joining does nothing.",
         ).assertExists()
-        onNodeWithText("Join").assertIsNotEnabled()
+        onNodeWithText(str(Res.string.join_button)).assertIsNotEnabled()
         assertEquals(0, confirmed)
     }
 
@@ -418,9 +466,9 @@ class JoinScreenTest {
     @Test
     fun `ready shows the whole event window as the default range`() = runComposeUiTest {
         setScreen { TestStatusScreen(joining(ready()), cutoff = fixedCutoff()) }
-        // The event's window (4 Jul 18:00 – 20 Jul 18:00), stated once, with the preset named beneath it.
-        onNodeWithText("4 Jul 18:00 – 20 Jul 18:00").assertExists()
-        onNodeWithText("The whole event").assertExists()
+        // The event's window (4 Jul, 18:00 – 20 Jul, 18:00), stated once, with the preset named beneath it.
+        onNodeWithText("4 Jul, 18:00 – 20 Jul, 18:00").assertExists()
+        onNodeWithText(str(Res.string.range_whole_event)).assertExists()
         // The old two-list selector is gone.
         onNodeWithText("Share from").assertDoesNotExist()
         onNodeWithText("Share until").assertDoesNotExist()
@@ -429,10 +477,10 @@ class JoinScreenTest {
     @Test
     fun `the edit opens the calendar with both presets while the event runs`() = runComposeUiTest {
         setScreen { TestStatusScreen(joining(ready()), cutoff = fixedCutoff()) }
-        onNodeWithContentDescription("Change which photos are shared").performClick()
-        onNodeWithText("Which photos to share").assertExists()
-        onNode(hasText("The whole event") and isSelectable()).assertIsRadio().assertIsSelected()
-        onNodeWithText("From now").assertIsRadio().assertIsNotSelected()
+        onNodeWithContentDescription(str(ComponentRes.string.share_range_change)).performClick()
+        onNodeWithText(str(ComponentRes.string.share_range_title)).assertExists()
+        onNode(hasText(str(Res.string.range_whole_event)) and isSelectable()).assertIsRadio().assertIsSelected()
+        onNodeWithText(str(Res.string.range_from_now)).assertIsRadio().assertIsNotSelected()
     }
 
     @Test
@@ -442,9 +490,9 @@ class JoinScreenTest {
         setScreen {
             TestStatusScreen(joining(ready(start = eventStart("2026-07-10T00:00:00Z"))), cutoff = fixedCutoff())
         }
-        onNodeWithContentDescription("Change which photos are shared").performClick()
-        onNode(hasText("The whole event") and isSelectable()).assertExists()
-        onNodeWithText("From now").assertDoesNotExist()
+        onNodeWithContentDescription(str(ComponentRes.string.share_range_change)).performClick()
+        onNode(hasText(str(Res.string.range_whole_event)) and isSelectable()).assertExists()
+        onNodeWithText(str(Res.string.range_from_now)).assertDoesNotExist()
     }
 
     @Test
@@ -459,10 +507,10 @@ class JoinScreenTest {
                 ),
             )
         }
-        onNodeWithContentDescription("Change which photos are shared").performClick()
-        onNodeWithText("From now").performClick()
+        onNodeWithContentDescription(str(ComponentRes.string.share_range_change)).performClick()
+        onNodeWithText(str(Res.string.range_from_now)).performClick()
         assertEquals(RangeChoice.FROM_NOW, preset)
-        onNodeWithText("Which photos to share").assertDoesNotExist()
+        onNodeWithText(str(ComponentRes.string.share_range_title)).assertDoesNotExist()
     }
 
     @Test
@@ -479,8 +527,8 @@ class JoinScreenTest {
                 ),
             )
         }
-        onNodeWithContentDescription("Change which photos are shared").performClick()
-        onNodeWithText("Save").performClick()
+        onNodeWithContentDescription(str(ComponentRes.string.share_range_change)).performClick()
+        onNodeWithText(str(Res.string.save)).performClick()
         // Opened on the chosen range and confirmed unchanged: the window itself, as a custom range.
         assertEquals(LocalDateTime(2026, 7, 4, 18, 0) to LocalDateTime(2026, 7, 20, 18, 0), picked)
     }
@@ -499,9 +547,9 @@ class JoinScreenTest {
                 ),
             )
         }
-        onNodeWithContentDescription("Change which photos are shared").performClick()
+        onNodeWithContentDescription(str(ComponentRes.string.share_range_change)).performClick()
         // The screen pins its own Cancel too; the dialog's is the later root.
-        onAllNodesWithText("Cancel").onLast().performClick()
+        onAllNodesWithText(str(Res.string.cancel)).onLast().performClick()
         assertEquals(0, edits)
     }
 
@@ -513,8 +561,8 @@ class JoinScreenTest {
             customUntil = LocalDateTime(2026, 7, 8, 21, 0),
         )
         setScreen { TestStatusScreen(joining(ready(), form = form), cutoff = fixedCutoff()) }
-        onNodeWithText("6 Jul 09:00 – 8 Jul 21:00").assertExists()
-        onNodeWithText("Custom range").assertExists()
+        onNodeWithText("6 Jul, 09:00 – 8 Jul, 21:00").assertExists()
+        onNodeWithText(str(Res.string.range_custom)).assertExists()
     }
 
     // ---- no retention statement (capability `join-event`) ----------------------------------------------
@@ -523,7 +571,7 @@ class JoinScreenTest {
     fun `the join surface does not state the deletion date`() = runComposeUiTest {
         setScreen { TestStatusScreen(joining(phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES)), cutoff = fixedCutoff()) }
         onNodeWithText("deleted on", substring = true).assertDoesNotExist()
-        onNodeWithText("30 days", substring = true).assertDoesNotExist()
+        onNodeWithText(plural(Res.plurals.duration_days, 30, 30), substring = true).assertDoesNotExist()
     }
 
     // ---- the shareable-count row (capability `join-event`) ---------------------------------------
@@ -536,7 +584,7 @@ class JoinScreenTest {
                 cutoff = fixedCutoff(),
             )
         }
-        onNodeWithText("The whole event · 34 photos from your gallery").assertExists()
+        onNodeWithText(plural(Res.plurals.share_detail_count, 34, str(Res.string.range_whole_event), 34)).assertExists()
     }
 
     @Test
@@ -547,8 +595,8 @@ class JoinScreenTest {
                 cutoff = fixedCutoff(),
             )
         }
-        onNodeWithText("The whole event · 0 photos from your gallery").assertExists()
-        onNodeWithText("New photos you take will be shared as you go.").assertExists()
+        onNodeWithText(plural(Res.plurals.share_detail_count, 0, str(Res.string.range_whole_event), 0)).assertExists()
+        onNodeWithText(str(Res.string.share_zero_note)).assertExists()
     }
 
     @Test
@@ -562,7 +610,7 @@ class JoinScreenTest {
         }
         onNodeWithText("from your gallery", substring = true).assertDoesNotExist()
         onNodeWithText("counting your photos", substring = true).assertDoesNotExist()
-        onNodeWithText("The whole event").assertExists()
+        onNodeWithText(str(Res.string.range_whole_event)).assertExists()
     }
 
     @Test
@@ -573,7 +621,7 @@ class JoinScreenTest {
                 cutoff = fixedCutoff(),
             )
         }
-        onNodeWithText("The whole event · counting your photos…").assertExists()
+        onNodeWithText(str(Res.string.share_detail_counting, str(Res.string.range_whole_event))).assertExists()
     }
 
     @Test
@@ -603,7 +651,7 @@ class JoinScreenTest {
                 cutoff = fixedCutoff(),
             )
         }
-        onNodeWithText("The whole event · 5 photos from your gallery").assertExists()
+        onNodeWithText(plural(Res.plurals.share_detail_count, 5, str(Res.string.range_whole_event), 5)).assertExists()
     }
 
     @Test
@@ -619,7 +667,7 @@ class JoinScreenTest {
                 cutoff = fixedCutoff(),
             )
         }
-        onNodeWithText("From now · 1 photo from your gallery").assertExists()
+        onNodeWithText(plural(Res.plurals.share_detail_count, 1, str(Res.string.range_from_now), 1)).assertExists()
     }
 
     // ---- the album switch (capability `event-album`) ---------------------------------
@@ -629,7 +677,7 @@ class JoinScreenTest {
         // The default is what an UNTOUCHED gate commits: the album is the only on-device statement
         // that a set of photos belongs to this event, so deciding nothing gets you the grouping.
         setScreen { TestStatusScreen(joining(ready()), cutoff = fixedCutoff()) }
-        onNodeWithText("Create an album").performScrollTo().assertIsSwitch().assertToggle(ToggleableState.On)
+        onNodeWithText(str(Res.string.album_toggle)).performScrollTo().assertIsSwitch().assertToggle(ToggleableState.On)
         onNodeWithText(
             "Photos you share and photos you receive are collected in an album named after the event.",
         ).assertExists()
@@ -642,8 +690,8 @@ class JoinScreenTest {
         setScreen {
             TestStatusScreen(joining(ready(), form = RangeForm(saveToAlbum = false)), cutoff = fixedCutoff())
         }
-        onNodeWithText("Create an album").assertToggle(ToggleableState.Off)
-        onNodeWithText("No album is created.").assertExists()
+        onNodeWithText(str(Res.string.album_toggle)).assertToggle(ToggleableState.Off)
+        onNodeWithText(str(Res.string.album_none)).assertExists()
     }
 
     @Test
@@ -653,7 +701,7 @@ class JoinScreenTest {
         setScreen {
             TestStatusScreen(joining(ready(), form = RangeForm(albumKind = AlbumKind.FOLDER)), cutoff = fixedCutoff())
         }
-        onNodeWithText("Create an album").performScrollTo().assertToggle(ToggleableState.On)
+        onNodeWithText(str(Res.string.album_toggle)).performScrollTo().assertToggle(ToggleableState.On)
         onNodeWithText(
             "Photos you receive are collected in an album named after the event. Your own photos stay where they are.",
         ).assertExists()
@@ -667,7 +715,7 @@ class JoinScreenTest {
                 cutoff = fixedCutoff(),
             )
         }
-        onNodeWithText("You won't receive photos, so nothing is collected.").performScrollTo().assertExists()
+        onNodeWithText(str(Res.string.album_folder_nothing)).performScrollTo().assertExists()
     }
 
     @Test
@@ -678,7 +726,7 @@ class JoinScreenTest {
             joining(ready(), form = RangeForm(shareOn = shareOn, receiveOn = receiveOn, saveToAlbum = true))
 
         setScreen { TestStatusScreen(note(shareOn = true, receiveOn = true), cutoff = fixedCutoff()) }
-        onNodeWithText("Create an album").performScrollTo().assertToggle(ToggleableState.On)
+        onNodeWithText(str(Res.string.album_toggle)).performScrollTo().assertToggle(ToggleableState.On)
         onNodeWithText(
             "Photos you share and photos you receive are collected in an album named after the event.",
         ).assertExists()
@@ -690,7 +738,7 @@ class JoinScreenTest {
             joining(ready(), form = RangeForm(shareOn = shareOn, receiveOn = receiveOn, saveToAlbum = true))
 
         setScreen { TestStatusScreen(note(shareOn = true, receiveOn = false), cutoff = fixedCutoff()) }
-        onNodeWithText("Photos you share are collected in an album named after the event.").assertExists()
+        onNodeWithText(str(Res.string.album_share)).assertExists()
     }
 
     @Test
@@ -705,7 +753,7 @@ class JoinScreenTest {
                 actions = testActions(participation = participationActions(onSaveToAlbum = { saveToAlbum = it })),
             )
         }
-        onNodeWithText("Create an album").performScrollTo().performClick()
+        onNodeWithText(str(Res.string.album_toggle)).performScrollTo().performClick()
         assertEquals(true, saveToAlbum)
     }
 
@@ -719,7 +767,7 @@ class JoinScreenTest {
                 actions = testActions(participation = participationActions(onSaveToAlbum = { saveToAlbum = it })),
             )
         }
-        onNodeWithText("Create an album").performScrollTo().performClick()
+        onNodeWithText(str(Res.string.album_toggle)).performScrollTo().performClick()
         assertEquals(false, saveToAlbum, "a tap from the on-by-default row declines the album")
     }
 
@@ -735,15 +783,15 @@ class JoinScreenTest {
                 actions = testActions(participation = participationActions(onMobileData = { mobileData = it })),
             )
         }
-        onNodeWithText("Photos are shared and received on any network.").performScrollTo().assertExists()
-        onNodeWithText("Use mobile data for photos").performScrollTo().performClick()
+        onNodeWithText(str(Res.string.mobile_data_on_note)).performScrollTo().assertExists()
+        onNodeWithText(str(Res.string.mobile_data_toggle)).performScrollTo().performClick()
         assertEquals(false, mobileData, "a tap from the on-by-default row keeps photos off mobile data")
     }
 
     @Test
     fun `with mobile data off the note says photos travel only on Wi-Fi`() = runComposeUiTest {
         setScreen { TestStatusScreen(joining(ready(), form = RangeForm(mobileData = false)), cutoff = fixedCutoff()) }
-        onNodeWithText("Photos are shared and received only on Wi-Fi.").performScrollTo().assertExists()
+        onNodeWithText(str(Res.string.mobile_data_off_note)).performScrollTo().assertExists()
     }
 
     // ---- photo access asked on Join (capability `join-event`) -----------------------------------------
@@ -756,18 +804,18 @@ class JoinScreenTest {
     fun `a never-asked guest sees the notice and Join and allow photos beside the choices`() = runComposeUiTest {
         setScreen { TestStatusScreen(asking(), cutoff = fixedCutoff()) }
         onNodeWithText("Anna's Wedding").assertExists()
-        onNodeWithText("Share my photos").assertExists()
-        onNodeWithText("iOS asks for access to your photos next").assertExists()
-        onNodeWithText("Join & allow photos").assertExists()
-        onNodeWithText("Join").assertDoesNotExist()
+        onNodeWithText(str(Res.string.share_toggle)).assertExists()
+        onNodeWithText(str(Res.string.join_access_notice)).assertExists()
+        onNodeWithText(str(Res.string.join_button_allow)).assertExists()
+        onNodeWithText(str(Res.string.join_button)).assertDoesNotExist()
     }
 
     @Test
     fun `a guest iOS already asked sees plain Join and no notice`() = runComposeUiTest {
         setScreen { TestStatusScreen(joining(ready()), cutoff = fixedCutoff()) }
-        onNodeWithText("iOS asks for access to your photos next").assertDoesNotExist()
-        onNodeWithText("Join & allow photos").assertDoesNotExist()
-        onNodeWithText("Join").assertExists()
+        onNodeWithText(str(Res.string.join_access_notice)).assertDoesNotExist()
+        onNodeWithText(str(Res.string.join_button_allow)).assertDoesNotExist()
+        onNodeWithText(str(Res.string.join_button)).assertExists()
     }
 
     @Test
@@ -780,14 +828,14 @@ class JoinScreenTest {
                 actions = testActions(join = testJoinGateActions(onConfirmJoin = { confirmed++ })),
             )
         }
-        onNodeWithContentDescription("What joining does with your photos").performClick()
-        onNodeWithText("What joining does").assertExists()
-        onNodeWithText("Your photos are shared automatically").assertExists()
-        onNodeWithText("SnapSync needs access to your photos").assertExists()
-        onNodeWithText("Allow all photos, or pick which to share").assertExists()
-        onNodeWithText("Only photos in the range you chose").assertExists()
-        onNodeWithText("Got it").performClick()
-        onNodeWithText("What joining does").assertDoesNotExist()
+        onNodeWithContentDescription(str(Res.string.join_access_info)).performClick()
+        onNodeWithText(str(Res.string.join_access_sheet_title)).assertExists()
+        onNodeWithText(str(Res.string.access_shared_title)).assertExists()
+        onNodeWithText(str(Res.string.access_library_title)).assertExists()
+        onNodeWithText(str(Res.string.access_choose_title)).assertExists()
+        onNodeWithText(str(Res.string.access_range_title)).assertExists()
+        onNodeWithText(str(Res.string.join_access_dismiss)).performClick()
+        onNodeWithText(str(Res.string.join_access_sheet_title)).assertDoesNotExist()
         assertEquals(0, confirmed)
     }
 
@@ -801,7 +849,7 @@ class JoinScreenTest {
                 actions = testActions(join = testJoinGateActions(onConfirmJoin = { confirmed++ })),
             )
         }
-        onNodeWithText("Join & allow photos").performClick()
+        onNodeWithText(str(Res.string.join_button_allow)).performClick()
         assertEquals(1, confirmed)
     }
 
@@ -816,12 +864,12 @@ class JoinScreenTest {
     fun `the range shows the event window across the real phase sequence`() = runComposeUiTest {
         var phase by mutableStateOf<JoinPhase>(JoinPhase.Loading)
         setScreen { TestStatusScreen(joining(phase), cutoff = fixedCutoff()) }
-        onNodeWithText("Loading event details …").assertExists()
+        onNodeWithText(str(Res.string.loading_event)).assertExists()
 
         phase = ready()
         waitForIdle()
-        // The event's window (4 Jul 18:00 – 20 Jul 18:00), NOT "now" — derived from the phase every composition.
-        onNodeWithText("4 Jul 18:00 – 20 Jul 18:00").assertExists()
+        // The event's window (4 Jul, 18:00 – 20 Jul, 18:00), NOT "now" — derived from the phase every composition.
+        onNodeWithText("4 Jul, 18:00 – 20 Jul, 18:00").assertExists()
     }
 
     @Test
@@ -837,7 +885,7 @@ class JoinScreenTest {
                 actions = testActions(join = testJoinGateActions(onRetryJoin = { retried++ })),
             )
         }
-        onNodeWithText("Retry").performClick()
+        onNodeWithText(str(Res.string.retry)).performClick()
         assertEquals(1, retried)
     }
 
@@ -868,13 +916,13 @@ class JoinScreenTest {
                 )
             )
         }
-        onNodeWithText("Switch events?").assertExists()
-        onNodeWithText("You'll leave \"Summer Trip\" and join \"New Event\".").assertExists()
+        onNodeWithText(str(Res.string.switch_title)).assertExists()
+        onNodeWithText(str(Res.string.switch_body, "Summer Trip", "New Event")).assertExists()
         // No participation promise, and no count for a range the member has not chosen.
         onNodeWithText("You'll share photos you take and receive everyone's.").assertDoesNotExist()
         onNodeWithText("from your gallery", substring = true).assertDoesNotExist()
 
-        onNodeWithText("Switch").performClick()
+        onNodeWithText(str(Res.string.switch_confirm)).performClick()
         assertEquals(1, confirms)
     }
 
@@ -898,7 +946,7 @@ class JoinScreenTest {
                 )
             )
         }
-        onNodeWithText("Cancel").performClick()
+        onNodeWithText(str(Res.string.cancel)).performClick()
         assertEquals(1, cancelled)
     }
 
@@ -919,8 +967,8 @@ class JoinScreenTest {
                 )
             )
         }
-        onNodeWithText("This link is invalid, or the event no longer exists.").assertExists()
-        onNodeWithText("OK").performClick()
+        onNodeWithText(str(Res.string.event_not_found_body)).assertExists()
+        onNodeWithText(str(Res.string.ok)).performClick()
         assertEquals(1, cancelled)
     }
 

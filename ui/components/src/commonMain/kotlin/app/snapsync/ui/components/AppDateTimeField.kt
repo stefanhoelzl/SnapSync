@@ -41,6 +41,10 @@ import kotlinx.datetime.todayIn
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.RowScope
+import app.snapsync.ui.components.resources.Res
+import app.snapsync.ui.components.resources.picker_cancel
+import app.snapsync.ui.components.resources.picker_save
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * A calendar week is seven columns wide. Named because `row * 7 + col` and `(cells + 6) / 7` read as
@@ -182,9 +186,9 @@ private fun PickerDialogShell(
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Box(Modifier.weight(1f)) { SecondaryButton(label = "Cancel", onClick = onDismiss) }
+                        Box(Modifier.weight(1f)) { SecondaryButton(label = stringResource(Res.string.picker_cancel), onClick = onDismiss) }
                         Box(Modifier.weight(1f)) {
-                            PrimaryButton(label = "Save", onClick = onConfirm, enabled = confirmEnabled)
+                            PrimaryButton(label = stringResource(Res.string.picker_save), onClick = onConfirm, enabled = confirmEnabled)
                         }
                     }
                 }
@@ -192,14 +196,3 @@ private fun PickerDialogShell(
         }
     }
 }
-
-/** Full weekday names for a day cell's spoken date. `dayOfWeek.ordinal` is Monday = 0. */
-internal fun weekdayName(date: LocalDate): String = listOf(
-    "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
-)[date.dayOfWeek.ordinal]
-
-/** Full month names for the calendar header. */
-internal fun monthName(monthNumber: Int): String = listOf(
-    "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December",
-)[monthNumber - 1]

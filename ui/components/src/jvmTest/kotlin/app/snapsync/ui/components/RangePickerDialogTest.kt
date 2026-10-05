@@ -20,6 +20,11 @@ import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.LocalTime
 import org.junit.Rule
+import app.snapsync.ui.components.resources.Res
+import app.snapsync.ui.components.resources.picker_save
+import app.snapsync.ui.components.resources.share_range_title
+import app.snapsync.ui.components.resources.wheel_end_hour
+import app.snapsync.ui.components.resources.wheel_start_hour
 
 /**
  * The range picker as the join and settings surfaces open it ([RangePickerDialog]): the create screen's
@@ -47,47 +52,47 @@ class RangePickerDialogTest {
     @Test
     fun `the title is a heading and both ends' wheels show the chosen range`() {
         setDialog()
-        rule.onNodeWithText("Which photos to share").assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
-        rule.onNodeWithContentDescription("Start hour", useUnmergedTree = true)
+        rule.onNodeWithText(str(Res.string.share_range_title)).assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
+        rule.onNodeWithContentDescription(str(Res.string.wheel_start_hour), useUnmergedTree = true)
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "18"))
-        rule.onNodeWithContentDescription("End hour", useUnmergedTree = true)
+        rule.onNodeWithContentDescription(str(Res.string.wheel_end_hour), useUnmergedTree = true)
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "18"))
     }
 
     @Test
     fun `days outside the event are disabled`() {
         setDialog()
-        rule.onNodeWithContentDescription("Monday 9 March 2026").assertIsNotEnabled()
-        rule.onNodeWithContentDescription("Tuesday 10 March 2026").assertIsEnabled()
-        rule.onNodeWithContentDescription("Friday 20 March 2026").assertIsEnabled()
-        rule.onNodeWithContentDescription("Saturday 21 March 2026").assertIsNotEnabled()
+        rule.onNodeWithContentDescription("Monday, 9 March 2026").assertIsNotEnabled()
+        rule.onNodeWithContentDescription("Tuesday, 10 March 2026").assertIsEnabled()
+        rule.onNodeWithContentDescription("Friday, 20 March 2026").assertIsEnabled()
+        rule.onNodeWithContentDescription("Saturday, 21 March 2026").assertIsNotEnabled()
     }
 
     @Test
     fun `OK unchanged reports the range it opened on`() {
         setDialog()
-        rule.onNodeWithText("Save").performClick()
+        rule.onNodeWithText(str(Res.string.picker_save)).performClick()
         assertEquals(START to END, confirmed)
     }
 
     @Test
     fun `a first tap starts a new range and OK waits for its last day`() {
         setDialog()
-        rule.onNodeWithContentDescription("Friday 13 March 2026").performClick()
-        rule.onNodeWithText("Save").assertIsNotEnabled()
-        rule.onNodeWithContentDescription("Sunday 15 March 2026").performClick()
-        rule.onNodeWithText("Save").assertIsEnabled().performClick()
+        rule.onNodeWithContentDescription("Friday, 13 March 2026").performClick()
+        rule.onNodeWithText(str(Res.string.picker_save)).assertIsNotEnabled()
+        rule.onNodeWithContentDescription("Sunday, 15 March 2026").performClick()
+        rule.onNodeWithText(str(Res.string.picker_save)).assertIsEnabled().performClick()
         assertEquals(LocalDateTime(2026, 3, 13, 18, 0) to LocalDateTime(2026, 3, 15, 18, 0), confirmed)
     }
 
     @Test
     fun `dragging the end narrows the range`() {
         setDialog()
-        rule.onNodeWithContentDescription("Friday 20 March 2026").performTouchInput {
+        rule.onNodeWithContentDescription("Friday, 20 March 2026").performTouchInput {
             swipe(center, center - Offset(width * 3f, 0f), durationMillis = 300) // three columns back: Tuesday 17
         }
         rule.waitForIdle()
-        rule.onNodeWithText("Save").performClick()
+        rule.onNodeWithText(str(Res.string.picker_save)).performClick()
         assertEquals(START to LocalDateTime(2026, 3, 17, 18, 0), confirmed)
     }
 

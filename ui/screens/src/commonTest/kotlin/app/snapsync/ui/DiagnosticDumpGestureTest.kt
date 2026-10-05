@@ -36,6 +36,10 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlinx.datetime.TimeZone
 import kotlin.time.Instant
+import app.snapsync.ui.resources.Res
+import app.snapsync.ui.resources.cancel
+import app.snapsync.ui.resources.report_send
+import app.snapsync.ui.resources.save
 
 /**
  * The hidden bug-report affordance (capability `privacy-security`).
@@ -97,8 +101,8 @@ class DiagnosticDumpGestureTest {
                 reporting(Layer.CreateEvent()), cutoff = fixedCutoff(), actions = testActions(onSendDiagnostics = { _, _ -> sent++ }))
         }
 
-        onNodeWithText("Send").assertIsNotEnabled()
-        onNodeWithText("Send").performClick()
+        onNodeWithText(str(Res.string.report_send)).assertIsNotEnabled()
+        onNodeWithText(str(Res.string.report_send)).performClick()
 
         assertEquals(0, sent, "an empty description must not be sendable")
         onNodeWithText(sheetTitle).assertExists()
@@ -114,7 +118,7 @@ class DiagnosticDumpGestureTest {
 
         onNodeWithText(placeholder).performTextInput("   ")
 
-        onNodeWithText("Send").assertIsNotEnabled()
+        onNodeWithText(str(Res.string.report_send)).assertIsNotEnabled()
         assertEquals(0, sent)
     }
 
@@ -134,7 +138,7 @@ class DiagnosticDumpGestureTest {
         }
 
         onNodeWithText(placeholder).performTextInput("  photos stopped arriving  ")
-        onNodeWithText("Send").performClick()
+        onNodeWithText(str(Res.string.report_send)).performClick()
 
         assertEquals(
             listOf("photos stopped arriving" to "CreateEvent"),
@@ -160,7 +164,7 @@ class DiagnosticDumpGestureTest {
         }
 
         onNodeWithText(placeholder).performTextInput("never mind")
-        onNodeWithText("Cancel").performClick()
+        onNodeWithText(str(Res.string.cancel)).performClick()
 
         assertEquals(0, sent)
         assertEquals(1, dismissed)
@@ -180,9 +184,9 @@ class DiagnosticDumpGestureTest {
         }
 
         onNodeWithText("Saved on this device", substring = true).assertExists()
-        onNodeWithText("Send").assertDoesNotExist()
+        onNodeWithText(str(Res.string.report_send)).assertDoesNotExist()
         onNodeWithText(placeholder).performTextInput("it froze")
-        onNodeWithText("Save").performClick()
+        onNodeWithText(str(Res.string.save)).performClick()
 
         assertEquals(listOf("it froze"), saved)
     }
@@ -203,7 +207,7 @@ class DiagnosticDumpGestureTest {
         }
 
         onNodeWithText(placeholder).performTextInput("gate is stuck")
-        onNodeWithText("Send").performClick()
+        onNodeWithText(str(Res.string.report_send)).performClick()
 
         assertEquals(listOf("JoiningEvent:LoadFailed"), sent)
     }

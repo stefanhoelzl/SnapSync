@@ -11,6 +11,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import app.snapsync.ui.components.resources.Res
+import app.snapsync.ui.components.resources.invited_eyebrow
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * The **compact** event header for a surface whose body is a decision, not a hero: the badge sits beside
@@ -25,7 +28,7 @@ import androidx.compose.ui.unit.dp
  */
 @Composable
 fun AppEventHeaderCompact(title: String, subtitle: String) =
-    AppIdentityHeader("YOU'RE INVITED", title, subtitle)
+    AppIdentityHeader(stringResource(Res.string.invited_eyebrow), title, subtitle)
 
 /**
  * The **compact host header** for the create-event surface: the SnapSync mark as its app-icon badge,

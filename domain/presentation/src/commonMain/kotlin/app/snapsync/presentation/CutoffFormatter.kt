@@ -66,32 +66,35 @@ class CutoffFormatter(
         until.toInstant(zone) - from.toInstant(zone) <= EVENT_WINDOW_MAX_SECONDS.seconds
 
     /**
-     * A **humanized** duration between [from] and [until] for the create screen's live hint, e.g.
-     * `1 day`, `5 days`, `2 weeks`, `3 hours`. The calendar math is done by `kotlinx.datetime`'s
-     * [periodUntil] (so month/day lengths are handled by the library, not re-derived here); this only
-     * chooses the coarsest single unit to name.
+     * The duration between [from] and [until] by its coarsest single unit, for the create screen's live hint
+     * (`1 day`, `5 days`, `2 weeks`, `3 hours` — `ui/` words it). The calendar math is done by `kotlinx.datetime`'s
+     * [periodUntil] (so month/day lengths are handled by the library, not re-derived here); this only chooses the
+     * unit to name.
      */
-    fun humanizedDuration(from: LocalDateTime, until: LocalDateTime): String {
+    fun coarseDuration(from: LocalDateTime, until: LocalDateTime): CoarseDuration {
         val period = from.toInstant(zone).periodUntil(until.toInstant(zone), zone)
-        val totalDays = period.years * 365 + period.months * 30 + period.days
+        val totalDays = period.years * DAYS_PER_YEAR + period.months * DAYS_PER_MONTH + period.days
         return when {
-            totalDays >= 14 -> plural(totalDays / 7, "week")
-            totalDays >= 1 -> plural(totalDays, "day")
-            period.hours >= 1 -> plural(period.hours, "hour")
-            period.minutes >= 1 -> plural(period.minutes, "minute")
-            else -> "less than a minute"
+            totalDays >= 2 * DAYS_PER_WEEK -> CoarseDuration.Weeks(totalDays / DAYS_PER_WEEK)
+            totalDays >= 1 -> CoarseDuration.Days(totalDays)
+            period.hours >= 1 -> CoarseDuration.Hours(period.hours)
+            period.minutes >= 1 -> CoarseDuration.Minutes(period.minutes)
+            else -> CoarseDuration.UnderAMinute
         }
     }
 
-    private fun plural(n: Int, unit: String) = "$n $unit${if (n == 1) "" else "s"}"
-    private fun p2(n: Int) = n.toString().padStart(2, '0')
-    private fun hhmm(d: LocalDateTime) = "${p2(d.hour)}:${p2(d.minute)}"
-    private fun mon(d: LocalDateTime) = MONTHS[d.month.ordinal]
-    private fun dayMon(d: LocalDateTime) = "${d.day} ${mon(d)}"
-
     private companion object {
-        val MONTHS = arrayOf(
-            "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-        )
+        const val DAYS_PER_WEEK = 7
+        const val DAYS_PER_MONTH = 30
+        const val DAYS_PER_YEAR = 365
     }
+}
+
+/** A duration named by its coarsest whole unit — see [CutoffFormatter.coarseDuration]. */
+sealed interface CoarseDuration {
+    data class Weeks(val count: Int) : CoarseDuration
+    data class Days(val count: Int) : CoarseDuration
+    data class Hours(val count: Int) : CoarseDuration
+    data class Minutes(val count: Int) : CoarseDuration
+    data object UnderAMinute : CoarseDuration
 }

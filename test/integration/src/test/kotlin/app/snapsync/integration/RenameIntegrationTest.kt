@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.model.ScreenMessage
 import app.snapsync.model.RenameState
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.jsonPrimitive
@@ -51,7 +52,7 @@ class RenameIntegrationTest {
         user("rename", "name" to "x".repeat(101))
         val status = awaitRename { it is RenameState.Failed }
 
-        assertEquals(RenameState.Failed("That name wasn't accepted. Try a shorter one."), status)
+        assertEquals(RenameState.Failed(ScreenMessage.RENAME_NAME_REFUSED), status)
         assertEquals("Weekend", backendName(event), "the marker is untouched")
         assertEquals("Weekend", heading(), "the membership is untouched")
     }
@@ -69,7 +70,7 @@ class RenameIntegrationTest {
 
         // A 404 arrives as the GENERIC failure — it has no distinct meaning here by design.
         assertEquals(
-            RenameState.Failed("Couldn't rename the event. Check your connection and try again."),
+            RenameState.Failed(ScreenMessage.RENAME_FAILED),
             status,
         )
         // THE INVARIANT: a 404 is ONE witness, and the self-leave needs two (capability `manage-membership`). The

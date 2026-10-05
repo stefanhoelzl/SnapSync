@@ -30,6 +30,25 @@ import app.snapsync.ui.components.AppSyncStatus
 import app.snapsync.ui.components.ScreenLayout
 import app.snapsync.ui.components.SecondaryButton
 import app.snapsync.model.Layer
+import app.snapsync.ui.resources.Res
+import app.snapsync.ui.resources.allow_full_access
+import app.snapsync.ui.resources.choose_more_photos
+import app.snapsync.ui.resources.counts_line
+import app.snapsync.ui.resources.counts_not_receiving
+import app.snapsync.ui.resources.counts_not_sharing
+import app.snapsync.ui.resources.counts_received
+import app.snapsync.ui.resources.counts_received_progress
+import app.snapsync.ui.resources.counts_shared
+import app.snapsync.ui.resources.counts_shared_progress
+import app.snapsync.ui.resources.invite_caption
+import app.snapsync.ui.resources.invite_eyebrow
+import app.snapsync.ui.resources.joined_statement
+import app.snapsync.ui.resources.timing_ended
+import app.snapsync.ui.resources.timing_ends_in
+import app.snapsync.ui.resources.timing_starts_in
+import app.snapsync.ui.resources.waiting_members
+import org.jetbrains.compose.resources.StringResource
+import org.jetbrains.compose.resources.stringResource
 
 // The joined membership's own screen (capability `sync-status`): the joined statement and the event's
 // dates under its name, the QR to invite others, the sync health line with its counts, and the actions row.
@@ -51,7 +70,7 @@ internal fun JoinedLayer(
     ) {
         // A rejected event link, if one just arrived. Above the hero because it is about what the member
         // JUST DID, and it self-clears on its own; without it a bad scan while joined said nothing at all.
-        state.notice?.let { AppErrorBanner(it) }
+        state.notice?.let { AppErrorBanner(it.text()) }
         // The invite hero: sharing the event IS the point, so the QR is the tallest object on the screen.
         // BOTH lines — the tracked accent eyebrow and the card's caption — address the member holding the
         // device. There is no second audience: a person scanning the code is looking through their own
@@ -70,10 +89,10 @@ internal fun JoinedLayer(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                AppEyebrow("Invite others", EyebrowTone.Accent)
+                AppEyebrow(stringResource(Res.string.invite_eyebrow), EyebrowTone.Accent)
                 // Rendered whenever the event is open: the joined state carries the invite URL non-null, so there is no
                 // "joined but no link yet" frame for the hero to be missing in.
-                AppQrCode(content = state.inviteUrl, caption = "Others join by scanning this with their camera")
+                AppQrCode(content = state.inviteUrl, caption = stringResource(Res.string.invite_caption))
             }
         }
         // The one sync-health line — bare, no card. It briefly wore a surface-filled panel, but a white
@@ -113,8 +132,8 @@ internal fun JoinedLayer(
         // consent, and the widened scope stays bounded by the selection policy like any full grant.
         if (state.canChoosePhotos) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                SecondaryButton(label = "Choose more photos", onClick = access.onChoosePhotos)
-                SecondaryButton(label = "Allow full access", onClick = access.onOpenSettings)
+                SecondaryButton(label = stringResource(Res.string.choose_more_photos), onClick = access.onChoosePhotos)
+                SecondaryButton(label = stringResource(Res.string.allow_full_access), onClick = access.onOpenSettings)
             }
         }
     }
@@ -141,17 +160,24 @@ private fun SyncHealth.toAppSyncStatus(): AppSyncStatus = when (this) {
 @Composable
 private fun CountsLine(counts: SyncCounts?, waiting: MemberCounts?) {
     if (counts == null) return
-    val shared = counts.shared.label("shared", "Not sharing")
-    val received = counts.received.label("received", "Not receiving")
-    AppStatusDetail("$shared · $received")
-    waiting?.let { AppStatusDetail("Waiting for ${it.waitingFor} of ${it.active} members") }
+    val shared = counts.shared.label(Res.string.counts_shared, Res.string.counts_shared_progress, Res.string.counts_not_sharing)
+    val received = counts.received.label(
+        Res.string.counts_received,
+        Res.string.counts_received_progress,
+        Res.string.counts_not_receiving,
+    )
+    AppStatusDetail(stringResource(Res.string.counts_line, shared, received))
+    waiting?.let { AppStatusDetail(stringResource(Res.string.waiting_members, it.waitingFor, it.active)) }
 }
 
 /** `12/15 shared` while work remains, `15 shared` once complete, or what an off direction says. */
-private fun DirectionCount.label(verb: String, off: String): String = when (this) {
-    DirectionCount.Off -> off
-    is DirectionCount.Progress -> if (complete) "$total $verb" else "$done/$total $verb"
-}
+@Composable
+private fun DirectionCount.label(done: StringResource, progress: StringResource, off: StringResource): String =
+    when (this) {
+        DirectionCount.Off -> stringResource(off)
+        is DirectionCount.Progress ->
+            if (complete) stringResource(done, total) else stringResource(progress, this.done, total)
+    }
 
 /**
  * The lines beneath the joined event's name (capability `sync-status`): that this device has joined — the
@@ -160,7 +186,7 @@ private fun DirectionCount.label(verb: String, off: String): String = when (this
  */
 @Composable
 internal fun JoinedHeadingDetails(state: Layer.Joined, cutoff: CutoffFormatter) {
-    AppHeadingStatement("You've joined this event")
+    AppHeadingStatement(stringResource(Res.string.joined_statement))
     // An unparseable start cannot occur (the config decoder requires it); a line that cannot be drawn is
     // left out rather than guessed.
     val start = cutoff.toLocal(state.membership.startsAt.at) ?: return
@@ -173,17 +199,9 @@ internal fun JoinedHeadingDetails(state: Layer.Joined, cutoff: CutoffFormatter) 
 }
 
 /** "starts in 2 days", "ends in 5 hours", "ended" — or nothing, for a membership with no stored end. */
+@Composable
 private fun EventTiming.phrase(): String? = when (this) {
-    is EventTiming.Upcoming -> "starts in ${remaining.words()}"
-    is EventTiming.Running -> remaining?.let { "ends in ${it.words()}" }
-    EventTiming.Ended -> "ended"
+    is EventTiming.Upcoming -> stringResource(Res.string.timing_starts_in, remaining.text())
+    is EventTiming.Running -> remaining?.let { stringResource(Res.string.timing_ends_in, it.text()) }
+    EventTiming.Ended -> stringResource(Res.string.timing_ended)
 }
-
-private fun TimeLeft.words(): String = when (this) {
-    is TimeLeft.Days -> plural(count, "day")
-    is TimeLeft.Hours -> plural(count, "hour")
-    is TimeLeft.Minutes -> "$count min"
-    TimeLeft.UnderAMinute -> "less than a minute"
-}
-
-private fun plural(n: Int, unit: String) = "$n $unit${if (n == 1) "" else "s"}"

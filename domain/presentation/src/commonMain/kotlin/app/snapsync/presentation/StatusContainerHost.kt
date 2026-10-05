@@ -67,6 +67,7 @@ import app.snapsync.model.EventDetails
 import app.snapsync.model.JoinPhase
 import app.snapsync.model.JoinedSurface
 import app.snapsync.model.Layer
+import app.snapsync.model.ScreenMessage
 import app.snapsync.model.Overlays
 import app.snapsync.model.PendingSwitch
 import app.snapsync.model.RangeForm
@@ -351,7 +352,7 @@ class StatusContainerHost(
      * — the deliberate reading of "self-clearing a few seconds after it LAST appeared".
      */
     private fun showTransientError() {
-        local.update { it.copy(transientError = INVALID_LINK_MESSAGE) }
+        local.update { it.copy(transientError = ScreenMessage.INVALID_LINK) }
         transientErrorClear?.cancel()
         transientErrorClear = scope.launch {
             delay(TRANSIENT_ERROR_MILLIS)
@@ -972,9 +973,6 @@ private const val TRANSIENT_ERROR_MILLIS = 4_000L
 /** How long the word on a sent report stays (capability `privacy-security`): long enough to read, then gone. */
 private const val REPORT_NOTICE_MILLIS = 4_000L
 
-/** The transient invalid-link copy (the screen renders [StatusContainerHost.transientError] verbatim). */
-private const val INVALID_LINK_MESSAGE = "That QR code isn't a SnapSync event."
-
 /**
  * Whether confirming a join also raises iOS's photo-access dialog (capability `join-event`): no event is
  * configured, and access was never asked — the only state from which iOS can still raise it. From a
@@ -991,7 +989,7 @@ internal fun asksAccessOnJoin(config: EventConfig?, permission: GalleryAccess): 
 private fun unjoinedLayer(
     pending: PendingJoin?,
     create: Creation,
-    transient: String?,
+    transient: ScreenMessage?,
     form: RangeForm,
     permission: GalleryAccess,
     network: NetworkNotice?,
@@ -1131,7 +1129,7 @@ private fun joinedLayer(
     facts: JoinedFacts,
     rename: RenameStatus,
     reconfiguring: SettingsSurface,
-    transient: String?,
+    transient: ScreenMessage?,
     form: RangeForm,
     resolveAgainst: (RangeForm, EventStart, EventEnd?, CaptureCeiling?) -> ResolvedRange,
 ): Layer.Joined {
@@ -1225,7 +1223,6 @@ private fun arrowOf(shown: Boolean, pulsing: Boolean): Arrow =
 // Derive the invite link from the persisted config's eventId (the wire payload is eventId-only).
 private fun EventConfig.inviteUrl(): String = encodeEventUrl(EventLinkPayload(eventId))
 
-// The inline create-error copy, formatted in presentation (UiState carries final display strings).
 private fun RenameStatus.toRenameState(): RenameState = when (this) {
     RenameStatus.Idle -> RenameState.Idle
     RenameStatus.InFlight -> RenameState.InFlight
@@ -1234,28 +1231,23 @@ private fun RenameStatus.toRenameState(): RenameState = when (this) {
 }
 
 /**
- * The rename dialog's failure copy (capability `manage-membership`). Two reasons, because the port reports two:
+ * The rename dialog's failure (capability `manage-membership`). Two reasons, because the port reports two:
  * the backend rejected the name, or everything else.
  *
- * There is deliberately no "this event no longer exists" copy for the `404` that also arrives as
+ * There is deliberately no "this event no longer exists" message for the `404` that also arrives as
  * [RenameFailureReason.SERVER]. A `404` here is a single witness that the event is gone, and the
  * self-leave needs two (capability `manage-membership`); giving it copy would give it a meaning, and a meaning
  * invites acting on it. The standing foreground refresh reaches that verdict on its own terms.
  */
-private fun RenameFailureReason.message(): String = when (this) {
-    RenameFailureReason.INVALID_NAME -> "That name wasn't accepted. Try a shorter one."
-    RenameFailureReason.SERVER -> "Couldn't rename the event. Check your connection and try again."
+private fun RenameFailureReason.message(): ScreenMessage = when (this) {
+    RenameFailureReason.INVALID_NAME -> ScreenMessage.RENAME_NAME_REFUSED
+    RenameFailureReason.SERVER -> ScreenMessage.RENAME_FAILED
 }
 
-private fun CreationFailureReason.message(): String = when (this) {
-    // The client already blocks the two knowable rules — empty (Create is disabled until the trimmed name
-    // is non-empty) and over-length (the field caps at 100). So a returned 400 is a rule this client can't
-    // name; the copy says what to try rather than asserting a constraint it doesn't know.
-    CreationFailureReason.INVALID_NAME -> "That name wasn't accepted. Try a different one."
-    // Unreachable from this build's picker, which cannot exceed the window it was built with — so it
-    // arrives only when the backend's limit has since shrunk. Say it is the dates, not the name.
-    CreationFailureReason.INVALID_WINDOW -> "Those dates weren't accepted. Try a shorter range."
-    CreationFailureReason.SERVER -> "Couldn't connect. Check your connection and try again."
+private fun CreationFailureReason.message(): ScreenMessage = when (this) {
+    CreationFailureReason.INVALID_NAME -> ScreenMessage.CREATE_NAME_REFUSED
+    CreationFailureReason.INVALID_WINDOW -> ScreenMessage.CREATE_DATES_REFUSED
+    CreationFailureReason.SERVER -> ScreenMessage.CREATE_FAILED
 }
 
 /**
@@ -1327,7 +1319,7 @@ private data class Local(
      * the create screen renders ONE banner, so the create state carries one error value and this is one of its
      * two causes.
      */
-    val transientError: String? = null,
+    val transientError: ScreenMessage? = null,
     /** What is drawn OVER the current layer (see [Overlays]). */
     val overlays: Overlays = Overlays(),
     /**

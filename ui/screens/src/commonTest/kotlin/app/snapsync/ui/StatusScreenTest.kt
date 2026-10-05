@@ -3,6 +3,7 @@
 package app.snapsync.ui
 
 import androidx.compose.ui.semantics.SemanticsActions
+import app.snapsync.model.ScreenMessage
 import app.snapsync.model.NetworkNotice
 import app.snapsync.model.AlbumKind
 import androidx.compose.ui.unit.dp
@@ -89,6 +90,74 @@ import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import app.snapsync.ui.JoinedActions
 import app.snapsync.ui.AccessActions
+import app.snapsync.ui.resources.Res
+import app.snapsync.ui.resources.duration_minutes_short
+import app.snapsync.ui.components.resources.Res as ComponentRes
+import app.snapsync.ui.components.resources.calendar_next_month
+import app.snapsync.ui.components.resources.date_range_today
+import app.snapsync.ui.components.resources.network_blocked
+import app.snapsync.ui.components.resources.network_offline
+import app.snapsync.ui.components.resources.range_end_pick_time
+import app.snapsync.ui.components.resources.range_starts
+import app.snapsync.ui.components.resources.status_allow_access
+import app.snapsync.ui.components.resources.status_allow_access_settings
+import app.snapsync.ui.components.resources.status_in_sync
+import app.snapsync.ui.components.resources.status_not_started
+import app.snapsync.ui.components.resources.status_sync_ongoing
+import app.snapsync.ui.components.resources.status_sync_pending
+import app.snapsync.ui.components.resources.status_waiting_wifi
+import app.snapsync.ui.components.resources.wheel_end_hour
+import app.snapsync.ui.components.resources.wheel_end_minute
+import app.snapsync.ui.components.resources.wheel_start_hour
+import app.snapsync.ui.components.resources.wheel_start_minute
+import app.snapsync.ui.resources.allow_full_access
+import app.snapsync.ui.resources.cancel
+import app.snapsync.ui.resources.choose_more_photos
+import app.snapsync.ui.resources.counts_line
+import app.snapsync.ui.resources.counts_not_receiving
+import app.snapsync.ui.resources.counts_not_sharing
+import app.snapsync.ui.resources.counts_received
+import app.snapsync.ui.resources.counts_received_progress
+import app.snapsync.ui.resources.counts_shared
+import app.snapsync.ui.resources.counts_shared_progress
+import app.snapsync.ui.resources.create_button
+import app.snapsync.ui.resources.create_join_hint
+import app.snapsync.ui.resources.create_lasts
+import app.snapsync.ui.resources.create_name_placeholder
+import app.snapsync.ui.resources.create_step_end_time
+import app.snapsync.ui.resources.create_step_name
+import app.snapsync.ui.resources.create_title
+import app.snapsync.ui.resources.creating
+import app.snapsync.ui.resources.duration_days
+import app.snapsync.ui.resources.duration_hours
+import app.snapsync.ui.resources.event_settings
+import app.snapsync.ui.resources.invite_caption
+import app.snapsync.ui.resources.invite_eyebrow
+import app.snapsync.ui.resources.joined_statement
+import app.snapsync.ui.resources.leave_cancel
+import app.snapsync.ui.resources.leave_confirm
+import app.snapsync.ui.resources.leave_event
+import app.snapsync.ui.resources.leave_title
+import app.snapsync.ui.resources.message_create_failed
+import app.snapsync.ui.resources.message_invalid_link
+import app.snapsync.ui.resources.message_rename_failed
+import app.snapsync.ui.resources.message_rename_name_refused
+import app.snapsync.ui.resources.range_custom
+import app.snapsync.ui.resources.range_whole_event
+import app.snapsync.ui.resources.rename_event
+import app.snapsync.ui.resources.save
+import app.snapsync.ui.resources.settings_save_failed
+import app.snapsync.ui.resources.share_invite
+import app.snapsync.ui.resources.share_toggle
+import app.snapsync.ui.resources.store_app_store
+import app.snapsync.ui.resources.store_google_play
+import app.snapsync.ui.resources.timing_ended
+import app.snapsync.ui.resources.timing_ends_in
+import app.snapsync.ui.resources.timing_starts_in
+import app.snapsync.ui.resources.update_detail
+import app.snapsync.ui.resources.update_detail_version
+import app.snapsync.ui.resources.update_eyebrow
+import app.snapsync.ui.resources.waiting_members
 
 // A representative invite link — any string renders a QR; the encoding is pinned in capability:config.
 private const val SAMPLE_INVITE = "https://snapsync.stho.net/join#v=3&d=eyJldmVudElkIjoiMSJ9"
@@ -213,17 +282,17 @@ private fun CreateScreen(state: UiState, cutoff: CutoffFormatter = fixedCutoff()
 internal fun ComposeUiTest.setUntilHour(row: String) {
     // The wheels sit below the calendar, under the fold of a test window: scroll the FORM (the wheel's own
     // closest scroll parent) so the wheel is in view, then tap the row.
-    onNodeWithContentDescription("End hour", useUnmergedTree = true).performScrollTo()
-    onNode(hasText(row) and hasAnyAncestor(hasContentDescription("End hour")), useUnmergedTree = true).performClick()
+    onNodeWithContentDescription(str(ComponentRes.string.wheel_end_hour), useUnmergedTree = true).performScrollTo()
+    onNode(hasText(row) and hasAnyAncestor(hasContentDescription(str(ComponentRes.string.wheel_end_hour))), useUnmergedTree = true).performClick()
     waitForIdle()
-    onNode(hasText("--") and hasAnyAncestor(hasContentDescription("End minute")), useUnmergedTree = true).performClick()
+    onNode(hasText("--") and hasAnyAncestor(hasContentDescription(str(ComponentRes.string.wheel_end_minute))), useUnmergedTree = true).performClick()
     waitForIdle()
 }
 
 /** A complete form: [name], the last day Wednesday 8 July, and the end at 13:00. */
 internal fun ComposeUiTest.completeForm(name: String) {
     onNode(hasSetTextAction()).performTextInput(name)
-    onNodeWithContentDescription("Wednesday 8 July 2026").performClick()
+    onNodeWithContentDescription("Wednesday, 8 July 2026").performClick()
     setUntilHour("13")
 }
 
@@ -243,9 +312,9 @@ class StatusScreenTest {
                 actions = testActions(onOpenLink = { opened = it }),
             )
         }
-        onNodeWithText("UPDATE NEEDED").assertExists() // its own verb, not another surface's
-        onNodeWithText("SnapSync 0.4 or newer is needed to keep sharing photos.").assertExists()
-        onNodeWithText("Open the App Store").performClick()
+        onNodeWithText(str(Res.string.update_eyebrow)).assertExists() // its own verb, not another surface's
+        onNodeWithText(str(Res.string.update_detail_version, "0.4")).assertExists()
+        onNodeWithText(str(Res.string.store_app_store)).performClick()
         assertEquals(STORE_URL, opened)
     }
 
@@ -260,9 +329,9 @@ class StatusScreenTest {
                 cutoff = fixedCutoff(),
             )
         }
-        onNodeWithText("A newer version of SnapSync is needed to keep sharing photos.").assertExists()
-        onNodeWithText("Open the App Store").assertDoesNotExist()
-        onNodeWithText("Open Google Play").assertDoesNotExist()
+        onNodeWithText(str(Res.string.update_detail)).assertExists()
+        onNodeWithText(str(Res.string.store_app_store)).assertDoesNotExist()
+        onNodeWithText(str(Res.string.store_google_play)).assertDoesNotExist()
     }
 
     @Test
@@ -275,8 +344,8 @@ class StatusScreenTest {
                 actions = testActions(onOpenLink = { opened = it }),
             )
         }
-        onNodeWithText("Open the App Store").assertDoesNotExist()
-        onNodeWithText("Open Google Play").performClick()
+        onNodeWithText(str(Res.string.store_app_store)).assertDoesNotExist()
+        onNodeWithText(str(Res.string.store_google_play)).performClick()
         assertEquals(PLAY_URL, opened)
     }
 
@@ -289,11 +358,11 @@ class StatusScreenTest {
             )
         }
         // Time is said once, on the dates line; the status line no longer restates the start.
-        onNodeWithText("Mon 6 – Fri 10 Jul · starts in 2 days").assertExists()
-        onNodeWithText("Sharing starts with the event").assertExists()
-        onNodeWithText("Starts", substring = true).assertDoesNotExist()
+        onNodeWithText("Mon 6 Jul – Fri 10 Jul" + " · " + str(Res.string.timing_starts_in, plural(Res.plurals.duration_days, 2, 2))).assertExists()
+        onNodeWithText(str(ComponentRes.string.status_not_started)).assertExists()
+        onNodeWithText(str(ComponentRes.string.range_starts), substring = true).assertDoesNotExist()
         // It is information, not an action: no sync arrows, no "In sync", and no counts.
-        onNodeWithText("In sync").assertDoesNotExist()
+        onNodeWithText(str(ComponentRes.string.status_in_sync)).assertDoesNotExist()
         onNodeWithText("Synchronization pending …").assertDoesNotExist()
         onNodeWithText("shared", substring = true).assertDoesNotExist()
     }
@@ -307,53 +376,53 @@ class StatusScreenTest {
     fun `create screen shows the name input and the scan-to-join hint`() = runComposeUiTest {
         setContent { CreateScreen(UiState(Layer.CreateEvent())) }
 
-        onNodeWithText("Create an event").assertExists()
-        onNodeWithText("To join an event instead, scan its QR code with your camera.").assertExists()
-        onNodeWithText("e.g. Anna's birthday").assertExists()
-        onNodeWithText("Create event").assertExists()
+        onNodeWithText(str(Res.string.create_title)).assertExists()
+        onNodeWithText(str(Res.string.create_join_hint)).assertExists()
+        onNodeWithText(str(Res.string.create_name_placeholder)).assertExists()
+        onNodeWithText(str(Res.string.create_button)).assertExists()
     }
 
     @Test
     fun `invalid deeplink error shows below Create in place of the scan hint`() = runComposeUiTest {
-        setContent { CreateScreen(UiState(Layer.CreateEvent(error = "That QR code isn't a SnapSync event."))) }
-        onNodeWithText("That QR code isn't a SnapSync event.").assertExists()
-        onNodeWithText("To join an event instead, scan its QR code with your camera.").assertDoesNotExist()
+        setContent { CreateScreen(UiState(Layer.CreateEvent(error = ScreenMessage.INVALID_LINK))) }
+        onNodeWithText(str(Res.string.message_invalid_link)).assertExists()
+        onNodeWithText(str(Res.string.create_join_hint)).assertDoesNotExist()
     }
 
     @Test
     fun `a create failure shows below Create in place of the scan hint`() = runComposeUiTest {
-        setContent { CreateScreen(UiState(Layer.CreateEvent(error = "Couldn't connect. Check your connection and try again."))) }
-        onNodeWithText("Couldn't connect. Check your connection and try again.").assertExists()
-        onNodeWithText("To join an event instead, scan its QR code with your camera.").assertDoesNotExist()
+        setContent { CreateScreen(UiState(Layer.CreateEvent(error = ScreenMessage.CREATE_FAILED))) }
+        onNodeWithText(str(Res.string.message_create_failed)).assertExists()
+        onNodeWithText(str(Res.string.create_join_hint)).assertDoesNotExist()
     }
 
     @Test
     fun `the start is preset to now and the last day to today with its time blank`() = runComposeUiTest {
         setContent { CreateScreen(UiState(Layer.CreateEvent())) }
         onNodeWithText("6 Jul 2026, 12:00").assertExists()
-        onNodeWithText("6 Jul 2026, pick a time").assertExists()
-        onNodeWithContentDescription("End hour", useUnmergedTree = true)
+        onNodeWithText(str(ComponentRes.string.range_end_pick_time, "6 Jul 2026")).assertExists()
+        onNodeWithContentDescription(str(ComponentRes.string.wheel_end_hour), useUnmergedTree = true)
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "not set"))
     }
 
     @Test
     fun `the line above Create names the next missing step`() = runComposeUiTest {
         setContent { CreateScreen(UiState(Layer.CreateEvent())) }
-        onNodeWithText("Name the event").assertExists()
-        onNodeWithText("Create event").assertIsNotEnabled()
+        onNodeWithText(str(Res.string.create_step_name)).assertExists()
+        onNodeWithText(str(Res.string.create_button)).assertIsNotEnabled()
 
         onNode(hasSetTextAction()).performTextInput("My Party")
-        onNodeWithText("Pick an end time").assertExists()
-        onNodeWithText("Create event").assertIsNotEnabled()
+        onNodeWithText(str(Res.string.create_step_end_time)).assertExists()
+        onNodeWithText(str(Res.string.create_button)).assertIsNotEnabled()
 
         // Tapping the last day alone does not complete the range.
-        onNodeWithContentDescription("Wednesday 8 July 2026").performClick()
-        onNodeWithText("Pick an end time").assertExists()
-        onNodeWithText("Create event").assertIsNotEnabled()
+        onNodeWithContentDescription("Wednesday, 8 July 2026").performClick()
+        onNodeWithText(str(Res.string.create_step_end_time)).assertExists()
+        onNodeWithText(str(Res.string.create_button)).assertIsNotEnabled()
 
         setUntilHour("13")
-        onNodeWithText("Event lasts 2 days").assertExists()
-        onNodeWithText("Create event").assertIsEnabled()
+        onNodeWithText(str(Res.string.create_lasts, plural(Res.plurals.duration_days, 2, 2))).assertExists()
+        onNodeWithText(str(Res.string.create_button)).assertIsEnabled()
     }
 
     @Test
@@ -363,7 +432,7 @@ class StatusScreenTest {
             CreateScreen(UiState(Layer.CreateEvent()), actions = testActions(onCreateEvent = { n, f, u -> created = Triple(n, f, u) }))
         }
         completeForm("My Party")
-        onNodeWithText("Create event").performClick()
+        onNodeWithText(str(Res.string.create_button)).performClick()
 
         // LOCAL wall-clock values; the container converts each, the screen never touches a cutoff string.
         assertEquals(Triple("My Party", LocalDateTime(2026, 7, 6, 12, 0), LocalDateTime(2026, 7, 8, 13, 0)), created)
@@ -388,7 +457,7 @@ class StatusScreenTest {
         onNodeWithText("6 Jul 2026, 12:10").assertExists()
 
         setUntilHour("13")
-        onNodeWithText("Create event").performClick()
+        onNodeWithText(str(Res.string.create_button)).performClick()
         assertEquals(LocalDateTime(2026, 7, 6, 12, 10), createdFrom)
     }
 
@@ -408,7 +477,7 @@ class StatusScreenTest {
         completeForm("My Party")
         clock.instant = Instant.parse("2026-07-06T12:10:00Z")
         mainClock.advanceTimeBy(FOLLOW_NOW_STEP)
-        onNodeWithText("Create event").performClick()
+        onNodeWithText(str(Res.string.create_button)).performClick()
 
         onNodeWithText("6 Jul 2026, 12:00").assertExists()
         assertEquals(LocalDateTime(2026, 7, 6, 12, 0), createdFrom)
@@ -449,13 +518,13 @@ class StatusScreenTest {
         waitForIdle()
         assertEquals("", onNode(hasSetTextAction()).fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
         onNodeWithText("6 Jul 2026, 12:40").assertExists()
-        onNodeWithText("6 Jul 2026, pick a time").assertExists()
+        onNodeWithText(str(ComponentRes.string.range_end_pick_time, "6 Jul 2026")).assertExists()
     }
 
     @Test
     fun `tapping the missing name puts the cursor in the name field`() = runComposeUiTest {
         setContent { CreateScreen(UiState(Layer.CreateEvent())) }
-        onNodeWithText("Name the event").assertHasClickAction().performClick()
+        onNodeWithText(str(Res.string.create_step_name)).assertHasClickAction().performClick()
         waitForIdle()
         onNode(hasSetTextAction()).assertIsFocused()
     }
@@ -465,20 +534,20 @@ class StatusScreenTest {
         // A phone-sized viewport, so the wheels start below the fold as they do on a Samsung A-series.
         setContent { Box(Modifier.size(390.dp, 640.dp)) { CreateScreen(UiState(Layer.CreateEvent())) } }
         onNode(hasSetTextAction()).performTextInput("My Party")
-        onNodeWithContentDescription("End hour", useUnmergedTree = true).assertIsNotDisplayed()
+        onNodeWithContentDescription(str(ComponentRes.string.wheel_end_hour), useUnmergedTree = true).assertIsNotDisplayed()
 
-        onNodeWithText("Pick an end time").assertHasClickAction().performClick()
+        onNodeWithText(str(Res.string.create_step_end_time)).assertHasClickAction().performClick()
         waitForIdle()
-        onNodeWithContentDescription("End hour", useUnmergedTree = true).assertIsDisplayed()
-        onNodeWithText("6 Jul 2026, pick a time").assertExists()
-        onNodeWithText("Create event").assertIsNotEnabled()
+        onNodeWithContentDescription(str(ComponentRes.string.wheel_end_hour), useUnmergedTree = true).assertIsDisplayed()
+        onNodeWithText(str(ComponentRes.string.range_end_pick_time, "6 Jul 2026")).assertExists()
+        onNodeWithText(str(Res.string.create_button)).assertIsNotEnabled()
     }
 
     @Test
     fun `once the end time is set the line above Create is not a button`() = runComposeUiTest {
         setContent { CreateScreen(UiState(Layer.CreateEvent())) }
         completeForm("My Party")
-        onNodeWithText("Event lasts 2 days").assert(SemanticsMatcher.keyNotDefined(SemanticsActions.OnClick))
+        onNodeWithText(str(Res.string.create_lasts, plural(Res.plurals.duration_days, 2, 2))).assert(SemanticsMatcher.keyNotDefined(SemanticsActions.OnClick))
     }
 
     @Test
@@ -493,7 +562,7 @@ class StatusScreenTest {
             )
         }
         completeForm("My Party")
-        onNodeWithText("Create event").performClick()
+        onNodeWithText(str(Res.string.create_button)).performClick()
         assertEquals(LocalDateTime(2026, 7, 6, 12, 0), createdFrom)
     }
 
@@ -501,12 +570,12 @@ class StatusScreenTest {
     fun `all four time wheels are on the screen with the calendar`() = runComposeUiTest {
         setContent { CreateScreen(UiState(Layer.CreateEvent())) }
         onNodeWithText("July 2026").assertExists()
-        onNodeWithContentDescription("Start hour", useUnmergedTree = true)
+        onNodeWithContentDescription(str(ComponentRes.string.wheel_start_hour), useUnmergedTree = true)
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "12"))
-        onNodeWithContentDescription("Start minute", useUnmergedTree = true)
+        onNodeWithContentDescription(str(ComponentRes.string.wheel_start_minute), useUnmergedTree = true)
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "00"))
-        onNodeWithContentDescription("End hour", useUnmergedTree = true).assertExists()
-        onNodeWithContentDescription("End minute", useUnmergedTree = true).assertExists()
+        onNodeWithContentDescription(str(ComponentRes.string.wheel_end_hour), useUnmergedTree = true).assertExists()
+        onNodeWithContentDescription(str(ComponentRes.string.wheel_end_minute), useUnmergedTree = true).assertExists()
     }
 
     @Test
@@ -524,10 +593,10 @@ class StatusScreenTest {
     fun `create layer shows no sync line and no leave and no invite`() = runComposeUiTest {
         setContent { CreateScreen(UiState(Layer.CreateEvent())) }
 
-        onNodeWithText("In sync").assertDoesNotExist()
+        onNodeWithText(str(ComponentRes.string.status_in_sync)).assertDoesNotExist()
         onNodeWithText("Synchronization", substring = true).assertDoesNotExist()
-        onNodeWithContentDescription("Leave event").assertDoesNotExist()
-        onNodeWithText("Others join by scanning this with their camera").assertDoesNotExist()
+        onNodeWithContentDescription(str(Res.string.leave_event)).assertDoesNotExist()
+        onNodeWithText(str(Res.string.invite_caption)).assertDoesNotExist()
     }
 
     @Test
@@ -546,19 +615,19 @@ class StatusScreenTest {
             )
         }
         completeForm("My Party")
-        onNodeWithText("Create event").performClick()
+        onNodeWithText(str(Res.string.create_button)).performClick()
 
         state.value = UiState(Layer.CreatingEvent)
         waitForIdle()
         clock.instant = Instant.parse("2026-07-09T08:30:00Z")
-        state.value = UiState(Layer.CreateEvent(error = "Couldn't connect. Check your connection and try again."))
+        state.value = UiState(Layer.CreateEvent(error = ScreenMessage.CREATE_FAILED))
         waitForIdle()
 
-        onNodeWithText("Couldn't connect. Check your connection and try again.").assertExists()
+        onNodeWithText(str(Res.string.message_create_failed)).assertExists()
         assertEquals("My Party", onNode(hasSetTextAction()).fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
         onNodeWithText("6 Jul 2026, 12:00").assertExists()
         onNodeWithText("8 Jul 2026, 13:00").assertExists()
-        onNodeWithText("Create event").assertIsEnabled().performClick()
+        onNodeWithText(str(Res.string.create_button)).assertIsEnabled().performClick()
         assertEquals(2, submitted.size)
         assertEquals(submitted[0], submitted[1], "the retry submits exactly what the failed attempt did")
     }
@@ -580,7 +649,7 @@ class StatusScreenTest {
 
         assertEquals("", onNode(hasSetTextAction()).fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
         onNodeWithText("9 Jul 2026, 08:30").assertExists()
-        onNodeWithText("9 Jul 2026, pick a time").assertExists()
+        onNodeWithText(str(ComponentRes.string.range_end_pick_time, "9 Jul 2026")).assertExists()
     }
 
     @Test
@@ -597,8 +666,8 @@ class StatusScreenTest {
         }
         onNode(hasSetTextAction()).performTextInput("Dinner")
         setUntilHour("13")
-        onNodeWithText("Event lasts 1 hour").assertExists()
-        onNodeWithText("Create event").performClick()
+        onNodeWithText(str(Res.string.create_lasts, plural(Res.plurals.duration_hours, 1, 1))).assertExists()
+        onNodeWithText(str(Res.string.create_button)).performClick()
         assertEquals(Triple("Dinner", LocalDateTime(2026, 7, 6, 12, 0), LocalDateTime(2026, 7, 6, 13, 0)), created)
     }
 
@@ -606,18 +675,18 @@ class StatusScreenTest {
     fun `the last day cannot be picked past 30 days from the start`() = runComposeUiTest {
         // Capability `create-event`, "A range longer than 30 days cannot be chosen".
         setContent { CreateScreen(UiState(Layer.CreateEvent())) }
-        onNodeWithContentDescription("Next month").performClick()
-        onNodeWithContentDescription("Wednesday 5 August 2026").assertIsEnabled()  // 30 days on
-        onNodeWithContentDescription("Thursday 6 August 2026").assertIsNotEnabled() // 31 days on
+        onNodeWithContentDescription(str(ComponentRes.string.calendar_next_month)).performClick()
+        onNodeWithContentDescription("Wednesday, 5 August 2026").assertIsEnabled()  // 30 days on
+        onNodeWithContentDescription("Thursday, 6 August 2026").assertIsNotEnabled() // 31 days on
     }
 
     @Test
     fun `creating event shows a preparing indicator and no input`() = runComposeUiTest {
         setContent { TestStatusScreen(UiState(Layer.CreatingEvent), cutoff = fixedCutoff()) }
 
-        onNodeWithText("Creating your event …").assertExists()
+        onNodeWithText(str(Res.string.creating)).assertExists()
         onNode(hasAnyProgressIndication()).assertExists()
-        onNodeWithText("e.g. Anna's birthday").assertDoesNotExist()
+        onNodeWithText(str(Res.string.create_name_placeholder)).assertDoesNotExist()
     }
 
     // ---- joined layer: status line ----
@@ -626,7 +695,7 @@ class StatusScreenTest {
     fun `in sync shows the settled line and no counts`() = runComposeUiTest {
         setContent { TestStatusScreen(inSync, cutoff = fixedCutoff()) }
 
-        onNodeWithText("In sync").assertExists()
+        onNodeWithText(str(ComponentRes.string.status_in_sync)).assertExists()
         onNodeWithText("images synced", substring = true).assertDoesNotExist()
     }
 
@@ -634,7 +703,7 @@ class StatusScreenTest {
     fun `syncing with an in-flight arrow reads ongoing`() = runComposeUiTest {
         setContent { TestStatusScreen(syncing, cutoff = fixedCutoff()) }
 
-        onNodeWithText("Synchronization ongoing…").assertExists()
+        onNodeWithText(str(ComponentRes.string.status_sync_ongoing)).assertExists()
         onNodeWithText("images synced", substring = true).assertDoesNotExist()
     }
 
@@ -642,8 +711,8 @@ class StatusScreenTest {
     fun `syncing with a static arrow reads pending`() = runComposeUiTest {
         setContent { TestStatusScreen(syncPending, cutoff = fixedCutoff()) }
 
-        onNodeWithText("Synchronization pending…").assertExists()
-        onNodeWithText("Synchronization ongoing…").assertDoesNotExist()
+        onNodeWithText(str(ComponentRes.string.status_sync_pending)).assertExists()
+        onNodeWithText(str(ComponentRes.string.status_sync_ongoing)).assertDoesNotExist()
     }
 
     /** Capability `mobile-data`: photos kept off mobile data on a network that choice avoids say why they wait. */
@@ -651,8 +720,8 @@ class StatusScreenTest {
     fun `photos held for Wi-Fi read waiting for Wi-Fi`() = runComposeUiTest {
         setContent { TestStatusScreen(waitingForWifi, cutoff = fixedCutoff()) }
 
-        onNodeWithText("Waiting for Wi-Fi…").assertExists()
-        onNodeWithText("Synchronization pending…").assertDoesNotExist()
+        onNodeWithText(str(ComponentRes.string.status_waiting_wifi)).assertExists()
+        onNodeWithText(str(ComponentRes.string.status_sync_pending)).assertDoesNotExist()
     }
 
     // ---- reduce motion (`docs/architecture.md`) ----
@@ -668,7 +737,7 @@ class StatusScreenTest {
         setContent {
             CompositionLocalProvider(LocalReduceMotion provides true) { TestStatusScreen(syncing, cutoff = fixedCutoff()) }
         }
-        onNodeWithText("Synchronization ongoing…").assertExists()
+        onNodeWithText(str(ComponentRes.string.status_sync_ongoing)).assertExists()
 
         val first = onRoot().captureToImage().toPixelMap()
         mainClock.advanceTimeBy(350)
@@ -684,7 +753,7 @@ class StatusScreenTest {
         setContent {
             CompositionLocalProvider(LocalReduceMotion provides false) { TestStatusScreen(syncing, cutoff = fixedCutoff()) }
         }
-        onNodeWithText("Synchronization ongoing…").assertExists()
+        onNodeWithText(str(ComponentRes.string.status_sync_ongoing)).assertExists()
 
         val first = onRoot().captureToImage().toPixelMap()
         mainClock.advanceTimeBy(350) // half the 700ms fade — the alpha cannot be back where it started
@@ -700,8 +769,8 @@ class StatusScreenTest {
             CompositionLocalProvider(LocalReduceMotion provides true) { TestStatusScreen(syncPending, cutoff = fixedCutoff()) }
         }
 
-        onNodeWithText("Synchronization pending…").assertExists()
-        onNodeWithText("Synchronization ongoing…").assertDoesNotExist()
+        onNodeWithText(str(ComponentRes.string.status_sync_pending)).assertExists()
+        onNodeWithText(str(ComponentRes.string.status_sync_ongoing)).assertDoesNotExist()
     }
 
     @Test
@@ -718,8 +787,8 @@ class StatusScreenTest {
              cutoff = fixedCutoff())
         }
 
-        onNodeWithText("Allow photo access").assertExists()
-        onNodeWithText("Allow photo access").performClick()
+        onNodeWithText(str(ComponentRes.string.status_allow_access)).assertExists()
+        onNodeWithText(str(ComponentRes.string.status_allow_access)).performClick()
         assertEquals(1, requests)
     }
 
@@ -737,8 +806,8 @@ class StatusScreenTest {
              cutoff = fixedCutoff())
         }
 
-        onNodeWithText("Allow photo access in Settings").assertExists()
-        onNodeWithText("Allow photo access in Settings").performClick()
+        onNodeWithText(str(ComponentRes.string.status_allow_access_settings)).assertExists()
+        onNodeWithText(str(ComponentRes.string.status_allow_access_settings)).performClick()
         assertEquals(1, settingsOpens)
     }
 
@@ -754,7 +823,7 @@ class StatusScreenTest {
                 cutoff = fixedCutoff(),
             )
         }
-        onNodeWithText("Network blocked for SnapSync – Open Settings").performClick()
+        onNodeWithText(str(ComponentRes.string.network_blocked)).performClick()
         assertEquals(1, settingsOpens)
     }
 
@@ -768,18 +837,18 @@ class StatusScreenTest {
                 cutoff = fixedCutoff(),
             )
         }
-        onNodeWithText("You're offline").assertExists().assert(SemanticsMatcher.keyNotDefined(SemanticsActions.OnClick))
-        onNodeWithText("You're offline").performClick()
+        onNodeWithText(str(ComponentRes.string.network_offline)).assertExists().assert(SemanticsMatcher.keyNotDefined(SemanticsActions.OnClick))
+        onNodeWithText(str(ComponentRes.string.network_offline)).performClick()
         assertEquals(0, settingsOpens)
     }
 
     @Test
     fun `offline Create cannot be tapped and the line below it says so`() = runComposeUiTest {
-        setContent { CreateScreen(UiState(Layer.CreateEvent(error = "Couldn't connect. Check your connection and try again.", network = NetworkNotice.OFFLINE))) }
+        setContent { CreateScreen(UiState(Layer.CreateEvent(error = ScreenMessage.CREATE_FAILED, network = NetworkNotice.OFFLINE))) }
         completeForm("Party")
-        onNodeWithText("You're offline").assertExists()
-        onNodeWithText("Couldn't connect. Check your connection and try again.").assertDoesNotExist()
-        onNodeWithText("Create event").assertIsNotEnabled()
+        onNodeWithText(str(ComponentRes.string.network_offline)).assertExists()
+        onNodeWithText(str(Res.string.message_create_failed)).assertDoesNotExist()
+        onNodeWithText(str(Res.string.create_button)).assertIsNotEnabled()
     }
 
     @Test
@@ -791,7 +860,7 @@ class StatusScreenTest {
                 actions = testActions(access = testAccessActions(onOpenSettings = { settingsOpens++ })),
             )
         }
-        onNodeWithText("Network blocked for SnapSync – Open Settings").performClick()
+        onNodeWithText(str(ComponentRes.string.network_blocked)).performClick()
         assertEquals(1, settingsOpens)
     }
 
@@ -813,8 +882,8 @@ class StatusScreenTest {
         for (health in healths) {
             state.value = joined(health, canChoosePhotos = true)
             waitForIdle()
-            val chooseY = onNodeWithText("Choose more photos").fetchSemanticsNode().positionInRoot.y
-            val allowY = onNodeWithText("Allow full access").fetchSemanticsNode().positionInRoot.y
+            val chooseY = onNodeWithText(str(Res.string.choose_more_photos)).fetchSemanticsNode().positionInRoot.y
+            val allowY = onNodeWithText(str(Res.string.allow_full_access)).fetchSemanticsNode().positionInRoot.y
             assertTrue(allowY > chooseY, "Allow full access must sit below Choose more photos ($health)")
         }
     }
@@ -838,7 +907,7 @@ class StatusScreenTest {
             )
         }
 
-        onNodeWithText("Allow full access").performClick()
+        onNodeWithText(str(Res.string.allow_full_access)).performClick()
         assertEquals(1, settingsOpens)
         assertEquals(0, pickerOpens)
         assertEquals(0, requests)
@@ -861,7 +930,7 @@ class StatusScreenTest {
             )
         }
 
-        onNodeWithText("Choose more photos").performClick()
+        onNodeWithText(str(Res.string.choose_more_photos)).performClick()
         assertEquals(1, pickerOpens)
         assertEquals(0, settingsOpens)
     }
@@ -871,8 +940,8 @@ class StatusScreenTest {
         // canChoosePhotos defaults false (permission != LIMITED) — neither offer renders.
         setContent { TestStatusScreen(inSync, cutoff = fixedCutoff()) }
 
-        onNodeWithText("Choose more photos").assertDoesNotExist()
-        onNodeWithText("Allow full access").assertDoesNotExist()
+        onNodeWithText(str(Res.string.choose_more_photos)).assertDoesNotExist()
+        onNodeWithText(str(Res.string.allow_full_access)).assertDoesNotExist()
     }
 
     // ---- joined layer: name, leave, invite ----
@@ -886,7 +955,7 @@ class StatusScreenTest {
     @Test
     fun `joined shows the leave action`() = runComposeUiTest {
         setContent { TestStatusScreen(inSync, cutoff = fixedCutoff()) }
-        onNodeWithContentDescription("Leave event").assertExists()
+        onNodeWithContentDescription(str(Res.string.leave_event)).assertExists()
     }
 
     @Test
@@ -896,9 +965,9 @@ class StatusScreenTest {
                 joined(SyncHealth.NeedsAccess(GalleryAccess.DENIED)),
              cutoff = fixedCutoff())
         }
-        onNodeWithContentDescription("Leave event").assertExists()
-        onNodeWithText("Others join by scanning this with their camera").assertExists()
-        onNodeWithContentDescription("Share invite link").assertExists()
+        onNodeWithContentDescription(str(Res.string.leave_event)).assertExists()
+        onNodeWithText(str(Res.string.invite_caption)).assertExists()
+        onNodeWithContentDescription(str(Res.string.share_invite)).assertExists()
     }
 
     @Test
@@ -911,15 +980,15 @@ class StatusScreenTest {
                 actions = testActions(surfaces = testSurfaceActions(onConfirmLeaveOpen = { asked++ })),
             )
         }
-        onNodeWithText("Leave this event?").assertDoesNotExist()
-        onNodeWithContentDescription("Leave event").performClick()
+        onNodeWithText(str(Res.string.leave_title)).assertDoesNotExist()
+        onNodeWithContentDescription(str(Res.string.leave_event)).performClick()
         assertEquals(1, asked)
     }
 
     @Test
     fun `the leave confirmation renders when the state says it is up`() = runComposeUiTest {
         setContent { TestStatusScreen(confirmingLeave(), cutoff = fixedCutoff()) }
-        onNodeWithText("Leave this event?").assertExists()
+        onNodeWithText(str(Res.string.leave_title)).assertExists()
     }
 
     @Test
@@ -933,7 +1002,7 @@ class StatusScreenTest {
             )
         }
 
-        onNodeWithText("Leave").performClick()
+        onNodeWithText(str(Res.string.leave_confirm)).performClick()
         assertEquals(1, leaves)
     }
 
@@ -951,7 +1020,7 @@ class StatusScreenTest {
                 ),
             )
         }
-        onNodeWithText("Stay").performClick()
+        onNodeWithText(str(Res.string.leave_cancel)).performClick()
         assertEquals(0, leaves)
         assertEquals(1, dismissed)
     }
@@ -959,15 +1028,15 @@ class StatusScreenTest {
     @Test
     fun `joined shows the invite QR and share action`() = runComposeUiTest {
         setContent { TestStatusScreen(inSync, cutoff = fixedCutoff()) }
-        onNodeWithText("Others join by scanning this with their camera").assertExists()
-        onNodeWithContentDescription("Share invite link").assertExists()
+        onNodeWithText(str(Res.string.invite_caption)).assertExists()
+        onNodeWithContentDescription(str(Res.string.share_invite)).assertExists()
     }
 
     @Test
     fun `activating share invokes the callback`() = runComposeUiTest {
         var shares = 0
         setContent { TestStatusScreen(inSync, cutoff = fixedCutoff(), actions = testActions(joined = testJoinedActions(onShareInvite = { shares++ }))) }
-        onNodeWithContentDescription("Share invite link").performClick()
+        onNodeWithContentDescription(str(Res.string.share_invite)).performClick()
         assertEquals(1, shares)
     }
 
@@ -979,7 +1048,7 @@ class StatusScreenTest {
             TestStatusScreen(inSync, cutoff = fixedCutoff())
         }
         onNodeWithText("Anna's Birthday").assertExists()
-        onNodeWithContentDescription("Rename event").assertExists()
+        onNodeWithContentDescription(str(Res.string.rename_event)).assertExists()
     }
 
     @Test
@@ -1000,7 +1069,7 @@ class StatusScreenTest {
         )) {
             health.value = value
             waitForIdle()
-            onNodeWithContentDescription("Rename event").assertExists()
+            onNodeWithContentDescription(str(Res.string.rename_event)).assertExists()
         }
     }
 
@@ -1026,19 +1095,19 @@ class StatusScreenTest {
                 cutoff = fixedCutoff(),
             )
         }
-        onNodeWithContentDescription("Rename event").assertExists()
+        onNodeWithContentDescription(str(Res.string.rename_event)).assertExists()
     }
 
     @Test
     fun `the rename pen is absent on the create screen — there is no heading to rename`() = runComposeUiTest {
         setContent { TestStatusScreen(UiState(Layer.CreateEvent()), cutoff = fixedCutoff()) }
-        onNodeWithContentDescription("Rename event").assertDoesNotExist()
+        onNodeWithContentDescription(str(Res.string.rename_event)).assertDoesNotExist()
     }
 
     @Test
     fun `the rename pen is absent while the reconfigure surface is open`() = runComposeUiTest {
         setContent { TestStatusScreen(reconfiguring(), cutoff = fixedCutoff()) }
-        onNodeWithContentDescription("Rename event").assertDoesNotExist()
+        onNodeWithContentDescription(str(Res.string.rename_event)).assertDoesNotExist()
     }
 
     @Test
@@ -1051,7 +1120,7 @@ class StatusScreenTest {
                 actions = testActions(surfaces = testSurfaceActions(onRenameOpen = { asked++ })),
             )
         }
-        onNodeWithContentDescription("Rename event").performClick()
+        onNodeWithContentDescription(str(Res.string.rename_event)).performClick()
         assertEquals(1, asked)
     }
 
@@ -1072,9 +1141,9 @@ class StatusScreenTest {
             TestStatusScreen(renaming(), cutoff = fixedCutoff())
         }
         // A no-op rename must be unreachable, not merely rejected on a round trip.
-        onNodeWithText("Save").assertIsNotEnabled()
+        onNodeWithText(str(Res.string.save)).assertIsNotEnabled()
         onNode(hasSetTextAction()).performTextInput("!")
-        onNodeWithText("Save").assertIsEnabled()
+        onNodeWithText(str(Res.string.save)).assertIsEnabled()
     }
 
     @Test
@@ -1093,7 +1162,7 @@ class StatusScreenTest {
         }
                 onNode(hasSetTextAction()).performTextClearance()
         onNode(hasSetTextAction()).performTextInput("  Ana's 30th  ")
-        onNodeWithText("Save").performClick()
+        onNodeWithText(str(Res.string.save)).performClick()
         // The id rides along so a switch landing mid-edit makes the use-case a no-op.
         assertEquals(listOf("E1" to "Ana's 30th"), submitted)
     }
@@ -1102,14 +1171,14 @@ class StatusScreenTest {
     fun `a failure keeps the dialog open with the typed value and an error BANNER`() = runComposeUiTest {
         setContent {
             TestStatusScreen(
-                renaming(RenameState.Failed("That name wasn't accepted. Try a shorter one.")),
+                renaming(RenameState.Failed(ScreenMessage.RENAME_NAME_REFUSED)),
                 cutoff = fixedCutoff(),
             )
         }
                 // The sheet stays open — the failure is reported beside the field, never ON it: a server saying
         // no must not read as a complaint about the host's typing.
-        onNodeWithText("Save").assertExists()
-        onNodeWithText("That name wasn't accepted. Try a shorter one.").assertExists()
+        onNodeWithText(str(Res.string.save)).assertExists()
+        onNodeWithText(str(Res.string.message_rename_name_refused)).assertExists()
     }
 
     @Test
@@ -1118,11 +1187,11 @@ class StatusScreenTest {
         // change to act on it (capability `manage-membership`).
         setContent {
             TestStatusScreen(
-                renaming(RenameState.Failed("Couldn't rename the event. Check your connection and try again.")),
+                renaming(RenameState.Failed(ScreenMessage.RENAME_FAILED)),
                 cutoff = fixedCutoff(),
             )
         }
-                onNodeWithText("Couldn't rename the event. Check your connection and try again.").assertExists()
+                onNodeWithText(str(Res.string.message_rename_failed)).assertExists()
     }
 
     @Test
@@ -1140,7 +1209,7 @@ class StatusScreenTest {
                 )
             )
         }
-        onNodeWithText("Save").assertExists()
+        onNodeWithText(str(Res.string.save)).assertExists()
 
         status.value = RenameState.Succeeded
         waitForIdle()
@@ -1166,7 +1235,7 @@ class StatusScreenTest {
             )
         }
         onNode(hasSetTextAction()).performTextInput("x")
-        onNodeWithText("Cancel").performClick()
+        onNodeWithText(str(Res.string.cancel)).performClick()
         assertEquals(0, submits)
         assertEquals(1, dismissed, "cancelling asks for the sheet to close")
     }
@@ -1176,9 +1245,9 @@ class StatusScreenTest {
     @Test
     fun `joined with a membership shows the settings action next to share and leave`() = runComposeUiTest {
         setContent { TestStatusScreen(inSync, cutoff = fixedCutoff()) }
-        onNodeWithContentDescription("Event settings").assertExists()
-        onNodeWithContentDescription("Share invite link").assertExists()
-        onNodeWithContentDescription("Leave event").assertExists()
+        onNodeWithContentDescription(str(Res.string.event_settings)).assertExists()
+        onNodeWithContentDescription(str(Res.string.share_invite)).assertExists()
+        onNodeWithContentDescription(str(Res.string.leave_event)).assertExists()
     }
 
     @Test
@@ -1189,7 +1258,7 @@ class StatusScreenTest {
                 cutoff = fixedCutoff(),
             )
         }
-        onNodeWithContentDescription("Event settings").assertExists()
+        onNodeWithContentDescription(str(Res.string.event_settings)).assertExists()
     }
 
     @Test
@@ -1212,7 +1281,7 @@ class StatusScreenTest {
                 cutoff = fixedCutoff(),
             )
         }
-        onNodeWithContentDescription("Event settings").assertExists()
+        onNodeWithContentDescription(str(Res.string.event_settings)).assertExists()
     }
 
     /**
@@ -1241,11 +1310,11 @@ class StatusScreenTest {
                 cutoff = fixedCutoff(),
             )
         }
-        onNodeWithContentDescription("Event settings").assertExists()
-        onNodeWithContentDescription("Rename event").assertExists()
+        onNodeWithContentDescription(str(Res.string.event_settings)).assertExists()
+        onNodeWithContentDescription(str(Res.string.rename_event)).assertExists()
         // The two neighbours that were never suppressed, asserted alongside so the row is checked whole.
-        onNodeWithContentDescription("Share invite link").assertExists()
-        onNodeWithContentDescription("Leave event").assertExists()
+        onNodeWithContentDescription(str(Res.string.share_invite)).assertExists()
+        onNodeWithContentDescription(str(Res.string.leave_event)).assertExists()
     }
 
     @Test
@@ -1258,24 +1327,24 @@ class StatusScreenTest {
                 actions = testActions(surfaces = testSurfaceActions(onOpenReconfigure = { opened++ })),
             )
         }
-        onNodeWithText("Save").assertDoesNotExist()
-        onNodeWithContentDescription("Event settings").performClick()
+        onNodeWithText(str(Res.string.save)).assertDoesNotExist()
+        onNodeWithContentDescription(str(Res.string.event_settings)).performClick()
         assertEquals(1, opened, "the gear asks the container to open the surface")
     }
 
     @Test
     fun `the reconfigure surface renders its controls and its own action cluster`() = runComposeUiTest {
         setContent { TestStatusScreen(reconfiguring(), cutoff = fixedCutoff()) }
-        onNodeWithText("Save").assertExists()
-        onNodeWithText("Share my photos").assertExists()
-        onNodeWithText("Cancel").assertExists()
+        onNodeWithText(str(Res.string.save)).assertExists()
+        onNodeWithText(str(Res.string.share_toggle)).assertExists()
+        onNodeWithText(str(Res.string.cancel)).assertExists()
     }
 
     @Test
     fun `a failed save keeps the surface and says nothing changed`() = runComposeUiTest {
         setContent { TestStatusScreen(reconfiguring(saveFailed = true), cutoff = fixedCutoff()) }
-        onNodeWithText("Your settings couldn't be saved, so nothing changed. Try again.").assertExists()
-        onNodeWithText("Save").assertExists()
+        onNodeWithText(str(Res.string.settings_save_failed)).assertExists()
+        onNodeWithText(str(Res.string.save)).assertExists()
     }
 
     @Test
@@ -1289,8 +1358,8 @@ class StatusScreenTest {
         // minPhotoDate == startsAt and maxPhotoDate == endsAt → the whole event. The row states the full window
         // as the compact adaptive range.
         setContent { TestStatusScreen(reconfiguring(), cutoff = fixedCutoff()) }
-        onNodeWithText("6 Jul 12:00 – 10 Jul 12:00").assertExists()
-        onNodeWithText("The whole event", substring = true).assertExists()
+        onNodeWithText("6 Jul, 12:00 – 10 Jul, 12:00").assertExists()
+        onNodeWithText(str(Res.string.range_whole_event), substring = true).assertExists()
     }
 
     @Test
@@ -1298,8 +1367,8 @@ class StatusScreenTest {
         val above = MEMBERSHIP.copy(minPhotoDate = captureCutoff("2026-07-06T18:00:00Z"))
         val form = RangeForm(preset = RangeChoice.CUSTOM, customFrom = LocalDateTime(2026, 7, 6, 18, 0))
         setContent { TestStatusScreen(reconfiguring(above, form), cutoff = fixedCutoff()) }
-        onNodeWithText("6 Jul 18:00 – 10 Jul 12:00").assertExists()
-        onNodeWithText("Custom range", substring = true).assertExists()
+        onNodeWithText("6 Jul, 18:00 – 10 Jul, 12:00").assertExists()
+        onNodeWithText(str(Res.string.range_custom), substring = true).assertExists()
     }
 
     @Test
@@ -1307,8 +1376,8 @@ class StatusScreenTest {
         val below = MEMBERSHIP.copy(maxPhotoDate = captureCeiling("2026-07-09T12:00:00Z"))
         val form = RangeForm(preset = RangeChoice.CUSTOM, customUntil = LocalDateTime(2026, 7, 9, 12, 0))
         setContent { TestStatusScreen(reconfiguring(below, form), cutoff = fixedCutoff()) }
-        onNodeWithText("6 Jul 12:00 – 9 Jul 12:00").assertExists()
-        onNodeWithText("Custom range", substring = true).assertExists()
+        onNodeWithText("6 Jul, 12:00 – 9 Jul, 12:00").assertExists()
+        onNodeWithText(str(Res.string.range_custom), substring = true).assertExists()
     }
 
     @Test
@@ -1348,7 +1417,7 @@ class StatusScreenTest {
                 actions = testActions(joined = testJoinedActions(onReconfigure = { saved++ })),
             )
         }
-        onNodeWithText("Save").performClick()
+        onNodeWithText(str(Res.string.save)).performClick()
         assertEquals(1, saved)
     }
 
@@ -1366,7 +1435,7 @@ class StatusScreenTest {
                 ),
             )
         }
-        onNodeWithText("Cancel").performClick()
+        onNodeWithText(str(Res.string.cancel)).performClick()
         assertEquals(1, cancelled)
         assertEquals(0, saved, "Cancel commits nothing")
     }
@@ -1377,19 +1446,19 @@ class StatusScreenTest {
     fun `the heading says the device has joined and how long the event lasts`() = runComposeUiTest {
         setContent { TestStatusScreen(inSync, cutoff = fixedCutoff()) }
         onNodeWithText("Anna's Birthday").assertExists()
-        onNodeWithText("You've joined this event").assertExists()
-        onNodeWithText("Mon 6 – Fri 10 Jul · ends in 4 days").assertExists()
+        onNodeWithText(str(Res.string.joined_statement)).assertExists()
+        onNodeWithText("Mon 6 Jul – Fri 10 Jul" + " · " + str(Res.string.timing_ends_in, plural(Res.plurals.duration_days, 4, 4))).assertExists()
     }
 
     @Test
     fun `the last day counts down in hours and then minutes`() = runComposeUiTest {
         val state = mutableStateOf(joined(SyncHealth.InSync, timing = EventTiming.Running(TimeLeft.Hours(5))))
         setContent { TestStatusScreen(state.value, cutoff = fixedCutoff()) }
-        onNodeWithText("Mon 6 – Fri 10 Jul · ends in 5 hours").assertExists()
+        onNodeWithText("Mon 6 Jul – Fri 10 Jul" + " · " + str(Res.string.timing_ends_in, plural(Res.plurals.duration_hours, 5, 5))).assertExists()
         state.value = joined(SyncHealth.InSync, timing = EventTiming.Running(TimeLeft.Minutes(40)))
-        onNodeWithText("Mon 6 – Fri 10 Jul · ends in 40 min").assertExists()
+        onNodeWithText("Mon 6 Jul – Fri 10 Jul" + " · " + str(Res.string.timing_ends_in, plural(Res.plurals.duration_minutes_short, 40, 40))).assertExists()
         state.value = joined(SyncHealth.InSync, timing = EventTiming.Running(TimeLeft.Hours(1)))
-        onNodeWithText("Mon 6 – Fri 10 Jul · ends in 1 hour").assertExists()
+        onNodeWithText("Mon 6 Jul – Fri 10 Jul" + " · " + str(Res.string.timing_ends_in, plural(Res.plurals.duration_hours, 1, 1))).assertExists()
     }
 
     @Test
@@ -1404,7 +1473,7 @@ class StatusScreenTest {
                 cutoff = fixedCutoff(),
             )
         }
-        onNodeWithText("Today 18:00 – 23:00 · starts in 6 hours").assertExists()
+        onNodeWithText(str(ComponentRes.string.date_range_today, "18:00", "23:00") + " · " + str(Res.string.timing_starts_in, plural(Res.plurals.duration_hours, 6, 6))).assertExists()
     }
 
     @Test
@@ -1415,9 +1484,9 @@ class StatusScreenTest {
                 cutoff = fixedCutoff(),
             )
         }
-        onNodeWithText("Mon 6 – Fri 10 Jul · ended").assertExists()
+        onNodeWithText("Mon 6 Jul – Fri 10 Jul" + " · " + str(Res.string.timing_ended)).assertExists()
         onNodeWithText("Event ended", substring = true).assertDoesNotExist()
-        onNodeWithText("Synchronization pending…").assertExists()
+        onNodeWithText(str(ComponentRes.string.status_sync_pending)).assertExists()
     }
 
     // ---- joined layer: the counts line (capability `sync-status`) ----
@@ -1430,8 +1499,8 @@ class StatusScreenTest {
                 cutoff = fixedCutoff(),
             )
         }
-        onNodeWithText("Synchronization ongoing…").assertExists()
-        onNodeWithText("12/15 shared · 40/52 received").assertExists()
+        onNodeWithText(str(ComponentRes.string.status_sync_ongoing)).assertExists()
+        onNodeWithText(str(Res.string.counts_line, str(Res.string.counts_shared_progress, 12, 15), str(Res.string.counts_received_progress, 40, 52))).assertExists()
     }
 
     @Test
@@ -1442,8 +1511,8 @@ class StatusScreenTest {
                 cutoff = fixedCutoff(),
             )
         }
-        onNodeWithText("In sync").assertExists()
-        onNodeWithText("15 shared · 52 received").assertExists()
+        onNodeWithText(str(ComponentRes.string.status_in_sync)).assertExists()
+        onNodeWithText(str(Res.string.counts_line, str(Res.string.counts_shared, 15), str(Res.string.counts_received, 52))).assertExists()
     }
 
     @Test
@@ -1452,9 +1521,9 @@ class StatusScreenTest {
             joined(SyncHealth.Syncing(Arrow.HIDDEN, Arrow.STATIC), counts = SyncCounts(DirectionCount.Off, progress(40, 52))),
         )
         setContent { TestStatusScreen(state.value, cutoff = fixedCutoff()) }
-        onNodeWithText("Not sharing · 40/52 received").assertExists()
+        onNodeWithText(str(Res.string.counts_line, str(Res.string.counts_not_sharing), str(Res.string.counts_received_progress, 40, 52))).assertExists()
         state.value = joined(SyncHealth.InSync, counts = SyncCounts(progress(15, 15), DirectionCount.Off))
-        onNodeWithText("15 shared · Not receiving").assertExists()
+        onNodeWithText(str(Res.string.counts_line, str(Res.string.counts_shared, 15), str(Res.string.counts_not_receiving))).assertExists()
     }
 
     @Test
@@ -1472,9 +1541,9 @@ class StatusScreenTest {
                 cutoff = fixedCutoff(),
             )
         }
-        onNodeWithText("6 shared · 52 received").assertExists()
-        onNodeWithText("Choose more photos").assertExists()
-        onNodeWithText("Allow full access").assertExists()
+        onNodeWithText(str(Res.string.counts_line, str(Res.string.counts_shared, 6), str(Res.string.counts_received, 52))).assertExists()
+        onNodeWithText(str(Res.string.choose_more_photos)).assertExists()
+        onNodeWithText(str(Res.string.allow_full_access)).assertExists()
     }
 
     // ---- joined layer: early completion (capabilities `sync-status`, `manage-membership`) ----
@@ -1490,9 +1559,9 @@ class StatusScreenTest {
                 cutoff = fixedCutoff(),
             )
         }
-        onNodeWithText("34 shared · 110 received").assertExists()
-        onNodeWithText("Waiting for 2 of 5 members").assertExists()
-        onNodeWithText("In sync").assertExists()
+        onNodeWithText(str(Res.string.counts_line, str(Res.string.counts_shared, 34), str(Res.string.counts_received, 110))).assertExists()
+        onNodeWithText(str(Res.string.waiting_members, 2, 5)).assertExists()
+        onNodeWithText(str(ComponentRes.string.status_in_sync)).assertExists()
     }
 
     @Test
@@ -1500,24 +1569,24 @@ class StatusScreenTest {
         setContent {
             TestStatusScreen(joined(SyncHealth.InSync, timing = EventTiming.Ended, closed = true), cutoff = fixedCutoff())
         }
-        onNodeWithContentDescription("Share invite link").assertDoesNotExist()
-        onNodeWithContentDescription("Event settings").assertDoesNotExist()
-        onNodeWithContentDescription("Rename event").assertDoesNotExist()
-        onNodeWithText("Others join by scanning this with their camera").assertDoesNotExist()
-        onNodeWithText("Invite others", ignoreCase = true).assertDoesNotExist()
-        onNodeWithContentDescription("Leave event").assertExists()
-        onNodeWithText("In sync").assertExists()
+        onNodeWithContentDescription(str(Res.string.share_invite)).assertDoesNotExist()
+        onNodeWithContentDescription(str(Res.string.event_settings)).assertDoesNotExist()
+        onNodeWithContentDescription(str(Res.string.rename_event)).assertDoesNotExist()
+        onNodeWithText(str(Res.string.invite_caption)).assertDoesNotExist()
+        onNodeWithText(str(Res.string.invite_eyebrow), ignoreCase = true).assertDoesNotExist()
+        onNodeWithContentDescription(str(Res.string.leave_event)).assertExists()
+        onNodeWithText(str(ComponentRes.string.status_in_sync)).assertExists()
         // The name, the joined statement and the dates stay.
-        onNodeWithText("You've joined this event").assertExists()
-        onNodeWithText("Mon 6 – Fri 10 Jul · ended").assertExists()
+        onNodeWithText(str(Res.string.joined_statement)).assertExists()
+        onNodeWithText("Mon 6 Jul – Fri 10 Jul" + " · " + str(Res.string.timing_ended)).assertExists()
     }
 
     @Test
     fun `the invite is labelled as an invitation for others`() = runComposeUiTest {
         setContent { TestStatusScreen(inSync, cutoff = fixedCutoff()) }
-        onNodeWithText("Invite others", ignoreCase = true).assertExists()
+        onNodeWithText(str(Res.string.invite_eyebrow), ignoreCase = true).assertExists()
         onNodeWithText("Share this event", ignoreCase = true).assertDoesNotExist()
-        onNodeWithText("Others join by scanning this with their camera").assertExists()
+        onNodeWithText(str(Res.string.invite_caption)).assertExists()
     }
 
     private fun hasAnyProgressIndication(): SemanticsMatcher =

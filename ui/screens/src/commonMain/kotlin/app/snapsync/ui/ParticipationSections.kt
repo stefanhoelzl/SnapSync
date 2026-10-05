@@ -16,6 +16,25 @@ import app.snapsync.ui.components.AppToggleSection
 import app.snapsync.ui.components.RangeChoiceActions
 import app.snapsync.ui.components.RangeChoices
 import app.snapsync.ui.components.RangeWindow
+import app.snapsync.ui.resources.Res
+import app.snapsync.ui.resources.album_toggle
+import app.snapsync.ui.resources.mobile_data_off_note
+import app.snapsync.ui.resources.mobile_data_on_note
+import app.snapsync.ui.resources.mobile_data_toggle
+import app.snapsync.ui.resources.range_custom
+import app.snapsync.ui.resources.range_from_now
+import app.snapsync.ui.resources.range_whole_event
+import app.snapsync.ui.resources.receive_off_note
+import app.snapsync.ui.resources.receive_on_note
+import app.snapsync.ui.resources.receive_toggle
+import app.snapsync.ui.resources.share_detail_count
+import app.snapsync.ui.resources.share_detail_counting
+import app.snapsync.ui.resources.share_exclusions_note
+import app.snapsync.ui.resources.share_off_note
+import app.snapsync.ui.resources.share_toggle
+import app.snapsync.ui.resources.share_zero_note
+import org.jetbrains.compose.resources.stringResource
+import org.jetbrains.compose.resources.pluralStringResource
 
 // The participation decision surface (capabilities `join-event`, `manage-membership`,
 // `photo-sharing`, `event-album`) — the three questions a member answers about an event, and the
@@ -45,26 +64,26 @@ internal fun ColumnScope.ParticipationSections(
     albumNote: String,
 ) {
     AppToggleCard {
-        AppToggleRow(title = "Share my photos", checked = state.shareOn, onCheckedChange = actions.onShareOn)
+        AppToggleRow(title = stringResource(Res.string.share_toggle), checked = state.shareOn, onCheckedChange = actions.onShareOn)
         ShareBody(state, actions)
         AppToggleDivider()
         // Titled to name the SOURCE ("everyone's photos"), not "save … to your library" — the latter reads as
         // backing up YOUR photos, the exact mental model this app must avoid.
         AppToggleRow(
-            title = "Receive everyone's photos",
+            title = stringResource(Res.string.receive_toggle),
             checked = state.receiveOn,
             onCheckedChange = actions.onReceiveOn,
         )
         AppSectionNote(
             if (state.receiveOn) {
-                "Photos others share arrive in your gallery on their own."
+                stringResource(Res.string.receive_on_note)
             } else {
-                "You won't receive the event's photos."
+                stringResource(Res.string.receive_off_note)
             },
         )
     }
     AppToggleSection(
-        title = "Create an album",
+        title = stringResource(Res.string.album_toggle),
         checked = state.saveToAlbum,
         onCheckedChange = actions.onSaveToAlbum,
     ) {
@@ -73,15 +92,15 @@ internal fun ColumnScope.ParticipationSections(
     // Capability `mobile-data`: a preference over both directions, so its own card beneath the album; everything else
     // the app does keeps working on any network, which is why the note speaks of photos only.
     AppToggleSection(
-        title = "Use mobile data for photos",
+        title = stringResource(Res.string.mobile_data_toggle),
         checked = state.mobileData,
         onCheckedChange = actions.onMobileData,
     ) {
         AppSectionNote(
             if (state.mobileData) {
-                "Photos are shared and received on any network."
+                stringResource(Res.string.mobile_data_on_note)
             } else {
-                "Photos are shared and received only on Wi-Fi."
+                stringResource(Res.string.mobile_data_off_note)
             },
         )
     }
@@ -94,7 +113,7 @@ internal fun ColumnScope.ParticipationSections(
 @Composable
 private fun ColumnScope.ShareBody(state: ParticipationState, actions: ParticipationActions) {
     if (!state.shareOn) {
-        AppSectionNote("Nothing of yours leaves this phone.")
+        AppSectionNote(stringResource(Res.string.share_off_note))
         return
     }
     AppShareRangeRow(
@@ -106,13 +125,13 @@ private fun ColumnScope.ShareBody(state: ParticipationState, actions: Participat
     )
     // A zero count carries a forward gloss so it does not read as broken (capability `join-event`).
     if (state.range.shareCount == ShareCount.Ready(0)) {
-        AppSectionNote("New photos you take will be shared as you go.")
+        AppSectionNote(stringResource(Res.string.share_zero_note))
     }
     // The origin exclusions (capability `photo-sharing`), stated as what is SUBTRACTED, never as a
     // guarantee of what gets through: the policy cannot infer capture-origin, so it removes only what is
     // certainly not a capture and ADMITS ON DOUBT. "Screenshots … are never shared" is exactly true; "only
     // photos you took are shared" would not be.
-    AppSectionNote("Screenshots, screen recordings, GIFs and photos saved from chat apps are never shared.")
+    AppSectionNote(stringResource(Res.string.share_exclusions_note))
 }
 
 /**
@@ -120,16 +139,19 @@ private fun ColumnScope.ShareBody(state: ParticipationState, actions: Participat
  * member's own photos it would share (capability `join-event`). An unavailable count — no usable grant, or a
  * failed read — is omitted, not shown as zero: the two mean different things.
  */
+@Composable
 internal fun shareDetail(preset: RangeChoice, count: ShareCount): String {
-    val name = when (preset) {
-        RangeChoice.WHOLE_EVENT -> "The whole event"
-        RangeChoice.FROM_NOW -> "From now"
-        RangeChoice.CUSTOM -> "Custom range"
-    }
+    val name = stringResource(
+        when (preset) {
+            RangeChoice.WHOLE_EVENT -> Res.string.range_whole_event
+            RangeChoice.FROM_NOW -> Res.string.range_from_now
+            RangeChoice.CUSTOM -> Res.string.range_custom
+        },
+    )
     return when (count) {
-        ShareCount.Counting -> "$name · counting your photos…"
+        ShareCount.Counting -> stringResource(Res.string.share_detail_counting, name)
         ShareCount.Unavailable -> name
-        is ShareCount.Ready -> "$name · ${count.count} ${if (count.count == 1) "photo" else "photos"} from your gallery"
+        is ShareCount.Ready -> pluralStringResource(Res.plurals.share_detail_count, count.count, name, count.count)
     }
 }
 

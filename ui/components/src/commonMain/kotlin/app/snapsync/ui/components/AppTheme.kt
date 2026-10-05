@@ -5,6 +5,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 
@@ -161,10 +162,10 @@ val LocalReduceMotion = staticCompositionLocalOf { false }
  */
 @Composable
 fun AppTheme(content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = if (appIsDark()) DarkColors else LightColors,
-        content = content,
-    )
+    MaterialTheme(colorScheme = if (appIsDark()) DarkColors else LightColors) {
+        // Dates read in the language the strings resolved to (`docs/architecture.md`, "Localization").
+        CompositionLocalProvider(LocalDateFormats provides rememberDateFormats(), content = content)
+    }
 }
 
 /**

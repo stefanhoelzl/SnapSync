@@ -21,6 +21,32 @@ import app.snapsync.ui.components.JoinAccessShare
 import app.snapsync.ui.components.PrimaryButton
 import app.snapsync.ui.components.SecondaryButton
 import app.snapsync.ui.components.StatusHint
+import app.snapsync.ui.resources.Res
+import app.snapsync.ui.resources.access_choose_body
+import app.snapsync.ui.resources.access_choose_title
+import app.snapsync.ui.resources.access_library_body
+import app.snapsync.ui.resources.access_library_title
+import app.snapsync.ui.resources.access_range_body
+import app.snapsync.ui.resources.access_range_title
+import app.snapsync.ui.resources.access_shared_body
+import app.snapsync.ui.resources.access_shared_title
+import app.snapsync.ui.resources.album_folder_nothing
+import app.snapsync.ui.resources.album_folder_receive
+import app.snapsync.ui.resources.album_none
+import app.snapsync.ui.resources.album_nothing
+import app.snapsync.ui.resources.album_receive
+import app.snapsync.ui.resources.album_share
+import app.snapsync.ui.resources.album_share_and_receive
+import app.snapsync.ui.resources.cancel
+import app.snapsync.ui.resources.hero_subtitle
+import app.snapsync.ui.resources.join_access_dismiss
+import app.snapsync.ui.resources.join_access_info
+import app.snapsync.ui.resources.join_access_notice
+import app.snapsync.ui.resources.join_access_sheet_title
+import app.snapsync.ui.resources.join_both_off
+import app.snapsync.ui.resources.join_button
+import app.snapsync.ui.resources.join_button_allow
+import org.jetbrains.compose.resources.stringResource
 
 // The **Ready** join surface (capability `join-event`): the decision the guest actually makes. Split out of
 // `JoinFlowScreens.kt` because that file holds the OTHER join shape — the status-plus-actions phases and the
@@ -57,7 +83,7 @@ internal fun ReadyLayout(state: ReadyState, actions: ReadyActions) {
                 title = state.eventName,
                 // The one warm line the surface allows itself — the eyebrow above already says
                 // "you're invited", so this states what the invitation IS.
-                subtitle = "Every photo, in your gallery.",
+                subtitle = stringResource(Res.string.hero_subtitle),
             )
             ParticipationSections(
                 state = state.participation,
@@ -71,24 +97,24 @@ internal fun ReadyLayout(state: ReadyState, actions: ReadyActions) {
         ) {
             if (state.asksAccessOnJoin) {
                 AppAccessNotice(
-                    text = "iOS asks for access to your photos next",
-                    infoDescription = "What joining does with your photos",
-                    sheetTitle = "What joining does",
-                    dismissLabel = "Got it",
+                    text = stringResource(Res.string.join_access_notice),
+                    infoDescription = stringResource(Res.string.join_access_info),
+                    sheetTitle = stringResource(Res.string.join_access_sheet_title),
+                    dismissLabel = stringResource(Res.string.join_access_dismiss),
                     explanation = { AccessExplanation() },
                 )
             }
             // Both switches off is a membership that does nothing. Say why Join is unavailable rather than
             // moving a switch the guest didn't touch.
             if (!state.range.commitEnabled) {
-                StatusHint("Turn on sharing or receiving. With both off, joining does nothing.")
+                StatusHint(stringResource(Res.string.join_both_off))
             }
             PrimaryButton(
-                label = if (state.asksAccessOnJoin) "Join & allow photos" else "Join",
+                label = if (state.asksAccessOnJoin) stringResource(Res.string.join_button_allow) else stringResource(Res.string.join_button),
                 onClick = actions.onJoin,
                 enabled = state.range.commitEnabled && state.online,
             )
-            SecondaryButton(label = "Cancel", onClick = actions.onCancel)
+            SecondaryButton(label = stringResource(Res.string.cancel), onClick = actions.onCancel)
         }
     }
 }
@@ -103,24 +129,24 @@ internal fun ReadyLayout(state: ReadyState, actions: ReadyActions) {
 private fun AccessExplanation() {
     AppAccessPoint(
         icon = JoinAccessShare,
-        title = "Your photos are shared automatically",
-        body = "Photos you take during the event arrive in everyone's gallery.",
+        title = stringResource(Res.string.access_shared_title),
+        body = stringResource(Res.string.access_shared_body),
         divider = false,
     )
     AppAccessPoint(
         icon = JoinAccessLibrary,
-        title = "SnapSync needs access to your photos",
-        body = "To share yours, and to save the group's photos to your gallery.",
+        title = stringResource(Res.string.access_library_title),
+        body = stringResource(Res.string.access_library_body),
     )
     AppAccessPoint(
         icon = JoinAccessChoose,
-        title = "Allow all photos, or pick which to share",
-        body = "Choosing specific photos works too — and you can add more anytime.",
+        title = stringResource(Res.string.access_choose_title),
+        body = stringResource(Res.string.access_choose_body),
     )
     AppAccessPoint(
         icon = JoinAccessCutoff,
-        title = "Only photos in the range you chose",
-        body = "Nothing older is shared.",
+        title = stringResource(Res.string.access_range_title),
+        body = stringResource(Res.string.access_range_body),
     )
 }
 
@@ -129,21 +155,21 @@ private fun AccessExplanation() {
  * the membership does not have (capability `event-album`). A folder album (Android) holds only what is received:
  * the member's own photos stay where their camera saved them, and the note says so.
  */
+@Composable
 private fun joinAlbumNote(participation: ParticipationState): String = with(participation) {
-    when {
-        !saveToAlbum -> "No album is created."
-        albumKind == AlbumKind.FOLDER && receiveOn ->
-            "Photos you receive are collected in an album named after the event. " +
-                "Your own photos stay where they are."
-        albumKind == AlbumKind.FOLDER -> "You won't receive photos, so nothing is collected."
-        shareOn && receiveOn ->
-            "Photos you share and photos you receive are collected in an album named after the event."
-        shareOn -> "Photos you share are collected in an album named after the event."
-        receiveOn -> "Photos you receive are collected in an album named after the event."
-        // Both switches off: nothing syncs, so nothing feeds the album. Join is already disabled with its own
-        // reason; this line keeps the row honest meanwhile.
-        else -> "Nothing is shared or received, so nothing is collected."
-    }
+    stringResource(
+        when {
+            !saveToAlbum -> Res.string.album_none
+            albumKind == AlbumKind.FOLDER && receiveOn -> Res.string.album_folder_receive
+            albumKind == AlbumKind.FOLDER -> Res.string.album_folder_nothing
+            shareOn && receiveOn -> Res.string.album_share_and_receive
+            shareOn -> Res.string.album_share
+            receiveOn -> Res.string.album_receive
+            // Both switches off: nothing syncs, so nothing feeds the album. Join is already disabled with its own
+            // reason; this line keeps the row honest meanwhile.
+            else -> Res.string.album_nothing
+        },
+    )
 }
 
 /** What the **Ready** join surface displays. */

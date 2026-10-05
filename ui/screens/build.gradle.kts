@@ -17,6 +17,9 @@ kotlin {
             // Compose's test renderer draws offscreen; headless skips AWT's display probe so the
             // tests need no X server on Linux (no Xvfb, no stale-lock hang).
             jvmArgs("-Djava.awt.headless=true")
+            // One locale for every run (`docs/architecture.md`, "Localization"): the strings resolve to the base
+            // language and a date reads as en-GB writes it, whatever machine runs the suite.
+            jvmArgs("-Duser.language=en", "-Duser.country=GB")
         }
     }
     sourceSets {
@@ -32,6 +35,7 @@ kotlin {
             implementation(project(":ui:components"))
             implementation(libs.compose.runtime)
             implementation(libs.compose.foundation)
+            implementation(libs.compose.components.resources)
         }
         // The screen tests live in commonTest, which CI runs on the JVM only (`build`; offscreen —
         // see the jvm block above). The simulator runs platform-bound tests only (`docs/testing.md`,
@@ -47,6 +51,13 @@ kotlin {
             implementation(compose.desktop.currentOs)
         }
     }
+}
+
+// The module's strings (`docs/architecture.md`, "Localization"): `src/commonMain/composeResources/values/`
+// is the base language, `values-<lang>/` a translation. The generated `Res` stays internal to this module.
+compose.resources {
+    packageOfResClass = "app.snapsync.ui.resources"
+    publicResClass = false
 }
 
 // ---- Coverage bounds (`docs/architecture.md`) ---------------------------------------------

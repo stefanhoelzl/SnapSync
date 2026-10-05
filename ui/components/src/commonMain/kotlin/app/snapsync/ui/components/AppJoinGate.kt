@@ -41,6 +41,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import app.snapsync.ui.components.resources.Res
+import app.snapsync.ui.components.resources.invited_eyebrow
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * The join gate's non-Ready phases all share one design language with the Ready surface
@@ -50,9 +53,6 @@ import androidx.compose.ui.unit.dp
  * access point, and the neutral notice card — so each phase reads as the same app at a different moment
  * rather than a different screen.
  */
-
-/** The one warm line the invitation hero allows itself, shared across every phase that shows it. */
-const val JOIN_HERO_SUBTITLE = "Every photo, in your gallery."
 
 /**
  * The **invitation hero in its loading state**: the mark badge and the "YOU'RE INVITED" eyebrow are already
@@ -75,7 +75,7 @@ fun AppInvitationHeaderLoading(subtitle: String) {
         AppMarkBadge(size = 54.dp)
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(
-                text = "YOU'RE INVITED",
+                text = stringResource(Res.string.invited_eyebrow),
                 style = eyebrowTextStyle(),
                 color = appAccentText(),
             )

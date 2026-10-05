@@ -2,6 +2,7 @@
 
 package app.snapsync.presentation
 
+import app.snapsync.model.ScreenMessage
 import kotlinx.coroutines.test.runCurrent
 import kotlin.time.Duration.Companion.minutes
 import app.snapsync.model.CreateDraftSession
@@ -611,7 +612,7 @@ class StatusContainerHostTest {
     fun `each return to the foreground reaches the create layer and only a long absence starts a fresh draft`() = runTest {
         // Capability `create-event`, "A long absence starts a fresh draft".
         val foreground = MutableStateFlow(ForegroundReturn.NONE)
-        val failed = "Couldn't connect. Check your connection and try again."
+        val failed = ScreenMessage.CREATE_FAILED
         createHost(CreationStatus.Failed(CreationFailureReason.SERVER), scope = backgroundScope, foreground = foreground)
             .testWithInternalState(this) {
                 runOnCreate()
@@ -635,8 +636,8 @@ class StatusContainerHostTest {
     @Test
     fun `config absent with a refused create shows the input naming what was refused — name or dates`() = runTest {
         for ((reason, copy) in listOf(
-            CreationFailureReason.INVALID_NAME to "That name wasn't accepted. Try a different one.",
-            CreationFailureReason.INVALID_WINDOW to "Those dates weren't accepted. Try a shorter range.",
+            CreationFailureReason.INVALID_NAME to ScreenMessage.CREATE_NAME_REFUSED,
+            CreationFailureReason.INVALID_WINDOW to ScreenMessage.CREATE_DATES_REFUSED,
         )) {
             val host = createHost(CreationStatus.Failed(reason), scope = backgroundScope)
             assertEquals(screen(Layer.CreateEvent(error = copy)), host.container.stateFlow.value)
@@ -646,7 +647,7 @@ class StatusContainerHostTest {
     @Test
     fun `config absent with a server failure shows the input with the server error`() = runTest {
         val host = createHost(CreationStatus.Failed(CreationFailureReason.SERVER), scope = backgroundScope)
-        assertEquals(screen(Layer.CreateEvent(error = "Couldn't connect. Check your connection and try again.")), host.container.stateFlow.value)
+        assertEquals(screen(Layer.CreateEvent(error = ScreenMessage.CREATE_FAILED)), host.container.stateFlow.value)
     }
 
     @Test
@@ -739,7 +740,7 @@ class StatusContainerHostTest {
             // The use-case reports a transient failure through the status source and never fires
             // `onMinted` (CreateEventTest pins that) — the inline error shows and no gate opens.
             creationStatus.value = CreationStatus.Failed(CreationFailureReason.SERVER)
-            expectInternalState(screen(Layer.CreateEvent(error = "Couldn't connect. Check your connection and try again.")))
+            expectInternalState(screen(Layer.CreateEvent(error = ScreenMessage.CREATE_FAILED)))
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -1544,7 +1545,7 @@ class StatusContainerHostTest {
             containerHost.onOpenUrl("not a config link").join()
             runCurrent()
             assertEquals(
-                "That QR code isn't a SnapSync event.",
+                ScreenMessage.INVALID_LINK,
                 (containerHost.container.stateFlow.value.layer as Layer.CreateEvent).error,
             )
             // …and it self-clears a few seconds after it last appeared — the delay runs on this
@@ -1646,7 +1647,7 @@ class StatusContainerHostTest {
             containerHost.onOpenUrl("not a config link").join()
             runCurrent()
             assertEquals(
-                "That QR code isn't a SnapSync event.",
+                ScreenMessage.INVALID_LINK,
                 (containerHost.container.stateFlow.value.layer as Layer.Joined).notice,
             )
             // …and it self-clears on the same window the create layer's does — one choreography, both layers.
@@ -1959,7 +1960,7 @@ class StatusContainerHostJoinGateTest {
             runCurrent()
             val flashed = containerHost.container.stateFlow.value
             assertJoining(flashed, EVENT_ID, ready)
-            assertEquals("That QR code isn't a SnapSync event.", (flashed.layer as Layer.JoiningEvent).notice)
+            assertEquals(ScreenMessage.INVALID_LINK, (flashed.layer as Layer.JoiningEvent).notice)
 
             advanceTimeBy(5_000)
             runCurrent()

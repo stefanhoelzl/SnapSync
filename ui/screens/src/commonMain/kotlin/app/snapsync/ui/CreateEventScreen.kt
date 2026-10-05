@@ -39,6 +39,28 @@ import app.snapsync.ui.components.PrimaryButton
 import app.snapsync.ui.components.StatusHero
 import app.snapsync.ui.components.StatusHint
 import app.snapsync.ui.components.StatusIndicator
+import app.snapsync.ui.resources.Res
+import app.snapsync.ui.resources.create_button
+import app.snapsync.ui.resources.create_join_hint
+import app.snapsync.ui.resources.create_lasts
+import app.snapsync.ui.resources.create_name_placeholder
+import app.snapsync.ui.resources.create_name_question
+import app.snapsync.ui.resources.create_step_end_time
+import app.snapsync.ui.resources.create_step_name
+import app.snapsync.ui.resources.create_title
+import app.snapsync.ui.resources.create_when_question
+import app.snapsync.ui.resources.create_window_note
+import app.snapsync.ui.resources.creating
+import app.snapsync.ui.resources.hero_subtitle
+import app.snapsync.ui.resources.store_app_store
+import app.snapsync.ui.resources.store_google_play
+import app.snapsync.ui.resources.update_detail
+import app.snapsync.ui.resources.update_detail_version
+import app.snapsync.ui.resources.update_eyebrow
+import app.snapsync.ui.resources.update_headline
+import app.snapsync.ui.resources.update_subtitle
+import app.snapsync.ui.resources.update_title
+import org.jetbrains.compose.resources.stringResource
 
 // Event creation (capability `create-event`): the name/date form and its in-flight state.
 
@@ -85,8 +107,8 @@ internal fun CreateEventScreen(
     Column(modifier = Modifier.fillMaxSize()) {
         // Identity, pinned to the top so it holds its place across the form / creating swap.
         AppEventHeaderHost(
-            title = "Create an event",
-            subtitle = "Every photo, in your gallery.",
+            title = stringResource(Res.string.create_title),
+            subtitle = stringResource(Res.string.hero_subtitle),
         )
         Column(
             modifier = Modifier
@@ -95,23 +117,22 @@ internal fun CreateEventScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            CreateQuestion("What's it called?", Modifier.padding(top = 18.dp)) {
+            CreateQuestion(stringResource(Res.string.create_name_question), Modifier.padding(top = 18.dp)) {
                 AppTextField(
                     value = draft.name,
                     onValueChange = { draft.name = it },
-                    placeholder = "e.g. Anna's birthday",
+                    placeholder = stringResource(Res.string.create_name_placeholder),
                     maxLength = EVENT_NAME_MAX_LENGTH,
                     focusRequester = nameFocus,
                 )
             }
-            CreateQuestion("When is it?") {
+            CreateQuestion(stringResource(Res.string.create_when_question)) {
                 AppEventRangePicker(
                     range = draft.range,
                     bounds = RangeBounds.lastingAtMost(cutoff::latestEnd),
                     // The truthfulness line: this window is the event's capture-date bound (capability
                     // `photo-sharing`) — stated once, where it is set — and the one limit on it.
-                    note = "Only photos taken between these dates are shared. An event can last up to " +
-                        "$EVENT_WINDOW_MAX_DAYS days.",
+                    note = stringResource(Res.string.create_window_note, EVENT_WINDOW_MAX_DAYS),
                     currentHour = { cutoff.nowLocal().hour },
                     endTime = EndTimeGuide(showRequests = endTimeRequests, onPickEndTime = guide.toEndTime),
                     onChange = draft::choose,
@@ -155,7 +176,7 @@ private fun CreateActions(
 ) {
     // ONE value: the reduction already coalesced a sticky create failure and a self-clearing invalid-link
     // notice, the transient winning, so the screen renders what it is given.
-    val error: String? = state.error
+    val error: String? = state.error?.text()
     val until = draft.range.until
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         val step = draft.nextStep()
@@ -166,7 +187,7 @@ private fun CreateActions(
         }
         StatusHint(nextStepLine(step, draft.range.from, until, cutoff), onClick = toStep)
         PrimaryButton(
-            label = "Create event",
+            label = stringResource(Res.string.create_button),
             onClick = { if (until != null) callbacks.onCreateEvent(draft.name, draft.range.from, until) },
             enabled = createEnabled(draft, cutoff) && state.network == null,
         )
@@ -177,17 +198,19 @@ private fun CreateActions(
                 AppNetworkNotice(blocked = network == NetworkNotice.BLOCKED, onOpenSettings = callbacks.onOpenSettings)
             }
         } else {
-            StatusHint(error ?: "To join an event instead, scan its QR code with your camera.", isError = error != null)
+            StatusHint(error ?: stringResource(Res.string.create_join_hint), isError = error != null)
         }
     }
 }
 
 /** The line above Create: the next missing step, or — once there is none — the event's duration. */
+@Composable
 private fun nextStepLine(step: CreateStep, from: LocalDateTime, until: LocalDateTime?, cutoff: CutoffFormatter) =
     when (step) {
-        CreateStep.NAME -> "Name the event"
-        CreateStep.END_TIME -> "Pick an end time"
-        CreateStep.COMPLETE -> until?.let { "Event lasts ${cutoff.humanizedDuration(from, it)}" }.orEmpty()
+        CreateStep.NAME -> stringResource(Res.string.create_step_name)
+        CreateStep.END_TIME -> stringResource(Res.string.create_step_end_time)
+        CreateStep.COMPLETE ->
+            until?.let { stringResource(Res.string.create_lasts, cutoff.coarseDuration(from, it).text()) }.orEmpty()
     }
 
 /**
@@ -209,15 +232,15 @@ private fun createEnabled(draft: CreateDraft, cutoff: CutoffFormatter): Boolean 
 internal fun CreatingEventScreen() {
     Column(modifier = Modifier.fillMaxSize()) {
         AppEventHeaderHost(
-            title = "Create an event",
-            subtitle = "Every photo, in your gallery.",
+            title = stringResource(Res.string.create_title),
+            subtitle = stringResource(Res.string.hero_subtitle),
         )
         Column(
             modifier = Modifier.weight(1f).fillMaxWidth(),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            StatusHero(StatusIndicator.Loading, "Creating your event …")
+            StatusHero(StatusIndicator.Loading, stringResource(Res.string.creating))
         }
     }
 }
@@ -244,9 +267,9 @@ internal fun UpdateRequiredScreen(layer: Layer.UpdateRequired, onOpenLink: (Stri
         // Its OWN eyebrow. Reaching for `AppEventHeaderHost` here put "HOST AN EVENT" above this screen
         // on a real device — a surface borrowing another's verb, which no state assertion could see.
         AppIdentityHeader(
-            eyebrow = "UPDATE NEEDED",
-            title = "Update SnapSync",
-            subtitle = "This version can no longer reach the event.",
+            eyebrow = stringResource(Res.string.update_eyebrow),
+            title = stringResource(Res.string.update_title),
+            subtitle = stringResource(Res.string.update_subtitle),
         )
         Column(
             modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 24.dp),
@@ -258,10 +281,10 @@ internal fun UpdateRequiredScreen(layer: Layer.UpdateRequired, onOpenLink: (Stri
             // headline instead left the icon floating against its middle line (seen on device).
             StatusHero(
                 StatusIndicator.Error,
-                "Time to update",
+                stringResource(Res.string.update_headline),
                 layer.minimumVersion
-                    ?.let { "SnapSync $it or newer is needed to keep sharing photos." }
-                    ?: "A newer version of SnapSync is needed to keep sharing photos.",
+                    ?.let { stringResource(Res.string.update_detail_version, it) }
+                    ?: stringResource(Res.string.update_detail),
             )
         }
         layer.store?.let { store ->
@@ -273,7 +296,8 @@ internal fun UpdateRequiredScreen(layer: Layer.UpdateRequired, onOpenLink: (Stri
 }
 
 /** The update notice's one button names the store it opens — the one the build is distributed through. */
+@Composable
 private fun storeButtonLabel(kind: StoreKind): String = when (kind) {
-    StoreKind.APP_STORE -> "Open the App Store"
-    StoreKind.GOOGLE_PLAY -> "Open Google Play"
+    StoreKind.APP_STORE -> stringResource(Res.string.store_app_store)
+    StoreKind.GOOGLE_PLAY -> stringResource(Res.string.store_google_play)
 }

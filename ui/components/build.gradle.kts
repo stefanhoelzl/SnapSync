@@ -17,6 +17,9 @@ kotlin {
             // Compose's test renderer draws offscreen; headless skips AWT's display probe so the
             // tests need no X server on Linux (no Xvfb, no stale-lock hang).
             jvmArgs("-Djava.awt.headless=true")
+            // One locale for every run (`docs/architecture.md`, "Localization"): the strings resolve to the base
+            // language and a date reads as en-GB writes it, whatever machine runs the suite.
+            jvmArgs("-Duser.language=en", "-Duser.country=GB")
         }
     }
     sourceSets {
@@ -26,6 +29,7 @@ kotlin {
             api(project(":domain:model"))
             implementation(libs.compose.runtime)
             implementation(libs.compose.foundation)
+            implementation(libs.compose.components.resources)
             // The ONLY module allowed to depend on Material 3 (spec: docs/architecture.md).
             implementation(libs.compose.material3)
             // Material icon glyphs (e.g. the leave action's Logout). Contained here like Material 3 —
@@ -47,6 +51,14 @@ kotlin {
             implementation(compose.desktop.currentOs)
         }
     }
+}
+
+// The module's strings (`docs/architecture.md`, "Localization"): `src/commonMain/composeResources/values/`
+// is the base language, `values-<lang>/` a translation. The generated `Res` is public only so `:ui:screens`' tests
+// can name the words a component shows; a screen passes its OWN words to a component, never borrows these.
+compose.resources {
+    packageOfResClass = "app.snapsync.ui.components.resources"
+    publicResClass = true
 }
 
 // Coverage (`docs/architecture.md`). `:ui:screens`' Compose tests render the real

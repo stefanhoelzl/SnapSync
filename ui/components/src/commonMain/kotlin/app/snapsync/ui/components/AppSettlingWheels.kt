@@ -51,6 +51,9 @@ import kotlin.math.abs
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import kotlinx.datetime.LocalTime
+import app.snapsync.ui.components.resources.Res
+import app.snapsync.ui.components.resources.wheel_not_set
+import org.jetbrains.compose.resources.stringResource
 
 // The range picker's time wheels (capabilities `create-event`, `join-event`). They are CONTROLLED: the value
 // lives with the caller, a wheel reports only where the HOST made it come to rest, and it follows the value
@@ -62,7 +65,6 @@ private const val HOURS_PER_DAY = 24
 private const val MINUTES_PER_HOUR = 60
 private const val BLOCKED_ALPHA = 0.18f
 private const val BLANK_LABEL = "--"
-private const val BLANK_STATE = "not set"
 
 /** The wheel row geometry: three visible rows keeps the dialog compact under the calendar. */
 internal val WheelRowHeight = 38.dp
@@ -110,10 +112,10 @@ internal fun rememberCenteredRow(listState: LazyListState, count: Int): Int {
 }
 
 /**
- * What one end's wheels are called: the [shown] caption above them ("Starts"), and the [spoken] name a screen
- * reader gives the two wheels ("Start hour", "Start minute"). One value, so a wheel pair carries one label.
+ * What one end's wheels are called: the [shown] caption above them ("Starts"), and the names a screen reader
+ * gives the two wheels ([hour] "Start hour", [minute] "Start minute"). One value, so a wheel pair carries one label.
  */
-internal data class WheelCaption(val shown: String, val spoken: String = shown)
+internal data class WheelCaption(val shown: String, val hour: String, val minute: String)
 
 /**
  * One end's time: its caption over an hour wheel and a minute wheel that scroll and settle independently.
@@ -157,14 +159,14 @@ internal fun RowScope.SettlingTimeWheels(
             SelectionBand()
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 SettlingWheel(
-                    wheel = WheelSpec(HOURS_PER_DAY, shownHour, blank = hour == null, "${caption.spoken} hour"),
+                    wheel = WheelSpec(HOURS_PER_DAY, shownHour, blank = hour == null, caption.hour),
                     allowed = { h -> hourHasAllowedMinute(h, allowed) },
                     onSettle = onHour,
                 )
                 Text(text = ":", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
                 SettlingWheel(
                     wheel = WheelSpec(
-                        MINUTES_PER_HOUR, minute ?: anchor.minute, blank = minute == null, "${caption.spoken} minute",
+                        MINUTES_PER_HOUR, minute ?: anchor.minute, blank = minute == null, caption.minute,
                     ),
                     allowed = { m -> allowed(LocalTime(shownHour, m)) },
                     onSettle = onMinute,
@@ -262,6 +264,7 @@ private fun WheelList(
     reduceMotion: Boolean,
     onTap: (Int) -> Unit,
 ) {
+    val notSet = stringResource(Res.string.wheel_not_set)
     val snapFling = rememberSnapFlingBehavior(lazyListState = listState)
     LazyColumn(
         state = listState,
@@ -270,7 +273,7 @@ private fun WheelList(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.width(44.dp).height(WheelRowHeight * WHEEL_VISIBLE_ROWS).semantics {
             contentDescription = wheel.description
-            stateDescription = if (wheel.blank) BLANK_STATE else wheel.value.toString().padStart(2, '0')
+            stateDescription = if (wheel.blank) notSet else wheel.value.toString().padStart(2, '0')
         },
     ) {
         items(wheel.count) { i ->

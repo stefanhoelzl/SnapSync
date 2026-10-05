@@ -37,6 +37,15 @@ import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.plus
 import kotlinx.datetime.todayIn
+import app.snapsync.ui.components.resources.Res
+import app.snapsync.ui.components.resources.range_end_pick_time
+import app.snapsync.ui.components.resources.range_ends
+import app.snapsync.ui.components.resources.range_starts
+import app.snapsync.ui.components.resources.wheel_end_hour
+import app.snapsync.ui.components.resources.wheel_end_minute
+import app.snapsync.ui.components.resources.wheel_start_hour
+import app.snapsync.ui.components.resources.wheel_start_minute
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * The event's date range, picked inline on the create screen (capability `create-event`): a summary of both
@@ -115,12 +124,12 @@ internal fun RangeEditor(
  */
 @Composable
 private fun RangeEnds(range: EventRange, onPickEndTime: (() -> Unit)?) {
-    val end = range.until?.let(::formatStart)
-        ?: "${appDateLabel(LocalDateTime(range.endDay, range.from.time))}, pick a time"
+    val end = range.until?.let { formatStart(it) }
+        ?: stringResource(Res.string.range_end_pick_time, appDateLabel(LocalDateTime(range.endDay, range.from.time)))
     Row(modifier = Modifier.fillMaxWidth()) {
-        RangeEnd("Starts", formatStart(range.from), set = true, alignEnd = false)
+        RangeEnd(stringResource(Res.string.range_starts), formatStart(range.from), set = true, alignEnd = false)
         val toEndTime = onPickEndTime.takeIf { range.until == null }
-        RangeEnd("Ends", end, set = range.until != null, alignEnd = true, onClick = toEndTime)
+        RangeEnd(stringResource(Res.string.range_ends), end, set = range.until != null, alignEnd = true, onClick = toEndTime)
     }
 }
 
@@ -187,7 +196,11 @@ private fun RangeTimes(
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         SettlingTimeWheels(
-            caption = WheelCaption("Starts", spoken = "Start"),
+            caption = WheelCaption(
+                stringResource(Res.string.range_starts),
+                hour = stringResource(Res.string.wheel_start_hour),
+                minute = stringResource(Res.string.wheel_start_minute),
+            ),
             hour = range.from.hour,
             minute = range.from.minute,
             anchor = range.from.time,
@@ -196,7 +209,11 @@ private fun RangeTimes(
             onMinute = { onChange(range.settleFromMinute(it, bounds)) },
         )
         SettlingTimeWheels(
-            caption = WheelCaption("Ends", spoken = "End"),
+            caption = WheelCaption(
+                stringResource(Res.string.range_ends),
+                hour = stringResource(Res.string.wheel_end_hour),
+                minute = stringResource(Res.string.wheel_end_minute),
+            ),
             hour = range.untilHour,
             minute = range.untilMinute,
             anchor = range.from.time,
