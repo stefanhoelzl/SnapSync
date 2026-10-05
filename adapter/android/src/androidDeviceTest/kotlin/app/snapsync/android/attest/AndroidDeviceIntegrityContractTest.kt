@@ -2,6 +2,7 @@ package app.snapsync.android.attest
 
 import android.util.Base64
 import android.util.Log
+import app.snapsync.android.network.EmulatorNetwork
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.DeviceIntegrityContract
@@ -12,6 +13,7 @@ import app.snapsync.contracts.verify
 import app.snapsync.model.ProofFormat
 import app.snapsync.ports.DeviceIntegrity
 import kotlinx.coroutines.test.runTest
+import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -27,6 +29,10 @@ import kotlin.test.assertEquals
  *
  *     ./gradlew :adapter:android:connectedAndroidDeviceTest
  *     adb logcat -d -s snapsync-recording:I     # the lines this test logged, copied into the fixture unedited
+ *
+ * The emulator's KeyMint attests only with a key Remote Key Provisioning fetched over the network, and these tests run
+ * first: on a boot whose network came up late, a fresh attestation fails "Failed to generate key pair". So each waits
+ * for a network first, and fails naming it when there is none.
  */
 class AndroidDeviceIntegrityContractTest {
 
@@ -42,6 +48,10 @@ class AndroidDeviceIntegrityContractTest {
                 Entered.Unreachable("key attestation exists in the one process Android has")
             }
     }
+
+    @BeforeTest
+    fun `the Keystore can provision an attestation key`() =
+        EmulatorNetwork.requireInternet("the Keystore provisions attestation keys over the network (RKP)")
 
     @Test
     fun `the Keystore satisfies the DeviceIntegrity contract`() = verify(DeviceIntegrityContract, binding)

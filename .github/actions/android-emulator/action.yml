@@ -68,6 +68,8 @@ runs:
         profile: pixel_6
         # `swangle_indirect`, not the default SwiftShader GLES: the latter segfaults in its JIT on some hosts
         # (measured on the dev box, emulator 36.1.9 and 37.1.11); the Vulkan path boots on both.
-        emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -gpu swangle_indirect -memory 3072
+        # `-feature -WiFiPacketStream`: the emulator's own virtio-wifi, not netsimd's, whose access point booted dead
+        # in ~1 CI boot in 10 on 37.2.12 (ci.yml's platform tests set the same through ~/.android/advancedFeatures.ini).
+        emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -gpu swangle_indirect -memory 3072 -feature -WiFiPacketStream
         disable-animations: true
         script: ${{ inputs.script }}
