@@ -96,7 +96,8 @@ internal fun ReconfigureScreen(
         ) {
             // Read-only header: which event's settings these are. No eyebrow: this is not an invitation, so the
             // join gate's "YOU'RE INVITED" header does not belong here, and the subtitle already says what it is.
-            AppIdentityHeader(eyebrow = null, title = membership.name, subtitle = stringResource(Res.string.event_settings))
+            val subtitle = stringResource(Res.string.event_settings)
+            AppIdentityHeader(eyebrow = null, title = membership.name, subtitle = subtitle)
             // The last Save did not land (capability `manage-membership`): the edits are still here, and
             // nothing about the membership changed — said plainly, so the member knows a retry is safe.
             if (surface.saveFailed) StatusHint(stringResource(Res.string.settings_save_failed))
@@ -127,6 +128,8 @@ internal fun ReconfigureScreen(
  * `LoadFailed` is a different report from one parked on `Ready`). It carries no event id or user data —
  * those are already in the state section, in a field that says what they are.
  */
+// A label for the report's reader, never shown on a screen: it names code, so it is not translated.
+@Suppress("HardCodedUiText")
 internal fun screenLabel(state: UiState): String {
     val layer = state.layer
     if (layer is Layer.Joined && layer.surface is JoinedSurface.Reconfigure) return "Reconfigure"

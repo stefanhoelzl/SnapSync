@@ -186,9 +186,15 @@ private fun PickerDialogShell(
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Box(Modifier.weight(1f)) { SecondaryButton(label = stringResource(Res.string.picker_cancel), onClick = onDismiss) }
                         Box(Modifier.weight(1f)) {
-                            PrimaryButton(label = stringResource(Res.string.picker_save), onClick = onConfirm, enabled = confirmEnabled)
+                            SecondaryButton(label = stringResource(Res.string.picker_cancel), onClick = onDismiss)
+                        }
+                        Box(Modifier.weight(1f)) {
+                            PrimaryButton(
+                                label = stringResource(Res.string.picker_save),
+                                onClick = onConfirm,
+                                enabled = confirmEnabled,
+                            )
                         }
                     }
                 }

@@ -109,8 +109,9 @@ internal fun ReadyLayout(state: ReadyState, actions: ReadyActions) {
             if (!state.range.commitEnabled) {
                 StatusHint(stringResource(Res.string.join_both_off))
             }
+            val join = if (state.asksAccessOnJoin) Res.string.join_button_allow else Res.string.join_button
             PrimaryButton(
-                label = if (state.asksAccessOnJoin) stringResource(Res.string.join_button_allow) else stringResource(Res.string.join_button),
+                label = stringResource(join),
                 onClick = actions.onJoin,
                 enabled = state.range.commitEnabled && state.online,
             )

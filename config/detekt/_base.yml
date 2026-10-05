@@ -81,3 +81,18 @@ complexity:
     # production-shaped code — along with every `test/*/build.gradle.kts`. Eight copies of one argument
     # is exactly the drift this file exists to prevent.
     excludes: []
+
+# The project's own rules (`:tools:detekt-rules`). A rule's SCOPE is a reading, not a ceiling: words are words in
+# every tier, so where they may not be written is said once, here (`docs/architecture.md`, "Localization").
+snapsync:
+  HardCodedUiText:
+    # Every string a person reads comes from strings.xml. The screens and the design system render all of them.
+    active: true
+    includes:
+      - '**/ui/components/src/commonMain/**'
+      - '**/ui/screens/src/commonMain/**'
+  HardCodedSystemText:
+    # The Android adapter's other strings are ids, log lines and column names; only what the OS shows is words.
+    active: true
+    includes:
+      - '**/adapter/android/src/androidMain/**'

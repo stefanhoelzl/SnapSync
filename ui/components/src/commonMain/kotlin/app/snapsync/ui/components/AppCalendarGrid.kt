@@ -203,7 +203,8 @@ internal fun MonthHeader(month: LocalDate, onPrev: () -> Unit, onNext: () -> Uni
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ChevronButton(Icons.AutoMirrored.Filled.KeyboardArrowLeft, stringResource(Res.string.calendar_previous_month), onPrev)
+        val previous = stringResource(Res.string.calendar_previous_month)
+        ChevronButton(Icons.AutoMirrored.Filled.KeyboardArrowLeft, previous, onPrev)
         Text(
             text = LocalDateFormats.current.format(LocalDateTime(month, LocalTime(0, 0)), "yMMMM"),
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
@@ -211,7 +212,8 @@ internal fun MonthHeader(month: LocalDate, onPrev: () -> Unit, onNext: () -> Uni
             textAlign = TextAlign.Center,
             modifier = Modifier.weight(1f),
         )
-        ChevronButton(Icons.AutoMirrored.Filled.KeyboardArrowRight, stringResource(Res.string.calendar_next_month), onNext)
+        val next = stringResource(Res.string.calendar_next_month)
+        ChevronButton(Icons.AutoMirrored.Filled.KeyboardArrowRight, next, onNext)
     }
 }
 
@@ -238,7 +240,7 @@ private fun ChevronButton(
 @Composable
 internal fun WeekdayHeader() {
     val dates = LocalDateFormats.current
-    val week = (0..6).map { LocalDateTime(A_MONDAY.plus(it, DateTimeUnit.DAY), LocalTime(0, 0)) }
+    val week = (0 until DAYS_PER_WEEK).map { LocalDateTime(A_MONDAY.plus(it, DateTimeUnit.DAY), LocalTime(0, 0)) }
     val spoken = stringResource(
         Res.string.calendar_weekdays,
         dates.format(week.first(), "EEEE"),

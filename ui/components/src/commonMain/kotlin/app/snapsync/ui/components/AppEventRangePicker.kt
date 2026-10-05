@@ -129,7 +129,8 @@ private fun RangeEnds(range: EventRange, onPickEndTime: (() -> Unit)?) {
     Row(modifier = Modifier.fillMaxWidth()) {
         RangeEnd(stringResource(Res.string.range_starts), formatStart(range.from), set = true, alignEnd = false)
         val toEndTime = onPickEndTime.takeIf { range.until == null }
-        RangeEnd(stringResource(Res.string.range_ends), end, set = range.until != null, alignEnd = true, onClick = toEndTime)
+        val ends = stringResource(Res.string.range_ends)
+        RangeEnd(ends, end, set = range.until != null, alignEnd = true, onClick = toEndTime)
     }
 }
 

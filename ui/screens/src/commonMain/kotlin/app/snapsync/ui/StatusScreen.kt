@@ -172,9 +172,17 @@ fun StatusScreen(
 @Composable
 private fun ColumnScope.AppMenu(build: BuildLabel, actions: MenuActions) {
     AppMenuHeader(stringResource(Res.string.app_name))
-    AppMenuItem(icon = AppMenuIcon.REPORT, label = stringResource(Res.string.report_problem), onClick = actions.onReportBug)
+    AppMenuItem(
+        icon = AppMenuIcon.REPORT,
+        label = stringResource(Res.string.report_problem),
+        onClick = actions.onReportBug,
+    )
     AppMenuDivider()
-    AppMenuItem(icon = AppMenuIcon.WEBSITE, label = stringResource(Res.string.menu_website), onClick = { actions.onOpenLink(AppLink.WEBSITE) })
+    AppMenuItem(
+        icon = AppMenuIcon.WEBSITE,
+        label = stringResource(Res.string.menu_website),
+        onClick = { actions.onOpenLink(AppLink.WEBSITE) },
+    )
     AppMenuItem(
         icon = AppMenuIcon.PRIVACY,
         label = stringResource(Res.string.menu_privacy),
@@ -427,7 +435,10 @@ private fun JoinedBottomActions(actions: StatusActions, closed: Boolean) {
     // IS having a membership, and the invite URL is derived from it. A CLOSED event admits nobody and changes
     // nothing any more, so it offers neither (capability `manage-membership`).
     if (!closed) {
-        SettingsButton(description = stringResource(Res.string.event_settings), onClick = actions.surfaces.onOpenReconfigure)
+        SettingsButton(
+            description = stringResource(Res.string.event_settings),
+            onClick = actions.surfaces.onOpenReconfigure,
+        )
         ShareButton(description = stringResource(Res.string.share_invite), onClick = actions.joined.onShareInvite)
     }
     LeaveButton(description = stringResource(Res.string.leave_event), onClick = actions.surfaces.onConfirmLeaveOpen)

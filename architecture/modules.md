@@ -38,6 +38,7 @@ flowchart LR
   test_integration[":test:integration"]
   test_launch_adapters[":test:launch-adapters"]
   test_rig[":test:rig"]
+  tools_detekt_rules[":tools:detekt-rules"]
   tools_diagrams[":tools:diagrams"]
   ui_components[":ui:components"]
   ui_screens[":ui:screens"]

@@ -38,7 +38,7 @@ group, with the group's argument in the commit.
 |---|---|---|
 | **Withholding** | withholds a dependency (third-party, platform, or another core zone) from its consumers by compile error | `:domain:model` `:domain:ports` `:domain:services` `:domain:feature` `:domain:flow` `:domain:presentation` `:domain:compose` `:domain:host` · `:ui:screens` `:ui:components` · `:adapter:ios:ext-safe` `:adapter:ios:app-only` `:adapter:generic:app` `:adapter:generic:mock` `:adapter:generic:sentry` · `:app:ios` `:app:ios:extension` `:app:desktop` |
 | **Contained** | exists so that something is **absent** from a production build, and is linked only under a build property | `:test:rig`, `:test:contracts`, `:test:launch-adapters` (`-Psnapsync.rig`) |
-| **Support** | never linked into a shipped-format binary, exempt from production-module laws | `:app:jvm` `:test:integration` `:test:architecture` `:test:harness-driver` `:test:edge` `:test:control` `:tools:diagrams` |
+| **Support** | never linked into a shipped-format binary, exempt from production-module laws | `:app:jvm` `:test:integration` `:test:architecture` `:test:harness-driver` `:test:edge` `:test:control` `:tools:diagrams` `:tools:detekt-rules` |
 
 Key placements:
 
@@ -485,6 +485,49 @@ Cupertino) or a swap of the QR library changes one module.
   colour token per component. Skin-local, no signature change.
 - The inventory grows only when a screen needs it. KDoc on each component is its reference.
   `./gradlew :app:desktop:run` reaches every state through the world inspector's levers.
+
+### Localization
+
+The app ships in English only, and is built so that another language is a translated file rather than a
+code change.
+
+- **Every word a person reads is a string resource.** `:ui:screens` and `:ui:components` each carry
+  `src/commonMain/composeResources/values/strings.xml` (Compose Multiplatform Resources), read with
+  `stringResource` / `pluralStringResource`. `values/` is the base language; a translation is
+  `values-<lang>/strings.xml` with the same names. A screen's words live in `:ui:screens`, the design
+  system's own (the status line, the calendar) in `:ui:components`. Gate: the `HardCodedUiText` detekt
+  rule (`:tools:detekt-rules`, scoped in `config/detekt/_base.yml`) fails on a letter-bearing string
+  literal in either module's main code. A string nobody reads (a bug report's screen label) says so with
+  `@Suppress("HardCodedUiText")`.
+- **Only `ui/` turns state into words.** The domain carries facts: `UiState` holds a typed
+  `ScreenMessage` where it once held an English sentence, and `CutoffFormatter.coarseDuration` answers a
+  `CoarseDuration`, not "2 weeks". So `:domain:*` has no resources dependency, and a message nobody
+  worded is a missing `when` branch at compile time (`Words.kt` in `:ui:screens`).
+- **Dates are the platform's.** `DateFormats` (`:ui:components`) formats a CLDR skeleton (`yMMMd`, `jm`)
+  through `java.time` on the JVM, ICU on Android and `NSDateFormatter` on iOS. Month names, day/month
+  order and the 12/24-hour clock follow the user. It formats in the language the strings resolved to
+  (`date_language` in each translation) and in the device's region, so an English app on a German phone
+  reads `5 Oct`, 24-hour time, and never German month names next to English words. `AppTheme` provides
+  it; nothing in the design system spells out a month. Write a skeleton's letters in the order
+  `y M E d j m`, which the JVM requires.
+- **Text the OS shows is generated from the same file.** Keys prefixed `ios_` / `android_` in
+  `:ui:screens`' `strings.xml` are not shown by a screen. The `snapsync.native-strings` plugin writes them
+  into iOS's `InfoPlist.xcstrings` (plus the base value in `Info.plist`) and the Android adapter's
+  `res/values/strings.xml`. Gate: `HardCodedSystemText` fails on a literal passed to a notification's
+  text.
+- **The language list is declared once**: `nativeStrings { locales }` in `ui/screens/build.gradle.kts`,
+  base first. The plugin turns it into iOS's `CFBundleLocalizations` and Android's
+  `locales_config.xml`, so the OS offers exactly those languages, including in its per-app language
+  setting. There is no language picker in the app. The generated files are committed:
+  `./gradlew nativeStrings` writes them, and `nativeStringsCheck` (under `check`) fails while one is
+  stale, or while either UI module's `values-*` directories disagree with the list.
+- **Tests find nodes by resource, not by copy.** Screen tests look a node up by
+  `str(Res.string.x)` (`TestStrings.kt`), so a copy edit breaks no test. The UI test JVMs pin `en-GB`,
+  so a date assertion holds on any machine.
+
+**Adding a language:** add `values-<lang>/strings.xml` to both UI modules (including `date_language`),
+add the tag to `nativeStrings { locales }`, and run `./gradlew nativeStrings`. The store listing, its
+screenshots and the web join page stay English for now.
 
 ---
 

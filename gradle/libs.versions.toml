@@ -61,6 +61,9 @@ compose-material-icons-extended = { module = "org.jetbrains.compose.material:mat
 compose-material3 = { module = "org.jetbrains.compose.material3:material3", version.ref = "compose-material3" }
 # The UI's strings (`docs/architecture.md`, "Localization"): `composeResources/values*/strings.xml` and the generated `Res`.
 compose-components-resources = { module = "org.jetbrains.compose.components:components-resources", version.ref = "compose" }
+# The custom rules the detekt tiers load (`:tools:detekt-rules`): written against the version the plugin runs.
+detekt-api = { module = "io.gitlab.arturbosch.detekt:detekt-api", version.ref = "detekt" }
+detekt-test = { module = "io.gitlab.arturbosch.detekt:detekt-test", version.ref = "detekt" }
 orbit-core = { module = "org.orbit-mvi:orbit-core", version.ref = "orbit" }
 orbit-test = { module = "org.orbit-mvi:orbit-test", version.ref = "orbit" }
 coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
