@@ -1,6 +1,8 @@
 package app.snapsync.services.backend
 
 import app.snapsync.model.Reply
+import app.snapsync.model.UnionPage
+import app.snapsync.model.UnionTrigger
 import app.snapsync.model.VersionRefusal
 import app.snapsync.services.version.AppVersionGate
 import kotlin.test.Test
@@ -97,17 +99,30 @@ class CredentialedBackendTest {
     }
 
     @Test
-    fun the_public_reads_carry_no_token_and_are_never_retried() = runTest {
+    fun the_event_details_carry_no_token_and_are_never_retried() = runTest {
         val credential = ScriptedCredential("T1", recovered = "T2")
         val backend = ScriptedBackend { _, _ -> unauthorized }
         val authenticated = CredentialedBackend(backend, credential, versionGate = null)
 
         authenticated.getEvent("E")
-        authenticated.eventFiles("E")
 
-        assertEquals(listOf("get null", "union null"), backend.calls)
+        assertEquals(listOf("get null"), backend.calls)
         assertEquals(emptyList(), credential.rejections)
         assertEquals(0, credential.reads, "an ungated read never reads the credential")
+    }
+
+    @Test
+    fun the_union_carries_the_token_and_a_rejection_of_it_is_recovered_once() = runTest {
+        // Public, but the backend verifies a token it is sent (decision record `changes/incremental-union`, D5): its
+        // 401 is a verdict on that token, recovered like a gated route's.
+        val credential = ScriptedCredential("T1", recovered = "T2")
+        val backend = ScriptedBackend { _, token -> if (token == "T1") unauthorized else Reply.Ok(UnionPage(emptyList(), 0)) }
+
+        val reply = CredentialedBackend(backend, credential, versionGate = null).eventFiles("E", null, UnionTrigger.FOREGROUND)
+
+        assertIs<Reply.Ok<UnionPage>>(reply)
+        assertEquals(listOf("union T1", "union T2"), backend.calls)
+        assertEquals(listOf("T1"), credential.rejections)
     }
 
     @Test

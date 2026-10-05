@@ -59,7 +59,9 @@ import kotlinx.coroutines.withTimeoutOrNull
  *   and otherwise restarted here, under the same tag, up to [MAX_RESTARTS] times ([restart]); the owner sees one
  *   transfer that took longer, not a failure that waits for its next reconcile. Past the cap it fails.
  * - **A 403 is final** (an expired presigned link): the row fails, is reported through `onCompleted` with its reason,
- *   and the next reconcile plans the resource with a fresh link.
+ *   and the next reconcile plans the resource again. A link is the backend's stable address, which redirects to a
+ *   fresh presign; DownloadManager's own retry goes back to it (measured, decision record `changes/incremental-union`
+ *   D2), so a 403 reaches here only when even a fresh presign was refused.
  * - **[cancelAll]** removes every row; DownloadManager broadcasts nothing for a removal, so each is reported here.
  */
 class AndroidDownload(

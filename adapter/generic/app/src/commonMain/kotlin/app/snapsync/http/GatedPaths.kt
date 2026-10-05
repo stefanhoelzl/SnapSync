@@ -16,14 +16,25 @@ package app.snapsync.http
  * reads `app.ts`, so a route the backend opens cannot stay gated here unnoticed.
  */
 fun isGatedRequest(method: String, path: String): Boolean {
-    val bare = VERSION_PREFIX.replaceFirst(path, "").ifEmpty { "/" }
+    val bare = bare(path)
     val read = method == "GET" || method == "HEAD"
     val ungated = method == "OPTIONS" ||
         bare.startsWith("/attest/") ||
         (read && (bare in PUBLIC_GETS || bare.startsWith("/_astro/"))) ||
-        (read && (EVENT_READ.matches(bare) || EVENT_UNION_READ.matches(bare)))
+        (read && (EVENT_READ.matches(bare) || EVENT_UNION_READ.matches(bare) || DOWNLOAD_REDIRECT.matches(bare)))
     return !ungated
 }
+
+/**
+ * Whether a token sent with [method] [path] is VERIFIED, so that a `401` from it is a verdict on that token: every
+ * gated route ([isGatedRequest]), and the event union's read, which is public but checks a token when one is sent so
+ * its log can name the reader (decision record `changes/incremental-union`, D5). A token is passed only where this
+ * holds; `HttpBackendTest` pins the `Backend` methods that take one to it.
+ */
+fun verifiesToken(method: String, path: String): Boolean =
+    isGatedRequest(method, path) || ((method == "GET" || method == "HEAD") && EVENT_UNION_READ.matches(bare(path)))
+
+private fun bare(path: String) = VERSION_PREFIX.replaceFirst(path.substringBefore('?'), "").ifEmpty { "/" }
 
 private val VERSION_PREFIX = Regex("""^/api/v\d+(?=/|$)""")
 
@@ -39,3 +50,9 @@ internal val PUBLIC_GETS = setOf(
 /** The two event reads authorized by eventId possession alone. */
 private val EVENT_READ = Regex("""^/events/[^/]+$""")
 private val EVENT_UNION_READ = Regex("""^/events/[^/]+/files$""")
+
+/**
+ * The download redirect (decision record `changes/incremental-union`, D1): the OS's download transports fetch it,
+ * never the `Backend` port, so no token ever rides it — known here so the copy of the backend's list stays whole.
+ */
+private val DOWNLOAD_REDIRECT = Regex("""^/events/[^/]+/files/devices/[^/]+/[^/]+/[^/]+$""")

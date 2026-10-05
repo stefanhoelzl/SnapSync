@@ -880,6 +880,13 @@ fixture. Instead:
 - **Device-only with no contract:**
   - the background session's lifecycle (survival across suspension, relaunch delivery, reattachment,
     invalidation),
+  - the background download session following a `302` to the bytes, and resuming an interrupted
+    redirected transfer from the redirect's TARGET (never the original URL) — so an expired target ends
+    that transfer as a `403` until the next reconcile. Measured on the SE2 (iOS 26.6, 2026-10-05) by a
+    one-off run of `DownloadContract` in the rig app over an https tunnel; `IosDownload` has no
+    `URLSession` seam, so no recording can carry it (`changes/incremental-union`, design "Measured").
+    Android's `DownloadManager` half is a live clause (`A_REDIRECT_IS_FOLLOWED_TO_THE_BODY` on
+    `ANDROID_EMU`); its retry goes back to the original URL. Re-measure at the next iOS major,
   - APNs delivery,
   - the limited-access alert's arming,
   - protected data before first unlock.

@@ -120,7 +120,7 @@ import PlayOffer from "../components/PlayOffer.astro";
 <script>
   import { zipSync } from "fflate";
   import { decodeInvite, playHrefFor } from "../lib/invite";
-  import { zipEntries } from "../lib/zip-names";
+  import { withDownloadUrls, zipEntries } from "../lib/zip-names";
 
   (function () {
     const $ = (id: string) => document.getElementById(id)!;
@@ -169,9 +169,11 @@ import PlayOffer from "../components/PlayOffer.astro";
           return;
         }
         name = marker.name;
-        const unionRes = await fetch("/api/v1/events/" + eventId + "/files");
+        // Without urls: each file is addressed at its download route, which redirects to the bytes
+        // (decision record `changes/incremental-union`, D8).
+        const unionRes = await fetch("/api/v1/events/" + eventId + "/files?urls=false");
         if (!unionRes.ok) throw new Error("union " + unionRes.status);
-        union = await unionRes.json();
+        union = withDownloadUrls("/api/v1", eventId, await unionRes.json());
       } catch (_e) {
         setStatus("Couldn't load this event. Check your connection and reload.");
         return;

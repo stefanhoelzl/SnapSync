@@ -18,3 +18,18 @@ package app.snapsync.model
  * clause of that law an entry point may never trade away.
  */
 fun pushEventId(userInfo: Map<Any?, *>): String? = userInfo["eventId"] as? String
+
+/**
+ * The union position a silent push announces (decision record `changes/incremental-union`, D6): a device whose cursor
+ * already stands there reads nothing. APNs carries it as a JSON number, which reaches here as whatever number type the
+ * platform's dictionary bridged it to; FCM as a string, like every data value. `null` when the push names none — the
+ * close wake, an older backend, or a value that is no position — and the push then reads as it always did.
+ */
+fun pushSeq(userInfo: Map<Any?, *>): Long? = when (val value = userInfo["seq"]) {
+    null -> null
+    is Long -> value
+    is Int -> value.toLong()
+    is Number -> value.toDouble().takeIf { it == kotlin.math.floor(it) }?.toLong()
+    // A platform number type that is not a Kotlin Number still prints as its digits.
+    else -> value.toString().toLongOrNull()
+}

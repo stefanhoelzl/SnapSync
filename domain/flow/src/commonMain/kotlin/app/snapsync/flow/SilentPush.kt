@@ -2,6 +2,7 @@ package app.snapsync.flow
 
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.pushEventId
+import app.snapsync.model.pushSeq
 import co.touchlab.kermit.Logger
 
 /**
@@ -32,8 +33,11 @@ class SilentPush(
     /** Re-read the persisted membership into the config StateFlow — the port touch, injected. */
     private val reloadConfig: suspend () -> Unit,
     private val refreshAttestation: suspend () -> Unit,
-    /** The download arm's receiver — the push's own work. Its active-event and direction guards are its own. */
-    private val downloadReceiver: suspend (eventId: String) -> Unit,
+    /**
+     * The download arm's receiver — the push's own work, given the union position the push announces (`null` for
+     * none). Its active-event and direction guards are its own.
+     */
+    private val downloadReceiver: suspend (eventId: String, announced: Long?) -> Unit,
     private val log: Logger = Logger.withTag("SilentPush"),
 ) {
     suspend fun run(userInfo: Map<Any?, *>) {
@@ -50,7 +54,7 @@ class SilentPush(
         // when this returns, and a push whose own work is merely queued then is one the system may suspend mid-way.
         // Isolated: a receiver that throws still leaves the wake its tail — the imports it would drain are staged
         // already, and a failed union read has nothing to say about them.
-        runCatchingCancellable { downloadReceiver(eventId) }
+        runCatchingCancellable { downloadReceiver(eventId, pushSeq(userInfo)) }
             .onFailure { log.w(it) { "the download arm failed for push $eventId; the tail still runs if due" } }
     }
 }

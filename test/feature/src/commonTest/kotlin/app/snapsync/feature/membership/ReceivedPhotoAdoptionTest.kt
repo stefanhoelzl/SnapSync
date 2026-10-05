@@ -1,5 +1,7 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.model.UnionTrigger
+import app.snapsync.model.UnionPage
 import app.snapsync.feature.support.testIdentity
 import app.snapsync.feature.support.unreadableIdentity
 import app.snapsync.mock.LibraryAssets
@@ -63,11 +65,29 @@ class ReceivedPhotoAdoptionTest {
     ) {
         val store = DownloadService(inMemoryDatabases())
         var unionReads = 0
-        val unionSource = EventUnionSource { unionReads++; union }
+        val unionTriggers = mutableListOf<Pair<Long?, UnionTrigger>>()
+        val unionSource = EventUnionSource { _, cursor, trigger ->
+            unionReads++
+            unionTriggers += cursor to trigger
+            union.map { UnionPage(it, 0) }
+        }
         val lookup = MarkedPhotoLookup(inMemoryGallery(MutableStateFlow(library), grant)) { SelectionScope.Unrestricted }
     }
 
     private fun World.adoption(me: String) = ReceivedPhotoAdoption(unionSource, store, lookup, store::adoptAll, testIdentity(me))
+
+    @Test
+    fun the_adoption_reads_the_whole_union_and_says_why() = runTest {
+        // Decision record `changes/incremental-union`, D6: a mark is recognised only against every ref the event serves.
+        val world = World(Result.success(unionOf(ref("A"))), emptyList())
+        val adoption = world.adoption(me)
+        adoption.adopt(cfg)
+        adoption.adopt(cfg)
+        assertEquals(listOf<Pair<Long?, UnionTrigger>>(null to UnionTrigger.JOIN, null to UnionTrigger.JOIN), world.unionTriggers)
+        val fresh = World(Result.success(unionOf(ref("A"))), emptyList())
+        fresh.adoption(me).ensureAdopted(cfg)
+        assertEquals(listOf<Pair<Long?, UnionTrigger>>(null to UnionTrigger.GRANT), fresh.unionTriggers)
+    }
 
     @Test
     fun a_marked_photo_of_the_union_is_adopted() = runTest {

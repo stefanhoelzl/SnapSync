@@ -66,7 +66,11 @@ class MockStateTest {
         assertEquals(device.backend.operator.objectsOf(DEVICE), copy.backend.operator.objectsOf(DEVICE))
         assertEquals(1, copy.backend.operator.publishesOf(event, DEVICE))
         assertEquals(PushEndpoint("apns", "tok", "sandbox"), copy.backend.operator.deviceConfigOf(DEVICE))
-        assertEquals(listOf(SentPush(event, OTHER, "other-token")), copy.backend.operator.pushesSent())
+        // The wake for the gained photo names the union position it announced, and the copy keeps it.
+        val position = device.backend.operator.unionPositionOf(event)
+        assertTrue(position > 0)
+        assertEquals(listOf(SentPush(event, OTHER, "other-token", seq = position)), copy.backend.operator.pushesSent())
+        assertEquals(position, copy.backend.operator.unionPositionOf(event), "and so does the union's position")
         assertIs<Reply.Ok<*>>(copy.backend.port(app.snapsync.mock.DeclaredVersion("99.0")).getEvent(event))
     }
 

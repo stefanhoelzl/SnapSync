@@ -1,5 +1,6 @@
 package app.snapsync.compose
 
+import app.snapsync.model.UnionTrigger
 import app.snapsync.feature.membership.ReconfigureEvent
 import app.snapsync.model.grantsPhotoAccess
 import kotlinx.coroutines.launch
@@ -27,7 +28,7 @@ internal fun AppCore.reconfigureEventFor(): ReconfigureEvent =
         gatherAlbum = { cfg -> albumGather.start("reconfigure", cfg.eventId) },
         // On its own escaping launch (like Provision's reconcile), so a slow union read never blocks
         // the command's return.
-        startDownloads = { eventId -> scope.launch { downloadController.reconcile(eventId) } },
+        startDownloads = { scope.launch { downloadController.reconcile(it, UnionTrigger.RECONFIGURE) } },
         cancelDownloads = { downloadController.onLeaveOrSwitch() },
         // The policy bounds are a manifest projection input that lives outside the ledger (capability
         // `manage-membership`); the use-case calls this after its config save has landed.

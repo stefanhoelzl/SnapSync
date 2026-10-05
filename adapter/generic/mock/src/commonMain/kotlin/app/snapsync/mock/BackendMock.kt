@@ -80,8 +80,25 @@ enum class BackendCall(val key: String) {
     }
 }
 
-/** A push the backend would have sent: the event it announces, and the member and token it was addressed to. */
-data class SentPush(val eventId: String, val deviceId: String, val token: String)
+/**
+ * A push the backend would have sent: the event it announces, and the member and token it was addressed to. [seq] is
+ * the union position a wake for a gained photo announces; the close wake carries none (decision record
+ * `changes/incremental-union`, D6).
+ */
+data class SentPush(val eventId: String, val deviceId: String, val token: String, val seq: Long? = null)
+
+/**
+ * One read of an event's union as the backend logged it (capability `privacy-security`, "The service records who
+ * reads an event's photo list"): the reading device when its token verified (null otherwise), why it said it read,
+ * the position it read from (null for a full read) and to, and how many assets it was given.
+ */
+data class UnionFetch(
+    val deviceId: String?,
+    val trigger: String?,
+    val from: Long?,
+    val to: Long,
+    val served: Int,
+)
 
 /**
  * What the backend's operator can do to it and read from it — the levers a real backend has no route for, and the
@@ -117,6 +134,12 @@ class BackendOperator internal constructor(private val state: BackendState) {
 
     /** How many of the devices' reads of each event's union (`GET /events/:id/files`) reached the backend, by event. */
     val unionReads: Map<String, Int> get() = state.locked { state.unionReads.toMap() }
+
+    /** Every read of [eventId]'s union the backend logged, in order — gone once the event completes. */
+    fun unionFetchesOf(eventId: String): List<UnionFetch> = state.locked { state.fetches[eventId].orEmpty().toList() }
+
+    /** The union position [eventId] stands at: its last gained photo's. */
+    fun unionPositionOf(eventId: String): Long = state.locked { state.position(eventId) }
 
     /** How many of the devices' reads of each event's details (`GET /events/:id`) reached the backend, by event. */
     val eventReads: Map<String, Int> get() = state.locked { state.eventReads.toMap() }
@@ -257,6 +280,15 @@ internal class BackendState(
     val unionReads = mutableMapOf<String, Int>()
     val eventReads = mutableMapOf<String, Int>()
     val pushes = mutableListOf<SentPush>()
+
+    /**
+     * The union log (decision record `changes/incremental-union`, D4): every asset an event's union gained or lost, in
+     * one global order — what a delta read is served from — and every read of it.
+     */
+    class Change(val seq: Long, val eventId: String, val deviceId: String, val assetId: AssetId, val gained: Boolean)
+    val changes = mutableListOf<Change>()
+    var nextSeq = 1L
+    val fetches = mutableMapOf<String, MutableList<UnionFetch>>()
     val challenges = mutableSetOf<String>()
     val minted = mutableSetOf<String>()
 
@@ -327,13 +359,16 @@ internal class BackendState(
         membership.manifest = manifest
         membership.manifestVersion = incoming
         publishes[eventId to deviceId] = (publishes[eventId to deviceId] ?: 0) + 1
+        val after = servable(eventId, deviceId)
+        logChanges(eventId, deviceId, before, after)
         // The publish that leaves every active member settled closes the event, and wakes its members once. The mock
         // does not judge the range's end: a device declares itself settled only after it (the real route also
         // ignores an earlier declaration, which the Backend contract pins against the real api/).
         val closes = closesNow(eventId)
         if (closes) event.closed = true
         // Only a publish that made something newly servable wakes anyone, as on the real route — or one that closed it.
-        if (closes || !before.containsAll(servable(eventId, deviceId))) notifyMembers(eventId, deviceId)
+        val gained = !before.containsAll(after)
+        if (closes || gained) notifyMembers(eventId, deviceId, announce = gained)
         return PublishOutcome.APPLIED
     }
 
@@ -354,6 +389,37 @@ internal class BackendState(
         event.closed = true
         event.completed = true
         memberships.keys.filter { it.first == eventId }.forEach { memberships.remove(it) }
+        // The union log goes with the photos (capability `privacy-security`).
+        changes.removeAll { it.eventId == eventId }
+        fetches.remove(eventId)
+    }
+
+    /** The position [eventId]'s union stands at: its last gain's, or 0 before any. */
+    fun position(eventId: String): Long = changes.lastOrNull { it.eventId == eventId && it.gained }?.seq ?: 0L
+
+    /**
+     * The union from [after] — only the assets gained past it, still through the union's own filter — and the position
+     * it covers; `null` for an unknown event. Logs the read under [reader] (capability `privacy-security`).
+     */
+    fun unionPage(eventId: String, after: Long?, reader: String?, trigger: String?): Pair<List<Pair<String, DeviceManifestAsset>>, Long>? {
+        val all = union(eventId) ?: return null
+        val position = position(eventId)
+        val page = if (after == null) {
+            all
+        } else {
+            val since = changes.filter { it.eventId == eventId && it.gained && it.seq > after }
+                .mapTo(mutableSetOf()) { it.deviceId to it.assetId }
+            all.filter { (deviceId, asset) -> (deviceId to asset.assetId) in since }
+        }
+        if (!events.getValue(eventId).completed) {
+            fetches.getOrPut(eventId) { mutableListOf() } += UnionFetch(reader, trigger, after, position, page.size)
+        }
+        return page to position
+    }
+
+    private fun logChanges(eventId: String, deviceId: String, before: Set<AssetId>, after: Set<AssetId>) {
+        (after - before).sorted().forEach { changes += Change(nextSeq++, eventId, deviceId, it, gained = true) }
+        (before - after).sorted().forEach { changes += Change(nextSeq++, eventId, deviceId, it, gained = false) }
     }
 
     /** Every member's complete assets — an asset is served once every resource it declares has landed. */
@@ -371,8 +437,13 @@ internal class BackendState(
     fun deposit(deviceId: String, file: DeviceFile) {
         val before = memberships.keys.filter { it.second == deviceId }.associate { it.first to servable(it.first, deviceId) }
         storedFiles.getOrPut(deviceId) { mutableSetOf() } += file
-        // After the write, as the real byte route does: an event this byte completed an asset in wakes its other members.
-        before.forEach { (eventId, was) -> if (!was.containsAll(servable(eventId, deviceId))) notifyMembers(eventId, deviceId) }
+        // After the write, as the real byte route does: an event this byte completed an asset in logs the gain and wakes
+        // its other members.
+        before.forEach { (eventId, was) ->
+            val now = servable(eventId, deviceId)
+            logChanges(eventId, deviceId, was, now)
+            if (!was.containsAll(now)) notifyMembers(eventId, deviceId, announce = true)
+        }
     }
 
     fun receive(url: String, headers: Map<String, String>): Int {
@@ -403,10 +474,14 @@ internal class BackendState(
     private fun servable(eventId: String, deviceId: String): Set<AssetId> =
         union(eventId).orEmpty().filter { it.first == deviceId }.mapTo(mutableSetOf()) { it.second.assetId }
 
-    /** Every OTHER active member of [eventId] holding a push registration is sent one silent push — recorded here. */
-    private fun notifyMembers(eventId: String, publisherId: String) {
+    /**
+     * Every OTHER active member of [eventId] holding a push registration is sent one silent push — recorded here. A wake
+     * that [announce]s a gain names the union position; the close wake names none.
+     */
+    private fun notifyMembers(eventId: String, publisherId: String, announce: Boolean) {
+        val seq = if (announce) position(eventId) else null
         memberships.filter { (key, membership) -> key.first == eventId && key.second != publisherId && !membership.departed }
-            .forEach { (key, _) -> deviceConfigs[key.second]?.let { pushes += SentPush(eventId, key.second, it.token) } }
+            .forEach { (key, _) -> deviceConfigs[key.second]?.let { pushes += SentPush(eventId, key.second, it.token, seq) } }
     }
 
     companion object {

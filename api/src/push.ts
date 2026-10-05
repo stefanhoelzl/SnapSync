@@ -16,10 +16,10 @@ export function createPushSender(config: Config, fetchImpl: FetchLike): PushSend
   const apns = createApnsSender(config, fetchImpl);
   const fcm = createFcmSender(config, fetchImpl);
   return {
-    sendSilent: (tokens: PushToken[], eventId: string) =>
+    sendSilent: (tokens: PushToken[], eventId: string, seq?: number) =>
       Promise.all(tokens.map(async (pt) => {
         const sender = pt.kind === "fcm" ? fcm : apns;
-        const [outcome] = await sender.sendSilent([pt], eventId);
+        const [outcome] = await sender.sendSilent([pt], eventId, seq);
         return outcome;
       })),
   };

@@ -21,7 +21,8 @@ import app.snapsync.services.wake.EventCheck
 import app.snapsync.services.wake.EventChecks
 import app.snapsync.model.StagedResource
 import app.snapsync.model.UnconfirmedImport
-import app.snapsync.model.UnionAsset
+import app.snapsync.model.UnionPage
+import app.snapsync.model.UnionTrigger
 import app.snapsync.model.invocation
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.sync.Mutex
@@ -160,11 +161,12 @@ class DownloadController(
      * on its own once the event is finished for it"): every foreign asset the event serves is SETTLED here — imported,
      * or deleted by the member, or judged unimportable — and nothing is still waiting to download or to import. A
      * membership that does not receive has nothing to wait for. A union that cannot be read answers `false`: the doubt
-     * keeps the member.
+     * keeps the member. Always a FULL read (decision record `changes/incremental-union`, D6): it runs only once the
+     * event has closed, so its union no longer changes, and it is the one decision where doubt must keep the member.
      */
     suspend fun everythingReceived(eventId: String): Boolean {
         if (downloadEnabled() != true) return true
-        val assets = union.union(eventId).getOrElse { return false }
+        val assets = union.union(eventId, null, UnionTrigger.LEAVE_CHECK).getOrElse { return false }.assets
         val foreign = assets.filter { it.deviceId != myDeviceId }.map { AssetRef(it.deviceId, it.assetId) }
         return mutex.withLock {
             store.settledAmong(foreign).size == foreign.size &&
@@ -174,22 +176,33 @@ class DownloadController(
     }
 
     /**
-     * [reconcile], unless the union was read within the hour (capability `receiving-photos`, "New photos are announced
-     * by a silent wake, and never only by it"; decision record `changes/timely-background-receiving`, D4): what a
-     * background wake runs, so others' photos arrive when no push does, at no more than one union read per hour per
-     * event. A push, an opening and a join call [reconcile] itself — each has a reason to read now.
+     * [reconcile] for a background wake, unless the union was read within the hour (capability `receiving-photos`, "New
+     * photos are announced by a silent wake, and never only by it"; decision record `changes/timely-background-receiving`,
+     * D4): what a background wake runs, so others' photos arrive when no push does, at no more than one union read per
+     * hour per event. A push, an opening and a join call [reconcile] themselves — each has a reason to read now.
      */
     suspend fun reconcileIfDue(eventId: String) {
         if (!checks.due(EventCheck.PHOTOS, eventId)) {
             log.i { "union read within the hour — this wake reads none" }
             return
         }
-        reconcile(eventId)
+        reconcile(eventId, UnionTrigger.WAKE)
     }
 
     /**
      * Discover + plan + enqueue, idempotently. Safe to call on join and on every foreground: already-imported and
      * already-planned assets are no-ops, and only not-yet-staged resources enqueue.
+     *
+     * **Incremental** (decision record `changes/incremental-union`, D6): a [trigger] that is not [UnionTrigger.full] — a
+     * push, a background wake — reads only what the union gained after the position this event was last read to, and a
+     * push whose [announced] position this device has already read reads nothing at all. Every other trigger, and any
+     * read with no stored position, reads the whole union. The position the read covered is stored in the same
+     * transaction as its plan.
+     *
+     * **A full read prunes** (D7; capability `photo-sharing`, a withdrawn photo stops being offered to members who have
+     * not received it): this event's rows the union no longer lists, and that this device has not received, are
+     * dropped with their staged bytes — never settled, so a photo that comes back is planned again by a later read. An
+     * import already claimed is spared, as every prune spares it.
      *
      * **It imports nothing** (capability `receiving-photos`, "A failed union fetch still drains the staged imports"):
      * the import drain is the process tail's first unit ([importReady]), which every caller's wake requests after
@@ -201,10 +214,16 @@ class DownloadController(
      * before (`JoinUnion` in the composition) — and reads its own otherwise. Either way it stamps the hour: a union
      * was read for this event now.
      */
-    suspend fun reconcile(eventId: String, known: List<UnionAsset>? = null) = log.invocation(
+    suspend fun reconcile(
+        eventId: String,
+        trigger: UnionTrigger,
+        announced: Long? = null,
+        known: UnionPage? = null,
+    ) = log.invocation(
         entryContext,
         "reconcile",
-        params = "eventId=$eventId" + if (known != null) " (the join's union)" else "",
+        params = "eventId=$eventId trigger=${trigger.wire}" +
+            (announced?.let { " announced=$it" } ?: "") + if (known != null) " (the join's union)" else "",
     ) {
         // `!= true` covers BOTH non-answers: an upload-only membership (`false`) and no membership at all
         // (`null`). Neither enables the arm, and neither is inferred from the other.
@@ -213,48 +232,79 @@ class DownloadController(
             log.i { "reconcile skipped — this membership does not download" }
             return@invocation
         }
+        val stored = store.union.cursor(eventId)
+        if (known == null && announced != null && stored != null && stored >= announced) {
+            log.i { "the union was already read to $stored, past the announced $announced — nothing to read" }
+            return@invocation
+        }
         // Every read counts, a failing one too: a backend that fails is asked no more often than one that answers.
         checks.stamp(EventCheck.PHOTOS, eventId)
+        val from = stored.takeIf { !trigger.full && known == null }
         // A failed union fetch costs this wake its DISCOVERY, not its imports: the tail that follows the wake's own
         // work drains what is staged whatever the union answered, because the drain reads only the store and the
         // bytes already on disk.
-        val assets = known ?: union.union(eventId).getOrElse {
+        val page = known ?: union.union(eventId, from, trigger).getOrElse {
             log.w(it) { "union fetch failed — keeping last state; the tail still imports what is staged" }
             return@invocation
         }
-        mutex.withLock {
-            // Own contribution is already in this library; only foreign assets are download work.
-            val foreign = assets.filter { it.deviceId != myDeviceId }
-            // ONE read of which of them are settled (imported or unimportable — delete-proof / cross-event
-            // dedup), and ONE transaction planning the rest. Per asset this was a query plus a transaction,
-            // each transaction a durable commit, and a background wake planning a 101-asset backlog spent
-            // ~11.5 s on it (iPhone XS) — on every trigger while the backlog lasted.
-            //
-            // The snapshot is read under this lock, and every writer that can make a row terminal takes it
-            // too, except the importer's completion (`confirmCreatedLocalId`), which runs on the platform's
-            // queue. That one settles only a row that is mid-import: its resources are all staged, so
-            // re-planning it inserts nothing and refreshes no url — exactly what the per-asset
-            // read-then-plan pair (never atomic against that writer either) already allowed.
-            val settled = store.settledAmong(foreign.map { AssetRef(it.deviceId, it.assetId) })
-            val plans = foreign.mapNotNull { asset ->
-                val ref = AssetRef(asset.deviceId, asset.assetId)
-                if (ref in settled) return@mapNotNull null
-                PlannedAsset(ref, asset.creationDate, asset.resources.map {
-                    PlannedResource(it.key, it.url, it.role, it.contentType, it.originalFilename)
-                })
-            }
-            // Tag the whole foreign union with this event, settled refs included: an imported photo of THIS event
-            // counts as received on the joined screen, and one imported for an earlier event stops counting.
-            store.planAll(plans, eventId, members = foreign.map { AssetRef(it.deviceId, it.assetId) })
-            log.i { "reconcile: ${assets.size} union asset(s), ${plans.size} foreign planned" }
-            // Enqueue the not-yet-staged resources to the OS, then mark them in-flight so the status
-            // line's download arrow can pulse (superseded once each stages). Idempotent: re-marking an
-            // already-enqueued or already-staged resource is harmless (staged rows are excluded). One
-            // transaction for the whole batch, not an autocommit per resource.
-            val pending = store.pendingDownloads()
-            jobs.enqueue(pending)
-            if (pending.isNotEmpty()) store.markAllEnqueued(pending)
+        mutex.withLock { planLocked(eventId, page, stored, from) }
+    }
+
+    /**
+     * Plan [page] — read from [from], `null` for the whole union — and enqueue what is not yet staged, under [mutex];
+     * store the position the read covered when it moved past [stored], and prune after a full read ([reconcile]).
+     */
+    private suspend fun planLocked(eventId: String, page: UnionPage, stored: Long?, from: Long?) {
+        // Own contribution is already in this library; only foreign assets are download work.
+        val foreign = page.assets.filter { it.deviceId != myDeviceId }
+        val foreignRefs = foreign.map { AssetRef(it.deviceId, it.assetId) }
+        // ONE read of which of them are settled (imported or unimportable — delete-proof / cross-event
+        // dedup), and ONE transaction planning the rest. Per asset this was a query plus a transaction,
+        // each transaction a durable commit, and a background wake planning a 101-asset backlog spent
+        // ~11.5 s on it (iPhone XS) — on every trigger while the backlog lasted.
+        //
+        // The snapshot is read under this lock, and every writer that can make a row terminal takes it
+        // too, except the importer's completion (`confirmCreatedLocalId`), which runs on the platform's
+        // queue. That one settles only a row that is mid-import: its resources are all staged, so
+        // re-planning it inserts nothing and refreshes no url — exactly what the per-asset
+        // read-then-plan pair (never atomic against that writer either) already allowed.
+        val settled = store.settledAmong(foreignRefs)
+        val plans = foreign.mapNotNull { asset ->
+            val ref = AssetRef(asset.deviceId, asset.assetId)
+            if (ref in settled) return@mapNotNull null
+            PlannedAsset(ref, asset.creationDate, asset.resources.map {
+                PlannedResource(it.key, it.url, it.role, it.contentType, it.originalFilename)
+            })
         }
+        // Tag the whole foreign union with this event, settled refs included: an imported photo of THIS event
+        // counts as received on the joined screen, and one imported for an earlier event stops counting. The
+        // position the read covered lands in the same transaction — only when it moved: a wake that found nothing
+        // new costs no durable commit (position 0, no gain yet, is the same as none).
+        store.planAll(plans, eventId, members = foreignRefs, cursor = page.cursor.takeIf { it != (stored ?: 0L) })
+        if (from == null) pruneWithdrawnLocked(eventId, foreignRefs.toSet())
+        log.i {
+            "reconcile: ${page.assets.size} union asset(s) (${if (from == null) "full" else "since $from"}), " +
+                "${plans.size} foreign planned, position ${page.cursor}"
+        }
+        // Enqueue the not-yet-staged resources to the OS, then mark them in-flight so the status
+        // line's download arrow can pulse (superseded once each stages). Idempotent: re-marking an
+        // already-enqueued or already-staged resource is harmless (staged rows are excluded). One
+        // transaction for the whole batch, not an autocommit per resource.
+        val pending = store.pendingDownloads()
+        jobs.enqueue(pending)
+        if (pending.isNotEmpty()) store.markAllEnqueued(pending)
+    }
+
+    /**
+     * Drop [eventId]'s withdrawn, not-yet-received rows and free their staged bytes — under [mutex], against ONE view of
+     * what is claimed, for [releaseAndPruneLocked]'s reasons. A transfer still in flight for a dropped row stages onto no
+     * row and its bytes are discarded ([onResourceStaged]).
+     */
+    private suspend fun pruneWithdrawnLocked(eventId: String, listed: Set<AssetRef>) {
+        val stranded = store.union.pruneWithdrawn(eventId, listed, protecting = importing.toSet())
+        if (stranded.isNotEmpty()) log.i { "a full read pruned withdrawn photos — ${stranded.size} staged file(s) freed" }
+        runCatchingCancellable { stagedBytes.release(stranded) }
+            .onFailure { log.w(it) { "releasing withdrawn staged bytes failed — files left behind" } }
     }
 
     /**

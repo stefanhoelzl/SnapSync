@@ -28,6 +28,12 @@ sealed interface FixtureAnswer {
 
     /** Never answer: the transfer stays open until it is cancelled. */
     data object Hold : FixtureAnswer
+
+    /**
+     * Answer [status] (a `3xx`) with a `Location` naming the same route with [to] as its last segment — the shape of an
+     * edge route that redirects to a freshly presigned object URL. The `Location` is absolute, as a real redirect's is.
+     */
+    data class Redirect(val to: Respond, val status: Int = 302) : FixtureAnswer
 }
 
 /**
@@ -40,6 +46,7 @@ sealed interface FixtureAnswer {
  * /<Contract>/<CLAUSE_ID>/<name>/s404-n0-nolen      404, empty, no Content-Length
  * /<Contract>/<CLAUSE_ID>/<name>/s200-n64-short     200, declares 64 bytes, sends 32, closes
  * /<Contract>/<CLAUSE_ID>/<name>/hold               never answers
+ * /<Contract>/<CLAUSE_ID>/<name>/r302-s200-n64-len  302, Location: the same route ending in s200-n64-len
  * ```
  *
  * ⚠️ `scripts/transfer-fixture.py` parses the same grammar; change both or neither.
@@ -51,20 +58,35 @@ object TransferFixture {
 
     /** The route [answer]s at, for the transfer [name] within [clauseId] of [contract]. */
     fun path(contract: String, clauseId: String, name: String, answer: FixtureAnswer): String =
-        "/$contract/$clauseId/$name/" + when (answer) {
-            FixtureAnswer.Hold -> HOLD
-            is FixtureAnswer.Respond ->
-                "s${answer.status}-n${answer.length}-" + when {
-                    answer.short -> "short"
-                    answer.declaresLength -> "len"
-                    else -> "nolen"
-                }
-        }
+        "/$contract/$clauseId/$name/" + segment(answer)
+
+    private fun segment(answer: FixtureAnswer): String = when (answer) {
+        FixtureAnswer.Hold -> HOLD
+        is FixtureAnswer.Redirect -> "r${answer.status}-" + segment(answer.to)
+        is FixtureAnswer.Respond ->
+            "s${answer.status}-n${answer.length}-" + when {
+                answer.short -> "short"
+                answer.declaresLength -> "len"
+                else -> "nolen"
+            }
+    }
 
     /** What [path] answers, or `null` if its last segment is not in the grammar. */
     fun answerOf(path: String): FixtureAnswer? {
         val segment = path.substringBefore('?').substringAfterLast('/')
         if (segment == HOLD) return FixtureAnswer.Hold
+        REDIRECT.matchEntire(segment)?.let { r ->
+            val to = respondOf(r.groupValues[2]) ?: return null
+            return FixtureAnswer.Redirect(to, status = r.groupValues[1].toInt())
+        }
+        return respondOf(segment)
+    }
+
+    /** The route [redirect] at [path] names in its `Location`: the same route, its last segment the target's. */
+    fun redirectTarget(path: String, redirect: FixtureAnswer.Redirect): String =
+        path.substringBefore('?').substringBeforeLast('/') + "/" + segment(redirect.to)
+
+    private fun respondOf(segment: String): FixtureAnswer.Respond? {
         val m = SEGMENT.matchEntire(segment) ?: return null
         return FixtureAnswer.Respond(
             status = m.groupValues[1].toInt(),
@@ -79,6 +101,7 @@ object TransferFixture {
 
     private const val HOLD = "hold"
     private val SEGMENT = Regex("""s(\d{3})-n(\d+)-(len|nolen|short)""")
+    private val REDIRECT = Regex("""r(3\d{2})-(.+)""")
 }
 
 /** What a fixture received at one route: an object a `PUT` landed. Presence and type — the state reached. */

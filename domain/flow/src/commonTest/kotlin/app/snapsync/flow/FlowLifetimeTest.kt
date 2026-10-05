@@ -35,7 +35,7 @@ class FlowLifetimeTest {
         val flow = SilentPush(
             reloadConfig = {},
             refreshAttestation = {},
-            downloadReceiver = { _ ->
+            downloadReceiver = { _, _ ->
                 gate.await()
                 armFinished = true
             },
@@ -62,7 +62,7 @@ class FlowLifetimeTest {
         SilentPush(
             reloadConfig = { order += "reload" },
             refreshAttestation = { order += "attest" },
-            downloadReceiver = { _ -> order += "fanout" },
+            downloadReceiver = { _, _ -> order += "fanout" },
         ).run(mapOf<Any?, Any?>("eventId" to "E"))
 
         assertTrue(order == listOf("reload", "attest", "fanout"), "unexpected order: $order")

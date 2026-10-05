@@ -21,6 +21,7 @@ import app.snapsync.services.databases.openOwned
 import app.snapsync.services.downloads.db.DownloadAsset
 import app.snapsync.services.downloads.db.DownloadDatabase
 import app.snapsync.services.downloads.db.DownloadResource
+import app.snapsync.services.downloads.db.DownloadStoreQueries
 
 /** The download store's database file — runtime identity (`docs/architecture.md`, section 9). */
 const val DOWNLOADS_DB_NAME: String = "downloads.db"
@@ -36,6 +37,9 @@ const val DOWNLOADS_DB_NAME: String = "downloads.db"
 class DownloadService(databases: Databases) : SuppressionSource {
 
     private val q by lazy { DownloadDatabase(databases.openOwned(DOWNLOADS_DB_NAME, DownloadDatabase.Schema)).downloadStoreQueries }
+
+    /** The store's bookkeeping of the event union's reads — the position, and what a full read found withdrawn. */
+    val union: UnionTracking = UnionTracking { q }
 
     /**
      * Always ready: a read-write open creates and migrates, so this process can never find the store at an old
@@ -87,9 +91,18 @@ class DownloadService(databases: Databases) : SuppressionSource {
      * included — and every one of those rows is tagged with the event in the same transaction, so the
      * event-scoped counts ([counts] with an event) never see a planned row that is not yet tagged. A tag moves: a ref seen
      * again in a later event's union counts for that event from then on.
+     *
+     * [cursor], with an [eventId], is the union position the read that served these assets covered (decision record
+     * `changes/incremental-union`, D6): it is stored in the SAME transaction, so the position never stands past an asset
+     * that was not planned — a failed plan leaves the previous one, and the next delta serves the assets again.
      */
-    suspend fun planAll(assets: List<PlannedAsset>, eventId: String? = null, members: Collection<AssetRef> = emptyList()) {
-        if (assets.isEmpty() && (eventId == null || members.isEmpty())) return
+    suspend fun planAll(
+        assets: List<PlannedAsset>,
+        eventId: String? = null,
+        members: Collection<AssetRef> = emptyList(),
+        cursor: Long? = null,
+    ) {
+        if (assets.isEmpty() && (eventId == null || (members.isEmpty() && cursor == null))) return
         q.transaction {
             assets.forEach { (ref, creationDate, resources) ->
                 q.upsertAsset(ref.sourceDeviceId, ref.sourceAssetId, DownloadState.PENDING, creationDate, eventId)
@@ -101,6 +114,7 @@ class DownloadService(databases: Databases) : SuppressionSource {
                 }
             }
             if (eventId != null) members.forEach { q.tagEvent(eventId, it.sourceDeviceId, it.sourceAssetId) }
+            if (eventId != null && cursor != null) q.upsertUnionCursor(eventId, cursor)
         }
     }
 
@@ -261,6 +275,9 @@ class DownloadService(databases: Databases) : SuppressionSource {
      * that equivalent — and clearer to read than the alternative would have been.
      */
     suspend fun pruneNonTerminal(protecting: Set<AssetRef>): List<String> = q.transactionWithResult {
+        // The positions go with the plans (decision record `changes/incremental-union`, D6): one that stood past rows
+        // this prune drops would keep the next delta from serving them again, so every next read is a full one.
+        q.deleteUnionCursors()
         val victims = q.selectPrunableAssets { device, asset -> AssetRef(device, asset) }
             .executeAsList()
             .filterNot { it in protecting }
@@ -308,3 +325,38 @@ internal fun DownloadDatabase(driver: SqlDriver): DownloadDatabase = DownloadDat
     ),
     DownloadResource.Adapter(sourceAssetIdAdapter = AssetIdColumnAdapter),
 )
+
+/**
+ * The download store's bookkeeping of the event union's reads (decision record `changes/incremental-union`, D6–D7),
+ * over the same database as [DownloadService] — whose [DownloadService.planAll] writes the position in the transaction
+ * of the plan it covers, and whose [DownloadService.pruneNonTerminal] forgets every position with the plans it drops.
+ */
+class UnionTracking internal constructor(private val queries: () -> DownloadStoreQueries) {
+
+    /** The union position [eventId] was last read to, or `null` for none — the next read is then a full one. */
+    suspend fun cursor(eventId: String): Long? = queries().selectUnionCursor(eventId).executeAsOneOrNull()
+
+    /**
+     * Drop [eventId]'s rows a FULL read of its union no longer lists — withdrawn before this device received them
+     * (capability `photo-sharing`) — sparing [protecting] (the refs whose imports are claimed), and return the staged
+     * paths those rows owned, in ONE transaction, as [DownloadService.pruneNonTerminal] does and for its reasons. Only
+     * rows not yet received are candidates (`selectWithdrawable`); the row is DELETED, never settled, so a photo that
+     * comes back is planned again.
+     */
+    suspend fun pruneWithdrawn(eventId: String, listed: Set<AssetRef>, protecting: Set<AssetRef>): List<String> {
+        val q = queries()
+        // A read first, so the common case — nothing withdrawn — costs no durable commit; the transaction below reads
+        // again, and only its read decides what goes.
+        val candidates = q.selectWithdrawable(eventId) { device, asset -> AssetRef(device, asset) }.executeAsList()
+        if (candidates.none { it !in listed && it !in protecting }) return emptyList()
+        return q.transactionWithResult {
+            val withdrawn = q.selectWithdrawable(eventId) { device, asset -> AssetRef(device, asset) }
+                .executeAsList()
+                .filterNot { it in listed || it in protecting }
+            withdrawn.forEach { q.deleteWithdrawn(it.sourceDeviceId, it.sourceAssetId) }
+            val stranded = q.selectStagedPathsOfOrphanedResources().executeAsList().filterNotNull()
+            q.deleteNonTerminalResources()
+            stranded
+        }
+    }
+}

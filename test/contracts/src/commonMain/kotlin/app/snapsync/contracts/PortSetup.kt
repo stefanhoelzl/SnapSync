@@ -1,5 +1,6 @@
 package app.snapsync.contracts
 
+import app.snapsync.model.UnionTrigger
 import app.snapsync.model.AssetId
 import app.snapsync.model.CreateEventRequest
 import app.snapsync.model.DeviceFile
@@ -51,7 +52,8 @@ class PortSetup(
     }
 
     override suspend fun unionAssetIds(eventId: String): Set<AssetId> =
-        checked("read the union", backend.eventFiles(eventId)).mapTo(mutableSetOf()) { it.assetId }
+        checked("read the union", backend.eventFiles(null, eventId, null, UnionTrigger.FOREGROUND)).assets
+            .mapTo(mutableSetOf()) { it.assetId }
 
     override suspend fun upload(deviceId: String, asset: SeededAsset, role: ResourceRole) {
         storedFiles.getOrPut(deviceId) { mutableSetOf() } += DeviceFile(asset.assetId, role, asset.filename)

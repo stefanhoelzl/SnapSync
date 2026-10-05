@@ -322,6 +322,11 @@ export function publishStatements(
        * membership final stamps as the event's close. `null` → the publish cannot close the event.
        */
       closeAt?: string | null;
+      /**
+       * The union-log rows this publish causes ([publishUnionChanges]), written inside the batch under the
+       * same gates as the asset set — so a refused (older) publish, or one racing the close, logs nothing.
+       */
+      log?: { gained: readonly string[]; removed: readonly string[]; at: string };
     },
 ): Statement[] {
   const out: Statement[] = [];
@@ -389,6 +394,20 @@ export function publishStatements(
                 filename     = excluded.filename`,
         args: [deviceId, a.assetId, r.role, r.key, r.contentType, r.filename],
       });
+    }
+  }
+  if (!opts.legacy && opts.log) {
+    const { at } = opts.log;
+    for (
+      const [kind, ids] of [["gained", opts.log.gained], ["removed", opts.log.removed]] as const
+    ) {
+      for (const assetId of ids) {
+        out.push({
+          sql: `INSERT INTO union_log (event_id, kind, device_id, asset_id, at)
+                SELECT ?, ?, ?, ?, ? WHERE 1${gate}`,
+          args: [eventId, kind, deviceId, assetId, at, ...gateArgs],
+        });
+      }
     }
   }
   if (!opts.legacy) {
@@ -474,23 +493,36 @@ export async function memberCounts(
  * Whether a failure here fails the REQUEST differs by version and is the caller's business: v1 swallows
  * it, because its manifest publish repairs a missing row; v2 does not, because nothing repairs it there.
  */
-export async function recordResource(db: Db, r: {
+export async function recordResource(db: Db, r: ResourceRecord): Promise<void> {
+  const { sql, args } = recordResourceStatement(r);
+  await db.execute(sql, args);
+}
+
+/** What the byte route records for one landed resource. */
+export type ResourceRecord = {
   deviceId: string;
   assetId: string;
   role: string;
   key: string;
   contentType: string;
   filename: string;
-}): Promise<void> {
-  await db.execute(
-    `INSERT INTO resources (device_id, asset_id, role, key, content_type, filename)
-     VALUES (?, ?, ?, ?, ?, ?)
-     ON CONFLICT (device_id, asset_id, role) DO UPDATE SET
-       key          = excluded.key,
-       content_type = excluded.content_type,
-       filename     = excluded.filename`,
-    [r.deviceId, r.assetId, r.role, r.key, r.contentType, r.filename],
-  );
+};
+
+/**
+ * [recordResource] as a statement, so the v2 byte route can commit the record and the union log's `gained`
+ * rows it causes as ONE batch: a log row for bytes the backend never recorded would announce an asset no
+ * read can serve, and a record without its log row would leave the asset out of every delta.
+ */
+export function recordResourceStatement(r: ResourceRecord): Statement {
+  return {
+    sql: `INSERT INTO resources (device_id, asset_id, role, key, content_type, filename)
+          VALUES (?, ?, ?, ?, ?, ?)
+          ON CONFLICT (device_id, asset_id, role) DO UPDATE SET
+            key          = excluded.key,
+            content_type = excluded.content_type,
+            filename     = excluded.filename`,
+    args: [r.deviceId, r.assetId, r.role, r.key, r.contentType, r.filename],
+  };
 }
 
 /**
@@ -534,8 +566,10 @@ export async function eventsCompletedBy(db: Db, r: {
 }
 
 /**
- * The events whose union GAINS an asset because this publish declared one that is already fully stored —
- * the manifest route's wake list (capability `receiving-photos`).
+ * How this publish changes what the event's union SERVES (capability `receiving-photos`; decision record
+ * `changes/incremental-union`, D4): the assets it makes servable (`gained` — the manifest route's wake list
+ * and its union-log rows) and the servable assets it stops declaring or leaves incomplete (`removed` — log
+ * rows only, never served).
  *
  * The manifest publish is no longer the moment the union grows: under a manifest that declares INTENT, its
  * content changes when discovery changes, and the assets it names are usually incomplete. The one case
@@ -544,23 +578,21 @@ export async function eventsCompletedBy(db: Db, r: {
  * moves and only the declaration changed.
  *
  * Asked BEFORE the replace, for the same reason as [eventsCompletedBy]: afterwards, "complete" cannot be
- * told from "was already complete and still is". Answers whether the incoming set names a complete asset
- * that the stored set did not.
+ * told from "was already complete and still is".
  *
- * An asset that was already served and merely gained a resource is deliberately NOT a wake: recipients
+ * An asset that was already served and merely gained a resource is deliberately NOT a gain: recipients
  * plan per asset and would refetch nothing (capability `receiving-photos`), so the union gained no asset.
  *
  * COST: two reads proportional to the device's declared and stored sets. That is the same order as the
  * publish it precedes — `publishStatements` already emits one statement per declared asset — so it adds
  * no new scaling class to this route.
  */
-export async function publishAddsFetchableAsset(
+export async function publishUnionChanges(
   db: Db,
   eventId: string,
   deviceId: string,
   incoming: readonly { assetId: string; roles: readonly string[] }[],
-): Promise<boolean> {
-  if (incoming.length === 0) return false;
+): Promise<{ gained: string[]; removed: string[] }> {
   const { rows } = await db.execute(
     `SELECT ea.asset_id,
             (NOT EXISTS (SELECT 1 FROM json_each(ea.roles) j
@@ -575,7 +607,6 @@ export async function publishAddsFetchableAsset(
   const alreadyComplete = new Set(
     rows.filter((r) => Number(r.complete) === 1).map((r) => String(r.asset_id)),
   );
-  const stored = new Set(rows.map((r) => String(r.asset_id)));
 
   // A stored resource row per (asset, role) this device holds — the reality the incoming declaration is
   // compared against. Device-scoped, like the table.
@@ -585,14 +616,36 @@ export async function publishAddsFetchableAsset(
   );
   const present = new Set(held.rows.map((r) => `${String(r.asset_id)} ${String(r.role)}`));
 
-  return incoming.some((a) => {
-    const complete = a.roles.length > 0 &&
-      a.roles.every((role) => present.has(`${a.assetId} ${role}`));
-    if (!complete) return false;
+  const completeAfter = new Set(
+    incoming
+      .filter((a) =>
+        a.roles.length > 0 && a.roles.every((role) => present.has(`${a.assetId} ${role}`))
+      )
+      .map((a) => a.assetId),
+  );
+  return {
     // Newly fetchable: either this event did not declare the asset at all, or it declared it in a shape
     // that was not yet complete.
-    return !stored.has(a.assetId) || !alreadyComplete.has(a.assetId);
-  });
+    gained: [...completeAfter].filter((id) => !alreadyComplete.has(id)),
+    removed: [...alreadyComplete].filter((id) => !completeAfter.has(id)),
+  };
+}
+
+/**
+ * The union-log rows ONE gained asset causes, one per event (decision record `changes/incremental-union`,
+ * D4) — the byte route's half; the publish writes its own inside its batch (`publishStatements`'s `log`).
+ */
+export function gainedStatements(
+  eventIds: readonly string[],
+  deviceId: string,
+  assetId: string,
+  at: string,
+): Statement[] {
+  return eventIds.map((eventId) => ({
+    sql:
+      `INSERT INTO union_log (event_id, kind, device_id, asset_id, at) VALUES (?, 'gained', ?, ?, ?)`,
+    args: [eventId, deviceId, assetId, at],
+  }));
 }
 
 // ── Reads ─────────────────────────────────────────────────────────────────────────────────────────
@@ -626,7 +679,20 @@ export type UnionResourceRow = {
  * device may hold a role this event does not declare, and a count would call that asset incomplete and
  * drop it from an event it belongs in.
  */
-export async function unionRows(db: Db, eventId: string): Promise<UnionResourceRow[]> {
+export async function unionRows(
+  db: Db,
+  eventId: string,
+  /**
+   * A DELTA (decision record `changes/incremental-union`, D4): only assets the union log says were gained
+   * after this position. Still put through the same declaration and completeness filter, so an asset
+   * removed since its gain is not served, and one gained twice is served once.
+   */
+  after?: number,
+): Promise<UnionResourceRow[]> {
+  const delta = after === undefined ? "" : `
+       AND EXISTS (SELECT 1 FROM union_log l
+                    WHERE l.event_id = ea.event_id AND l.kind = 'gained' AND l.seq > ?
+                      AND l.device_id = ea.device_id AND l.asset_id = ea.asset_id)`;
   const { rows } = await db.execute(
     `SELECT ea.device_id, ea.asset_id, ea.creation_date,
             j.value AS role,
@@ -636,12 +702,12 @@ export async function unionRows(db: Db, eventId: string): Promise<UnionResourceR
      JOIN json_each(ea.roles) j
      LEFT JOIN resources r
        ON r.device_id = ea.device_id AND r.asset_id = ea.asset_id AND r.role = j.value
-     WHERE ea.event_id = ?
+     WHERE ea.event_id = ?${delta}
      -- Deterministic, and PRIMARY first within an asset: no consumer depends on the order, but an
      -- unordered join makes a response diff noise rather than signal. Plain ORDER BY role would put
      -- 'live' ahead of 'primary', which reads as a bug to anyone eyeballing a union.
      ORDER BY ea.device_id, ea.asset_id, (j.value <> 'primary'), j.value`,
-    [eventId],
+    after === undefined ? [eventId] : [eventId, after],
   );
   return rows.map((r) => ({
     deviceId: String(r.device_id),
@@ -653,6 +719,72 @@ export async function unionRows(db: Db, eventId: string): Promise<UnionResourceR
     filename: String(r.filename ?? ""),
     present: Number(r.present) === 1,
   }));
+}
+
+/**
+ * The stored object a download of ONE resource of an event's union resolves to (decision record
+ * `changes/incremental-union`, D1): its key when the event still declares that asset with that role (in a
+ * membership of either state, as the union does) and its bytes are recorded; `null` otherwise.
+ *
+ * Narrower than the union on purpose: it asks about one role, so a photo whose OTHER role has not landed
+ * still serves the role that has. Nothing hands out such a link — the union serves only complete assets —
+ * and a client that guesses one learns nothing the event's union would not tell it.
+ */
+export async function downloadKey(
+  db: Db,
+  eventId: string,
+  deviceId: string,
+  assetId: string,
+  role: string,
+): Promise<string | null> {
+  const { rows } = await db.execute(
+    `SELECT r.key
+       FROM event_assets ea
+       JOIN resources r ON r.device_id = ea.device_id AND r.asset_id = ea.asset_id AND r.role = ?
+      WHERE ea.event_id = ? AND ea.device_id = ? AND ea.asset_id = ?
+        AND EXISTS (SELECT 1 FROM json_each(ea.roles) j WHERE j.value = ?)`,
+    [role, eventId, deviceId, assetId, role],
+  );
+  return rows.length === 0 ? null : String(rows[0].key);
+}
+
+/**
+ * The position a union read answers for (decision record `changes/incremental-union`, D4): the event's
+ * last `gained` log row, or 0 when it has none.
+ *
+ * READ BEFORE THE ROWS, never after. Every gain at or below this position committed before it was read,
+ * so the rows read next include it; a gain committing in between is past the position and is served
+ * again by the next delta, which costs a duplicate the client dedups — never a miss.
+ */
+export async function unionPosition(db: Db, eventId: string): Promise<number> {
+  const { rows } = await db.execute(
+    `SELECT COALESCE(MAX(seq), 0) AS pos FROM union_log WHERE event_id = ? AND kind = 'gained'`,
+    [eventId],
+  );
+  return Number(rows[0].pos);
+}
+
+/** One read of the union, as the union log records it (capability `privacy-security`). */
+export type UnionFetch = {
+  eventId: string;
+  /** The device whose token verified; `null` for every other reader, of whom nothing else is kept. */
+  deviceId: string | null;
+  /** Why the client read, as it says; `null` when it said nothing this backend knows. */
+  trigger: string | null;
+  /** The position the read started from; `null` for a full read. */
+  from: number | null;
+  to: number;
+  served: number;
+  at: string;
+};
+
+/** Record one union read (capability `privacy-security`). The caller treats a failure as best-effort. */
+export async function logUnionFetch(db: Db, f: UnionFetch): Promise<void> {
+  await db.execute(
+    `INSERT INTO union_log (event_id, kind, device_id, trigger, cursor_from, cursor_to, served, at)
+     VALUES (?, 'fetch', ?, ?, ?, ?, ?, ?)`,
+    [f.eventId, f.deviceId, f.trigger, f.from, f.to, f.served, f.at],
+  );
 }
 
 /**
@@ -876,13 +1008,16 @@ export async function deleteEvent(db: Db, eventId: string): Promise<void> {
  * it, so a device still joined is told "completed" rather than a "not found" it would disbelieve.
  */
 export async function completeEvent(tx: Db, eventId: string, at: string): Promise<void> {
-  // Two statements, not a batch: the sweep calls this INSIDE its interactive transaction (which already
-  // makes the pair atomic), and a batch there would try to open a second one.
+  // Separate statements, not a batch: the sweep calls this INSIDE its interactive transaction (which
+  // already makes them atomic), and a batch there would try to open a second one.
   await tx.execute(
     `UPDATE events SET closed_at = COALESCE(closed_at, ?), completed_at = ? WHERE id = ?`,
     [at, at, eventId],
   );
   await tx.execute(`DELETE FROM memberships WHERE event_id = ?`, [eventId]);
+  // The union log goes with the photos (capability `privacy-security`, "The service records who reads an
+  // event's photo list"): the row outlives them, the record of who read them must not.
+  await tx.execute(`DELETE FROM union_log WHERE event_id = ?`, [eventId]);
 }
 
 /**

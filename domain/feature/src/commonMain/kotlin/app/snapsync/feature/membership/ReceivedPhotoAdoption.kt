@@ -1,5 +1,6 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.model.UnionTrigger
 import app.snapsync.model.AdoptedAsset
 import app.snapsync.model.AssetRef
 import app.snapsync.model.EventConfig
@@ -62,7 +63,7 @@ class ReceivedPhotoAdoption(
     /** A join's pass: always runs, whatever an earlier membership of this process settled. */
     suspend fun adopt(cfg: EventConfig) = gate.withLock {
         settledFor = null
-        settle(cfg)
+        settle(cfg, UnionTrigger.JOIN)
     }
 
     /**
@@ -72,12 +73,12 @@ class ReceivedPhotoAdoption(
      * foreground that follows the dialog imported while the grant's own pass was still reading names).
      */
     suspend fun ensureAdopted(cfg: EventConfig) = gate.withLock {
-        if (settledFor != cfg.eventId) settle(cfg)
+        if (settledFor != cfg.eventId) settle(cfg, UnionTrigger.GRANT)
     }
 
-    private suspend fun settle(cfg: EventConfig) {
+    private suspend fun settle(cfg: EventConfig, trigger: UnionTrigger) {
         try {
-            if (adoptOrFail(cfg)) settledFor = cfg.eventId
+            if (adoptOrFail(cfg, trigger)) settledFor = cfg.eventId
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -90,8 +91,10 @@ class ReceivedPhotoAdoption(
      * pass asks again. An unreachable union settles it (the accepted gap of a join while the event cannot be reached):
      * retrying it would hold every import behind the network.
      */
-    private suspend fun adoptOrFail(cfg: EventConfig): Boolean {
-        val assets = withTimeoutOrNull(UNION_TIMEOUT_MS) { union.union(cfg.eventId) }?.getOrNull()
+    private suspend fun adoptOrFail(cfg: EventConfig, trigger: UnionTrigger): Boolean {
+        // Always the WHOLE union (decision record `changes/incremental-union`, D6): a mark is recognised only against
+        // every ref the event serves.
+        val assets = withTimeoutOrNull(UNION_TIMEOUT_MS) { union.union(cfg.eventId, null, trigger) }?.getOrNull()?.assets
         if (assets == null) {
             log.w { "union unavailable — no photos adopted; photos received before a reinstall may arrive again" }
             return true

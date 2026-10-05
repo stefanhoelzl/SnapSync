@@ -43,6 +43,27 @@ CREATE TABLE downloadResource (
     PRIMARY KEY (sourceDeviceId, sourceAssetId, resourceKey)
 );
 
+-- The position each event's union was last read to (decision record `changes/incremental-union`, D6): a push or a
+-- background wake reads only what the union gained after it. Advanced only in the transaction that planned what the
+-- read served; no row means the next read is a full one.
+CREATE TABLE unionCursor (
+    eventId TEXT NOT NULL PRIMARY KEY,
+    cursor  INTEGER NOT NULL
+);
+
+-- --- the union position ---
+
+selectUnionCursor:
+SELECT cursor FROM unionCursor WHERE eventId = :eventId;
+
+upsertUnionCursor:
+INSERT INTO unionCursor (eventId, cursor) VALUES (:eventId, :cursor)
+ON CONFLICT (eventId) DO UPDATE SET cursor = excluded.cursor;
+
+-- A reset forgets every position, so the next read of each event is a full one.
+deleteUnionCursors:
+DELETE FROM unionCursor;
+
 -- --- asset lifecycle ---
 
 upsertAsset:
@@ -257,6 +278,20 @@ DELETE FROM downloadAsset
 WHERE sourceDeviceId = :sourceDeviceId AND sourceAssetId = :sourceAssetId
   AND state != 'IMPORTED' AND createdLocalId IS NULL;
 
+-- The rows of [eventId]'s union a full read may find WITHDRAWN (decision record `changes/incremental-union`, D7):
+-- tagged with this event, not yet received — not imported, not judged unimportable, and carrying no marker, so no asset
+-- was created for them. A row with a marker is never one: the marker keeps a created photo out of the upload universe.
+selectWithdrawable:
+SELECT sourceDeviceId, sourceAssetId FROM downloadAsset
+WHERE eventId = :eventId AND state NOT IN ('IMPORTED', 'UNIMPORTABLE') AND createdLocalId IS NULL;
+
+-- Drop ONE withdrawn row, its predicate restated so it can never delete a row that must be kept, whatever the
+-- caller passes (the same discipline as `deletePrunableAsset`).
+deleteWithdrawn:
+DELETE FROM downloadAsset
+WHERE sourceDeviceId = :sourceDeviceId AND sourceAssetId = :sourceAssetId
+  AND state NOT IN ('IMPORTED', 'UNIMPORTABLE') AND createdLocalId IS NULL;
+
 -- The rows whose import was never confirmed: an asset WAS created for them (the marker was written
 -- inside the change block, which always completes before the library commits) but the confirmation
 -- never arrived — a process death, or an import still running whose completion has not come. The import path adjudicates
@@ -276,8 +311,8 @@ WHERE NOT EXISTS (
 -- --- resource staging ---
 
 -- Insert a new pending resource, or — on a re-plan of an existing one — refresh its `url` ONLY while it
--- is not yet staged (stagedPath IS NULL), so a freshly presigned download URL supersedes an expiring one
--- for work still pending. A staged row is left untouched (no re-download); the other fields are immutable
+-- is not yet staged (stagedPath IS NULL), so the url the latest read named supersedes an older one for work
+-- still pending (a url is the backend's stable address now; a plan made under a presigned one is replaced). A staged row is left untouched (no re-download); the other fields are immutable
 -- per resourceKey.
 upsertResource:
 INSERT INTO downloadResource

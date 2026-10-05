@@ -84,6 +84,18 @@ Deno.test("fcm → a token of this project is sent a high-priority data message 
   assertEquals(send.init.body, fcmBody("F1", EVT));
 });
 
+Deno.test("fcm → a wake for a gain names its union position, as a string like every data value", async () => {
+  // Decision record `changes/incremental-union`, D6.
+  const g = google();
+  await (await sender(g.fetchImpl)).sendSilent(
+    [{ kind: "fcm", token: "F1", env: PROJECT }],
+    EVT,
+    42,
+  );
+  const [send] = g.sends();
+  assertEquals(JSON.parse(send.init.body as string).message.data, { eventId: EVT, seq: "42" });
+});
+
 Deno.test("fcm → the token exchange presents a signed service-account assertion for the messaging scope", async () => {
   const g = google();
   await (await sender(g.fetchImpl, () => 1_000_000)).sendSilent([{

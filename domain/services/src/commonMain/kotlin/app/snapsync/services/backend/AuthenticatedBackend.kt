@@ -8,7 +8,8 @@ import app.snapsync.model.EventCreated
 import app.snapsync.model.EventMeta
 import app.snapsync.model.EventRenamed
 import app.snapsync.model.Reply
-import app.snapsync.model.UnionAsset
+import app.snapsync.model.UnionPage
+import app.snapsync.model.UnionTrigger
 import app.snapsync.ports.Backend
 import app.snapsync.services.version.AppVersionGate
 import co.touchlab.kermit.Logger
@@ -29,7 +30,7 @@ interface AuthenticatedBackend {
     suspend fun joinEvent(eventId: String, deviceId: String): Reply<Unit>
     suspend fun publishManifest(eventId: String, deviceId: String, manifest: DeviceManifest): Reply<Unit>
     suspend fun leaveEvent(eventId: String, deviceId: String): Reply<Unit>
-    suspend fun eventFiles(eventId: String): Reply<List<UnionAsset>>
+    suspend fun eventFiles(eventId: String, cursor: Long?, trigger: UnionTrigger): Reply<UnionPage>
     suspend fun deviceFiles(deviceId: String): Reply<List<DeviceFile>>
     suspend fun putDeviceConfig(deviceId: String, push: PushEndpoint): Reply<Unit>
 }
@@ -73,8 +74,10 @@ interface Credential {
  *   **any success** clears that refusal. The upload extension composes this with no gate: it has no screen to show
  *   a refusal on.
  *
- * The two event reads the backend authorizes by the event id alone carry no token, so a rejection cannot arise
- * there; only the version verdicts apply.
+ * The event's details, which the backend authorizes by the event id alone, carry no token, so a rejection cannot
+ * arise there; only the version verdicts apply. The union read is public too, but carries the credential: the backend
+ * verifies a token it is sent so its log can name the reader (decision record `changes/incremental-union`, D5), so its
+ * `401` is a verdict on that token and is recovered from like any gated route's.
  */
 class CredentialedBackend(
     private val backend: Backend,
@@ -96,7 +99,8 @@ class CredentialedBackend(
 
     override suspend fun leaveEvent(eventId: String, deviceId: String) = gated { backend.leaveEvent(it, eventId, deviceId) }
 
-    override suspend fun eventFiles(eventId: String) = observed(backend.eventFiles(eventId))
+    override suspend fun eventFiles(eventId: String, cursor: Long?, trigger: UnionTrigger) =
+        gated { backend.eventFiles(it, eventId, cursor, trigger) }
 
     override suspend fun deviceFiles(deviceId: String) = gated { backend.deviceFiles(it, deviceId) }
 

@@ -24,9 +24,15 @@ const APNS_HOSTS: Record<string, string> = {
 // The silent-wake payload: content-available only — no alert, sound, or badge — plus a top-level
 // `eventId` sibling of `aps` naming the event this push concerns (delivered to the app as
 // `userInfo["eventId"]`, capability `event-notify-endpoint`), so a receiving device knows which event
-// to reconcile.
-function silentBody(eventId: string): string {
-  return JSON.stringify({ aps: { "content-available": 1 }, eventId });
+// to reconcile. A wake for a photo also names the union position it announces, as a top-level `seq`
+// (decision record `changes/incremental-union`, D6), so a device already past it reads nothing; the
+// close wake carries none, and the body is then exactly what it always was.
+function silentBody(eventId: string, seq?: number): string {
+  return JSON.stringify({
+    aps: { "content-available": 1 },
+    eventId,
+    ...(seq === undefined ? {} : { seq }),
+  });
 }
 
 // Refresh the provider JWT well within Apple's 1-hour ceiling (Apple rejects tokens older than 1h and
@@ -65,7 +71,7 @@ export function createApnsSender(
     return jwt;
   }
 
-  async function sendOne(pt: PushToken, eventId: string): Promise<SendOutcome> {
+  async function sendOne(pt: PushToken, eventId: string, seq?: number): Promise<SendOutcome> {
     if (pt.kind !== "apns") {
       return { token: pt.token, status: "skipped", reason: `kind ${pt.kind}` };
     }
@@ -97,7 +103,7 @@ export function createApnsSender(
         "apns-collapse-id": eventId,
         "content-type": "application/json",
       },
-      body: silentBody(eventId),
+      body: silentBody(eventId, seq),
     });
   }
 

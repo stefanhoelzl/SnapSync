@@ -1,5 +1,7 @@
 package app.snapsync.feature.download
 
+import app.snapsync.model.UnionTrigger
+import app.snapsync.model.UnionPage
 import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.services.wake.EventChecks
 import app.snapsync.mock.inMemoryDatabases
@@ -34,12 +36,17 @@ class DownloadPushReceiverTest {
     private val eventA = "7a3f9c21-0000-4000-8000-00000000000a"
     private val eventB = "7a3f9c21-0000-4000-8000-00000000000b"
 
-    /** Records the event ids reconcile asked the union for — the observable proof reconcile ran. */
-    private class RecordingUnion : EventUnionSource {
+    /**
+     * Records the event ids reconcile asked the union for — the observable proof reconcile ran — and from where; it
+     * answers an empty union at [position].
+     */
+    private class RecordingUnion(private val position: Long = 0) : EventUnionSource {
         val requested = mutableListOf<String>()
-        override suspend fun union(eventId: String): Result<List<UnionAsset>> {
+        val from = mutableListOf<Long?>()
+        override suspend fun union(eventId: String, cursor: Long?, trigger: UnionTrigger): Result<UnionPage> {
             requested += eventId
-            return Result.success(emptyList())
+            from += cursor
+            return Result.success(UnionPage(emptyList(), position))
         }
     }
 
@@ -96,6 +103,19 @@ class DownloadPushReceiverTest {
         )
         receiver.onSilentPush(eventA)
         assertTrue(union.requested.isEmpty(), "an unreadable membership must not reconcile")
+    }
+
+    @Test
+    fun a_push_announcing_a_position_already_read_reads_nothing() = runTest {
+        // Decision record `changes/incremental-union`, D6: a burst of pushes after one read costs no more reads.
+        val union = RecordingUnion(position = 9)
+        val receiver = receiver(union, active = eventA)
+        receiver.onSilentPush(eventA, announced = 5) // no position stored yet: reads the whole union, stores 9
+        receiver.onSilentPush(eventA, announced = 9)
+        receiver.onSilentPush(eventA, announced = 7)
+        assertEquals(listOf(eventA), union.requested, "only the first push read")
+        receiver.onSilentPush(eventA, announced = 10)
+        assertEquals(listOf<Long?>(null, 9), union.from, "a later announcement reads from the stored position")
     }
 
     @Test

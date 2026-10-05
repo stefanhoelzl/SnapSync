@@ -10,7 +10,8 @@ import app.snapsync.model.EventRenamed
 import app.snapsync.model.MintRequest
 import app.snapsync.model.RenewRequest
 import app.snapsync.model.Reply
-import app.snapsync.model.UnionAsset
+import app.snapsync.model.UnionPage
+import app.snapsync.model.UnionTrigger
 
 /**
  * The SnapSync backend — one external system, one thin port (`docs/architecture.md`, "Ports are the I/O boundary
@@ -22,10 +23,11 @@ import app.snapsync.model.UnionAsset
  * That is what makes a mock of it honest: it answers what a backend would answer, and holds no policy a test could
  * accidentally bypass.
  *
- * **The token is passed per call**, and only to the routes the backend gates: whether a method takes a `token` IS
- * whether its route is gated. The ungated ones — the three `/attest/…` issuers and the two event reads authorized by
- * the event id alone — take none. A `null` token still sends the request: the backend answers it `401`, and that is
- * the service's to handle.
+ * **The token is passed per call**, and only to the routes that verify one: whether a method takes a `token` IS
+ * whether its route verifies it — every gated route, and the union read, which is public but checks a token it is
+ * sent so its log can name the reader (decision record `changes/incremental-union`, D5). The ungated rest — the three
+ * `/attest/…` issuers and the event's details — take none. A `null` token still sends the request: a gated route
+ * answers it `401`, the union serves it anonymously, and either is the service's to handle.
  *
  * Implementations never throw (cancellation aside): a transport failure is [Reply.Unreachable], a success whose
  * body does not decode is [Reply.Malformed].
@@ -62,8 +64,12 @@ interface Backend : Port {
     /** `DELETE /events/<eventId>/devices/<deviceId>` — end a membership. */
     suspend fun leaveEvent(token: String?, eventId: String, deviceId: String): Reply<Unit>
 
-    /** `GET /events/<eventId>/files` — the event-wide union of complete assets; public, authorized by the id alone. */
-    suspend fun eventFiles(eventId: String): Reply<List<UnionAsset>>
+    /**
+     * `GET /events/<eventId>/files` — the event-wide union of complete assets; public, authorized by the id alone. From
+     * [cursor] only what was gained after it, all of it for `null`; [trigger] is why the app reads. Each resource's
+     * `url` is its stable download address, which redirects to the bytes.
+     */
+    suspend fun eventFiles(token: String?, eventId: String, cursor: Long?, trigger: UnionTrigger): Reply<UnionPage>
 
     /** `GET /files/devices/<deviceId>` — what a device has stored. */
     suspend fun deviceFiles(token: String?, deviceId: String): Reply<List<DeviceFile>>

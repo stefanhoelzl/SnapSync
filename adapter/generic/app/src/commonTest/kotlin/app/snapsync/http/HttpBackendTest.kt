@@ -1,5 +1,8 @@
 package app.snapsync.http
 
+import app.snapsync.model.UnionTrigger
+import app.snapsync.model.UNION_TRIGGER_HEADER
+import app.snapsync.model.UNION_CURSOR_HEADER
 import app.snapsync.model.APP_VERSION_HEADER
 import app.snapsync.model.PushEndpoint
 import app.snapsync.model.AssetId
@@ -43,7 +46,13 @@ import kotlinx.serialization.json.jsonPrimitive
 @OptIn(ExperimentalEncodingApi::class)
 class HttpBackendTest {
 
-    private class Sent(val method: String, val path: String, val headers: Map<String, List<String>>, val body: String)
+    private class Sent(
+        val method: String,
+        val path: String,
+        val headers: Map<String, List<String>>,
+        val body: String,
+        val query: String = "",
+    )
 
     private val sent = mutableListOf<Sent>()
 
@@ -52,6 +61,7 @@ class HttpBackendTest {
         body: String = "",
         base: String = "https://edge.test/api/v2/",
         fail: Throwable? = null,
+        cursor: String? = "0",
     ): Backend = HttpBackend(
         HttpClient(
             MockEngine { request ->
@@ -60,9 +70,14 @@ class HttpBackendTest {
                     request.url.encodedPath,
                     request.headers.entries().associate { it.key to it.value },
                     request.body.toByteArray().decodeToString(),
+                    request.url.encodedQuery,
                 )
                 fail?.let { throw it }
-                respond(body, status, headersOf(HttpHeaders.ContentType, "application/json"))
+                val headers = listOfNotNull(
+                    HttpHeaders.ContentType to listOf("application/json"),
+                    cursor?.let { UNION_CURSOR_HEADER to listOf(it) },
+                )
+                respond(body, status, headersOf(*headers.toTypedArray()))
             },
         ),
         base,
@@ -92,12 +107,13 @@ class HttpBackendTest {
     }
 
     /**
-     * Whether a method takes a token IS whether its route is gated: the backend's gate is pinned against
-     * `isGatedRequest` by `GatedPathPinTest`, and this pins every route of the port against the same predicate —
-     * so a token can never be withheld from a gated route, nor offered to an ungated one.
+     * Whether a method takes a token IS whether its route verifies one: the backend's gate is pinned against
+     * `isGatedRequest` by `GatedPathPinTest`, and this pins every route of the port against [verifiesToken] — the gated
+     * routes and the union read (decision record `changes/incremental-union`, D5) — so a token can never be withheld
+     * from a route that verifies it, nor offered to one that does not.
      */
     @Test
-    fun exactly_the_routes_that_take_a_token_are_the_gated_ones() = runTest {
+    fun exactly_the_routes_that_take_a_token_are_the_ones_that_verify_it() = runTest {
         val backend = backend()
         val gated = listOf<suspend () -> Unit>(
             { backend.createEvent("T", CreateEventRequest("n", "s", null)) },
@@ -107,18 +123,18 @@ class HttpBackendTest {
             { backend.leaveEvent("T", "E", "D") },
             { backend.deviceFiles("T", "D") },
             { backend.putDeviceConfig("T", "D", PushEndpoint("apns", "t", "sandbox")) },
+            { backend.eventFiles("T", "E", null, UnionTrigger.FOREGROUND) },
         )
         val ungated = listOf<suspend () -> Unit>(
             { backend.challenge() },
             { backend.mintToken(MintRequest("D", "K", ProofFormat.APP_ATTEST, byteArrayOf(1), "c")) },
             { backend.renewToken(RenewRequest("D", byteArrayOf(1), "c")) },
             { backend.getEvent("E") },
-            { backend.eventFiles("E") },
         )
         gated.forEach { it() }
         ungated.forEach { it() }
-        sent.take(gated.size).forEach { assertTrue(isGatedRequest(it.method, it.path), "${it.method} ${it.path} is gated") }
-        sent.drop(gated.size).forEach { assertTrue(!isGatedRequest(it.method, it.path), "${it.method} ${it.path} is ungated") }
+        sent.take(gated.size).forEach { assertTrue(verifiesToken(it.method, it.path), "${it.method} ${it.path} verifies a token") }
+        sent.drop(gated.size).forEach { assertTrue(!verifiesToken(it.method, it.path), "${it.method} ${it.path} verifies none") }
     }
 
     // ── each route's address and body ──────────────────────────────────────────────────────────────
@@ -248,14 +264,42 @@ class HttpBackendTest {
     }
 
     @Test
-    fun the_union_is_read_with_each_resources_url() = runTest {
+    fun the_union_is_read_without_urls_and_each_resource_is_addressed_at_its_download_route() = runTest {
+        // Decision record `changes/incremental-union`, D1/D3: the route that redirects to the bytes is this class's to
+        // build, so the backend sends none.
+        val body = """[{"deviceId":"D","assetId":"A.b-c_d~e","creationDate":"c","resources":[
+            {"key":"A-primary.jpg","role":"primary","contentType":"image/jpeg","filename":"IMG.JPG"}]}]"""
+        val page = (backend(body = body, cursor = "17").eventFiles("T", "E", null, UnionTrigger.FOREGROUND) as Reply.Ok).value
+        val union = page.assets.single()
+        assertEquals("D", union.deviceId)
+        assertEquals("https://edge.test/api/v2/events/E/files/devices/D/A.b-c_d~e/primary", union.resources.single().url)
+        assertEquals("IMG.JPG", union.resources.single().originalFilename)
+        assertEquals(17, page.cursor)
+        assertEquals("GET /api/v2/events/E/files", "${sent[0].method} ${sent[0].path}")
+        assertEquals("urls=false", sent[0].query)
+        assertEquals(listOf("foreground"), sent[0].headers[UNION_TRIGGER_HEADER])
+    }
+
+    @Test
+    fun a_union_read_from_a_position_sends_it_and_why() = runTest {
+        backend(body = "[]").eventFiles("T", "E", 42, UnionTrigger.PUSH)
+        assertEquals("urls=false&cursor=42", sent[0].query)
+        assertEquals(listOf("push"), sent[0].headers[UNION_TRIGGER_HEADER])
+        assertEquals(listOf("Bearer T"), sent[0].headers[HttpHeaders.Authorization])
+    }
+
+    @Test
+    fun a_url_an_older_backend_still_sends_is_kept() = runTest {
         val body = """[{"deviceId":"D","assetId":"A","creationDate":"c","resources":[
             {"key":"A-primary.jpg","url":"https://u","role":"primary","contentType":"image/jpeg","filename":"IMG.JPG"}]}]"""
-        val union = (backend(body = body).eventFiles("E") as Reply.Ok).value.single()
-        assertEquals("D", union.deviceId)
-        assertEquals("https://u", union.resources.single().url)
-        assertEquals("IMG.JPG", union.resources.single().originalFilename)
-        assertEquals("GET /api/v2/events/E/files", "${sent[0].method} ${sent[0].path}")
+        val page = (backend(body = body).eventFiles(null, "E", null, UnionTrigger.JOIN) as Reply.Ok).value
+        assertEquals("https://u", page.assets.single().resources.single().url)
+    }
+
+    @Test
+    fun a_union_answer_without_its_position_is_malformed() = runTest {
+        assertIs<Reply.Malformed>(backend(body = "[]", cursor = null).eventFiles(null, "E", null, UnionTrigger.JOIN))
+        assertIs<Reply.Malformed>(backend(body = "[]", cursor = "x").eventFiles(null, "E", null, UnionTrigger.JOIN))
     }
 
     // ── the per-device listing: strict ─────────────────────────────────────────────────────────────
@@ -299,6 +343,6 @@ class HttpBackendTest {
     fun a_success_whose_body_does_not_decode_is_malformed() = runTest {
         assertIs<Reply.Malformed>(backend(body = "not json").getEvent("E"))
         assertIs<Reply.Malformed>(backend(HttpStatusCode.Created, "{}").createEvent("T", CreateEventRequest("n", "s", null)))
-        assertIs<Reply.Malformed>(backend(body = "{").eventFiles("E"))
+        assertIs<Reply.Malformed>(backend(body = "{").eventFiles(null, "E", null, UnionTrigger.FOREGROUND))
     }
 }

@@ -2,7 +2,8 @@ package app.snapsync.services.backend
 
 import app.snapsync.model.Reply
 import app.snapsync.model.StoredResource
-import app.snapsync.model.UnionAsset
+import app.snapsync.model.UnionPage
+import app.snapsync.model.UnionTrigger
 import app.snapsync.model.toResult
 import app.snapsync.model.uploadKey
 
@@ -35,9 +36,12 @@ class DeviceListingShapeException(message: String) : Exception(message)
  * The event-wide union: every contributing device's **complete** assets, each tagged with its `deviceId` and
  * carrying per-resource download `url`s. Failures surface as a failed [Result] (never thrown) so the download
  * controller can keep its last good state rather than crash. Own-vs-foreign selection is the caller's concern.
+ *
+ * Read from a [cursor] it answers only what was gained since, all of it for `null` (decision record
+ * `changes/incremental-union`, D3); [trigger] says why, and the backend records it (capability `privacy-security`).
  */
 fun interface EventUnionSource {
-    suspend fun union(eventId: String): Result<List<UnionAsset>>
+    suspend fun union(eventId: String, cursor: Long?, trigger: UnionTrigger): Result<UnionPage>
 }
 
 /**
@@ -65,6 +69,6 @@ class BackendDeviceFilesSource(private val backend: AuthenticatedBackend) : Devi
 /** [EventUnionSource] over the backend's public union read: any answer but a served one is a failed [Result]. */
 class BackendEventUnionSource(private val backend: AuthenticatedBackend) : EventUnionSource {
 
-    override suspend fun union(eventId: String): Result<List<UnionAsset>> =
-        backend.eventFiles(eventId).toResult("union $eventId")
+    override suspend fun union(eventId: String, cursor: Long?, trigger: UnionTrigger): Result<UnionPage> =
+        backend.eventFiles(eventId, cursor, trigger).toResult("union $eventId (${trigger.wire}, from ${cursor ?: "start"})")
 }

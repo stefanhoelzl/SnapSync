@@ -68,7 +68,8 @@ class TransferContractBindingsTest {
                 is FixtureAnswer.Respond ->
                     if (answer.status in 200..299) mock.operator.completeJob(tag)
                     else mock.operator.failJob(tag, UploadError.Http(answer.status))
-                FixtureAnswer.Hold, null -> Unit
+                // No upload clause redirects.
+                is FixtureAnswer.Redirect, FixtureAnswer.Hold, null -> Unit
             }
         }
 
@@ -159,20 +160,24 @@ class TransferContractBindingsTest {
         private fun answer(tag: String, url: String) {
             if (mock.operator.inFlight().none { it.description == tag }) return
             when (val answer = TransferFixture.answerOf(routeOf(url))) {
-                is FixtureAnswer.Respond -> {
-                    val sent = if (answer.short) answer.length / 2 else answer.length
-                    bodies["temp:/$tag"] = TransferFixture.body(answer.length).copyOf(sent)
-                    mock.operator.finish(
-                        tag,
-                        TransferOutcome(
-                            statusCode = answer.status,
-                            expectedBytes = if (answer.declaresLength) answer.length.toLong() else -1L,
-                            receivedBytes = sent.toLong(),
-                        ),
-                    )
-                }
+                // The network the binding plays follows a redirect, as a real transport does: the target answers.
+                is FixtureAnswer.Redirect -> respond(tag, answer.to)
+                is FixtureAnswer.Respond -> respond(tag, answer)
                 FixtureAnswer.Hold, null -> Unit
             }
+        }
+
+        private fun respond(tag: String, answer: FixtureAnswer.Respond) {
+            val sent = if (answer.short) answer.length / 2 else answer.length
+            bodies["temp:/$tag"] = TransferFixture.body(answer.length).copyOf(sent)
+            mock.operator.finish(
+                tag,
+                TransferOutcome(
+                    statusCode = answer.status,
+                    expectedBytes = if (answer.declaresLength) answer.length.toLong() else -1L,
+                    receivedBytes = sent.toLong(),
+                ),
+            )
         }
     }
 

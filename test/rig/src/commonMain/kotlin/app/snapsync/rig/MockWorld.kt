@@ -4,6 +4,7 @@ import app.snapsync.mock.DeclaredVersion
 import app.snapsync.mock.MockDevice
 import app.snapsync.mock.UploadNetwork
 import app.snapsync.mock.MockedSystem
+import app.snapsync.model.UnionTrigger
 import app.snapsync.model.APP_VERSION_HEADER
 import app.snapsync.model.AssetId
 import app.snapsync.model.CreateEventRequest
@@ -76,8 +77,12 @@ class BackendReach(
     suspend fun objectsOf(deviceId: String): Set<String> =
         read("the listing", port.deviceFiles(null, deviceId)).mapTo(mutableSetOf()) { uploadKey(it.assetId, it.role, it.filename) }
 
-    /** The union the backend serves for [eventId]. */
-    suspend fun unionOf(eventId: String): List<UnionAsset> = read("the union", port.eventFiles(eventId))
+    /**
+     * The union the backend serves for [eventId] — read through the port with no token, so the backend logs it as an
+     * anonymous full read (decision record `changes/incremental-union`, D5), like a browser's.
+     */
+    suspend fun unionOf(eventId: String): List<UnionAsset> =
+        read("the union", port.eventFiles(null, eventId, null, UnionTrigger.FOREGROUND)).assets
 
     /** The event's name, or `null` for an event the backend does not hold (a `404`). */
     suspend fun eventOf(eventId: String): Pair<Boolean, String?> = when (val reply = port.getEvent(eventId)) {

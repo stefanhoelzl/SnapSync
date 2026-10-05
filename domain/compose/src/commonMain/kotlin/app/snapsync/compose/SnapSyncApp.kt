@@ -1,5 +1,6 @@
 package app.snapsync.compose
 
+import app.snapsync.model.UnionTrigger
 import app.snapsync.model.transferNetworkOf
 import app.snapsync.services.gallery.PermissionAwareCandidateSource
 
@@ -784,7 +785,7 @@ class AppCore internal constructor(
         Provision(
             // From the union the entry's adoption read in this same provision, when it did (capability
             // `receiving-photos`): one union read per join.
-            reconcileDownloads = { eventId -> downloadController.reconcile(eventId, known = joinUnion.take(eventId)) },
+            reconcileDownloads = { downloadController.reconcile(it, UnionTrigger.JOIN, known = joinUnion.take(it)) },
             albumCoordinator = albumCoordinator,
             activeEventId = { services.config.config.value?.eventId },
             // The order is `MembershipEntry`'s rule; the backend leave is awaited here, unlike the leave command's.

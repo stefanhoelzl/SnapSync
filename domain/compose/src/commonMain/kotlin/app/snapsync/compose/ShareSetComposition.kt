@@ -42,7 +42,9 @@ internal fun receivedPhotoAdoptionFor(
     gallery: GalleryReader,
     core: AppCore,
 ): ReceivedPhotoAdoption = ReceivedPhotoAdoption(
-    union = { eventId -> backend.union.union(eventId).onSuccess { core.joinUnion.offer(eventId, it) } },
+    union = { eventId, cursor, trigger ->
+        backend.union.union(eventId, cursor, trigger).onSuccess { core.joinUnion.offer(eventId, it) }
+    },
     store = services.downloadStore,
     library = MarkedPhotoLookup(gallery, core::selectionScope),
     record = core.downloadController::settleAdopted,

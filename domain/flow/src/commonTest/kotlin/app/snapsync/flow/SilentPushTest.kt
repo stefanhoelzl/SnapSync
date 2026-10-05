@@ -19,7 +19,10 @@ class SilentPushTest {
         var attestations = 0
     }
 
-    private fun flow(recorder: Recorder, download: suspend (String) -> Unit = { recorder.seen += "down:$it" }) =
+    private fun flow(
+        recorder: Recorder,
+        download: suspend (String, Long?) -> Unit = { id, seq -> recorder.seen += "down:$id" + (seq?.let { "@$it" } ?: "") },
+    ) =
         SilentPush(
             reloadConfig = { recorder.reloads++ },
             refreshAttestation = { recorder.attestations++ },
@@ -37,11 +40,20 @@ class SilentPushTest {
     }
 
     @Test
+    fun `the position a push announces reaches the download arm as APNs and FCM carry it`() = runTest {
+        val r = Recorder()
+        flow(r).run(mapOf<Any?, Any?>("eventId" to "E", "seq" to 42L))
+        flow(r).run(mapOf<Any?, Any?>("eventId" to "E", "seq" to "43"))
+        flow(r).run(mapOf<Any?, Any?>("eventId" to "E", "seq" to "no"))
+        assertEquals(listOf("down:E@42", "down:E@43", "down:E"), r.seen)
+    }
+
+    @Test
     fun `a failing download arm is contained`() = runTest {
         // The push's handler must still be released, and its tail still joined: the imports it drains are staged
         // already, and a union read that threw has nothing to say about them.
         val r = Recorder()
-        flow(r, download = { error("the union read blew up") }).run(mapOf<Any?, Any?>("eventId" to "E")) // must not throw
+        flow(r, download = { _, _ -> error("the union read blew up") }).run(mapOf<Any?, Any?>("eventId" to "E")) // must not throw
         assertEquals(1, r.reloads)
     }
 

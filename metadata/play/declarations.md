@@ -106,7 +106,11 @@ Instructions, the Android wording of `metadata/review/notes.md`:
   - a photo's **location** (its metadata, when the camera recorded it), as part of the photo;
   - the random **install ID** and the **push token**: they exist only to move the event's photos (telling devices
     apart, waking a device for new photos), so they are part of providing the photos;
-  - the **bug report** a user sends by hand, and the activity logs it carries: part of crash logs.
+  - the **bug report** a user sends by hand, and the activity logs it carries: part of crash logs;
+  - the **read record** of an event's photo list (which install read it, why, when, how many photos it was given;
+    browsers anonymously; deleted with the event's photos — capability `privacy-security`): **diagnostics**, covered by
+    the diagnostics already declared in both stores (decided 2026-10-05, `changes/incremental-union`). It is not app
+    interactions: it records the app's own sync traffic, never what the member does.
 - **Security:** data is **encrypted in transit** (HTTPS only).
 - **Deletion:** users **can request deletion** at the contact email, and an event's photos are deleted automatically
   once everyone has them, never later than 30 days after the event is created or starts.

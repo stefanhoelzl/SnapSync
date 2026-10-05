@@ -15,8 +15,12 @@ import app.snapsync.model.ProofFormat
 import app.snapsync.model.RenewRequest
 import app.snapsync.model.Reply
 import app.snapsync.model.ResourceRole
+import app.snapsync.model.UNION_CURSOR_HEADER
+import app.snapsync.model.UNION_TRIGGER_HEADER
 import app.snapsync.model.UnionAsset
+import app.snapsync.model.UnionPage
 import app.snapsync.model.UnionResource
+import app.snapsync.model.UnionTrigger
 import app.snapsync.model.encodeToJson
 import app.snapsync.ports.Backend
 import co.touchlab.kermit.Logger
@@ -26,6 +30,7 @@ import io.ktor.client.request.request
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
+import io.ktor.http.Headers
 import io.ktor.http.HttpMethod
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
@@ -63,7 +68,13 @@ private val httpLog = Logger.withTag("Http")
  * holding the storage KEY where this one holds the CAPTURE NAME, and a lenient decode would accept either and seed
  * nonsense. A success that does not decode is [Reply.Malformed], never an invented value.
  *
- * Every id in a path is a UUID, so no path encoding is required.
+ * Every id in a path is a UUID or a canonical asset id (URL-unreserved characters only), so no path encoding is
+ * required.
+ *
+ * **It builds each union resource's download address** (decision record `changes/incremental-union`, D1): the union is
+ * read with `urls=false`, and the address is this backend's route for the resource —
+ * `<base>/events/<e>/files/devices/<d>/<asset>/<role>`, which redirects to the bytes. Route paths are this class's to
+ * know, and nothing above it builds one.
  */
 @OptIn(ExperimentalEncodingApi::class)
 class HttpBackend(
@@ -73,7 +84,12 @@ class HttpBackend(
 ) : Backend {
 
     private val base = base.trimEnd('/')
-    private val json = Json { ignoreUnknownKeys = true }
+    // `explicitNulls = false`: a nullable field the body leaves out decodes as `null` — the union's `url`, which an
+    // `urls=false` read omits — so no DTO needs a default, whose generated half no test could reach.
+    private val json = Json {
+        ignoreUnknownKeys = true
+        explicitNulls = false
+    }
 
     override suspend fun challenge(): Reply<String> =
         exchange(HttpMethod.Get, "/attest/challenge", token = null) { field(it, "challenge") }
@@ -179,18 +195,35 @@ class HttpBackend(
     override suspend fun leaveEvent(token: String?, eventId: String, deviceId: String): Reply<Unit> =
         exchange(HttpMethod.Delete, "/events/$eventId/devices/$deviceId", token) { }
 
-    override suspend fun eventFiles(eventId: String): Reply<List<UnionAsset>> =
-        exchange(HttpMethod.Get, "/events/$eventId/files", token = null) { text ->
-            json.decodeFromString(ListSerializer(AssetDto.serializer()), text).map { dto ->
-                UnionAsset(
-                    deviceId = dto.deviceId,
-                    // A non-canonical id fails the constructor, and the exchange answers that as Malformed.
-                    assetId = AssetId(dto.assetId),
-                    creationDate = dto.creationDate,
-                    resources = dto.resources.map { UnionResource(it.key, it.url, it.role, it.contentType, it.filename) },
-                )
-            }
+    // A missing or unreadable position is Malformed: a page the app could not continue from is no page.
+    override suspend fun eventFiles(
+        token: String?,
+        eventId: String,
+        cursor: Long?,
+        trigger: UnionTrigger,
+    ): Reply<UnionPage> = exchangeWith(
+        HttpMethod.Get,
+        "/events/$eventId/files?urls=false" + (cursor?.let { "&cursor=$it" } ?: ""),
+        token,
+        headers = mapOf(UNION_TRIGGER_HEADER to trigger.wire),
+    ) { text, headers ->
+        val position = requireNotNull(headers[UNION_CURSOR_HEADER]?.toLongOrNull()) { "no `$UNION_CURSOR_HEADER` in the answer" }
+        val assets = json.decodeFromString(ListSerializer(AssetDto.serializer()), text).map { dto ->
+            // A non-canonical id fails the constructor, and the exchange answers that as Malformed.
+            val assetId = AssetId(dto.assetId)
+            UnionAsset(
+                deviceId = dto.deviceId,
+                assetId = assetId,
+                creationDate = dto.creationDate,
+                resources = dto.resources.map {
+                    // An older backend still sends a url; ours is the same route, so either is the resource's address.
+                    val url = it.url ?: "$base/events/$eventId/files/devices/${dto.deviceId}/$assetId/${it.role}"
+                    UnionResource(it.key, url, it.role, it.contentType, it.filename)
+                },
+            )
         }
+        UnionPage(assets, position)
+    }
 
     override suspend fun deviceFiles(token: String?, deviceId: String): Reply<List<DeviceFile>> =
         exchange(HttpMethod.Get, "/files/devices/$deviceId", token) { text ->
@@ -211,6 +244,16 @@ class HttpBackend(
         token: String?,
         body: String? = null,
         read: (String) -> T,
+    ): Reply<T> = exchangeWith(method, path, token, body) { text, _ -> read(text) }
+
+    /** [exchange], with extra request [headers] and the answer's headers handed to [read]. */
+    private suspend fun <T> exchangeWith(
+        method: HttpMethod,
+        path: String,
+        token: String?,
+        body: String? = null,
+        headers: Map<String, String> = emptyMap(),
+        read: (String, Headers) -> T,
     ): Reply<T> {
         val url = "$base$path"
         val start = TimeSource.Monotonic.markNow()
@@ -219,6 +262,7 @@ class HttpBackend(
                 this.method = method
                 token?.let { header("Authorization", "Bearer $it") }
                 header(APP_VERSION_HEADER, appVersion)
+                headers.forEach { (name, value) -> header(name, value) }
                 body?.let {
                     contentType(ContentType.Application.Json)
                     setBody(it)
@@ -229,7 +273,7 @@ class HttpBackend(
                 "${method.value} $url → ${response.status.value} " +
                     "(${start.elapsedNow().inWholeMilliseconds}ms, req=${body?.length ?: 0}, resp=${text.length})"
             }
-            if (response.status.isSuccess()) decoded(text, read) else Reply.Refused(response.status.value, text)
+            if (response.status.isSuccess()) decoded(text) { read(it, response.headers) } else Reply.Refused(response.status.value, text)
         } catch (c: CancellationException) {
             throw c
         } catch (t: Throwable) {
@@ -265,7 +309,7 @@ class HttpBackend(
     private class AssetDto(val deviceId: String, val assetId: String, val creationDate: String, val resources: List<ResourceDto>)
 
     @Serializable
-    private class ResourceDto(val key: String, val url: String, val role: String, val contentType: String, val filename: String)
+    private class ResourceDto(val key: String, val url: String?, val role: String, val contentType: String, val filename: String)
 
     /** One stored resource, in the terms the backend addresses resources by. Every field required — see the class doc. */
     @Serializable

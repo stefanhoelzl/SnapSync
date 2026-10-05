@@ -1,6 +1,7 @@
 package app.snapsync.architecture
 
 import app.snapsync.http.isGatedRequest
+import app.snapsync.http.verifiesToken
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -75,5 +76,32 @@ class GatedPathPinTest {
         assertTrue(isGatedRequest("DELETE", "/api/v2/events/E1/devices/D1"))
         assertTrue(isGatedRequest("POST", "/api/v2/events"))
         assertTrue(isGatedRequest("PUT", "/api/v2/devices/D1"))
+    }
+
+    @Test
+    fun `the download redirect is ungated, and only as a read`() {
+        // `app.ts` exempts it from both gates through ONE predicate (`isDownloadRedirect`), outside the block above.
+        val text = app.readText()
+        val fn = text.substringAfter("function isDownloadRedirect(", "")
+        assertTrue(fn.isNotEmpty(), "the backend's download-redirect predicate moved — re-point this pin")
+        assertTrue(
+            Regex("""/\^\\/events\\/\[\^/]\+\\/files\\/devices\\/\[\^/]\+\\/\[\^/]\+\\/\[\^/]\+\$/""")
+                .containsMatchIn(fn.substringBefore("\n}")),
+            "the backend's download-redirect shape changed — update `isGatedRequest` and this pin",
+        )
+        assertTrue(Regex("""isDownloadRedirect\(method, path\)""").containsMatchIn(gate()), "the token gate no longer exempts it")
+        assertFalse(isGatedRequest("GET", "/api/v2/events/E1/files/devices/D1/A/primary"))
+        assertTrue(isGatedRequest("PUT", "/api/v2/events/E1/files/devices/D1/A/primary"))
+    }
+
+    @Test
+    fun `the union verifies a token it is sent, so its 401 is a verdict`() {
+        val shared = File(SourceScan.repoRoot, "api/src/routes/shared.ts").readText()
+        val union = shared.substringAfter("deviceApi.get(\"/events/:eventId/files\"", "").substringBefore("deviceApi.")
+        assertTrue(union.contains("verifyToken(") && union.contains("\"unattested\", 401"), "the union no longer verifies a sent token")
+        assertTrue(verifiesToken("GET", "/api/v2/events/E1/files?cursor=3"))
+        assertFalse(isGatedRequest("GET", "/api/v2/events/E1/files"), "the union stays public")
+        assertFalse(verifiesToken("GET", "/api/v2/events/E1"))
+        assertFalse(verifiesToken("GET", "/api/v2/events/E1/files/devices/D1/A/primary"))
     }
 }

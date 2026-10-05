@@ -13,7 +13,8 @@ import app.snapsync.model.EventRenamed
 import app.snapsync.model.MintRequest
 import app.snapsync.model.RenewRequest
 import app.snapsync.model.Reply
-import app.snapsync.model.UnionAsset
+import app.snapsync.model.UnionPage
+import app.snapsync.model.UnionTrigger
 import app.snapsync.ports.Backend
 
 /**
@@ -40,7 +41,8 @@ internal class ScriptedBackend(var answer: (route: String, token: String?) -> Re
     override suspend fun publishManifest(token: String?, eventId: String, deviceId: String, manifest: DeviceManifest): Reply<Unit> =
         call("manifest", token)
     override suspend fun leaveEvent(token: String?, eventId: String, deviceId: String): Reply<Unit> = call("leave", token)
-    override suspend fun eventFiles(eventId: String): Reply<List<UnionAsset>> = call("union", null)
+    override suspend fun eventFiles(token: String?, eventId: String, cursor: Long?, trigger: UnionTrigger): Reply<UnionPage> =
+        call("union", token)
     override suspend fun deviceFiles(token: String?, deviceId: String): Reply<List<DeviceFile>> = call("files", token)
     override suspend fun putDeviceConfig(token: String?, deviceId: String, push: PushEndpoint): Reply<Unit> = call("config", token)
 }
