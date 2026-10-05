@@ -14,6 +14,7 @@ import org.gradle.api.Project
  *  - filters the module's report to its OWN classes. The crediting edges (a producer's tests counting toward a consumer)
  *    are declared in the root build file; without this filter a credited module would measure the producer's classes
  *    too. For a module nothing credits, the filter is a no-op;
+ *  - leaves out the code the string-resource generator writes;
  *  - verifies the floors on `check`.
  *
  * The NUMBERS stay in each module's build file, through [CoverageFloors] (`coverageFloors { … }`), beside the ratchet
@@ -24,6 +25,9 @@ class CoveragePlugin : Plugin<Project> {
         project.pluginManager.apply("org.jetbrains.kotlinx.kover")
         val kover = project.extensions.getByType(KoverProjectExtension::class.java)
         kover.reports.filters.includes.projects.add(project.path)
+        // Compose Resources' generated `Res` accessors (`docs/architecture.md`, "Localization"): one per string, written
+        // by the generator rather than by anyone, and measuring them would floor a module on which strings a test reads.
+        kover.reports.filters.excludes.packages("app.snapsync.ui.resources", "app.snapsync.ui.components.resources")
         kover.reports.total.verify.onCheck.set(true)
         project.extensions.create("coverageFloors", CoverageFloors::class.java, project.path, kover)
     }

@@ -160,7 +160,11 @@ private fun SyncHealth.toAppSyncStatus(): AppSyncStatus = when (this) {
 @Composable
 private fun CountsLine(counts: SyncCounts?, waiting: MemberCounts?) {
     if (counts == null) return
-    val shared = counts.shared.label(Res.string.counts_shared, Res.string.counts_shared_progress, Res.string.counts_not_sharing)
+    val shared = counts.shared.label(
+        Res.string.counts_shared,
+        Res.string.counts_shared_progress,
+        Res.string.counts_not_sharing,
+    )
     val received = counts.received.label(
         Res.string.counts_received,
         Res.string.counts_received_progress,

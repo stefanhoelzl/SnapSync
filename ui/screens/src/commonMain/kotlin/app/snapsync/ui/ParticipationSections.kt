@@ -64,7 +64,11 @@ internal fun ColumnScope.ParticipationSections(
     albumNote: String,
 ) {
     AppToggleCard {
-        AppToggleRow(title = stringResource(Res.string.share_toggle), checked = state.shareOn, onCheckedChange = actions.onShareOn)
+        AppToggleRow(
+            title = stringResource(Res.string.share_toggle),
+            checked = state.shareOn,
+            onCheckedChange = actions.onShareOn,
+        )
         ShareBody(state, actions)
         AppToggleDivider()
         // Titled to name the SOURCE ("everyone's photos"), not "save … to your library" — the latter reads as

@@ -160,6 +160,12 @@ val appShellSources = files(
 // than the count — see the tier block's header.
 tasks.named("detekt") { enabled = false }
 
+// The project's own rules (`:tools:detekt-rules`), on every detekt task this file registers: the plugin hands the
+// root's `detektPlugins` to each. Which files a rule reads is its `includes` in `config/detekt/_base.yml`.
+dependencies {
+    detektPlugins(project(":tools:detekt-rules"))
+}
+
 tasks.register<io.gitlab.arturbosch.detekt.Detekt>("detektAppShell") {
     description = "Counts decisions in the iOS app shells (`docs/architecture.md`)."
     group = "verification"
@@ -275,6 +281,7 @@ val detektTierOf: Map<String, String> = mapOf(
     ":test:edge" to "harness",
     ":test:control" to "harness",
     ":tools:diagrams" to "harness",
+    ":tools:detekt-rules" to "harness",
 
     // Modules with no production source at all.
     ":test:architecture" to "tests",

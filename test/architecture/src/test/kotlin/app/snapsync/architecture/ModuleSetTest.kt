@@ -191,7 +191,7 @@ class ModuleSetTest {
         val SUPPORT = setOf(
             ":app:jvm",
             ":test:integration", ":test:architecture", ":test:harness-driver",
-            ":tools:diagrams", ":test:edge", ":test:control", ":test:feature",
+            ":tools:diagrams", ":tools:detekt-rules", ":test:edge", ":test:control", ":test:feature",
         )
     }
 }

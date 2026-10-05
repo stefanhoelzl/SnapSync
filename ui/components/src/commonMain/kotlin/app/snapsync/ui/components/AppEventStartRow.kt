@@ -46,7 +46,8 @@ fun appDateRangeLabel(start: LocalDateTime, end: LocalDateTime?, today: LocalDat
     val dates = LocalDateFormats.current
     val lastDay = end?.let { lastDayOf(start, it) }
     return when {
-        end == null || lastDay == null -> stringResource(Res.string.date_range_open, dates.day(start.date, withYear = false))
+        end == null || lastDay == null ->
+            stringResource(Res.string.date_range_open, dates.day(start.date, withYear = false))
         lastDay == start.date -> {
             val from = dates.format(start, "jm")
             val until = dates.format(end, "jm")

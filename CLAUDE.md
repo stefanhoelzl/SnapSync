@@ -421,6 +421,7 @@ git add screenshots/ && git commit
 :test:control          test-only, JVM-only support: the protocol's typed client (RigClient — health/device/state/awaitState/user/os/deviceVerb/contract, a 409 as a typed Reply.Refused) and the JVM host's tests, over both backends. Depends on :test:rig's JVM variant for the wire types plus :domain:model (the real UiState), :domain:presentation and :domain:feature, each declared explicitly; the rig's own deps are `implementation`, so a client never compiles against ports/, flow/, compose/ or the host, and ReadModelImportsTest confines its feature/ references to readmodel packages — the compile boundary and that gate are the read-model rule
 :test:edge             test-only, JVM-only support: LiveEdge — the real api/ as a local deno process (serve.ts --ephemeral, loopback-only, filesystem store), one per test JVM — shared by the Backend contract's Live binding, and the rig JVM host's `deno` backend; owns `resolveLocalDeployment`. Consumers apply build-logic's `snapsync.live-edge` plugin and call `liveEdge.consumedBy(task)`, which sets snapsync.apiDir/liveEdgeStore and declares the api/ sources as task inputs
 :tools:diagrams        test-only build tooling (`docs/architecture.md`): generates the architecture/ diagram set from the code and build model. Its :tools:diagrams:test is the local half of the freshness gate; the CI half is a step of ci.yml's `build` gate
+:tools:detekt-rules    build tooling: the project's own detekt rules (`HardCodedUiText`, `HardCodedSystemText`), loaded by every root detekt task and scoped in config/detekt/_base.yml — the gate behind "every word a person reads is a string resource" (`docs/architecture.md`, "Localization")
 iosApp/                Xcode project (app + upload-extension targets) — not Gradle
 ```
 
@@ -439,6 +440,15 @@ here: the gates are the authority and the doc is the one explanation.
 Still true and not a law: because iOS targets are present, `commonMain` is limited to the common
 stdlib + each zone's allowlisted libraries — JVM-only APIs there break the iOS compile (verify
 with the proxy task above).
+
+## Localization
+
+English only, built for more (`docs/architecture.md`, "Localization"). **Never write a word a person reads as a
+string literal** in `:ui:*`: put it in that module's `composeResources/values/strings.xml` and read it with
+`stringResource` (the `HardCodedUiText` detekt rule fails the build otherwise). The domain carries facts
+(`ScreenMessage`, `CoarseDuration`), never sentences, and dates go through `DateFormats`, never a hand-written
+month name. OS-shown text (`ios_` / `android_` keys) and the locale list generate platform files:
+`./gradlew nativeStrings`, then commit.
 
 ## Logging & errors
 

@@ -30,6 +30,7 @@ module :test:harness-driver
 module :test:integration
 module :test:launch-adapters
 module :test:rig
+module :tools:detekt-rules
 module :tools:diagrams
 module :ui:components
 module :ui:screens
