@@ -28,6 +28,7 @@ deployments/local.json                 the local rig: filesystem storage, domain
 deployments/components/build.json      build-scope values: sha (GITHUB_SHA), channel (SNAPSYNC_CHANNEL)
 deployments/components/policy.json     eventCapacity, eventWindowMaxSeconds, eventLifetimeSeconds,
                                        attestTokenTtlSeconds
+                                       (eventCapacity: 40, bounded by Edge's subrequest limit, below)
 deployments/components/apple.json      bundleId, teamId, apnsKeyId, appStoreUrl, appAttestRootCa
 deployments/components/android.json    androidPackageName, playStoreUrl, playTestGroupUrl, the attestation roots/trust/digests,
                                        the Firebase values
@@ -353,6 +354,13 @@ Decision records: `changes/archive/2026-08-25-record-uploads-in-database`,
   the real ceiling for a large Live Photo video over a slow link. If it ever bites, the fix is
   server-side resumable uploads.
 - 10 MB script, 500 ms startup, **50 subrequests** per request, 128 env vars.
+- **The subrequest limit bounds `eventCapacity`.** Every libSQL call and every push is a subrequest, and
+  the wake after a photo lands goes to every other member: a v2 byte upload or manifest publish costs
+  about capacity + 5 (storage PUT, three or four statements, the token query, one push per other member,
+  sometimes an FCM token fetch), v1 notify about capacity + 3. Capacity 40 leaves headroom; past about 45
+  the pushes over the limit fail as fetch errors the sender records as `failed`, so members silently miss
+  wakes while the write still stands. Raising it further needs the fan-out split across requests, not a
+  config edit. Decision record: `changes/archive/2026-10-05-raise-event-capacity`.
 - The relational store is **public preview**: 1 GB per database, up to **10 s of data loss** on primary
   failover, 32 766 bound parameters per statement. Acceptable because every row can be rebuilt by a
   device round-trip.

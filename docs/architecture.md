@@ -561,8 +561,9 @@ The generated snapshot is `api/schema.sql` (section "Database" below).
 - **Bounds** (policy in `deployments/components/policy.json`): capture window `[startsAt, endsAt]` of
   at most 30 days, which bounds uploads only and closes nothing. Lifetime `lifetime_seconds` (30 days)
   is stamped as a duration. The delete-by is derived per read as `max(createdAt, startsAt) + lifetime`
-  (`src/lifecycle.ts`, shared with the sweep). `capacity = 10` ever-enrolled devices (active ∪
-  departed; leaving frees nothing, rejoin reuses the slot) is the only refusal, `409`.
+  (`src/lifecycle.ts`, shared with the sweep). `capacity` ever-enrolled devices (active ∪ departed;
+  leaving frees nothing, rejoin reuses the slot) is the only refusal, `409`. It is 40 in the policy,
+  bounded by Edge's subrequest limit (`deployment.md`, "Edge Scripting limits worth knowing").
 - The **nightly sweep** (`src/scripts/sweep.ts`, a GitHub Actions workflow, since Edge caps requests at
   50 subrequests / 30 s CPU) gives each event one `sweepVerdict` (`src/lifecycle.ts`): **drop** the row
   past its delete-by; **complete** an ever-joined event that is empty (no active member) or past its

@@ -3,16 +3,14 @@
 
 import { Hono } from "hono";
 import {
-  type Db,
   deviceFiles,
   enroll,
   membersOf,
   publishStatements,
-  readDeviceRecord,
+  pushTokensForEvent,
   recordResource,
 } from "../db.ts";
 import { identityFromLegacyKey } from "../legacy-v1.ts";
-import type { PushToken } from "../push-send.ts";
 import { unsentSummary } from "../push.ts";
 import { byteKey } from "../storage.ts";
 import { validateFilename, validateUUID } from "../validators.ts";
@@ -46,21 +44,6 @@ type FileEntry = {
   filename: string;
   url: string;
 };
-
-/**
- * The device's registered push token, or `null` when it has none. Used by the notify fan-out, which is
- * **best-effort** — a member without a registered token is simply skipped, so this NEVER throws.
- *
- * There is no parsing left to do: the columns ARE the shape (`docs/architecture.md`), so a malformed
- * registration cannot reach here — it is refused at the write, by the route that made it.
- */
-async function readPushToken(db: Db, deviceId: string): Promise<PushToken | null> {
-  try {
-    return await readDeviceRecord(db, deviceId);
-  } catch {
-    return null; // store unreachable → skip this member (best-effort)
-  }
-}
 
 /** The routes only `/api/v1` serves, built over `deps`. */
 export function v1Routes({ fetchImpl, config, db, now, aws, pushSender }: RouteDeps): Hono {
@@ -227,9 +210,11 @@ export function v1Routes({ fetchImpl, config, db, now, aws, pushSender }: RouteD
   // Notify an event's members (capabilities `docs/architecture.md`, `receiving-photos`). GATED on the event row
   // (absent → 404, read failure → 502). Enumerate the ACTIVE members with one query — departed members
   // are skipped, which is what makes leaving stop the pushes without stopping the union; a read failure
-  // → 502 (nothing enumerable). Then BEST-EFFORT: read each member's registered push token (no row, or
-  // no registration → skipped) and send a silent (content-available) push carrying the route's `eventId`
-  // in its payload to the rest. Per-member read/send failures never fail the request
+  // → 502 (nothing enumerable). Then BEST-EFFORT: read every active member's registered push token in ONE
+  // statement (no registration → skipped; a failed read → nobody pushed) and send a silent
+  // (content-available) push carrying the route's `eventId` in its payload to the rest. One statement,
+  // not one per member, because each is a subrequest and Edge allows 50 per request: per-member reads
+  // put this route over that wall at about 24 members (`docs/deployment.md`). Read/send failures never fail the request
   // — always a bare 202 once the gate passed and members were enumerated. Server-chosen payload
   // (the path event id), all members, no exclusion; the uploader fires this via `receiving-photos`.
   v1Only.post("/events/:eventId/notify", async (c) => {
@@ -249,9 +234,9 @@ export function v1Routes({ fetchImpl, config, db, now, aws, pushSender }: RouteD
     );
     if (memberIds instanceof Response) return memberIds;
 
-    // Best-effort per-member token read (skips members without a registered token), then fan out.
-    const tokens = (await Promise.all(memberIds.map((d) => readPushToken(db, d))))
-      .filter((t): t is PushToken => t !== null);
+    // Best-effort token read — one statement for every member (skips members without a registered
+    // token), then fan out.
+    const tokens = await pushTokensForEvent(db, eventId).catch(() => []);
     const outcomes = await pushSender.sendSilent(tokens, eventId);
     const sent = outcomes.filter((o) => o.status === "sent").length;
     console.info(

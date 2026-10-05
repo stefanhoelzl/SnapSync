@@ -8,8 +8,8 @@ event, so a guest who scans days late still joins and contributes — until the 
 has ended and every member has settled what it shares, or a few days after its last photo arrived, the
 event closes: nobody joins and nothing about it changes any more. Its photos are deleted from the server
 once every member has them, a few days after the close at the latest, and never later than 30 days after
-its creation or its start — the retention promise every member relies on. At most 10 devices can ever
-take part, and leaving frees no place. Until it closes, nothing about an event except its name changes.
+its creation or its start — the retention promise every member relies on. Only a limited number of devices can
+ever take part, and leaving frees no place. Until it closes, nothing about an event except its name changes.
 Decision record: changes/archive/2026-09-28-early-event-completion
 ## Requirements
 ### Requirement: The date range closes nothing
@@ -38,16 +38,17 @@ photos are deleted.
 - **WHEN** an event's photos have been deleted and a member opens the app days later
 - **THEN** no notification was ever shown, and the photos they had received are still in their library
 
-### Requirement: At most 10 devices ever take part, and leaving frees no place
+### Requirement: A limited number of devices ever take part, and leaving frees no place
 
-An event SHALL admit at most 10 distinct devices over its whole life, counting devices that have left.
-Until the event closes, a device that left SHALL always be able to rejoin in its own place. A new device
-SHALL be refused once 10 have joined, even if some have left (what the joining guest is told: capability
-`join-event`). The limit SHALL hold exactly, even when several devices join at the same moment.
+An event SHALL admit a limited number of distinct devices over its whole life, set by the service when the
+event is created and counting devices that have left. Until the event closes, a device that left SHALL
+always be able to rejoin in its own place. A new device SHALL be refused once the limit has been reached,
+even if some have left (what the joining guest is told: capability `join-event`). The limit SHALL hold
+exactly, even when several devices join at the same moment.
 
 #### Scenario: Leaving does not make room
-- **WHEN** an event has had 10 devices and one leaves
-- **THEN** an 11th device is still refused
+- **WHEN** an event has reached its device limit and one device leaves
+- **THEN** a new device is still refused
 
 #### Scenario: A returning device rejoins
 - **WHEN** a device that left a full event scans its invite again before the event has closed
