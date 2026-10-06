@@ -59,7 +59,8 @@ CREATE TABLE events (
   ends_at          TEXT NOT NULL,
   capacity         INTEGER NOT NULL,
   lifetime_seconds INTEGER NOT NULL
-, closed_at TEXT, completed_at TEXT, last_landed_at TEXT, zone TEXT) STRICT;
+, closed_at TEXT, completed_at TEXT, last_landed_at TEXT, zone TEXT, key_id TEXT
+  CHECK (key_id IS NULL OR (length(key_id) = 16 AND key_id NOT GLOB '*[^0-9a-f]*'))) STRICT;
 
 CREATE TABLE memberships (
   event_id         TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,

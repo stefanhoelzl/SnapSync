@@ -7,6 +7,7 @@ import {
   enroll,
   presentMembers,
   presentMembership,
+  presentUploadMembership,
   publishStatements,
   pushTokensForEvent,
   recordResource,
@@ -15,6 +16,7 @@ import { identityFromLegacyKey } from "../legacy-v1.ts";
 import { unsentSummary } from "../push.ts";
 import { eventBytePath, storageKey } from "../storage.ts";
 import { validateFilename, validateUUID } from "../validators.ts";
+import { bodyToStore } from "./encrypted-upload.ts";
 import { parseManifestAssets } from "./manifest.ts";
 import {
   actsFor,
@@ -79,17 +81,29 @@ export function v1Routes({ fetchImpl, config, db, now, aws, pushSender }: RouteD
     // identity by parsing it (`docs/architecture.md`; the parse is v1-only and is deleted with v1).
     const identity = identityFromLegacyKey(filename);
     if (!identity) return c.text("invalid key", 400);
-    const eventId = await tryUpstream(
+    const target = await tryUpstream(
       c,
       `upload: membership read failed for ${deviceId}`,
-      () => presentMembership(db, deviceId),
+      () => presentUploadMembership(db, deviceId),
     );
-    if (eventId instanceof Response) return eventId;
-    if (eventId === null) return c.text("no event", 409);
+    if (target instanceof Response) return target;
+    if (target === null) return c.text("no event", 409);
+    const { eventId } = target;
     const path = await eventBytePath(eventId, deviceId, identity.assetId, identity.role);
+    // A v1 build predates encryption, so into an encrypted event this refuses its plaintext (`bodyToStore`).
+    const body = await bodyToStore(c, target.keyId);
+    if (body instanceof Response) return body;
 
     const contentType = c.req.header("content-type") ?? "application/octet-stream";
-    const refused = await streamPut(fetchImpl, config, c, "upload", storageKey(path), contentType);
+    const refused = await streamPut(
+      fetchImpl,
+      config,
+      c,
+      "upload",
+      storageKey(path),
+      contentType,
+      body,
+    );
     if (refused) return refused;
     // Bunny confirmed the stored object. Record the upload (`docs/architecture.md`) — BEST-EFFORT: this
     // route's success is "the bytes landed", and failing it because a bookkeeping row did not land would

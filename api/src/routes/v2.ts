@@ -11,16 +11,18 @@ import {
   gainedStatements,
   isMember,
   type ManifestAssetEntry,
-  membershipState,
   presentMembership,
+  presentUploadMembership,
   publishStatements,
   publishUnionChanges,
   recordResourceStatement,
   stampLanded,
+  uploadMembership,
 } from "../db.ts";
 import { RESOURCE_ROLES } from "../legacy-v1.ts";
 import { eventBytePath, storageKey } from "../storage.ts";
 import { validateFilename } from "../validators.ts";
+import { bodyToStore } from "./encrypted-upload.ts";
 import { parseManifestBody } from "./manifest.ts";
 import {
   closedRefusal,
@@ -130,12 +132,30 @@ export function v2Routes(deps: RouteDeps): Hono {
   async function storeResource(
     c: Context,
     route: string,
-    r: { eventId: string; deviceId: string; assetId: string; role: string; filename: string },
+    r: {
+      eventId: string;
+      deviceId: string;
+      assetId: string;
+      role: string;
+      filename: string;
+      /** The event's key id, `null` for a plain event — what may be stored (`bodyToStore`). */
+      keyId: string | null;
+    },
   ): Promise<Response> {
     const { eventId, deviceId, assetId, role, filename } = r;
     const path = await eventBytePath(eventId, deviceId, assetId, role);
+    const body = await bodyToStore(c, r.keyId);
+    if (body instanceof Response) return body;
     const contentType = c.req.header("content-type") ?? "application/octet-stream";
-    const refused = await streamPut(fetchImpl, config, c, route, storageKey(path), contentType);
+    const refused = await streamPut(
+      fetchImpl,
+      config,
+      c,
+      route,
+      storageKey(path),
+      contentType,
+      body,
+    );
     if (refused) return refused;
     // NOT best-effort, unlike v1. v1's manifest publish re-creates a missing row on its next cycle, and
     // that repair is what makes swallowing this failure safe there. v2's manifest writes no resource row
@@ -220,14 +240,20 @@ export function v2Routes(deps: RouteDeps): Hono {
     const { eventId, deviceId } = ids;
     const identity = resourceIdentity(c);
     if (identity instanceof Response) return identity;
-    const state = await tryUpstream(
+    const membership = await tryUpstream(
       c,
       `v2 upload: membership read failed for ${eventId}/${deviceId}`,
-      () => membershipState(db, eventId, deviceId),
+      () => uploadMembership(db, eventId, deviceId),
     );
-    if (state instanceof Response) return state;
+    if (membership instanceof Response) return membership;
+    const state = membership?.state;
     if (state !== "sharing" && state !== "settled") return c.text("not a member", 403);
-    return await storeResource(c, "v2 upload", { eventId, deviceId, ...identity });
+    return await storeResource(c, "v2 upload", {
+      eventId,
+      deviceId,
+      ...identity,
+      keyId: membership?.keyId ?? null,
+    });
   });
 
   v2Only.options("/events/:eventId/files/devices/:deviceId/:assetId/:role", (c) => {
@@ -244,14 +270,14 @@ export function v2Routes(deps: RouteDeps): Hono {
     if (deviceId instanceof Response) return deviceId;
     const identity = resourceIdentity(c);
     if (identity instanceof Response) return identity;
-    const eventId = await tryUpstream(
+    const target = await tryUpstream(
       c,
       `v2 upload: membership read failed for ${deviceId}`,
-      () => presentMembership(db, deviceId),
+      () => presentUploadMembership(db, deviceId),
     );
-    if (eventId instanceof Response) return eventId;
-    if (eventId === null) return c.text("no event", 409);
-    return await storeResource(c, "v2 upload", { eventId, deviceId, ...identity });
+    if (target instanceof Response) return target;
+    if (target === null) return c.text("no event", 409);
+    return await storeResource(c, "v2 upload", { ...target, deviceId, ...identity });
   });
 
   v2Only.options("/files/devices/:deviceId/:assetId/:role", (c) => {

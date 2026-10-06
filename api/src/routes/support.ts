@@ -203,8 +203,10 @@ export async function streamPut(
   route: string,
   key: string,
   contentType: string,
+  /** What to store: the request's body, unless the route decided otherwise (`bodyToStore`). */
+  body: ReadableStream<Uint8Array> | null = c.req.raw.body,
 ): Promise<Response | null> {
-  const watch = watchedBody(c.req.raw.body);
+  const watch = watchedBody(body);
   let upstream: Response;
   try {
     upstream = await fetchImpl(`https://${config.host}/${config.zone}/${key}`, {
@@ -322,9 +324,12 @@ export async function gateEvent(
  */
 export function publicEvent(event: EventRow) {
   // `zone` stays off the wire too: only the event page reads it (capability `event-site`), and no app needs it.
-  const { lifetimeSeconds: _stamped, lastLandedAt: _landed, zone: _zone, ...wire } = event;
+  // `keyId` is on the wire only for an ENCRYPTED event, so a plain event's body is byte-identical to what
+  // every installed build has always parsed.
+  const { lifetimeSeconds: _stamped, lastLandedAt: _landed, zone: _zone, keyId, ...wire } = event;
   return {
     ...wire,
+    ...(keyId ? { keyId } : {}),
     closedAt: event.closedAt ?? null,
     completedAt: event.completedAt ?? null,
     deletesAt: canonicalFromMs(deleteByMs(event)),
