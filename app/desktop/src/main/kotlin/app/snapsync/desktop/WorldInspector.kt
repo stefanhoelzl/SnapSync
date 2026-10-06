@@ -53,7 +53,7 @@ fun WorldInspector(
         // ---- Phone-pane theme (test-only view control; no world state) --------------------------
         Header("Theme (phone pane)")
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Switch(checked = dark, onCheckedChange = onDarkChange)
+            Switch(checked = dark, onCheckedChange = onDarkChange, modifier = Modifier.testTag("theme-dark"))
             Text(if (dark) "Dark" else "Light")
         }
 

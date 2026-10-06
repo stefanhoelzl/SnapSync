@@ -27,7 +27,7 @@ data class LedgerCounts(val done: Set<AssetId>, val pending: Set<AssetId>, val r
          *
          * The two have different consequences, so they are different values (law "Absence is never
          * silent"). No done photo from a real read means "none of your photos are recorded yet";
-         * `UNREAD` means "we have not looked". The status projection settles to "In sync" when the
+         * `UNREAD` means "we have not looked". The status projection settles to "Up to date" when the
          * synced count reaches the total, so a seed that claims to be a read empty answer — beside a
          * gallery total that is also un-counted — renders a checkmark on a device that has read
          * nothing (`SNAPSYNC-14`, `SNAPSYNC-16`). Only [UNREAD] holds the projection at
@@ -65,7 +65,7 @@ interface LedgerCountsSource {
  * composition root supplies the read, keeping this logic platform-free and testable.
  *
  * On any read failure the **last good value is retained** (never regressed to empty) — a transient read
- * error must not drop the done set and falsely flip the screen out of "In sync". The seed before any
+ * error must not drop the done set and falsely flip the screen out of "Up to date". The seed before any
  * successful read is [LedgerCounts.UNREAD] — *not read*, which is a different answer from a ledger
  * holding nothing, and the difference is what keeps the screen from settling over counts nobody took.
  * A failed read therefore leaves an un-read source un-read, rather than promoting it to a read zero.

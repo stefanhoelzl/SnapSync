@@ -151,6 +151,10 @@ fun excludedUserCommands(): Map<String, String> = mapOf(
         "opens the rename sheet and touches no port; the rename itself is wired as `/user/rename`.",
     "onRenameDismiss" to
         "dismisses that sheet, which the channel never opened.",
+    "onQrOpen" to
+        "shows the invite's QR code over the screen and touches no port; the invite itself is `/user/shareInvite`'s.",
+    "onQrDismiss" to
+        "dismisses that QR code, which the channel never shows.",
     "onCancelReconfigure" to
         "discards the settings surface without writing; `/user/reconfigure` opens, sets and commits it in " +
         "one call, so there is no half-open surface for the channel to cancel.",

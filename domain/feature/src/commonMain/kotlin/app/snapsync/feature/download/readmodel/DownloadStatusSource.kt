@@ -25,7 +25,7 @@ data class DownloadProgress(
          * The value before any successful refresh: **un-read**, not an event with nothing to receive.
          *
          * This distinction is not symmetry for its own sake. The joined screen's direction arrows are
-         * **conjunctive** — "In sync" is shown exactly when BOTH are hidden (`sync-status`) — and
+         * **conjunctive** — "Up to date" is shown exactly when BOTH are hidden (`sync-status`) — and
          * the download arrow hides when `downloaded >= total`. A placeholder `(0, 0)` satisfies that,
          * so an un-read download projection can carry the whole screen to a settled checkmark on its
          * own, even after the upload side learned to distinguish un-read from zero. Without this the

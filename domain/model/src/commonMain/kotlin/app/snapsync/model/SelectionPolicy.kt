@@ -142,7 +142,7 @@ class SelectionPolicy(val rules: List<SelectionRule>) {
  * **No default, in either polarity** — this is not fastidiousness; both defaults are catastrophic in
  * opposite directions. A permissive default uploads the entire library from the beginning of time; a
  * fail-closed default is *worse* because it is silent — a contributing member would share nothing, `N`
- * would read `0`, and the screen would read "In sync" while nothing happened.
+ * would read `0`, and the screen would read "Up to date" while nothing happened.
  *
  * [ceiling] is nullable only for a membership persisted before the capture-date range existed and not yet
  * reconciled (capability `photo-sharing`); `null` means unbounded above, the admit-on-doubt

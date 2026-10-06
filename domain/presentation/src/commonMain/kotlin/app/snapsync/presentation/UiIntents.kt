@@ -23,6 +23,8 @@ fun StatusContainerHost.onIntent(intent: UiIntent) {
         UiIntent.ConfirmLeaveDismiss -> surfaces.onConfirmLeaveDismiss()
         UiIntent.RenameOpen -> surfaces.onRenameOpen()
         UiIntent.RenameDismiss -> surfaces.onRenameDismiss()
+        UiIntent.QrOpen -> surfaces.onQrOpen()
+        UiIntent.QrDismiss -> surfaces.onQrDismiss()
         UiIntent.ReportBugOpen -> surfaces.onReportBugOpen()
         UiIntent.ReportBugDismiss -> surfaces.onReportBugDismiss()
         UiIntent.MenuOpen -> surfaces.onMenuOpen()

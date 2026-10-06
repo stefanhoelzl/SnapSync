@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -41,9 +42,9 @@ import org.jetbrains.compose.resources.stringResource
 /**
  * Owns the screen's convention-bearing structure: edge insets, the small app-name nav label, an
  * optional prominent [heading] beneath it (the joined event's name), the vertical centering of the
- * body content (the screen is a glanceable status display), and a bottom action cluster centered
- * across the width. Screens supply one or more action composables; this container row-arranges them
- * centered with consistent spacing, so the screen never hardcodes anchor or row geometry (spec: docs/architecture.md).
+ * body content (the screen is a glanceable status display), and a docked footer of actions beneath it, set
+ * off by a line along its top edge. Screens supply the footer's actions; this container stacks them centred
+ * with consistent spacing, so the screen never hardcodes anchor geometry (spec: docs/architecture.md).
  *
  * [onMenu] opens the app menu (capability `sync-status`) from a button at the start of the title row; `null` draws no
  * button — the screens that withhold the menu — while the row keeps its height, so the label never moves between
@@ -63,7 +64,7 @@ import org.jetbrains.compose.resources.stringResource
 fun ScreenLayout(
     title: String,
     heading: ScreenHeading?,
-    bottomActions: (@Composable () -> Unit)?,
+    bottomActions: (@Composable ColumnScope.() -> Unit)?,
     contentPinsActionCluster: Boolean,
     onTitleDoubleTap: (() -> Unit)?,
     onMenu: (() -> Unit)?,
@@ -108,14 +109,15 @@ fun ScreenLayout(
                 content = content,
             )
             if (bottomActions != null) {
-                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        bottomActions()
-                    }
-                }
+                // The docked footer: pinned beneath the content, which scrolls above it on a small phone. The line
+                // along its top edge marks where the scrolling content ends, whatever the footer holds.
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    content = bottomActions,
+                )
             }
         }
     }

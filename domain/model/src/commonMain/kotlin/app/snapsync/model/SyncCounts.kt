@@ -7,8 +7,8 @@ import kotlinx.serialization.Serializable
  * received"): per direction, how much there is and how much of it went through.
  *
  * Built from the SAME two pairs of numbers the direction arrows are derived from — `synced`/`total` for the
- * upload side, `downloaded`/`total` for the download side — so the counts and the arrows (and "In sync") can
- * never disagree. The reduction sets it only while the health is "In sync" or syncing; in every other status
+ * upload side, `downloaded`/`total` for the download side — so the counts and the arrows (and "Up to date") can
+ * never disagree. The reduction sets it only while the health is "Up to date" or syncing; in every other status
  * the numbers are unknown or zero and it is `null`.
  */
 @Serializable

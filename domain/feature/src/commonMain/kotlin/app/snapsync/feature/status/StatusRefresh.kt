@@ -63,7 +63,7 @@ class StatusRefresh(
      * It is its own entry point because the group has two callers with different jobs: [run] reads it before
      * the library enumeration, and the foreground-gated poll re-reads it on a cadence. Stating the membership
      * in both places is how the poll came to cover only one of the two arms — which left the download line
-     * unbounded and the screen able to claim "In sync" over an outstanding burst for a whole session.
+     * unbounded and the screen able to claim "Up to date" over an outstanding burst for a whole session.
      *
      * Ordering inside the group is not significant; ordering **against the enumeration** is, and that is
      * [run]'s.
@@ -87,7 +87,7 @@ class StatusRefresh(
         // admitted set can be stated at all — and a gate here would restate the second half. It used to,
         // and restated it wrongly: `grantsPhotoAccess` is true under LIMITED, so it admitted the one case
         // that actually reaches members — a partial grant whose selection snapshot has not landed,
-        // counted as a zero and settling the screen at "In sync" (capability `sync-status`).
+        // counted as a zero and settling the screen at "Up to date" (capability `sync-status`).
         val derived = runCatchingCancellable { policyFor(config) }
         derived.exceptionOrNull()?.let { failure ->
             // Cancellation is not a failed read. `runCatching` catches it like anything else, and

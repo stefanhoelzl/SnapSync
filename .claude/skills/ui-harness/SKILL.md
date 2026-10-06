@@ -87,7 +87,7 @@ curl -sS "$B/quit"
 - **The operator plays the OS — including acknowledgement.** `✓` on a job does *not* complete it: it
   lands the bytes on the backend mock (they show in the backend column at once) and leaves the job for the
   app to acknowledge — **the next `▶ Invoke extension` records it as `COMPLETED`**. Completing every job and
-  expecting "In sync" without a second invoke will look like a bug and isn't. A completed-but-unacked job stays
+  expecting "Up to date" without a second invoke will look like a bug and isn't. A completed-but-unacked job stays
   listed, so `index=0` twice hits the *same* row.
 - **Presets join through the phone's own screen** (create, then the join gate's confirm), on the app's own lane —
   a preset's `/click` can answer before the app is joined, so poll `/tree` for the joined screen before the next

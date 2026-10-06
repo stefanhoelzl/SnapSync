@@ -132,7 +132,6 @@ import app.snapsync.ui.resources.duration_days
 import app.snapsync.ui.resources.duration_hours
 import app.snapsync.ui.resources.event_settings
 import app.snapsync.ui.resources.invite_caption
-import app.snapsync.ui.resources.invite_eyebrow
 import app.snapsync.ui.resources.joined_statement
 import app.snapsync.ui.resources.leave_cancel
 import app.snapsync.ui.resources.leave_confirm
@@ -147,7 +146,9 @@ import app.snapsync.ui.resources.range_whole_event
 import app.snapsync.ui.resources.rename_event
 import app.snapsync.ui.resources.save
 import app.snapsync.ui.resources.settings_save_failed
+import app.snapsync.ui.resources.qr_sheet_title
 import app.snapsync.ui.resources.share_invite
+import app.snapsync.ui.resources.show_qr
 import app.snapsync.ui.resources.share_toggle
 import app.snapsync.ui.resources.store_app_store
 import app.snapsync.ui.resources.store_google_play
@@ -158,6 +159,29 @@ import app.snapsync.ui.resources.update_detail
 import app.snapsync.ui.resources.update_detail_version
 import app.snapsync.ui.resources.update_eyebrow
 import app.snapsync.ui.resources.waiting_members
+import androidx.compose.ui.test.performFirstLinkClick
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.foundation.layout.requiredSize
+import org.jetbrains.compose.resources.StringResource
+import app.snapsync.ui.resources.explain_share_title
+import app.snapsync.ui.resources.explain_share_caption
+import app.snapsync.ui.resources.explain_receive_title
+import app.snapsync.ui.resources.explain_receive_album
+import app.snapsync.ui.resources.explain_hint_title
+import app.snapsync.ui.resources.explain_hint_caption
+import app.snapsync.ui.resources.explain_receive_no_album
+import app.snapsync.ui.resources.explain_share_off_title
+import app.snapsync.ui.resources.explain_share_off_caption
+import app.snapsync.ui.resources.explain_settings_link
+import app.snapsync.ui.resources.explain_receive_off_title
+import app.snapsync.ui.resources.explain_receive_off_caption
+import app.snapsync.ui.resources.explain_share_blocked_title
+import app.snapsync.ui.resources.explain_receive_blocked_title
+import app.snapsync.ui.resources.explain_share_blocked_caption
+import app.snapsync.ui.resources.explain_access_link
+import app.snapsync.ui.resources.explain_receive_blocked_caption
+import app.snapsync.ui.resources.explain_share_limited_title
+import app.snapsync.ui.resources.explain_share_limited_caption
 
 // A representative invite link — any string renders a QR; the encoding is pinned in capability:config.
 private const val SAMPLE_INVITE = "https://snapsync.stho.net/join#v=3&d=eyJldmVudElkIjoiMSJ9"
@@ -251,6 +275,17 @@ private fun joined(
 
 private fun progress(done: Int, total: Int) = DirectionCount.Progress(done, total)
 private val inSync = joined(SyncHealth.InSync)
+
+/** [MEMBERSHIP]'s shared range, as the explanation words it. */
+private const val RANGE = "Mon 6 Jul – Fri 10 Jul"
+
+private val SE2_WIDTH = 375.dp
+private val SE2_HEIGHT = 667.dp
+
+/** A caption whose `%1$s` holds its [link]'s words, the way the explanation row renders it. */
+private fun caption(res: StringResource, link: StringResource, vararg rest: Any): String = str(res, str(link), *rest)
+
+private val COUNT = Regex("\\d+(/\\d+)? (shared|received)")
 private val syncing = joined(SyncHealth.Syncing(Arrow.PULSING, Arrow.HIDDEN))
 private val syncPending = joined(SyncHealth.Syncing(Arrow.STATIC, Arrow.HIDDEN))
 private val waitingForWifi = joined(SyncHealth.Syncing(Arrow.STATIC, Arrow.HIDDEN, waitingForWifi = true))
@@ -361,10 +396,10 @@ class StatusScreenTest {
         onNodeWithText("Mon 6 Jul – Fri 10 Jul" + " · " + str(Res.string.timing_starts_in, plural(Res.plurals.duration_days, 2, 2))).assertExists()
         onNodeWithText(str(ComponentRes.string.status_not_started)).assertExists()
         onNodeWithText(str(ComponentRes.string.range_starts), substring = true).assertDoesNotExist()
-        // It is information, not an action: no sync arrows, no "In sync", and no counts.
+        // It is information, not an action: no arrows, no "Up to date", and no counts.
         onNodeWithText(str(ComponentRes.string.status_in_sync)).assertDoesNotExist()
-        onNodeWithText("Synchronization pending …").assertDoesNotExist()
-        onNodeWithText("shared", substring = true).assertDoesNotExist()
+        onNodeWithText(str(ComponentRes.string.status_sync_pending)).assertDoesNotExist()
+        onNode(countsText()).assertDoesNotExist()
     }
 
     // ---- create layer ----
@@ -594,9 +629,9 @@ class StatusScreenTest {
         setContent { CreateScreen(UiState(Layer.CreateEvent())) }
 
         onNodeWithText(str(ComponentRes.string.status_in_sync)).assertDoesNotExist()
-        onNodeWithText("Synchronization", substring = true).assertDoesNotExist()
-        onNodeWithContentDescription(str(Res.string.leave_event)).assertDoesNotExist()
-        onNodeWithText(str(Res.string.invite_caption)).assertDoesNotExist()
+        onNodeWithText(str(ComponentRes.string.status_sync_pending)).assertDoesNotExist()
+        onNodeWithText(str(Res.string.leave_event)).assertDoesNotExist()
+        onNodeWithText(str(Res.string.share_invite)).assertDoesNotExist()
     }
 
     @Test
@@ -955,7 +990,7 @@ class StatusScreenTest {
     @Test
     fun `joined shows the leave action`() = runComposeUiTest {
         setContent { TestStatusScreen(inSync, cutoff = fixedCutoff()) }
-        onNodeWithContentDescription(str(Res.string.leave_event)).assertExists()
+        onNodeWithText(str(Res.string.leave_event)).assertExists()
     }
 
     @Test
@@ -965,9 +1000,9 @@ class StatusScreenTest {
                 joined(SyncHealth.NeedsAccess(GalleryAccess.DENIED)),
              cutoff = fixedCutoff())
         }
-        onNodeWithContentDescription(str(Res.string.leave_event)).assertExists()
-        onNodeWithText(str(Res.string.invite_caption)).assertExists()
-        onNodeWithContentDescription(str(Res.string.share_invite)).assertExists()
+        onNodeWithText(str(Res.string.leave_event)).assertExists()
+        onNodeWithText(str(Res.string.share_invite)).assertExists()
+        onNodeWithText(str(Res.string.show_qr)).assertExists()
     }
 
     @Test
@@ -981,7 +1016,7 @@ class StatusScreenTest {
             )
         }
         onNodeWithText(str(Res.string.leave_title)).assertDoesNotExist()
-        onNodeWithContentDescription(str(Res.string.leave_event)).performClick()
+        onNodeWithText(str(Res.string.leave_event)).performClick()
         assertEquals(1, asked)
     }
 
@@ -1026,17 +1061,43 @@ class StatusScreenTest {
     }
 
     @Test
-    fun `joined shows the invite QR and share action`() = runComposeUiTest {
+    fun `joined offers both invites and shows no QR code until asked`() = runComposeUiTest {
+        // Capability `manage-membership`: sharing the link and showing the QR code are two equal actions, and the
+        // code itself is shown only on request.
         setContent { TestStatusScreen(inSync, cutoff = fixedCutoff()) }
+        onNodeWithText(str(Res.string.share_invite)).assertExists()
+        onNodeWithText(str(Res.string.show_qr)).assertExists()
+        onNodeWithText(str(Res.string.invite_caption)).assertDoesNotExist()
+    }
+
+    @Test
+    fun `show QR code asks for the sheet`() = runComposeUiTest {
+        var opened = 0
+        setContent {
+            TestStatusScreen(
+                inSync,
+                cutoff = fixedCutoff(),
+                actions = testActions(joined = testJoinedActions(onQrOpen = { opened++ })),
+            )
+        }
+        onNodeWithText(str(Res.string.show_qr)).performClick()
+        assertEquals(1, opened)
+    }
+
+    @Test
+    fun `the QR sheet renders when the state says it is up`() = runComposeUiTest {
+        val state = inSync.copy(overlays = inSync.overlays.copy(showingQr = true))
+        setContent { TestStatusScreen(state, cutoff = fixedCutoff()) }
+        val name = (state.layer as Layer.Joined).membership.name
+        onNodeWithText(str(Res.string.qr_sheet_title, name)).assertExists()
         onNodeWithText(str(Res.string.invite_caption)).assertExists()
-        onNodeWithContentDescription(str(Res.string.share_invite)).assertExists()
     }
 
     @Test
     fun `activating share invokes the callback`() = runComposeUiTest {
         var shares = 0
         setContent { TestStatusScreen(inSync, cutoff = fixedCutoff(), actions = testActions(joined = testJoinedActions(onShareInvite = { shares++ }))) }
-        onNodeWithContentDescription(str(Res.string.share_invite)).performClick()
+        onNodeWithText(str(Res.string.share_invite)).performClick()
         assertEquals(1, shares)
     }
 
@@ -1245,9 +1306,9 @@ class StatusScreenTest {
     @Test
     fun `joined with a membership shows the settings action next to share and leave`() = runComposeUiTest {
         setContent { TestStatusScreen(inSync, cutoff = fixedCutoff()) }
-        onNodeWithContentDescription(str(Res.string.event_settings)).assertExists()
-        onNodeWithContentDescription(str(Res.string.share_invite)).assertExists()
-        onNodeWithContentDescription(str(Res.string.leave_event)).assertExists()
+        onNodeWithText(str(Res.string.event_settings)).assertExists()
+        onNodeWithText(str(Res.string.share_invite)).assertExists()
+        onNodeWithText(str(Res.string.leave_event)).assertExists()
     }
 
     @Test
@@ -1258,7 +1319,7 @@ class StatusScreenTest {
                 cutoff = fixedCutoff(),
             )
         }
-        onNodeWithContentDescription(str(Res.string.event_settings)).assertExists()
+        onNodeWithText(str(Res.string.event_settings)).assertExists()
     }
 
     @Test
@@ -1281,7 +1342,7 @@ class StatusScreenTest {
                 cutoff = fixedCutoff(),
             )
         }
-        onNodeWithContentDescription(str(Res.string.event_settings)).assertExists()
+        onNodeWithText(str(Res.string.event_settings)).assertExists()
     }
 
     /**
@@ -1310,11 +1371,11 @@ class StatusScreenTest {
                 cutoff = fixedCutoff(),
             )
         }
-        onNodeWithContentDescription(str(Res.string.event_settings)).assertExists()
+        onNodeWithText(str(Res.string.event_settings)).assertExists()
         onNodeWithContentDescription(str(Res.string.rename_event)).assertExists()
         // The two neighbours that were never suppressed, asserted alongside so the row is checked whole.
-        onNodeWithContentDescription(str(Res.string.share_invite)).assertExists()
-        onNodeWithContentDescription(str(Res.string.leave_event)).assertExists()
+        onNodeWithText(str(Res.string.share_invite)).assertExists()
+        onNodeWithText(str(Res.string.leave_event)).assertExists()
     }
 
     @Test
@@ -1328,7 +1389,7 @@ class StatusScreenTest {
             )
         }
         onNodeWithText(str(Res.string.save)).assertDoesNotExist()
-        onNodeWithContentDescription(str(Res.string.event_settings)).performClick()
+        onNodeWithText(str(Res.string.event_settings)).performClick()
         assertEquals(1, opened, "the gear asks the container to open the surface")
     }
 
@@ -1529,8 +1590,7 @@ class StatusScreenTest {
     @Test
     fun `no counts are drawn when the state carries none`() = runComposeUiTest {
         setContent { TestStatusScreen(joined(SyncHealth.NeedsAccess(GalleryAccess.DENIED)), cutoff = fixedCutoff()) }
-        onNodeWithText("shared", substring = true).assertDoesNotExist()
-        onNodeWithText("received", substring = true).assertDoesNotExist()
+        onNode(countsText()).assertDoesNotExist()
     }
 
     @Test
@@ -1569,24 +1629,154 @@ class StatusScreenTest {
         setContent {
             TestStatusScreen(joined(SyncHealth.InSync, timing = EventTiming.Ended, closed = true), cutoff = fixedCutoff())
         }
-        onNodeWithContentDescription(str(Res.string.share_invite)).assertDoesNotExist()
-        onNodeWithContentDescription(str(Res.string.event_settings)).assertDoesNotExist()
+        onNodeWithText(str(Res.string.share_invite)).assertDoesNotExist()
+        onNodeWithText(str(Res.string.event_settings)).assertDoesNotExist()
         onNodeWithContentDescription(str(Res.string.rename_event)).assertDoesNotExist()
-        onNodeWithText(str(Res.string.invite_caption)).assertDoesNotExist()
-        onNodeWithText(str(Res.string.invite_eyebrow), ignoreCase = true).assertDoesNotExist()
-        onNodeWithContentDescription(str(Res.string.leave_event)).assertExists()
+        onNodeWithText(str(Res.string.show_qr)).assertDoesNotExist()
+        onNodeWithText(str(Res.string.leave_event)).assertExists()
         onNodeWithText(str(ComponentRes.string.status_in_sync)).assertExists()
         // The name, the joined statement and the dates stay.
         onNodeWithText(str(Res.string.joined_statement)).assertExists()
         onNodeWithText("Mon 6 Jul – Fri 10 Jul" + " · " + str(Res.string.timing_ended)).assertExists()
     }
 
+
+
+    // ---- how it works (capability `sync-status`) ----
+
     @Test
-    fun `the invite is labelled as an invitation for others`() = runComposeUiTest {
+    fun `a sharing and receiving member is told what happens to both sides and what to do when photos stall`() =
+        runComposeUiTest {
+            setContent { TestStatusScreen(joined(SyncHealth.InSync, membership = MEMBERSHIP.copy(saveToAlbum = true)), cutoff = fixedCutoff()) }
+            onNodeWithText(str(Res.string.explain_share_title)).assertExists()
+            onNodeWithText(str(Res.string.explain_share_caption, RANGE)).assertExists()
+            onNodeWithText(str(Res.string.explain_receive_title)).assertExists()
+            onNodeWithText(str(Res.string.explain_receive_album, MEMBERSHIP.name)).assertExists()
+            onNodeWithText(str(Res.string.explain_hint_title)).assertExists()
+            onNodeWithText(str(Res.string.explain_hint_caption)).assertExists()
+        }
+
+    @Test
+    fun `the range named is the member's own and not the event's`() = runComposeUiTest {
+        val part = MEMBERSHIP.copy(minPhotoDate = captureCutoff("2026-07-08T12:00:00Z"))
+        setContent { TestStatusScreen(joined(SyncHealth.InSync, membership = part), cutoff = fixedCutoff()) }
+        onNodeWithText(str(Res.string.explain_share_caption, "Wed 8 Jul – Fri 10 Jul")).assertExists()
+    }
+
+    @Test
+    fun `without an album the group's photos land beside the member's own`() = runComposeUiTest {
         setContent { TestStatusScreen(inSync, cutoff = fixedCutoff()) }
-        onNodeWithText(str(Res.string.invite_eyebrow), ignoreCase = true).assertExists()
-        onNodeWithText("Share this event", ignoreCase = true).assertDoesNotExist()
-        onNodeWithText(str(Res.string.invite_caption)).assertExists()
+        onNodeWithText(str(Res.string.explain_receive_no_album)).assertExists()
+    }
+
+    @Test
+    fun `sharing switched off says so and its link opens the event's settings`() = runComposeUiTest {
+        var opened = 0
+        setContent {
+            TestStatusScreen(
+                joined(SyncHealth.InSync, membership = MEMBERSHIP.copy(direction = Direction.DownloadOnly)),
+                cutoff = fixedCutoff(),
+                actions = testActions(surfaces = testSurfaceActions(onOpenReconfigure = { opened++ })),
+            )
+        }
+        onNodeWithText(str(Res.string.explain_share_off_title)).assertExists()
+        onNodeWithText(str(Res.string.explain_share_title)).assertDoesNotExist()
+        onNodeWithText(str(Res.string.explain_receive_title)).assertExists()
+        onNodeWithText(caption(Res.string.explain_share_off_caption, Res.string.explain_settings_link, RANGE)).performFirstLinkClick()
+        assertEquals(1, opened)
+    }
+
+    @Test
+    fun `receiving switched off says so and its link opens the event's settings`() = runComposeUiTest {
+        var opened = 0
+        setContent {
+            TestStatusScreen(
+                joined(SyncHealth.InSync, membership = MEMBERSHIP.copy(direction = Direction.UploadOnly)),
+                cutoff = fixedCutoff(),
+                actions = testActions(surfaces = testSurfaceActions(onOpenReconfigure = { opened++ })),
+            )
+        }
+        onNodeWithText(str(Res.string.explain_receive_off_title)).assertExists()
+        onNodeWithText(caption(Res.string.explain_receive_off_caption, Res.string.explain_settings_link)).performFirstLinkClick()
+        assertEquals(1, opened)
+    }
+
+    @Test
+    fun `without access nothing is shared or received and the link asks exactly as the status line does`() =
+        runComposeUiTest {
+            var asked = 0
+            var settings = 0
+            setContent {
+                TestStatusScreen(
+                    joined(SyncHealth.NeedsAccess(GalleryAccess.NOT_DETERMINED)),
+                    cutoff = fixedCutoff(),
+                    actions = testActions(access = testAccessActions(onRequestPermission = { asked++ }, onOpenSettings = { settings++ })),
+                )
+            }
+            onNodeWithText(str(Res.string.explain_share_blocked_title)).assertExists()
+            onNodeWithText(str(Res.string.explain_receive_blocked_title)).assertExists()
+            onNodeWithText(caption(Res.string.explain_share_blocked_caption, Res.string.explain_access_link, RANGE)).performFirstLinkClick()
+            onNodeWithText(caption(Res.string.explain_receive_blocked_caption, Res.string.explain_access_link)).performFirstLinkClick()
+            assertEquals(2, asked)
+            assertEquals(0, settings)
+        }
+
+    @Test
+    fun `a refused grant's link goes to the phone's Settings`() = runComposeUiTest {
+        var settings = 0
+        setContent {
+            TestStatusScreen(
+                joined(SyncHealth.NeedsAccess(GalleryAccess.DENIED)),
+                cutoff = fixedCutoff(),
+                actions = testActions(access = testAccessActions(onOpenSettings = { settings++ })),
+            )
+        }
+        onNodeWithText(caption(Res.string.explain_receive_blocked_caption, Res.string.explain_access_link)).performFirstLinkClick()
+        assertEquals(1, settings)
+    }
+
+    @Test
+    fun `limited access names the selection and offers both ways to widen it`() = runComposeUiTest {
+        setContent { TestStatusScreen(joined(SyncHealth.InSync, canChoosePhotos = true), cutoff = fixedCutoff()) }
+        onNodeWithText(str(Res.string.explain_share_limited_title)).assertExists()
+        onNodeWithText(str(Res.string.explain_share_limited_caption, RANGE)).assertExists()
+        onNodeWithText(str(Res.string.choose_more_photos)).assertExists()
+        onNodeWithText(str(Res.string.allow_full_access)).assertExists()
+    }
+
+    @Test
+    fun `full access shows neither widening choice`() = runComposeUiTest {
+        setContent { TestStatusScreen(inSync, cutoff = fixedCutoff()) }
+        onNodeWithText(str(Res.string.choose_more_photos)).assertDoesNotExist()
+        onNodeWithText(str(Res.string.allow_full_access)).assertDoesNotExist()
+    }
+
+    @Test
+    fun `a closed event explains only receiving and the hint`() = runComposeUiTest {
+        setContent { TestStatusScreen(joined(SyncHealth.InSync, timing = EventTiming.Ended, closed = true), cutoff = fixedCutoff()) }
+        onNodeWithText(str(Res.string.explain_share_title)).assertDoesNotExist()
+        onNodeWithText(str(Res.string.explain_receive_title)).assertExists()
+        onNodeWithText(str(Res.string.explain_hint_title)).assertExists()
+    }
+
+    @Test
+    fun `on the smallest phone the footer stays on screen while the content scrolls`() = runComposeUiTest {
+        // An SE2's screen in points, with the tallest joined screen: the no-access rows and a notice-free status.
+        setContent {
+            Box(Modifier.requiredSize(SE2_WIDTH, SE2_HEIGHT)) {
+                TestStatusScreen(joined(SyncHealth.NeedsAccess(GalleryAccess.DENIED), canChoosePhotos = false), cutoff = fixedCutoff())
+            }
+        }
+        for (label in listOf(Res.string.share_invite, Res.string.show_qr, Res.string.event_settings, Res.string.leave_event)) {
+            val bottom = onNodeWithText(str(label)).getUnclippedBoundsInRoot().bottom
+            assertTrue(bottom <= SE2_HEIGHT, "${str(label)} ends at $bottom, below the screen")
+        }
+        onNodeWithText(str(Res.string.explain_hint_title)).performScrollTo().assertIsDisplayed()
+    }
+
+    /** A node showing a count ("12/15 shared", "40 received") — the explanation's words are not counts. */
+    private fun countsText(): SemanticsMatcher = SemanticsMatcher("shows a count") { node ->
+        node.config.getOrElseNullable(SemanticsProperties.Text) { null }.orEmpty().any { COUNT.containsMatchIn(it.toString()) }
     }
 
     private fun hasAnyProgressIndication(): SemanticsMatcher =

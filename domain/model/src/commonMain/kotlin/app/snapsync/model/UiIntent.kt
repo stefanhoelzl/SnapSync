@@ -22,6 +22,10 @@ sealed interface UiIntent {
     data object ConfirmLeaveDismiss : UiIntent
     data object RenameOpen : UiIntent
     data object RenameDismiss : UiIntent
+
+    /** The invite's QR code (capability `manage-membership`): shown on request, and dismissed. */
+    data object QrOpen : UiIntent
+    data object QrDismiss : UiIntent
     data object ReportBugOpen : UiIntent
     data object ReportBugDismiss : UiIntent
 

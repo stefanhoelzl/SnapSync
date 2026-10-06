@@ -13,10 +13,12 @@ import app.snapsync.model.UiState
 import app.snapsync.ui.components.AppTextPromptSheet
 import app.snapsync.ui.components.AppDestructiveConfirmDialog
 import app.snapsync.ui.components.AppTheme
-import app.snapsync.ui.components.LeaveButton
+import app.snapsync.ui.components.AppFooterDivider
+import app.snapsync.ui.components.AppQrSheet
+import app.snapsync.ui.components.LeaveTextAction
+import app.snapsync.ui.components.PrimaryButton
 import app.snapsync.ui.components.ScreenLayout
-import app.snapsync.ui.components.SettingsButton
-import app.snapsync.ui.components.ShareButton
+import app.snapsync.ui.components.SettingsTextAction
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxSize
@@ -60,7 +62,10 @@ import app.snapsync.ui.resources.report_saved
 import app.snapsync.ui.resources.report_send
 import app.snapsync.ui.resources.report_sent
 import app.snapsync.ui.resources.save
+import app.snapsync.ui.resources.invite_caption
+import app.snapsync.ui.resources.qr_sheet_title
 import app.snapsync.ui.resources.share_invite
+import app.snapsync.ui.resources.show_qr
 import org.jetbrains.compose.resources.stringResource
 
 
@@ -108,11 +113,11 @@ fun StatusScreen(
         // masks a joined-only overlay against a layer that is not joined.
         val chrome = statusChrome(state)
 
-        // The joined-layer action cluster: settings . share . leave (see [JoinedBottomActions] for why
-        // each is shown when it is). Null everywhere else, so the create layer and the join gate keep
-        // their own bottom edge.
-        val bottomActions: (@Composable () -> Unit)? = if (chrome.showsJoinedChrome) {
-            { JoinedBottomActions(actions, closed = chrome.closed) }
+        // The joined layer's docked footer: the invite pair, then settings and leave (see [JoinedFooter] for why
+        // each is shown when it is). Null everywhere else, so the create layer and the join gate keep their own
+        // bottom edge.
+        val bottomActions: (@Composable ColumnScope.() -> Unit)? = if (chrome.showsJoinedChrome) {
+            { JoinedFooter(actions, closed = chrome.closed) }
         } else {
             null
         }
@@ -278,6 +283,14 @@ private fun StatusOverlays(state: UiState, actions: StatusActions) {
     if (overlays.renaming && joined != null) {
         RenameSheet(joined.membership, joined.renameState, actions)
     }
+    if (overlays.showingQr && joined != null) {
+        AppQrSheet(
+            title = stringResource(Res.string.qr_sheet_title, joined.membership.name),
+            content = joined.inviteUrl,
+            caption = stringResource(Res.string.invite_caption),
+            onDismiss = actions.joined.onQrDismiss,
+        )
+    }
     if (overlays.reportingBug) {
         BugReportSheet(actions, actions.menu.onSendDiagnostics, screenLabel(state), state.reportDestination)
     }
@@ -414,34 +427,29 @@ private fun BugReportSheet(
     )
 }
 
-        // The joined-layer action cluster: settings · share · leave. Settings needs a known membership;
-        // sharing needs no photo access, and leave always shows. Hidden while the reconfigure surface is
-        // open (it pins its own Save/Cancel). Loading and the create layer show none.
-        //
-        // Settings is deliberately NOT suppressed while a `pendingSwitch` is carried, though it once was.
-        // The race that justified suppressing it — a reconfigure landing across a switch's config write —
-        // is already prevented downstream by `ReconfigureEvent`'s own `eventId` guard (a surface opened for
-        // a different membership persists nothing) and by the `LaunchedEffect(joined)` above, which closes
-        // the surface the moment a config clears. It was inconsistent besides: share hands out an invite
-        // URL from the same about-to-be-replaced config and leave ends the very membership a switch ends,
-        // and neither was ever suppressed. And it cost more than it bought — a `pendingSwitch` is carried
-        // for the whole of a JOIN's own commit too (the commit holds a pending join for the event being
-        // joined, which is not a switch), so this gear vanished from the joined screen for as long as
-        // provisioning took: the reported symptom in `SNAPSYNC-26`.
+/**
+ * The joined layer's docked footer (capabilities `manage-membership`, `sync-status`): the two equal ways to
+ * invite — share the link, show its QR code — then, set apart by a line, the quiet text actions for the
+ * event's settings and for leaving. A CLOSED event admits nobody and changes nothing any more, so it offers
+ * only Leave (capability `manage-membership`).
+ *
+ * Settings is deliberately NOT suppressed while a `pendingSwitch` is carried, though it once was: the race that
+ * justified it is prevented downstream by `ReconfigureEvent`'s own `eventId` guard, and a `pendingSwitch` is
+ * carried for the whole of a JOIN's own commit too, so the action vanished for as long as provisioning took —
+ * the reported symptom in `SNAPSYNC-26`.
+ */
 @Composable
-private fun JoinedBottomActions(actions: StatusActions, closed: Boolean) {
-    // Settings and share used to be guarded on a nullable membership and a nullable invite URL. The
-    // joined state carries both non-null, so the guards have nothing left to test: reaching this cluster
-    // IS having a membership, and the invite URL is derived from it. A CLOSED event admits nobody and changes
-    // nothing any more, so it offers neither (capability `manage-membership`).
+private fun JoinedFooter(actions: StatusActions, closed: Boolean) {
     if (!closed) {
-        SettingsButton(
-            description = stringResource(Res.string.event_settings),
+        PrimaryButton(label = stringResource(Res.string.share_invite), onClick = actions.joined.onShareInvite)
+        PrimaryButton(label = stringResource(Res.string.show_qr), onClick = actions.joined.onQrOpen)
+        AppFooterDivider()
+        SettingsTextAction(
+            label = stringResource(Res.string.event_settings),
             onClick = actions.surfaces.onOpenReconfigure,
         )
-        ShareButton(description = stringResource(Res.string.share_invite), onClick = actions.joined.onShareInvite)
     }
-    LeaveButton(description = stringResource(Res.string.leave_event), onClick = actions.surfaces.onConfirmLeaveOpen)
+    LeaveTextAction(label = stringResource(Res.string.leave_event), onClick = actions.surfaces.onConfirmLeaveOpen)
 }
 
 /**
@@ -458,8 +466,8 @@ private fun JoinedBottomActions(actions: StatusActions, closed: Boolean) {
 private fun ColumnScope.CurrentLayer(
     state: UiState,
     chrome: StatusChrome,
-    // Still needed by the CREATE form (its own name/date draft, held by `CreateFlow`). The joined layer's
-    // dates are drawn in the heading, which [StatusScreen] builds. The RANGE form no longer needs it: its bounds arrive
+    // Needed by the CREATE form (its own name/date draft, held by `CreateFlow`) and by the joined layer's
+    // explanation, which names the member's shared range. The RANGE form no longer needs it: its bounds arrive
     // resolved (capability `sync-status`).
     cutoff: CutoffFormatter,
     actions: StatusActions,
@@ -493,6 +501,6 @@ private fun ColumnScope.CurrentLayer(
                 ),
             )
         is Layer.Joined ->
-            JoinedLayer(layer, actions.access)
+            JoinedLayer(layer, cutoff, actions.access, onOpenEventSettings = actions.surfaces.onOpenReconfigure)
     }
 }

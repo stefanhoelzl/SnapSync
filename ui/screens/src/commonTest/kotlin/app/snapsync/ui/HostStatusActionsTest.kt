@@ -104,6 +104,9 @@ import app.snapsync.ui.resources.share_invite
 import app.snapsync.ui.resources.share_toggle
 import app.snapsync.ui.resources.store_app_store
 import app.snapsync.ui.resources.switch_confirm
+import androidx.compose.ui.test.swipeDown
+import app.snapsync.ui.resources.show_qr
+import app.snapsync.ui.resources.invite_caption
 
 /** The event the joined tests are members of. */
 private const val JOINED_ID = "11111111-1111-4111-8111-111111111111"
@@ -277,13 +280,13 @@ class HostStatusActionsTest {
     fun `leave opens its confirmation — Stay dismisses it — and Leave fires the leave`() =
         rigTest(rig(config = MEMBERSHIP)) { rig ->
             awaitState(rig) { it.joined != null }
-            onNodeWithContentDescription(str(Res.string.leave_event)).performClick()
+            onNodeWithText(str(Res.string.leave_event)).performClick()
             awaitState(rig) { it.overlays.confirmingLeave }
             onNodeWithText(str(Res.string.leave_cancel)).performClick()
             awaitState(rig) { !it.overlays.confirmingLeave }
             assertEquals(emptyList(), rig.fired)
 
-            onNodeWithContentDescription(str(Res.string.leave_event)).performClick()
+            onNodeWithText(str(Res.string.leave_event)).performClick()
             awaitState(rig) { it.overlays.confirmingLeave }
             onNodeWithText(str(Res.string.leave_confirm)).performClick()
             awaitFired(rig, "leave")
@@ -294,8 +297,19 @@ class HostStatusActionsTest {
         rigTest(rig(config = MEMBERSHIP)) { rig ->
             awaitState(rig) { it.joined != null }
             val invite = rig.state.joined!!.inviteUrl
-            onNodeWithContentDescription(str(Res.string.share_invite)).performClick()
+            onNodeWithText(str(Res.string.share_invite)).performClick()
             awaitFired(rig, "share:$invite")
+        }
+
+    @Test
+    fun `show QR code opens the invite's sheet and swiping it away closes it touching nothing`() =
+        rigTest(rig(config = MEMBERSHIP)) { rig ->
+            awaitState(rig) { it.joined != null }
+            onNodeWithText(str(Res.string.show_qr)).performClick()
+            awaitState(rig) { it.overlays.showingQr }
+            onNodeWithText(str(Res.string.invite_caption)).performTouchInput { swipeDown() }
+            awaitState(rig) { !it.overlays.showingQr }
+            assertEquals(emptyList(), rig.fired)
         }
 
     @Test
@@ -321,13 +335,13 @@ class HostStatusActionsTest {
     fun `the gear opens the settings surface — Cancel closes it — and Save reconfigures`() =
         rigTest(rig(config = MEMBERSHIP)) { rig ->
             awaitState(rig) { it.joined != null }
-            onNodeWithContentDescription(str(Res.string.event_settings)).performClick()
+            onNodeWithText(str(Res.string.event_settings)).performClick()
             awaitState(rig) { it.joined?.surface is JoinedSurface.Reconfigure }
             onNodeWithText(str(Res.string.cancel)).performClick()
             awaitState(rig) { it.joined != null && it.joined?.surface !is JoinedSurface.Reconfigure }
             assertEquals(emptyList(), rig.fired)
 
-            onNodeWithContentDescription(str(Res.string.event_settings)).performClick()
+            onNodeWithText(str(Res.string.event_settings)).performClick()
             awaitState(rig) { it.joined?.surface is JoinedSurface.Reconfigure }
             onNodeWithText(str(Res.string.save)).performClick()
             awaitFired(rig, "reconfigure:$JOINED_ID")
