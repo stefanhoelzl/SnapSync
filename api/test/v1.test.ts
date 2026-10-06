@@ -649,6 +649,28 @@ Deno.test("POST /events → a body violating a name or window rule → 400, noth
   db.close();
 });
 
+Deno.test("POST /events → the host's zone is stored, never echoed, and an unusable one stores null", async () => {
+  const app = (db: Db) => createApp({ config: CONFIG, db, fetch: recorder().fetchImpl });
+  const cases: [unknown, string | null][] = [
+    ["Europe/Berlin", "Europe/Berlin"],
+    [undefined, null], // an older client sends none
+    ["Mars/Olympus_Mons", null], // a name this runtime does not know
+    ["+02:00", null], // an offset is not a zone name
+    [42, null],
+  ];
+  for (const [zone, stored] of cases) {
+    const db = await store();
+    const res = await app(db).request("/api/v1/events", {
+      method: "POST",
+      body: JSON.stringify({ name: "Party", startsAt: STARTS_AT, zone }),
+    });
+    assertEquals(res.status, 201, String(zone)); // a zone never refuses the create
+    assert(!("zone" in (await res.json() as Record<string, unknown>)));
+    assertEquals((await rows(db, `SELECT zone FROM events`))[0].zone, stored, String(zone));
+    db.close();
+  }
+});
+
 Deno.test("POST /events → the name is trimmed before it is stored and echoed", async () => {
   const db = await store();
   const res = await createApp({ config: CONFIG, db, fetch: recorder().fetchImpl }).request(

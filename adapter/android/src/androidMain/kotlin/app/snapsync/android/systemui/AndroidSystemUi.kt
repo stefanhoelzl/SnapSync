@@ -28,8 +28,13 @@ class AndroidSystemUi(
 
     private val appContext = context.applicationContext
 
-    override suspend fun share(text: String): Handoff {
-        val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
+    // EXTRA_TITLE on the SEND intent (not the chooser's title, which Android 10+ ignores for ACTION_SEND) is what the
+    // chooser's preview shows above the shared text: the event's name (capability `manage-membership`).
+    override suspend fun share(text: String, title: String): Handoff {
+        val send = Intent(Intent.ACTION_SEND)
+            .setType("text/plain")
+            .putExtra(Intent.EXTRA_TEXT, text)
+            .putExtra(Intent.EXTRA_TITLE, title)
         return start("share", Intent.createChooser(send, null))
     }
 

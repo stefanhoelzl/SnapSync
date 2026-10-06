@@ -33,16 +33,20 @@ class IosSystemUi internal constructor(private val urls: UrlOpenerApi) : SystemU
     private val settingsLog = Logger.withTag("photoPermission")
 
     /**
-     * Presents `UIActivityViewController` carrying [text], from the current top-most view controller. iPhone-only /
+     * Presents `UIActivityViewController` carrying [text] — as a URL titled [title] ([InviteActivityItem]) — from the
+     * current top-most view controller. iPhone-only /
      * portrait, so no popover source is needed. [Handoff.Accepted] once UIKit reports the sheet presented;
      * [Handoff.Refused] when there is no key window to present from — the tap then does nothing on screen.
      *
      * The presenter walk (following `presentedViewController` to the top of the presentation stack) is technology
      * mechanics: UIKit rejects presentation from a covered controller.
      */
-    override suspend fun share(text: String): Handoff = objcCallback(shareLog, "share.completion") { done ->
+    override suspend fun share(text: String, title: String): Handoff = objcCallback(shareLog, "share.completion") { done ->
         onQueue(dispatch_get_main_queue(), shareLog, "share") {
-            val activity = UIActivityViewController(activityItems = listOf(text), applicationActivities = null)
+            val activity = UIActivityViewController(
+                activityItems = listOf(InviteActivityItem(text, title)),
+                applicationActivities = null,
+            )
             var presenter = UIApplication.sharedApplication.keyWindow?.rootViewController
             while (presenter?.presentedViewController != null) {
                 presenter = presenter.presentedViewController

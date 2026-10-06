@@ -150,7 +150,7 @@ class LaunchAdaptersTest {
         write(AdapterFiles.CHOICE, "clock=mock\nsystem-ui=mock\n")
         val first = assertIs<LaunchAdapters.Chosen>(launch())
         first.device.clock.operator.now = Instant.parse("2026-03-04T05:06:07Z")
-        first.device.systemUi.port().share("hi")
+        first.device.systemUi.port().share("hi", "Party")
         assertEquals(setOf(MockedSystem.CLOCK, MockedSystem.SYSTEM_UI), first.save().toSet())
         assertEquals(emptyList(), first.save(), "nothing changed, nothing written")
         first.device.systemUi.port().openSettings()

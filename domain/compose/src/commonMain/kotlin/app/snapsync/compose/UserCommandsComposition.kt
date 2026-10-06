@@ -98,9 +98,9 @@ internal fun AppCore.userCommandsFor(): UserCommands = UserCommands(
     // Share is pure platform (a system sheet over the top view controller). Decorated like the
     // rest: presenting the sheet is still a tap, and an unattributed line is the thing this
     // instrumentation exists to eliminate.
-    share = { url ->
+    share = { url, title ->
         detachedOnCoreLane("tap.share", result = { h: Handoff -> "$h" }) {
-            tapLog.recordingRefusal("tap.share", ports.systemUi.share(url))
+            tapLog.recordingRefusal("tap.share", ports.systemUi.share(url, title))
         }
     },
     // Leaving the app for the store page (capability `app-update-required`) — UI lane and

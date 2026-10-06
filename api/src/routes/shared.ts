@@ -24,6 +24,7 @@ import {
   validateFilename,
   validateStartsAt,
   validateUUID,
+  validateZone,
 } from "../validators.ts";
 import {
   closedRefusal,
@@ -131,6 +132,9 @@ export function sharedRoutes(deps: RouteDeps): Hono {
       endsAt,
       capacity: config.eventCapacity,
       lifetimeSeconds: config.eventLifetimeSeconds,
+      // The host's zone, which only the event page reads (capability `event-site`). Optional and never a
+      // refusal: absent or unusable stores null, and the page renders the dates in UTC (`validateZone`).
+      zone: validateZone((body as { zone?: unknown } | null)?.zone),
     };
 
     const inserted = await tryUpstream(

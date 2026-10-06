@@ -1,4 +1,5 @@
-// The invite in /join's fragment, and the Google Play link that carries it (capabilities event-site, join-event).
+// The invite in either of its forms — /join#v=3&d=… and /join/<eventId> — and the Google Play link that carries it
+// (capabilities event-site, join-event).
 // Pure — no DOM — so the island imports it and `scripts/invite.test.ts` runs it under Deno.
 
 /** The invite link's version, as capability `join-event` fixes it: `#v=3&d=<base64url(json)>`. */
@@ -33,6 +34,26 @@ export function decodeInvite(hash: string): Invite | null {
   } catch (_e) {
     return null;
   }
+}
+
+/**
+ * The event a path-form page names (`/join/<eventId>`, an optional trailing slash), or null for any other path. The
+ * server has already refused a malformed one (it renders the invalid view), so this only reads it back.
+ */
+export function eventIdFromPath(pathname: string): string | null {
+  const m = /^\/join\/([^/]+)\/?$/.exec(pathname);
+  return m && UUID.test(m[1]) ? m[1] : null;
+}
+
+/**
+ * The invite for [eventId] exactly as the app encodes it — `d` is the unpadded base64url of `{"eventId":"…"}` — so a
+ * path-form page hands Google Play the same referrer the fragment form's page did, and the app's referrer decoder is
+ * untouched.
+ */
+export function inviteFor(eventId: string): Invite {
+  const bytes = new TextEncoder().encode(JSON.stringify({ eventId }));
+  const b64 = btoa(String.fromCharCode(...bytes));
+  return { eventId, d: b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "") };
 }
 
 /**

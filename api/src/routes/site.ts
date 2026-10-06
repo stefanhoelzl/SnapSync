@@ -11,6 +11,10 @@ import { Hono } from "hono";
 import type { Config } from "../config.ts";
 import { type FetchLike, storageReachable } from "../storage.ts";
 import { NO_CACHE, type RouteDeps } from "./support.ts";
+import { memberCounts, readEvent } from "../db.ts";
+import { deleteByMs } from "../lifecycle.ts";
+import { canonicalFromMs, validateUUID } from "../validators.ts";
+import { eventFilling, fill, type Filling, invalidFilling, pendingFilling } from "./event-page.ts";
 
 // PUBLIC and static — the deliberate inverse of the listings' NO_CACHE. A `public` directive lets the
 // bunny pull zone serve it from the edge, keeping the Edge Script off the request hot path. Still used by
@@ -84,9 +88,53 @@ async function serveSiteObject(
   return new Response(upstream.body, { status: 200, headers });
 }
 
+/**
+ * Serve the event page (capabilities `event-site`, `privacy-security`): the ONE built `site/join/index.html`,
+ * read as a template and filled per request (`event-page.ts` decides every word). A missing template is a
+ * `404`, any other upstream failure a `502` — the same faithful outcome as {@link serveSiteObject}.
+ *
+ * NEVER cached (`NO_CACHE`): the page depends on the clock and on the member counts, and a cached copy of an
+ * event's page would be keyed on its address — the event's identity, a capability — in the pull zone's cache.
+ * `Referrer-Policy: no-referrer`, because the page's address names the event: no photo fetch and no link the
+ * visitor follows may carry it to another host.
+ */
+async function serveEventPage(
+  fetchImpl: FetchLike,
+  config: Config,
+  method: string,
+  status: 200 | 404 | 410,
+  filling: Filling,
+): Promise<Response> {
+  const url = `https://${config.host}/${config.zone}/site/join/index.html`;
+  let upstream: Response;
+  try {
+    upstream = await fetchImpl(url, { method: "GET", headers: { AccessKey: config.accessKey } });
+  } catch (e) {
+    console.error(`site: upstream GET errored for site/join/index.html: ${e}`);
+    return new Response("upstream error", { status: 502 });
+  }
+  if (!upstream.ok) {
+    await upstream.body?.cancel();
+    if (upstream.status === 404) return new Response("not found", { status: 404 });
+    console.error(`site: bunny returned ${upstream.status} for site/join/index.html`);
+    return new Response("upstream error", { status: 502 });
+  }
+  const headers = new Headers({
+    "Content-Type": "text/html; charset=utf-8",
+    "Cache-Control": NO_CACHE,
+    "Referrer-Policy": "no-referrer",
+  });
+  if (method === "HEAD") {
+    await upstream.body?.cancel();
+    return new Response(null, { status, headers });
+  }
+  return new Response(fill(await upstream.text(), filling), { status, headers });
+}
+
 /** The root routes, served from `createApp`'s app at `/`. `buildSha` is what `/health` answers with. */
-export function siteRoutes({ fetchImpl, config, db }: RouteDeps, buildSha: string): Hono {
+export function siteRoutes({ fetchImpl, config, db, now }: RouteDeps, buildSha: string): Hono {
   const app = new Hono();
+  const origin = `https://${config.linkDomain}`;
 
   // The public marketing/landing page (capability `web-site`, built by `web-site`): served by
   // proxying `site/index.html` from storage. The HTML entry point is `no-cache` — the always-fresh shell —
@@ -121,8 +169,16 @@ export function siteRoutes({ fetchImpl, config, db }: RouteDeps, buildSha: strin
   // sidesteps the documented iOS bug where a `?` nested inside a `#` cannot be matched — we ask for
   // neither. Narrow matching also keeps `/`, `/events/:id`, and `/attest/*` opening in a browser; a
   // broad `/*` would hijack our own marketing page into the app.
+  //
+  // `/join/*` is the PATH form (`/join/<eventId>`), claimed beside the fragment form's `/join`. Still narrow: only
+  // paths UNDER `/join/`, so `/`, `/events/:id` and `/attest/*` keep opening in a browser.
   const aasa = JSON.stringify({
-    applinks: { details: [{ appIDs: [config.attestAppId], components: [{ "/": "/join" }] }] },
+    applinks: {
+      details: [{
+        appIDs: [config.attestAppId],
+        components: [{ "/": "/join" }, { "/": "/join/*" }],
+      }],
+    },
   });
   app.on(["GET", "HEAD"], "/.well-known/apple-app-site-association", (c) => {
     c.header("Cache-Control", PUBLIC_CACHE);
@@ -154,20 +210,60 @@ export function siteRoutes({ fetchImpl, config, db }: RouteDeps, buildSha: strin
     return c.req.method === "HEAD" ? c.body(null) : c.body(assetlinks);
   });
 
-  // The no-app download page (capabilities `join-event`, `event-site`, built by `web-site`): the
-  // path a browser requests when an event link is opened on a device with no app to claim it. Served by
-  // proxying the CONSTANT `site/join/index.html` object from storage — byte-identical for every link, and
-  // `no-cache` (the always-fresh shell). GET returns the page; HEAD returns the headers with no body.
-  //
-  // The handler does not — cannot — read the payload: that rides in the URL fragment, which a browser never
-  // transmits, so this handler sees `/join` and nothing more, and it reads the same constant object for
-  // every request (no per-event state). Everything per-event — the event name, the photo union, the zip —
-  // is done by the page's own client island, off the fragment. The eventId never reaches the server here.
+  // The page a FRAGMENT invite reaches (capabilities `join-event`, `event-site`, built by `web-site`): the path a
+  // browser requests when an invite of the fragment form is opened on a device with no app to claim it. The
+  // fragment never reaches the server, so this handler sees `/join` and nothing more: it fills the built page
+  // generically (`pendingFilling`) and the page's island reads the fragment and moves the browser to the event's
+  // own page, `/join/<eventId>`, below. Not cached; GET returns the page, HEAD the headers with no body.
   app.on(
     ["GET", "HEAD"],
     "/join",
-    (c) => serveSiteObject(fetchImpl, config, "join/index.html", c.req.method, SITE_HTML_CACHE),
+    (c) => serveEventPage(fetchImpl, config, c.req.method, 200, pendingFilling(origin)),
   );
+
+  // The EVENT'S OWN PAGE (capabilities `event-site`, `privacy-security`): an invite of the path form, opened where
+  // no app claims it — or a fragment invite, which the constant page above moves here. Here the server DOES read the
+  // event: its name, dates, phase and member counts are rendered into the page, so a link preview and a browser
+  // running no script both see the event (`event-page.ts`).
+  //
+  // An unknown or malformed identifier is `404`, a completed event (its photos deleted) `410` — both the invalid
+  // view, naming no event. A CLOSED event still has its photos until the sweep completes it, so it renders as
+  // ended. A read failure is `502` and never the invalid view: a fault must not claim the link is dead.
+  app.on(["GET", "HEAD"], "/join/:eventId", async (c) => {
+    const eventId = c.req.param("eventId");
+    if (!validateUUID(eventId)) {
+      return serveEventPage(fetchImpl, config, c.req.method, 404, invalidFilling(origin));
+    }
+    let read: {
+      event: Awaited<ReturnType<typeof readEvent>>;
+      members: { active: number; final: number };
+    };
+    try {
+      const event = await readEvent(db, eventId);
+      read = { event, members: event ? await memberCounts(db, eventId) : { active: 0, final: 0 } };
+    } catch (e) {
+      console.error(`site: event page read failed for ${eventId}: ${e}`);
+      return new Response("upstream error", {
+        status: 502,
+        headers: { "Cache-Control": NO_CACHE },
+      });
+    }
+    const { event, members } = read;
+    if (event === null) {
+      return serveEventPage(fetchImpl, config, c.req.method, 404, invalidFilling(origin));
+    }
+    if (event.completedAt) {
+      return serveEventPage(fetchImpl, config, c.req.method, 410, invalidFilling(origin));
+    }
+    const deletesAt = canonicalFromMs(deleteByMs(event));
+    return serveEventPage(
+      fetchImpl,
+      config,
+      c.req.method,
+      200,
+      eventFilling(origin, event, members, now(), deletesAt),
+    );
+  });
 
   // The BOOT PROBE's target (`docs/deployment.md`). Answers with the commit this bundle was
   // built from, so deploy.yml's `api` job can tell the deploy it just made from the one that was already live —

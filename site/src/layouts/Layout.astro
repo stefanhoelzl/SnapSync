@@ -18,6 +18,8 @@ import appIcon from "../../../iosApp/iosApp/Assets.xcassets/AppIcon.appiconset/I
 
 interface Props {
   title: string;
+  /** The link preview's title, when it differs from the tab's (the event page: the event's name alone). */
+  ogTitle?: string;
   description?: string;
   ogUrl?: string;
 }
@@ -28,7 +30,12 @@ interface Props {
 // `python3 scripts/resolve-deployment.py <deployment>` before building.
 const ORIGIN = `https://${deployment.domain}`;
 
-const { title, description = listing.play.shortDescription, ogUrl = `${ORIGIN}/` } = Astro.props;
+const {
+  title,
+  ogTitle = title,
+  description = listing.play.shortDescription,
+  ogUrl = `${ORIGIN}/`,
+} = Astro.props;
 
 // The real app icon, emitted same-origin (astro:assets → _astro/…, so the web-site self-containment
 // invariant holds). Two derived sizes from the one committed source of truth (Icon-1024.png): a 192px
@@ -38,6 +45,10 @@ const { title, description = listing.play.shortDescription, ogUrl = `${ORIGIN}/`
 // favicon entirely — this restores both.
 const brandmark = await getImage({ src: appIcon, width: 192, height: 192, format: "webp" });
 const favicon = await getImage({ src: appIcon, width: 64, height: 64, format: "png" });
+// The link preview's image (`og:image`): the app icon, never anything per-event — on the event page a photo
+// would hand an event's content to every server that builds a preview (capability event-site). Absolute,
+// because a previewer resolves it outside the page; same origin, so self-containment holds.
+const ogImage = await getImage({ src: appIcon, width: 512, height: 512, format: "png" });
 // Google Play is offered — the badge alone or the closed test's steps, whose third step is the badge.
 const playOffered = playOfferFor(deployment).kind !== "none";
 ---
@@ -52,10 +63,11 @@ const playOffered = playOfferFor(deployment).kind !== "none";
     <meta name="theme-color" content="#0C0E12" media="(prefers-color-scheme: dark)" />
     <title>{title}</title>
     <meta name="description" content={description} />
-    <meta property="og:title" content={title} />
+    <meta property="og:title" content={ogTitle} />
     <meta property="og:description" content={description} />
     <meta property="og:type" content="website" />
     <meta property="og:url" content={ogUrl} />
+    <meta property="og:image" content={`${ORIGIN}${ogImage.src}`} />
   </head>
   <body style={`--appicon:url(${brandmark.src})`}>
     <header>

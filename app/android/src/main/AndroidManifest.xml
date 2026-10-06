@@ -50,9 +50,9 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
             <!--
-              The event link (capability `join-event`): https://<the resolved deployment's domain>/join, exactly — the
-              same narrow claim the AASA makes, so the marketing page, the event pages and the device API keep opening in
-              a browser. autoVerify asks Android to check the domain's /.well-known/assetlinks.json; until that names
+              The event link (capability `join-event`): https://<the resolved deployment's domain>/join, exactly (the
+              fragment form), and /join/<eventId> (the path form) — the same narrow claim the AASA makes, so the
+              marketing page and the device API keep opening in a browser. autoVerify asks Android to check the domain's /.well-known/assetlinks.json; until that names
               this app's signing certificate (phase 5), the link is unverified and opens in the browser.
             -->
             <intent-filter android:autoVerify="true">
@@ -60,6 +60,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https" android:host="${linkHost}" android:path="/join" />
+                <data android:scheme="https" android:host="${linkHost}" android:pathPrefix="/join/" />
             </intent-filter>
         </activity>
         <!--

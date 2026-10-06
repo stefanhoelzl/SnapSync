@@ -34,7 +34,13 @@ internal class ScriptedBackend(var answer: (route: String, token: String?) -> Re
     override suspend fun challenge(): Reply<String> = call("challenge", null)
     override suspend fun mintToken(req: MintRequest): Reply<String> = call("mint", null)
     override suspend fun renewToken(req: RenewRequest): Reply<String> = call("renew", null)
-    override suspend fun createEvent(token: String?, req: CreateEventRequest): Reply<EventCreated> = call("create", token)
+    /** The last create's request, as the service built it. */
+    var lastCreate: CreateEventRequest? = null
+
+    override suspend fun createEvent(token: String?, req: CreateEventRequest): Reply<EventCreated> {
+        lastCreate = req
+        return call("create", token)
+    }
     override suspend fun getEvent(eventId: String): Reply<EventMeta> = call("get", null)
     override suspend fun renameEvent(token: String?, eventId: String, name: String): Reply<EventRenamed> = call("rename", token)
     override suspend fun joinEvent(token: String?, eventId: String, deviceId: String): Reply<Unit> = call("join", token)
@@ -67,4 +73,5 @@ internal fun servicesAnswering(reply: Reply<*>, store: SecureStore = MapSecureSt
     BackendServices(
         CredentialedBackend(ScriptedBackend { _, _ -> reply }, ScriptedCredential(null), versionGate = null),
         identityOf("D", store),
+        zone = { null },
     )

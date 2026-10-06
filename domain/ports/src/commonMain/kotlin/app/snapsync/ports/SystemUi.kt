@@ -26,8 +26,11 @@ import app.snapsync.model.Handoff
  * contracts over this one port, named as they were recorded (`LinkOpener@IOS_DEVICE_APP.rec`).
  */
 interface SystemUi : Port {
-    /** Present the platform's share surface carrying [text], and answer whether it appeared. */
-    suspend fun share(text: String): Handoff
+    /**
+     * Present the platform's share surface carrying [text], titled [title] where the platform shows a title (the
+     * sheet's header; capability `manage-membership`: the event's name), and answer whether it appeared.
+     */
+    suspend fun share(text: String, title: String): Handoff
 
     /** Ask the platform to open [url] outside this app, and answer whether it did. */
     suspend fun openUrl(url: String): Handoff

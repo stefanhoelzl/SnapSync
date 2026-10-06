@@ -195,7 +195,7 @@ class HostStatusActionsTest {
                     record("commitJoin:${join.eventId}:${join.direction}:${join.saveToAlbum}")
                     JoinCommit.Failed
                 },
-                share = { record("share:$it") },
+                share = { url, _ -> record("share:$url") },
                 requestAccess = { record("requestAccess") },
                 openSettings = { record("openSettings") },
                 openLink = { record("openLink:$it") },

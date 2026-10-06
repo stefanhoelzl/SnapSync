@@ -45,7 +45,16 @@ fun <T> Reply<T>.toResult(what: String): Result<T> = when (this) {
 }
 
 /** `POST /events` — the host's chosen name and window. [endsAt] absent is the backend's legacy `+30d` fallback. */
-data class CreateEventRequest(val name: String, val startsAt: String, val endsAt: String?)
+data class CreateEventRequest(
+    val name: String,
+    val startsAt: String,
+    val endsAt: String?,
+    /**
+     * The host's IANA time zone (`Europe/Berlin`), which only the event page reads to name the dates as the host chose
+     * them (capability `event-site`). Optional: absent, the page shows them in UTC.
+     */
+    val zone: String? = null,
+)
 
 /** What `POST /events` answered: the minted id, and the name the backend stored when it echoed one. */
 data class EventCreated(val eventId: String, val name: String?)

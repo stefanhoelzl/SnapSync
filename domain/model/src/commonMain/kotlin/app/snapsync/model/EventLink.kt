@@ -16,12 +16,15 @@ import kotlinx.serialization.json.Json
  * [decodeEventUrl], so the format cannot drift between producer and consumer. [EventLinkPayload]
  * is the wire DTO (its property name is the JSON key).
  *
- * The payload rides in the **fragment**, never the query string, and that is load-bearing rather than
- * cosmetic. A browser never transmits the fragment, so when an invite is opened *without* the app — the
- * only case that reaches our infrastructure at all — the backend sees exactly `GET /join` and the event
- * id stays off the wire, out of the CDN's logs, and out of any cache key. Under the retired `snapsync://`
- * scheme that property was free (no server could observe a custom-scheme URL); under a Universal Link it
- * is bought here. Moving the payload to `?` would look like tidying and would silently forfeit it.
+ * TWO FORMS are decoded, and every future version must keep decoding both (a printed QR opens forever):
+ * - the **fragment form** `<origin>/join#v=3&d=<payload>` — what [encodeEventUrl] produces and the app shares;
+ * - the **path form** `<origin>/join/<eventId>`, with the development hints (`autoJoin`, `minPhotoDate`, …) in an
+ *   optional fragment `#autoJoin=true&…` — what a browser sends to the server, so the event page can name the
+ *   event in a link preview (`changes/server-rendered-event-page`).
+ *
+ * The encoder still produces the fragment form: every app older than the path form's decoder rejects it, so the
+ * shared form switches only once those are gone (that change's phase 2). The fragment form once kept the event id
+ * off every server; that rule was given up for the server-rendered event page — see the change's design.
  */
 
 /**
@@ -37,6 +40,9 @@ const val CONFIG_VERSION: Int = 3
  * encoder and decoder are anchored to the same constant the `applinks:` entitlement is built from.
  */
 private const val PREFIX = "$LINK_ORIGIN/join#"
+
+/** The path form's prefix: `<origin>/join/<eventId>`, an optional `#<hints>` after it. */
+private const val PATH_PREFIX = "$LINK_ORIGIN/join/"
 
 /** Canonical UUID (`8-4-4-4-12` hex, case-insensitive). The edge endpoint validates `eventId` likewise. */
 private val UUID_REGEX =
@@ -81,9 +87,16 @@ fun encodeEventUrl(payload: EventLinkPayload): String {
  */
 fun decodeEventUrl(raw: String): ConfigDecodeResult {
     val trimmed = raw.trim()
-    if (!trimmed.startsWith(PREFIX)) return fail("not a snapsync event link")
+    return when {
+        trimmed.startsWith(PATH_PREFIX) -> decodePathForm(trimmed.substring(PATH_PREFIX.length))
+        trimmed.startsWith(PREFIX) -> decodeFragmentForm(trimmed.substring(PREFIX.length))
+        else -> fail("not a snapsync event link")
+    }
+}
 
-    val params = parseFragment(trimmed.substring(PREFIX.length)) ?: return fail("malformed fragment")
+/** The fragment form after `<origin>/join#`: `v=3&d=<base64url(json)>`. */
+private fun decodeFragmentForm(fragment: String): ConfigDecodeResult {
+    val params = parseFragment(fragment) ?: return fail("malformed fragment")
 
     val version = params["v"] ?: return fail("missing version")
     if (version != CONFIG_VERSION.toString()) return fail("unsupported version: $version")
@@ -130,6 +143,43 @@ fun inviteLinkFromInstallReferrer(referrer: String): String? =
     }
 
 private fun fail(reason: String) = ConfigDecodeResult.Failure(reason)
+
+/**
+ * The path form after `<origin>/join/`: the event id (a trailing `/` tolerated), then an optional `#` with the
+ * development hints as `key=value` pairs — the same keys, values and strictness as the fragment form's JSON payload:
+ * an unknown key or a malformed value fails rather than being dropped. No query is part of the form.
+ */
+private fun decodePathForm(rest: String): ConfigDecodeResult {
+    val hash = rest.indexOf('#')
+    val path = if (hash < 0) rest else rest.substring(0, hash)
+    val eventId = path.removeSuffix("/")
+    if (eventId.isEmpty()) return fail("config has an empty eventId")
+    if (!UUID_REGEX.matches(eventId)) return fail("eventId is not a canonical UUID")
+    val hints = if (hash < 0 || hash == rest.length - 1) {
+        emptyMap()
+    } else {
+        parseFragment(rest.substring(hash + 1)) ?: return fail("malformed fragment")
+    }
+    val unknown = hints.keys - PATH_HINT_KEYS
+    if (unknown.isNotEmpty()) return fail("unknown hint: ${unknown.first()}")
+    val autoJoin = hints["autoJoin"]?.let { it.toBooleanStrictOrNull() ?: return fail("autoJoin is not a boolean") }
+    val saveToAlbum = hints["saveToAlbum"]?.let { it.toBooleanStrictOrNull() ?: return fail("saveToAlbum is not a boolean") }
+    val dir = hints["direction"]
+    if (dir != null && Direction.fromWire(dir) == null) return fail("unknown direction: $dir")
+    return ConfigDecodeResult.Success(
+        EventLinkPayload(
+            eventId = eventId,
+            autoJoin = autoJoin ?: false,
+            minPhotoDate = hints["minPhotoDate"],
+            maxPhotoDate = hints["maxPhotoDate"],
+            direction = dir,
+            saveToAlbum = saveToAlbum,
+        ),
+    )
+}
+
+/** The development hints a path-form link may carry: exactly [EventLinkPayload]'s optional keys. */
+private val PATH_HINT_KEYS = setOf("autoJoin", "minPhotoDate", "maxPhotoDate", "direction", "saveToAlbum")
 
 /**
  * Absence: null means "this fragment is not a link payload" — malformed, empty, and unrecognised are

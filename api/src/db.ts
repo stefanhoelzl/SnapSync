@@ -100,6 +100,12 @@ export type EventRow = {
   completedAt?: string | null;
   /** The last time a byte landing completed an asset of this event — the clock's second anchor. */
   lastLandedAt?: string | null;
+  /**
+   * The host's IANA time zone (`Europe/Berlin`; migration 0009, capability `event-site`): the zone the event
+   * page reads `startsAt`/`endsAt` in, so they show as the host chose them. Null for an event created by a
+   * client that sent none, which the page renders in UTC. Write-once, like every column but `name`.
+   */
+  zone?: string | null;
 };
 
 function toEventRow(r: Row): EventRow {
@@ -114,14 +120,24 @@ function toEventRow(r: Row): EventRow {
     closedAt: r.closed_at == null ? null : String(r.closed_at),
     completedAt: r.completed_at == null ? null : String(r.completed_at),
     lastLandedAt: r.last_landed_at == null ? null : String(r.last_landed_at),
+    zone: r.zone == null ? null : String(r.zone),
   };
 }
 
 export async function insertEvent(db: Db, e: EventRow): Promise<void> {
   await db.execute(
-    `INSERT INTO events (id, name, created_at, starts_at, ends_at, capacity, lifetime_seconds)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [e.eventId, e.name, e.createdAt, e.startsAt, e.endsAt, e.capacity, e.lifetimeSeconds],
+    `INSERT INTO events (id, name, created_at, starts_at, ends_at, capacity, lifetime_seconds, zone)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      e.eventId,
+      e.name,
+      e.createdAt,
+      e.startsAt,
+      e.endsAt,
+      e.capacity,
+      e.lifetimeSeconds,
+      e.zone ?? null,
+    ],
   );
 }
 

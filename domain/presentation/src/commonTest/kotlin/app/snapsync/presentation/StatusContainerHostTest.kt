@@ -1674,12 +1674,12 @@ class StatusContainerHostTest {
     }
 
     @Test
-    fun `onShareInvite hands the invite url to the injected share`() = runTest {
-        val shared = mutableListOf<String>()
+    fun `onShareInvite hands the invite url and the event's name to the injected share`() = runTest {
+        val shared = mutableListOf<Pair<String, String>>()
         val configFake = FakeConfig(SAMPLE_CONFIG)
         val containerHost = StatusContainerHost(
             StatusSources(FakeSyncStatusSource(), FakePermissionSource().permission, configFake.config),
-            backgroundScope, commands = testCommands(share = { shared += it }),
+            backgroundScope, commands = testCommands(share = { url, title -> shared += url to title }),
             cutoffFormatter = fixedCutoffFormatter(),
             queries = noQueries,
             diagnostics = testDiagnostics(),
@@ -1689,16 +1689,16 @@ class StatusContainerHostTest {
         }
         advanceUntilIdle()
 
-        assertEquals(listOf(encodeEventUrl(EventLinkPayload(EVENT_ID))), shared)
+        assertEquals(listOf(encodeEventUrl(EventLinkPayload(EVENT_ID)) to SAMPLE_CONFIG.name), shared)
     }
 
     @Test
     fun `onShareInvite with no configured event does not share`() = runTest {
-        val shared = mutableListOf<String>()
+        val shared = mutableListOf<Pair<String, String>>()
         val configFake = FakeConfig(null)
         val containerHost = StatusContainerHost(
             StatusSources(FakeSyncStatusSource(), FakePermissionSource().permission, configFake.config),
-            backgroundScope, commands = testCommands(share = { shared += it }),
+            backgroundScope, commands = testCommands(share = { url, title -> shared += url to title }),
             cutoffFormatter = fixedCutoffFormatter(),
             queries = noQueries,
             diagnostics = testDiagnostics(),

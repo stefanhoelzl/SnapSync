@@ -59,7 +59,7 @@ CREATE TABLE events (
   ends_at          TEXT NOT NULL,
   capacity         INTEGER NOT NULL,
   lifetime_seconds INTEGER NOT NULL
-, closed_at TEXT, completed_at TEXT, last_landed_at TEXT) STRICT;
+, closed_at TEXT, completed_at TEXT, last_landed_at TEXT, zone TEXT) STRICT;
 
 CREATE TABLE memberships (
   event_id         TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,

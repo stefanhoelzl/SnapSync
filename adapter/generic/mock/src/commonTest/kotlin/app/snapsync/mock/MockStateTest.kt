@@ -101,6 +101,7 @@ class MockStateTest {
         assertEquals(NetworkAccess.Blocked, copy.connectivity.operator.access)
         assertEquals(CONDITIONS, copy.deviceConditions.operator.reading)
         assertEquals(listOf("hello"), copy.systemUi.operator.shared.value)
+        assertEquals(listOf("Party"), copy.systemUi.operator.sharedTitles.value)
         assertEquals("dump", copy.crashReporter.operator.sent.value.single().message)
         assertEquals(1, copy.enclave.keys.snapshot().second.size)
         assertEquals("v", (copy.keychain.items[SLOT])?.value)
@@ -169,7 +170,7 @@ class MockStateTest {
         device.downloads.port().start("https://in-memory.store/D2/F1", "F1-primary", TransferNetwork.UNRESTRICTED_ONLY)
         device.lifecycle.everActive = true
         device.pushService.port().register()
-        device.systemUi.port().share("hello")
+        device.systemUi.port().share("hello", "Party")
         device.systemUi.port().openSettings()
         return device
     }
