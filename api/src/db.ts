@@ -108,6 +108,11 @@ export type EventRow = {
    * client that sent none, which the page renders in UTC. Write-once, like every column but `name`.
    */
   zone?: string | null;
+  /**
+   * The event key's id (migration 0011; the encrypted file format, `docs/architecture.md`): 16 lowercase hex
+   * characters, set exactly when the event is ENCRYPTED. The key itself never reaches the backend. Write-once.
+   */
+  keyId?: string | null;
 };
 
 function toEventRow(r: Row): EventRow {
@@ -123,13 +128,14 @@ function toEventRow(r: Row): EventRow {
     completedAt: r.completed_at == null ? null : String(r.completed_at),
     lastLandedAt: r.last_landed_at == null ? null : String(r.last_landed_at),
     zone: r.zone == null ? null : String(r.zone),
+    keyId: r.key_id == null ? null : String(r.key_id),
   };
 }
 
 export async function insertEvent(db: Db, e: EventRow): Promise<void> {
   await db.execute(
-    `INSERT INTO events (id, name, created_at, starts_at, ends_at, capacity, lifetime_seconds, zone)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO events (id, name, created_at, starts_at, ends_at, capacity, lifetime_seconds, zone, key_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       e.eventId,
       e.name,
@@ -139,6 +145,7 @@ export async function insertEvent(db: Db, e: EventRow): Promise<void> {
       e.capacity,
       e.lifetimeSeconds,
       e.zone ?? null,
+      e.keyId ?? null,
     ],
   );
 }
@@ -1264,6 +1271,46 @@ export async function deviceResources(
  * its upload, and what its listing answers for (change `per-event-storage-layout`, D4). Single active
  * membership is the current contract; should two ever be present, the one first joined latest is taken.
  */
+/**
+ * What a byte route needs to know about the event it files an upload under, in ONE statement (each is an
+ * Edge subrequest the route's fan-out cannot spare): the device's membership state there, and the event's
+ * key id — `null` for a plain event. `null` when the device holds no membership in it.
+ */
+export async function uploadMembership(
+  db: Db,
+  eventId: string,
+  deviceId: string,
+): Promise<{ state: MembershipState; keyId: string | null } | null> {
+  const { rows } = await db.execute(
+    `SELECT m.state, e.key_id FROM memberships m JOIN events e ON e.id = m.event_id
+     WHERE m.event_id = ? AND m.device_id = ?`,
+    [eventId, deviceId],
+  );
+  if (rows.length === 0) return null;
+  return {
+    state: String(rows[0].state) as MembershipState,
+    keyId: rows[0].key_id == null ? null : String(rows[0].key_id),
+  };
+}
+
+/** {@link presentMembership} with the event's key id, in one statement — the event-less byte routes' read. */
+export async function presentUploadMembership(
+  db: Db,
+  deviceId: string,
+): Promise<{ eventId: string; keyId: string | null } | null> {
+  const { rows } = await db.execute(
+    `SELECT m.event_id, e.key_id FROM memberships m JOIN events e ON e.id = m.event_id
+     WHERE m.device_id = ? AND m.state IN ${PRESENT}
+     ORDER BY m.joined_at DESC, m.event_id LIMIT 1`,
+    [deviceId],
+  );
+  if (rows.length === 0) return null;
+  return {
+    eventId: String(rows[0].event_id),
+    keyId: rows[0].key_id == null ? null : String(rows[0].key_id),
+  };
+}
+
 export async function presentMembership(db: Db, deviceId: string): Promise<string | null> {
   const { rows } = await db.execute(
     `SELECT event_id FROM memberships WHERE device_id = ? AND state IN ${PRESENT}

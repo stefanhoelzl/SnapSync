@@ -148,3 +148,13 @@ export function validateZone(raw: unknown): string | null {
     return null;
   }
 }
+
+/**
+ * An encrypted event's key id as `POST /events` may carry it (the encrypted file format, `docs/architecture.md`):
+ * exactly 16 lowercase hex characters, or `null` when the value is anything else. Unlike `zone`, a present
+ * but invalid one is REFUSED by the route rather than dropped: dropping it would create a PLAIN event for a
+ * host who meant an encrypted one.
+ */
+export function validateKeyId(raw: unknown): string | null {
+  return typeof raw === "string" && /^[0-9a-f]{16}$/.test(raw) ? raw : null;
+}

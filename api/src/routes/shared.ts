@@ -22,6 +22,7 @@ import {
   validateEndsAt,
   validateEventName,
   validateFilename,
+  validateKeyId,
   validateStartsAt,
   validateUUID,
   validateZone,
@@ -124,6 +125,14 @@ export function sharedRoutes(deps: RouteDeps): Hono {
       }
       endsAt = validated;
     }
+    // An ENCRYPTED event names its key's id (the encrypted file format, `docs/architecture.md`); the key
+    // itself never reaches this backend. Optional — absent creates a plain event — but a present invalid
+    // one is a 400, never silently a plain event.
+    const rawKeyId = (body as { keyId?: unknown } | null)?.keyId;
+    const keyId = rawKeyId === undefined || rawKeyId === null ? null : validateKeyId(rawKeyId);
+    if (rawKeyId !== undefined && rawKeyId !== null && keyId === null) {
+      return c.text("invalid keyId", 400);
+    }
     const event: EventRow = {
       eventId: crypto.randomUUID(),
       name,
@@ -135,6 +144,7 @@ export function sharedRoutes(deps: RouteDeps): Hono {
       // The host's zone, which only the event page reads (capability `event-site`). Optional and never a
       // refusal: absent or unusable stores null, and the page renders the dates in UTC (`validateZone`).
       zone: validateZone((body as { zone?: unknown } | null)?.zone),
+      keyId,
     };
 
     const inserted = await tryUpstream(
