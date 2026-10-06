@@ -1,5 +1,6 @@
 package app.snapsync.compose
 
+import app.snapsync.services.crypto.EventKeys
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.upload.UploadCycle
 import app.snapsync.model.DeviceIdentityRole
@@ -163,6 +164,8 @@ private fun extensionServices(
             token()
         },
         appVersion = build.appVersion,
+        // Read only: the extension derives each file's key from the kept one and never writes the slot.
+        eventKeys = EventKeys(process.crypto, ports.secureStore),
         log = log,
     )
 }

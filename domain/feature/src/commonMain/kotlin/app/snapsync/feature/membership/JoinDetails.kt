@@ -12,7 +12,7 @@ import app.snapsync.model.EventLookup
  * is a fetch composed with this mapping.
  */
 fun EventLookup.toJoinLoad(): JoinLoad = when (this) {
-    is EventLookup.Found -> JoinLoad.Found(name, startsAt, endsAt, deletesAt, completion)
+    is EventLookup.Found -> JoinLoad.Found(name, startsAt, endsAt, deletesAt, completion, keyId)
     EventLookup.NotFound -> JoinLoad.NotFound
     EventLookup.Failed -> JoinLoad.Failed
 }

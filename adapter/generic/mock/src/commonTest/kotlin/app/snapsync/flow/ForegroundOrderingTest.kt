@@ -1,5 +1,8 @@
 package app.snapsync.flow
 
+import app.snapsync.mock.inMemorySecureStore
+import app.snapsync.mock.fakeCrypto
+import app.snapsync.services.crypto.EventKeys
 import kotlinx.coroutines.test.TestScope
 import app.snapsync.model.UnionTrigger
 import app.snapsync.model.UnionPage
@@ -143,6 +146,7 @@ class ForegroundOrderingTest {
             membershipRefresh = MembershipRefresh(
                 configSource = config,
                 leaveEvent = LeaveEvent(
+                    keys = EventKeys(fakeCrypto(), inMemorySecureStore()),
                     config = config,
                     stopUploads = {},
                     notifyLeave = { _, _ -> },

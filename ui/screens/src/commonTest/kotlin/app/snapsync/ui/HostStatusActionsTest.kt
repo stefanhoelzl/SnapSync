@@ -210,7 +210,7 @@ class HostStatusActionsTest {
                 resetRename = { record("resetRename") },
                 sendDiagnostics = { note, _ -> record("sendDiagnostics:$note"); app.snapsync.model.ReportOutcome.SENT },
             ),
-            queries = UserQueries(loadJoinDetails = { details(it) }, shareableCount = { _, _ -> null }),
+            queries = UserQueries(loadJoinDetails = { id, _ -> details(id) }, shareableCount = { _, _ -> null }),
             diagnostics = StatusDiagnostics(log = {}, onIntentError = {}),
         )
 

@@ -1,7 +1,6 @@
 package app.snapsync.compose
 
 import app.snapsync.feature.membership.toCommit
-import app.snapsync.feature.membership.toJoinLoad
 import app.snapsync.model.Handoff
 import app.snapsync.model.JoinCommit
 import app.snapsync.model.ReconfigureOutcome
@@ -162,8 +161,8 @@ internal fun AppCore.userCommandsFor(): UserCommands = UserCommands(
  * photo-library or network read never runs on the thread that asked.
  */
 internal fun AppCore.userQueriesFor(): UserQueries = UserQueries(
-    loadJoinDetails = { id ->
-        awaitingOnCoreLane("query.loadJoinDetails", "eventId=$id") { joinEvent.loadDetails(id).toJoinLoad() }
+    loadJoinDetails = { id, linkKey ->
+        awaitingOnCoreLane("query.loadJoinDetails", "eventId=$id") { joinEvent.loadJoin(id, linkKey) }
     },
     shareableCount = { cutoff, until ->
         awaitingOnCoreLane("query.shareableCount") { loadShareableCount(cutoff, until) }

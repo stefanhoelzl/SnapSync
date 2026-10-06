@@ -11,6 +11,10 @@ import app.snapsync.model.JoinChoice
 import app.snapsync.model.JoinCommit
 import app.snapsync.model.clampToCeiling
 import app.snapsync.model.clampToFloor
+import app.snapsync.model.JoinLoad
+import app.snapsync.services.crypto.EventKeys
+import app.snapsync.model.runCatchingCancellable
+import co.touchlab.kermit.Logger
 
 /**
  * The outcome of a confirmed join (capability `join-event`).
@@ -22,7 +26,7 @@ import app.snapsync.model.clampToFloor
  *   say which (`docs/architecture.md`, "Absence is never silent"). Nothing is persisted either way.
  * - [EnrollFailed]: the join request failed or the event is gone — nothing persisted, no producer enabled.
  */
-enum class JoinOutcome { Committed, AlreadyJoined, EventFull, EventClosed, EnrollFailed }
+enum class JoinOutcome { Committed, AlreadyJoined, EventFull, EventClosed, EnrollFailed, WrongLink }
 
 /**
  * What the join surface should show for this outcome (capability `join-event`).
@@ -37,6 +41,7 @@ fun JoinOutcome.toCommit(): JoinCommit = when (this) {
     JoinOutcome.EventFull -> JoinCommit.Full
     JoinOutcome.EventClosed -> JoinCommit.Closed
     JoinOutcome.EnrollFailed -> JoinCommit.Failed
+    JoinOutcome.WrongLink -> JoinCommit.WrongLink
 }
 
 /**
@@ -50,11 +55,22 @@ class JoinEvent(
     private val identity: PersistedDeviceIdentity,
     private val details: EventDirectory,
     private val enroller: DeviceEnroller,
+    /** An encrypted event's key: checked against the event before a join, and kept once it succeeds. */
+    private val keys: EventKeys,
     private val provision: suspend (EventConfig) -> Unit,
 ) {
 
     /** Fetch the event's details for the confirmation gate (loading → loaded/not-found/failed). */
     suspend fun loadDetails(eventId: String): EventLookup = details.fetch(eventId)
+
+    /**
+     * The confirmation gate's read: the event's details, and [JoinLoad.WrongLink] when the link's key ([linkKey]) does
+     * not open it — so a link cut short in sharing is told before the member chooses anything, not after.
+     */
+    suspend fun loadJoin(eventId: String, linkKey: String?): JoinLoad = when (val load = loadDetails(eventId).toJoinLoad()) {
+        is JoinLoad.Found -> if (keys.opens(linkKey, load.keyId)) load else JoinLoad.WrongLink
+        else -> load
+    }
 
     /**
      * Confirm the join of [choice]: the event with its loaded name (required, non-null — the gate only
@@ -85,14 +101,26 @@ class JoinEvent(
      * is what lets the upload cycle keep filtering on a single cutoff, with `startsAt` never reaching the
      * upload path at all.
      */
+    private val log = Logger.withTag("JoinEvent")
+
     suspend fun join(choice: JoinChoice): JoinOutcome {
         val eventId = choice.eventId
         if (configSource.config.value?.eventId == eventId) return JoinOutcome.AlreadyJoined
+        // Every entry path funnels here, the headless one included, so the key is checked here too — never only on
+        // the screen: a member must not join an encrypted event it could not read, nor upload plaintext into it.
+        if (!keys.opens(choice.linkKey, choice.eventKeyId)) return JoinOutcome.WrongLink
         when (enroller.enroll(eventId, identity.deviceId())) {
             JoinResult.JOINED -> Unit
             JoinResult.EVENT_FULL -> return JoinOutcome.EventFull
             JoinResult.EVENT_CLOSED -> return JoinOutcome.EventClosed
             JoinResult.EVENT_NOT_FOUND, JoinResult.FAILED -> return JoinOutcome.EnrollFailed
+        }
+        // The key before the config: a config naming a key id must never exist without its key. A refused write fails
+        // the join, which a retry repeats; a plain event's join removes a previous event's key.
+        val kept = runCatchingCancellable { choice.linkKey?.let(keys::keep) ?: keys.forget() }
+        if (kept.isFailure) {
+            log.w(kept.exceptionOrNull()) { "join: the event key could not be kept — the join is retried" }
+            return JoinOutcome.EnrollFailed
         }
         provision(
             EventConfig(
@@ -109,6 +137,7 @@ class JoinEvent(
                 direction = choice.direction,
                 saveToAlbum = choice.saveToAlbum,
                 mobileData = choice.mobileData,
+                keyId = choice.eventKeyId,
             ),
         )
         return JoinOutcome.Committed

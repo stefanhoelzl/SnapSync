@@ -195,6 +195,7 @@ class ScreenOperator internal constructor(private val mock: ScreenMock) {
 class DevControlsMock(internal var hints: InviteLinkHints = InviteLinkHints.Ignored) {
     internal val handlers = HandlerSlot<DevHandlers>("DevControls", BeforeListen.Thrown)
     @Volatile internal var pin: UploaderPin? = null
+    @Volatile internal var encrypts: Boolean = false
 
     fun port(): DevControls = object : DevControls {
         override fun listen(handlers: DevHandlers) {
@@ -204,6 +205,8 @@ class DevControlsMock(internal var hints: InviteLinkHints = InviteLinkHints.Igno
         override fun uploaderPin(): UploaderPin? = pin
 
         override fun inviteLinkHints(): InviteLinkHints = hints
+
+        override fun encryptsNewEvents(): Boolean = encrypts
     }
 
     val operator: DevControlsOperator = DevControlsOperator(this)
@@ -219,6 +222,11 @@ class DevControlsOperator internal constructor(private val mock: DevControlsMock
     var inviteLinkHints: InviteLinkHints
         get() = mock.hints
         set(value) { mock.hints = value }
+
+    /** Whether an event this device creates is encrypted — `false`, as on every shipped build, unless set. */
+    var encryptsNewEvents: Boolean
+        get() = mock.encrypts
+        set(value) { mock.encrypts = value }
 
     /** The channel's reset. */
     suspend fun reset() = mock.handlers.require("a reset").onReset()

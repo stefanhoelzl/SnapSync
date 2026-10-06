@@ -72,6 +72,7 @@ object RigVocabulary {
         "device/album/kind",
         "device/album/delete",
         "device/invite-link-hints",
+        "device/encrypt-new-events",
         "device/foreign-device",
         // The integration surface's observable reads of the world's simulated systems (capability
         // `docs/testing.md`, "The seam-to-UI-state integration surface") — what the backend, the crash

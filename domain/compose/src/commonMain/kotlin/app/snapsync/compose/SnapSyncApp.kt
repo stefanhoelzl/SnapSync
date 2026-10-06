@@ -1,5 +1,10 @@
 package app.snapsync.compose
 
+import app.snapsync.services.crypto.EventKeyMinting
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.map
+import app.snapsync.services.crypto.DownloadOpening
 import app.snapsync.model.UnionTrigger
 import app.snapsync.model.transferNetworkOf
 import app.snapsync.services.gallery.PermissionAwareCandidateSource
@@ -215,7 +220,7 @@ class AppCore internal constructor(
     val process: ProcessServices,
     internal val ports: AppPorts,
     /** Where a minted event goes — the host zone's join gate, so create and a scanned QR take one gate. */
-    private val onEventMinted: suspend (eventId: String) -> Unit,
+    private val onEventMinted: suspend (eventId: String, linkKey: String?) -> Unit,
 ) {
 
     /** This process's services over [ports] — built here, never by a root (see [AppServices]). */
@@ -338,6 +343,19 @@ class AppCore internal constructor(
     /** The membership's cell, for readers outside the core (the status host), which see no service type. */
     val membership: StateFlow<EventConfig?> get() = services.config.config
 
+    /**
+     * The joined event's key as its invite carries it, while the membership is ENCRYPTED (the encrypted file format,
+     * `docs/architecture.md`): read from the secure store each time the membership changes, `null` for a plain one or
+     * while the store cannot be read (a locked device), so an invite never carries a key that is not the event's.
+     */
+    val inviteKey: StateFlow<String?> by lazy {
+        membership
+            .map { config ->
+                config?.keyId?.let { runCatchingCancellable { services.eventKeys.linkKey() }.getOrNull() }
+            }
+            .stateIn(scope, SharingStarted.Eagerly, null)
+    }
+
     /** The photo-access grant, exposed for the join surface's count-recompute trigger (a late resolve). */
     val photoPermission: StateFlow<GalleryAccess> get() = galleryAccess.grant
 
@@ -374,6 +392,8 @@ class AppCore internal constructor(
                 if (recorded) tail.requestDetached(TailTrigger.DOWNLOAD_STAGED)
             },
             network = { transferNetworkOf(services.config.config.value) },
+            // An encrypted event's bytes are opened before they are staged (the encrypted file format).
+            opening = DownloadOpening(services.eventKeys, services.fileCipher, services.config, process.files),
             entryContext = process.entryContext,
         )
     }
@@ -494,6 +514,7 @@ class AppCore internal constructor(
             notifyLeave = membershipEnd::notifyLeave,
             everythingReceived = membershipEnd::everythingReceived,
             pendingLeaves = membershipEnd.pendingLeaves,
+            keys = services.eventKeys,
         )
     }
 
@@ -519,6 +540,7 @@ class AppCore internal constructor(
             identity = services.deviceIdentity,
             details = backend.directory,
             enroller = ManifestDeviceEnroller(backend.join),
+            keys = services.eventKeys,
             // Every provision route — interactive join, switch, retry, `autoJoin`, a create routed into the
             // join gate — passes here, so the album gather is started once the provision returns. It starts
             // HERE rather than inside `flow/Provision`: a flow may not detach work (law "A trigger flow never
@@ -581,6 +603,7 @@ class AppCore internal constructor(
             client = backend.creation,
             status = creationStatus,
             onMinted = onEventMinted,
+            minting = EventKeyMinting(services.eventKeys, ports.devControls),
         )
     }
 
@@ -606,6 +629,7 @@ class AppCore internal constructor(
             // pruned, so its change block's marker write lands on nothing. Passing the critical section
             // rather than the value is also what keeps the membership feature blind to its sibling.
             resetDownloads = { downloadController.onDurableStateReset() },
+            keys = services.eventKeys,
         )
     }
 
@@ -986,5 +1010,5 @@ class AppCore internal constructor(
 fun snapSyncApp(
     scope: CoroutineScope,
     ports: AppPorts,
-    onEventMinted: suspend (eventId: String) -> Unit,
+    onEventMinted: suspend (eventId: String, linkKey: String?) -> Unit,
 ): AppCore = AppCore(scope, snapSyncProcess(ports.process), ports, onEventMinted)

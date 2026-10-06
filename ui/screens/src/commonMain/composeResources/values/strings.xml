@@ -184,6 +184,8 @@
     <string name="event_not_found_body">This link is invalid, or the event no longer exists.</string>
     <string name="event_closed_title">Event closed</string>
     <string name="event_closed_body">This event can no longer be joined.</string>
+    <string name="link_incomplete_title">Incomplete invite</string>
+    <string name="link_incomplete_body">This link is missing part of the invite. Open the whole link again, or scan the event's QR code.</string>
     <string name="join_failed_title">Couldn't join</string>
     <string name="join_failed_body">Something went wrong. Try again.</string>
     <string name="event_full_title">This event is full</string>

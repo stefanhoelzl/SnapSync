@@ -1,6 +1,7 @@
 package app.snapsync.model
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 
 /**
  * The **event-link wire payload** carried by the invite QR: just the **event id**. Possession of
@@ -40,6 +41,12 @@ class EventLinkPayload(
     val maxPhotoDate: String? = null,
     val direction: String? = null,
     val saveToAlbum: Boolean? = null,
+    /**
+     * An ENCRYPTED event's key, base64url (`k=` — the encrypted file format, `docs/architecture.md`): carried only by
+     * the path form's fragment, which no request ever sends, and never part of the fragment form's JSON — so a plain
+     * event's link is byte-identical to what every installed build reads.
+     */
+    @Transient val key: String? = null,
 )
 
 /**
@@ -179,7 +186,16 @@ data class EventConfig(
      * behaviour from before the choice: every photo transfer on any network. Read through [transferNetwork].
      */
     val mobileData: Boolean = true,
+    /**
+     * An ENCRYPTED event's key id (16 lowercase hex — the encrypted file format, `docs/architecture.md`), `null` for a
+     * plain event. The key itself is never here: it is in the secure store, beside the device id. Defaults to `null`,
+     * so a config persisted before it existed decodes as plain — the truth, since no earlier event was encrypted.
+     */
+    val keyId: String? = null,
 ) {
+    /** Whether this membership's photos are stored encrypted. */
+    val encrypted: Boolean get() = keyId != null
+
     /** The network rule a photo transfer started now carries (capability `mobile-data`). */
     val transferNetwork: TransferNetwork get() = transferNetworkOf(mobileData)
 }

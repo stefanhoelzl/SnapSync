@@ -61,8 +61,13 @@ sealed interface ConfigDecodeResult {
     data class Failure(val reason: String) : ConfigDecodeResult
 }
 
-/** Encodes a payload into its canonical event-link URL. The inverse of [decodeEventUrl]. */
+/**
+ * Encodes a payload into its canonical event-link URL. The inverse of [decodeEventUrl]. An ENCRYPTED event's link is
+ * the path form, its key the fragment's `k` — the form no build before encryption is asked to open; every other link
+ * stays the fragment form every installed build reads (phase 2 of the event-site change moves them all).
+ */
 fun encodeEventUrl(payload: EventLinkPayload): String {
+    payload.key?.let { return "$PATH_PREFIX${payload.eventId}#k=$it" }
     val payloadJson = json.encodeToString(EventLinkPayload.serializer(), payload)
     val d = encoder.encode(payloadJson.encodeToByteArray())
     return "$PREFIX" + "v=$CONFIG_VERSION&d=$d"
@@ -160,8 +165,10 @@ private fun decodePathForm(rest: String): ConfigDecodeResult {
     } else {
         parseFragment(rest.substring(hash + 1)) ?: return fail("malformed fragment")
     }
-    val unknown = hints.keys - PATH_HINT_KEYS
+    val unknown = hints.keys - PATH_HINT_KEYS - KEY_PARAM
     if (unknown.isNotEmpty()) return fail("unknown hint: ${unknown.first()}")
+    val key = hints[KEY_PARAM]
+    if (key != null && decodeEventKey(key) == null) return fail("k is not a 32-byte base64url key")
     val autoJoin = hints["autoJoin"]?.let { it.toBooleanStrictOrNull() ?: return fail("autoJoin is not a boolean") }
     val saveToAlbum = hints["saveToAlbum"]?.let { it.toBooleanStrictOrNull() ?: return fail("saveToAlbum is not a boolean") }
     val dir = hints["direction"]
@@ -174,9 +181,23 @@ private fun decodePathForm(rest: String): ConfigDecodeResult {
             maxPhotoDate = hints["maxPhotoDate"],
             direction = dir,
             saveToAlbum = saveToAlbum,
+            key = key,
         ),
     )
 }
+
+/** An encrypted event's key in a link: base64url, no padding. */
+fun encodeEventKey(key: ByteArray): String = encoder.encode(key)
+
+/** The 32-byte key [text] names, or `null` when it is anything else. */
+fun decodeEventKey(text: String): ByteArray? = try {
+    decoder.decode(text).takeIf { it.size == EncryptedFileFormat.KEY_LENGTH && encoder.encode(it) == text }
+} catch (_: IllegalArgumentException) {
+    null
+}
+
+/** The fragment key an encrypted event's link carries its key in. */
+private const val KEY_PARAM = "k"
 
 /** The development hints a path-form link may carry: exactly [EventLinkPayload]'s optional keys. */
 private val PATH_HINT_KEYS = setOf("autoJoin", "minPhotoDate", "maxPhotoDate", "direction", "saveToAlbum")

@@ -2,6 +2,7 @@ package app.snapsync.feature.creation
 
 import app.snapsync.model.CreateOutcome
 import app.snapsync.services.backend.EventCreation
+import app.snapsync.services.crypto.EventKeyMinting
 
 import co.touchlab.kermit.Logger
 import app.snapsync.model.EventCreator
@@ -34,7 +35,11 @@ class CreateEvent(
     // Route the minted event into the join gate (the composition root binds this to the container's
     // `onEventCreated`). The `POST /events` already minted the event, so the gate holds a real id and
     // performs a real details load; provision (save config with name + cutoff) happens on confirm.
-    private val onMinted: suspend (eventId: String) -> Unit,
+    // `linkKey` is the minted event's key when it is encrypted, `null` for a plain one: the creator joins through the
+    // same gate as every guest, with the key its own invite will carry.
+    private val onMinted: suspend (eventId: String, linkKey: String?) -> Unit,
+    /** Whether a create is ENCRYPTED, and its key — asked at every create; `null` where this build creates only plain events. */
+    private val minting: EventKeyMinting?,
 ) : EventCreator {
 
     private val log = Logger.withTag("CreateEvent")
@@ -51,9 +56,12 @@ class CreateEvent(
             return
         }
         status.value = CreationStatus.InFlight
-        when (val outcome = client.create(name.trim(), startsAt, endsAt)) {
+        // The key is minted HERE, on the creating device, and only its id is sent (the encrypted file format,
+        // `docs/architecture.md`); the key itself reaches the creator's join, and from it the invite link.
+        val key = minting?.forNewEvent()
+        when (val outcome = client.create(name.trim(), startsAt, endsAt, key?.keyId)) {
             is CreateOutcome.Created -> {
-                onMinted(outcome.eventId)
+                onMinted(outcome.eventId, key?.linkKey)
                 status.value = CreationStatus.Idle
             }
             CreateOutcome.InvalidName -> {

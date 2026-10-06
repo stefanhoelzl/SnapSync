@@ -23,9 +23,6 @@ class FileCipher(private val crypto: Crypto, private val files: Files) {
 
     private val hmac = Hmac(crypto::hmacSha256)
 
-    /** A fresh event key, from the platform's secure generator. */
-    fun newEventKey(): ByteArray = crypto.randomBytes(EncryptedFileFormat.KEY_LENGTH)
-
     /** The key id an event row holds for [eventKey]. */
     fun keyIdOf(eventKey: ByteArray): ByteArray = EncryptedFileFormat.keyIdOf(eventKey, hmac)
 

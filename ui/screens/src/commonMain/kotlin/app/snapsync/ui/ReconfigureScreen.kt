@@ -25,6 +25,7 @@ import app.snapsync.ui.resources.event_closed_body
 import app.snapsync.ui.resources.event_closed_title
 import app.snapsync.ui.resources.event_not_found_body
 import app.snapsync.ui.resources.event_not_found_title
+import app.snapsync.ui.resources.join_both_off
 import app.snapsync.ui.resources.load_failed_body
 import app.snapsync.ui.resources.load_failed_title
 import app.snapsync.ui.resources.ok
@@ -174,29 +175,21 @@ internal fun SwitchDialog(
                 onDismiss = onCancelSwitch,
             )
         }
-        JoinPhase.NotFound ->
+        // An invite to no event, a closed one, or an incomplete invite of an encrypted one: the member stays in
+        // their own event (capability `join-event`) — the same walls the join screen shows.
+        JoinPhase.NotFound, JoinPhase.Closed, JoinPhase.WrongLink -> {
+            val copy = wallCopy(phase)
             AppConfirmDialog(
                 copy = DialogCopy(
-                    title = stringResource(Res.string.event_not_found_title),
-                    body = stringResource(Res.string.event_not_found_body),
+                    title = stringResource(copy.title),
+                    body = stringResource(copy.body),
                     confirmLabel = stringResource(Res.string.ok),
                     cancelLabel = stringResource(Res.string.cancel),
                 ),
                 onConfirm = onCancelSwitch,
                 onDismiss = onCancelSwitch,
             )
-        // A member opening a closed event's invite stays in their own event (capability `join-event`).
-        JoinPhase.Closed ->
-            AppConfirmDialog(
-                copy = DialogCopy(
-                    title = stringResource(Res.string.event_closed_title),
-                    body = stringResource(Res.string.event_closed_body),
-                    confirmLabel = stringResource(Res.string.ok),
-                    cancelLabel = stringResource(Res.string.cancel),
-                ),
-                onConfirm = onCancelSwitch,
-                onDismiss = onCancelSwitch,
-            )
+        }
         JoinPhase.LoadFailed ->
             AppConfirmDialog(
                 copy = DialogCopy(

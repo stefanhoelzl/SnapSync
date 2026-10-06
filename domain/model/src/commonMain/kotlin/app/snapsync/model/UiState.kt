@@ -415,6 +415,14 @@ sealed interface JoinPhase {
     data object Closed : JoinPhase
 
     /**
+     * The invite link does not open this event: the event is encrypted and the link carried no key, or another one
+     * (the encrypted file format, `docs/architecture.md`) — a link cut short in sharing. Only Cancel: the remedy is
+     * opening the whole invite again, which no Retry of this one can do.
+     */
+    @Serializable
+    data object WrongLink : JoinPhase
+
+    /**
      * Details loaded: [event] is what was fetched, [step] is where in the confirmation the member is.
      *
      * The step advances by user action only — the details never change under it, which is exactly why

@@ -431,6 +431,7 @@ private class EventDto(
     val endsAtMillis: Long?,
     val closed: Boolean = false,
     val completed: Boolean = false,
+    val keyId: String? = null,
 )
 
 @Serializable
@@ -506,6 +507,7 @@ private class BackendDto(
                 e.endsAtMillis?.let(Instant::fromEpochMilliseconds),
                 e.closed,
                 e.completed,
+                e.keyId,
             )
         }
         memberships.forEach {
@@ -538,6 +540,7 @@ private class BackendDto(
                     e.endsAt?.toEpochMilliseconds(),
                     e.closed,
                     e.completed,
+                    e.keyId,
                 )
             },
             memberships = state.memberships.map { (key, m) ->

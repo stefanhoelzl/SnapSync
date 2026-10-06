@@ -71,7 +71,8 @@ class MembershipRefresh(
         // A result that arrives after a switch or a leave describes someone else's membership.
         if (current.eventId != eventId) return RefreshOutcome.INCONCLUSIVE
         return when (fetched) {
-            JoinLoad.Failed -> RefreshOutcome.INCONCLUSIVE
+            // A refresh reads the details without a link, so it never asks whether a key opens the event.
+            JoinLoad.Failed, JoinLoad.WrongLink -> RefreshOutcome.INCONCLUSIVE
             JoinLoad.NotFound ->
                 // Witness two: this membership's OWN deadline. Absent it — or before it — the backend is
                 // disbelieved. Both readings mean "I could not tell", never "destroy it".

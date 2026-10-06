@@ -2,6 +2,9 @@
 
 package app.snapsync.feature.membership
 
+import app.snapsync.mock.inMemorySecureStore
+import app.snapsync.mock.fakeCrypto
+import app.snapsync.services.crypto.EventKeys
 import app.snapsync.feature.support.inertPendingLeaves
 
 import app.snapsync.feature.support.RecordingFiles
@@ -43,6 +46,7 @@ class LeaveEventTest {
         var notifiedWith: String? = null
 
         LeaveEvent(
+            keys = EventKeys(fakeCrypto(), inMemorySecureStore()),
             config = configService(joined("E1"), files),
             stopUploads = { order += "disable" },
             notifyLeave = { id, _ -> order += "notify"; notifiedWith = id },
@@ -68,6 +72,7 @@ class LeaveEventTest {
         val neverCompletes = CompletableDeferred<Unit>() // the DELETE hangs forever
 
         LeaveEvent(
+            keys = EventKeys(fakeCrypto(), inMemorySecureStore()),
             config = configService(joined("E7"), files),
             stopUploads = {},
             notifyLeave = { id, _ -> notifyStartedWith = id; neverCompletes.await() /* hangs */ },
@@ -92,6 +97,7 @@ class LeaveEventTest {
         val files = membershipFiles().apply { failDeletes = true }
 
         LeaveEvent(
+            keys = EventKeys(fakeCrypto(), inMemorySecureStore()),
             config = configService(joined("E2"), files),
             stopUploads = { disabled = true },
             notifyLeave = { _, _ -> notified = true },
@@ -113,6 +119,7 @@ class LeaveEventTest {
         val files = membershipFiles(order)
 
         LeaveEvent(
+            keys = EventKeys(fakeCrypto(), inMemorySecureStore()),
             config = configService(joined("E3"), files),
             stopUploads = { order += "disable" },
             notifyLeave = { _, _ -> throw RuntimeException("offline") },
@@ -134,6 +141,7 @@ class LeaveEventTest {
         val files = membershipFiles()
 
         LeaveEvent(
+            keys = EventKeys(fakeCrypto(), inMemorySecureStore()),
             config = configService(joined("E4"), files),
             stopUploads = { throw RuntimeException("photokit") },
             notifyLeave = { _, _ -> },
@@ -152,6 +160,7 @@ class LeaveEventTest {
         var notified = false
 
         LeaveEvent(
+            keys = EventKeys(fakeCrypto(), inMemorySecureStore()),
             config = configService(joined(null), files),
             stopUploads = {},
             notifyLeave = { _, _ -> notified = true },
@@ -179,6 +188,7 @@ class LeaveEventTest {
         var sent: Boolean? = null
         var asked: EventConfig? = null
         LeaveEvent(
+            keys = EventKeys(fakeCrypto(), inMemorySecureStore()),
             config = configService(config, membershipFiles()),
             stopUploads = {},
             notifyLeave = { _, received -> sent = received },
@@ -210,5 +220,22 @@ class LeaveEventTest {
     fun `a doubt about the downloads is a no`() = runTest {
         val (sent, _) = leaveAnswering(ended("E11")) { throw RuntimeException("union unreadable") }
         assertEquals(false, sent)
+    }
+
+    @Test
+    fun a_leave_forgets_an_encrypted_events_key() = runTest {
+        val store = inMemorySecureStore()
+        val keys = EventKeys(fakeCrypto(), store)
+        keys.keep(keys.mint().linkKey)
+        LeaveEvent(
+            keys = keys,
+            config = configService(joined("E1")),
+            stopUploads = {},
+            notifyLeave = { _, _ -> },
+            scope = backgroundScope,
+            everythingReceived = { false },
+            pendingLeaves = inertPendingLeaves(),
+        ).leave()
+        assertEquals(app.snapsync.model.SecureStoreRead.Absent, store.read(app.snapsync.model.SecureSlots.EVENT_KEY))
     }
 }

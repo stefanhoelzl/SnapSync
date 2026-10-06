@@ -1,5 +1,6 @@
 package app.snapsync.host
 
+import app.snapsync.model.redactEventKeys
 import app.snapsync.presentation.onIntent
 import app.snapsync.compose.AppCore
 import app.snapsync.compose.AppPorts
@@ -83,7 +84,7 @@ fun snapSyncHost(
     // The process first — inside `snapSyncApp`, before anything else in the graph can fail. A minted event routes into
     // the host's join gate, so create and a scanned QR take one gate; the host is assembled by the time one is minted.
     lateinit var composed: ComposedApp
-    val core = snapSyncApp(scope, ports, onEventMinted = { eventId -> composed.host.onEventCreated(eventId) })
+    val core = snapSyncApp(scope, ports, onEventMinted = { eventId, linkKey -> composed.host.onEventCreated(eventId, linkKey) })
     val process = core.process
     val log = process.logger("app")
     // The event ports' ONE registration each, on composition — a background wake's import needs its handlers as much
@@ -180,7 +181,8 @@ private fun onLink(delivery: LinkDelivery, process: ProcessServices, log: Logger
         result = { outcome: EventLinkDelivery -> outcome.summary },
     ) {
         forwardEventLink(delivery.isWebLink, delivery.activityType, delivery.url) { url ->
-            log.invocation(process.entryContext, "onOpenUrl", params = "url=$url") { open(url) }
+            // The device log keeps the link, never an encrypted event's key in it.
+            log.invocation(process.entryContext, "onOpenUrl", params = "url=${redactEventKeys(url)}") { open(url) }
         }
     }
 }
@@ -202,4 +204,5 @@ private fun statusSourcesOf(core: AppCore, ports: AppPorts): StatusSources = Sta
     network = core.network.status,
     store = ports.process.build.store,
     foreground = core.foregroundLife.returns,
+    inviteKey = core.inviteKey,
 )

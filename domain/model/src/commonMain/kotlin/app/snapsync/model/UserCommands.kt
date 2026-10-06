@@ -22,6 +22,9 @@ enum class JoinCommit {
 
     /** The commit did not land, for a reason that may not hold next time. */
     Failed,
+
+    /** The invite link does not open this event — no key, or another one; only the whole invite can. */
+    WrongLink,
 }
 
 /**

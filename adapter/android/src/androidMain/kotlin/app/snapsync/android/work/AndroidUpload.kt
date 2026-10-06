@@ -36,7 +36,9 @@ import io.ktor.http.content.OutgoingContent
 import io.ktor.http.isSuccess
 import io.ktor.utils.io.ByteWriteChannel
 import io.ktor.utils.io.writeFully
+import java.io.File
 import java.io.IOException
+import java.io.InputStream
 import java.net.URI
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
@@ -107,6 +109,9 @@ class AndroidUpload(
 
     override val accepts: UploadSourceKind = UploadSourceKind.RESOURCE
 
+    /** An encrypted event's sealed file is sent from disk, streamed like a library item. */
+    override val acceptsFiles: Boolean = true
+
     /** Register the core's handlers, then report what a previous process left unfinished — each as a failure. */
     override fun listen(handlers: UploadHandlers) {
         this.handlers.set(handlers)
@@ -122,8 +127,11 @@ class AndroidUpload(
         log.invocation(EntryScope.None, "upload.create", params = "tag=$tag", result = { "$it" }) { start(source, target, tag) }
 
     private fun start(source: UploadSource, target: UploadTarget, tag: String): UploadCreateOutcome {
-        val uri = (source as? UploadSource.Resource)?.handle as? Uri
-            ?: return UploadCreateOutcome.FAILED.also { log.w { "$tag: the source is not a MediaStore item" } }
+        val body = when (source) {
+            is UploadSource.Resource -> (source.handle as? Uri)?.let(Body::MediaItem)
+            // A file that is not there is no job: refused now, never a transfer that fails later.
+            is UploadSource.File -> File(source.path).takeIf { it.isFile }?.let(Body::LocalFile)
+        } ?: return UploadCreateOutcome.FAILED.also { log.w { "$tag: the source is neither a MediaStore item nor a file here" } }
         val path = runCatchingCancellable { URI(target.url).rawPath }.getOrNull()
             ?: return UploadCreateOutcome.FAILED.also { log.w { "$tag: the destination is not a URL" } }
         synchronized(live) {
@@ -132,7 +140,7 @@ class AndroidUpload(
             val transfer = Transfer(tag, path)
             live[tag] = transfer
             if (live.size == 1) hold = time.begin("uploads") { expireAll() }
-            transfer.job = scope.launch { transfer.run(uri, target) }
+            transfer.job = scope.launch { transfer.run(body, target) }
         }
         return UploadCreateOutcome.CREATED
     }
@@ -180,10 +188,10 @@ class AndroidUpload(
     private inner class Transfer(val tag: String, val path: String) {
         var job: Job? = null
 
-        suspend fun run(uri: Uri, target: UploadTarget) {
+        suspend fun run(body: Body, target: UploadTarget) {
             val (state, error) = try {
                 if (target.network == TransferNetwork.UNRESTRICTED_ONLY) awaitUnrestricted()
-                val status = put(uri, target)
+                val status = put(body, target)
                 if (status in 200..299) UploadJobState.SUCCEEDED to null else UploadJobState.FAILED to UploadError.Http(status)
             } catch (e: CancellationException) {
                 // Stopped — a leave's cancel, or the hold's expiry: reported, then the cancellation goes on.
@@ -210,30 +218,44 @@ class AndroidUpload(
             withContext(NonCancellable) { finish(tag, job(tag, path, state, error)) }
         }
 
-        private suspend fun put(uri: Uri, target: UploadTarget): Int {
-            val original = MediaOriginals.of(appContext, uri)
-            val length = appContext.contentResolver.openAssetFileDescriptor(original, "r")
-                ?.use { it.length.takeIf { size -> size != AssetFileDescriptor.UNKNOWN_LENGTH } }
+        private suspend fun put(body: Body, target: UploadTarget): Int {
+            val (open, length) = when (body) {
+                is Body.MediaItem -> {
+                    val original = MediaOriginals.of(appContext, body.uri)
+                    val length = appContext.contentResolver.openAssetFileDescriptor(original, "r")
+                        ?.use { it.length.takeIf { size -> size != AssetFileDescriptor.UNKNOWN_LENGTH } }
+                    val opener: () -> InputStream = {
+                        appContext.contentResolver.openInputStream(original) ?: throw IOException("the media provider opened no stream")
+                    }
+                    opener to length
+                }
+                is Body.LocalFile -> ({ body.file.inputStream() } as () -> InputStream) to body.file.length()
+            }
             val response = client.put(target.url) {
                 // The type rides on the body: Ktor refuses a Content-Type or Content-Length set as a plain header.
                 headers {
                     target.headers.filterKeys { !it.equals(CONTENT_TYPE, true) && !it.equals(CONTENT_LENGTH, true) }
                         .forEach { (name, value) -> append(name, value) }
                 }
-                setBody(Stream(original, length, target.headers.entries.firstOrNull { it.key.equals(CONTENT_TYPE, true) }?.value))
+                setBody(Stream(open, length, target.headers.entries.firstOrNull { it.key.equals(CONTENT_TYPE, true) }?.value))
             }
             return response.status.value.also { if (!response.status.isSuccess()) log.w { "$tag: the server answered $it" } }
         }
     }
 
-    /** The original's bytes as a request body, read as they are sent. */
-    private inner class Stream(private val uri: Uri, length: Long?, type: String?) : OutgoingContent.WriteChannelContent() {
+    /** What a transfer sends: a library item's original, or a file on this device's disk (an encrypted event's). */
+    private sealed interface Body {
+        class MediaItem(val uri: Uri) : Body
+        class LocalFile(val file: File) : Body
+    }
+
+    /** The source's bytes as a request body, read as they are sent. */
+    private class Stream(private val open: () -> InputStream, length: Long?, type: String?) : OutgoingContent.WriteChannelContent() {
         override val contentLength: Long? = length
         override val contentType: ContentType? = type?.let { runCatchingCancellable { ContentType.parse(it) }.getOrNull() }
 
         override suspend fun writeTo(channel: ByteWriteChannel) {
-            val input = appContext.contentResolver.openInputStream(uri) ?: throw IOException("the media provider opened no stream")
-            input.use {
+            open().use {
                 val buffer = ByteArray(CHUNK)
                 while (true) {
                     val read = it.read(buffer)

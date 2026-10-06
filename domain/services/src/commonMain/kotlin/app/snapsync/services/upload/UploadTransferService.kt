@@ -21,6 +21,8 @@ import app.snapsync.ports.Files
 import app.snapsync.ports.GalleryReader
 import app.snapsync.model.PlatformUploadJob
 import app.snapsync.ports.Upload
+import app.snapsync.services.crypto.UploadSeal
+import app.snapsync.services.crypto.UploadSealing
 import app.snapsync.services.gallery.UploadDiscovery
 import app.snapsync.model.invocation
 import co.touchlab.kermit.Logger
@@ -32,6 +34,9 @@ const val UPLOAD_STAGING_DIR: String = "upload-staging"
 
 /** The staged file for [key] — a pure function of it, so no process has to remember the path. */
 fun uploadStagingPath(key: String): String = "$UPLOAD_STAGING_DIR/$key"
+
+/** An encrypted event's export, beside its staged file only until it is sealed into it. */
+private const val PLAINTEXT_SUFFIX = ".plain"
 
 /**
  * **The upload cycle's transfer, over the thin [Upload] port** (capability `background-upload`): what used to live
@@ -65,6 +70,12 @@ class UploadTransferService(
      * of the member's choice governs the jobs that start after it, never the ones already handed to the platform.
      */
     private val network: () -> TransferNetwork,
+    /**
+     * How each upload is sealed (the encrypted file format, `docs/architecture.md`): not at all in a plain event; in an
+     * encrypted one, sealed into the staged file where the platform takes files, else by the edge from the one file's
+     * key the headers carry. `null` where nothing is ever sealed.
+     */
+    private val sealing: UploadSealing? = null,
     private val log: Logger = Logger.withTag("UploadTransfer"),
     private val entryContext: EntryScope = EntryScope.None,
 ) : BackgroundTransfer {
@@ -161,7 +172,16 @@ class UploadTransferService(
                 log.w { "retryJob: malformed destination URL for ${job.key} — not retrying" }
                 return@invocation
             }
-            val answer = upload.retry(offered, UploadTarget(request.url, request.headers, network()))
+            // A platform's own retry re-sends the library's bytes, so an encrypted event's edge seal is renewed with it.
+            val sealed = when (val seal = sealing?.sealFor(request.resource) ?: UploadSeal.Plain) {
+                UploadSeal.Plain -> request.headers
+                is UploadSeal.Sealed -> request.headers + sealing!!.edgeHeaders(seal)
+                is UploadSeal.Withheld -> {
+                    log.i { "retryJob: ${job.key} withheld — ${seal.reason}" }
+                    return@invocation
+                }
+            }
+            val answer = upload.retry(offered, UploadTarget(request.url, sealed, network()))
             if (answer is ChangeOutcome.Refused) {
                 log.w { "retryJob: the retry was refused for ${job.key} (code=${answer.code} ${answer.detail})" }
             }
@@ -180,9 +200,23 @@ class UploadTransferService(
                 return@invocation UploadCreateOutcome.FAILED
             }
             val target = UploadTarget(request.url, request.headers, network())
-            when (upload.accepts) {
-                UploadSourceKind.RESOURCE -> upload.create(UploadSource.Resource(resource.data), target, resource.filename)
-                UploadSourceKind.FILE -> createFromFile(resource, target)
+            when (val seal = sealing?.sealFor(resource) ?: UploadSeal.Plain) {
+                UploadSeal.Plain -> when (upload.accepts) {
+                    UploadSourceKind.RESOURCE -> upload.create(UploadSource.Resource(resource.data), target, resource.filename)
+                    UploadSourceKind.FILE -> createFromFile(resource, target, seal = null)
+                }
+                // Sealed on this device wherever the platform takes a file; only PhotoKit's queue, which sends the
+                // library's own bytes, leaves the sealing to the edge.
+                is UploadSeal.Sealed -> if (upload.acceptsFiles) {
+                    createFromFile(resource, target, seal)
+                } else {
+                    val edgeSealed = target.copy(headers = target.headers + sealing!!.edgeHeaders(seal))
+                    upload.create(UploadSource.Resource(resource.data), edgeSealed, resource.filename)
+                }
+                is UploadSeal.Withheld -> {
+                    log.i { "createJob: ${resource.filename} withheld — ${seal.reason}" }
+                    UploadCreateOutcome.FAILED
+                }
             }.also { if (it == UploadCreateOutcome.LIMIT_EXCEEDED) log.w { "job limit reached — deferring the rest" } }
         }
 
@@ -192,21 +226,34 @@ class UploadTransferService(
      */
     private val staging = Mutex()
 
-    private suspend fun createFromFile(resource: Resource, target: UploadTarget): UploadCreateOutcome =
-        staging.withLock { exportAndCreate(resource, target) }
+    private suspend fun createFromFile(resource: Resource, target: UploadTarget, seal: UploadSeal.Sealed?): UploadCreateOutcome =
+        staging.withLock { exportAndCreate(resource, target, seal) }
 
-    private suspend fun exportAndCreate(resource: Resource, target: UploadTarget): UploadCreateOutcome {
+    private suspend fun exportAndCreate(resource: Resource, target: UploadTarget, seal: UploadSeal.Sealed?): UploadCreateOutcome {
         val staged = uploadStagingPath(resource.filename)
+        // A sealed upload is exported beside the staged file and sealed INTO it; the plaintext goes at once.
+        val exportedTo = if (seal == null) staged else "$staged$PLAINTEXT_SUFFIX"
         val path = (files.locate(FileArea.SHARED, staged) as? FileResult.Ok)?.value ?: run {
             log.w { "createJob: the shared area cannot hold ${resource.filename}'s bytes — not creating" }
             return UploadCreateOutcome.FAILED
         }
+        val exportPath = (files.locate(FileArea.SHARED, exportedTo) as? FileResult.Ok)?.value ?: return UploadCreateOutcome.FAILED
         // The directory the export writes into: `write` creates parents, and the empty file is replaced by the export.
-        files.write(FileArea.SHARED, staged, ByteArray(0))
-        when (val exported = gallery.export(resource, path)) {
+        files.write(FileArea.SHARED, exportedTo, ByteArray(0))
+        when (val exported = gallery.export(resource, exportPath)) {
             WriteOutcome.Ok -> Unit
             else -> {
                 log.w { "createJob: exporting ${resource.filename} failed ($exported) — not creating" }
+                files.delete(FileArea.SHARED, exportedTo)
+                releaseStaged(resource.filename)
+                return UploadCreateOutcome.FAILED
+            }
+        }
+        if (seal != null) {
+            val sealed = sealing!!.seal(seal, exportedTo, staged)
+            files.delete(FileArea.SHARED, exportedTo)
+            if (sealed !is FileResult.Ok) {
+                log.w { "createJob: sealing ${resource.filename} failed ($sealed) — not creating" }
                 releaseStaged(resource.filename)
                 return UploadCreateOutcome.FAILED
             }

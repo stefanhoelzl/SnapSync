@@ -1,6 +1,9 @@
 package app.snapsync.membership
 
 import app.snapsync.feature.support.LEDGER_EVENT
+import app.snapsync.mock.fakeCrypto
+import app.snapsync.mock.inMemorySecureStore
+import app.snapsync.services.crypto.EventKeys
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.feature.support.RecordingFiles
 import app.snapsync.feature.support.configCleared
@@ -42,6 +45,7 @@ class ResetDeviceStateTest {
         var downloadsReset = false
 
         fun reset() = ResetDeviceState(
+            keys = EventKeys(fakeCrypto(), inMemorySecureStore()),
             config = config,
             ledger = ledger,
             downloads = downloads,
@@ -105,6 +109,7 @@ class ResetDeviceStateTest {
         f.ledger.recordUnlessSettled(LedgerEntry("IMG_1.HEIC", AssetId("asset-1"), LedgerState.COMPLETED))
 
         ResetDeviceState(
+            keys = EventKeys(fakeCrypto(), inMemorySecureStore()),
             config = f.config,
             ledger = f.ledger,
             downloads = f.downloads,

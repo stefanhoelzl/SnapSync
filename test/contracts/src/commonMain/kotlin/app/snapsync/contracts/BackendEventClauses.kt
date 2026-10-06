@@ -27,6 +27,20 @@ internal fun ClauseList<BackendState, EdgeSubject<Backend>>.eventClauses() {
         assertOk(s.port.createEvent(s.token, CreateEventRequest("No end", SEEDED_STARTS_AT, null)), "the backend supplies the end")
     }
 
+    clause("CREATE_WITH_A_KEY_ID_IS_AN_ENCRYPTED_EVENT_AND_ONLY_THEN", BackendState.SERVING) { s ->
+        // The encrypted file format (`docs/architecture.md`): the backend keeps the key's id, never the key.
+        val keyId = "de30249b854310c8"
+        val encrypted = assertOk(s.port.createEvent(s.token, CreateEventRequest("Secret", SEEDED_STARTS_AT, SEEDED_ENDS_AT, keyId = keyId)))
+        assertEquals(keyId, assertOk(s.port.getEvent(encrypted.eventId)).keyId, "an encrypted event names its key id")
+        val plain = assertOk(s.port.createEvent(s.token, CreateEventRequest("Open", SEEDED_STARTS_AT, SEEDED_ENDS_AT)))
+        assertEquals(null, assertOk(s.port.getEvent(plain.eventId)).keyId, "a plain event names none")
+        assertRefused(
+            BAD_REQUEST,
+            s.port.createEvent(s.token, CreateEventRequest("Bad", SEEDED_STARTS_AT, SEEDED_ENDS_AT, keyId = "DE30249B854310C8")),
+            "a malformed key id is refused, never created as a plain event",
+        )
+    }
+
     clause("CREATE_A_BLANK_NAME_IS_REFUSED_AS_THE_NAME", BackendState.SERVING) { s ->
         val refused = assertRefused(BAD_REQUEST, s.port.createEvent(s.token, CreateEventRequest("   ", SEEDED_STARTS_AT, SEEDED_ENDS_AT)))
         assertFalse(WINDOW_FIELDS.any { it in refused.body }, "a refused name names no date field: ${refused.body}")

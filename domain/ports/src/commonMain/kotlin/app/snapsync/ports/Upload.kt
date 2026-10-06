@@ -26,6 +26,14 @@ interface Upload : Listenable<UploadHandlers> {
     /** The kind of source [create] takes: the caller exports the bytes to a file first where this is [UploadSourceKind.FILE]. */
     val accepts: UploadSourceKind
 
+    /**
+     * Whether [create] also takes an [UploadSourceKind.FILE] where it prefers a resource — what an ENCRYPTED event's
+     * upload needs, since only a file can be sealed before it leaves (the encrypted file format,
+     * `docs/architecture.md`). A platform that takes only the library's own bytes (PhotoKit) answers `false`, and its
+     * uploads are sealed by the edge instead.
+     */
+    val acceptsFiles: Boolean get() = accepts == UploadSourceKind.FILE
+
     /** Create a job sending [source] to [target], tagged [tag] where the platform keeps a tag. */
     suspend fun create(source: UploadSource, target: UploadTarget, tag: String): UploadCreateOutcome
 

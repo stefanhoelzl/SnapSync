@@ -1,5 +1,8 @@
 package app.snapsync.compose
 
+import app.snapsync.services.crypto.EventKeys
+import app.snapsync.services.crypto.FileCipher
+import app.snapsync.services.crypto.UploadSealing
 import app.snapsync.model.transferNetworkOf
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.feature.album.AlbumCoordinator
@@ -148,6 +151,11 @@ internal class UploadServices(
      * which let a composition declare no version to the min-app-version gate without saying so.
      */
     val appVersion: String,
+    /**
+     * The joined event's key, when it is encrypted (the encrypted file format, `docs/architecture.md`): what each
+     * upload is sealed under. Required: the app passes its own, the extension one over its read of the shared slot.
+     */
+    val eventKeys: EventKeys,
     val log: Logger = Logger.withTag("UploadCycle"),
 )
 
@@ -170,6 +178,9 @@ internal fun uploadCycle(process: ProcessServices, ports: UploadServices): Uploa
         gallery = ports.gallery,
         files = process.files,
         network = { transferNetworkOf(ports.config.config.value) },
+        sealing = UploadSealing(
+            ports.eventKeys, FileCipher(process.crypto, process.files), ports.config, ports.deviceIdentity,
+        ),
         log = ports.log,
         entryContext = process.entryContext,
     )

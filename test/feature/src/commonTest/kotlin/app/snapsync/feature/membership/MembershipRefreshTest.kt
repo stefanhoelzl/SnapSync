@@ -1,5 +1,8 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.mock.inMemorySecureStore
+import app.snapsync.mock.fakeCrypto
+import app.snapsync.services.crypto.EventKeys
 import app.snapsync.feature.support.inertPendingLeaves
 
 import kotlin.time.Instant
@@ -77,6 +80,7 @@ class MembershipRefreshTest {
         MembershipRefresh(
             configSource = config.service(now),
             leaveEvent = LeaveEvent(
+                keys = EventKeys(fakeCrypto(), inMemorySecureStore()),
                 config = config.service(now),
                 stopUploads = {},
                 notifyLeave = { _, _ -> },

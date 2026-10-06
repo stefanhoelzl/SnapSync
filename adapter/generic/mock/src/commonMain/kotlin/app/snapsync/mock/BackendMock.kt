@@ -271,6 +271,8 @@ internal class BackendState(
         var closed: Boolean = false,
         /** Completed — the sweep's verdict: memberships and assets gone, the record kept. */
         var completed: Boolean = false,
+        /** An ENCRYPTED event's key id (16 lowercase hex); `null` for a plain event. Write-once, like the real row. */
+        val keyId: String? = null,
     )
 
     class Membership(var departed: Boolean = false, var manifest: DeviceManifest? = null, var manifestVersion: Long? = null)

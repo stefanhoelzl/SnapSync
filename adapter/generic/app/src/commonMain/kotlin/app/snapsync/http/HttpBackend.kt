@@ -149,6 +149,7 @@ class HttpBackend(
                 "startsAt" to JsonPrimitive(req.startsAt),
                 req.endsAt?.let { "endsAt" to JsonPrimitive(it) },
                 req.zone?.let { "zone" to JsonPrimitive(it) },
+                req.keyId?.let { "keyId" to JsonPrimitive(it) },
             ).toMap(),
         ).toString(),
     ) { text -> EventCreated(eventId = field(text, "eventId"), name = optional(text, "name")) }
@@ -171,6 +172,7 @@ class HttpBackend(
                     val final = (m["final"] as? JsonPrimitive)?.intOrNull
                     if (active != null && final != null) MemberCounts(active, final) else null
                 },
+                keyId = meta.optional("keyId"),
             )
         }
 
