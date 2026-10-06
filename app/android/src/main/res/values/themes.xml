@@ -1,13 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!--
-      The window the Compose screen draws into. Android 15+ draws every app edge to edge, so the screen's background shows
-      behind the status and navigation bars, and the bars' icons must contrast with it: dark icons on the light theme.
-      Without this the platform keeps its white icons, invisible on the light background. The Compose theme follows the
+      The window the Compose screen draws into. It is edge to edge on every version (MainActivity's enableEdgeToEdge, and
+      Android 15+ on its own), so the screen's background shows behind the status and navigation bars, and the bars'
+      icons must contrast with it: dark icons on the light theme, from the window's first frame on. Without this the
+      platform keeps its white icons, invisible on the light background. The Compose theme follows the
       system's night mode, and so does this resource (values-night/ holds the dark window).
     -->
     <style name="Theme.SnapSync" parent="@android:style/Theme.Material.Light.NoActionBar">
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowLightNavigationBar">true</item>
+        <!-- The screen's background (AppTheme's background colour), so the window the OS shows before the first frame and
+             its bars already match the screen that replaces it. -->
+        <item name="android:windowBackground">@color/screen_background</item>
+        <item name="android:statusBarColor">@color/screen_background</item>
+        <item name="android:navigationBarColor">@color/screen_background</item>
     </style>
 </resources>

@@ -128,8 +128,9 @@
     <string name="counts_not_receiving">Empfangen aus</string>
     <string name="waiting_members">Warte auf %1$d von %2$d Mitgliedern</string>
     <string name="event_settings">Event-Einstellungen</string>
-    <string name="share_invite">Einladungslink teilen</string>
-    <string name="leave_event">Event verlassen</string>
+    <string name="footer_settings">Einstellungen</string>
+    <string name="share_invite">Teilen</string>
+    <string name="leave_event">Verlassen</string>
     <string name="leave_title">Dieses Event verlassen?</string>
     <string name="leave_body">Du teilst und empfängst dann keine Fotos mehr. Fotos, die schon in deiner Galerie sind, bleiben dort.</string>
     <string name="leave_confirm">Verlassen</string>
@@ -193,6 +194,6 @@
     <string name="explain_hint_caption">Öffne SnapSync, dann holen sie auf.</string>
     <string name="explain_settings_link">Einstellungen</string>
     <string name="explain_access_link">Erlaube den Fotozugriff</string>
-    <string name="show_qr">QR-Code zeigen</string>
+    <string name="show_qr">QR-Code</string>
     <string name="qr_sheet_title">„%1$s“ beitreten</string>
 </resources>

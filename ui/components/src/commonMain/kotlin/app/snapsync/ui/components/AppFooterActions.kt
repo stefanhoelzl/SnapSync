@@ -1,49 +1,94 @@
 package app.snapsync.ui.components
 
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.QrCode
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
 /*
- * The joined screen's quiet footer actions (capability `sync-status`): centred, borderless text buttons that
- * sit beneath the invite's filled pair without competing with it. Emphasis is a design-time choice, so each
- * meaning is its own component and the call site passes only a label and a click.
+ * The footer actions (capability `sync-status`): borderless text actions, each led by its glyph, in rows of equal
+ * halves — on the joined screen the invite (share, QR code) above the membership (settings, Leave), on the event's
+ * settings Cancel beside Save. Emphasis and glyph are design-time choices, so each meaning is its own component and the
+ * call site passes only a label and a click.
  */
 
-/** Opens the event's settings: a text action in the accent colour. */
+/** A row of footer actions: each takes an equal part, so a lone action sits centred. */
 @Composable
-fun SettingsTextAction(label: String, onClick: () -> Unit) = FooterTextAction(label, appAccentText(), onClick)
-
-/** Leaves the event: a text action in the error colour, because leaving is destructive. */
-@Composable
-fun LeaveTextAction(label: String, onClick: () -> Unit) =
-    FooterTextAction(label, MaterialTheme.colorScheme.error, onClick)
-
-/** The thin line that sets the footer's quiet actions apart from the invite pair above them. */
-@Composable
-fun AppFooterDivider() {
-    HorizontalDivider(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-        color = MaterialTheme.colorScheme.outlineVariant,
-    )
+fun AppFooterTextActions(content: @Composable RowScope.() -> Unit) {
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, content = content)
 }
 
+/** Shares the event's invite link: the share glyph, in the accent colour. */
 @Composable
-private fun FooterTextAction(label: String, color: Color, onClick: () -> Unit) {
+fun RowScope.ShareTextAction(label: String, onClick: () -> Unit) =
+    FooterTextAction(label, Icons.Filled.Share, appAccentText(), onClick)
+
+/** Shows the event's QR code: the QR glyph, in the accent colour. */
+@Composable
+fun RowScope.QrTextAction(label: String, onClick: () -> Unit) =
+    FooterTextAction(label, Icons.Filled.QrCode, appAccentText(), onClick)
+
+/** Opens the event's settings: the settings glyph, in the accent colour. */
+@Composable
+fun RowScope.SettingsTextAction(label: String, onClick: () -> Unit) =
+    FooterTextAction(label, Icons.Filled.Settings, appAccentText(), onClick)
+
+/** Leaves the event: the exit glyph, in the error colour, because leaving is destructive. */
+@Composable
+fun RowScope.LeaveTextAction(label: String, onClick: () -> Unit) =
+    FooterTextAction(label, Icons.AutoMirrored.Filled.Logout, MaterialTheme.colorScheme.error, onClick)
+
+/** Saves a form: the check glyph, in the accent colour; [enabled] false while the form cannot be saved. */
+@Composable
+fun RowScope.SaveTextAction(label: String, onClick: () -> Unit, enabled: Boolean) =
+    FooterTextAction(label, Icons.Filled.Check, appAccentText(), onClick, enabled)
+
+/** Leaves a form without saving: the close glyph, in the quiet text colour. */
+@Composable
+fun RowScope.CancelTextAction(label: String, onClick: () -> Unit) =
+    FooterTextAction(label, Icons.Filled.Close, MaterialTheme.colorScheme.onSurfaceVariant, onClick)
+
+@Composable
+private fun RowScope.FooterTextAction(
+    label: String,
+    icon: ImageVector,
+    color: Color,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+) {
     TextButton(
         onClick = onClick,
+        enabled = enabled,
         colors = ButtonDefaults.textButtonColors(contentColor = color),
-        modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp),
+        contentPadding = PaddingValues(horizontal = 8.dp),
+        modifier = Modifier.weight(1f).heightIn(min = 44.dp),
     ) {
-        Text(label, style = MaterialTheme.typography.titleSmall)
+        // Decorative: the label beside it already says what the action does.
+        Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(label, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }

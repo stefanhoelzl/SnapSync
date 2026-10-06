@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -25,6 +26,7 @@ import app.snapsync.ui.components.AccessPrompt
 import app.snapsync.ui.components.AppDatesLine
 import app.snapsync.ui.components.AppErrorBanner
 import app.snapsync.ui.components.AppHeadingStatement
+import app.snapsync.ui.components.AppSectionDivider
 import app.snapsync.ui.components.AppStatusDetail
 import app.snapsync.ui.components.AppStatusLine
 import app.snapsync.ui.components.AppSyncStatus
@@ -51,9 +53,10 @@ import org.jetbrains.compose.resources.stringResource
 
 /**
  * The joined-layer event home: the one-line sync health first, because the screen is opened far more often to
- * check on photos than for anything else, then what the event means for this member ("How it works"). The
- * content scrolls; the footer the layout docks beneath it stays put, so on the smallest phone the invite and
- * Leave are never scrolled away (capability `sync-status`).
+ * check on photos than for anything else, then what the event means for this member ("How it works"). Only the
+ * explanation scrolls: the status stays beneath the heading and the footer the layout docks beneath it stays
+ * put, so on the smallest phone neither the sync health nor the invite and Leave are ever scrolled away
+ * (capability `sync-status`).
  */
 @Composable
 internal fun JoinedLayer(
@@ -63,18 +66,28 @@ internal fun JoinedLayer(
     onOpenEventSettings: () -> Unit,
 ) {
     Column(
-        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+        modifier = Modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(28.dp),
+        verticalArrangement = Arrangement.spacedBy(SECTION_GAP),
     ) {
         // A rejected event link, if one just arrived. First because it is about what the member JUST DID, and it
         // self-clears on its own; without it a bad scan while joined said nothing at all.
         state.notice?.let { AppErrorBanner(it.text()) }
         StatusBlock(state, access)
-        Explanation(state, cutoff, access, onOpenEventSettings)
-        Spacer(Modifier.height(4.dp))
+        // The line where the pinned status ends and the scrolling explanation begins.
+        AppSectionDivider()
+        Column(
+            modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Explanation(state, cutoff, access, onOpenEventSettings)
+            Spacer(Modifier.height(SECTION_GAP))
+        }
     }
 }
+
+/** The space between the joined layer's sections, and beneath the explanation's last row. */
+private val SECTION_GAP = 28.dp
 
 /**
  * The one sync-health line — bare, no card — with the counts quietly beneath it. The permission affordance is

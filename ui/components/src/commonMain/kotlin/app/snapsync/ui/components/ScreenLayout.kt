@@ -111,11 +111,11 @@ fun ScreenLayout(
             if (bottomActions != null) {
                 // The docked footer: pinned beneath the content, which scrolls above it on a small phone. The line
                 // along its top edge marks where the scrolling content ends, whatever the footer holds.
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                AppSectionDivider()
                 Column(
-                    modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+                    // Tight: the footer's actions are touch-target-tall text rows, whose own slack already spaces them.
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
                     content = bottomActions,
                 )
             }
@@ -249,3 +249,12 @@ class ScreenHeading(
 
 /** How many lines the heading may wrap to before it is cut with an ellipsis. */
 private const val HEADING_MAX_LINES = 2
+
+/**
+ * The thin full-width line that sets one part of a screen apart from the next — the docked footer's top edge, and the
+ * joined screen's line between the pinned status and the scrolling explanation. One line, so every edge reads alike.
+ */
+@Composable
+fun AppSectionDivider() {
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+}
