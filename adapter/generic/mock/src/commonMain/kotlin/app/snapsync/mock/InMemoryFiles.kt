@@ -66,6 +66,12 @@ internal class InMemoryFiles(
         }
     }
 
+    /** No directories are held, only paths: a directory holds what its prefix names. */
+    override fun list(area: FileArea, directory: String): FileResult<List<String>> {
+        val files = areas[area] ?: return FileResult.AreaUnavailable
+        return FileResult.Ok(files.keys.toList().filter { it.startsWith("$directory/") }.sorted())
+    }
+
     private companion object {
         const val MEM = "mem:/"
     }

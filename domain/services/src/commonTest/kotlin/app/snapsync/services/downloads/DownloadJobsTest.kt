@@ -653,6 +653,7 @@ class DownloadJobsTest {
         override fun locate(area: FileArea, path: String): FileResult<String> = FileResult.Ok("/abs/$path")
         override fun move(area: FileArea, from: String, to: String): FileResult<Unit> = FileResult.NotFound
         override fun adopt(osPath: String, area: FileArea, to: String): FileResult<Unit> = FileResult.Ok(Unit)
+        override fun list(area: FileArea, directory: String): FileResult<List<String>> = FileResult.Ok(emptyList())
     }
 
     @Test

@@ -13,8 +13,8 @@ import app.snapsync.feature.status.ForegroundWatches
  * persisted membership (below), renew a stale attestation token, start the foreground status poll,
  * then — each on its own launch, so a slow one never blocks the others — settle in-flight uploads whose
  * bytes the backend already stores, re-read the status sources, reconcile foreign downloads, reclaim the
- * staged bytes of already-imported downloads, and refresh the event title. That is foreground entry's
- * **own work**, and all of it (decision record `changes/own-work-per-wake`, D1).
+ * staged bytes of already-imported downloads and of uploads no job reads, and refresh the event title. That is
+ * foreground entry's **own work**, and all of it (decision record `changes/own-work-per-wake`, D1).
  *
  * **The imports, the upload top-up and the walk are not this flow's** (capability `sync-status`,
  * "Foreground status refresh is not sequenced behind the upload tail"). They are the process's one
@@ -26,8 +26,8 @@ import app.snapsync.feature.status.ForegroundWatches
  *
  * This flow **coordinates** (ordering + fan-out of the escaping launches); it **decides** nothing. The
  * stack-assembly touch and the entry-point log wrap stay with the foreground handler; every
- * step that touches a port ([reloadConfig] the membership re-read, [settleStored] the stored-upload
- * settle, [refreshStatus] the read-model refreshes, [fetchEventDetails] the directory fetch,
+ * step that touches a port ([reloadConfig] the membership re-read, [uploadOwnWork] the upload staging sweep and
+ * the stored-upload settle, [refreshStatus] the read-model refreshes, [fetchEventDetails] the directory fetch,
  * [activeEventId] the config read, [refreshAttestation] the token wake) arrives as a `model`-typed effect
  * lambda built in `compose/`.
  *
@@ -70,9 +70,11 @@ class Foreground(
     private val watches: ForegroundWatches,
     /** Re-read the persisted membership into the config StateFlow — the port touch, injected. */
     private val reloadConfig: suspend () -> Unit,
-    /** Settle the `REQUESTED` rows whose bytes the backend's per-device listing already stores (capability
-     *  `photo-sharing`) — the listing fetch and the guarded write. The upload side's only own work. */
-    private val settleStored: suspend () -> Unit,
+    /** The upload side's own work, all of it: free the staged upload files no in-flight job reads (capability
+     *  `background-upload`; unconditional — an unjoined device starts no upload cycle to reach them), then settle the
+     *  `REQUESTED` rows whose bytes the backend's per-device listing already stores (capability `photo-sharing`) —
+     *  the listing fetch and the guarded write, joined only. */
+    private val uploadOwnWork: suspend () -> Unit,
     /** Re-read the own-device total + ledger counts + the foreign-download line. */
     private val refreshStatus: suspend () -> Unit,
     /** The active event id, or `null` when unjoined — the config read, injected (a port touch). */
@@ -108,7 +110,7 @@ class Foreground(
             // the backend already stores"): bytes can land long before the OS acknowledges their job, and this
             // exists to correct the status the member is looking at now. Its one write is the guarded terminal
             // write the platform's callbacks already make beside a running tail, so it needs no ordering with it.
-            child("settleStored") { settleStored() }
+            child("uploadOwnWork") { uploadOwnWork() }
             child("refreshStatus") { refreshStatus() }
             // Foreground discovery (capability `receiving-photos`): pick up foreign photos, plan and enqueue. It
             // imports nothing — the staged imports are the tail's first unit, requested after this flow returns.

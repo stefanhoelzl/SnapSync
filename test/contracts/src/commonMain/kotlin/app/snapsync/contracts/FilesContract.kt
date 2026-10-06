@@ -139,6 +139,29 @@ object FilesContract : Contract<FilesState, Files>("Files") {
             assertEquals(FileResult.AreaUnavailable, files.exists(FileArea.SHARED, p))
             assertEquals(FileResult.AreaUnavailable, files.locate(FileArea.SHARED, p))
             assertEquals(FileResult.AreaUnavailable, files.move(FileArea.SHARED, p, "$p.moved"))
+            assertEquals(FileResult.AreaUnavailable, files.list(FileArea.SHARED, "contract"))
+        }
+
+        clause("EMPTY_LIST_IS_EVERY_FILE_BENEATH_AT_ANY_DEPTH", FilesState.EMPTY) { files ->
+            val dir = "contract/EMPTY_LIST_IS_EVERY_FILE_BENEATH_AT_ANY_DEPTH"
+            val inside = listOf("$dir/a.bin", "$dir/deeper/b.bin", "$dir/deeper/still/c.bin")
+            FileArea.entries.forEach {
+                inside.forEach { path -> files.write(it, path, ByteArray(1)) }
+                files.write(it, "$dir-beside/d.bin", ByteArray(1))
+                assertEquals(FileResult.Ok(inside), files.list(it, dir), "$it: sorted, relative to the area, directories not listed")
+                files.delete(it, "$dir/deeper/b.bin")
+                assertEquals(FileResult.Ok(inside - "$dir/deeper/b.bin"), files.list(it, dir), "$it: a deleted file is gone")
+            }
+        }
+
+        clause("EMPTY_LIST_OF_A_MISSING_DIRECTORY_IS_EMPTY", FilesState.EMPTY) { files ->
+            FileArea.entries.forEach {
+                assertEquals(
+                    FileResult.Ok(emptyList()),
+                    files.list(it, "contract/EMPTY_LIST_OF_A_MISSING_DIRECTORY_IS_EMPTY"),
+                    "$it: no directory holds no files",
+                )
+            }
         }
 
         clause("EMPTY_MOVE_REPLACES_AND_CREATES_ITS_DIRECTORIES", FilesState.EMPTY) { files ->

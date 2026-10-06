@@ -57,4 +57,11 @@ interface Files : Port {
      * file must leave it before the callback returns. [FileResult.NotFound] when nothing is at [osPath].
      */
     fun adopt(osPath: String, area: FileArea, to: String): FileResult<Unit>
+
+    /**
+     * Every file under [directory] in [area], at any depth, as paths relative to the area (so each starts with
+     * `directory/`), sorted. A directory that does not exist holds no files: an empty list, never
+     * [FileResult.NotFound]. A directory that could not be read is never empty.
+     */
+    fun list(area: FileArea, directory: String): FileResult<List<String>>
 }

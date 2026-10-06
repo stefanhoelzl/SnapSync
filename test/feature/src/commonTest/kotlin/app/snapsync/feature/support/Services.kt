@@ -75,6 +75,8 @@ class RecordingFiles(
     override fun move(area: FileArea, from: String, to: String): FileResult<Unit> = inner.move(area, from, to)
     override fun adopt(osPath: String, area: FileArea, to: String): FileResult<Unit> = inner.adopt(osPath, area, to)
 
+    override fun list(area: FileArea, directory: String): FileResult<List<String>> = inner.list(area, directory)
+
     override fun write(area: FileArea, path: String, bytes: ByteArray): FileResult<Unit> {
         record("write $path")
         return if (failWrites) FileResult.Failed("write failed on demand") else inner.write(area, path, bytes)

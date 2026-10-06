@@ -7,6 +7,7 @@ import app.snapsync.ports.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -16,8 +17,12 @@ import kotlin.test.assertTrue
  */
 class StagingServiceStageTest {
 
-    /** A `Files` whose adopt answers [adopted], recording where it was asked to put what. */
-    private class Adopting(private val adopted: FileResult<Unit>) : Files {
+    /** A `Files` whose adopt answers [adopted], recording where it was asked to put what, and whose list answers [listed]. */
+    private class Adopting(
+        private val adopted: FileResult<Unit>,
+        private val listed: FileResult<List<String>> = FileResult.Ok(emptyList()),
+    ) : Files {
+        val listings = mutableListOf<Pair<FileArea, String>>()
         val adoptions = mutableListOf<Triple<String, FileArea, String>>()
         override fun read(area: FileArea, path: String): FileResult<ByteArray> = FileResult.NotFound
         override fun readTail(area: FileArea, path: String, maxBytes: Int): FileResult<FileTail> = FileResult.NotFound
@@ -29,6 +34,11 @@ class StagingServiceStageTest {
         override fun adopt(osPath: String, area: FileArea, to: String): FileResult<Unit> {
             adoptions += Triple(osPath, area, to)
             return adopted
+        }
+
+        override fun list(area: FileArea, directory: String): FileResult<List<String>> {
+            listings += area to directory
+            return listed
         }
     }
 
@@ -43,5 +53,19 @@ class StagingServiceStageTest {
     fun `a take-over that fails keeps nothing`() {
         assertFalse(StagingService(Adopting(FileResult.Denied("locked"))).stage("/tmp/x", "$DOWNLOAD_STAGING_DIR/D/k"))
         assertFalse(StagingService(Adopting(FileResult.NotFound)).stage("/tmp/x", "$DOWNLOAD_STAGING_DIR/D/k"))
+    }
+
+    @Test
+    fun `the staged files are the shared area's staging directory as listed`() {
+        val files = Adopting(FileResult.Ok(Unit), listed = FileResult.Ok(listOf("$DOWNLOAD_STAGING_DIR/D/k")))
+        assertEquals(listOf("$DOWNLOAD_STAGING_DIR/D/k"), StagingService(files).list())
+        assertEquals(listOf(FileArea.SHARED to DOWNLOAD_STAGING_DIR), files.listings)
+    }
+
+    @Test
+    fun `a listing that could not be made is never an empty one`() {
+        // Read as empty, a sweep would find every staged file unclaimed.
+        assertNull(StagingService(Adopting(FileResult.Ok(Unit), listed = FileResult.Denied("locked"))).list())
+        assertNull(StagingService(Adopting(FileResult.Ok(Unit), listed = FileResult.AreaUnavailable)).list())
     }
 }

@@ -71,6 +71,15 @@ class StagingService(
     }
 
     /**
+     * Every staged file on disk, relative to the shared area — or `null` when the directory could not be read, which
+     * is never "nothing staged": a sweep that read a failed listing as empty would find nothing to keep.
+     */
+    fun list(): List<String>? = when (val listed = files.list(FileArea.SHARED, stagingRoot())) {
+        is FileResult.Ok -> listed.value
+        else -> null.also { log.w { "list: the staging directory could not be read ($listed)" } }
+    }
+
+    /**
      * Are all of [paths] still on disk?
      *
      * The **fact**, and only the fact. This reports file existence; it does not report consumption,

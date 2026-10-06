@@ -711,6 +711,7 @@ class DownloadController(
      * and not a background task.
      */
     suspend fun releaseSettledBytes() = log.invocation(entryContext, "releaseSettledBytes") {
+        releaseUnclaimedBytes()
         val paths = runCatchingCancellable { store.stagedPathsOfImportedAssets() }.getOrDefault(emptyList())
         if (paths.isEmpty()) return@invocation
         log.i { "releasing ${paths.size} staged file(s) of already-imported assets" }
@@ -718,6 +719,30 @@ class DownloadController(
             stagedBytes.release(paths)
             mutex.withLock { store.dropResourcesOfImportedAssets() }
         }.onFailure { log.w(it) { "staged-byte reclaim failed — retried later" } }
+    }
+
+    /**
+     * Delete every staged file no resource row claims (capability `receiving-photos`) — bytes nothing will ever
+     * import or release, because every path that frees staged bytes starts from a row.
+     *
+     * They exist on installs from before an unrecorded staging discarded its file: a resource downloaded twice whose
+     * second copy landed after the first had been imported stayed on disk with no row naming it. Measured on the XS
+     * (2026-10-06): 295 such files, 1.14 GB, the member in no event.
+     *
+     * A row protects its path whether or not its download has landed — the transport adopts the file there before
+     * the row records it — so a transfer finishing during the sweep keeps its bytes. A file no row names is never
+     * recorded: its staging discards it. Under [mutex], so no plan or prune moves the rows between the two reads.
+     */
+    private suspend fun releaseUnclaimedBytes() {
+        runCatchingCancellable {
+            mutex.withLock {
+                val listed = stagedBytes.list() ?: return@withLock
+                val unclaimed = listed - store.claims.pathsInUse(stagedBytes.stagingRoot())
+                if (unclaimed.isEmpty()) return@withLock
+                log.i { "releasing ${unclaimed.size} staged file(s) no download claims" }
+                stagedBytes.release(unclaimed)
+            }
+        }.onFailure { log.w(it) { "the unclaimed staged-byte sweep failed — retried at the next foreground" } }
     }
 
     /**

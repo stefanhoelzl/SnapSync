@@ -99,6 +99,20 @@ class AndroidFiles(private val sharedRoot: File, private val privateRoot: File) 
     override fun adopt(osPath: String, area: FileArea, to: String): FileResult<Unit> =
         moveReplacing(File(osPath).toPath(), resolve(area, to))
 
+    override fun list(area: FileArea, directory: String): FileResult<List<String>> = guarded {
+        val root = resolve(area, "")
+        val dir = resolve(area, directory)
+        if (!Nio.exists(dir)) return@guarded FileResult.Ok(emptyList())
+        Nio.walk(dir).use { paths ->
+            FileResult.Ok(
+                paths.filter { Nio.isRegularFile(it) }
+                    .map { root.relativize(it).joinToString("/") }
+                    .sorted()
+                    .toList(),
+            )
+        }
+    }
+
     /** Move [source] to [destination]: parents created, the previous destination replaced; last write wins. */
     private fun moveReplacing(source: Path, destination: Path): FileResult<Unit> = guarded {
         if (!Nio.exists(source)) return@guarded FileResult.NotFound

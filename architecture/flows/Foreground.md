@@ -24,7 +24,7 @@ sequenceDiagram
   Foreground->>effects: refreshAttestation()
   Foreground->>watches: start()
   par concurrent — awaited before the flow returns
-    Foreground--)effects: settleStored()
+    Foreground--)effects: uploadOwnWork()
     Foreground--)effects: refreshStatus()
     opt only when activeEventId() resolves
       Foreground--)downloadController: reconcile(…)

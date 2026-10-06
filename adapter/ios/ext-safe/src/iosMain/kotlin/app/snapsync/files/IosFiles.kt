@@ -9,6 +9,11 @@ import app.snapsync.objc.checkedObjC
 import app.snapsync.objc.checkedObjCValue
 import app.snapsync.ports.Files
 import kotlinx.cinterop.BetaInteropApi
+import kotlinx.cinterop.BooleanVar
+import kotlinx.cinterop.alloc
+import kotlinx.cinterop.memScoped
+import kotlinx.cinterop.ptr
+import kotlinx.cinterop.value
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.convert
@@ -135,6 +140,24 @@ class IosFiles(private val sharedRoot: String?, private val privateRoot: String?
 
     override fun adopt(osPath: String, area: FileArea, to: String): FileResult<Unit> =
         moveReplacing(osPath, resolve(area, to) ?: return FileResult.AreaUnavailable)
+
+    override fun list(area: FileArea, directory: String): FileResult<List<String>> {
+        val dir = resolve(area, directory) ?: return FileResult.AreaUnavailable
+        if (!fm.fileExistsAtPath(dir)) return FileResult.Ok(emptyList())
+        val entries = checkedObjCValue("subpathsOfDirectoryAtPath") { fm.subpathsOfDirectoryAtPath(dir, error = it) }
+            .getOrElse { return (it as ObjCFailure).toResult() }
+        return FileResult.Ok(
+            entries.filterIsInstance<String>()
+                .filter { relative -> isRegularFile("$dir/$relative") }
+                .map { "$directory/$it" }
+                .sorted(),
+        )
+    }
+
+    private fun isRegularFile(path: String): Boolean = memScoped {
+        val isDirectory = alloc<BooleanVar>()
+        fm.fileExistsAtPath(path, isDirectory = isDirectory.ptr) && !isDirectory.value
+    }
 
     /** Move [source] to [destination]: parents created, the previous destination removed; last write wins. */
     private fun moveReplacing(source: String, destination: String): FileResult<Unit> {

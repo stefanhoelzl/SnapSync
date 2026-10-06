@@ -24,6 +24,8 @@ import app.snapsync.ports.Upload
 import app.snapsync.services.gallery.UploadDiscovery
 import app.snapsync.model.invocation
 import co.touchlab.kermit.Logger
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /** Where a file uploader's exported bytes wait, in the shared area — runtime identity: devices hold files under it. */
 const val UPLOAD_STAGING_DIR: String = "upload-staging"
@@ -184,7 +186,16 @@ class UploadTransferService(
             }.also { if (it == UploadCreateOutcome.LIMIT_EXCEEDED) log.w { "job limit reached — deferring the rest" } }
         }
 
-    private suspend fun createFromFile(resource: Resource, target: UploadTarget): UploadCreateOutcome {
+    /**
+     * Held from a file's export until its job exists (or the file is released), and by [releaseUnclaimedStaging] — so
+     * the sweep never sees an exported file whose job is about to be created as unclaimed.
+     */
+    private val staging = Mutex()
+
+    private suspend fun createFromFile(resource: Resource, target: UploadTarget): UploadCreateOutcome =
+        staging.withLock { exportAndCreate(resource, target) }
+
+    private suspend fun exportAndCreate(resource: Resource, target: UploadTarget): UploadCreateOutcome {
         val staged = uploadStagingPath(resource.filename)
         val path = (files.locate(FileArea.SHARED, staged) as? FileResult.Ok)?.value ?: run {
             log.w { "createJob: the shared area cannot hold ${resource.filename}'s bytes — not creating" }
@@ -243,6 +254,37 @@ class UploadTransferService(
         for (job in upload.jobs(UploadJobSet.IN_FLIGHT)) {
             upload.cancel(job)
             job.tag?.let(::releaseStaged)
+        }
+    }
+
+    /**
+     * Delete every staged upload file no in-flight job uploads from (capability `background-upload`) — what an export
+     * left when no job outlived it: the process died between the export and the job's creation, or a job ended
+     * without this process being told. Nothing else ever reaches such a file; [recordFinished], a refused creation
+     * and [cancelAll] each release only the file of a job they are handed.
+     *
+     * Deleting one loses nothing: a job's bytes come from the photo library, and a job created again exports again.
+     * Under [staging], so an export whose job is about to be created is never taken for unclaimed.
+     */
+    suspend fun releaseUnclaimedStaging() = log.invocation(entryContext, "platform.releaseUnclaimedStaging") {
+        staging.withLock {
+            val listed = when (val read = files.list(FileArea.SHARED, UPLOAD_STAGING_DIR)) {
+                is FileResult.Ok -> read.value
+                else -> {
+                    log.w { "the upload staging directory could not be read ($read) — nothing released" }
+                    return@withLock
+                }
+            }
+            val claimed = upload.jobs(UploadJobSet.IN_FLIGHT).mapNotNullTo(HashSet()) { job -> job.tag?.let(::uploadStagingPath) }
+            val unclaimed = listed - claimed
+            if (unclaimed.isEmpty()) return@withLock
+            log.i { "releasing ${unclaimed.size} staged upload file(s) no in-flight job uploads from" }
+            unclaimed.forEach { path ->
+                when (val deleted = files.delete(FileArea.SHARED, path)) {
+                    is FileResult.Ok, FileResult.NotFound -> Unit
+                    else -> log.w { "the unclaimed staged upload file $path stays on disk ($deleted)" }
+                }
+            }
         }
     }
 

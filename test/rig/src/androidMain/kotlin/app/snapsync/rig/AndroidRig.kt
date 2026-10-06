@@ -239,6 +239,7 @@ private fun androidRefusals(world: MockWorld): Map<String, String> = world.lever
     )
     put("device/uploaders", "Android composes no OS-driven upload mechanism for a switch to choose between")
     put("device/process-metrics", "process-metric reports are MetricKit's; no Android provider is composed")
+    put("device/disk", "the disk census is iOS's (the App Group is not pullable there); an Android app's files are read with `adb shell run-as`")
     RigVocabulary.appHostCommands.filter { it.startsWith("device/upload-") }.forEach {
         put(it, "the mocked upload-job queue is operated by the jobs verbs, not by an operating system to play")
     }

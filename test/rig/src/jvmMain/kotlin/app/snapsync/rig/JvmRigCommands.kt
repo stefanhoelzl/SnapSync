@@ -85,6 +85,7 @@ internal fun jvmRefusals(rig: JvmRig): Map<String, String> = rig.world.leverRefu
         "device/process-metrics",
         "process-metric reports are MetricKit's; the JVM runs no process the operating system measures",
     )
+    put("device/disk", "the JVM host's files are the mocked disk's (POST /device/staging lists its staging)")
     RigVocabulary.appHostCommands.filter { it.startsWith("device/upload-") }.forEach {
         put(it, "the mocked upload-job queue is operated by the jobs verbs, not by an operating system to play")
     }

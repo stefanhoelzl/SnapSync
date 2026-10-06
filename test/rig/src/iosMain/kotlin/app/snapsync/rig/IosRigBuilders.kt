@@ -69,6 +69,8 @@ fun deviceCommands(
         reconcile = { core().uploadTransitions.onOverrideChanged() },
     ),
     "reset" to resetCommand(reset = launch.controls::reset),
+    // What the app's files take on the real disk, per container — the App Group is not pullable over USB.
+    "disk" to diskCommand(),
     // Drive a synthetic process-metric report through the app's OWN handler (capability
     // `privacy-security`). Real reports arrive on the OS's cadence — roughly daily, and only after a
     // period has closed — so without this the only way to exercise the three channels is to wait a

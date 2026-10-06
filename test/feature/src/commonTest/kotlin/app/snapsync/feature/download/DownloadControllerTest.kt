@@ -31,6 +31,7 @@ import app.snapsync.services.downloads.DOWNLOADS_DB_NAME
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.gallery.GalleryImporter
 import app.snapsync.services.gallery.ImportedAssetPresence
+import app.snapsync.services.staging.DOWNLOAD_STAGING_DIR
 import app.snapsync.services.staging.StagingService
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -1316,6 +1317,37 @@ class DownloadControllerTest {
 
         assertTrue(staged.released.isEmpty(), "nothing may be released on an answer we never got")
         assertEquals(setOf("/p"), staged.shared.keys, "and the file is still there")
+    }
+
+    @Test
+    fun reclaim_frees_staged_files_no_row_claims_and_keeps_every_claimed_one() = runTest {
+        // What older installs hold: a resource downloaded twice whose second copy landed after the first was
+        // imported — on disk, named by no row, so no release path ever reaches it (measured: 1.14 GB on the XS).
+        val store = DownloadService(inMemoryDatabases())
+        val landing = "$DOWNLOAD_STAGING_DIR/DEVICE-A/Q-primary.heic"
+        val unclaimed = listOf("$DOWNLOAD_STAGING_DIR/DEVICE-A/OLD-primary.mov", "$DOWNLOAD_STAGING_DIR/DEVICE-B/X-primary.heic")
+        val outside = "elsewhere/kept.bin"
+        val staged = disk(landing, outside, *unclaimed.toTypedArray())
+        val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, disk = staged)
+        // Q is planned, its downloads in flight: one has landed at its path and is not recorded yet.
+        c.reconcile("event", UnionTrigger.FOREGROUND)
+
+        c.releaseSettledBytes()
+
+        assertTrue(unclaimed.all { staged.deleted(it) }, "a staged file no row claims stays on disk forever")
+        assertEquals(setOf(landing, outside), staged.shared.keys, "a planned row's landed bytes, and anything outside staging, are kept")
+    }
+
+    @Test
+    fun the_unclaimed_sweep_releases_nothing_when_it_cannot_read_the_store() = runTest {
+        // An unreadable store is not an empty one: read as empty, every staged file would look unclaimed.
+        val staged = disk("$DOWNLOAD_STAGING_DIR/DEVICE-A/Q-primary.heic")
+        val store = DownloadService(inMemoryDatabases(mapOf(DOWNLOADS_DB_NAME to DbOpen.Failed("store unreadable"))))
+        val c = controller(FakeUnion(emptyList()), store = store, disk = staged)
+
+        c.releaseSettledBytes() // must not throw
+
+        assertTrue(staged.released.isEmpty(), "nothing may be released on an answer we never got")
     }
 
     @Test
