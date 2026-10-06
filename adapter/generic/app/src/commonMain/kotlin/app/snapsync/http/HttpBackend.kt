@@ -138,7 +138,7 @@ class HttpBackend(
     ) { field(it, "token") }
 
     // `endsAt` is sent verbatim like `startsAt`, and omitted entirely when null — an absent `endsAt` is the backend's
-    // legacy `+30d` fallback signal.
+    // legacy `+30d` fallback signal. `zone` likewise: absent, the event page shows the dates in UTC.
     override suspend fun createEvent(token: String?, req: CreateEventRequest): Reply<EventCreated> = exchange(
         HttpMethod.Post,
         "/events",
@@ -148,6 +148,7 @@ class HttpBackend(
                 "name" to JsonPrimitive(req.name),
                 "startsAt" to JsonPrimitive(req.startsAt),
                 req.endsAt?.let { "endsAt" to JsonPrimitive(it) },
+                req.zone?.let { "zone" to JsonPrimitive(it) },
             ).toMap(),
         ).toString(),
     ) { text -> EventCreated(eventId = field(text, "eventId"), name = optional(text, "name")) }

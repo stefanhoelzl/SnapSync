@@ -1,25 +1,31 @@
 ---
-// The no-app download page (capabilities join-event, event-site), served at /join. Built by the
-// site/ module and served by proxying the constant site/join/index.html from storage (capability
-// web-site). It is BYTE-IDENTICAL for every event link: the backend never sees the payload (it rides in
-// the URL fragment). All per-event work happens in the client island below — read the eventId from the
-// fragment, fetch the event name + photo union, and assemble a STORE-only zip in browser memory.
+// The event page (capabilities join-event, event-site), served at /join (a fragment invite) and /join/<eventId>
+// (the event's own page). Built ONCE by the site/ module as a TEMPLATE: every %%TOKEN%% below is filled per
+// request by the api (`api/src/routes/event-page.ts` decides every word; `site.ts` serves it), so a link preview
+// and a browser running no script both see the event — its name, dates, phase and members. The tokens are the
+// contract between the two; `data-view` picks the one view the CSS shows.
+//
+// - `event`   — /join/<eventId>: the server rendered the event. The island adds the photo count and the zip.
+// - `invalid` — an unknown, malformed or completed event: the server says so, and names no event.
+// - `pending` — /join, a fragment invite: the server cannot see which event (the fragment is never sent), so
+//               the island reads it and moves the browser to /join/<eventId>.
 //
 // SELF-CONTAINED (web-site invariant + web-event-download Decision 5): every subresource is same-origin
 // (the island — including the bundled `fflate` zip library — compiles to _astro/*), and the ONLY
 // off-origin fetches are the presigned photo URLs — data, not code. `fflate` is BUNDLED (not CDN-loaded),
 // which is what keeps it same-origin; it STORE-zips (level 0) since photos are already compressed, and
 // handles CRC + ZIP64 so a >4 GB event does not corrupt the archive.
-import deployment from "../deployment.json";
 import Layout from "../layouts/Layout.astro";
 import AppStoreButton from "../components/AppStoreButton.astro";
 import PlayOffer from "../components/PlayOffer.astro";
 ---
 
-<Layout title="SnapSync — event photos" ogUrl={`https://${deployment.domain}/join`}>
-  <div class="join">
-    <div id="app" class="hidden">
-      <h1 id="title">Event photos</h1>
+<Layout title="%%TITLE%%" ogTitle="%%OG_TITLE%%" description="%%DESCRIPTION%%" ogUrl="%%URL%%">
+  <div class="join" id="join" data-view="%%VIEW%%">
+    <div id="app">
+      <div class="pillrow">%%PILL%%</div>
+      <h1 id="title">%%HEADING%%</h1>
+      <div class="facts">%%FACTS%%</div>
       <p class="sub" id="subtitle">
         Join with SnapSync, and every photo arrives in your gallery. Or download them all here.
       </p>
@@ -34,7 +40,7 @@ import PlayOffer from "../components/PlayOffer.astro";
         <PlayOffer />
       </div>
     </div>
-    <div id="invalid" class="hidden">
+    <div id="invalid">
       <h1>Invalid or expired link</h1>
       <p class="sub">
         This link could not be opened. If the event is still on, ask anyone in it for a new link.
@@ -112,75 +118,132 @@ import PlayOffer from "../components/PlayOffer.astro";
   .join .cta {
     margin-top: 28px;
   }
-  .join .hidden {
+  /* Exactly one view shows, chosen by the server's data-view (the island may switch it): no script needed. */
+  .join[data-view="event"] #invalid,
+  .join[data-view="invalid"] #app,
+  .join[data-view="pending"] #app,
+  .join[data-view="pending"] #invalid {
     display: none;
+  }
+  /* The server-rendered facts (event-page.ts), as in the approved mockup. */
+  .join .pillrow {
+    min-height: 0;
+  }
+  .join .pill {
+    display: inline-block;
+    padding: 2px 12px;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin-bottom: 12px;
+  }
+  .join .pill.running {
+    background: color-mix(in srgb, var(--green) 14%, transparent);
+    color: var(--green);
+  }
+  .join .pill.running::before {
+    content: "● ";
+  }
+  .join .pill.upcoming {
+    background: var(--surface-2);
+    color: var(--muted);
+  }
+  .join .pill.ended {
+    background: color-mix(in srgb, #d68c00 16%, transparent);
+    color: #a86b00;
+  }
+  @media (prefers-color-scheme: dark) {
+    .join .pill.ended {
+      color: #f0b44c;
+    }
+  }
+  .join .facts {
+    margin: 0 0 20px;
+    color: var(--muted);
+    font-size: 0.95rem;
+  }
+  .join .facts p {
+    margin: 2px 0;
+  }
+  .join .facts .dates {
+    color: var(--text);
+    font-weight: 600;
+  }
+  .join .dots {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin: 8px 0 4px;
+  }
+  .join .dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 2px solid var(--green);
+  }
+  .join .dot.done {
+    background: var(--green);
   }
 </style>
 
 <script>
   import { zipSync } from "fflate";
-  import { decodeInvite, playHrefFor } from "../lib/invite";
+  import { decodeInvite, eventIdFromPath, inviteFor, playHrefFor } from "../lib/invite";
   import { withDownloadUrls, zipEntries } from "../lib/zip-names";
 
   (function () {
     const $ = (id: string) => document.getElementById(id)!;
-    const showInvalid = () => {
-      $("app").classList.add("hidden");
-      $("invalid").classList.remove("hidden");
-    };
-    const showApp = () => {
-      $("invalid").classList.add("hidden");
-      $("app").classList.remove("hidden");
+    const setView = (view: "event" | "invalid") => {
+      $("join").dataset.view = view;
     };
     const setStatus = (t: string) => {
       $("status").textContent = t;
     };
 
     async function main() {
-      // fragment decode: the same wire contract as capability `join-event` (#v=3&d=<base64url(json)>)
-      const invite = decodeInvite(location.hash);
-      if (!invite) {
-        showInvalid();
+      const view = $("join").dataset.view;
+
+      // A fragment invite (`/join#v=3&d=…`, capability `join-event`): the server could not see which event, so
+      // move to the event's own page, which it renders. `replace` keeps the fragment page out of history.
+      if (view === "pending") {
+        const invite = decodeInvite(location.hash);
+        if (invite) location.replace("/join/" + invite.eventId);
+        else setView("invalid");
         return;
       }
-      const eventId = invite.eventId;
-      // The event view's Google Play badge carries the invite as the install referrer, so an Android install from it
-      // opens the invite on first launch (capabilities join-event, privacy-security). Only this view's badge: the
-      // invalid view's, shown for a malformed invite or a gone event, stays a plain link and hands Google nothing.
-      const play = document.querySelector<HTMLAnchorElement>("#app a[data-play-store]");
-      if (play) play.href = playHrefFor(play.dataset.playStore!, invite);
-      showApp();
+      // The invalid view's Google Play badge stays a plain link, handing Google nothing (privacy-security).
+      if (view !== "event") return;
 
-      // Fetch the event name (marker) and the union — same-origin, un-attested reads on the canonical
-      // versioned prefix.
-      let name: string | undefined, union: any[];
+      const eventId = eventIdFromPath(location.pathname);
+      if (!eventId) {
+        setView("invalid");
+        return;
+      }
+      // The event view's Google Play badge carries the invite as the install referrer, so an Android install from it
+      // opens the invite on first launch (capabilities join-event, privacy-security) — the same `v=3&d=` referrer the
+      // fragment form carried.
+      const play = document.querySelector<HTMLAnchorElement>("#app a[data-play-store]");
+      if (play) play.href = playHrefFor(play.dataset.playStore!, inviteFor(eventId));
+
+      // The name, dates and members are the server's; the island adds only the photo list — same-origin, an
+      // un-attested read on the canonical versioned prefix.
+      const name = $("title").textContent?.trim() || undefined;
+      let union: any[];
       try {
-        const markerRes = await fetch("/api/v1/events/" + eventId);
-        if (markerRes.status === 404) {
-          showInvalid();
-          return;
-        }
-        if (!markerRes.ok) throw new Error("marker " + markerRes.status);
-        const marker = await markerRes.json();
-        // A finished event keeps its record until its deletion date, but its photos are gone: the link is
-        // expired (capability `event-site`).
-        if (marker.completedAt) {
-          showInvalid();
-          return;
-        }
-        name = marker.name;
         // Without urls: each file is addressed at its download route, which redirects to the bytes
         // (decision record `changes/incremental-union`, D8).
         const unionRes = await fetch("/api/v1/events/" + eventId + "/files?urls=false");
+        if (unionRes.status === 404) {
+          setView("invalid");
+          return;
+        }
         if (!unionRes.ok) throw new Error("union " + unionRes.status);
         union = withDownloadUrls("/api/v1", eventId, await unionRes.json());
       } catch (_e) {
         setStatus("Couldn't load this event. Check your connection and reload.");
         return;
       }
-
-      if (name) $("title").textContent = name;
-      document.title = name ? name + " — SnapSync" : "SnapSync — event photos";
 
       // Every photo's original, and a Live Photo's video beside its still under the same name
       // (capability `event-site`; the naming rule is `zip-names.ts`).

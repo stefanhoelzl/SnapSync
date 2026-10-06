@@ -1,0 +1,16 @@
+-- ═══════════════════════════════════════════════════════════════════════════════════════════════════
+-- 0009 — THE HOST'S TIME ZONE (capability `event-site`)
+--
+-- ⚠️ FROZEN ONCE APPLIED, like every migration here: the runner records a checksum of these bytes, so
+-- editing this file makes every later apply refuse as `modified` history. A correction is a NEW file.
+--
+-- WHY: the event page names the event's dates as the host chose them, and `starts_at`/`ends_at` are UTC
+-- instants — a Berlin host's "Sat 4 Oct" begins at `2026-10-03T22:00:00Z`. The instants themselves stay as
+-- they are (they are compared LEXICOGRAPHICALLY as capture cutoffs, and installed apps parse that shape),
+-- so the zone they are read in sits beside them: an IANA name (`Europe/Berlin`), which stays right across a
+-- daylight-saving change inside the window, where a fixed offset would not.
+--
+-- ADDITIVE AND DERIVES NOTHING. Every existing row lands NULL, which is the truth: no zone was ever sent
+-- for it, and the page renders a NULL zone in UTC. Written once, by `POST /events`, from the client's
+-- optional `zone`; inert under the previous bundle, which never names it.
+ALTER TABLE events ADD COLUMN zone TEXT;

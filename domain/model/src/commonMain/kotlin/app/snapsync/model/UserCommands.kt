@@ -54,7 +54,8 @@ enum class JoinCommit {
  *   capture-date **range** (`minPhotoDate`..`maxPhotoDate`, each clamped to the event window
  *   `startsAt`..`endsAt`), answering a [JoinCommit]: committed (incl. the already-joined no-op), at
  *   capacity, or failed (capability `join-event`).
- * - [share] — hand the invite URL to the platform share surface (fire-and-forget, `UiState` unaffected).
+ * - [share] — hand the invite URL to the platform share surface, titled with the event's name (fire-and-forget,
+ *   `UiState` unaffected).
  * - [requestAccess] — raise the system photo-access dialog (capability `photo-access`): returns
  *   nothing and cannot suspend — the grant arrives only via the permission read-model.
  * - [openLink] — hand a URL to the platform to open outside the app. Its ONE caller is the
@@ -94,7 +95,7 @@ class UserCommands(
     val leave: suspend () -> Unit,
     val create: (name: String, startsAt: EventStart, endsAt: EventEnd) -> Unit,
     val commitJoin: suspend (JoinChoice) -> JoinCommit,
-    val share: (String) -> Unit,
+    val share: (url: String, title: String) -> Unit,
     val requestAccess: () -> Unit,
     val openSettings: () -> Unit,
     val openLink: (url: String) -> Unit,

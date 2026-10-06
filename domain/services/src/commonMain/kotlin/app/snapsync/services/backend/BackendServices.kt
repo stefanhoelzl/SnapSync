@@ -12,9 +12,11 @@ import app.snapsync.services.identity.PersistedDeviceIdentity
 class BackendServices(
     val backend: AuthenticatedBackend,
     private val identity: PersistedDeviceIdentity,
+    /** The device's zone, read at a create (the app's clock); the extension never creates, so it passes none. */
+    private val zone: () -> String?,
 ) {
     val directory: EventDirectory by lazy { BackendEventDirectory(backend) }
-    val creation: EventCreation by lazy { BackendEventCreation(backend) }
+    val creation: EventCreation by lazy { BackendEventCreation(backend, zone) }
     val rename: EventRename by lazy { BackendEventRename(backend) }
     val join: EventJoin by lazy { BackendEventJoin(backend) }
     val manifest: ManifestPublisher by lazy { BackendManifestPublisher(backend) }

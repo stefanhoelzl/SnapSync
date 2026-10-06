@@ -38,11 +38,17 @@ fun interface EventRename {
  * `startsAt` is sent **verbatim**: the caller's contract is that it is already the canonical cutoff shape
  * (capability `photo-sharing`), and the backend rejects anything else with a `400`. Reformatting or re-deriving it
  * here would introduce a second origin for a value whose whole point is having exactly one.
+ *
+ * [zone] answers the device's zone at the moment of the create — the zone the host picked the range in — which the
+ * backend keeps for the event page alone (capability `event-site`). It never refuses a create.
  */
-class BackendEventCreation(private val backend: AuthenticatedBackend) : EventCreation {
+class BackendEventCreation(
+    private val backend: AuthenticatedBackend,
+    private val zone: () -> String?,
+) : EventCreation {
 
     override suspend fun create(name: String, startsAt: String, endsAt: String?): CreateOutcome =
-        when (val reply = backend.createEvent(CreateEventRequest(name, startsAt, endsAt))) {
+        when (val reply = backend.createEvent(CreateEventRequest(name, startsAt, endsAt, zone()))) {
             is Reply.Ok -> CreateOutcome.Created(eventId = reply.value.eventId, name = reply.value.name)
             is Reply.Refused -> if (reply.status == HttpStatus.BAD_REQUEST) refusal(reply.body) else CreateOutcome.Transient
             is Reply.Malformed, is Reply.Unreachable -> CreateOutcome.Transient

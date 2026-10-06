@@ -6,40 +6,38 @@ event's QR code or tapping its invite link opens SnapSync on a join screen where
 they are invited to, decide whether to share and whether to receive, and choose the capture-date range
 they share from — and nothing is shared or joined until they confirm. It promises that an invite printed or sent today keeps opening in every future version,
 that a guest who arrives late can still join until the event closes, that a membership always has a bounded capture range so a
-guest's whole camera roll is never uploaded, and that the invite's secret never reaches a web server. A
+guest's whole camera roll is never uploaded. A
 device is in at most one event at a time; opening another event's invite is a switch. What a chosen
 range admits is capability `photo-sharing`; the album choice is capability `event-album`.
 Decision record: changes/archive/2026-07-06-add-event-join-confirmation
 ## Requirements
 ### Requirement: The invite link format stays openable forever
-An invite SHALL be the HTTPS link `https://snapsync.stho.net/join#v=3&d=<payload>`, where `<payload>` is
-the unpadded base64url encoding of a UTF-8 JSON object whose `eventId` key holds the event's identifier
-as a canonical UUID; an event's QR code SHALL encode exactly this link. Every future version of the app
-SHALL open such a link and offer to join its event, so a QR code printed today keeps working. The link
-SHALL carry nothing else a member relies on — no event name, no server address, no credential.
+An invite SHALL be one of two HTTPS links, each naming the event by its identifier as a canonical UUID:
+- the path form `https://snapsync.stho.net/join/<eventId>`;
+- the fragment form `https://snapsync.stho.net/join#v=3&d=<payload>`, where `<payload>` is the unpadded
+  base64url encoding of a UTF-8 JSON object whose `eventId` key holds the event's identifier.
+
+Every future version of the app SHALL open both forms and offer to join their event, so a QR code printed
+today keeps working. Until every app in use opens the path form, an event's QR code and the link the app
+shares SHALL be the fragment form; an event's QR code SHALL encode exactly the link the app shares. The
+link SHALL carry nothing else a member relies on — no event name, no server address, no credential.
 
 #### Scenario: A link made by an older version opens in a newer one
 - **WHEN** a user of the current version scans a QR code that an earlier version produced for a still-existing event
 - **THEN** the app opens on the join screen for that event
 
+#### Scenario: A path-form link opens the join screen
+- **WHEN** a user of the current version taps an invite of the path form for a still-existing event
+- **THEN** the app opens on the join screen for that event
+
+#### Scenario: A link shared today opens in an app from before this version
+- **WHEN** a member shares an event's invite and a guest whose app predates the path form taps it
+- **THEN** the guest's app opens on the join screen for that event
+
 #### Scenario: The invite carries the event identifier only
-- **WHEN** an event's invite link is decoded
+- **WHEN** an event's invite link is decoded, in either form
 - **THEN** it holds the event's identifier and nothing else — not its name, not a server address, not a credential
 
-### Requirement: The invite's secret never reaches a web server
-The event's identifier, which grants access to the event's photos, SHALL travel only in the part of the
-invite link that browsers never transmit. Opening an invite on a device without SnapSync SHALL NOT send
-the identifier to any web server as part of fetching the page. The one exception is the visitor's own act:
-following the event page's Google Play button hands the invite to Google Play, so that the app can open it
-once installed (capability `privacy-security`).
-
-#### Scenario: Opening an invite without the app reveals nothing to the server
-- **WHEN** an invite link is opened in a browser on a device without SnapSync
-- **THEN** the request the browser sends carries no part of the event's identifier, and the page served is the same for every event
-
-#### Scenario: Only following the Google Play button hands the invite over
-- **WHEN** a visitor opens an invite's page and leaves without following its Google Play button
-- **THEN** no part of the event's identifier has left their browser for any server but SnapSync's own
 
 ### Requirement: An invite opens the app on its join screen
 Tapping an invite link or scanning an event's QR code with the Camera app SHALL open SnapSync on the join

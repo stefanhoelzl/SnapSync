@@ -196,6 +196,15 @@ class HttpBackendTest {
         val body = Json.parseToJsonElement(sent[0].body).jsonObject
         assertEquals("2030-01-01T00:00:00Z", body.getValue("startsAt").jsonPrimitive.content, "sent verbatim")
         assertNull(body["endsAt"], "an absent end is the backend's legacy +30d signal")
+        assertNull(body["zone"], "an absent zone is not sent")
+    }
+
+    @Test
+    fun create_sends_the_hosts_zone_when_it_has_one() = runTest {
+        val backend = backend(HttpStatusCode.Created, """{"eventId":"E1","name":"Party","createdAt":"x"}""")
+        backend.createEvent("T", CreateEventRequest("Party", "2030-01-01T00:00:00Z", null, zone = "Europe/Berlin"))
+        val body = Json.parseToJsonElement(sent[0].body).jsonObject
+        assertEquals("Europe/Berlin", body.getValue("zone").jsonPrimitive.content)
     }
 
     @Test

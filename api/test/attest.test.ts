@@ -444,11 +444,13 @@ Deno.test("gate: the event-link exceptions are exact-path and GET/HEAD-only — 
   const { app: a } = app();
   // A path that merely BEGINS with an admitted one is not admitted…
   assertEquals((await a.request("/joinx")).status, 401);
-  assertEquals((await a.request("/join/anything")).status, 401);
+  // `/join/<one segment>` is the event's own page (admitted); anything deeper is not.
+  assertEquals((await a.request("/join/anything/deeper")).status, 401);
   assertEquals((await a.request("/.well-known/other")).status, 401);
   assertEquals((await a.request("/.well-known/apple-app-site-association/x")).status, 401);
   // …and a mutating method on either is gated, not served.
   assertEquals((await a.request("/join", { method: "POST" })).status, 401);
+  assertEquals((await a.request("/join/anything", { method: "POST" })).status, 401);
   assertEquals(
     (await a.request("/.well-known/apple-app-site-association", { method: "POST" })).status,
     401,

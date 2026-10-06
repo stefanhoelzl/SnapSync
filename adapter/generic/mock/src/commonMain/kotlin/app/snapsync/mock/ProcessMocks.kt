@@ -95,12 +95,14 @@ class DeviceIntegrityMock {
  */
 class SystemUiMock {
     internal val shared = MutableStateFlow<List<String>>(emptyList())
+    internal val sharedTitles = MutableStateFlow<List<String>>(emptyList())
     internal val opened = MutableStateFlow<List<String>>(emptyList())
     internal val settings = MutableStateFlow(0)
 
     fun port(): SystemUi = object : SystemUi {
-        override suspend fun share(text: String): Handoff {
+        override suspend fun share(text: String, title: String): Handoff {
             shared.value = shared.value + text
+            sharedTitles.value = sharedTitles.value + title
             return Handoff.Accepted
         }
 
@@ -121,6 +123,9 @@ class SystemUiMock {
 class SystemUiOperator internal constructor(mock: SystemUiMock) {
     /** Every text the share sheet was handed, in order. */
     val shared: StateFlow<List<String>> = mock.shared.asStateFlow()
+
+    /** The title each share carried, in the same order as [shared]. */
+    val sharedTitles: StateFlow<List<String>> = mock.sharedTitles.asStateFlow()
 
     /** Every URL the app asked the platform to open, in order. */
     val opened: StateFlow<List<String>> = mock.opened.asStateFlow()

@@ -22,11 +22,12 @@ enum class SharePresenterState {
 object SharePresenterContract : Contract<SharePresenterState, SystemUi>("SharePresenter") {
 
     const val TEXT = "https://snapsync.stho.net/join#contract"
+    const val TITLE = "Contract event"
 
     override val clauses = clauses {
 
         clause("PRESENTABLE_SHARE_IS_ACCEPTED", SharePresenterState.PRESENTABLE) { presenter ->
-            val answer = withinRealTime(HANDOFF_ANSWER_MILLIS) { presenter.share(TEXT) }
+            val answer = withinRealTime(HANDOFF_ANSWER_MILLIS) { presenter.share(TEXT, TITLE) }
             assertEquals(Handoff.Accepted, answer, "with a key window to present from, the sheet is presented")
         }
     }

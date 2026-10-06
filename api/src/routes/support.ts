@@ -322,7 +322,8 @@ export async function gateEvent(
  * and the drift would be silent.
  */
 export function publicEvent(event: EventRow) {
-  const { lifetimeSeconds: _stamped, lastLandedAt: _landed, ...wire } = event;
+  // `zone` stays off the wire too: only the event page reads it (capability `event-site`), and no app needs it.
+  const { lifetimeSeconds: _stamped, lastLandedAt: _landed, zone: _zone, ...wire } = event;
   return {
     ...wire,
     closedAt: event.closedAt ?? null,

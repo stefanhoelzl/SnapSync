@@ -328,7 +328,8 @@ jobs:
         run: npm run build
       #   check:types        — astro check (TS type-checking of the .astro pages + island)
       #   check:fmt          — prettier --check
-      #   check:selfcontained — Deno: fail on any off-origin subresource (load-bearing for /join privacy)
+      #   check:selfcontained — Deno: fail on any off-origin subresource (load-bearing for /join privacy),
+      #                         and on an event page whose %%TOKEN%%s disagree with the api's (check-event-template.ts)
       - name: Check
         working-directory: site
         run: npm run check

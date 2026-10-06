@@ -1,6 +1,7 @@
 package app.snapsync.services.backend
 
 import app.snapsync.services.identity.MapSecureStore
+import app.snapsync.services.identity.identityOf
 import app.snapsync.model.AssetId
 import app.snapsync.model.CreateOutcome
 import app.snapsync.model.DeviceFile
@@ -79,6 +80,22 @@ class BackendServicesTest {
             CreateOutcome.Created("E1", "Party"),
             servicesAnswering(Reply.Ok(EventCreated("E1", "Party"))).creation.create("Party", "s", null),
         )
+    }
+
+    @Test
+    fun a_create_carries_the_zone_the_device_is_in_at_that_moment() = runTest {
+        val backend = ScriptedBackend { _, _ -> Reply.Ok(EventCreated("E1", "Party")) }
+        var zone = "Europe/Berlin"
+        val services = BackendServices(
+            CredentialedBackend(backend, ScriptedCredential(null), versionGate = null),
+            identityOf("D", MapSecureStore()),
+            zone = { zone },
+        )
+        services.creation.create("Party", "s", null)
+        assertEquals("Europe/Berlin", backend.lastCreate?.zone)
+        zone = "America/New_York"
+        services.creation.create("Party", "s", null)
+        assertEquals("America/New_York", backend.lastCreate?.zone, "read at the create, not at composition")
     }
 
     @Test

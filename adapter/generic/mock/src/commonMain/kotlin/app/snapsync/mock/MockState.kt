@@ -170,9 +170,10 @@ private val CODECS: Map<MockedSystem, Codec> = mapOf(
     ),
     MockedSystem.SYSTEM_UI to codec(
         SystemUiDto.serializer(),
-        { SystemUiDto(it.systemUi.shared.value, it.systemUi.opened.value, it.systemUi.settings.value) },
+        { SystemUiDto(it.systemUi.shared.value, it.systemUi.opened.value, it.systemUi.settings.value, it.systemUi.sharedTitles.value) },
         { device, ui ->
             device.systemUi.shared.value = ui.shared
+            device.systemUi.sharedTitles.value = ui.sharedTitles
             device.systemUi.opened.value = ui.opened
             device.systemUi.settings.value = ui.settings
         },
@@ -241,7 +242,13 @@ private class EnclaveDto(val generated: Int, val held: List<String>)
 private class ClockDto(val nowEpochMillis: Long, val zone: String)
 
 @Serializable
-private class SystemUiDto(val shared: List<String>, val opened: List<String>, val settings: Int)
+private class SystemUiDto(
+    val shared: List<String>,
+    val opened: List<String>,
+    val settings: Int,
+    // Defaulted: a state saved before shares carried a title still restores.
+    val sharedTitles: List<String> = emptyList(),
+)
 
 @Serializable
 private class StartedDto(

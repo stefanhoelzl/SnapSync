@@ -1,6 +1,7 @@
 import type { Config } from "../src/config.ts";
 import { emptyStore } from "./support/db.ts";
 import { assert, assertEquals } from "@std/assert";
+import { NO_CACHE } from "../src/routes/support.ts";
 import { createApp, type FetchLike } from "../src/app.ts";
 import { DEPLOYMENT, readConfig } from "../src/config.ts";
 
@@ -47,7 +48,7 @@ Deno.test("event-link: the AASA is served as JSON with no redirect", async () =>
   assert((await res.text()).length > 0);
 });
 
-Deno.test("event-link: the AASA declares the app and the /join path only", async () => {
+Deno.test("event-link: the AASA declares the app and the two /join forms only", async () => {
   const body = await (await app().request(AASA)).json();
   const details = body.applinks.details;
   assertEquals(details.length, 1);
@@ -57,8 +58,9 @@ Deno.test("event-link: the AASA declares the app and the /join path only", async
   // The extension never handles URLs and must not appear.
   assert(!JSON.stringify(body).includes("BackgroundUpload"));
   // Path-only match: no query and no fragment constraint, so a malformed link still opens the app and
-  // shows the invalid-link error rather than dead-ending silently in a browser.
-  assertEquals(details[0].components, [{ "/": "/join" }]);
+  // shows the invalid-link error rather than dead-ending silently in a browser. `/join` is the fragment form,
+  // `/join/*` the path form (`/join/<eventId>`).
+  assertEquals(details[0].components, [{ "/": "/join" }, { "/": "/join/*" }]);
 });
 
 const ASSETLINKS = "/.well-known/assetlinks.json";
@@ -119,16 +121,15 @@ Deno.test("event-link: GET /join serves the no-app download page", async () => {
   const res = await siteApp().request("/join");
   assertEquals(res.status, 200); // a static page (proxied from site/), not a 302 to the App Store
   assertEquals(res.headers.get("Content-Type"), "text/html; charset=utf-8");
-  assertEquals(res.headers.get("Cache-Control"), "no-cache"); // the always-fresh shell (web-site)
+  assertEquals(res.headers.get("Cache-Control"), NO_CACHE); // filled per request, never cached
   assert((await res.text()).length > 0);
   // The download control and the App Store link are part of the page BUILT by site/ and checked there.
 });
 
-Deno.test("event-link: /join is identical for every link and reads no event data", async () => {
-  // The payload rides in the fragment, which a browser NEVER transmits — so the backend cannot
-  // distinguish one invite from another even in principle. That is the design: the eventId is the read
-  // capability, and it must never reach a server log or a cache key. The served bytes are the same for
-  // every link; anything per-event is done by the page's own JS off the fragment, client-side.
+Deno.test("event-link: /join is identical for every fragment link and reads no event data", async () => {
+  // A fragment invite's payload is never transmitted, so `/join` cannot tell one invite from another: it
+  // serves the same generic page, whose island moves the browser to the event's own page `/join/<eventId>`
+  // (capability `event-site`; that page is pinned in download.test.ts).
   const a = await siteApp().request("/join");
   const b = await siteApp().request("/join?v=3&d=eyJldmVudElkIjoieCJ9"); // a query cannot happen, but must not matter
   assertEquals(a.status, 200);

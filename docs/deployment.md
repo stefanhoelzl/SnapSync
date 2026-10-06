@@ -230,7 +230,8 @@ an un-migrated store.
      If it cannot, refuse to open the window.
   2. Publish the **maintenance bundle**: the same commit resolved from `deployments/maintenance.json`.
      While it serves, every `/api/` route answers `503` + `Retry-After` before the token gate. Root routes
-     (`/`, `/join`, the AASA, `/_astro/*`, `/health`) keep serving.
+     (`/`, `/join`, `/join/<eventId>`, the AASA, `/_astro/*`, `/health`) keep serving; the event page reads
+     the database, so mid-migration it may answer `502` rather than a stale or invalid page.
   3. Probe that the window is **open**.
   4. `bunny db migrations apply --dir migrations …` (the platform runner).
   5. `assert-schema.ts` again, inside the window.

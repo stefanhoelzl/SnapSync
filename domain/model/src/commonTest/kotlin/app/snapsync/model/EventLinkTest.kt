@@ -299,4 +299,64 @@ class EventLinkTest {
             assertNull(inviteLinkFromInstallReferrer(referrer), "expected no invite for: $referrer")
         }
     }
+
+    // ── The path form: <origin>/join/<eventId>, hints in an optional fragment ──────────────────────────────────
+
+    @Test
+    fun `a path-form link decodes to its event`() {
+        val payload = success("$LINK_ORIGIN/join/$eventId")
+        assertEquals(eventId, payload.eventId)
+        assertEquals(false, payload.autoJoin)
+        assertNull(payload.minPhotoDate)
+        assertNull(payload.direction)
+        assertNull(payload.saveToAlbum)
+    }
+
+    @Test
+    fun `a path-form link tolerates a trailing slash and an empty fragment`() {
+        assertEquals(eventId, success("$LINK_ORIGIN/join/$eventId/").eventId)
+        assertEquals(eventId, success("$LINK_ORIGIN/join/$eventId#").eventId)
+    }
+
+    @Test
+    fun `a path-form link carries the development hints in its fragment`() {
+        val payload = success(
+            "$LINK_ORIGIN/join/$eventId#autoJoin=true&minPhotoDate=2026-07-01T00:00:00Z" +
+                "&maxPhotoDate=2026-07-02T00:00:00Z&direction=${Direction.entries.first().wire}&saveToAlbum=false",
+        )
+        assertEquals(true, payload.autoJoin)
+        assertEquals("2026-07-01T00:00:00Z", payload.minPhotoDate)
+        assertEquals("2026-07-02T00:00:00Z", payload.maxPhotoDate)
+        assertEquals(Direction.entries.first().wire, payload.direction)
+        assertEquals(false, payload.saveToAlbum)
+    }
+
+    @Test
+    fun `a path-form link decodes to the same payload as the fragment form`() {
+        assertEquals(
+            (decodeEventUrl(encodeEventUrl(sample)) as ConfigDecodeResult.Success).payload.eventId,
+            success("$LINK_ORIGIN/join/$eventId").eventId,
+        )
+    }
+
+    @Test
+    fun `a malformed path-form link is a damaged invite`() {
+        for (raw in listOf(
+            "$LINK_ORIGIN/join/",
+            "$LINK_ORIGIN/join/not-a-uuid",
+            "$LINK_ORIGIN/join/$eventId/extra",
+            "$LINK_ORIGIN/join/$eventId?x=1",
+            "$LINK_ORIGIN/join/$eventId#unknown=1",
+            "$LINK_ORIGIN/join/$eventId#autoJoin=yes",
+            "$LINK_ORIGIN/join/$eventId#direction=sideways",
+            "$LINK_ORIGIN/join/$eventId#garbage",
+        )) {
+            assertFailure(raw)
+        }
+    }
+
+    @Test
+    fun `the encoder still produces the fragment form`() {
+        assertTrue(encodeEventUrl(sample).startsWith("$LINK_ORIGIN/join#"))
+    }
 }

@@ -22,7 +22,7 @@ internal fun testCommands(
     leave: suspend () -> Unit = {},
     create: (name: String, startsAt: app.snapsync.model.EventStart, endsAt: app.snapsync.model.EventEnd) -> Unit = { _, _, _ -> },
     commitJoin: suspend (app.snapsync.model.JoinChoice) -> app.snapsync.model.JoinCommit = { _ -> app.snapsync.model.JoinCommit.Failed },
-    share: (String) -> Unit = {},
+    share: (url: String, title: String) -> Unit = { _, _ -> },
     requestAccess: () -> Unit = {},
     openSettings: () -> Unit = {},
     openLink: (url: String) -> Unit = {},

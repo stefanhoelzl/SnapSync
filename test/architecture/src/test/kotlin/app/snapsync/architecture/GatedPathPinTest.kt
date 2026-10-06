@@ -55,6 +55,15 @@ class GatedPathPinTest {
             assertTrue(isGatedRequest("POST", path) || path == "/", "only GET/HEAD open $path")
         }
         assertFalse(isGatedRequest("GET", "/_astro/index.abc123.js"))
+        // The event's own page: one segment under `/join/`, read-only — the gate's one regex-shaped exact path.
+        assertTrue(
+            """/^\/join\/[^/]+$/.test(path)""" in gate,
+            "the backend's event-page match (`/join/<eventId>`) changed — update `isGatedRequest` and this pin",
+        )
+        assertEquals(1, Regex("""\.test\(path\)""").findAll(gate).count(), "a new regex-shaped public GET — pin it here")
+        assertFalse(isGatedRequest("GET", "/join/3f2c0000-0000-4000-8000-00000000e91a"))
+        assertTrue(isGatedRequest("POST", "/join/3f2c0000-0000-4000-8000-00000000e91a"))
+        assertTrue(isGatedRequest("GET", "/join/a/b"))
         // `/attest/` is a device route: it arrives version-prefixed, under every method.
         assertFalse(isGatedRequest("POST", "/api/v1/attest/renew"))
         assertFalse(isGatedRequest("POST", "/api/v2/attest/token"))

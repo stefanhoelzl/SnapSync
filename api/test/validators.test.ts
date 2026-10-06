@@ -8,6 +8,7 @@ import {
   validateFilename,
   validateStartsAt,
   validateUUID,
+  validateZone,
 } from "../src/validators.ts";
 
 const UUID = "7a3f9c21-0000-4000-8000-000000000001";
@@ -188,4 +189,13 @@ Deno.test("canonicalFromMs: renders the canonical cutoff shape, rounding DOWN to
   assertEquals(canonicalFromMs(at + 1000), "2026-07-27T18:00:01Z");
   // The result validates as a canonical instant itself.
   assertEquals(validateStartsAt(canonicalFromMs(at + 1)), "2026-07-27T18:00:00Z");
+});
+
+Deno.test("validateZone: accepts IANA names and UTC, refuses offsets, unknown names and junk", () => {
+  for (const z of ["Europe/Berlin", "America/New_York", "UTC", "America/Argentina/Buenos_Aires"]) {
+    assertEquals(validateZone(z), z, z);
+  }
+  for (const z of ["+02:00", "Mars/Base", "", "Europe/Berlin; DROP", "a".repeat(65), null, 3]) {
+    assertEquals(validateZone(z), null, String(z));
+  }
 });

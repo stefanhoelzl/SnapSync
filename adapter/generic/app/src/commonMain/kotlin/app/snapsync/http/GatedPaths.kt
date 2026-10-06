@@ -20,7 +20,7 @@ fun isGatedRequest(method: String, path: String): Boolean {
     val read = method == "GET" || method == "HEAD"
     val ungated = method == "OPTIONS" ||
         bare.startsWith("/attest/") ||
-        (read && (bare in PUBLIC_GETS || bare.startsWith("/_astro/"))) ||
+        (read && (bare in PUBLIC_GETS || bare.startsWith("/_astro/") || EVENT_PAGE.matches(bare))) ||
         (read && (EVENT_READ.matches(bare) || EVENT_UNION_READ.matches(bare) || DOWNLOAD_REDIRECT.matches(bare)))
     return !ungated
 }
@@ -46,6 +46,9 @@ internal val PUBLIC_GETS = setOf(
     "/.well-known/apple-app-site-association",
     "/.well-known/assetlinks.json",
 )
+
+/** The event's own page, `/join/<eventId>` — exactly one segment (capability `event-site`). */
+private val EVENT_PAGE = Regex("""^/join/[^/]+$""")
 
 /** The two event reads authorized by eventId possession alone. */
 private val EVENT_READ = Regex("""^/events/[^/]+$""")

@@ -564,7 +564,7 @@ believe the upload landed.
 
 ```
 events        id, name, created_at, starts_at, ends_at, capacity, lifetime_seconds,
-              closed_at?, completed_at?, last_landed_at?
+              closed_at?, completed_at?, last_landed_at?, zone? (migration 0009)
 memberships   (event_id -> events CASCADE, device_id), state in {sharing, settled, done, left} (CHECK),
               joined_at, manifest_version?
 event_assets  (event_id, device_id -> memberships CASCADE), asset_id, creation_date, roles (JSON array)
@@ -596,6 +596,11 @@ The generated snapshot is `api/schema.sql` (section "Database" below).
   (`PendingLeaves`) and re-sent by every wake until the backend confirms it — which is what makes
   EMPTY dependable. The byte route stamps `last_landed_at`; the **clock** is
   `max(ends_at, last_landed_at) + 3 days`.
+- **The host's zone is a label, beside the instants** (migration 0009). `starts_at`/`ends_at` stay canonical
+  `…Z` instants, because they are compared lexicographically as capture cutoffs and installed apps parse that
+  shape. `zone` is the host's IANA name (`Europe/Berlin`), sent with the create, which only the event page
+  reads, to name the dates as the host chose them. An absent or unusable zone stores NULL (rendered in UTC)
+  and never refuses the create; it is never on the wire.
 - **Membership is one state column** (migration 0008), never inferred from objects: `sharing` (joined,
   not settled), `settled` (its last publish after the end declared its share settled; it follows each
   publish both ways), `done` (left having everything: settled, every declared role landed, and the
@@ -648,8 +653,8 @@ Top-level Hono middleware in `src/app.ts`, in this order:
    only be obtained through App Attest. **Verifying touches nothing** (one HMAC compare, no store read,
    no Apple call), because it sits on the streaming upload hot path. A route that needs the device record
    reads it itself afterwards. The **closed list** of exceptions: the three `/api/vN/attest/*` issuers;
-   `OPTIONS` anywhere; `GET`/`HEAD` on `/`, `/join`, `/.well-known/apple-app-site-association`,
-   `/health`; `GET`/`HEAD` on `/api/vN/events/<id>` and `/api/vN/events/<id>/files` (the no-app
+   `OPTIONS` anywhere; `GET`/`HEAD` on `/`, `/join`, `/join/<one segment>` (the event's own page),
+   `/.well-known/apple-app-site-association`, `/health`; `GET`/`HEAD` on `/api/vN/events/<id>` and `/api/vN/events/<id>/files` (the no-app
    download page, where possession of the event id is the read capability); and `GET`/`HEAD` on the
    download redirect `/api/vN/events/<id>/files/devices/<d>/<asset>/<role>` (`isDownloadRedirect`, which
    the version gate exempts too: the OS's download transports fetch it with no app header). The gate
@@ -681,7 +686,7 @@ not listed is `404` (no `405`) and makes no upstream request.
 | `GET` | `/attest/challenge` | stateless HMAC-signed, time-bounded nonce, writes nothing | `200 {challenge}` |
 | `POST` | `/attest/token` `{deviceId, challenge, proof}`, `proof` = `{format:"apple-appattest", keyId, attestation}` or `{format:"android-key", chain:[DER b64, leaf first]}` | the format only CHOOSES the verifier. App Attest: chain to Apple root, nonce, app-id hash, counter, aaguid. Android key attestation (`src/android-attest.ts`): chain to a pinned Google root (by key), its provisioning shape, one extension in the leaf, validity (expiry ignored on factory chains), revocation (Google's public status list, cached per `max-age`), the challenge's SHA-256, the package and signing digest, TEE/StrongBox and a locked, verified boot — the last three per `androidAttestationTrust`. **Persists the device row with the platform that proved it, then mints** | `201 {token}` · `400` body (a flat v1 body too) · `401` failed check · `409` stale challenge · `502` write failed, or Android's status list unreachable |
 | `POST` | `/attest/renew` `{deviceId, assertion, challenge}` | verifies by the STORED row's `attest_platform`: an App Attest assertion, or an Android ECDSA-P256 signature over the challenge's UTF-8 bytes, against the stored key (no vendor call); advances expiry, then mints | `201 {token}` · `401` no attestation / refused · `409` stale challenge · `502` read/write failure (never `401`: that would force a throttled re-attestation) |
-| `POST` | `/events` `{name, startsAt, endsAt?}` | name trimmed, non-empty, ≤100 chars; window rules; backend mints the id | `201 {eventId, name, createdAt, startsAt, endsAt, capacity, deletesAt}` · `400` · `502` |
+| `POST` | `/events` `{name, startsAt, endsAt?, zone?}` | name trimmed, non-empty, ≤100 chars; window rules; `zone` stored when usable, else NULL (never a `400`); backend mints the id | `201 {eventId, name, createdAt, startsAt, endsAt, capacity, deletesAt}` · `400` · `502` |
 | `GET`/`HEAD` | `/events/<eventId>` (ungated) | metadata; `deletesAt` derived per response; `closedAt`, `completedAt`, `members {active, final}` | `200` (a completed event too, with `completedAt`) · `404` sealed absence · `502` read failure |
 | `PATCH` | `/events/<eventId>` `{name}` | the only write to an existing event row; last-write-wins; no ownership check | `200` (metadata shape) · `400` · `404` · `410` closed · `502` |
 | `PUT` | `/events/<eventId>/devices/<deviceId>` | **join**: the only route that creates or reactivates a membership; one conditional capacity insert; clears `manifest_version` and `final`; idempotent | `200` · `404` · `409` at capacity · `410` closed · `502` |
@@ -694,10 +699,23 @@ not listed is `404` (no `405`) and makes no upstream request.
 | `PUT` | `/devices/<deviceId>` `{pushToken: {kind, token, env}}` (`kind` is the push adapter's — `apns` or `fcm`) or explicit absence | updates the push columns | `201` · `400` · **`401` when no row was affected** (device never attested; the client re-attests and re-sends) · `502` |
 
 Served at the root under no version: `OPTIONS` on any path (`204`, no resumable upload advertised, so
-the iOS uploader uses a plain `PUT`); `GET`/`HEAD` `/`, `/join`, `/_astro/*` (the Astro build proxied
-from the storage `site/` prefix), the AASA and `/.well-known/assetlinks.json` (Android's: the package and the
+the iOS uploader uses a plain `PUT`); `GET`/`HEAD` `/`, `/_astro/*` (the Astro build proxied
+from the storage `site/` prefix), the event page (below), the AASA (claiming `/join` and `/join/*`) and `/.well-known/assetlinks.json` (Android's: the package and the
 `androidSigningCertDigests` the attestation policy accepts, `[]` while none is named or under trust `any`); `GET /health` (`200 {sha, maintenance?}` after
 `SELECT 1` and a storage listing succeed, `503` otherwise; `maintenance` absent means closed).
+
+**The event page is the one per-request page** (`src/routes/site.ts` + `src/routes/event-page.ts`, capability
+`event-site`). The build emits ONE `site/join/index.html` carrying `%%TOKEN%%` placeholders (title, og tags,
+view, status pill, heading, facts), and the api reads it as a template and fills it, HTML-escaping every
+value. `/join` (a fragment invite: the server cannot see which) fills it generically, and the page's island
+moves the browser to `/join/<eventId>`. `/join/<eventId>` reads the event row and its member counts and
+renders its name, dates in the event's `zone` (UTC when NULL), phase and counts, so link previews and
+script-less browsers see the event: `404` unknown or malformed, `410` completed (both the invalid view,
+naming no event), a closed event renders as ended, a read failure `502`. Both answer `NO_CACHE` (a cached
+copy would key the CDN cache on the event's identity) and `Referrer-Policy: no-referrer`. Per view: one
+storage GET and one row read plus one count. The event's identity reaching this route is a decision
+(`changes/server-rendered-event-page`), not a leak: it supersedes the fragment-only rule of
+`migrate-to-universal-links` D1.
 
 **Conventions that hold on every route:**
 

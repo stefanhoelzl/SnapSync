@@ -222,4 +222,9 @@ internal fun extensionBackend(
     attestStore: CachedAttestStore,
     identity: PersistedDeviceIdentity,
 ): BackendServices =
-    BackendServices(CredentialedBackend(backend, ExtensionCredential(attestStore), versionGate = null), identity)
+    // The extension never creates an event, so it has no zone to send.
+    BackendServices(
+        CredentialedBackend(backend, ExtensionCredential(attestStore), versionGate = null),
+        identity,
+        zone = { null },
+    )

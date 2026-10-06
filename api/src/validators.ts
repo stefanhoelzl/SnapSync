@@ -122,3 +122,29 @@ export function validateEndsAt(
   if (parsed.getTime() - Date.parse(startsAt) > windowMaxSeconds * 1000) return null; // window cap
   return raw;
 }
+
+/** The longest zone name kept; the IANA database's longest is under 40. */
+export const MAX_ZONE_LENGTH = 64;
+
+/**
+ * Judge a client-supplied `zone` (capability `event-site`; migration 0009): the host's IANA time zone, which the
+ * event page reads `startsAt`/`endsAt` in. Returns the name when this runtime can format dates in it, else null.
+ *
+ * Unlike every other create field, an unusable zone is NOT a refusal: the caller stores null and the page renders
+ * the dates in UTC. A zone only labels dates on the web, so a phone whose zone name this runtime does not know must
+ * still be able to create its event — a wrong weekday on the page is a smaller failure than no event at all.
+ *
+ * The shape is checked before `Intl` is asked, because `Intl` also accepts what is not a zone NAME — a bare offset
+ * such as `+02:00` — and a fixed offset is exactly what the column exists to avoid (it is wrong across a
+ * daylight-saving change inside the window).
+ */
+export function validateZone(raw: unknown): string | null {
+  if (typeof raw !== "string" || raw.length === 0 || raw.length > MAX_ZONE_LENGTH) return null;
+  if (!/^[A-Za-z][A-Za-z0-9_+\-]*(\/[A-Za-z0-9_+\-]+)*$/.test(raw)) return null;
+  try {
+    new Intl.DateTimeFormat("en-GB", { timeZone: raw });
+    return raw;
+  } catch (_e) {
+    return null;
+  }
+}

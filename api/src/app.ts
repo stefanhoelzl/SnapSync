@@ -403,7 +403,11 @@ export function createApp(
     // the backend — no storage read, no crypto, one constant string. Serving it unauthenticated
     // discloses only the commit of a PUBLIC repository, and costs strictly less than `/join` or the two
     // public event reads below, which are already ungated and uncacheable and do touch storage.
-    const publicGet = path === "/" || path === "/join" || path === "/health" ||
+    // `/join/<eventId>` is the event's own page (capability `event-site`): the same audience as `/join`, and it
+    // reads only what the two public event reads below already serve to anyone holding the identifier. One
+    // segment exactly, so it is never a prefix into anything else.
+    const publicGet = path === "/" || path === "/join" || /^\/join\/[^/]+$/.test(path) ||
+      path === "/health" ||
       path === "/.well-known/apple-app-site-association" ||
       path === "/.well-known/assetlinks.json" ||
       path.startsWith("/_astro/");

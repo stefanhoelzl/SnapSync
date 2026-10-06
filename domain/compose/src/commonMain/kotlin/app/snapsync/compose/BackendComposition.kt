@@ -32,4 +32,8 @@ internal fun backendServicesFor(
     attestation: DeviceAttestation,
     versionGate: AppVersionGate,
 ): BackendServices =
-    BackendServices(CredentialedBackend(services.ports.backend, attestation, versionGate), services.deviceIdentity)
+    BackendServices(
+        CredentialedBackend(services.ports.backend, attestation, versionGate),
+        services.deviceIdentity,
+        zone = { services.process.clock.timeZone().id },
+    )

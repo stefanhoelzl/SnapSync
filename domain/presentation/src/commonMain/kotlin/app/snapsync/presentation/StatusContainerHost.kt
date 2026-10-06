@@ -424,7 +424,7 @@ class StatusContainerHost(
      */
     // The invite URL is read off the state the reduction already derived, so the shared link is
     // byte-identical to the QR being rendered rather than a second derivation that could drift.
-    fun onShareInvite() = intent { (state.layer as? Layer.Joined)?.let { commands.share(it.inviteUrl) } }
+    fun onShareInvite() = intent { (state.layer as? Layer.Joined)?.let { commands.share(it.inviteUrl, it.membership.name) } }
 
     /**
      * Open the App Store page from the update-required screen (capability `app-update-required`).
