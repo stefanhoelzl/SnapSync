@@ -51,10 +51,14 @@ internal fun testJoinedActions(
     onShareInvite: () -> Unit = {},
     onQrOpen: () -> Unit = {},
     onQrDismiss: () -> Unit = {},
-    onReconfigure: () -> Unit = {},
+    onStopSharing: () -> Unit = {},
+    onKeepSharing: () -> Unit = {},
     onRenameEvent: (String, String) -> Unit = { _, _ -> },
     onRenameStatusConsumed: () -> Unit = {},
-) = JoinedActions(onLeaveEvent, onShareInvite, onQrOpen, onQrDismiss, onReconfigure, onRenameEvent, onRenameStatusConsumed)
+) = JoinedActions(
+    onLeaveEvent, onShareInvite, onQrOpen, onQrDismiss, WithdrawalActions(onStopSharing, onKeepSharing), onRenameEvent,
+    onRenameStatusConsumed,
+)
 
 internal fun testAccessActions(
     onRequestPermission: () -> Unit = {},

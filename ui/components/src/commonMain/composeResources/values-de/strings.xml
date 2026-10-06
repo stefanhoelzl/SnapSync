@@ -32,6 +32,7 @@
     <string name="status_syncing">Wird geladen …</string>
     <string name="status_in_sync">Alles aktuell</string>
     <string name="status_not_started">Das Teilen beginnt mit dem Event</string>
+    <string name="status_inactive">Du teilst und empfängst nichts</string>
     <string name="status_allow_access">Fotozugriff erlauben</string>
     <string name="status_allow_access_settings">Fotozugriff in den Einstellungen erlauben</string>
     <string name="status_sharing">teilen</string>

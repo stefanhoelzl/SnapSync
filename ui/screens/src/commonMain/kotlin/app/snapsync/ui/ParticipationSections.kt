@@ -12,7 +12,6 @@ import app.snapsync.ui.components.AppShareRangeRow
 import app.snapsync.ui.components.AppToggleCard
 import app.snapsync.ui.components.AppToggleDivider
 import app.snapsync.ui.components.AppToggleRow
-import app.snapsync.ui.components.AppToggleSection
 import app.snapsync.ui.components.RangeChoiceActions
 import app.snapsync.ui.components.RangeChoices
 import app.snapsync.ui.components.RangeWindow
@@ -47,9 +46,9 @@ import org.jetbrains.compose.resources.pluralStringResource
  * The join gate and the in-place reconfigure surface ask exactly this, and both render it through here, so
  * the arrangement is written once and the two surfaces cannot drift apart.
  *
- * Share and Receive are two consent decisions about one membership, so they share ONE card, each switch
- * followed by what it means; the album is a preference that belongs to neither (capability `event-album`
- * feeds it from both), so it is its own switch card beneath. Which photos are shared is one row inside the
+ * Every choice sits in ONE card, each switch followed by what it means and set apart from the next by a line:
+ * share, receive, the album (a preference fed by both directions, capability `event-album`), then mobile data —
+ * one section reads as one decision about one membership. Which photos are shared is one row inside the
  * Share section — the range, "<preset> · <count>", and an edit affordance opening the calendar — because
  * "do I share" and "which photos" are one decision (decision record `simplify-join-screen`, D4).
  *
@@ -85,21 +84,21 @@ internal fun ColumnScope.ParticipationSections(
                 stringResource(Res.string.receive_off_note)
             },
         )
-    }
-    AppToggleSection(
-        title = stringResource(Res.string.album_toggle),
-        checked = state.saveToAlbum,
-        onCheckedChange = actions.onSaveToAlbum,
-    ) {
+        AppToggleDivider()
+        AppToggleRow(
+            title = stringResource(Res.string.album_toggle),
+            checked = state.saveToAlbum,
+            onCheckedChange = actions.onSaveToAlbum,
+        )
         AppSectionNote(albumNote)
-    }
-    // Capability `mobile-data`: a preference over both directions, so its own card beneath the album; everything else
-    // the app does keeps working on any network, which is why the note speaks of photos only.
-    AppToggleSection(
-        title = stringResource(Res.string.mobile_data_toggle),
-        checked = state.mobileData,
-        onCheckedChange = actions.onMobileData,
-    ) {
+        AppToggleDivider()
+        // Capability `mobile-data`: a preference over both directions, last; everything else the app does keeps
+        // working on any network, which is why the note speaks of photos only.
+        AppToggleRow(
+            title = stringResource(Res.string.mobile_data_toggle),
+            checked = state.mobileData,
+            onCheckedChange = actions.onMobileData,
+        )
         AppSectionNote(
             if (state.mobileData) {
                 stringResource(Res.string.mobile_data_on_note)

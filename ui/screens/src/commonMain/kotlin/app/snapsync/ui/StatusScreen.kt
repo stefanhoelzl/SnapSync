@@ -155,7 +155,7 @@ fun StatusScreen(
                     onTitleDoubleTap = actions.surfaces.onReportBugOpen,
                     onMenu = actions.menu.onMenuOpen.takeIf { state.layer.offersMenu },
                 ) {
-                    CurrentLayer(state = state, chrome = chrome, cutoff = cutoff, actions = actions)
+                    CurrentLayer(state = state, cutoff = cutoff, actions = actions)
                 }
                 state.overlays.reportNotice?.let { outcome ->
                     AppNotice(
@@ -211,22 +211,11 @@ internal fun reportNoticeText(outcome: ReportOutcome): String = stringResource(
 )
 
 /**
- * What the status screen's own chrome shows, derived once.
- *
- * `joined && !reconfigureActive` was written out three separate times — the heading, the bottom action
- * cluster and the rename pen each re-derived it — and `membership != null` twice more on top. They are
- * one fact with three consequences: the joined layer is showing its OWN chrome, which the reconfigure
- * surface replaces wholesale. Three copies of a conjunction is three places to change and two places to
- * forget, and the failure would be silent — a heading that stays while its pen disappears.
- *
- * [reconfiguring] carries the membership rather than a flag, so it is non-null exactly while the
- * reconfigure surface shows. That turns an invariant the call site used to assert with `!!` and a comment
- * into one the compiler keeps.
+ * What the status screen's own chrome shows, derived once: whether the joined layer's heading, pen and docked
+ * footer show — always while joined, since the event's settings open in a sheet OVER the joined screen rather than
+ * replacing it (capability `manage-membership`) — and which bottom edge the layer takes.
  */
 private class StatusChrome(
-    val joined: Boolean,
-    val reconfiguring: JoinedSurface.Reconfigure?,
-    val membership: EventConfig?,
     val showsJoinedChrome: Boolean,
     val canRename: Boolean,
     val pinsActionCluster: Boolean,
@@ -234,30 +223,17 @@ private class StatusChrome(
     val closed: Boolean,
 )
 
-/**
- * The reconfigure surface renders only while joined with a known membership; if the config drops (a leave
- * lands) the caller resets the flag so a later rejoin does not reopen it.
- */
 private fun statusChrome(state: UiState): StatusChrome {
-    // The membership comes off the state, which carries it non-null exactly when joined — so the
-    // `membership != null` conjunctions this function used to carry have no expression left.
     val joinedLayer = state.layer as? Layer.Joined
-    val membership = joinedLayer?.membership
-    val joined = membership != null
-    val reconfiguring = joinedLayer?.surface as? JoinedSurface.Reconfigure
-    val showsJoinedChrome = joined && reconfiguring == null
+    val showsJoinedChrome = joinedLayer != null
     return StatusChrome(
-        joined = joined,
-        reconfiguring = reconfiguring,
-        membership = membership,
         showsJoinedChrome = showsJoinedChrome,
-        canRename = showsJoinedChrome && !joinedLayer.closed,
+        canRename = joinedLayer != null && !joinedLayer.closed,
         closed = joinedLayer?.closed == true,
-        // Every join phase pins Cancel (and, on Ready, Join) as its own full-width bottom cluster; the
-        // reconfigure surface likewise pins its own Save/Cancel, and the create form its Create + hint (the
-        // in-flight create screen too, so the swap does not jump), and the joined screen docks its invite and
-        // membership actions — so all take the safe-area-anchored bottom edge.
-        pinsActionCluster = showsJoinedChrome || reconfiguring != null || when (state.layer) {
+        // Every join phase pins Cancel (and, on Ready, Join) as its own full-width bottom cluster; the create form
+        // its Create + hint (the in-flight create screen too, so the swap does not jump), and the joined screen docks
+        // its invite and membership actions — so all take the safe-area-anchored bottom edge.
+        pinsActionCluster = showsJoinedChrome || when (state.layer) {
             is Layer.JoiningEvent, is Layer.CreateEvent, Layer.CreatingEvent -> true
             else -> false
         },
@@ -278,6 +254,16 @@ private fun statusChrome(state: UiState): StatusChrome {
 private fun StatusOverlays(state: UiState, actions: StatusActions) {
     val joined = state.layer as? Layer.Joined
     val overlays = state.overlays
+    // The event's settings, in a sheet over the joined screen (capability `manage-membership`). First, so a
+    // dialog raised while they are open (a switch, a report) draws above them.
+    (joined?.surface as? JoinedSurface.Reconfigure)?.let { settings ->
+        ReconfigureSheet(
+            surface = settings,
+            participation = actions.participation,
+            withdrawal = actions.joined.withdrawal,
+            onClose = actions.surfaces.onCancelReconfigure,
+        )
+    }
     if (overlays.confirmingLeave) {
         LeaveConfirmDialog(actions)
     }
@@ -459,35 +445,23 @@ private fun JoinedFooter(actions: StatusActions, closed: Boolean) {
 }
 
 /**
- * Which layer the app is showing: the reconfigure surface if it is open, else the one the [state] names.
+ * Which layer the app is showing: the one the [state] names. The event's settings are not a layer — they open in a
+ * sheet over the joined one, drawn with the other overlays.
  *
  * Its own function because it is the app's ONE navigation decision, and [StatusScreen] around it does
  * something different — it owns the screen's chrome (heading, bottom cluster, the two title gestures) and
  * the overlay flags. Reading "what is on screen right now" meant reading past all of that.
- *
- * The reconfigure surface takes precedence over the state's own layer rather than sitting beside it: it
- * is a modal edit of the joined layer, and [reconfiguring] is non-null exactly while it shows.
  */
 @Composable
 private fun ColumnScope.CurrentLayer(
     state: UiState,
-    chrome: StatusChrome,
     // Needed by the CREATE form (its own name/date draft, held by `CreateFlow`) and by the joined layer's
     // explanation, which names the member's shared range. The RANGE form no longer needs it: its bounds arrive
     // resolved (capability `sync-status`).
     cutoff: CutoffFormatter,
     actions: StatusActions,
 ) {
-    val reconfiguring = chrome.reconfiguring
-    if (reconfiguring != null && chrome.membership != null) {
-        ReconfigureScreen(
-            membership = chrome.membership,
-            surface = reconfiguring,
-            participation = actions.participation,
-            onSave = actions.joined.onReconfigure,
-            onCancel = actions.surfaces.onCancelReconfigure,
-        )
-    } else when (val layer = state.layer) {
+    when (val layer = state.layer) {
         is Layer.UpdateRequired ->
             UpdateRequiredScreen(layer, actions.onOpenLink)
         // ONE branch for both create layers, so the form's draft survives a failed create's round trip

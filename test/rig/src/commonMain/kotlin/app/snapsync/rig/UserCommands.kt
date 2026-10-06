@@ -54,11 +54,16 @@ fun userCommands(dispatch: (UiIntent) -> Unit, state: () -> UiState): Map<String
     // `manage-membership`), so without this the one behaviour that change turns on is undriveable
     // on a device.
     "reconfigure" to RigUserCommand { params ->
-        // Open first: opening seeds the form from the persisted membership, exactly as the settings gear
-        // does, so an unspecified field keeps the membership's current value rather than a default.
+        // Open first, as the settings action does: with the settings open every choice applies as it is made, so an
+        // unspecified field keeps the membership's current value. A choice that withdraws photos (sharing off, a
+        // narrower range) waits on "Stop sharing these photos?" — the caller asked for it, so the channel confirms it,
+        // right after the choice, before the next one is made (the question is modal on screen). Then it closes.
         dispatch(UiIntent.OpenReconfigure)
-        rangeChoices(params).forEach(dispatch)
-        dispatch(UiIntent.Reconfigure)
+        rangeChoices(params).forEach { choice ->
+            dispatch(choice)
+            dispatch(UiIntent.ConfirmStopSharing)
+        }
+        dispatch(UiIntent.CancelReconfigure)
     },
     // The form, set without committing: what a member does before they confirm, and what the join gate's
     // shareable-count preview answers (capability `join-event`). `range=wholeEvent|fromNow` picks a preset;
@@ -133,7 +138,7 @@ fun excludedUserCommands(): Map<String, String> = mapOf(
     // ---- the range form (capability `photo-sharing`) ------------------------------------
     //
     // The channel drives the form through `confirmJoin`/`reconfigure`, which set the values a caller
-    // names and then commit. The PRESET tap is the one it does not need: a preset is a shorthand for a
+    // names — the join then confirms them, the settings apply each as it is set. The PRESET tap is the one it does not need: a preset is a shorthand for a
     // bound the caller can state outright, and `applyRangeChoices` states it — offering both would give
     // the channel two ways to say one thing, and they could disagree.
     "onRangePreset" to
@@ -156,8 +161,12 @@ fun excludedUserCommands(): Map<String, String> = mapOf(
     "onQrDismiss" to
         "dismisses that QR code, which the channel never shows.",
     "onCancelReconfigure" to
-        "discards the settings surface without writing; `/user/reconfigure` opens, sets and commits it in " +
-        "one call, so there is no half-open surface for the channel to cancel.",
+        "closes the settings, writing nothing; `/user/reconfigure` opens, applies and closes them in one call, so " +
+        "there are no half-open settings for the channel to close.",
+    "onConfirmStopSharing" to
+        "answers the settings' \"Stop sharing these photos?\"; `/user/reconfigure` confirms it for every choice it makes.",
+    "onKeepSharing" to
+        "declines that question, which changes nothing — a caller that wants nothing withdrawn names nothing to withdraw.",
     "onReportBugOpen" to
         "opens the diagnostic sheet and touches no port; the send itself is wired as `/user/sendDiagnostics`.",
     "onReportBugDismiss" to

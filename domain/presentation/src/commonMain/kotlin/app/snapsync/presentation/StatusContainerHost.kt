@@ -44,6 +44,7 @@ import app.snapsync.model.DirectionCount
 import app.snapsync.model.EventTiming
 import app.snapsync.model.eventTiming
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -156,6 +157,28 @@ class StatusContainerHost(
 
     /** The non-idempotent commands claimed while their intent runs — see [guardedIntent]. */
     private val inFlight = MutableStateFlow<Set<Guarded>>(emptySet())
+
+    /**
+     * The settings' changes, in the order they were made (capability `manage-membership`: "changes made one after
+     * another apply in order, the last one standing"). Orbit runs intents concurrently, so a confirm, the next switch or
+     * a close could overtake a change still saving; each settings act is enqueued HERE, synchronously in the tapping
+     * thread, and one consumer runs them one at a time. Started lazily on the container's scope.
+     */
+    private val settingsQueue = Channel<suspend () -> Unit>(Channel.UNLIMITED)
+    private val settingsWorker by lazy {
+        scope.launch {
+            for (act in settingsQueue) {
+                try {
+                    act()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    onIntentError(e)
+                }
+            }
+        }
+    }
+
 
     /** An untouched surface's choices on this phone: all on, the album included. */
     private val freshForm: RangeForm get() = RangeForm(albumKind = albumKind)
@@ -500,14 +523,27 @@ class StatusContainerHost(
          * in the reduction is what makes the pre-fill a SNAPSHOT: a foreground refresh landing mid-edit
          * updates the heading, not the controls in the member's hand.
          */
-        fun onOpenReconfigure() = intent {
-            val config = config.value ?: return@intent
+        fun onOpenReconfigure() = settings.enqueue {
+            val config = config.value ?: return@enqueue
             val form = reconfigureForm(config, cutoffFormatter::toLocal).copy(albumKind = albumKind)
-            local.update { it.copy(form = form, settings = Owned(config.eventId, SettingsSurface.Open)) }
+            local.update {
+                it.copy(
+                    form = form,
+                    settings = Owned(config.eventId, SettingsSurface.Open),
+                    pendingWithdrawal = Owned(null, null),
+                    lastApplied = Owned(null, null),
+                )
+            }
         }
 
-        /** Cancel the settings surface: the edits are discarded, and no port was ever touched. */
-        fun onCancelReconfigure() = intent { local.setSettings(Owned(null, SettingsSurface.Closed)) }
+        /**
+         * Close the settings (capability `manage-membership`): swiped down, back, or a tap on the joined screen above
+         * them. Every change already applied as it was made, so closing writes nothing — and a question still open
+         * about withdrawing photos is answered "keep sharing".
+         */
+        fun onCancelReconfigure() = settings.enqueue {
+            local.update { it.copy(settings = Owned(null, SettingsSurface.Closed), pendingWithdrawal = Owned(null, null)) }
+        }
     }
 
     /**
@@ -556,55 +592,145 @@ class StatusContainerHost(
     }
 
     /**
-     * Apply a reconfigure of the joined membership (capability `manage-membership`), confirmed on
-     * the settings surface's Save. Delegates to the injected [UserCommands.reconfigure] with [eventId] —
-     * the event the surface was opened for — so a switch that landed mid-edit makes the use-case a no-op
-     * rather than overwriting a different membership. The clamp to the `startsAt` floor is applied on the
-     * far side (inside `ReconfigureEvent`), like `commitJoin` — this passes the chosen values through raw.
-     * Fire-and-forget; the change lands via the config read-model on the next cycle, so no `UiState`
-     * branch here. Opening/closing the surface is screen-local navigation and never reaches this door.
+     * The event's settings, applied as they change (capability `manage-membership`): the queue every settings act
+     * runs through, what the next change builds on, and the answers to the withdrawal question.
      */
-    fun onReconfigure() = intent {
-        val config = config.value ?: return@intent
-        val form = local.value.form
-        val range = resolveRange(form, config.startsAt, config.endsAt, config.maxPhotoDate)
-        local.setSettings(Owned(null, SettingsSurface.Closed))
-        // The id rides with the values so a switch landing mid-edit makes the use-case a no-op rather
-        // than overwriting a different membership.
-        val outcome = commands.reconfigure(
-            config.eventId, range.direction, range.chosenFrom, range.chosenUntil, form.saveToAlbum, form.mobileData,
-        )
-        // A save that did not land reopens the surface with the member's edits still in hand (the form was never
-        // reset) and says so — closing it would read as saved (capability `manage-membership`).
-        if (outcome == ReconfigureOutcome.SaveFailed) local.setSettings(Owned(config.eventId, SettingsSurface.SaveFailed))
+    val settings: SettingsChanges = SettingsChanges()
+
+    inner class SettingsChanges internal constructor() {
+        /** Run [act] after every settings act enqueued before it — see [settingsQueue]. */
+        internal fun enqueue(act: suspend () -> Unit) {
+            settingsWorker.start()
+            settingsQueue.trySend(act)
+        }
+
+        /**
+         * The settings apply each change as it is made (capability `manage-membership`): one reconfigure per change, built
+         * from the membership IN EFFECT with that one change, and run in the container's intent order — so quick changes
+         * apply one after another and the last one stands. A change that would withdraw photos from the event (sharing
+         * off, or a narrower range) is held instead, and asked about ([pendingWithdrawal][Local.pendingWithdrawal]).
+         */
+        internal suspend fun change(change: (SettingChange, EventConfig) -> SettingChange) {
+            val config = config.value ?: return
+            val inEffect = settingsInEffect(config)
+            val next = change(inEffect, config)
+            if (next.withdrawsFrom(inEffect)) {
+                local.update { it.copy(pendingWithdrawal = Owned(config.eventId, next)) }
+                return
+            }
+            applySetting(config, inEffect, next)
+        }
+
+        /**
+         * The settings in effect: the last change these settings applied, else the membership as read. The read can lag a
+         * save the use-case just made, and a change built on it would quietly undo the one before — so quick changes
+         * build on each other, not on a stale read.
+         */
+        private fun settingsInEffect(config: EventConfig): SettingChange =
+            local.value.lastApplied.forMembership(config.eventId, null) ?: SettingChange.of(config)
+
+        /**
+         * Run one change through [UserCommands.reconfigure]. The event id rides with the values so a switch that landed
+         * while the settings were open makes the use-case a no-op rather than overwriting a different membership; the
+         * clamp to the event's window is the use-case's. Afterwards the controls are re-seeded from the settings in
+         * effect — the change if it landed, the ones before it if not — so a change that did not land shows the setting
+         * still in effect, and says so: the controls never hold a value that is not saved.
+         */
+        private suspend fun applySetting(config: EventConfig, before: SettingChange, next: SettingChange) {
+            local.update { it.copy(pendingWithdrawal = Owned(null, null)) }
+            val outcome = commands.reconfigure(config.eventId, next.direction, next.from, next.until, next.saveToAlbum, next.mobileData)
+            if (outcome == ReconfigureOutcome.NotCurrent) {
+                local.update { it.copy(settings = Owned(null, SettingsSurface.Closed), lastApplied = Owned(null, null)) }
+                return
+            }
+            val saved = outcome != ReconfigureOutcome.SaveFailed
+            val inEffect = if (saved) next else before
+            val reseeded = reconfigureForm(inEffect.appliedTo(config), cutoffFormatter::toLocal).copy(albumKind = albumKind)
+            val surface = if (saved) SettingsSurface.Open else SettingsSurface.SaveFailed
+            local.update {
+                it.copy(form = reseeded, settings = Owned(config.eventId, surface), lastApplied = Owned(config.eventId, inEffect))
+            }
+        }
+
+        /** "Stop sharing" on the withdrawal question: the held change applies. */
+        fun onConfirmStopSharing() = enqueue {
+            val config = config.value ?: return@enqueue
+            val held = local.value.pendingWithdrawal.forMembership(config.eventId, null) ?: return@enqueue
+            applySetting(config, settingsInEffect(config), held)
+        }
+
+        /** "Keep sharing": the held change is dropped, and the controls — which never took it — stay as they were. */
+        fun onKeepSharing() = enqueue { local.update { it.copy(pendingWithdrawal = Owned(null, null)) } }
+
+        /** Whether the event's settings are open over the joined screen — where a form edit applies rather than drafts. */
+        internal fun isOpen(): Boolean =
+            local.value.settings.forMembership(config.value?.eventId, SettingsSurface.Closed) != SettingsSurface.Closed
     }
 
-
     /**
-     * The member's edits to the capture-range form (capability `photo-sharing`), grouped.
+     * The member's edits to the participation form (capabilities `photo-sharing`, `manage-membership`), grouped.
      *
-     * Each reduces and nothing more: a preset tap touches no port, dispatches no command, and is
-     * discarded by Cancel. They are intents rather than screen state because the screen SHOWS them —
-     * and they are a GROUP because they are one surface's questions, asked together and answered
-     * together, which is also what keeps this container's own surface readable.
+     * At the join gate each only reduces: a tap touches no port and dispatches no command until Join. With the
+     * event's settings open each one IS the change, applied through [SettingsChanges.change]. They are intents rather than
+     * screen state because the screen SHOWS them — and a GROUP because they are one surface's questions.
      */
     val form: FormEdits = FormEdits()
 
     inner class FormEdits internal constructor() {
-        fun onShareOn(on: Boolean) = intent { local.editForm { it.copy(shareOn = on) } }
+        /**
+         * While joined, an edit can only be a settings change, so it takes its place in the settings' order
+         * ([SettingsChanges.enqueue]) — behind an open still queued. At the join gate it is an ordinary intent, so the Join that
+         * follows it reads the form it left.
+         */
+        private fun formIntent(act: suspend () -> Unit) {
+            if (config.value != null) settings.enqueue(act) else intent { act() }
+        }
 
-        fun onReceiveOn(on: Boolean) = intent { local.editForm { it.copy(receiveOn = on) } }
+        // At the join gate each edit drafts the form; with the event's settings open it applies at once.
+        fun onShareOn(on: Boolean) = formIntent {
+            if (settings.isOpen()) {
+                settings.change { now, _ -> now.copy(direction = directionOf(on, now.direction.includesDownload)) }
+            } else {
+                local.editForm { it.copy(shareOn = on) }
+            }
+        }
 
-        fun onSaveToAlbum(on: Boolean) = intent { local.editForm { it.copy(saveToAlbum = on) } }
+        fun onReceiveOn(on: Boolean) = formIntent {
+            if (settings.isOpen()) {
+                settings.change { now, _ -> now.copy(direction = directionOf(now.direction.includesUpload, on)) }
+            } else {
+                local.editForm { it.copy(receiveOn = on) }
+            }
+        }
 
-        fun onMobileData(on: Boolean) = intent { local.editForm { it.copy(mobileData = on) } }
+        fun onSaveToAlbum(on: Boolean) = formIntent {
+            if (settings.isOpen()) settings.change { now, _ -> now.copy(saveToAlbum = on) } else local.editForm { it.copy(saveToAlbum = on) }
+        }
 
-        fun onRangePreset(preset: RangeChoice) = intent { local.editForm { it.copy(preset = preset) } }
+        fun onMobileData(on: Boolean) = formIntent {
+            if (settings.isOpen()) settings.change { now, _ -> now.copy(mobileData = on) } else local.editForm { it.copy(mobileData = on) }
+        }
+
+        fun onRangePreset(preset: RangeChoice) = formIntent { editRange { it.copy(preset = preset) } }
 
         /** A custom range from the calendar; a `null` bound keeps the one already picked. */
-        fun onRangeCustom(from: LocalDateTime?, until: LocalDateTime?) = intent {
-            local.editForm { f ->
-                f.copy(preset = RangeChoice.CUSTOM, customFrom = from ?: f.customFrom, customUntil = until ?: f.customUntil)
+        fun onRangeCustom(from: LocalDateTime?, until: LocalDateTime?) = formIntent {
+            editRange { f -> f.copy(preset = RangeChoice.CUSTOM, customFrom = from ?: f.customFrom, customUntil = until ?: f.customUntil) }
+        }
+
+        /**
+         * A committed range (a preset chip, or the calendar's OK). With the settings open it is the one place the
+         * bounds are re-resolved from the form; every other change carries the bounds in effect untouched.
+         */
+        private suspend fun editRange(edit: (RangeForm) -> RangeForm) {
+            if (!settings.isOpen()) {
+                local.editForm(edit)
+                return
+            }
+            val form = edit(local.value.form)
+            settings.change { now, c ->
+                val range = resolveRange(form, c.startsAt, c.endsAt, now.until)
+                now.copy(from = range.chosenFrom, until = range.chosenUntil)
             }
         }
     }
@@ -854,6 +980,9 @@ class StatusContainerHost(
         // What is committed is what the reduction RESOLVED — the same value the surface rendered.
         val form = local.value.form
         val range = resolveRange(form, event.startsAt, event.endsAt, null)
+        // A join always carries a direction (capability `join-event`): with both switches off the confirm is
+        // disabled on screen, and a confirm that arrives anyway joins nothing rather than a membership doing nothing.
+        if (!range.commitEnabled) return
         val choice = JoinChoice(
             p.eventId, event.name, event.startsAt, event.endsAt, event.deletesAt,
             range.chosenFrom, range.chosenUntil, range.direction, form.saveToAlbum, form.mobileData,
@@ -1058,12 +1187,66 @@ private fun reduceFrom(
     val form = local.form
     // Surface state belongs to the membership it was opened in; another membership reads it as closed / idle.
     val rename = Owned(local.renameOwner, renameStatus).forMembership(config?.eventId, RenameStatus.Idle)
-    val reconfiguring = local.settings.forMembership(config?.eventId, SettingsSurface.Closed)
+    val reconfiguring = SettingsShown(
+        surface = local.settings.forMembership(config?.eventId, SettingsSurface.Closed),
+        askingToStopSharing = local.pendingWithdrawal.forMembership(config?.eventId, null) != null,
+    )
     if (config == null) {
         val create = Creation(creation, local.createDraft)
         return unjoinedLayer(pending, create, transient, form, permission, network, resolveAgainst)
     }
-    val health = when {
+    val health = joinedHealth(membership, config, network, nowCutoff)
+    // A pending join for a DIFFERENT event while joined is a switch confirmation over the joined screen.
+    val pendingSwitch = pending?.let { PendingSwitch(it.eventId, it.phase) }
+    // Where the event is in its life, for the dates line (capability `sync-status`). Informational only —
+    // the health above is unchanged by it, and sync continues after the end in the backend grace window.
+    val timing = eventTiming(config.startsAt, config.endsAt, nowCutoff)
+    // The counts line rides ONLY on the two health rungs that read the numbers; every rung above them
+    // means the numbers are unknown (not read yet), zero (no access collapses the gallery total) or beside
+    // the point (not started, unverified) — and the one status line is what the member should read.
+    val counts = (snapshot as? SyncStatus.Ready)
+        ?.takeIf { health is SyncHealth.InSync || health is SyncHealth.Syncing }
+        ?.let { syncCounts(it.progress, download, config.direction) }
+    return joinedLayer(
+        config, health, pendingSwitch, permission, JoinedFacts(timing, counts),
+        rename, reconfiguring, transient, form, resolveAgainst,
+    )
+}
+
+/**
+ * The joined layer's one status line (capability `sync-status`, "One status line in a fixed priority"): the rungs in
+ * order, over what the snapshot says on its own. Its own function because the ladder is one question, apart from which
+ * layer [reduceFrom] builds.
+ */
+private fun joinedHealth(membership: Membership, config: EventConfig, network: NetworkNotice?, nowCutoff: CaptureDate): SyncHealth {
+    val (_, permission, snapshot, download, attested, access) = membership
+    // What the snapshot says on its own: not read yet, settled, or work remaining. The bottom of the ladder below,
+    // and what decides whether a membership that neither shares nor receives may say so.
+    val settled = when {
+        // Joined but persisted state not read yet — a neutral first frame (the joined chrome still shows).
+        snapshot is SyncStatus.Loading -> SyncHealth.Loading
+        // The download arm has its OWN read-ness, and it must gate the health too. `syncHealth` below
+        // hides an arrow when its counts are complete, and shows "Up to date" only when BOTH arrows are
+        // hidden — so an un-read DownloadProgress, whose `downloaded` and `total` are both a placeholder
+        // zero, hides the download arrow and can carry the whole screen to a settled check mark on its
+        // own. Gating the upload side alone would relocate that defect rather than remove it: the next
+        // member to join an event with foreign photos outstanding would meet it through this arm on
+        // their first launch (`SNAPSYNC-14`, `SNAPSYNC-16`; capability `sync-status`).
+        !download.read -> SyncHealth.Loading
+        // Photos kept off mobile data wait while the phone is on a network the choice avoids (capability `mobile-data`):
+        // from the CURRENT choice, so after turning mobile data back on the few transfers still holding the old rule
+        // read as pending, not waiting (decision record `changes/archive/2026-10-04-mobile-data-for-photos`, D7).
+        snapshot is SyncStatus.Ready ->
+            syncHealth(snapshot.progress, download, heldForWifi = !config.mobileData && access == NetworkAccess.Online(restricted = true))
+        else -> SyncHealth.Loading
+    }
+    return when {
+        // Neither shares nor receives (capability `sync-status`): once the snapshot is read and nothing is left in
+        // either direction, that is the one thing worth saying — access, the network, the start and verification
+        // all concern photos that no longer move. Work still draining in a switched-off direction is shown by the
+        // ladder below, never masked (the reason above `syncHealth`).
+        config.direction == Direction.Neither && settled == SyncHealth.InSync -> SyncHealth.Inactive
+        config.direction == Direction.Neither && settled == SyncHealth.Loading -> SyncHealth.Loading
         // Missing permission is the sole attention state — the only reason contribution cannot run. It
         // outranks NotStarted because it is the only ACTIONABLE state, and the member must resolve it
         // BEFORE the event begins or they miss the start; hiding it behind the clock line would ambush
@@ -1087,38 +1270,8 @@ private fun reduceFrom(
         // two attention lines would only compete. Ranked ABOVE the sync progress, because "Syncing" would
         // be a lie: nothing can upload at all.
         !attested -> SyncHealth.Unattested
-        // Joined but persisted state not read yet — a neutral first frame (the joined chrome still shows).
-        snapshot is SyncStatus.Loading -> SyncHealth.Loading
-        // The download arm has its OWN read-ness, and it must gate the health too. `syncHealth` below
-        // hides an arrow when its counts are complete, and shows "Up to date" only when BOTH arrows are
-        // hidden — so an un-read DownloadProgress, whose `downloaded` and `total` are both a placeholder
-        // zero, hides the download arrow and can carry the whole screen to a settled check mark on its
-        // own. Gating the upload side alone would relocate that defect rather than remove it: the next
-        // member to join an event with foreign photos outstanding would meet it through this arm on
-        // their first launch (`SNAPSYNC-14`, `SNAPSYNC-16`; capability `sync-status`).
-        !download.read -> SyncHealth.Loading
-        // Photos kept off mobile data wait while the phone is on a network the choice avoids (capability `mobile-data`):
-        // from the CURRENT choice, so after turning mobile data back on the few transfers still holding the old rule
-        // read as pending, not waiting (decision record `changes/archive/2026-10-04-mobile-data-for-photos`, D7).
-        snapshot is SyncStatus.Ready ->
-            syncHealth(snapshot.progress, download, heldForWifi = !config.mobileData && access == NetworkAccess.Online(restricted = true))
-        else -> SyncHealth.Loading
+        else -> settled
     }
-    // A pending join for a DIFFERENT event while joined is a switch confirmation over the joined screen.
-    val pendingSwitch = pending?.let { PendingSwitch(it.eventId, it.phase) }
-    // Where the event is in its life, for the dates line (capability `sync-status`). Informational only —
-    // the health above is unchanged by it, and sync continues after the end in the backend grace window.
-    val timing = eventTiming(config.startsAt, config.endsAt, nowCutoff)
-    // The counts line rides ONLY on the two health rungs that read the numbers; every rung above them
-    // means the numbers are unknown (not read yet), zero (no access collapses the gallery total) or beside
-    // the point (not started, unverified) — and the one status line is what the member should read.
-    val counts = (snapshot as? SyncStatus.Ready)
-        ?.takeIf { health is SyncHealth.InSync || health is SyncHealth.Syncing }
-        ?.let { syncCounts(it.progress, download, config.direction) }
-    return joinedLayer(
-        config, health, pendingSwitch, permission, JoinedFacts(timing, counts),
-        rename, reconfiguring, transient, form, resolveAgainst,
-    )
 }
 
 /**
@@ -1135,7 +1288,7 @@ private fun joinedLayer(
     permission: GalleryAccess,
     facts: JoinedFacts,
     rename: RenameStatus,
-    reconfiguring: SettingsSurface,
+    reconfiguring: SettingsShown,
     transient: ScreenMessage?,
     form: RangeForm,
     resolveAgainst: (RangeForm, EventStart, EventEnd?, CaptureCeiling?) -> ResolvedRange,
@@ -1167,11 +1320,12 @@ private fun joinedLayer(
         // bounds against its own ceiling, so a no-edit Save is idempotent rather than silently widening.
         // A closed event's settings are fixed (capability `manage-membership`): a surface left open when the close
         // lands gives way to the status.
-        surface = if (reconfiguring != SettingsSurface.Closed && !config.closed) {
+        surface = if (reconfiguring.surface != SettingsSurface.Closed && !config.closed) {
             JoinedSurface.Reconfigure(
                 form = form,
                 range = resolveAgainst(form, config.startsAt, config.endsAt, config.maxPhotoDate),
-                saveFailed = reconfiguring == SettingsSurface.SaveFailed,
+                saveFailed = reconfiguring.surface == SettingsSurface.SaveFailed,
+                askingToStopSharing = reconfiguring.askingToStopSharing,
             )
         } else {
             JoinedSurface.Status
@@ -1283,8 +1437,42 @@ internal fun Layer.countedRange(): ResolvedRange? = when (this) {
     else -> null
 }
 
-/** Whether the joined layer shows its settings surface, and whether its last save failed. */
+/** Whether the joined layer shows its settings, and whether the last change to them failed to save. */
 internal enum class SettingsSurface { Closed, Open, SaveFailed }
+
+/** The settings as the reduction reads them: open or not (and failed), and whether a withdrawal is being asked about. */
+private data class SettingsShown(val surface: SettingsSurface, val askingToStopSharing: Boolean)
+
+/**
+ * One settings change, as the reconfigure command takes it (capability `manage-membership`): the membership in effect
+ * with one thing changed. The bounds are the membership's own unless the change is to the range, so a switch never
+ * moves the range it does not touch.
+ */
+internal data class SettingChange(
+    val direction: Direction,
+    val from: CaptureCutoff,
+    val until: CaptureCeiling,
+    val saveToAlbum: Boolean,
+    val mobileData: Boolean,
+) {
+    /**
+     * Whether this change withdraws photos from the event, and so is asked about first: sharing turned off, or a
+     * range that starts later or ends earlier than the one [inEffect]. Widening, and everything else, applies at once.
+     * Canonical fixed-width UTC on both sides ⇒ lexicographic IS chronological.
+     */
+    fun withdrawsFrom(inEffect: SettingChange): Boolean = inEffect.direction.includesUpload &&
+        (!direction.includesUpload || from.at > inEffect.from.at || until.at < inEffect.until.at)
+
+    /** [config] carrying these settings — what the controls are seeded from. */
+    fun appliedTo(config: EventConfig): EventConfig = config.copy(
+        direction = direction, minPhotoDate = from, maxPhotoDate = until, saveToAlbum = saveToAlbum, mobileData = mobileData,
+    )
+
+    companion object {
+        fun of(config: EventConfig) =
+            SettingChange(config.direction, config.minPhotoDate, config.maxPhotoDate, config.saveToAlbum, config.mobileData)
+    }
+}
 
 /** The non-idempotent commands whose taps claim an in-flight slot (see `StatusContainerHost.guardedIntent`). */
 private enum class Guarded { Create, Rename, SwitchLeave }
@@ -1358,6 +1546,13 @@ private data class Local(
      * or a fresh join cannot carry it into the next membership, whichever exit path ran (B7).
      */
     val settings: Owned<SettingsSurface> = Owned(null, SettingsSurface.Closed),
+    /**
+     * A settings change that would withdraw photos from the event, held while the member is asked whether to stop
+     * sharing them (capability `manage-membership`). Owned like [settings], so it never outlives its membership.
+     */
+    val pendingWithdrawal: Owned<SettingChange?> = Owned(null, null),
+    /** The settings the last change applied — what the next change builds on (see `settingsInEffect`). */
+    val lastApplied: Owned<SettingChange?> = Owned(null, null),
     /** The event the last rename was fired for: a rename result for an event no longer joined reads as Idle. */
     val renameOwner: String? = null,
     /**

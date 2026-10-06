@@ -102,13 +102,10 @@ class JoinedActions(
     /** The invite's QR code, shown on request and dismissed (capability `manage-membership`). */
     val onQrOpen: () -> Unit,
     val onQrDismiss: () -> Unit,
-    // Commit an in-place reconfigure (capability `manage-membership`): the event the surface was
-    // opened for, the new direction, the chosen capture-date range (`minPhotoDate` floor-clamped and
-    // `maxPhotoDate` ceiling-clamped on the far side in `ReconfigureEvent`), and the album opt-in.
-    // Commit the settings surface (capability `manage-membership`). Save commits what the reduction
-    // resolved, so it carries no value — the screen is asking for an act, not reporting one. Opening and
-    // cancelling are navigation and live in [surfaces].
-    val onReconfigure: () -> Unit,
+    // The answers to the settings' "Stop sharing these photos?" (capability `manage-membership`): every other change
+    // applies as it is made, through [StatusActions.participation]; opening and closing the settings live in
+    // [StatusActions.surfaces].
+    val withdrawal: WithdrawalActions,
     // Rename the joined event (capability `manage-membership`): the event the dialog was opened for and the
     // new name. Fired by the pen beside the heading; the outcome arrives back via `renameStatus`.
     val onRenameEvent: (String, String) -> Unit,

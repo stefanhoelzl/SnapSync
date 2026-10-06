@@ -22,6 +22,9 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.click
+import androidx.compose.ui.geometry.Offset
+import app.snapsync.ui.resources.stop_sharing_confirm
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextClearance
@@ -202,7 +205,7 @@ class HostStatusActionsTest {
                 openSettings = { record("openSettings") },
                 openLink = { record("openLink:$it") },
                 choosePhotos = { record("choosePhotos") },
-                reconfigure = { eventId, _, _, _, _, _ -> record("reconfigure:$eventId"); ReconfigureOutcome.Saved },
+                reconfigure = { eventId, direction, _, _, _, _ -> record("reconfigure:$eventId:$direction"); ReconfigureOutcome.Saved },
                 rename = { eventId, name -> record("rename:$eventId:$name") },
                 resetRename = { record("resetRename") },
                 sendDiagnostics = { note, _ -> record("sendDiagnostics:$note"); app.snapsync.model.ReportOutcome.SENT },
@@ -334,19 +337,23 @@ class HostStatusActionsTest {
         }
 
     @Test
-    fun `the gear opens the settings surface — Cancel closes it — and Save reconfigures`() =
+    fun `settings open from the footer — sharing off asks and Stop sharing applies — and a tap above closes them`() =
         rigTest(rig(config = MEMBERSHIP)) { rig ->
             awaitState(rig) { it.joined != null }
             onNodeWithText(str(Res.string.footer_settings)).performClick()
             awaitState(rig) { it.joined?.surface is JoinedSurface.Reconfigure }
-            onNodeWithText(str(Res.string.cancel)).performClick()
-            awaitState(rig) { it.joined != null && it.joined?.surface !is JoinedSurface.Reconfigure }
-            assertEquals(emptyList(), rig.fired)
 
-            onNodeWithText(str(Res.string.footer_settings)).performClick()
-            awaitState(rig) { it.joined?.surface is JoinedSurface.Reconfigure }
-            onNodeWithText(str(Res.string.save)).performClick()
-            awaitFired(rig, "reconfigure:$JOINED_ID")
+            // Sharing off withdraws photos: it is asked about, and nothing applies until the member confirms.
+            onNodeWithText(str(Res.string.share_toggle)).performClick()
+            awaitState(rig) { (it.joined?.surface as? JoinedSurface.Reconfigure)?.askingToStopSharing == true }
+            assertEquals(emptyList(), rig.fired)
+            onNode(hasText(str(Res.string.stop_sharing_confirm)) and hasAnyAncestor(isDialog())).performClick()
+            awaitFired(rig, "reconfigure:$JOINED_ID:DownloadOnly")
+
+            // Closing writes nothing more.
+            onNodeWithContentDescription("Close sheet").performTouchInput { click(Offset(centerX, 5f)) }
+            awaitState(rig) { it.joined != null && it.joined?.surface !is JoinedSurface.Reconfigure }
+            assertEquals(listOf("reconfigure:$JOINED_ID:DownloadOnly"), rig.fired)
         }
 
     // ---- the access prompts (capabilities `photo-access`, `photo-access`) ----

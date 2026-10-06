@@ -7,6 +7,7 @@ import app.snapsync.model.deletesAt
 import app.snapsync.model.eventEnd
 import app.snapsync.model.eventStart
 import kotlin.test.Test
+import kotlinx.coroutines.test.runTest
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlinx.serialization.SerializationException
@@ -130,6 +131,23 @@ class EventConfigTest {
         assertEquals(false, Direction.UploadOnly.includesDownload)
         assertEquals(false, Direction.DownloadOnly.includesUpload)
         assertEquals(true, Direction.DownloadOnly.includesDownload)
+        assertEquals(false, Direction.Neither.includesUpload)
+        assertEquals(false, Direction.Neither.includesDownload)
+    }
+
+    @Test
+    fun `a membership that neither shares nor receives admits none of the member's photos`() = runTest {
+        // The upload policy reads the direction, so Neither withdraws every photo from the manifest and the
+        // cycle with no special case (capability `manage-membership`).
+        val config = EventConfig(eventId = "e", name = "n", minPhotoDate = cutoff, maxPhotoDate = FIXTURE_CEILING, direction = Direction.Neither)
+        assertEquals(listOf<SelectionRule>(SelectionRule.DenyAll), selectionRulesFor(config, { emptySet() }, { emptySet() }))
+    }
+
+    @Test
+    fun `no link token reaches the neither direction`() {
+        // Neither is reached only from the event's settings: a join always carries a direction.
+        assertEquals(null, Direction.fromWire(Direction.Neither.wire))
+        for (direction in Direction.entries - Direction.Neither) assertEquals(direction, Direction.fromWire(direction.wire))
     }
 
     @Test

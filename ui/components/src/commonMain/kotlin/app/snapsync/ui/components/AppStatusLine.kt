@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.PauseCircle
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
@@ -44,6 +45,7 @@ import app.snapsync.ui.components.resources.network_offline
 import app.snapsync.ui.components.resources.status_allow_access
 import app.snapsync.ui.components.resources.status_allow_access_settings
 import app.snapsync.ui.components.resources.status_in_sync
+import app.snapsync.ui.components.resources.status_inactive
 import app.snapsync.ui.components.resources.status_not_started
 import app.snapsync.ui.components.resources.status_receiving
 import app.snapsync.ui.components.resources.status_sharing
@@ -82,6 +84,13 @@ sealed interface AppSyncStatus {
      * when: the joined screen's dates line says that, and time is said in one place.
      */
     data object NotStarted : AppSyncStatus
+
+    /**
+     * The member switched both sharing and receiving off (capability `sync-status`): they stay in the event and
+     * nothing moves. Informational and flat like [NotStarted], NOT tappable — the explanation's rows already lead to
+     * the event's settings.
+     */
+    data object Inactive : AppSyncStatus
 
     /**
      * Photo access is off — the sole attention state; the only one with a background, tappable.
@@ -160,6 +169,13 @@ private fun StatusBody(status: AppSyncStatus, onAttentionClick: () -> Unit) {
                 icon = Icons.Filled.Schedule, // a clock: the event exists, it simply has not begun
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 text = stringResource(Res.string.status_not_started),
+            )
+
+        AppSyncStatus.Inactive ->
+            IconLine(
+                icon = Icons.Outlined.PauseCircle, // paused: the membership stands, nothing moves
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                text = stringResource(Res.string.status_inactive),
             )
 
         is AppSyncStatus.NeedsAccess -> AttentionButton(

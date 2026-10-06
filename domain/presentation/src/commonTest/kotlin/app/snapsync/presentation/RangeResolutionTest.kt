@@ -197,11 +197,9 @@ class RangeResolutionTest {
     }
 
     @Test
-    fun `both switches off yields the inert placeholder rather than throwing`() {
-        // The dead case never reaches a commit — the commit button is disabled there — so the value is
-        // arbitrary but must be TOTAL: a resolver that threw here would crash a screen the member can
-        // legitimately put into this state.
-        assertEquals(Direction.DownloadOnly, directionOf(shareOn = false, receiveOn = false))
+    fun `both switches off is Neither`() {
+        // The event's settings apply it (capability `manage-membership`); the join gate never commits it.
+        assertEquals(Direction.Neither, directionOf(shareOn = false, receiveOn = false))
     }
 
     // ── nowWithinWindow ─────────────────────────────────────────────────────────────────────────

@@ -44,6 +44,7 @@
     <string name="status_syncing">Loading…</string>
     <string name="status_in_sync">Up to date</string>
     <string name="status_not_started">Sharing starts with the event</string>
+    <string name="status_inactive">Not sharing or receiving</string>
     <string name="status_allow_access">Allow photo access</string>
     <string name="status_allow_access_settings">Allow photo access in Settings</string>
     <string name="status_sharing">sharing</string>

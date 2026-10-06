@@ -1,6 +1,7 @@
 package app.snapsync.integration
 
 import app.snapsync.model.Direction
+import app.snapsync.model.SyncHealth
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -83,5 +84,27 @@ class ReconfigureIntegrationTest {
 
         refresh()
         awaitInSync()
+    }
+
+    @Test
+    fun switching_both_directions_off_withdraws_the_photos_and_says_so() = rigTest {
+        extensionUploadsOnly()
+        val event = createAndJoin() // Both
+        addPhoto("A")
+        uploadAll()
+        assertEquals(setOf("A"), manifest(event)?.keys, "the shared photo is listed to the event")
+
+        // Neither direction, from the settings, no Save: the member stays in the event and nothing moves.
+        user("reconfigure", "direction" to "none")
+        val membership = awaitState { it.joined?.membership?.direction == Direction.Neither }.joined!!.membership
+        assertEquals(event, membership.eventId, "same membership, never left")
+
+        // The next cycle lists nothing: the member's photos are withdrawn from the event (capability `manage-membership`).
+        cycle()
+        eventually(read = { manifest(event)?.keys.orEmpty() }) { it.isEmpty() }
+
+        // And the joined screen says so, ahead of everything else.
+        refresh()
+        awaitHealth { it == SyncHealth.Inactive }
     }
 }

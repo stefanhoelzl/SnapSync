@@ -3,14 +3,8 @@ package app.snapsync.ui
 import app.snapsync.model.AlbumKind
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import app.snapsync.model.EventConfig
 import app.snapsync.model.JoinedSurface
 import app.snapsync.ui.components.appRangeLabel
 import app.snapsync.model.Layer
@@ -18,14 +12,9 @@ import app.snapsync.model.JoinPhase
 import app.snapsync.model.PendingSwitch
 import app.snapsync.model.UiState
 import app.snapsync.ui.components.AppConfirmDialog
+import app.snapsync.ui.components.AppPageSheet
 import app.snapsync.ui.components.AppDestructiveConfirmDialog
-import app.snapsync.ui.components.AppIdentityHeader
-import app.snapsync.ui.components.AppFooterTextActions
-import app.snapsync.ui.components.AppSectionDivider
-import app.snapsync.ui.components.CancelTextAction
-import app.snapsync.ui.components.SaveTextAction
 import app.snapsync.ui.components.StatusHint
-import androidx.compose.foundation.layout.ColumnScope
 import app.snapsync.ui.components.DialogCopy
 import app.snapsync.ui.resources.Res
 import app.snapsync.ui.resources.album_existing
@@ -36,15 +25,16 @@ import app.snapsync.ui.resources.event_closed_body
 import app.snapsync.ui.resources.event_closed_title
 import app.snapsync.ui.resources.event_not_found_body
 import app.snapsync.ui.resources.event_not_found_title
-import app.snapsync.ui.resources.event_settings
-import app.snapsync.ui.resources.join_both_off
 import app.snapsync.ui.resources.load_failed_body
 import app.snapsync.ui.resources.load_failed_title
 import app.snapsync.ui.resources.ok
 import app.snapsync.ui.resources.retry
 import app.snapsync.ui.resources.save
 import app.snapsync.ui.resources.settings_save_failed
-import app.snapsync.ui.resources.settings_stop_sharing_note
+import app.snapsync.ui.resources.stop_sharing_body
+import app.snapsync.ui.resources.stop_sharing_confirm
+import app.snapsync.ui.resources.stop_sharing_keep
+import app.snapsync.ui.resources.stop_sharing_title
 import app.snapsync.ui.resources.switch_body
 import app.snapsync.ui.resources.switch_confirm
 import app.snapsync.ui.resources.switch_title
@@ -55,55 +45,34 @@ import org.jetbrains.compose.resources.stringResource
 // that guards a change of event.
 
 /**
- * The **reconfigure** surface (capability `manage-membership`): a joined member re-opens the three
- * participation settings they picked at join — the two switches (Share / Receive → direction), the
- * capture-date cutoff, and the album opt-in — and changes them **in place**, without leaving.
+ * The event's **settings** (capability `manage-membership`), in a sheet over the joined screen: a joined member
+ * re-opens the choices they made at join — share and receive, the capture range, the album, mobile data — and each
+ * change applies as it is made. There is no Save, Cancel or header: the sheet's drag handle is its only chrome, and
+ * swiping it down, going back, or tapping the joined screen above it all call [onClose].
  *
- * It renders the same [ParticipationSections] as the join gate, so there is one decision surface,
- * differing only in that it is **pre-filled** from the current [membership] and commits with **Save** (not
- * Join) beneath a read-only event-name header.
+ * It renders the same [ParticipationSections] as the join gate, so there is one decision surface, showing the
+ * membership in effect. The range preset is **reconstructed** from the persisted bounds, which is lossy by
+ * construction: a range spanning the whole window shows **Whole event** and anything narrower a **custom** range
+ * (decision record `simplify-join-screen`, D1).
  *
- * The range preset is **reconstructed** from the persisted bounds, which is lossy by construction: a range
- * spanning the whole window seeds **Whole event** and anything narrower seeds a **custom** range — an
- * original "From now" pick is unrecoverable (decision record `simplify-join-screen`, D1). The chosen cutoff
- * is re-clamped to the `startsAt` floor on the far side, in `ReconfigureEvent`.
- *
- * Consequences are surfaced as **inline helper text**, never a blocking dialog (Save is the confirmation):
- * turning the album on states that it also collects the photos already synced, and a standing line states
- * what narrowing does: it stops listing the affected photos to the event, while anyone who already received
- * them keeps them and the member's own received photos are untouched. Both switches off disables Save with a reason,
- * exactly as the join surface disables Join.
+ * A change that would withdraw photos from the event — sharing off, a narrower range — is held while
+ * [JoinedSurface.Reconfigure.askingToStopSharing] asks first, saying what narrowing does: the photos reach no one new,
+ * anyone who already received them keeps them, and the member's own received photos stay. Turning the album on says
+ * inline that it also collects the photos already synced.
  */
 @Composable
-internal fun ReconfigureScreen(
-    membership: EventConfig,
+internal fun ReconfigureSheet(
     surface: JoinedSurface.Reconfigure,
     participation: ParticipationActions,
-    onSave: () -> Unit,
-    onCancel: () -> Unit,
+    withdrawal: WithdrawalActions,
+    onClose: () -> Unit,
 ) {
-    // No local state: the member's picks and what they resolve to are both reduced (capability
-    // `sync-status`). Seeding — lossy by construction, reconstructed from the persisted
-    // timestamps — happens where the surface is opened, so a foreground refresh landing mid-edit updates
-    // the heading and not the controls in the member's hand.
     val range = surface.range
-
-    Column(modifier = Modifier.fillMaxSize()) {
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            // Read-only header: which event's settings these are. No eyebrow: this is not an invitation, so the
-            // join gate's "YOU'RE INVITED" header does not belong here, and the subtitle already says what it is.
-            val subtitle = stringResource(Res.string.event_settings)
-            AppIdentityHeader(eyebrow = null, title = membership.name, subtitle = subtitle)
-            // The last Save did not land (capability `manage-membership`): the edits are still here, and
-            // nothing about the membership changed — said plainly, so the member knows a retry is safe.
+    AppPageSheet(onDismiss = onClose) {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            // The last change did not land (capability `manage-membership`): the control already shows the setting
+            // still in effect, and this says so plainly, so the member knows to try again.
             if (surface.saveFailed) StatusHint(stringResource(Res.string.settings_save_failed))
-
             ParticipationSections(
                 state = ParticipationState(
                     form = surface.form,
@@ -114,9 +83,24 @@ internal fun ReconfigureScreen(
                 albumNote = reconfigureAlbumNote(surface.form.saveToAlbum, surface.form.albumKind),
             )
         }
-        SaveActions(enabled = range.commitEnabled, onSave = onSave, onCancel = onCancel)
+    }
+    if (surface.askingToStopSharing) {
+        // Destructive, like Leave: confirming withdraws the member's photos from the event.
+        AppDestructiveConfirmDialog(
+            copy = DialogCopy(
+                title = stringResource(Res.string.stop_sharing_title),
+                body = stringResource(Res.string.stop_sharing_body),
+                confirmLabel = stringResource(Res.string.stop_sharing_confirm),
+                cancelLabel = stringResource(Res.string.stop_sharing_keep),
+            ),
+            onConfirm = withdrawal.onStopSharing,
+            onDismiss = withdrawal.onKeepSharing,
+        )
     }
 }
+
+/** The answers to the settings' "Stop sharing these photos?". */
+class WithdrawalActions(val onStopSharing: () -> Unit, val onKeepSharing: () -> Unit)
 
 /**
  * What the operator was looking at when they wrote a report (capability `privacy-security`).
@@ -245,30 +229,3 @@ private fun reconfigureAlbumNote(saveToAlbum: Boolean, kind: AlbumKind): String 
     },
 )
 
-/**
- * Cancel and Save, beneath the standing statement of what changing these settings does.
- *
- * That line used to say a change "never retracts photos already shared or received", and half of that
- * became false: narrowing what you share now re-projects the device manifest, so those photos stop being
- * listed to the event (capability `manage-membership`).
- *
- * What it must NOT imply is deletion. The retraction is partial by nature — SnapSync syncs
- * gallery-to-gallery, so a member who already downloaded the photo holds it in their own library and
- * nothing here reaches it. Receiving is unaffected either way.
- */
-@Composable
-private fun ColumnScope.SaveActions(enabled: Boolean, onSave: () -> Unit, onCancel: () -> Unit) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        StatusHint(stringResource(Res.string.settings_stop_sharing_note))
-        if (!enabled) StatusHint(stringResource(Res.string.join_both_off))
-        // The joined screen's footer, mirrored: the line, then the actions as one row of text actions.
-        AppSectionDivider()
-        AppFooterTextActions {
-            CancelTextAction(label = stringResource(Res.string.cancel), onClick = onCancel)
-            SaveTextAction(label = stringResource(Res.string.save), onClick = onSave, enabled = enabled)
-        }
-    }
-}

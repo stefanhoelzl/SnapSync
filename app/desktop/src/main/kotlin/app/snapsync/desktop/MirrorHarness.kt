@@ -29,6 +29,7 @@ import app.snapsync.rig.RigState
 import app.snapsync.ui.AccessActions
 import app.snapsync.ui.JoinGateActions
 import app.snapsync.ui.JoinedActions
+import app.snapsync.ui.WithdrawalActions
 import app.snapsync.ui.MenuActions
 import app.snapsync.ui.ParticipationActions
 import app.snapsync.ui.StatusActions
@@ -141,7 +142,7 @@ private fun mirrorActions(
             onShareInvite = inert("share invite"),
             onQrOpen = inert("show QR code"),
             onQrDismiss = inert("dismiss QR code"),
-            onReconfigure = inert("save settings"),
+            withdrawal = WithdrawalActions(onStopSharing = inert("stop sharing"), onKeepSharing = inert("keep sharing")),
             onRenameEvent = { event, name -> post("rename", "event" to event, "name" to name)() },
             onRenameStatusConsumed = post("renameStatusConsumed"),
         ),

@@ -14,15 +14,22 @@ package app.snapsync.model
 enum class Direction(val wire: String) {
     Both("both"),
     UploadOnly("upload"),
-    DownloadOnly("download");
+    DownloadOnly("download"),
 
-    /** The device contributes its own photos (producer enabled) — true for everything but [DownloadOnly]. */
+    /**
+     * Neither arm runs: the member stays in the event and shares and receives nothing (capability
+     * `manage-membership`). Reached only by switching both off in the event's settings — a join always carries a
+     * direction, so [fromWire] refuses its token and no link can set it.
+     */
+    Neither("none");
+
+    /** The device contributes its own photos (producer enabled) — [Both] and [UploadOnly]. */
     val includesUpload: Boolean
-        get() = this != DownloadOnly
+        get() = this == Both || this == UploadOnly
 
-    /** The device imports others' photos (reconcile runs) — true for everything but [UploadOnly]. */
+    /** The device imports others' photos (reconcile runs) — [Both] and [DownloadOnly]. */
     val includesDownload: Boolean
-        get() = this != UploadOnly
+        get() = this == Both || this == DownloadOnly
 
     companion object {
         /**
@@ -32,6 +39,6 @@ enum class Direction(val wire: String) {
          * wire value are one answer, because the caller's response to either is the same (reject the
          * link / fall back to the default). A pure lookup over a closed set has no failure mode to hide.
          */
-        fun fromWire(wire: String): Direction? = entries.firstOrNull { it.wire == wire }
+        fun fromWire(wire: String): Direction? = entries.firstOrNull { it.wire == wire && it != Neither }
     }
 }

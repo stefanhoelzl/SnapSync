@@ -253,6 +253,20 @@ class ReconfigureEventTest {
         assertTrue(order.none { it.startsWith("reconcile") })
     }
 
+    @Test
+    fun `switching both directions off saves Neither — cancels downloads and kicks the upload arm`() = runTest {
+        val order = mutableListOf<String>()
+        val writes = ConfigWrites()
+        make(Membership(current(direction = Direction.Both)), writes, order)
+            .reconfigure("E1", Direction.Neither, captureCutoff("2026-07-06T12:00:00Z"), FIXTURE_CEILING, false, true)
+        // The member stays in the event doing nothing (capability `manage-membership`): no reconcile, in-flight
+        // downloads stop, and the upload arm's kick lets the cycle's policy admit nothing while uploads drain.
+        assertEquals(Direction.Neither, writes.saved?.direction)
+        assertTrue("cancelDownloads" in order)
+        assertTrue(order.none { it.startsWith("reconcile") })
+        assertTrue("arm" in order)
+    }
+
     // ---- the cutoff-lowering backfill fix (capability `manage-membership`) -----------------------
 
     @Test
