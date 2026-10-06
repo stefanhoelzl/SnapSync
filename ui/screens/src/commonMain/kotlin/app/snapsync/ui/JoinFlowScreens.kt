@@ -34,7 +34,6 @@ import app.snapsync.ui.resources.event_full_body
 import app.snapsync.ui.resources.event_full_title
 import app.snapsync.ui.resources.event_not_found_body
 import app.snapsync.ui.resources.event_not_found_title
-import app.snapsync.ui.resources.hero_subtitle
 import app.snapsync.ui.resources.join_failed_body
 import app.snapsync.ui.resources.join_failed_title
 import app.snapsync.ui.resources.joining
@@ -169,7 +168,7 @@ private fun PhaseScaffold(
 @Composable
 private fun LoadingPhase() = PhaseScaffold(
     body = {
-        AppInvitationHeaderLoading(subtitle = stringResource(Res.string.hero_subtitle))
+        AppInvitationHeaderLoading()
         CenteredBody { AppJoinProgress(stringResource(Res.string.loading_event)) }
     },
 )
@@ -239,7 +238,7 @@ private fun LoadFailedPhase(onRetry: () -> Unit, onCancel: () -> Unit) = PhaseSc
 @Composable
 private fun CommittingPhase(name: String) = PhaseScaffold(
     body = {
-        AppEventHeaderCompact(title = name, subtitle = stringResource(Res.string.hero_subtitle))
+        AppEventHeaderCompact(title = name)
         CenteredBody { AppJoinProgress(stringResource(Res.string.joining)) }
     },
 )
@@ -266,7 +265,7 @@ private fun CommitBlockedPhase(
     onCancel: () -> Unit,
 ) = PhaseScaffold(
     body = {
-        AppEventHeaderCompact(title = name, subtitle = stringResource(Res.string.hero_subtitle))
+        AppEventHeaderCompact(title = name)
         CenteredBody {
             AppNoticeCard(icon = JoinNoticeFailed, title = title, body = body)
         }

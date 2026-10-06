@@ -4,7 +4,10 @@ import app.snapsync.model.AlbumKind
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -18,8 +21,10 @@ import app.snapsync.ui.components.JoinAccessChoose
 import app.snapsync.ui.components.JoinAccessCutoff
 import app.snapsync.ui.components.JoinAccessLibrary
 import app.snapsync.ui.components.JoinAccessShare
-import app.snapsync.ui.components.PrimaryButton
-import app.snapsync.ui.components.SecondaryButton
+import app.snapsync.ui.components.AppFooterTextActions
+import app.snapsync.ui.components.AppSectionDivider
+import app.snapsync.ui.components.CancelTextAction
+import app.snapsync.ui.components.JoinTextAction
 import app.snapsync.ui.components.StatusHint
 import app.snapsync.ui.resources.Res
 import app.snapsync.ui.resources.access_choose_body
@@ -38,7 +43,6 @@ import app.snapsync.ui.resources.album_receive
 import app.snapsync.ui.resources.album_share
 import app.snapsync.ui.resources.album_share_and_receive
 import app.snapsync.ui.resources.cancel
-import app.snapsync.ui.resources.hero_subtitle
 import app.snapsync.ui.resources.join_access_dismiss
 import app.snapsync.ui.resources.join_access_info
 import app.snapsync.ui.resources.join_access_notice
@@ -53,9 +57,9 @@ import org.jetbrains.compose.resources.stringResource
 // scaffold they opt into — and Ready is the one phase that declines it.
 
 /**
- * The **Ready** join surface: identity, the participation choices ([ParticipationSections]), and Join /
- * Cancel pinned at the bottom. At the default state the whole decision fits one phone screen (decision record
- * `simplify-join-screen`).
+ * The **Ready** join surface, in three bands: identity pinned at the top, the participation choices
+ * ([ParticipationSections]) scrolling between two lines, and Join / Cancel pinned at the bottom as the joined
+ * screen's footer actions — borderless, glyph-led, a row each.
  *
  * **Photo access is part of this surface, not a step before it** (capabilities `join-event`,
  * `photo-access`). For a guest iOS has never asked ([ReadyState.asksAccessOnJoin]) a one-line notice above
@@ -66,59 +70,75 @@ import org.jetbrains.compose.resources.stringResource
  * Both switches off is a membership that does nothing. Rather than silently flip one switch the guest did
  * not touch, Join is **disabled** with the reason stated right above it.
  *
- * The body scrolls beneath the pinned actions: its height is not fixed (sharing off, a zero count, a large
- * type size), and clipping the primary action is never an acceptable way to absorb that.
+ * Only the choices scroll: their height is not fixed (sharing off, a zero count, a large type size), while the
+ * event being joined and the way to join it must never leave the screen. The notices sit with the pinned
+ * actions, above the footer's line, because each one explains the action beneath it.
  */
 @Composable
 internal fun ReadyLayout(state: ReadyState, actions: ReadyActions) {
     Column(modifier = Modifier.fillMaxSize()) {
+        AppEventHeaderCompact(title = state.eventName)
+        Spacer(Modifier.height(BAND_GAP))
+        // The line where the pinned identity ends and the scrolling choices begin.
+        AppSectionDivider()
         Column(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+                .verticalScroll(rememberScrollState())
+                .padding(vertical = BAND_GAP),
         ) {
-            AppEventHeaderCompact(
-                title = state.eventName,
-                // The one warm line the surface allows itself — the eyebrow above already says
-                // "you're invited", so this states what the invitation IS.
-                subtitle = stringResource(Res.string.hero_subtitle),
-            )
             ParticipationSections(
                 state = state.participation,
                 actions = actions.participation,
                 albumNote = joinAlbumNote(state.participation),
             )
         }
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            if (state.asksAccessOnJoin) {
-                AppAccessNotice(
-                    text = stringResource(Res.string.join_access_notice),
-                    infoDescription = stringResource(Res.string.join_access_info),
-                    sheetTitle = stringResource(Res.string.join_access_sheet_title),
-                    dismissLabel = stringResource(Res.string.join_access_dismiss),
-                    explanation = { AccessExplanation() },
+        ReadyNotices(state)
+        // The docked footer, drawn as the joined screen's is: a line, then a row per action.
+        AppSectionDivider()
+        Column(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+            val join = if (state.asksAccessOnJoin) Res.string.join_button_allow else Res.string.join_button
+            AppFooterTextActions {
+                JoinTextAction(
+                    label = stringResource(join),
+                    onClick = actions.onJoin,
+                    enabled = state.range.commitEnabled && state.online,
                 )
             }
-            // Both switches off is a membership that does nothing. Say why Join is unavailable rather than
-            // moving a switch the guest didn't touch.
-            if (!state.range.commitEnabled) {
-                StatusHint(stringResource(Res.string.join_both_off))
+            AppFooterTextActions {
+                CancelTextAction(label = stringResource(Res.string.cancel), onClick = actions.onCancel)
             }
-            val join = if (state.asksAccessOnJoin) Res.string.join_button_allow else Res.string.join_button
-            PrimaryButton(
-                label = stringResource(join),
-                onClick = actions.onJoin,
-                enabled = state.range.commitEnabled && state.online,
-            )
-            SecondaryButton(label = stringResource(Res.string.cancel), onClick = actions.onCancel)
         }
     }
 }
+
+/** What the guest should know before tapping Join: that iOS asks next, and why Join is unavailable. */
+@Composable
+private fun ReadyNotices(state: ReadyState) {
+    val bothOff = !state.range.commitEnabled
+    if (!state.asksAccessOnJoin && !bothOff) return
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        if (state.asksAccessOnJoin) {
+            AppAccessNotice(
+                text = stringResource(Res.string.join_access_notice),
+                infoDescription = stringResource(Res.string.join_access_info),
+                sheetTitle = stringResource(Res.string.join_access_sheet_title),
+                dismissLabel = stringResource(Res.string.join_access_dismiss),
+                explanation = { AccessExplanation() },
+            )
+        }
+        // Both switches off is a membership that does nothing. Say why Join is unavailable rather than
+        // moving a switch the guest didn't touch.
+        if (bothOff) StatusHint(stringResource(Res.string.join_both_off))
+    }
+}
+
+/** The space between the pinned identity and its line, and between each line and the choices it bounds. */
+private val BAND_GAP = 12.dp
 
 /**
  * The photo-access explanation, on request (capability `join-event`): share-first (the automatic sharing is

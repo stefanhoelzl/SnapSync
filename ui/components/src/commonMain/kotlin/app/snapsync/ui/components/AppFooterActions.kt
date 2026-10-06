@@ -30,9 +30,9 @@ import androidx.compose.ui.unit.dp
 
 /*
  * The footer actions (capability `sync-status`): borderless text actions, each led by its glyph, in rows of equal
- * halves — on the joined screen the invite (share, QR code) above the membership (settings, Leave), on the event's
- * settings Cancel beside Save. Emphasis and glyph are design-time choices, so each meaning is its own component and the
- * call site passes only a label and a click.
+ * halves — on the joined screen the invite (share, QR code) above the membership (settings, Leave); on the join gate
+ * Join above Cancel, a row each, so the longer "Join & allow photos" keeps its whole label. Emphasis and glyph are
+ * design-time choices, so each meaning is its own component and the call site passes only a label and a click.
  */
 
 /** A row of footer actions: each takes an equal part, so a lone action sits centred. */
@@ -61,12 +61,12 @@ fun RowScope.SettingsTextAction(label: String, onClick: () -> Unit) =
 fun RowScope.LeaveTextAction(label: String, onClick: () -> Unit) =
     FooterTextAction(label, Icons.AutoMirrored.Filled.Logout, MaterialTheme.colorScheme.error, onClick)
 
-/** Saves a form: the check glyph, in the accent colour; [enabled] false while the form cannot be saved. */
+/** Joins the event: the check glyph, in the accent colour; [enabled] false while the join cannot go ahead. */
 @Composable
-fun RowScope.SaveTextAction(label: String, onClick: () -> Unit, enabled: Boolean) =
+fun RowScope.JoinTextAction(label: String, onClick: () -> Unit, enabled: Boolean) =
     FooterTextAction(label, Icons.Filled.Check, appAccentText(), onClick, enabled)
 
-/** Leaves a form without saving: the close glyph, in the quiet text colour. */
+/** Leaves a surface without committing it: the close glyph, in the quiet text colour. */
 @Composable
 fun RowScope.CancelTextAction(label: String, onClick: () -> Unit) =
     FooterTextAction(label, Icons.Filled.Close, MaterialTheme.colorScheme.onSurfaceVariant, onClick)

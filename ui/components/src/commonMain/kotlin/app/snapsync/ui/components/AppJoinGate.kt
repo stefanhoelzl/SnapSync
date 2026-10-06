@@ -58,14 +58,14 @@ import org.jetbrains.compose.resources.stringResource
  * The **invitation hero in its loading state**: the mark badge and the "YOU'RE INVITED" eyebrow are already
  * placed (they need no data), and the event name — the one thing still being fetched — is a quiet
  * placeholder bar. The moment details resolve into [AppEventHeaderCompact], only that bar becomes the real
- * name; the badge, eyebrow and warm line never move, so Loading → Ready does not teleport the header.
+ * name; the badge and eyebrow never move, so Loading → Ready does not teleport the header.
  *
  * Optimistic by design: it says "you're invited" while the fetch is in flight because that is the expected
  * outcome. A fetch that instead fails swaps the whole surface to a notice with no invitation
  * ([AppNoticeCard]), so nothing false lingers.
  */
 @Composable
-fun AppInvitationHeaderLoading(subtitle: String) {
+fun AppInvitationHeaderLoading() {
     val scheme = MaterialTheme.colorScheme
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -86,11 +86,6 @@ fun AppInvitationHeaderLoading(subtitle: String) {
                     .height(22.dp)
                     .clip(RoundedCornerShape(7.dp))
                     .background(scheme.surfaceVariant),
-            )
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = scheme.onSurfaceVariant,
             )
         }
     }
