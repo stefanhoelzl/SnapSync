@@ -28,7 +28,7 @@ import platform.Foundation.dataUsingEncoding
 import platform.Foundation.dataWithContentsOfFile
 import platform.Foundation.writeToFile
 
-/** The simulator: the device-id slot in an App-Group file, its legacy slot absent, the rest the Keychain. */
+/** The simulator: every shared slot in an App-Group file, the legacy device-id slot absent, the rest the Keychain. */
 actual fun platformSecureStore(): SecureStore = SimulatorSecureStore(
     keychain = IosSecureStore(),
     files = AppGroupFileSecureStore(
@@ -36,15 +36,17 @@ actual fun platformSecureStore(): SecureStore = SimulatorSecureStore(
     ),
 )
 
-/** Routes [SecureSlots.DEVICE_ID] to [files], answers [SecureSlots.DEVICE_ID_LEGACY] as absent, and the rest to [keychain]. */
+/**
+ * Routes every SHARED slot ([SecureSlots.DEVICE_ID], [SecureSlots.EVENT_KEY]) to [files] — the shared access group cannot
+ * exist on a simulator — answers [SecureSlots.DEVICE_ID_LEGACY] as absent, and the rest to [keychain].
+ */
 internal class SimulatorSecureStore(private val keychain: SecureStore, private val files: SecureStore) : SecureStore {
 
     private fun storeFor(slot: SecureSlot): SecureStore? = when (slot) {
-        SecureSlots.DEVICE_ID -> files
         // No older build ever wrote a device id on a simulator. `Absent` states the truth; a store that failed
         // here would block minting forever (unavailability outranks absence in the resolution).
         SecureSlots.DEVICE_ID_LEGACY -> null
-        else -> keychain
+        else -> if (slot.shared) files else keychain
     }
 
     override fun read(slot: SecureSlot): SecureStoreRead = storeFor(slot)?.read(slot) ?: SecureStoreRead.Absent

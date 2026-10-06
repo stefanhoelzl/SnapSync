@@ -153,6 +153,8 @@
     <string name="event_not_found_body">Dieser Link ist ungültig, oder das Event existiert nicht mehr.</string>
     <string name="event_closed_title">Event geschlossen</string>
     <string name="event_closed_body">Diesem Event kann man nicht mehr beitreten.</string>
+    <string name="link_incomplete_title">Einladung unvollständig</string>
+    <string name="link_incomplete_body">Diesem Link fehlt ein Teil der Einladung. Öffne den ganzen Link noch einmal oder scanne den QR-Code des Events.</string>
     <string name="join_failed_title">Beitritt fehlgeschlagen</string>
     <string name="join_failed_body">Etwas ist schiefgelaufen. Versuch es noch einmal.</string>
     <string name="event_full_title">Dieses Event ist voll</string>

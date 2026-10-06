@@ -34,7 +34,16 @@ sealed interface JoinLoad {
          * open: a backend predating it never closes an event.
          */
         val completion: EventCompletionState = EventCompletionState.OPEN,
+        /** An ENCRYPTED event's key id; `null` for a plain event (the encrypted file format, `docs/architecture.md`). */
+        val keyId: String? = null,
     ) : JoinLoad
     data object NotFound : JoinLoad
     data object Failed : JoinLoad
+
+    /**
+     * The link does not open this event (the encrypted file format, `docs/architecture.md`): the event is encrypted
+     * and the link carried no key, or another one — a link cut short in sharing, or a plain event's link carrying a
+     * key. A user acts on it by opening the whole invite again, so it is told apart from [NotFound].
+     */
+    data object WrongLink : JoinLoad
 }

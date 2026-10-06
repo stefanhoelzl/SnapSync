@@ -54,6 +54,8 @@ data class CreateEventRequest(
      * them (capability `event-site`). Optional: absent, the page shows them in UTC.
      */
     val zone: String? = null,
+    /** An ENCRYPTED event's key id (16 lowercase hex); `null` creates a plain event. The key never leaves the device. */
+    val keyId: String? = null,
 )
 
 /** What `POST /events` answered: the minted id, and the name the backend stored when it echoed one. */
@@ -76,6 +78,8 @@ data class EventMeta(
     val completedAt: String? = null,
     /** The event's active members, and how many of them have settled what they share. */
     val members: MemberCounts? = null,
+    /** An ENCRYPTED event's key id; `null` for a plain event, and from a backend predating encryption. */
+    val keyId: String? = null,
 )
 
 /**

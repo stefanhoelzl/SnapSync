@@ -165,15 +165,16 @@ const val DIAGNOSTIC_DUMP_MESSAGE_PREFIX: String = "Bug Report:"
  * future report arrives mangled, with no failing request; `CrashScrubTest` pins both halves.
  */
 fun diagnosticDumpEvent(dump: DiagnosticDump): CrashEvent = CrashEvent(
-    message = "$DIAGNOSTIC_DUMP_MESSAGE_PREFIX ${dump.note}",
+    message = redactEventKeys("$DIAGNOSTIC_DUMP_MESSAGE_PREFIX ${dump.note}"),
     tags = mapOf(NON_REDACTED_TAG to "1"),
+    // Ids intact, keys never: an encrypted event's key opens its photos, and the dump is no reason to send it.
     contexts = mapOf(
         "note" to mapOf("text" to dump.note),
         "state" to dump.state,
         "ledger" to dump.ledger,
         "app_log" to mapOf("text" to dump.appLog),
         "ext_log" to mapOf("text" to dump.extensionLog),
-    ),
+    ).mapValues { (_, fields) -> fields.mapValues { (_, value) -> redactEventKeys(value) } },
 )
 
 /**
@@ -184,8 +185,8 @@ fun diagnosticDumpEvent(dump: DiagnosticDump): CrashEvent = CrashEvent(
  * It covers the SDK's automatic breadcrumbs too; ours arrive pre-redacted from [loggedCrash].
  */
 fun scrubbedCrumb(crumb: Crumb): Crumb {
-    val message = crumb.message?.let(::redactUuids)
-    val data = crumb.data.mapValues { (_, value) -> redactUuids(value) }
+    val message = crumb.message?.let { redactEventKeys(redactUuids(it)) }
+    val data = crumb.data.mapValues { (_, value) -> redactEventKeys(redactUuids(value)) }
     val capped = capAllUtf8(listOfNotNull(message) + data.values, BREADCRUMB_TEXT_BYTES)
     val cappedData = if (message != null) capped.drop(1) else capped
     return crumb.copy(
@@ -207,11 +208,11 @@ fun scrubbedCrumb(crumb: Crumb): Crumb {
  */
 fun scrubbedEvent(event: CrashEvent): CrashEvent {
     if (!redactsMessages(event.tags)) return event
-    val bounded = { text: String -> capUtf8(redactUuids(text), EVENT_TEXT_BYTES) }
+    val bounded = { text: String -> capUtf8(redactEventKeys(redactUuids(text)), EVENT_TEXT_BYTES) }
     return event.copy(
         message = event.message?.let(bounded),
         formatted = event.formatted?.let(bounded),
-        params = event.params?.map(::redactUuids),
+        params = event.params?.map { redactEventKeys(redactUuids(it)) },
         exceptionValues = event.exceptionValues.map { it?.let(bounded) },
         breadcrumbs = event.breadcrumbs.map(::scrubbedCrumb),
     )
@@ -238,13 +239,13 @@ class LoggedCrash(val crumb: Crumb, val event: CrashEvent?)
  * message and the SDK's automatic breadcrumbs: no UUID-shaped token ever leaves the device.
  */
 fun loggedCrash(severity: Severity, message: String, tag: String, throwable: Throwable?, entry: String?): LoggedCrash {
-    val text = redactUuids(if (entry != null) "[$entry] $message" else message)
+    val text = redactEventKeys(redactUuids(if (entry != null) "[$entry] $message" else message))
     val level = severity.crashLevel()
     val tags = if (entry != null) mapOf("entry_point" to entry) else emptyMap()
     val event = when (level) {
         CrashLevel.ERROR ->
             if (throwable != null) CrashEvent(throwable = throwable, tags = tags)
-            else CrashEvent(message = redactUuids(message), tags = tags)
+            else CrashEvent(message = redactEventKeys(redactUuids(message)), tags = tags)
         else -> null
     }
     return LoggedCrash(Crumb(level = level, message = text, category = tag), event)

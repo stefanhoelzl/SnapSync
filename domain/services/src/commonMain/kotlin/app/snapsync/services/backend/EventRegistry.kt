@@ -10,8 +10,9 @@ import app.snapsync.model.Reply
  * because the backend treats an absent `endsAt` as "use the legacy `startsAt + 30d`" (capability `event-lifetime`).
  * The interactive create always supplies one (the create screen requires a range).
  */
-fun interface EventCreation {
-    suspend fun create(name: String, startsAt: String, endsAt: String?): CreateOutcome
+interface EventCreation {
+    /** [keyId] names an ENCRYPTED event's key (the key never leaves the device); `null` creates a plain event. */
+    suspend fun create(name: String, startsAt: String, endsAt: String?, keyId: String? = null): CreateOutcome
 }
 
 /**
@@ -47,8 +48,8 @@ class BackendEventCreation(
     private val zone: () -> String?,
 ) : EventCreation {
 
-    override suspend fun create(name: String, startsAt: String, endsAt: String?): CreateOutcome =
-        when (val reply = backend.createEvent(CreateEventRequest(name, startsAt, endsAt, zone()))) {
+    override suspend fun create(name: String, startsAt: String, endsAt: String?, keyId: String?): CreateOutcome =
+        when (val reply = backend.createEvent(CreateEventRequest(name, startsAt, endsAt, zone(), keyId))) {
             is Reply.Ok -> CreateOutcome.Created(eventId = reply.value.eventId, name = reply.value.name)
             is Reply.Refused -> if (reply.status == HttpStatus.BAD_REQUEST) refusal(reply.body) else CreateOutcome.Transient
             is Reply.Malformed, is Reply.Unreachable -> CreateOutcome.Transient

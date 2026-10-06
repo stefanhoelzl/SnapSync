@@ -60,6 +60,7 @@ class BackendEventDirectory(private val backend: AuthenticatedBackend) : EventDi
                         completed = meta.completedAt != null,
                         members = meta.members,
                     ),
+                    keyId = meta.keyId,
                 )
             } else {
                 EventLookup.Failed

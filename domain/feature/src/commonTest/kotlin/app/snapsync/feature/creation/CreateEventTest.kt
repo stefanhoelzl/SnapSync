@@ -32,7 +32,7 @@ class CreateEventTest {
         var lastName: String? = null
         var lastStartsAt: String? = null
         var lastEndsAt: String? = null
-        override suspend fun create(name: String, startsAt: String, endsAt: String?): CreateOutcome {
+        override suspend fun create(name: String, startsAt: String, endsAt: String?, keyId: String?): CreateOutcome {
             lastName = name
             lastStartsAt = startsAt
             lastEndsAt = endsAt
@@ -45,7 +45,7 @@ class CreateEventTest {
         val client = FakeClient(CreateOutcome.Created(eventId))
         val status = MutableStateFlow<CreationStatus>(CreationStatus.Idle)
         var provisioned: String? = null
-        val useCase = CreateEvent(client, status, onMinted = { eventId -> provisioned = eventId })
+        val useCase = CreateEvent(client, status, onMinted = { eventId, _ -> provisioned = eventId }, minting = null)
 
         useCase.create("  My Party  ", startsAt, endsAt)
 
@@ -63,13 +63,13 @@ class CreateEventTest {
         val gate = CompletableDeferred<Unit>()
         var calls = 0
         val client = object : EventCreation {
-            override suspend fun create(name: String, startsAt: String, endsAt: String?): CreateOutcome {
+            override suspend fun create(name: String, startsAt: String, endsAt: String?, keyId: String?): CreateOutcome {
                 calls++
                 gate.await()
                 return CreateOutcome.Created(eventId)
             }
         }
-        val useCase = CreateEvent(client, MutableStateFlow<CreationStatus>(CreationStatus.Idle), onMinted = {})
+        val useCase = CreateEvent(client, MutableStateFlow<CreationStatus>(CreationStatus.Idle), onMinted = { _, _ -> }, minting = null)
 
         val first = launch { useCase.create("Party", startsAt, endsAt) }
         runCurrent()
@@ -85,7 +85,7 @@ class CreateEventTest {
         val status = MutableStateFlow<CreationStatus>(CreationStatus.Idle)
         var provisioned: String? = null
         val useCase = CreateEvent(
-            FakeClient(CreateOutcome.InvalidName), status, onMinted = { eventId -> provisioned = eventId },
+            FakeClient(CreateOutcome.InvalidName), status, onMinted = { eventId, _ -> provisioned = eventId }, minting = null,
         )
 
         useCase.create("x", startsAt, endsAt)
@@ -99,7 +99,7 @@ class CreateEventTest {
         val status = MutableStateFlow<CreationStatus>(CreationStatus.Idle)
         var provisioned: String? = null
         val useCase = CreateEvent(
-            FakeClient(CreateOutcome.InvalidWindow), status, onMinted = { eventId -> provisioned = eventId },
+            FakeClient(CreateOutcome.InvalidWindow), status, onMinted = { eventId, _ -> provisioned = eventId }, minting = null,
         )
 
         useCase.create("x", startsAt, endsAt)
@@ -113,7 +113,7 @@ class CreateEventTest {
         val status = MutableStateFlow<CreationStatus>(CreationStatus.Idle)
         var provisioned: String? = null
         val useCase = CreateEvent(
-            FakeClient(CreateOutcome.Transient), status, onMinted = { eventId -> provisioned = eventId },
+            FakeClient(CreateOutcome.Transient), status, onMinted = { eventId, _ -> provisioned = eventId }, minting = null,
         )
 
         useCase.create("x", startsAt, endsAt)

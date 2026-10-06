@@ -28,12 +28,11 @@ import app.snapsync.ui.components.appRangeLabel
 import app.snapsync.ui.components.PrimaryButton
 import app.snapsync.ui.components.SecondaryButton
 import app.snapsync.ui.resources.Res
-import app.snapsync.ui.resources.event_closed_body
-import app.snapsync.ui.resources.event_closed_title
 import app.snapsync.ui.resources.event_full_body
 import app.snapsync.ui.resources.event_full_title
 import app.snapsync.ui.resources.event_not_found_body
 import app.snapsync.ui.resources.event_not_found_title
+import app.snapsync.ui.resources.hero_subtitle
 import app.snapsync.ui.resources.join_failed_body
 import app.snapsync.ui.resources.join_failed_title
 import app.snapsync.ui.resources.joining
@@ -87,16 +86,11 @@ internal fun JoiningEventScreen(
             // compile rather than falling through — and no branch reaches for details a phase might not have.
             when (phase) {
                 JoinPhase.Loading -> LoadingPhase()
-                JoinPhase.NotFound -> WallPhase(
-                    title = stringResource(Res.string.event_not_found_title),
-                    body = stringResource(Res.string.event_not_found_body),
-                    onCancel = actions.onCancel,
-                )
-                JoinPhase.Closed -> WallPhase(
-                    stringResource(Res.string.event_closed_title),
-                    stringResource(Res.string.event_closed_body),
-                    actions.onCancel,
-                )
+                // The walls no retry moves — see [wallCopy].
+                JoinPhase.NotFound, JoinPhase.Closed, JoinPhase.WrongLink -> {
+                    val copy = wallCopy(phase)
+                    WallPhase(stringResource(copy.title), stringResource(copy.body), actions.onCancel)
+                }
                 // Without a network the details load by themselves once it returns, so there is nothing to retry.
                 JoinPhase.LoadFailed -> if (online) {
                     LoadFailedPhase(onRetry = actions.onRetryLoad, onCancel = actions.onCancel)

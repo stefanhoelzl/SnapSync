@@ -22,11 +22,15 @@ import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import app.snapsync.services.crypto.DownloadOpening
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /** Bounded in-flight window (Apple: keep background tasks in the low hundreds; we stay well under). */
 internal const val MAX_IN_FLIGHT = 24
+
+/** An encrypted event's download, beside its staging path until it is opened into it. */
+private const val SEALED_SUFFIX = ".sealed"
 
 /** taskDescription field separator — a newline cannot occur in device ids / sanitized keys / filenames. */
 private const val SEP = "\n"
@@ -137,6 +141,11 @@ class DownloadJobs(
      * the member's choice governs only the downloads that start after it.
      */
     private val network: () -> TransferNetwork,
+    /**
+     * How an encrypted event's download is opened before it is staged (the encrypted file format,
+     * `docs/architecture.md`); `null` where nothing is ever sealed.
+     */
+    private val opening: DownloadOpening? = null,
     private val log: Logger = Logger.withTag("DownloadJobs"),
     // The ambient entry-point prefix, so every line a background-events wake causes traces back to it.
     private val entryContext: EntryScope = EntryScope.None,
@@ -213,11 +222,19 @@ class DownloadJobs(
             return
         }
         val relative = relativePath(decoded)
-        if (!staging.stage(tempPath, relative)) return
+        // An encrypted event's bytes are taken over beside their staging path — the platform deletes its file when this
+        // returns — and opened INTO it off the delegate queue: only a file whose every byte authenticated is staged.
+        val sealed = opening?.takeIf { it.sealed() }
+        val landed = if (sealed == null) relative else "$relative$SEALED_SUFFIX"
+        if (!staging.stage(tempPath, landed)) return
         // Launched here, and REMEMBERED: this runs on the session's delegate queue, which must not wait for a store
         // write, but the write has to stay reachable so the wake's OS handler can wait for it. Pruning completed jobs
         // keeps the list from growing across a long session.
-        val recording = scope.launch { onStaged(decoded.ref, decoded.resourceKey, relative) }
+        val recording = scope.launch {
+            // A file that does not open stays unstaged, so the next reconcile downloads it again.
+            if (sealed != null && !sealed.open(decoded.ref, decoded.resourceKey, landed, relative)) return@launch
+            onStaged(decoded.ref, decoded.resourceKey, relative)
+        }
         outstandingStagings.update { held -> held.filterNot { it.isCompleted } + recording }
     }
 

@@ -26,6 +26,13 @@ interface DevControls : Listenable<DevHandlers> {
      * without the member confirming (capability `join-event`, "Joining happens only on confirmation").
      */
     fun inviteLinkHints(): InviteLinkHints
+
+    /**
+     * Whether an event this device creates is ENCRYPTED (the encrypted file format, `docs/architecture.md`), read at
+     * every create. **Always `false` in a production build** until every installed build can read an encrypted event;
+     * the release that enables encryption replaces this read rather than flipping it.
+     */
+    fun encryptsNewEvents(): Boolean
 }
 
 /** What the development controls tell the core. Built only by a composition. */

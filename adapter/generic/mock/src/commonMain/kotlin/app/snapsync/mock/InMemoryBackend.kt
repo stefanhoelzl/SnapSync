@@ -81,9 +81,10 @@ internal class InMemoryBackend(
                 startsAt == null -> Reply.Refused(BAD_REQUEST, "invalid startsAt")
                 endsAt == null || endsAt < startsAt || endsAt > startsAt + WINDOW_DAYS.days ->
                     Reply.Refused(BAD_REQUEST, "invalid endsAt")
+                req.keyId?.let { !KEY_ID.matches(it) } == true -> Reply.Refused(BAD_REQUEST, "invalid keyId")
                 else -> {
                     val eventId = state.nextEventId?.also { state.nextEventId = null } ?: Uuid.random().toString()
-                    state.events[eventId] = BackendState.Event(name, state.createdAt, startsAt, endsAt)
+                    state.events[eventId] = BackendState.Event(name, state.createdAt, startsAt, endsAt, keyId = req.keyId)
                     Reply.Ok(EventCreated(eventId, name))
                 }
             }
@@ -110,6 +111,7 @@ internal class InMemoryBackend(
                 closedAt = if (event.closed) state.createdAt.toString() else null,
                 completedAt = if (event.completed) state.createdAt.toString() else null,
                 members = state.members(eventId),
+                keyId = event.keyId,
             ),
         )
     }
@@ -258,6 +260,8 @@ internal class InMemoryBackend(
         const val UPGRADE_REQUIRED = 426
         const val BAD_GATEWAY = 502
         const val WINDOW_DAYS = 30
+        /** The shape of an encrypted event's key id, as the real `POST /events` validates it. */
+        val KEY_ID = Regex("^[0-9a-f]{16}$")
 
         /** The longest event name the backend accepts, trimmed — the real backend's `MAX_EVENT_NAME_LENGTH`. */
         const val MAX_NAME_LENGTH = 100

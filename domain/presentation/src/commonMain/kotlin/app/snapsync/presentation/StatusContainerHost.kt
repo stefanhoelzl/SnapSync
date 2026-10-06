@@ -145,6 +145,7 @@ class StatusContainerHost(
     private val renameFlow: StateFlow<RenameStatus> = sources.rename
     private val store = sources.store
     private val foreground = sources.foreground
+    private val inviteKey = sources.inviteKey
 
     private val log = diagnostics.log
     private val onIntentError = diagnostics.onIntentError
@@ -305,6 +306,10 @@ class StatusContainerHost(
                         now,
                     )
                 }.collect { ui -> reduce { ui } }
+            }
+            // An encrypted event's invite carries its key, read from where it is kept once the membership names one.
+            intent {
+                inviteKey.collect { key -> local.update { it.copy(inviteKey = key) } }
             }
             // The create draft follows the app's returns to the foreground (capability `create-event`).
             intent {
@@ -763,13 +768,14 @@ class StatusContainerHost(
                             result.payload.maxPhotoDate?.let(::captureCeiling),
                             result.payload.direction,
                             result.payload.saveToAlbum,
+                            result.payload.key,
                         )
                     // First join → JoiningEvent; a different event while joined → Joined.pendingSwitch (the
                     // same-event case is the duplicate rung above). An `autoJoin` link lands here too when
                     // hints are ignored — an ordinary invite — and says so in the log.
                     else -> {
                         if (result.payload.autoJoin) log("join gate: ignoring the invite-link hints of $eventId")
-                        startPending(eventId)
+                        startPending(eventId, result.payload.key)
                     }
                 }
             }
@@ -886,17 +892,17 @@ class StatusContainerHost(
      * capture-date cutoff, and confirms like any joiner. The `POST /events` already minted the event, so
      * the gate holds a real `eventId` and performs a real details load; provision happens on confirm.
      */
-    fun onEventCreated(eventId: String) = intent { startPending(eventId) }
+    fun onEventCreated(eventId: String, linkKey: String? = null) = intent { startPending(eventId, linkKey) }
 
     // The gate's async work runs INLINE within the orbit intent (not on a side scope) so each pending
     // transition reduces through the container's own pipeline deterministically. A modal join is fine
     // to serialize; a real fetch suspends here, yielding a Loading frame before the result.
-    private suspend fun startPending(eventId: String) {
+    private suspend fun startPending(eventId: String, linkKey: String?) {
         // A fresh surface starts from the defaults — all on, the full event window. Seeding HERE rather
         // than in the reduction is what keeps the member's edits from being overwritten by every
         // subsequent reduction, and what stops a previous surface's choices leaking into this one.
         local.editForm { freshForm }
-        pending.value = PendingJoin(eventId, JoinPhase.Loading)
+        pending.value = PendingJoin(eventId, JoinPhase.Loading, linkKey)
         loadInto(eventId)
     }
 
@@ -920,7 +926,7 @@ class StatusContainerHost(
      */
     private suspend fun loadInto(eventId: String) {
         val load = try {
-            queries.loadJoinDetails(eventId)
+            queries.loadJoinDetails(eventId, pending.value?.takeIf { it.eventId == eventId }?.linkKey)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (t: Throwable) {
@@ -963,9 +969,11 @@ class StatusContainerHost(
             }
             JoinLoad.NotFound -> JoinPhase.NotFound
             JoinLoad.Failed -> JoinPhase.LoadFailed
+            JoinLoad.WrongLink -> JoinPhase.WrongLink
         }
         // Only apply if this fetch is still the active pending target (not cancelled/superseded).
-        pending.update { if (it?.eventId == eventId) it.copy(phase = phase) else it }
+        val keyId = (load as? JoinLoad.Found)?.keyId
+        pending.update { if (it?.eventId == eventId) it.copy(phase = phase, eventKeyId = keyId) else it }
     }
 
     private suspend fun commit() {
@@ -986,6 +994,7 @@ class StatusContainerHost(
         val choice = JoinChoice(
             p.eventId, event.name, event.startsAt, event.endsAt, event.deletesAt,
             range.chosenFrom, range.chosenUntil, range.direction, form.saveToAlbum, form.mobileData,
+            linkKey = p.linkKey, eventKeyId = p.eventKeyId,
         )
         pending.value = p.copy(phase = JoinPhase.Detailed(event, JoinPhase.Detailed.Step.Committing))
         beginMembership()
@@ -1051,8 +1060,9 @@ class StatusContainerHost(
         explicitUntil: CaptureCeiling?,
         explicitDirection: String?,
         explicitSaveToAlbum: Boolean?,
+        linkKey: String?,
     ) {
-        val load = queries.loadJoinDetails(eventId)
+        val load = queries.loadJoinDetails(eventId, linkKey)
         if (load !is JoinLoad.Found) {
             log("autoJoin aborted: details load did not succeed for $eventId ($load)")
             return
@@ -1085,7 +1095,10 @@ class StatusContainerHost(
         val saveToAlbum = explicitSaveToAlbum ?: false
         beginMembership()
         val commit = commands.commitJoin(
-            JoinChoice(eventId, load.name, load.startsAt, load.endsAt, load.deletesAt, cutoff, until, direction, saveToAlbum),
+            JoinChoice(
+                eventId, load.name, load.startsAt, load.endsAt, load.deletesAt, cutoff, until, direction, saveToAlbum,
+                linkKey = linkKey, eventKeyId = load.keyId,
+            ),
         )
         // The headless path has no surface to park on, so it names the reason in the log instead — the
         // one channel it has. `full` and `failed` are as different here as on the screen: a run that
@@ -1209,7 +1222,7 @@ private fun reduceFrom(
         ?.let { syncCounts(it.progress, download, config.direction) }
     return joinedLayer(
         config, health, pendingSwitch, permission, JoinedFacts(timing, counts),
-        rename, reconfiguring, transient, form, resolveAgainst,
+        rename, reconfiguring, transient, form, resolveAgainst, local.inviteKey,
     )
 }
 
@@ -1292,12 +1305,13 @@ private fun joinedLayer(
     transient: ScreenMessage?,
     form: RangeForm,
     resolveAgainst: (RangeForm, EventStart, EventEnd?, CaptureCeiling?) -> ResolvedRange,
+    inviteKey: String?,
 ): Layer.Joined {
     return Layer.Joined(
         membership = config,
         // Derived HERE and nowhere else (capability `manage-membership`, decision D3's surviving half):
         // one derivation feeds both the rendered QR and the share action, so they cannot drift.
-        inviteUrl = config.inviteUrl(),
+        inviteUrl = config.inviteUrl(inviteKey),
         health = health,
         pendingSwitch = pendingSwitch,
         // The resting affordance, not an attention state (capability `photo-access`): a
@@ -1397,7 +1411,12 @@ private fun arrowOf(shown: Boolean, pulsing: Boolean): Arrow =
     if (!shown) Arrow.HIDDEN else if (pulsing) Arrow.PULSING else Arrow.STATIC
 
 // Derive the invite link from the persisted config's eventId (the wire payload is eventId-only).
-private fun EventConfig.inviteUrl(): String = encodeEventUrl(EventLinkPayload(eventId))
+/**
+ * The invite a member shares. An ENCRYPTED event's carries its key — only ever the key of the event its config names
+ * (a key read for no encrypted membership is ignored); a plain event's carries none, in the form every build reads.
+ */
+private fun EventConfig.inviteUrl(key: String?): String =
+    encodeEventUrl(EventLinkPayload(eventId, key = key.takeIf { keyId != null }))
 
 private fun RenameStatus.toRenameState(): RenameState = when (this) {
     RenameStatus.Idle -> RenameState.Idle
@@ -1494,6 +1513,7 @@ internal data class Owned<T>(val eventId: String?, val value: T) {
  */
 private fun failedPhase(commit: JoinCommit, event: EventDetails): JoinPhase = when (commit) {
     JoinCommit.Closed -> JoinPhase.Closed
+    JoinCommit.WrongLink -> JoinPhase.WrongLink
     JoinCommit.Full -> JoinPhase.Detailed(event, JoinPhase.Detailed.Step.EventFull)
     else -> JoinPhase.Detailed(event, JoinPhase.Detailed.Step.CommitFailed)
 }
@@ -1555,6 +1575,8 @@ private data class Local(
     val lastApplied: Owned<SettingChange?> = Owned(null, null),
     /** The event the last rename was fired for: a rename result for an event no longer joined reads as Idle. */
     val renameOwner: String? = null,
+    /** The joined event's invite key, when it is encrypted — copied from [StatusSources.inviteKey], shown nowhere. */
+    val inviteKey: String? = null,
     /**
      * The shareable count for whichever surface is showing a range (capability `join-event`), computed over the
      * query bundle and reduced into the range. It starts Unavailable (no row) rather than Counting: a count is only

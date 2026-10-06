@@ -23,6 +23,7 @@ internal fun jvmWorld(rig: JvmRig, os: PlayedOs): MockWorld = MockWorld(
     ownDeviceId = { rig.mocks.ownDeviceId },
     joinedEventId = { joinedEventId(rig) },
     setInviteLinkHints = { rig.mocks.devControls.operator.inviteLinkHints = it },
+    setEncryptsNewEvents = { rig.mocks.devControls.operator.encryptsNewEvents = it },
 )
 
 /** The JVM host's `/device` write commands. */

@@ -35,6 +35,19 @@ private const val UUID_HYPHENS = 4
 const val REDACTED_UUID: String = "‹uuid›"
 
 /**
+ * Redacts every encrypted event's key an invite link in [text] carries — any `k=` starting a word (`#k=…`, `&k=…`, a
+ * pasted fragment); the encrypted file format,
+ * `docs/architecture.md`). Unlike an id, a key is never worth keeping: it opens every photo of its event, so no channel
+ * is exempt — not the operator's diagnostic dump, not the device log a dump reads back.
+ */
+fun redactEventKeys(text: String): String =
+    if (text.contains("k=")) EVENT_KEY_IN_LINK.replace(text, "$1$REDACTED_KEY") else text
+
+const val REDACTED_KEY: String = "‹key›"
+
+private val EVENT_KEY_IN_LINK = Regex("(\\bk=)[A-Za-z0-9_-]{43}")
+
+/**
  * The tag an outgoing report sets to declare itself **exempt from redaction** (capability
  * `privacy-security`; the exemption's contract lives in `privacy-security`).
  *

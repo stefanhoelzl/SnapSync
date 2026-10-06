@@ -12,4 +12,14 @@ import app.snapsync.model.JoinPhase
  * methods advance the [phase], and the reduction reads it. A test may inject one to start the gate at any
  * `JoinPhase`.
  */
-data class PendingJoin(val eventId: String, val phase: JoinPhase)
+data class PendingJoin(
+    val eventId: String,
+    val phase: JoinPhase,
+    /** The key the invite link carried, `null` when it carried none — committed with the join, shown nowhere. */
+    val linkKey: String? = null,
+    /** The loaded event's key id, once its details loaded — what [linkKey] was checked against. */
+    val eventKeyId: String? = null,
+) {
+    /** Never the key: a pending join reaches logs and test failures. */
+    override fun toString(): String = "PendingJoin(eventId=$eventId, phase=$phase, linkKey=${linkKey?.let { "present" }})"
+}

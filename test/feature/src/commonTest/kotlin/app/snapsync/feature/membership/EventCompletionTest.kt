@@ -1,6 +1,9 @@
 package app.snapsync.feature.membership
 
 import app.snapsync.feature.support.LEDGER_EVENT
+import app.snapsync.mock.fakeCrypto
+import app.snapsync.mock.inMemorySecureStore
+import app.snapsync.services.crypto.EventKeys
 import kotlin.time.Duration.Companion.minutes
 import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.services.wake.EventChecks
@@ -109,6 +112,7 @@ class EventCompletionTest {
         )
 
         fun TestScope.leave() = LeaveEvent(
+            keys = EventKeys(fakeCrypto(), inMemorySecureStore()),
             config = config,
             stopUploads = {},
             notifyLeave = { _, _ -> },

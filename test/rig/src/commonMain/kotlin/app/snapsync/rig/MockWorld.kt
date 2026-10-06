@@ -48,6 +48,8 @@ class MockWorld(
     val joinedEventId: () -> String?,
     /** Set how this build answers an invite link's dev/test hints. */
     val setInviteLinkHints: (InviteLinkHints) -> Unit,
+    /** Whether an event this device creates is encrypted — the build's own control, so honoured on every host. */
+    val setEncryptsNewEvents: (Boolean) -> Unit,
 ) {
     fun isMocked(system: MockedSystem): Boolean = system in mocked
 

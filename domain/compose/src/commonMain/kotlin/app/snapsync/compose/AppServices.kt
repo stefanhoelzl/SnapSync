@@ -1,5 +1,7 @@
 package app.snapsync.compose
 
+import app.snapsync.services.crypto.EventKeys
+import app.snapsync.services.crypto.FileCipher
 import app.snapsync.services.wake.EventChecks
 import app.snapsync.model.DeviceIdentityRole
 import app.snapsync.ports.AttestStore
@@ -72,6 +74,15 @@ internal class AppServices(val ports: AppPorts, val process: ProcessServices) {
     val deviceIdentity: PersistedDeviceIdentity by lazy {
         PersistedDeviceIdentity(DeviceIdentityRole.MINTING, ports.secureStore, ports.platformDeviceId)
     }
+
+    /**
+     * The joined event's key, when it is encrypted (the encrypted file format, `docs/architecture.md`), in the shared
+     * slot the extension reads too.
+     */
+    val eventKeys: EventKeys by lazy { EventKeys(process.crypto, ports.secureStore) }
+
+    /** An encrypted event's files, sealed and opened a segment at a time over this process's files. */
+    val fileCipher: FileCipher by lazy { FileCipher(process.crypto, process.files) }
 
     /** The event album's leave-surviving `eventId → album` map (capability `event-album`). */
     val albumMapStore: AlbumMapService by lazy { AlbumMapService(ports.preferences, ports.secureStore) }

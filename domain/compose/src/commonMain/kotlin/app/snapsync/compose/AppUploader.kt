@@ -45,6 +45,7 @@ internal class AppUploader(private val core: AppCore) {
             core.process,
             UploadServices(
                 appVersion = build.appVersion,
+                eventKeys = app.eventKeys,
                 process = UploaderProcess.App(
                     core.appUploadAdmission,
                     PhotoGrantRead { ports.photoAccess.permission.value },

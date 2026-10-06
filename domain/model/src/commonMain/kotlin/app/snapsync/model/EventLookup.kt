@@ -43,6 +43,8 @@ sealed interface EventLookup {
          * open: a backend predating it never closes an event.
          */
         val completion: EventCompletionState = EventCompletionState.OPEN,
+        /** An ENCRYPTED event's key id; `null` for a plain event (the encrypted file format, `docs/architecture.md`). */
+        val keyId: String? = null,
     ) : EventLookup
     data object NotFound : EventLookup
     data object Failed : EventLookup

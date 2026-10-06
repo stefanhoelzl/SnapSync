@@ -51,6 +51,9 @@ class RigDevControls : DevControls {
     /** How this build answers an invite link's dev/test hints. */
     var hints: InviteLinkHints = InviteLinkHints.Honoured
 
+    /** Whether an event this device creates is encrypted; `false`, as a shipped build, until the channel sets it. */
+    var encrypts: Boolean = false
+
     override fun listen(handlers: DevHandlers) {
         this.handlers = handlers
     }
@@ -58,6 +61,8 @@ class RigDevControls : DevControls {
     override fun uploaderPin(): UploaderPin? = pin
 
     override fun inviteLinkHints(): InviteLinkHints = hints
+
+    override fun encryptsNewEvents(): Boolean = encrypts
 
     /** `/device/reset`: void this device's durable sync state. */
     suspend fun reset() =

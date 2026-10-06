@@ -1,6 +1,13 @@
 package app.snapsync.feature.membership
 
 import app.snapsync.model.EventLookup
+import app.snapsync.model.JoinLoad
+import app.snapsync.model.SecureSlots
+import app.snapsync.model.SecureStoreRead
+import app.snapsync.mock.fakeCrypto
+import app.snapsync.mock.inMemorySecureStore
+import app.snapsync.services.crypto.EventKeys
+import kotlin.test.assertIs
 import app.snapsync.services.backend.EventDirectory
 import app.snapsync.model.JoinResult
 
@@ -73,11 +80,13 @@ private fun joinEvent(
     details: EventLookup = EventLookup.Found("Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT),
     provisioned: MutableList<EventConfig> = mutableListOf(),
     enroller: FakeEnroller = FakeEnroller(enrollResult),
+    keys: EventKeys = EventKeys(fakeCrypto(), inMemorySecureStore()),
 ) = JoinEvent(
     configSource = configService(config),
     identity = testIdentity(DEVICE),
     details = FakeDetails(details),
     enroller = enroller,
+    keys = keys,
     provision = { provisioned += it },
 )
 
@@ -297,5 +306,74 @@ fun `a full event is reported apart from a failure`() = runTest {
         assertEquals(JoinOutcome.Committed, outcome)
         assertEquals(listOf(EVENT_A to DEVICE), enroller.calls, "download-only must still enroll (empty manifest)")
         assertEquals(Direction.DownloadOnly, provisioned.single().direction)
+    }
+
+    // ── Encrypted events (the encrypted file format, `docs/architecture.md`) ─────────────────────────────────
+
+    private fun choice(linkKey: String?, eventKeyId: String?) = JoinChoice(
+        EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false,
+        linkKey = linkKey, eventKeyId = eventKeyId,
+    )
+
+    @Test
+    fun an_encrypted_event_joins_with_its_own_key_and_keeps_it_beside_the_device_id() = runTest {
+        val store = inMemorySecureStore()
+        val keys = EventKeys(fakeCrypto(), store)
+        val minted = keys.mint()
+        val provisioned = mutableListOf<EventConfig>()
+        val outcome = joinEvent(null, provisioned = provisioned, keys = keys).join(choice(minted.linkKey, minted.keyId))
+        assertEquals(JoinOutcome.Committed, outcome)
+        assertEquals(minted.keyId, provisioned.single().keyId, "the config names the key's id, never the key")
+        assertEquals(minted.linkKey, (store.read(SecureSlots.EVENT_KEY) as SecureStoreRead.Found).value)
+    }
+
+    @Test
+    fun a_link_without_the_key_or_with_another_never_enrolls() = runTest {
+        val keys = EventKeys(fakeCrypto(), inMemorySecureStore())
+        val event = keys.mint()
+        val other = keys.mint()
+        for ((linkKey, keyId) in listOf(null to event.keyId, other.linkKey to event.keyId, event.linkKey to null)) {
+            val enroller = FakeEnroller()
+            val provisioned = mutableListOf<EventConfig>()
+            val outcome = joinEvent(null, provisioned = provisioned, enroller = enroller, keys = keys)
+                .join(choice(linkKey, keyId))
+            assertEquals(JoinOutcome.WrongLink, outcome, "link ${linkKey != null}, event ${keyId != null}")
+            assertTrue(enroller.calls.isEmpty(), "no enrollment")
+            assertTrue(provisioned.isEmpty(), "nothing provisioned")
+        }
+        assertEquals(JoinCommit.WrongLink, JoinOutcome.WrongLink.toCommit())
+    }
+
+    @Test
+    fun a_plain_join_removes_a_previous_events_key() = runTest {
+        val store = inMemorySecureStore()
+        val keys = EventKeys(fakeCrypto(), store)
+        keys.keep(keys.mint().linkKey)
+        assertEquals(JoinOutcome.Committed, joinEvent(null, keys = keys).join(choice(null, null)))
+        assertEquals(SecureStoreRead.Absent, store.read(SecureSlots.EVENT_KEY))
+    }
+
+    @Test
+    fun a_key_the_store_refuses_fails_the_join_before_anything_is_provisioned() = runTest {
+        val keys = EventKeys(fakeCrypto(), inMemorySecureStore(unavailable = true))
+        val minted = EventKeys(fakeCrypto(), inMemorySecureStore()).mint()
+        val provisioned = mutableListOf<EventConfig>()
+        assertEquals(
+            JoinOutcome.EnrollFailed,
+            joinEvent(null, provisioned = provisioned, keys = keys).join(choice(minted.linkKey, minted.keyId)),
+        )
+        assertTrue(provisioned.isEmpty())
+    }
+
+    @Test
+    fun the_gate_is_told_at_load_when_the_link_does_not_open_the_event() = runTest {
+        val keys = EventKeys(fakeCrypto(), inMemorySecureStore())
+        val minted = keys.mint()
+        val encrypted = EventLookup.Found("Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, keyId = minted.keyId)
+        assertIs<JoinLoad.Found>(joinEvent(null, details = encrypted, keys = keys).loadJoin(EVENT_A, minted.linkKey))
+        assertEquals(JoinLoad.WrongLink, joinEvent(null, details = encrypted, keys = keys).loadJoin(EVENT_A, null))
+        assertEquals(JoinLoad.WrongLink, joinEvent(null, keys = keys).loadJoin(EVENT_A, minted.linkKey))
+        assertIs<JoinLoad.Found>(joinEvent(null, keys = keys).loadJoin(EVENT_A, null))
+        assertEquals(JoinLoad.NotFound, joinEvent(null, details = EventLookup.NotFound, keys = keys).loadJoin(EVENT_A, null))
     }
 }

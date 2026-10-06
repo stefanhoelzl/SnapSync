@@ -14,11 +14,11 @@ package app.snapsync.model
  * No field has a default: a host that cannot answer a query must say what it answers instead.
  *
  * - [loadJoinDetails] — the join gate's details read (capability `join-event`): `GET /events/:id` mapped to
- *   a block / retry / ready outcome.
+ *   a block / retry / ready outcome, and [JoinLoad.WrongLink] when the link's key (`linkKey`) does not open the event.
  * - [shareableCount] — how many of the member's own photos the range `[cutoff, until]` would share
  *   (capability `join-event`), or `null` when the grant permits no count. Purely local.
  */
 class UserQueries(
-    val loadJoinDetails: suspend (eventId: String) -> JoinLoad,
+    val loadJoinDetails: suspend (eventId: String, linkKey: String?) -> JoinLoad,
     val shareableCount: suspend (cutoff: CaptureCutoff, until: CaptureCeiling?) -> Int?,
 )

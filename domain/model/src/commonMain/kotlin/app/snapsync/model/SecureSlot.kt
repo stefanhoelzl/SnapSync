@@ -30,6 +30,12 @@ object SecureSlots {
     val ATTEST_TOKEN = SecureSlot(service = "app.snapsync.attest", account = "token", shared = false)
     val ATTEST_KEY_ID = SecureSlot(service = "app.snapsync.attest", account = "keyid", shared = false)
 
+    /**
+     * The joined event's key, when it is ENCRYPTED (the encrypted file format, `docs/architecture.md`): base64url, in
+     * the shared group, because the upload extension derives each file's key from it. One slot — one membership.
+     */
+    val EVENT_KEY = SecureSlot(service = "app.snapsync.eventkey", account = "key", shared = true)
+
     /** The pre-App-Group event-album map, migrated once and deleted (capability `event-album`). Unscoped (pinned). */
     val ALBUM_MAP_LEGACY = SecureSlot(service = "app.snapsync.album", account = "albummap", shared = false)
 }

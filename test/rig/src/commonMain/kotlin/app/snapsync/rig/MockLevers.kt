@@ -534,6 +534,13 @@ private fun MockWorld.deviceLevers(): Map<String, Lever> = mapOf(
         setInviteLinkHints(if (honoured) InviteLinkHints.Honoured else InviteLinkHints.Ignored)
         CommandResult.ok("""{"honoured":$honoured}""")
     }),
+    // Whether an event this device creates is encrypted (the encrypted file format): a shipped build creates only
+    // plain events until encryption is enabled; `on=true` plays the build that encrypts. The build's own control.
+    "encrypt-new-events" to Lever(emptyList(), RigCommand { params, _ ->
+        val on = flag(params, "on")
+        setEncryptsNewEvents(on)
+        CommandResult.ok("""{"on":$on}""")
+    }),
     // Text a process's device log carries — what a diagnostic dump reads back. `process` is app|extension.
     "logs/append" to mocked(MockedSystem.FILES, RigCommand { params, body ->
         val (process, area, file) = when (params["process"] ?: "app") {

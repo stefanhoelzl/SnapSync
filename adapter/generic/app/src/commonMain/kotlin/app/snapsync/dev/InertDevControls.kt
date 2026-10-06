@@ -18,4 +18,6 @@ object InertDevControls : DevControls {
     override fun uploaderPin(): UploaderPin? = null
 
     override fun inviteLinkHints(): InviteLinkHints = InviteLinkHints.Ignored
+
+    override fun encryptsNewEvents(): Boolean = false
 }

@@ -100,6 +100,12 @@ class StatusSources(
      * Defaults to none ever, so a host that never foregrounds keeps one draft.
      */
     val foreground: StateFlow<ForegroundReturn> = MutableStateFlow(ForegroundReturn.NONE),
+    /**
+     * The joined event's key as its invite link carries it, when the event is ENCRYPTED (the encrypted file format,
+     * `docs/architecture.md`) — read from the secure store, never from the config. Defaults to none: a plain event's
+     * invite carries no key.
+     */
+    val inviteKey: StateFlow<String?> = MutableStateFlow(null),
 )
 
 /**

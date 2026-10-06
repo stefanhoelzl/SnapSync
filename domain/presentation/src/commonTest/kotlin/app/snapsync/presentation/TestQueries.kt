@@ -7,15 +7,15 @@ import app.snapsync.model.JoinLoad
 import app.snapsync.model.UserQueries
 
 /** A query bundle that answers nothing: every details load fails and no count is available. */
-internal val noQueries: UserQueries = UserQueries(loadJoinDetails = { JoinLoad.Failed }, shareableCount = { _, _ -> null })
+internal val noQueries: UserQueries = UserQueries(loadJoinDetails = { _, _ -> JoinLoad.Failed }, shareableCount = { _, _ -> null })
 
 /** A query bundle whose join-details read is [load]; no count is available. */
 internal fun joinDetails(load: suspend (String) -> JoinLoad): UserQueries =
-    UserQueries(loadJoinDetails = load, shareableCount = { _, _ -> null })
+    UserQueries(loadJoinDetails = { id, _ -> load(id) }, shareableCount = { _, _ -> null })
 
 /** A query bundle whose shareable count is [count]; every details load fails. */
 internal fun counting(count: suspend (CaptureCutoff, CaptureCeiling?) -> Int?): UserQueries =
-    UserQueries(loadJoinDetails = { JoinLoad.Failed }, shareableCount = count)
+    UserQueries(loadJoinDetails = { _, _ -> JoinLoad.Failed }, shareableCount = count)
 
 /** The user-command bundle with the inert defaults the production type no longer carries. */
 internal fun testCommands(

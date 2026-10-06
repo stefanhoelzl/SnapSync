@@ -8,7 +8,7 @@ import kotlin.test.assertNull
 
 /**
  * A production build's development controls answer the shipped values, whatever is registered on them: no uploader
- * pinned, and invite-link hints ignored — so no crafted link can join without the member confirming (capability
+ * pinned, invite-link hints ignored, and every new event plain — so no crafted link can join without the member confirming (capability
  * `join-event`, "Joining happens only on confirmation").
  */
 class InertDevControlsTest {
@@ -19,6 +19,7 @@ class InertDevControlsTest {
         InertDevControls.listen(DevHandlers(onReset = { resets++ }))
         assertNull(InertDevControls.uploaderPin(), "no uploader is pinned on a production build")
         assertEquals(InviteLinkHints.Ignored, InertDevControls.inviteLinkHints(), "no link authorizes its own join")
+        assertEquals(false, InertDevControls.encryptsNewEvents(), "a shipped build creates plain events until encryption is enabled")
         assertEquals(0, resets, "registering runs nothing, and nothing ever delivers")
     }
 }

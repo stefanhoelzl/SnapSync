@@ -34,6 +34,12 @@ object EncryptedFileFormat {
 
     private val KEY_ID_INFO = "snapsync/key-id/v1".encodeToByteArray()
 
+    /** The one file's key the edge seals an iOS extension upload with — base64url, never the event key. */
+    const val FILE_KEY_HEADER = "x-snapsync-file-key"
+
+    /** That file's opening bytes (prefix and header), base64url. */
+    const val FILE_HEAD_HEADER = "x-snapsync-file-head"
+
     /** The key id an event row holds for [eventKey]. */
     fun keyIdOf(eventKey: ByteArray, hmac: Hmac): ByteArray = Hkdf.derive(hmac, eventKey, ByteArray(0), KEY_ID_INFO, KEY_ID_LENGTH)
 

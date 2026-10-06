@@ -1,5 +1,6 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.services.crypto.EventKeys
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.downloads.DownloadService
@@ -73,6 +74,8 @@ class ResetDeviceState(
      * exactly like one that worked.
      */
     private val resetDownloads: suspend () -> Unit,
+    /** The event's key, when it was encrypted: a reset leaves no membership, so it leaves no key either. */
+    private val keys: EventKeys,
 ) {
     private val steps = Steps(Logger.withTag("ResetDeviceState"), "reset")
     private val log = steps.log
@@ -86,6 +89,7 @@ class ResetDeviceState(
         steps.bestEffort("prune non-terminal downloads (and free the bytes it strands)") { resetDownloads() }
         // Local only — no backend is notified. See the class doc.
         steps.bestEffort("clear config") { config.clear() }
+        steps.bestEffort("forget the event key") { keys.forget() }
 
         log.i {
             "reset: ledger + config cleared, non-terminal downloads pruned " +

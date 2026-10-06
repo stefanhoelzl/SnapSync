@@ -5,6 +5,7 @@ import app.snapsync.model.runCatchingCancellable
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.leave.PendingLeaves
 import co.touchlab.kermit.Logger
+import app.snapsync.services.crypto.EventKeys
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -72,6 +73,8 @@ class LeaveEvent(
      * next wake delivers it.
      */
     private val pendingLeaves: PendingLeaves,
+    /** The event's key, when it was encrypted: it leaves with the membership, so no secret outlives it. */
+    private val keys: EventKeys,
 ) {
     private val steps = Steps(Logger.withTag("LeaveEvent"), "leave")
 
@@ -84,6 +87,7 @@ class LeaveEvent(
         if (eventId != null) steps.bestEffort("record the leave") { pendingLeaves.record(eventId) }
         steps.bestEffort("stop uploads") { stopUploads() }
         steps.bestEffort("clear config") { config.clear() }
+        steps.bestEffort("forget the event key") { keys.forget() }
         // Fire-and-forget on the app-lifetime scope: the local teardown (and thus the screen flip) never
         // waits on the DELETE. Dispatched unconditionally after the clear (a failed clear does not gate it).
         if (current != null) {
