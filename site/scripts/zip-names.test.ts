@@ -13,10 +13,13 @@ const live = (still: string, video: string): UnionAsset => ({
   ],
 });
 const names = (union: UnionAsset[]) => zipEntries(union).entries.map((e) => e.name);
+/** Where each entry is fetched from and saved as — what these tests are about; the identity has its own test. */
+const fetched = (entries: { url: string; name: string }[]) =>
+  entries.map(({ url, name }) => ({ url, name }));
 
 Deno.test("a Live Photo is its still and its video under one stem", () => {
   const { entries, photos } = zipEntries([live("IMG_4471.HEIC", "IMG_4471.MOV")]);
-  assertEquals(entries, [
+  assertEquals(fetched(entries), [
     { url: "u/IMG_4471.HEIC", name: "IMG_4471.HEIC" },
     { url: "u/IMG_4471.MOV", name: "IMG_4471.MOV" },
   ]);
@@ -60,7 +63,7 @@ Deno.test("an asset with no original, and a resource with no url, are skipped", 
     { resources: [{ role: "primary", url: "u/y.HEIC", filename: "y.HEIC" }, { role: "live" }] },
     {},
   ]);
-  assertEquals(entries, [{ url: "u/y.HEIC", name: "y.HEIC" }]);
+  assertEquals(fetched(entries), [{ url: "u/y.HEIC", name: "y.HEIC" }]);
   assertEquals(photos, 1);
 });
 
@@ -85,9 +88,34 @@ Deno.test(
       },
       { resources: [{ role: "primary", filename: "NOID.HEIC" }] },
     ]);
-    assertEquals(zipEntries(union).entries, [
+    assertEquals(fetched(zipEntries(union).entries), [
       { url: "/api/v1/events/E1/files/devices/D1/A.b-c_d~e/primary", name: "IMG.HEIC" },
       { url: "/api/v1/events/E1/files/devices/D1/A.b-c_d~e/live", name: "IMG.MOV" },
+    ]);
+  },
+);
+
+Deno.test(
+  "each entry names the resource it is, so an encrypted event's file opens only as that resource",
+  () => {
+    const union = withDownloadUrls("/api/v1", "E1", [
+      {
+        deviceId: "D1",
+        assetId: "A1",
+        resources: [
+          { role: "primary", filename: "IMG.HEIC" },
+          { role: "live", filename: "IMG.MOV" },
+        ],
+      },
+    ]);
+    const roles = zipEntries(union).entries.map(({ deviceId, assetId, role }) => ({
+      deviceId,
+      assetId,
+      role,
+    }));
+    assertEquals(roles, [
+      { deviceId: "D1", assetId: "A1", role: "primary" },
+      { deviceId: "D1", assetId: "A1", role: "live" },
     ]);
   },
 );

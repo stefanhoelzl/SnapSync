@@ -57,6 +57,15 @@ Deno.test("download: GET /join serves the built site/join/index.html as never-ca
   assertEquals(res.headers.get("Content-Type"), "text/html; charset=utf-8");
   assertEquals(res.headers.get("Cache-Control"), NO_CACHE);
   assertEquals(res.headers.get("Referrer-Policy"), "no-referrer");
+  // The page reads an encrypted event's key from its own address: only its own scripts run there, and it talks to
+  // this origin and the storage host alone.
+  const policy = res.headers.get("Content-Security-Policy") ?? "";
+  assert(policy.includes("script-src 'self'") && !policy.includes("unsafe-eval"), policy);
+  assert(policy.includes(`connect-src 'self' ${CONFIG.s3Scheme}://${CONFIG.s3Host}`), policy);
+  assert(
+    policy.includes("default-src 'none'") && policy.includes("frame-ancestors 'none'"),
+    policy,
+  );
   assertEquals(await res.text(), JOIN_HTML);
   assert(s.keys.includes("site/join/index.html"), "the proxy read the constant join page");
 });

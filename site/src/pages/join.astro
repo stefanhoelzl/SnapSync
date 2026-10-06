@@ -191,6 +191,7 @@ import PlayOffer from "../components/PlayOffer.astro";
   import { zipSync } from "fflate";
   import { decodeInvite, eventIdFromPath, inviteFor, playHrefFor } from "../lib/invite";
   import { withDownloadUrls, zipEntries } from "../lib/zip-names";
+  import { decryptFile, fileAssociatedData, keyFromFragment, opens } from "../lib/event-key";
 
   (function () {
     const $ = (id: string) => document.getElementById(id)!;
@@ -229,6 +230,29 @@ import PlayOffer from "../components/PlayOffer.astro";
       // The name, dates and members are the server's; the island adds only the photo list — same-origin, an
       // un-attested read on the canonical versioned prefix.
       const name = $("title").textContent?.trim() || undefined;
+      // An ENCRYPTED event's photos open only with the key its whole invite carries in `#k=` (the encrypted file
+      // format, `docs/architecture.md`) — read here, never sent anywhere, checked against the key id the event names
+      // before a single photo is fetched.
+      let key: Uint8Array | null = null;
+      try {
+        const metaRes = await fetch("/api/v1/events/" + eventId);
+        if (metaRes.ok) {
+          const keyId = (await metaRes.json()).keyId;
+          if (typeof keyId === "string") {
+            key = keyFromFragment(location.hash);
+            if (key === null || !(await opens(key, keyId))) {
+              setStatus(
+                "This event's photos are encrypted. Open the whole invite link, or scan the event's QR code, to download them.",
+              );
+              return;
+            }
+          }
+        }
+      } catch (_e) {
+        setStatus("Couldn't load this event. Check your connection and reload.");
+        return;
+      }
+
       let union: any[];
       try {
         // Without urls: each file is addressed at its download route, which redirects to the bytes
@@ -269,7 +293,15 @@ import PlayOffer from "../components/PlayOffer.astro";
             setP(i / items.length);
             const res = await fetch(items[i].url);
             if (!res.ok) throw new Error("photo " + res.status);
-            files[items[i].name] = new Uint8Array(await res.arrayBuffer());
+            const bytes = new Uint8Array(await res.arrayBuffer());
+            const item = items[i];
+            files[item.name] = key
+              ? await decryptFile(
+                  bytes,
+                  key,
+                  fileAssociatedData(eventId, item.deviceId, item.assetId, item.role),
+                )
+              : bytes;
             setP((i + 1) / items.length);
           }
           btn.textContent = "Building zip…";
