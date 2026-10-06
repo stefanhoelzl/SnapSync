@@ -123,12 +123,34 @@ async function serveEventPage(
     "Content-Type": "text/html; charset=utf-8",
     "Cache-Control": NO_CACHE,
     "Referrer-Policy": "no-referrer",
+    "Content-Security-Policy": eventPagePolicy(config),
   });
   if (method === "HEAD") {
     await upstream.body?.cancel();
     return new Response(null, { status, headers });
   }
   return new Response(fill(await upstream.text(), filling), { status, headers });
+}
+
+/**
+ * What the event page may load and talk to (capability `privacy-security`; the encrypted file format,
+ * `docs/architecture.md`): an encrypted event's page holds the event key, read from its own address's `#k=`, so no
+ * script but the site's own runs there and nothing it fetches may leave this origin — except the photo bytes the
+ * download route redirects to, at the storage host. Inline STYLES stay allowed: the page sets custom properties in
+ * `style` attributes, and a style cannot read the address the key is in.
+ */
+export function eventPagePolicy(config: Config): string {
+  return [
+    "default-src 'none'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob:",
+    "font-src 'self'",
+    `connect-src 'self' ${config.s3Scheme}://${config.s3Host}`,
+    "base-uri 'none'",
+    "form-action 'none'",
+    "frame-ancestors 'none'",
+  ].join("; ");
 }
 
 /** The root routes, served from `createApp`'s app at `/`. `buildSha` is what `/health` answers with. */

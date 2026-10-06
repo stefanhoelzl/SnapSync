@@ -44,10 +44,16 @@ export function withDownloadUrls(api: string, eventId: string, union: UnionAsset
   }));
 }
 
-/** One file of the zip: where to fetch it, and the name it is saved under. */
+/**
+ * One file of the zip: where to fetch it, the name it is saved under, and the resource it is — what an encrypted
+ * event's file is bound to, so it opens only as that resource (the encrypted file format, `docs/architecture.md`).
+ */
 export interface ZipEntry {
   url: string;
   name: string;
+  deviceId: string;
+  assetId: string;
+  role: string;
 }
 
 function splitName(name: string): [string, string] {
@@ -78,10 +84,11 @@ export function zipEntries(union: UnionAsset[]): { entries: ZipEntry[]; photos: 
     let candidate = stem;
     for (let i = 2; taken(used, candidate, ext, liveExt); i++) candidate = stem + "-" + i;
     used.add(candidate + ext);
-    entries.push({ url: primary.url!, name: candidate + ext });
+    const identity = { deviceId: asset.deviceId || "", assetId: asset.assetId || "" };
+    entries.push({ url: primary.url!, name: candidate + ext, ...identity, role: "primary" });
     if (live && liveExt !== null) {
       used.add(candidate + liveExt);
-      entries.push({ url: live.url!, name: candidate + liveExt });
+      entries.push({ url: live.url!, name: candidate + liveExt, ...identity, role: "live" });
     }
     photos++;
   }

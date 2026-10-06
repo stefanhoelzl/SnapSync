@@ -980,6 +980,12 @@ segments  AES-256-GCM, 64 KiB ciphertext each (the first shorter by the     │ 
   `Error` (the crash channel).
 - **No key reaches a log or a report**: `redactEventKeys` runs wherever the UUID scrub runs, on the diagnostic dump
   too, and on the logged link.
+- **The event page** (`site/src/lib/event-key.ts`, over the edge's own `api/src/encrypted-file.ts`) reads the key
+  from its address's `#k=`, checks it against the event's `keyId` before fetching anything, and opens each file of
+  the zip in the browser; without the whole invite it says so and offers nothing. The page is served with a
+  `Content-Security-Policy` (`eventPagePolicy`) that runs only the site's own scripts and talks only to this origin
+  and the storage host. Google Play's install referrer carries the event id alone, so an install from the page
+  opens the invite again for its key, as on iOS.
 
 ### On-device layout (iOS)
 
