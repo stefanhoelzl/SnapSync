@@ -19,6 +19,8 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.doubleClick
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -79,7 +81,7 @@ import app.snapsync.ui.resources.allow_full_access
 import app.snapsync.ui.resources.cancel
 import app.snapsync.ui.resources.choose_more_photos
 import app.snapsync.ui.resources.create_button
-import app.snapsync.ui.resources.event_settings
+import app.snapsync.ui.resources.footer_settings
 import app.snapsync.ui.resources.join_access_dismiss
 import app.snapsync.ui.resources.join_access_info
 import app.snapsync.ui.resources.join_button
@@ -288,7 +290,7 @@ class HostStatusActionsTest {
 
             onNodeWithText(str(Res.string.leave_event)).performClick()
             awaitState(rig) { it.overlays.confirmingLeave }
-            onNodeWithText(str(Res.string.leave_confirm)).performClick()
+            onNode(hasText(str(Res.string.leave_confirm)) and hasAnyAncestor(isDialog())).performClick()
             awaitFired(rig, "leave")
         }
 
@@ -335,13 +337,13 @@ class HostStatusActionsTest {
     fun `the gear opens the settings surface — Cancel closes it — and Save reconfigures`() =
         rigTest(rig(config = MEMBERSHIP)) { rig ->
             awaitState(rig) { it.joined != null }
-            onNodeWithText(str(Res.string.event_settings)).performClick()
+            onNodeWithText(str(Res.string.footer_settings)).performClick()
             awaitState(rig) { it.joined?.surface is JoinedSurface.Reconfigure }
             onNodeWithText(str(Res.string.cancel)).performClick()
             awaitState(rig) { it.joined != null && it.joined?.surface !is JoinedSurface.Reconfigure }
             assertEquals(emptyList(), rig.fired)
 
-            onNodeWithText(str(Res.string.event_settings)).performClick()
+            onNodeWithText(str(Res.string.footer_settings)).performClick()
             awaitState(rig) { it.joined?.surface is JoinedSurface.Reconfigure }
             onNodeWithText(str(Res.string.save)).performClick()
             awaitFired(rig, "reconfigure:$JOINED_ID")

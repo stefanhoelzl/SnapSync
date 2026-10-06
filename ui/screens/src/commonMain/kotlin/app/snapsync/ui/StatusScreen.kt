@@ -13,10 +13,11 @@ import app.snapsync.model.UiState
 import app.snapsync.ui.components.AppTextPromptSheet
 import app.snapsync.ui.components.AppDestructiveConfirmDialog
 import app.snapsync.ui.components.AppTheme
-import app.snapsync.ui.components.AppFooterDivider
+import app.snapsync.ui.components.AppFooterTextActions
+import app.snapsync.ui.components.QrTextAction
+import app.snapsync.ui.components.ShareTextAction
 import app.snapsync.ui.components.AppQrSheet
 import app.snapsync.ui.components.LeaveTextAction
-import app.snapsync.ui.components.PrimaryButton
 import app.snapsync.ui.components.ScreenLayout
 import app.snapsync.ui.components.SettingsTextAction
 import androidx.compose.foundation.layout.Box
@@ -42,7 +43,7 @@ import app.snapsync.ui.resources.Res
 import app.snapsync.ui.resources.app_name
 import app.snapsync.ui.resources.cancel
 import app.snapsync.ui.resources.event_name_placeholder
-import app.snapsync.ui.resources.event_settings
+import app.snapsync.ui.resources.footer_settings
 import app.snapsync.ui.resources.leave_body
 import app.snapsync.ui.resources.leave_cancel
 import app.snapsync.ui.resources.leave_confirm
@@ -254,9 +255,9 @@ private fun statusChrome(state: UiState): StatusChrome {
         closed = joinedLayer?.closed == true,
         // Every join phase pins Cancel (and, on Ready, Join) as its own full-width bottom cluster; the
         // reconfigure surface likewise pins its own Save/Cancel, and the create form its Create + hint (the
-        // in-flight create screen too, so the swap does not jump) — so all take the safe-area-anchored
-        // bottom edge.
-        pinsActionCluster = reconfiguring != null || when (state.layer) {
+        // in-flight create screen too, so the swap does not jump), and the joined screen docks its invite and
+        // membership actions — so all take the safe-area-anchored bottom edge.
+        pinsActionCluster = showsJoinedChrome || reconfiguring != null || when (state.layer) {
             is Layer.JoiningEvent, is Layer.CreateEvent, Layer.CreatingEvent -> true
             else -> false
         },
@@ -441,15 +442,20 @@ private fun BugReportSheet(
 @Composable
 private fun JoinedFooter(actions: StatusActions, closed: Boolean) {
     if (!closed) {
-        PrimaryButton(label = stringResource(Res.string.share_invite), onClick = actions.joined.onShareInvite)
-        PrimaryButton(label = stringResource(Res.string.show_qr), onClick = actions.joined.onQrOpen)
-        AppFooterDivider()
-        SettingsTextAction(
-            label = stringResource(Res.string.event_settings),
-            onClick = actions.surfaces.onOpenReconfigure,
-        )
+        AppFooterTextActions {
+            ShareTextAction(label = stringResource(Res.string.share_invite), onClick = actions.joined.onShareInvite)
+            QrTextAction(label = stringResource(Res.string.show_qr), onClick = actions.joined.onQrOpen)
+        }
     }
-    LeaveTextAction(label = stringResource(Res.string.leave_event), onClick = actions.surfaces.onConfirmLeaveOpen)
+    AppFooterTextActions {
+        if (!closed) {
+            SettingsTextAction(
+                label = stringResource(Res.string.footer_settings),
+                onClick = actions.surfaces.onOpenReconfigure,
+            )
+        }
+        LeaveTextAction(label = stringResource(Res.string.leave_event), onClick = actions.surfaces.onConfirmLeaveOpen)
+    }
 }
 
 /**

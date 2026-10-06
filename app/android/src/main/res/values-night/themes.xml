@@ -4,5 +4,10 @@
     <style name="Theme.SnapSync" parent="@android:style/Theme.Material.NoActionBar">
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:windowLightNavigationBar">false</item>
+        <!-- The screen's background (AppTheme's background colour), so the window the OS shows before the first frame and
+             its bars already match the screen that replaces it. -->
+        <item name="android:windowBackground">@color/screen_background</item>
+        <item name="android:statusBarColor">@color/screen_background</item>
+        <item name="android:navigationBarColor">@color/screen_background</item>
     </style>
 </resources>

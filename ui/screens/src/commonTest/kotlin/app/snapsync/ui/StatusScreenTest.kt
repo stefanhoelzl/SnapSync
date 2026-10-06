@@ -47,6 +47,7 @@ import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -130,7 +131,7 @@ import app.snapsync.ui.resources.create_title
 import app.snapsync.ui.resources.creating
 import app.snapsync.ui.resources.duration_days
 import app.snapsync.ui.resources.duration_hours
-import app.snapsync.ui.resources.event_settings
+import app.snapsync.ui.resources.footer_settings
 import app.snapsync.ui.resources.invite_caption
 import app.snapsync.ui.resources.joined_statement
 import app.snapsync.ui.resources.leave_cancel
@@ -1037,7 +1038,7 @@ class StatusScreenTest {
             )
         }
 
-        onNodeWithText(str(Res.string.leave_confirm)).performClick()
+        onNode(hasText(str(Res.string.leave_confirm)) and hasAnyAncestor(isDialog())).performClick()
         assertEquals(1, leaves)
     }
 
@@ -1306,7 +1307,7 @@ class StatusScreenTest {
     @Test
     fun `joined with a membership shows the settings action next to share and leave`() = runComposeUiTest {
         setContent { TestStatusScreen(inSync, cutoff = fixedCutoff()) }
-        onNodeWithText(str(Res.string.event_settings)).assertExists()
+        onNodeWithText(str(Res.string.footer_settings)).assertExists()
         onNodeWithText(str(Res.string.share_invite)).assertExists()
         onNodeWithText(str(Res.string.leave_event)).assertExists()
     }
@@ -1319,7 +1320,7 @@ class StatusScreenTest {
                 cutoff = fixedCutoff(),
             )
         }
-        onNodeWithText(str(Res.string.event_settings)).assertExists()
+        onNodeWithText(str(Res.string.footer_settings)).assertExists()
     }
 
     @Test
@@ -1342,7 +1343,7 @@ class StatusScreenTest {
                 cutoff = fixedCutoff(),
             )
         }
-        onNodeWithText(str(Res.string.event_settings)).assertExists()
+        onNodeWithText(str(Res.string.footer_settings)).assertExists()
     }
 
     /**
@@ -1371,7 +1372,7 @@ class StatusScreenTest {
                 cutoff = fixedCutoff(),
             )
         }
-        onNodeWithText(str(Res.string.event_settings)).assertExists()
+        onNodeWithText(str(Res.string.footer_settings)).assertExists()
         onNodeWithContentDescription(str(Res.string.rename_event)).assertExists()
         // The two neighbours that were never suppressed, asserted alongside so the row is checked whole.
         onNodeWithText(str(Res.string.share_invite)).assertExists()
@@ -1389,7 +1390,7 @@ class StatusScreenTest {
             )
         }
         onNodeWithText(str(Res.string.save)).assertDoesNotExist()
-        onNodeWithText(str(Res.string.event_settings)).performClick()
+        onNodeWithText(str(Res.string.footer_settings)).performClick()
         assertEquals(1, opened, "the gear asks the container to open the surface")
     }
 
@@ -1630,7 +1631,7 @@ class StatusScreenTest {
             TestStatusScreen(joined(SyncHealth.InSync, timing = EventTiming.Ended, closed = true), cutoff = fixedCutoff())
         }
         onNodeWithText(str(Res.string.share_invite)).assertDoesNotExist()
-        onNodeWithText(str(Res.string.event_settings)).assertDoesNotExist()
+        onNodeWithText(str(Res.string.footer_settings)).assertDoesNotExist()
         onNodeWithContentDescription(str(Res.string.rename_event)).assertDoesNotExist()
         onNodeWithText(str(Res.string.show_qr)).assertDoesNotExist()
         onNodeWithText(str(Res.string.leave_event)).assertExists()
@@ -1767,7 +1768,7 @@ class StatusScreenTest {
                 TestStatusScreen(joined(SyncHealth.NeedsAccess(GalleryAccess.DENIED), canChoosePhotos = false), cutoff = fixedCutoff())
             }
         }
-        for (label in listOf(Res.string.share_invite, Res.string.show_qr, Res.string.event_settings, Res.string.leave_event)) {
+        for (label in listOf(Res.string.share_invite, Res.string.show_qr, Res.string.footer_settings, Res.string.leave_event)) {
             val bottom = onNodeWithText(str(label)).getUnclippedBoundsInRoot().bottom
             assertTrue(bottom <= SE2_HEIGHT, "${str(label)} ends at $bottom, below the screen")
         }

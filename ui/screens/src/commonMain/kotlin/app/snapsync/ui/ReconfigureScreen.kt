@@ -20,8 +20,10 @@ import app.snapsync.model.UiState
 import app.snapsync.ui.components.AppConfirmDialog
 import app.snapsync.ui.components.AppDestructiveConfirmDialog
 import app.snapsync.ui.components.AppIdentityHeader
-import app.snapsync.ui.components.PrimaryButton
-import app.snapsync.ui.components.SecondaryButton
+import app.snapsync.ui.components.AppFooterTextActions
+import app.snapsync.ui.components.AppSectionDivider
+import app.snapsync.ui.components.CancelTextAction
+import app.snapsync.ui.components.SaveTextAction
 import app.snapsync.ui.components.StatusHint
 import androidx.compose.foundation.layout.ColumnScope
 import app.snapsync.ui.components.DialogCopy
@@ -244,7 +246,7 @@ private fun reconfigureAlbumNote(saveToAlbum: Boolean, kind: AlbumKind): String 
 )
 
 /**
- * Save and Cancel, over the standing statement of what changing these settings does.
+ * Cancel and Save, beneath the standing statement of what changing these settings does.
  *
  * That line used to say a change "never retracts photos already shared or received", and half of that
  * became false: narrowing what you share now re-projects the device manifest, so those photos stop being
@@ -262,7 +264,11 @@ private fun ColumnScope.SaveActions(enabled: Boolean, onSave: () -> Unit, onCanc
     ) {
         StatusHint(stringResource(Res.string.settings_stop_sharing_note))
         if (!enabled) StatusHint(stringResource(Res.string.join_both_off))
-        PrimaryButton(label = stringResource(Res.string.save), onClick = onSave, enabled = enabled)
-        SecondaryButton(label = stringResource(Res.string.cancel), onClick = onCancel)
+        // The joined screen's footer, mirrored: the line, then the actions as one row of text actions.
+        AppSectionDivider()
+        AppFooterTextActions {
+            CancelTextAction(label = stringResource(Res.string.cancel), onClick = onCancel)
+            SaveTextAction(label = stringResource(Res.string.save), onClick = onSave, enabled = enabled)
+        }
     }
 }
