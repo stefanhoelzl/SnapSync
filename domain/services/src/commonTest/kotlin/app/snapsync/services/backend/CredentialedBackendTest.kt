@@ -93,7 +93,7 @@ class CredentialedBackendTest {
     fun a_transport_failure_or_another_refusal_is_never_mistaken_for_a_rejected_credential() = runTest {
         val credential = ScriptedCredential("T1", recovered = "T2")
         val offline = Reply.Unreachable(IllegalStateException("offline"))
-        CredentialedBackend(ScriptedBackend { _, _ -> offline }, credential, versionGate = null).deviceFiles("D")
+        CredentialedBackend(ScriptedBackend { _, _ -> offline }, credential, versionGate = null).deviceFiles("E", "D")
         CredentialedBackend(ScriptedBackend { _, _ -> Reply.Refused(403, "no") }, credential, versionGate = null).renameEvent("E", "n")
         assertEquals(emptyList(), credential.rejections, "dropping a good credential on a blip costs a throttled re-attestation")
     }

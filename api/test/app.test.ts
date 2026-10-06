@@ -21,10 +21,12 @@ import {
   createRealApp,
   D,
   E,
+  joinEvent,
   NOW,
   recorder,
   rows,
   store,
+  storeWithEvent,
   TOKEN,
   ZONE,
 } from "./support/harness.ts";
@@ -148,7 +150,8 @@ Deno.test("window: /health still answers, and says the window is open", async ()
 
 Deno.test("window: with the flag off, the device API is untouched", async () => {
   // The default every non-migrating deploy ships. If this ever fails, `main` is serving 503s.
-  const db = await store();
+  const db = await storeWithEvent();
+  await joinEvent(db, E, D);
   const { calls, fetchImpl } = recorder();
   const res = await createApp({ config: CONFIG, db, fetch: fetchImpl }).request(BYTE_PATH, {
     method: "PUT",

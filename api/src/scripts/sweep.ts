@@ -4,22 +4,19 @@
 // relational store and to Bunny storage DIRECTLY (thousands of calls, no cap) and imports the Edge
 // Script's OWN db/lifecycle modules so the rules cannot drift between the two.
 //
-// IT MARKS FROM THE DATABASE AND DELETES FROM STORAGE. Only the bytes live in storage now; everything
-// the sweep reasons about — which events exist, who is a member, which keys are referenced, each
-// device's floor — is a query (`docs/architecture.md`). The per-event, per-device manifest fan-out the
-// root set used to require is gone.
+// IT MARKS FROM THE DATABASE AND DELETES FROM STORAGE. Only the bytes live in storage; everything the
+// sweep reasons about — which events exist, who is a member, which events still live — is a query
+// (`docs/architecture.md`).
 //
-// Two ordered phases, and the order still matters for its original reason: the asset phase evaluates
-// bytes against the events that SURVIVE the event phase. Relationally that is automatic — after the
-// event phase deletes, what remains in the store IS the surviving set — which is why no phase threads
-// an id list to the other.
+// Two ordered phases, and the order matters: the byte phase deletes the folders of the events the event
+// phase leaves NOT living, and the event phase deletes their rows (by cascade) first — row before byte.
 //
 //   EVENT phase — each event gets one `sweepVerdict` (`lifecycle.ts`). DROP past its derived delete-by
 //     (`max(createdAt, startsAt) + lifetimeSeconds` — the GUARANTEE): one `DELETE`, the cascade takes
-//     memberships and assets. COMPLETE once it is finished — EMPTY (ever joined, nobody still present;
-//     dependable now that devices retry a leave until it lands) or past the CLOCK (`max(endsAt,
-//     lastLandedAt) + 3 days`, ever joined): memberships and assets go, the row stays until DROP so a
-//     device still joined is told "completed". No notification is sent — see the delete site for why.
+//     memberships, assets and resources. COMPLETE once it is finished — EMPTY (ever joined, nobody still
+//     present; dependable now that devices retry a leave until it lands) or past the CLOCK (`max(endsAt,
+//     lastLandedAt) + 3 days`, ever joined): memberships, assets and resources go, the row stays until DROP
+//     so a device still joined is told "completed". No notification is sent — see the delete site for why.
 //
 //     ⚠️ THE DECISION RUNS INSIDE AN INTERACTIVE TRANSACTION, which executes against the PRIMARY. The
 //     emptiness rule is the exposed one: a stale replica that had not yet observed a REJOIN would see a
@@ -29,49 +26,39 @@
 //     records the matching hazard for storage: "a stale replica read is the one failure mode that would
 //     delete live data".
 //
-//   ASSET phase — collect a device's byte iff it is unreferenced by any surviving event AND was uploaded
-//     before the earliest surviving event the device is ACTIVE in (min startsAt; ∅ → +∞). Its resource
-//     ROW is deleted BEFORE the byte: a crash then leaves an orphan byte the next run collects, rather
-//     than a row claiming bytes that are gone. A device in NO surviving event additionally loses its
-//     device record and its attestation object. No wall-clock age fudge: a live upload is always ≥ its
-//     event's start ≥ the floor.
-//
-//   DIRECTORY step — bunny keeps a directory after its last object goes, so the asset phase leaves an
-//     empty `files/devices/<id>/` behind for every device it empties. Last of all, a device's directory
-//     is removed iff the device holds NO ROW (after this run's device collection) AND a fresh listing is
-//     empty. ⚠️ A directory DELETE is RECURSIVE, so the guard is ordered against an upload landing in
-//     between: a device without a row has no token that can still verify, so it must re-attest (creating
-//     the row), then upload — the row is checked first, then the directory is re-listed, and only an
-//     empty listing is deleted. A live device's empty directory is kept: a PUT may land in it any moment.
+//   BYTE phase — an event's bytes are one folder, `files/<eventId>/` (change `per-event-storage-layout`).
+//     Every such folder whose event no longer LIVES (dropped, completed) is deleted with ONE recursive
+//     DELETE. Each run deletes every one it finds, so a crash, or a byte that landed after its event
+//     closed, is healed by the next. Then the device rows: a device in NO surviving event, whose last token
+//     has expired, loses its record and its attestation.
 //
 // ⚠️ THERE IS NO LONGER A REFUSAL TO SWEEP AN EMPTY STORE. A guard used to throw when the database held
 // no rows at all while storage held device partitions — the signature of a store whose cutover backfill
 // had not run, and of one this sweep would then read as "nothing is referenced" and empty entirely. It was
-// removed deliberately (this change's design.md D9): it covered only the empty-store case and never the
-// wrong-but-populated-store one, and the state it was written for is past. Nothing now stands between a
-// store that does not describe this zone and the deletion of every byte in it.
+// removed deliberately (`changes/archive/2026-08-25-record-uploads-in-database` D9): it covered only the
+// empty-store case and never the wrong-but-populated-store one. Nothing now stands between a store that
+// does not describe this zone and the deletion of every event folder in it.
 //
-// The sweep touches `files/devices/` and nothing else in the zone. The object-store era's legacy
-// `events/` and `devices/<id>.json` objects have since been reclaimed by hand; nothing reads or writes
-// that layout.
+// The sweep touches `files/<eventId>/` folders and nothing else in the zone. `files/devices/` holds the
+// bytes written before migration 0010; rows still point into it per event, so the old per-byte collection
+// of it is retired, and the folder is deleted outright once its bytes are copied into their events
+// (change `per-event-storage-layout`, migration plan). `site/` is the landing page's.
 
 import { readSweepConfig } from "../config.ts";
 import { libsqlDb } from "../db-libsql.ts";
-import { decodeObjectName, deleteObject, deviceDir, type FetchLike, listDir } from "../storage.ts";
+import { deleteObject, eventDir, type FetchLike, listDir } from "../storage.ts";
 import {
-  activeFloors,
   collectableDevices,
   completeEvent,
   countDevices,
   type Db,
   deleteDevice,
   deleteEvent,
-  deleteResource,
-  deviceExists,
   deviceVersions,
   eventsWithCounts,
-  referencedKeys,
+  liveEventIds,
 } from "../db.ts";
+import { validateUUID } from "../validators.ts";
 import { sweepVerdict } from "../lifecycle.ts";
 import { compareVersions } from "../version.ts";
 import type { Config } from "../config.ts";
@@ -80,12 +67,11 @@ import type { Config } from "../config.ts";
 export type Tally = { count: number; bytes: number };
 
 /**
- * What one sweep run did — rendered by {@link formatSummary} into the GitHub Actions job log. Three
- * entity tiers, each split deleted/kept: EVENTS (markers + their manifests), DEVICES (a device's global
- * config + attestation records — one device may own two objects, so this counts DEVICES, not records),
- * FILES (the stored resource byte objects), and DIRS (the `files/devices/<id>/` directories). Files carry
- * both a `count` and a real `bytes` total so the log shows how much storage was actually reclaimed, not
- * just how many objects.
+ * What one sweep run did — rendered by {@link formatSummary} into the GitHub Actions job log. Entity
+ * tiers, each split deleted/kept: EVENTS, DEVICES (a device's record, attestation included), FILES (the
+ * byte objects in the event folders), and DIRS (the `files/<eventId>/` folders). Files carry both a
+ * `count` and a real `bytes` total so the log shows how much storage was actually reclaimed, not just how
+ * many objects.
  *
  * Beside the tiers, `versions` counts the KEPT devices by app version and platform — what raising
  * `minAppVersion` would lock out (capability `app-update-required`).
@@ -120,15 +106,10 @@ export type SweepDeps = {
   log?: (msg: string) => void;
 };
 
-/** Parse a stored `LastChanged` / `startsAt` to epoch ms, or `NaN` when unparseable. */
-function ms(s: string | undefined): number {
-  return s ? Date.parse(s) : NaN;
-}
-
 /**
- * Run the two-phase sweep and its directory step. THROWS only on a SYSTEMIC failure (cannot list the
- * top-level `files/devices/` directory — an auth failure surfaces here). Per-event and per-object failures are
- * caught, counted in `summary.errors`, and never abort the run (deletes are idempotent).
+ * Run the two-phase sweep. THROWS only on a SYSTEMIC failure (cannot list the top-level `files/`
+ * directory — an auth failure surfaces here). Per-event failures are caught, counted in `summary.errors`,
+ * and never abort the run (deletes are idempotent).
  */
 export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
   const { fetch: f, config, db, now, dryRun } = deps;
@@ -155,9 +136,8 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
         summary.events.kept++;
         continue;
       }
-      // A completed event keeps its row but contributes no reference and no floor: the asset phase
-      // below treats it exactly like a deleted one (its memberships are gone in a real run; in a dry run
-      // the id set stands in for that).
+      // A completed event keeps its row but no longer lives: the byte phase below deletes its folder
+      // exactly like a deleted one's (in a dry run nothing was deleted, and the id set stands in for that).
       stale.push(event.eventId);
       if (verdict === "complete") {
         if (dryRun) {
@@ -187,63 +167,47 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
     }
   });
 
-  // ── ASSET PHASE ─────────────────────────────────────────────────────────────────────────────────
-  // Against the events that SURVIVE — which, after the phase above, is simply what the store still holds.
-  // The stale ids are excluded explicitly rather than relied on to be gone: in a DRY RUN nothing was
-  // deleted, so the reads would otherwise still see them and report a collection a real run would not
-  // make. Passing the set makes both modes evaluate the identical surviving world.
+  // ── BYTE PHASE ──────────────────────────────────────────────────────────────────────────────────
+  // An event's bytes are ONE folder, `files/<eventId>/` (change `per-event-storage-layout`, D7). Its rows
+  // went with its memberships — the phase above deleted them, row before byte — so what is left is the
+  // folder of every event that no longer lives: dropped, completed, or completed by this run. That also
+  // takes a byte that landed after its event closed (a PUT that passed the membership check just before)
+  // and a folder a crashed run left: each run deletes every such folder it finds, so the step self-heals.
+  //
+  // LIST FIRST, THEN READ THE LIVE SET ON THE PRIMARY. A listed folder had its event row committed before
+  // its first byte (a write needs a membership), so the later primary read sees it; the reverse order could
+  // miss an event created in between, and a stale replica could miss one outright — either deletes a live
+  // event's photos, the one failure this sweep must never have.
+  //
+  // `files/devices/` — the bytes written before migration 0010 — is not an event folder and is not touched
+  // here: its rows now point into it per event, and it is deleted outright once copied out.
   const staleIds = new Set(stale);
-  const referenced = await referencedKeys(db, staleIds);
-  const floors = await activeFloors(db, staleIds);
-
-  // Walk every device's byte partition and collect the unreferenced, below-floor bytes.
-  const deviceDirEntries = await listDir(f, config, `files/devices/`);
-  const deviceIds = deviceDirEntries.filter((e) => e.IsDirectory).map((e) => e.ObjectName);
-  // The devices whose directory this run leaves holding bytes, or could not finish walking — neither is
-  // a candidate for the directory step.
-  const occupied = new Set<string>();
-
-  for (const deviceId of deviceIds) {
-    // A device with no active surviving membership has floor `+∞`: nothing of its is above the floor.
-    const floorMs = floors.has(deviceId) ? ms(floors.get(deviceId)) : Infinity;
+  const top = await listDir(f, config, `files/`);
+  const live = await db.transaction((tx) => liveEventIds(tx));
+  for (const entry of top.filter((e) => e.IsDirectory)) {
+    const eventId = entry.ObjectName;
+    if (!validateUUID(eventId)) continue; // `devices`, and anything this sweep did not write
+    const keep = live.has(eventId) && !staleIds.has(eventId);
     try {
-      const files = await listDir(f, config, deviceDir(deviceId));
-      for (const e of files.filter((e) => !e.IsDirectory)) {
-        // Resource rows carry the BARE object name, so decode the stored `ObjectName` before comparing —
-        // a percent-encoded filename must still match.
-        const key = decodeObjectName(e.ObjectName);
-        if (referenced.has(`${deviceId}/${key}`)) {
-          occupied.add(deviceId);
-          summary.files.kept.count++;
-          summary.files.kept.bytes += e.Length;
-          continue;
-        }
-        const uploadedMs = ms(e.LastChanged);
-        // Retain when the upload time is unparseable (fail safe) or at/after the floor (a live upload).
-        if (Number.isNaN(uploadedMs) || uploadedMs >= floorMs) {
-          occupied.add(deviceId);
-          summary.files.kept.count++;
-          summary.files.kept.bytes += e.Length;
-          continue;
-        }
-        if (dryRun) {
-          log(`[dry-run] would collect byte files/devices/${deviceId}/${e.ObjectName}`);
-          summary.files.deleted.count++;
-          summary.files.deleted.bytes += e.Length;
-          continue;
-        }
-        // ROW FIRST, THEN BYTE (design.md D8). A crash between them leaves an orphan byte that is still
-        // unreferenced and still below the floor, so the next run collects it. The reverse order would
-        // leave a row asserting `uploaded = 1` for bytes that are gone.
-        await deleteResource(db, deviceId, key);
-        await deleteObject(f, config, `${deviceDir(deviceId)}${e.ObjectName}`);
-        summary.files.deleted.count++;
-        summary.files.deleted.bytes += e.Length;
+      const files = (await listDir(f, config, eventDir(eventId))).filter((e) => !e.IsDirectory);
+      const tally = keep ? summary.files.kept : summary.files.deleted;
+      tally.count += files.length;
+      tally.bytes += files.reduce((n, e) => n + e.Length, 0);
+      if (keep) {
+        summary.dirs.kept++;
+        continue;
       }
+      if (dryRun) {
+        log(`[dry-run] would delete ${eventDir(eventId)} (${files.length} file(s))`);
+      } else {
+        await deleteObject(f, config, eventDir(eventId));
+        log(`deleted ${eventDir(eventId)} (${files.length} file(s))`);
+      }
+      summary.dirs.deleted++;
     } catch (e) {
-      occupied.add(deviceId);
+      summary.dirs.kept++;
       summary.errors++;
-      log(`device ${deviceId} byte collection failed (continuing): ${e}`);
+      log(`event ${eventId} byte folder deletion failed (continuing): ${e}`);
     }
   }
 
@@ -287,62 +251,7 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
     log(`device version read failed (continuing): ${err}`);
   }
 
-  // ── DIRECTORY STEP ──────────────────────────────────────────────────────────────────────────────
-  // Last, so it sees this run's device collection.
-  await removeEmptiedDirs(deps, deviceIds, occupied, new Set(collectable), summary);
-
   return summary;
-}
-
-/**
- * The directory step (see the header for why the order of its three checks is what makes a RECURSIVE
- * delete safe): remove each device directory not in `occupied` whose device holds no row and whose
- * fresh listing is empty. A dry run deletes nothing and counts what a real run would remove.
- */
-async function removeEmptiedDirs(
-  deps: SweepDeps,
-  deviceIds: readonly string[],
-  occupied: ReadonlySet<string>,
-  collected: ReadonlySet<string>,
-  summary: SweepSummary,
-): Promise<void> {
-  const { fetch: f, config, db, dryRun } = deps;
-  const log = deps.log ?? console.log;
-  for (const deviceId of deviceIds) {
-    if (occupied.has(deviceId)) {
-      summary.dirs.kept++;
-      continue;
-    }
-    try {
-      if (dryRun) {
-        // Nothing was deleted, so neither a re-list nor the row check would see what a real run would:
-        // a row this run's device collection would drop counts as gone, and the walk has already
-        // established that every byte here was a candidate.
-        if (collected.has(deviceId) || !(await deviceExists(db, deviceId))) {
-          log(`[dry-run] would remove dir ${deviceDir(deviceId)}`);
-          summary.dirs.deleted++;
-        } else {
-          summary.dirs.kept++;
-        }
-        continue;
-      }
-      if (await deviceExists(db, deviceId)) {
-        summary.dirs.kept++;
-        continue;
-      }
-      // The listing that decides, taken AFTER the row check — never the one the asset walk used.
-      if ((await listDir(f, config, deviceDir(deviceId))).length > 0) {
-        summary.dirs.kept++;
-        continue;
-      }
-      await deleteObject(f, config, deviceDir(deviceId));
-      summary.dirs.deleted++;
-    } catch (err) {
-      summary.dirs.kept++;
-      summary.errors++;
-      log(`device ${deviceId} dir removal failed (continuing): ${err}`);
-    }
-  }
 }
 
 /**

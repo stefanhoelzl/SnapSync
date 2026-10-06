@@ -52,9 +52,12 @@ suspend fun Rig.uploadAll() {
     cycle()
 }
 
-/** The object keys the backend lists for [device] (this device by default). */
-suspend fun Rig.objects(device: String? = null): Set<String> =
-    deviceJson("backend/objects", *listOfNotNull(device?.let { "device" to it }).toTypedArray())
+/** The object keys the backend lists for [device] (this device by default) in [event] (the joined one by default). */
+suspend fun Rig.objects(device: String? = null, event: String? = null): Set<String> =
+    deviceJson(
+        "backend/objects",
+        *listOfNotNull(device?.let { "device" to it }, event?.let { "event" to it }).toTypedArray(),
+    )
         .getValue("objects").jsonArray.mapTo(mutableSetOf()) { it.jsonPrimitive.content }
 
 /** The asset ids the event's union serves, with the roles each is served with. */

@@ -382,22 +382,22 @@ runtime has no scheduler and a whole-store walk would exceed 50 subrequests / 30
   database and deletes from storage**. It makes no request to the Edge Script and sends no notification.
   Members find out the event is gone on their next foreground fetch.
 - **Event phase:** delete every event past its derived delete-by (`max(createdAt, startsAt) +
-  lifetimeSeconds`, the guarantee) or **empty** (has memberships and none are active). Emptiness is
-  opportunistic, not promised. An event nobody ever joined is not "empty". The decision runs inside an
-  interactive transaction against the primary. One `DELETE` cascades memberships and assets.
-- **Asset phase** (over the surviving events): collect a byte under `files/devices/<id>/` only if no
-  surviving event references it **and** it was uploaded before the earliest `startsAt` of the events
-  that device is active in (no events means +∞). The `resources` row is deleted **before** the byte, so a
-  crash leaves an orphan byte that the next run collects. A device with no membership left loses its
-  `devices` row **only after its last token has expired**. Deleting it earlier would push the device into
-  a re-attestation loop every night.
-- **Directory step** (last): bunny keeps a directory after its last object is deleted, so a device's
-  emptied `files/devices/<id>/` is removed only if the device has **no `devices` row** (checked after
-  this run's device collection) **and** a fresh re-listing is empty. A directory `DELETE` is recursive.
-  The row is checked first and the directory re-listed right before the delete, because a device without
-  a row must re-attest before it can upload. A live device's empty directory is kept.
-- **Storage it touches:** only `files/devices/`. Never `site/`.
-- **Failure mode:** best-effort per object. A single failed delete is logged and counted. The run exits
+  lifetimeSeconds`, the guarantee), and complete one that is **empty** (has memberships and none are
+  present) or past its clock. Emptiness is opportunistic, not promised. An event nobody ever joined is not
+  "empty". The decision runs inside an interactive transaction against the primary. One `DELETE` cascades
+  memberships, assets and resources; a completion deletes the memberships, and with them the same.
+- **Byte phase:** an event's bytes are one folder, `files/<eventId>/`. The sweep lists `files/`, then reads
+  which events still live (present and not completed) **on the primary**, in that order — a folder listed
+  had its event row committed first, and a stale read could delete a live event's photos. Every folder
+  named by an event id whose event no longer lives is deleted with **one recursive `DELETE`**, rows having
+  gone first by cascade. Any such folder it finds goes, so a crash between the phases, or a byte that
+  landed just after the event completed, is healed by the next run. A device with no membership left
+  loses its `devices` row **only after its last token has expired**. Deleting it earlier would push the
+  device into a re-attestation loop every night.
+- **Storage it touches:** only the `files/<eventId>/` folders. Never `site/`, and never `files/devices/`:
+  that holds the bytes written before migration 0010, still served through rows that point at them, and is
+  deleted outright once they are copied into their events (`changes/per-event-storage-layout`).
+- **Failure mode:** best-effort per folder. A single failed delete is logged and counted. The run exits
   non-zero only on a systemic failure (auth, or storage cannot be listed at all). The summary (events,
   devices, files and dirs deleted and kept, byte sizes, error count) goes to the job's Summary panel,
   followed by the kept devices counted by app version (rows, newest first, `unknown` for a row that never
@@ -408,7 +408,7 @@ runtime has no scheduler and a whole-store walk would exceed 50 subrequests / 30
 
 Decision records: `changes/archive/2026-07-21-nightly-cleanup`,
 `changes/archive/2026-07-24-decouple-event-window-from-lifetime`,
-`changes/archive/2026-08-25-record-uploads-in-database`.
+`changes/archive/2026-08-25-record-uploads-in-database`, `changes/per-event-storage-layout`.
 
 ---
 

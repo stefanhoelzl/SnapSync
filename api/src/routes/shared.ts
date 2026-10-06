@@ -4,7 +4,7 @@
 import { Hono } from "hono";
 import { verifyToken } from "../attest.ts";
 import {
-  downloadKey,
+  downloadStoragePath,
   type EventRow,
   insertEvent,
   leaveStatements,
@@ -348,9 +348,8 @@ export function sharedRoutes(deps: RouteDeps): Hono {
       const urlOf = async (r: typeof rows[number]): Promise<string | undefined> => {
         if (!withUrls) return undefined;
         // v1 is FROZEN for builds older than 0.4: its contract asserts the presign (decision record D3).
-        // From `key`, never `filename`: the object is stored under its key, and a capture name that
-        // differs would presign a URL that 404s at download while everything else looked right.
-        if (version === 1) return await presignDownloadUrl(aws, config, r.deviceId, r.key);
+        // From the row's `path`, the one place that says where the bytes are.
+        if (version === 1) return await presignDownloadUrl(aws, config, r.path);
         return `${deviceOrigin(config)}/api/v${version}${
           downloadPath(eventId, r.deviceId, r.assetId, r.role)
         }`;
@@ -418,10 +417,10 @@ export function sharedRoutes(deps: RouteDeps): Hono {
       return c.text("not found", 404);
     }
     return await orUpstream502(c, `download: lookup failed for ${eventId}`, async () => {
-      const key = await downloadKey(db, eventId, deviceId, assetId, role);
+      const path = await downloadStoragePath(db, eventId, deviceId, assetId, role);
       c.header("Cache-Control", NO_CACHE);
-      if (key === null) return c.text("not found", 404);
-      return c.redirect(await presignDownloadUrl(aws, config, deviceId, key), 302);
+      if (path === null) return c.text("not found", 404);
+      return c.redirect(await presignDownloadUrl(aws, config, path), 302);
     });
   });
 

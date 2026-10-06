@@ -6,13 +6,14 @@ import {
   deviceFiles,
   enroll,
   presentMembers,
+  presentMembership,
   publishStatements,
   pushTokensForEvent,
   recordResource,
 } from "../db.ts";
 import { identityFromLegacyKey } from "../legacy-v1.ts";
 import { unsentSummary } from "../push.ts";
-import { byteKey } from "../storage.ts";
+import { eventBytePath, storageKey } from "../storage.ts";
 import { validateFilename, validateUUID } from "../validators.ts";
 import { parseManifestAssets } from "./manifest.ts";
 import {
@@ -57,10 +58,13 @@ export function v1Routes({ fetchImpl, config, db, now, aws, pushSender }: RouteD
   // fetches directly from bunny's S3 endpoint.)
   const byteFile = new Hono();
 
-  // Upload — GATED by the device token like every other route, but it reads NO EVENT: bytes are
-  // device-partitioned and event-independent, so there is nothing to resolve. Stream the body straight
-  // into one bunny native PUT at `files/devices/<deviceId>/<filename>`, then best-effort record the
-  // resource row. Faithful: 201 only on a confirmed store; last-write-wins (no existence check on the key).
+  // Upload — GATED by the device token like every other route. Its URL names no event, so the bytes are
+  // filed under the device's ONE present membership (change `per-event-storage-layout`, D4), at that
+  // event's deterministic path; with none there is nothing they could belong to, and the route answers
+  // `409`. The identity is parsed out of the object name first — the path needs it — so a name that is not
+  // the client's key shape is now refused before anything is stored (every key a shipped client produces
+  // parses). Then the body streams into one bunny native PUT, and the resource row is recorded
+  // best-effort. Faithful: 201 only on a confirmed store; last-write-wins.
   byteFile.put("/", async (c) => {
     const deviceId = c.req.param("deviceId");
     const filename = c.req.param("filename");
@@ -71,16 +75,21 @@ export function v1Routes({ fetchImpl, config, db, now, aws, pushSender }: RouteD
       return c.text("invalid key", 400);
     }
     if (!actsFor(c, deviceId)) return notThisDevice(c);
+    // `resources` is keyed by IDENTITY, and this URL carries only the object NAME — so v1 recovers the
+    // identity by parsing it (`docs/architecture.md`; the parse is v1-only and is deleted with v1).
+    const identity = identityFromLegacyKey(filename);
+    if (!identity) return c.text("invalid key", 400);
+    const eventId = await tryUpstream(
+      c,
+      `upload: membership read failed for ${deviceId}`,
+      () => presentMembership(db, deviceId),
+    );
+    if (eventId instanceof Response) return eventId;
+    if (eventId === null) return c.text("no event", 409);
+    const path = await eventBytePath(eventId, deviceId, identity.assetId, identity.role);
 
     const contentType = c.req.header("content-type") ?? "application/octet-stream";
-    const refused = await streamPut(
-      fetchImpl,
-      config,
-      c,
-      "upload",
-      byteKey(deviceId, filename),
-      contentType,
-    );
+    const refused = await streamPut(fetchImpl, config, c, "upload", storageKey(path), contentType);
     if (refused) return refused;
     // Bunny confirmed the stored object. Record the upload (`docs/architecture.md`) — BEST-EFFORT: this
     // route's success is "the bytes landed", and failing it because a bookkeeping row did not land would
@@ -94,30 +103,19 @@ export function v1Routes({ fetchImpl, config, db, now, aws, pushSender }: RouteD
     // `uploaded` at 0 while the device believed it had published, and the photo would be invisible to
     // every other member with no error anywhere. Do not edit one of those two rules alone.
     try {
-      // `resources` is keyed by IDENTITY now, and this URL carries only the object NAME — so v1 recovers
-      // the identity by parsing it (`docs/architecture.md`; the parse is v1-only and is deleted with v1).
-      // A name that is not the client's key shape has no identity to be filed under: the route refuses it
-      // rather than inventing one. Every key in the deployed store parses, so this narrowing affects
-      // inputs no shipped client produces.
-      const identity = identityFromLegacyKey(filename);
-      if (identity) {
-        await recordResource(db, {
-          deviceId,
-          assetId: identity.assetId,
-          role: identity.role,
-          key: filename,
-          contentType: c.req.header("content-type") ?? "",
-          // v1's URL does not carry the capture name; the object name is the honest stand-in, and the
-          // manifest publish overwrites it with the real one on the same cycle.
-          filename,
-        });
-      } else {
-        console.error(
-          `upload: unparseable legacy key, not recorded: ${byteKey(deviceId, filename)}`,
-        );
-      }
+      await recordResource(db, {
+        eventId,
+        deviceId,
+        assetId: identity.assetId,
+        role: identity.role,
+        path,
+        contentType: c.req.header("content-type") ?? "",
+        // v1's URL does not carry the capture name; the object name is the honest stand-in, and the
+        // manifest publish overwrites it with the real one on the same cycle.
+        filename,
+      });
     } catch (e) {
-      console.error(`upload: could not record ${byteKey(deviceId, filename)}: ${e}`);
+      console.error(`upload: could not record ${path}: ${e}`);
     }
     return c.body(null, 201);
   });
@@ -177,7 +175,17 @@ export function v1Routes({ fetchImpl, config, db, now, aws, pushSender }: RouteD
       c,
       `device-manifest: publish failed for ${eventId}/${deviceId}`,
       async () => {
-        await db.batch(publishStatements(eventId, deviceId, assets, { legacy: true }));
+        // Where v1's byte route writes each listed resource for this event — what a repaired row points at.
+        const paths = new Map<string, string>();
+        for (const a of assets) {
+          for (const r of a.resources) {
+            paths.set(
+              `${a.assetId} ${r.role}`,
+              await eventBytePath(eventId, deviceId, a.assetId, r.role),
+            );
+          }
+        }
+        await db.batch(publishStatements(eventId, deviceId, assets, { legacy: true, paths }));
         return c.body(null, 201);
       },
     );
@@ -191,17 +199,21 @@ export function v1Routes({ fetchImpl, config, db, now, aws, pushSender }: RouteD
   // consumer: the rejoin reconcile seeds `COMPLETED` rows from it (capability
   // `photo-sharing`), and seeding from bytes the backend cannot vouch for would suppress
   // an upload that never happened.
+  //
+  // It answers for the device's PRESENT membership (change `per-event-storage-layout`, D5) — the event a v1
+  // build has just joined when it asks — and `[]` with none, never another event's resources.
   v1Only.get("/files/devices/:deviceId", async (c) => {
     const deviceId = ownDeviceParam(c, "invalid device");
     if (deviceId instanceof Response) return deviceId;
     return await orUpstream502(c, `list: device listing failed for ${deviceId}`, async () => {
-      const stored = await deviceFiles(db, deviceId);
+      const eventId = await presentMembership(db, deviceId);
+      const stored = eventId === null ? [] : await deviceFiles(db, eventId, deviceId);
       c.header("Cache-Control", NO_CACHE); // each `url` is a time-limited presigned S3 URL
       const files: FileEntry[] = await Promise.all(stored.map(async (e) => ({
-        // `filename` on this route is the STORED OBJECT NAME, not the capture name — that is what the
+        // `filename` on this route is the client's OBJECT NAME, not the capture name — that is what the
         // rejoin reconciler matches its ledger keys against.
         filename: e.key,
-        url: await presignDownloadUrl(aws, config, deviceId, e.key),
+        url: await presignDownloadUrl(aws, config, e.path),
       })));
       return c.json(files);
     });

@@ -8,6 +8,7 @@
 
 import { assert, assertEquals } from "@std/assert";
 import type { Db } from "../src/db.ts";
+import { eventBytePath } from "../src/storage.ts";
 import {
   as,
   assertPresigned,
@@ -87,11 +88,11 @@ type Asset = { assetId: string; resources: Record<string, unknown>[] };
 
 // ── The download redirect (D1–D2) ─────────────────────────────────────────────────────────────────
 
-Deno.test("redirect → 302 to a 7-day presign of the stored key, uncached, with no token and no version", async () => {
+Deno.test("redirect → 302 to a 7-day presign of the stored path, uncached, with no token and no version", async () => {
   const { db } = await eventWith(["A"]);
   const res = await bare(db).request(redirectPath(2, "A"));
   assertEquals(res.status, 302);
-  assertPresigned(res.headers.get("location")!, `files/devices/${D}/A-primary.heic`);
+  assertPresigned(res.headers.get("location")!, await eventBytePath(E, D, "A", "primary"));
   assertEquals(res.headers.get("Cache-Control"), "no-store, no-cache, max-age=0");
   assertEquals(
     (await bare(db).request(redirectPath(1, "A"))).status,
@@ -140,7 +141,7 @@ Deno.test("urls → v2's default url is the stable address; urls=false omits it;
   ]);
 
   const v1 = await (await bare(db).request(V1_UNION)).json() as Asset[];
-  assertPresigned(String(v1[0].resources[0].url), `files/devices/${D}/A-primary.heic`);
+  assertPresigned(String(v1[0].resources[0].url), await eventBytePath(E, D, "A", "primary"));
   const v1none = await (await bare(db).request(`${V1_UNION}?urls=false`)).json() as Asset[];
   assertEquals(v1none[0].resources[0].url, undefined, "urls=false is additive on v1 too");
   db.close();

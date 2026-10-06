@@ -83,7 +83,7 @@ internal suspend fun AppCore.importsReady(): Boolean {
 internal fun AppCore.membershipEntry(notifyLeave: suspend (eventId: String) -> Unit): MembershipEntry = MembershipEntry(
     stopUploads = { uploadTransitions.onLeave() },
     notifyLeave = notifyLeave,
-    loadShareSet = { shareSetLoad.load() },
+    loadShareSet = { eventId -> shareSetLoad.load(eventId) },
     adoptReceived = { cfg -> receivedPhotoAdoption.adopt(cfg) },
     saveConfig = { cfg -> services.config.save(cfg) },
     startUploads = { uploadTransitions.onJoin() },

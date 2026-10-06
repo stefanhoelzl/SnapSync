@@ -15,7 +15,7 @@ import { assert, assertEquals } from "@std/assert";
 import { createApp as createRealApp, type Deps, type FetchLike } from "../../src/app.ts";
 import { mintToken } from "../../src/attest.ts";
 import { sqliteDb } from "../../src/dev/db-sqlite.ts";
-import { type Db, insertEvent } from "../../src/db.ts";
+import { type Db, enroll, insertEvent } from "../../src/db.ts";
 import { replay } from "../../src/dev/replay.ts";
 
 export const NOW = Date.parse("2026-07-14T12:00:00Z");
@@ -144,18 +144,30 @@ export async function rows(db: Db, sql: string, args: unknown[] = []) {
 }
 
 /**
+ * Make `deviceId` a member of `eventId` (`sharing`), straight through the store and with no route — so no
+ * app version or other side effect is recorded. A byte route files its upload under a PRESENT membership
+ * (change `per-event-storage-layout`), so every upload a test makes starts here.
+ */
+export async function joinEvent(db: Db, eventId: string, deviceId: string) {
+  const outcome = await enroll(db, eventId, deviceId, new Date(NOW).toISOString());
+  assertEquals(outcome, "enrolled");
+}
+
+/**
  * Seed one resource row directly, expressed as the FACT a test means rather than as the columns that
- * happen to hold it: this device has (or has not) had these bytes recorded as arrived.
+ * happen to hold it: this device has (or has not) had these bytes recorded as arrived, in this event.
  *
  * Every direct `INSERT INTO resources` in the suite goes through here. That is the whole point — the
  * column list is schema knowledge, and keeping it in one place means a schema change edits one function
- * instead of every test that needed a starting state.
+ * instead of every test that needed a starting state. The membership must exist (the row is its child).
  */
 export async function seedResource(db: Db, r: {
+  eventId: string;
   deviceId: string;
-  key: string;
   assetId?: string;
   role?: string;
+  /** Where the bytes are. Defaults to the pre-0010 layout's `files/devices/<deviceId>/<assetId>-<role>.heic`. */
+  path?: string;
   contentType?: string;
   filename?: string;
   /** Whether the backend has recorded this resource's bytes as arrived. Defaults to true. */
@@ -166,16 +178,19 @@ export async function seedResource(db: Db, r: {
   // not-yet-uploaded resource is asking for no row at all — the same fact the retired `uploaded = 0`
   // expressed, spelled the way the store now holds it.
   if ((r.uploaded ?? true) === false) return;
+  const assetId = r.assetId ?? "A";
+  const role = r.role ?? "primary";
   await db.execute(
-    `INSERT INTO resources (device_id, asset_id, role, key, content_type, filename)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO resources (event_id, device_id, asset_id, role, path, content_type, filename)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
     [
+      r.eventId,
       r.deviceId,
-      r.assetId ?? "A",
-      r.role ?? "primary",
-      r.key,
+      assetId,
+      role,
+      r.path ?? `files/devices/${r.deviceId}/${assetId}-${role}.heic`,
       r.contentType ?? "image/heic",
-      r.filename ?? `Capture ${r.key}`,
+      r.filename ?? `IMG_${assetId}.HEIC`,
     ],
   );
 }

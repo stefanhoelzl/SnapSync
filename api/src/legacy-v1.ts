@@ -55,19 +55,16 @@ export function identityFromLegacyKey(key: string): LegacyIdentity | null {
 }
 
 /**
- * Compose the stored object name for a resource: `<assetId>-<role>.<ext>`, the extension taken from the
- * capture filename and lowercased, falling back to `bin` when the name carries none.
+ * Compose a resource's OBJECT NAME: `<assetId>-<role>.<ext>`, the extension taken from the capture filename
+ * and lowercased, falling back to `bin` when the name carries none.
  *
- * This is v1's layout, and v2 keeps it DELIBERATELY. The extension is redundant for identity — v2's
- * primary key is `(device_id, asset_id, role)` — but the object name is an ADDRESS, and changing an
- * address strands what is already stored at the old one: a device moving from v1 to v2 would consider
- * none of its bytes uploaded and re-upload its entire library, while an event with a member on each
- * version would need two ways to name one photo. Keeping it also means the stored object still carries a
- * type-bearing suffix, so nothing downstream has to infer one.
+ * It no longer names where anything is stored — since migration 0010 a resource's `path` does (change
+ * `per-event-storage-layout`). It survives as the WIRE's name for a resource: the union's `key` and v1's
+ * listing `filename`, which installed clients key their ledger and download records by, are derived with
+ * it from `asset_id`, `role` and `filename`, so the string they see never changes.
  *
  * Mirrors the client's `uploadKey` exactly (`:domain` `model/UploadKeys.kt`). Lives beside the parse it
- * inverts, and outlives v1 only in the sense that v2 calls it — when v1 goes, this function moves out of
- * this file rather than dying with it.
+ * inverts, and outlives v1: when v1 goes, this function moves out of this file rather than dying with it.
  */
 export function legacyKeyFor(assetId: string, role: string, originalFilename: string): string {
   const dot = originalFilename.lastIndexOf(".");

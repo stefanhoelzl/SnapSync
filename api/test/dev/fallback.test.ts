@@ -56,6 +56,8 @@ Deno.test("the fallback token is minted for the device every device route names"
     assertEquals(deviceNamedBy(`/api/${v}/events/${E}/devices/${D}/manifest`), D);
     assertEquals(deviceNamedBy(`/api/${v}/files/devices/${D}`), D);
     assertEquals(deviceNamedBy(`/api/${v}/files/devices/${D}/ASSET/primary`), D);
+    assertEquals(deviceNamedBy(`/api/${v}/events/${E}/files/devices/${D}/ASSET/primary`), D);
+    assertEquals(deviceNamedBy(`/api/${v}/events/${E}/files/devices/${D}`), D);
   }
   // The FIRST `devices` segment is the device, even when an asset happens to be called `devices`.
   assertEquals(deviceNamedBy(`/api/v2/files/devices/${D}/devices/primary`), D);

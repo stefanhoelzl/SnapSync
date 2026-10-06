@@ -79,7 +79,7 @@ internal fun ClauseList<BackendState, EdgeSubject<Backend>>.listingClauses() {
     }
 
     clause("DEVICE_FILES_A_FRESH_DEVICE_HOLDS_NOTHING", BackendState.SERVING) { s ->
-        assertEquals(emptyList(), assertOk(s.port.deviceFiles(s.token, s.seeded.deviceId)))
+        assertEquals(emptyList(), assertOk(s.port.deviceFiles(s.token, s.seeded.eventId, s.seeded.deviceId)))
     }
 
     // The listing answers in identity terms — asset, role and a filename — and the app recomposes the storage key
@@ -87,12 +87,21 @@ internal fun ClauseList<BackendState, EdgeSubject<Backend>>.listingClauses() {
     // which of the two names (capture name or storage key, both carrying the extension) the backend echoes.
     clause("DEVICE_FILES_AN_UPLOAD_IS_LISTED_BY_ITS_IDENTITY", BackendState.DEVICE_UPLOADED) { s ->
         val asset = s.seeded.asset!!
-        val listed = assertOk(s.port.deviceFiles(s.token, s.seeded.deviceId)).single()
+        val listed = assertOk(s.port.deviceFiles(s.token, s.seeded.eventId, s.seeded.deviceId)).single()
         assertEquals(asset.assetId, listed.assetId)
         assertEquals(ResourceRole.PRIMARY, listed.role)
         assertEquals(asset.key(ResourceRole.PRIMARY), uploadKey(listed.assetId, listed.role, listed.filename), "the key recomposes exactly")
     }
+
+    // Each event holds its own bytes (change `per-event-storage-layout`): the device marks every listed resource
+    // uploaded, so a resource stored for one event listed under another would never reach that one.
+    clause("DEVICE_FILES_LISTS_ONLY_THE_EVENT_ASKED_ABOUT", BackendState.DEVICE_UPLOADED) { s ->
+        assertEquals(emptyList(), assertOk(s.port.deviceFiles(s.token, ANOTHER_EVENT, s.seeded.deviceId)))
+    }
 }
+
+/** An event id no seeded state uses — the "another event" a listing must not answer with this one's resources. */
+private const val ANOTHER_EVENT = "0e1a5e00-0000-4000-8000-000000000001"
 
 /** A read of this state's event union as its member reads it, from [cursor] (`null`: all of it). */
 private suspend fun EdgeSubject<Backend>.union(cursor: Long? = null): Reply<UnionPage> =

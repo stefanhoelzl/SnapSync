@@ -11,6 +11,7 @@ import type { Config } from "../../src/config.ts";
 import type { FetchLike } from "../../src/storage.ts";
 import { sqliteDb } from "../../src/dev/db-sqlite.ts";
 import { type Db, insertEvent, publishStatements, recordAppVersion } from "../../src/db.ts";
+import { eventBytePath } from "../../src/storage.ts";
 import { replay } from "../../src/dev/replay.ts";
 import { DEAD_TOKEN, enrolDevice, LIVE_TOKEN } from "../support/db.ts";
 import { NOW } from "../support/harness.ts";
@@ -128,49 +129,51 @@ async function db(): Promise<Db & { close(): void }> {
   return d;
 }
 
-/** Enroll `deviceId` in `eventId` and record the resources it shares there, by key. */
+/**
+ * Enroll `deviceId` in `eventId` and record the resources it shares there, one per asset id — each row
+ * pointing at the event's own path for it, where the byte phase looks. Returns those paths.
+ */
 async function member(
   d: Db,
   eventId: string,
   deviceId: string,
-  keys: string[],
+  assetIds: string[],
   state: "sharing" | "left" = "sharing",
-) {
+): Promise<string[]> {
   await d.execute(
     `INSERT INTO memberships (event_id, device_id, state, joined_at) VALUES (?, ?, ?, '2026-07-01T00:00:00Z')`,
     [eventId, deviceId, state],
   );
-  if (keys.length === 0) return;
-  // One asset per key, its id derived from the filename. Distinct ids matter: `resources` is
-  // DEVICE-scoped and joins to `event_assets` by `(device_id, asset_id)`, so two genuinely different
-  // photos sharing an id would each pull in the other's resources — which is not a schema flaw but the
-  // property that lets one uploaded byte serve two events. A fixture must not fake a collision.
+  if (assetIds.length === 0) return [];
+  const paths = new Map<string, string>();
+  for (const id of assetIds) {
+    paths.set(`${id} primary`, await eventBytePath(eventId, deviceId, id, "primary"));
+  }
   await d.batch(publishStatements(
     eventId,
     deviceId,
-    keys.map((k) => {
-      const filename = k.split("/").pop()!;
-      return {
-        assetId: filename.replace(/\.[^.]+$/, ""),
-        creationDate: "2026-07-01T00:00:00Z",
-        // `key` is the BARE stored object name; the full path is the storage fake's business.
-        resources: [{ role: "primary", contentType: "image/heic", key: filename, filename }],
-      };
-    }),
+    assetIds.map((id) => ({
+      assetId: id,
+      creationDate: "2026-07-01T00:00:00Z",
+      resources: [{
+        role: "primary",
+        contentType: "image/heic",
+        key: `${id}-primary.heic`,
+        filename: `${id}.heic`,
+      }],
+    })),
     // The fixture needs the resource rows too, which only the legacy (v1) publish writes — under v2 the
     // byte upload is the sole writer of that table. `legacy: true` keeps this a one-call fixture.
-    { legacy: true },
+    { legacy: true, paths },
   ));
   // The legacy publish re-activates the membership, which a departed fixture must not be.
   if (state === "left") {
     await d.execute(
       `UPDATE memberships SET state = 'left' WHERE event_id = ? AND device_id = ?`,
-      [
-        eventId,
-        deviceId,
-      ],
+      [eventId, deviceId],
     );
   }
+  return [...paths.values()];
 }
 
 /** A sweep run against both doubles, pinned clock. */
@@ -206,19 +209,20 @@ Deno.test("event phase → an event past its deadline is deleted; one within it 
   d.close();
 });
 
-Deno.test("event phase → deleting an event CASCADES to its memberships and assets", async () => {
-  // The invariant the object store could not express, and the reason two staleness classes are gone.
+Deno.test("event phase → deleting an event CASCADES to its memberships, assets and resources", async () => {
+  // The invariant the object store could not express. Resources are the event's own now (change
+  // `per-event-storage-layout`), so their rows go with it — before the byte phase deletes the bytes.
   const d = await db();
   const STALE = "aaaaaaaa-0000-4000-8000-000000000001";
   await insertEvent(d, event(STALE, STALE_STARTS));
-  await member(d, STALE, D, [`files/devices/${D}/a.heic`]);
+  await member(d, STALE, D, ["a"]);
   assertEquals((await d.execute(`SELECT * FROM event_assets`)).rows.length, 1);
+  assertEquals((await d.execute(`SELECT * FROM resources`)).rows.length, 1);
 
   await run(d, fake({}));
   assertEquals((await d.execute(`SELECT * FROM memberships`)).rows.length, 0);
   assertEquals((await d.execute(`SELECT * FROM event_assets`)).rows.length, 0);
-  // The device-scoped resource row is NOT under the cascade — its bytes may still serve another event.
-  assertEquals((await d.execute(`SELECT * FROM resources`)).rows.length, 1);
+  assertEquals((await d.execute(`SELECT * FROM resources`)).rows.length, 0);
   d.close();
 });
 
@@ -226,7 +230,7 @@ Deno.test("event phase → an EMPTIED event is COMPLETED early: memberships gone
   const d = await db();
   const E = "cccccccc-0000-4000-8000-000000000003";
   await insertEvent(d, event(E, LIVE_STARTS));
-  await member(d, E, D, [`files/devices/${D}/a.heic`], "left");
+  await member(d, E, D, ["a"], "left");
   await member(d, E, D2, [], "left");
   const { summary } = await run(d, fake({}));
   assertEquals(summary.events, { deleted: 0, completed: 1, kept: 0 });
@@ -237,6 +241,7 @@ Deno.test("event phase → an EMPTIED event is COMPLETED early: memberships gone
   assertEquals(row.closed_at, new Date(NOW).toISOString());
   assertEquals((await d.execute(`SELECT * FROM memberships`)).rows.length, 0);
   assertEquals((await d.execute(`SELECT * FROM event_assets`)).rows.length, 0);
+  assertEquals((await d.execute(`SELECT * FROM resources`)).rows.length, 0);
   d.close();
 });
 
@@ -293,17 +298,18 @@ Deno.test("event phase → the clock never applies to a NEVER-JOINED event", asy
   d.close();
 });
 
-Deno.test("asset phase → a COMPLETED event's bytes are collected like a deleted event's", async () => {
+Deno.test("byte phase → a COMPLETED event's folder is deleted like a deleted event's", async () => {
   const d = await db();
   const E = "cccccccc-0000-4000-8000-000000000003";
   await insertEvent(d, event(E, LIVE_STARTS));
-  await member(d, E, D, [`files/devices/${D}/a.heic`], "left");
-  const store = fake({ [`files/devices/${D}/a.heic`]: { lc: "2026-07-02T00:00:00.000Z", len: 4 } });
+  const [path] = await member(d, E, D, ["a"], "left");
+  const store = fake({ [path]: { len: 4 } });
   const { summary } = await run(d, store);
   assertEquals(summary.events.completed, 1);
   assertEquals(summary.files.deleted, { count: 1, bytes: 4 });
-  // The byte, then the directory it emptied (the device holds no row).
-  assertEquals(store.deletes, [`files/devices/${D}/a.heic`, `files/devices/${D}/`]);
+  assertEquals(summary.dirs, { deleted: 1, kept: 0 });
+  // ONE recursive delete of the event's folder.
+  assertEquals(store.deletes, [`files/${E}/`]);
   d.close();
 });
 
@@ -311,8 +317,8 @@ Deno.test("dry-run → a completion is counted and nothing is written", async ()
   const d = await db();
   const E = "cccccccc-0000-4000-8000-000000000003";
   await insertEvent(d, event(E, LIVE_STARTS));
-  await member(d, E, D, [`files/devices/${D}/a.heic`], "left");
-  const store = fake({ [`files/devices/${D}/a.heic`]: { lc: "2026-07-02T00:00:00.000Z", len: 4 } });
+  const [path] = await member(d, E, D, ["a"], "left");
+  const store = fake({ [path]: { len: 4 } });
   const { summary } = await run(d, store, true);
   assertEquals(summary.events.completed, 1);
   assertEquals(summary.files.deleted, { count: 1, bytes: 4 });
@@ -369,150 +375,81 @@ Deno.test("event phase → an event past its WINDOW but within 3 days of it is u
   d.close();
 });
 
-// ── ASSET PHASE ────────────────────────────────────────────────────────────────────────────────────
+// ── BYTE PHASE ─────────────────────────────────────────────────────────────────────────────────────
 
-Deno.test("asset phase → referenced kept; unreferenced-below-floor collected; above-floor kept", async () => {
+Deno.test("byte phase → a LIVE event's folder is kept, a dropped one's deleted", async () => {
   const d = await db();
-  const E = "cccccccc-0000-4000-8000-000000000003";
-  await insertEvent(d, event(E, LIVE_STARTS));
-  await member(d, E, D, [`files/devices/${D}/kept.heic`]);
-  const store = fake({
-    [`files/devices/${D}/kept.heic`]: { lc: "2026-06-01T00:00:00.000Z", len: 10 },
-    // Unreferenced and uploaded BEFORE the floor (2026-07-01) → collected.
-    [`files/devices/${D}/old.heic`]: { lc: "2026-06-01T00:00:00.000Z", len: 20 },
-    // Unreferenced but uploaded AFTER the floor → a live upload, retained.
-    [`files/devices/${D}/new.heic`]: { lc: "2026-07-05T00:00:00.000Z", len: 40 },
-  });
+  const STALE = "aaaaaaaa-0000-4000-8000-000000000001";
+  const LIVE = "bbbbbbbb-0000-4000-8000-000000000002";
+  await insertEvent(d, event(STALE, STALE_STARTS));
+  await insertEvent(d, event(LIVE, LIVE_STARTS));
+  const [gone] = await member(d, STALE, D, ["a"]);
+  const [kept] = await member(d, LIVE, D, ["b"]);
+  const store = fake({ [gone]: { len: 2 }, [kept]: { len: 3 } });
   const { summary } = await run(d, store);
-  assertEquals(summary.files.deleted, { count: 1, bytes: 20 });
-  assertEquals(summary.files.kept, { count: 2, bytes: 50 });
-  assert(!store.store.has(`files/devices/${D}/old.heic`));
-  assert(store.store.has(`files/devices/${D}/kept.heic`));
+  assertEquals(store.deletes, [`files/${STALE}/`]);
+  assert(store.store.has(kept));
+  assertEquals(summary.files, { deleted: { count: 1, bytes: 2 }, kept: { count: 1, bytes: 3 } });
+  assertEquals(summary.dirs, { deleted: 1, kept: 1 });
   d.close();
 });
 
-Deno.test("asset phase → a collected byte's ROW is deleted BEFORE the byte", async () => {
-  // The order is load-bearing. Row-then-byte leaves, on a crash, an orphan byte that is still
-  // unreferenced and still below the floor — so the next run collects it. Byte-then-row would leave a row
-  // still asserting, by its existence, that bytes are stored which are gone — silently suppressing a
-  // needed re-upload the moment anything reads that row for dedup.
+Deno.test("byte phase → a folder with NO event row is deleted: a crash, or a byte landing after the end", async () => {
+  // A run that crashed between the event phase and the folder delete, or a PUT that passed the membership
+  // check just before completion and landed after it, leaves a folder whose event no longer lives. Every
+  // run deletes every such folder it finds, so the next one heals it.
   const d = await db();
   const E = "cccccccc-0000-4000-8000-000000000003";
   await insertEvent(d, event(E, LIVE_STARTS));
-  await member(d, E, D, []); // active, so the device has a floor, but references nothing
-  await d.execute(
-    `INSERT INTO resources (device_id, asset_id, role, key, content_type, filename)
-     VALUES (?, 'A', 'primary', 'old.heic', 'image/heic', 'Capture old.heic')`,
-    [D],
-  );
-  const order: string[] = [];
+  await d.execute(`UPDATE events SET closed_at = ?, completed_at = ?`, [
+    "2026-07-12T00:00:00.000Z",
+    "2026-07-12T00:00:00.000Z",
+  ]);
+  const NO_ROW = "dddddddd-0000-4000-8000-000000000004";
   const store = fake({
-    [`files/devices/${D}/old.heic`]: { lc: "2026-06-01T00:00:00.000Z", len: 5 },
+    [`files/${E}/late`]: { len: 1 },
+    [`files/${NO_ROW}/orphan`]: { len: 1 },
   });
-  const observing: Db = {
-    execute: (sql, args) => {
-      if (sql.startsWith("DELETE FROM resources")) order.push("row");
-      return d.execute(sql, args);
-    },
-    batch: (st) => d.batch(st),
-    transaction: (fn) => d.transaction(fn),
-  };
-  await runSweep({
-    fetch: (url, init) => {
-      if ((init.method ?? "GET") === "DELETE" && !url.endsWith("/")) order.push("byte");
-      return store.fetchImpl(url, init);
-    },
+  const { summary } = await run(d, store);
+  assertEquals(store.deletes.sort(), [`files/${E}/`, `files/${NO_ROW}/`].sort());
+  assertEquals(summary.dirs.deleted, 2);
+  d.close();
+});
+
+Deno.test("byte phase → files/devices/ and anything not named by an event id are never touched", async () => {
+  // `files/devices/` holds the bytes written before migration 0010; rows still point into it per event,
+  // and it is deleted outright once copied out — never by this sweep.
+  const d = await db();
+  const store = fake({
+    [`files/devices/${D}/a-primary.heic`]: { len: 1 },
+    [`files/not-an-event/x`]: { len: 1 },
+  });
+  const { summary } = await run(d, store);
+  assertEquals(store.deletes, []);
+  assertEquals(summary.dirs, { deleted: 0, kept: 0 });
+  d.close();
+});
+
+Deno.test("byte phase → a failed folder delete is counted as an error and the run continues", async () => {
+  const d = await db();
+  const A = "aaaaaaaa-0000-4000-8000-000000000001";
+  const B = "bbbbbbbb-0000-4000-8000-000000000002";
+  const store = fake({ [`files/${A}/x`]: { len: 1 }, [`files/${B}/y`]: { len: 1 } });
+  const failing: FetchLike = (url, init) =>
+    init.method === "DELETE" && url.endsWith(`/files/${A}/`)
+      ? Promise.resolve(new Response("boom", { status: 500 }))
+      : store.fetchImpl(url, init);
+  const { summary } = await runSweep({
+    fetch: failing,
     config: CONFIG,
-    db: observing,
+    db: d,
     now: () => NOW,
     dryRun: false,
     log: () => {},
-  });
-  assertEquals(order, ["row", "byte"]);
-  assertEquals((await d.execute(`SELECT * FROM resources`)).rows.length, 0);
-  d.close();
-});
-
-Deno.test("asset phase → a device in NO surviving event loses its bytes and its whole record", async () => {
-  const d = await db();
-  await enrolDevice(d, ORPHAN, DEAD_TOKEN);
-  const store = fake({
-    [`files/devices/${ORPHAN}/a.heic`]: { lc: "2026-06-01T00:00:00.000Z", len: 7 },
-  });
-  const { summary } = await run(d, store);
-  assertEquals(summary.devices, { deleted: 1, kept: 0 });
-  assertEquals(summary.files.deleted.count, 1);
-  // One row, attestation included — there is no second object beside it any more.
-  assertEquals((await d.execute(`SELECT * FROM devices`)).rows.length, 0);
-  d.close();
-});
-
-Deno.test("asset phase → an orphan that may still hold a WORKING token keeps its row", async () => {
-  // The expiry clause, and it is forcing rather than tidy. A device token is verified from its own
-  // signature, so it keeps working whether or not this row survives. Collect the row while the token
-  // lives and the device's next config write is refused, and it recovers by minting a fresh
-  // Secure-Enclave key and completing a full Apple attestation — the throttled path — which this nightly
-  // run then re-arms the following night, once per launch-day, for as long as it stays orphaned.
-  const d = await db();
-  await enrolDevice(d, ORPHAN, LIVE_TOKEN);
-  const store = fake({
-    [`files/devices/${ORPHAN}/a.heic`]: { lc: "2026-06-01T00:00:00.000Z", len: 7 },
-  });
-  const { summary } = await run(d, store);
-  assertEquals(summary.devices, { deleted: 0, kept: 1 });
-  // Its BYTES are still collected — that rule keys on membership alone and is unchanged.
-  assertEquals(summary.files.deleted.count, 1);
-  assertEquals((await d.execute(`SELECT * FROM devices`)).rows.length, 1);
-  d.close();
-});
-
-Deno.test("asset phase → a DEPARTED member of a surviving event keeps its bytes and its record", async () => {
-  const d = await db();
-  const E = "cccccccc-0000-4000-8000-000000000003";
-  await insertEvent(d, event(E, LIVE_STARTS));
-  await member(d, E, D, [`files/devices/${D}/a.heic`], "left");
-  // A second, ACTIVE member: an event whose every member has departed is EMPTY and would be reclaimed,
-  // taking the departed member's bytes with it — which is a different rule than the one under test.
-  await member(d, E, D2, []);
-  await enrolDevice(d, D, DEAD_TOKEN);
-  const store = fake({ [`files/devices/${D}/a.heic`]: { lc: "2026-06-01T00:00:00.000Z", len: 3 } });
-  const { summary } = await run(d, store);
-  assertEquals(summary.devices, { deleted: 0, kept: 1 });
-  assertEquals(summary.files.kept.count, 1);
-  assert(store.store.has(`files/devices/${D}/a.heic`));
-  d.close();
-});
-
-Deno.test("switch → leftovers from a swept prior event are collected while the device stays active in a newer one", async () => {
-  const d = await db();
-  const OLD = "aaaaaaaa-0000-4000-8000-000000000001";
-  const NEW = "bbbbbbbb-0000-4000-8000-000000000002";
-  await insertEvent(d, event(OLD, STALE_STARTS)); // past its deadline → swept
-  await insertEvent(d, event(NEW, LIVE_STARTS));
-  await member(d, OLD, D, [`files/devices/${D}/old.heic`]);
-  await member(d, NEW, D, [`files/devices/${D}/new.heic`]);
-  const store = fake({
-    [`files/devices/${D}/old.heic`]: { lc: "2026-06-15T00:00:00.000Z", len: 9 },
-    [`files/devices/${D}/new.heic`]: { lc: "2026-07-05T00:00:00.000Z", len: 9 },
-  });
-  const { summary } = await run(d, store);
-  assertEquals(summary.files.deleted.count, 1);
-  assert(!store.store.has(`files/devices/${D}/old.heic`));
-  assert(store.store.has(`files/devices/${D}/new.heic`));
-  d.close();
-});
-
-Deno.test("asset phase → a referenced byte with a percent-encoded filename is matched and kept", async () => {
-  const d = await db();
-  const E = "cccccccc-0000-4000-8000-000000000003";
-  await insertEvent(d, event(E, LIVE_STARTS));
-  await member(d, E, D, [`files/devices/${D}/a b.heic`]);
-  const store = fake({
-    [`files/devices/${D}/a%20b.heic`]: { lc: "2026-06-01T00:00:00.000Z", len: 4 },
-  });
-  const { summary } = await run(d, store);
-  assertEquals(summary.files.kept.count, 1);
-  assertEquals(summary.files.deleted.count, 0);
+  }).then((summary) => ({ summary }));
+  assertEquals(summary.errors, 1);
+  assert(!store.store.has(`files/${B}/y`), "the other folder still went");
+  assert(store.store.has(`files/${A}/x`));
   d.close();
 });
 
@@ -520,12 +457,13 @@ Deno.test("dry-run → deletes NOTHING, but counts the same candidates a real ru
   const d = await db();
   const STALE = "aaaaaaaa-0000-4000-8000-000000000001";
   await insertEvent(d, event(STALE, STALE_STARTS));
-  await member(d, STALE, D, [`files/devices/${D}/a.heic`]);
-  const store = fake({ [`files/devices/${D}/a.heic`]: { lc: "2026-06-01T00:00:00.000Z", len: 6 } });
+  const [path] = await member(d, STALE, D, ["a"]);
+  const store = fake({ [path]: { len: 6 } });
   const { summary } = await run(d, store, true);
   assertEquals(summary.dryRun, true);
   assertEquals(summary.events.deleted, 1);
   assertEquals(summary.files.deleted, { count: 1, bytes: 6 });
+  assertEquals(summary.dirs.deleted, 1);
   // Nothing actually went, on either side.
   assertEquals(store.deletes, []);
   assertEquals(await eventIds(d), [STALE]);
@@ -534,10 +472,10 @@ Deno.test("dry-run → deletes NOTHING, but counts the same candidates a real ru
 
 Deno.test("summary → file bytes are the SUM of each entry's Length, not the object count", async () => {
   const d = await db();
-  await enrolDevice(d, ORPHAN, DEAD_TOKEN);
+  const NO_ROW = "dddddddd-0000-4000-8000-000000000004";
   const store = fake({
-    [`files/devices/${ORPHAN}/a.heic`]: { lc: "2026-06-01T00:00:00.000Z", len: 1500 },
-    [`files/devices/${ORPHAN}/b.heic`]: { lc: "2026-06-01T00:00:00.000Z", len: 2500 },
+    [`files/${NO_ROW}/a`]: { len: 1500 },
+    [`files/${NO_ROW}/b`]: { len: 2500 },
   });
   const { summary } = await run(d, store);
   assertEquals(summary.files.deleted, { count: 2, bytes: 4000 });
@@ -545,8 +483,7 @@ Deno.test("summary → file bytes are the SUM of each entry's Length, not the ob
 });
 
 Deno.test("an empty store with an EMPTY zone sweeps normally", async () => {
-  // An empty world is an ordinary world: nothing referenced, nothing stored, nothing to do. (There is no
-  // longer a refusal for the empty-store-with-bytes case — see this change's design.md D9.)
+  // An empty world is an ordinary world: nothing referenced, nothing stored, nothing to do.
   const d = await db();
   const { summary } = await run(d, fake({}));
   assertEquals(summary.errors, 0);
@@ -554,33 +491,15 @@ Deno.test("an empty store with an EMPTY zone sweeps normally", async () => {
   d.close();
 });
 
-Deno.test("a POPULATED store still collects an orphaned device's bytes", async () => {
-  // The byte rule keys on membership and the retention floor, independently of whether the device's own
-  // row survives — an orphan with a live token keeps its row and still loses its bytes.
-  const d = await db();
-  const E = "cccccccc-0000-4000-8000-000000000003";
-  await insertEvent(d, event(E, LIVE_STARTS));
-  await member(d, E, D, [`files/devices/${D}/keep.heic`]);
-  const store = fake({
-    [`files/devices/${D}/keep.heic`]: { lc: "2026-06-01T00:00:00.000Z", len: 1 },
-    [`files/devices/${ORPHAN}/gone.heic`]: { lc: "2026-06-01T00:00:00.000Z", len: 1 },
-  });
-  const { summary } = await run(d, store);
-  assertEquals(summary.files.deleted.count, 1);
-  assert(!store.store.has(`files/devices/${ORPHAN}/gone.heic`));
-  assert(store.store.has(`files/devices/${D}/keep.heic`));
-  d.close();
-});
-
 Deno.test("site/ prefix is never touched by the sweep", async () => {
   // The storage zone is a co-tenant: the public `site/` prefix lives beside private user data
-  // (`docs/deployment.md`). The sweep enumerates `files/devices/` and nothing else.
+  // (`docs/deployment.md`). The sweep enumerates `files/` and deletes only event folders.
   const d = await db();
-  await enrolDevice(d, ORPHAN, DEAD_TOKEN);
+  const NO_ROW = "dddddddd-0000-4000-8000-000000000004";
   const store = fake({
     "site/index.html": {},
     "site/_astro/app.abc123.js": {},
-    [`files/devices/${ORPHAN}/a.heic`]: { lc: "2026-06-01T00:00:00.000Z", len: 1 },
+    [`files/${NO_ROW}/a`]: { len: 1 },
   });
   await run(d, store);
   assert(store.store.has("site/index.html"));
@@ -589,123 +508,43 @@ Deno.test("site/ prefix is never touched by the sweep", async () => {
   d.close();
 });
 
-// ── DIRECTORY STEP ─────────────────────────────────────────────────────────────────────────────────
+// ── DEVICE RECORDS ─────────────────────────────────────────────────────────────────────────────────
 
-/** An EMPTY device directory, as bunny leaves one behind once its last object was deleted. */
-function emptyDir(store: ReturnType<typeof fake>, deviceId: string) {
-  store.dirs.add("files/");
-  store.dirs.add("files/devices/");
-  store.dirs.add(`files/devices/${deviceId}/`);
-}
-
-Deno.test("dirs → an empty directory of a device with no row is removed", async () => {
-  const d = await db();
-  const store = fake({});
-  emptyDir(store, ORPHAN);
-  const { summary } = await run(d, store);
-  assertEquals(summary.dirs, { deleted: 1, kept: 0 });
-  assertEquals(store.deletes, [`files/devices/${ORPHAN}/`]);
-  assert(!store.dirs.has(`files/devices/${ORPHAN}/`));
-  d.close();
-});
-
-Deno.test("dirs → a LIVE device's empty directory is kept: a PUT may land in it any moment", async () => {
-  const d = await db();
-  await enrolDevice(d, D, LIVE_TOKEN);
-  const store = fake({});
-  emptyDir(store, D);
-  const { summary } = await run(d, store);
-  assertEquals(summary.dirs, { deleted: 0, kept: 1 });
-  assertEquals(store.deletes, []);
-  d.close();
-});
-
-Deno.test("dirs → a directory THIS run emptied, of a device it collected, is removed in the same run", async () => {
+Deno.test("devices → a device in NO surviving event, whose token expired, loses its whole record", async () => {
   const d = await db();
   await enrolDevice(d, ORPHAN, DEAD_TOKEN);
-  const store = fake({ [`files/devices/${ORPHAN}/a.heic`]: { lc: "2026-06-01T00:00:00.000Z" } });
-  const { summary } = await run(d, store);
-  assertEquals(summary.devices.deleted, 1);
-  assertEquals(summary.dirs, { deleted: 1, kept: 0 });
-  assertEquals(store.deletes, [`files/devices/${ORPHAN}/a.heic`, `files/devices/${ORPHAN}/`]);
+  const { summary } = await run(d, fake({}));
+  assertEquals(summary.devices, { deleted: 1, kept: 0 });
+  // One row, attestation included — there is no second object beside it any more.
+  assertEquals((await d.execute(`SELECT * FROM devices`)).rows.length, 0);
   d.close();
 });
 
-Deno.test("dirs → a directory still holding bytes is kept, even for a device with no row", async () => {
-  // A referenced byte of a device whose row is gone (its membership survives): the recursive delete
-  // must never take it.
+Deno.test("devices → an orphan that may still hold a WORKING token keeps its row", async () => {
+  // The expiry clause, and it is forcing rather than tidy. A device token is verified from its own
+  // signature, so it keeps working whether or not this row survives. Collect the row while the token
+  // lives and the device's next config write is refused, and it recovers by minting a fresh
+  // Secure-Enclave key and completing a full Apple attestation — the throttled path — which this nightly
+  // run then re-arms the following night, once per launch-day, for as long as it stays orphaned.
+  const d = await db();
+  await enrolDevice(d, ORPHAN, LIVE_TOKEN);
+  const { summary } = await run(d, fake({}));
+  assertEquals(summary.devices, { deleted: 0, kept: 1 });
+  assertEquals((await d.execute(`SELECT * FROM devices`)).rows.length, 1);
+  d.close();
+});
+
+Deno.test("devices → a DEPARTED member of a surviving event keeps its record and its photos", async () => {
   const d = await db();
   const E = "cccccccc-0000-4000-8000-000000000003";
   await insertEvent(d, event(E, LIVE_STARTS));
-  await member(d, E, D, [`files/devices/${D}/a.heic`]);
-  const store = fake({ [`files/devices/${D}/a.heic`]: { lc: "2026-06-01T00:00:00.000Z" } });
+  await enrolDevice(d, D, DEAD_TOKEN);
+  const [path] = await member(d, E, D, ["a"], "left");
+  await member(d, E, D2, []);
+  const store = fake({ [path]: { len: 1 } });
   const { summary } = await run(d, store);
-  assertEquals(summary.dirs, { deleted: 0, kept: 1 });
-  assert(store.store.has(`files/devices/${D}/a.heic`));
-  assertEquals(store.deletes, []);
-  d.close();
-});
-
-Deno.test("dirs → a byte that lands after the walk is seen by the re-list, and the directory is kept", async () => {
-  // The race the guard exists for: the walk saw the directory empty, but an upload arrived before the
-  // directory step. Its decision rests on a FRESH listing, never on the walk's.
-  const d = await db();
-  const store = fake({});
-  emptyDir(store, ORPHAN);
-  let lists = 0;
-  await runSweep({
-    fetch: (url, init) => {
-      if ((init.method ?? "GET") === "GET" && url.endsWith(`/files/devices/${ORPHAN}/`)) {
-        if (++lists === 2) store.put(`files/devices/${ORPHAN}/late.heic`);
-      }
-      return store.fetchImpl(url, init);
-    },
-    config: CONFIG,
-    db: d,
-    now: () => NOW,
-    dryRun: false,
-    log: () => {},
-  }).then((summary) => assertEquals(summary.dirs, { deleted: 0, kept: 1 }));
-  assertEquals(lists, 2);
-  assert(store.store.has(`files/devices/${ORPHAN}/late.heic`));
-  assertEquals(store.deletes, []);
-  d.close();
-});
-
-Deno.test("dirs → dry-run counts the directories a real run would remove and deletes nothing", async () => {
-  const d = await db();
-  await enrolDevice(d, ORPHAN, DEAD_TOKEN); // collected by this run
-  await enrolDevice(d, D2, LIVE_TOKEN); // live: kept
-  const store = fake({ [`files/devices/${ORPHAN}/a.heic`]: { lc: "2026-06-01T00:00:00.000Z" } });
-  emptyDir(store, D); // no row at all
-  emptyDir(store, D2);
-  const { summary } = await run(d, store, true);
-  assertEquals(summary.dirs, { deleted: 2, kept: 1 });
-  assertEquals(store.deletes, []);
-  assert(store.dirs.has(`files/devices/${D}/`));
-  d.close();
-});
-
-Deno.test("dirs → a failed directory delete is counted as an error and the run continues", async () => {
-  const d = await db();
-  const store = fake({});
-  emptyDir(store, D);
-  emptyDir(store, ORPHAN);
-  const summary = await runSweep({
-    fetch: (url, init) =>
-      (init.method ?? "GET") === "DELETE" && url.endsWith(`/files/devices/${D}/`)
-        ? Promise.resolve(new Response("boom", { status: 500 }))
-        : store.fetchImpl(url, init),
-    config: CONFIG,
-    db: d,
-    now: () => NOW,
-    dryRun: false,
-    log: () => {},
-  });
-  assertEquals(summary.errors, 1);
-  assertEquals(summary.dirs, { deleted: 1, kept: 1 });
-  assert(store.dirs.has(`files/devices/${D}/`));
-  assert(!store.dirs.has(`files/devices/${ORPHAN}/`));
+  assertEquals(summary.devices.deleted, 0);
+  assert(store.store.has(path));
   d.close();
 });
 
@@ -808,7 +647,7 @@ for (const dryRun of [false, true]) {
 }
 
 // The browser-facing site (capability `web-site`) lives under a `site/` prefix, co-tenant with the private
-// data in the same zone. The sweep is PREFIX-SCOPED — it enumerates only `events/`, `files/devices/` and
-// `devices/` — so `site/` is invisible to it, and its hygiene is the mirror-deploy's job, not the sweep's.
+// data in the same zone. The sweep is PREFIX-SCOPED — it enumerates only `files/` and deletes only the
+// folders named by an event id — so `site/` is invisible to it, and its hygiene is the mirror-deploy's job.
 // This pins that load-bearing invariant: a future "simplify the sweep to a whole-zone walk" would delete
 // the live site, and this test would catch it.

@@ -489,8 +489,11 @@ private class BackendDto(
     val pushSeqs: List<Long?> = emptyList(),
 ) {
     fun into(state: BackendState) {
-        storedFiles.forEach { (device, files) ->
-            state.storedFiles[device] = files.mapTo(mutableSetOf()) {
+        // Keyed `<event>/<device>` since `per-event-storage-layout`; a key of a state saved before it names no event,
+        // and its bytes belonged to none — they are not restored.
+        storedFiles.forEach { (key, files) ->
+            val event = key.substringBefore('/', missingDelimiterValue = "").ifEmpty { return@forEach }
+            state.storedFiles[event to key.substringAfter('/')] = files.mapTo(mutableSetOf()) {
                 DeviceFile(AssetId(it.asset), ResourceRole.entries.first { role -> role.wire == it.role }, it.filename)
             }
         }
@@ -524,7 +527,9 @@ private class BackendDto(
 
     companion object {
         fun of(state: BackendState) = BackendDto(
-            storedFiles = state.storedFiles.mapValues { (_, files) -> files.map { StoredFileDto(it.assetId.value, it.role.wire, it.filename) } },
+            storedFiles = state.storedFiles.entries.associate { (key, files) ->
+                "${key.first}/${key.second}" to files.map { StoredFileDto(it.assetId.value, it.role.wire, it.filename) }
+            },
             events = state.events.mapValues { (_, e) ->
                 EventDto(
                     e.name,

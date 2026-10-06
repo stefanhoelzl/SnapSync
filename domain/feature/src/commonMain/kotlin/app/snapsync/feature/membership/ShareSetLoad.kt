@@ -24,8 +24,10 @@ private const val LISTING_TIMEOUT_MS = 15_000L
  *
  * The ledger is the current membership's share set (capability `photo-sharing`), so a new membership starts
  * with **nothing from before it**. On a confirmed listing the ledger becomes exactly the device's stored
- * resources, one bare `COMPLETED` row each, in one atomic `resetTo` — so nothing the backend already holds
- * is uploaded again, whichever event it was stored for. On a failed or timed-out listing it becomes empty.
+ * resources IN THE JOINED EVENT, one bare `COMPLETED` row each, in one atomic `resetTo` — so nothing the backend
+ * already holds for this event is uploaded again. Each event holds its own bytes (change
+ * `per-event-storage-layout`): a photo stored for another event is uploaded again for this one. On a failed or
+ * timed-out listing the ledger becomes empty.
  *
  * **Why the clear happens even when the fetch fails.** A leftover `COMPLETED` row inside the new window
  * suppresses a needed upload forever, with no error: the invisible failure this product is built against.
@@ -49,11 +51,12 @@ class ShareSetLoad(
     private val identity: PersistedDeviceIdentity,
     private val log: Logger = Logger.withTag("ShareSetLoad"),
 ) {
-    suspend fun load() {
+    /** Load the share set of the membership in [eventId], the event being joined. */
+    suspend fun load(eventId: String) {
         // `list` answers failures as a `Result`; a throw (the device-id read, say) is folded into the same
         // arm. Cancellation is not a failure and is rethrown — the caller is being torn down.
         val listing = try {
-            withTimeoutOrNull(LISTING_TIMEOUT_MS) { files.list(identity.deviceId()) }
+            withTimeoutOrNull(LISTING_TIMEOUT_MS) { files.list(eventId, identity.deviceId()) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

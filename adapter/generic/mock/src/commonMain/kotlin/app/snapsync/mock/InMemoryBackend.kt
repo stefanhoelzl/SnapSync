@@ -184,10 +184,11 @@ internal class InMemoryBackend(
             )
         }
 
-    override suspend fun deviceFiles(token: String?, deviceId: String): Reply<List<DeviceFile>> = gated(token) {
-        if (state.offline || state.failDeviceListing) return@gated offline()
-        Reply.Ok(state.storedFiles[deviceId].orEmpty().toList())
-    }
+    override suspend fun deviceFiles(token: String?, eventId: String, deviceId: String): Reply<List<DeviceFile>> =
+        gated(token) {
+            if (state.offline || state.failDeviceListing) return@gated offline()
+            Reply.Ok(state.storedFiles[eventId to deviceId].orEmpty().toList())
+        }
 
     override suspend fun putDeviceConfig(token: String?, deviceId: String, push: PushEndpoint): Reply<Unit> =
         gated(token) {

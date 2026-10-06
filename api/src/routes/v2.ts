@@ -11,13 +11,15 @@ import {
   gainedStatements,
   isMember,
   type ManifestAssetEntry,
+  membershipState,
+  presentMembership,
   publishStatements,
   publishUnionChanges,
   recordResourceStatement,
   stampLanded,
 } from "../db.ts";
-import { legacyKeyFor, RESOURCE_ROLES } from "../legacy-v1.ts";
-import { byteKey } from "../storage.ts";
+import { RESOURCE_ROLES } from "../legacy-v1.ts";
+import { eventBytePath, storageKey } from "../storage.ts";
 import { validateFilename } from "../validators.ts";
 import { parseManifestBody } from "./manifest.ts";
 import {
@@ -119,52 +121,38 @@ export function v2Routes(deps: RouteDeps): Hono {
   // Everything else is the SHARED router — one implementation, mounted into both versions.
   const v2Only = new Hono();
 
-  // Upload one resource's bytes. Identity comes from the PATH (`<assetId>/<role>`) and the capture name
-  // from a REQUIRED query parameter, which is what keeps caller-supplied bytes out of the storage key
-  // entirely: v1 had to validate a filename segment for traversal, and here the value never reaches the
-  // key, so the rule is not relaxed but made unnecessary.
-  v2Only.put("/files/devices/:deviceId/:assetId/:role", async (c) => {
-    const deviceId = ownDeviceParam(c, "invalid device");
-    if (deviceId instanceof Response) return deviceId;
-    const assetId = c.req.param("assetId");
-    const role = c.req.param("role");
-    const filename = new URL(c.req.url).searchParams.get("filename");
-    if (!validateFilename(assetId)) return c.text("invalid asset", 400);
-    // The role vocabulary is CLOSED, and the route validates it rather than storing whatever it is given.
-    // v1 could not — its role arrived inside an opaque object name — which is why an unknown role is a
-    // narrowing v2 gets for free from naming identity in the path.
-    if (!RESOURCE_ROLES.includes(role)) return c.text("invalid role", 400);
-    if (filename === null || filename === "") return c.text("missing filename", 400);
-
-    // The stored object name is composed HERE, and is byte-identical to what v1 composes for the same
-    // resource. That is load-bearing rather than tidy: a device moving from v1 to v2 must find its bytes
-    // where it left them, and an event with a member on each version must address one photo one way —
-    // otherwise the first v2 build re-uploads every library it meets.
-    const key = legacyKeyFor(assetId, role, filename);
+  /**
+   * Store one resource's bytes for `eventId` and record them (change `per-event-storage-layout`, D4) — the
+   * write both v2 byte routes share once each has settled WHICH event the bytes belong to. The object lands
+   * at the event's deterministic path, so a re-upload overwrites it; then the record and the union-log
+   * gain commit as one batch, and the event's other members are woken when this byte completed an asset.
+   */
+  async function storeResource(
+    c: Context,
+    route: string,
+    r: { eventId: string; deviceId: string; assetId: string; role: string; filename: string },
+  ): Promise<Response> {
+    const { eventId, deviceId, assetId, role, filename } = r;
+    const path = await eventBytePath(eventId, deviceId, assetId, role);
     const contentType = c.req.header("content-type") ?? "application/octet-stream";
-    const refused = await streamPut(
-      fetchImpl,
-      config,
-      c,
-      "v2 upload",
-      byteKey(deviceId, key),
-      contentType,
-    );
+    const refused = await streamPut(fetchImpl, config, c, route, storageKey(path), contentType);
     if (refused) return refused;
     // NOT best-effort, unlike v1. v1's manifest publish re-creates a missing row on its next cycle, and
     // that repair is what makes swallowing this failure safe there. v2's manifest writes no resource row
     // at all, so nothing would repair it: the bytes would be stored, the backend would not know, the
     // device would be told it succeeded, and the resource would be absent from every union forever. A
     // visible retry costs one re-upload; the silence costs a photo.
-    // Which events this write would complete an asset for — asked BEFORE the record, because afterwards a
-    // completion is indistinguishable from a re-upload of a role that was already stored (see
-    // `eventsCompletedBy`). A read failure here must not fail an upload whose bytes are already stored, so
-    // it degrades to "wake nobody": the recipient's next foreground reconciles regardless.
+    // Whether this write would complete an asset — asked BEFORE the record, because afterwards a completion
+    // is indistinguishable from a re-upload of a role that was already stored (see `eventsCompletedBy`). A
+    // read failure here must not fail an upload whose bytes are already stored, so it degrades to "wake
+    // nobody": the recipient's next foreground reconciles regardless.
     let completed: string[] = [];
     try {
-      completed = await eventsCompletedBy(db, { deviceId, assetId, role });
+      completed = await eventsCompletedBy(db, { eventId, deviceId, assetId, role });
     } catch (e) {
-      console.error(`v2 upload: completion lookup failed for ${deviceId}/${assetId}/${role}: ${e}`);
+      console.error(
+        `${route}: completion lookup failed for ${eventId}/${deviceId}/${assetId}/${role}: ${e}`,
+      );
     }
     // The record and the union-log rows it causes commit as ONE batch (decision record
     // `changes/incremental-union`, D4): a gain logged for bytes never recorded would announce what no read
@@ -172,10 +160,18 @@ export function v2Routes(deps: RouteDeps): Hono {
     const landedAt = new Date(now()).toISOString();
     const recorded = await tryUpstream(
       c,
-      `v2 upload: could not record ${byteKey(deviceId, key)}`,
+      `${route}: could not record ${path}`,
       () =>
         db.batch([
-          recordResourceStatement({ deviceId, assetId, role, key, contentType, filename }),
+          recordResourceStatement({
+            eventId,
+            deviceId,
+            assetId,
+            role,
+            path,
+            contentType,
+            filename,
+          }),
           ...gainedStatements(completed, deviceId, assetId, landedAt),
         ]),
     );
@@ -190,10 +186,72 @@ export function v2Routes(deps: RouteDeps): Hono {
     try {
       await stampLanded(db, completed, landedAt);
     } catch (e) {
-      console.error(`v2 upload: could not stamp the landing for ${completed.join(",")}: ${e}`);
+      console.error(`${route}: could not stamp the landing for ${completed.join(",")}: ${e}`);
     }
-    for (const eventId of completed) await notifyMembers(deps, eventId, deviceId, "gain");
+    for (const id of completed) await notifyMembers(deps, id, deviceId, "gain");
     return c.body(null, 201);
+  }
+
+  /** The identity a byte route names in its path, validated; or the `400` to answer. */
+  function resourceIdentity(
+    c: Context,
+  ): { assetId: string; role: string; filename: string } | Response {
+    const assetId = c.req.param("assetId") ?? "";
+    const role = c.req.param("role") ?? "";
+    const filename = new URL(c.req.url).searchParams.get("filename");
+    if (!validateFilename(assetId)) return c.text("invalid asset", 400);
+    // The role vocabulary is CLOSED, and the route validates it rather than storing whatever it is given.
+    // v1 could not — its role arrived inside an opaque object name — which is why an unknown role is a
+    // narrowing v2 gets for free from naming identity in the path.
+    if (!RESOURCE_ROLES.includes(role)) return c.text("invalid role", 400);
+    if (filename === null || filename === "") return c.text("missing filename", 400);
+    return { assetId, role, filename };
+  }
+
+  // Upload one resource's bytes INTO AN EVENT. Identity comes from the PATH — the same path the download
+  // redirect answers GET on, which this PUT shares and the token gate still gates (only the redirect's
+  // GET/HEAD is exempt) — and the capture name from a REQUIRED query parameter, which never reaches the
+  // storage key. Only a member still IN the event (`sharing`/`settled`) writes into it: a closed event still
+  // takes the bytes its members declared, since settling never waits for uploads, while a completed one has
+  // no members left.
+  v2Only.put("/events/:eventId/files/devices/:deviceId/:assetId/:role", async (c) => {
+    const ids = eventAndOwnDeviceParams(c, "invalid id");
+    if (ids instanceof Response) return ids;
+    const { eventId, deviceId } = ids;
+    const identity = resourceIdentity(c);
+    if (identity instanceof Response) return identity;
+    const state = await tryUpstream(
+      c,
+      `v2 upload: membership read failed for ${eventId}/${deviceId}`,
+      () => membershipState(db, eventId, deviceId),
+    );
+    if (state instanceof Response) return state;
+    if (state !== "sharing" && state !== "settled") return c.text("not a member", 403);
+    return await storeResource(c, "v2 upload", { eventId, deviceId, ...identity });
+  });
+
+  v2Only.options("/events/:eventId/files/devices/:deviceId/:assetId/:role", (c) => {
+    c.header("Allow", "GET, HEAD, PUT, OPTIONS");
+    return c.body(null, 204);
+  });
+
+  // The EVENT-LESS upload, kept for the builds that predate the event-scoped one (change
+  // `per-event-storage-layout`, D4). Its path names no event, so the bytes are filed under the device's ONE
+  // present membership — single active membership is the current contract, and concurrent membership would
+  // have to retire this route first. With none, there is nothing these bytes could belong to: `409`.
+  v2Only.put("/files/devices/:deviceId/:assetId/:role", async (c) => {
+    const deviceId = ownDeviceParam(c, "invalid device");
+    if (deviceId instanceof Response) return deviceId;
+    const identity = resourceIdentity(c);
+    if (identity instanceof Response) return identity;
+    const eventId = await tryUpstream(
+      c,
+      `v2 upload: membership read failed for ${deviceId}`,
+      () => presentMembership(db, deviceId),
+    );
+    if (eventId instanceof Response) return eventId;
+    if (eventId === null) return c.text("no event", 409);
+    return await storeResource(c, "v2 upload", { eventId, deviceId, ...identity });
   });
 
   v2Only.options("/files/devices/:deviceId/:assetId/:role", (c) => {
@@ -201,14 +259,33 @@ export function v2Routes(deps: RouteDeps): Hono {
     return c.body(null, 204);
   });
 
-  // What the backend holds for this device, in the terms v2 addresses resources by. No `url`: this route
-  // answers "what have you recorded", and its consumer fetches no bytes — minting a presigned link would
-  // cost a signature per row for a field nobody follows.
+  // What the backend holds for this device IN ONE EVENT, in the terms v2 addresses resources by — the
+  // join-time load's answer. No `url`: this route answers "what have you recorded", and its consumer fetches
+  // no bytes. Never another event's resources: the device marks every listed one uploaded, and one stored
+  // for another event would then never reach this one.
+  v2Only.get("/events/:eventId/files/devices/:deviceId", async (c) => {
+    const ids = eventAndOwnDeviceParams(c, "invalid id");
+    if (ids instanceof Response) return ids;
+    const { eventId, deviceId } = ids;
+    return await orUpstream502(
+      c,
+      `v2 list: device listing failed for ${eventId}/${deviceId}`,
+      async () => {
+        const held = await deviceResources(db, eventId, deviceId);
+        c.header("Cache-Control", NO_CACHE);
+        return c.json(held);
+      },
+    );
+  });
+
+  // The EVENT-LESS listing, for the builds that predate the one above: it answers for the device's present
+  // membership — the event such a build has just joined when it asks — and `[]` with none.
   v2Only.get("/files/devices/:deviceId", async (c) => {
     const deviceId = ownDeviceParam(c, "invalid device");
     if (deviceId instanceof Response) return deviceId;
     return await orUpstream502(c, `v2 list: device listing failed for ${deviceId}`, async () => {
-      const held = await deviceResources(db, deviceId);
+      const eventId = await presentMembership(db, deviceId);
+      const held = eventId === null ? [] : await deviceResources(db, eventId, deviceId);
       c.header("Cache-Control", NO_CACHE);
       return c.json(held);
     });

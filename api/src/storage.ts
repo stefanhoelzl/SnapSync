@@ -9,14 +9,45 @@ import type { Config } from "./config.ts";
 
 export type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
 
-/** Storage key of a stored resource byte object: `files/devices/<deviceId>/<filename>`. */
-export function byteKey(deviceId: string, filename: string): string {
-  return `files/devices/${encodeURIComponent(deviceId)}/${encodeURIComponent(filename)}`;
+/**
+ * Where a resource's bytes are written (change `per-event-storage-layout`, D1): `files/<eventId>/<name>`,
+ * the name the lowercase hex SHA-256 of `<eventId>/<deviceId>/<assetId>/<role>`.
+ *
+ * DETERMINISTIC, so a re-upload — and the two uploaders' overlap — overwrites one object with no lookup on
+ * the streaming path. The event is IN the digest, so one photo in two events has two unrelated names.
+ * Nothing readable is in the name: identity is the `resources` row's, and the content type is stored with
+ * the object. The ids are validated path segments, so no `/` occurs inside one and the input is unambiguous.
+ *
+ * Returned UNENCODED, as `resources.path` stores it; {@link storageKey} encodes it for a request.
+ */
+export async function eventBytePath(
+  eventId: string,
+  deviceId: string,
+  assetId: string,
+  role: string,
+): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(`${eventId}/${deviceId}/${assetId}/${role}`),
+  );
+  const hex = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+  return `files/${eventId}/${hex}`;
 }
 
-/** The device byte-store directory to LIST: `files/devices/<deviceId>/`. */
-export function deviceDir(deviceId: string): string {
-  return `files/devices/${encodeURIComponent(deviceId)}/`;
+/**
+ * A stored `resources.path` as the storage key a request names: each segment percent-encoded, so a
+ * pre-0010 object name holding a reserved character still addresses the object it was written as.
+ */
+export function storageKey(path: string): string {
+  return path.split("/").map(encodeURIComponent).join("/");
+}
+
+/**
+ * An event's byte folder: `files/<eventId>/`. Deleting it is RECURSIVE (see {@link deleteObject}) and is
+ * the sweep's one way to delete an event's photos.
+ */
+export function eventDir(eventId: string): string {
+  return `files/${encodeURIComponent(eventId)}/`;
 }
 
 // A single entry from bunny's native Storage "List Files" response. We read only these fields;

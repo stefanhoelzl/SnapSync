@@ -123,7 +123,7 @@ private class FakeClient(
     override suspend fun leaveEvent(token: String?, eventId: String, deviceId: String, received: Boolean): Reply<Unit> = unused()
     override suspend fun eventFiles(token: String?, eventId: String, cursor: Long?, trigger: UnionTrigger): Reply<UnionPage> =
         unused()
-    override suspend fun deviceFiles(token: String?, deviceId: String): Reply<List<DeviceFile>> = unused()
+    override suspend fun deviceFiles(token: String?, eventId: String, deviceId: String): Reply<List<DeviceFile>> = unused()
     override suspend fun putDeviceConfig(token: String?, deviceId: String, push: PushEndpoint): Reply<Unit> = unused()
 
     private fun unused(): Nothing = error("attestation reaches only the /attest/… routes")

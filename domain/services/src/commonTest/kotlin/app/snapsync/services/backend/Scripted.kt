@@ -50,7 +50,8 @@ internal class ScriptedBackend(var answer: (route: String, token: String?) -> Re
         call("leave", token)
     override suspend fun eventFiles(token: String?, eventId: String, cursor: Long?, trigger: UnionTrigger): Reply<UnionPage> =
         call("union", token)
-    override suspend fun deviceFiles(token: String?, deviceId: String): Reply<List<DeviceFile>> = call("files", token)
+    override suspend fun deviceFiles(token: String?, eventId: String, deviceId: String): Reply<List<DeviceFile>> =
+        call("files", token)
     override suspend fun putDeviceConfig(token: String?, deviceId: String, push: PushEndpoint): Reply<Unit> = call("config", token)
 }
 

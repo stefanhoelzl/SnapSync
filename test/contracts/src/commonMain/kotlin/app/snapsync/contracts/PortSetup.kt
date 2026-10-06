@@ -14,11 +14,12 @@ import kotlin.uuid.Uuid
 /**
  * [BackendSetup] for a backend with no HTTP surface — the in-memory mock: every step goes through the [backend]
  * port itself, which IS that backend's public surface, and bytes land in [storedFiles], the cell the mock was given
- * in place of an uploader (the byte upload is the OS transfer's route, not the backend port's).
+ * in place of an uploader (the byte upload is the OS transfer's route, not the backend port's), keyed by
+ * (event, device) as the backend keeps them.
  */
 class PortSetup(
     private val backend: Backend,
-    private val storedFiles: MutableMap<String, MutableSet<DeviceFile>>,
+    private val storedFiles: MutableMap<Pair<String, String>, MutableSet<DeviceFile>>,
 ) : BackendSetup {
 
     @OptIn(ExperimentalUuidApi::class)
@@ -56,8 +57,8 @@ class PortSetup(
         checked("read the union", backend.eventFiles(null, eventId, null, UnionTrigger.FOREGROUND)).assets
             .mapTo(mutableSetOf()) { it.assetId }
 
-    override suspend fun upload(deviceId: String, asset: SeededAsset, role: ResourceRole) {
-        storedFiles.getOrPut(deviceId) { mutableSetOf() } += DeviceFile(asset.assetId, role, asset.filename)
+    override suspend fun upload(eventId: String, deviceId: String, asset: SeededAsset, role: ResourceRole) {
+        storedFiles.getOrPut(eventId to deviceId) { mutableSetOf() } += DeviceFile(asset.assetId, role, asset.filename)
     }
 
     private fun <T> checked(step: String, reply: Reply<T>): T =

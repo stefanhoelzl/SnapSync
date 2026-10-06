@@ -47,7 +47,7 @@ class Member(private val http: HttpClient, backend: String) {
             val assetId = AssetId("${UUID.randomUUID().toString().uppercase()}_L0_001")
             DeviceManifestAsset(assetId, creationDate, listOf(primary(assetId)))
         }
-        assets.forEach { upload(it.assetId) }
+        assets.forEach { upload(eventId, it.assetId) }
         val manifest = DeviceManifest(deviceId, assets)
         checked(
             "publish manifest",
@@ -60,10 +60,10 @@ class Member(private val http: HttpClient, backend: String) {
         return assets.mapTo(mutableSetOf()) { it.assetId }
     }
 
-    private suspend fun upload(assetId: AssetId) {
+    private suspend fun upload(eventId: String, assetId: AssetId) {
         checked(
             "upload $assetId",
-            http.put("$backend/files/devices/$deviceId/$assetId/${ResourceRole.PRIMARY.wire}?filename=$FILENAME") {
+            http.put("$backend/events/$eventId/files/devices/$deviceId/$assetId/${ResourceRole.PRIMARY.wire}?filename=$FILENAME") {
                 served()
                 contentType(ContentType.Image.JPEG)
                 setBody(JPEG)

@@ -549,7 +549,7 @@ curl -s localhost:<port>/device            # honoured + refused (reasons) for TH
     Keychain, photo library and backend kept.
 - The **operator levers** (on the app host, only for the systems its adapter choice mocks): `device/jobs` (live keys), `device/jobs/complete[?key=]` (the "OS"
   finishes a transfer — its bytes cross to the backend's byte route), `device/jobs/fail?key=&error=`, `device/jobs/limit?n=`,
-  `device/backend/objects[?device=]`, `device/backend/offline?on=`, `device/permission?status=`,
+  `device/backend/objects[?device=&event=]`, `device/backend/offline?on=`, `device/permission?status=`,
   `device/import/fail-next`, `device/membership/unreadable?on=`,
   `device/downloads/stage[?status=502][&drained=true][&bytes=motion-photo]` (the OS finishes every in-flight
   download, then optionally reports the session's events drained; `bytes=motion-photo` makes what each brought a real

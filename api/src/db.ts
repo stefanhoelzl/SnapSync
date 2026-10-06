@@ -38,6 +38,8 @@
 // What it buys: SQLite otherwise COERCES silently, so a handler bug that put a number where a key belongs
 // would store `42` as text and be unfindable by the code that wrote `"42"`. Under STRICT it raises.
 
+import { legacyKeyFor } from "./legacy-v1.ts";
+
 /** One row of a result set. Values are whatever the driver yields for SQLite's storage classes. */
 export type Row = Record<string, unknown>;
 
@@ -288,8 +290,8 @@ export function leaveStatements(
                  SELECT 1 FROM event_assets ea, json_each(ea.roles) r
                   WHERE ea.event_id = memberships.event_id AND ea.device_id = memberships.device_id
                     AND NOT EXISTS (SELECT 1 FROM resources rs
-                                     WHERE rs.device_id = ea.device_id AND rs.asset_id = ea.asset_id
-                                       AND rs.role = r.value)
+                                     WHERE rs.event_id = ea.event_id AND rs.device_id = ea.device_id
+                                       AND rs.asset_id = ea.asset_id AND rs.role = r.value)
                ) THEN 'done'
                ELSE 'left'
              END
@@ -328,9 +330,8 @@ export async function presentMembers(db: Db, eventId: string): Promise<string[]>
 /**
  * One resource of one asset, as the device manifest names it (wire format: `photo-sharing`).
  *
- * `key` is the BARE object name the bytes are stored under; `filename` is the human capture name. They
- * are different facts and routinely differ — the union projects both, and the download URL is built from
- * `key`.
+ * `key` is the client's object name (`<assetId>-<role>.<ext>`); `filename` is the human capture name. Neither
+ * is where the bytes are: that is the `resources` row's `path`, which the backend chooses.
  */
 export type ManifestResourceEntry = {
   role: string;
@@ -366,7 +367,9 @@ export type ManifestAssetEntry = {
  * the row is created when missing. It stays MONOTONE — an entry that explicitly says NOT uploaded emits
  * no statement at all, so it can never remove a row an earlier publish recorded. Under the old schema
  * that was `MAX(uploaded, …)`; under row-existence semantics it is simply "never delete", which is the
- * same guarantee spelled without a column.
+ * same guarantee spelled without a column. A created row points where v1's byte route writes for this
+ * event (`paths`, the caller's [eventBytePath] per resource); an existing row KEEPS its path, which may
+ * name bytes written before migration 0010.
  *
  * ORDERED, on v2 (`docs/architecture.md`, "The v2 manifest publish is ordered by its version"). The
  * FIRST statement records the publish's manifest version, and when the publish carries one it matches only
@@ -389,7 +392,11 @@ export function publishStatements(
   deviceId: string,
   assets: ManifestAssetEntry[],
   opts:
-    | { legacy: true }
+    | {
+      legacy: true;
+      /** Where each listed resource's bytes are, keyed `<assetId> <role>` — required for every upsert. */
+      paths: ReadonlyMap<string, string>;
+    }
     | {
       legacy: false;
       version: number | null;
@@ -464,14 +471,16 @@ export function publishStatements(
       // Monotone by omission: an entry that says the bytes are NOT stored contributes no statement, so
       // it cannot un-say an upload an earlier publish recorded.
       if (r.uploaded === false) continue;
+      const path = opts.paths.get(`${a.assetId} ${r.role}`);
+      if (path === undefined) throw new Error(`no byte path for ${a.assetId}/${r.role}`);
       out.push({
-        sql: `INSERT INTO resources (device_id, asset_id, role, key, content_type, filename)
-              VALUES (?, ?, ?, ?, ?, ?)
-              ON CONFLICT (device_id, asset_id, role) DO UPDATE SET
-                key          = excluded.key,
+        sql:
+          `INSERT INTO resources (event_id, device_id, asset_id, role, path, content_type, filename)
+              VALUES (?, ?, ?, ?, ?, ?, ?)
+              ON CONFLICT (event_id, device_id, asset_id, role) DO UPDATE SET
                 content_type = excluded.content_type,
                 filename     = excluded.filename`,
-        args: [deviceId, a.assetId, r.role, r.key, r.contentType, r.filename],
+        args: [eventId, deviceId, a.assetId, r.role, path, r.contentType, r.filename],
       });
     }
   }
@@ -574,10 +583,12 @@ export async function recordResource(db: Db, r: ResourceRecord): Promise<void> {
 
 /** What the byte route records for one landed resource. */
 export type ResourceRecord = {
+  eventId: string;
   deviceId: string;
   assetId: string;
   role: string;
-  key: string;
+  /** Where the bytes were written — the full storage path, unencoded ([eventBytePath]). */
+  path: string;
   contentType: string;
   filename: string;
 };
@@ -589,33 +600,32 @@ export type ResourceRecord = {
  */
 export function recordResourceStatement(r: ResourceRecord): Statement {
   return {
-    sql: `INSERT INTO resources (device_id, asset_id, role, key, content_type, filename)
-          VALUES (?, ?, ?, ?, ?, ?)
-          ON CONFLICT (device_id, asset_id, role) DO UPDATE SET
-            key          = excluded.key,
+    sql: `INSERT INTO resources (event_id, device_id, asset_id, role, path, content_type, filename)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT (event_id, device_id, asset_id, role) DO UPDATE SET
+            path         = excluded.path,
             content_type = excluded.content_type,
             filename     = excluded.filename`,
-    args: [r.deviceId, r.assetId, r.role, r.key, r.contentType, r.filename],
+    args: [r.eventId, r.deviceId, r.assetId, r.role, r.path, r.contentType, r.filename],
   };
 }
 
 /**
- * The events whose union would GAIN this asset if `role`'s bytes were recorded right now — the byte
- * route's wake list (capability `receiving-photos`).
+ * Whether the event's union would GAIN this asset if `role`'s bytes were recorded right now — the byte
+ * route's wake list (capability `receiving-photos`), as the event's id or nothing. A byte belongs to ONE
+ * event (change `per-event-storage-layout`), so it can complete at most that one.
  *
  * ASK BEFORE WRITING, not after. "Is this asset complete?" answered after the insert cannot tell a
  * completion from a re-upload of a role that was already stored, and a re-upload makes the union gain
  * nothing. Asked before, the three conditions below say exactly "this write is the one that completes it":
  * the event declares this role, this role is not recorded yet, and every OTHER declared role already is.
  *
- * Completeness is a SET comparison, never a count — `resources` is device-scoped while `roles` is
- * event-scoped, so a device may hold a role this event does not declare and counting would misjudge it
- * (`add-v2-device-api` D8). This is the per-asset lookup that idiom was written for; the union's own
- * completeness check is a different query with a different cost profile.
- *
- * Reached by `event_assets_by_device_asset`, which exists because this route's path names no event.
+ * Completeness is a SET comparison, never a count — a device may hold a role this event does not
+ * declare, and counting would misjudge it (`add-v2-device-api` D8). This is the per-asset lookup that idiom
+ * was written for; the union's own completeness check is a different query with a different cost profile.
  */
 export async function eventsCompletedBy(db: Db, r: {
+  eventId: string;
   deviceId: string;
   assetId: string;
   role: string;
@@ -623,18 +633,18 @@ export async function eventsCompletedBy(db: Db, r: {
   const { rows } = await db.execute(
     `SELECT ea.event_id
        FROM event_assets ea
-      WHERE ea.device_id = ? AND ea.asset_id = ?
+      WHERE ea.event_id = ? AND ea.device_id = ? AND ea.asset_id = ?
         AND EXISTS (SELECT 1 FROM json_each(ea.roles) j WHERE j.value = ?)
         AND NOT EXISTS (SELECT 1 FROM resources r
-                         WHERE r.device_id = ea.device_id AND r.asset_id = ea.asset_id
-                           AND r.role = ?)
+                         WHERE r.event_id = ea.event_id AND r.device_id = ea.device_id
+                           AND r.asset_id = ea.asset_id AND r.role = ?)
         AND NOT EXISTS (
               SELECT 1 FROM json_each(ea.roles) j
                WHERE j.value != ?
                  AND NOT EXISTS (SELECT 1 FROM resources r
-                                  WHERE r.device_id = ea.device_id AND r.asset_id = ea.asset_id
-                                    AND r.role = j.value))`,
-    [r.deviceId, r.assetId, r.role, r.role, r.role],
+                                  WHERE r.event_id = ea.event_id AND r.device_id = ea.device_id
+                                    AND r.asset_id = ea.asset_id AND r.role = j.value))`,
+    [r.eventId, r.deviceId, r.assetId, r.role, r.role, r.role],
   );
   return rows.map((row) => String(row.event_id));
 }
@@ -671,7 +681,8 @@ export async function publishUnionChanges(
     `SELECT ea.asset_id,
             (NOT EXISTS (SELECT 1 FROM json_each(ea.roles) j
                           WHERE NOT EXISTS (SELECT 1 FROM resources r
-                                             WHERE r.device_id = ea.device_id
+                                             WHERE r.event_id = ea.event_id
+                                               AND r.device_id = ea.device_id
                                                AND r.asset_id = ea.asset_id
                                                AND r.role = j.value))) AS complete
        FROM event_assets ea
@@ -682,11 +693,11 @@ export async function publishUnionChanges(
     rows.filter((r) => Number(r.complete) === 1).map((r) => String(r.asset_id)),
   );
 
-  // A stored resource row per (asset, role) this device holds — the reality the incoming declaration is
-  // compared against. Device-scoped, like the table.
+  // A stored resource row per (asset, role) this device holds in this event — the reality the incoming
+  // declaration is compared against.
   const held = await db.execute(
-    `SELECT asset_id, role FROM resources WHERE device_id = ?`,
-    [deviceId],
+    `SELECT asset_id, role FROM resources WHERE event_id = ? AND device_id = ?`,
+    [eventId, deviceId],
   );
   const present = new Set(held.rows.map((r) => `${String(r.asset_id)} ${String(r.role)}`));
 
@@ -731,7 +742,13 @@ export type UnionResourceRow = {
   creationDate: string;
   role: string;
   contentType: string;
+  /**
+   * The wire's object name, `<assetId>-<role>.<ext>` — DERIVED ([legacyKeyFor]), since migration 0010 keeps
+   * no such column. Installed clients key their download records by it, so it never changes shape.
+   */
   key: string;
+  /** Where the bytes are — the full storage path, unencoded. Empty when not present. */
+  path: string;
   filename: string;
   /** Whether this declared role's bytes have arrived. False rows are what make an asset incomplete. */
   present: boolean;
@@ -749,9 +766,8 @@ export type UnionResourceRow = {
  * Driving from the declaration rather than from `resources` is load-bearing in two directions. An inner
  * join would make a missing resource *vanish* rather than read as incomplete — the asset would silently
  * shrink to its uploaded resources and be served as whole. And counting rows instead of comparing sets
- * would misjudge the reverse case: `resources` is device-scoped while `roles` is event-scoped, so a
- * device may hold a role this event does not declare, and a count would call that asset incomplete and
- * drop it from an event it belongs in.
+ * would misjudge the reverse case: a device may hold a role this event does not declare, and a count
+ * would call that asset incomplete and drop it from an event it belongs in.
  */
 export async function unionRows(
   db: Db,
@@ -770,12 +786,13 @@ export async function unionRows(
   const { rows } = await db.execute(
     `SELECT ea.device_id, ea.asset_id, ea.creation_date,
             j.value AS role,
-            r.content_type, r.key, r.filename,
+            r.content_type, r.path, r.filename,
             (r.device_id IS NOT NULL) AS present
      FROM event_assets ea
      JOIN json_each(ea.roles) j
      LEFT JOIN resources r
-       ON r.device_id = ea.device_id AND r.asset_id = ea.asset_id AND r.role = j.value
+       ON r.event_id = ea.event_id AND r.device_id = ea.device_id AND r.asset_id = ea.asset_id
+      AND r.role = j.value
      WHERE ea.event_id = ?${delta}
      -- Deterministic, and PRIMARY first within an asset: no consumer depends on the order, but an
      -- unordered join makes a response diff noise rather than signal. Plain ORDER BY role would put
@@ -783,28 +800,33 @@ export async function unionRows(
      ORDER BY ea.device_id, ea.asset_id, (j.value <> 'primary'), j.value`,
     after === undefined ? [eventId] : [eventId, after],
   );
-  return rows.map((r) => ({
-    deviceId: String(r.device_id),
-    assetId: String(r.asset_id),
-    creationDate: String(r.creation_date),
-    role: String(r.role),
-    contentType: String(r.content_type ?? ""),
-    key: String(r.key ?? ""),
-    filename: String(r.filename ?? ""),
-    present: Number(r.present) === 1,
-  }));
+  return rows.map((r) => {
+    const present = Number(r.present) === 1;
+    const filename = String(r.filename ?? "");
+    return {
+      deviceId: String(r.device_id),
+      assetId: String(r.asset_id),
+      creationDate: String(r.creation_date),
+      role: String(r.role),
+      contentType: String(r.content_type ?? ""),
+      key: present ? legacyKeyFor(String(r.asset_id), String(r.role), filename) : "",
+      path: String(r.path ?? ""),
+      filename,
+      present,
+    };
+  });
 }
 
 /**
  * The stored object a download of ONE resource of an event's union resolves to (decision record
- * `changes/incremental-union`, D1): its key when the event still declares that asset with that role (in a
+ * `changes/incremental-union`, D1): its storage path when the event still declares that asset with that role (in a
  * membership of either state, as the union does) and its bytes are recorded; `null` otherwise.
  *
  * Narrower than the union on purpose: it asks about one role, so a photo whose OTHER role has not landed
  * still serves the role that has. Nothing hands out such a link — the union serves only complete assets —
  * and a client that guesses one learns nothing the event's union would not tell it.
  */
-export async function downloadKey(
+export async function downloadStoragePath(
   db: Db,
   eventId: string,
   deviceId: string,
@@ -812,14 +834,15 @@ export async function downloadKey(
   role: string,
 ): Promise<string | null> {
   const { rows } = await db.execute(
-    `SELECT r.key
+    `SELECT r.path
        FROM event_assets ea
-       JOIN resources r ON r.device_id = ea.device_id AND r.asset_id = ea.asset_id AND r.role = ?
+       JOIN resources r ON r.event_id = ea.event_id AND r.device_id = ea.device_id
+                       AND r.asset_id = ea.asset_id AND r.role = ?
       WHERE ea.event_id = ? AND ea.device_id = ? AND ea.asset_id = ?
         AND EXISTS (SELECT 1 FROM json_each(ea.roles) j WHERE j.value = ?)`,
     [role, eventId, deviceId, assetId, role],
   );
-  return rows.length === 0 ? null : String(rows[0].key);
+  return rows.length === 0 ? null : String(rows[0].path);
 }
 
 /**
@@ -862,19 +885,28 @@ export async function logUnionFetch(db: Db, f: UnionFetch): Promise<void> {
 }
 
 /**
- * The device's uploaded resources, for the per-device listing and the rejoin reconcile's seed.
+ * The device's uploaded resources IN ONE EVENT, for v1's listing and the rejoin reconcile's seed.
  *
- * It yields the stored `key`, NOT the human `filename`: the listing's `filename` field is the object name
+ * It yields the object name `key`, NOT the human `filename`: the listing's `filename` field is the name
  * the reconciler matches its ledger against (capability `photo-sharing` — "the bare
  * `<assetId>-<role>.<ext>`"), and handing it a capture name instead would seed nothing and look exactly
- * like "this device has uploaded nothing".
+ * like "this device has uploaded nothing". `path` is where the bytes are, for the listing's presign.
  */
-export async function deviceFiles(db: Db, deviceId: string): Promise<{ key: string }[]> {
+export async function deviceFiles(
+  db: Db,
+  eventId: string,
+  deviceId: string,
+): Promise<{ key: string; path: string }[]> {
   const { rows } = await db.execute(
-    `SELECT key FROM resources WHERE device_id = ? ORDER BY key`,
-    [deviceId],
+    `SELECT asset_id, role, filename, path FROM resources WHERE event_id = ? AND device_id = ?`,
+    [eventId, deviceId],
   );
-  return rows.map((r) => ({ key: String(r.key) }));
+  return rows
+    .map((r) => ({
+      key: legacyKeyFor(String(r.asset_id), String(r.role), String(r.filename)),
+      path: String(r.path),
+    }))
+    .sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
 }
 
 // ── Devices: the attestation group ────────────────────────────────────────────────────────────────
@@ -1116,8 +1148,8 @@ export async function deleteEvent(db: Db, eventId: string): Promise<void> {
 
 /**
  * COMPLETE one event (capability `event-lifetime`): close it if it had not closed, stamp it completed,
- * and delete every membership — the cascade takes their assets, and the asset phase then collects the
- * bytes exactly as for a deleted event. The ROW stays, name and range included, until the deadline drops
+ * and delete every membership — the cascade takes their assets and resources, and the byte phase then
+ * deletes the event's folder exactly as for a deleted event. The ROW stays, name and range included, until the deadline drops
  * it, so a device still joined is told "completed" rather than a "not found" it would disbelieve.
  */
 export async function completeEvent(tx: Db, eventId: string, at: string): Promise<void> {
@@ -1134,52 +1166,13 @@ export async function completeEvent(tx: Db, eventId: string, at: string): Promis
 }
 
 /**
- * Every byte key still referenced by a surviving event, as `${deviceId}/${key}` — the asset phase's root
- * set. Spans memberships in EVERY state: a member's photos stay in the union after it left, while its event
- * lives, so its bytes must stay too.
+ * The events that still LIVE — present and not completed — whose byte folders the sweep keeps (change
+ * `per-event-storage-layout`, D7). Read on the PRIMARY by its caller: a stale replica missing a new event
+ * would delete that event's photos.
  */
-export async function referencedKeys(
-  db: Db,
-  excludeEvents: ReadonlySet<string> = new Set(),
-): Promise<Set<string>> {
-  const { rows } = await db.execute(
-    `SELECT DISTINCT ea.event_id, r.device_id, r.key
-     FROM event_assets ea
-     JOIN resources r ON r.device_id = ea.device_id AND r.asset_id = ea.asset_id`,
-  );
-  const out = new Set<string>();
-  for (const r of rows) {
-    if (excludeEvents.has(String(r.event_id))) continue;
-    out.add(`${String(r.device_id)}/${String(r.key)}`);
-  }
-  return out;
-}
-
-/**
- * Each device's retention floor: the earliest `startsAt` over the surviving events it is still PRESENT
- * in (`sharing` or `settled`). `startsAt` is in the canonical cutoff form — fixed width, UTC, second precision — so the
- * lexicographic minimum IS the earliest instant. (`createdAt` is NOT, which is why `deleteByMs` parses.) A device with no present surviving membership is absent here, which the caller reads as `+∞`
- * — nothing of its is above the floor, so nothing is protected by it.
- */
-export async function activeFloors(
-  db: Db,
-  excludeEvents: ReadonlySet<string> = new Set(),
-): Promise<Map<string, string>> {
-  const { rows } = await db.execute(
-    `SELECT m.device_id, m.event_id, e.starts_at
-     FROM memberships m
-     JOIN events e ON e.id = m.event_id
-     WHERE m.state IN ${PRESENT}`,
-  );
-  const out = new Map<string, string>();
-  for (const r of rows) {
-    if (excludeEvents.has(String(r.event_id))) continue;
-    const deviceId = String(r.device_id);
-    const startsAt = String(r.starts_at);
-    const prev = out.get(deviceId);
-    if (prev === undefined || startsAt < prev) out.set(deviceId, startsAt);
-  }
-  return out;
+export async function liveEventIds(db: Db): Promise<Set<string>> {
+  const { rows } = await db.execute(`SELECT id FROM events WHERE completed_at IS NULL`);
+  return new Set(rows.map((r) => String(r.id)));
 }
 
 /**
@@ -1222,21 +1215,6 @@ export async function collectableDevices(
   return out;
 }
 
-/**
- * Drop a collected byte's resource row. Called BEFORE the byte object is deleted, and the order is
- * load-bearing (design.md D8): row-then-byte leaves, on a crash, an orphan byte that is still
- * unreferenced and still below the floor, so the next run collects it — self-healing. Byte-then-row
- * would leave a row still asserting, by its existence, that bytes are stored which are gone — inert only
- * until something reads it for dedup and then silently suppresses a needed re-upload.
- *
- * Addressed by object NAME rather than by identity, because that is what the sweep holds: it walks the
- * byte partition and knows only what it found there. The `UNIQUE (device_id, key)` index is what makes
- * that lookup exact.
- */
-export async function deleteResource(db: Db, deviceId: string, key: string): Promise<void> {
-  await db.execute(`DELETE FROM resources WHERE device_id = ? AND key = ?`, [deviceId, key]);
-}
-
 /** How many device rows the store holds — the summary's devices tier reports kept as total minus deleted. */
 export async function countDevices(db: Db): Promise<number> {
   const { rows } = await db.execute(`SELECT COUNT(*) AS n FROM devices`);
@@ -1251,37 +1229,48 @@ export async function deleteDevice(db: Db, deviceId: string): Promise<void> {
   await db.execute(`DELETE FROM devices WHERE device_id = ?`, [deviceId]);
 }
 
-/**
- * Does this device hold a row? The sweep's guard before it removes a device's emptied byte directory: a
- * device without one holds no token that can still verify (`collectableDevices` waits for the last to
- * expire), so it must re-attest — creating the row — before it can upload into that directory again.
- */
-export async function deviceExists(db: Db, deviceId: string): Promise<boolean> {
-  const { rows } = await db.execute(`SELECT 1 FROM devices WHERE device_id = ?`, [deviceId]);
-  return rows.length > 0;
-}
-
 /** One resource the backend holds for a device, in the terms v2 addresses resources by. */
 export type DeviceResourceRow = { assetId: string; role: string; filename: string };
 
 /**
- * Everything this device has had recorded as arrived (`docs/architecture.md`, the v2 listing).
+ * Everything this device has had recorded as arrived IN ONE EVENT (`docs/architecture.md`, the v2 listing).
+ * Never another event's: a client marks every listed resource uploaded, and one stored for another event
+ * would then never reach this one.
  *
  * Answers in IDENTITY terms rather than by object name, because that is the question v2 asks: "what do
  * you hold for me?" A consumer comparing this against what it intends to contribute gets its pending set
  * as a plain difference — which is why per-resource upload state needs no column, no flag and no second
  * endpoint. No `url` is minted: this route's consumer fetches no bytes.
  */
-export async function deviceResources(db: Db, deviceId: string): Promise<DeviceResourceRow[]> {
+export async function deviceResources(
+  db: Db,
+  eventId: string,
+  deviceId: string,
+): Promise<DeviceResourceRow[]> {
   const { rows } = await db.execute(
-    `SELECT asset_id, role, filename FROM resources WHERE device_id = ? ORDER BY asset_id, role`,
-    [deviceId],
+    `SELECT asset_id, role, filename FROM resources WHERE event_id = ? AND device_id = ?
+     ORDER BY asset_id, role`,
+    [eventId, deviceId],
   );
   return rows.map((r) => ({
     assetId: String(r.asset_id),
     role: String(r.role),
     filename: String(r.filename),
   }));
+}
+
+/**
+ * The event this device is PRESENT in (`sharing`/`settled`), or `null` — where an event-less byte route files
+ * its upload, and what its listing answers for (change `per-event-storage-layout`, D4). Single active
+ * membership is the current contract; should two ever be present, the one first joined latest is taken.
+ */
+export async function presentMembership(db: Db, deviceId: string): Promise<string | null> {
+  const { rows } = await db.execute(
+    `SELECT event_id FROM memberships WHERE device_id = ? AND state IN ${PRESENT}
+     ORDER BY joined_at DESC, event_id LIMIT 1`,
+    [deviceId],
+  );
+  return rows.length === 0 ? null : String(rows[0].event_id);
 }
 
 /** Whether this device holds a membership in this event, in any state. */

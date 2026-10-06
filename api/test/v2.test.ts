@@ -13,6 +13,8 @@
 // is shared (`support/harness.ts`). The duplication is the point.
 
 import { assert, assertEquals } from "@std/assert";
+import { insertEvent } from "../src/db.ts";
+import { eventBytePath } from "../src/storage.ts";
 import {
   apnsConfig,
   apnsRecorder,
@@ -23,7 +25,9 @@ import {
   D2,
   E,
   enrolDevice,
+  EVENT,
   fcmRecorder,
+  joinEvent,
   recorder,
   rows,
   store,
@@ -38,10 +42,18 @@ const CURRENT = "0.1"; // at the configured minimum
 
 /** A third member — an Android phone in the mixed-platform fan-out. */
 const D3 = "33333333-0000-4000-8000-000000000004";
-const BYTE_PATH = `/api/v2/files/devices/${D}/ASSET1/primary?filename=IMG_0001.HEIC`;
-const BYTE_OBJ_URL =
-  `https://storage.bunnycdn.com/snapsync-zone/files/devices/${D}/ASSET1-primary.heic`;
-const DEVLIST_PATH = `/api/v2/files/devices/${D}`;
+const BYTE_PATH = `/api/v2/events/${E}/files/devices/${D}/ASSET1/primary?filename=IMG_0001.HEIC`;
+/** The event-less byte route the builds before `per-event-storage-layout` still call. */
+const EVENTLESS_BYTE_PATH = `/api/v2/files/devices/${D}/ASSET1/primary?filename=IMG_0001.HEIC`;
+const BYTE_OBJ_URL = `https://storage.bunnycdn.com/snapsync-zone/${await eventBytePath(
+  E,
+  D,
+  "ASSET1",
+  "primary",
+)}`;
+const DEVLIST_PATH = `/api/v2/events/${E}/files/devices/${D}`;
+/** The event-less listing the builds before `per-event-storage-layout` still call. */
+const EVENTLESS_DEVLIST_PATH = `/api/v2/files/devices/${D}`;
 const JOIN_PATH = `/api/v2/events/${E}/devices/${D}`;
 const MANIFEST_PATH = `/api/v2/events/${E}/devices/${D}/manifest`;
 const UNION_PATH = `/api/v2/events/${E}/files`;
@@ -66,6 +78,13 @@ const RES = (key: string, role = "primary") => ({
   key,
   filename: `Capture ${key}`,
 });
+
+/** A store where D is a present member of E — the one device a byte upload into E is accepted from. */
+async function memberStore() {
+  const db = await storeWithEvent();
+  await joinEvent(db, E, D);
+  return db;
+}
 
 /** Join, then publish — the v2 order, since a manifest no longer enrolls anyone. */
 async function joinAndPublish(
@@ -162,11 +181,10 @@ Deno.test("closed tables → a v1-only path is 404 under v2, and a v2-only path 
 
 // ── PUT byte upload ────────────────────────────────────────────────────────────────────────────────
 
-Deno.test("byte PUT → identity comes from the path, and the object name matches v1's exactly", async () => {
-  // The SHARED-OBJECT property: v1 and v2 must address one stored object for one resource, or the first
-  // v2 build re-uploads every library it meets and an event with a member on each version needs two ways
-  // to name one photo.
-  const db = await store();
+Deno.test("byte PUT → identity comes from the path, and the bytes land at the event's own path", async () => {
+  // The object is named by a digest of (event, device, asset, role), so a re-upload overwrites it and one
+  // photo in two events has two unrelated names (change `per-event-storage-layout`, D1).
+  const db = await memberStore();
   const { calls, fetchImpl } = recorder();
   const res = await v2({ config: CONFIG, db, fetch: fetchImpl }).request(BYTE_PATH, {
     method: "PUT",
@@ -175,12 +193,68 @@ Deno.test("byte PUT → identity comes from the path, and the object name matche
   });
   assertEquals(res.status, 201);
   assertEquals(calls.find((c) => c.init.method === "PUT")!.url, BYTE_OBJ_URL);
-  const stored = await rows(db, `SELECT device_id, asset_id, role, key, filename FROM resources`);
+  const stored = await rows(
+    db,
+    `SELECT event_id, device_id, asset_id, role, path, filename FROM resources`,
+  );
   assertEquals(stored.length, 1);
+  assertEquals(stored[0].event_id, E);
   assertEquals(stored[0].asset_id, "ASSET1");
   assertEquals(stored[0].role, "primary");
-  assertEquals(stored[0].key, "ASSET1-primary.heic");
+  assertEquals(stored[0].path, await eventBytePath(E, D, "ASSET1", "primary"));
   assertEquals(stored[0].filename, "IMG_0001.HEIC"); // the capture name, kept as metadata only
+  db.close();
+});
+
+Deno.test("byte PUT → a device not present in the event → 403, no upstream request", async () => {
+  // A stranger, a member of ANOTHER event, and a member that has left are all refused: only a member still
+  // in the event writes into it.
+  const db = await storeWithEvent();
+  const other = "7a3f9c21-0000-4000-8000-0000000000ee";
+  await insertEvent(db, { ...EVENT, eventId: other });
+  await joinEvent(db, other, D);
+  const { calls, fetchImpl } = recorder();
+  const app = v2({ config: CONFIG, db, fetch: fetchImpl });
+  assertEquals((await app.request(BYTE_PATH, { method: "PUT", body: "b" })).status, 403);
+  await joinEvent(db, E, D);
+  await app.request(JOIN_PATH, { method: "DELETE" });
+  assertEquals(
+    (await rows(db, `SELECT state FROM memberships WHERE event_id=? AND device_id=?`, [E, D]))[0]
+      .state,
+    "left",
+  );
+  assertEquals((await app.request(BYTE_PATH, { method: "PUT", body: "b" })).status, 403);
+  assertEquals(calls.filter((c) => c.init.method === "PUT").length, 0);
+  db.close();
+});
+
+Deno.test("byte PUT → a SETTLED member still uploads: settling never waits for the bytes", async () => {
+  const db = await memberStore();
+  await db.execute(`UPDATE memberships SET state = 'settled' WHERE event_id = ?`, [E]);
+  const res = await v2({ config: CONFIG, db, fetch: recorder().fetchImpl })
+    .request(BYTE_PATH, { method: "PUT", body: "b" });
+  assertEquals(res.status, 201);
+  db.close();
+});
+
+Deno.test("byte PUT → the EVENT-LESS route files the bytes under the device's present event", async () => {
+  const db = await memberStore();
+  const { calls, fetchImpl } = recorder();
+  const res = await v2({ config: CONFIG, db, fetch: fetchImpl })
+    .request(EVENTLESS_BYTE_PATH, { method: "PUT", body: "b" });
+  assertEquals(res.status, 201);
+  assertEquals(calls.find((c) => c.init.method === "PUT")!.url, BYTE_OBJ_URL);
+  assertEquals(await rows(db, `SELECT event_id FROM resources`), [{ event_id: E }]);
+  db.close();
+});
+
+Deno.test("byte PUT → the EVENT-LESS route with no present event → 409, no upstream request", async () => {
+  const db = await storeWithEvent();
+  const { calls, fetchImpl } = recorder();
+  const res = await v2({ config: CONFIG, db, fetch: fetchImpl })
+    .request(EVENTLESS_BYTE_PATH, { method: "PUT", body: "b" });
+  assertEquals(res.status, 409);
+  assertEquals(calls.length, 0);
   db.close();
 });
 
@@ -214,7 +288,7 @@ Deno.test("byte PUT → a missing or empty filename → 400", async () => {
 Deno.test("byte PUT → a filename needing no path-safety check: separators never reach the key", async () => {
   // The value travels in the QUERY, so it cannot traverse the storage path — the v1 rule is not relaxed
   // but made unnecessary. It is metadata: it shapes only the extension and the stored capture name.
-  const db = await store();
+  const db = await memberStore();
   const { calls, fetchImpl } = recorder();
   const res = await v2({ config: CONFIG, db, fetch: fetchImpl }).request(
     `/api/v2/files/devices/${D}/ASSET1/primary?filename=${
@@ -228,16 +302,21 @@ Deno.test("byte PUT → a filename needing no path-safety check: separators neve
 });
 
 Deno.test("byte PUT → a re-upload with a different filename updates metadata, not identity", async () => {
-  const db = await store();
+  const db = await memberStore();
   const app = v2({ config: CONFIG, db, fetch: recorder().fetchImpl });
   await app.request(BYTE_PATH, { method: "PUT", body: "b" });
-  await app.request(`/api/v2/files/devices/${D}/ASSET1/primary?filename=RENAMED.HEIC`, {
+  await app.request(`/api/v2/events/${E}/files/devices/${D}/ASSET1/primary?filename=RENAMED.HEIC`, {
     method: "PUT",
     body: "b",
   });
-  const stored = await rows(db, `SELECT filename FROM resources`);
+  const stored = await rows(db, `SELECT filename, path FROM resources`);
   assertEquals(stored.length, 1); // one resource, not two
   assertEquals(stored[0].filename, "RENAMED.HEIC");
+  assertEquals(
+    stored[0].path,
+    await eventBytePath(E, D, "ASSET1", "primary"),
+    "one object, overwritten",
+  );
   db.close();
 });
 
@@ -278,7 +357,7 @@ const draining: Parameters<typeof v2>[0]["fetch"] = async (_url, init) => {
 Deno.test("byte PUT → a client whose body breaks off is logged as aborting, at info, not as a storage error", async () => {
   // A weak mobile uplink: the phone's upload dies mid-body. That is the network the device's retry
   // absorbs, so it must not read as storage failing, nor fill the script's log ring at error level.
-  const db = await store();
+  const db = await memberStore();
   const body = new ReadableStream<Uint8Array>({
     start(c) {
       c.enqueue(new Uint8Array([1, 2, 3]));
@@ -300,7 +379,7 @@ Deno.test("byte PUT → a client whose body breaks off is logged as aborting, at
 });
 
 Deno.test("byte PUT → storage erroring on an intact body is still an error", async () => {
-  const db = await store();
+  const db = await memberStore();
   const logged = await logsOf(async () => {
     await v2({ config: CONFIG, db, fetch: recorder({ throws: true }).fetchImpl })
       .request(BYTE_PATH, { method: "PUT", body: "bytes" });
@@ -313,13 +392,39 @@ Deno.test("byte PUT → storage erroring on an intact body is still an error", a
 // ── GET the per-device listing ─────────────────────────────────────────────────────────────────────
 
 Deno.test("listing → answers in identity terms and mints no url", async () => {
-  const db = await store();
+  const db = await memberStore();
   const app = v2({ config: CONFIG, db, fetch: recorder().fetchImpl });
   await app.request(BYTE_PATH, { method: "PUT", body: "b" });
   const body = await (await app.request(DEVLIST_PATH)).json() as Record<string, unknown>[];
   assertEquals(body.length, 1);
   assertEquals(Object.keys(body[0]).sort(), ["assetId", "filename", "role"]);
   assertEquals(body[0].assetId, "ASSET1");
+  db.close();
+});
+
+Deno.test("listing → answers for ONE event: another event's resources are never listed", async () => {
+  // A device marks every listed resource uploaded, so one stored for another event would never reach this
+  // one (change `per-event-storage-layout`, D5).
+  const db = await memberStore();
+  const other = "7a3f9c21-0000-4000-8000-0000000000ee";
+  await insertEvent(db, { ...EVENT, eventId: other });
+  await joinEvent(db, other, D);
+  const app = v2({ config: CONFIG, db, fetch: recorder().fetchImpl });
+  await app.request(BYTE_PATH, { method: "PUT", body: "b" });
+  const listed = async (path: string) =>
+    (await (await app.request(path)).json() as unknown[]).length;
+  assertEquals(await listed(DEVLIST_PATH), 1);
+  assertEquals(await listed(`/api/v2/events/${other}/files/devices/${D}`), 0);
+  db.close();
+});
+
+Deno.test("listing → the EVENT-LESS listing answers for the present event, and [] with none", async () => {
+  const db = await memberStore();
+  const app = v2({ config: CONFIG, db, fetch: recorder().fetchImpl });
+  await app.request(BYTE_PATH, { method: "PUT", body: "b" });
+  assertEquals((await (await app.request(EVENTLESS_DEVLIST_PATH)).json() as unknown[]).length, 1);
+  await app.request(JOIN_PATH, { method: "DELETE" });
+  assertEquals(await (await app.request(EVENTLESS_DEVLIST_PATH)).json(), []);
   db.close();
 });
 
@@ -739,6 +844,32 @@ Deno.test("fan-out → one completion wakes an iPhone through APNs and an Androi
 
   assertEquals(apns.pushed, ["iphone-recipient"], "the iPhone is woken through APNs");
   assertEquals(fcm.sent, ["android-recipient"], "the Android phone is woken through FCM");
+  db.close();
+});
+
+Deno.test("union → a byte completes the asset only in the event it was uploaded into", async () => {
+  // Each event holds its own bytes (change `per-event-storage-layout`): a photo D declared in two events,
+  // uploaded into one, is served by that one only — the other still waits for its own copy.
+  const db = await storeWithEvent();
+  const other = "7a3f9c21-0000-4000-8000-0000000000ee";
+  await insertEvent(db, { ...EVENT, eventId: other });
+  const app = v2({ config: CONFIG, db, fetch: recorder().fetchImpl });
+  for (const e of [other, E]) {
+    await app.request(`/api/v2/events/${e}/devices/${D}`, { method: "PUT" });
+    await app.request(`/api/v2/events/${e}/devices/${D}/manifest`, {
+      method: "PUT",
+      body: manifest([{
+        assetId: "ASSET1",
+        creationDate: "2026-07-01T00:00:00Z",
+        resources: [RES("ASSET1-primary.heic")],
+      }]),
+    });
+  }
+  assertEquals((await app.request(BYTE_PATH, { method: "PUT", body: "x" })).status, 201);
+  const served = async (e: string) =>
+    (await (await app.request(`/api/v2/events/${e}/files`)).json() as unknown[]).length;
+  assertEquals(await served(E), 1);
+  assertEquals(await served(other), 0);
   db.close();
 });
 

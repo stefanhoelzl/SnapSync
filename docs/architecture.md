@@ -569,7 +569,8 @@ memberships   (event_id -> events CASCADE, device_id), state in {sharing, settle
               joined_at, manifest_version?
 event_assets  (event_id, device_id -> memberships CASCADE), asset_id, creation_date, roles (JSON array)
               + index (device_id, asset_id)
-resources     (device_id, asset_id, role) PK, key UNIQUE per device, content_type, filename
+resources     (event_id, device_id -> memberships CASCADE), asset_id, role, path (the full storage
+              path), content_type, filename; PK (event_id, device_id, asset_id, role) (migration 0010)
 devices       device_id, created_at, attest_* (NOT NULL; attest_platform ios|android, what proved the
               key), push_* (nullable together), app_version? (the last v2 version declared)
 union_log     seq AUTOINCREMENT, (event_id -> events CASCADE), kind in {gained, removed, fetch},
@@ -609,8 +610,14 @@ The generated snapshot is `api/schema.sql` (section "Database" below).
   `done`/`left` are GONE, and are told apart for observability only — nothing decides on the difference.
   A manual leave and the app's own leave are the same request. A gone member's assets stay in the
   union; a join puts any state back to `sharing`.
-- **`resources` sits outside the event cascade** and is device-scoped. This is forced: the byte
-  route's path carries no event. It also lets one byte serve two events during a switch.
+- **A resource belongs to one event** (migration 0010, `changes/per-event-storage-layout`): a child of
+  its membership, so completion and a dropped event take it. Its `path` is where the bytes are —
+  `files/<eventId>/<sha256>` for every byte written since, `files/devices/<deviceId>/<key>` for one written
+  before — and every reader follows it; none composes a layout. A photo in two events is two resources and
+  two objects. The wire's `key` (`<assetId>-<role>.<ext>`, the union's and v1's listing) is derived from
+  `asset_id`/`role`/`filename` (`legacyKeyFor`), so installed clients see the string they always did.
+  It hangs off the membership, not `event_assets`: a publish deletes and re-inserts those, and a byte may
+  land before its declaration.
 - **Row existence is the upload record.** There is no upload-state column, and the backend records only
   bytes it watched arrive. "Pending" = declared by a manifest with no `resources` row.
 - **The union log is what makes a union read incremental** (`changes/incremental-union`). Its `seq` is
@@ -635,8 +642,11 @@ The generated snapshot is `api/schema.sql` (section "Database" below).
   50 subrequests / 30 s CPU) gives each event one `sweepVerdict` (`src/lifecycle.ts`): **drop** the row
   past its delete-by; **complete** an ever-joined event that is empty (no member present) or past its
   clock — memberships (and so `event_assets`) and the union log deleted, `closed_at`/`completed_at` stamped, the row
-  kept — then collects unreferenced bytes, collects a `devices` row only once no token minted for it can still
-  verify, and removes the emptied `files/devices/<id>/` directory of a device with no row. Its delete decision runs in an interactive transaction (primary), not an ordinary read.
+  kept — then deletes the byte folder `files/<eventId>/` of every event that no longer lives (one recursive
+  DELETE; any such folder it finds, so a crash or a byte that landed after the close is healed by the next
+  run), and collects a `devices` row only once no token minted for it can still verify. Its delete decision,
+  and the read of which events live, run in an interactive transaction (primary), not an ordinary read.
+  `files/devices/` (the bytes written before migration 0010) is never touched by it.
   Details are in `docs/deployment.md`.
 
 ### The request pipeline
@@ -692,10 +702,12 @@ not listed is `404` (no `405`) and makes no upstream request.
 | `PUT` | `/events/<eventId>/devices/<deviceId>` | **join**: the only route that creates or reactivates a membership; one conditional capacity insert; clears `manifest_version` and `final`; idempotent | `200` · `404` · `409` at capacity · `410` closed · `502` |
 | `DELETE` | `/events/<eventId>/devices/<deviceId>` | **leave** (`?received=true\|false`): a present membership becomes `done` or `left`; after `endsAt` the leave that leaves no member `sharing` closes the event and wakes the rest; idempotent, a repeated leave keeps the first state (a completed event answers `200` too); assets retained; frees no slot | `200` · `404` · `502` |
 | `PUT` | `/events/<eventId>/devices/<deviceId>/manifest` | **contribution**: full-state replace of the membership's asset set in one transaction, ordered by `version`; `final` → `settled`, honoured only after `endsAt` and only for a present membership; the publish leaving no member `sharing` closes the event and wakes its members; writes no resource rows; enrols nobody | `200` (applied, or refused as older with nothing written, or the same set to a closed event) · `400` · `404` · `409` not a member · `409 {error:"closed"}` changed set to a closed event · `410` completed · `502` |
-| `PUT` | `/files/devices/<deviceId>/<assetId>/<role>?filename=<name>` | streams bytes to storage (never buffered), then records the `resources` row. **A failed record fails the request.** If this completed an asset, wakes the declaring events' other members | `201` · `400` bad role / missing filename · `502` (`OPTIONS` → `204`) |
-| `GET` | `/files/devices/<deviceId>` | what the backend holds for me, from the DB | `200 [{assetId, role, filename}]` · `502` |
+| `PUT` | `/events/<eventId>/files/devices/<deviceId>/<assetId>/<role>?filename=<name>` (the download redirect's path; the PUT is gated) | accepted only from a **present** member (`sharing`/`settled` — a closed event still takes its members' bytes, a completed one has none); streams bytes to `files/<eventId>/<sha256 of event/device/asset/role>` (never buffered), then records the `resources` row. **A failed record fails the request.** If this completed the asset, wakes the event's other members | `201` · `400` bad role / missing filename · `403` not a present member · `502` (`OPTIONS` → `204`) |
+| `PUT` | `/files/devices/<deviceId>/<assetId>/<role>?filename=<name>` | the **event-less** upload of builds before `per-event-storage-layout`: the same write, filed under the device's one present membership | as above, `409` with no present membership |
+| `GET` | `/events/<eventId>/files/devices/<deviceId>` | what the backend holds for me **in this event**, from the DB — never another event's | `200 [{assetId, role, filename}]` · `502` |
+| `GET` | `/files/devices/<deviceId>` | the event-less listing: the same answer for the device's present membership, `[]` with none | `200 [{assetId, role, filename}]` · `502` |
 | `GET`/`HEAD` | `/events/<eventId>/files[?cursor=<n>][&urls=false]` (ungated; an optional bearer token is verified) | the event union: one query over every membership, present or gone; an asset is included only when **every declared role** has a resource (a set comparison, not a count). `cursor` serves only assets the union log says were gained after it (`changes/incremental-union`); `urls=false` omits `url`, which is otherwise the download redirect's absolute address. Every answer carries `SnapSync-Cursor: <n>`, the position it covers. The `SnapSync-Trigger` header (`push`·`wake`·`foreground`·`join`·`grant`·`reconfigure`·`leave-check`) and the verified device, if any, go into the read's `fetch` log row, best-effort | `200 [{deviceId, assetId, creationDate, resources:[{role, contentType, key, filename, url?}]}]` · `400` bad cursor · `401` a sent token that does not verify · `404` · `502` |
-| `GET`/`HEAD` | `/events/<eventId>/files/devices/<deviceId>/<assetId>/<role>` (ungated, exempt from the version gate) | the **download redirect**: the stored key of that role, when the event still declares the asset with it and its bytes are recorded; each segment percent-encoded | `302` to a 7-day presign, `Cache-Control: no-store, no-cache, max-age=0` · `404` · `502` |
+| `GET`/`HEAD` | `/events/<eventId>/files/devices/<deviceId>/<assetId>/<role>` (ungated, exempt from the version gate) | the **download redirect**: the stored path of that role, when the event still declares the asset with it and its bytes are recorded; each segment percent-encoded | `302` to a 7-day presign, `Cache-Control: no-store, no-cache, max-age=0` · `404` · `502` |
 | `PUT` | `/devices/<deviceId>` `{pushToken: {kind, token, env}}` (`kind` is the push adapter's — `apns` or `fcm`) or explicit absence | updates the push columns | `201` · `400` · **`401` when no row was affected** (device never attested; the client re-attests and re-sends) · `502` |
 
 Served at the root under no version: `OPTIONS` on any path (`204`, no resumable upload advertised, so
@@ -724,7 +736,7 @@ storage GET and one row read plus one count. The event's identity reaching this 
   complete one, and a photo vanishes silently). A zero-row conditional write with two causes (capacity
   or absent) is disambiguated by a follow-up read (`409` vs `404`).
 - **Presigned URLs.** SigV4 query-signed S3 `GET`, path-style
-  `https://<s3-host>/<zone>/files/devices/<deviceId>/<key>`, 7-day expiry, signed with the zone name as
+  `https://<s3-host>/<zone>/<the resource's path, each segment percent-encoded>`, 7-day expiry, signed with the zone name as
   access key id and the storage password as secret. Minted by one builder: under v2 only by the download
   redirect, one per download started; under v1 (frozen) on every union and listing response. The 7 days
   stay on purpose: an iOS background session resumes from the redirect target and never revisits the
@@ -753,14 +765,16 @@ storage GET and one row read plus one count. The event's identity reaching this 
 its wire tests (`v1.test.ts`) must pass **unmodified** across any schema migration. It differs from v2:
 
 - `PUT /files/devices/<deviceId>/<filename>`: the object name is in the path (single segment, no `/`,
-  `%2F` or `..`), identity is recovered by `src/legacy-v1.ts`, and recording the row is
-  **best-effort** (the response is the storage outcome). This is safe only because v1's manifest publish
-  re-creates missing rows. Do not change one without the other.
+  `%2F` or `..`), identity is recovered by `src/legacy-v1.ts` (a name that does not parse is `400`), the
+  bytes are filed under the device's present membership like v2's event-less upload (`409` with none),
+  and recording the row is **best-effort** (the response is the storage outcome). This is safe only
+  because v1's manifest publish re-creates missing rows, pointing them at the same deterministic path. Do
+  not change one without the other.
 - `PUT /events/<eventId>/devices/<deviceId>` **is** the manifest publish **and** the enrollment
   (capacity `409`). It also upserts resource rows monotonically (a later publish cannot un-say an
   upload). There is no `version`.
 - `POST /events/<eventId>/notify` exists (`202`, best-effort fan-out to present members).
-- `GET /files/devices/<deviceId>` returns `[{filename, url}]`.
+- `GET /files/devices/<deviceId>` returns `[{filename, url}]`, for the device's present membership.
 - The union's default `url` stays the 7-day **presign** (`changes/incremental-union` D3): `v1.test.ts`
   asserts it. `urls=false` and `cursor` are additive on v1 too (the event page reads through v1). v1's
   byte route and publish write no union-log rows, so a pre-0.4 member's photos reach v2 readers only
@@ -906,10 +920,14 @@ The body of `PUT /api/v2/events/<eventId>/devices/<deviceId>/manifest`, one full
 ### Byte store (bunny Storage zone)
 
 ```
-files/devices/<deviceId>/<assetId>-<role>.<ext>   one object per resource (ext from the capture filename,
-                                                  lowercased, else "bin"); composed by the backend,
-                                                  byte-identical under v1 and v2 and to the client's
-                                                  model/UploadKeys.kt
+files/<eventId>/<sha256>                          one object per resource of an event; the name is the hex
+                                                  SHA-256 of "<eventId>/<deviceId>/<assetId>/<role>"
+                                                  (`eventBytePath`), so a re-upload overwrites it and one
+                                                  photo in two events has two unrelated names. Deleted as
+                                                  one folder by the sweep
+files/devices/<deviceId>/<assetId>-<role>.<ext>   bytes written before migration 0010, still served
+                                                  through rows that point at them; written no more
+                                                  (`changes/per-event-storage-layout`, migration plan)
 site/index.html · site/join/index.html · site/_astro/*   the Astro build (mirror-deployed, public)
 ```
 
