@@ -19,7 +19,8 @@ import org.jetbrains.compose.resources.stringResource
  * The **compact** event header for a surface whose body is a decision, not a hero: the badge sits beside
  * the text instead of above it, so identity costs one line-pair of height rather than a third of the
  * screen. The join gate leads with it — the SnapSync mark as its app-icon badge, a small tracked eyebrow
- * ("YOU'RE INVITED"), the event name noticeably large beneath it, and one warm line under that. The consent
+ * ("YOU'RE INVITED") and the event name noticeably large beneath it. It carries no warm line under the name:
+ * the eyebrow already says what the invitation is, and the height went to the choices below it. The consent
  * sections below stay factual; this is the one place that surface is allowed to sound like an invitation,
  * because it is one.
  *
@@ -27,8 +28,8 @@ import org.jetbrains.compose.resources.stringResource
  * question below the fold and left the answer controls competing for what was left.
  */
 @Composable
-fun AppEventHeaderCompact(title: String, subtitle: String) =
-    AppIdentityHeader(stringResource(Res.string.invited_eyebrow), title, subtitle)
+fun AppEventHeaderCompact(title: String) =
+    AppIdentityHeader(stringResource(Res.string.invited_eyebrow), title, subtitle = null)
 
 /**
  * The **compact host header** for the create-event surface: the SnapSync mark as its app-icon badge,
@@ -51,8 +52,8 @@ fun AppEventHeaderHost(title: String, subtitle: String) =
 /**
  * The shape both headers above are, and the one any other surface needing identity-plus-a-statement
  * uses: the SnapSync mark as an app-icon badge, an optional small tracked [eyebrow] naming what this
- * surface IS, the [title] noticeably large beneath it, and one line of [subtitle] under that. A surface
- * whose title already says what it is passes no eyebrow (create, event settings).
+ * surface IS, the [title] noticeably large beneath it, and, when there is one, a line of [subtitle]
+ * under that. A surface whose title already says what it is passes no eyebrow (create, event settings).
  *
  * Extracted because the two headers were byte-identical apart from that one string — their own docs said
  * "only the eyebrow differs" — and because reaching for the nearest existing header put **"HOST AN
@@ -61,7 +62,7 @@ fun AppEventHeaderHost(title: String, subtitle: String) =
  * eyebrow as a parameter is what makes that possible without a third copy of this Row.
  */
 @Composable
-fun AppIdentityHeader(eyebrow: String?, title: String, subtitle: String) {
+fun AppIdentityHeader(eyebrow: String?, title: String, subtitle: String?) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -80,11 +81,13 @@ fun AppIdentityHeader(eyebrow: String?, title: String, subtitle: String) {
                 text = title,
                 style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
             )
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            if (subtitle != null) {
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }
