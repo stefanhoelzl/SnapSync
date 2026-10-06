@@ -150,6 +150,8 @@ class UploadTransferServiceTest {
             if (reachable) FileResult.Ok("/shared/$path") else FileResult.AreaUnavailable
         override fun move(area: FileArea, from: String, to: String): FileResult<Unit> = FileResult.NotFound
         override fun adopt(osPath: String, area: FileArea, to: String): FileResult<Unit> = FileResult.NotFound
+        override fun list(area: FileArea, directory: String): FileResult<List<String>> =
+            if (reachable) FileResult.Ok(files.filter { it.startsWith("$directory/") }.sorted()) else FileResult.AreaUnavailable
     }
 
     private fun row(key: String, state: LedgerState = LedgerState.REQUESTED) =
@@ -232,6 +234,25 @@ class UploadTransferServiceTest {
         assertEquals(listOf("A-primary.jpg" to "/shared/upload-staging/A-primary.jpg"), library.exports)
         assertEquals(UploadSource.File("/shared/upload-staging/A-primary.jpg"), upload.created.single().first)
         assertFalse("upload-staging/A-primary.jpg" in files.files, "a creation the platform refused leaves no file")
+    }
+
+    @Test
+    fun `a staged upload file no in-flight job uploads from is released and an in-flight one is kept`() = runTest {
+        // What an export leaves when no job outlived it — the process died before the job existed, or the job ended
+        // unreported — and nothing else ever reaches.
+        val upload = ScriptedUpload(accepts = UploadSourceKind.FILE, inFlight = listOf(job(UploadJobState.PENDING, tag = "A-primary.jpg")))
+        val files = SharedArea().apply {
+            this.files += listOf("upload-staging/A-primary.jpg", "upload-staging/B-primary.jpg", "elsewhere/C.bin")
+        }
+        service(upload, files = files).releaseUnclaimedStaging()
+        assertEquals(setOf("upload-staging/A-primary.jpg", "elsewhere/C.bin"), files.files)
+    }
+
+    @Test
+    fun `an upload staging directory that cannot be read releases nothing`() = runTest {
+        val files = SharedArea(reachable = false).apply { this.files += "upload-staging/B-primary.jpg" }
+        service(ScriptedUpload(accepts = UploadSourceKind.FILE), files = files).releaseUnclaimedStaging()
+        assertEquals(setOf("upload-staging/B-primary.jpg"), files.files, "a listing never made is not an empty one")
     }
 
     @Test

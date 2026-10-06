@@ -736,9 +736,13 @@ class AppCore internal constructor(
             membershipRefresh = membershipRefresh,
             watches = network.watches,
             reloadConfig = { services.config.reload() },
-            // The upload side's own work at a foreground entry; its top-up and walk are the tail's.
-            // Against the joined event's listing; unjoined, there is nothing in flight to settle.
-            settleStored = { services.config.config.value?.eventId?.let { storedUploadSettle.settle(it) } },
+            // The upload side's own work at a foreground entry; its top-up and walk are the tail's. The staging sweep
+            // first — local, and owed unjoined too; the settle against the joined event's listing (unjoined, there is
+            // nothing in flight to settle).
+            uploadOwnWork = {
+                events.uploadTransfer.releaseUnclaimedStaging()
+                services.config.config.value?.eventId?.let { storedUploadSettle.settle(it) }
+            },
             refreshStatus = { statusRefresh.run() },
             activeEventId = { services.config.config.value?.eventId },
             fetchEventDetails = fetchEventDetails,

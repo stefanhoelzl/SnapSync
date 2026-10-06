@@ -41,6 +41,9 @@ class DownloadService(databases: Databases) : SuppressionSource {
     /** The store's bookkeeping of the event union's reads — the position, and what a full read found withdrawn. */
     val union: UnionTracking = UnionTracking { q }
 
+    /** Which staged files the rows still claim — what a sweep of the staging directory keeps. */
+    val claims: StagingClaims = StagingClaims { q }
+
     /**
      * Always ready: a read-write open creates and migrates, so this process can never find the store at an old
      * schema, and an open that fails surfaces from the read itself, as it always has.
@@ -327,6 +330,20 @@ internal fun DownloadDatabase(driver: SqlDriver): DownloadDatabase = DownloadDat
     ),
     DownloadResource.Adapter(sourceAssetIdAdapter = AssetIdColumnAdapter),
 )
+
+/** The staging paths the download store's rows still claim, over the same database as [DownloadService]. */
+class StagingClaims internal constructor(private val queries: () -> DownloadStoreQueries) {
+
+    /**
+     * Every staging path a resource row may still use, relative to the shared area: each row's recorded staged path,
+     * and — for a row whose download has not landed yet — the path under [root] it will land at. A staged file outside
+     * this set has no row to record it, so nothing will ever read or release it.
+     */
+    suspend fun pathsInUse(root: String): Set<String> =
+        queries().selectResourcePaths().executeAsList().flatMapTo(HashSet()) { row ->
+            listOfNotNull(row.stagedPath, stagingPath(root, AssetRef(row.sourceDeviceId, row.sourceAssetId), row.resourceKey))
+        }
+}
 
 /**
  * The download store's bookkeeping of the event union's reads (decision record `changes/incremental-union`, D6–D7),

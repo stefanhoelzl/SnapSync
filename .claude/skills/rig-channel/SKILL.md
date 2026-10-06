@@ -134,6 +134,9 @@ POST /device/reset                      void durable sync state
 POST /device/gallery/seed?n=&kind=bulk|policy
 POST /device/gallery/wipe?scope=all|assets|albums[&limit=&offset=]
 POST /device/uploaders?app=&extension= switch one uploader off/on (see below)
+POST /device/disk[?depth=2&largest=20]  what the app's files take on the REAL disk, per container: `shared` (the App
+                                        Group — iOS's "Documents & Data", not USB-pullable) and `app` (the sandbox);
+                                        bytes + file counts per directory, and the largest files. iOS only
 POST /device/adapters                        body = the next adapter choice; checks it, writes it, EXITS the app
 POST /device/adapters/current                the adapter choice this launch runs (and why it was refused, if it was)
 POST /device/adapters/clear                  delete the adapter choice and every mocked system's state; EXITS the app

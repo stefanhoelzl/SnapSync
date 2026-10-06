@@ -154,7 +154,7 @@ class ForegroundOrderingTest {
             // A network watch on the test's background scope unless a test watches one: it stops with the test.
             watches = ForegroundWatches(statusPoller, networkWatch ?: NetworkWatch(backgroundScope, NetworkReadings(NetworkMock().port()))),
             reloadConfig = {},
-            settleStored = settleStoredUploads,
+            uploadOwnWork = settleStoredUploads,
             refreshStatus = refreshStatus,
             // No membership: the reconcile and the membership refresh short-circuit, leaving the settle,
             // the status refresh and the unconditional reclaim as the flow's children — which is exactly

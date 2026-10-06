@@ -44,6 +44,7 @@ object RigVocabulary {
     /** Device writes that name an operating-system facility only the app host has. */
     val appHostCommands: List<String> = listOf(
         "device/uploaders", "device/process-metrics", "device/upload-jobs/perform", "device/upload-extension/record",
+        "device/disk",
     )
 
     /**

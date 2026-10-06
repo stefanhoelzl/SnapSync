@@ -70,6 +70,15 @@ class JvmFiles(private val shared: File?, private val private: File?) : Files {
         return io(area, to) { moveReplacing(File(osPath), destination) }
     }
 
+    override fun list(area: FileArea, directory: String): FileResult<List<String>> {
+        val root = resolve(area, "") ?: return FileResult.AreaUnavailable
+        return io(area, directory) { dir ->
+            if (!dir.exists()) return@io FileResult.Ok(emptyList())
+            if (!dir.canRead()) return@io FileResult.Denied("$directory is not readable")
+            FileResult.Ok(dir.walkTopDown().filter { it.isFile }.map { it.relativeTo(root).invariantSeparatorsPath }.sorted().toList())
+        }
+    }
+
     private fun moveReplacing(source: File, destination: File): FileResult<Unit> {
         if (!source.exists()) return FileResult.NotFound
         destination.parentFile?.mkdirs()
