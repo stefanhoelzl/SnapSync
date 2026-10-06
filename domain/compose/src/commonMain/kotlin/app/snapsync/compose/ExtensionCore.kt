@@ -129,11 +129,13 @@ private fun extensionServices(
     }
     val albums = GalleryAlbums(ports.gallery)
     val build = ports.process.build
+    val config = ConfigService(process.files, process.clock)
     return UploadServices(
-        config = ConfigService(process.files, process.clock),
+        config = config,
         deviceIdentity = identity,
         host = build.uploadHost,
-        ledger = LedgerService(ports.databases),
+        // Scoped to the joined event this process last read; each invocation re-reads the config first.
+        ledger = LedgerService(ports.databases) { config.config.value?.eventId },
         upload = ports.upload,
         gallery = ports.gallery,
         discovery = GalleryDiscovery(ports.gallery),
@@ -186,6 +188,9 @@ internal fun extensionHandlers(
                 // Inside the guarded run, so nothing the re-read could raise escapes across the ObjC boundary.
                 run = {
                     rereadCredential()
+                    // The app joins, switches and leaves while this process lives; the ledger is scoped to the event
+                    // this read finds.
+                    services.config.reload()
                     cycle().run()
                 },
                 pending = { services.ledger.aggregates().pending },

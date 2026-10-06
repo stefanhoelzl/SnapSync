@@ -157,9 +157,6 @@ class CompositionSeamTest {
         "LeaveEvent.stopUploads" to
             "the sibling UploadTransitions.onLeave() — feature-blindness; its platform touches are the " +
             "uploaders' own adapters",
-        "LeaveEvent.clearLedger" to
-            "the ledger reset family, invoked from compose/ where ledger writes are confined (capability " +
-            "`photo-sharing`: which code may perform which write); the store is the LedgerStore port",
         "LeaveEvent.notifyLeave" to
             "compose/'s best-effort wrapper over the LeaveNotifier PORT, which logs a failed Result rather " +
             "than failing the leave — the port is where the network crossing is declared",

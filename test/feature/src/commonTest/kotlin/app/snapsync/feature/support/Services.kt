@@ -133,17 +133,28 @@ fun unreadableIdentity(): PersistedDeviceIdentity =
 fun galleryAccess(grant: MutableStateFlow<GalleryAccess> = MutableStateFlow(GalleryAccess.GRANTED)): GalleryAccessState =
     GalleryAccessState(inMemoryPhotoAccess(grant))
 
-/** The real ledger over in-memory SQLite, and the read a test needs that the app never makes: every row. */
-class TestLedger(val databases: Databases = inMemoryDatabases()) {
-    val service: LedgerService = LedgerService(databases)
+/** The event a [TestLedger] is joined to unless a test says otherwise. */
+const val LEDGER_EVENT: String = "E-ledger"
 
-    /** Every row the ledger holds, by key. */
+/**
+ * The real ledger over in-memory SQLite, joined to [joined] (every ledger read and write is scoped to the joined
+ * event), and the reads a test needs that the app never makes: every row, and which events hold rows.
+ */
+class TestLedger(val databases: Databases = inMemoryDatabases(), var joined: String? = LEDGER_EVENT) {
+    val service: LedgerService = LedgerService(databases) { joined }
+
+    /** Every row the joined event holds, by key. */
     suspend fun rows(): Map<String, LedgerEntry> = keys().mapNotNull { key -> service.get(key)?.let { key to it } }.toMap()
 
-    private fun keys(): List<String> {
+    /** Every event that holds at least one row, joined or not. */
+    fun eventsHeld(): Set<String> = column("SELECT DISTINCT eventId FROM ledgerRow").toSet()
+
+    private fun keys(): List<String> = column("SELECT DISTINCT key FROM ledgerRow ORDER BY key")
+
+    private fun column(sql: String): List<String> {
         val opened = databases.open(LEDGER_DB_NAME, LedgerDatabase.Schema, readOnly = true)
         val driver = (opened as? DbOpen.Opened)?.driver ?: return emptyList()
-        return driver.executeQuery(null, "SELECT key FROM ledgerRow ORDER BY key", { cursor ->
+        return driver.executeQuery(null, sql, { cursor ->
             val out = mutableListOf<String>()
             while (cursor.next().value) out += cursor.getString(0)!!
             QueryResult.Value(out)

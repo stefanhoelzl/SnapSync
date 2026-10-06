@@ -1,5 +1,6 @@
 package app.snapsync.membership
 
+import app.snapsync.feature.support.LEDGER_EVENT
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.feature.support.RecordingFiles
 import app.snapsync.feature.support.configCleared
@@ -30,7 +31,7 @@ class ResetDeviceStateTest {
         val configFiles = RecordingFiles()
         val config: ConfigService = configService(null, configFiles)
         private val databases = inMemoryDatabases()
-        val ledger = LedgerService(databases)
+        val ledger = LedgerService(databases) { LEDGER_EVENT }
         val downloads = DownloadService(databases)
 
         /**

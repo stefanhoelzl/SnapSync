@@ -1,5 +1,6 @@
 package app.snapsync.engine
 
+import app.snapsync.contracts.LEDGER_CONTRACT_EVENT
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.Entered
@@ -27,7 +28,7 @@ class NativeLedgerStoreTest {
         override val reaches = setOf(LedgerStoreState.EMPTY)
         override fun create(state: LedgerStoreState, clauseId: String): Entered<LedgerService> {
             val dir = newTempDirectory()
-            return Entered.Ready(LedgerService(IosDatabases(dir))) { removeDirectory(dir) }
+            return Entered.Ready(LedgerService(IosDatabases(dir)) { LEDGER_CONTRACT_EVENT }) { removeDirectory(dir) }
         }
     }
 

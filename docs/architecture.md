@@ -943,7 +943,7 @@ class (readable after first unlock; see `DataProtectionEntitlementTest`):
 | path / key | what | owner |
 |---|---|---|
 | `eventconfig.json` | the membership (config file of record). A missing file **is** "left the event", so renaming it is a false leave on every device | `ConfigService` over `IosFiles` |
-| `ledger.db` | the upload ledger (SQLDelight): the membership's share set + manifest version. Either process opens it read-write and migrates it | `LedgerService` over `IosDatabases` |
+| `ledger.db` | the upload ledger (SQLDelight): the membership's share set + manifest version. Every row names its event and every read is scoped to the joined one, so another event's rows are inert until the next join purges them. Either process opens it read-write and migrates it | `LedgerService` over `IosDatabases` |
 | `downloads.db` | the download store. The app writes and migrates it; the extension opens it read-only. It dies with the app; a join rebuilds its imported rows from the SnapSync mark each received photo's library name carries (`ReceivedPhotoName`, `ReceivedPhotoAdoption`), which is a second record, never the store's replacement | `DownloadService` / `SuppressionService` over `IosDatabases` |
 | `device-manifest/last-uploaded.json` | the manifest skip record (event id, version, snapshot) | `DeviceManifestService` |
 | `upload-staging/` | bytes staged for the app's background `URLSession` uploads | `IosUrlSessionUploadPlatform` |

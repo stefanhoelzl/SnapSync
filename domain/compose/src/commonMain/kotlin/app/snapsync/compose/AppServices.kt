@@ -40,9 +40,10 @@ internal class AppServices(val ports: AppPorts, val process: ProcessServices) {
     /**
      * What this process knows about its own uploads (capability `photo-sharing`): the app **reads** it — the status
      * counts and the dump — and **resets** it at membership transitions; the app's uploader records through its own
-     * `LedgerWriter` over it. On iOS ≥26.1 the extension writes the same App-Group ledger from its own process.
+     * `LedgerWriter` over it. On iOS ≥26.1 the extension writes the same App-Group ledger from its own process. Scoped
+     * to the event [config] says this process is joined to.
      */
-    val ledger: LedgerService by lazy { LedgerService(ports.databases) }
+    val ledger: LedgerService by lazy { LedgerService(ports.databases) { config.config.value?.eventId } }
 
     /** The download store — the app is its one writer and its one migrator (capability `receiving-photos`). */
     val downloadStore: DownloadService by lazy { DownloadService(ports.databases) }

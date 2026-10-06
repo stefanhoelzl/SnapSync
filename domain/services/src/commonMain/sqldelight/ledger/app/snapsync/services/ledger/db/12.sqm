@@ -1,0 +1,81 @@
+-- v12 -> v13: every row names its event (capability `photo-sharing`; change `event-scoped-local-state`).
+--
+-- Each event holds its own bytes (change `per-event-storage-layout`), so a `COMPLETED` row is true for ONE event
+-- only. Until now that was a lifecycle rule — a leave cleared the ledger and a join reseeded it — and a clear that
+-- failed left a row that silently suppressed the next event's upload. The event is now part of the primary key and
+-- every read is scoped to the joined event, so a row of another event can suppress nothing.
+--
+-- REBUILT, because SQLite cannot alter a primary key: the rows are staged in an ordinary table, the table is
+-- re-created with the exact statement in `Ledger.sq` (the verify task compares the two), and the rows come back.
+-- The triggers and indexes go with the old table and are re-created byte-for-byte as `Ledger.sq` has them.
+--
+-- ROW-PRESERVING, with `eventId = ''`. A migration cannot read the joined event (it lives in a file, not here), so
+-- every existing row is parked under the empty event, which no read selects. `LedgerService` adopts them into the
+-- joined event at its first use in either process; while nothing is joined they stay parked, and the next join's
+-- purge removes them. A REQUESTED row keeps its `destinationPath`, so a job queued before the upgrade still settles.
+--
+-- DOWNGRADE: a one-way door like 10.sqm. A rollback is a roll-forward that rebuilds the old primary key, keeping
+-- one row per key.
+CREATE TABLE ledgerRow_v12 AS SELECT * FROM ledgerRow;
+
+DROP TRIGGER ledgerRow_version_insert;
+DROP TRIGGER ledgerRow_version_delete;
+DROP TRIGGER ledgerRow_version_update;
+DROP INDEX ledgerRow_assetId;
+DROP INDEX ledgerRow_destinationPath;
+DROP TABLE ledgerRow;
+
+CREATE TABLE ledgerRow (
+    eventId TEXT NOT NULL,
+    key TEXT NOT NULL,
+    assetId TEXT NOT NULL,
+    state TEXT NOT NULL,
+    creationDate TEXT NOT NULL DEFAULT '',
+    role TEXT NOT NULL DEFAULT '',
+    contentType TEXT NOT NULL DEFAULT '',
+    originalFilename TEXT NOT NULL DEFAULT '',
+    destinationPath TEXT,
+    PRIMARY KEY (eventId, key)
+);
+
+INSERT INTO ledgerRow (
+    eventId, key, assetId, state, creationDate, role, contentType, originalFilename, destinationPath
+)
+SELECT '', key, assetId, state, creationDate, role, contentType, originalFilename, destinationPath
+FROM ledgerRow_v12;
+
+DROP TABLE ledgerRow_v12;
+
+CREATE INDEX ledgerRow_assetId ON ledgerRow(eventId, assetId);
+
+CREATE INDEX ledgerRow_destinationPath ON ledgerRow(destinationPath);
+
+CREATE TRIGGER ledgerRow_version_insert AFTER INSERT ON ledgerRow
+BEGIN
+    INSERT INTO manifestVersion (id, value)
+    SELECT 0, 0 WHERE NOT EXISTS (SELECT 1 FROM manifestVersion WHERE id = 0);
+    UPDATE manifestVersion SET value = value + 1 WHERE id = 0;
+END;
+
+CREATE TRIGGER ledgerRow_version_delete AFTER DELETE ON ledgerRow
+BEGIN
+    INSERT INTO manifestVersion (id, value)
+    SELECT 0, 0 WHERE NOT EXISTS (SELECT 1 FROM manifestVersion WHERE id = 0);
+    UPDATE manifestVersion SET value = value + 1 WHERE id = 0;
+END;
+
+CREATE TRIGGER ledgerRow_version_update AFTER UPDATE ON ledgerRow
+BEGIN
+    INSERT INTO manifestVersion (id, value)
+    SELECT 0, 0 WHERE NOT EXISTS (SELECT 1 FROM manifestVersion WHERE id = 0);
+    UPDATE manifestVersion SET value = value + 1
+    WHERE id = 0 AND (
+        old.eventId IS NOT new.eventId
+        OR old.key IS NOT new.key
+        OR old.assetId IS NOT new.assetId
+        OR old.creationDate IS NOT new.creationDate
+        OR old.role IS NOT new.role
+        OR old.contentType IS NOT new.contentType
+        OR old.originalFilename IS NOT new.originalFilename
+    );
+END;

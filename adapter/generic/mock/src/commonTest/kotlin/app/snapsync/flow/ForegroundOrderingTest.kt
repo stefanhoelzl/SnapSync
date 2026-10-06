@@ -145,7 +145,6 @@ class ForegroundOrderingTest {
                 leaveEvent = LeaveEvent(
                     config = config,
                     stopUploads = {},
-                    clearLedger = {},
                     notifyLeave = { _, _ -> },
                     everythingReceived = { false },
                     scope = this,

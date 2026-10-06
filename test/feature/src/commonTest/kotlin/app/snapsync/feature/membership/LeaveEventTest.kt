@@ -37,7 +37,7 @@ class LeaveEventTest {
         eventId?.let { EventConfig(it, name = "Anna's Birthday", minPhotoDate = captureCutoff("2026-07-06T14:32:11Z"), maxPhotoDate = FIXTURE_CEILING) }
 
     @Test
-    fun `leave stops the producer clears the ledger clears config then notifies with the snapshotted eventId`() = runTest {
+    fun `leave stops the producer clears config then notifies with the snapshotted eventId`() = runTest {
         val order = mutableListOf<String>()
         val files = membershipFiles(order)
         var notifiedWith: String? = null
@@ -45,7 +45,6 @@ class LeaveEventTest {
         LeaveEvent(
             config = configService(joined("E1"), files),
             stopUploads = { order += "disable" },
-            clearLedger = { order += "ledger" },
             notifyLeave = { id, _ -> order += "notify"; notifiedWith = id },
             scope = backgroundScope,
             everythingReceived = { false },
@@ -53,35 +52,13 @@ class LeaveEventTest {
         ).leave()
         runCurrent() // let the fire-and-forget notify run
 
-        // Stop precedes every clear (no mechanism starts work against rows about to vanish); the upload
-        // ledger goes before the config, so a device that has left never shows a stale share set; the
-        // notify is dispatched AFTER the clears with the eventId snapshotted before them.
-        assertTrue(files.configCleared)
-        assertNull(files.persistedConfig())
-        assertEquals(listOf("disable", "ledger", "clear", "notify"), order)
-        assertEquals("E1", notifiedWith)
-    }
-
-    @Test
-    fun `a failing ledger clear still clears the config and notifies`() = runTest {
-        val order = mutableListOf<String>()
-        val files = membershipFiles(order)
-
-        LeaveEvent(
-            config = configService(joined("E5"), files),
-            stopUploads = { order += "disable" },
-            clearLedger = { throw RuntimeException("sqlite busy") },
-            notifyLeave = { _, _ -> order += "notify" },
-            scope = backgroundScope,
-            everythingReceived = { false },
-            pendingLeaves = inertPendingLeaves(),
-        ).leave()
-        runCurrent()
-
-        // Best-effort and independent: the device still leaves; the next join clears the ledger anyway.
+        // Stop precedes the clear (no mechanism starts work for a membership about to go); no ledger row is
+        // touched — the left event's rows are inert once the config is gone; the notify is dispatched AFTER the
+        // clear with the eventId snapshotted before it.
         assertTrue(files.configCleared)
         assertNull(files.persistedConfig())
         assertEquals(listOf("disable", "clear", "notify"), order)
+        assertEquals("E1", notifiedWith)
     }
 
     @Test
@@ -93,7 +70,6 @@ class LeaveEventTest {
         LeaveEvent(
             config = configService(joined("E7"), files),
             stopUploads = {},
-            clearLedger = {},
             notifyLeave = { id, _ -> notifyStartedWith = id; neverCompletes.await() /* hangs */ },
             scope = backgroundScope,
             everythingReceived = { false },
@@ -118,7 +94,6 @@ class LeaveEventTest {
         LeaveEvent(
             config = configService(joined("E2"), files),
             stopUploads = { disabled = true },
-            clearLedger = {},
             notifyLeave = { _, _ -> notified = true },
             scope = backgroundScope,
             everythingReceived = { false },
@@ -140,7 +115,6 @@ class LeaveEventTest {
         LeaveEvent(
             config = configService(joined("E3"), files),
             stopUploads = { order += "disable" },
-            clearLedger = {},
             notifyLeave = { _, _ -> throw RuntimeException("offline") },
             scope = backgroundScope,
             everythingReceived = { false },
@@ -162,7 +136,6 @@ class LeaveEventTest {
         LeaveEvent(
             config = configService(joined("E4"), files),
             stopUploads = { throw RuntimeException("photokit") },
-            clearLedger = {},
             notifyLeave = { _, _ -> },
             scope = backgroundScope,
             everythingReceived = { false },
@@ -181,7 +154,6 @@ class LeaveEventTest {
         LeaveEvent(
             config = configService(joined(null), files),
             stopUploads = {},
-            clearLedger = {},
             notifyLeave = { _, _ -> notified = true },
             scope = backgroundScope,
             everythingReceived = { false },
@@ -209,7 +181,6 @@ class LeaveEventTest {
         LeaveEvent(
             config = configService(config, membershipFiles()),
             stopUploads = {},
-            clearLedger = {},
             notifyLeave = { _, received -> sent = received },
             scope = backgroundScope,
             everythingReceived = { cfg -> asked = cfg; everythingReceived(cfg) },

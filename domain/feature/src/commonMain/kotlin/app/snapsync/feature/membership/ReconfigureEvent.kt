@@ -32,8 +32,8 @@ import co.touchlab.kermit.Logger
  * - **Upload**: [armUpload] runs the upload arm's reconfigure transition **whatever the new direction** — a
  *   kick of the app's uploader that never touches the extension's registration and cancels nothing. The
  *   cycle's own selection policy decides what uploads: turned **off**, it admits nothing, so new work stops
- *   while an in-flight upload **drains** (the byte URL is device-partitioned and event-independent, so
- *   cancelling one would only re-upload identical bytes). No direction check here — the policy is the one
+ *   while an in-flight upload **drains** (its bytes land in this same event's folder under a deterministic
+ *   name, so cancelling one would only re-upload identical bytes to the same object). No direction check here — the policy is the one
  *   (decision record `changes/both-uploaders-active`).
  * - **Download**: [startDownloads] runs a reconcile when download is included; otherwise [cancelDownloads]
  *   **cancels in-flight downloads**, so foreign photos stop arriving once the member turns receive off.

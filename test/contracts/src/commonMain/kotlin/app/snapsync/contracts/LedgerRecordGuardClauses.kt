@@ -73,7 +73,7 @@ internal fun ClauseList<LedgerStoreState, LedgerService>.recordGuardClauses() {
     clause("resetTo still replaces settled rows", LedgerStoreState.EMPTY) { backend ->
         backend.recordUnlessSettled(entry(key = "a", state = LedgerState.COMPLETED))
 
-        backend.resetTo(listOf(entry(key = "a", state = LedgerState.REQUESTED)))
+        backend.resetTo(LEDGER_CONTRACT_EVENT, listOf(entry(key = "a", state = LedgerState.REQUESTED)))
 
         assertEquals(
             entry(key = "a", state = LedgerState.REQUESTED), backend.get("a"),
@@ -118,7 +118,7 @@ internal fun ClauseList<LedgerStoreState, LedgerService>.recordGuardClauses() {
 
     clause("deleteKeys handles more keys than one statement binds", LedgerStoreState.EMPTY) { backend ->
         val keys = (0 until 1_200).map { "asset-$it-photo.jpg" }
-        backend.resetTo(keys.map { entry(key = it, state = LedgerState.COMPLETED) } + entry(key = "kept"))
+        backend.resetTo(LEDGER_CONTRACT_EVENT, keys.map { entry(key = it, state = LedgerState.COMPLETED) } + entry(key = "kept"))
 
         backend.deleteKeys(keys)
 

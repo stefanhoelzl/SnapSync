@@ -1,5 +1,6 @@
 package app.snapsync.feature.upload
 
+import app.snapsync.feature.support.LEDGER_EVENT
 import app.snapsync.feature.support.CapturingLogWriter
 import app.snapsync.feature.support.TestLedger
 import app.snapsync.feature.support.testIdentity
@@ -44,7 +45,7 @@ class StoredUploadSettleTest {
         FakeFiles(Result.success(keys.map { StoredResource(it, AssetId(it.substringBefore('-'))) }))
 
     private suspend fun ledgerHolding(vararg rows: Pair<String, LedgerState>) = TestLedger().service.apply {
-        resetTo(rows.map { (key, state) -> LedgerEntry(key, AssetId(key.substringBefore('-')), state) })
+        resetTo(LEDGER_EVENT, rows.map { (key, state) -> LedgerEntry(key, AssetId(key.substringBefore('-')), state) })
     }
 
     @Test

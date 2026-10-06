@@ -20,24 +20,20 @@ private const val LISTING_TIMEOUT_MS = 15_000L
 /**
  * The join-time load (capability `photo-sharing`, "A join loads the ledger from the per-device
  * listing"): at a provision into a **new** membership — a first join or a switch, never a re-provision of
- * the joined event — make the upload ledger this membership's share set.
+ * the joined event — make the joined event's ledger rows this membership's share set.
  *
- * The ledger is the current membership's share set (capability `photo-sharing`), so a new membership starts
- * with **nothing from before it**. On a confirmed listing the ledger becomes exactly the device's stored
- * resources IN THE JOINED EVENT, one bare `COMPLETED` row each, in one atomic `resetTo` — so nothing the backend
- * already holds for this event is uploaded again. Each event holds its own bytes (change
- * `per-event-storage-layout`): a photo stored for another event is uploaded again for this one. On a failed or
- * timed-out listing the ledger becomes empty.
- *
- * **Why the clear happens even when the fetch fails.** A leftover `COMPLETED` row inside the new window
- * suppresses a needed upload forever, with no error: the invisible failure this product is built against.
- * Such a row survives on a device that left an event under the contract that kept the ledger across a leave
- * (and whose bytes the sweep then collected), and after a leave whose best-effort clear failed. Clearing
- * here closes both with no extra concept.
+ * Every ledger row belongs to one event and every read is scoped to the joined one (change
+ * `event-scoped-local-state`), so rows of an earlier event are inert whatever happened to them; this load purges
+ * them as housekeeping. On a confirmed listing the joined event's rows become exactly the device's stored
+ * resources IN THAT EVENT, one bare `COMPLETED` row each, in one atomic `resetTo` — so nothing the backend already
+ * holds for this event is uploaded again. Each event holds its own bytes (change `per-event-storage-layout`): a
+ * photo stored for another event is uploaded again for this one. On a failed or timed-out listing the other events'
+ * rows are purged and the joined event's are left as they are: empty for a first join, and for a rejoin what this
+ * device last knew of the event, whose bytes the backend still holds while the event lives.
  *
  * **Why a failure blocks nothing.** There is no flag, no gate and no "load owed" bit. The only cost of a
  * failed load is that the walk records the window's photos as new work and uploads them again — idempotent
- * overwrites of the same `(deviceId, assetId, role)` objects, bounded by the event window. Retry state
+ * overwrites of the same `(eventId, deviceId, assetId, role)` objects, bounded by the event window. Retry state
  * could strand a device behind a gate; this cost cannot.
  *
  * It never throws: the join it belongs to completes whatever the listing does. A transport failure or a
@@ -64,18 +60,18 @@ class ShareSetLoad(
         }
         val stored = when {
             listing == null -> {
-                log.w { "device listing timed out — starting this membership from an empty ledger" }
+                log.w { "device listing timed out — this membership keeps only the rows it already had" }
                 null
             }
             listing.isFailure -> {
                 val cause = listing.exceptionOrNull()
                 if (cause is DeviceListingShapeException) {
                     log.e(cause) {
-                        "device listing was not understood — starting from an empty ledger; this device " +
+                        "device listing was not understood — keeping only the rows this event already had; this device " +
                             "re-uploads what the backend already holds, and every join will until this is fixed"
                     }
                 } else {
-                    log.w(cause) { "device listing fetch failed — starting this membership from an empty ledger" }
+                    log.w(cause) { "device listing fetch failed — this membership keeps only the rows it already had" }
                 }
                 null
             }
@@ -83,9 +79,9 @@ class ShareSetLoad(
         }
         try {
             if (stored == null) {
-                ledger.clear()
+                ledger.purgeExcept(eventId)
             } else {
-                ledger.resetTo(stored.map { LedgerEntry(it.key, it.assetId, LedgerState.COMPLETED) })
+                ledger.resetTo(eventId, stored.map { LedgerEntry(it.key, it.assetId, LedgerState.COMPLETED) })
                 log.i { "loaded the share set — ${stored.size} stored resource(s) seeded COMPLETED" }
             }
         } catch (e: CancellationException) {
