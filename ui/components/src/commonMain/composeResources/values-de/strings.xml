@@ -45,5 +45,6 @@
     <string name="cannot_verify_detail">Wird weiter versucht – deine Fotos gehen nicht verloren.</string>
 
     <string name="menu">Menü</string>
+    <string name="menu_close">Menü schließen</string>
     <string name="invited_eyebrow">DU BIST EINGELADEN</string>
 </resources>
