@@ -138,6 +138,7 @@ class DownloadJobsTest {
         PendingDownload(
             ref = AssetRef("DEVICE-A", AssetId(assetId)),
             resource = PlannedResource(key, url, "primary", "image/heic", "IMG.HEIC"),
+            eventId = EVENT,
         )
 
     // ---- the member's mobile-data rule (capability `mobile-data`) -------------------------------------
@@ -448,11 +449,22 @@ class DownloadJobsTest {
     @Test
     fun description_round_trips_the_asset_ref_and_resource_key() {
         val ref = AssetRef("DEVICE-A", AssetId("ASSET-1"))
-        val tag = decodeTag(encodeTag(ref, "a-primary.heic"))
+        val tag = decodeTag(encodeTag(ref, "a-primary.heic", EVENT))
 
         assertNotNull(tag)
         assertEquals(ref, tag.ref)
         assertEquals("a-primary.heic", tag.resourceKey)
+        assertEquals(EVENT, tag.eventId)
+    }
+
+    /** The OS holds a transfer's tag across an update: one started before tags named their event still decodes. */
+    @Test
+    fun a_three_field_description_from_an_earlier_build_decodes_with_no_event() {
+        val tag = decodeTag("DEVICE-A\nASSET-1\na-primary.heic")
+
+        assertNotNull(tag)
+        assertEquals("", tag.eventId)
+        assertEquals("root/DEVICE-A/a-primary.heic", stagingPath("root", tag.eventId, tag.ref, tag.resourceKey))
     }
 
     @Test
@@ -484,7 +496,7 @@ class DownloadJobsTest {
         advanceUntilIdle()
 
         assertEquals(
-            listOf(Triple(AssetRef("DEVICE-A", AssetId("A")), "a-primary.heic", "$DOWNLOAD_STAGING_DIR/DEVICE-A/a-primary.heic")),
+            listOf(Triple(AssetRef("DEVICE-A", AssetId("A")), "a-primary.heic", "$DOWNLOAD_STAGING_DIR/$EVENT/DEVICE-A/a-primary.heic")),
             h.staged,
         )
     }
@@ -509,8 +521,8 @@ class DownloadJobsTest {
         h.jobs.adoptBackgroundEvents(bareCompletion { released = true })
 
         // Two transfers land, then the session reports every event delivered.
-        h.transport.finish(encodeTag(AssetRef("DEVICE-A", AssetId("A")), "a-primary.heic"))
-        h.transport.finish(encodeTag(AssetRef("DEVICE-A", AssetId("B")), "b-primary.heic"))
+        h.transport.finish(encodeTag(AssetRef("DEVICE-A", AssetId("A")), "a-primary.heic", EVENT))
+        h.transport.finish(encodeTag(AssetRef("DEVICE-A", AssetId("B")), "b-primary.heic", EVENT))
         h.transport.eventsFinished()
         // `runCurrent`, NOT `advanceUntilIdle`: the handler is now bounded, and advancing virtual time
         // freely would jump past that deadline and release it — proving nothing about the imports.
@@ -541,7 +553,7 @@ class DownloadJobsTest {
         h.deliver = { _, _, _ -> neverStages.await(); stagingFinished = true }
         val handover = h.jobs.adoptBackgroundEvents(bareCompletion { released = true })
 
-        h.transport.finish(encodeTag(AssetRef("DEVICE-A", AssetId("A")), "a-primary.heic"))
+        h.transport.finish(encodeTag(AssetRef("DEVICE-A", AssetId("A")), "a-primary.heic", EVENT))
         h.transport.eventsFinished()
         advanceTimeBy(3_600.seconds)
         assertFalse(released, "no clock of ours releases it")
@@ -557,11 +569,11 @@ class DownloadJobsTest {
         h.jobs.adoptBackgroundEvents(bareCompletion { }) // relaunched by the OS: nothing was enqueued in THIS process
 
         // The OS hands us a transfer the previous process started.
-        h.transport.finish(encodeTag(AssetRef("DEVICE-A", AssetId("A")), "a-primary.heic"))
+        h.transport.finish(encodeTag(AssetRef("DEVICE-A", AssetId("A")), "a-primary.heic", EVENT))
         advanceUntilIdle()
 
         assertEquals(
-            listOf(Triple(AssetRef("DEVICE-A", AssetId("A")), "a-primary.heic", "$DOWNLOAD_STAGING_DIR/DEVICE-A/a-primary.heic")),
+            listOf(Triple(AssetRef("DEVICE-A", AssetId("A")), "a-primary.heic", "$DOWNLOAD_STAGING_DIR/$EVENT/DEVICE-A/a-primary.heic")),
             h.staged,
             "a completion from a previous process must still find its staging path",
         )
@@ -569,8 +581,8 @@ class DownloadJobsTest {
 
     @Test
     fun staging_path_sanitizes_slashes_in_the_device_id_and_key() {
-        val path = stagingPath("root", AssetRef("DEV/ICE", AssetId("A")), "a/b.heic")
-        assertEquals("root/DEV_ICE/a_b.heic", path)
+        val path = stagingPath("root", "E/1", AssetRef("DEV/ICE", AssetId("A")), "a/b.heic")
+        assertEquals("root/E_1/DEV_ICE/a_b.heic", path)
     }
 
     // ---- URL guard ---------------------------------------------------------------------------------
@@ -652,7 +664,7 @@ class DownloadJobsTest {
 
         h.transport.finish(description)
         runCurrent()
-        assertEquals("$DOWNLOAD_STAGING_DIR/DEVICE-A/a-primary.heic", h.staged.single().third, "no platform path reaches the store")
+        assertEquals("$DOWNLOAD_STAGING_DIR/$EVENT/DEVICE-A/a-primary.heic", h.staged.single().third, "no platform path reaches the store")
     }
 }
 
@@ -662,3 +674,6 @@ private fun bareCompletion(onComplete: () -> Unit): app.snapsync.ports.Completio
         override fun complete() = onComplete()
         override fun onExpired(action: () -> Unit) = Unit
     }
+
+/** The event every planned download in this file belongs to. */
+private const val EVENT = "E-1"

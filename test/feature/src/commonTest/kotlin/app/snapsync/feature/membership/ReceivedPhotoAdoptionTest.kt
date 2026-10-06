@@ -100,6 +100,32 @@ class ReceivedPhotoAdoptionTest {
     }
 
     @Test
+    fun a_join_forgets_which_photos_an_earlier_event_received_and_keeps_their_records() = runTest {
+        val world = World(Result.success(emptyList()), emptyList())
+        val earlier = ref("EARLIER")
+        world.store.planAll(listOf(PlannedAsset(earlier, date, emptyList())), "EVENT-0", members = listOf(earlier))
+        world.store.markImported(earlier, AssetId("L-EARLIER"))
+
+        world.adoption(me).adopt(cfg)
+
+        assertTrue(world.store.importedLocalIdsOf("EVENT-0").isEmpty(), "the earlier event's refs are purged")
+        assertTrue(world.store.isSettled(earlier), "the photo is still never received twice")
+        assertEquals(setOf(AssetId("L-EARLIER")), world.store.suppressedLocalIds(), "and never shared back")
+    }
+
+    @Test
+    fun the_grant_pass_purges_nothing() = runTest {
+        val world = World(Result.success(emptyList()), emptyList())
+        val earlier = ref("EARLIER")
+        world.store.planAll(listOf(PlannedAsset(earlier, date, emptyList())), "EVENT-0", members = listOf(earlier))
+        world.store.markImported(earlier, AssetId("L-EARLIER"))
+
+        world.adoption(me).ensureAdopted(cfg)
+
+        assertEquals(setOf(AssetId("L-EARLIER")), world.store.importedLocalIdsOf("EVENT-0"))
+    }
+
+    @Test
     fun a_token_of_no_union_ref_is_ignored() = runTest {
         val world = World(Result.success(unionOf(ref("A"))), listOf(received("L-X", ref("NOT-IN-THIS-EVENT"))))
         world.adoption(me).adopt(cfg)
