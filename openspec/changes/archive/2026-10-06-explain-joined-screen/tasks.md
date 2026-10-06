@@ -27,7 +27,7 @@
 
 - [x] 5.1 Review every joined state in the desktop world harness via the `ui-harness` skill (running, arriving, not started, limited, no access, sharing/receiving off, closed, QR sheet, light/dark, de) against the mock; verify by captured pixels
 - [x] 5.2 Update `:test:integration` tests that assert the old status words or the always-visible QR; verify `./gradlew :test:integration:test` passes, including `ShotsTest`
-- [ ] 5.3 Refresh the marketing screenshots (`screenshots.yml` for iOS and Android), eyeball, commit; verify `in_sync` raws show the new screen and no system notification
+- [x] 5.3 Refresh the marketing screenshots (`screenshots.yml` for iOS and Android), eyeball, commit; verify `in_sync` raws show the new screen and no system notification
 - [x] 5.4 Update `metadata/messaging.md` only if a new user-facing term was introduced (none expected); verify by reading the glossary against the new strings
 
 ## 6. Integration
