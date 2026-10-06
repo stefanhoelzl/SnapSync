@@ -425,7 +425,7 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadService>("Do
             s.planAll(emptyList(), eventId = "EVENT-2", members = listOf(ref, earlier))
             assertEquals(1, s.counts("EVENT-2").imported)
             assertEquals(2, s.counts("EVENT-2").stillArriving)
-            assertEquals(0, s.counts("EVENT-1").stillArriving, "the tag moved with it")
+            assertEquals(1, s.counts("EVENT-1").stillArriving, "and still for the event it was received in")
         }
 
         /** The guard: a row that already settled one way must not be re-settled another. */
@@ -490,12 +490,36 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadService>("Do
             assertEquals(setOf(AssetId("LOCAL-A")), s.importedLocalIdsOf("EVENT-1"))
         }
 
-        clause("an imported ref a later event reconciles answers for that event", DownloadStoreState.EMPTY) { s ->
+        clause("an imported ref a later event reconciles answers for both events", DownloadStoreState.EMPTY) { s ->
             s.planAll(listOf(planned(ref)), "EVENT-1", members = listOf(ref))
             s.markImported(ref, AssetId("LOCAL-1"))
             s.planAll(emptyList(), "EVENT-2", members = listOf(ref))
-            assertEquals(setOf(AssetId("LOCAL-1")), s.importedLocalIdsOf("EVENT-2"), "the settled ref is tagged too")
-            assertTrue(s.importedLocalIdsOf("EVENT-1").isEmpty(), "the tag moved")
+            assertEquals(setOf(AssetId("LOCAL-1")), s.importedLocalIdsOf("EVENT-2"), "the settled ref is the later event's too")
+            assertEquals(setOf(AssetId("LOCAL-1")), s.importedLocalIdsOf("EVENT-1"), "and still the earlier one's")
+            assertEquals(1, s.counts("EVENT-1").imported)
+            assertEquals(1, s.counts("EVENT-2").imported)
+        }
+
+        clause("the join's purge forgets other events' refs and keeps every photo's record", DownloadStoreState.EMPTY) { s ->
+            s.planAll(listOf(planned(ref)), "EVENT-1", members = listOf(ref))
+            s.markImported(ref, AssetId("LOCAL-1"))
+            s.planAll(emptyList(), "EVENT-2", members = listOf(ref))
+
+            s.union.purgeEventRefsExcept("EVENT-2")
+
+            assertTrue(s.importedLocalIdsOf("EVENT-1").isEmpty(), "the other event's refs are gone")
+            assertEquals(setOf(AssetId("LOCAL-1")), s.importedLocalIdsOf("EVENT-2"))
+            assertTrue(s.isSettled(ref), "the photo's record survives")
+            assertEquals(setOf(AssetId("LOCAL-1")), s.suppressedLocalIds(), "and so does its import marker")
+        }
+
+        clause("a planned resource names the event whose bytes it fetches", DownloadStoreState.EMPTY) { s ->
+            s.planAll(listOf(planned(ref)), "EVENT-1", members = listOf(ref))
+            assertEquals(setOf("EVENT-1"), s.pendingDownloads().mapTo(mutableSetOf()) { it.eventId })
+
+            // Re-planned by another event's read while still unstaged: re-pointed at that event's bytes.
+            s.planAll(listOf(planned(ref)), "EVENT-2", members = listOf(ref))
+            assertEquals(setOf("EVENT-2"), s.pendingDownloads().mapTo(mutableSetOf()) { it.eventId })
         }
 
         // --- the batch members a reconcile plans through (one read, one transaction each) ---

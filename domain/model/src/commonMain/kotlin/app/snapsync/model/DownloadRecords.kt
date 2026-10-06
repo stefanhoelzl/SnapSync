@@ -72,7 +72,12 @@ data class StagedResource(
 )
 
 /** One unit of download work: a not-yet-staged resource and where to fetch it. */
-data class PendingDownload(val ref: AssetRef, val resource: PlannedResource)
+data class PendingDownload(
+    val ref: AssetRef,
+    val resource: PlannedResource,
+    /** The event whose folder the bytes are fetched from, and under which they are staged; `""` for a pre-6.sqm plan. */
+    val eventId: String,
+)
 
 /** An asset ready to import: its ref and its original capture timestamp (ISO-8601, for the imported asset's date). */
 data class ImportableAsset(val ref: AssetRef, val creationDate: String)

@@ -9,6 +9,7 @@ import app.snapsync.services.backend.EventUnionSource
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.gallery.MarkedPhotoLookup
 import app.snapsync.services.identity.PersistedDeviceIdentity
+import app.snapsync.model.runCatchingCancellable
 import co.touchlab.kermit.Logger
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.sync.Mutex
@@ -60,9 +61,15 @@ class ReceivedPhotoAdoption(
     private val gate = Mutex()
     private var settledFor: String? = null
 
-    /** A join's pass: always runs, whatever an earlier membership of this process settled. */
+    /**
+     * A join's pass: always runs, whatever an earlier membership of this process settled. It first forgets which
+     * received photos belonged to any other event (change `event-scoped-local-state`) — housekeeping, since every read
+     * names its event, so a failure is logged and the pass goes on.
+     */
     suspend fun adopt(cfg: EventConfig) = gate.withLock {
         settledFor = null
+        runCatchingCancellable { store.union.purgeEventRefsExcept(cfg.eventId) }
+            .onFailure { log.w(it) { "could not purge earlier events' received-photo refs — they stay, inert" } }
         settle(cfg, UnionTrigger.JOIN)
     }
 

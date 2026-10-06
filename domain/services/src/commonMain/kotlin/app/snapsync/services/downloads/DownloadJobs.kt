@@ -31,21 +31,37 @@ internal const val MAX_IN_FLIGHT = 24
 /** taskDescription field separator — a newline cannot occur in device ids / sanitized keys / filenames. */
 private const val SEP = "\n"
 
-/** What a transfer's opaque description decodes back to. */
-internal data class TaskTag(val ref: AssetRef, val resourceKey: String)
+/**
+ * What a transfer's opaque description decodes back to. [eventId] is the event whose bytes the transfer fetches; it
+ * is `""` for a transfer a build before change `event-scoped-local-state` started, whose tag has three fields — the OS
+ * holds a tag across an update, so both shapes decode.
+ */
+internal data class TaskTag(val ref: AssetRef, val resourceKey: String, val eventId: String)
 
-internal fun encodeTag(ref: AssetRef, resourceKey: String): String =
-    listOf(ref.sourceDeviceId, ref.sourceAssetId, resourceKey).joinToString(SEP)
+internal fun encodeTag(ref: AssetRef, resourceKey: String, eventId: String): String =
+    listOf(ref.sourceDeviceId, ref.sourceAssetId, resourceKey, eventId).joinToString(SEP)
 
 internal fun decodeTag(description: String): TaskTag? {
     val parts = description.split(SEP)
-    if (parts.size != 3 || !isCanonicalAssetId(parts[1])) return null
-    return TaskTag(AssetRef(parts[0], AssetId(parts[1])), parts[2])
+    if (parts.size !in LEGACY_TAG_FIELDS..TAG_FIELDS || !isCanonicalAssetId(parts[1])) return null
+    return TaskTag(AssetRef(parts[0], AssetId(parts[1])), parts[2], parts.getOrElse(LEGACY_TAG_FIELDS) { "" })
 }
 
-/** Where a resource's bytes land in durable staging, relative to the shared area. `/` is not legal in a path segment. */
-internal fun stagingPath(root: String, ref: AssetRef, resourceKey: String): String =
-    "$root/${ref.sourceDeviceId.replace('/', '_')}/${resourceKey.replace('/', '_')}"
+/** A tag's fields: source device, source asset, resource key, event. */
+private const val TAG_FIELDS = 4
+
+/** A tag started before transfers named their event: the same fields, without the event. */
+private const val LEGACY_TAG_FIELDS = 3
+
+/**
+ * Where a resource's bytes land in durable staging, relative to the shared area: under its event, so one event's
+ * staged bytes are one folder. A transfer with no event (a pre-`event-scoped-local-state` tag) stages where it always
+ * did. `/` is not legal in a path segment.
+ */
+internal fun stagingPath(root: String, eventId: String, ref: AssetRef, resourceKey: String): String {
+    val leaf = "${ref.sourceDeviceId.replace('/', '_')}/${resourceKey.replace('/', '_')}"
+    return if (eventId.isEmpty()) "$root/$leaf" else "$root/${eventId.replace('/', '_')}/$leaf"
+}
 
 /**
  * Whether a finished transfer's bytes may be staged (capability `receiving-photos`).
@@ -249,13 +265,13 @@ class DownloadJobs(
     }
 
     /** The relative staged path of the resource [tag] names — the one place it is derived. */
-    private fun relativePath(tag: TaskTag): String = stagingPath(staging.stagingRoot(), tag.ref, tag.resourceKey)
+    private fun relativePath(tag: TaskTag): String = stagingPath(staging.stagingRoot(), tag.eventId, tag.ref, tag.resourceKey)
 
     /** Enqueue downloads for the given not-yet-staged resources (idempotent; already-running keys are skipped). */
 
     suspend fun enqueue(downloads: List<PendingDownload>) {
         downloads.forEach {
-            val tag = encodeTag(it.ref, it.resource.resourceKey)
+            val tag = encodeTag(it.ref, it.resource.resourceKey, it.eventId)
             // Running already: its bytes are on the way; a second transfer would only fetch them twice.
             if (tag in inFlight) return@forEach
             // Queued already: keep its place, take the fresher entry (a re-plan may carry a different url).

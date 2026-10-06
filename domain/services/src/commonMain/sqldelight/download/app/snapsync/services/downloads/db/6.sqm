@@ -1,0 +1,39 @@
+-- v6 -> v7: which event a received photo belongs to is a row of its own, and a planned resource names its event
+-- (change `event-scoped-local-state`).
+--
+-- `downloadAsset` stays the per-photo record — keyed by the SOURCE photo, so "never received twice" and the import
+-- marker that keeps a received photo from being shared back hold across events — but its `eventId` tag goes. That tag
+-- named the union a row was LAST seen in and was rewritten by every reconcile, so a photo two events share counted
+-- for one of them only. `eventRef` holds one row per (event, photo) instead, and the received count and the album
+-- gather read it.
+--
+-- `downloadResource.eventId` is the event whose folder a planned resource's bytes are fetched from: each event holds
+-- its own bytes (change `per-event-storage-layout`). A row planned before this migration takes its asset's tag, or
+-- the empty event when it had none; it downloads and imports exactly as before.
+--
+-- ROW-PRESERVING: no asset or resource row is deleted, and no state or marker changes. Staged paths are stored, not
+-- composed, so no staged file moves.
+CREATE TABLE eventRef (
+    eventId        TEXT NOT NULL,
+    sourceDeviceId TEXT NOT NULL,
+    sourceAssetId  TEXT NOT NULL,
+    PRIMARY KEY (eventId, sourceDeviceId, sourceAssetId)
+);
+
+INSERT INTO eventRef (eventId, sourceDeviceId, sourceAssetId)
+SELECT eventId, sourceDeviceId, sourceAssetId FROM downloadAsset WHERE eventId IS NOT NULL;
+
+ALTER TABLE downloadResource ADD COLUMN eventId TEXT NOT NULL DEFAULT '';
+
+UPDATE downloadResource
+SET eventId = (
+    SELECT a.eventId FROM downloadAsset a
+    WHERE a.sourceDeviceId = downloadResource.sourceDeviceId AND a.sourceAssetId = downloadResource.sourceAssetId
+)
+WHERE EXISTS (
+    SELECT 1 FROM downloadAsset a
+    WHERE a.sourceDeviceId = downloadResource.sourceDeviceId AND a.sourceAssetId = downloadResource.sourceAssetId
+      AND a.eventId IS NOT NULL
+);
+
+ALTER TABLE downloadAsset DROP COLUMN eventId;

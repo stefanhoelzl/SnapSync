@@ -51,9 +51,8 @@ class DownloadService(databases: Databases) : SuppressionSource {
         q.suppressedLocalIds().executeAsList().mapNotNull { it }.toSet()
 
     /**
-     * The created local id of every imported photo of [eventId]'s union — the rows the last reconcile of that event
-     * tagged, and the photos adopted for it ([planAll], [adoptAll]). A tag moves with the latest reconcile that saw the
-     * ref, so a photo two events share answers for the one most recently reconciled.
+     * The created local id of every imported photo of [eventId]'s union — the refs a reconcile of that event recorded,
+     * and the photos adopted for it ([planAll], [adoptAll]). A photo two events share answers for both.
      */
     suspend fun importedLocalIdsOf(eventId: String): Set<AssetId> =
         q.selectImportedLocalIdsOfEvent(eventId).executeAsList().mapNotNull { it }.toSet()
@@ -88,9 +87,10 @@ class DownloadService(databases: Databases) : SuppressionSource {
      * and its resources still land together, because the whole batch does.
      *
      * For ONE event's reconcile, pass its [eventId] and [members] — the union's foreign refs, settled ones
-     * included — and every one of those rows is tagged with the event in the same transaction, so the
-     * event-scoped counts ([counts] with an event) never see a planned row that is not yet tagged. A tag moves: a ref seen
-     * again in a later event's union counts for that event from then on.
+     * included — and every one of those refs is recorded as the event's in the same transaction, so the
+     * event-scoped counts ([counts] with an event) never see a planned row that is not yet the event's. Each planned
+     * resource names [eventId], the event whose folder its bytes are fetched from (change `event-scoped-local-state`);
+     * with none, it names the empty event.
      *
      * [cursor], with an [eventId], is the union position the read that served these assets covered (decision record
      * `changes/incremental-union`, D6): it is stored in the SAME transaction, so the position never stands past an asset
@@ -105,21 +105,21 @@ class DownloadService(databases: Databases) : SuppressionSource {
         if (assets.isEmpty() && (eventId == null || (members.isEmpty() && cursor == null))) return
         q.transaction {
             assets.forEach { (ref, creationDate, resources) ->
-                q.upsertAsset(ref.sourceDeviceId, ref.sourceAssetId, DownloadState.PENDING, creationDate, eventId)
+                q.upsertAsset(ref.sourceDeviceId, ref.sourceAssetId, DownloadState.PENDING, creationDate)
                 resources.forEach { r ->
                     q.upsertResource(
                         ref.sourceDeviceId, ref.sourceAssetId, r.resourceKey,
-                        r.url, r.role, r.contentType, r.originalFilename,
+                        r.url, r.role, r.contentType, r.originalFilename, eventId ?: "",
                     )
                 }
             }
-            if (eventId != null) members.forEach { q.tagEvent(eventId, it.sourceDeviceId, it.sourceAssetId) }
+            if (eventId != null) members.forEach { q.insertEventRef(eventId, it.sourceDeviceId, it.sourceAssetId.value) }
             if (eventId != null && cursor != null) q.upsertUnionCursor(eventId, cursor)
         }
     }
 
     /**
-     * Record every [adopted] photo as its ref's confirmed import, tagged with [eventId], in ONE transaction, and answer
+     * Record every [adopted] photo as its ref's confirmed import, and as [eventId]'s, in ONE transaction, and answer
      * the refs actually recorded (capability `receiving-photos`). A ref with no row gets one; a ref planned or staged
      * but not yet imported — no marker, not terminal — is settled onto the adopted photo instead of being imported
      * again. Every other row (an import's marker, imported, unimportable, deleted by the member) is this install's own
@@ -130,19 +130,21 @@ class DownloadService(databases: Databases) : SuppressionSource {
         return q.transactionWithResult {
             adopted.filterTo(mutableSetOf()) { a ->
                 val (device, asset) = a.ref
-                q.adoptImported(device, asset, a.creationDate, a.localId, eventId)
-                q.changedRows().executeAsOne() > 0 || run {
-                    q.adoptPending(a.localId, eventId, device, asset)
+                q.adoptImported(device, asset, a.creationDate, a.localId)
+                val recorded = q.changedRows().executeAsOne() > 0 || run {
+                    q.adoptPending(a.localId, device, asset)
                     q.changedRows().executeAsOne() > 0
                 }
+                if (recorded) q.insertEventRef(eventId, device, asset.value)
+                recorded
             }.mapTo(mutableSetOf()) { it.ref }
         }
     }
 
     /** The not-yet-staged resources across all non-imported assets — the download work queue. */
     suspend fun pendingDownloads(): List<PendingDownload> =
-        q.selectPendingResources { device, asset, key, url, role, contentType, original ->
-            PendingDownload(AssetRef(device, asset), PlannedResource(key, url, role, contentType, original))
+        q.selectPendingResources { device, asset, key, url, role, contentType, original, eventId ->
+            PendingDownload(AssetRef(device, asset), PlannedResource(key, url, role, contentType, original), eventId)
         }.executeAsList()
 
     /**
@@ -335,6 +337,17 @@ class UnionTracking internal constructor(private val queries: () -> DownloadStor
 
     /** The union position [eventId] was last read to, or `null` for none — the next read is then a full one. */
     suspend fun cursor(eventId: String): Long? = queries().selectUnionCursor(eventId).executeAsOneOrNull()
+
+    /**
+     * Forget which photos belonged to every event's union but [eventId]'s — the join's purge (change
+     * `event-scoped-local-state`). Housekeeping only: every read names its event, so another event's refs count for
+     * nothing. Never run from a reconcile — a late one of the event just left would purge the joined event's refs, and
+     * an incremental read re-records only what it served. The per-photo rows, and with them every import marker, are
+     * untouched.
+     */
+    suspend fun purgeEventRefsExcept(eventId: String) {
+        queries().purgeEventRefsExcept(eventId)
+    }
 
     /**
      * Drop [eventId]'s rows a FULL read of its union no longer lists — withdrawn before this device received them

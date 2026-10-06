@@ -12,17 +12,24 @@ CREATE TABLE downloadAsset (
     state          TEXT AS DownloadState NOT NULL,
     creationDate   TEXT NOT NULL,
     createdLocalId TEXT AS AssetId,
-    -- The event whose union this row was last seen in (capability `sync-status`): what scopes the joined
-    -- screen's received count to the CURRENT membership. Rows outlive their event on purpose — an imported
-    -- row's `createdLocalId` is the suppression handle that keeps a downloaded photo from being uploaded back —
-    -- so without this the count is every foreign photo the device ever imported. Every reconcile re-tags the
-    -- rows of the union it read; `NULL` is a row no reconcile has tagged since the column was added.
-    eventId        TEXT,
     PRIMARY KEY (sourceDeviceId, sourceAssetId)
 );
 
 -- The created-local-id suppression projection rides this partial index (only imported rows carry one).
 CREATE INDEX downloadAsset_createdLocalId ON downloadAsset(createdLocalId);
+
+-- Which event's union a foreign photo belongs to (capability `sync-status`; change `event-scoped-local-state`): one
+-- row per (event, photo), written by every reconcile for its union's foreign refs, settled ones included, and by an
+-- adoption for the event it adopts for. It scopes the joined screen's received count and the album gather to the
+-- CURRENT membership: `downloadAsset` rows outlive their event on purpose — an imported row's `createdLocalId` is the
+-- suppression handle — so without it the count would be every foreign photo the device ever imported. A photo two
+-- events share has a row in each. Rows of any other event are purged at the next join.
+CREATE TABLE eventRef (
+    eventId        TEXT NOT NULL,
+    sourceDeviceId TEXT NOT NULL,
+    sourceAssetId  TEXT NOT NULL,
+    PRIMARY KEY (eventId, sourceDeviceId, sourceAssetId)
+);
 
 -- One row per expected resource of a downloading asset. `stagedPath` is null until the resource's
 -- bytes are downloaded and moved to durable App-Group staging; an asset is complete (importable) when
@@ -40,6 +47,10 @@ CREATE TABLE downloadResource (
     -- Combined with `stagedPath IS NULL` it means "in flight" — the download analogue of the upload
     -- ledger's REQUESTED. Superseded implicitly once `stagedPath` becomes non-null.
     enqueued       INTEGER NOT NULL DEFAULT 0,
+    -- The event whose folder the bytes are fetched from (each event holds its own bytes, change
+    -- `per-event-storage-layout`), and so where they are staged. `''` is a row planned before 6.sqm whose asset no
+    -- reconcile had tagged; it downloads and imports like any other.
+    eventId        TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (sourceDeviceId, sourceAssetId, resourceKey)
 );
 
@@ -67,8 +78,20 @@ DELETE FROM unionCursor;
 -- --- asset lifecycle ---
 
 upsertAsset:
-INSERT OR IGNORE INTO downloadAsset (sourceDeviceId, sourceAssetId, state, creationDate, createdLocalId, eventId)
-VALUES (:sourceDeviceId, :sourceAssetId, :state, :creationDate, NULL, :eventId);
+INSERT OR IGNORE INTO downloadAsset (sourceDeviceId, sourceAssetId, state, creationDate, createdLocalId)
+VALUES (:sourceDeviceId, :sourceAssetId, :state, :creationDate, NULL);
+
+-- Record a foreign photo as a member of [eventId]'s union — settled rows included, which is the point: an imported
+-- photo of THIS event counts as received here. A row already recorded is left as it is, so a reconcile over an
+-- unchanged union writes nothing.
+insertEventRef:
+INSERT OR IGNORE INTO eventRef (eventId, sourceDeviceId, sourceAssetId)
+VALUES (:eventId, :sourceDeviceId, :sourceAssetId);
+
+-- Every event's refs but [eventId]'s: the join's purge. They are inert already — every read names its event — so a
+-- purge that never runs costs space, never a count.
+purgeEventRefsExcept:
+DELETE FROM eventRef WHERE eventId != :eventId;
 
 -- Record a photo ALREADY in the library as this ref's import (capability `receiving-photos`): what a join's adoption
 -- writes for a received photo whose filename carries this ref's SnapSync mark, after the app that imported it was
@@ -78,8 +101,8 @@ VALUES (:sourceDeviceId, :sourceAssetId, :state, :creationDate, NULL, :eventId);
 -- INSERT OR IGNORE, never an upsert: an existing row is this install's own record of the ref, and only the one kind
 -- below may be adopted over. No resource rows: nothing is staged, so nothing is released or pruned.
 adoptImported:
-INSERT OR IGNORE INTO downloadAsset (sourceDeviceId, sourceAssetId, state, creationDate, createdLocalId, eventId)
-VALUES (:sourceDeviceId, :sourceAssetId, 'IMPORTED', :creationDate, :createdLocalId, :eventId);
+INSERT OR IGNORE INTO downloadAsset (sourceDeviceId, sourceAssetId, state, creationDate, createdLocalId)
+VALUES (:sourceDeviceId, :sourceAssetId, 'IMPORTED', :creationDate, :createdLocalId);
 
 -- The one existing row adoption settles: planned or staged, not terminal, and carrying NO marker — so no import has
 -- created an asset for it. It exists because a rejoin after a reinstall plans its downloads while the photo-access
@@ -90,18 +113,11 @@ VALUES (:sourceDeviceId, :sourceAssetId, 'IMPORTED', :creationDate, :createdLoca
 -- row's bytes, and a transfer still in flight stages onto a settled row, which that pass then releases too.
 adoptPending:
 UPDATE downloadAsset
-SET state = 'IMPORTED', createdLocalId = :createdLocalId, eventId = :eventId
+SET state = 'IMPORTED', createdLocalId = :createdLocalId
 WHERE sourceDeviceId = :sourceDeviceId
   AND sourceAssetId = :sourceAssetId
   AND state NOT IN ('IMPORTED', 'UNIMPORTABLE')
   AND createdLocalId IS NULL;
-
--- Tag a row as a member of [eventId]'s union — settled rows included, which is the point: an imported photo
--- of THIS event counts as received here, one imported for an earlier event does not. Writes only a row whose
--- tag differs, so a reconcile over an unchanged union is a read.
-tagEvent:
-UPDATE downloadAsset SET eventId = :eventId
-WHERE sourceDeviceId = :sourceDeviceId AND sourceAssetId = :sourceAssetId AND eventId IS NOT :eventId;
 
 markImported:
 UPDATE downloadAsset
@@ -207,13 +223,14 @@ suppressedLocalIds:
 SELECT createdLocalId FROM downloadAsset
 WHERE createdLocalId IS NOT NULL;
 
--- The created local id of every IMPORTED row tagged with ONE event, for the event album's gather (capability
--- `event-album`): the tag is what says a row is in that event's union — every reconcile writes it for the whole
+-- The created local id of every IMPORTED photo of ONE event, for the event album's gather (capability
+-- `event-album`): `eventRef` is what says a photo is in that event's union — every reconcile writes it for the whole
 -- foreign union, and an adoption for the event it adopts for — so the gather needs no union read of its own. An
 -- unconfirmed row (non-terminal, carrying a marker) is excluded — its asset is not adjudicated yet.
 selectImportedLocalIdsOfEvent:
-SELECT createdLocalId FROM downloadAsset
-WHERE eventId = :eventId AND state = 'IMPORTED' AND createdLocalId IS NOT NULL;
+SELECT a.createdLocalId FROM downloadAsset a
+JOIN eventRef e ON e.sourceDeviceId = a.sourceDeviceId AND e.sourceAssetId = a.sourceAssetId
+WHERE e.eventId = :eventId AND a.state = 'IMPORTED' AND a.createdLocalId IS NOT NULL;
 
 -- The download projection's three counts in ONE statement, so they come from one snapshot of the
 -- database rather than three reads taken at different instants (capability `receiving-photos`; the
@@ -223,10 +240,12 @@ WHERE eventId = :eventId AND state = 'IMPORTED' AND createdLocalId IS NOT NULL;
 -- (capability `sync-status`, "The joined screen counts what was shared and received").
 projectionCountsForEvent:
 SELECT
-  (SELECT COUNT(*) FROM downloadAsset WHERE eventId = :eventId AND state = 'IMPORTED') AS imported,
-  (SELECT COUNT(*) FROM downloadAsset WHERE eventId = :eventId AND state != 'UNIMPORTABLE') AS stillArriving,
-  (SELECT COUNT(*) FROM downloadAsset a
-     WHERE a.eventId = :eventId AND a.state NOT IN ('IMPORTED', 'UNIMPORTABLE')
+  (SELECT COUNT(*) FROM downloadAsset a JOIN eventRef e USING (sourceDeviceId, sourceAssetId)
+     WHERE e.eventId = :eventId AND a.state = 'IMPORTED') AS imported,
+  (SELECT COUNT(*) FROM downloadAsset a JOIN eventRef e USING (sourceDeviceId, sourceAssetId)
+     WHERE e.eventId = :eventId AND a.state != 'UNIMPORTABLE') AS stillArriving,
+  (SELECT COUNT(*) FROM downloadAsset a JOIN eventRef e USING (sourceDeviceId, sourceAssetId)
+     WHERE e.eventId = :eventId AND a.state NOT IN ('IMPORTED', 'UNIMPORTABLE')
        AND EXISTS (
            SELECT 1 FROM downloadResource r
            WHERE r.sourceDeviceId = a.sourceDeviceId AND r.sourceAssetId = a.sourceAssetId
@@ -279,11 +298,12 @@ WHERE sourceDeviceId = :sourceDeviceId AND sourceAssetId = :sourceAssetId
   AND state != 'IMPORTED' AND createdLocalId IS NULL;
 
 -- The rows of [eventId]'s union a full read may find WITHDRAWN (decision record `changes/incremental-union`, D7):
--- tagged with this event, not yet received — not imported, not judged unimportable, and carrying no marker, so no asset
+-- in this event's union, not yet received — not imported, not judged unimportable, and carrying no marker, so no asset
 -- was created for them. A row with a marker is never one: the marker keeps a created photo out of the upload universe.
 selectWithdrawable:
-SELECT sourceDeviceId, sourceAssetId FROM downloadAsset
-WHERE eventId = :eventId AND state NOT IN ('IMPORTED', 'UNIMPORTABLE') AND createdLocalId IS NULL;
+SELECT a.sourceDeviceId, a.sourceAssetId FROM downloadAsset a
+JOIN eventRef e ON e.sourceDeviceId = a.sourceDeviceId AND e.sourceAssetId = a.sourceAssetId
+WHERE e.eventId = :eventId AND a.state NOT IN ('IMPORTED', 'UNIMPORTABLE') AND a.createdLocalId IS NULL;
 
 -- Drop ONE withdrawn row, its predicate restated so it can never delete a row that must be kept, whatever the
 -- caller passes (the same discipline as `deletePrunableAsset`).
@@ -310,16 +330,17 @@ WHERE NOT EXISTS (
 
 -- --- resource staging ---
 
--- Insert a new pending resource, or — on a re-plan of an existing one — refresh its `url` ONLY while it
--- is not yet staged (stagedPath IS NULL), so the url the latest read named supersedes an older one for work
--- still pending (a url is the backend's stable address now; a plan made under a presigned one is replaced). A staged row is left untouched (no re-download); the other fields are immutable
--- per resourceKey.
+-- Insert a new pending resource, or — on a re-plan of an existing one — refresh its `url` and `eventId` ONLY while
+-- it is not yet staged (stagedPath IS NULL), so the address the latest read named supersedes an older one for work
+-- still pending (a url is the backend's stable address now; a plan made under a presigned one is replaced, and a
+-- plan another event's read made is re-pointed at this event's bytes). A staged row is left untouched (no
+-- re-download); the other fields are immutable per resourceKey.
 upsertResource:
 INSERT INTO downloadResource
-    (sourceDeviceId, sourceAssetId, resourceKey, url, role, contentType, originalFilename, stagedPath)
-VALUES (:sourceDeviceId, :sourceAssetId, :resourceKey, :url, :role, :contentType, :originalFilename, NULL)
+    (sourceDeviceId, sourceAssetId, resourceKey, url, role, contentType, originalFilename, stagedPath, eventId)
+VALUES (:sourceDeviceId, :sourceAssetId, :resourceKey, :url, :role, :contentType, :originalFilename, NULL, :eventId)
 ON CONFLICT (sourceDeviceId, sourceAssetId, resourceKey)
-DO UPDATE SET url = excluded.url
+DO UPDATE SET url = excluded.url, eventId = excluded.eventId
 WHERE downloadResource.stagedPath IS NULL;
 
 markResourceStaged:
@@ -341,7 +362,7 @@ WHERE sourceDeviceId = :sourceDeviceId AND sourceAssetId = :sourceAssetId;
 
 -- Resources not yet staged across all non-imported assets — the download work queue.
 selectPendingResources:
-SELECT r.sourceDeviceId, r.sourceAssetId, r.resourceKey, r.url, r.role, r.contentType, r.originalFilename
+SELECT r.sourceDeviceId, r.sourceAssetId, r.resourceKey, r.url, r.role, r.contentType, r.originalFilename, r.eventId
 FROM downloadResource r
 JOIN downloadAsset a
   ON a.sourceDeviceId = r.sourceDeviceId AND a.sourceAssetId = r.sourceAssetId
