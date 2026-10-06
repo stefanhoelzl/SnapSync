@@ -43,6 +43,7 @@ import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.sentry.SentryCrashReporter
 import app.snapsync.time.SystemClock
+import app.snapsync.android.crypto.AndroidCrypto
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
@@ -101,6 +102,7 @@ class SnapSyncRoot(internal val application: Application) {
     /** This process's REAL adapters — the systems Android has one for — each built on first use. */
     private val real: DevicePorts = DevicePorts(
         clock = lazyOf(SystemClock),
+        crypto = lazy { AndroidCrypto() },
         files = lazy { AndroidFiles(application) },
         databases = lazy { AndroidDatabases(application) },
         preferences = lazy { AndroidPreferences(application) },
@@ -148,6 +150,7 @@ class SnapSyncRoot(internal val application: Application) {
             logSinks = listOf(LogcatSink()),
             files = ports.files,
             clock = ports.clock,
+            crypto = ports.crypto,
             entryContext = NoEntryContext,
             build = AndroidBuildInfo(
                 appVersion = BuildConfig.APP_VERSION,

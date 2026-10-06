@@ -26,6 +26,12 @@ ktor = "3.6.0"
 # test-link provisioning in :adapter:ios:ext-safe must carry the SAME cocoa version.
 sentry-kmp = "0.27.0"
 sentry-cocoa = "8.58.2"
+# The REFERENCE the encrypted file format is held to on the JVM (`docs/architecture.md`, "The encrypted file
+# format"): test-only, never shipped. Google Tink's AesGcmHkdfStreaming decrypts what FileCipher writes and the reverse.
+tink = "1.23.0"
+# AES-GCM on iOS, where CommonCrypto has no public GCM: cryptography-kotlin's CryptoKit provider bridges Apple's
+# CryptoKit (Swift-only) into Kotlin/Native. `:adapter:ios:ext-safe`'s IosCrypto is its one caller.
+cryptography-kotlin = "0.6.0"
 # Android (`docs/architecture.md`, "Zones inside the core": the allowed targets). One AGP for the KMP library plugin
 # every multiplatform module's `android` target comes from and the application plugin `:app:android` applies.
 agp = "9.4.1"
@@ -101,6 +107,9 @@ androidx-lifecycle-process = { module = "androidx.lifecycle:lifecycle-process", 
 androidx-sqlite-framework = { module = "androidx.sqlite:sqlite-framework", version.ref = "androidx-sqlite" }
 # The AGP API the convention plugins configure the `android` target through — compileOnly in `build-logic`.
 android-gradle = { module = "com.android.tools.build:gradle", version.ref = "agp" }
+cryptography-core = { module = "dev.whyoleg.cryptography:cryptography-core", version.ref = "cryptography-kotlin" }
+cryptography-provider-cryptokit = { module = "dev.whyoleg.cryptography:cryptography-provider-cryptokit", version.ref = "cryptography-kotlin" }
+tink = { module = "com.google.crypto.tink:tink", version.ref = "tink" }
 sentry-kmp = { module = "io.sentry:sentry-kotlin-multiplatform", version.ref = "sentry-kmp" }
 
 [plugins]

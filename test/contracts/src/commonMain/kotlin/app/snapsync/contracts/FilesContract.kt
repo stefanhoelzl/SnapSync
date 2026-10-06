@@ -69,6 +69,16 @@ object FilesContract : Contract<FilesState, Files>("Files") {
             }
         }
 
+        clause("EMPTY_RANGE_IS_NOT_FOUND_AND_APPEND_CREATES_ITS_DIRECTORIES", FilesState.EMPTY) { files ->
+            val p = path("EMPTY_RANGE_IS_NOT_FOUND_AND_APPEND_CREATES_ITS_DIRECTORIES")
+            FileArea.entries.forEach {
+                assertEquals(FileResult.NotFound, files.readRange(it, p, 0, SMALL), "$it")
+                assertEquals(FileResult.Ok(Unit), files.append(it, p, "one,".encodeToByteArray()), "$it")
+                assertEquals(FileResult.Ok(Unit), files.append(it, p, "two".encodeToByteArray()), "$it")
+                assertEquals("one,two", assertIs<FileResult.Ok<ByteArray>>(files.read(it, p)).value.decodeToString(), "$it")
+            }
+        }
+
         clause("EMPTY_AN_EMPTY_FILE_IS_NOT_ABSENT", FilesState.EMPTY) { files ->
             val p = path("EMPTY_AN_EMPTY_FILE_IS_NOT_ABSENT")
             files.write(FileArea.SHARED, p, ByteArray(0))
@@ -107,6 +117,27 @@ object FilesContract : Contract<FilesState, Files>("Files") {
             assertTrue(!whole.cut)
         }
 
+        clause("HOLDING_A_RANGE_IS_THE_BYTES_AT_ITS_OFFSET", FilesState.HOLDING) { files ->
+            val id = "HOLDING_A_RANGE_IS_THE_BYTES_AT_ITS_OFFSET"
+            val bytes = seed(id)
+            fun range(offset: Long, max: Int) = assertIs<FileResult.Ok<ByteArray>>(files.readRange(FileArea.SHARED, path(id), offset, max)).value
+            assertContentEquals(bytes.copyOfRange(0, SMALL), range(0, SMALL), "from the start")
+            assertContentEquals(bytes.copyOfRange(SMALL, 2 * SMALL), range(SMALL.toLong(), SMALL), "from an offset")
+            assertContentEquals(bytes.copyOfRange(bytes.size - 3, bytes.size), range(bytes.size - 3L, SMALL), "short only at the end")
+            assertEquals(0, range(bytes.size.toLong(), SMALL).size, "at the end: nothing")
+            assertEquals(0, range(bytes.size + 100L, SMALL).size, "past the end: nothing")
+            assertEquals(FileResult.NotFound, files.readRange(FileArea.PRIVATE, path(id), 0, SMALL), "the private area is another place")
+        }
+
+        clause("HOLDING_APPEND_EXTENDS_THE_FILE", FilesState.HOLDING) { files ->
+            val id = "HOLDING_APPEND_EXTENDS_THE_FILE"
+            assertEquals(FileResult.Ok(Unit), files.append(FileArea.SHARED, path(id), "tail".encodeToByteArray()))
+            assertContentEquals(
+                seed(id) + "tail".encodeToByteArray(),
+                assertIs<FileResult.Ok<ByteArray>>(files.read(FileArea.SHARED, path(id))).value,
+            )
+        }
+
         clause("HOLDING_WRITE_REPLACES", FilesState.HOLDING) { files ->
             val p = path("HOLDING_WRITE_REPLACES")
             files.write(FileArea.SHARED, p, "short".encodeToByteArray())
@@ -127,6 +158,7 @@ object FilesContract : Contract<FilesState, Files>("Files") {
                 "a present file read as absent is a false leave when it is the config",
             )
             assertIs<FileResult.Denied>(files.readTail(FileArea.SHARED, p, SMALL))
+            assertIs<FileResult.Denied>(files.readRange(FileArea.SHARED, p, 0, SMALL))
             assertEquals(FileResult.Ok(true), files.exists(FileArea.SHARED, p), "it is there")
         }
 
@@ -134,7 +166,9 @@ object FilesContract : Contract<FilesState, Files>("Files") {
             val p = path("UNAVAILABLE_AREA_IS_NEITHER_FOUND_NOR_ABSENT")
             assertEquals(FileResult.AreaUnavailable, files.read(FileArea.SHARED, p))
             assertEquals(FileResult.AreaUnavailable, files.readTail(FileArea.SHARED, p, SMALL))
+            assertEquals(FileResult.AreaUnavailable, files.readRange(FileArea.SHARED, p, 0, SMALL))
             assertEquals(FileResult.AreaUnavailable, files.write(FileArea.SHARED, p, ByteArray(1)))
+            assertEquals(FileResult.AreaUnavailable, files.append(FileArea.SHARED, p, ByteArray(1)))
             assertEquals(FileResult.AreaUnavailable, files.delete(FileArea.SHARED, p))
             assertEquals(FileResult.AreaUnavailable, files.exists(FileArea.SHARED, p))
             assertEquals(FileResult.AreaUnavailable, files.locate(FileArea.SHARED, p))

@@ -31,6 +31,16 @@ internal class InMemoryFiles(
         FileResult.Ok(FileTail(bytes.copyOfRange(bytes.size - take, bytes.size), cut = take < bytes.size))
     }
 
+    override fun readRange(area: FileArea, path: String, offset: Long, maxBytes: Int): FileResult<ByteArray> =
+        at(area, path) { files ->
+            val bytes = files[path] ?: return@at FileResult.NotFound
+            val start = minOf(maxOf(offset, 0), bytes.size.toLong()).toInt()
+            FileResult.Ok(bytes.copyOfRange(start, minOf(bytes.size.toLong(), start.toLong() + maxOf(maxBytes, 0)).toInt()))
+        }
+
+    override fun append(area: FileArea, path: String, bytes: ByteArray): FileResult<Unit> =
+        at(area, path) { files -> files[path] = (files[path] ?: ByteArray(0)) + bytes; FileResult.Ok(Unit) }
+
     override fun write(area: FileArea, path: String, bytes: ByteArray): FileResult<Unit> =
         at(area, path) { files -> files[path] = bytes.copyOf(); FileResult.Ok(Unit) }
 

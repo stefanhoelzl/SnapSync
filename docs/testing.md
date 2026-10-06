@@ -176,9 +176,9 @@ differently from the system it stands in for. **The contract code is the specifi
 doc or spec restates its clauses. This section covers the testing mechanics. Which ports are contracted,
 and why that matters for architecture, is in `docs/architecture.md`.
 
-**Only ports have contracts.** Two things deliberately have none. `PlatformDeviceId`'s only implementation
-is a constant null, so there is nothing for a clause to hold until an adapter answers one. The entry ports'
-handlers are pinned by rig tests over the JVM root (section 7) rather than by clauses.
+**Only ports have contracts.** The entry ports' handlers deliberately have none: they are pinned by rig tests over
+the JVM root (section 7) rather than by clauses. A format a port's answers are framed into is not a port: the
+encrypted file format is held to shared reference vectors instead (below, `Crypto`).
 
 Decision record: `changes/archive/2026-09-22-establish-port-contracts`. Later extensions are listed at the
 end of this section.
@@ -252,6 +252,12 @@ Where bindings live: beside their implementations.
 - `PlatformDeviceId`: its contract runs live on `ANDROID_EMU` over `ANDROID_ID` (an offered id is stable and
   canonical), and on the JVM over `NoPlatformDeviceId` (no id is `null`). "The same after a reinstall" is the property
   the id is chosen for and no process can test on itself; it is checked by hand on the emulator.
+- `Crypto`: live on `JVM`, `IOS_SIM_KEXE` and `ANDROID_EMU` — published known-answer vectors only (RFC 4231 HMAC, the GCM
+  specification's AES-256 test cases), so every platform computes what the others do. The encrypted file format framed
+  over it is not a contract: both its halves are held to `test/vectors/encrypted-file.json` (the Kotlin one by
+  `EncryptedFileFormatTest` over the real JVM adapters, the TypeScript one by `api/test/encrypted-file.test.ts`), and
+  on the JVM to Google Tink itself, which opens what `FileCipher` writes and the reverse. The mock module's
+  `fakeCrypto()` is not cryptography and is bound to nothing.
 - `NetworkMonitor`: live on `ANDROID_EMU` in all four states — online, restricted (the emulator's Wi-Fi marked metered
   through `cmd netpolicy`), airplane mode (offline), and the package denied by the `OEM_DENY_3` firewall chain
   (blocked), each entered by the binding through the platform's shell; live on `IOS_SIM_APP` online; recorded on the SE2

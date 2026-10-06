@@ -67,6 +67,8 @@ kotlin {
                 // The backend contracts' live bindings talk to the real `api/` over a socket, through the one
                 // process lifecycle `:test:edge` holds for every JVM consumer of the real backend.
                 implementation(project(":test:edge"))
+                // The encrypted file format's reference implementation (`docs/architecture.md`).
+                implementation(libs.tink)
             }
         }
         named("iosSimulatorArm64Test") {
@@ -86,6 +88,14 @@ kotlin {
 // backend's sources are inputs of the test task, so a change touching only `api/` re-runs the contracts that exist
 // to catch it.
 liveEdge.consumedBy(tasks.named<Test>("jvmTest"))
+
+// The encrypted file format's reference vectors (`test/vectors/encrypted-file.json`), shared with `api/`'s tests: an
+// input of the test task, so regenerating them re-runs the tests held to them.
+tasks.named<Test>("jvmTest") {
+    val vectors = rootProject.layout.projectDirectory.dir("test/vectors")
+    inputs.dir(vectors).withPropertyName("encryptedFileVectors")
+    systemProperty("snapsync.vectorsDir", vectors.asFile.absolutePath)
+}
 
 // ---- Coverage bounds (`docs/architecture.md`) ---------------------------------------------
 //

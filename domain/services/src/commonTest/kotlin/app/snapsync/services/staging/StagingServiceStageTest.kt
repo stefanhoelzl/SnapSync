@@ -26,6 +26,8 @@ class StagingServiceStageTest {
         val adoptions = mutableListOf<Triple<String, FileArea, String>>()
         override fun read(area: FileArea, path: String): FileResult<ByteArray> = FileResult.NotFound
         override fun readTail(area: FileArea, path: String, maxBytes: Int): FileResult<FileTail> = FileResult.NotFound
+        override fun readRange(area: FileArea, path: String, offset: Long, maxBytes: Int): FileResult<ByteArray> = FileResult.NotFound
+        override fun append(area: FileArea, path: String, bytes: ByteArray): FileResult<Unit> = FileResult.Ok(Unit)
         override fun write(area: FileArea, path: String, bytes: ByteArray): FileResult<Unit> = FileResult.Ok(Unit)
         override fun delete(area: FileArea, path: String): FileResult<Unit> = FileResult.NotFound
         override fun exists(area: FileArea, path: String): FileResult<Boolean> = FileResult.Ok(false)

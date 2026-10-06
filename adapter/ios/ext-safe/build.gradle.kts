@@ -45,6 +45,9 @@ kotlin {
     }
     sourceSets {
         iosMain.dependencies {
+            // `IosCrypto`'s AES-GCM: CryptoKit, through cryptography-kotlin's Swift bridge.
+            implementation(libs.cryptography.core)
+            implementation(libs.cryptography.provider.cryptokit)
             if (rigEnabled) {
                 implementation(project(":test:contracts"))
                 implementation(project(":domain:services"))

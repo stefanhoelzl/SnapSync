@@ -43,6 +43,24 @@ class JvmFiles(private val shared: File?, private val private: File?) : Files {
         }
     }
 
+    override fun readRange(area: FileArea, path: String, offset: Long, maxBytes: Int): FileResult<ByteArray> =
+        io(area, path) { file ->
+            if (!file.exists()) throw NoSuchFileException(file.path)
+            RandomAccessFile(file, "r").use { raf ->
+                val start = minOf(maxOf(offset, 0), raf.length())
+                val bytes = ByteArray(minOf(maxOf(maxBytes, 0).toLong(), raf.length() - start).toInt())
+                raf.seek(start)
+                raf.readFully(bytes)
+                FileResult.Ok(bytes)
+            }
+        }
+
+    override fun append(area: FileArea, path: String, bytes: ByteArray): FileResult<Unit> = io(area, path) { file ->
+        file.parentFile?.mkdirs()
+        file.appendBytes(bytes)
+        FileResult.Ok(Unit)
+    }
+
     override fun write(area: FileArea, path: String, bytes: ByteArray): FileResult<Unit> = io(area, path) { file ->
         file.parentFile?.mkdirs()
         val temp = File(file.parentFile, ".${file.name}.tmp")

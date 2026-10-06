@@ -26,6 +26,7 @@ Roots found:
 | `HttpBackend` | x | x | x |
 | `IosBackgroundTime` | x | x | |
 | `IosBuildInfo` | x | x | x |
+| `IosCrypto` | x | x | x |
 | `IosDatabases` | x | x | x |
 | `IosDeviceConditions` | x | x | |
 | `IosDeviceIntegrity` | x | x | |

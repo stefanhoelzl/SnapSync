@@ -20,6 +20,7 @@ import app.snapsync.presentation.StatusContainerHost
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlin.time.Clock
+import app.snapsync.crypto.JcaCrypto
 
 /**
  * **The JVM root** (`docs/testing.md`, "The JVM root"): the app composed on the JVM exactly as `SnapSyncRoot` composes
@@ -94,6 +95,8 @@ class JvmApp<D>(
             logSinks = logSinks,
             files = files,
             clock = ports.device.clock,
+            // The JDK's own primitives: stateless, so every launch's are the real ones.
+            crypto = JcaCrypto(),
             entryContext = NoEntryContext,
             build = ports.build.port(),
         )
