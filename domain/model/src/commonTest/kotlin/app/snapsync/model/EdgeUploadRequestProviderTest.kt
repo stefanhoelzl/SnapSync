@@ -9,6 +9,7 @@ import kotlin.test.assertTrue
 class EdgeUploadRequestProviderTest {
 
     private val deviceId = "11111111-1111-4111-8111-111111111111"
+    private val eventId = "7a3f9c21-0000-4000-8000-000000000001"
 
     private fun resource(filename: String, contentType: String = "image/jpeg") = Resource(
         filename = filename,
@@ -23,7 +24,7 @@ class EdgeUploadRequestProviderTest {
         token: suspend () -> String? = { "tok-1" },
         freshToken: suspend () -> String? = token,
         appVersion: String = "0.4",
-    ) = EdgeUploadRequestProvider(host, deviceId, token, freshToken, appVersion)
+    ) = EdgeUploadRequestProvider(host, eventId, deviceId, token, freshToken, appVersion)
 
     @Test
     fun names_identity_in_the_path_and_the_capture_name_in_the_query() = runTest {
@@ -37,7 +38,7 @@ class EdgeUploadRequestProviderTest {
             ),
         )
         assertEquals(
-            "https://edge.example/files/devices/$deviceId/ABC123_DEF/primary?filename=IMG_0001.JPG",
+            "https://edge.example/events/$eventId/files/devices/$deviceId/ABC123_DEF/primary?filename=IMG_0001.JPG",
             req.url,
         )
     }
@@ -57,7 +58,7 @@ class EdgeUploadRequestProviderTest {
             ),
         )
         assertTrue(
-            req.url.endsWith("/files/devices/$deviceId/a/primary?filename=a%20b%2F%C3%A4.jpg"),
+            req.url.endsWith("/events/$eventId/files/devices/$deviceId/a/primary?filename=a%20b%2F%C3%A4.jpg"),
             "was ${req.url}",
         )
     }
@@ -147,7 +148,7 @@ class EdgeUploadRequestProviderTest {
         // request from this provider on every retry. A provider that captured the token at construction
         // would keep re-sending the dead one forever.
         var current: String? = "stale"
-        val p = EdgeUploadRequestProvider("https://edge.example", deviceId, { current }, { current }, "0.4")
+        val p = EdgeUploadRequestProvider("https://edge.example", eventId, deviceId, { current }, { current }, "0.4")
 
         val before = p.provide(resource("x.jpg"))
         assertEquals("Bearer stale", before.headers["Authorization"])
@@ -221,7 +222,7 @@ class EdgeUploadRequestProviderTest {
     fun trailing_slash_on_host_is_normalized() = runTest {
         val req = provider(host = "https://edge.example/").provide(resource("x.jpg"))
         assertEquals(
-            "https://edge.example/files/devices/$deviceId/x/primary?filename=x.jpg",
+            "https://edge.example/events/$eventId/files/devices/$deviceId/x/primary?filename=x.jpg",
             req.url,
         )
     }

@@ -30,8 +30,8 @@ class MembershipEntry(
     private val stopUploads: suspend () -> Unit,
     /** The best-effort backend leave of the previous event. */
     private val notifyLeave: suspend (eventId: String) -> Unit,
-    /** Make the upload ledger the new membership's share set. */
-    private val loadShareSet: suspend () -> Unit,
+    /** Make the upload ledger the share set of the new membership, in the event given. */
+    private val loadShareSet: suspend (eventId: String) -> Unit,
     /** Recognise the library's photos an earlier install received for [EventConfig.eventId] ([ReceivedPhotoAdoption]). */
     private val adoptReceived: suspend (EventConfig) -> Unit,
     /** Persist the whole config (a port touch). */
@@ -45,7 +45,7 @@ class MembershipEntry(
             stopUploads()
             notifyLeave(previousEventId)
         }
-        loadShareSet()
+        loadShareSet(cfg.eventId)
         adoptReceived(cfg)
         saveConfig(cfg)
         startUploads()

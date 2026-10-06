@@ -23,7 +23,7 @@
 // LAYOUT. Storage keys map 1:1 onto directories and files, so `ls`/`find` on the store is the verification
 // oracle a bunny dashboard used to be:
 //
-//   <root>/objects/<key>   the bytes         (e.g. objects/files/devices/<uuid>/IMG_0001.HEIC)
+//   <root>/objects/<key>   the bytes         (e.g. objects/files/<eventId>/<sha256>)
 //   <root>/types/<key>     its Content-Type  (a separate tree, so a LIST never observes it)
 //
 // The type sidecar lives in its own tree rather than beside the object precisely because `listDir` walks
@@ -102,13 +102,16 @@ async function deleteObject(
   typesRoot: string,
   key: string,
 ): Promise<Response> {
+  // A key ending in `/` names a DIRECTORY, which bunny deletes RECURSIVELY — the sweep deletes an event's
+  // byte folder that way (`storage.ts`'s `deleteObject`).
+  const recursive = key.endsWith("/");
   try {
-    await Deno.remove(safeJoin(objectsRoot, key));
+    await Deno.remove(safeJoin(objectsRoot, key), { recursive });
   } catch (e) {
     if (e instanceof Deno.errors.NotFound) return new Response(null, { status: 404 });
     throw e;
   }
-  await Deno.remove(safeJoin(typesRoot, key)).catch(() => {});
+  await Deno.remove(safeJoin(typesRoot, key), { recursive }).catch(() => {});
   return new Response(null, { status: 200 });
 }
 

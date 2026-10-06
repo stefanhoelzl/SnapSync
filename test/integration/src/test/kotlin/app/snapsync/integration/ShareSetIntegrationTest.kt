@@ -41,11 +41,21 @@ class ShareSetIntegrationTest {
         assertEquals(jobsBefore, jobs().created, "nothing the backend already holds is uploaded again")
     }
 
+    /** A switch to [eventId]'s link while joined, confirmed, then the regular join. */
+    private suspend fun Rig.switchTo(eventId: String) {
+        openLink(inviteLink(eventId))
+        awaitState { it.joined?.pendingSwitch?.phase?.step == JoinPhase.Detailed.Step.Ready }
+        user("confirmSwitch")
+        awaitState { !it.ready.configResolved }
+        join()
+        assertEquals(eventId, state().ready.eventId)
+    }
+
     @Test
-    fun a_switch_replaces_the_share_set_and_re_uploads_nothing_already_stored() = rigTest {
+    fun a_switch_starts_the_new_events_share_set_afresh_and_uploads_for_it() = rigTest {
         extensionUploadsOnly()
         val next = registerEvent(name = "Next") // E2, to switch to
-        createAndJoin() // E1
+        val first = createAndJoin() // E1
         addPhoto("A")
         uploadAll()
         assertTrue(primaryKey("A") in objects())
@@ -54,20 +64,31 @@ class ShareSetIntegrationTest {
         cycle()
         val jobsBefore = jobs().created
 
-        // A switch: a different event's link while joined, confirmed, then the regular join.
-        openLink(inviteLink(next))
-        awaitState { it.joined?.pendingSwitch?.phase?.step == JoinPhase.Detailed.Step.Ready }
-        user("confirmSwitch")
-        awaitState { !it.ready.configResolved }
-        join()
-        assertEquals(next, state().ready.eventId)
-
+        switchTo(next)
         cycle()
-        // E1's unfinished B is not carried over — the new share set starts it afresh with one new job — and the
-        // stored A is not uploaded again under the new event.
+        // Each event holds its own bytes (change `per-event-storage-layout`): the new share set starts empty, so A —
+        // stored for E1 — and E1's unfinished B are both uploaded for E2, one new job each.
         val after = jobs()
-        assertEquals(jobsBefore + 1, after.created, "exactly one new job — B's, not A's: $after")
-        assertTrue(primaryKey("A") !in after.live, "the stored photo is not uploaded again under the new event: $after")
+        assertEquals(jobsBefore + 2, after.created, "one new job for each of A and B: $after")
+        assertTrue(primaryKey("A") in objects(event = first), "E1 still holds what was stored for it")
+    }
+
+    @Test
+    fun switching_away_and_back_re_uploads_nothing_the_event_already_holds() = rigTest {
+        extensionUploadsOnly()
+        val next = registerEvent(name = "Next")
+        val first = createAndJoin()
+        addPhoto("A")
+        uploadAll()
+        assertTrue(primaryKey("A") in objects())
+
+        switchTo(next)
+        uploadAll()
+        val jobsAway = jobs().created
+        switchTo(first)
+        cycle()
+
+        assertEquals(jobsAway, jobs().created, "A is already in E1: nothing is uploaded again on the way back")
     }
 
     /**

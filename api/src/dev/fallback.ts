@@ -39,7 +39,8 @@ export function enrolmentTarget(method: string, path: string): string | null {
 }
 
 // Any device-naming path of the device API, under any version: `/events/<e>/devices/<d>[/…]`,
-// `/files/devices/<d>[/…]` and `/devices/<d>` all carry the id as the segment after `devices`.
+// `/events/<e>/files/devices/<d>[/…]`, `/files/devices/<d>[/…]` and `/devices/<d>` all carry the id as the
+// segment after `devices`.
 const DEVICE_SEGMENT = /^\/api\/v\d+\/(?:.*?\/)?devices\/([^/]+)/;
 
 /**

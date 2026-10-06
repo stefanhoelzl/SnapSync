@@ -31,7 +31,7 @@ interface AuthenticatedBackend {
     suspend fun publishManifest(eventId: String, deviceId: String, manifest: DeviceManifest): Reply<Unit>
     suspend fun leaveEvent(eventId: String, deviceId: String, received: Boolean): Reply<Unit>
     suspend fun eventFiles(eventId: String, cursor: Long?, trigger: UnionTrigger): Reply<UnionPage>
-    suspend fun deviceFiles(deviceId: String): Reply<List<DeviceFile>>
+    suspend fun deviceFiles(eventId: String, deviceId: String): Reply<List<DeviceFile>>
     suspend fun putDeviceConfig(deviceId: String, push: PushEndpoint): Reply<Unit>
 }
 
@@ -103,7 +103,8 @@ class CredentialedBackend(
     override suspend fun eventFiles(eventId: String, cursor: Long?, trigger: UnionTrigger) =
         gated { backend.eventFiles(it, eventId, cursor, trigger) }
 
-    override suspend fun deviceFiles(deviceId: String) = gated { backend.deviceFiles(it, deviceId) }
+    override suspend fun deviceFiles(eventId: String, deviceId: String) =
+        gated { backend.deviceFiles(it, eventId, deviceId) }
 
     override suspend fun putDeviceConfig(deviceId: String, push: PushEndpoint) =
         gated { backend.putDeviceConfig(it, deviceId, push) }

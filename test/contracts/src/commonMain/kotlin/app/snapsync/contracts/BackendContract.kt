@@ -33,7 +33,7 @@ enum class BackendState {
     /** An event with one member, who published one asset and uploaded only some of its resources. */
     UNION_INCOMPLETE_ASSET,
 
-    /** A device that has uploaded one resource. */
+    /** An event, and a device that joined it and uploaded one resource into it. */
     DEVICE_UPLOADED,
 
     /** An event that exists, and a build older than the backend's minimum. */
@@ -78,11 +78,6 @@ object BackendContract : Contract<BackendState, EdgeSubject<Backend>>("Backend")
     /** Enters [state] on the backend [setup] drives. Bindings call exactly this. */
     suspend fun seed(state: BackendState, clauseId: String, setup: BackendSetup): Seeded = when (state) {
         BackendState.SERVING, BackendState.NO_SUCH_EVENT -> Seeded(eventId = setup.freshId(), deviceId = setup.freshId())
-        BackendState.DEVICE_UPLOADED -> {
-            val device = setup.freshId()
-            setup.upload(device, STORED, ResourceRole.PRIMARY)
-            Seeded(eventId = setup.freshId(), deviceId = device, asset = STORED)
-        }
         else -> seedEvent(state, clauseId, setup)
     }
 
@@ -98,6 +93,7 @@ object BackendContract : Contract<BackendState, EdgeSubject<Backend>>("Backend")
         val asset = when (state) {
             BackendState.UNION_COMPLETE_ASSET -> COMPLETE
             BackendState.UNION_INCOMPLETE_ASSET -> INCOMPLETE
+            BackendState.DEVICE_UPLOADED -> STORED
             else -> null
         }
         when (state) {
@@ -111,13 +107,17 @@ object BackendContract : Contract<BackendState, EdgeSubject<Backend>>("Backend")
             }
             BackendState.MEMBER_WITH_TWO_UPLOADED_ASSETS -> {
                 setup.join(event.eventId, device)
-                setup.upload(device, FIRST, ResourceRole.PRIMARY)
-                setup.upload(device, SECOND, ResourceRole.PRIMARY)
+                setup.upload(event.eventId, device, FIRST, ResourceRole.PRIMARY)
+                setup.upload(event.eventId, device, SECOND, ResourceRole.PRIMARY)
             }
             BackendState.UNION_COMPLETE_ASSET, BackendState.UNION_INCOMPLETE_ASSET -> {
                 setup.join(event.eventId, device)
                 setup.publish(event.eventId, device, listOfNotNull(asset))
-                setup.upload(device, asset!!, ResourceRole.PRIMARY)
+                setup.upload(event.eventId, device, asset!!, ResourceRole.PRIMARY)
+            }
+            BackendState.DEVICE_UPLOADED -> {
+                setup.join(event.eventId, device)
+                setup.upload(event.eventId, device, asset!!, ResourceRole.PRIMARY)
             }
             else -> Unit
         }

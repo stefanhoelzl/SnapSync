@@ -56,6 +56,22 @@ object LedgerStoreContract : Contract<LedgerStoreState, LedgerService>("LedgerSe
             assertEquals(entry().key, backend.entryForDestination(path)?.key)
         }
 
+        // An update that changes the upload route (change `per-event-storage-layout`) leaves jobs an earlier build
+        // created addressed to the OLD destination. Each row answers the destination ITS request carried, so such a
+        // job still completes its row while newer rows answer the new route.
+        clause("a row keeps the destination its own request carried across a route change", LedgerStoreState.EMPTY) { backend ->
+            val before = "/api/v2/files/devices/D/old-1/primary"
+            val after = "/api/v2/events/E/files/devices/D/new-1/primary"
+            val old = entry(key = "old-1-primary.heic", destinationPath = before)
+            val new = entry(key = "new-1-primary.heic", destinationPath = after)
+
+            backend.recordUnlessSettled(old)
+            backend.recordUnlessSettled(new)
+
+            assertEquals(old.key, backend.entryForDestination(before)?.key)
+            assertEquals(new.key, backend.entryForDestination(after)?.key)
+        }
+
         clause("a row recorded without a destination is never matched and stays usable", LedgerStoreState.EMPTY) { backend ->
 
             // A row written before the ledger kept a destination — the state every device carries after an

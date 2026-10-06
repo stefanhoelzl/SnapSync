@@ -133,5 +133,7 @@ context: |
   deepen assumptions against them without naming it in the change): paid events (small events stay free; creation is the payment gate's attach
   point, capacity/duration the tier boundary); concurrent multi-event
   membership (single active membership is the CURRENT contract — switch =
-  leave-then-join — while bytes, ledger keys, and backend GC are already
-  event-independent).
+  leave-then-join. Ledger keys are event-independent; bytes are stored per
+  event since changes/per-event-storage-layout, and the event-less byte routes
+  that builds before it still call file an upload under the device's one
+  present membership, so they must be retired before concurrent membership).

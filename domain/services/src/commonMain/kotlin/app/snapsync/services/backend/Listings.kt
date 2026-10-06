@@ -8,13 +8,14 @@ import app.snapsync.model.toResult
 import app.snapsync.model.uploadKey
 
 /**
- * What a **device** has already stored. Bytes are device-partitioned and event-independent, so this is the dedup
- * source the join-time load seeds the ledger's `COMPLETED` rows from (capability `photo-sharing`): whatever the
- * backend already holds for this device is not uploaded again. Failures are a failed [Result] (never thrown), so a
- * failed load can fall back to an empty ledger rather than crash the join.
+ * What a **device** has already stored **in one event**. Each event holds its own bytes (change
+ * `per-event-storage-layout`), so this is the dedup source the join-time load seeds the ledger's `COMPLETED` rows
+ * from (capability `photo-sharing`): whatever the backend already holds for this device in this event is not
+ * uploaded again — and nothing it holds for another event is mistaken for this one's. Failures are a failed
+ * [Result] (never thrown), so a failed load can fall back to an empty ledger rather than crash the join.
  */
 fun interface DeviceFilesSource {
-    suspend fun list(deviceId: String): Result<List<StoredResource>>
+    suspend fun list(eventId: String, deviceId: String): Result<List<StoredResource>>
 }
 
 /**
@@ -56,13 +57,13 @@ fun interface EventUnionSource {
  */
 class BackendDeviceFilesSource(private val backend: AuthenticatedBackend) : DeviceFilesSource {
 
-    override suspend fun list(deviceId: String): Result<List<StoredResource>> =
-        when (val reply = backend.deviceFiles(deviceId)) {
+    override suspend fun list(eventId: String, deviceId: String): Result<List<StoredResource>> =
+        when (val reply = backend.deviceFiles(eventId, deviceId)) {
             is Reply.Ok -> Result.success(reply.value.map { StoredResource(uploadKey(it.assetId, it.role, it.filename), it.assetId) })
             is Reply.Malformed -> Result.failure(
                 DeviceListingShapeException("the per-device listing did not decode into {assetId, role, filename}: ${reply.detail}"),
             )
-            else -> reply.toResult("list device $deviceId").map { emptyList() }
+            else -> reply.toResult("list device $deviceId in $eventId").map { emptyList() }
         }
 }
 

@@ -24,6 +24,7 @@
 
 import { assert, assertEquals } from "@std/assert";
 import type { Db } from "../src/db.ts";
+import { eventBytePath } from "../src/storage.ts";
 import {
   apnsConfig,
   apnsRecorder,
@@ -36,6 +37,7 @@ import {
   E,
   ENDS_AT,
   enrolDevice,
+  joinEvent,
   recorder,
   rows,
   seedResource,
@@ -48,7 +50,16 @@ import {
 // ── v1 fixtures: the contract, kept literal ────────────────────────────────────────────────────────
 
 const BYTE_PATH = `/api/v1/files/devices/${D}/IMG_0001-photo.jpg`;
-const BYTE_OBJ_URL = `${ZONE}/files/devices/${D}/IMG_0001-photo.jpg`;
+// Where those bytes land: the device's present event, under the deterministic name of the identity the
+// object name parses to (change `per-event-storage-layout`).
+const BYTE_OBJ_URL = `${ZONE}/${await eventBytePath(E, D, "IMG_0001", "photo")}`;
+
+/** A store where D is a present member of E — what a v1 byte upload is filed under. */
+async function joined(): Promise<Db & { close(): void }> {
+  const db = await storeWithEvent();
+  await joinEvent(db, E, D);
+  return db;
+}
 const DEVLIST_PATH = `/api/v1/files/devices/${D}`;
 const MANIFEST_PATH = `/api/v1/events/${E}/devices/${D}`;
 const UNION_PATH = `/api/v1/events/${E}/files`;
@@ -72,8 +83,8 @@ const RES = (key: string, role = "primary") => ({
 
 // ── PUT /files/devices/:deviceId/:filename (byte upload) ───────────────────────────────────────────
 
-Deno.test("byte PUT → forwards once with the bare key, AccessKey, content-type and body", async () => {
-  const db = await store();
+Deno.test("byte PUT → forwards once to the event's path, with AccessKey, content-type and body", async () => {
+  const db = await joined();
   const { calls, fetchImpl } = recorder();
   const res = await createApp({ config: CONFIG, db, fetch: fetchImpl }).request(BYTE_PATH, {
     method: "PUT",
@@ -89,7 +100,7 @@ Deno.test("byte PUT → forwards once with the bare key, AccessKey, content-type
 });
 
 Deno.test("byte PUT → records the upload, so the listing and the union can see it", async () => {
-  const db = await store();
+  const db = await joined();
   const { fetchImpl } = recorder();
   await createApp({ config: CONFIG, db, fetch: fetchImpl }).request(BYTE_PATH, {
     method: "PUT",
@@ -97,23 +108,28 @@ Deno.test("byte PUT → records the upload, so the listing and the union can see
   });
   // The ROW'S EXISTENCE is the record that the bytes arrived — the same fact the retired `uploaded = 1`
   // column carried, now carried by the row being there at all.
-  const stored = await rows(db, `SELECT device_id, key FROM resources`);
+  const stored = await rows(db, `SELECT event_id, device_id, asset_id, role, path FROM resources`);
   assertEquals(stored.length, 1);
   assertEquals(stored[0].device_id, D);
-  // The BARE object name — the same key the manifest publish upserts on, so the repair path lands on
-  // this row rather than creating a second one beside it.
-  assertEquals(stored[0].key, "IMG_0001-photo.jpg");
+  // Filed under the present event, by the identity the object name parses to — the same row the manifest
+  // publish upserts on, so the repair path lands on it rather than creating a second one beside it.
+  assertEquals(stored[0].event_id, E);
+  assertEquals([stored[0].asset_id, stored[0].role], ["IMG_0001", "photo"]);
+  assertEquals(stored[0].path, await eventBytePath(E, D, "IMG_0001", "photo"));
   db.close();
 });
 
 Deno.test("byte PUT → a store failure does NOT fail the upload (best-effort record)", async () => {
   // The route's success is "the bytes landed". Failing it because a bookkeeping row did not land would
-  // turn a successful upload into a retried one; the next manifest publish repairs the record.
-  const db = await store();
+  // turn a successful upload into a retried one; the next manifest publish repairs the record. (The
+  // membership read that names the event must answer; only the record fails here.)
+  const db = await joined();
   const broken: Db = {
-    execute: () => Promise.reject(new Error("store down")),
-    batch: () => Promise.reject(new Error("store down")),
-    transaction: () => Promise.reject(new Error("store down")),
+    ...db,
+    execute: (sql, args) =>
+      sql.includes("INSERT INTO resources")
+        ? Promise.reject(new Error("store down"))
+        : db.execute(sql, args),
   };
   const { calls, fetchImpl } = recorder();
   const res = await createApp({ config: CONFIG, db: broken, fetch: fetchImpl }).request(BYTE_PATH, {
@@ -125,17 +141,32 @@ Deno.test("byte PUT → a store failure does NOT fail the upload (best-effort re
   db.close();
 });
 
-Deno.test("byte PUT → an encoded filename round-trips to an encoded, flat key", async () => {
-  const db = await store();
+Deno.test("byte PUT → an encoded filename is decoded into its identity, never into the key", async () => {
+  const db = await joined();
   const { calls, fetchImpl } = recorder();
   await createApp({ config: CONFIG, db, fetch: fetchImpl }).request(
-    `/api/v1/files/devices/${D}/IMG%200001%20photo.jpg`,
+    `/api/v1/files/devices/${D}/IMG%200001-photo.jpg`,
     { method: "PUT", body: "b" },
   );
   assertEquals(
     calls.find((c) => c.init.method === "PUT")!.url,
-    `${ZONE}/files/devices/${D}/IMG%200001%20photo.jpg`,
+    `${ZONE}/${await eventBytePath(E, D, "IMG 0001", "photo")}`,
   );
+  assertEquals(await rows(db, `SELECT asset_id FROM resources`), [{ asset_id: "IMG 0001" }]);
+  db.close();
+});
+
+Deno.test("byte PUT → a device in no event → 409, no upstream request", async () => {
+  // The URL names no event, so the bytes are filed under the device's present membership; with none,
+  // there is nothing they could belong to (change `per-event-storage-layout`).
+  const db = await storeWithEvent();
+  const { calls, fetchImpl } = recorder();
+  const res = await createApp({ config: CONFIG, db, fetch: fetchImpl }).request(BYTE_PATH, {
+    method: "PUT",
+    body: "b",
+  });
+  assertEquals(res.status, 409);
+  assertEquals(calls.length, 0);
   db.close();
 });
 
@@ -152,7 +183,7 @@ Deno.test("byte PUT → an encoded slash (%2F) in the filename → 400, no upstr
 });
 
 Deno.test("byte PUT → missing content-type defaults to application/octet-stream", async () => {
-  const db = await store();
+  const db = await joined();
   const { calls, fetchImpl } = recorder();
   // A Blob with no `type` is the one body shape that reaches the handler with no content-type header at
   // all — a string body makes fetch supply `text/plain`, which would test fetch rather than the route.
@@ -170,7 +201,7 @@ Deno.test("byte PUT → missing content-type defaults to application/octet-strea
 });
 
 Deno.test("byte PUT → bunny error → 502, and nothing is recorded", async () => {
-  const db = await store();
+  const db = await joined();
   const { fetchImpl } = recorder({ status: 500 });
   const res = await createApp({ config: CONFIG, db, fetch: fetchImpl }).request(BYTE_PATH, {
     method: "PUT",
@@ -182,7 +213,7 @@ Deno.test("byte PUT → bunny error → 502, and nothing is recorded", async () 
 });
 
 Deno.test("byte PUT → upstream throw → 502", async () => {
-  const db = await store();
+  const db = await joined();
   const { fetchImpl } = recorder({ throws: true });
   const res = await createApp({ config: CONFIG, db, fetch: fetchImpl }).request(BYTE_PATH, {
     method: "PUT",
@@ -311,7 +342,6 @@ Deno.test("manifest publish → repairs an upload record the byte route lost", a
   // stored — and the row is CREATED when missing. (Under the retired schema this raised `uploaded` 0 → 1;
   // a missing record is now an absent row, so repairing it is an insert. Same fact, same guarantee.)
   const db = await storeWithEvent();
-  await seedResource(db, { deviceId: D, key: "a.heic", filename: "a.heic", uploaded: false });
   await createApp({ config: CONFIG, db, fetch: recorder().fetchImpl }).request(MANIFEST_PATH, {
     method: "PUT",
     body: manifest([{
@@ -320,7 +350,10 @@ Deno.test("manifest publish → repairs an upload record the byte route lost", a
       resources: [RES("a.heic")],
     }]),
   });
-  assertEquals((await rows(db, `SELECT key FROM resources WHERE device_id=?`, [D])).length, 1);
+  // The created row points where v1's byte route writes this resource for this event.
+  assertEquals(await rows(db, `SELECT path FROM resources WHERE device_id=?`, [D]), [{
+    path: await eventBytePath(E, D, "A", "primary"),
+  }]);
   db.close();
 });
 
@@ -338,7 +371,7 @@ Deno.test("manifest publish → monotone: a not-uploaded entry cannot un-say an 
     }]);
   await app.request(MANIFEST_PATH, { method: "PUT", body: body(true) });
   await app.request(MANIFEST_PATH, { method: "PUT", body: body(false) });
-  assertEquals((await rows(db, `SELECT key FROM resources WHERE device_id=?`, [D])).length, 1);
+  assertEquals((await rows(db, `SELECT path FROM resources WHERE device_id=?`, [D])).length, 1);
   db.close();
 });
 
@@ -506,17 +539,18 @@ Deno.test("capacity → a zero-row enrollment tells `full` and `no such event` a
 // ── GET /files/devices/:deviceId (per-device listing) ──────────────────────────────────────────────
 
 Deno.test("device list → { filename, url } only, and only for uploaded resources", async () => {
-  const db = await store();
-  await seedResource(db, { deviceId: D, key: "a.heic", assetId: "A", uploaded: true });
-  await seedResource(db, { deviceId: D, key: "b.heic", assetId: "B", uploaded: false });
+  const db = await joined();
+  await seedResource(db, { eventId: E, deviceId: D, assetId: "A", uploaded: true });
+  await seedResource(db, { eventId: E, deviceId: D, assetId: "B", uploaded: false });
   const { calls, fetchImpl } = recorder();
   const res = await createApp({ config: CONFIG, db, fetch: fetchImpl }).request(DEVLIST_PATH);
   assertEquals(res.status, 200);
   const body = await res.json() as Record<string, unknown>[];
   assertEquals(body.length, 1);
   assertEquals(Object.keys(body[0]).sort(), ["filename", "url"]);
-  assertEquals(body[0].filename, "a.heic");
-  assertPresigned(String(body[0].url), `files/devices/${D}/a.heic`);
+  // The object name, `<assetId>-<role>.<ext>` — what the rejoin reconciler matches its ledger against.
+  assertEquals(body[0].filename, "A-primary.heic");
+  assertPresigned(String(body[0].url), `files/devices/${D}/A-primary.heic`);
   assertEquals(res.headers.get("Cache-Control"), "no-store, no-cache, max-age=0");
   // Served from the record; storage is not enumerated.
   assertEquals(calls.length, 0);
@@ -862,7 +896,7 @@ Deno.test("union → both devices' assets, flattened, tagged by deviceId, uncach
     "role",
     "url",
   ]);
-  assertPresigned(String(resources[0].url), `files/devices/${D}/a.heic`);
+  assertPresigned(String(resources[0].url), await eventBytePath(E, D, "A", "primary"));
   db.close();
 });
 
@@ -875,7 +909,7 @@ Deno.test("union → an asset naming an unrecorded resource is omitted entirely"
   ]);
   // An UNRECORDED resource is an ABSENT row — the manifest still declares the `live` role for asset B,
   // so the union sees a declared role with no arrival and drops the asset whole.
-  await db.execute(`DELETE FROM resources WHERE key = ?`, ["b.mov"]);
+  await db.execute(`DELETE FROM resources WHERE asset_id = 'B' AND role = 'live'`);
   const body = await (await createApp({ config: CONFIG, db, fetch: recorder().fetchImpl }).request(
     UNION_PATH,
   )).json() as Record<string, unknown>[];
@@ -1204,8 +1238,8 @@ Deno.test("notify → unknown event → 404, no push; wrong method → 404", asy
 // ── Presigned URLs ─────────────────────────────────────────────────────────────────────────────────
 
 Deno.test("presigned download URLs carry the configured scheme, not a hardcoded https", async () => {
-  const db = await store();
-  await seedResource(db, { deviceId: D, key: "a.heic", filename: "a.heic", uploaded: true });
+  const db = await joined();
+  await seedResource(db, { eventId: E, deviceId: D, assetId: "A", uploaded: true });
   const httpConfig = { ...CONFIG, s3Scheme: "http", s3Host: "127.0.0.1:8080" };
   const res = await createApp({ config: httpConfig, db, fetch: recorder().fetchImpl }).request(
     DEVLIST_PATH,

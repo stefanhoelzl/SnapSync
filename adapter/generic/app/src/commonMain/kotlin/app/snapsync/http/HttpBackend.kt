@@ -226,8 +226,8 @@ class HttpBackend(
         UnionPage(assets, position)
     }
 
-    override suspend fun deviceFiles(token: String?, deviceId: String): Reply<List<DeviceFile>> =
-        exchange(HttpMethod.Get, "/files/devices/$deviceId", token) { text ->
+    override suspend fun deviceFiles(token: String?, eventId: String, deviceId: String): Reply<List<DeviceFile>> =
+        exchange(HttpMethod.Get, "/events/$eventId/files/devices/$deviceId", token) { text ->
             json.decodeFromString(ListSerializer(StoredDto.serializer()), text).map { DeviceFile(AssetId(it.assetId), it.role, it.filename) }
         }
 

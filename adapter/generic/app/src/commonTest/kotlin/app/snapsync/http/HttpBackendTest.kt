@@ -121,7 +121,7 @@ class HttpBackendTest {
             { backend.joinEvent("T", "E", "D") },
             { backend.publishManifest("T", "E", "D", manifest) },
             { backend.leaveEvent("T", "E", "D", received = false) },
-            { backend.deviceFiles("T", "D") },
+            { backend.deviceFiles("T", "E", "D") },
             { backend.putDeviceConfig("T", "D", PushEndpoint("apns", "t", "sandbox")) },
             { backend.eventFiles("T", "E", null, UnionTrigger.FOREGROUND) },
         )
@@ -318,19 +318,19 @@ class HttpBackendTest {
     @Test
     fun the_listing_reads_identity_terms_and_ignores_extra_keys() = runTest {
         val listed = backend(body = """[{"assetId":"A","role":"primary","filename":"IMG.JPG","size":4,"url":"x"}]""")
-            .deviceFiles("T", "D")
+            .deviceFiles("T", "E", "D")
         assertEquals(Reply.Ok(listOf(DeviceFile(AssetId("A"), ResourceRole.PRIMARY, "IMG.JPG"))), listed)
-        assertEquals("GET /api/v2/files/devices/D", "${sent[0].method} ${sent[0].path}")
+        assertEquals("GET /api/v2/events/E/files/devices/D", "${sent[0].method} ${sent[0].path}")
     }
 
     @Test
     fun the_frozen_v1_listing_shape_is_malformed_rather_than_read_as_capture_names() = runTest {
-        assertIs<Reply.Malformed>(backend(body = """[{"filename":"A-primary.jpg","url":"x"}]""").deviceFiles("T", "D"))
+        assertIs<Reply.Malformed>(backend(body = """[{"filename":"A-primary.jpg","url":"x"}]""").deviceFiles("T", "E", "D"))
     }
 
     @Test
     fun an_unknown_role_is_malformed_rather_than_defaulted() = runTest {
-        assertIs<Reply.Malformed>(backend(body = """[{"assetId":"A","role":"mystery","filename":"x.jpg"}]""").deviceFiles("T", "D"))
+        assertIs<Reply.Malformed>(backend(body = """[{"assetId":"A","role":"mystery","filename":"x.jpg"}]""").deviceFiles("T", "E", "D"))
     }
 
     // ── answers that are not success ───────────────────────────────────────────────────────────────

@@ -4,7 +4,7 @@ package app.snapsync.model
 /**
  * The production [UploadRequestProvider] (specs: sync-engine, bunny-upload-endpoint, device-attestation):
  * a thin **local URL builder** for the bunny edge proxy. It maps a [Resource] to a plain `PUT` against
- * `<host>/files/devices/<deviceId>/<assetId>/<role>?filename=<capture name>` — no network, no signing, no
+ * `<host>/events/<eventId>/files/devices/<deviceId>/<assetId>/<role>?filename=<capture name>` — no network, no signing, no
  * crypto — carrying `Content-Type`, the device token as `Authorization: Bearer`, and the calling build's
  * marketing version. No `Host` (URL-implied) and **no custom metadata headers** (the bunny native Storage
  * API has none). iOS's background-upload job system performs the actual `PUT`; this only composes the
@@ -32,20 +32,19 @@ package app.snapsync.model
  * device that has not attested yet, and of the upload extension on a device whose token expired — the
  * extension cannot renew (App Attest is unavailable in an app extension), so it sends what it has.
  *
- * The stored object name this destination resolves to is **byte-identical** to the one the previous byte
- * route composed for the same resource, so a device crossing versions finds its bytes where it left them
- * and re-uploads nothing.
+ * The byte destination **belongs to one event** (change `per-event-storage-layout`): the backend stores it under
+ * that event, so rejoining the event re-uploads nothing it already holds, while a photo that also falls inside
+ * another event is uploaded again for that one. A request built by an earlier build — the event-less
+ * `<host>/files/devices/<deviceId>/…` — still completes: the backend files it under the device's present event, and
+ * the ledger matches its completion by the destination path it recorded when the request was made.
  *
- * The byte destination is **event-independent**: a resource is stored once under its device's partition
- * (`/files/devices/<deviceId>/`) and linked into any number of events by reference (the per-event device
- * manifest), so re-joining or switching events re-uploads nothing already stored.
- *
- * [host]/[deviceId] are plain strings, injected by the consuming composition root (host baked at compile
- * time, deviceId from the shared Keychain via the `photo-sharing` seam). The provider makes no platform
- * call.
+ * [host]/[eventId]/[deviceId] are plain strings, injected by the consuming composition root (host baked at compile
+ * time, the event from the cycle's config, deviceId from the shared Keychain via the `photo-sharing` seam). The
+ * provider makes no platform call.
  */
 class EdgeUploadRequestProvider(
     host: String,
+    private val eventId: String,
     private val deviceId: String,
     private val token: suspend () -> String?,
     /**
@@ -84,7 +83,7 @@ class EdgeUploadRequestProvider(
         // request rebuilt on the retry path — where metadata is empty — address a byte-identical object.
         val captureName = resource.metadata[RESOURCE_META_ORIGINAL_FILENAME]
             ?.takeIf { it.isNotBlank() } ?: resource.filename
-        val url = "$base/files/devices/$deviceId/" +
+        val url = "$base/events/$eventId/files/devices/$deviceId/" +
             "${encodeFilenameSegment(assetId.value)}/${encodeFilenameSegment(role)}" +
             "?filename=${encodeFilenameSegment(captureName)}"
         val headers = buildMap {

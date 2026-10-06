@@ -75,8 +75,8 @@ interface Backend : Port {
      */
     suspend fun eventFiles(token: String?, eventId: String, cursor: Long?, trigger: UnionTrigger): Reply<UnionPage>
 
-    /** `GET /files/devices/<deviceId>` — what a device has stored. */
-    suspend fun deviceFiles(token: String?, deviceId: String): Reply<List<DeviceFile>>
+    /** `GET /events/<eventId>/files/devices/<deviceId>` — what a device has stored in one event. */
+    suspend fun deviceFiles(token: String?, eventId: String, deviceId: String): Reply<List<DeviceFile>>
 
     /** `PUT /devices/<deviceId>` — publish a device's push registration. */
     suspend fun putDeviceConfig(token: String?, deviceId: String, push: PushEndpoint): Reply<Unit>

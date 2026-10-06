@@ -298,7 +298,7 @@ class FullStackIntegrationTest {
             it.getValue("departed").jsonPrimitive.boolean
         }
         assertTrue(deviceJson("backend/event", "event" to event).getValue("registered").jsonPrimitive.boolean)
-        assertTrue(objects().isNotEmpty(), "bytes are not collected by a leave")
+        assertTrue(objects(event = event).isNotEmpty(), "bytes are not collected by a leave")
     }
 
     @Test

@@ -18,8 +18,8 @@ private const val LISTING_TIMEOUT_MS = 15_000L
 
 /**
  * The foreground settle (capability `photo-sharing`, "Foreground settles in-flight rows the backend
- * already stores"): ask the backend which resources it stores for this device, and record `COMPLETED` for every
- * `REQUESTED` row whose key it lists.
+ * already stores"): ask the backend which resources it stores for this device in the joined event, and record
+ * `COMPLETED` for every `REQUESTED` row whose key it lists.
  *
  * **Why.** Bytes can land long before the OS acknowledges their job, and sometimes the acknowledgement never
  * reaches this ledger. Under a full grant the extension learns of a completion only at its next invocation; after
@@ -48,11 +48,12 @@ class StoredUploadSettle(
     private val identity: PersistedDeviceIdentity,
     private val log: Logger = Logger.withTag("StoredUploadSettle"),
 ) {
-    suspend fun settle() {
+    /** Settle against what the backend stores for this device in [eventId], the joined event. */
+    suspend fun settle(eventId: String) {
         try {
             val pending = ledger.pendingResources().mapTo(mutableSetOf()) { it.key }
             if (pending.isEmpty()) return // nothing in flight could be settled: no request
-            val listing = withTimeoutOrNull(LISTING_TIMEOUT_MS) { files.list(identity.deviceId()) }
+            val listing = withTimeoutOrNull(LISTING_TIMEOUT_MS) { files.list(eventId, identity.deviceId()) }
             if (listing == null) {
                 log.w { "device listing timed out — nothing settled this foreground" }
                 return

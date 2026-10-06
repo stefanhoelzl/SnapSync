@@ -45,7 +45,7 @@ class BackendContractBindingTest {
         )
 
         override fun create(state: BackendState, clauseId: String): Entered<EdgeSubject<Backend>> = runBlocking {
-            val stored = mutableMapOf<String, MutableSet<DeviceFile>>()
+            val stored = mutableMapOf<Pair<String, String>, MutableSet<DeviceFile>>()
             val serving = inMemoryBackend(storedFiles = stored)
             val setup = PortSetup(serving, stored)
             val seeded = BackendContract.seed(state, clauseId, setup)

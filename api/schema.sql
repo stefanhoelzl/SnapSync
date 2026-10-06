@@ -71,26 +71,24 @@ CREATE TABLE memberships (
 ) STRICT;
 
 CREATE TABLE resources (
+  event_id     TEXT NOT NULL,
   device_id    TEXT NOT NULL,
-  -- IDENTITY: which asset this resource belongs to, and which role it plays within it. An asset
-  -- carries AT MOST ONE resource per role — an invariant the client upholds and this backend CANNOT
-  -- verify, because a second same-role upload is indistinguishable from a legitimate re-upload of the
-  -- same resource. Keying on it bounds a violation to an overwrite: no orphan object, and no row that
-  -- disagrees with the bytes it names.
+  -- IDENTITY: which asset this resource belongs to, and which role it plays within it, in this event. An
+  -- asset carries AT MOST ONE resource per role — an invariant the client upholds and this backend CANNOT
+  -- verify, because a second same-role upload is indistinguishable from a legitimate re-upload. Keying on
+  -- it bounds a violation to an overwrite.
   asset_id     TEXT NOT NULL,
   role         TEXT NOT NULL,
-  -- ADDRESS, not identity: the bare stored object name under the device's byte partition
-  -- (<assetId>-<role>.<ext>). Composed by the BACKEND, and byte-identical across API versions, so a
-  -- device that moves between versions finds its bytes where it left them rather than re-uploading
-  -- its whole library. Kept as a column so the storage layout can change without changing what a
-  -- resource IS, and so two versions can address one row while spelling the name differently.
-  key          TEXT NOT NULL,
+  -- ADDRESS, not identity: the full storage path of the bytes, unencoded — `files/<eventId>/<sha256>` for
+  -- every byte written since this migration, `files/devices/<deviceId>/<key>` for one written before it.
+  path         TEXT NOT NULL,
   content_type TEXT NOT NULL,
   filename     TEXT NOT NULL,
-  PRIMARY KEY (device_id, asset_id, role),
-  -- One stored object, one row. The key encodes identity, so this can never contradict the primary
-  -- key — it earns its place by indexing the sweep's lookup, which addresses a row by object name.
-  UNIQUE (device_id, key)
+  PRIMARY KEY (event_id, device_id, asset_id, role),
+  -- A resource lives as long as its membership: completion deletes memberships, a dropped event cascades
+  -- into them. NOT `event_assets`: a publish deletes and re-inserts those, and a byte may land first.
+  FOREIGN KEY (event_id, device_id)
+    REFERENCES memberships(event_id, device_id) ON DELETE CASCADE
 ) STRICT;
 
 CREATE TABLE union_log (

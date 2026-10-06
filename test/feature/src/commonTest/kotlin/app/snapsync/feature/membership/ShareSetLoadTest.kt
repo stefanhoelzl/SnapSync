@@ -25,10 +25,13 @@ import kotlinx.coroutines.test.runTest
 class ShareSetLoadTest {
 
     private val deviceId = "11111111-1111-4111-8111-111111111111"
+    private val eventId = "7a3f9c21-0000-4000-8000-000000000001"
 
     private class FakeFiles(var result: Result<List<StoredResource>>) : DeviceFilesSource {
         var lastDeviceId: String? = null
-        override suspend fun list(deviceId: String): Result<List<StoredResource>> {
+        var lastEventId: String? = null
+        override suspend fun list(eventId: String, deviceId: String): Result<List<StoredResource>> {
+            lastEventId = eventId
             lastDeviceId = deviceId
             return result
         }
@@ -52,9 +55,10 @@ class ShareSetLoadTest {
         )
         val ledger = leftovers()
 
-        ShareSetLoad(files, ledger, testIdentity(deviceId)).load()
+        ShareSetLoad(files, ledger, testIdentity(deviceId)).load(eventId)
 
-        assertEquals(deviceId, files.lastDeviceId) // listed by DEVICE, not event
+        // Listed for this device IN THE JOINED EVENT: another event's bytes are not this one's.
+        assertEquals(eventId to deviceId, files.lastEventId to files.lastDeviceId)
         assertEquals(LedgerState.COMPLETED, ledger.get("A-primary.heic")?.state)
         assertEquals(LedgerState.COMPLETED, ledger.get("A-live.mov")?.state)
         // The leftovers are gone, including the stale COMPLETED that would have suppressed an upload.
@@ -68,7 +72,7 @@ class ShareSetLoadTest {
         val files = FakeFiles(Result.success(listOf(StoredResource("K-primary.heic", AssetId("reported")))))
         val ledger = TestLedger().service
 
-        ShareSetLoad(files, ledger, testIdentity(deviceId)).load()
+        ShareSetLoad(files, ledger, testIdentity(deviceId)).load(eventId)
 
         assertEquals(AssetId("reported"), ledger.get("K-primary.heic")?.assetId)
     }
@@ -79,7 +83,7 @@ class ShareSetLoadTest {
         val files = FakeFiles(Result.success(listOf(StoredResource("A-primary.heic", AssetId("A")))))
         val ledger = TestLedger().service
 
-        ShareSetLoad(files, ledger, testIdentity(deviceId)).load()
+        ShareSetLoad(files, ledger, testIdentity(deviceId)).load(eventId)
 
         assertEquals("", ledger.get("A-primary.heic")?.creationDate)
     }
@@ -87,7 +91,7 @@ class ShareSetLoadTest {
     @Test
     fun `an empty listing leaves an empty ledger`() = runTest {
         val ledger = leftovers()
-        ShareSetLoad(FakeFiles(Result.success(emptyList())), ledger, testIdentity(deviceId)).load()
+        ShareSetLoad(FakeFiles(Result.success(emptyList())), ledger, testIdentity(deviceId)).load(eventId)
         assertTrue(ledger.manifestRows().isEmpty())
     }
 
@@ -96,7 +100,7 @@ class ShareSetLoadTest {
         val recorder = CapturingLogWriter()
         val ledger = leftovers()
 
-        ShareSetLoad(FakeFiles(Result.failure(Exception("offline"))), ledger, testIdentity(deviceId), recorder.logger("ShareSetLoadTest")).load()
+        ShareSetLoad(FakeFiles(Result.failure(Exception("offline"))), ledger, testIdentity(deviceId), recorder.logger("ShareSetLoadTest")).load(eventId)
 
         assertTrue(ledger.manifestRows().isEmpty())
         assertEquals(listOf(Severity.Warn), recorder.severities)
@@ -108,7 +112,7 @@ class ShareSetLoadTest {
         val ledger = leftovers()
         val files = FakeFiles(Result.failure(DeviceListingShapeException("v1 shape")))
 
-        ShareSetLoad(files, ledger, testIdentity(deviceId), recorder.logger("ShareSetLoadTest")).load()
+        ShareSetLoad(files, ledger, testIdentity(deviceId), recorder.logger("ShareSetLoadTest")).load(eventId)
 
         assertTrue(ledger.manifestRows().isEmpty())
         assertEquals(listOf(Severity.Error), recorder.severities)
@@ -119,10 +123,10 @@ class ShareSetLoadTest {
         val recorder = CapturingLogWriter()
         val ledger = leftovers()
         val hanging = object : DeviceFilesSource {
-            override suspend fun list(deviceId: String): Result<List<StoredResource>> = awaitCancellation()
+            override suspend fun list(eventId: String, deviceId: String): Result<List<StoredResource>> = awaitCancellation()
         }
 
-        ShareSetLoad(hanging, ledger, testIdentity(deviceId), recorder.logger("ShareSetLoadTest")).load()
+        ShareSetLoad(hanging, ledger, testIdentity(deviceId), recorder.logger("ShareSetLoadTest")).load(eventId)
 
         assertTrue(ledger.manifestRows().isEmpty())
         assertEquals(listOf(Severity.Warn), recorder.severities)
@@ -131,7 +135,7 @@ class ShareSetLoadTest {
     @Test
     fun `a device-id read that throws is a failed fetch not a failed join`() = runTest {
         val ledger = leftovers()
-        ShareSetLoad(FakeFiles(Result.success(emptyList())), ledger, unreadableIdentity()).load()
+        ShareSetLoad(FakeFiles(Result.success(emptyList())), ledger, unreadableIdentity()).load(eventId)
         assertTrue(ledger.manifestRows().isEmpty())
     }
 

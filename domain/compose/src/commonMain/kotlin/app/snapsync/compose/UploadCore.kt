@@ -184,13 +184,14 @@ internal fun uploadCycle(process: ProcessServices, ports: UploadServices): Uploa
     }
     return UploadCycle(
         readGate = { readGate(ports) },
-        // Bytes go to the device's event-independent partition (/files/devices/<deviceId>/…); the
-        // eventId drives only the producer's event scope + the device-manifest write, not the byte URL.
+        // Bytes go to the joined event (/events/<eventId>/files/devices/<deviceId>/…), which owns them
+        // (change `per-event-storage-layout`).
         engineFor = { config ->
             // Built per cycle because the host arrives with the gate's config, not at composition time.
             SyncEngine(
                 EdgeUploadRequestProvider(
                     config.host,
+                    config.eventId,
                     ports.deviceIdentity.deviceId(),
                     ports.token,
                     ports.freshToken,

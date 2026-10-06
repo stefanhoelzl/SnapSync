@@ -177,16 +177,16 @@ class BackendServicesTest {
 
     @Test
     fun the_device_listing_recomposes_each_storage_key() = runTest {
-        val listed = servicesAnswering(Reply.Ok(listOf(DeviceFile(AssetId("A"), ResourceRole.PRIMARY, "IMG_1.HEIC")))).deviceFiles.list("D")
+        val listed = servicesAnswering(Reply.Ok(listOf(DeviceFile(AssetId("A"), ResourceRole.PRIMARY, "IMG_1.HEIC")))).deviceFiles.list("E", "D")
         assertEquals(listOf(StoredResource("A-primary.heic", AssetId("A"))), listed.getOrThrow())
     }
 
     @Test
     fun a_listing_that_does_not_decode_is_a_permanent_shape_failure_apart_from_a_transient_one() = runTest {
-        assertIs<DeviceListingShapeException>(servicesAnswering(Reply.Malformed("no assetId")).deviceFiles.list("D").exceptionOrNull())
-        val transient = servicesAnswering(offline).deviceFiles.list("D").exceptionOrNull()
+        assertIs<DeviceListingShapeException>(servicesAnswering(Reply.Malformed("no assetId")).deviceFiles.list("E", "D").exceptionOrNull())
+        val transient = servicesAnswering(offline).deviceFiles.list("E", "D").exceptionOrNull()
         assertTrue(transient != null && transient !is DeviceListingShapeException)
-        val refused = servicesAnswering(Reply.Refused(502, "")).deviceFiles.list("D").exceptionOrNull()
+        val refused = servicesAnswering(Reply.Refused(502, "")).deviceFiles.list("E", "D").exceptionOrNull()
         assertTrue(refused != null && refused !is DeviceListingShapeException)
     }
 

@@ -12,8 +12,8 @@ is a failure nobody can notice or fix; on Android only the phone's camera folder
 cleaner events. It also promises what the other members see of that contribution over
 time — a photo appears only once it is complete, disappears when the member deletes or stops sharing it
 until the event closes, after which what each member shares is fixed, and a photo already in the event is
-not uploaded again because the member rejoins, switches events or reinstalls. How the photos travel is
-capability `background-upload`; what arrives on the other side is capability `receiving-photos`.
+not uploaded again because the member rejoins, switches events and back, or reinstalls. How the photos
+travel is capability `background-upload`; what arrives on the other side is capability `receiving-photos`.
 
 Decision record: changes/archive/2026-07-15-add-photo-selection-policy
 ## Requirements
@@ -294,15 +294,15 @@ bringing it back SHALL wake the other members.
 - **WHEN** an Android member moves a withdrawn photo back into DCIM before the event closes
 - **THEN** it is offered to the other members again
 
-### Requirement: A photo already in the event is not uploaded again
+### Requirement: A photo already in an event is not uploaded again for it
 
 A photo the event service already holds from this device SHALL NOT be uploaded again because the member
 rejoins the event, switches to another event and back, reinstalls the app, or restores the phone from an
-encrypted backup; nor SHALL a photo shared to one event be uploaded again when it also falls inside
-another event this device joins. A rejoined member's already-shared photos SHALL stay available to the
-other members without a gap. When the device cannot learn at join what the service already holds (for
-example because it is offline), it MAY upload such photos again; a repeated upload SHALL never appear to
-anyone as a second copy. No promise is made that an app update avoids repeated uploads.
+encrypted backup. A rejoined member's already-shared photos SHALL stay available to the other members
+without a gap. A photo that also falls inside another event this device joins MAY be uploaded again for
+that event. When the device cannot learn at join what the service already holds (for example because it
+is offline), it MAY upload such photos again. A repeated upload SHALL never appear to anyone as a second
+copy. No promise is made that an app update avoids repeated uploads.
 
 #### Scenario: Rejoining shares without re-uploading
 - **WHEN** a member leaves an event and later joins it again
@@ -312,9 +312,10 @@ anyone as a second copy. No promise is made that an app update avoids repeated u
 - **WHEN** a member deletes and reinstalls the app and joins the event again
 - **THEN** their already-shared photos are not uploaded again and other members do not receive them twice
 
-#### Scenario: A photo in two events uploads once
+#### Scenario: A photo in two events is shared to each
 - **WHEN** a member shared a photo to one event and joins another event whose range also contains it
-- **THEN** the photo is offered in the second event without being uploaded again
+- **THEN** the photo is offered in the second event, it may be uploaded again for it, and no member of
+  either event receives it twice
 
 #### Scenario: An offline join may upload again, never duplicate
 - **WHEN** a member joins while the service cannot be reached to learn what it already holds

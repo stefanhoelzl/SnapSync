@@ -35,7 +35,7 @@ class BackendMock internal constructor(internal val state: BackendState) {
 
     /** Over a byte store [storedFiles] the caller holds — what [inMemoryBackend] hands a contract binding. */
     internal constructor(
-        storedFiles: MutableMap<String, MutableSet<DeviceFile>>,
+        storedFiles: MutableMap<Pair<String, String>, MutableSet<DeviceFile>>,
         capacity: Int = DEFAULT_CAPACITY,
         createdAt: Instant = Instant.parse(DEFAULT_CREATED_AT),
     ) : this(BackendState(storedFiles, capacity, createdAt))
@@ -108,8 +108,10 @@ class BackendOperator internal constructor(private val state: BackendState) {
 
     // ---- reads -----------------------------------------------------------------------------------
 
-    /** The object keys stored for [deviceId]. */
-    fun objectsOf(deviceId: String): Set<String> = state.locked { state.storedFiles[deviceId].orEmpty().mapTo(mutableSetOf(), ::storedKey) }
+    /** The object keys stored for [deviceId], in every event. */
+    fun objectsOf(deviceId: String): Set<String> = state.locked {
+        state.storedFiles.filterKeys { it.second == deviceId }.values.flatten().mapTo(mutableSetOf(), ::storedKey)
+    }
 
     /** The event's union — every member's complete assets, departed members included; `null` for an unknown event. */
     fun unionOf(eventId: String): List<UnionAsset>? = state.locked {
@@ -211,9 +213,9 @@ class BackendOperator internal constructor(private val state: BackendState) {
         state.locked { state.events.remove(eventId) }
     }
 
-    /** A storage reset wiping every byte object of [deviceId]. */
+    /** A storage reset wiping every byte object of [deviceId], in every event. */
     fun wipeBytes(deviceId: String) {
-        state.locked { state.storedFiles.remove(deviceId) }
+        state.locked { state.storedFiles.keys.removeAll { it.second == deviceId } }
     }
 
     /**
@@ -225,14 +227,21 @@ class BackendOperator internal constructor(private val state: BackendState) {
     // ---- the operating system's transfer of bytes ------------------------------------------------
 
     /**
-     * The byte route, as an OS transfer reaches it: `PUT <base>/files/devices/<device>/<asset>/<role>?filename=…` with
-     * [headers]. Answers the HTTP status the backend would, or stores the object and answers `201`.
+     * The byte route, as an OS transfer reaches it: `PUT <base>/events/<event>/files/devices/<device>/<asset>/<role>?filename=…`
+     * — or the event-less `<base>/files/devices/<device>/…` an earlier build's job still carries — with [headers]. Answers
+     * the HTTP status the backend would, or stores the object and answers `201`.
      */
     fun receive(url: String, headers: Map<String, String>): Int = state.locked { state.receive(url, headers) }
 
-    /** One resource's bytes land for [deviceId] — the byte route without the request. */
-    fun deposit(deviceId: String, assetId: AssetId, role: ResourceRole, filename: String) {
-        state.locked { state.deposit(deviceId, DeviceFile(assetId, role, filename)) }
+    /**
+     * One resource's bytes land for [deviceId] in [eventId] — the byte route without the request; by default in the
+     * device's present membership, as the event-less route files them. Nowhere when it has none.
+     */
+    fun deposit(deviceId: String, assetId: AssetId, role: ResourceRole, filename: String, eventId: String? = null) {
+        state.locked {
+            val event = eventId ?: state.presentEventOf(deviceId) ?: return@locked
+            state.deposit(event, deviceId, DeviceFile(assetId, role, filename))
+        }
     }
 }
 
@@ -242,8 +251,8 @@ class BackendOperator internal constructor(private val state: BackendState) {
  * transaction a real backend runs a request in.
  */
 internal class BackendState(
-    /** The byte store, by device: what the byte route stored. */
-    val storedFiles: MutableMap<String, MutableSet<DeviceFile>>,
+    /** The byte store, by (event, device): what the byte route stored, each event its own (change `per-event-storage-layout`). */
+    val storedFiles: MutableMap<Pair<String, String>, MutableSet<DeviceFile>>,
     capacity: Int,
     val createdAt: Instant,
 ) {
@@ -443,42 +452,53 @@ internal class BackendState(
         if (eventId !in events) return null
         return memberships.filterKeys { it.first == eventId }.flatMap { (key, membership) ->
             val deviceId = key.second
-            val stored = storedFiles[deviceId].orEmpty().mapTo(mutableSetOf(), ::storedKey)
+            val stored = storedFiles[eventId to deviceId].orEmpty().mapTo(mutableSetOf(), ::storedKey)
             membership.manifest?.assets.orEmpty()
                 .filter { asset -> asset.resources.isNotEmpty() && asset.resources.all { it.key in stored } }
                 .map { deviceId to it }
         }
     }
 
-    fun deposit(deviceId: String, file: DeviceFile) {
-        val before = memberships.keys.filter { it.second == deviceId }.associate { it.first to servable(it.first, deviceId) }
-        storedFiles.getOrPut(deviceId) { mutableSetOf() } += file
-        // After the write, as the real byte route does: an event this byte completed an asset in logs the gain and wakes
-        // its other members.
-        before.forEach { (eventId, was) ->
-            val now = servable(eventId, deviceId)
-            logChanges(eventId, deviceId, was, now)
-            if (!was.containsAll(now)) notifyMembers(eventId, deviceId, announce = true)
-        }
+    fun deposit(eventId: String, deviceId: String, file: DeviceFile) {
+        val was = servable(eventId, deviceId)
+        storedFiles.getOrPut(eventId to deviceId) { mutableSetOf() } += file
+        // After the write, as the real byte route does: when this byte completed an asset, the event logs the gain and
+        // wakes its other members.
+        val now = servable(eventId, deviceId)
+        logChanges(eventId, deviceId, was, now)
+        if (!was.containsAll(now)) notifyMembers(eventId, deviceId, announce = true)
     }
+
+    /** The event [deviceId] is still in — where an event-less byte route files its upload — or `null`. */
+    fun presentEventOf(deviceId: String): String? =
+        memberships.entries.firstOrNull { (key, m) -> key.second == deviceId && !m.departed && events[key.first]?.completed == false }
+            ?.key?.first
 
     fun receive(url: String, headers: Map<String, String>): Int {
         val version = headers.entries.firstOrNull { it.key.equals(APP_VERSION_HEADER, ignoreCase = true) }?.value
         if (refusalFor(version) != null) return UPGRADE_REQUIRED
         val route = url.substringAfter("/files/devices/", missingDelimiterValue = "")
+        // `/events/<event>/files/devices/…` names its event; the event-less form of an earlier build does not.
+        val named = url.substringBefore("/files/devices/").substringAfter("/events/", missingDelimiterValue = "")
+            .takeIf { it.isNotEmpty() }?.let(::percentDecoded)
         val segments = route.substringBefore('?').split('/').map(::percentDecoded)
         val filename = route.substringAfter('?', "").split('&')
             .firstOrNull { it.startsWith("filename=") }?.removePrefix("filename=")?.let(::percentDecoded)
         val role = segments.getOrNull(2)?.let { wire -> ResourceRole.entries.firstOrNull { it.wire == wire } }
-        return when {
-            segments.size != 3 || role == null || !isCanonicalAssetId(segments[1]) || filename.isNullOrEmpty() -> BAD_REQUEST
-            offline -> BAD_GATEWAY
-            else -> {
-                deposit(segments[0], DeviceFile(AssetId(segments[1]), role, filename))
-                CREATED
-            }
+        if (segments.size != 3 || role == null || !isCanonicalAssetId(segments[1]) || filename.isNullOrEmpty()) return BAD_REQUEST
+        if (offline) return BAD_GATEWAY
+        val deviceId = segments[0]
+        val eventId = when (named) {
+            // Only a member still in the event writes into it.
+            null -> presentEventOf(deviceId) ?: return CONFLICT
+            else -> named.takeIf { isPresent(it, deviceId) } ?: return FORBIDDEN
         }
+        deposit(eventId, deviceId, DeviceFile(AssetId(segments[1]), role, filename))
+        return CREATED
     }
+
+    private fun isPresent(eventId: String, deviceId: String): Boolean =
+        memberships[eventId to deviceId]?.departed == false && events[eventId]?.completed == false
 
     fun registerLegacy(name: String): String {
         legacyCounter += 1
@@ -502,6 +522,8 @@ internal class BackendState(
 
     companion object {
         const val BAD_REQUEST = 400
+        const val FORBIDDEN = 403
+        const val CONFLICT = 409
         const val CREATED = 201
         const val UPGRADE_REQUIRED = 426
         const val BAD_GATEWAY = 502

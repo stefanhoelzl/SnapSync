@@ -193,10 +193,13 @@ private fun MockWorld.backendReads(op: (suspend MockWorld.(Map<String, String>) 
             }.toString(),
         )
     },
-    // What the backend lists for a device — over its public surface. `device` defaults to this one.
+    // What the backend lists for a device in an event — over its public surface. `device` defaults to this one, `event`
+    // to the joined one.
     "backend/objects" to needs(Need.Reach, command = RigCommand { params, _ ->
         val who = params["device"] ?: ownDeviceId()
-        CommandResult.ok("""{"device":${jsonString(who)},"objects":${jsonList(reach!!.objectsOf(who).sorted())}}""")
+        withEvent(params) { event ->
+            CommandResult.ok("""{"device":${jsonString(who)},"objects":${jsonList(reach!!.objectsOf(event, who).sorted())}}""")
+        }
     }),
     "diagnostics/sent" to mocked(MockedSystem.CRASH_REPORTER, RigCommand { _, _ ->
         CommandResult.ok(buildJsonObject { put("dumps", JsonArray(device.crashReporter.operator.sent.value.map(::dumpJson))) }.toString())
@@ -666,7 +669,9 @@ private suspend fun MockWorld.addForeignDevice(
     val eventId = event ?: reach.createEvent(FOREIGN_EVENT_NAME, FOREIGN_EVENT_START)
     reach.join(eventId, who)
     assets.forEach { asset ->
-        asset.resources.forEach { if (bytes != null) reach.upload(who, asset.assetId, it, bytes) else reach.upload(who, asset.assetId, it) }
+        asset.resources.forEach {
+            if (bytes != null) reach.upload(who, asset.assetId, it, bytes, eventId) else reach.upload(who, asset.assetId, it, eventId = eventId)
+        }
     }
     reach.publish(eventId, DeviceManifest(deviceId = who, assets = assets))
     return eventId

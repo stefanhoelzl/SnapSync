@@ -16,6 +16,7 @@ import {
   D2,
   E,
   enrolDevice,
+  joinEvent,
   NOW,
   recorder,
   rows,
@@ -80,6 +81,7 @@ Deno.test("app version → a union read records the token's device, and an anony
 
 Deno.test("app version → the byte route does not record it (no subrequest to spare)", async () => {
   const { db, app } = await enrolled();
+  await joinEvent(db, E, D);
   const res = await app.request(`/api/v2/files/devices/${D}/A/primary?filename=IMG.HEIC`, {
     method: "PUT",
     headers: v("0.12"),

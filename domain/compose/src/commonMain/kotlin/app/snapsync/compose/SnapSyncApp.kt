@@ -731,13 +731,15 @@ class AppCore internal constructor(
     val network: AppNetwork by lazy { AppNetwork(scope, ports.network, statusCountsPoller) }
 
     val foregroundFlow: Foreground by lazy {
+        val storedUploadSettle = storedUploadSettleFor(services, backend.deviceFiles)
         Foreground(
             downloadController = downloadController,
             membershipRefresh = membershipRefresh,
             watches = network.watches,
             reloadConfig = { services.config.reload() },
             // The upload side's own work at a foreground entry; its top-up and walk are the tail's.
-            settleStored = storedUploadSettleFor(services, backend.deviceFiles)::settle,
+            // Against the joined event's listing; unjoined, there is nothing in flight to settle.
+            settleStored = { services.config.config.value?.eventId?.let { storedUploadSettle.settle(it) } },
             refreshStatus = { statusRefresh.run() },
             activeEventId = { services.config.config.value?.eventId },
             fetchEventDetails = fetchEventDetails,

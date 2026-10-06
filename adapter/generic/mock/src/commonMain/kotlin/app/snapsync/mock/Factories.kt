@@ -30,10 +30,10 @@ fun inMemoryDeviceIntegrity(available: Boolean = true): DeviceIntegrity = InMemo
 
 /**
  * A [BackendMock]'s port, over a byte store the caller holds: [storedFiles] is what the OS's uploader writes, keyed by
- * device id; [minimumAppVersion] set is a backend refusing this build. Every other default is [BackendMock]'s.
+ * (event id, device id); [minimumAppVersion] set is a backend refusing this build. Every other default is [BackendMock]'s.
  */
 fun inMemoryBackend(
-    storedFiles: MutableMap<String, MutableSet<DeviceFile>> = mutableMapOf(),
+    storedFiles: MutableMap<Pair<String, String>, MutableSet<DeviceFile>> = mutableMapOf(),
     minimumAppVersion: String? = null,
 ): Backend = BackendMock(storedFiles).also { it.operator.minAppVersion = minimumAppVersion }.port()
 

@@ -114,8 +114,8 @@ interface BackendSetup {
     /** The asset ids the event's union serves — a read of the public surface, as a member makes it. */
     suspend fun unionAssetIds(eventId: String): Set<AssetId>
 
-    /** One resource's bytes landing, as the app's uploader addresses them. */
-    suspend fun upload(deviceId: String, asset: SeededAsset, role: ResourceRole)
+    /** One resource's bytes landing in [eventId], as the app's uploader addresses them. */
+    suspend fun upload(eventId: String, deviceId: String, asset: SeededAsset, role: ResourceRole)
 }
 
 /**
@@ -185,10 +185,12 @@ class EdgeSetup(private val client: HttpClient, base: String) : BackendSetup {
     }
 
     /** Uploads one resource's bytes, as the app's uploader addresses them. */
-    override suspend fun upload(deviceId: String, asset: SeededAsset, role: ResourceRole) {
+    override suspend fun upload(eventId: String, deviceId: String, asset: SeededAsset, role: ResourceRole) {
         checked(
             "upload ${asset.assetId}/${role.wire}",
-            client.put("$base/files/devices/$deviceId/${asset.assetId}/${role.wire}?filename=${asset.filename}") {
+            client.put(
+                "$base/events/$eventId/files/devices/$deviceId/${asset.assetId}/${role.wire}?filename=${asset.filename}",
+            ) {
                 served()
                 contentType(ContentType.Image.JPEG)
                 setBody(byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xD9.toByte()))
