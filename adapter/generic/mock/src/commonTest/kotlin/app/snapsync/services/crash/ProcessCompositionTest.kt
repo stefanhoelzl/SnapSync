@@ -7,6 +7,7 @@ import app.snapsync.compose.snapSyncProcess
 import app.snapsync.mock.inMemoryCrashReporter
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.BuildInfoMock
+import app.snapsync.mock.fakeCrypto
 import app.snapsync.mock.fixedClock
 import app.snapsync.model.CrashEvent
 import app.snapsync.model.DiagnosticDump
@@ -57,6 +58,7 @@ class ProcessCompositionTest {
         logSinks = emptyList(),
         files = inMemoryFiles(private = privateFiles),
         clock = fixedClock(kotlin.time.Instant.fromEpochSeconds(0)),
+        crypto = fakeCrypto(),
         entryContext = NoEntryContext,
         build = BuildInfoMock(dsn = dsn).port(),
     )

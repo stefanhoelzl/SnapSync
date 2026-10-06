@@ -25,6 +25,7 @@ import app.snapsync.sentry.SentryCrashReporter
 import app.snapsync.compose.DevicePorts
 import app.snapsync.compose.ProcessPorts
 import app.snapsync.time.SystemClock
+import app.snapsync.crypto.IosCrypto
 import app.snapsync.logging.appMarketingVersion
 import app.snapsync.logging.PublicNSLogSink
 import app.snapsync.logging.neverBlockOnStdio
@@ -75,6 +76,8 @@ object UploadExtensionRoot {
      */
     private val real: DevicePorts = DevicePorts(
         clock = lazyOf(SystemClock),
+        // CryptoKit's AES-GCM, CommonCrypto's HMAC and the Security framework's generator.
+        crypto = lazy { IosCrypto() },
         crashReporter = lazy { SentryCrashReporter() },
         files = lazy { IosFiles() },
         // This process's SQLite databases, in the App-Group container. The services open them on first use, never at
@@ -129,6 +132,7 @@ object UploadExtensionRoot {
                 logSinks = listOf(PublicNSLogSink(), FileLogSink(logDestination.path)),
                 files = device.files,
                 clock = device.clock,
+                crypto = device.crypto,
                 entryContext = IosEntryContext,
                 build = IosBuildInfo(
                     // This process exists only where the OS carries the OS-driven mechanism (iOS ≥26.1).

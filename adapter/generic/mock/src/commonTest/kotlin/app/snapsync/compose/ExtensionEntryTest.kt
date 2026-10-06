@@ -6,6 +6,7 @@ import app.snapsync.mock.PhotoLibraryMock
 import app.snapsync.mock.UploadNetwork
 import app.snapsync.mock.UploadQueueMock
 import app.snapsync.mock.BuildInfoMock
+import app.snapsync.mock.fakeCrypto
 import app.snapsync.mock.fixedClock
 import app.snapsync.mock.inMemoryCrashReporter
 import app.snapsync.mock.inMemoryDatabases
@@ -103,6 +104,7 @@ class ExtensionEntryTest {
             logSinks = emptyList(),
             files = files,
             clock = clock,
+            crypto = fakeCrypto(),
             entryContext = NoEntryContext,
             build = BuildInfoMock().port(),
         ),

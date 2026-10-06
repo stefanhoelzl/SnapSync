@@ -3,6 +3,7 @@ package app.snapsync.compose
 import app.snapsync.ports.Backend
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.Clock
+import app.snapsync.ports.Crypto
 import app.snapsync.ports.CrashReporter
 import app.snapsync.ports.Databases
 import app.snapsync.ports.DevControls
@@ -39,6 +40,8 @@ import app.snapsync.ports.Wake
  */
 class DevicePorts(
     clock: Lazy<Clock> = absent("clock"),
+    /** The platform's cryptographic primitives. */
+    crypto: Lazy<Crypto> = absent("crypto"),
     crashReporter: Lazy<CrashReporter> = absent("crashReporter"),
     files: Lazy<Files> = absent("files"),
     databases: Lazy<Databases> = absent("databases"),
@@ -74,13 +77,14 @@ class DevicePorts(
 ) {
     /** The constructor's lazies, so an adapter choice can hand the real ones through untouched. */
     val lazies: Lazies = Lazies(
-        clock, crashReporter, files, databases, preferences, secureStore, platformDeviceId, integrity, processInfo,
-        network, deviceConditions, backend,
+        clock, crypto, crashReporter, files, databases, preferences, secureStore, platformDeviceId, integrity,
+        processInfo, network, deviceConditions, backend,
         backgroundTime, wake, extensionRegistry, gallery, galleryReader, photoAccess, appUpload, cycleUpload, download,
         systemUi, lifecycle, links, pushNotifications, ui,
     )
 
     val clock: Clock by clock
+    val crypto: Crypto by crypto
     val crashReporter: CrashReporter by crashReporter
     val files: Files by files
     val databases: Databases by databases
@@ -158,6 +162,7 @@ class DevicePorts(
     /** One lazy per port, as the constructor took them. */
     class Lazies(
         val clock: Lazy<Clock>,
+        val crypto: Lazy<Crypto>,
         val crashReporter: Lazy<CrashReporter>,
         val files: Lazy<Files>,
         val databases: Lazy<Databases>,

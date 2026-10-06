@@ -22,6 +22,7 @@ import app.snapsync.scene.SceneRecord
 import app.snapsync.link.IosLinks
 import app.snapsync.push.IosPushNotifications
 import app.snapsync.time.SystemClock
+import app.snapsync.crypto.IosCrypto
 import app.snapsync.metrics.MetricKitProcessMetrics
 import app.snapsync.membership.darwinHttpClient
 import app.snapsync.download.IosDownload
@@ -219,6 +220,8 @@ object SnapSyncRoot {
      */
     private val real: DevicePorts = DevicePorts(
         clock = lazyOf(SystemClock),
+        // CryptoKit's AES-GCM, CommonCrypto's HMAC and the Security framework's generator.
+        crypto = lazy { IosCrypto() },
         crashReporter = lazy { SentryCrashReporter() },
         files = lazy { IosFiles() },
         // This process's SQLite databases, in the App-Group container. The stores open them on first use, never at
@@ -291,6 +294,7 @@ object SnapSyncRoot {
             logSinks = listOf(PublicNSLogSink(), FileLogSink(appLogDestination().path)),
             files = ports.files,
             clock = ports.clock,
+            crypto = ports.crypto,
             entryContext = IosEntryContext,
             build = IosBuildInfo(
                 osSupportsOsDrivenUpload = osSupportsOsDrivenUpload,

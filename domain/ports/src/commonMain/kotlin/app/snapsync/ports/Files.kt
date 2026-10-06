@@ -32,8 +32,22 @@ interface Files : Port {
      */
     fun readTail(area: FileArea, path: String, maxBytes: Int): FileResult<FileTail>
 
+    /**
+     * At most [maxBytes] of the file from byte [offset] on, read by seeking — how a file too large to hold is read
+     * piece by piece. Fewer bytes than asked only at the end of the file; an [offset] at or past the end answers an
+     * empty array. [FileResult.NotFound] for a missing file.
+     */
+    fun readRange(area: FileArea, path: String, offset: Long, maxBytes: Int): FileResult<ByteArray>
+
     /** Replace the file with [bytes], atomically, creating its parent directories. */
     fun write(area: FileArea, path: String, bytes: ByteArray): FileResult<Unit>
+
+    /**
+     * Add [bytes] to the end of the file, creating it — and its parent directories — when missing. NOT atomic: how a
+     * file too large to hold is written piece by piece, so a caller builds it under a name of its own and [move]s it
+     * into place once it is whole.
+     */
+    fun append(area: FileArea, path: String, bytes: ByteArray): FileResult<Unit>
 
     /** Remove the file. [FileResult.NotFound] when there was nothing to remove. */
     fun delete(area: FileArea, path: String): FileResult<Unit>

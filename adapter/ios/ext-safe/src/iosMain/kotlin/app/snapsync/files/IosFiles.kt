@@ -31,7 +31,10 @@ import platform.Foundation.writeToFile
 import platform.posix.EACCES
 import platform.posix.ENOENT
 import platform.posix.EPERM
+import platform.posix.O_APPEND
+import platform.posix.O_CREAT
 import platform.posix.O_RDONLY
+import platform.posix.O_WRONLY
 import platform.posix.SEEK_END
 import platform.posix.SEEK_SET
 import platform.posix.close
@@ -40,6 +43,7 @@ import platform.posix.lseek
 import platform.posix.memcpy
 import platform.posix.open
 import platform.posix.read
+import platform.posix.write
 
 /**
  * The iOS [Files]: [FileArea.SHARED] is the **App-Group container** (both processes; readable while locked after
@@ -100,6 +104,54 @@ class IosFiles(private val sharedRoot: String?, private val privateRoot: String?
                 }
             }
             return FileResult.Ok(FileTail(buffer.copyOf(filled), cut = take < size))
+        } finally {
+            close(fd)
+        }
+    }
+
+    override fun readRange(area: FileArea, path: String, offset: Long, maxBytes: Int): FileResult<ByteArray> {
+        val file = resolve(area, path) ?: return FileResult.AreaUnavailable
+        val fd = open(file, O_RDONLY)
+        if (fd < 0) return posixFailure("open")
+        try {
+            if (lseek(fd, maxOf(offset, 0), SEEK_SET) < 0) return posixFailure("lseek")
+            val buffer = ByteArray(maxOf(maxBytes, 0))
+            var filled = 0
+            buffer.usePinned { pinned ->
+                while (filled < buffer.size) {
+                    val n = read(fd, pinned.addressOf(filled), (buffer.size - filled).convert()).toInt()
+                    if (n < 0) return posixFailure("read")
+                    if (n == 0) break
+                    filled += n
+                }
+            }
+            return FileResult.Ok(if (filled == buffer.size) buffer else buffer.copyOf(filled))
+        } finally {
+            close(fd)
+        }
+    }
+
+    /**
+     * Created with the container's default protection — `CompleteUntilFirstUserAuthentication`, the entitlement's
+     * class — like every other file here, so a piece written by a background wake is readable by the next one.
+     */
+    override fun append(area: FileArea, path: String, bytes: ByteArray): FileResult<Unit> {
+        val file = resolve(area, path) ?: return FileResult.AreaUnavailable
+        checkedObjC("createDirectoryAtPath") {
+            fm.createDirectoryAtPath(file.substringBeforeLast('/'), withIntermediateDirectories = true, attributes = null, error = it)
+        }.onFailure { return (it as ObjCFailure).toResult() }
+        val fd = open(file, O_WRONLY or O_CREAT or O_APPEND, FILE_MODE)
+        if (fd < 0) return posixFailure("open")
+        try {
+            var written = 0
+            bytes.usePinned { pinned ->
+                while (written < bytes.size) {
+                    val n = write(fd, pinned.addressOf(written), (bytes.size - written).convert()).toInt()
+                    if (n <= 0) return posixFailure("write")
+                    written += n
+                }
+            }
+            return FileResult.Ok(Unit)
         } finally {
             close(fd)
         }
@@ -193,6 +245,9 @@ class IosFiles(private val sharedRoot: String?, private val privateRoot: String?
         }
     }
 }
+
+/** Owner read/write: the container is the process's own, and the platform's protection class guards it. */
+private const val FILE_MODE: UShort = 0x180u
 
 @OptIn(ExperimentalForeignApi::class)
 private fun NSData.toByteArray(): ByteArray {

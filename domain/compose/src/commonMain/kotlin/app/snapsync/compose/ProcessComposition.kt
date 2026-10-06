@@ -4,6 +4,7 @@ import app.snapsync.model.BuildLabel
 import app.snapsync.model.ReportDestination
 import app.snapsync.ports.BuildInfo
 import app.snapsync.ports.Clock
+import app.snapsync.ports.Crypto
 import app.snapsync.ports.CrashHandlers
 import app.snapsync.ports.CrashReporter
 import app.snapsync.ports.Files
@@ -41,6 +42,8 @@ class ProcessPorts(
     val files: Files,
     /** Wall-clock time and the device's zone. One instance: the core and the screen's formatter read it. */
     val clock: Clock,
+    /** The platform's cryptographic primitives — an encrypted event's files are sealed and opened over them. */
+    val crypto: Crypto,
     /** The ambient entry-point seam the device-log lines and the crash channel's `entry_point` tag read. */
     val entryContext: EntryContext,
     /**
@@ -71,6 +74,8 @@ class ProcessServices internal constructor(
     val files: Files,
     /** The process's one [Clock]. */
     val clock: Clock,
+    /** The process's one [Crypto]. */
+    val crypto: Crypto,
     /** The process's one entry-point seam. */
     val entryContext: EntryContext,
     /**
@@ -125,8 +130,8 @@ fun snapSyncProcess(ports: ProcessPorts): ProcessServices {
     if (ownsGlobalLogger) Logger.setLogWriters(writers)
     val footprints = FootprintTrail(ports.files, ports.clock)
     val services = ProcessServices(
-        crash, ProcessAccount(crash, footprints), footprints, ports.files, ports.clock, ports.entryContext, writers,
-        ports.build, ownsGlobalLogger,
+        crash, ProcessAccount(crash, footprints), footprints, ports.files, ports.clock, ports.crypto,
+        ports.entryContext, writers, ports.build, ownsGlobalLogger,
     )
     val boot = services.logger("process")
     ports.build.bootLines.forEach { line -> boot.i { line } }

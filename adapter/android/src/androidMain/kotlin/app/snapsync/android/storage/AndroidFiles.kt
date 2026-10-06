@@ -63,6 +63,26 @@ class AndroidFiles(private val sharedRoot: File, private val privateRoot: File) 
         }
     }
 
+    override fun readRange(area: FileArea, path: String, offset: Long, maxBytes: Int): FileResult<ByteArray> = guarded {
+        FileChannel.open(resolve(area, path), StandardOpenOption.READ).use { channel ->
+            val buffer = ByteBuffer.allocate(maxOf(maxBytes, 0))
+            var position = maxOf(offset, 0)
+            while (buffer.hasRemaining()) {
+                val n = channel.read(buffer, position)
+                if (n <= 0) break
+                position += n
+            }
+            FileResult.Ok(buffer.array().copyOf(buffer.position()))
+        }
+    }
+
+    override fun append(area: FileArea, path: String, bytes: ByteArray): FileResult<Unit> = guarded {
+        val target = resolve(area, path)
+        Nio.createDirectories(target.parent)
+        Nio.write(target, bytes, StandardOpenOption.CREATE, StandardOpenOption.APPEND, StandardOpenOption.WRITE)
+        FileResult.Ok(Unit)
+    }
+
     override fun write(area: FileArea, path: String, bytes: ByteArray): FileResult<Unit> = guarded {
         val target = resolve(area, path)
         Nio.createDirectories(target.parent)

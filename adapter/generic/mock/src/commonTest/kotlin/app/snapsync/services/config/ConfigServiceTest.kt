@@ -44,6 +44,8 @@ class ConfigServiceTest {
     private class Answering(private val answer: FileResult<Nothing>) : Files {
         override fun read(area: FileArea, path: String): FileResult<ByteArray> = answer
         override fun readTail(area: FileArea, path: String, maxBytes: Int): FileResult<FileTail> = answer
+        override fun readRange(area: FileArea, path: String, offset: Long, maxBytes: Int): FileResult<ByteArray> = answer
+        override fun append(area: FileArea, path: String, bytes: ByteArray): FileResult<Unit> = answer
         override fun write(area: FileArea, path: String, bytes: ByteArray): FileResult<Unit> = answer
         override fun delete(area: FileArea, path: String): FileResult<Unit> = answer
         override fun exists(area: FileArea, path: String): FileResult<Boolean> = answer

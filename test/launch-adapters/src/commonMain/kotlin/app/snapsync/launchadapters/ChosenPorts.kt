@@ -18,6 +18,8 @@ fun chosenPorts(real: DevicePorts.Lazies, choice: AdapterChoice, device: MockDev
         if (choice.isMocked(system)) lazy(mock) else real
     return DevicePorts(
         clock = pick(MockedSystem.CLOCK, real.clock) { device.clock.port() },
+        // No system of its own: the primitives keep no state, so the platform's always stand.
+        crypto = real.crypto,
         // The extension reports to a channel nobody observes — the one the JVM root gives it too.
         crashReporter = pick(MockedSystem.CRASH_REPORTER, real.crashReporter) {
             if (app) device.crashReporter.port() else device.crashReporter.unobservedPort()

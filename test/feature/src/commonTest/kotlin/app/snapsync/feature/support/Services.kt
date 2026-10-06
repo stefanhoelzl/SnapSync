@@ -70,6 +70,9 @@ class RecordingFiles(
 
     override fun read(area: FileArea, path: String): FileResult<ByteArray> = inner.read(area, path)
     override fun readTail(area: FileArea, path: String, maxBytes: Int): FileResult<FileTail> = inner.readTail(area, path, maxBytes)
+    override fun readRange(area: FileArea, path: String, offset: Long, maxBytes: Int): FileResult<ByteArray> =
+        inner.readRange(area, path, offset, maxBytes)
+    override fun append(area: FileArea, path: String, bytes: ByteArray): FileResult<Unit> = inner.append(area, path, bytes)
     override fun exists(area: FileArea, path: String): FileResult<Boolean> = inner.exists(area, path)
     override fun locate(area: FileArea, path: String): FileResult<String> = inner.locate(area, path)
     override fun move(area: FileArea, from: String, to: String): FileResult<Unit> = inner.move(area, from, to)
