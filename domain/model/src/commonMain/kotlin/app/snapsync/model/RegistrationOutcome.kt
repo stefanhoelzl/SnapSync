@@ -89,7 +89,7 @@ sealed interface RegistrationOutcome {
      *
      * A refused disable leaves an inert record and costs nothing. A refused enable means no record is
      * created, so the OS never launches the extension, no cycle ever runs, and the screen sits at
-     * "Synchronization pending…" with nothing anywhere to say why. Reporting the two identically would
+     * "Photos queued…" with nothing anywhere to say why. Reporting the two identically would
      * hide the terminal case behind the routine one, so this stays at `Error`.
      *
      * It is unreachable in a shipped build: resolution never yields the OS-driven mechanism under a partial
@@ -119,7 +119,7 @@ sealed interface RegistrationOutcome {
      * The change did not take effect, and the consequence is invisible without this line.
      *
      * A failed **enable** means the extension is never registered, so the OS never launches it, no upload
-     * cycle ever runs, and the screen sits at "Synchronization pending…" indefinitely with nothing
+     * cycle ever runs, and the screen sits at "Photos queued…" indefinitely with nothing
      * anywhere to say why. That is why this is `ERROR`: `privacy-security` routes `Error`-severity lines
      * onward, making a failure knowable without attaching to the device.
      */

@@ -112,12 +112,11 @@
     </plurals>
 
     <string name="rename_event">Event umbenennen</string>
-    <string name="joined_statement">Du bist diesem Event beigetreten</string>
+    <string name="joined_statement">Du nimmst an diesem Event teil</string>
     <string name="timing_starts_in">noch %1$s bis zum Start</string>
     <string name="timing_ends_in">noch %1$s</string>
     <string name="timing_ended">beendet</string>
-    <string name="invite_eyebrow">Andere einladen</string>
-    <string name="invite_caption">Andere treten bei, indem sie das mit ihrer Kamera scannen</string>
+    <string name="invite_caption">Lass Familie und Freunde das mit ihrer Kamera scannen</string>
     <string name="choose_more_photos">Weitere Fotos auswählen</string>
     <string name="allow_full_access">Vollen Zugriff erlauben</string>
     <string name="counts_line">%1$s · %2$s</string>
@@ -171,4 +170,29 @@
     <string name="switch_confirm">Wechseln</string>
     <string name="switch_body">Du verlässt „%1$s“ und trittst „%2$s“ bei.</string>
     <string name="this_event">dieses Event</string>
+
+    <!-- The joined screen's explanation of how the event works (capability `sync-status`). A `%1$s` in a
+         caption with a link is where the link's words go. -->
+    <string name="explain_eyebrow">So funktioniert's</string>
+    <string name="explain_share_title">Deine Fotos werden geteilt</string>
+    <string name="explain_share_caption">Fotos, die du im Zeitraum %1$s machst, gehen an die Gruppe.</string>
+    <string name="explain_share_limited_title">Nur ausgewählte Fotos werden geteilt</string>
+    <string name="explain_share_limited_caption">Ausgewählte Fotos aus dem Zeitraum %1$s gehen an die Gruppe.</string>
+    <string name="explain_share_off_title">Du teilst nicht</string>
+    <string name="explain_share_off_caption">Schalte das Teilen in den %1$s ein, um Fotos aus dem Zeitraum %2$s zu teilen.</string>
+    <string name="explain_share_blocked_title">Es wird nichts geteilt</string>
+    <string name="explain_share_blocked_caption">%1$s, um Fotos aus dem Zeitraum %2$s zu teilen.</string>
+    <string name="explain_receive_title">Fotos der Gruppe landen in deiner Galerie</string>
+    <string name="explain_receive_album">Im Album „%1$s“.</string>
+    <string name="explain_receive_no_album">Neben deinen eigenen Fotos.</string>
+    <string name="explain_receive_off_title">Du empfängst nicht</string>
+    <string name="explain_receive_off_caption">Schalte das Empfangen in den %1$s ein, um die Fotos der Gruppe in deiner Galerie zu bekommen.</string>
+    <string name="explain_receive_blocked_title">Es wird nichts empfangen</string>
+    <string name="explain_receive_blocked_caption">%1$s, um die Fotos der Gruppe in deiner Galerie zu bekommen.</string>
+    <string name="explain_hint_title">Fotos kommen nicht an?</string>
+    <string name="explain_hint_caption">Öffne SnapSync, dann holen sie auf.</string>
+    <string name="explain_settings_link">Einstellungen</string>
+    <string name="explain_access_link">Erlaube den Fotozugriff</string>
+    <string name="show_qr">QR-Code zeigen</string>
+    <string name="qr_sheet_title">„%1$s“ beitreten</string>
 </resources>

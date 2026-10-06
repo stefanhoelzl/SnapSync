@@ -49,10 +49,12 @@ internal fun testJoinGateActions(
 internal fun testJoinedActions(
     onLeaveEvent: () -> Unit = {},
     onShareInvite: () -> Unit = {},
+    onQrOpen: () -> Unit = {},
+    onQrDismiss: () -> Unit = {},
     onReconfigure: () -> Unit = {},
     onRenameEvent: (String, String) -> Unit = { _, _ -> },
     onRenameStatusConsumed: () -> Unit = {},
-) = JoinedActions(onLeaveEvent, onShareInvite, onReconfigure, onRenameEvent, onRenameStatusConsumed)
+) = JoinedActions(onLeaveEvent, onShareInvite, onQrOpen, onQrDismiss, onReconfigure, onRenameEvent, onRenameStatusConsumed)
 
 internal fun testAccessActions(
     onRequestPermission: () -> Unit = {},

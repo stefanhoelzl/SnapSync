@@ -5,7 +5,7 @@ package app.snapsync.model
  *
  * [GRANTED] is a FULL library grant and nothing less. [LIMITED] is a PARTIAL grant (iOS `.limited`):
  * the platform scopes reads to a user-picked selection, which the app treats as the membership's
- * own-photo scope — the selection defines "everything", so "In sync" over the selected set is true
+ * own-photo scope — the selection defines "everything", so "Up to date" over the selected set is true
  * (capability `photo-access`). Unchangeable or refused grants (iOS `.denied`, `.restricted`)
  * map to [DENIED].
  *

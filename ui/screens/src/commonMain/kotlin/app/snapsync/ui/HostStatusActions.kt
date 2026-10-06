@@ -23,6 +23,8 @@ fun statusActions(dispatch: (UiIntent) -> Unit): StatusActions = StatusActions(
     joined = JoinedActions(
         onLeaveEvent = { dispatch(UiIntent.LeaveEvent) },
         onShareInvite = { dispatch(UiIntent.ShareInvite) },
+        onQrOpen = { dispatch(UiIntent.QrOpen) },
+        onQrDismiss = { dispatch(UiIntent.QrDismiss) },
         onReconfigure = { dispatch(UiIntent.Reconfigure) },
         // The heading rename (capability `manage-membership`): the command, and the latch reset the screen fires once
         // it has acted on a terminal value.

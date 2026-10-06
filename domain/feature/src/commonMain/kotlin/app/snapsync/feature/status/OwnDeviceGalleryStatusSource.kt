@@ -23,7 +23,7 @@ import kotlinx.coroutines.flow.asStateFlow
  * re-applying its rules — the identity is a REQUIREMENT, not a coincidence. This source runs in the app
  * process and the cycle runs in the upload path; they enumerate independently, and any rule applied there
  * but not here counts an asset that is never uploaded, pegging the joined screen below 100% forever
- * ("Synchronization pending…").
+ * ("Photos queued…").
  *
  * That is not hypothetical. `N` used to re-state the policy here — cutoff, echo, origin — and when the
  * capture-date **ceiling** was added it reached the upload filter but not this one. A photo taken after
@@ -38,7 +38,7 @@ import kotlinx.coroutines.flow.asStateFlow
  * entry / library change / (re)join by the composition root).
  *
  * **Not counted is not zero.** [admitted] is `null` until a [refresh] has produced a count, and the two
- * states must never be collapsed: the status projection settles to "In sync" once the synced count
+ * states must never be collapsed: the status projection settles to "Up to date" once the synced count
  * reaches the total, so a placeholder `0` standing in for an unread count renders a checkmark reading
  * "everything shared" on a device that has counted nothing. This source used to seed `0`, and that is
  * what members reported as a status going backwards across launches — a settled frame that was never
@@ -69,7 +69,7 @@ class OwnDeviceGalleryStatusSource(
 ) {
 
     // `null` until a count has been taken. NOT `0`: a placeholder zero is indistinguishable from a
-    // membership that genuinely contributes nothing, and the status projection settles to "In sync" the
+    // membership that genuinely contributes nothing, and the status projection settles to "Up to date" the
     // moment the synced count reaches the total — so a seeded `0` renders a checkmark on a device that
     // has counted nothing (capability `sync-status`; reported as `SNAPSYNC-14` / `SNAPSYNC-16`).
     private val _admitted = MutableStateFlow<Set<AssetId>?>(null)

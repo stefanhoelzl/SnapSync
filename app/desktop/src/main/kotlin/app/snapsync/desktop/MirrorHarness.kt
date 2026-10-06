@@ -139,6 +139,8 @@ private fun mirrorActions(
         joined = JoinedActions(
             onLeaveEvent = post("leave"),
             onShareInvite = inert("share invite"),
+            onQrOpen = inert("show QR code"),
+            onQrDismiss = inert("dismiss QR code"),
             onReconfigure = inert("save settings"),
             onRenameEvent = { event, name -> post("rename", "event" to event, "name" to name)() },
             onRenameStatusConsumed = post("renameStatusConsumed"),

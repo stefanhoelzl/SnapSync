@@ -99,6 +99,9 @@ class JoinGateActions(
 class JoinedActions(
     val onLeaveEvent: () -> Unit,
     val onShareInvite: () -> Unit,
+    /** The invite's QR code, shown on request and dismissed (capability `manage-membership`). */
+    val onQrOpen: () -> Unit,
+    val onQrDismiss: () -> Unit,
     // Commit an in-place reconfigure (capability `manage-membership`): the event the surface was
     // opened for, the new direction, the chosen capture-date range (`minPhotoDate` floor-clamped and
     // `maxPhotoDate` ceiling-clamped on the far side in `ReconfigureEvent`), and the album opt-in.

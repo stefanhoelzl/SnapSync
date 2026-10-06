@@ -338,6 +338,34 @@ class StatusContainerHostSurfacesTest {
     }
 
     @Test
+    fun `the invite's QR code opens on request and dismisses touching nothing else`() = onHost { host ->
+        host.surfaces.onQrOpen()
+        assertEquals(Overlays(showingQr = true), host.stateWhere("the QR shown") { it.overlays.showingQr }.overlays)
+
+        host.surfaces.onQrDismiss()
+        assertEquals(Overlays(), host.stateWhere("the QR dismissed") { !it.overlays.showingQr }.overlays)
+    }
+
+    @Test
+    fun `a shown QR code disappears when the event closes or the membership ends`() {
+        // A closed event admits nobody (capability `manage-membership`), so the invite it would show is masked
+        // the moment the event closes — while the same membership is still on screen with Leave.
+        val config = MutableStateFlow<EventConfig?>(CONFIG)
+        return onHost(config = config) { host ->
+            host.surfaces.onQrOpen()
+            host.stateWhere("the QR shown") { it.overlays.showingQr }
+
+            config.value = CONFIG.copy(closed = true)
+            val closed = host.stateWhere("the event closed") { (it.layer as? Layer.Joined)?.closed == true }
+            assertTrue(!closed.overlays.showingQr, "an invite was left over an event that admits nobody")
+
+            config.value = null
+            val gone = host.stateWhere("the membership gone") { it.layer !is Layer.Joined }
+            assertTrue(!gone.overlays.showingQr, "an invite was left over a screen whose event is gone")
+        }
+    }
+
+    @Test
     fun `leaving resets the overlay cell so a later rejoin cannot reopen it`() {
         // The reset the mask cannot do: every overlay belongs to the membership being left, and clearing
         // the CELL is what stops a rejoin from reopening a dialog the member dismissed by leaving. The

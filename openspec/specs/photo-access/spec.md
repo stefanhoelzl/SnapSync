@@ -36,14 +36,16 @@ SHALL take the member to the app's page in the phone's Settings instead, on Andr
 ### Requirement: Missing access never hides or blocks the event
 
 A member without photo access SHALL still see the full joined screen — the event, its invite, and
-every membership action — with a single line inviting them to turn access on. Without access nothing
+every membership action — with a single status line inviting them to turn access on; the screen's explanation
+of how the event works (capability `sync-status`) SHALL say that nothing is shared or received and offer the
+same action, and no other part of the screen SHALL ask for access. Without access nothing
 of the member's SHALL be shared, and the event SHALL remain joined and unchanged until access is
 granted.
 
 #### Scenario: Denied access keeps the event usable
 - **WHEN** a joined member has refused photo access
-- **THEN** they can still show the invite, share the link, open settings, rename and leave, and the
-  status line asks them to turn access on
+- **THEN** they can still show the invite's QR code, share the link, open settings, rename and leave, the
+  status line asks them to turn access on, and the explanation says nothing is shared or received
 
 #### Scenario: Granting access later starts sharing
 - **WHEN** a joined member without access grants it
@@ -54,7 +56,7 @@ granted.
 Under limited access the photos the member selected in the system's photo selection — and only those —
 SHALL be the photos considered for sharing, filtered exactly as a full library would be (capability
 `photo-sharing`). Nothing outside the selection SHALL ever be uploaded, by the app or in the background.
-"In sync" SHALL mean every selected, in-range photo is shared and everything received has arrived; limited
+"Up to date" SHALL mean every selected, in-range photo is shared and everything received has arrived; limited
 access SHALL NOT be shown as a problem. Limited access SHALL be offered wherever the phone's system offers
 it — every supported iPhone, and Android 14 and later; below Android 14 access is full or none.
 
@@ -67,9 +69,9 @@ it — every supported iPhone, and Android 14 and later; below Android 14 access
 - **WHEN** a limited-access member takes a new photo that is not in their selection
 - **THEN** it is not uploaded, in the foreground or the background, until they add it to the selection
 
-#### Scenario: In sync over the selection
+#### Scenario: Up to date over the selection
 - **WHEN** every selected in-range photo is shared and received photos have arrived
-- **THEN** the status line reads "In sync"
+- **THEN** the status line reads "Up to date"
 
 #### Scenario: Android 14 offers a selection
 - **WHEN** a member on Android 14 or later chooses to allow access to selected photos only
@@ -156,10 +158,10 @@ access SHALL share only the in-range photos not yet shared, re-uploading nothing
 
 ### Requirement: A selection the app has not yet looked at withdraws nothing
 
-The app SHALL NOT withdraw any photo from the event, and SHALL NOT report the member as in sync, until
+The app SHALL NOT withdraw any photo from the event, and SHALL NOT report the member as up to date, until
 it has read the member's limited selection after launch or after access became limited.
 
 #### Scenario: Reopening the app under limited access
 - **WHEN** a limited-access member reopens the app and their selection has not been read yet
 - **THEN** none of their shared photos disappears from the event, and the status line does not read
-  "In sync" until the selection has been read
+  "Up to date" until the selection has been read

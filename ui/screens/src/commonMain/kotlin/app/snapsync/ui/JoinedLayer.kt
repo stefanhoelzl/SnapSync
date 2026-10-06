@@ -1,38 +1,35 @@
 package app.snapsync.ui
 
-import app.snapsync.model.NetworkNotice
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
-import app.snapsync.model.DirectionCount
-import app.snapsync.model.EventTiming
-import app.snapsync.model.MemberCounts
-import app.snapsync.model.SyncCounts
-import app.snapsync.model.TimeLeft
-import app.snapsync.ui.components.appDateRangeLabel
-import app.snapsync.ui.components.AppDatesLine
-import app.snapsync.ui.components.AppHeadingStatement
-import app.snapsync.ui.components.AppStatusDetail
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import app.snapsync.model.DirectionCount
+import app.snapsync.model.EventTiming
 import app.snapsync.model.GalleryAccess
-import app.snapsync.presentation.CutoffFormatter
+import app.snapsync.model.Layer
+import app.snapsync.model.MemberCounts
+import app.snapsync.model.NetworkNotice
+import app.snapsync.model.SyncCounts
 import app.snapsync.model.SyncHealth
-import app.snapsync.ui.components.AppErrorBanner
-import app.snapsync.ui.components.AppEyebrow
-import app.snapsync.ui.components.EyebrowTone
-import app.snapsync.ui.components.AppQrCode
+import app.snapsync.model.TimeLeft
+import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.ui.components.AccessPrompt
+import app.snapsync.ui.components.AppDatesLine
+import app.snapsync.ui.components.AppErrorBanner
+import app.snapsync.ui.components.AppHeadingStatement
+import app.snapsync.ui.components.AppStatusDetail
 import app.snapsync.ui.components.AppStatusLine
 import app.snapsync.ui.components.AppSyncStatus
-import app.snapsync.ui.components.ScreenLayout
-import app.snapsync.ui.components.SecondaryButton
-import app.snapsync.model.Layer
+import app.snapsync.ui.components.appDateRangeLabel
 import app.snapsync.ui.resources.Res
-import app.snapsync.ui.resources.allow_full_access
-import app.snapsync.ui.resources.choose_more_photos
 import app.snapsync.ui.resources.counts_line
 import app.snapsync.ui.resources.counts_not_receiving
 import app.snapsync.ui.resources.counts_not_sharing
@@ -40,8 +37,6 @@ import app.snapsync.ui.resources.counts_received
 import app.snapsync.ui.resources.counts_received_progress
 import app.snapsync.ui.resources.counts_shared
 import app.snapsync.ui.resources.counts_shared_progress
-import app.snapsync.ui.resources.invite_caption
-import app.snapsync.ui.resources.invite_eyebrow
 import app.snapsync.ui.resources.joined_statement
 import app.snapsync.ui.resources.timing_ended
 import app.snapsync.ui.resources.timing_ends_in
@@ -50,94 +45,71 @@ import app.snapsync.ui.resources.waiting_members
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
-// The joined membership's own screen (capability `sync-status`): the joined statement and the event's
-// dates under its name, the QR to invite others, the sync health line with its counts, and the actions row.
+// The joined membership's own screen (capability `sync-status`): the joined statement and the event's dates
+// under its name, the status line with its counts, and the explanation of how the event works for this member.
+// The invite and the membership actions are the docked footer [StatusScreen] hands the layout.
 
 /**
- * The joined-layer event home: the join QR is the hero, the one-line sync health beneath it (the event
- * name is the screen heading above, per [ScreenLayout]). The permission affordance is folded into the
- * status line (the `NeedsAccess` variant), tappable to the right action — never a hero-replacing gate.
+ * The joined-layer event home: the one-line sync health first, because the screen is opened far more often to
+ * check on photos than for anything else, then what the event means for this member ("How it works"). The
+ * content scrolls; the footer the layout docks beneath it stays put, so on the smallest phone the invite and
+ * Leave are never scrolled away (capability `sync-status`).
  */
 @Composable
 internal fun JoinedLayer(
     state: Layer.Joined,
+    cutoff: CutoffFormatter,
     access: AccessActions,
+    onOpenEventSettings: () -> Unit,
 ) {
     Column(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(22.dp),
+        verticalArrangement = Arrangement.spacedBy(28.dp),
     ) {
-        // A rejected event link, if one just arrived. Above the hero because it is about what the member
-        // JUST DID, and it self-clears on its own; without it a bad scan while joined said nothing at all.
+        // A rejected event link, if one just arrived. First because it is about what the member JUST DID, and it
+        // self-clears on its own; without it a bad scan while joined said nothing at all.
         state.notice?.let { AppErrorBanner(it.text()) }
-        // The invite hero: sharing the event IS the point, so the QR is the tallest object on the screen.
-        // BOTH lines — the tracked accent eyebrow and the card's caption — address the member holding the
-        // device. There is no second audience: a person scanning the code is looking through their own
-        // camera, not reading 14sp type on someone else's phone. The caption used to be written at that
-        // scanner ("Scan to join this event"), which made it invisible to its intended reader and false to
-        // its actual one — a member who is already joined, told to go scan something. One asked "what do I
-        // need to do here?" in front of exactly that line.
-        // So the caption may name NO noun the reader could be: "guests" fails as badly, because host and
-        // guest see this identical screen and the confused member WAS a guest. Hence "others" — the people
-        // the member invites. The eyebrow says what the code is FOR: it read "Share this event", which in a
-        // photo-sharing app reads as sharing photos as readily as inviting people. Capability
-        // `manage-membership`.
-        // A closed event admits nobody, so it offers no invite (capability `manage-membership`).
-        if (!state.closed) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                AppEyebrow(stringResource(Res.string.invite_eyebrow), EyebrowTone.Accent)
-                // Rendered whenever the event is open: the joined state carries the invite URL non-null, so there is no
-                // "joined but no link yet" frame for the hero to be missing in.
-                AppQrCode(content = state.inviteUrl, caption = stringResource(Res.string.invite_caption))
-            }
-        }
-        // The one sync-health line — bare, no card. It briefly wore a surface-filled panel, but a white
-        // card under a white QR card read as a second competing surface; the screen's second fixation
-        // needs no frame, just position (centered, beneath the code). The counts sit quietly beneath it.
-        // Bound locally so the NeedsAccess branch below can smart-cast: `state.health` is a public
-        // property of another module, which Kotlin will not narrow in place.
-        val health = state.health
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            AppStatusLine(
-                status = health.toAppSyncStatus(),
-                onAttentionClick = {
-                    if (health is SyncHealth.NeedsAccess) {
-                        if (health.permission == GalleryAccess.NOT_DETERMINED) {
-                            access.onRequestPermission()
-                        } else {
-                            access.onOpenSettings()
-                        }
-                    }
-                    // A blocked network is SnapSync's own setting (capability `sync-status`); an offline device is not.
-                    if (health is SyncHealth.NoNetwork && health.notice == NetworkNotice.BLOCKED) {
-                        access.onOpenSettings()
-                    }
-                },
-            )
-            CountsLine(state.counts, state.waiting)
-        }
-        // The partial-grant resting affordances (capability `photo-access`): present in every
-        // health, OUTSIDE the status-line slot — the selection is the membership's scope, and widening
-        // it is an ordinary action, not a problem to fix. Two peer offers in fixed order: widen the
-        // selection (the cheaper step) above, switch the grant itself below. The second can only
-        // deep-link to Settings — no API re-raises the full-access dialog under a limited grant — and
-        // deliberately carries no interstitial consent: the label plus the OS-mediated toggle are the
-        // consent, and the widened scope stays bounded by the selection policy like any full grant.
-        if (state.canChoosePhotos) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                SecondaryButton(label = stringResource(Res.string.choose_more_photos), onClick = access.onChoosePhotos)
-                SecondaryButton(label = stringResource(Res.string.allow_full_access), onClick = access.onOpenSettings)
-            }
-        }
+        StatusBlock(state, access)
+        Explanation(state, cutoff, access, onOpenEventSettings)
+        Spacer(Modifier.height(4.dp))
     }
 }
+
+/**
+ * The one sync-health line — bare, no card — with the counts quietly beneath it. The permission affordance is
+ * folded into the line (the `NeedsAccess` variant), tappable to the right action.
+ */
+@Composable
+private fun StatusBlock(state: Layer.Joined, access: AccessActions) {
+    // Bound locally so the branches below can smart-cast: `state.health` is a public property of another
+    // module, which Kotlin will not narrow in place.
+    val health = state.health
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        AppStatusLine(
+            status = health.toAppSyncStatus(),
+            onAttentionClick = {
+                if (health is SyncHealth.NeedsAccess) accessAction(health, access)()
+                // A blocked network is SnapSync's own setting (capability `sync-status`); an offline device is not.
+                if (health is SyncHealth.NoNetwork && health.notice == NetworkNotice.BLOCKED) {
+                    access.onOpenSettings()
+                }
+            },
+        )
+        CountsLine(state.counts, state.waiting)
+    }
+}
+
+/**
+ * What missing access asks for — the system's dialog the first time, the phone's Settings once refused. ONE
+ * function for the status line and the explanation's link, so the two can never do different things
+ * (capability `photo-access`).
+ */
+internal fun accessAction(health: SyncHealth.NeedsAccess, access: AccessActions): () -> Unit =
+    if (health.permission == GalleryAccess.NOT_DETERMINED) access.onRequestPermission else access.onOpenSettings
 
 private fun SyncHealth.toAppSyncStatus(): AppSyncStatus = when (this) {
     is SyncHealth.NeedsAccess -> AppSyncStatus.NeedsAccess(
@@ -154,8 +126,8 @@ private fun SyncHealth.toAppSyncStatus(): AppSyncStatus = when (this) {
 
 /**
  * The counts line beneath the status line (capability `sync-status`): per direction, what went through.
- * Absent whenever the reduction sent no counts — every status but "In sync" and syncing. The ended event's
- * waiting note rides beneath it: it is only ever set under "In sync", where the counts are present too.
+ * Absent whenever the reduction sent no counts — every status but "Up to date" and work in progress. The ended event's
+ * waiting note rides beneath it: it is only ever set under "Up to date", where the counts are present too.
  */
 @Composable
 private fun CountsLine(counts: SyncCounts?, waiting: MemberCounts?) {

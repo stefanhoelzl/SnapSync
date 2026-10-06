@@ -464,6 +464,10 @@ class StatusContainerHost(
 
         fun onRenameDismiss() = intent { local.editOverlays { it.copy(renaming = false) } }
 
+        fun onQrOpen() = intent { local.editOverlays { it.copy(showingQr = true) } }
+
+        fun onQrDismiss() = intent { local.editOverlays { it.copy(showingQr = false) } }
+
         fun onReportBugOpen() = intent { local.editOverlays { it.copy(reportingBug = true) } }
 
         fun onReportBugDismiss() = intent { local.editOverlays { it.copy(reportingBug = false) } }
@@ -1086,7 +1090,7 @@ private fun reduceFrom(
         // Joined but persisted state not read yet — a neutral first frame (the joined chrome still shows).
         snapshot is SyncStatus.Loading -> SyncHealth.Loading
         // The download arm has its OWN read-ness, and it must gate the health too. `syncHealth` below
-        // hides an arrow when its counts are complete, and shows "In sync" only when BOTH arrows are
+        // hides an arrow when its counts are complete, and shows "Up to date" only when BOTH arrows are
         // hidden — so an un-read DownloadProgress, whose `downloaded` and `total` are both a placeholder
         // zero, hides the download arrow and can carry the whole screen to a settled check mark on its
         // own. Gating the upload side alone would relocate that defect rather than remove it: the next
