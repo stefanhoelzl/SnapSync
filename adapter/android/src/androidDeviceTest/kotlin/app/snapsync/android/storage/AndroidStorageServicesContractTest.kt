@@ -1,5 +1,6 @@
 package app.snapsync.android.storage
 
+import app.snapsync.contracts.LEDGER_CONTRACT_EVENT
 import app.snapsync.services.config.ConfigService
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
@@ -93,7 +94,7 @@ class AndroidStorageServicesContractTest {
         override val reaches = setOf(LedgerStoreState.EMPTY)
         override fun create(state: LedgerStoreState, clauseId: String): Entered<LedgerService> {
             val dir = newTempDirectory()
-            return Entered.Ready(LedgerService(AndroidDatabases(context, dir))) { dir.deleteRecursively() }
+            return Entered.Ready(LedgerService(AndroidDatabases(context, dir)) { LEDGER_CONTRACT_EVENT }) { dir.deleteRecursively() }
         }
     }
 

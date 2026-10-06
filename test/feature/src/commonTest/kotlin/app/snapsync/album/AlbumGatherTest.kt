@@ -2,6 +2,7 @@
 
 package app.snapsync.album
 
+import app.snapsync.feature.support.LEDGER_EVENT
 import app.snapsync.model.EntryScope
 import app.snapsync.model.AssetId
 import app.snapsync.model.GalleryAccess
@@ -91,7 +92,7 @@ class AlbumGatherTest {
     ) {
         val config: ConfigService = configService(cfg)
         private val databases = inMemoryDatabases()
-        val ledger = LedgerService(databases)
+        val ledger = LedgerService(databases) { LEDGER_EVENT }
         val downloads = DownloadService(databases)
         val grant = MutableStateFlow(if (granted) GalleryAccess.GRANTED else GalleryAccess.DENIED)
         val gather = AlbumGather(

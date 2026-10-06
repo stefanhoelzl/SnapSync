@@ -483,14 +483,13 @@ class AppCore internal constructor(
     /** How a membership ends on its own, and how a leave reaches the backend — see [MembershipEnd]. */
     val membershipEnd: MembershipEnd by lazy { MembershipEnd(this) }
 
-    // The leave use-case: stop the producer, clear the upload ledger (the ledger is the current
-    // membership's share set — capability `photo-sharing`), clear the config (which flips the screen off the
-    // joined layer), then notify the backend fire-and-forget. The download store is not touched.
+    // The leave use-case: stop the producer, clear the config (which flips the screen off the joined layer, and
+    // leaves the left event's ledger rows inert — the next join purges them), then notify the backend
+    // fire-and-forget. The download store is not touched.
     val leaveEvent: LeaveEvent by lazy {
         LeaveEvent(
             config = services.config,
             stopUploads = { uploadTransitions.onLeave() },
-            clearLedger = { services.ledger.clear() },
             scope = scope,
             notifyLeave = membershipEnd::notifyLeave,
             everythingReceived = membershipEnd::everythingReceived,

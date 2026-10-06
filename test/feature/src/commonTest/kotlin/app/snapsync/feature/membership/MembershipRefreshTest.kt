@@ -79,7 +79,6 @@ class MembershipRefreshTest {
             leaveEvent = LeaveEvent(
                 config = config.service(now),
                 stopUploads = {},
-                clearLedger = {},
                 notifyLeave = { _, _ -> },
                 everythingReceived = { false },
                 scope = this,

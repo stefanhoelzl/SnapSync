@@ -1,5 +1,6 @@
 package app.snapsync.mock
 
+import app.snapsync.contracts.LEDGER_CONTRACT_EVENT
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.DownloadStoreContract
@@ -23,7 +24,7 @@ class StoreContractBindingsTest {
         override val host = currentHost
         override val kind = BindingKind.Fake
         override val reaches = setOf(LedgerStoreState.EMPTY)
-        override fun create(state: LedgerStoreState, clauseId: String) = Entered.Ready(LedgerService(inMemoryDatabases()))
+        override fun create(state: LedgerStoreState, clauseId: String) = Entered.Ready(LedgerService(inMemoryDatabases()) { LEDGER_CONTRACT_EVENT })
     }
 
     private val download = object : Binding<DownloadStoreState, DownloadService> {

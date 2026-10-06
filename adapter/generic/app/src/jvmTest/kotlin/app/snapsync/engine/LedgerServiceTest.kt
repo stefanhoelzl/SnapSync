@@ -6,6 +6,7 @@ import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
+import app.snapsync.contracts.LEDGER_CONTRACT_EVENT
 import app.snapsync.contracts.LedgerStoreContract
 import app.snapsync.contracts.LedgerStoreState
 import app.snapsync.contracts.verify
@@ -38,7 +39,7 @@ class LedgerServiceTest {
     fun `satisfies the LedgerService contract`() = verify(LedgerStoreContract, binding)
 
     /** The service over the real JVM adapter, in a directory of its own: the contract runs through the service. */
-    private fun createBackend(): LedgerService = LedgerService(freshJdbcDatabases())
+    private fun createBackend(): LedgerService = LedgerService(freshJdbcDatabases()) { LEDGER_CONTRACT_EVENT }
 
     @Test
     fun `a batch record that fails part-way records nothing from that batch`() = runTest {
@@ -53,7 +54,7 @@ class LedgerServiceTest {
                 "BEGIN SELECT RAISE(ABORT, 'boom'); END",
             0,
         )
-        val backend = LedgerService(opened(driver))
+        val backend = LedgerService(opened(driver)) { JOINED }
 
         val thrown = runCatching {
             backend.recordAllUnlessSettled(
@@ -91,7 +92,7 @@ class LedgerServiceTest {
         // assetId; 2.sqm: row-preserving drop of version; 3.sqm: row-preserving drop of updatedAt).
         LedgerDatabase.Schema.migrate(driver, 1L, LedgerDatabase.Schema.version).await()
 
-        val backend = LedgerService(opened(driver))
+        val backend = LedgerService(opened(driver)) { JOINED }
         assertNull(backend.get("old-key")) // 1.sqm is destructive — pre-migration rows are not preserved
         // The assetId column exists and version/updatedAt are gone: a put/get round-trips.
         backend.recordUnlessSettled(LedgerEntry("k", AssetId("A"), LedgerState.REQUESTED))
@@ -123,7 +124,7 @@ class LedgerServiceTest {
         LedgerDatabase.Schema.migrate(driver, 2L, LedgerDatabase.Schema.version).await()
 
         // The COMPLETED row survives (so it is not re-uploaded), now without version or updatedAt.
-        val survived = LedgerService(opened(driver)).get("A-photo.jpg")
+        val survived = LedgerService(opened(driver)) { JOINED }.get("A-photo.jpg")
         assertEquals(LedgerState.COMPLETED, survived?.state)
         assertEquals(AssetId("A"), survived?.assetId)
     }
@@ -152,7 +153,7 @@ class LedgerServiceTest {
         LedgerDatabase.Schema.migrate(driver, 3L, LedgerDatabase.Schema.version).await()
 
         // The COMPLETED row survives, now without an updatedAt column; key/assetId/state intact.
-        val backend = LedgerService(opened(driver))
+        val backend = LedgerService(opened(driver)) { JOINED }
         val survived = backend.get("A-photo.jpg")
         assertEquals(LedgerState.COMPLETED, survived?.state)
         assertEquals(AssetId("A"), survived?.assetId)
@@ -185,7 +186,7 @@ class LedgerServiceTest {
 
         // The COMPLETED row survives the whole chain (the 2.sqm house invariant: a surviving COMPLETED row is
         // what stops re-upload) — through 4.sqm adding `eventId` and 10.sqm dropping it again.
-        val backend = LedgerService(opened(driver))
+        val backend = LedgerService(opened(driver)) { JOINED }
         val survived = backend.get("A-photo.jpg")
         assertEquals(LedgerState.COMPLETED, survived?.state)
         assertEquals(AssetId("A"), survived?.assetId)
@@ -230,7 +231,7 @@ class LedgerServiceTest {
         // already-stored resource, and losing them would re-upload every member's whole in-window library.
         LedgerDatabase.Schema.migrate(driver, 6L, LedgerDatabase.Schema.version).await()
 
-        val backend = LedgerService(opened(driver))
+        val backend = LedgerService(opened(driver)) { JOINED }
         val survived = backend.get("A-photo.jpg")
         assertEquals(LedgerState.COMPLETED, survived?.state)
         assertEquals(AssetId("A"), survived?.assetId)
@@ -267,7 +268,7 @@ class LedgerServiceTest {
         // has made that comparison real: it gained drift detection and no power at all over a row rewrite.
         LedgerDatabase.Schema.migrate(driver, 8L, LedgerDatabase.Schema.version).await()
 
-        val backend = LedgerService(opened(driver))
+        val backend = LedgerService(opened(driver)) { JOINED }
         val settled = backend.get("U-primary.jpg")
         assertEquals(LedgerState.COMPLETED, settled?.state, "an UPLOADED row decodes, and decodes settled")
         assertEquals("2026-07-10T00:00:00Z", settled?.creationDate)
@@ -318,7 +319,7 @@ class LedgerServiceTest {
 
         // CREATE INDEX builds a b-tree over the rows and rewrites none of them: nothing settles, nothing
         // becomes upload work. Two pending + one completed going in, the same coming out.
-        val backend = LedgerService(opened(driver))
+        val backend = LedgerService(opened(driver)) { JOINED }
         assertEquals(LedgerState.DISCOVERED, backend.get("D-photo.jpg")?.state)
         assertEquals(LedgerState.REQUESTED, backend.get("R-photo.jpg")?.state)
         val completed = backend.get("C-photo.jpg")
@@ -348,7 +349,7 @@ class LedgerServiceTest {
 
         // Present exactly once — the migration is idempotent, not additive.
         assertEquals(listOf(DESTINATION_INDEX), driver.indexNames().filter { it == DESTINATION_INDEX })
-        val backend = LedgerService(opened(driver))
+        val backend = LedgerService(opened(driver)) { JOINED }
         assertEquals(LedgerState.COMPLETED, backend.get("C-photo.jpg")?.state)
         assertEquals(LedgerAggregates(pending = 0, completed = 1), backend.aggregates())
     }
@@ -388,13 +389,13 @@ class LedgerServiceTest {
         // The schema half: no retired column survives (the verify task checks this too, from the snapshot).
         assertEquals(
             listOf(
-                "key", "assetId", "state", "creationDate", "role", "contentType", "originalFilename",
+                "eventId", "key", "assetId", "state", "creationDate", "role", "contentType", "originalFilename",
                 "destinationPath",
             ),
             driver.columnNames(),
         )
 
-        val backend = LedgerService(opened(driver))
+        val backend = LedgerService(opened(driver)) { JOINED }
         // The rewrite: FAILED decodes — as DISCOVERED — with every surviving column untouched.
         val failed = backend.get("F-photo.jpg")!!
         assertEquals(LedgerState.DISCOVERED, failed.state)
@@ -436,19 +437,112 @@ class LedgerServiceTest {
 
         LedgerDatabase.Schema.migrate(driver, 11L, LedgerDatabase.Schema.version).await()
 
-        val backend = LedgerService(opened(driver))
+        val backend = LedgerService(opened(driver)) { JOINED }
         assertEquals(LedgerState.COMPLETED, backend.get("C-photo.jpg")?.state)
         assertEquals("/v2/files/C", backend.get("C-photo.jpg")?.destinationPath)
         assertEquals(LedgerState.REQUESTED, backend.get("R-photo.jpg")?.state)
         assertEquals(LedgerAggregates(pending = 1, completed = 1), backend.aggregates())
-        // No seed and no row touched, so the counter reads 0 — and the migrated triggers are live.
-        assertEquals(0L, backend.manifestVersion())
+        // The migrated triggers are live: adopting the parked rows into the joined event advanced the counter
+        // (the event's projection gained them), a state change alone does not, and a delete does.
+        val adopted = backend.manifestVersion()
+        assertTrue(adopted > 0L, "the adoption changed the joined event's projection")
         assertTrue(backend.markTerminal("R-photo.jpg", TerminalOutcome.COMPLETED))
-        assertEquals(0L, backend.manifestVersion(), "a state change alone does not advance it")
+        assertEquals(adopted, backend.manifestVersion(), "a state change alone does not advance it")
         backend.deleteKeys(listOf("C-photo.jpg"))
-        assertTrue(backend.manifestVersion() > 0L, "a delete advances it through the migrated trigger")
+        assertTrue(backend.manifestVersion() > adopted, "a delete advances it through the migrated trigger")
+    }
+
+    // 12.sqm parks every row under the empty event, because the joined event lives in a file the migration cannot
+    // read; the service adopts them at its first use. These are the four ways that can go.
+
+    @Test
+    fun `migration v12 to v13 parks every row and the joined event adopts them at first use`() = runTest {
+        val driver = v12Ledger()
+
+        LedgerDatabase.Schema.migrate(driver, 12L, LedgerDatabase.Schema.version).await()
+        assertEquals(listOf(""), driver.eventIds(), "parked, not lost")
+
+        val backend = LedgerService(opened(driver)) { JOINED }
+        assertEquals(LedgerState.COMPLETED, backend.get("C-photo.jpg")?.state)
+        // A job queued before the upgrade still settles: the destination survives the rebuild.
+        assertEquals("R-photo.jpg", backend.entryForDestination("/v2/files/R")?.key)
+        assertTrue(backend.markTerminal("R-photo.jpg", TerminalOutcome.COMPLETED))
+        assertEquals(listOf(JOINED), driver.eventIds())
+    }
+
+    @Test
+    fun `parked rows stay parked and invisible while nothing is joined and the next join purges them`() = runTest {
+        val driver = v12Ledger()
+        LedgerDatabase.Schema.migrate(driver, 12L, LedgerDatabase.Schema.version).await()
+
+        val backend = LedgerService(opened(driver)) { null }
+        assertNull(backend.get("C-photo.jpg"))
+        assertEquals(LedgerAggregates(0, 0), backend.aggregates())
+        assertTrue(backend.rowsNeedingJob().isEmpty())
+        assertEquals(listOf(""), driver.eventIds())
+
+        backend.purgeExcept(JOINED)
+        assertTrue(driver.eventIds().isEmpty())
+    }
+
+    @Test
+    fun `a parked key the joined event already holds keeps the joined event's row`() = runTest {
+        val driver = v12Ledger()
+        LedgerDatabase.Schema.migrate(driver, 12L, LedgerDatabase.Schema.version).await()
+        driver.execute(
+            null,
+            "INSERT INTO ledgerRow (eventId, key, assetId, state) VALUES ('$JOINED', 'C-photo.jpg', 'C', 'DISCOVERED')",
+            0,
+        )
+
+        val backend = LedgerService(opened(driver)) { JOINED }
+
+        assertEquals(LedgerState.DISCOVERED, backend.get("C-photo.jpg")?.state)
+        assertEquals(LedgerState.REQUESTED, backend.get("R-photo.jpg")?.state)
+        assertEquals(listOf("", JOINED), driver.eventIds(), "the duplicate stays parked until a purge")
+    }
+
+    @Test
+    fun `a row of another event never satisfies the joined event`() = runTest {
+        val backend = createBackend()
+        backend.resetTo("E-earlier", listOf(LedgerEntry("X-primary.heic", AssetId("X"), LedgerState.COMPLETED)))
+
+        assertNull(backend.get("X-primary.heic"), "a COMPLETED row of another event suppresses nothing")
+        assertTrue(backend.recordUnlessSettled(LedgerEntry("X-primary.heic", AssetId("X"), LedgerState.DISCOVERED)))
+        assertEquals(listOf("X-primary.heic"), backend.rowsNeedingJob().map { it.key })
     }
 }
+
+/** The event every service in this file is joined to, unless a test says otherwise. */
+private const val JOINED = "E-joined"
+
+/** A v12 ledger — what 11.sqm leaves — holding one settled row and one in flight. */
+private fun v12Ledger(): JdbcSqliteDriver {
+    val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+    driver.execute(null, V11_LEDGER_ROW, 0)
+    driver.execute(null, "CREATE INDEX ledgerRow_assetId ON ledgerRow(assetId)", 0)
+    driver.execute(null, "CREATE INDEX $DESTINATION_INDEX ON ledgerRow(destinationPath)", 0)
+    driver.execute(
+        null,
+        "INSERT INTO ledgerRow VALUES " +
+            "('C-photo.jpg', 'C', 'COMPLETED', '2026-07-10T00:00:00Z', 'primary', 'image/jpeg', " +
+            "'IMG_C.JPG', '/v2/files/C'), " +
+            "('R-photo.jpg', 'R', 'REQUESTED', '2026-07-10T00:00:00Z', 'primary', 'image/jpeg', " +
+            "'IMG_R.JPG', '/v2/files/R')",
+        0,
+    )
+    // 11.sqm's table and triggers, so the migration starts from exactly the v12 shape.
+    LedgerDatabase.Schema.migrate(driver, 11L, 12L).value
+    return driver
+}
+
+/** The distinct events the ledger holds rows for, sorted. */
+private fun JdbcSqliteDriver.eventIds(): List<String> =
+    executeQuery(null, "SELECT DISTINCT eventId FROM ledgerRow ORDER BY eventId", { cursor ->
+        val out = mutableListOf<String>()
+        while (cursor.next().value) out += cursor.getString(0)!!
+        app.cash.sqldelight.db.QueryResult.Value(out)
+    }, 0).value
 
 /** The v11 table — what 10.sqm leaves, and the shape 11.sqm meets. */
 private val V11_LEDGER_ROW =

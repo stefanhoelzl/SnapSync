@@ -1,5 +1,6 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.feature.support.LEDGER_EVENT
 import kotlin.time.Duration.Companion.minutes
 import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.services.wake.EventChecks
@@ -92,7 +93,7 @@ class EventCompletionTest {
         val checks = EventChecks(inMemoryPreferences(), now = { clock })
 
         suspend fun pending(asset: AssetId) =
-            ledger.resetTo(listOf(LedgerEntry("${asset.value}-primary.heic", asset, LedgerState.REQUESTED)))
+            ledger.resetTo(LEDGER_EVENT, listOf(LedgerEntry("${asset.value}-primary.heic", asset, LedgerState.REQUESTED)))
 
         fun TestScope.completion() = EventCompletion(
             config = config,
@@ -110,7 +111,6 @@ class EventCompletionTest {
         fun TestScope.leave() = LeaveEvent(
             config = config,
             stopUploads = {},
-            clearLedger = {},
             notifyLeave = { _, _ -> },
             everythingReceived = { false },
             scope = this,

@@ -24,8 +24,16 @@ const val LEDGER_DB_NAME: String = "ledger.db"
 
 /**
  * The upload ledger (capability `photo-sharing`): [LedgerService] over the SQLDelight [LedgerDatabase] (schema:
- * `Ledger.sq` — one table, key primary key, an index on `assetId`). [recordUnlessSettled] is one guarded upsert
- * statement, atomic on its own; [aggregates] is one SQL round-trip, so its counts are mutually consistent.
+ * `Ledger.sq` — one table, `(eventId, key)` primary key, an index on `assetId`). [recordUnlessSettled] is one
+ * guarded upsert statement, atomic on its own; [aggregates] is one SQL round-trip, so its counts are mutually
+ * consistent.
+ *
+ * **Every row belongs to one event, and every read and write is scoped to the joined one** — [joinedEvent], the
+ * process's config (change `event-scoped-local-state`). Each event holds its own bytes, so a row is true for its
+ * event only; scoping in the statement is what makes a row of another event inert rather than a lifecycle rule
+ * every leave had to keep. With nothing joined, every read answers empty and every write applies nothing. The
+ * reset family alone names its event explicitly ([resetTo], [purgeExcept]), because the join it belongs to runs
+ * before the joined config is saved.
  *
  * **Opened on first use, through [Databases]**, never at construction: building the composition opens no
  * database (a locked background launch must not be forced into one early). Either process may open it
@@ -35,9 +43,28 @@ const val LEDGER_DB_NAME: String = "ledger.db"
  */
 class LedgerService(
     databases: Databases,
+    /** The event this process is joined to, or null; read at every call, never cached. */
+    private val joinedEvent: () -> String?,
 ) : TransferRecord {
 
     private val queries by lazy { LedgerDatabase(databases.openOwned(LEDGER_DB_NAME, LedgerDatabase.Schema)).ledgerQueries }
+
+    // The event whose parked rows this process has adopted. A second adoption is a no-op write, so a race between
+    // two callers costs one statement, never a row.
+    private var adoptedFor: String? = null
+
+    /**
+     * The joined event, after adopting into it the rows 12.sqm parked under the empty event — once per event per
+     * process. Null when nothing is joined: the parked rows then wait, and the next join's purge removes them.
+     */
+    private fun event(): String? {
+        val eventId = joinedEvent() ?: return null
+        if (adoptedFor != eventId) {
+            queries.adoptParked(eventId)
+            adoptedFor = eventId
+        }
+        return eventId
+    }
 
     /**
      * The row for [key], or null when there is none.
@@ -49,11 +76,15 @@ class LedgerService(
      * Not on [TransferRecord]: no transport reads a row by key since the v1 last-segment fallback was retired
      * (decision record `changes/retire-legacy-key-fallback`).
      */
-    suspend fun get(key: String): LedgerEntry? =
-        queries.get(key, ::toEntry).executeAsOneOrNull()
+    suspend fun get(key: String): LedgerEntry? {
+        val eventId = event() ?: return null
+        return queries.get(eventId, key, ::toEntry).executeAsOneOrNull()
+    }
 
-    override suspend fun entryForDestination(destinationPath: String): LedgerEntry? =
-        queries.selectByDestinationPath(destinationPath, ::toEntry).executeAsOneOrNull()
+    override suspend fun entryForDestination(destinationPath: String): LedgerEntry? {
+        val eventId = event() ?: return null
+        return queries.selectByDestinationPath(eventId, destinationPath, ::toEntry).executeAsOneOrNull()
+    }
 
     /** The one full-row projection mapper, so a column added to the row is added in one place. */
     @Suppress("LongParameterList")
@@ -80,9 +111,10 @@ class LedgerService(
      * [markTerminal] — the statement carries the done-state guard, and the database says whether it applied.
      */
     suspend fun recordUnlessSettled(entry: LedgerEntry): Boolean {
+        val eventId = event() ?: return false
         val applied = queries.transactionWithResult {
             queries.recordUnlessSettled(
-                entry.key, entry.assetId, entry.state,
+                eventId, entry.key, entry.assetId, entry.state,
                 entry.creationDate, entry.role?.wire ?: "", entry.contentType, entry.originalFilename,
                 entry.destinationPath, DONE_STATES,
             )
@@ -98,10 +130,11 @@ class LedgerService(
      */
     suspend fun recordAllUnlessSettled(entries: List<LedgerEntry>): Int {
         if (entries.isEmpty()) return 0
+        val eventId = event() ?: return 0
         val applied = queries.transactionWithResult {
             entries.count { entry ->
                 queries.recordUnlessSettled(
-                    entry.key, entry.assetId, entry.state,
+                    eventId, entry.key, entry.assetId, entry.state,
                     entry.creationDate, entry.role?.wire ?: "", entry.contentType, entry.originalFilename,
                     entry.destinationPath, DONE_STATES,
                 )
@@ -130,9 +163,9 @@ class LedgerService(
      * admission rule (capability `photo-sharing`).
      */
     suspend fun manifestRows(): List<LedgerEntry> =
-        // `state` is read from the row rather than asserted. Nothing is bound: the query is not
+        // `state` is read from the row rather than asserted. Only the event is bound: the query is not
         // state-scoped, because the manifest declares intent (capability `photo-sharing`).
-        queries.selectManifestRows { key, assetId, state, creationDate, role, contentType, filename ->
+        queries.selectManifestRows(event() ?: return emptyList()) { key, assetId, state, creationDate, role, contentType, filename ->
             LedgerEntry(
                 key = key,
                 assetId = assetId,
@@ -153,9 +186,11 @@ class LedgerService(
      * operation like [deleteKeys]: only the single writer's cycle runs it.
      */
     suspend fun backfillManifestDetail(entry: LedgerEntry) {
+        val eventId = event() ?: return
         // One UPDATE matching the '' sentinel only — a row already enriched is untouched by the
         // WHERE clause, so the sweep is idempotent by construction and cannot clobber a good value.
         queries.backfillManifestDetail(
+            eventId = eventId,
             creationDate = entry.creationDate,
             role = entry.role?.wire ?: "",
             contentType = entry.contentType,
@@ -165,14 +200,16 @@ class LedgerService(
     }
 
     /**
-     * The ledger's whole-store truth, counted by photo. It counts EVERY row — the join-time load seeds the
-     * device's stored resources for any event — so it is not the status read: its callers are the
+     * The joined event's rows, counted by photo. It counts every row of the event, admitted or not — the join-time
+     * load seeds every resource the backend stores for it — so it is not the status read: its callers are the
      * extension's "work remains" check and the diagnostic dump. Status reads [assetProgress].
      */
-    suspend fun aggregates(): LedgerAggregates =
-        queries.aggregates(DONE_STATES) { pending, completed ->
+    suspend fun aggregates(): LedgerAggregates {
+        val eventId = event() ?: return LedgerAggregates(0, 0)
+        return queries.aggregates(eventId = eventId, doneStates = DONE_STATES) { pending, completed ->
             LedgerAggregates(pending.toInt(), completed.toInt())
         }.executeAsOne()
+    }
 
     /**
      * Per photo, whether **every** row of that asset is done: `assetId → done`, one entry per asset the ledger
@@ -181,7 +218,9 @@ class LedgerService(
      * admitted set the gallery counted for `N`; the ledger interprets nothing about admission.
      */
     suspend fun assetProgress(): Map<AssetId, Boolean> =
-        queries.assetProgress(DONE_STATES) { assetId, notDone -> assetId to (notDone == 0L) }
+        queries.assetProgress(doneStates = DONE_STATES, eventId = event() ?: return emptyMap()) { assetId, notDone ->
+            assetId to (notDone == 0L)
+        }
             .executeAsList()
             .toMap()
 
@@ -191,7 +230,8 @@ class LedgerService(
      * store, and *which* states are settled is decided once, in `model/`, not per query.
      */
     suspend fun pendingResources(): List<PendingResource> =
-        queries.selectPending(DONE_STATES) { assetId, key -> PendingResource(assetId, key) }.executeAsList()
+        queries.selectPending(event() ?: return emptyList(), DONE_STATES) { assetId, key -> PendingResource(assetId, key) }
+            .executeAsList()
 
     /**
      * The guarded terminal write. One `UPDATE` and one `changes()` read in ONE transaction — asking the
@@ -199,11 +239,13 @@ class LedgerService(
      * against a writer that takes no lock. Copied deliberately from `DownloadService.applied`,
      * which solved the identical problem for PhotoKit's change and completion blocks. Non-suspending.
      */
-    override fun markTerminal(key: String, outcome: TerminalOutcome): Boolean =
-        queries.transactionWithResult {
-            queries.markTerminal(outcome.state, key)
+    override fun markTerminal(key: String, outcome: TerminalOutcome): Boolean {
+        val eventId = event() ?: return false
+        return queries.transactionWithResult {
+            queries.markTerminal(state = outcome.state, eventId = eventId, key = key)
             queries.changedRows().executeAsOne() > 0L
         }
+    }
 
     /**
      * The rows that **need an upload job**, in a stable key order — the upload cycle's source of work
@@ -223,34 +265,45 @@ class LedgerService(
      * scan is local and indexed; the platform round-trip the bound protects is the caller's to make.
      */
     suspend fun rowsNeedingJob(): List<LedgerEntry> =
-        queries.selectNeedingJob(NEEDS_JOB_STATES, ::toEntry).executeAsList()
+        queries.selectNeedingJob(event() ?: return emptyList(), NEEDS_JOB_STATES, ::toEntry).executeAsList()
 
     /**
-     * Delete every row — a deliberate reset (the app re-provisioning config), not a sync write.
+     * Delete every row of every event — the device-state reset, not a sync write.
      */
     suspend fun clear() {
         queries.deleteAll()
     }
 
     /**
-     * Atomically replace the entire store with [entries] (delete-all then insert-all in one
-     * transaction): either all prior rows go and all [entries] land, or — on failure — the store is
-     * left exactly as it was (no partial baseline is ever observable). Entries are stored verbatim
-     * (the caller supplies `state`; no clock stamping here). It applies no precedence — a settled row is replaced like any other. This is a
-     * reset-family op (alongside [clear]) — the app-side
-     * join seed uses it; it is **not** a per-key record, and it is owned by that membership use-case
-     * (capability `photo-sharing`, "Reader and writer capability split").
+     * Delete every row of any event but [eventId] — the join's purge (change `event-scoped-local-state`). Such rows
+     * are already inert, since every read is scoped to the joined event, so this is housekeeping: a purge that fails
+     * costs space, never a suppressed upload. Rows of [eventId] are kept, so a failed listing at a rejoin keeps what
+     * this device last knew of the event.
      */
-    suspend fun resetTo(entries: List<LedgerEntry>) {
-        // One transaction: delete-all then insert each. If any statement throws, SQLDelight rolls
-        // back the whole transaction, so the store is left unchanged — a partial baseline is never
-        // observable. A plain insert: after
-        // deleteAll nothing can conflict, and the reset family applies no precedence.
+    suspend fun purgeExcept(eventId: String) {
+        queries.purgeExcept(eventId)
+    }
+
+    /**
+     * Atomically make [entries] the rows of [eventId], and purge every other event's rows, in one transaction:
+     * either all of it lands, or — on failure — the store is left exactly as it was (no partial baseline is ever
+     * observable). Entries are stored verbatim (the caller supplies `state`; no clock stamping here). It applies no
+     * precedence — a settled row is replaced like any other. This is a reset-family op (alongside [clear] and
+     * [purgeExcept]) — the join seed uses it, before the joined config is saved, which is why it names its event;
+     * it is **not** a per-key record, and it is owned by that membership use-case (capability `photo-sharing`,
+     * "Reader and writer capability split").
+     */
+    suspend fun resetTo(eventId: String, entries: List<LedgerEntry>) {
+        // One transaction: purge, delete the event's rows, then insert each. If any statement throws, SQLDelight
+        // rolls back the whole transaction, so the store is left unchanged — a partial baseline is never
+        // observable. A plain insert: after deleteEvent nothing can conflict, and the reset family applies no
+        // precedence.
         queries.transaction {
-            queries.deleteAll()
+            queries.purgeExcept(eventId)
+            queries.deleteEvent(eventId)
             entries.forEach {
                 queries.insert(
-                    it.key, it.assetId, it.state,
+                    eventId, it.key, it.assetId, it.state,
                     it.creationDate, it.role?.wire ?: "", it.contentType, it.originalFilename,
                     it.destinationPath,
                 )
@@ -274,10 +327,11 @@ class LedgerService(
      */
     suspend fun deleteKeys(keys: Collection<String>) {
         if (keys.isEmpty()) return
+        val eventId = event() ?: return
         // One transaction, chunked: an IN list is one bind variable per key, and a walk can name more rows
         // than a driver will bind.
         queries.transaction {
-            keys.toSet().chunked(KEY_CHUNK).forEach { chunk -> queries.deleteKeys(chunk) }
+            keys.toSet().chunked(KEY_CHUNK).forEach { chunk -> queries.deleteKeys(eventId, chunk) }
         }
     }
 

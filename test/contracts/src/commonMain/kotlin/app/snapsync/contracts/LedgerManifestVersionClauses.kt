@@ -45,7 +45,7 @@ internal fun ClauseList<LedgerStoreState, LedgerService>.manifestVersionClauses(
 
     clause("a detail backfill advances the version", LedgerStoreState.EMPTY) { backend ->
         // A bare row, as the join-time load seeds it: no capture date, no role, no detail.
-        backend.resetTo(listOf(LedgerEntry("A-primary.heic", AssetId("A"), LedgerState.COMPLETED)))
+        backend.resetTo(LEDGER_CONTRACT_EVENT, listOf(LedgerEntry("A-primary.heic", AssetId("A"), LedgerState.COMPLETED)))
         val before = backend.manifestVersion()
         backend.backfillManifestDetail(entry(key = "A-primary.heic", assetId = "A"))
         assertTrue(backend.manifestVersion() > before)
@@ -92,7 +92,7 @@ internal fun ClauseList<LedgerStoreState, LedgerService>.manifestVersionClauses(
         backend.clear()
         val afterClear = backend.manifestVersion()
         assertTrue(afterClear > afterRecord, "clear deletes rows, so it advances")
-        backend.resetTo(listOf(entry(key = "B"), entry(key = "C")))
+        backend.resetTo(LEDGER_CONTRACT_EVENT, listOf(entry(key = "B"), entry(key = "C")))
         assertTrue(backend.manifestVersion() > afterClear, "resetTo inserts rows, so it advances")
     }
 

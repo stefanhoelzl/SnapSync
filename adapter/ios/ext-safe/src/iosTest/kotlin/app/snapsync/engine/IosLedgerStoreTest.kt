@@ -45,7 +45,7 @@ class IosLedgerStoreTest {
     fun `the database file lands where the container says`() {
         withTempDirectory { dir ->
             // The driver opens lazily, so the file appears on first use rather than at construction.
-            runBlocking { LedgerService(IosDatabases(dir)).recordUnlessSettled(entry("photo-1.heic")) }
+            runBlocking { LedgerService(IosDatabases(dir)) { "E-joined" }.recordUnlessSettled(entry("photo-1.heic")) }
 
             assertTrue(
                 fileExists("$dir/ledger.db"),
@@ -57,7 +57,7 @@ class IosLedgerStoreTest {
     @Test
     fun `a row written through the store is read back`() {
         withTempDirectory { dir ->
-            val store = LedgerService(IosDatabases(dir))
+            val store = LedgerService(IosDatabases(dir)) { "E-joined" }
 
             runBlocking {
                 store.recordUnlessSettled(entry("photo-1.heic"))
@@ -72,7 +72,7 @@ class IosLedgerStoreTest {
     @Test
     fun `an unrecorded key reads as no row`() {
         withTempDirectory { dir ->
-            val store = LedgerService(IosDatabases(dir))
+            val store = LedgerService(IosDatabases(dir)) { "E-joined" }
 
             runBlocking {
                 assertNull(store.get("never-uploaded.heic"), "null is a fact about the ledger, not about storage")
@@ -89,9 +89,9 @@ class IosLedgerStoreTest {
     fun `a store reopened over the same container sees what was written`() {
         withTempDirectory { dir ->
             runBlocking {
-                LedgerService(IosDatabases(dir)).recordUnlessSettled(entry("photo-1.heic"))
+                LedgerService(IosDatabases(dir)) { "E-joined" }.recordUnlessSettled(entry("photo-1.heic"))
 
-                val reopened = LedgerService(IosDatabases(dir))
+                val reopened = LedgerService(IosDatabases(dir)) { "E-joined" }
                 assertNotNull(
                     reopened.get("photo-1.heic"),
                     "the ledger is the only memory that a photo was already uploaded; losing it re-uploads " +
@@ -106,10 +106,10 @@ class IosLedgerStoreTest {
         withTempDirectory { first ->
             withTempDirectory { second ->
                 runBlocking {
-                    LedgerService(IosDatabases(first)).recordUnlessSettled(entry("photo-1.heic"))
+                    LedgerService(IosDatabases(first)) { "E-joined" }.recordUnlessSettled(entry("photo-1.heic"))
 
                     assertNull(
-                        LedgerService(IosDatabases(second)).get("photo-1.heic"),
+                        LedgerService(IosDatabases(second)) { "E-joined" }.get("photo-1.heic"),
                         "if the base path were ignored both stores would be the SAME file and this would " +
                             "pass by accident everywhere else",
                     )

@@ -2,6 +2,7 @@
 
 package app.snapsync.feature.upload
 
+import app.snapsync.feature.support.LEDGER_EVENT
 import app.snapsync.feature.support.CapturingLogWriter
 import app.snapsync.feature.support.TestLedger
 import app.snapsync.model.AssetId
@@ -716,7 +717,7 @@ class UploadCycleTest {
         // still retries (an untouched `.retry` job's fate is unmeasured, and a duplicate PUT converges) — but
         // both records it makes are declined by the ledger's guard.
         val backend = TestLedger().service
-        backend.resetTo(listOf(LedgerEntry("a", AssetId("a"), LedgerState.COMPLETED)))
+        backend.resetTo(LEDGER_EVENT, listOf(LedgerEntry("a", AssetId("a"), LedgerState.COMPLETED)))
         val job = platformJob("a", UploadError.Network)
         val platform = FakePlatform(retryJobs = listOf(job))
 
@@ -1255,7 +1256,7 @@ class UploadCycleTest {
         // A join-time load from the device listing that holds only the primary: the row is bare, so the walk reads
         // the asset and finds the paired video the listing never had.
         val backend = TestLedger().service
-        backend.resetTo(listOf(LedgerEntry("X-primary.heic", AssetId("X"), LedgerState.COMPLETED)))
+        backend.resetTo(LEDGER_EVENT, listOf(LedgerEntry("X-primary.heic", AssetId("X"), LedgerState.COMPLETED)))
         val platform = FakePlatform(
             discovered = listOf(resource("X-primary.heic", "X"), resource("X-live.mov", "X")),
             fullEnumeration = true,
@@ -1994,7 +1995,7 @@ class UploadCycleTest {
     @Test
     fun a_loaded_row_is_placed_on_the_walk_that_heals_it_before_its_detail_is_written() = runTest {
         val backend = TestLedger().service
-        backend.resetTo(listOf(LedgerEntry("X-primary.heic", AssetId("X"), LedgerState.COMPLETED)))
+        backend.resetTo(LEDGER_EVENT, listOf(LedgerEntry("X-primary.heic", AssetId("X"), LedgerState.COMPLETED)))
         val platform = FakePlatform(discovered = listOf(resource("X-primary.heic", "X")), fullEnumeration = true)
         val datesAtPlacement = mutableListOf<String?>()
         val placed = mutableListOf<Set<AssetId>>()
@@ -2013,7 +2014,7 @@ class UploadCycleTest {
     @Test
     fun a_loaded_row_the_policy_does_not_admit_is_not_placed() = runTest {
         val backend = TestLedger().service
-        backend.resetTo(listOf(LedgerEntry("old-primary.heic", AssetId("old"), LedgerState.COMPLETED)))
+        backend.resetTo(LEDGER_EVENT, listOf(LedgerEntry("old-primary.heic", AssetId("old"), LedgerState.COMPLETED)))
         val platform = FakePlatform(
             discovered = listOf(datedResource("old-primary.heic", "2025-01-01T00:00:00Z", "old")),
             fullEnumeration = true,
@@ -2028,7 +2029,7 @@ class UploadCycleTest {
     @Test
     fun an_opted_out_membership_places_no_healed_row() = runTest {
         val backend = TestLedger().service
-        backend.resetTo(listOf(LedgerEntry("X-primary.heic", AssetId("X"), LedgerState.COMPLETED)))
+        backend.resetTo(LEDGER_EVENT, listOf(LedgerEntry("X-primary.heic", AssetId("X"), LedgerState.COMPLETED)))
         val platform = FakePlatform(discovered = listOf(resource("X-primary.heic", "X")), fullEnumeration = true)
         val placed = Placements(platform)
 
@@ -2041,7 +2042,7 @@ class UploadCycleTest {
     @Test
     fun a_healed_row_is_not_placed_again_by_the_next_walk() = runTest {
         val backend = TestLedger().service
-        backend.resetTo(listOf(LedgerEntry("X-primary.heic", AssetId("X"), LedgerState.COMPLETED)))
+        backend.resetTo(LEDGER_EVENT, listOf(LedgerEntry("X-primary.heic", AssetId("X"), LedgerState.COMPLETED)))
         val platform = FakePlatform(discovered = listOf(resource("X-primary.heic", "X")), fullEnumeration = true)
         val placed = Placements(platform)
 

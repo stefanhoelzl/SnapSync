@@ -12,9 +12,14 @@ import app.snapsync.model.LedgerState;
 -- WHAT IT STILL DOES NOT COVER: schema only. A data-only change changes no schema and is invisible to
 -- it, which is why the row rewrites of 8.sqm and 10.sqm are asserted by `LedgerServiceTest` instead.
 
--- The row carries no attempt count, no event provenance and no absence mark: 10.sqm dropped all three, because
--- nothing read them (decision record `changes/shrink-the-ledger-row`). The key is the bare, event-independent
--- resource filename.
+-- The row carries no attempt count and no absence mark: 10.sqm dropped both, because nothing read them (decision
+-- record `changes/shrink-the-ledger-row`).
+--
+-- THE ROW BELONGS TO ONE EVENT (12.sqm; change `event-scoped-local-state`). Each event holds its own bytes, so a
+-- `COMPLETED` row is true for its event only, and the primary key is `(eventId, key)`. Every statement below is
+-- scoped to one `:eventId` — `LedgerService` binds the joined one — so a row of any other event is inert: it can
+-- neither suppress an upload nor count as work. Such rows are removed by the next join's purge (`purgeExcept`),
+-- not by the leave. The empty event is where 12.sqm parked the rows that predate it, until `adoptParked`.
 --
 -- The four manifest columns carry the DEVICE MANIFEST's presentation detail (capability `photo-sharing`),
 -- so the manifest is a projection of this table's COMPLETED rows rather than a parallel accumulator
@@ -23,7 +28,8 @@ import app.snapsync.model.LedgerState;
 -- enriched" sentinel that a join-time load's row and a pre-5.sqm row both start in, swept by
 -- `backfillManifestDetail`.
 CREATE TABLE ledgerRow (
-    key TEXT NOT NULL PRIMARY KEY,
+    eventId TEXT NOT NULL,
+    key TEXT NOT NULL,
     assetId TEXT AS AssetId NOT NULL,
     state TEXT AS LedgerState NOT NULL,
     creationDate TEXT NOT NULL DEFAULT '',
@@ -32,10 +38,11 @@ CREATE TABLE ledgerRow (
     originalFilename TEXT NOT NULL DEFAULT '',
     -- The destination this row's upload was addressed to, or NULL for a row recorded before the column
     -- existed. NULLABLE must match 7.sqm exactly (the verify task compares migrated vs created schemas).
-    destinationPath TEXT
+    destinationPath TEXT,
+    PRIMARY KEY (eventId, key)
 );
 
-CREATE INDEX ledgerRow_assetId ON ledgerRow(assetId);
+CREATE INDEX ledgerRow_assetId ON ledgerRow(eventId, assetId);
 
 -- The ack path resolves a returned upload job to its row through this index; without it every returned
 -- job would scan the table, on a path the OS invokes with a deadline.
@@ -97,7 +104,8 @@ BEGIN
     SELECT 0, 0 WHERE NOT EXISTS (SELECT 1 FROM manifestVersion WHERE id = 0);
     UPDATE manifestVersion SET value = value + 1
     WHERE id = 0 AND (
-        old.key IS NOT new.key
+        old.eventId IS NOT new.eventId
+        OR old.key IS NOT new.key
         OR old.assetId IS NOT new.assetId
         OR old.creationDate IS NOT new.creationDate
         OR old.role IS NOT new.role
@@ -109,7 +117,7 @@ END;
 get:
 SELECT key, assetId, state, creationDate, role, contentType, originalFilename, destinationPath
 FROM ledgerRow
-WHERE key = :key;
+WHERE eventId = :eventId AND key = :key;
 
 -- The record write (capability `photo-sharing`, "Record operations"): upsert one complete row, EXCEPT over a
 -- row whose state is done. There is no unconditional per-row upsert any more — this is the only one.
@@ -120,12 +128,12 @@ WHERE key = :key;
 -- literal, for the same reason every state-scoped read binds it.
 recordUnlessSettled:
 INSERT INTO ledgerRow (
-    key, assetId, state, creationDate, role, contentType, originalFilename, destinationPath
+    eventId, key, assetId, state, creationDate, role, contentType, originalFilename, destinationPath
 )
 VALUES (
-    :key, :assetId, :state, :creationDate, :role, :contentType, :originalFilename, :destinationPath
+    :eventId, :key, :assetId, :state, :creationDate, :role, :contentType, :originalFilename, :destinationPath
 )
-ON CONFLICT(key) DO UPDATE SET
+ON CONFLICT(eventId, key) DO UPDATE SET
     assetId = excluded.assetId,
     state = excluded.state,
     creationDate = excluded.creationDate,
@@ -135,14 +143,14 @@ ON CONFLICT(key) DO UPDATE SET
     destinationPath = excluded.destinationPath
 WHERE ledgerRow.state NOT IN :doneStates;
 
--- A plain insert, for `resetTo` only: it runs after `deleteAll` inside one transaction, so no row can
+-- A plain insert, for `resetTo` only: it runs after `deleteEvent` inside one transaction, so no row can
 -- conflict, and the reset family applies no precedence.
 insert:
 INSERT INTO ledgerRow (
-    key, assetId, state, creationDate, role, contentType, originalFilename, destinationPath
+    eventId, key, assetId, state, creationDate, role, contentType, originalFilename, destinationPath
 )
 VALUES (
-    :key, :assetId, :state, :creationDate, :role, :contentType, :originalFilename, :destinationPath
+    :eventId, :key, :assetId, :state, :creationDate, :role, :contentType, :originalFilename, :destinationPath
 );
 
 -- Resolve a row from the destination its upload was addressed to (capability `background-upload`).
@@ -151,7 +159,7 @@ VALUES (
 selectByDestinationPath:
 SELECT key, assetId, state, creationDate, role, contentType, originalFilename, destinationPath
 FROM ledgerRow
-WHERE destinationPath = :destinationPath;
+WHERE eventId = :eventId AND destinationPath = :destinationPath;
 
 -- Fill the manifest detail of ONE already-recorded row, without touching its state.
 -- The sweep for rows a migration could not fill and for rows the join-time load seeded from a
@@ -163,7 +171,7 @@ SET creationDate = :creationDate,
     role = :role,
     contentType = :contentType,
     originalFilename = :originalFilename
-WHERE key = :key AND creationDate = '';
+WHERE eventId = :eventId AND key = :key AND creationDate = '';
 
 -- The rows the device manifest projects from — what this device INTENDS to provide to the event
 -- (capability `photo-sharing`). Deliberately NOT state-scoped: what a member will contribute does not
@@ -180,10 +188,29 @@ WHERE key = :key AND creationDate = '';
 -- `state` is still selected because the mapper reads it rather than asserting it.
 selectManifestRows:
 SELECT key, assetId, state, creationDate, role, contentType, originalFilename
-FROM ledgerRow;
+FROM ledgerRow
+WHERE eventId = :eventId;
 
 deleteAll:
 DELETE FROM ledgerRow;
+
+-- Every row of one event: the first half of `resetTo`.
+deleteEvent:
+DELETE FROM ledgerRow
+WHERE eventId = :eventId;
+
+-- The join's purge: every row of any event but the one being joined, the parked ones included. A row of another
+-- event is already inert, so this is housekeeping, and a purge that fails costs space, never an upload.
+purgeExcept:
+DELETE FROM ledgerRow
+WHERE eventId != :eventId;
+
+-- Adopt the rows 12.sqm parked under the empty event into the joined one. `OR IGNORE`: a parked key the joined
+-- event already holds keeps the joined event's row, and the parked duplicate stays parked until the next purge.
+adoptParked:
+UPDATE OR IGNORE ledgerRow
+SET eventId = :eventId
+WHERE eventId = '';
 
 -- Delete exactly the named rows, by primary key (capability `photo-sharing`). KEY-scoped on purpose: every
 -- caller holds evidence about individual rows, and the resources of one asset hold per-key states, so an
@@ -191,14 +218,14 @@ DELETE FROM ledgerRow;
 -- driver's bind-variable limit.
 deleteKeys:
 DELETE FROM ledgerRow
-WHERE key IN :keys;
+WHERE eventId = :eventId AND key IN :keys;
 
 -- The non-COMPLETED rows (the backlog) as (assetId, key) pairs. The status overlay groups these by
 -- photo in Kotlin to intersect outstanding resources with observed completions, without
 -- materializing the (large, static) completed set. Shrinks as sync drains.
 selectPending:
 SELECT assetId, key FROM ledgerRow
-WHERE state NOT IN :doneStates;
+WHERE eventId = :eventId AND state NOT IN :doneStates;
 
 -- Aggregates counted by PHOTO (assetId), not resource row: collapse rows to assets first, then
 -- count. A photo is complete only when none of its rows is non-COMPLETED.
@@ -207,6 +234,7 @@ WITH perAsset AS (
     SELECT assetId,
            SUM(CASE WHEN state NOT IN :doneStates THEN 1 ELSE 0 END) AS notDone
     FROM ledgerRow
+    WHERE eventId = :eventId
     GROUP BY assetId
 )
 SELECT
@@ -221,6 +249,7 @@ assetProgress:
 SELECT assetId,
        SUM(CASE WHEN state NOT IN :doneStates THEN 1 ELSE 0 END) AS notDone
 FROM ledgerRow
+WHERE eventId = :eventId
 GROUP BY assetId;
 
 -- Flip ONE row's state, but only while it is still REQUESTED — the guarded terminal write
@@ -234,7 +263,7 @@ GROUP BY assetId;
 markTerminal:
 UPDATE ledgerRow
 SET state = :state
-WHERE key = :key AND state = 'REQUESTED';
+WHERE eventId = :eventId AND key = :key AND state = 'REQUESTED';
 
 -- How many rows the statement immediately before it changed, read INSIDE that statement's own
 -- transaction — the same mechanism `DownloadStore.sq` uses for its three callback writes, and for the
@@ -260,7 +289,7 @@ SELECT changes();
 selectNeedingJob:
 SELECT key, assetId, state, creationDate, role, contentType, originalFilename, destinationPath
 FROM ledgerRow
-WHERE state IN :needsJobStates
+WHERE eventId = :eventId AND state IN :needsJobStates
 ORDER BY key;
 
 -- The manifest version, 0 before the first change. One read, taken FIRST by the upload cycle's entry gate.

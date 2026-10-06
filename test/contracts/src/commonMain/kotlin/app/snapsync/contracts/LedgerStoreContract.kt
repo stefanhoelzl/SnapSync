@@ -26,6 +26,16 @@ import kotlin.test.assertFalse
 enum class LedgerStoreState { EMPTY }
 
 /**
+ * The event every binding's [LedgerService] is joined to. Every ledger read and write is scoped to the joined event
+ * (change `event-scoped-local-state`), so a binding constructs its service over this one, and the clauses seed and
+ * read under it.
+ */
+const val LEDGER_CONTRACT_EVENT: String = "E-joined"
+
+/** An event the binding is not joined to. */
+private const val OTHER_EVENT = "E-other"
+
+/**
  * The storage-seam contract every [LedgerService] must satisfy (capability `photo-sharing`; mechanism:
  * `docs/architecture.md`). Each implementation is bound once per host it runs on; the same clauses run unchanged
  * against each.
@@ -187,7 +197,7 @@ object LedgerStoreContract : Contract<LedgerStoreState, LedgerService>("LedgerSe
                 entry(key = "A-photo.jpg", assetId = "A", state = LedgerState.COMPLETED),
                 entry(key = "B-photo.jpg", assetId = "B", state = LedgerState.COMPLETED),
             )
-            backend.resetTo(seed)
+            backend.resetTo(LEDGER_CONTRACT_EVENT, seed)
 
             assertNull(backend.get("old-1"))
             assertNull(backend.get("old-2"))
@@ -200,10 +210,42 @@ object LedgerStoreContract : Contract<LedgerStoreState, LedgerService>("LedgerSe
             backend.recordUnlessSettled(entry(key = "a", assetId = "a"))
             backend.recordUnlessSettled(entry(key = "b", assetId = "b"))
 
-            backend.resetTo(emptyList())
+            backend.resetTo(LEDGER_CONTRACT_EVENT, emptyList())
 
             assertNull(backend.get("a"))
             assertEquals(LedgerAggregates(0, 0), backend.aggregates())
+        }
+
+        clause("rows of an event this ledger is not joined to are invisible to every read and write", LedgerStoreState.EMPTY) { backend ->
+            backend.resetTo(OTHER_EVENT, listOf(entry(key = "k", assetId = "A", state = LedgerState.REQUESTED, destinationPath = "/p")))
+
+            assertNull(backend.get("k"))
+            assertNull(backend.entryForDestination("/p"))
+            assertEquals(LedgerAggregates(0, 0), backend.aggregates())
+            assertTrue(backend.pendingResources().isEmpty())
+            assertTrue(backend.manifestRows().isEmpty())
+            assertFalse(backend.markTerminal("k", TerminalOutcome.COMPLETED), "another event's row is never settled")
+            // The joined event records the same key independently.
+            assertTrue(backend.recordUnlessSettled(entry(key = "k", assetId = "A", state = LedgerState.DISCOVERED)))
+            assertEquals(LedgerState.DISCOVERED, backend.get("k")?.state)
+        }
+
+        clause("resetTo purges every other event's rows", LedgerStoreState.EMPTY) { backend ->
+            backend.recordUnlessSettled(entry(key = "joined", assetId = "J"))
+
+            backend.resetTo(OTHER_EVENT, emptyList())
+
+            assertNull(backend.get("joined"), "the joined event's rows went with the purge")
+        }
+
+        clause("purgeExcept keeps the named event's rows and deletes the rest", LedgerStoreState.EMPTY) { backend ->
+            backend.recordUnlessSettled(entry(key = "a", assetId = "a"))
+
+            backend.purgeExcept(LEDGER_CONTRACT_EVENT)
+            assertEquals(LedgerState.REQUESTED, backend.get("a")?.state)
+
+            backend.purgeExcept(OTHER_EVENT)
+            assertNull(backend.get("a"))
         }
 
         clause("recording converges on assetId and state", LedgerStoreState.EMPTY) { backend ->
