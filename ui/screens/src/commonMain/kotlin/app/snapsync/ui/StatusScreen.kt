@@ -176,7 +176,7 @@ fun StatusScreen(
  */
 @Composable
 private fun ColumnScope.AppMenu(build: BuildLabel, actions: MenuActions) {
-    AppMenuHeader(stringResource(Res.string.app_name))
+    AppMenuHeader(stringResource(Res.string.app_name), onClose = actions.onMenuDismiss)
     AppMenuItem(
         icon = AppMenuIcon.REPORT,
         label = stringResource(Res.string.report_problem),

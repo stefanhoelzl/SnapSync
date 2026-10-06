@@ -58,5 +58,6 @@
     <string name="cannot_verify_detail">Still retrying — your photos aren't lost.</string>
 
     <string name="menu">Menu</string>
+    <string name="menu_close">Close menu</string>
     <string name="invited_eyebrow">YOU'RE INVITED</string>
 </resources>

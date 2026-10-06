@@ -12,6 +12,10 @@ import androidx.compose.ui.test.click
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -37,6 +41,7 @@ import kotlin.time.Instant
 import app.snapsync.ui.resources.Res
 import app.snapsync.ui.components.resources.Res as ComponentRes
 import app.snapsync.ui.components.resources.menu
+import app.snapsync.ui.components.resources.menu_close
 import app.snapsync.ui.resources.menu_privacy
 import app.snapsync.ui.resources.menu_version
 import app.snapsync.ui.resources.menu_website
@@ -111,7 +116,26 @@ class AppMenuScreenTest {
         }
 
     @Test
-    fun `tapping outside the open menu asks to close it`() = runComposeUiTest {
+    fun `tapping well beside the open menu on a phone-sized screen asks to close it`() = runComposeUiTest {
+        var dismissed = 0
+        setContent {
+            // An iPhone SE's width: M3's own 360dp sheet would cover the tap below; the menu must leave it uncovered.
+            Box(Modifier.size(375.dp, 667.dp)) {
+                TestStatusScreen(
+                    UiState(Layer.CreateEvent(), Overlays(menuOpen = true)),
+                    cutoff,
+                    testActions(menu = testMenuActions(onMenuDismiss = { dismissed++ })),
+                )
+            }
+        }
+        waitForIdle()
+        onRoot().performTouchInput { click(Offset(340.dp.toPx(), 333.dp.toPx())) }
+        waitForIdle()
+        assertTrue(dismissed >= 1, "the scrim's tap is a dismissal the state must hear")
+    }
+
+    @Test
+    fun `the menu's close button asks to close it`() = runComposeUiTest {
         var dismissed = 0
         setContent {
             TestStatusScreen(
@@ -121,9 +145,8 @@ class AppMenuScreenTest {
             )
         }
         waitForIdle()
-        onRoot().performTouchInput { click(Offset(width - 8f, height / 2f)) }
-        waitForIdle()
-        assertTrue(dismissed >= 1, "the scrim's tap is a dismissal the state must hear")
+        onNodeWithContentDescription(str(ComponentRes.string.menu_close)).performClick()
+        assertEquals(1, dismissed)
     }
 
     @Test

@@ -541,8 +541,8 @@ settings are being edited and while a join or a create is in progress — there 
 menu SHALL hold, first and set apart from the rest, "Report a problem" (capability `privacy-security`); then links
 to SnapSync's website and its Privacy Policy (capability `web-site`); and, last, the app's version and build
 number, which is shown and not tappable. Following a link SHALL open the page in the browser, leaving the app where
-it was. Closing the menu — by tapping outside it, swiping it away or going back — SHALL leave the screen exactly as
-it was before the menu opened.
+it was. Closing the menu — by tapping outside it, its close button, swiping it away or going back — SHALL leave the
+screen exactly as it was before the menu opened.
 
 #### Scenario: Opening the menu while joined
 - **WHEN** a joined member taps the menu button
@@ -567,6 +567,10 @@ it was before the menu opened.
 
 #### Scenario: Closing the menu
 - **WHEN** the member opens the menu and then taps outside it
+- **THEN** the menu closes and the screen is as it was
+
+#### Scenario: Closing the menu with its close button
+- **WHEN** the member opens the menu and then taps its close button
 - **THEN** the menu closes and the screen is as it was
 
 ### Requirement: The joined screen explains how the event works for this member
