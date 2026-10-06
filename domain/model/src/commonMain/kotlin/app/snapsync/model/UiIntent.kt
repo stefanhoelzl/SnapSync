@@ -43,7 +43,10 @@ sealed interface UiIntent {
     data object CancelReconfigure : UiIntent
     data class RenameEvent(val eventId: String, val name: String) : UiIntent
     data object RenameStatusConsumed : UiIntent
-    data object Reconfigure : UiIntent
+
+    /** The settings' "Stop sharing these photos?" (capability `manage-membership`): apply the held change, or drop it. */
+    data object ConfirmStopSharing : UiIntent
+    data object KeepSharing : UiIntent
     data class ShareOn(val on: Boolean) : UiIntent
     data class ReceiveOn(val on: Boolean) : UiIntent
     data class SaveToAlbum(val on: Boolean) : UiIntent

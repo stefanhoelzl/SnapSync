@@ -127,7 +127,6 @@
     <string name="counts_received">%1$d empfangen</string>
     <string name="counts_not_receiving">Empfangen aus</string>
     <string name="waiting_members">Warte auf %1$d von %2$d Mitgliedern</string>
-    <string name="event_settings">Event-Einstellungen</string>
     <string name="footer_settings">Einstellungen</string>
     <string name="share_invite">Teilen</string>
     <string name="leave_event">Verlassen</string>
@@ -165,8 +164,11 @@
     <string name="load_failed_body">Prüf deine Verbindung und versuch es noch einmal.</string>
     <string name="joining">Beitreten …</string>
 
-    <string name="settings_save_failed">Deine Einstellungen konnten nicht gespeichert werden, es hat sich also nichts geändert. Versuch es noch einmal.</string>
-    <string name="settings_stop_sharing_note">Fotos, die du nicht mehr teilst, erreichen niemanden mehr neu; wer sie schon hat, behält sie. Empfangene Fotos bleiben.</string>
+    <string name="settings_save_failed">Die Änderung konnte nicht gespeichert werden, es hat sich also nichts geändert. Versuch es noch einmal.</string>
+    <string name="stop_sharing_title">Diese Fotos nicht mehr teilen?</string>
+    <string name="stop_sharing_body">Fotos, die du nicht mehr teilst, erreichen niemanden mehr neu; wer sie schon hat, behält sie. Empfangene Fotos bleiben.</string>
+    <string name="stop_sharing_confirm">Nicht mehr teilen</string>
+    <string name="stop_sharing_keep">Weiter teilen</string>
     <string name="switch_title">Event wechseln?</string>
     <string name="switch_confirm">Wechseln</string>
     <string name="switch_body">Du verlässt „%1$s“ und trittst „%2$s“ bei.</string>

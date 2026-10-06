@@ -37,6 +37,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
+import app.snapsync.model.Direction
+import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.TimeZone
 import org.orbitmvi.orbit.test.testWithInternalState
@@ -137,6 +139,29 @@ class StatusContainerHostNetworkTest {
             runCurrent()
             assertEquals(SyncHealth.InSync, host.health())
         }
+    }
+
+    // ── neither sharing nor receiving (capability `sync-status`) ──────────────────────────────
+
+    @Test
+    fun `a membership that neither shares nor receives says so ahead of every attention line`() = runTest {
+        val neither = STARTED.copy(direction = Direction.Neither)
+        assertEquals(SyncHealth.Inactive, host(FakeNetwork(), config = neither).health())
+        // Access, the network, the start and verification all concern photos that no longer move.
+        assertEquals(SyncHealth.Inactive, host(FakeNetwork(), config = neither, permission = GalleryAccess.DENIED).health())
+        assertEquals(SyncHealth.Inactive, host(FakeNetwork(NetworkAccess.Offline), config = neither).health())
+        assertEquals(SyncHealth.Inactive, host(FakeNetwork(), config = NOT_STARTED.copy(direction = Direction.Neither)).health())
+        assertEquals(SyncHealth.Inactive, host(FakeNetwork(), config = neither, attested = false).health())
+    }
+
+    @Test
+    fun `work still draining after both directions are off is shown and not masked`() = runTest {
+        val draining = SyncProgress(pending = 1, completed = 0, total = 1, failed = 0, active = true, estimatedRemaining = null)
+        val health = host(FakeNetwork(), config = STARTED.copy(direction = Direction.Neither), progress = draining).health()
+        assertTrue(health is SyncHealth.Syncing, "an upload still under way is progress, not \"not sharing\": $health")
+        // …and with nothing left, the line says the member moves nothing — with no counts beneath it.
+        val settled = host(FakeNetwork(), config = STARTED.copy(direction = Direction.Neither))
+        assertEquals(null, (settled.container.stateFlow.value.layer as Layer.Joined).counts)
     }
 
     // ── photos kept off mobile data (capability `mobile-data`) ────────────────────────────────

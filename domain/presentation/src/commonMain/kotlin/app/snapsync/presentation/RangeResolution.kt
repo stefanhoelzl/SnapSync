@@ -69,15 +69,14 @@ internal fun resolveFrom(
 }.coerceIn(windowStart, untilResolved)
 
 /**
- * Participation, derived from the two switches.
- *
- * The dead both-off case never reaches a commit — the commit action is disabled there — so its value is
- * inert, and `DownloadOnly` is an arbitrary safe placeholder rather than a meaningful default.
+ * Participation, derived from the two switches. Both off is [Direction.Neither]: the event's settings may apply it
+ * (capability `manage-membership`), while the join gate never commits it — its confirm is disabled there.
  */
 internal fun directionOf(shareOn: Boolean, receiveOn: Boolean): Direction = when {
     shareOn && receiveOn -> Direction.Both
     shareOn -> Direction.UploadOnly
-    else -> Direction.DownloadOnly
+    receiveOn -> Direction.DownloadOnly
+    else -> Direction.Neither
 }
 
 /**

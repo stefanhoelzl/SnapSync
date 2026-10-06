@@ -130,6 +130,7 @@ private fun SyncHealth.toAppSyncStatus(): AppSyncStatus = when (this) {
     )
     is SyncHealth.NoNetwork -> AppSyncStatus.NoNetwork(blocked = notice == NetworkNotice.BLOCKED)
     SyncHealth.NotStarted -> AppSyncStatus.NotStarted
+    SyncHealth.Inactive -> AppSyncStatus.Inactive
     SyncHealth.Unattested -> AppSyncStatus.CannotVerifyDevice
     SyncHealth.Loading -> AppSyncStatus.Loading
     SyncHealth.InSync -> AppSyncStatus.InSync

@@ -34,6 +34,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeout
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
@@ -85,6 +86,8 @@ private class Spy {
     var renameResets = 0
     val reconfigures = mutableListOf<Reconfigure>()
     var reconfigureOutcome = ReconfigureOutcome.Saved
+    /** Whether a landed save is seen in the membership read at once — false plays a read that lags the write. */
+    var configFollows = true
     val diagnostics = mutableListOf<Pair<String, ReportContext>>()
 }
 
@@ -122,6 +125,12 @@ class StatusContainerHostSurfacesTest {
         commands = testCommands(
             reconfigure = { id, direction, from, until, album, mobileData ->
                 spy.reconfigures += Reconfigure(id, direction, from, until, album, mobileData)
+                // A save that lands rewrites the membership, as the use-case does (its clamp is not under test here).
+                if (spy.reconfigureOutcome == ReconfigureOutcome.Saved && spy.configFollows) {
+                    config.value = config.value?.copy(
+                        direction = direction, minPhotoDate = from, maxPhotoDate = until, saveToAlbum = album, mobileData = mobileData,
+                    )
+                }
                 spy.reconfigureOutcome
             },
             rename = { id, name -> spy.renames += id to name },
@@ -240,7 +249,10 @@ class StatusContainerHostSurfacesTest {
             host.surfaces.onOpenReconfigure()
             host.stateWhere("the event-start count") { it.reconfigureCount() == ShareCount.Ready(5) }
 
+            // From now starts later than the whole event: it is asked about, and counted once it applies.
             host.form.onRangePreset(RangeChoice.FROM_NOW)
+            host.stateWhere("the question") { it.settings()?.askingToStopSharing == true }
+            host.settings.onConfirmStopSharing()
             host.stateWhere("the recount for From now") { it.reconfigureCount() == ShareCount.Ready(1) }
             assertEquals(2, asked.distinct().size, "each distinct range is counted, and nothing else")
         }
@@ -262,17 +274,18 @@ class StatusContainerHostSurfacesTest {
     @Test
     fun `no count is asked for while sharing is off`() {
         var asked = 0
-        return onHost(queries = counting { _, _ -> asked++; 3 }) { host ->
+        val spy = Spy()
+        return onHost(spy, queries = counting { _, _ -> asked++; 3 }) { host ->
             host.surfaces.onOpenReconfigure()
             host.stateWhere("the count") { it.reconfigureCount() == ShareCount.Ready(3) }
             host.form.onShareOn(false)
-            host.stateWhere("sharing off") {
-                ((it.layer as? Layer.Joined)?.surface as? JoinedSurface.Reconfigure)?.form?.shareOn == false
-            }
+            host.stateWhere("the question") { it.settings()?.askingToStopSharing == true }
+            host.settings.onConfirmStopSharing()
+            host.stateWhere("sharing off") { it.settings()?.form?.shareOn == false }
+            // With nothing shared a range withdraws nothing, so it applies without asking — and costs no read.
             host.form.onRangePreset(RangeChoice.FROM_NOW)
-            host.stateWhere("the new range") {
-                ((it.layer as? Layer.Joined)?.surface as? JoinedSurface.Reconfigure)?.form?.preset == RangeChoice.FROM_NOW
-            }
+            awaitReconfigures(spy, 2)
+            host.stateWhere("the new range shown") { it.settings()?.form?.preset == RangeChoice.CUSTOM }
             assertEquals(1, asked, "a hidden row must not cost a photo-library read")
         }
     }
@@ -397,145 +410,225 @@ class StatusContainerHostSurfacesTest {
         assertTrue(form.receiveOn)
     }
 
+    /** Await [n] reconfigures on [spy] — they run on the container's own scope, so a test waits rather than assumes. */
+    private suspend fun awaitReconfigures(spy: Spy, n: Int) = withTimeout(5.seconds) {
+        while (spy.reconfigures.size < n) delay(5)
+    }
+
+    private fun UiState.settings(): JoinedSurface.Reconfigure? =
+        (layer as? Layer.Joined)?.surface as? JoinedSurface.Reconfigure
+
+    // ---- settings that apply as they change (capability `manage-membership`) -----------------------
+
     @Test
-    fun `the pre-fill is a snapshot so a refresh landing mid-edit leaves the controls alone`() {
-        // Seeding happens when the surface OPENS, not in the reduction. A foreground refresh updates the
-        // heading; it must not reach into the controls in the member's hand and move them.
-        val config = MutableStateFlow<EventConfig?>(CONFIG)
-        return onHost(config = config) { host ->
+    fun `a change applies at once with the event id and the membership's own bounds`() {
+        // The id rides WITH the values so a switch landing while the settings are open makes the use-case a no-op
+        // rather than overwriting a different membership; a switch never moves the range it does not touch.
+        val spy = Spy()
+        return onHost(spy) { host ->
             host.surfaces.onOpenReconfigure()
             host.reconfigureForm()
             host.form.onSaveToAlbum(true)
-            host.stateWhere("the album edit") {
-                ((it.layer as? Layer.Joined)?.surface as? JoinedSurface.Reconfigure)?.form?.saveToAlbum == true
-            }
-
-            // A refresh lands carrying a different membership shape than the form was seeded from.
-            config.value = CONFIG.copy(saveToAlbum = false, direction = Direction.DownloadOnly)
-            host.stateWhere("the refreshed membership") {
-                (it.layer as? Layer.Joined)?.membership?.direction == Direction.DownloadOnly
-            }
-
-            val form = host.reconfigureForm()
-            assertTrue(form.saveToAlbum, "the refresh reset an edit the member had already made")
-            assertTrue(form.shareOn, "the refresh moved a control the member was not touching")
+            awaitReconfigures(spy, 1)
+            val sent = spy.reconfigures.single()
+            assertEquals(Reconfigure(EVENT_ID, Direction.Both, CONFIG.minPhotoDate, CONFIG.maxPhotoDate, true), sent)
+            val open = host.stateWhere("the album shown on, settings still open") { it.settings()?.form?.saveToAlbum == true }
+            assertEquals(false, open.settings()?.saveFailed)
         }
     }
 
     @Test
-    fun `a save that did not land reopens the surface with the edits and says so`() {
-        // B5's other half: the use case now stops on a failed save and answers SaveFailed. Closing the surface
-        // anyway would read as saved.
+    fun `quick changes apply in order and the last one stands`() {
+        val spy = Spy()
+        val config = MutableStateFlow<EventConfig?>(CONFIG)
+        return onHost(spy, config = config) { host ->
+            host.surfaces.onOpenReconfigure()
+            host.reconfigureForm()
+            host.form.onReceiveOn(false)
+            host.form.onReceiveOn(true)
+            host.form.onReceiveOn(false)
+            awaitReconfigures(spy, 3)
+            assertEquals(listOf(Direction.UploadOnly, Direction.Both, Direction.UploadOnly), spy.reconfigures.map { it.direction })
+            assertEquals(Direction.UploadOnly, config.value?.direction)
+        }
+    }
+
+    @Test
+    fun `quick changes build on each other even while the membership read lags the save`() {
+        // The membership read can trail a save the use-case just made; a change built on it would undo the one before.
+        val spy = Spy().apply { configFollows = false }
+        return onHost(spy, config = MutableStateFlow(CONFIG.copy(direction = Direction.DownloadOnly))) { host ->
+            host.surfaces.onOpenReconfigure()
+            host.reconfigureForm()
+            host.form.onShareOn(true)
+            host.form.onReceiveOn(true)
+            awaitReconfigures(spy, 2)
+            assertEquals(listOf(Direction.Both, Direction.Both), spy.reconfigures.map { it.direction })
+        }
+    }
+
+    @Test
+    fun `a change that did not land shows the setting in effect and says so`() {
+        // The controls never hold a value that is not saved: the album goes back off, and the settings say why.
         val spy = Spy().apply { reconfigureOutcome = ReconfigureOutcome.SaveFailed }
         return onHost(spy) { host ->
             host.surfaces.onOpenReconfigure()
             host.reconfigureForm()
             host.form.onSaveToAlbum(true)
-            host.stateWhere("the edit") {
-                ((it.layer as? Layer.Joined)?.surface as? JoinedSurface.Reconfigure)?.form?.saveToAlbum == true
-            }
-            host.onReconfigure()
-            val surface = host.stateWhere("the failed save") {
-                ((it.layer as? Layer.Joined)?.surface as? JoinedSurface.Reconfigure)?.saveFailed == true
-            }.let { ((it.layer as Layer.Joined).surface as JoinedSurface.Reconfigure) }
-            assertTrue(surface.form.saveToAlbum, "the member's edit is still in hand")
+            val failed = host.stateWhere("the failed change") { it.settings()?.saveFailed == true }
+            assertEquals(false, failed.settings()?.form?.saveToAlbum, "the control shows the setting still in effect")
             assertEquals(1, spy.reconfigures.size)
         }
     }
 
     @Test
-    fun `cancelling closes the surface discarding the edits and touching no port`() {
+    fun `closing writes nothing`() {
         val spy = Spy()
         return onHost(spy) { host ->
             host.surfaces.onOpenReconfigure()
             host.reconfigureForm()
-            host.form.onSaveToAlbum(true)
             host.surfaces.onCancelReconfigure()
-
-            host.stateWhere("the surface closed") {
-                (it.layer as? Layer.Joined)?.surface == JoinedSurface.Status
-            }
-            assertTrue(spy.reconfigures.isEmpty(), "cancel reached the reconfigure use-case")
+            host.stateWhere("the settings closed") { (it.layer as? Layer.Joined)?.surface == JoinedSurface.Status }
+            assertTrue(spy.reconfigures.isEmpty(), "closing reached the reconfigure use-case")
         }
     }
 
     @Test
-    fun `saving carries the edits and the event id the surface was opened for`() {
-        // The id rides WITH the values so a switch landing mid-edit makes the use-case a no-op rather
-        // than overwriting a different membership.
+    fun `switching sharing off asks first and applies only on stop sharing`() {
         val spy = Spy()
         return onHost(spy) { host ->
             host.surfaces.onOpenReconfigure()
             host.reconfigureForm()
             host.form.onShareOn(false)
-            host.form.onSaveToAlbum(true)
-            host.stateWhere("both edits applied") {
-                val form = ((it.layer as? Layer.Joined)?.surface as? JoinedSurface.Reconfigure)?.form
-                form?.saveToAlbum == true && form.shareOn == false
-            }
+            val asking = host.stateWhere("the question") { it.settings()?.askingToStopSharing == true }
+            assertEquals(true, asking.settings()?.form?.shareOn, "sharing stays on until the member confirms")
+            assertTrue(spy.reconfigures.isEmpty(), "a withdrawal applied before it was confirmed")
 
-            host.onReconfigure()
-            host.stateWhere("the surface closed") {
-                (it.layer as? Layer.Joined)?.surface == JoinedSurface.Status
+            host.settings.onConfirmStopSharing()
+            awaitReconfigures(spy, 1)
+            assertEquals(Direction.DownloadOnly, spy.reconfigures.single().direction)
+            host.stateWhere("the question answered, sharing off") {
+                it.settings()?.askingToStopSharing == false && it.settings()?.form?.shareOn == false
             }
-
-            val sent = spy.reconfigures.single()
-            assertEquals(EVENT_ID, sent.eventId)
-            assertEquals(
-                Direction.DownloadOnly,
-                sent.direction,
-                "share off with receive on is a download-only membership",
-            )
-            assertTrue(sent.saveToAlbum)
         }
     }
 
     @Test
-    fun `a phone with folder albums opens a stored album-off membership off — and saves the album it turns on`() {
+    fun `keep sharing drops the held change`() {
+        val spy = Spy()
+        return onHost(spy) { host ->
+            host.surfaces.onOpenReconfigure()
+            host.reconfigureForm()
+            host.form.onShareOn(false)
+            host.stateWhere("the question") { it.settings()?.askingToStopSharing == true }
+            host.settings.onKeepSharing()
+            val kept = host.stateWhere("the question gone") { it.settings()?.askingToStopSharing == false }
+            assertEquals(true, kept.settings()?.form?.shareOn)
+            // A later change proves the dropped one never ran: it is the only reconfigure.
+            host.form.onMobileData(false)
+            awaitReconfigures(spy, 1)
+            assertEquals(Direction.Both, spy.reconfigures.single().direction)
+        }
+    }
+
+    @Test
+    fun `widening applies at once and narrowing asks`() {
+        // Sharing from the 8th of a 6th–13th event: the whole event widens; a later start narrows.
+        val narrowed = CONFIG.copy(minPhotoDate = captureCutoff("2026-07-08T00:00:00Z"))
+        val spy = Spy()
+        return onHost(spy, config = MutableStateFlow(narrowed)) { host ->
+            host.surfaces.onOpenReconfigure()
+            host.reconfigureForm()
+            host.form.onRangePreset(RangeChoice.WHOLE_EVENT)
+            awaitReconfigures(spy, 1)
+            assertEquals(CONFIG.minPhotoDate, spy.reconfigures.single().from, "widened to the event's start")
+
+            host.form.onRangeCustom(LocalDateTime(2026, 7, 10, 0, 0), null)
+            host.stateWhere("the question") { it.settings()?.askingToStopSharing == true }
+            assertEquals(1, spy.reconfigures.size, "a narrower range applied before it was confirmed")
+        }
+    }
+
+    @Test
+    fun `a range narrower at one end and wider at the other asks`() {
+        val middle = CONFIG.copy(
+            minPhotoDate = captureCutoff("2026-07-08T00:00:00Z"),
+            maxPhotoDate = captureCeiling("2026-07-11T00:00:00Z"),
+        )
+        val spy = Spy()
+        return onHost(spy, config = MutableStateFlow(middle)) { host ->
+            host.surfaces.onOpenReconfigure()
+            host.reconfigureForm()
+            // Earlier start (wider), earlier end (narrower): something is withdrawn, so it asks.
+            host.form.onRangeCustom(LocalDateTime(2026, 7, 7, 0, 0), LocalDateTime(2026, 7, 10, 0, 0))
+            host.stateWhere("the question") { it.settings()?.askingToStopSharing == true }
+            assertTrue(spy.reconfigures.isEmpty())
+        }
+    }
+
+    @Test
+    fun `turning off the last direction leaves a membership that does nothing`() {
+        // Receive-only, receiving off: nothing of the member's is shared, so nothing is withdrawn and nothing asks.
+        val spy = Spy()
+        return onHost(spy, config = MutableStateFlow(CONFIG.copy(direction = Direction.DownloadOnly))) { host ->
+            host.surfaces.onOpenReconfigure()
+            host.reconfigureForm()
+            host.form.onReceiveOn(false)
+            awaitReconfigures(spy, 1)
+            assertEquals(Direction.Neither, spy.reconfigures.single().direction)
+        }
+    }
+
+    @Test
+    fun `a change for a membership no longer current closes the settings`() {
+        val spy = Spy().apply { reconfigureOutcome = ReconfigureOutcome.NotCurrent }
+        return onHost(spy) { host ->
+            host.surfaces.onOpenReconfigure()
+            host.reconfigureForm()
+            host.form.onSaveToAlbum(true)
+            host.stateWhere("the settings closed") { (it.layer as? Layer.Joined)?.surface == JoinedSurface.Status }
+        }
+    }
+
+    @Test
+    fun `a phone with folder albums opens a stored album-off membership off — and applies the album it turns on`() {
         // Capability `event-album`: an Android membership joined before Android had the album was saved with it off.
-        // Settings show that choice, carry the phone's album kind for the note, and commit the album once turned on.
+        // Settings show that choice, carry the phone's album kind for the note, and apply the album once turned on.
         val spy = Spy()
         return onHost(spy, config = MutableStateFlow(CONFIG.copy(saveToAlbum = false)), albumKind = AlbumKind.FOLDER) { host ->
             host.surfaces.onOpenReconfigure()
             val form = host.reconfigureForm()
-            assertEquals(AlbumKind.FOLDER, form.albumKind, "the settings surface knows the album is a folder")
+            assertEquals(AlbumKind.FOLDER, form.albumKind, "the settings know the album is a folder")
             assertEquals(false, form.saveToAlbum, "the stored choice is shown as it was saved")
             host.form.onSaveToAlbum(true)
-            host.stateWhere("the album edit applied") {
-                ((it.layer as? Layer.Joined)?.surface as? JoinedSurface.Reconfigure)?.form?.saveToAlbum == true
-            }
-
-            host.onReconfigure()
-            host.stateWhere("the surface closed") { (it.layer as? Layer.Joined)?.surface == JoinedSurface.Status }
+            awaitReconfigures(spy, 1)
             assertEquals(true, spy.reconfigures.single().saveToAlbum)
+            val after = host.stateWhere("the album on") { it.settings()?.form?.saveToAlbum == true }
+            assertEquals(AlbumKind.FOLDER, after.settings()?.form?.albumKind, "the reseeded controls keep the album kind")
         }
     }
 
     @Test
-    fun `settings open with the stored mobile-data choice and save the one turned on`() {
-        // Capability `mobile-data`: a membership joined with mobile data off shows it off in settings, and Save
-        // commits the member's change.
+    fun `settings open with the stored mobile-data choice and apply the one turned on`() {
+        // Capability `mobile-data`: a membership joined with mobile data off shows it off in settings.
         val spy = Spy()
         return onHost(spy, config = MutableStateFlow(CONFIG.copy(mobileData = false))) { host ->
             host.surfaces.onOpenReconfigure()
             assertEquals(false, host.reconfigureForm().mobileData, "the stored choice is shown as it was saved")
             host.form.onMobileData(true)
-            host.stateWhere("the mobile-data edit applied") {
-                ((it.layer as? Layer.Joined)?.surface as? JoinedSurface.Reconfigure)?.form?.mobileData == true
-            }
-
-            host.onReconfigure()
-            host.stateWhere("the surface closed") { (it.layer as? Layer.Joined)?.surface == JoinedSurface.Status }
+            awaitReconfigures(spy, 1)
             assertEquals(true, spy.reconfigures.single().mobileData)
         }
     }
 
     @Test
-    fun `saving with no membership reaches no use-case`() {
+    fun `with the settings closed a form edit reaches no use-case`() {
         val spy = Spy()
-        return onHost(spy, config = MutableStateFlow(null)) { host ->
-            host.onReconfigure()
-            host.stateWhere("the create layer") { it.layer !is Layer.Joined }
+        return onHost(spy) { host ->
+            host.form.onSaveToAlbum(true)
+            host.form.onShareOn(false)
+            host.stateWhere("the joined status") { (it.layer as? Layer.Joined)?.surface == JoinedSurface.Status }
+            delay(50)
             assertTrue(spy.reconfigures.isEmpty())
         }
     }
@@ -543,56 +636,50 @@ class StatusContainerHostSurfacesTest {
     // ---- the form edits ----------------------------------------------------------------------------
 
     @Test
-    fun `a custom range implies the custom preset`() = onHost { host ->
-        // The coupling is the point: a member who picks dates has chosen CUSTOM by that act, so the preset
-        // cannot be left on WHOLE_EVENT with a custom value sitting beside it unused.
+    fun `a confirmed custom range is shown as the custom range in effect`() = onHost { host ->
+        // The coupling is the point: a member who picks dates has chosen CUSTOM by that act. A later start narrows,
+        // so it is asked about first.
         val from = LocalDateTime(2026, 7, 8, 9, 0)
         val until = LocalDateTime(2026, 7, 12, 21, 0)
         host.surfaces.onOpenReconfigure()
         host.reconfigureForm()
         host.form.onRangeCustom(from, until)
-
-        host.stateWhere("the custom range") {
-            val form = ((it.layer as? Layer.Joined)?.surface as? JoinedSurface.Reconfigure)?.form
-            form?.customFrom == from && form.customUntil == until
-        }
-        assertEquals(RangeChoice.CUSTOM, host.reconfigureForm().preset)
+        host.stateWhere("the question") { it.settings()?.askingToStopSharing == true }
+        host.settings.onConfirmStopSharing()
+        val shown = host.stateWhere("the custom range") { it.settings()?.form?.let { f -> f.customFrom == from && f.customUntil == until } == true }
+        assertEquals(RangeChoice.CUSTOM, shown.settings()?.form?.preset)
     }
 
     @Test
-    fun `a custom range with one bound keeps the other one already picked`() = onHost { host ->
-        val from = LocalDateTime(2026, 7, 8, 9, 0)
-        val until = LocalDateTime(2026, 7, 12, 21, 0)
-        host.surfaces.onOpenReconfigure()
-        host.reconfigureForm()
-        host.form.onRangeCustom(from, until)
-        host.form.onRangeCustom(null, LocalDateTime(2026, 7, 11, 21, 0))
-
-        host.stateWhere("the new end") {
-            ((it.layer as? Layer.Joined)?.surface as? JoinedSurface.Reconfigure)
-                ?.form?.customUntil == LocalDateTime(2026, 7, 11, 21, 0)
+    fun `a custom range with one bound keeps the other one in effect`() {
+        val middle = CONFIG.copy(
+            minPhotoDate = captureCutoff("2026-07-08T09:00:00Z"),
+            maxPhotoDate = captureCeiling("2026-07-12T21:00:00Z"),
+        )
+        val spy = Spy()
+        return onHost(spy, config = MutableStateFlow(middle)) { host ->
+            host.surfaces.onOpenReconfigure()
+            host.reconfigureForm()
+            host.form.onRangeCustom(null, LocalDateTime(2026, 7, 11, 21, 0))
+            host.stateWhere("the question") { it.settings()?.askingToStopSharing == true }
+            host.settings.onConfirmStopSharing()
+            awaitReconfigures(spy, 1)
+            assertEquals(middle.minPhotoDate, spy.reconfigures.single().from, "the start in effect is kept")
         }
-        assertEquals(from, host.reconfigureForm().customFrom)
     }
 
     @Test
-    fun `a preset tap replaces a custom choice without clearing the values behind it`() = onHost { host ->
-        val from = LocalDateTime(2026, 7, 8, 9, 0)
-        host.surfaces.onOpenReconfigure()
-        host.reconfigureForm()
-        host.form.onRangeCustom(from, null)
-        host.stateWhere("the custom date") {
-            ((it.layer as? Layer.Joined)?.surface as? JoinedSurface.Reconfigure)?.form?.customFrom == from
+    fun `a preset after a custom range widens back to the whole event`() {
+        val middle = CONFIG.copy(minPhotoDate = captureCutoff("2026-07-08T09:00:00Z"))
+        val spy = Spy()
+        return onHost(spy, config = MutableStateFlow(middle)) { host ->
+            host.surfaces.onOpenReconfigure()
+            assertEquals(RangeChoice.CUSTOM, host.reconfigureForm().preset)
+            host.form.onRangePreset(RangeChoice.WHOLE_EVENT)
+            awaitReconfigures(spy, 1)
+            assertEquals(CONFIG.minPhotoDate to CONFIG.maxPhotoDate, spy.reconfigures.single().let { it.from to it.until })
+            host.stateWhere("the whole event shown") { it.settings()?.form?.preset == RangeChoice.WHOLE_EVENT }
         }
-
-        host.form.onRangePreset(RangeChoice.WHOLE_EVENT)
-        host.stateWhere("the preset back") {
-            ((it.layer as? Layer.Joined)?.surface as? JoinedSurface.Reconfigure)
-                ?.form?.preset == RangeChoice.WHOLE_EVENT
-        }
-
-        // Kept, so the calendar reopens on what the member picked rather than on an empty range.
-        assertEquals(from, host.reconfigureForm().customFrom)
     }
 
     // ---- rename and diagnostics --------------------------------------------------------------------

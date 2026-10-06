@@ -1942,6 +1942,28 @@ class StatusContainerHostTest {
 class StatusContainerHostJoinGateTest {
 
     @Test
+    fun `a confirm with both switches off joins nothing`() = runTest {
+        var commits = 0
+        firstJoinGate(
+            GalleryAccess.GRANTED, SpyRequester(),
+            commitJoin = { _ -> commits++; JoinCommit.Failed },
+        ).testWithInternalState(this) {
+            runOnCreate()
+            containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
+            skipItems(1)
+            containerHost.form.onShareOn(false)
+            containerHost.form.onReceiveOn(false)
+            containerHost.onConfirmJoin()
+            // A later intent lands only after the confirm ran (intents run in order), so this proves it did nothing.
+            containerHost.form.onShareOn(true)
+            do { val s = awaitInternalState() } while ((s.layer as? Layer.JoiningEvent)?.form?.shareOn != true)
+            cancelAndIgnoreRemainingItems()
+        }
+        // A join always carries a direction (capability `join-event`): Neither is never committed.
+        assertEquals(0, commits)
+    }
+
+    @Test
     fun `an invalid deeplink over an open join surface shows its notice there and leaves the join untouched`() = runTest {
         // Capability `join-event`: the message shows on WHATEVER screen the user is on — the open join
         // screen included — and a damaged link changes nothing, so the pending join stays exactly as it was.

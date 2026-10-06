@@ -325,15 +325,17 @@ sealed interface JoinedSurface {
     data object Status : JoinedSurface
 
     /**
-     * The in-place settings surface (capability `manage-membership`), pre-filled from the
-     * membership and carrying the member's uncommitted edits until Save or Cancel.
+     * The event's settings, open over the joined status (capability `manage-membership`): the membership in effect,
+     * each change applied as it is made.
      */
     @Serializable
     data class Reconfigure(
         val form: RangeForm,
         val range: ResolvedRange,
-        /** The last Save did not land: the surface stays open with the edits, and says so. */
+        /** The last change did not land: the controls show the setting still in effect, and the settings say so. */
         val saveFailed: Boolean = false,
+        /** A change that would withdraw photos (sharing off, a narrower range) waits on "Stop sharing these photos?". */
+        val askingToStopSharing: Boolean = false,
     ) : JoinedSurface
 }
 
@@ -517,6 +519,15 @@ sealed interface SyncHealth {
     /** Joined, permission granted, but persisted state has not been read yet — a neutral first frame. */
     @Serializable
     data object Loading : SyncHealth
+
+    /**
+     * The member switched both sharing and receiving off (capability `sync-status`): they stay in the event and
+     * nothing moves. First after [Loading] — access, the network, the start and verification all concern photos
+     * that no longer move — and reached only once nothing is left in either direction, so work still draining in a
+     * switched-off direction reads as [Syncing], never masked. Carries no counts.
+     */
+    @Serializable
+    data object Inactive : SyncHealth
 
     /** Everything shared and received — the settled state (no arrows). */
     @Serializable

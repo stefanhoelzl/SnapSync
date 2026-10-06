@@ -103,6 +103,7 @@ import app.snapsync.ui.components.resources.range_starts
 import app.snapsync.ui.components.resources.status_allow_access
 import app.snapsync.ui.components.resources.status_allow_access_settings
 import app.snapsync.ui.components.resources.status_in_sync
+import app.snapsync.ui.components.resources.status_inactive
 import app.snapsync.ui.components.resources.status_not_started
 import app.snapsync.ui.components.resources.status_sync_ongoing
 import app.snapsync.ui.components.resources.status_sync_pending
@@ -151,6 +152,16 @@ import app.snapsync.ui.resources.qr_sheet_title
 import app.snapsync.ui.resources.share_invite
 import app.snapsync.ui.resources.show_qr
 import app.snapsync.ui.resources.share_toggle
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.click
+import androidx.compose.ui.geometry.Offset
+import app.snapsync.ui.resources.receive_toggle
+import app.snapsync.ui.resources.album_toggle
+import app.snapsync.ui.resources.mobile_data_toggle
+import app.snapsync.ui.resources.stop_sharing_title
+import app.snapsync.ui.resources.stop_sharing_keep
+import app.snapsync.ui.resources.stop_sharing_confirm
+import app.snapsync.ui.resources.stop_sharing_body
 import app.snapsync.ui.resources.store_app_store
 import app.snapsync.ui.resources.store_google_play
 import app.snapsync.ui.resources.timing_ended
@@ -219,12 +230,13 @@ private fun reconfiguring(
     membership: EventConfig = MEMBERSHIP,
     form: RangeForm = RangeForm(),
     saveFailed: Boolean = false,
+    askingToStopSharing: Boolean = false,
 ) = UiState(
     Layer.Joined(
         membership = membership,
         inviteUrl = SAMPLE_INVITE,
         health = SyncHealth.InSync,
-        surface = JoinedSurface.Reconfigure(form, reconfigureResolved(membership, form), saveFailed),
+        surface = JoinedSurface.Reconfigure(form, reconfigureResolved(membership, form), saveFailed, askingToStopSharing),
     ),
 )
 
@@ -400,6 +412,15 @@ class StatusScreenTest {
         // It is information, not an action: no arrows, no "Up to date", and no counts.
         onNodeWithText(str(ComponentRes.string.status_in_sync)).assertDoesNotExist()
         onNodeWithText(str(ComponentRes.string.status_sync_pending)).assertDoesNotExist()
+        onNode(countsText()).assertDoesNotExist()
+    }
+
+    @Test
+    fun `a membership that neither shares nor receives says so without counts`() = runComposeUiTest {
+        setContent { TestStatusScreen(joined(SyncHealth.Inactive), cutoff = fixedCutoff()) }
+        onNodeWithText(str(ComponentRes.string.status_inactive)).assertExists()
+        // It replaces "Up to date", and nothing is counted: nothing moves.
+        onNodeWithText(str(ComponentRes.string.status_in_sync)).assertDoesNotExist()
         onNode(countsText()).assertDoesNotExist()
     }
 
@@ -1167,9 +1188,11 @@ class StatusScreenTest {
     }
 
     @Test
-    fun `the rename pen is absent while the reconfigure surface is open`() = runComposeUiTest {
+    fun `the joined screen stays beneath the open settings`() = runComposeUiTest {
+        // The settings are a sheet OVER the joined screen (capability `manage-membership`): the heading is still there.
         setContent { TestStatusScreen(reconfiguring(), cutoff = fixedCutoff()) }
-        onNodeWithContentDescription(str(Res.string.rename_event)).assertDoesNotExist()
+        onNodeWithText("Anna's Birthday").assertExists()
+        onNodeWithText(str(Res.string.share_toggle)).assertExists()
     }
 
     @Test
@@ -1395,18 +1418,20 @@ class StatusScreenTest {
     }
 
     @Test
-    fun `the reconfigure surface renders its controls and its own action cluster`() = runComposeUiTest {
+    fun `the settings show every choice and no Save or Cancel`() = runComposeUiTest {
+        // Each change applies as it is made (capability `manage-membership`): there is nothing to commit or discard.
         setContent { TestStatusScreen(reconfiguring(), cutoff = fixedCutoff()) }
-        onNodeWithText(str(Res.string.save)).assertExists()
-        onNodeWithText(str(Res.string.share_toggle)).assertExists()
-        onNodeWithText(str(Res.string.cancel)).assertExists()
+        for (choice in listOf(Res.string.share_toggle, Res.string.receive_toggle, Res.string.album_toggle, Res.string.mobile_data_toggle)) {
+            onNodeWithText(str(choice)).assertExists()
+        }
+        onNodeWithText(str(Res.string.save)).assertDoesNotExist()
+        onNodeWithText(str(Res.string.cancel)).assertDoesNotExist()
     }
 
     @Test
-    fun `a failed save keeps the surface and says nothing changed`() = runComposeUiTest {
+    fun `a change that did not land is said at the top of the settings`() = runComposeUiTest {
         setContent { TestStatusScreen(reconfiguring(saveFailed = true), cutoff = fixedCutoff()) }
         onNodeWithText(str(Res.string.settings_save_failed)).assertExists()
-        onNodeWithText(str(Res.string.save)).assertExists()
     }
 
     @Test
@@ -1467,39 +1492,43 @@ class StatusScreenTest {
     }
 
     @Test
-    fun `saving asks the container to commit carrying no values of its own`() = runComposeUiTest {
-        // What a Save COMMITS is what the reduction resolved — the surface renders that resolution and
-        // asks for it to be applied. That the committed values round-trip a no-edit Save is
-        // `StatusContainerHostTest`'s to prove; here the question is only that Save reaches the container.
-        var saved = 0
+    fun `withdrawing photos asks first and each answer reaches the container`() = runComposeUiTest {
+        var stopped = 0
+        var kept = 0
+        val state = mutableStateOf(reconfiguring(askingToStopSharing = true))
         setContent {
             TestStatusScreen(
-                reconfiguring(),
+                state.value,
                 cutoff = fixedCutoff(),
-                actions = testActions(joined = testJoinedActions(onReconfigure = { saved++ })),
+                actions = testActions(joined = testJoinedActions(onStopSharing = { stopped++ }, onKeepSharing = { kept++ })),
             )
         }
-        onNodeWithText(str(Res.string.save)).performClick()
-        assertEquals(1, saved)
+        onNodeWithText(str(Res.string.stop_sharing_title)).assertExists()
+        // The narrowing statement: whoever already has the photos keeps them.
+        onNodeWithText(str(Res.string.stop_sharing_body)).assertExists()
+        onNodeWithText(str(Res.string.stop_sharing_confirm)).performClick()
+        assertEquals(1 to 0, stopped to kept)
+        onNodeWithText(str(Res.string.stop_sharing_keep)).performClick()
+        assertEquals(1 to 1, stopped to kept)
+        state.value = reconfiguring()
+        waitForIdle()
+        onNodeWithText(str(Res.string.stop_sharing_title)).assertDoesNotExist()
     }
 
     @Test
-    fun `cancelling asks the container to discard touching nothing else`() = runComposeUiTest {
-        var cancelled = 0
-        var saved = 0
+    fun `a tap on the joined screen above the settings closes them`() = runComposeUiTest {
+        var closed = 0
         setContent {
             TestStatusScreen(
                 reconfiguring(),
                 cutoff = fixedCutoff(),
-                actions = testActions(
-                    joined = testJoinedActions(onReconfigure = { saved++ }),
-                    surfaces = testSurfaceActions(onCancelReconfigure = { cancelled++ }),
-                ),
+                actions = testActions(surfaces = testSurfaceActions(onCancelReconfigure = { closed++ })),
             )
         }
-        onNodeWithText(str(Res.string.cancel)).performClick()
-        assertEquals(1, cancelled)
-        assertEquals(0, saved, "Cancel commits nothing")
+        // The scrim spans the screen and its centre is under the sheet: tap the strip it shows at the top.
+        onNodeWithContentDescription("Close sheet").performTouchInput { click(Offset(centerX, 5f)) }
+        waitForIdle()
+        assertEquals(1, closed)
     }
 
     // ---- joined layer: the heading's joined statement and dates (capability `sync-status`) ----

@@ -39,9 +39,9 @@ import co.touchlab.kermit.Logger
  *   **cancels in-flight downloads**, so foreign photos stop arriving once the member turns receive off.
  *
  * After the album is ensured, [gatherAlbum] starts the event album's **gather** (capability `event-album`):
- * placing what the device already holds for the event. On every Save, not only one that turns the album on,
+ * placing what the device already holds for the event. On every change, not only one that turns the album on,
  * because a lowered cutoff or a changed direction changes that set too. The composition backs it with a
- * **detached** launch — the reconfigure command is awaited by Save, and a gather's cost grows with the photos
+ * **detached** launch — the reconfigure command is awaited by the settings, and a gather's cost grows with the photos
  * held — and the gather carries its own opt-in/access gate, so the call is unconditional here.
  *
  * All side effects are injected as `model`-typed lambdas built in `compose/` (the arm/album/download seams
@@ -129,7 +129,7 @@ class ReconfigureEvent(
         // coordinator's own leading guard (capability `event-album`).
         steps.bestEffort("ensure album") { ensureAlbum(newCfg) }
         // Then gather what the device already holds into it — after the ensure, which the gather never does
-        // itself. Detached by the composition, so Save does not wait on it (capability `event-album`).
+        // itself. Detached by the composition, so the settings do not wait on it (capability `event-album`).
         steps.bestEffort("gather album") { gatherAlbum(newCfg) }
         // Download arm: reconcile on enable; cancel in-flight downloads on disable.
         if (direction.includesDownload) {

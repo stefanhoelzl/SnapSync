@@ -154,7 +154,6 @@
     <string name="counts_received">%1$d received</string>
     <string name="counts_not_receiving">Not receiving</string>
     <string name="waiting_members">Waiting for %1$d of %2$d members</string>
-    <string name="event_settings">Event settings</string>
     <string name="footer_settings">Settings</string>
     <string name="share_invite">Share</string>
     <string name="leave_event">Leave</string>
@@ -197,9 +196,12 @@
     <string name="joining">Joining …</string>
 
     <!-- The event's settings, and switching events. -->
-    <string name="settings_save_failed">Your settings couldn't be saved, so nothing changed. Try again.</string>
+    <string name="settings_save_failed">That change couldn't be saved, so nothing changed. Try again.</string>
     <!-- Implies no deletion: a member who already has a photo keeps it. -->
-    <string name="settings_stop_sharing_note">Photos you stop sharing won't reach anyone new; whoever already has them keeps them. Photos you've received stay.</string>
+    <string name="stop_sharing_title">Stop sharing these photos?</string>
+    <string name="stop_sharing_body">Photos you stop sharing won't reach anyone new; whoever already has them keeps them. Photos you've received stay.</string>
+    <string name="stop_sharing_confirm">Stop sharing</string>
+    <string name="stop_sharing_keep">Keep sharing</string>
     <string name="switch_title">Switch events?</string>
     <string name="switch_confirm">Switch</string>
     <!-- %1$s is the current event's name, %2$s the new one's. -->
