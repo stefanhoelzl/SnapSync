@@ -17,6 +17,7 @@ import { mintToken } from "../../src/attest.ts";
 import { sqliteDb } from "../../src/dev/db-sqlite.ts";
 import { type Db, enroll, insertEvent } from "../../src/db.ts";
 import { replay } from "../../src/dev/replay.ts";
+import { formatLine, type LogSink } from "../../src/request-log.ts";
 
 export const NOW = Date.parse("2026-07-14T12:00:00Z");
 
@@ -139,6 +140,11 @@ export function createApp(deps: Omit<Deps, "now">) {
  */
 export function createRealApp(deps: Deps) {
   return createAppUnquiet({ logSink: () => {}, ...deps });
+}
+
+/** A sink that collects each record as its console line — what a test that asserts a line reads. */
+export function lineSink(lines: string[]): LogSink {
+  return (record) => void lines.push(formatLine(record));
 }
 
 /** Give a device the attestation row every device-scoped write now requires (`docs/architecture.md`). */

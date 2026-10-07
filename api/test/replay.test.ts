@@ -39,6 +39,7 @@ Deno.test("replaying the repository's migrations builds the schema, and re-runni
     "event_assets",
     "events",
     "memberships",
+    "request_log",
     "resources",
     "union_log",
   ]);

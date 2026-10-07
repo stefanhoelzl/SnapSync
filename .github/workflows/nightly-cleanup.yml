@@ -38,6 +38,10 @@ on:
         description: "List what would be deleted without deleting anything"
         type: boolean
         default: false
+      date:
+        description: "The UTC day whose request log is counted and whose 5xx are reported (YYYY-MM-DD; default: yesterday)"
+        type: string
+        default: ""
 
 # The sweep mutates nothing in the repo; it needs no write permissions.
 permissions:
@@ -65,7 +69,13 @@ jobs:
       # counted in the summary.
       # The sweep resolves the SAME deployment the Edge Script ships, so it can never enumerate a
       # different zone than the api reads. Renderings are generated, never committed.
+      #
+      # `SENTRY_DSN` renders the deployment's DSN, as deploy.yml's resolve does for the edge: the sweep reports
+      # the previous day's 5xx request-log rows to Bugsink with it (`src/scripts/request-log-report.ts`). A
+      # run with 5xx to report and no DSN fails rather than lose the report.
       - name: Resolve the deployment
+        env:
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         run: python3 scripts/resolve-deployment.py prod
 
       - name: Run the sweep
@@ -76,4 +86,5 @@ jobs:
           BUNNY_DATABASE_AUTH_TOKEN: ${{ secrets.BUNNY_DATABASE_AUTH_TOKEN }}
         run: |
           deno run --allow-net --allow-env --allow-write="$GITHUB_STEP_SUMMARY" src/scripts/sweep.ts \
-            ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run) && '--dry-run' || '' }}
+            ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run) && '--dry-run' || '' }} \
+            ${{ (github.event_name == 'workflow_dispatch' && inputs.date != '') && format('--date={0}', inputs.date) || '' }}

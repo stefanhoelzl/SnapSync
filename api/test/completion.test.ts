@@ -15,6 +15,7 @@ import {
   D2,
   E,
   enrolDevice,
+  lineSink,
   NOW,
   recorder,
   rows,
@@ -62,7 +63,7 @@ async function twoMembers(db: Store) {
     config: await apnsConfig(),
     db,
     fetch: fetchImpl,
-    logSink: (l) => lines.push(l),
+    logSink: lineSink(lines),
   });
   await app.request(JOIN(D), { method: "PUT" });
   await app.request(JOIN(D2), { method: "PUT", headers: await as(D2) });
@@ -210,7 +211,7 @@ Deno.test("byte landing → stamps the clock's anchor on the event it completed 
     config: CONFIG,
     db,
     fetch: recorder().fetchImpl,
-    logSink: (l) => lines.push(l),
+    logSink: lineSink(lines),
   });
   await app.request(JOIN(D), { method: "PUT" });
   await app.request(MANIFEST(D), { method: "PUT", body: body([ASSET]) });

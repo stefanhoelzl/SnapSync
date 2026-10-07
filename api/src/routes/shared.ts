@@ -378,14 +378,17 @@ export function sharedRoutes(deps: RouteDeps): Hono {
           at: new Date(now()).toISOString(),
         });
       } catch (e) {
-        c.var.log.error(`union: could not log the read of ${eventId} (best-effort): ${e}`);
+        c.var.log.error(
+          "read-log",
+          `union: could not log the read of ${eventId} (best-effort): ${e}`,
+        );
       }
       c.var.log.field("served", assets.length);
       c.var.log.field("trigger", trigger ?? "-");
       if (reader !== null) {
         const declared = declaredAppVersion(c.req.url, c.req.header(APP_VERSION_HEADER));
         const failed = await noteAppVersion(db, reader, declared, "union");
-        if (failed) c.var.log.error(failed);
+        if (failed) c.var.log.error("app-version", failed);
       }
 
       c.header("Cache-Control", NO_CACHE); // a `url` may be a time-limited presign; a cursor is a moment

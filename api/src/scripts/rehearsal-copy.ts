@@ -66,6 +66,14 @@ export const VERBATIM: Readonly<Record<string, ReadonlySet<string>>> = {
  */
 export const VERBATIM_TABLES: ReadonlySet<string> = new Set(["__bunny_migrations"]);
 
+/**
+ * Tables whose SCHEMA is copied but not their rows. `request_log` is the operator's request log (migration
+ * 0012): its URLs and fields are ids through and through, and its `fields` is one JSON object a token
+ * rewrite cannot keep valid (`true` and an escape are tokens too), so its CHECK would refuse the copy. No
+ * migration matches on a log row, so the rehearsal loses nothing it could test.
+ */
+export const SCHEMA_ONLY_TABLES: ReadonlySet<string> = new Set(["request_log"]);
+
 const HEX = "0123456789abcdef";
 const DIGITS = "0123456789";
 const UPPER = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -237,7 +245,7 @@ export async function copyStore(source: Client, target: Client, p: Pseudonymiser
   const tables = schema.filter((o) => o.type === "table").map((o) => o.name);
   let rows = 0;
   let rewritten = 0;
-  for (const table of tables) {
+  for (const table of tables.filter((t) => !SCHEMA_ONLY_TABLES.has(t))) {
     const copy = await copyOf(source, table, p);
     for (let i = 0; i < copy.inserts.length; i += 500) {
       await target.migrate(copy.inserts.slice(i, i + 500));

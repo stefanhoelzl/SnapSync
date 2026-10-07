@@ -18,6 +18,7 @@ import {
   D,
   D2,
   E,
+  lineSink,
   NOW,
   recorder,
   rows,
@@ -82,7 +83,7 @@ const bare = (db: Db, lines: string[] = []) =>
     fetch: recorder().fetchImpl,
     now: () => NOW,
     buildSha: "x",
-    logSink: (l) => lines.push(l),
+    logSink: lineSink(lines),
   });
 /** The app as a current v2 build sends it: the version header, plus whatever `headers` add. */
 const app2 = (db: Db, headers: Record<string, string> = {}, lines: string[] = []) => {
@@ -229,7 +230,8 @@ Deno.test("reads → a failing log write never fails the read", async () => {
   assertEquals(res.status, 200);
   assertEquals((await res.json() as Asset[]).length, 1);
   assert(
-    lines[0].includes(' err="union: could not log the read of ') && lines[0].includes("log down"),
+    lines[0].includes(' read-log="union: could not log the read of ') &&
+      lines[0].includes("log down"),
     lines[0],
   );
   db.close();

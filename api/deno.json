@@ -35,6 +35,9 @@
     "dev:tunnel": "deno task config:local && deno run --allow-net --allow-read --allow-write --allow-run --allow-env=FCM_SERVICE_ACCOUNT_KEY src/dev/serve.ts --tunnel",
     "bundle": "deno task config && deno bundle --sourcemap=external src/main.ts -o dist/main.js",
     "bundle:maintenance": "deno task config:maintenance && deno bundle --sourcemap=external src/main.ts -o dist/main.js",
+    // The api's request log, read from the store (`src/scripts/logs.ts`; `--help` for the filters). Dev infra:
+    // run it under secrets-env for the deployed store's read-only token, or with `--db <file>` for a local rig.
+    "logs": "deno run --allow-net --allow-env --allow-read --allow-write src/scripts/logs.ts",
     "lint": "deno lint",
     "fmt": "deno fmt"
   },

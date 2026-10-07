@@ -41,6 +41,7 @@ import { putAttestation } from "../db.ts";
 import { DEV_ATTEST_TTL_MS, deviceNamedBy, enrolmentTarget } from "./fallback.ts";
 import { DEV_TOKEN_DEVICE_ID, devConfig } from "./config.ts";
 import { sqliteDb } from "./db-sqlite.ts";
+import { storeSink } from "../request-log-store.ts";
 import { replay } from "./replay.ts";
 import { fsFetch, withFcmPassthrough } from "./fs-storage.ts";
 import { startTunnel, type Tunnel } from "./tunnel.ts";
@@ -114,7 +115,14 @@ await Deno.mkdir(options.store, { recursive: true });
 const db = sqliteDb(`${options.store}/api.db`);
 await replay(db);
 
-const app = createApp({ config, db, fetch: withFcmPassthrough(storage, config) });
+// The request log kept as the deployed one is: a line on the console and a row in the rig's store, so
+// `deno task logs --db <store>/api.db` reads a local run the way it reads production.
+const app = createApp({
+  config,
+  db,
+  fetch: withFcmPassthrough(storage, config),
+  logSink: storeSink(db),
+});
 
 // Unauthenticated callers get a token minted for the device the PATH names, because the app refuses a
 // token on any other device's route (`actsFor`, 403) — so a curl, a simulator (no App Attest) and the
