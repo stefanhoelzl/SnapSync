@@ -298,7 +298,7 @@ export function siteRoutes({ fetchImpl, config, db, now }: RouteDeps, buildSha: 
   // causes is the probe's job, from the combination of status and body.
   //
   // `NO_CACHE` because the pull zone must never answer a probe from the PREVIOUS deploy's copy — which is
-  // exactly the false green this exists to prevent. Root-mounted, never under `/api/v1`: no device calls
+  // exactly the false green this exists to prevent. Root-mounted, never under `/api/vN`: no device calls
   // it, so a future `/api/vN` should neither duplicate nor strand it. It is also NOT gated by the
   // maintenance middleware (`app.ts`) — it is how the deploy learns the window's state, so gating it would
   // blind the thing that lifts the window.

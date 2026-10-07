@@ -548,7 +548,9 @@ retries forever, so an outage delays uploads but loses none.
 > documents `no-cache`).
 
 **The HTTP API is not a user contract.** It is bounded by the minimum app version (`426`, below),
-and each version is frozen only while builds that speak it are served. `/api/v1` is frozen outright.
+and each version is frozen only while builds that speak it are served. `/api/v1` is retired: every request
+to it is answered `426` with the minimum, never `404` — a pre-0.4 build reads a `404` on the event read as a
+deleted event (`changes/separate-event-page-from-device-api` D6).
 `/api/v2` is frozen for **compatible changes only** since 0.4, its first App Store build: an addition 0.4
 ignores (a new route, a new optional response field) is fine, and anything 0.4 would misread is breaking.
 A breaking change goes to `/api/v3`, or ships with a deliberate `MIN_APP_VERSION` bump that sends 0.4 to
@@ -616,8 +618,8 @@ The generated snapshot is `api/schema.sql` (section "Database" below).
   its membership, so completion and a dropped event take it. Its `path` is where the bytes are —
   `files/<eventId>/<sha256>` for every byte written since, `files/devices/<deviceId>/<key>` for one written
   before — and every reader follows it; none composes a layout. A photo in two events is two resources and
-  two objects. The wire's `key` (`<assetId>-<role>.<ext>`, the union's and v1's listing) is derived from
-  `asset_id`/`role`/`filename` (`legacyKeyFor`), so installed clients see the string they always did.
+  two objects. The wire's `key` (`<assetId>-<role>.<ext>`, the union's) is derived from
+  `asset_id`/`role`/`filename` (`objectNameFor`), so installed clients see the string they always did.
   It hangs off the membership, not `event_assets`: a publish deletes and re-inserts those, and a byte may
   land before its declaration.
 - **Row existence is the upload record.** There is no upload-state column, and the backend records only
@@ -631,7 +633,8 @@ The generated snapshot is `api/schema.sql` (section "Database" below).
   no read serves those. A delta is the `gained` rows past the cursor, put through the union's own
   declaration and completeness filter. Every union read logs a `fetch` row, best-effort. The log is
   deleted when an event completes (with the photos, capability `privacy-security`), and cascades with
-  the event row. v1's writes log nothing (v1 is frozen); their assets reach v2 readers through full reads.
+  the event row. Assets a v1 build wrote before v1's retirement are in no `gained` row; they reach readers
+  through full reads.
 - **A `devices` row exists iff the device attested.** Push registration is an `UPDATE` and never
   creates a row.
 - **Bounds** (policy in `deployments/components/policy.json`): capture window `[startsAt, endsAt]` of
@@ -660,7 +663,8 @@ Top-level Hono middleware in `src/app.ts`, in this order:
    authentication. The other root routes keep serving.
 2. **Version gate** (v2 only). The `x-snapsync-app-version` header must be at least `minAppVersion`
    (in source, `src/config.ts`, pinned by `min-app-version-floor.test.ts`, deliberately not config).
-   Absent, unparseable and too old all get `426 {error, minAppVersion}`. v1 is exempt.
+   Absent, unparseable and too old all get `426 {error, minAppVersion}`. Ahead of it, every `/api/v1` path
+   gets the same `426` (`isRetiredVersion`): v1 is retired.
 3. **Token gate.** Every route requires a device token: a backend-minted, HMAC-signed bearer that can
    only be obtained through App Attest. **Verifying touches nothing** (one HMAC compare, no store read,
    no Apple call), because it sits on the streaming upload hot path. A route that needs the device record
@@ -678,7 +682,7 @@ Top-level Hono middleware in `src/app.ts`, in this order:
 
 4. **Device binding** (per route, `actsFor` in `src/routes/support.ts`). The token names the device it was minted for,
    and every route that names a device in its path (join, leave, manifest, byte upload, device listing, push
-   registration, under v1 and v2 alike) refuses any other id with `403 not this device`, before reading or
+   registration) refuses any other id with `403 not this device`, before reading or
    writing anything. It is `403`, not `401`: the credential is valid, and a `401` from a gated route makes
    the client drop its token and re-attest, which would loop. Device ids are not secret (the ungated union
    lists every member's), so without this any genuine install could act as any member. The binding judges
@@ -698,7 +702,7 @@ not listed is `404` (no `405`) and makes no upstream request.
 | method | path | does | answers |
 |---|---|---|---|
 | `GET` | `/attest/challenge` | stateless HMAC-signed, time-bounded nonce, writes nothing | `200 {challenge}` |
-| `POST` | `/attest/token` `{deviceId, challenge, proof}`, `proof` = `{format:"apple-appattest", keyId, attestation}` or `{format:"android-key", chain:[DER b64, leaf first]}` | the format only CHOOSES the verifier. App Attest: chain to Apple root, nonce, app-id hash, counter, aaguid. Android key attestation (`src/android-attest.ts`): chain to a pinned Google root (by key), its provisioning shape, one extension in the leaf, validity (expiry ignored on factory chains), revocation (Google's public status list, cached per `max-age`), the challenge's SHA-256, the package and signing digest, TEE/StrongBox and a locked, verified boot — the last three per `androidAttestationTrust`. **Persists the device row with the platform that proved it, then mints** | `201 {token}` · `400` body (a flat v1 body too) · `401` failed check, its body `attestation rejected: <reason>` with the reason one of `device-modified` (software key, unlocked or unverified boot) · `app-not-genuine` (package, signing digest, App Attest app-id hash) · `device-unverifiable` (every other check — the default, which never accuses the user), suffixed ` (certificate)` when a certificate check failed (the chain's root, shape, signatures or validity, or a revoked certificate — diagnostics only, never told to the user); v1's body stays a bare `attestation rejected` · `409` stale challenge · `502` write failed, or Android's status list unreachable |
+| `POST` | `/attest/token` `{deviceId, challenge, proof}`, `proof` = `{format:"apple-appattest", keyId, attestation}` or `{format:"android-key", chain:[DER b64, leaf first]}` | the format only CHOOSES the verifier. App Attest: chain to Apple root, nonce, app-id hash, counter, aaguid. Android key attestation (`src/android-attest.ts`): chain to a pinned Google root (by key), its provisioning shape, one extension in the leaf, validity (expiry ignored on factory chains), revocation (Google's public status list, cached per `max-age`), the challenge's SHA-256, the package and signing digest, TEE/StrongBox and a locked, verified boot — the last three per `androidAttestationTrust`. **Persists the device row with the platform that proved it, then mints** | `201 {token}` · `400` body (the retired flat v1 body too) · `401` failed check, its body `attestation rejected: <reason>` with the reason one of `device-modified` (software key, unlocked or unverified boot) · `app-not-genuine` (package, signing digest, App Attest app-id hash) · `device-unverifiable` (every other check — the default, which never accuses the user), suffixed ` (certificate)` when a certificate check failed (the chain's root, shape, signatures or validity, or a revoked certificate — diagnostics only, never told to the user) · `409` stale challenge · `502` write failed, or Android's status list unreachable |
 | `POST` | `/attest/renew` `{deviceId, assertion, challenge}` | verifies by the STORED row's `attest_platform`: an App Attest assertion, or an Android ECDSA-P256 signature over the challenge's UTF-8 bytes, against the stored key (no vendor call); advances expiry, then mints | `201 {token}` · `401` no attestation / refused · `409` stale challenge · `502` read/write failure (never `401`: that would force a throttled re-attestation) |
 | `POST` | `/events` `{name, startsAt, endsAt?, zone?, keyId?}` | name trimmed, non-empty, ≤100 chars; window rules; `zone` stored when usable, else NULL (never a `400`); `keyId` (16 lowercase hex — the encrypted file format's key id) makes the event **encrypted**, and a present invalid one is a `400`, never a plain event; backend mints the id | `201 {eventId, name, createdAt, startsAt, endsAt, capacity, deletesAt, keyId?}` (`keyId` only on an encrypted event, in every event body) · `400` · `502` |
 | `GET`/`HEAD` | `/events/<eventId>` (ungated) | metadata; `deletesAt` derived per response; `closedAt`, `completedAt`, `members {active, final}` | `200` (a completed event too, with `completedAt`) · `404` sealed absence · `502` read failure |
@@ -707,7 +711,7 @@ not listed is `404` (no `405`) and makes no upstream request.
 | `DELETE` | `/events/<eventId>/devices/<deviceId>` | **leave** (`?received=true\|false`): a present membership becomes `done` or `left`; after `endsAt` the leave that leaves no member `sharing` closes the event and wakes the rest; idempotent, a repeated leave keeps the first state (a completed event answers `200` too); assets retained; frees no slot | `200` · `404` · `502` |
 | `PUT` | `/events/<eventId>/devices/<deviceId>/manifest` | **contribution**: full-state replace of the membership's asset set in one transaction, ordered by `version`; `final` → `settled`, honoured only after `endsAt` and only for a present membership; the publish leaving no member `sharing` closes the event and wakes its members; writes no resource rows; enrols nobody | `200` (applied, or refused as older with nothing written, or the same set to a closed event) · `400` · `404` · `409` not a member · `409 {error:"closed"}` changed set to a closed event · `410` completed · `502` |
 | `PUT` | `/events/<eventId>/files/devices/<deviceId>/<assetId>/<role>?filename=<name>` (the download redirect's path; the PUT is gated) | accepted only from a **present** member (`sharing`/`settled` — a closed event still takes its members' bytes, a completed one has none); streams bytes to `files/<eventId>/<sha256 of event/device/asset/role>` (never buffered), then records the `resources` row. **A failed record fails the request.** If this completed the asset, wakes the event's other members. **An encrypted event takes only encrypted files** (`routes/encrypted-upload.ts`, read in the same statement as the membership): a body whose 9-byte prefix names the event's key id passes untouched; with the iOS extension's `x-snapsync-file-key` + `x-snapsync-file-head` (ONE file's key and opening bytes, never the event key; never logged) the edge seals the plaintext itself, byte for byte as a device would; anything else is refused before a byte is stored. A plain event refuses those headers | `201` · `400` bad role / missing filename / file-key headers on a plain event or malformed · `403` not a present member, or a file head of another key · `422` an encrypted event's body that is not a file of its key · `502` (`OPTIONS` → `204`) |
-| `PUT` | `/files/devices/<deviceId>/<assetId>/<role>?filename=<name>` | the **event-less** upload of builds before `per-event-storage-layout`: the same write, filed under the device's one present membership — and the same encrypted-event rule, so a build that predates encryption cannot put plaintext into one (v1's byte route holds it too) | as above, `409` with no present membership |
+| `PUT` | `/files/devices/<deviceId>/<assetId>/<role>?filename=<name>` | the **event-less** upload of builds before `per-event-storage-layout`: the same write, filed under the device's one present membership — and the same encrypted-event rule, so a build that predates encryption cannot put plaintext into one | as above, `409` with no present membership |
 | `GET` | `/events/<eventId>/files/devices/<deviceId>` | what the backend holds for me **in this event**, from the DB — never another event's | `200 [{assetId, role, filename}]` · `502` |
 | `GET` | `/files/devices/<deviceId>` | the event-less listing: the same answer for the device's present membership, `[]` with none | `200 [{assetId, role, filename}]` · `502` |
 | `GET`/`HEAD` | `/events/<eventId>/files[?cursor=<n>][&urls=false]` (ungated; an optional bearer token is verified) | the event union: one query over every membership, present or gone; an asset is included only when **every declared role** has a resource (a set comparison, not a count). `cursor` serves only assets the union log says were gained after it (`changes/incremental-union`); `urls=false` omits `url`, which is otherwise the download redirect's absolute address. Every answer carries `SnapSync-Cursor: <n>`, the position it covers. The `SnapSync-Trigger` header (`push`·`wake`·`foreground`·`join`·`grant`·`reconfigure`·`leave-check`) and the verified device, if any, go into the read's `fetch` log row, best-effort | `200 [{deviceId, assetId, creationDate, resources:[{role, contentType, key, filename, url?}]}]` · `400` bad cursor · `401` a sent token that does not verify · `404` · `502` |
@@ -753,9 +757,8 @@ The event's identity reaching `/join/<eventId>` is a decision
   or absent) is disambiguated by a follow-up read (`409` vs `404`).
 - **Presigned URLs.** SigV4 query-signed S3 `GET`, path-style
   `https://<s3-host>/<zone>/<the resource's path, each segment percent-encoded>`, signed with the zone name as
-  access key id and the storage password as secret. Minted by one builder: under v2 by the download
-  redirect, one per download started, with a 7-day expiry; under v1 (frozen) on every union and listing
-  response, also 7 days; and by the event page's read, with a **1-hour** expiry. The 7 days stay on purpose:
+  access key id and the storage password as secret. Minted by one builder: by the download redirect, one
+  per download started, with a 7-day expiry; and by the event page's read, with a **1-hour** expiry. The 7 days stay on purpose:
   an iOS background session resumes from the redirect target and never revisits the redirect (measured,
   `changes/incremental-union` D2). A browser uses its links at once, so the page's hour bounds how long a
   photo withdrawn after the page loaded stays reachable (`changes/separate-event-page-from-device-api` D3).
@@ -777,29 +780,6 @@ The event's identity reaching `/join/<eventId>` is a decision
   filename is a query parameter, so no caller bytes reach the storage key. It is metadata only, not
   identity.
 
-### v1 (frozen) differences
-
-`/api/v1` serves builds that cannot be updated. Its behaviour must not change while it is served, and
-its wire tests (`v1.test.ts`) must pass **unmodified** across any schema migration. It differs from v2:
-
-- `PUT /files/devices/<deviceId>/<filename>`: the object name is in the path (single segment, no `/`,
-  `%2F` or `..`), identity is recovered by `src/legacy-v1.ts` (a name that does not parse is `400`), the
-  bytes are filed under the device's present membership like v2's event-less upload (`409` with none),
-  and recording the row is **best-effort** (the response is the storage outcome). This is safe only
-  because v1's manifest publish re-creates missing rows, pointing them at the same deterministic path. Do
-  not change one without the other.
-- `PUT /events/<eventId>/devices/<deviceId>` **is** the manifest publish **and** the enrollment
-  (capacity `409`). It also upserts resource rows monotonically (a later publish cannot un-say an
-  upload). There is no `version`.
-- `POST /events/<eventId>/notify` exists (`202`, best-effort fan-out to present members).
-- `GET /files/devices/<deviceId>` returns `[{filename, url}]`, for the device's present membership.
-- The union's default `url` stays the 7-day **presign** (`changes/incremental-union` D3): `v1.test.ts`
-  asserts it. `urls=false` and `cursor` are additive on v1 too (the event page reads through v1). v1's
-  byte route and publish write no union-log rows, so a pre-0.4 member's photos reach v2 readers only
-  through full reads.
-- A stale attest challenge is `401` (v2: `409`). There is no version gate.
-- `/attest/token`'s body is flat, `{deviceId, keyId, attestation, challenge}`, and App Attest only.
-
 ### Database
 
 - **Schema = ordered migrations** (`api/migrations/NNNN_*.sql`, checksummed, applied once, recorded in
@@ -819,8 +799,7 @@ its wire tests (`v1.test.ts`) must pass **unmodified** across any schema migrati
   and the config write, each naming only its own column group — except `app_version`, which the mint,
   the join, the manifest publish and a union read with a verified token all keep current from the
   version header (best-effort, a write only when it changed; never the byte route, whose fan-out has
-  no subrequest to spare). The sweep otherwise only deletes. v1's extra writes
-  are a bounded, named exemption, and no new version gets one. **review** (plus route tests).
+  no subrequest to spare). The sweep otherwise only deletes. **review** (plus route tests).
 - **Capacity is one conditional insert**, never read-then-write. Measured: 10 racing devices for 3
   slots gave 10 under read-then-write and exactly 3 here.
 - **A manifest publish is one transaction**, chunked within it if needed, never across transactions.
@@ -852,7 +831,7 @@ Decision records: `changes/archive/2026-08-25-record-uploads-in-database`,
 src/app.ts         createApp({config, db, fetch}): the three gates and the composition of the routers
 src/routes/        the routes as `(deps) => Hono` factories: site.ts (site proxy + AASA + assetlinks.json),
                    web.ts (the event page's read),
-                   attest.ts, shared.ts, v1.ts, v2.ts, manifest.ts (manifest body parsing) and
+                   attest.ts, shared.ts, v2.ts, manifest.ts (manifest body parsing) and
                    support.ts (actsFor, presignDownloadUrl, the routes' shared refusals)
 src/db.ts          the one narrow `Db` port and every statement (capacity insert, atomic publish, union,
                    sweep queries). No schema here
@@ -871,7 +850,7 @@ src/fcm.ts         service-account RS256 assertion → OAuth access token + HIGH
                    (`eventId` only, collapsed per event) per token; sends only under the configured
                    Firebase project; no key → every FCM token skipped, the backend still boots
 src/validators.ts  UUID / filename / event name / instants (MAX_EVENT_NAME_LENGTH)
-src/legacy-v1.ts   v1-only identity parse + the object-name composer v2 also uses; deleted with v1
+src/object-names.ts  a resource's wire object name (the union's `key`) and the role vocabulary
 src/config.ts      readConfig over the resolved deployment (non-secrets) + env secrets; throws on a
                    missing secret (the optional FCM key excepted); minAppVersion
 src/deployment.ts  GENERATED by scripts/resolve-deployment.py; never committed

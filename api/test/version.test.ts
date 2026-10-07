@@ -3,15 +3,33 @@
 // over HTTP in `v2.test.ts`.
 
 import { assertEquals } from "@std/assert";
-import { compareVersions, splitVersion } from "../src/version.ts";
+import { compareVersions, isRetiredVersion, splitVersion } from "../src/version.ts";
 import { MIN_APP_VERSION } from "../src/config.ts";
 
 Deno.test("splitVersion → strips a version prefix and reports which version it was", () => {
-  assertEquals(splitVersion("/api/v1/events"), { version: 1, path: "/events" });
   assertEquals(splitVersion("/api/v2/attest/token"), { version: 2, path: "/attest/token" });
   // A bare mount normalizes to "/", which is what the auth gate's closed list is written in terms of.
-  assertEquals(splitVersion("/api/v1"), { version: 1, path: "/" });
   assertEquals(splitVersion("/api/v2"), { version: 2, path: "/" });
+});
+
+Deno.test("isRetiredVersion → v1 is retired; v2, unversioned and look-alike paths are not", () => {
+  // Decision record `changes/separate-event-page-from-device-api`, D6: a retired version's paths are answered
+  // `426` before any other gate, so this predicate decides them alone.
+  for (const p of ["/api/v1", "/api/v1/", "/api/v1/events/x", "/api/v1/attest/token"]) {
+    assertEquals(isRetiredVersion(p), true, p);
+  }
+  for (
+    const p of [
+      "/api/v2/events",
+      "/",
+      "/join",
+      "/web/events/x/photos",
+      "/api/v1x/events",
+      "/api/v10/x",
+    ]
+  ) {
+    assertEquals(isRetiredVersion(p), false, p);
+  }
 });
 
 Deno.test("splitVersion → an unversioned path is left completely alone", () => {
@@ -33,6 +51,11 @@ Deno.test("splitVersion → an unserved version number normalizes but resolves t
   // version gate leaves it alone and routing answers 404 — the honest answer for a mount that does not
   // exist, rather than two middlewares disagreeing about what they are looking at.
   assertEquals(splitVersion("/api/v9/events"), { version: null, path: "/events" });
+  assertEquals(
+    splitVersion("/api/v1/events"),
+    { version: null, path: "/events" },
+    "a retired one too",
+  );
 });
 
 Deno.test("compareVersions → orders numerically, part by part", () => {

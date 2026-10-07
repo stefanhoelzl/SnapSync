@@ -19,7 +19,7 @@ import kotlin.test.assertFailsWith
  */
 class DarwinHttpClientTest {
 
-    private val refusedUrl = "http://127.0.0.1:1/api/v1/events"
+    private val refusedUrl = "http://127.0.0.1:1/api/v2/events"
 
     @Test
     fun `a transport failure propagates rather than being swallowed`() {

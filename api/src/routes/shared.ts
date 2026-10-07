@@ -16,7 +16,7 @@ import {
   unionPosition,
   unionRows,
 } from "../db.ts";
-import { RESOURCE_ROLES } from "../legacy-v1.ts";
+import { RESOURCE_ROLES } from "../object-names.ts";
 import { splitVersion } from "../version.ts";
 import {
   canonicalPlusSeconds,
@@ -301,9 +301,8 @@ export function sharedRoutes(deps: RouteDeps): Hono {
   // nothing new gets the answer it always got:
   //   * `cursor=<n>` serves only assets the union log says were gained after position `n`; without it, the
   //     whole union. Either way `SnapSync-Cursor` names the position the answer covers.
-  //   * `urls=false` omits every `url`: the client builds the stable address itself. Otherwise `url` is,
-  //     under v2, that stable address (it redirects to a presign per download), and under v1 the 7-day
-  //     presign v1's frozen contract asserts.
+  //   * `urls=false` omits every `url`: the client builds the stable address itself. Otherwise `url` is
+  //     that stable address (it redirects to a presign per download).
   //   * a bearer token is OPTIONAL: present, it must verify (`401` otherwise, so the app re-attests) and
   //     names the reading device in the log; absent, the read is anonymous and nothing about the reader
   //     is kept (capability `privacy-security`, "A web visitor leaves no trace in the event").
@@ -345,34 +344,27 @@ export function sharedRoutes(deps: RouteDeps): Hono {
 
       // Each COMPLETE asset (`completeAssets`): an asset naming a resource whose bytes have not arrived is
       // dropped. The sweep still protects a referenced byte from collection.
-      const urlOf = async (r: typeof rows[number]): Promise<string | undefined> => {
-        if (!withUrls) return undefined;
-        // v1 is FROZEN for builds older than 0.4: its contract asserts the presign (decision record D3).
-        // From the row's `path`, the one place that says where the bytes are.
-        if (version === 1) return await presignDownloadUrl(aws, config, r.path);
-        return `${deviceOrigin(config)}/api/v${version}${
-          downloadPath(eventId, r.deviceId, r.assetId, r.role)
-        }`;
-      };
-      const assets: UnionAsset[] = [];
-      for (const resources of completeAssets(rows)) {
-        const row = resources[0];
-        assets.push({
-          deviceId: row.deviceId,
-          assetId: row.assetId,
-          creationDate: row.creationDate,
-          resources: await Promise.all(resources.map(async (r) => {
-            const url = await urlOf(r);
-            return {
-              role: r.role,
-              contentType: r.contentType,
-              key: r.key,
-              filename: r.filename,
-              ...(url === undefined ? {} : { url }),
-            };
-          })),
-        });
-      }
+      const urlOf = (r: typeof rows[number]): string | undefined =>
+        withUrls
+          ? `${deviceOrigin(config)}/api/v${version}${
+            downloadPath(eventId, r.deviceId, r.assetId, r.role)
+          }`
+          : undefined;
+      const assets: UnionAsset[] = completeAssets(rows).map((resources) => ({
+        deviceId: resources[0].deviceId,
+        assetId: resources[0].assetId,
+        creationDate: resources[0].creationDate,
+        resources: resources.map((r) => {
+          const url = urlOf(r);
+          return {
+            role: r.role,
+            contentType: r.contentType,
+            key: r.key,
+            filename: r.filename,
+            ...(url === undefined ? {} : { url }),
+          };
+        }),
+      }));
 
       // Best-effort: the record of a read never costs the read (capability `privacy-security`).
       try {

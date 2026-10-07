@@ -358,8 +358,7 @@ Decision records: `changes/archive/2026-08-25-record-uploads-in-database`,
 - **The subrequest limit bounds `eventCapacity`.** Every libSQL call and every push is a subrequest, and
   the wake after a photo lands goes to every other member: a v2 byte upload or manifest publish costs
   about capacity + 5 (storage PUT, three or four statements, the token query, one push per other member,
-  sometimes an FCM token fetch; the publish one more, recording the app version), v1 notify about
-  capacity + 3. The byte upload records no app version for exactly this reason. Capacity 40 leaves headroom; past about 45
+  sometimes an FCM token fetch; the publish one more, recording the app version). The byte upload records no app version for exactly this reason. Capacity 40 leaves headroom; past about 45
   the pushes over the limit fail as fetch errors the sender records as `failed`, so members silently miss
   wakes while the write still stands. Raising it further needs the fan-out split across requests, not a
   config edit. Decision record: `changes/archive/2026-10-05-raise-event-capacity`.

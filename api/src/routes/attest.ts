@@ -12,7 +12,7 @@ import {
   refusalReason,
   tokenExpiryIso,
 } from "../attest.ts";
-import { type MintShape, parseMintBody, verifyMintProof, verifyRenewal } from "../attest-proofs.ts";
+import { parseMintBody, verifyMintProof, verifyRenewal } from "../attest-proofs.ts";
 import { putAttestation, readAttestation, touchTokenExpiry } from "../db.ts";
 import { validateUUID } from "../validators.ts";
 import {
@@ -24,20 +24,14 @@ import {
   upstream502,
 } from "./support.ts";
 
-// The two token ISSUERS, built once per version (capability `privacy-security`). The only difference is how
-// a stale challenge is refused: v1, which is frozen, keeps its `401`; v2 answers `409 stale challenge`,
-// because `401` means "your credential is rejected" and a stale challenge rejects no credential — it is what
-// let a client read a renewal's expired challenge as a revoked token. One implementation, parameterised on
-// that one status, so the two versions cannot drift anywhere else. Decision record: harden-seam-bug-classes.
+// The token ISSUERS (capability `privacy-security`). A stale challenge is `409 stale challenge`, never `401`:
+// `401` means "your credential is rejected" and a stale challenge rejects no credential — it is what let a
+// client read a renewal's expired challenge as a revoked token. Decision record: harden-seam-bug-classes.
 //
-// The two versions' MINT BODIES differ too: v1's is frozen flat App Attest (`{deviceId, keyId,
-// attestation, challenge}`); v2's carries a typed `proof` whose `format` names its verifier, which is how
-// an Android key attestation reaches its own (`attest-proofs.ts`). The renew body is the same on both.
-export function attestRoutes(
-  { config, db, now, revocationFetch }: RouteDeps,
-  staleChallengeStatus: 401 | 409,
-  mintShape: MintShape,
-): Hono {
+// The MINT BODY carries a typed `proof` whose `format` names its verifier, which is how an Android key
+// attestation reaches its own (`attest-proofs.ts`). (v1's flat App Attest body and its `401` went with v1,
+// `changes/separate-event-page-from-device-api`.)
+export function attestRoutes({ config, db, now, revocationFetch }: RouteDeps): Hono {
   const issuers = new Hono();
 
   // Issue a challenge. Stateless and self-authenticating (an HMAC over its own expiry), so this writes
@@ -51,11 +45,11 @@ export function attestRoutes(
   issuers.post("/attest/token", async (c) => {
     const json = await readJson(c);
     if (json instanceof Response) return json;
-    const body = parseMintBody(json.body, mintShape);
+    const body = parseMintBody(json.body);
     if (!body) return c.text("invalid body", 400);
     const { deviceId, challenge, proof } = body;
     if (!await challengeIsValid(config, challenge, now())) {
-      return c.text("stale challenge", staleChallengeStatus);
+      return c.text("stale challenge", 409);
     }
 
     let verified;
@@ -80,13 +74,10 @@ export function attestRoutes(
       console.error(
         `attest: ${proof.format} attestation rejected for ${deviceId} (${named}): ${e}`,
       );
-      // v2 names the REASON, so the app can tell its user why (capability `privacy-security`, "A refused phone is
-      // told why"); v1 is frozen. Every shipped client reads any `401` body it does not know as a refusal, so the
-      // suffix changes nothing for them. The precise check stays in the log line above.
-      return c.text(
-        mintShape === "typed" ? `attestation rejected: ${named}` : "attestation rejected",
-        401,
-      );
+      // The refusal names the REASON, so the app can tell its user why (capability `privacy-security`, "A refused
+      // phone is told why"). Every shipped client reads any `401` body it does not know as a refusal, so the suffix
+      // changes nothing for them. The precise check stays in the log line above.
+      return c.text(`attestation rejected: ${named}`, 401);
     }
 
     // Persist the attested key so RENEWAL can verify a cheap local assertion against it instead of
@@ -133,7 +124,7 @@ export function attestRoutes(
       return c.text("invalid body", 400);
     }
     if (!await challengeIsValid(config, challenge, now())) {
-      return c.text("stale challenge", staleChallengeStatus);
+      return c.text("stale challenge", 409);
     }
 
     // Absence and "could not ask" are DIFFERENT answers here and must not collapse: absence sends the

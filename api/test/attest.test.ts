@@ -75,9 +75,21 @@ function recorder(objects: Record<string, string> = {}) {
   return { calls, fetchImpl };
 }
 
+/**
+ * The app RAW, every request declaring a current app version — the version gate answers before this one, so a
+ * request without it would test that gate instead (`app-version.test.ts` does).
+ */
 const app = (objects: Record<string, string> = {}, db: Db = DB) => {
   const { calls, fetchImpl } = recorder(objects);
-  return { calls, app: createApp({ config: CONFIG, db, fetch: fetchImpl, now: () => NOW }) };
+  const raw = createApp({ config: CONFIG, db, fetch: fetchImpl, now: () => NOW });
+  const request = raw.request.bind(raw);
+  return {
+    calls,
+    app: Object.assign(raw, {
+      request: (path: string, init: RequestInit = {}) =>
+        request(path, { ...init, headers: { ...V2, ...(init.headers ?? {}) } }),
+    }),
+  };
 };
 
 const token = await mintToken(CONFIG, D, NOW);
@@ -190,17 +202,22 @@ Deno.test("challenge: ours is valid inside its window, invalid outside it, and f
 // gate (capability `event-site`) so the no-app download page can read them un-attested — see the
 // "served without a token" tests below. Every WRITE, and the per-device raw listing, stays gated.
 const GATED: [string, RequestInit][] = [
-  ["/api/v1/events", { method: "POST", body: JSON.stringify({ name: "x" }) }],
+  ["/api/v2/events", { method: "POST", body: JSON.stringify({ name: "x" }) }],
   // The rename (capability `manage-membership`) lands on the SAME path shape as the ungated marker read, so
   // it is the closest call in this list: only the `publicRead` method check separates them. Pinned here
   // so relaxing that check can never silently open a write.
-  [`/api/v1/events/${E}`, { method: "PATCH", body: JSON.stringify({ name: "x" }) }],
-  [`/api/v1/events/${E}/notify`, { method: "POST" }],
-  [`/api/v1/events/${E}/devices/${D}`, { method: "PUT", body: "{}" }],
-  [`/api/v1/events/${E}/devices/${D}`, { method: "DELETE" }],
-  [`/api/v1/files/devices/${D}`, {}],
-  [`/api/v1/files/devices/${D}/IMG_0001-photo.jpg`, { method: "PUT", body: "bytes" }],
-  [`/api/v1/devices/${D}`, { method: "PUT", body: "{}" }],
+  [`/api/v2/events/${E}`, { method: "PATCH", body: JSON.stringify({ name: "x" }) }],
+  [`/api/v2/events/${E}/devices/${D}`, { method: "PUT" }],
+  [`/api/v2/events/${E}/devices/${D}/manifest`, { method: "PUT", body: "{}" }],
+  [`/api/v2/events/${E}/devices/${D}`, { method: "DELETE" }],
+  [`/api/v2/events/${E}/files/devices/${D}`, {}],
+  [`/api/v2/files/devices/${D}`, {}],
+  [`/api/v2/events/${E}/files/devices/${D}/A/primary?filename=x.jpg`, {
+    method: "PUT",
+    body: "bytes",
+  }],
+  [`/api/v2/files/devices/${D}/A/primary?filename=x.jpg`, { method: "PUT", body: "bytes" }],
+  [`/api/v2/devices/${D}`, { method: "PUT", body: "{}" }],
 ];
 
 Deno.test("gate: EVERY route refuses an unauthenticated request, and touches no storage", async () => {
@@ -237,7 +254,7 @@ Deno.test("gate: EVERY route accepts a valid token", async () => {
 Deno.test("gate: an expired token is refused like no token at all", async () => {
   const stale = await mintToken(CONFIG, D, NOW - 31 * DAY);
   const { calls, app: a } = app();
-  const res = await a.request(`/api/v1/files/devices/${D}/x.jpg`, {
+  const res = await a.request(`/api/v2/files/devices/${D}/A/primary?filename=x.jpg`, {
     method: "PUT",
     body: "bytes",
     headers: { authorization: `Bearer ${stale}` },
@@ -251,8 +268,8 @@ Deno.test("gate: the event marker and union reads are served WITHOUT a token", a
   // no-app download page (a browser with no attestation) can fetch them. A missing event is a 404, not a
   // 401 — existence-probing by a tokenless caller is the accepted, eyes-open consequence of opening them.
   const { app: a } = app(); // no marker → the event does not exist
-  assertEquals((await a.request(`/api/v1/events/${E}`)).status, 404); // NOT 401
-  assertEquals((await a.request(`/api/v1/events/${E}/files`)).status, 404); // NOT 401
+  assertEquals((await a.request(`/api/v2/events/${E}`)).status, 404); // NOT 401
+  assertEquals((await a.request(`/api/v2/events/${E}/files`)).status, 404); // NOT 401
 });
 
 Deno.test("gate: the maintenance window is answered BEFORE this gate", async () => {
@@ -269,26 +286,26 @@ Deno.test("gate: the maintenance window is answered BEFORE this gate", async () 
   });
 
   // No token: 503, not 401. The service is unavailable; the caller's credentials are not what is wrong.
-  assertEquals((await open.request(`/api/v1/events/${E}`)).status, 503);
+  assertEquals((await open.request(`/api/v2/events/${E}`)).status, 503);
   // A VALID token does not get past it either — this is not an authorization decision.
   assertEquals(
-    (await open.request(`/api/v1/events`, { method: "POST", headers: bearer, body: "{}" })).status,
+    (await open.request(`/api/v2/events`, { method: "POST", headers: bearer, body: "{}" })).status,
     503,
   );
   // Even the token ISSUERS, which are ungated by the closed list below, are inside the window: they
   // write a `devices` row, so they are exactly what must not run against a migrating store.
-  assertEquals((await open.request("/api/v1/attest/challenge")).status, 503);
+  assertEquals((await open.request("/api/v2/attest/challenge")).status, 503);
   // And nothing upstream was touched for any of them.
   assertEquals(calls.length, 0);
 
   // The same three requests without the flag: the closed list decides, exactly as it does today.
   const { app: closed } = app();
-  assertEquals((await closed.request(`/api/v1/events/${E}`)).status, 404); // ungated read, no such event
+  assertEquals((await closed.request(`/api/v2/events/${E}`)).status, 404); // ungated read, no such event
   assertEquals(
-    (await closed.request(`/api/v1/events`, { method: "POST", body: "{}" })).status,
+    (await closed.request(`/api/v2/events`, { method: "POST", body: "{}" })).status,
     401,
   ); // gated write, no token
-  assertEquals((await closed.request("/api/v1/attest/challenge")).status, 200); // ungated issuer
+  assertEquals((await closed.request("/api/v2/attest/challenge")).status, 200); // ungated issuer
 });
 
 Deno.test("gate: /health is served WITHOUT a token, and only at the root", async () => {
@@ -303,7 +320,7 @@ Deno.test("gate: /health is served WITHOUT a token, and only at the root", async
   // Served at the ROOT only. The gate normalises a leading `/api/vN` before its checks, so this path is
   // ADMITTED by the gate and then simply has no route — a 404, never a 200 and never a 401. That is the
   // same accepted shape `/`, `/join` and the AASA already have.
-  assertEquals((await a.request("/api/v1/health")).status, 404);
+  assertEquals((await a.request("/api/v2/health")).status, 404);
 });
 
 Deno.test("gate: /health opens no mutating method", async () => {
@@ -316,23 +333,22 @@ Deno.test("gate: /health opens no mutating method", async () => {
 
 Deno.test("gate: opening the reads opens no WRITE — mutating /events/<id>/… stays gated", async () => {
   const { app: a } = app();
-  assertEquals((await a.request("/api/v1/events", { method: "POST", body: "{}" })).status, 401);
-  assertEquals((await a.request(`/api/v1/events/${E}/notify`, { method: "POST" })).status, 401);
+  assertEquals((await a.request("/api/v2/events", { method: "POST", body: "{}" })).status, 401);
   assertEquals(
-    (await a.request(`/api/v1/events/${E}/devices/${D}`, { method: "PUT", body: "{}" })).status,
+    (await a.request(`/api/v2/events/${E}/devices/${D}`, { method: "PUT", body: "{}" })).status,
     401,
   );
   assertEquals(
-    (await a.request(`/api/v1/events/${E}/devices/${D}`, { method: "DELETE" })).status,
+    (await a.request(`/api/v2/events/${E}/devices/${D}`, { method: "DELETE" })).status,
     401,
   );
   // A POST to the ungated READ paths themselves is a mutating method → still gated.
-  assertEquals((await a.request(`/api/v1/events/${E}`, { method: "POST" })).status, 401);
-  assertEquals((await a.request(`/api/v1/events/${E}/files`, { method: "POST" })).status, 401);
+  assertEquals((await a.request(`/api/v2/events/${E}`, { method: "POST" })).status, 401);
+  assertEquals((await a.request(`/api/v2/events/${E}/files`, { method: "POST" })).status, 401);
   // …and so is the rename, which is a real handler on exactly the ungated read's path (capability
   // `manage-membership`). Reading an event un-attested must never imply renaming it.
   assertEquals(
-    (await a.request(`/api/v1/events/${E}`, {
+    (await a.request(`/api/v2/events/${E}`, {
       method: "PATCH",
       body: JSON.stringify({ name: "x" }),
     }))
@@ -340,7 +356,7 @@ Deno.test("gate: opening the reads opens no WRITE — mutating /events/<id>/… 
     401,
   );
   // The per-device RAW listing has no web consumer and stays gated (defense in depth).
-  assertEquals((await a.request(`/api/v1/files/devices/${D}`)).status, 401);
+  assertEquals((await a.request(`/api/v2/files/devices/${D}`)).status, 401);
 });
 
 // ── The retired notify admin key (capabilities `event-notify-endpoint`, `docs/deployment.md`) ─────────
@@ -350,29 +366,17 @@ Deno.test("gate: opening the reads opens no WRITE — mutating /events/<id>/… 
 // announcement is gone (capability `event-lifetime`), so the credential was retired rather than left
 // standing as an authorization path with no caller. These pin that it authorizes NOTHING.
 
-Deno.test("gate: notify with no device token is refused 401, reading nothing", async () => {
-  const { calls, app: a } = app();
-  const res = await a.request(`/api/v1/events/${E}/notify`, { method: "POST" });
-  assertEquals(res.status, 401);
-  assertEquals(calls.length, 0); // no marker read, no member enumeration, no push
-});
-
-Deno.test("gate: the retired admin key authorizes nothing — not even notify", async () => {
+Deno.test("gate: the retired admin key authorizes nothing", async () => {
   const { calls, app: a } = app();
   const stale = { authorization: "Bearer test-admin-key" };
-  // The route it used to authorize…
+  // Event creation…
   assertEquals(
-    (await a.request(`/api/v1/events/${E}/notify`, { method: "POST", headers: stale })).status,
-    401,
-  );
-  // …event creation…
-  assertEquals(
-    (await a.request(`/api/v1/events`, { method: "POST", body: "{}", headers: stale })).status,
+    (await a.request(`/api/v2/events`, { method: "POST", body: "{}", headers: stale })).status,
     401,
   );
   // …a device-manifest PUT (join)…
   assertEquals(
-    (await a.request(`/api/v1/events/${E}/devices/${D}`, {
+    (await a.request(`/api/v2/events/${E}/devices/${D}`, {
       method: "PUT",
       body: "{}",
       headers: stale,
@@ -381,7 +385,7 @@ Deno.test("gate: the retired admin key authorizes nothing — not even notify", 
   );
   // …and a leave.
   assertEquals(
-    (await a.request(`/api/v1/events/${E}/devices/${D}`, { method: "DELETE", headers: stale }))
+    (await a.request(`/api/v2/events/${E}/devices/${D}`, { method: "DELETE", headers: stale }))
       .status,
     401,
   );
@@ -390,7 +394,7 @@ Deno.test("gate: the retired admin key authorizes nothing — not even notify", 
 
 Deno.test("gate: OPTIONS is answered without a token (the pull zone may answer it anyway)", async () => {
   const { app: a } = app();
-  const res = await a.request(`/api/v1/files/devices/${D}/IMG_0001-photo.jpg`, {
+  const res = await a.request(`/api/v2/files/devices/${D}/A/primary`, {
     method: "OPTIONS",
   });
   assertEquals(res.status, 204);
@@ -409,10 +413,10 @@ Deno.test("gate: the marketing page at / is served without a token", async () =>
 
 Deno.test("gate: the / exception is exact-path and GET/HEAD-only — it leaks to nothing else", async () => {
   const { app: a } = app();
-  // A non-root path is still gated, even for GET… (`/api/v1/events/<id>` and `…/files` are ungated by their OWN
+  // A non-root path is still gated, even for GET… (`/api/v2/events/<id>` and `…/files` are ungated by their OWN
   // exception now, so use a GET route that is still gated — the per-device raw listing.)
-  assertEquals((await a.request("/api/v1/events")).status, 401);
-  assertEquals((await a.request(`/api/v1/files/devices/${D}`)).status, 401);
+  assertEquals((await a.request("/api/v2/events")).status, 401);
+  assertEquals((await a.request(`/api/v2/files/devices/${D}`)).status, 401);
   // …a path that merely begins with "/" but is not exactly "/" is not admitted…
   assertEquals((await a.request("/index.html")).status, 401);
   // …and a mutating method on "/" is gated, not served.
@@ -484,51 +488,35 @@ Deno.test("gate: a gated GET is never cacheable (the pull zone does not vary on 
   // Load-bearing for AUTHORIZATION, not just freshness: the CDN forwards `Authorization` but does not
   // key its cache on it, so a cacheable gated response would be served to a DIFFERENT device.
   const { app: a } = app();
-  const res = await a.request(`/api/v1/files/devices/${D}`, { headers: bearer });
+  const res = await a.request(`/api/v2/files/devices/${D}`, { headers: bearer });
   assertEquals(res.headers.get("Cache-Control"), "no-store, no-cache, max-age=0");
 });
 
 // ── The versioned prefix (`docs/deployment.md`) ──────────────────────────────────────────
 //
-// Device-API routes are served under `/api/v1` — the shape every gate test above already exercises. The
+// Device-API routes are served under `/api/v2` — the shape every gate test above already exercises. The
 // gate normalizes the `/api/vN` prefix before its closed-list checks, so the one ungated set that IS a
-// device route, `/api/v1/attest/*`, holds under it. Web/link paths are NOT served under the prefix.
+// device route, `/api/v2/attest/*`, holds under it. Web/link paths are NOT served under the prefix.
 
-Deno.test("gate: web/link paths are NOT served under /api/v1 (they stay at the root)", async () => {
+Deno.test("gate: web/link paths are NOT served under /api/v2 (they stay at the root)", async () => {
   const { app: a } = app();
   // Each is served at the ROOT (covered above) but must not resolve under the API prefix. The gate
-  // normalizes `/api/v1/join` → `/join` and admits it (ungated), but no route is mounted there → 404 —
+  // normalizes `/api/v2/join` → `/join` and admits it (ungated), but no route is mounted there → 404 —
   // never the root's 200/302.
-  assertEquals((await a.request("/api/v1/")).status, 404);
-  assertEquals((await a.request("/api/v1/join")).status, 404);
-  assertEquals((await a.request("/api/v1/.well-known/apple-app-site-association")).status, 404);
+  assertEquals((await a.request("/api/v2/")).status, 404);
+  assertEquals((await a.request("/api/v2/join")).status, 404);
+  assertEquals((await a.request("/api/v2/.well-known/apple-app-site-association")).status, 404);
 });
 
 // ── The attest routes ─────────────────────────────────────────────────────────────────────────────
 
 Deno.test("attest: the challenge route needs no token and writes nothing", async () => {
   const { calls, app: a } = app();
-  const res = await a.request("/api/v1/attest/challenge");
+  const res = await a.request("/api/v2/attest/challenge");
   assertEquals(res.status, 200);
   const { challenge } = await res.json() as { challenge: string };
   assert(await challengeIsValid(CONFIG, challenge, NOW));
   assertEquals(calls.length, 0); // the one route a stranger can call cannot grow the bill
-});
-
-Deno.test("attest: a stale challenge mints no token and stores no key", async () => {
-  const { calls, app: a } = app();
-  const stale = await mintChallenge(CONFIG, NOW - 10 * 60 * 1000);
-  const res = await a.request("/api/v1/attest/token", {
-    method: "POST",
-    body: JSON.stringify({
-      deviceId: D,
-      keyId: SAMPLE.keyIdBase64,
-      attestation: SAMPLE.attestationBase64,
-      challenge: stale,
-    }),
-  });
-  assertEquals(res.status, 401);
-  assertEquals(calls.length, 0);
 });
 
 Deno.test("attest: under v2 a stale challenge is 409, never the 401 that means 'drop your token'", async () => {
@@ -552,34 +540,20 @@ Deno.test("attest: under v2 a stale challenge is 409, never the 401 that means '
   assertEquals(calls.length, 0);
 });
 
-Deno.test("renew: a stale challenge is 401 under v1 (frozen) and 409 under v2, minting nothing either way", async () => {
+Deno.test("renew: a stale challenge is 409, minting nothing", async () => {
   const stale = await mintChallenge(CONFIG, NOW - 10 * 60 * 1000);
-  for (const [version, status] of [["v1", 401], ["v2", 409]] as const) {
-    const { calls, app: a } = app();
-    const res = await a.request(`/api/${version}/attest/renew`, {
-      method: "POST",
-      headers: version === "v2" ? V2 : {},
-      body: JSON.stringify({ deviceId: D, assertion: "AA==", challenge: stale }),
-    });
-    assertEquals(res.status, status, `${version} renew`);
-    assertEquals(await res.text(), "stale challenge");
-    assertEquals(calls.length, 0, `${version} renew touched storage`);
-  }
+  const { calls, app: a } = app();
+  const res = await a.request(`/api/v2/attest/renew`, {
+    method: "POST",
+    body: JSON.stringify({ deviceId: D, assertion: "AA==", challenge: stale }),
+  });
+  assertEquals(res.status, 409);
+  assertEquals(await res.text(), "stale challenge");
+  assertEquals(calls.length, 0);
 });
 
-Deno.test("attest: v2 answers a rejected attestation 401 naming its reason; v1's body is unchanged", async () => {
+Deno.test("attest: a rejected attestation is 401 naming its reason", async () => {
   const { app: a } = app();
-  const v1 = await a.request("/api/v1/attest/token", {
-    method: "POST",
-    body: JSON.stringify({
-      deviceId: D,
-      keyId: SAMPLE.keyIdBase64,
-      attestation: SAMPLE.attestationBase64,
-      challenge: await mintChallenge(CONFIG, NOW),
-    }),
-  });
-  assertEquals(v1.status, 401);
-  assertEquals(await v1.text(), "attestation rejected");
   const res = await a.request("/api/v2/attest/token", {
     method: "POST",
     headers: V2,
@@ -597,7 +571,7 @@ Deno.test("attest: v2 answers a rejected attestation 401 naming its reason; v1's
   assertEquals(await res.text(), "attestation rejected: device-unverifiable");
 });
 
-Deno.test("attest: v2 takes only the typed proof — the flat v1 body, or an unknown format, is a 400", async () => {
+Deno.test("attest: only the typed proof is taken — the retired flat body, or an unknown format, is a 400", async () => {
   const challenge = await mintChallenge(CONFIG, NOW);
   const flat = {
     deviceId: D,
@@ -623,13 +597,16 @@ Deno.test("attest: a rejected attestation mints no token and stores no key", asy
   const { calls, app: a } = app();
   const challenge = await mintChallenge(CONFIG, NOW);
   // A real attestation, but for a different app and a different challenge — it must not be accepted.
-  const res = await a.request("/api/v1/attest/token", {
+  const res = await a.request("/api/v2/attest/token", {
     method: "POST",
     body: JSON.stringify({
       deviceId: D,
-      keyId: SAMPLE.keyIdBase64,
-      attestation: SAMPLE.attestationBase64,
       challenge,
+      proof: {
+        format: "apple-appattest",
+        keyId: SAMPLE.keyIdBase64,
+        attestation: SAMPLE.attestationBase64,
+      },
     }),
   });
   assertEquals(res.status, 401);
@@ -638,7 +615,7 @@ Deno.test("attest: a rejected attestation mints no token and stores no key", asy
 
 Deno.test("renew: a device that never attested must attest, not renew", async () => {
   const { app: a } = app(); // no devices/<id>.attest.json
-  const res = await a.request("/api/v1/attest/renew", {
+  const res = await a.request("/api/v2/attest/renew", {
     method: "POST",
     body: JSON.stringify({
       deviceId: D,
@@ -654,7 +631,7 @@ Deno.test("renew: an unreadable store is 502, never the 401 that means 'attest a
   // down a full Apple attestation — the throttled path — so a database blink must read as retry-me.
   const failing: Db = { ...DB, execute: () => Promise.reject(new Error("store down")) };
   const { app: a } = app({}, failing);
-  const res = await a.request("/api/v1/attest/renew", {
+  const res = await a.request("/api/v2/attest/renew", {
     method: "POST",
     body: JSON.stringify({
       deviceId: D,
@@ -670,7 +647,7 @@ Deno.test("config: a device with no attestation on file is refused, and nothing 
   // `401` because the remedy is the one a rejected token already has, and the shipped client takes it.
   const db = await emptyStore();
   const { app: a } = app({}, db);
-  const res = await a.request(`/api/v1/devices/${D}`, {
+  const res = await a.request(`/api/v2/devices/${D}`, {
     method: "PUT",
     body: JSON.stringify({ pushToken: { kind: "apns", token: "t", env: "sandbox" } }),
     headers: bearer,
@@ -710,8 +687,11 @@ Deno.test("leave: the departing device's record + attestation are RETAINED (no l
     return Promise.resolve(new Response(null, { status: 200 }));
   };
   const res = await createApp({ config: CONFIG, db, fetch: fetchImpl, now: () => NOW }).request(
-    `/api/v1/events/${E2}/devices/${D}`,
-    { method: "DELETE", headers: { authorization: `Bearer ${await mintToken(CONFIG, D, NOW)}` } },
+    `/api/v2/events/${E2}/devices/${D}?received=false`,
+    {
+      method: "DELETE",
+      headers: { ...V2, authorization: `Bearer ${await mintToken(CONFIG, D, NOW)}` },
+    },
   );
   assertEquals(res.status, 200);
   assertEquals(
@@ -740,13 +720,6 @@ const INTRUDER = "99999999-0000-4000-8000-000000000009";
 
 /** Every route that names a device in its path, under both served versions — v1 is not exempt. */
 const DEVICE_ROUTES: [string, RequestInit][] = [
-  // v1 (frozen shapes, same binding)
-  [`/api/v1/events/${E}/devices/${D}`, { method: "PUT", body: JSON.stringify({ assets: [] }) }],
-  [`/api/v1/events/${E}/devices/${D}`, { method: "DELETE" }],
-  [`/api/v1/files/devices/${D}`, {}],
-  [`/api/v1/files/devices/${D}/IMG_0001-photo.jpg`, { method: "PUT", body: "bytes" }],
-  [`/api/v1/devices/${D}`, { method: "PUT", body: JSON.stringify({ pushToken: null }) }],
-  // v2
   [`/api/v2/events/${E}/devices/${D}`, { method: "PUT", headers: V2 }],
   [`/api/v2/events/${E}/devices/${D}`, { method: "DELETE", headers: V2 }],
   [
@@ -754,6 +727,11 @@ const DEVICE_ROUTES: [string, RequestInit][] = [
     { method: "PUT", body: JSON.stringify({ assets: [] }), headers: V2 },
   ],
   [`/api/v2/files/devices/${D}`, { headers: V2 }],
+  [`/api/v2/events/${E}/files/devices/${D}`, { headers: V2 }],
+  [
+    `/api/v2/events/${E}/files/devices/${D}/ASSET1/primary?filename=IMG_0001.HEIC`,
+    { method: "PUT", body: "bytes", headers: V2 },
+  ],
   [
     `/api/v2/files/devices/${D}/ASSET1/primary?filename=IMG_0001.HEIC`,
     { method: "PUT", body: "bytes", headers: V2 },

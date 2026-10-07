@@ -162,15 +162,16 @@ async function member(
         filename: `${id}.heic`,
       }],
     })),
-    // The fixture needs the resource rows too, which only the legacy (v1) publish writes — under v2 the
-    // byte upload is the sole writer of that table. `legacy: true` keeps this a one-call fixture.
-    { legacy: true, paths },
+    { version: null },
   ));
-  // The legacy publish re-activates the membership, which a departed fixture must not be.
-  if (state === "left") {
+  // The resource rows the byte upload would write — under v2 the byte route is that table's sole writer, so
+  // the fixture writes them directly. A departed member's publish leaves it departed (only a PRESENT
+  // membership's state follows a publish).
+  for (const id of assetIds) {
     await d.execute(
-      `UPDATE memberships SET state = 'left' WHERE event_id = ? AND device_id = ?`,
-      [eventId, deviceId],
+      `INSERT INTO resources (event_id, device_id, asset_id, role, path, content_type, filename)
+       VALUES (?, ?, ?, 'primary', ?, 'image/heic', ?)`,
+      [eventId, deviceId, id, paths.get(`${id} primary`), `${id}.heic`],
     );
   }
   return [...paths.values()];

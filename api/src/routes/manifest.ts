@@ -1,5 +1,5 @@
-// The device manifest's wire format (capability `photo-sharing`): the body both versions' publish routes
-// parse before recording anything.
+// The device manifest's wire format (capability `photo-sharing`): the body the publish route parses before
+// recording anything.
 
 import type { ManifestAssetEntry } from "../db.ts";
 
@@ -10,10 +10,6 @@ import type { ManifestAssetEntry } from "../db.ts";
  * Unknown fields are IGNORED rather than rejected: the manifest is written by a shipped app, and a
  * backend that refused a field a future client adds would break every device the moment that client
  * shipped. What is checked is what this backend records.
- *
- * `uploaded` is read here so it can be carried through `publishStatements`, where ABSENT means `true`.
- * A client that omits it — every client today does — publishes only COMPLETED resources, so `true` is
- * right by construction; a future client that publishes a pending set can say `false` and be believed.
  */
 export function parseManifestAssets(body: { assets?: unknown }): ManifestAssetEntry[] | null {
   if (!Array.isArray(body.assets)) return null;
@@ -37,7 +33,6 @@ export function parseManifestAssets(body: { assets?: unknown }): ManifestAssetEn
         contentType: r.contentType,
         key: r.key,
         filename: r.filename,
-        uploaded: typeof r.uploaded === "boolean" ? r.uploaded : undefined,
       });
     }
     out.push({ assetId: a.assetId, creationDate: a.creationDate, resources });

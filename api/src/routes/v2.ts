@@ -19,7 +19,7 @@ import {
   stampLanded,
   uploadMembership,
 } from "../db.ts";
-import { RESOURCE_ROLES } from "../legacy-v1.ts";
+import { RESOURCE_ROLES } from "../object-names.ts";
 import { eventBytePath, storageKey } from "../storage.ts";
 import { validateFilename } from "../validators.ts";
 import { bodyToStore } from "./encrypted-upload.ts";
@@ -90,7 +90,6 @@ export function v2Routes(deps: RouteDeps): Hono {
     try {
       const results = await db.batch(
         publishStatements(event.eventId, deviceId, assets, {
-          legacy: false,
           version,
           final: final && ended,
           closeAt,

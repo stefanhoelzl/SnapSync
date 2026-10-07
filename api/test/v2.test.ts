@@ -158,24 +158,38 @@ Deno.test("version gate → decided BEFORE the token, so an old build is not tol
   db.close();
 });
 
-Deno.test("version gate → v1 is exempt: it predates the header and cannot be updated to send it", async () => {
-  const db = await store();
-  const res = await createApp({ config: CONFIG, db, fetch: recorder().fetchImpl })
-    .request(`/api/v1/files/devices/${D}`);
-  assertEquals(res.status, 200);
+Deno.test("retired v1 → every path answers 426 with the minimum, never 404 — uncached, touching nothing", async () => {
+  // Decision record `changes/separate-event-page-from-device-api`, D6: a pre-0.4 build reads a 404 on the
+  // event read as a deleted event (a witness of its self-leave), so retirement must never look like one.
+  const db = await storeWithEvent();
+  const { calls, fetchImpl } = recorder();
+  const app = createApp({ config: CONFIG, db, fetch: fetchImpl });
+  for (
+    const [path, init] of [
+      [`/api/v1/events/${E}`, {}],
+      [`/api/v1/events/${E}/files`, {}],
+      [`/api/v1/files/devices/${D}/ASSET1-primary.heic`, { method: "PUT", body: "bytes" }],
+      [`/api/v1/attest/token`, { method: "POST", body: "{}" }],
+      [`/api/v1/attest/challenge`, {}],
+      [`/api/v1`, {}],
+    ] as [string, RequestInit][]
+  ) {
+    const res = await app.request(path, init);
+    assertEquals(res.status, 426, `${init.method ?? "GET"} ${path}`);
+    assertEquals(await res.json(), { error: "app too old", minAppVersion: CONFIG.minAppVersion });
+    assertEquals(res.headers.get("Cache-Control"), "no-store, no-cache, max-age=0");
+  }
+  assertEquals(calls.length, 0);
   db.close();
 });
 
-// ── The route tables are closed, per version ───────────────────────────────────────────────────────
+// ── The route table is closed ──────────────────────────────────────────────────────────────────────
 
-Deno.test("closed tables → a v1-only path is 404 under v2, and a v2-only path is 404 under v1", async () => {
+Deno.test("closed table → a path no v2 router serves is 404", async () => {
   const db = await storeWithEvent();
   const app = v2({ config: CONFIG, db, fetch: recorder().fetchImpl });
-  // notify exists only in v1; the manifest sub-resource only in v2.
+  // `notify` was v1's alone, and went with it.
   assertEquals((await app.request(`/api/v2/events/${E}/notify`, { method: "POST" })).status, 404);
-  const v1res = await createApp({ config: CONFIG, db, fetch: recorder().fetchImpl })
-    .request(`/api/v1/events/${E}/devices/${D}/manifest`, { method: "PUT", body: "{}" });
-  assertEquals(v1res.status, 404);
   db.close();
 });
 

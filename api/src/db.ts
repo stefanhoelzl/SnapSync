@@ -10,7 +10,7 @@
 // forbids. See `openspec/changes/record-uploads-in-database/design.md`.
 //
 // WHY `resources` IS NOT UNDER THE EVENT CASCADE. This is FORCED, not chosen. The byte upload route
-// addresses a resource row from the URL path alone — `/api/v1/files/devices/<deviceId>/<filename>`,
+// addresses a resource row from the URL path alone — the event-less `/api/v2/files/devices/<deviceId>/…`,
 // which carries NO event (`docs/architecture.md`). A resource row bearing `event_id` could not be
 // written by the one route that knows a byte landed. The upload URL is compile-time on the client
 // (PhotoKit forces it), so this outlives any schema revision: a proposal to move `resources` under the
@@ -38,7 +38,7 @@
 // What it buys: SQLite otherwise COERCES silently, so a handler bug that put a number where a key belongs
 // would store `42` as text and be unfindable by the code that wrote `"42"`. Under STRICT it raises.
 
-import { legacyKeyFor } from "./legacy-v1.ts";
+import { objectNameFor } from "./object-names.ts";
 
 /** One row of a result set. Values are whatever the driver yields for SQLite's storage classes. */
 export type Row = Record<string, unknown>;
@@ -322,16 +322,6 @@ export async function membershipState(
   return rows.length === 0 ? null : String(rows[0].state) as MembershipState;
 }
 
-/** The event's members still in it (`sharing` or `settled`). One column read — no timestamps, no tie-break. */
-export async function presentMembers(db: Db, eventId: string): Promise<string[]> {
-  const { rows } = await db.execute(
-    `SELECT device_id FROM memberships WHERE event_id = ? AND state IN ${PRESENT}
-     ORDER BY device_id`,
-    [eventId],
-  );
-  return rows.map((r) => String(r.device_id));
-}
-
 // ── The manifest publish ──────────────────────────────────────────────────────────────────────────
 
 /**
@@ -345,8 +335,6 @@ export type ManifestResourceEntry = {
   contentType: string;
   key: string;
   filename: string;
-  /** Whether the bytes are known uploaded. ABSENT means `true` — see `publishStatements`. */
-  uploaded?: boolean;
 };
 
 export type ManifestAssetEntry = {
@@ -364,21 +352,7 @@ export type ManifestAssetEntry = {
  * from "one of its two resources has not arrived": `resources` holds only what arrived, and one row
  * proves nothing about whether a second is still owed.
  *
- * ADDITIONALLY, under `legacy` (the v1 route only): a membership that had left is back to `sharing`, and each listed
- * resource is upserted. Both are behaviours v2 does not have and v1 keeps unchanged — v1 is spoken by
- * builds that cannot be updated, so its behaviour is frozen rather than corrected (capability
- * `database`, "Each table has exactly one writer, on the current API version").
- *
- * The legacy resource upsert is what REPAIRS a byte route whose best-effort record was lost: v1's device
- * lists only COMPLETED resources, so an entry that does not say otherwise means the bytes are stored, and
- * the row is created when missing. It stays MONOTONE — an entry that explicitly says NOT uploaded emits
- * no statement at all, so it can never remove a row an earlier publish recorded. Under the old schema
- * that was `MAX(uploaded, …)`; under row-existence semantics it is simply "never delete", which is the
- * same guarantee spelled without a column. A created row points where v1's byte route writes for this
- * event (`paths`, the caller's [eventBytePath] per resource); an existing row KEEPS its path, which may
- * name bytes written before migration 0010.
- *
- * ORDERED, on v2 (`docs/architecture.md`, "The v2 manifest publish is ordered by its version"). The
+ * ORDERED (`docs/architecture.md`, "The v2 manifest publish is ordered by its version"). The
  * FIRST statement records the publish's manifest version, and when the publish carries one it matches only
  * if the stored version is absent or not newer — so its count is the verdict: `1` won, `0` refused. Every
  * later statement is then gated on the stored version now being exactly this one, which is true iff the
@@ -386,7 +360,7 @@ export type ManifestAssetEntry = {
  * spans, and all of it is one transaction (`docs/architecture.md`). Equal is admitted — two publishes with
  * one version carry one snapshot, so re-applying it is harmless. A publish with NO version (a v2 build that
  * predates it) clears the stored version and is ungated: today's behaviour, and the next versioned publish
- * always wins. `legacy` never touches the column — v1 is frozen.
+ * always wins.
  *
  * ONE STATEMENT PER ASSET AND PER RESOURCE, never one multi-row insert. The deployed store refuses a
  * statement past 32 766 bound parameters — measured: 32 766 accepted, 40 000 refused with "too many SQL
@@ -398,40 +372,27 @@ export function publishStatements(
   eventId: string,
   deviceId: string,
   assets: ManifestAssetEntry[],
-  opts:
-    | {
-      legacy: true;
-      /** Where each listed resource's bytes are, keyed `<assetId> <role>` — required for every upsert. */
-      paths: ReadonlyMap<string, string>;
-    }
-    | {
-      legacy: false;
-      version: number | null;
-      /** The device declares its asset set settled (capability `photo-sharing`) → `settled`, else `sharing`. */
-      final?: boolean;
-      /**
-       * Set only once the event's range has ended: the instant a publish that leaves no member `sharing`
-       * stamps as the event's close. `null` → the publish cannot close the event.
-       */
-      closeAt?: string | null;
-      /**
-       * The union-log rows this publish causes ([publishUnionChanges]), written inside the batch under the
-       * same gates as the asset set — so a refused (older) publish, or one racing the close, logs nothing.
-       */
-      log?: { gained: readonly string[]; removed: readonly string[]; at: string };
-    },
+  opts: {
+    version: number | null;
+    /** The device declares its asset set settled (capability `photo-sharing`) → `settled`, else `sharing`. */
+    final?: boolean;
+    /**
+     * Set only once the event's range has ended: the instant a publish that leaves no member `sharing`
+     * stamps as the event's close. `null` → the publish cannot close the event.
+     */
+    closeAt?: string | null;
+    /**
+     * The union-log rows this publish causes ([publishUnionChanges]), written inside the batch under the
+     * same gates as the asset set — so a refused (older) publish, or one racing the close, logs nothing.
+     */
+    log?: { gained: readonly string[]; removed: readonly string[]; at: string };
+  },
 ): Statement[] {
   const out: Statement[] = [];
-  // The v2 gate appended to every statement after the first; empty for v1 and for a versionless publish.
+  // The version gate appended to every statement after the first; empty for a versionless publish.
   let gate = "";
   let gateArgs: unknown[] = [];
-  if (opts.legacy) {
-    out.push({
-      sql: `UPDATE memberships SET state = 'sharing'
-            WHERE event_id = ? AND device_id = ? AND state NOT IN ${PRESENT}`,
-      args: [eventId, deviceId],
-    });
-  } else if (opts.version === null) {
+  if (opts.version === null) {
     out.push({
       sql: `UPDATE memberships SET manifest_version = NULL WHERE event_id = ? AND device_id = ?`,
       args: [eventId, deviceId],
@@ -447,13 +408,11 @@ export function publishStatements(
                          WHERE event_id = ? AND device_id = ? AND manifest_version = ?)`;
     gateArgs = [eventId, deviceId, opts.version];
   }
-  if (!opts.legacy) {
-    // A CLOSED event's asset sets are fixed (capability `photo-sharing`). The route refuses a changed set
-    // before it gets here; this gate closes the race with a close stamped between that check and this
-    // batch, so no statement below can rewrite a closed event's assets.
-    gate += ` AND NOT EXISTS (SELECT 1 FROM events WHERE id = ? AND closed_at IS NOT NULL)`;
-    gateArgs = [...gateArgs, eventId];
-  }
+  // A CLOSED event's asset sets are fixed (capability `photo-sharing`). The route refuses a changed set
+  // before it gets here; this gate closes the race with a close stamped between that check and this
+  // batch, so no statement below can rewrite a closed event's assets.
+  gate += ` AND NOT EXISTS (SELECT 1 FROM events WHERE id = ? AND closed_at IS NOT NULL)`;
+  gateArgs = [...gateArgs, eventId];
   out.push({
     sql: `DELETE FROM event_assets WHERE event_id = ? AND device_id = ?${gate}`,
     args: [eventId, deviceId, ...gateArgs],
@@ -473,25 +432,8 @@ export function publishStatements(
         ...gateArgs,
       ],
     });
-    if (!opts.legacy) continue;
-    for (const r of a.resources) {
-      // Monotone by omission: an entry that says the bytes are NOT stored contributes no statement, so
-      // it cannot un-say an upload an earlier publish recorded.
-      if (r.uploaded === false) continue;
-      const path = opts.paths.get(`${a.assetId} ${r.role}`);
-      if (path === undefined) throw new Error(`no byte path for ${a.assetId}/${r.role}`);
-      out.push({
-        sql:
-          `INSERT INTO resources (event_id, device_id, asset_id, role, path, content_type, filename)
-              VALUES (?, ?, ?, ?, ?, ?, ?)
-              ON CONFLICT (event_id, device_id, asset_id, role) DO UPDATE SET
-                content_type = excluded.content_type,
-                filename     = excluded.filename`,
-        args: [eventId, deviceId, a.assetId, r.role, path, r.contentType, r.filename],
-      });
-    }
   }
-  if (!opts.legacy && opts.log) {
+  if (opts.log) {
     const { at } = opts.log;
     for (
       const [kind, ids] of [["gained", opts.log.gained], ["removed", opts.log.removed]] as const
@@ -505,18 +447,16 @@ export function publishStatements(
       }
     }
   }
-  if (!opts.legacy) {
-    // The device's own declaration, gated like the asset set so a refused (older) publish cannot flip it. It
-    // follows each publish both ways, and moves only a PRESENT membership: a member that left stays gone.
-    out.push({
-      sql: `UPDATE memberships SET state = ?
-            WHERE event_id = ? AND device_id = ? AND state IN ${PRESENT}${gate}`,
-      args: [opts.final ? "settled" : "sharing", eventId, deviceId, ...gateArgs],
-    });
-    // LAST, so it sees this publish's state: the publish that leaves no member `sharing` closes the event.
-    // Its count is the route's "just closed" verdict — it fires the one close wake.
-    if (opts.closeAt) out.push(closeStatement(eventId, opts.closeAt));
-  }
+  // The device's own declaration, gated like the asset set so a refused (older) publish cannot flip it. It
+  // follows each publish both ways, and moves only a PRESENT membership: a member that left stays gone.
+  out.push({
+    sql: `UPDATE memberships SET state = ?
+          WHERE event_id = ? AND device_id = ? AND state IN ${PRESENT}${gate}`,
+    args: [opts.final ? "settled" : "sharing", eventId, deviceId, ...gateArgs],
+  });
+  // LAST, so it sees this publish's state: the publish that leaves no member `sharing` closes the event.
+  // Its count is the route's "just closed" verdict — it fires the one close wake.
+  if (opts.closeAt) out.push(closeStatement(eventId, opts.closeAt));
   return out;
 }
 
@@ -568,26 +508,6 @@ export async function memberCounts(
 
 // ── The byte route's record ───────────────────────────────────────────────────────────────────────
 
-/**
- * Record that a resource's bytes landed. The row's EXISTENCE is the record — there is no upload flag,
- * because the only writer of this table is the route that watched the bytes arrive (capability
- * `database`).
- *
- * There are no placeholder rows any more. The old shape inserted `asset_id = ''` because v1's URL
- * carries only the object name, and the manifest filled the identity in later; under a key of
- * `(device_id, asset_id, role)` a placeholder has no identity to be stored under, and every device's
- * placeholders would collide on one empty pair. Both routes therefore supply real identity: v2 reads it
- * from its path, and v1 parses it out of the object name (the parse lives in the v1 adapter, and is
- * deleted with v1).
- *
- * Whether a failure here fails the REQUEST differs by version and is the caller's business: v1 swallows
- * it, because its manifest publish repairs a missing row; v2 does not, because nothing repairs it there.
- */
-export async function recordResource(db: Db, r: ResourceRecord): Promise<void> {
-  const { sql, args } = recordResourceStatement(r);
-  await db.execute(sql, args);
-}
-
 /** What the byte route records for one landed resource. */
 export type ResourceRecord = {
   eventId: string;
@@ -601,9 +521,13 @@ export type ResourceRecord = {
 };
 
 /**
- * [recordResource] as a statement, so the v2 byte route can commit the record and the union log's `gained`
- * rows it causes as ONE batch: a log row for bytes the backend never recorded would announce an asset no
- * read can serve, and a record without its log row would leave the asset out of every delta.
+ * Record that a resource's bytes landed, as a statement. The row's EXISTENCE is the record — there is no
+ * upload flag, because the only writer of this table is the route that watched the bytes arrive (capability
+ * `database`), and it reads the resource's identity from its path.
+ *
+ * A statement rather than a call, so the byte route can commit the record and the union log's `gained` rows it
+ * causes as ONE batch: a log row for bytes the backend never recorded would announce an asset no read can
+ * serve, and a record without its log row would leave the asset out of every delta.
  */
 export function recordResourceStatement(r: ResourceRecord): Statement {
   return {
@@ -750,7 +674,7 @@ export type UnionResourceRow = {
   role: string;
   contentType: string;
   /**
-   * The wire's object name, `<assetId>-<role>.<ext>` — DERIVED ([legacyKeyFor]), since migration 0010 keeps
+   * The wire's object name, `<assetId>-<role>.<ext>` — DERIVED ([objectNameFor]), since migration 0010 keeps
    * no such column. Installed clients key their download records by it, so it never changes shape.
    */
   key: string;
@@ -816,7 +740,7 @@ export async function unionRows(
       creationDate: String(r.creation_date),
       role: String(r.role),
       contentType: String(r.content_type ?? ""),
-      key: present ? legacyKeyFor(String(r.asset_id), String(r.role), filename) : "",
+      key: present ? objectNameFor(String(r.asset_id), String(r.role), filename) : "",
       path: String(r.path ?? ""),
       filename,
       present,
@@ -912,31 +836,6 @@ export async function logUnionFetch(db: Db, f: UnionFetch): Promise<void> {
   );
 }
 
-/**
- * The device's uploaded resources IN ONE EVENT, for v1's listing and the rejoin reconcile's seed.
- *
- * It yields the object name `key`, NOT the human `filename`: the listing's `filename` field is the name
- * the reconciler matches its ledger against (capability `photo-sharing` — "the bare
- * `<assetId>-<role>.<ext>`"), and handing it a capture name instead would seed nothing and look exactly
- * like "this device has uploaded nothing". `path` is where the bytes are, for the listing's presign.
- */
-export async function deviceFiles(
-  db: Db,
-  eventId: string,
-  deviceId: string,
-): Promise<{ key: string; path: string }[]> {
-  const { rows } = await db.execute(
-    `SELECT asset_id, role, filename, path FROM resources WHERE event_id = ? AND device_id = ?`,
-    [eventId, deviceId],
-  );
-  return rows
-    .map((r) => ({
-      key: legacyKeyFor(String(r.asset_id), String(r.role), String(r.filename)),
-      path: String(r.path),
-    }))
-    .sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
-}
-
 // ── Devices: the attestation group ────────────────────────────────────────────────────────────────
 //
 // The ONE writer of `attest_*` and `created_at`, and the only route that may create a row at all.
@@ -963,8 +862,8 @@ export type AttestPlatform = "ios" | "android";
  * recently* attested.
  *
  * `appVersion` is the version the minting request declared ({@link recordAppVersion}), so a row is never
- * versionless between its mint and the device's first recording call. `null` (a v1 mint, which declares
- * none) keeps whatever the row already held.
+ * versionless between its mint and the device's first recording call. `null` (a mint that declares none)
+ * keeps whatever the row already held.
  */
 export async function putAttestation(
   db: Db,

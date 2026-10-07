@@ -92,13 +92,14 @@ Deno.test("app version → the byte route does not record it (no subrequest to s
   db.close();
 });
 
-Deno.test("app version → a v1 join records nothing (v1 runs no version gate)", async () => {
+Deno.test("app version → a request to the retired v1 records nothing", async () => {
   const { db, app } = await enrolled();
-  await app.request(`/api/v1/events/${E}/devices/${D}`, {
+  const res = await app.request(`/api/v1/events/${E}/devices/${D}`, {
     method: "PUT",
     headers: v("0.12"),
     body: JSON.stringify({ deviceId: D, assets: [] }),
   });
+  assertEquals(res.status, 426);
   assertEquals(await versionOf(db), null);
   db.close();
 });

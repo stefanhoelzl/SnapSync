@@ -203,7 +203,7 @@ family, a transport's guarded terminal write, and the membership reset family. O
   what shipped in builds 675/687 when a config change moved the key out (measured A/B on device,
   SE2/26.6, 2026-08-28; Bugsink `SNAPSYNC-37`). The daemon's **matching rule is not established** — do
   not assert one. ⏰ Re-measure at the next iOS major.
-  Written as `$(UPLOAD_SCHEME)://$(UPLOAD_HOST)/api/v1`, **composed** rather than carried: an
+  Written as `$(UPLOAD_SCHEME)://$(UPLOAD_HOST)/api/v2`, **composed** rather than carried: an
   `Info.plist` substitution can only read a build setting and `//` opens a comment anywhere on an
   xcconfig line, so the resolver emits a scheme enum and a bare host and the URL is assembled in the
   plist, where `//` is data. CI's `ios-build` asserts it equals that bundle's `Deployment.plist` `uploadBase`.

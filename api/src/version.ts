@@ -10,15 +10,27 @@
 /** The header every v2 request declares the app's marketing version in (capability `app-update-required`). */
 export const APP_VERSION_HEADER = "x-snapsync-app-version";
 
-/** The API version a request is addressed to, or `null` when its path carries no version prefix. */
-export type ApiVersion = 1 | 2;
+/** The API version a request is addressed to, or `null` when its path carries no served version's prefix. */
+export type ApiVersion = 2;
 
 const PREFIX = /^\/api\/v(\d+)(?=\/|$)/;
 
 /**
+ * The versions RETIRED from service: their paths are answered `426` and routed nowhere (`app.ts`). v1 went
+ * with decision record `changes/separate-event-page-from-device-api` (D6).
+ */
+const RETIRED: readonly number[] = [1];
+
+/** Whether [pathname] is addressed to a retired API version. */
+export function isRetiredVersion(pathname: string): boolean {
+  const m = PREFIX.exec(pathname);
+  return m !== null && RETIRED.includes(Number(m[1]));
+}
+
+/**
  * Split a request path into the version it names and the path with that prefix removed.
  *
- * The un-prefixed path is what the auth gate's closed list is written in terms of, so `/api/v1` → `/` and
+ * The un-prefixed path is what the auth gate's closed list is written in terms of, so `/api/v2` → `/` and
  * `/api/v2/attest/x` → `/attest/x`. A path carrying no version prefix (the marketing page, `/join`, the
  * AASA, `/health`) comes back with `version: null` and its path untouched — those are served at the root
  * and belong to no version.
@@ -34,7 +46,7 @@ export function splitVersion(pathname: string): { version: ApiVersion | null; pa
   const stripped = pathname.slice(m[0].length);
   const n = Number(m[1]);
   return {
-    version: n === 1 || n === 2 ? n : null,
+    version: n === 2 ? n : null,
     path: stripped === "" ? "/" : stripped,
   };
 }
