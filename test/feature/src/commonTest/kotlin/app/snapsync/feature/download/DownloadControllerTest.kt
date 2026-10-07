@@ -1331,9 +1331,13 @@ class DownloadControllerTest {
             "$DOWNLOAD_STAGING_DIR/DEVICE-A/OLD-primary.mov",
             "$DOWNLOAD_STAGING_DIR/DEVICE-B/X-primary.heic",
             "$DOWNLOAD_STAGING_DIR/other-event/DEVICE-A/Q-primary.heic",
+            // An encrypted event's download being opened beside a path no row claims is no exception.
+            "$DOWNLOAD_STAGING_DIR/DEVICE-A/OLD-primary.mov.sealed",
         )
+        // An encrypted event's download waits sealed beside its landing path while it is opened into it.
+        val opening = "$landing.sealed"
         val outside = "elsewhere/kept.bin"
-        val staged = disk(landing, legacyLanding, outside, *unclaimed.toTypedArray())
+        val staged = disk(landing, legacyLanding, opening, outside, *unclaimed.toTypedArray())
         val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, disk = staged)
         // Q is planned, its downloads in flight: one has landed at its path and is not recorded yet.
         c.reconcile("event", UnionTrigger.FOREGROUND)
@@ -1342,7 +1346,7 @@ class DownloadControllerTest {
 
         assertTrue(unclaimed.all { staged.deleted(it) }, "a staged file no row claims stays on disk forever")
         assertEquals(
-            setOf(landing, legacyLanding, outside),
+            setOf(landing, legacyLanding, opening, outside),
             staged.shared.keys,
             "a planned row's landed bytes — at its event's path or the event-less one — and anything outside staging, are kept",
         )

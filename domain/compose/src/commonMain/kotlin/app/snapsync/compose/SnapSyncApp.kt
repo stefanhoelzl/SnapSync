@@ -1,8 +1,6 @@
 package app.snapsync.compose
 
 import app.snapsync.services.crypto.EventKeyMinting
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.map
 import app.snapsync.services.crypto.DownloadOpening
 import app.snapsync.model.UnionTrigger
@@ -348,13 +346,7 @@ class AppCore internal constructor(
      * `docs/architecture.md`): read from the secure store each time the membership changes, `null` for a plain one or
      * while the store cannot be read (a locked device), so an invite never carries a key that is not the event's.
      */
-    val inviteKey: StateFlow<String?> by lazy {
-        membership
-            .map { config ->
-                config?.keyId?.let { runCatchingCancellable { services.eventKeys.linkKey() }.getOrNull() }
-            }
-            .stateIn(scope, SharingStarted.Eagerly, null)
-    }
+    val inviteKey: StateFlow<String?> by lazy { services.eventKeys.inviteKeyOf(membership, scope) }
 
     /** The photo-access grant, exposed for the join surface's count-recompute trigger (a late resolve). */
     val photoPermission: StateFlow<GalleryAccess> get() = galleryAccess.grant

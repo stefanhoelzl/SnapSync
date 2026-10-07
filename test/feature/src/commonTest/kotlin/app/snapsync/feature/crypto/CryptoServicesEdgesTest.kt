@@ -21,6 +21,7 @@ import app.snapsync.services.crypto.FileCipher
 import app.snapsync.services.crypto.Opened
 import app.snapsync.services.crypto.UploadSeal
 import app.snapsync.services.crypto.UploadSealing
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -34,6 +35,7 @@ import kotlin.test.assertTrue
  * The encrypted transfers' edges (the encrypted file format, `docs/architecture.md`): every way the key or the files
  * can be out of reach answers "not now" — never plaintext up, never an unopened file staged — and says why.
  */
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class CryptoServicesEdgesTest {
 
     private val crypto = fakeCrypto()
@@ -75,7 +77,7 @@ class CryptoServicesEdgesTest {
             files.write(FileArea.SHARED, "in", ByteArray(100))
             val opening = DownloadOpening(keys, FileCipher(crypto, files), configService(joined, files), files)
             assertEquals(joined != null, opening.sealed())
-            assertFalse(opening.open(ref, "ASSET1-primary.heic", "in", "out"))
+            assertFalse(opening.open(ref, "ASSET1-primary.heic", EVENT, "in", "out"))
             assertEquals(FileResult.Ok(false), files.exists(FileArea.SHARED, "in"), "the unopened file is discarded")
             assertEquals(FileResult.Ok(false), files.exists(FileArea.SHARED, "out"))
         }
@@ -89,7 +91,7 @@ class CryptoServicesEdgesTest {
         val opening = DownloadOpening(keys, FileCipher(crypto, files), configService(config(minted.keyId), files), files)
         repeat(6) {
             files.write(FileArea.SHARED, "in", ByteArray(100))
-            assertFalse(opening.open(ref, "ASSET1-primary.heic", "in", "out"))
+            assertFalse(opening.open(ref, "ASSET1-primary.heic", EVENT, "in", "out"))
         }
         // A file that does open resets the count.
         val plain = RecordingFiles().also { it.write(FileArea.SHARED, "p", ByteArray(10)) }
@@ -97,7 +99,12 @@ class CryptoServicesEdgesTest {
             keys.current()!!, EncryptedFileFormat.associatedData(EVENT, DEVICE, "ASSET1", "primary"), FileArea.SHARED, "p", "s",
         )
         files.write(FileArea.SHARED, "in", (plain.read(FileArea.SHARED, "s") as FileResult.Ok).value)
-        assertTrue(opening.open(ref, "ASSET1-primary.heic", "in", "out"))
+        files.write(FileArea.SHARED, "again", (plain.read(FileArea.SHARED, "s") as FileResult.Ok).value)
+        assertFalse(
+            opening.open(ref, "ASSET1-primary.heic", "B0000000-0000-4000-8000-00000000000B", "again", "out"),
+            "a transfer fetched for another event is not opened with this one's key",
+        )
+        assertTrue(opening.open(ref, "ASSET1-primary.heic", EVENT, "in", "out"))
     }
 
     @Test
@@ -127,6 +134,26 @@ class CryptoServicesEdgesTest {
         assertEquals(minted.keyId, keys.idOf(minted.linkKey))
         assertNull(keys.idOf("not a key"))
         assertFailsWith<SecureStoreUnavailable> { EventKeys(crypto, inMemorySecureStore(unavailable = true)).linkKey() }
+    }
+
+    @Test
+    fun an_invite_carries_the_kept_key_only_while_the_membership_is_encrypted() = runTest {
+        val keys = EventKeys(crypto, inMemorySecureStore())
+        val minted = keys.mint()
+        keys.keep(minted.linkKey)
+        val membership = kotlinx.coroutines.flow.MutableStateFlow<EventConfig?>(null)
+        val invite = keys.inviteKeyOf(membership, backgroundScope)
+        runCurrent()
+        assertNull(invite.value, "no membership, no key")
+        membership.value = config(null)
+        runCurrent()
+        assertNull(invite.value, "a plain event's invite carries none")
+        membership.value = config(minted.keyId)
+        runCurrent()
+        assertEquals(minted.linkKey, invite.value)
+        val locked = EventKeys(crypto, inMemorySecureStore(unavailable = true)).inviteKeyOf(membership, backgroundScope)
+        runCurrent()
+        assertNull(locked.value, "a key that cannot be read now is no key in an invite")
     }
 
     private companion object {

@@ -23,14 +23,12 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import app.snapsync.services.crypto.DownloadOpening
+import app.snapsync.services.crypto.SEALED_SUFFIX
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /** Bounded in-flight window (Apple: keep background tasks in the low hundreds; we stay well under). */
 internal const val MAX_IN_FLIGHT = 24
-
-/** An encrypted event's download, beside its staging path until it is opened into it. */
-private const val SEALED_SUFFIX = ".sealed"
 
 /** taskDescription field separator — a newline cannot occur in device ids / sanitized keys / filenames. */
 private const val SEP = "\n"
@@ -232,7 +230,7 @@ class DownloadJobs(
         // keeps the list from growing across a long session.
         val recording = scope.launch {
             // A file that does not open stays unstaged, so the next reconcile downloads it again.
-            if (sealed != null && !sealed.open(decoded.ref, decoded.resourceKey, landed, relative)) return@launch
+            if (sealed != null && !sealed.open(decoded.ref, decoded.resourceKey, decoded.eventId, landed, relative)) return@launch
             onStaged(decoded.ref, decoded.resourceKey, relative)
         }
         outstandingStagings.update { held -> held.filterNot { it.isCompleted } + recording }

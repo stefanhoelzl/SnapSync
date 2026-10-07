@@ -24,6 +24,18 @@ import kotlinx.coroutines.flow.updateAndGet
  * `Error`, which reaches the crash channel — and nothing after it, so a file that never opens costs one report, not one
  * per retry. Counted per process; a later process may report the same resource again, once.
  */
+/** Where an encrypted event's download waits beside its landing path until it is opened into it. */
+const val SEALED_SUFFIX: String = ".sealed"
+
+/** Where its plaintext is written until every segment authenticated ([FileCipher] builds `<to>.part`). */
+private const val PART_SUFFIX: String = ".part"
+
+/**
+ * The files a download landing at [landing] passes through while it is opened — the sealed bytes and the plaintext
+ * being written — which a staging sweep must not take for unclaimed while that runs.
+ */
+fun openingFilesOf(landing: String): List<String> = listOf("$landing$SEALED_SUFFIX", "$landing$PART_SUFFIX")
+
 class DownloadOpening(
     private val keys: EventKeys,
     private val cipher: FileCipher,
@@ -42,8 +54,8 @@ class DownloadOpening(
      * Open [from] into [to] in the shared area, for [ref]'s [resourceKey]. `true` only when every byte authenticated
      * and the plaintext is in place; [from] is removed either way.
      */
-    fun open(ref: AssetRef, resourceKey: String, from: String, to: String): Boolean {
-        val outcome = attempt(ref, resourceKey, from, to)
+    fun open(ref: AssetRef, resourceKey: String, eventId: String, from: String, to: String): Boolean {
+        val outcome = attempt(ref, resourceKey, eventId, from, to)
         files.delete(FileArea.SHARED, from)
         val id = "${ref.sourceDeviceId}/${ref.sourceAssetId.value}/$resourceKey"
         if (outcome == null) {
@@ -59,9 +71,14 @@ class DownloadOpening(
         return false
     }
 
-    /** `null` when the plaintext is in place, else why not. */
-    private fun attempt(ref: AssetRef, resourceKey: String, from: String, to: String): String? {
+    /**
+     * `null` when the plaintext is in place, else why not. [eventId] is the event the transfer fetched for (`""` for a
+     * transfer started before transfers named their event): only the joined event's key can open it, so another
+     * event's — a transfer a switch left behind — is not tried.
+     */
+    private fun attempt(ref: AssetRef, resourceKey: String, eventId: String, from: String, to: String): String? {
         val joined = config.config.value ?: (config.read() as? ConfigRead.Joined)?.config ?: return "not joined"
+        if (eventId.isNotEmpty() && eventId != joined.eventId) return "fetched for another event"
         val key = try {
             keys.current()
         } catch (locked: SecureStoreUnavailable) {
