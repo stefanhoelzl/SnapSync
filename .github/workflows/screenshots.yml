@@ -21,7 +21,7 @@
 # on a Linux runner with KVM — the DEBUG build, because the capture resets the mocked systems' saved state through
 # `run-as`, which reaches only a debuggable app. Its six raws are the artifact `screenshots-android-raw`, committed to
 # `screenshots/android/`; they feed only the Google Play listing (composited with the same headlines by
-# compose_screenshots.sh's `play` target, uploaded by ci.yml's android-deliver on main when they changed). The status
+# compose_screenshots.sh's `play` target, uploaded by promote.yml's Play release when they changed). The status
 # bar is SystemUI's demo mode (9:41, full battery and Wi-Fi), set by the capture itself.
 #
 # RAW ONLY, BY DESIGN. An operator commits these to `screenshots/ios/` and they become the SINGLE SOURCE OF

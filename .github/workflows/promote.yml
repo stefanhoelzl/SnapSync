@@ -22,6 +22,12 @@
 # on a version state it never observed, so it ran green and did nothing. It was deleted, not kept alongside
 # — correcting an ALREADY-promoted version's screenshots is a manual console upload, by decision.
 #
+# PLAY'S LISTING TRAVELS WITH THE RELEASE TOO. Play's listing (text, contact details, icon, feature graphic, phone
+# screenshots) is one per app, not per version, so nothing forces it here — but written on every merge, as it once
+# was, it ran ahead of the build its testers could install. So it is written only here, inside the Play release's
+# own edit: validated with it by the preflight, committed with it by the release. Like the App Store screenshots it
+# is rendered from THIS checkout (the dispatched ref), not from the build's origin commit.
+#
 # WHY PROMOTE, NOT BUILD: every main merge already uploads a signed, gated build to internal TestFlight and to Play's
 # internal track. Promoting one ships the EXACT bits you tested and reuses a build the stores already hold, instead of
 # compiling a never-run copy. It is a SINGLE ubuntu job — no Xcode, no Gradle, no signing.
@@ -136,20 +142,37 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v10.2.0
 
-      # For the screenshot composite below. Installed HERE, with the other tooling, so a missing package
-      # fails the run BEFORE any App Store Connect mutation rather than half-way through a release.
+      # For the screenshot composites below (the App Store's, and Play's listing). Installed HERE, with the other
+      # tooling, so a missing package fails the run BEFORE any store mutation rather than half-way through a release.
       # Two lessons inherited from the retired push-triggered uploader, both still live: ubuntu's
       # `imagemagick` is ImageMagick **6**, whose binary is `convert` (there is no `magick`); and the check
       # must not be `... --version | head -1`, because a pipeline returns the LAST command's status, so
       # `head` succeeds even when the binary does not exist.
       - name: Install ImageMagick
-        if: ${{ inputs.ios }}
         run: |
           set -euo pipefail
           sudo apt-get -qq update
           sudo apt-get -qq install -y imagemagick fonts-liberation
           if command -v magick >/dev/null 2>&1; then magick --version; else convert --version; fi
           fc-list | grep -qiE "liberation|dejavu" || { echo "::error::no bold sans font installed"; exit 1; }
+
+      # PLAY'S STORE LISTING (`docs/deployment.md`, "Google Play listing delivery"), staged for the Play preflight and
+      # release below, which compare each part with what Play holds and write only a difference. The text is rendered
+      # from metadata/listing/ and checked against Play's limits (as the `metadata` gate did), the icon and feature
+      # graphic are the committed ones, and the phone screenshots are composited from screenshots/android/ with the
+      # shared headlines — byte-stable, which is what the comparison relies on. Before any store mutation, so a broken
+      # render costs a red run and nothing else.
+      - name: Render the Play store listing and its images
+        if: ${{ inputs.android }}
+        run: |
+          set -euo pipefail
+          python3 scripts/resolve-deployment.py prod --quiet
+          python3 scripts/validate_play_listing.py build/metadata/play
+          IMAGES="$RUNNER_TEMP/play-images"
+          mkdir -p "$IMAGES/phoneScreenshots"
+          cp metadata/play/images/icon.png metadata/play/images/featureGraphic.png "$IMAGES/"
+          TARGET=play OUT_DIR="$RUNNER_TEMP/play-shots" bash .github/scripts/compose_screenshots.sh en-US
+          cp "$RUNNER_TEMP/play-shots/en-US/"*.png "$IMAGES/phoneScreenshots/"
 
       # DERIVE the store version from the build (no mutation), for EITHER store. Fails fast if the build's marketing
       # version is not two-part X.Y (e.g. a pre-change 0.1.0 build cannot be promoted). Also reports whether the
@@ -345,16 +368,20 @@ jobs:
           echo "review doctor: no blocking checks — safe to submit"
 
       # Play's own validation of the exact release the submit will commit (`versionCode` N as PLAY_TRACK's one
-      # release, with the compact notes), in an edit that is then DELETED — so a missing declaration or a refused
-      # track fails here, before anything is submitted anywhere. The submit opens a fresh edit (play_release.py says
-      # why). Skips green when the track already carries N.
+      # release, with the compact notes, and the store listing's differences), in an edit that is then DELETED — so a
+      # missing declaration, a refused track or a refused listing fails here, before anything is submitted anywhere.
+      # The submit opens a fresh edit (play_release.py says why). Skips green when the track already carries N.
       - name: Preflight the Play release
         if: ${{ inputs.android }}
         env:
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          # The listing's public contact email: the same address as the App Store's review contact, a secret only so
+          # that it stays out of this public repo.
+          PLAY_CONTACT_EMAIL: ${{ secrets.ASC_REVIEW_CONTACT_EMAIL }}
         run: |
           uv run .github/scripts/play_release.py promote "$PLAY_PACKAGE" "$PLAY_TRACK" "$BUILD_NUMBER" \
-            "$STORE_VERSION ($BUILD_NUMBER)" "$RUNNER_TEMP/play-notes.txt" validate
+            "$STORE_VERSION ($BUILD_NUMBER)" "$RUNNER_TEMP/play-notes.txt" validate \
+            --listing build/metadata/play --images "$RUNNER_TEMP/play-images"
 
       # ── Submit: Play first, then the App Store (the header says why). Neither runs on a dry run.
 
@@ -362,9 +389,12 @@ jobs:
         if: ${{ inputs.android && !inputs.dry_run }}
         env:
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          # As in the preflight.
+          PLAY_CONTACT_EMAIL: ${{ secrets.ASC_REVIEW_CONTACT_EMAIL }}
         run: |
           uv run .github/scripts/play_release.py promote "$PLAY_PACKAGE" "$PLAY_TRACK" "$BUILD_NUMBER" \
-            "$STORE_VERSION ($BUILD_NUMBER)" "$RUNNER_TEMP/play-notes.txt" commit
+            "$STORE_VERSION ($BUILD_NUMBER)" "$RUNNER_TEMP/play-notes.txt" commit \
+            --listing build/metadata/play --images "$RUNNER_TEMP/play-images"
           echo "::notice::build $BUILD_NUMBER released to Play's $PLAY_TRACK track as $STORE_VERSION"
 
       - name: Submit for App Store Review

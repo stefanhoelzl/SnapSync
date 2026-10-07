@@ -171,7 +171,7 @@ jobs:
       - name: Validate the App Store listing
         run: '"$RUNNER_TEMP/asc" metadata validate --dir build/metadata'
       # The Play half of the same rendered listing (one source, metadata/listing/): Play has no offline validator, so
-      # its character limits are ours. The apply half is android-deliver's diff-gated listing update (main only).
+      # its character limits are ours. The apply half is promote.yml's diff-gated listing update.
       - name: Validate the Google Play listing
         run: python3 scripts/validate_play_listing.py build/metadata/play
 
@@ -873,44 +873,20 @@ jobs:
           NOTE="$(bash .github/scripts/delivery_note.sh)"
           echo "note: $NOTE"
           echo "RELEASE_NOTE=$NOTE" >> "$GITHUB_ENV"
-      # THE STORE LISTING (`docs/deployment.md`, "Listing metadata"), on MAIN ONLY: Play's listing is not per-track, so a
-      # dispatched branch's draft copy must never reach it. The text is rendered from metadata/listing/ (and checked
-      # against Play's limits, as the `metadata` gate did), the icon and feature graphic are the committed ones, and the
-      # phone screenshots are composited here from screenshots/android/ with the shared headlines. The upload below
-      # compares each with what Play holds and sends only a difference, so most merges send nothing to review.
-      # ImageMagick 6 is ubuntu's (`convert`); the composite is byte-stable, which is what the comparison relies on.
-      - name: Render the store listing and its images
-        if: github.event_name == 'push'
-        run: |
-          set -euo pipefail
-          sudo apt-get -qq update
-          sudo apt-get -qq install -y imagemagick fonts-liberation
-          python3 scripts/resolve-deployment.py prod --quiet
-          python3 scripts/validate_play_listing.py build/metadata/play
-          IMAGES="$RUNNER_TEMP/play-images"
-          mkdir -p "$IMAGES/phoneScreenshots"
-          cp metadata/play/images/icon.png metadata/play/images/featureGraphic.png "$IMAGES/"
-          TARGET=play OUT_DIR="$RUNNER_TEMP/play-shots" bash .github/scripts/compose_screenshots.sh en-US
-          cp "$RUNNER_TEMP/play-shots/en-US/"*.png "$IMAGES/phoneScreenshots/"
-          echo "LISTING_ARGS=--listing build/metadata/play --images $IMAGES" >> "$GITHUB_ENV"
       # play_release.py's dependencies are declared inline (PEP 723) and resolved by `uv run`.
       - name: Install uv
         uses: astral-sh/setup-uv@v10.2.0
-      # ONE Play edit: upload, the internal track's one release (named `<version> (<build>)`), the store listing's
-      # differences, commit — or nothing. A rejected listing therefore fails the delivery too: the edit lands whole or not.
+      # ONE Play edit: upload, the internal track's one release (named `<version> (<build>)`), commit — or nothing.
+      # The store listing is NOT written here: Play's listing is one per app, so promote.yml writes it with the release
+      # it describes (`docs/deployment.md`, "Google Play listing delivery").
       - name: Upload to the Play internal track with the release note
         if: github.event_name == 'push'
         env:
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
-          # The listing's public contact email: the same address as the App Store's review contact, a secret only so
-          # that it stays out of this public repo.
-          PLAY_CONTACT_EMAIL: ${{ secrets.ASC_REVIEW_CONTACT_EMAIL }}
         run: |
           VERSION="$(cat "$RUNNER_TEMP/android/version.txt")"
-          # shellcheck disable=SC2086
           uv run .github/scripts/play_release.py deliver "$PACKAGE" \
-            "$RUNNER_TEMP/android/bundle/release/android-release.aab" internal "$VERSION ($BUILD_NUMBER)" "$RELEASE_NOTE" \
-            $LISTING_ARGS
+            "$RUNNER_TEMP/android/bundle/release/android-release.aab" internal "$VERSION ($BUILD_NUMBER)" "$RELEASE_NOTE"
       # A DISPATCH: no edit, no track, no listing — the bundle goes through internal app sharing, and the install link
       # goes to the run's summary. The script refuses a build Play signed with a certificate android.json does not
       # accept, since prod would refuse that app's attestation. Installing needs the Play Store's "Internal app sharing"

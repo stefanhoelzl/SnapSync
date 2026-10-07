@@ -535,12 +535,11 @@ never reaches the internal track (below).
   different key also means a different `ANDROID_ID`, so the backend sees it as a **new device**: switching between the Play build and a link
   build enrols afresh, and each enrolment counts against an event's device capacity. The
   mapping is not uploaded to Play; `/bugsink` retraces against the artifact. `play_release.py status <package>` lists
-  every track's releases read-only. On **`main` only**, the same edit also brings the Play **store listing** in line
-  with the repo (§6, "Google Play listing delivery"); a branch dispatch never touches it. Secrets:
+  every track's releases read-only. No delivery touches the Play **store listing**; a promote writes it (§6, "Google
+  Play listing delivery"). Secrets:
   `PLAY_UPLOAD_KEYSTORE_BASE64` / `PLAY_UPLOAD_KEYSTORE_PASSWORD` (PKCS12, alias `upload`, key password = store
   password), `PLAY_SERVICE_ACCOUNT_JSON` (service account `play-ci`; locally `PLAY_SERVICE_ACCOUNT_KEY` through
-  secrets-env) and `ASC_REVIEW_CONTACT_EMAIL` (the App Store review contact, reused as the listing's public contact
-  email).
+  secrets-env).
 - **Signing**: two persistent certificates imported into an ephemeral keychain in **both** `ios-build`
   and `ios-deliver`: Apple Distribution **and** Apple Development. `archive` also provisions a
   development identity, so without the imported Development cert CI would mint a new one every run and
@@ -623,11 +622,12 @@ no Gradle, no signing, only the existing Admin ASC key and Play service account.
    **replaced**. Apply the `en-US` `whatsNew` and the App Review details (notes from `metadata/review/notes.md`;
    contact details from secrets because the repo is public; "no demo account").
 7. **Preflight** every selected store before either submit: `asc review doctor` must report no blocking check;
-   Play validates an edit holding the exact release the submit will commit, then the edit is deleted.
+   Play validates an edit holding the exact release the submit will commit, with the store listing's differences
+   ("Google Play listing delivery" below), then the edit is deleted.
    `dry_run` stops here.
 8. **Submit Play, then the App Store.** Play: `versionCode` N becomes `PLAY_TRACK`'s one release, named
-   `X.Y (N)`, status `completed`, with the compact notes, in a fresh edit — skipped when the track already carries
-   N. App Store: `asc review submit` — skipped when step 1 found it submitted. Play goes first because its commit is
+   `X.Y (N)`, status `completed`, with the compact notes and the store listing's differences, in a fresh edit —
+   skipped when the track already carries N (its listing landed with it). App Store: `asc review submit` — skipped when step 1 found it submitted. Play goes first because its commit is
    all-or-nothing and it is the likelier refusal, so a refusal there leaves nothing in front of App Review.
 9. **Last**, once every selected store accepted: create tag `vX.Y` on the origin commit, its message naming the
    build and the stores (`release 0.12 (build 2140): ios, android`). "Accepted" is the submission going through;
@@ -713,21 +713,26 @@ hardware in listing images only as a photograph of the real product.
 
 ### Google Play listing delivery
 
-- **Main only, inside the delivery's one edit.** `android-deliver` renders the listing (`build/metadata/play/`),
-  checks it, and stages the committed icon and feature graphic. It composites the phone screenshots from
-  `screenshots/android/` (the `play` target). `play_release.py deliver --listing … --images …` then compares each part
-  with what Play holds, inside the edit that uploads the bundle:
+- **At promote, inside the Play release's edit.** Play's listing is one per app, not per version or track, so
+  nothing in Play ties it to a release. It once followed `main`, written by every merge's `android-deliver`, and so
+  ran ahead of the build testers could install: a merged screen redesign reached the listing while the closed track
+  still served the previous version. It is now written only by `promote.yml`, like the App Store's version-bound
+  listing. With `android`, the promote renders the listing (`build/metadata/play/`), checks it, and stages the
+  committed icon and feature graphic. It composites the phone screenshots from `screenshots/android/` (the `play`
+  target). All of it comes from the promote's own checkout (the dispatched ref), as the App Store screenshots do.
+  `play_release.py promote … --listing … --images …` then compares each part with what Play holds, inside the edit
+  that releases build N to `PLAY_TRACK`:
   - the three text fields, by value;
   - the contact website, and the contact email from the `ASC_REVIEW_CONTACT_EMAIL` secret (the App Store review
     contact; never committed, never printed);
   - each image set, by the sha256 Play lists, which is the uploaded file's own (measured).
 
-  Only a difference is written. A merge that changes no copy and no image therefore sends Play nothing to review,
-  and one that does joins whatever review is open. There is ONE edit per run, because committing an edit invalidates
-  every other open one: a separate listing job would race the delivery.
-- **One edit, one fate.** A listing Play rejects fails the delivery too, and nothing lands. The `metadata` gate checks
-  Play's limits on every PR so that this stays theoretical.
-- **Preview before merging.** `uv run .github/scripts/play_release.py listing-diff <package> build/metadata/play <images
+  Only a difference is written. A promote that changes no copy and no image therefore sends Play no listing change to
+  review. The listing rides in the release's ONE edit because committing an edit invalidates every other open one.
+  Merges and branch dispatches never touch it, so a merged listing change waits for the next promote.
+- **One edit, one fate.** A listing Play rejects fails the promote's Play preflight, before anything is submitted
+  anywhere. The `metadata` gate checks Play's limits on every PR so that this stays theoretical.
+- **Preview before promoting.** `uv run .github/scripts/play_release.py listing-diff <package> build/metadata/play <images
   dir>` (under secrets-env) prints what would change. `--try` also writes it into an edit that is then deleted, never
   committed, so Play validates it.
 - **Not in the API, so set by hand in the Console:** the privacy-policy URL, the category and every App-content
@@ -737,7 +742,7 @@ hardware in listing images only as a photograph of the real product.
 
 Six committed raws in `screenshots/ios/` (3 states × light/dark) feed **both** the App Store listing
 (uploaded at promote time only) and the `site/` landing page (on merge). A merge that changes them
-changes **no** listing. Each capture is the **real app** — the rig build on a simulator — in a state its real
+changes **no** listing; neither does one that changes `screenshots/android/`. Each capture is the **real app** — the rig build on a simulator — in a state its real
 reduction reached: `screenshots.yml` sets its launch adapters to mock every system but the screen and the app's
 foreground life, and `:test:integration`'s capture drives it to each state through the control channel (`Shots.kt`:
 `create`, `joining`, `in_sync`) and captures it light and dark. The backend, the photo library, the Keychain and App
@@ -758,8 +763,8 @@ Android rig build on an emulator, by `screenshots.yml`'s `android` job. It uses 
 resets the mocked systems' saved state through `run-as`; the status bar is SystemUI's demo mode. They feed only the
 Google Play listing: `compose_screenshots.sh`'s `play` target puts the use-case graphic first (`CONCEPT_FRAME=off`
 leaves it out of a target), then composites the light set with the same headlines onto a
-1080×1920 (9:16) canvas, since a raw 1080×2400 breaks Play's 2:1 limit, and `android-deliver` uploads them when they
-changed (below). The landing page keeps the iPhone raws. An unchanged UI captures byte-identically on the emulator too.
+1080×1920 (9:16) canvas, since a raw 1080×2400 breaks Play's 2:1 limit, and a promote uploads them when they changed
+("Google Play listing delivery" above). The landing page keeps the iPhone raws. An unchanged UI captures byte-identically on the emulator too.
 
 ```
 gh workflow run screenshots.yml --ref <branch>          # both jobs
