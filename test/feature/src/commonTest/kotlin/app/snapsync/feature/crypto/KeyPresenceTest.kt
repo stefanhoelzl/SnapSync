@@ -6,6 +6,8 @@ import app.snapsync.model.EventConfig
 import app.snapsync.model.KeyPresence
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
+import app.snapsync.model.deletesAt
+import app.snapsync.model.eventEnd
 import app.snapsync.services.crypto.EventKeys
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -29,6 +31,7 @@ class KeyPresenceTest {
     private fun config(keyId: String?) = EventConfig(
         "11111111-1111-4111-8111-111111111111", "Party", captureCutoff("2026-07-06T00:00:00Z"),
         maxPhotoDate = captureCeiling("2026-07-13T00:00:00Z"), keyId = keyId,
+        endsAt = eventEnd("2099-12-31T00:00:00Z"), deletesAt = deletesAt("2099-12-31T00:00:00Z"),
     )
 
     @Test
