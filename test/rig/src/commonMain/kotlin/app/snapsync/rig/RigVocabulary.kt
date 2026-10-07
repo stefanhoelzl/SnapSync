@@ -101,6 +101,7 @@ object RigVocabulary {
         "device/backend/deposit",
         "device/backend/legacy-event",
         "device/backend/refuse-credential",
+        "device/backend/refuse-attestation",
         "device/backend/wipe-bytes",
         "device/clock/advance",
         "device/network",

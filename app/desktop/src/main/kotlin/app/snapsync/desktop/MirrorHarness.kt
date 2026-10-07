@@ -161,6 +161,7 @@ private fun mirrorActions(
             onCancelReconfigure = inert("cancel settings surface"),
             onReportBugOpen = inert("open bug report"),
             onReportBugDismiss = inert("dismiss bug report"),
+            onReportRefusal = { inert("open bug report about a refusal")() },
         ),
         onCreateEvent = { name, startsAt, endsAt ->
             post("create", "name" to name, "startsAt" to startsAt.toString(), "endsAt" to endsAt.toString())()

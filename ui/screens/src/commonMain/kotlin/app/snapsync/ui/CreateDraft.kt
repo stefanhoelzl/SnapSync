@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import app.snapsync.presentation.CutoffFormatter
+import app.snapsync.model.ScreenMessage
 import app.snapsync.model.CreateDraftSession
 import app.snapsync.model.Layer
 import app.snapsync.ui.components.EventRange
@@ -97,6 +98,7 @@ internal fun CreateFlow(
     onCreateEvent: (String, LocalDateTime, LocalDateTime) -> Unit,
     onOpenSettings: () -> Unit,
     cutoff: CutoffFormatter,
+    onReportRefusal: (ScreenMessage) -> Unit,
 ) {
     // The creating layer carries no session; the draft keeps the one it was last shown with. A plain holder,
     // not state: remembering what was last rendered must not itself cause a recomposition.
@@ -111,7 +113,7 @@ internal fun CreateFlow(
                 delay(FOLLOW_NOW_MILLIS)
             }
         }
-        CreateEventScreen(layer, draft, CreateCallbacks(onCreateEvent, onOpenSettings), cutoff)
+        CreateEventScreen(layer, draft, CreateCallbacks(onCreateEvent, onOpenSettings, onReportRefusal), cutoff)
     } else {
         CreatingEventScreen()
     }

@@ -178,9 +178,30 @@ class RenewRequest(val deviceId: String, val assertion: ByteArray, val challenge
 /**
  * What the device's integrity service produced over a challenge (the `DeviceIntegrity` port): the [handle] of the
  * key that produced it — newly created for a first proof, the one passed in for a renewal — the [format] the
- * platform's proofs have, and the [bytes] the backend verifies.
+ * platform's proofs have, and the [bytes] the backend verifies. [chain] summarises the certificates a fresh proof
+ * presents, where the platform exposes them (Android); `null` for a renewal, for App Attest and for the fakes.
  */
-class Proof(val handle: String, val format: ProofFormat, val bytes: ByteArray)
+class Proof(val handle: String, val format: ProofFormat, val bytes: ByteArray, val chain: AttestationChain? = null)
+
+/**
+ * The certificates a fresh proof presented, summarised for the operator (capability `privacy-security`: what a report the
+ * app offered for a refused phone carries) — enough to see which root a chain ends at: names kept verbatim (a remotely
+ * provisioned certificate is named after its serial, and that is not redacted), but no certificate itself, and not
+ * the leaf, which is the app's own key.
+ *
+ * [certificates] are those ABOVE the leaf, in the chain's order (the root last); [rootKeySha256] is the lowercase hex
+ * SHA-256 of the root's encoded public key — what the backend pins a root by.
+ */
+data class AttestationChain(val certificates: List<CertificateFacts>, val rootKeySha256: String)
+
+/** One certificate, as [AttestationChain] summarises it: names as RFC 2253, validity as ISO instants, key e.g. `EC 256`. */
+data class CertificateFacts(
+    val subject: String,
+    val issuer: String,
+    val notBefore: String,
+    val notAfter: String,
+    val key: String,
+)
 
 /**
  * Which kind of proof a platform produces — the verifier the backend's mint dispatches to (`proof.format` on the wire).

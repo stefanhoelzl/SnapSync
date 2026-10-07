@@ -41,4 +41,5 @@ internal fun AppCore.diagnosticDumpFor(): CollectDiagnosticDump = CollectDiagnos
             "app_admission" to appUploadAdmission().name,
         )
     },
+    refusalFacts = { attestation.refusalFacts() },
 )

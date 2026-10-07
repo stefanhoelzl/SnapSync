@@ -1,5 +1,6 @@
 package app.snapsync.rig
 
+import app.snapsync.model.ScreenMessage
 import app.snapsync.model.Direction
 import app.snapsync.model.RangeChoice
 import app.snapsync.model.Layer
@@ -89,6 +90,12 @@ fun userCommands(dispatch: (UiIntent) -> Unit, state: () -> UiState): Map<String
     "confirmSwitch" to RigUserCommand { dispatch(UiIntent.ConfirmSwitch) },
     "retryLoad" to RigUserCommand { dispatch(UiIntent.RetryLoad) },
     "retryJoin" to RigUserCommand { dispatch(UiIntent.RetryJoin) },
+    // "Report this" beside a refusal (capability `privacy-security`): wired, unlike the other overlays, because how the
+    // sheet was opened decides what the report carries. `message` defaults to the one that offers the report.
+    "reportRefusal" to RigUserCommand { params ->
+        val message = params["message"]?.let(ScreenMessage::valueOf) ?: ScreenMessage.DEVICE_UNVERIFIABLE
+        dispatch(UiIntent.ReportRefusal(message))
+    },
     // The dump goes to the build's configured reporter; a build with none (every dev and rig build of the app,
     // which carries no DSN) keeps it on the device, as the sheet does (capability `privacy-security`).
     "sendDiagnostics" to RigUserCommand { params ->

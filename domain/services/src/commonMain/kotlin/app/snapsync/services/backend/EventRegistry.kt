@@ -51,7 +51,11 @@ class BackendEventCreation(
     override suspend fun create(name: String, startsAt: String, endsAt: String?, keyId: String?): CreateOutcome =
         when (val reply = backend.createEvent(CreateEventRequest(name, startsAt, endsAt, zone(), keyId))) {
             is Reply.Ok -> CreateOutcome.Created(eventId = reply.value.eventId, name = reply.value.name)
-            is Reply.Refused -> if (reply.status == HttpStatus.BAD_REQUEST) refusal(reply.body) else CreateOutcome.Transient
+            is Reply.Refused -> when (reply.status) {
+                HttpStatus.BAD_REQUEST -> refusal(reply.body)
+                HttpStatus.UNAUTHORIZED -> CreateOutcome.Unverified
+                else -> CreateOutcome.Transient
+            }
             is Reply.Malformed, is Reply.Unreachable -> CreateOutcome.Transient
         }
 

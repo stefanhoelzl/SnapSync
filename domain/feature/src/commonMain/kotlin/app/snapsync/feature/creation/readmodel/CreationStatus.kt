@@ -33,6 +33,12 @@ enum class CreationFailureReason {
     /** The backend rejected the date range (`400` on `startsAt`/`endsAt`) — e.g. longer than it allows. */
     INVALID_WINDOW,
 
-    /** A transient/server failure (non-2xx other than 400, transport, or parse). */
+    /**
+     * The service did not accept this phone's credential (`401` after recovery). The screen shows the attestation's
+     * refusal when it gave one, and the server-unreachable message when it did not (no answer is not a refusal).
+     */
+    UNVERIFIED,
+
+    /** A transient/server failure (non-2xx other than 400 and 401, transport, or parse). */
     SERVER,
 }

@@ -36,7 +36,12 @@
 // Reflect metadata polyfill. ES modules evaluate in import order, so it must come first (as in `attest.ts`).
 import "reflect-metadata";
 import * as x509 from "@peculiar/x509";
-import { bytesEqual, derSignatureToRaw } from "./attest.ts";
+import {
+  AttestationRejected,
+  bytesEqual,
+  certificateRefusal,
+  derSignatureToRaw,
+} from "./attest.ts";
 import type { Config } from "./config.ts";
 
 /** Where Android puts the key description. */
@@ -340,10 +345,13 @@ export async function verifyAndroidAttestation(
   opts: { chain: Uint8Array[]; expectedChallenge: Uint8Array; at: Date; fetch: FetchLike },
 ): Promise<VerifiedAndroidAttestation> {
   const chain = opts.chain.map((der) => new x509.X509Certificate(der as BufferSource));
-  await verifyChain(chain, config, opts.at);
+  // Every chain check, and a revoked certificate, is a `certificate` refusal: the report's chain summary says which.
+  await verifyChain(chain, config, opts.at).catch((e) => {
+    throw certificateRefusal(e);
+  });
   const revoked = await revokedSerials(opts.fetch, opts.at.getTime());
   if (chain.some((c) => revoked.has(statusSerial(c)))) {
-    throw new Error("a certificate in the chain is revoked");
+    throw certificateRefusal(new Error("a certificate in the chain is revoked"));
   }
 
   const leaf = chain[0];
@@ -361,28 +369,36 @@ export async function verifyAndroidAttestation(
   if (!securityLevel) throw new Error("unknown attestation security level");
   const hardware = config.androidAttestationTrust === "hardware";
   if (hardware && securityLevel === "software") {
-    throw new Error("a software attestation proves nothing");
+    throw new AttestationRejected("device-modified", "a software attestation proves nothing");
   }
 
   // 3. The device: a verified OS behind a locked bootloader, as the TEE saw it at boot.
   if (hardware) {
     const rootOfTrust = description.hardwareEnforced.get(ROOT_OF_TRUST);
     if (!rootOfTrust || !bootsVerifiedAndLocked(rootOfTrust)) {
-      throw new Error("the device does not boot a verified OS behind a locked bootloader");
+      throw new AttestationRejected(
+        "device-modified",
+        "the device does not boot a verified OS behind a locked bootloader",
+      );
     }
   }
 
   // 4. The app: our package, signed with a certificate this deployment accepts.
   const appField = description.softwareEnforced.get(ATTESTATION_APPLICATION_ID);
-  if (!appField) throw new Error("the attestation names no application");
+  if (!appField) {
+    throw new AttestationRejected("app-not-genuine", "the attestation names no application");
+  }
   const app = applicationId(appField);
   if (!app.packages.includes(config.androidPackageName)) {
-    throw new Error("the attestation is not this app's");
+    throw new AttestationRejected("app-not-genuine", "the attestation is not this app's");
   }
   if (hardware) {
     const accepted = config.androidSigningCertDigests.map(digestBytes);
     if (!app.digests.some((d) => accepted.some((a) => bytesEqual(a, d)))) {
-      throw new Error("the app is not signed with a certificate this deployment accepts");
+      throw new AttestationRejected(
+        "app-not-genuine",
+        "the app is not signed with a certificate this deployment accepts",
+      );
     }
   }
 

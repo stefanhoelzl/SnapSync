@@ -64,7 +64,8 @@ import androidx.compose.runtime.setValue
  * empty **or equal to the trimmed [initialValue]** — so a caller editing an existing value cannot submit
  * a no-op. Both are disabled rather than validated, so an invalid submit is unreachable and neither ever
  * needs an error message. (For the always-empty [initialValue] of the bug report, the second rule
- * collapses into the first and nothing about that caller changes.)
+ * collapses into the first and nothing about that caller changes.) [PromptField.submitUnchanged] lifts the second
+ * rule for a seed that is itself the submission — the bug report the app offered and wrote.
  *
  * [error] is for the failure a client-side rule CANNOT prevent — a rejection from a remote system. It
  * renders as an [AppErrorBanner] above the actions, never as a styling of the input: a server saying no
@@ -88,8 +89,9 @@ fun AppTextPromptSheet(
     val scheme = MaterialTheme.colorScheme
     var text by remember(field.initialValue) { mutableStateOf(field.initialValue) }
     val written = text.trim()
-    // A no-op submission is unreachable, not merely rejected. For an empty seed this IS the empty check.
-    val submittable = written.isNotEmpty() && written != field.initialValue.trim()
+    // A no-op submission is unreachable, not merely rejected. For an empty seed this IS the empty check. A seed that IS
+    // the submission — a report the app wrote for the user — may be sent as it stands.
+    val submittable = written.isNotEmpty() && (field.submitUnchanged || written != field.initialValue.trim())
 
     ModalBottomSheet(
         // Busy refuses the scrim and the swipe-down as firmly as it refuses the cancel button: a request
@@ -166,4 +168,10 @@ class PromptField(
     val maxLength: Int = Int.MAX_VALUE,
     val error: String? = null,
     val busy: Boolean = false,
+    /**
+     * Whether [initialValue] may be confirmed as it stands. `false` for an EDIT of an existing value (a rename),
+     * where an unchanged text is a no-op; `true` for a text the app wrote for the user to send — a report it offered
+     * (capability `privacy-security`) — which the user may change but need not.
+     */
+    val submitUnchanged: Boolean = false,
 )

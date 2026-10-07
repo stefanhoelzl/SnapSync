@@ -109,4 +109,9 @@ data class AppFacts(
 data class ReportContext(
     val screen: String,
     val shown: Map<String, String> = emptyMap(),
+    /**
+     * The report was opened from "Report this" beside a refusal (capability `privacy-security`): only then does it carry
+     * the refused verification's facts.
+     */
+    val verification: Boolean = false,
 )

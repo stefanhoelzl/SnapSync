@@ -53,6 +53,14 @@ interface Credential {
      * Never throws: a recovery that fails answers `null`, and the rejection stands as the call's answer.
      */
     suspend fun rejected(sent: String): String?
+
+    /**
+     * This process holds no token and a USER is waiting on the call: obtain one now if this process can, and answer
+     * it — or `null`. What makes a tap on a phone that never attested try to verify it again (capability `create-event`,
+     * "The front screen tells a refused phone before it tries"). Only the extension, which cannot attest, keeps the
+     * default. Never throws.
+     */
+    suspend fun missing(): String? = null
 }
 
 /**
@@ -86,13 +94,14 @@ class CredentialedBackend(
     private val log: Logger = Logger.withTag("AuthenticatedBackend"),
 ) : AuthenticatedBackend {
 
-    override suspend fun createEvent(req: CreateEventRequest) = gated { backend.createEvent(it, req) }
+    override suspend fun createEvent(req: CreateEventRequest) = gated(obtainFirst = true) { backend.createEvent(it, req) }
 
     override suspend fun getEvent(eventId: String) = observed(backend.getEvent(eventId))
 
     override suspend fun renameEvent(eventId: String, name: String) = gated { backend.renameEvent(it, eventId, name) }
 
-    override suspend fun joinEvent(eventId: String, deviceId: String) = gated { backend.joinEvent(it, eventId, deviceId) }
+    override suspend fun joinEvent(eventId: String, deviceId: String) =
+        gated(obtainFirst = true) { backend.joinEvent(it, eventId, deviceId) }
 
     override suspend fun publishManifest(eventId: String, deviceId: String, manifest: DeviceManifest) =
         gated { backend.publishManifest(it, eventId, deviceId, manifest) }
@@ -109,8 +118,13 @@ class CredentialedBackend(
     override suspend fun putDeviceConfig(deviceId: String, push: PushEndpoint) =
         gated { backend.putDeviceConfig(it, deviceId, push) }
 
-    private suspend fun <T> gated(call: suspend (token: String?) -> Reply<T>): Reply<T> {
-        val sent = credential.token()
+    /**
+     * [obtainFirst] is for the calls a user taps — create and join: with no token held, the credential is asked for one
+     * BEFORE sending, since the call would only `401`. Every other route is a background one and sends what it holds,
+     * so a phone the service refuses is not re-attested once per background call.
+     */
+    private suspend fun <T> gated(obtainFirst: Boolean = false, call: suspend (token: String?) -> Reply<T>): Reply<T> {
+        val sent = credential.token() ?: if (obtainFirst) credential.missing() else null
         val first = observed(call(sent))
         if (sent == null || first !is Reply.Refused || first.status != HttpStatus.UNAUTHORIZED) return first
         log.w { "the backend rejected the token this call carried — recovering" }

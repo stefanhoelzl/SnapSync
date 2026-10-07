@@ -1,5 +1,6 @@
 package app.snapsync.presentation
 
+import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.CreateDraftSession
 import app.snapsync.model.NetworkNotice
 import app.snapsync.model.NetworkAccess
@@ -139,7 +140,11 @@ class StatusContainerHost(
     private val config = sources.config
     private val creationStatus = sources.creation
     private val downloadSource = sources.download
-    private val attested = sources.attested
+    private val attested = sources.verification.attested
+    private val refusal = sources.verification.refusal
+
+    // The two halves of the attestation's verdict travel as one input, so the reduction below keeps its arity.
+    private val trust: Flow<Pair<Boolean, DeviceRefusal?>> = combine(attested, refusal) { a, r -> a to r }
     private val pending = sources.pending
     private val versionRefusal = sources.versionRefusal
     private val network = sources.network
@@ -266,7 +271,7 @@ class StatusContainerHost(
             initialState = render(
                 Membership(
                     config.value, permission.value, syncSource.status.value, downloadSource.value, attested.value,
-                    network.access.value, mobileData.value,
+                    network.access.value, mobileData.value, refusal.value,
                 ),
                 Interaction(pending.value, creationStatus.value, renameFlow.value, versionRefusal.value),
                 local.value,
@@ -297,12 +302,12 @@ class StatusContainerHost(
                 // it runs ONLY while an event has not ended (see above) — every other re-emission is a real
                 // source change or a presentation-owned cell's.
                 combineFlat(
-                    config, permission, syncSource.status, downloadSource, attested, network.access, mobileData,
+                    config, permission, syncSource.status, downloadSource, trust, network.access, mobileData,
                     pending, creationStatus, renameFlow, versionRefusal,
                     local, nowTick,
-                ) { config, permission, sync, download, attested, access, mobileData, pending, creation, rename, refusal, local, now ->
+                ) { config, permission, sync, download, (attested, refused), access, mobileData, pending, creation, rename, refusal, local, now ->
                     render(
-                        Membership(config, permission, sync, download, attested, access, mobileData),
+                        Membership(config, permission, sync, download, attested, access, mobileData, refused),
                         Interaction(pending, creation, rename, refusal),
                         local,
                         now,
@@ -501,9 +506,18 @@ class StatusContainerHost(
 
         fun onQrDismiss() = intent { local.editOverlays { it.copy(showingQr = false) } }
 
-        fun onReportBugOpen() = intent { local.editOverlays { it.copy(reportingBug = true) } }
+        fun onReportBugOpen() = intent {
+            local.update { it.copy(overlays = it.overlays.copy(reportingBug = true, reportSeed = null), verifiedReport = false) }
+        }
 
-        fun onReportBugDismiss() = intent { local.editOverlays { it.copy(reportingBug = false) } }
+        /** "Report this" beside a refusal: the same sheet, its description written for [message] (capability `privacy-security`). */
+        fun onReportRefusal(message: ScreenMessage) = intent {
+            local.update {
+                it.copy(overlays = it.overlays.copy(menuOpen = false, reportingBug = true, reportSeed = message), verifiedReport = true)
+            }
+        }
+
+        fun onReportBugDismiss() = intent { local.editOverlays { it.copy(reportingBug = false, reportSeed = null) } }
 
         /** The app menu (capability `sync-status`). Where the layer does not offer it, an open flag is masked. */
         fun onMenuOpen() = intent { local.update { it.copy(overlays = it.overlays.copy(menuOpen = true), mobileDataNotSaved = false) } }
@@ -521,7 +535,11 @@ class StatusContainerHost(
         }
 
         /** The menu's "Report a problem": the menu gives way to the sheet in one edit, so the two never stack. */
-        fun onMenuReportBug() = intent { local.editOverlays { it.copy(menuOpen = false, reportingBug = true) } }
+        fun onMenuReportBug() = intent {
+            local.update {
+                it.copy(overlays = it.overlays.copy(menuOpen = false, reportingBug = true, reportSeed = null), verifiedReport = false)
+            }
+        }
 
         /**
          * One of the menu's links, opened outside the app (capability `sync-status`). The menu closes first, so
@@ -593,8 +611,10 @@ class StatusContainerHost(
      */
     val onSendDiagnostics: (String, String) -> Unit = { note, screen ->
         intent {
+            // Read and spent here: the sheet is dismissed before it sends, so the report remembers how it was opened.
+            val verification = local.getAndUpdate { it.copy(verifiedReport = false) }.verifiedReport
             val outcome = try {
-                commands.sendDiagnostics(note, ReportContext(screen, shownCounts(state)))
+                commands.sendDiagnostics(note, ReportContext(screen, shownCounts(state), verification))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -994,7 +1014,7 @@ class StatusContainerHost(
         // endsAt AND deletesAt — so a commit can never reach `JoinEvent` without the floor, the ceiling,
         // and the retention deadline.
         val detailed = p.phase as? JoinPhase.Detailed ?: return
-        if (detailed.step != JoinPhase.Detailed.Step.Ready && detailed.step != JoinPhase.Detailed.Step.CommitFailed) return
+        if (detailed.step !in RETRYABLE_STEPS) return
         val event = detailed.event
         // What is committed is what the reduction RESOLVED — the same value the surface rendered.
         val form = local.value.form
@@ -1046,7 +1066,7 @@ class StatusContainerHost(
             // (capability `join-event`). A full event given the CommitFailed surface would offer a Retry
             // that fails identically every time, with nothing saying why.
             // A CLOSED event is final too, and carries no event facts worth keeping: its own phase, no Retry.
-            pending.value = p.copy(phase = failedPhase(commit, detailed.event))
+            pending.value = p.copy(phase = failedPhase(commit, detailed.event, refusal.value))
         }
     }
 
@@ -1153,6 +1173,7 @@ private fun unjoinedLayer(
     form: RangeForm,
     permission: GalleryAccess,
     network: NetworkNotice?,
+    refusal: DeviceRefusal?,
     resolveAgainst: (RangeForm, EventStart, EventEnd?, CaptureCeiling?) -> ResolvedRange,
 ): Layer {
     // A pending interactive join outranks the create layer (a switch whose leave already ran also
@@ -1180,11 +1201,16 @@ private fun unjoinedLayer(
     // an older complaint. When it self-clears, the sticky failure shows again. A missing network outranks both on
     // screen, but is carried beside them rather than instead of them, so the failure returns with the network
     // (capability `create-event`). A create in flight is not interrupted: it ends as any create ends.
+    //
+    // A phone the service refuses is told so in that same line as soon as the app learns of it (capability
+    // `create-event`, "The front screen tells a refused phone before it tries"): below a failure, which for a refused
+    // phone IS the refusal, and above the scan hint. Create stays available.
+    val refused = refusal?.let(ScreenMessage::of)
     return when (val creation = create.status) {
         CreationStatus.InFlight -> Layer.CreatingEvent
         is CreationStatus.Failed ->
-            Layer.CreateEvent(error = transient ?: creation.reason.message(), draft = create.draft, network = network)
-        CreationStatus.Idle -> Layer.CreateEvent(error = transient, draft = create.draft, network = network)
+            Layer.CreateEvent(error = transient ?: creation.reason.message(refused), draft = create.draft, network = network)
+        CreationStatus.Idle -> Layer.CreateEvent(error = transient ?: refused, draft = create.draft, network = network)
     }
 }
 
@@ -1217,7 +1243,7 @@ private fun reduceFrom(
     )
     if (config == null) {
         val create = Creation(creation, local.createDraft)
-        return unjoinedLayer(pending, create, transient, form, permission, network, resolveAgainst)
+        return unjoinedLayer(pending, create, transient, form, permission, network, membership.refusal, resolveAgainst)
     }
     val health = joinedHealth(membership, config, network, nowCutoff)
     // A pending join for a DIFFERENT event while joined is a switch confirmation over the joined screen.
@@ -1293,7 +1319,8 @@ private fun joinedHealth(membership: Membership, config: EventConfig, network: N
         // nothing of this member's can upload anyway, so an unusable token is not yet their problem, and
         // two attention lines would only compete. Ranked ABOVE the sync progress, because "Syncing" would
         // be a lie: nothing can upload at all.
-        !attested -> SyncHealth.Unattested
+        // A definite refusal names its cause on the same rung (capability `sync-status`); no verdict names none.
+        !attested -> SyncHealth.Unattested(membership.refusal)
         else -> settled
     }
 }
@@ -1450,9 +1477,14 @@ private fun RenameFailureReason.message(): ScreenMessage = when (this) {
     RenameFailureReason.SERVER -> ScreenMessage.RENAME_FAILED
 }
 
-private fun CreationFailureReason.message(): ScreenMessage = when (this) {
+/**
+ * A failed create in words. [refused] is the attestation's refusal, if it gave one: a create refused for this phone's
+ * credential says why, and without a verdict — the attempt to verify got no answer — it is the unreachable server.
+ */
+private fun CreationFailureReason.message(refused: ScreenMessage?): ScreenMessage = when (this) {
     CreationFailureReason.INVALID_NAME -> ScreenMessage.CREATE_NAME_REFUSED
     CreationFailureReason.INVALID_WINDOW -> ScreenMessage.CREATE_DATES_REFUSED
+    CreationFailureReason.UNVERIFIED -> refused ?: ScreenMessage.CREATE_FAILED
     CreationFailureReason.SERVER -> ScreenMessage.CREATE_FAILED
 }
 
@@ -1521,12 +1553,20 @@ internal data class Owned<T>(val eventId: String?, val value: T) {
  * The phase a commit that did not land shows (capability `join-event`): a full event and a closed one are walls no
  * retry moves, so neither offers one; anything else may heal and keeps the Retry.
  */
-private fun failedPhase(commit: JoinCommit, event: EventDetails): JoinPhase = when (commit) {
+private fun failedPhase(commit: JoinCommit, event: EventDetails, refusal: DeviceRefusal?): JoinPhase = when (commit) {
     JoinCommit.Closed -> JoinPhase.Closed
     JoinCommit.WrongLink -> JoinPhase.WrongLink
     JoinCommit.Full -> JoinPhase.Detailed(event, JoinPhase.Detailed.Step.EventFull)
+    // Refused for this phone's credential: told why when the service said why (capability `join-event`, "A refused phone
+    // is told why it cannot join"). Without a verdict — the attempt to verify got no answer — it is the ordinary failure.
+    JoinCommit.Unverified if refusal != null ->
+        JoinPhase.Detailed(event, JoinPhase.Detailed.Step.DeviceRefused, ScreenMessage.of(refusal))
     else -> JoinPhase.Detailed(event, JoinPhase.Detailed.Step.CommitFailed)
 }
+
+/** The steps a confirm may be taken from: the first, and each failure a Retry may heal. */
+private val RETRYABLE_STEPS =
+    setOf(JoinPhase.Detailed.Step.Ready, JoinPhase.Detailed.Step.CommitFailed, JoinPhase.Detailed.Step.DeviceRefused)
 
 /** The membership and what its health is read from — observed read-models (see [StatusSources]). */
 private data class Membership(
@@ -1539,6 +1579,8 @@ private data class Membership(
     val network: NetworkAccess,
     /** The device's mobile-data choice (capability `mobile-data`): the menu's switch, and the waiting line's cause. */
     val mobileData: Boolean,
+    /** Why the service refused this phone at the latest attempt to verify it, if it did (capability `privacy-security`). */
+    val refusal: DeviceRefusal? = null,
 )
 
 /** The observed outcomes of what the member started: the join gate, a create, a rename — and a refused build. */
@@ -1597,6 +1639,11 @@ private data class Local(
     val shareCount: ShareCount = ShareCount.Unavailable,
     /** The menu's last mobile-data flip could not be saved (capability `mobile-data`); cleared by the next flip or a close. */
     val mobileDataNotSaved: Boolean = false,
+    /**
+     * The open report sheet was opened from "Report this" beside a refusal (capability `privacy-security`), so its report
+     * carries the refused verification's facts. Kept out of [Overlays]: it is how the sheet was opened, not what is shown.
+     */
+    val verifiedReport: Boolean = false,
 )
 
 /**

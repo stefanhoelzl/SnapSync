@@ -45,6 +45,43 @@ class CredentialedBackendTest {
         assertEquals(emptyList(), credential.rejections, "a call that carried no token learns nothing about one")
     }
 
+    @Test
+    fun a_tapped_create_or_join_with_no_token_obtains_one_before_it_is_sent() = runTest {
+        val credential = ScriptedCredential(null, obtained = "T1")
+        val backend = ScriptedBackend()
+        val authenticated = CredentialedBackend(backend, credential, versionGate = null)
+
+        authenticated.createEvent(app.snapsync.model.CreateEventRequest("n", "s", null))
+        authenticated.joinEvent("E", "D")
+
+        assertEquals(listOf("create T1", "join T1"), backend.calls, "the tap tries to verify the phone first")
+        assertEquals(1, credential.obtains, "and once a token is held, the next call just sends it")
+    }
+
+    @Test
+    fun a_background_call_with_no_token_never_attests_on_its_own() = runTest {
+        // A refused phone would otherwise be re-attested once per background call.
+        val credential = ScriptedCredential(null, obtained = "T1")
+        val backend = ScriptedBackend { _, _ -> unauthorized }
+
+        CredentialedBackend(backend, credential, versionGate = null).putDeviceConfig("D", app.snapsync.model.PushEndpoint("apns", "t", "e"))
+
+        assertEquals(listOf("config null"), backend.calls)
+        assertEquals(0, credential.obtains)
+    }
+
+    @Test
+    fun a_tapped_call_whose_credential_cannot_obtain_one_is_still_sent() = runTest {
+        val credential = ScriptedCredential(null) // the extension's answer, or a refused phone
+        val backend = ScriptedBackend { _, _ -> unauthorized }
+
+        val reply = CredentialedBackend(backend, credential, versionGate = null).createEvent(app.snapsync.model.CreateEventRequest("n", "s", null))
+
+        assertEquals(unauthorized, reply, "its 401 is the call's answer")
+        assertEquals(listOf("create null"), backend.calls)
+        assertEquals(1, credential.obtains)
+    }
+
     /**
      * The declared behaviour change: a call refused for its token is sent ONCE more with the token the recovery
      * obtained, so the caller is answered by the retry rather than told "failed" for a request the next attempt

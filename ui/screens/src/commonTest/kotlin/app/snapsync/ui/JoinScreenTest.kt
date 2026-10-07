@@ -55,6 +55,7 @@ import app.snapsync.model.Layer
 import app.snapsync.model.EventDetails
 import app.snapsync.model.DeletesAt
 import app.snapsync.model.JoinPhase
+import app.snapsync.model.ScreenMessage
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.model.PendingSwitch
 import app.snapsync.model.SyncHealth
@@ -84,6 +85,10 @@ import app.snapsync.ui.resources.duration_days
 import app.snapsync.ui.resources.event_closed_body
 import app.snapsync.ui.resources.event_closed_title
 import app.snapsync.ui.resources.event_full_title
+import app.snapsync.ui.resources.join_failed_body
+import app.snapsync.ui.resources.message_report_this
+import app.snapsync.ui.resources.message_device_modified
+import app.snapsync.ui.resources.message_device_unverifiable
 import app.snapsync.ui.resources.event_not_found_body
 import app.snapsync.ui.resources.event_not_found_title
 import app.snapsync.ui.resources.join_access_dismiss
@@ -325,6 +330,38 @@ class JoinScreenTest {
         }
         onNodeWithText(str(Res.string.retry)).assertDoesNotExist()
         onNodeWithText(str(Res.string.cancel)).assertExists()
+    }
+
+    @Test
+    fun `a refused join says why and offers Retry and a report where only one can help and Cancel`() = runComposeUiTest {
+        // Capability `join-event`, "A refused phone is told why it cannot join".
+        var retried = 0
+        var reported: ScreenMessage? = null
+        val refused = phaseAt(JoinPhase.Detailed.Step.DeviceRefused, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES)
+        val state = mutableStateOf(joining(refused.copy(refusal = ScreenMessage.DEVICE_UNVERIFIABLE)))
+        setScreen {
+            TestStatusScreen(
+                state.value,
+                cutoff = fixedCutoff(),
+                actions = testActions(
+                    join = testJoinGateActions(onRetryJoin = { retried++ }),
+                    surfaces = testSurfaceActions(onReportRefusal = { reported = it }),
+                ),
+            )
+        }
+        onNodeWithText(str(Res.string.message_device_unverifiable)).assertExists()
+        onNodeWithText(str(Res.string.join_failed_body)).assertDoesNotExist()
+        onNodeWithText(str(Res.string.message_report_this)).performClick()
+        assertEquals(ScreenMessage.DEVICE_UNVERIFIABLE, reported)
+        onNodeWithText(str(Res.string.retry)).performClick()
+        assertEquals(1, retried)
+        onNodeWithText(str(Res.string.cancel)).assertExists()
+
+        state.value = joining(refused.copy(refusal = ScreenMessage.DEVICE_MODIFIED))
+        waitForIdle()
+        onNodeWithText(str(Res.string.message_device_modified)).assertExists()
+        onNodeWithText(str(Res.string.message_report_this)).assertDoesNotExist()
+        onNodeWithText(str(Res.string.retry)).assertExists()
     }
 
     @Test

@@ -23,6 +23,12 @@ enum class JoinCommit {
     /** The commit did not land, for a reason that may not hold next time. */
     Failed,
 
+    /**
+     * The service did not accept this phone's credential; the attestation's refusal says why. A Retry may heal it —
+     * it tries to verify the phone again first — but it is never shown as a failure "that may not hold next time".
+     */
+    Unverified,
+
     /** The invite link does not open this event — no key, or another one; only the whole invite can. */
     WrongLink,
 }

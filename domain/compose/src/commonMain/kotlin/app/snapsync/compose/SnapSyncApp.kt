@@ -3,6 +3,7 @@ package app.snapsync.compose
 import app.snapsync.services.crypto.EventKeyMinting
 import kotlinx.coroutines.flow.map
 import app.snapsync.services.crypto.DownloadOpening
+import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.UnionTrigger
 import app.snapsync.services.gallery.PermissionAwareCandidateSource
 
@@ -258,6 +259,9 @@ class AppCore internal constructor(
 
     /** [attestation]'s health cell, for readers outside the core (the status host), which see no service type. */
     val attested: StateFlow<Boolean> get() = attestation.attested
+
+    /** Why the service refused this phone at the latest attempt to verify it (capability `privacy-security`). */
+    val refusal: StateFlow<DeviceRefusal?> get() = attestation.refusal
 
     /**
      * Every need-shaped backend service, over one authenticated backend whose credential is [attestation]

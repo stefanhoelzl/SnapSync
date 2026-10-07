@@ -1,5 +1,6 @@
 package app.snapsync.mock
 
+import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.APP_VERSION_HEADER
 import app.snapsync.model.PushEndpoint
 import app.snapsync.model.AssetId
@@ -184,6 +185,17 @@ class BackendOperator internal constructor(private val state: BackendState) {
     /** Devices an event admits before its join answers `409`. */
     var capacity: Int by state::capacity
 
+    /**
+     * While set, the backend refuses this phone as not genuine for that reason (capability `privacy-security`, "A refused
+     * phone is told why"): every attestation answers `401 attestation rejected: <reason>`, as v2 does, and every gated
+     * call answers `401`, whatever token it carries — a phone that held a token learns of the refusal by re-attesting.
+     * `null` is the genuine phone.
+     */
+    var refuseAttestation: DeviceRefusal? by state::refuseAttestation
+
+    /** The diagnostic code the refusal names beside its reason — `certificate` — or `null` for none. */
+    var refuseAttestationDetail: String? by state::refuseAttestationDetail
+
     /** The next token-bearing call to a gated route is answered `401`, once. */
     fun refuseNextCredential() {
         state.refuseNextCredential = true
@@ -306,6 +318,8 @@ internal class BackendState(
     @Volatile var offline = false
     @Volatile var failDeviceListing = false
     @Volatile var refuseNextCredential = false
+    @Volatile var refuseAttestation: DeviceRefusal? = null
+    @Volatile var refuseAttestationDetail: String? = null
     val holds = mutableMapOf<BackendCall, OperatorHold>()
     @Volatile var nextEventId: String? = null
     @Volatile var minAppVersion: String? = null

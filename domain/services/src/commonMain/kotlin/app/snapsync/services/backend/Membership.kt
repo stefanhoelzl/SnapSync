@@ -64,6 +64,8 @@ class BackendEventJoin(private val backend: AuthenticatedBackend) : EventJoin {
                 // A closed (or completed) event admits nobody (capability `event-lifetime`).
                 HttpStatus.GONE -> JoinResult.EVENT_CLOSED
                 HttpStatus.NOT_FOUND -> JoinResult.EVENT_NOT_FOUND
+                // Still refused after the recovery: no credential the service accepts (the attestation says why).
+                HttpStatus.UNAUTHORIZED -> JoinResult.UNVERIFIED
                 else -> JoinResult.FAILED
             }
             is Reply.Malformed, is Reply.Unreachable -> JoinResult.FAILED

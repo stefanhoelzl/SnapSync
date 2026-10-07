@@ -1,5 +1,6 @@
 package app.snapsync.desktop
 
+import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.NetworkAccess
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -177,6 +178,7 @@ fun WorldInspector(
                     Switch(checked = snap.backendOffline, onCheckedChange = { controller.setBackendOffline(it) })
                     Text(if (snap.backendOffline) "backend OFFLINE (502)" else "backend online")
                 }
+                RefuseAttestationLever(controller, snap)
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     // The membership read's THIRD state (capability `background-upload`). Not a mood: an
                     // unreadable read must skip — touching no ledger, no manifest, no job — where an
@@ -314,5 +316,20 @@ private fun NetworkLevers(controller: WorldInspectorController) {
         OutlinedButton(onClick = { controller.setNetwork(NetworkAccess.Online(restricted = true)) }) { Text("Mobile data") }
         OutlinedButton(onClick = { controller.setNetwork(NetworkAccess.Offline) }) { Text("Offline") }
         OutlinedButton(onClick = { controller.setNetwork(NetworkAccess.Blocked) }) { Text("Blocked") }
+    }
+}
+
+/**
+ * The backend refusing this phone as not genuine — one button per reason the app tells. Wrapping, so no button is laid
+ * out past the column's edge, where a click would land on nothing.
+ */
+@Composable
+private fun RefuseAttestationLever(controller: WorldInspectorController, snap: InspectorSnapshot) {
+    Text("refuse attestation: ${snap.refusedAttestation?.wireName ?: "off"}")
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedButton(onClick = { controller.setRefusedAttestation(null) }) { Text("off") }
+        DeviceRefusal.entries.forEach { reason ->
+            OutlinedButton(onClick = { controller.setRefusedAttestation(reason) }) { Text(reason.wireName) }
+        }
     }
 }

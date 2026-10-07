@@ -179,7 +179,8 @@ class UiStateSerializationTest {
             SyncHealth.NoNetwork(NetworkNotice.OFFLINE),
             SyncHealth.NoNetwork(NetworkNotice.BLOCKED),
             SyncHealth.NotStarted,
-            SyncHealth.Unattested,
+            SyncHealth.Unattested(),
+            SyncHealth.Unattested(DeviceRefusal.DEVICE_MODIFIED),
             SyncHealth.Loading,
             SyncHealth.Syncing(upload = Arrow.HIDDEN, download = Arrow.PULSING),
         )

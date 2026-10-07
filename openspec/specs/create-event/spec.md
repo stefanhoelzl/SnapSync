@@ -23,6 +23,28 @@ the app as sharing photos to an event, never as backing up the user's photo libr
 - **WHEN** the create screen is shown
 - **THEN** its wording frames the app as sharing photos with the event's members and never as backing up the user's library
 
+### Requirement: The front screen tells a refused phone before it tries
+While the app's latest attempt to verify this phone was refused (capability `privacy-security`, "A refused phone is
+told why"), the create screen SHALL show that refusal in the place of the scan hint as soon as the app learns of it —
+from the attempt it makes when opened — before the user taps anything. Create SHALL stay available: tapping it SHALL
+first try to verify the phone again, so a create on a phone the service no longer refuses proceeds as any create,
+and one still refused ends as "A failed create says so and changes nothing" requires. While the app says it cannot
+reach the network, the network notice SHALL be shown instead (as "Without a network, Create waits" requires).
+
+#### Scenario: A refused phone learns it on opening the app
+- **WHEN** a user with no event opens the app on a phone the service refuses as not genuine
+- **THEN** the create screen shows the refusal and its cause in place of the scan hint before they type anything,
+  and Create can still be tapped
+
+#### Scenario: A refusal the service stopped making heals on the next tap
+- **WHEN** the front screen shows a refusal and the service no longer refuses this phone by the time the host taps
+  Create
+- **THEN** the event is created as on any genuine phone, without reopening the app
+
+#### Scenario: Offline outranks a refusal
+- **WHEN** the front screen shows a refusal and the device goes offline
+- **THEN** the line below Create says the device is offline, and shows the refusal again once the network returns
+
 ### Requirement: The event name is required and at most 100 characters
 The name field SHALL accept at most 100 characters, and Create SHALL be disabled while the name is empty
 or only whitespace. Leading and trailing whitespace SHALL NOT become part of the event's name.
@@ -199,7 +221,9 @@ leave the host in no event; the unused event is removed with its lifetime (capab
 When an event cannot be created, the create screen SHALL return and SHALL show the failure as a message
 directly below the Create action, in place of the hint about scanning a QR code (never by marking the name
 field as wrong, and without pushing the date range out of view), keeping that message until the next
-attempt. It SHALL tell a rejected name apart from the server being unreachable. The name and date range the
+attempt. It SHALL tell a rejected name apart from the server being unreachable, and both apart from the service refusing
+this phone as not genuine, which it SHALL show as that refusal (capability `privacy-security`, "A refused phone is
+told why"). The name and date range the
 host entered SHALL still be there, so a retry is one tap. A failed create SHALL NOT join the device to
 anything.
 
@@ -222,6 +246,11 @@ anything.
 #### Scenario: The failure message stays until the next attempt
 - **WHEN** a create has failed and the host types a name without tapping Create
 - **THEN** the failure message is still shown in place of the scan hint, and it disappears — the scan hint returning — when the host taps Create again
+
+#### Scenario: A refused phone's create says why
+- **WHEN** the host taps Create on a phone the service refuses as not genuine
+- **THEN** the message below Create says this phone was refused and why, never that the server could not be
+  reached, and the device is still in no event
 
 ### Requirement: Without a network, Create waits
 

@@ -55,6 +55,11 @@
     <string name="message_create_failed">Couldn't connect. Check your connection and try again.</string>
     <string name="message_rename_name_refused">That name wasn't accepted. Try a shorter one.</string>
     <string name="message_rename_failed">Couldn't rename the event. Check your connection and try again.</string>
+    <string name="message_device_unverifiable">This phone couldn't be verified, so it can't create or join events. This isn't something you did.</string>
+    <string name="message_device_modified">SnapSync only works on phones running their maker's system. This phone's system is modified or its bootloader is unlocked.</string>
+    <string name="message_app_not_genuine">This copy of SnapSync isn't the official one. Install SnapSync from your app store.</string>
+    <string name="message_report_this">Report this</string>
+    <string name="report_seed_device_unverifiable">My phone couldn't be verified, so I can't create or join an event.</string>
 
     <!-- Create an event. -->
     <string name="create_title">Create an event</string>

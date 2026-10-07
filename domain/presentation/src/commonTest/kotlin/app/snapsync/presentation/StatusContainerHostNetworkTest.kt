@@ -82,7 +82,7 @@ class StatusContainerHostNetworkTest {
             MutableStateFlow(permission),
             MutableStateFlow(config),
             creation = MutableStateFlow(creation),
-            attested = MutableStateFlow(attested),
+            verification = DeviceVerification(MutableStateFlow(attested)),
             network = network,
             mobileData = MutableStateFlow(mobileData),
         ),
@@ -129,7 +129,7 @@ class StatusContainerHostNetworkTest {
     @Test
     fun `offline with an expired verification says offline and not cannot-verify`() = runTest {
         assertEquals(SyncHealth.NoNetwork(NetworkNotice.OFFLINE), host(FakeNetwork(NetworkAccess.Offline), attested = false).health())
-        assertEquals(SyncHealth.Unattested, host(FakeNetwork(), attested = false).health(), "online, the server is to blame")
+        assertEquals(SyncHealth.Unattested(), host(FakeNetwork(), attested = false).health(), "online, the server is to blame")
     }
 
     @Test

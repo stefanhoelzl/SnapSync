@@ -21,6 +21,7 @@ import java.util.UUID
  *   server's challenge — the port's challenge crosses as a string and this adapter hashes it, as the iOS one does — and
  *   answers the key's certificate chain, leaf first, as concatenated DER ([ProofFormat.ANDROID_KEY]). The handle is
  *   the key's Keystore alias, new per attestation: the backend reads nothing from it.
+ * - **A fresh proof also carries a summary of that chain** ([summarise]) for the operator — never sent to the backend.
  * - **A renewal** signs the challenge's UTF-8 bytes with that key (SHA256withECDSA, DER) — local work, no network.
  *
  * The key never leaves the Keystore and needs no user authentication, so any wake may renew. Which hardware holds it
@@ -54,7 +55,10 @@ class AndroidDeviceIntegrity : DeviceIntegrity {
         }.generateKeyPair()
         val chain = keyStore().getCertificateChain(alias)
         check(!chain.isNullOrEmpty()) { "the Keystore attested no certificate chain for $alias" }
-        return Proof(alias, ProofFormat.ANDROID_KEY, chain.fold(ByteArray(0)) { all, cert -> all + cert.encoded })
+        // The summary rides beside the bytes, for a report the user may send if the backend refuses them (capability
+        // `privacy-security`); the backend never sees it.
+        val der = chain.fold(ByteArray(0)) { all, cert -> all + cert.encoded }
+        return Proof(alias, ProofFormat.ANDROID_KEY, der, chain = summarise(chain))
     }
 
     private fun sign(alias: String, challenge: String): ByteArray {

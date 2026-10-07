@@ -13,7 +13,14 @@ import {
   verifyAndroidAttestation,
   verifyAndroidSignature,
 } from "../src/android-attest.ts";
-import { bytesToB64, mintChallenge } from "../src/attest.ts";
+import {
+  bytesToB64,
+  mintChallenge,
+  type RefusalDetail,
+  refusalDetail,
+  type RefusalReason,
+  refusalReason,
+} from "../src/attest.ts";
 import type { Config } from "../src/config.ts";
 import { putAttestation, readAttestation } from "../src/db.ts";
 import {
@@ -88,7 +95,29 @@ function verify(
   });
 }
 
-const refused = (p: Promise<unknown>, why: string) => assertRejects(() => p, Error, why);
+/** The checks a refusal names `certificate` for: the chain's root, shape, signatures, validity, and revocation. */
+const CERTIFICATE_CHECKS = [
+  "expired",
+  "pinned attestation root",
+  "self-signed root",
+  "certificates",
+  "issuer",
+  "revoked",
+];
+
+/** Refused for `why` (the logged check), told to the app as `reason`, with `detail` — by default, per check kind. */
+const refused = async (
+  p: Promise<unknown>,
+  why: string,
+  reason: RefusalReason = "device-unverifiable",
+  detail: RefusalDetail | undefined = CERTIFICATE_CHECKS.some((c) => why.includes(c))
+    ? "certificate"
+    : undefined,
+) => {
+  const e = await assertRejects(() => p, Error, why);
+  assertEquals(refusalReason(e), reason, `the reason told for "${why}"`);
+  assertEquals(refusalDetail(e), detail, `the detail named for "${why}"`);
+};
 
 // ── What a genuine device proves ────────────────────────────────────────────────────────────────────
 
@@ -132,13 +161,18 @@ Deno.test("android: an RKP chain's expiry IS enforced — its short life is its 
 });
 
 Deno.test("android: an UNLOCKED bootloader is refused where hardware is required", async () => {
-  await refused(verify(hardware(FACTORY_TEE_UNLOCKED), FACTORY_TEE_UNLOCKED), "locked bootloader");
+  await refused(
+    verify(hardware(FACTORY_TEE_UNLOCKED), FACTORY_TEE_UNLOCKED),
+    "locked bootloader",
+    "device-modified",
+  );
 });
 
 Deno.test("android: a SOFTWARE attestation is refused where hardware is required — even under a pinned root", async () => {
   await refused(
     verify(hardware(SOFTWARE, [...GOOGLE_ROOTS, SOFTWARE_ROOT]), SOFTWARE),
     "software attestation",
+    "device-modified",
   );
 });
 
@@ -159,16 +193,19 @@ Deno.test("android: another app, or another signing certificate, is refused", as
   await refused(
     verify({ ...hardware(RKP_TEE), androidPackageName: "app.snapsync" }, RKP_TEE),
     "not this app",
+    "app-not-genuine",
   );
   const digest = Array(32).fill("AB").join(":");
   await refused(
     verify({ ...hardware(RKP_TEE), androidSigningCertDigests: [digest] }, RKP_TEE),
     "signed with",
+    "app-not-genuine",
   );
   // No digest at all: no Android device.
   await refused(
     verify({ ...hardware(RKP_TEE), androidSigningCertDigests: [] }, RKP_TEE),
     "signed with",
+    "app-not-genuine",
   );
 });
 
@@ -263,6 +300,7 @@ Deno.test("android: trust 'any' pins no root — the emulator's is minted per AV
       SOFTWARE,
     ),
     "not this app",
+    "app-not-genuine",
   );
 });
 
@@ -432,5 +470,31 @@ Deno.test("route: a genuine Android chain over ANOTHER challenge is 401, recordi
     }),
   });
   assertEquals(res.status, 401);
+  assertEquals(await res.text(), "attestation rejected: device-unverifiable");
+  assertEquals(await readAttestation(db, D), null);
+});
+
+Deno.test("route: a chain under no pinned root is 401 naming a certificate problem, recording nothing", async () => {
+  // The OnePlus case (Bugsink SNAPSYNC-42..44): the default reason, and the one diagnostic code.
+  forgetRevocationList();
+  const db = await store();
+  const config = hardware(FACTORY_TEE_LOCKED, [SOFTWARE_ROOT]);
+  const app = createApp({
+    config,
+    db,
+    fetch: () => Promise.reject(new Error("no storage here")),
+    revocationFetch: statusList().fetch,
+  });
+  const res = await app.request("/api/v2/attest/token", {
+    method: "POST",
+    headers: V2,
+    body: JSON.stringify({
+      deviceId: D,
+      challenge: await mintChallenge(config, NOW),
+      proof: { format: "android-key", chain: FACTORY_TEE_LOCKED.chain },
+    }),
+  });
+  assertEquals(res.status, 401);
+  assertEquals(await res.text(), "attestation rejected: device-unverifiable (certificate)");
   assertEquals(await readAttestation(db, D), null);
 });

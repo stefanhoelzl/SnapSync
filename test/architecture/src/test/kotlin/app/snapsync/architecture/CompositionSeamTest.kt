@@ -135,6 +135,9 @@ class CompositionSeamTest {
         "CollectDiagnosticDump.appFacts" to
             "the bug report's facts only this core holds — the device id (never minted), the clock's zone, the process " +
             "footprint and the selection snapshot's size — each a direct read mapped to a Fact by model/",
+        "CollectDiagnosticDump.refusalFacts" to
+            "the latest refused attestation's facts the attestation service holds in memory (DeviceAttestation." +
+            "refusalFacts) — read for a report offered from \"Report this\" (capability `privacy-security`)",
         "DownloadController.downloadEnabled" to
             "the membership's direction, three-valued (no membership → null → no arm), derived in compose/ over " +
             "the ConfigService the composition already reads",

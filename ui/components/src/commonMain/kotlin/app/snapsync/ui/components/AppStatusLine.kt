@@ -33,6 +33,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.Arrow
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -40,6 +41,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import app.snapsync.ui.components.resources.Res
 import app.snapsync.ui.components.resources.cannot_verify_detail
 import app.snapsync.ui.components.resources.cannot_verify_title
+import app.snapsync.ui.components.resources.cannot_verify_title_not_genuine
+import app.snapsync.ui.components.resources.cannot_verify_title_modified
+import app.snapsync.ui.components.resources.cannot_verify_title_unverifiable
 import app.snapsync.ui.components.resources.network_blocked
 import app.snapsync.ui.components.resources.network_offline
 import app.snapsync.ui.components.resources.status_allow_access
@@ -109,8 +113,11 @@ sealed interface AppSyncStatus {
      * screen normally clears it. It survives only when that re-verification keeps failing — which is the
      * one case worth showing, because the alternative is a screen reporting "Syncing" while nothing can
      * upload at all.
+     *
+     * [cause] is why the service refused this phone, when it did: the headline then names it (capability
+     * `sync-status`). `null` — no verdict — keeps the cause-less headline. Still never tappable.
      */
-    data object CannotVerifyDevice : AppSyncStatus
+    data class CannotVerifyDevice(val cause: DeviceRefusal? = null) : AppSyncStatus
 
     /**
      * The device gives the app no usable network (capability `sync-status`) — [AppNetworkNotice] in the status-line
@@ -186,7 +193,7 @@ private fun StatusBody(status: AppSyncStatus, onAttentionClick: () -> Unit) {
             onClick = onAttentionClick,
         )
 
-        AppSyncStatus.CannotVerifyDevice -> CannotVerifyDeviceLine()
+        is AppSyncStatus.CannotVerifyDevice -> CannotVerifyDeviceLine(status.cause)
 
         is AppSyncStatus.NoNetwork -> AppNetworkNotice(blocked = status.blocked, onOpenSettings = onAttentionClick)
     }
@@ -331,7 +338,7 @@ private fun AttentionNotice(text: String) {
  * action the user can take. It clears itself as soon as the device can reach the backend.
  */
 @Composable
-private fun CannotVerifyDeviceLine() {
+private fun CannotVerifyDeviceLine(cause: DeviceRefusal?) {
     Surface(
         color = appAttentionContainer(),
         contentColor = appAttentionText(),
@@ -353,8 +360,16 @@ private fun CannotVerifyDeviceLine() {
             // them: the app keeps trying, and no photo is lost. (Colour is inherited
             // contentColor; no scheme line is touched here.)
             Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                // A definite refusal names its cause; the detail below stays true of every cause.
                 Text(
-                    text = stringResource(Res.string.cannot_verify_title),
+                    text = stringResource(
+                        when (cause) {
+                            null -> Res.string.cannot_verify_title
+                            DeviceRefusal.DEVICE_MODIFIED -> Res.string.cannot_verify_title_modified
+                            DeviceRefusal.DEVICE_UNVERIFIABLE -> Res.string.cannot_verify_title_unverifiable
+                            DeviceRefusal.APP_NOT_GENUINE -> Res.string.cannot_verify_title_not_genuine
+                        },
+                    ),
                     style = MaterialTheme.typography.titleMedium,
                 )
                 Text(

@@ -43,6 +43,11 @@
     <string name="message_create_failed">Keine Verbindung. Prüf deine Verbindung und versuch es noch einmal.</string>
     <string name="message_rename_name_refused">Dieser Name wurde nicht akzeptiert. Versuch einen kürzeren.</string>
     <string name="message_rename_failed">Das Event konnte nicht umbenannt werden. Prüf deine Verbindung und versuch es noch einmal.</string>
+    <string name="message_device_unverifiable">Dieses Gerät konnte nicht verifiziert werden, daher kann es keine Events erstellen oder ihnen beitreten. Das liegt nicht an dir.</string>
+    <string name="message_device_modified">SnapSync funktioniert nur auf Geräten mit dem System ihres Herstellers. Das System dieses Geräts ist verändert oder sein Bootloader entsperrt.</string>
+    <string name="message_app_not_genuine">Diese Kopie von SnapSync ist nicht die offizielle. Installier SnapSync aus deinem App-Store.</string>
+    <string name="message_report_this">Melden</string>
+    <string name="report_seed_device_unverifiable">Mein Gerät konnte nicht verifiziert werden, daher kann ich kein Event erstellen oder ihm beitreten.</string>
 
     <string name="create_title">Event erstellen</string>
     <string name="create_name_question">Wie heißt es?</string>

@@ -2,6 +2,7 @@ package app.snapsync.ui
 
 import androidx.compose.foundation.layout.padding
 import app.snapsync.ui.components.AppNetworkNotice
+import app.snapsync.model.ScreenMessage
 import app.snapsync.model.NetworkNotice
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -27,6 +28,7 @@ import app.snapsync.ui.components.AppEventHeaderCompact
 import app.snapsync.ui.components.appRangeLabel
 import app.snapsync.ui.components.PrimaryButton
 import app.snapsync.ui.components.SecondaryButton
+import app.snapsync.ui.resources.message_report_this
 import app.snapsync.ui.resources.Res
 import app.snapsync.ui.resources.event_full_body
 import app.snapsync.ui.resources.event_full_title
@@ -109,26 +111,53 @@ internal fun JoiningEventScreen(
                         ),
                     )
                     JoinPhase.Detailed.Step.Committing -> CommittingPhase(name = phase.event.name)
-                    // The two ways a commit can end badly, on ONE surface distinguished by its copy and by
-                    // whether a Retry is offered at all — see [CommitBlockedPhase].
-                    JoinPhase.Detailed.Step.CommitFailed -> CommitBlockedPhase(
-                        name = phase.event.name,
-                        title = stringResource(Res.string.join_failed_title),
-                        body = stringResource(Res.string.join_failed_body),
-                        onRetry = actions.onRetryJoin.takeIf { online },
-                        onCancel = actions.onCancel,
-                    )
-                    JoinPhase.Detailed.Step.EventFull -> CommitBlockedPhase(
-                        name = phase.event.name,
-                        title = stringResource(Res.string.event_full_title),
-                        body = stringResource(Res.string.event_full_body),
-                        onRetry = null,
-                        onCancel = actions.onCancel,
-                    )
+                    // Every way a commit can end badly, on ONE surface — see [BlockedStep].
+                    JoinPhase.Detailed.Step.CommitFailed, JoinPhase.Detailed.Step.EventFull,
+                    JoinPhase.Detailed.Step.DeviceRefused,
+                    -> BlockedStep(phase, actions, online)
                 }
             }
         }
     }
+}
+
+/**
+ * A commit that did not land, after the event loaded: the invitation stays honest above a neutral notice — no
+ * teleport back from Committing. ONE surface for every way a commit ends badly, because they differ only in the copy
+ * and in which actions are offered — a second near-identical composable would drift from this one the first time
+ * either was touched:
+ *
+ * - a failure that may heal keeps a Retry, which re-sends the range the Ready phase committed (it survives Ready →
+ *   Committing → CommitFailed because the screen stays mounted throughout);
+ * - a FULL event gets none: capacity does not heal, so a Retry would fail identically every time and turn a clear
+ *   answer into a member pressing a button against a wall;
+ * - a phone the service refused (capability `join-event`, "A refused phone is told why it cannot join") is told the
+ *   cause, keeps a Retry that tries to verify it again, and — where only a report can help — offers the report.
+ *
+ * Cancel is the way out of every one.
+ */
+@Composable
+private fun BlockedStep(phase: JoinPhase.Detailed, actions: JoinActions, online: Boolean) {
+    val refused = phase.step == JoinPhase.Detailed.Step.DeviceRefused
+    val refusal = (phase.refusal ?: ScreenMessage.DEVICE_UNVERIFIABLE).takeIf { refused }
+    val full = phase.step == JoinPhase.Detailed.Step.EventFull
+    val title = stringResource(if (full) Res.string.event_full_title else Res.string.join_failed_title)
+    val body = refusal?.text() ?: stringResource(if (full) Res.string.event_full_body else Res.string.join_failed_body)
+    val onRetry = actions.onRetryJoin.takeIf { online && !full }
+    val onReport = refusal?.takeIf { it.offersReport }?.let { { actions.onReportRefusal(it) } }
+    PhaseScaffold(
+        body = {
+            AppEventHeaderCompact(title = phase.event.name)
+            CenteredBody {
+                AppNoticeCard(icon = JoinNoticeFailed, title = title, body = body)
+            }
+        },
+        actions = {
+            onRetry?.let { PrimaryButton(label = stringResource(Res.string.retry), onClick = it) }
+            onReport?.let { SecondaryButton(label = stringResource(Res.string.message_report_this), onClick = it) }
+            SecondaryButton(label = stringResource(Res.string.cancel), onClick = actions.onCancel)
+        },
+    )
 }
 
 /**
@@ -238,39 +267,6 @@ private fun CommittingPhase(name: String) = PhaseScaffold(
 )
 
 /**
- * A commit that did not land, after the event loaded: the invitation stays honest above a neutral
- * notice — no teleport back from Committing.
- *
- * **[onRetry] is nullable, and that nullability IS the difference between the two states this serves.**
- * A transient failure gets a Retry, which re-sends the range the Ready phase committed (it survives
- * Ready → Committing → CommitFailed because the screen stays mounted throughout). A FULL event gets
- * none: capacity does not heal, so a Retry would fail identically every time and turn a clear answer
- * into a member pressing a button against a wall. Cancel is the way out of both.
- *
- * One surface rather than two because they differ in exactly this — the copy and that one affordance —
- * and a second near-identical composable would drift from this one the first time either was touched.
- */
-@Composable
-private fun CommitBlockedPhase(
-    name: String,
-    title: String,
-    body: String,
-    onRetry: (() -> Unit)?,
-    onCancel: () -> Unit,
-) = PhaseScaffold(
-    body = {
-        AppEventHeaderCompact(title = name)
-        CenteredBody {
-            AppNoticeCard(icon = JoinNoticeFailed, title = title, body = body)
-        }
-    },
-    actions = {
-        onRetry?.let { PrimaryButton(label = stringResource(Res.string.retry), onClick = it) }
-        SecondaryButton(label = stringResource(Res.string.cancel), onClick = onCancel)
-    },
-)
-
-/**
  * The remaining vertical space of a phase body, with its content centered. Used by the phases whose body
  * is a single calm block — a spinner or a notice card — beneath (or instead of) the invitation hero.
  */
@@ -338,4 +334,6 @@ internal class JoinActions(
     val participation: ParticipationActions,
     /** SnapSync's Settings page, offered while its network is blocked (capability `join-event`). */
     val onOpenSettings: () -> Unit,
+    /** "Report this" beside a refusal the user can only tell us about (capability `privacy-security`). */
+    val onReportRefusal: (ScreenMessage) -> Unit,
 )

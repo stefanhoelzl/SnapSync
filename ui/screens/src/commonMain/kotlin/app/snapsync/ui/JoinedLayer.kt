@@ -131,7 +131,7 @@ private fun SyncHealth.toAppSyncStatus(): AppSyncStatus = when (this) {
     is SyncHealth.NoNetwork -> AppSyncStatus.NoNetwork(blocked = notice == NetworkNotice.BLOCKED)
     SyncHealth.NotStarted -> AppSyncStatus.NotStarted
     SyncHealth.Inactive -> AppSyncStatus.Inactive
-    SyncHealth.Unattested -> AppSyncStatus.CannotVerifyDevice
+    is SyncHealth.Unattested -> AppSyncStatus.CannotVerifyDevice(refusal)
     SyncHealth.Loading -> AppSyncStatus.Loading
     SyncHealth.InSync -> AppSyncStatus.InSync
     // Since the step-9 Arrow/ArrowLevel unification both sides speak `model/`'s Arrow — no mapping.

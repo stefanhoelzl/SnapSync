@@ -104,6 +104,11 @@ data class Overlays(
      * layer-scoped.
      */
     val reportingBug: Boolean = false,
+    /**
+     * What the sheet's description opens with, when the app offered the report itself — "Report this" beside a refusal
+     * (capability `privacy-security`). `null` opens it empty, as the menu and the hidden gesture do.
+     */
+    val reportSeed: ScreenMessage? = null,
     /** The app menu's drawer (capability `sync-status`); never shown where the layer does not [offersMenu]. */
     val menuOpen: Boolean = false,
     /** The brief word on the last confirmed report (capability `privacy-security`), until it clears or is tapped. */
@@ -442,7 +447,16 @@ sealed interface JoinPhase {
      * they sit beside it rather than inside it.
      */
     @Serializable
-    data class Detailed(val event: EventDetails, val step: Step) : JoinPhase {
+    data class Detailed(
+        val event: EventDetails,
+        val step: Step,
+        /**
+         * Why the service refused this phone, on [Step.DeviceRefused] only (capability `join-event`, "A refused phone is
+         * told why it cannot join") — captured when the join was refused, so a later attempt to verify, which clears
+         * the attestation's own verdict while it runs, cannot change the sentence under the member.
+         */
+        val refusal: ScreenMessage? = null,
+    ) : JoinPhase {
         /**
          * Where a loaded confirmation stands.
          *
@@ -458,9 +472,12 @@ sealed interface JoinPhase {
          *   Retry button on a wall — the member could press it forever, and nothing on the screen said
          *   what the wall was. Cancel is the only action, and it is a real one: it discards the pending
          *   join and returns to the front door.
+         * - [DeviceRefused] — the service refused this phone as not genuine, and [refusal] says why. Unlike
+         *   [EventFull] it keeps the Retry: a Retry tries to verify the phone again first, and a refusal the service
+         *   stops making heals there. It is never shown as the generic [CommitFailed].
          */
         @Serializable
-        enum class Step { Ready, Committing, CommitFailed, EventFull }
+        enum class Step { Ready, Committing, CommitFailed, EventFull, DeviceRefused }
     }
 }
 
@@ -533,9 +550,13 @@ sealed interface SyncHealth {
      * It ranks below [NotStarted] for the same reason it ranks below [NeedsAccess]: before the event
      * begins, nothing of this member's **can** be uploading, so an unusable token is not yet their problem
      * — and two attention lines at once would only compete.
+     *
+     * [refusal] is why the service refused this phone, when that is why no token could be obtained: the line then
+     * names the cause (capability `sync-status`). `null` — no answer, an expired proof that could not be renewed —
+     * names none.
      */
     @Serializable
-    data object Unattested : SyncHealth
+    data class Unattested(val refusal: DeviceRefusal? = null) : SyncHealth
 
     /** Joined, permission granted, but persisted state has not been read yet — a neutral first frame. */
     @Serializable
@@ -613,4 +634,26 @@ enum class ScreenMessage {
 
     /** The rename failed for any other reason (capability `manage-membership`). */
     RENAME_FAILED,
+
+    /** The service refused this phone: its system is modified (capability `privacy-security`, "A refused phone is told why"). */
+    DEVICE_MODIFIED,
+
+    /** The service refused this phone: it could not be verified — never the user's doing, and a report is offered. */
+    DEVICE_UNVERIFIABLE,
+
+    /** The service refused this copy of the app: it is not the official one, so the store is where to get it. */
+    APP_NOT_GENUINE,
+    ;
+
+    /** Whether the screen offers to report this — only for a refusal the user can do nothing about but tell us. */
+    val offersReport: Boolean get() = this == DEVICE_UNVERIFIABLE
+
+    companion object {
+        /** What the screen says for [refusal]. */
+        fun of(refusal: DeviceRefusal): ScreenMessage = when (refusal) {
+            DeviceRefusal.DEVICE_MODIFIED -> DEVICE_MODIFIED
+            DeviceRefusal.DEVICE_UNVERIFIABLE -> DEVICE_UNVERIFIABLE
+            DeviceRefusal.APP_NOT_GENUINE -> APP_NOT_GENUINE
+        }
+    }
 }

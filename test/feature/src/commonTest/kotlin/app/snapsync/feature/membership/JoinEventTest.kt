@@ -104,6 +104,7 @@ class JoinEventTest {
         // A closed event is a wall like a full one (capability `event-lifetime`).
         assertEquals(JoinCommit.Closed, JoinOutcome.EventClosed.toCommit())
         assertEquals(JoinCommit.Failed, JoinOutcome.EnrollFailed.toCommit())
+        assertEquals(JoinCommit.Unverified, JoinOutcome.Unverified.toCommit(), "never the generic failure")
     }
 
 
@@ -130,6 +131,16 @@ fun `a failed enrollment commits nothing`() = runTest {
 
     assertEquals(JoinOutcome.EnrollFailed, outcome)
     assertTrue(provisioned.isEmpty(), "no config should be provisioned on a failed enrollment")
+}
+
+@Test
+fun `an enrollment refused for this phone's credential is unverified and commits nothing`() = runTest {
+    val provisioned = mutableListOf<EventConfig>()
+    val outcome = joinEvent(config = null, enrollResult = JoinResult.UNVERIFIED, provisioned = provisioned)
+        .join(JoinChoice(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false))
+
+    assertEquals(JoinOutcome.Unverified, outcome)
+    assertTrue(provisioned.isEmpty())
 }
 
 @Test

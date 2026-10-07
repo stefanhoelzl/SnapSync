@@ -198,6 +198,50 @@ export async function verifyToken(
 
 // ── Attestation ───────────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Why an attestation was refused, as the app is told it (capability `privacy-security`, "A refused phone is told
+ * why"): a CLOSED set, coarser than the checks on purpose — the precise check stays in the log. Shared by both
+ * platforms' verifiers; Apple has no `device-modified` signal.
+ */
+export type RefusalReason = "device-modified" | "device-unverifiable" | "app-not-genuine";
+
+/**
+ * A verifier's refusal that names its reason. Only the two reasons that are NOT the default are thrown as this:
+ * every other throw — a chain, a parse, a library error — reads as `device-unverifiable` ({@link refusalReason}),
+ * the one reason that never accuses the user of tampering, so a check nobody classified can only err that way.
+ */
+export class AttestationRejected extends Error {
+  constructor(readonly reason: RefusalReason, message: string, readonly detail?: RefusalDetail) {
+    super(message);
+  }
+}
+
+/**
+ * Which kind of check refused, beyond the reason — diagnostics only, never told to the user. ONE code today: a
+ * `certificate` check (the chain's root, shape, signatures or validity, or a revoked certificate). Which certificate
+ * problem it was is read off the chain summary the user's report carries.
+ */
+export type RefusalDetail = "certificate";
+
+/** The detail a verifier's throw `e` names, if any. */
+export const refusalDetail = (e: unknown): RefusalDetail | undefined =>
+  e instanceof AttestationRejected ? e.detail : undefined;
+
+/**
+ * `body` as a `certificate` check's refusal — the default reason, which never accuses the user, with the detail. Keeps
+ * a throw that already names its reason as it is.
+ */
+export const certificateRefusal = (e: unknown): AttestationRejected =>
+  e instanceof AttestationRejected ? e : new AttestationRejected(
+    "device-unverifiable",
+    e instanceof Error ? e.message : String(e),
+    "certificate",
+  );
+
+/** The reason a verifier's throw `e` tells the app. */
+export const refusalReason = (e: unknown): RefusalReason =>
+  e instanceof AttestationRejected ? e.reason : "device-unverifiable";
+
 export type VerifiedAttestation = {
   /** The attested public key, as a raw uncompressed EC point. Persisted so renewal can verify assertions. */
   publicKey: Uint8Array;
@@ -270,7 +314,7 @@ export async function verifyAttestation(
   const credId = authData.slice(55, 55 + credIdLen);
 
   if (!bytesEqual(rpIdHash, await sha256(enc.encode(config.attestAppId)))) {
-    throw new Error("rpIdHash is not this app");
+    throw new AttestationRejected("app-not-genuine", "rpIdHash is not this app");
   }
   if (!counter.every((b) => b === 0)) throw new Error("attestation counter is not zero");
   if (!bytesEqual(credId, opts.keyId)) throw new Error("credentialId is not the keyId");

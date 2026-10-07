@@ -15,9 +15,10 @@ import app.snapsync.model.JoinResult
 class JoinSeamsTest {
 
     @Test
-    fun a_join_has_exactly_five_answers() {
+    fun a_join_has_exactly_six_answers() {
         assertEquals(
-            listOf("JOINED", "EVENT_FULL", "EVENT_CLOSED", "EVENT_NOT_FOUND", "FAILED"),
+            // UNVERIFIED is the join refused for this phone's credential — its own screen, the refused step (`join-event`).
+            listOf("JOINED", "EVENT_FULL", "EVENT_CLOSED", "EVENT_NOT_FOUND", "UNVERIFIED", "FAILED"),
             JoinResult.entries.map { it.name },
             "the join surface renders one screen per answer; adding one silently leaves it unrendered",
         )

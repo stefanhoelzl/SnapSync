@@ -4,6 +4,7 @@ package app.snapsync.attest
 
 import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.UnionTrigger
+import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.UnionPage
 import app.snapsync.model.DeviceIdentityRole
 import app.snapsync.ports.PlatformDeviceId
@@ -53,6 +54,7 @@ private class FakeKey(
     val supported: Boolean = true,
     var attestThrows: Boolean = false,
     var assertThrows: Boolean = false,
+    val chain: app.snapsync.model.AttestationChain? = null,
 ) : DeviceIntegrity {
     var generated = 0
     var attested = 0
@@ -68,9 +70,12 @@ private class FakeKey(
         val key = "key-${++generated}"
         attested++
         if (attestThrows) throw IllegalStateException("Apple said no")
-        return Proof(key, ProofFormat.APP_ATTEST, byteArrayOf(1, 2, 3))
+        return Proof(key, ProofFormat.APP_ATTEST, byteArrayOf(1, 2, 3), chain)
     }
 }
+
+/** The backend's verdict when a test scripts no token: the default reason, as v2 names it. */
+private val REFUSED = TokenOutcome.Refused(DeviceRefusal.DEVICE_UNVERIFIABLE)
 
 /** The backend's three `/attest/…` routes, scripted in the attestation's own vocabulary; every other route is unused. */
 private class FakeClient(
@@ -97,12 +102,12 @@ private class FakeClient(
 
     override suspend fun mintToken(req: MintRequest): Reply<String> {
         mintCalls++
-        return reply(mintAnswers.removeFirstOrNull() ?: mint?.let(TokenOutcome::Minted) ?: TokenOutcome.Refused)
+        return reply(mintAnswers.removeFirstOrNull() ?: mint?.let(TokenOutcome::Minted) ?: REFUSED)
     }
 
     override suspend fun renewToken(req: RenewRequest): Reply<String> {
         renewCalls++
-        return reply(renewAnswers.removeFirstOrNull() ?: renew?.let(TokenOutcome::Minted) ?: TokenOutcome.Refused)
+        return reply(renewAnswers.removeFirstOrNull() ?: renew?.let(TokenOutcome::Minted) ?: REFUSED)
     }
 
     /** What the backend answers for [outcome] — the statuses and bodies the attestation service classifies. */
@@ -110,7 +115,9 @@ private class FakeClient(
         is TokenOutcome.Minted -> Reply.Ok(outcome.token)
         TokenOutcome.ChallengeStale -> Reply.Refused(409, "stale challenge")
         TokenOutcome.NotAttested -> Reply.Refused(401, "not attested")
-        TokenOutcome.Refused -> Reply.Refused(401, "attestation rejected")
+        is TokenOutcome.Refused ->
+            Reply.Refused(401, "attestation rejected: ${outcome.reason.wireName}" + (outcome.detail?.let { " ($it)" } ?: ""))
+        TokenOutcome.ProofFailed -> error("a local proof failure is the device's, never the backend's answer")
         TokenOutcome.Unreachable -> Reply.Unreachable(IllegalStateException("offline"))
     }
 
@@ -239,6 +246,102 @@ class DeviceAttestationTest {
         gate.complete(Unit) // still offline, so this attempt fails too
         running.join()
         assertFalse(attestation.attested.value, "and this attempt's own answer replaces it")
+    }
+
+    // ---- refusal: the service's verdict, told to the user (privacy-security, "A refused phone is told why") ----
+
+    @Test
+    fun `a refused attestation publishes the reason the service named`() = runTest {
+        val (attestation, client, _) = attestation()
+        client.mintAnswers += TokenOutcome.Refused(DeviceRefusal.DEVICE_MODIFIED)
+        attestation.refresh()
+        assertEquals(DeviceRefusal.DEVICE_MODIFIED, attestation.refusal.value)
+        assertFalse(attestation.attested.value)
+    }
+
+    @Test
+    fun `no answer is not a refusal`() = runTest {
+        val (attestation, client, _) = attestation()
+        client.challenge = null
+        attestation.refresh()
+        assertNull(attestation.refusal.value)
+        client.challenge = "chal"
+        client.mintAnswers += TokenOutcome.Unreachable
+        attestation.refresh()
+        assertNull(attestation.refusal.value, "a 5xx or a dropped connection is no verdict either")
+    }
+
+    @Test
+    fun `a proof this device could not produce is not told as the service's refusal`() = runTest {
+        val (attestation, _, _) = attestation(FakeKey(attestThrows = true))
+        attestation.refresh()
+        assertNull(attestation.refusal.value)
+        assertFalse(attestation.attested.value)
+    }
+
+    @Test
+    fun `a refusal clears once the service verifies the phone`() = runTest {
+        val (attestation, client, _) = attestation()
+        client.mintAnswers += TokenOutcome.Refused(DeviceRefusal.DEVICE_UNVERIFIABLE)
+        attestation.refresh()
+        assertEquals(DeviceRefusal.DEVICE_UNVERIFIABLE, attestation.refusal.value)
+        attestation.refresh() // the next mint answers the scripted token
+        assertNull(attestation.refusal.value)
+        assertTrue(attestation.attested.value)
+    }
+
+    @Test
+    fun `a refusal is cleared when the next refresh BEGINS - the SNAPSYNC-20 bracket`() = runTest {
+        val (attestation, client, _) = attestation()
+        client.mintAnswers += TokenOutcome.Refused(DeviceRefusal.APP_NOT_GENUINE)
+        attestation.refresh()
+        assertEquals(DeviceRefusal.APP_NOT_GENUINE, attestation.refusal.value)
+
+        val gate = CompletableDeferred<Unit>()
+        client.challengeGate = gate
+        client.mintAnswers += TokenOutcome.Refused(DeviceRefusal.APP_NOT_GENUINE)
+        val running = launch { attestation.refresh() }
+        runCurrent()
+        assertNull(attestation.refusal.value, "an earlier wake's refusal is gone while this attempt runs")
+
+        gate.complete(Unit)
+        running.join()
+        assertEquals(DeviceRefusal.APP_NOT_GENUINE, attestation.refusal.value, "and this attempt's own answer replaces it")
+    }
+
+    @Test
+    fun `a refusal keeps the service's answer and the chain the phone presented - until a success`() = runTest {
+        val chain = app.snapsync.model.AttestationChain(
+            listOf(app.snapsync.model.CertificateFacts("CN=Intermediate", "CN=Root", "2020-01-01T00:00:00Z", "2030-01-01T00:00:00Z", "EC 256")),
+            rootKeySha256 = "ab12",
+        )
+        val (attestation, client, _) = attestation(FakeKey(chain = chain))
+        client.mintAnswers += TokenOutcome.Refused(DeviceRefusal.DEVICE_UNVERIFIABLE, detail = "certificate")
+        attestation.refresh()
+        val facts = app.snapsync.model.RefusalFacts(DeviceRefusal.DEVICE_UNVERIFIABLE, "certificate", chain)
+        assertEquals(facts, attestation.refusalFacts())
+
+        // Not refusal's bracket: a refresh under way still finds them, for a report opened meanwhile.
+        val gate = CompletableDeferred<Unit>()
+        client.challengeGate = gate
+        val running = launch { attestation.refresh() }
+        runCurrent()
+        assertNull(attestation.refusal.value)
+        assertEquals(facts, attestation.refusalFacts())
+        gate.complete(Unit)
+        running.join() // the next mint answers the scripted token
+        assertNull(attestation.refusalFacts(), "a success clears them")
+    }
+
+    @Test
+    fun `a tap with no token attests now and answers the token - or the refusal`() = runTest {
+        val (attestation, client, _) = attestation()
+        client.mintAnswers += TokenOutcome.Refused(DeviceRefusal.DEVICE_MODIFIED)
+        assertNull(attestation.missing())
+        assertEquals(DeviceRefusal.DEVICE_MODIFIED, attestation.refusal.value, "the screen learns of it from this tap")
+
+        assertEquals(token(30), attestation.missing(), "a phone the service stopped refusing heals on the next tap")
+        assertNull(attestation.refusal.value)
     }
 
     @Test

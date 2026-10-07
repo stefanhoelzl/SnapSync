@@ -18,6 +18,13 @@ sealed interface CreateOutcome {
      */
     data object InvalidWindow : CreateOutcome
 
+    /**
+     * `401` even after the recovery the authenticated backend makes: this phone holds no credential the service accepts.
+     * Why it was refused is the attestation's verdict, not this route's (capability `privacy-security`, "A refused
+     * phone is told why").
+     */
+    data object Unverified : CreateOutcome
+
     /** Any other non-2xx, transport, or parse failure. */
     data object Transient : CreateOutcome
 }

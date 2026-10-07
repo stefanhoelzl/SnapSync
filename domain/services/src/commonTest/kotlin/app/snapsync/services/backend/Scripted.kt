@@ -56,9 +56,21 @@ internal class ScriptedBackend(var answer: (route: String, token: String?) -> Re
 }
 
 /** A [Credential] holding [current], which a rejection replaces with [recovered] (or keeps, for `null`). */
-internal class ScriptedCredential(var current: String?, private val recovered: String? = null) : Credential {
+internal class ScriptedCredential(
+    var current: String?,
+    private val recovered: String? = null,
+    /** What [missing] obtains — `null`, the extension's answer, by default. */
+    private val obtained: String? = null,
+) : Credential {
     val rejections = mutableListOf<String>()
     var reads = 0
+    var obtains = 0
+
+    override suspend fun missing(): String? {
+        obtains++
+        if (obtained != null) current = obtained
+        return obtained
+    }
 
     override fun token(): String? = current.also { reads++ }
 

@@ -19,8 +19,19 @@ sealed interface TokenOutcome {
     /** The backend holds no attestation for this device (`401 not attested`): renewing cannot work, attesting can. */
     data object NotAttested : TokenOutcome
 
-    /** The backend verified and declined — the attestation or assertion itself was rejected, or the body was invalid. */
-    data object Refused : TokenOutcome
+    /**
+     * The backend verified and declined — the attestation or assertion itself was rejected, or the body was invalid —
+     * for [reason], which is what the user is told (capability `privacy-security`, "A refused phone is told why").
+     * [detail] is the backend's diagnostic code beside it — `certificate` when a certificate check failed — which the
+     * user is never told and an offered report carries.
+     */
+    data class Refused(val reason: DeviceRefusal, val detail: String? = null) : TokenOutcome
+
+    /**
+     * The proof could not be produced on this device — the platform's keystore or App Attest threw — so NO request
+     * was sent and there is no verdict to tell. Remedied as [Refused] is (a renewal attests afresh), never told as one.
+     */
+    data object ProofFailed : TokenOutcome
 
     /** No answer: transport failure, a `5xx`, or a body that names no token. The next wake retries. */
     data object Unreachable : TokenOutcome
