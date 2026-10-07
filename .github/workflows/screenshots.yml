@@ -172,7 +172,7 @@ jobs:
           cp "$HOME/Library/Developer/CoreSimulator/Devices/$DEVICE/data/Library/Logs/DiagnosticReports/"*.ips evidence/ 2>/dev/null || true
       - name: Upload the evidence
         if: failure()
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: screenshots-evidence
           path: evidence/
@@ -180,7 +180,7 @@ jobs:
       # Whatever was captured before the failure, so a partial run is still something to look at — never to commit.
       - name: Upload the partial captures
         if: failure()
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: screenshots-partial
           path: shots/
@@ -195,7 +195,7 @@ jobs:
           [ "$COUNT" -eq 6 ] || { echo "::error::expected 6 raw captures, got $COUNT"; exit 1; }
 
       - name: Upload the raw captures
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: screenshots-raw
           path: shots/
@@ -232,7 +232,7 @@ jobs:
 
       - name: Upload the evidence
         if: failure()
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: screenshots-android-evidence
           path: |
@@ -245,7 +245,7 @@ jobs:
           echo "captured $COUNT shot(s):"; ls -l shots
           [ "$COUNT" -eq 6 ] || { echo "::error::expected 6 raw captures, got $COUNT"; exit 1; }
       - name: Upload the raw captures
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: screenshots-android-raw
           path: shots/
