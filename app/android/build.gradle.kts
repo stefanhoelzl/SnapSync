@@ -170,6 +170,11 @@ dependencies {
     implementation(libs.orbit.core)
     implementation(libs.compose.runtime)
     implementation(libs.androidx.activity.compose)
+    constraints {
+        implementation(libs.androidx.fragment) {
+            because("play-services-base pulls 1.1.0, which Play flags as deprecated")
+        }
+    }
 }
 
 // The lint gate above runs with the canonical check, over the release variant — the one the store receives.
