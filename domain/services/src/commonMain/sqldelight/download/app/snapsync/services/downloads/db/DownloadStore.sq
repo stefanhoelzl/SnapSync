@@ -402,7 +402,7 @@ WHERE a.state = 'IMPORTED' AND r.stagedPath IS NOT NULL;
 -- Every resource row's identity and staged path — what the staging sweep keeps. A row not yet staged still
 -- protects the path its download will land at: the file is adopted there before the row records it.
 selectResourcePaths:
-SELECT sourceDeviceId, sourceAssetId, resourceKey, stagedPath FROM downloadResource;
+SELECT sourceDeviceId, sourceAssetId, resourceKey, eventId, stagedPath FROM downloadResource;
 
 -- The staged files of ONE asset, for the prune to return as it drops that asset's row. There is no
 -- "paths of every prunable row" read any more: it was taken before the delete, at a different instant, over
