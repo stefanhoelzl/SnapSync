@@ -16,13 +16,15 @@ class MobileDataSettingTest {
         val values = mutableMapOf<String, String>()
         var unreadable = false
         var refuseWrites = false
+        var refuseRemoves = false
         override fun get(key: String): PrefRead = when {
             unreadable -> PrefRead.Unavailable("suite not opened")
             else -> values[key]?.let(PrefRead::Value) ?: PrefRead.Absent
         }
         override fun set(key: String, value: String): WriteOutcome =
             if (refuseWrites) WriteOutcome.Failed("refused") else WriteOutcome.Ok.also { values[key] = value }
-        override fun remove(key: String): WriteOutcome = WriteOutcome.Ok.also { values.remove(key) }
+        override fun remove(key: String): WriteOutcome =
+            if (refuseRemoves) WriteOutcome.Failed("refused") else WriteOutcome.Ok.also { values.remove(key) }
     }
 
     private val prefs = Prefs()
@@ -79,6 +81,16 @@ class MobileDataSettingTest {
         assertFalse(setting.set(false))
         assertTrue(setting.allowed.value)
         assertEquals(TransferNetwork.ANY, setting.transferNetwork())
+    }
+
+    @Test
+    fun `a clear that cannot be written changes nothing`() {
+        val setting = MobileDataSetting(prefs)
+        setting.set(false)
+        prefs.refuseRemoves = true
+        setting.clear()
+        assertFalse(setting.allowed.value)
+        assertEquals(TransferNetwork.UNRESTRICTED_ONLY, setting.transferNetwork())
     }
 
     @Test
