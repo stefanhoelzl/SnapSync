@@ -48,7 +48,8 @@ class Member(private val http: HttpClient, backend: String) {
             DeviceManifestAsset(assetId, creationDate, listOf(primary(assetId)))
         }
         assets.forEach { upload(eventId, it.assetId) }
-        val manifest = DeviceManifest(deviceId, assets)
+        // The backend refuses a manifest without a version; 0 is always admitted (equal is, and a join clears it).
+        val manifest = DeviceManifest(deviceId, assets, version = 0)
         checked(
             "publish manifest",
             http.put("$backend/events/$eventId/devices/$deviceId/manifest") {
