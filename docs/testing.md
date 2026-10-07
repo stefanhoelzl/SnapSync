@@ -336,6 +336,25 @@ Where production reaches a port only through a composition that owns part of the
 Live binding binds **that composition**. An example is a grant-aware wrapper that answers "not readable"
 where the bare adapter would answer "empty". An adapter bound bare must pass the whole contract itself.
 
+### The port grid
+
+`ContractCoverageTest` asks whether each clause reaches something real. `PortGridTest` asks the reverse
+question: what could an adapter answer at all? It reads `:domain:ports` by reflection and lists every
+**cell** an adapter can produce:
+- `Port.member → Variant`: a member crossed with each variant of its return type. A sealed type gives one
+  cell per leaf subtype (only the outer type of a generic), an enum one per entry, `Boolean` a `true` and
+  a `false`, a `Flow<T>` the variants of `T`, and any other type a single `returns`. A nullable type adds
+  `null`.
+- `Port.handlers.field(Arg, …)`: a handler an event port's adapter calls, crossed with the variants of
+  every argument it passes.
+- `Port.member.param(…)`: the same, for a callback handed to a member.
+- `Port.Handle.member → Variant`: a handle (`Completion`, …) counted under each port that hands it out.
+
+Throws are not cells, and a member with a default body in the interface is not the adapter's answer, so
+it gets no cell either. The test writes `build/reports/port-grid/port-grid.txt`. It also writes an
+estimate that marks a cell with `~` where a port contract's source mentions the member and the variant.
+That is a mention, not a clause asserting the cell. **Report only:** it fails nothing but its own scan.
+
 ### Hosts
 
 A `Host` is identity that changes which states are reachable: platform × process kind × entitlements. OS
