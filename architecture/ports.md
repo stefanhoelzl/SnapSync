@@ -126,7 +126,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `SwitchDecision` | `:domain:feature` | `:domain:feature` Stay | no |
 | `SyncDecision` | `:domain:model` | `:domain:model` AlreadyUploaded | no |
 | `SyncEvent` | `:domain:model` | `:domain:model` ResourceChanged, UploadFailed, UploadStarted | no |
-| `SyncHealth` | `:domain:model` | `:domain:model` InSync, Inactive, Loading, NeedsAccess, NoNetwork, NotStarted, Syncing, Unattested | no |
+| `SyncHealth` | `:domain:model` | `:domain:model` InSync, Inactive, KeyLost, Loading, NeedsAccess, NoNetwork, NotStarted, Syncing, Unattested | no |
 | `SyncStatus` | `:domain:model` | `:domain:model` Loading, Ready | no |
 | `SyncStatusSource` | `:domain:feature` | `:domain:presentation` FakeSync, FakeSyncStatusSource, FixedSync, IdleSync, MenuTestSync, Sync | yes |
 | `SystemUi` | `:domain:ports` | `:adapter:android` AndroidSystemUi; `:adapter:ios:app-only` IosSystemUi | no |

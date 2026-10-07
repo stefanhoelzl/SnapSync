@@ -23,6 +23,7 @@ import app.snapsync.services.crypto.FileCipher
 import app.snapsync.services.crypto.Opened
 import app.snapsync.services.crypto.UploadSeal
 import app.snapsync.services.crypto.UploadSealing
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -170,7 +171,7 @@ class CryptoServicesEdgesTest {
         val minted = keys.mint()
         keys.keep(minted.linkKey)
         val membership = kotlinx.coroutines.flow.MutableStateFlow<EventConfig?>(null)
-        val invite = keys.inviteKeyOf(membership, backgroundScope)
+        val invite = keys.inviteKeyOf(membership, emptyFlow(), backgroundScope)
         runCurrent()
         assertNull(invite.value, "no membership, no key")
         membership.value = config(null)
@@ -179,7 +180,7 @@ class CryptoServicesEdgesTest {
         membership.value = config(minted.keyId)
         runCurrent()
         assertEquals(minted.linkKey, invite.value)
-        val locked = EventKeys(crypto, inMemorySecureStore(unavailable = true)).inviteKeyOf(membership, backgroundScope)
+        val locked = EventKeys(crypto, inMemorySecureStore(unavailable = true)).inviteKeyOf(membership, emptyFlow(), backgroundScope)
         runCurrent()
         assertNull(locked.value, "a key that cannot be read now is no key in an invite")
     }

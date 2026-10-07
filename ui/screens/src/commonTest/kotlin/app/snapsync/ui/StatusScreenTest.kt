@@ -99,6 +99,8 @@ import app.snapsync.ui.components.resources.status_allow_access
 import app.snapsync.ui.components.resources.status_allow_access_settings
 import app.snapsync.ui.components.resources.status_in_sync
 import app.snapsync.ui.components.resources.status_inactive
+import app.snapsync.ui.components.resources.key_lost_detail
+import app.snapsync.ui.components.resources.key_lost_title
 import app.snapsync.ui.components.resources.status_not_started
 import app.snapsync.ui.components.resources.status_sync_ongoing
 import app.snapsync.ui.components.resources.status_sync_pending
@@ -273,7 +275,7 @@ private fun joined(
     timing: EventTiming = EventTiming.Running(TimeLeft.Days(4)),
     counts: SyncCounts? = null,
     membership: EventConfig = MEMBERSHIP,
-    inviteUrl: String = SAMPLE_INVITE,
+    inviteUrl: String? = SAMPLE_INVITE,
     renameState: RenameState = RenameState.Idle,
     closed: Boolean = false,
     waiting: MemberCounts? = null,
@@ -465,6 +467,25 @@ class StatusScreenTest {
         // It replaces "Up to date", and nothing is counted: nothing moves.
         onNodeWithText(str(ComponentRes.string.status_in_sync)).assertDoesNotExist()
         onNode(countsText()).assertDoesNotExist()
+    }
+
+    @Test
+    fun `a lost key asks for the event's invite and is not tappable`() = runComposeUiTest {
+        setContent { TestStatusScreen(joined(SyncHealth.KeyLost), cutoff = fixedCutoff()) }
+        onNodeWithText(str(ComponentRes.string.key_lost_title)).assertExists().assertHasNoClickAction()
+        onNodeWithText(str(ComponentRes.string.key_lost_detail)).assertExists()
+        // It replaces "Up to date", and nothing is counted: nothing moves.
+        onNodeWithText(str(ComponentRes.string.status_in_sync)).assertDoesNotExist()
+        onNode(countsText()).assertDoesNotExist()
+    }
+
+    @Test
+    fun `an event with no whole invite offers neither share nor QR`() = runComposeUiTest {
+        setContent { TestStatusScreen(joined(SyncHealth.KeyLost, inviteUrl = null), cutoff = fixedCutoff()) }
+        onNodeWithText(str(Res.string.share_invite)).assertDoesNotExist()
+        onNodeWithText(str(Res.string.show_qr)).assertDoesNotExist()
+        // Settings and Leave stay.
+        onNodeWithText(str(Res.string.leave_event)).assertExists()
     }
 
     // ---- create layer ----

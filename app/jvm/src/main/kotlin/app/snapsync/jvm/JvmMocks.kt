@@ -1,5 +1,6 @@
 package app.snapsync.jvm
 
+import app.snapsync.crypto.JcaCrypto
 import app.snapsync.http.HttpBackend
 import app.snapsync.mock.BuildInfoMock
 import app.snapsync.mock.DeclaredVersion
@@ -45,6 +46,7 @@ class JvmMocks(
         JvmAdapters(
             build = build,
             device = JvmDevice(
+                crypto = eventKeys.recording(JcaCrypto()),
                 clock = clock.port(),
                 crashReporter = crashReporter.port(),
                 extensionCrashReporter = crashReporter.unobservedPort(),
@@ -68,7 +70,7 @@ class JvmMocks(
                 extensionHost = extensionHost.port(),
             ),
             systems = JvmSystems(
-                backend = backend,
+                backend = eventKeys.recording(backend),
                 backgroundTime = backgroundTime.port(),
                 wake = wakes.port(),
                 extensionRegistry = extensionRegistry.port(),

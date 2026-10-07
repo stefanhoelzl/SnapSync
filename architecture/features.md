@@ -23,7 +23,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 ## `feature/download`
 
 - files: `DownloadController.kt`, `DownloadPushReceiver.kt`, `DownloadStatusSource.kt`, `StoreDownloadStatusSource.kt`
-- top-level types: `DownloadController (class)`, `DownloadProgress (class)`, `DownloadPushReceiver (class)`, `DownloadStatusSource (interface)`, `StoreDownloadStatusSource (class)`
+- top-level types: `DownloadArm (class)`, `DownloadController (class)`, `DownloadProgress (class)`, `DownloadPushReceiver (class)`, `DownloadStatusSource (interface)`, `StoreDownloadStatusSource (class)`
 
 ## `feature/membership`
 

@@ -1098,9 +1098,9 @@ shared with real users. **Never add a whole-zone reset.** Clean up targeted only
 ### The encrypted file format
 
 The stored bytes of an **encrypted** event's resource. An event is encrypted when it was created with a key; the
-key travels only inside the invite link's fragment and the server holds nothing but its `key_id`. No shipped
-build creates an encrypted event yet: every installed build must be able to read one first, so creation is a rig
-build's switch until the release that enables it.
+key travels only inside the invite link's fragment and the server holds nothing but its `key_id`. Every build
+creates encrypted events (0.6 on; every build from 0.5 reads them); a rig build can still create a plain one, which
+older builds create and the backend still accepts, until a later change retires plain events.
 
 ```
 prefix    version (1 byte, 0x01) ‖ key id (8 bytes)                       SnapSync's own
@@ -1120,14 +1120,25 @@ segments  AES-256-GCM, 64 KiB ciphertext each (the first shorter by the     │ 
 
 **Where each step runs in the app** (all in `services/crypto`, over the `Crypto` port):
 
-- **The key** is minted by the creating device (`EventKeys.mint`, only while `DevControls.encryptsNewEvents` — a rig
-  build's switch, `device/encrypt-new-events` — answers `true`), sent as its id alone (`POST /events {keyId}`), and
+- **The key** is minted by the creating device (`EventKeys.mint`, unless `DevControls.createsPlainEvents` — inert
+  `false` in production; a rig build's `device/encrypt-new-events?on=false` — answers `true`), sent as its id alone (`POST /events {keyId}`), and
   kept on every member's device in the secure store's shared slot `SecureSlots.EVENT_KEY` — written by the join,
   removed by a leave, a reset or a plain join. `EventConfig` holds only `keyId`.
 - **The link decides, never the backend** (`JoinEvent`): a link whose `#k=` does not name the event's `key_id`, or
   that lacks one for an encrypted event, never enrols — the gate shows `JoinPhase.WrongLink` at load, and the commit
   refuses it again. An invite for an encrypted event is the path form `/join/<id>#k=…`; a plain event's stays the
   fragment form every installed build reads.
+- **A lost key** (`EventKeys.presenceFor` → `KeyPresence.Lost`: the event has a `keyId` and the slot holds no key of
+  that id — an unencrypted backup restored onto a new phone, an invalidated Android Keystore key) stops both
+  directions at their admission: the upload cycle's gate answers `UploadAdmission.Withheld` in the app and the
+  extension alike (nothing walked, staged or published), and `DownloadController.reconcile` starts no download
+  (`DownloadArm.keyHeld`, which unlike `DownloadArm.enabled` never reads as "nothing to receive"). A
+  store that cannot be read is `Unknown`, never `Lost`, so a locked wake runs as before and withholds at the seal.
+  `EventKeyReads.presence` (re-read on a membership change, every foreground and after a restore) is the joined screen's
+  `SyncHealth.KeyLost`. Reopening the joined event's whole invite restores it in place (`StatusContainerHost`'s
+  same-event rung → `UserCommands.restoreEventKey`, which keeps only the event's own key and only while it is lost).
+  No invite is offered without its key: `Layer.Joined.inviteUrl` is `null` while an encrypted event's key cannot be
+  read (lost or locked), which hides Share and QR; `EventKeyReads.inviteKey` is re-read with the presence.
 - **Uploads** (`UploadSealing` inside `UploadTransferService`): a platform that takes files (`Upload.acceptsFiles`:
   the iOS app's `URLSession`, Android) exports, seals into the staged file and deletes the export at once; PhotoKit,
   which sends the library's own bytes, carries `x-snapsync-file-key` + `x-snapsync-file-head` for that one file and
@@ -1142,8 +1153,9 @@ segments  AES-256-GCM, 64 KiB ciphertext each (the first shorter by the     │ 
   from its address's `#k=`, checks it against the event's `keyId` before fetching anything, and opens each file of
   the zip in the browser; without the whole invite it says so and offers nothing. The page is served with a
   `Content-Security-Policy` (`eventPagePolicy`) that runs only the site's own scripts and talks only to this origin
-  and the storage host. Google Play's install referrer carries the event id alone, so an install from the page
-  opens the invite again for its key, as on iOS.
+  and the storage host. Google Play's install referrer carries the key too (`v=3&d=…&k=…`, appended only once the
+  page checked the key against the event; `inviteLinkFromInstallReferrer` answers the keyed path form), so an
+  Android install from the page opens the whole invite. A build before 0.6 reads such a referrer as an organic install.
 
 ### On-device layout (iOS)
 

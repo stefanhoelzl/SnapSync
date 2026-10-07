@@ -60,7 +60,14 @@ export function inviteFor(eventId: string): Invite {
  * The Play listing link carrying [invite] as the install referrer, which the installed app opens once on its first
  * launch. The referrer is rebuilt from `v` and `d` alone — never the raw fragment — so nothing else a hand-edited link
  * carries reaches Google, and it is URL-encoded because it sits inside a query parameter (Play decodes it once).
+ * An encrypted event's [key] — the `k` its whole invite carries, already checked against the event by the caller —
+ * rides as `&k=`, so the installed app can join (capabilities join-event, privacy-security); `null` carries none.
  */
-export function playHrefFor(playStoreUrl: string, invite: Invite): string {
-  return `${playStoreUrl}&referrer=${encodeURIComponent(`v=${CONFIG_VERSION}&d=${invite.d}`)}`;
+export function playHrefFor(
+  playStoreUrl: string,
+  invite: Invite,
+  key: string | null = null,
+): string {
+  const referrer = `v=${CONFIG_VERSION}&d=${invite.d}` + (key === null ? "" : `&k=${key}`);
+  return `${playStoreUrl}&referrer=${encodeURIComponent(referrer)}`;
 }

@@ -2,7 +2,11 @@ package app.snapsync.rig
 
 import app.snapsync.mock.MockedSystem
 import app.snapsync.model.ConfigRead
+import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.Layer
+import app.snapsync.model.SecureSlots
+import app.snapsync.model.encodeEventKey
+import app.snapsync.model.encodeEventUrl
 import app.snapsync.services.config.ConfigService
 
 // The JVM host's `/device` writes, its gallery read, and what it refuses of the shared vocabulary (`docs/testing.md`,
@@ -52,6 +56,20 @@ internal fun jvmDeviceCommands(rig: JvmRig): Map<String, RigCommand> = rig.world
         rig.app.relaunch()
         if (scene) rig.showScreen()
         CommandResult.ok("""{"relaunched":true,"scene":$scene}""")
+    },
+    // An event's whole invite, as the device that created it shares it: its key — this world recorded every key the app
+    // drew and the event each keyed create made — rides in it for an encrypted event. What a test opens to play a
+    // member who was sent the invite; a phone has no such read, its key leaves only inside the invite it shares.
+    "invite" to RigCommand { params, _ ->
+        val event = params["event"] ?: return@RigCommand CommandResult.badRequest("event is required")
+        val key = rig.mocks.eventKeys.keyOf(event)?.let(::encodeEventKey)
+        CommandResult.ok("""{"invite":"${encodeEventUrl(EventLinkPayload(event, key = key))}"}""")
+    },
+    // The joined event's key gone from the Keychain while the membership stays — what a restore onto a new phone or a
+    // reset of the phone's own key protection leaves (capability `sync-status`).
+    "event-key/lose" to RigCommand { _, _ ->
+        rig.mocks.keychain.port().delete(SecureSlots.EVENT_KEY)
+        CommandResult.ok("""{"lost":true}""")
     },
     // Deleting the app and installing it again: its files, databases and user defaults are gone, the Keychain, the
     // photo library and the backend keep theirs (capability `receiving-photos`, what a reinstall forgets), then a cold

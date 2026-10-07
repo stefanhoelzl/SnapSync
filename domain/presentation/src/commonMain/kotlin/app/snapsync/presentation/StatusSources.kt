@@ -1,5 +1,6 @@
 package app.snapsync.presentation
 
+import app.snapsync.model.KeyPresence
 import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.feature.creation.readmodel.ForegroundReturn
 import app.snapsync.feature.download.readmodel.DownloadProgress
@@ -99,12 +100,22 @@ class StatusSources(
      * Defaults to none ever, so a host that never foregrounds keeps one draft.
      */
     val foreground: StateFlow<ForegroundReturn> = MutableStateFlow(ForegroundReturn.NONE),
-    /**
-     * The joined event's key as its invite link carries it, when the event is ENCRYPTED (the encrypted file format,
-     * `docs/architecture.md`) — read from the secure store, never from the config. Defaults to none: a plain event's
-     * invite carries no key.
-     */
+    /** What the screen reads of the joined event's key ([EventKeyView]). Defaults to a plain event's: none. */
+    val eventKey: EventKeyView = EventKeyView(),
+)
+
+/**
+ * What the screen reads of the joined event's key, when the event is ENCRYPTED (the encrypted file format,
+ * `docs/architecture.md`) — read from the secure store, never from the config.
+ */
+class EventKeyView(
+    /** The key as the invite link carries it. Defaults to none: a plain event's invite carries no key. */
     val inviteKey: StateFlow<String?> = MutableStateFlow(null),
+    /**
+     * Whether this device holds it (capability `sync-status`): a lost one is the joined screen's status line, and a
+     * reopened invite of the event gives it back (capability `join-event`). Defaults to none needed.
+     */
+    val presence: StateFlow<KeyPresence> = MutableStateFlow(KeyPresence.NotNeeded),
 )
 
 /**

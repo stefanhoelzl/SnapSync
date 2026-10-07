@@ -192,7 +192,13 @@ import PlayOffer from "../components/PlayOffer.astro";
   import { decodeInvite, eventIdFromPath, inviteFor, playHrefFor } from "../lib/invite";
   import { zipEntries, type ZipEntry } from "../lib/zip-names";
   import { encryptionOf, lapsed, relinked } from "../lib/photo-links";
-  import { decryptFile, fileAssociatedData, keyFromFragment, opens } from "../lib/event-key";
+  import {
+    decryptFile,
+    fileAssociatedData,
+    keyFromFragment,
+    keyTextFromFragment,
+    opens,
+  } from "../lib/event-key";
 
   (function () {
     const $ = (id: string) => document.getElementById(id)!;
@@ -249,6 +255,14 @@ import PlayOffer from "../components/PlayOffer.astro";
           );
           return;
         }
+        // The whole invite, key included, is what the app installed from the Google Play badge must open: only now,
+        // with the key checked against the event, does the badge carry it (capabilities join-event, privacy-security).
+        if (play)
+          play.href = playHrefFor(
+            play.dataset.playStore!,
+            inviteFor(eventId),
+            keyTextFromFragment(location.hash),
+          );
       }
 
       // The photo list, each file carrying a link that lives an hour (`null` once the event is gone).

@@ -66,11 +66,12 @@ sealed interface ConfigDecodeResult {
 
 /**
  * Encodes a payload into its canonical event-link URL. The inverse of [decodeEventUrl]. An ENCRYPTED event's link is
- * the path form, its key the fragment's `k` — the form no build before encryption is asked to open; every other link
- * stays the fragment form every installed build reads (phase 2 of the event-site change moves them all).
+ * the path form, its key the fragment's `k` — the form no build before encryption is asked to open — followed by any
+ * development hints the payload carries, as the path form reads them (an invite the app shares carries none); every
+ * other link stays the fragment form every installed build reads (phase 2 of the event-site change moves them all).
  */
 fun encodeEventUrl(payload: EventLinkPayload): String {
-    payload.key?.let { return "$PATH_PREFIX${payload.eventId}#k=$it" }
+    payload.key?.let { key -> return "$PATH_PREFIX${payload.eventId}#" + (listOf("$KEY_PARAM=$key") + pathHints(payload)).joinToString("&") }
     val payloadJson = json.encodeToString(EventLinkPayload.serializer(), payload)
     val d = encoder.encode(payloadJson.encodeToByteArray())
     return "$PREFIX" + "v=$CONFIG_VERSION&d=$d"
@@ -135,8 +136,9 @@ private fun decodeFragmentForm(fragment: String): ConfigDecodeResult {
 
 /**
  * The invite a Google Play install carried, as the event link it came from — or `null` when the install carried none
- * (capability `join-event`). The event page's Play button hands the invite's fragment payload, exactly `v=3&d=…`, to
- * Play as the install referrer; Play answers it to the installed app URL-decoded once, so [referrer] is that payload.
+ * (capability `join-event`). The event page's Play button hands the invite's fragment payload, exactly `v=3&d=…` and
+ * for an encrypted event `&k=<key>`, to Play as the install referrer; Play answers it to the installed app URL-decoded
+ * once, so [referrer] is that payload.
  *
  * `null` is every install that did not come through an invite's page — above all the ORGANIC one, whose referrer Play
  * fills in itself (`utm_source=google-play&utm_medium=organic`) — and anything that does not decode as an invite. It
@@ -144,11 +146,23 @@ private fun decodeFragmentForm(fragment: String): ConfigDecodeResult {
  * ordinary install would open on that error. A decoded invite is answered in its canonical form, so it opens exactly as
  * the tapped link does.
  */
-fun inviteLinkFromInstallReferrer(referrer: String): String? =
-    when (val decoded = decodeEventUrl(PREFIX + referrer.trim())) {
-        is ConfigDecodeResult.Success -> encodeEventUrl(decoded.payload)
+fun inviteLinkFromInstallReferrer(referrer: String): String? {
+    // An encrypted event's page appends its key (`&k=`, checked against the event before it does): the invite it
+    // carries is then the event's whole one, key included (capabilities `join-event`, `privacy-security`).
+    val fields = referrer.trim().split("&")
+    val keyField = fields.singleOrNull { it.startsWith("$KEY_PARAM=") }
+    val key = keyField?.removePrefix("$KEY_PARAM=")
+    if (key != null && decodeEventKey(key) == null) return null
+    val payload = fields.filterNot { it == keyField }.joinToString("&")
+    return when (val decoded = decodeEventUrl(PREFIX + payload)) {
+        is ConfigDecodeResult.Success -> encodeEventUrl(decoded.payload.withKey(key))
         is ConfigDecodeResult.Failure -> null
     }
+}
+
+/** This payload carrying [key], or as it is when there is none. */
+private fun EventLinkPayload.withKey(key: String?): EventLinkPayload =
+    if (key == null) this else EventLinkPayload(eventId, autoJoin, minPhotoDate, maxPhotoDate, direction, saveToAlbum, key)
 
 private fun fail(reason: String) = ConfigDecodeResult.Failure(reason)
 
@@ -200,6 +214,15 @@ fun decodeEventKey(text: String): ByteArray? = try {
 } catch (_: IllegalArgumentException) {
     null
 }
+
+/** [payload]'s development hints as the path form carries them: only those it sets, in [PATH_HINT_KEYS]' order. */
+private fun pathHints(payload: EventLinkPayload): List<String> = listOfNotNull(
+    "autoJoin=true".takeIf { payload.autoJoin },
+    payload.minPhotoDate?.let { "minPhotoDate=$it" },
+    payload.maxPhotoDate?.let { "maxPhotoDate=$it" },
+    payload.direction?.let { "direction=$it" },
+    payload.saveToAlbum?.let { "saveToAlbum=$it" },
+)
 
 /** The fragment key an encrypted event's link carries its key in. */
 private const val KEY_PARAM = "k"

@@ -6,10 +6,16 @@ import { equalBytes, keyIdOf } from "../../../api/src/encrypted-file.ts";
 
 export { decryptFile, fileAssociatedData } from "../../../api/src/encrypted-file.ts";
 
+/** The `k` the invite's fragment carries, as the link spells it, or `null` when it carries none (or not a key). */
+export function keyTextFromFragment(hash: string): string | null {
+  const k = new URLSearchParams(hash.replace(/^#/, "")).get("k");
+  return k !== null && /^[A-Za-z0-9_-]{43}$/.test(k) ? k : null;
+}
+
 /** The 32-byte key the invite's fragment carries as `k`, or `null` when it carries none (or not a key). */
 export function keyFromFragment(hash: string): Uint8Array | null {
-  const k = new URLSearchParams(hash.replace(/^#/, "")).get("k");
-  if (k === null || !/^[A-Za-z0-9_-]{43}$/.test(k)) return null;
+  const k = keyTextFromFragment(hash);
+  if (k === null) return null;
   const binary = atob(k.replace(/-/g, "+").replace(/_/g, "/") + "=");
   const key = Uint8Array.from(binary, (c) => c.charCodeAt(0));
   return key.length === 32 ? key : null;

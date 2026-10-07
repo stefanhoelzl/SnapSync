@@ -58,6 +58,7 @@ internal fun testCommands(
     reconfigure = reconfigure, rename = rename, resetRename = resetRename, sendDiagnostics = sendDiagnostics,
     // The menu's mobile-data switch saves; a test about it builds its bundle with [testMenuCommands].
     setMobileData = { true },
+    restoreEventKey = { false },
 )
 
 /** The command bundle a menu test drives: its links, its report and its mobile-data switch; the rest inert. */
@@ -68,7 +69,7 @@ internal fun testMenuCommands(
 ) = testCommands(openLink = openLink, sendDiagnostics = sendDiagnostics).let {
     app.snapsync.model.UserCommands(
         it.leave, it.create, it.commitJoin, it.share, it.requestAccess, it.openSettings, it.openLink, it.choosePhotos,
-        it.reconfigure, it.rename, it.resetRename, it.sendDiagnostics, setMobileData,
+        it.reconfigure, it.rename, it.resetRename, it.sendDiagnostics, setMobileData, it.restoreEventKey,
     )
 }
 

@@ -159,6 +159,7 @@ internal fun AppCore.userCommandsFor(): UserCommands = UserCommands(
             result.outcome
         }
     },
+    restoreEventKey = { key -> awaitingOnCoreLane("tap.restoreEventKey") { restoreEventKey(key) } },
 )
 
 /**

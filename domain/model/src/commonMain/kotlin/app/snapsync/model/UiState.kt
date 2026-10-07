@@ -243,8 +243,12 @@ sealed interface Layer {
          * `manage-membership`), so the rendered QR and the shared link cannot disagree. Carried rather than
          * re-derived at each render site: the derivation depends on a build-time link origin, so carrying
          * it is what makes a transported state render the origin the device actually shows.
+         *
+         * `null` when there is no whole invite to offer: the event is encrypted and this device cannot read its key
+         * (lost, or locked since the phone started) — an invite is never offered without its key, so neither the share
+         * action nor the QR code is (capability `manage-membership`).
          */
-        val inviteUrl: String,
+        val inviteUrl: String?,
         val health: SyncHealth,
         val pendingSwitch: PendingSwitch? = null,
         /** The joined layer offers "Choose more photos" — true exactly under a partial grant
@@ -570,6 +574,14 @@ sealed interface SyncHealth {
      */
     @Serializable
     data object Inactive : SyncHealth
+
+    /**
+     * This device lost the joined event's key (capability `sync-status`): nothing is uploaded or downloaded until the
+     * event's invite is opened again. Right after [Inactive] — no access, network or start moves a photo without the
+     * key, and only the invite, from someone in the group, brings it back. Not tappable; carries no counts.
+     */
+    @Serializable
+    data object KeyLost : SyncHealth
 
     /** Everything shared and received — the settled state (no arrows). */
     @Serializable

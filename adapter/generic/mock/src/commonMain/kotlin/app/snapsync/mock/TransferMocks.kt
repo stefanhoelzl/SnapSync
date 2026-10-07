@@ -379,6 +379,12 @@ class DownloadSessionMock(
     private val temporaryFiles: TemporaryFiles? = null,
     /** Whether the device's network holds a transfer started under this rule (capability `mobile-data`). */
     internal val held: (TransferNetwork) -> Boolean,
+    /**
+     * What the member who uploaded a transfer's bytes would have stored, given what the transfer brought: sealed under
+     * an encrypted event's key, as every member's upload is (the encrypted file format, `docs/architecture.md`), or
+     * `null` for the bytes unchanged. The device's world answers it ([EventKeyLedger]), never the app.
+     */
+    private val stored: (description: String, bytes: ByteArray) -> ByteArray?,
 ) {
 
     /** A transfer the session holds, until it finishes or is cancelled; [network] is the rule it was started under. */
@@ -428,8 +434,11 @@ class DownloadSessionMock(
 
     val operator: DownloadSessionOperator = DownloadSessionOperator(this)
 
-    internal fun leaveTempFile(description: String, bytes: ByteArray? = null): String =
-        temporaryFiles?.leave("download-tmp/${description.hashCode().toUInt()}", bytes ?: TEMP_BYTES) ?: "temp:/$description"
+    internal fun leaveTempFile(description: String, bytes: ByteArray? = null): String {
+        val brought = bytes ?: TEMP_BYTES
+        val left = stored(description, brought) ?: brought
+        return temporaryFiles?.leave("download-tmp/${description.hashCode().toUInt()}", left) ?: "temp:/$description"
+    }
 
     internal fun registered(): DownloadHandlers = handlers.require("a download session event")
 

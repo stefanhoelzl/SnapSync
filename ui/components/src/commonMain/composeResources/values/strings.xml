@@ -60,6 +60,8 @@
     <string name="cannot_verify_title_modified">This phone's system is modified — sharing is paused</string>
     <string name="cannot_verify_title_not_genuine">This copy of SnapSync isn't the official one — sharing is paused</string>
     <string name="cannot_verify_detail">Still retrying — your photos aren't lost.</string>
+    <string name="key_lost_title">Open this event's invite again</string>
+    <string name="key_lost_detail">Ask your group for it — until then, no photos are shared or received.</string>
 
     <string name="menu">Menu</string>
     <string name="menu_close">Close menu</string>

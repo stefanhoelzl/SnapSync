@@ -47,6 +47,8 @@
     <string name="cannot_verify_title_modified">Das System dieses Geräts ist verändert – das Teilen ist pausiert</string>
     <string name="cannot_verify_title_not_genuine">Diese Kopie von SnapSync ist nicht die offizielle – das Teilen ist pausiert</string>
     <string name="cannot_verify_detail">Wird weiter versucht – deine Fotos gehen nicht verloren.</string>
+    <string name="key_lost_title">Öffne die Einladung zu diesem Event erneut</string>
+    <string name="key_lost_detail">Bitte deine Gruppe darum – bis dahin werden keine Fotos geteilt oder empfangen.</string>
 
     <string name="menu">Menü</string>
     <string name="menu_close">Menü schließen</string>

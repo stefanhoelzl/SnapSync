@@ -201,7 +201,7 @@ class DevControlsMock(internal var hints: InviteLinkHints = InviteLinkHints.Igno
 
     @Volatile internal var pin: UploaderPin? = null
 
-    @Volatile internal var encrypts: Boolean = false
+    @Volatile internal var encrypts: Boolean = true
 
     fun port(): DevControls = object : DevControls {
         override fun listen(handlers: DevHandlers) {
@@ -212,7 +212,7 @@ class DevControlsMock(internal var hints: InviteLinkHints = InviteLinkHints.Igno
 
         override fun inviteLinkHints(): InviteLinkHints = hints
 
-        override fun encryptsNewEvents(): Boolean = encrypts
+        override fun createsPlainEvents(): Boolean = !encrypts
     }
 
     val operator: DevControlsOperator = DevControlsOperator(this)
@@ -229,7 +229,7 @@ class DevControlsOperator internal constructor(private val mock: DevControlsMock
         get() = mock.hints
         set(value) { mock.hints = value }
 
-    /** Whether an event this device creates is encrypted — `false`, as on every shipped build, unless set. */
+    /** Whether an event this device creates is encrypted — `true`, as on every shipped build; `false` creates a plain one. */
     var encryptsNewEvents: Boolean
         get() = mock.encrypts
         set(value) { mock.encrypts = value }

@@ -1,5 +1,6 @@
 package app.snapsync.desktop
 
+import app.snapsync.model.SecureSlots
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -213,7 +214,7 @@ fun WorldInspector(
                         },
                     )
                 }
-                OutlinedButton(onClick = { controller.armImportFailure() }) { Text("Arm import failure") }
+                OneShotLevers(controller)
             },
             right = {
                 Text("Job limit")
@@ -353,4 +354,23 @@ private fun RefuseAttestationLever(controller: WorldInspectorController, snap: I
             OutlinedButton(onClick = { controller.setRefusedAttestation(reason) }) { Text(reason.wireName) }
         }
     }
+}
+
+/** The failure levers that act once: each changes the device's mocks and says so in the console. */
+@Composable
+private fun OneShotLevers(controller: WorldInspectorController) {
+    OutlinedButton(
+        onClick = {
+            controller.lever("armed: next foreign import will fail (non-terminal)") { library.operator.imports.failNextImport = true }
+        },
+    ) { Text("Arm import failure") }
+    // The joined event's key gone while the membership stays (capability `sync-status`) — what a restore onto a new
+    // phone leaves. The status line follows at the next foreground; reopening the event's invite restores it.
+    OutlinedButton(
+        onClick = {
+            controller.lever("the event key is lost — reopen the event's invite to restore it") {
+                keychain.port().delete(SecureSlots.EVENT_KEY)
+            }
+        },
+    ) { Text("Lose the event key") }
 }

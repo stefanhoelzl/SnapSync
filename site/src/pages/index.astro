@@ -204,7 +204,7 @@ const playOffered = playOfferFor(deployment).kind !== "none";
       <p class="eyebrow">Legal</p>
       <h2>Privacy Policy</h2>
       <p class="meta">
-        Last updated 6 October 2026 · Contact:{" "}
+        Last updated 7 October 2026 · Contact:{" "}
         <a
           href="mailto:stefanh+snapsync@posteo.de"
           target="_blank"
@@ -241,7 +241,14 @@ const playOffered = playOfferFor(deployment).kind !== "none";
           the invite only with people you want to have them. A photo is shared exactly as it was
           taken, including the details it carries, such as where it was taken, if your camera
           recorded that. Photos are stored to make sharing work and are deleted with the event (see
-          below). Legal basis: performance of the service you asked for (GDPR Art. 6(1)(b)).
+          below). In an event created with SnapSync 0.6 or later, every photo is stored encrypted,
+          with a key that exists only on the phones in the event and in the event's invite link; our
+          service is never given that key, so it cannot open the stored photos. The one exception is
+          an iPhone that uploads photos in the background through the system's own photo uploader:
+          there, each photo reaches our service unencrypted together with a key that opens only that
+          photo, and our service encrypts it as it arrives and keeps neither the key nor the
+          unencrypted photo. Legal basis: performance of the service you asked for (GDPR Art.
+          6(1)(b)).
         </li>
         <li>
           <strong>A random device ID.</strong> Each install generates a random identifier so the
@@ -311,7 +318,9 @@ const playOffered = playOfferFor(deployment).kind !== "none";
           The identifier goes only to our own service, and the page tells your browser not to pass
           its address on to any other site. The page sets no cookies, runs no tracking, and does not
           make you a member of the event. Our service notes only that a browser read the event's
-          photo list, and when (see above).
+          photo list, and when (see above). For an encrypted event, the link also carries the
+          event's key, after a "#", which your browser never sends anywhere; the page uses it to
+          open the photos in your browser, and without it the page shows no photos.
         </li>
         {playOffered && (
           <li>
@@ -319,10 +328,12 @@ const playOffered = playOfferFor(deployment).kind !== "none";
             Play button on an event page, the page hands that event's invite to Google Play, so that
             SnapSync can open the invite once it is installed on your phone. Google Play then
             receives the invite, which is the key to the event: anyone holding it can see the
-            event's photos. Nothing is handed over unless you follow that button; the button on this
-            landing page never carries an invite, and neither does the page for an invalid or
-            expired link. Google's handling of it is covered by Google's own privacy policy. Legal
-            basis: your consent (GDPR Art. 6(1)(a)), given by following the button.
+            event's photos. For an encrypted event, the invite handed over includes the event's key,
+            and only when the page was opened with it. Nothing is handed over unless you follow that
+            button; the button on this landing page never carries an invite, and neither does the
+            page for an invalid or expired link. Google's handling of it is covered by Google's own
+            privacy policy. Legal basis: your consent (GDPR Art. 6(1)(a)), given by following the
+            button.
           </li>
         )}
       </ul>

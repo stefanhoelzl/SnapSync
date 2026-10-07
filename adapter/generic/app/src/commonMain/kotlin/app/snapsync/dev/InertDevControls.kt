@@ -7,7 +7,7 @@ import app.snapsync.ports.DevHandlers
 
 /**
  * A production build's [DevControls]: inert, and never delivering (`docs/architecture.md`, "A build-time-only module
- * is contained by compilation"). No uploader is pinned and no invite-link hint is honoured, on every platform and for
+ * is contained by compilation"). No uploader is pinned, no invite-link hint is honoured and no event is created plain, on every platform and for
  * the process's whole life — the only [DevControls] that does anything is the control channel's, which a production
  * build does not contain.
  */
@@ -19,5 +19,5 @@ object InertDevControls : DevControls {
 
     override fun inviteLinkHints(): InviteLinkHints = InviteLinkHints.Ignored
 
-    override fun encryptsNewEvents(): Boolean = false
+    override fun createsPlainEvents(): Boolean = false
 }

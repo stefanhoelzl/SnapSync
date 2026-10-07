@@ -8,6 +8,7 @@ import app.snapsync.mock.fakeCrypto
 import app.snapsync.mock.inMemoryGallery
 import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.AssetId
+import app.snapsync.model.AssetRef
 import app.snapsync.model.ChangeOutcome
 import app.snapsync.model.EncryptedFileFormat
 import app.snapsync.model.EventConfig
@@ -60,6 +61,7 @@ import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -270,6 +272,19 @@ class EncryptedTransfersTest {
     }
 
     @Test
+    fun a_download_with_no_key_kept_is_never_staged() = runTest {
+        val minted = EventKeys(crypto, inMemorySecureStore()).mint()
+        // The event is encrypted, and this device lost its key: nothing opens, and nothing is staged.
+        val receiver = Device(DEVICE_B, linkKey = null, keyId = minted.keyId)
+        val opening = DownloadOpening(receiver.keys, receiver.cipher, receiver.config, receiver.files)
+        repeat(5) { attempt ->
+            receiver.files.write(FileArea.SHARED, "os-tmp/$attempt", photo)
+            assertFalse(opening.open(AssetRef(DEVICE_A, AssetId(ASSET)), KEY, EVENT, "os-tmp/$attempt", "staged/$attempt"))
+        }
+        assertTrue(receiver.files.operations.none { it.startsWith("write") && it.contains("staged/") })
+    }
+
+    @Test
     fun a_file_opens_only_as_the_resource_it_was_sealed_as() = runTest {
         val minted = EventKeys(crypto, inMemorySecureStore()).mint()
         val device = Device(DEVICE_A, minted.linkKey, minted.keyId)
@@ -331,12 +346,11 @@ class EncryptedTransfersTest {
     }
 
     @Test
-    fun a_new_event_is_encrypted_only_while_the_builds_control_says_so() {
+    fun a_new_event_is_encrypted_unless_the_builds_control_asks_for_a_plain_one() {
         val controls = app.snapsync.mock.DevControlsMock()
         val minting = EventKeyMinting(EventKeys(crypto, inMemorySecureStore()), controls.port())
-        assertEquals(null, minting.forNewEvent(), "a shipped build creates plain events")
-        controls.operator.encryptsNewEvents = true
-        val minted = minting.forNewEvent()!!
-        assertEquals(16, minted.keyId.length)
+        assertEquals(16, minting.forNewEvent()!!.keyId.length, "a shipped build encrypts every event")
+        controls.operator.encryptsNewEvents = false
+        assertEquals(null, minting.forNewEvent(), "a rig build may still create a plain event")
     }
 }

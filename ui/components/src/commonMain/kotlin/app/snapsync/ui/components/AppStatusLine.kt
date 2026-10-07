@@ -44,6 +44,8 @@ import app.snapsync.ui.components.resources.cannot_verify_title
 import app.snapsync.ui.components.resources.cannot_verify_title_modified
 import app.snapsync.ui.components.resources.cannot_verify_title_not_genuine
 import app.snapsync.ui.components.resources.cannot_verify_title_unverifiable
+import app.snapsync.ui.components.resources.key_lost_detail
+import app.snapsync.ui.components.resources.key_lost_title
 import app.snapsync.ui.components.resources.network_blocked
 import app.snapsync.ui.components.resources.network_offline
 import app.snapsync.ui.components.resources.status_allow_access
@@ -57,6 +59,7 @@ import app.snapsync.ui.components.resources.status_sync_ongoing
 import app.snapsync.ui.components.resources.status_sync_pending
 import app.snapsync.ui.components.resources.status_syncing
 import app.snapsync.ui.components.resources.status_waiting_wifi
+import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
 /** One half-cycle of the in-flight arrow's pulse, in milliseconds. */
@@ -93,6 +96,12 @@ sealed interface AppSyncStatus {
      * the event's settings.
      */
     data object Inactive : AppSyncStatus
+
+    /**
+     * This phone lost the event's key (capability `sync-status`): an attention line with a background, like
+     * [CannotVerifyDevice], and NOT tappable — its remedy is the event's invite, which someone in the group sends.
+     */
+    data object KeyLost : AppSyncStatus
 
     /**
      * Photo access is off — the sole attention state; the only one with a background, tappable.
@@ -191,7 +200,11 @@ private fun StatusBody(status: AppSyncStatus, onAttentionClick: () -> Unit) {
             onClick = onAttentionClick,
         )
 
-        is AppSyncStatus.CannotVerifyDevice -> CannotVerifyDeviceLine(status.cause)
+        // A definite refusal names its cause; the detail stays true of every cause.
+        is AppSyncStatus.CannotVerifyDevice ->
+            AttentionLine(CannotVerifyTitles.getValue(status.cause), Res.string.cannot_verify_detail)
+
+        AppSyncStatus.KeyLost -> AttentionLine(Res.string.key_lost_title, Res.string.key_lost_detail)
 
         is AppSyncStatus.NoNetwork -> AppNetworkNotice(blocked = status.blocked, onOpenSettings = onAttentionClick)
     }
@@ -333,10 +346,11 @@ private fun AttentionNotice(text: String) {
 
 /**
  * The same attention treatment as [AttentionButton] — but NOT tappable, and with no chevron: there is no
- * action the user can take. It clears itself as soon as the device can reach the backend.
+ * action in the app to take. Cannot-verify clears itself as soon as the device can reach the backend; a lost key
+ * clears once the event's invite is opened again.
  */
 @Composable
-private fun CannotVerifyDeviceLine(cause: DeviceRefusal?) {
+private fun AttentionLine(title: StringResource, detail: StringResource) {
     Surface(
         color = appAttentionContainer(),
         contentColor = appAttentionText(),
@@ -348,8 +362,8 @@ private fun CannotVerifyDeviceLine(cause: DeviceRefusal?) {
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Icon(Icons.Filled.Warning, contentDescription = null, modifier = Modifier.size(IconSize))
-            // Headline plus a reassurance — NOT a remedy, because this is the one attention
-            // state with no action to offer. The detail line used to read "Reopen the app or
+            // Headline plus a reassurance — NOT a button, because neither attention line here has an
+            // action in the app to offer. Cannot-verify's detail line used to read "Reopen the app or
             // check your connection", which failed twice over: reopening the app is what fired
             // the re-verify the member is already waiting on, and "your connection" is one of
             // two causes this single state absorbs — a member whose device the backend is
@@ -358,26 +372,20 @@ private fun CannotVerifyDeviceLine(cause: DeviceRefusal?) {
             // them: the app keeps trying, and no photo is lost. (Colour is inherited
             // contentColor; no scheme line is touched here.)
             Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                // A definite refusal names its cause; the detail below stays true of every cause.
-                Text(
-                    text = stringResource(
-                        when (cause) {
-                            null -> Res.string.cannot_verify_title
-                            DeviceRefusal.DEVICE_MODIFIED -> Res.string.cannot_verify_title_modified
-                            DeviceRefusal.DEVICE_UNVERIFIABLE -> Res.string.cannot_verify_title_unverifiable
-                            DeviceRefusal.APP_NOT_GENUINE -> Res.string.cannot_verify_title_not_genuine
-                        },
-                    ),
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                Text(
-                    text = stringResource(Res.string.cannot_verify_detail),
-                    style = MaterialTheme.typography.bodySmall,
-                )
+                Text(text = stringResource(title), style = MaterialTheme.typography.titleMedium)
+                Text(text = stringResource(detail), style = MaterialTheme.typography.bodySmall)
             }
         }
     }
 }
+
+/** The cannot-verify line's headline per refusal: a definite one names its cause, no verdict names none. */
+private val CannotVerifyTitles: Map<DeviceRefusal?, StringResource> = mapOf(
+    null to Res.string.cannot_verify_title,
+    DeviceRefusal.DEVICE_MODIFIED to Res.string.cannot_verify_title_modified,
+    DeviceRefusal.DEVICE_UNVERIFIABLE to Res.string.cannot_verify_title_unverifiable,
+    DeviceRefusal.APP_NOT_GENUINE to Res.string.cannot_verify_title_not_genuine,
+)
 
 @Composable
 private fun LineText(text: String, color: Color) {

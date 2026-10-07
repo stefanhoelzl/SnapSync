@@ -68,7 +68,7 @@ class DownloadPushReceiverTest {
             // These tests exercise the ACTIVE-EVENT guard, which is orthogonal to the direction gate
             // (capability `receiving-photos`) — so state a downloading membership explicitly. The gate no
             // longer defaults: a permissive default is what let "no membership" mean "download freely".
-            downloadEnabled = { true },
+            arm = DownloadArm(enabled = { true }, keyHeld = { true }),
             checks = EventChecks(inMemoryPreferences(), now = { kotlin.time.Instant.fromEpochMilliseconds(0) }),
             readyToImport = { true },
         )

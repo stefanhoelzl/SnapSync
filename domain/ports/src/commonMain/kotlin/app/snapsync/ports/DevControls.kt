@@ -28,11 +28,12 @@ interface DevControls : Listenable<DevHandlers> {
     fun inviteLinkHints(): InviteLinkHints
 
     /**
-     * Whether an event this device creates is ENCRYPTED (the encrypted file format, `docs/architecture.md`), read at
-     * every create. **Always `false` in a production build** until every installed build can read an encrypted event;
-     * the release that enables encryption replaces this read rather than flipping it.
+     * Whether an event this device creates is PLAIN rather than encrypted (the encrypted file format,
+     * `docs/architecture.md`), read at every create. **Always `false` in a production build**, which encrypts every
+     * event it creates; a rig build answers `true` only to reach the plain events older builds still create, and the
+     * change that retires plain events deletes this read.
      */
-    fun encryptsNewEvents(): Boolean
+    fun createsPlainEvents(): Boolean
 }
 
 /** What the development controls tell the core. Built only by a composition. */

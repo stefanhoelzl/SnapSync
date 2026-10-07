@@ -3,6 +3,7 @@ package app.snapsync.host
 import app.snapsync.compose.AppCore
 import app.snapsync.compose.AppPorts
 import app.snapsync.compose.ProcessServices
+import app.snapsync.presentation.EventKeyView
 import app.snapsync.compose.devHandlers
 import app.snapsync.compose.installNetworkReturns
 import app.snapsync.compose.lifecycleHandlers
@@ -210,5 +211,5 @@ private fun statusSourcesOf(core: AppCore, ports: AppPorts): StatusSources = Sta
     mobileData = core.mobileDataChoice,
     store = ports.process.build.store,
     foreground = core.foregroundLife.returns,
-    inviteKey = core.inviteKey,
+    eventKey = EventKeyView(core.eventKeyReads.inviteKey, core.eventKeyReads.presence),
 )

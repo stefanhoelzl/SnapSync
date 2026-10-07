@@ -138,9 +138,12 @@ class CompositionSeamTest {
         "CollectDiagnosticDump.refusalFacts" to
             "the latest refused attestation's facts the attestation service holds in memory (DeviceAttestation." +
             "refusalFacts) — read for a report offered from \"Report this\" (capability `privacy-security`)",
-        "DownloadController.downloadEnabled" to
+        "DownloadArm.enabled" to
             "the membership's direction, three-valued (no membership → null → no arm), derived in compose/ over " +
             "the ConfigService the composition already reads",
+        "DownloadArm.keyHeld" to
+            "whether the joined event's key is not LOST — EventKeys.lostFor over the ConfigService's membership, read " +
+            "fresh per reconcile (capability `sync-status`); a secure-store read the services already make, nothing leaves",
         "DownloadController.readyToImport" to
             "this core's photo permission and the sibling ReceivedPhotoAdoption.ensureAdopted — feature-blindness " +
             "(capability `receiving-photos`: nothing imports before a usable grant has recognised the received photos)",

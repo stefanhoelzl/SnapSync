@@ -158,6 +158,14 @@ fun iosRefusals(launch: RigLaunch): Map<String, String> = buildMap {
         "deleting the app ends the process the channel runs in; delete and reinstall it from outside (`ios-device` / " +
             "`simctl uninstall`, then install)",
     )
+    put(
+        "device/event-key/lose",
+        "the phone's own store keeps the event's key; losing it is restoring onto a new phone, outside the channel",
+    )
+    put(
+        "device/invite",
+        "an event's key leaves the creating phone only inside its invite: read it from the joined screen's share link",
+    )
     if (world.isMocked(MockedSystem.LIBRARY)) {
         put(
             "device/gallery/wipe",

@@ -263,9 +263,10 @@ class WorldInspectorController(private val scope: CoroutineScope) {
         }
     }
 
-    fun armImportFailure() = launchMutation {
-        mocks.library.operator.imports.failNextImport = true
-        appendConsole("armed: next foreign import will fail (non-terminal)")
+    /** A one-shot lever: [change] the device's mocks, then say what was done in the console as [said]. */
+    fun lever(said: String, change: JvmMocks.() -> Unit) = launchMutation {
+        mocks.change()
+        appendConsole(said)
     }
 
     // ---- presets (a fresh app over a fresh device) -----------------------------------------------
