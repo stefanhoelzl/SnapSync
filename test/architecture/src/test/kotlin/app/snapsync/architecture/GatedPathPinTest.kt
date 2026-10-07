@@ -60,10 +60,20 @@ class GatedPathPinTest {
             """/^\/join\/[^/]+$/.test(path)""" in gate,
             "the backend's event-page match (`/join/<eventId>`) changed — update `isGatedRequest` and this pin",
         )
-        assertEquals(1, Regex("""\.test\(path\)""").findAll(gate).count(), "a new regex-shaped public GET — pin it here")
+        assertEquals(2, Regex("""\.test\(path\)""").findAll(gate).count(), "a new regex-shaped public GET — pin it here")
         assertFalse(isGatedRequest("GET", "/join/3f2c0000-0000-4000-8000-00000000e91a"))
         assertTrue(isGatedRequest("POST", "/join/3f2c0000-0000-4000-8000-00000000e91a"))
         assertTrue(isGatedRequest("GET", "/join/a/b"))
+        // The event page's read: exactly `/web/events/<id>/photos`, read-only (`routes/web.ts`).
+        assertTrue("WEB_PHOTOS_PATH.test(path)" in gate, "the backend no longer admits the event page's read — update `isGatedRequest` and this pin")
+        val web = File(SourceScan.repoRoot, "api/src/routes/web.ts").readText()
+        assertTrue(
+            """WEB_PHOTOS_PATH = /^\/web\/events\/[^/]+\/photos$/""" in web,
+            "the backend's event-page read changed shape — update `isGatedRequest` and this pin",
+        )
+        assertFalse(isGatedRequest("GET", "/web/events/3f2c0000-0000-4000-8000-00000000e91a/photos"))
+        assertTrue(isGatedRequest("POST", "/web/events/3f2c0000-0000-4000-8000-00000000e91a/photos"))
+        assertTrue(isGatedRequest("GET", "/web/events/E1/photos/x"))
         // `/attest/` is a device route: it arrives version-prefixed, under every method.
         assertFalse(isGatedRequest("POST", "/api/v1/attest/renew"))
         assertFalse(isGatedRequest("POST", "/api/v2/attest/token"))

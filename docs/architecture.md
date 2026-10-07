@@ -656,8 +656,8 @@ The generated snapshot is `api/schema.sql` (section "Database" below).
 Top-level Hono middleware in `src/app.ts`, in this order:
 
 1. **Maintenance gate.** While the bundle carries the maintenance flag, everything under the `/api/`
-   **prefix** answers `503` with `Retry-After` and no-cache, touching no store. It runs before
-   authentication. Root routes keep serving.
+   and `/web/` **prefixes** answers `503` with `Retry-After` and no-cache, touching no store. It runs before
+   authentication. The other root routes keep serving.
 2. **Version gate** (v2 only). The `x-snapsync-app-version` header must be at least `minAppVersion`
    (in source, `src/config.ts`, pinned by `min-app-version-floor.test.ts`, deliberately not config).
    Absent, unparseable and too old all get `426 {error, minAppVersion}`. v1 is exempt.
@@ -666,8 +666,10 @@ Top-level Hono middleware in `src/app.ts`, in this order:
    no Apple call), because it sits on the streaming upload hot path. A route that needs the device record
    reads it itself afterwards. The **closed list** of exceptions: the three `/api/vN/attest/*` issuers;
    `OPTIONS` anywhere; `GET`/`HEAD` on `/`, `/join`, `/join/<one segment>` (the event's own page),
-   `/.well-known/apple-app-site-association`, `/health`; `GET`/`HEAD` on `/api/vN/events/<id>` and `/api/vN/events/<id>/files` (the no-app
-   download page, where possession of the event id is the read capability); and `GET`/`HEAD` on the
+   `/.well-known/apple-app-site-association`, `/health`; `GET`/`HEAD` on exactly `/web/events/<id>/photos`
+   (the event page's own read, below — a browser cannot attest, so possession of the event id is its read
+   capability, `changes/separate-event-page-from-device-api` D1); `GET`/`HEAD` on `/api/vN/events/<id>` and
+   `/api/vN/events/<id>/files` (read by app builds that send no token; the event page no longer reads them); and `GET`/`HEAD` on the
    download redirect `/api/vN/events/<id>/files/devices/<d>/<asset>/<role>` (`isDownloadRedirect`, which
    the version gate exempts too: the OS's download transports fetch it with no app header). The gate
    normalizes the `/api/vN` prefix before matching. The union read checks a token **itself** when one is
@@ -714,7 +716,7 @@ not listed is `404` (no `405`) and makes no upstream request.
 
 Served at the root under no version: `OPTIONS` on any path (`204`, no resumable upload advertised, so
 the iOS uploader uses a plain `PUT`); `GET`/`HEAD` `/`, `/_astro/*` (the Astro build proxied
-from the storage `site/` prefix), the event page (below), the AASA (claiming `/join` and `/join/*`) and `/.well-known/assetlinks.json` (Android's: the package and the
+from the storage `site/` prefix), the event page and its read (below), the AASA (claiming `/join` and `/join/*`) and `/.well-known/assetlinks.json` (Android's: the package and the
 `androidSigningCertDigests` the attestation policy accepts, `[]` while none is named or under trust `any`); `GET /health` (`200 {sha, maintenance?}` after
 `SELECT 1` and a storage listing succeed, `503` otherwise; `maintenance` absent means closed).
 
@@ -727,7 +729,19 @@ renders its name, dates in the event's `zone` (UTC when NULL), phase and counts,
 script-less browsers see the event: `404` unknown or malformed, `410` completed (both the invalid view,
 naming no event), a closed event renders as ended, a read failure `502`. Both answer `NO_CACHE` (a cached
 copy would key the CDN cache on the event's identity) and `Referrer-Policy: no-referrer`. Per view: one
-storage GET and one row read plus one count. The event's identity reaching this route is a decision
+storage GET and one row read plus one count. The page also carries the event's key id (`%%KEY_ID%%`, empty
+for a plain event), so an encrypted event's page checks the invite's `#k=` with no further request.
+
+**The event page's read** is `GET`/`HEAD /web/events/<eventId>/photos` (`src/routes/web.ts`): the page's only
+call, at the root and under no version, so no device-API version can break the page
+(`changes/separate-event-page-from-device-api`). It lists the union's complete assets (the same
+`completeAssets` the device union uses) in the page's own shape,
+`200 [{deviceId, assetId, resources:[{role, filename, url}]}]`, each `url` a presign living **1 hour**. It
+reads no token (an `Authorization` header is ignored, not checked), logs one anonymous `fetch` row, and
+answers `NO_CACHE`; `404` for an absent or malformed event, `502` on a read failure. A zip that outlasts the
+hour reads the list once more (the page matches files by device, asset and role).
+
+The event's identity reaching `/join/<eventId>` is a decision
 (`changes/server-rendered-event-page`), not a leak: it supersedes the fragment-only rule of
 `migrate-to-universal-links` D1.
 
@@ -738,11 +752,13 @@ storage GET and one row read plus one count. The event's identity reaching this 
   complete one, and a photo vanishes silently). A zero-row conditional write with two causes (capacity
   or absent) is disambiguated by a follow-up read (`409` vs `404`).
 - **Presigned URLs.** SigV4 query-signed S3 `GET`, path-style
-  `https://<s3-host>/<zone>/<the resource's path, each segment percent-encoded>`, 7-day expiry, signed with the zone name as
-  access key id and the storage password as secret. Minted by one builder: under v2 only by the download
-  redirect, one per download started; under v1 (frozen) on every union and listing response. The 7 days
-  stay on purpose: an iOS background session resumes from the redirect target and never revisits the
-  redirect (measured, `changes/incremental-union` D2).
+  `https://<s3-host>/<zone>/<the resource's path, each segment percent-encoded>`, signed with the zone name as
+  access key id and the storage password as secret. Minted by one builder: under v2 by the download
+  redirect, one per download started, with a 7-day expiry; under v1 (frozen) on every union and listing
+  response, also 7 days; and by the event page's read, with a **1-hour** expiry. The 7 days stay on purpose:
+  an iOS background session resumes from the redirect target and never revisits the redirect (measured,
+  `changes/incremental-union` D2). A browser uses its links at once, so the page's hour bounds how long a
+  photo withdrawn after the page loaded stays reachable (`changes/separate-event-page-from-device-api` D3).
 - **The device-facing origin** of a redirect URL comes from the deployment's `domain` (`deviceOrigin`:
   `http` for a loopback literal, `https` otherwise), never from the request, which behind the pull zone
   promises nothing.
@@ -835,6 +851,7 @@ Decision records: `changes/archive/2026-08-25-record-uploads-in-database`,
 ```
 src/app.ts         createApp({config, db, fetch}): the three gates and the composition of the routers
 src/routes/        the routes as `(deps) => Hono` factories: site.ts (site proxy + AASA + assetlinks.json),
+                   web.ts (the event page's read),
                    attest.ts, shared.ts, v1.ts, v2.ts, manifest.ts (manifest body parsing) and
                    support.ts (actsFor, presignDownloadUrl, the routes' shared refusals)
 src/db.ts          the one narrow `Db` port and every statement (capacity insert, atomic publish, union,

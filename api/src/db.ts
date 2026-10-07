@@ -825,6 +825,27 @@ export async function unionRows(
 }
 
 /**
+ * [rows] grouped into the event's COMPLETE assets, in row order: each asset's resources together, and any asset
+ * naming a resource the backend has not recorded as uploaded dropped. That drop IS the completeness mechanism:
+ * a manifest declares roles whose bytes may not have arrived, so the declaration supplies the expectation and
+ * these rows supply the reality — it is what distinguishes "this photo is coming" from "this photo does not
+ * exist". The device union and the event page's read (`/web/events/<id>/photos`) both go through it, so the two
+ * cannot disagree about which photos are in the event.
+ */
+export function completeAssets(rows: UnionResourceRow[]): UnionResourceRow[][] {
+  const byAsset = new Map<string, UnionResourceRow[]>();
+  for (const r of rows) {
+    const id = `${r.deviceId}/${r.assetId}`;
+    const slot = byAsset.get(id) ?? [];
+    slot.push(r);
+    byAsset.set(id, slot);
+  }
+  return [...byAsset.values()].filter((resources) =>
+    resources.length > 0 && resources.every((r) => r.present)
+  );
+}
+
+/**
  * The stored object a download of ONE resource of an event's union resolves to (decision record
  * `changes/incremental-union`, D1): its storage path when the event still declares that asset with that role (in a
  * membership of either state, as the union does) and its bytes are recorded; `null` otherwise.

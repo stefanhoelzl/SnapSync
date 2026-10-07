@@ -143,6 +143,26 @@ Deno.test("the invalid and the pending page name no event", () => {
   assertEquals(pendingFilling(ORIGIN).VIEW, "pending");
 });
 
+Deno.test("an encrypted event's page carries its key id; a plain event's and the generic pages carry none", () => {
+  const at = ms("2026-10-04T12:00:00Z");
+  const members = { active: 1, final: 0 };
+  assertEquals(
+    eventFilling(ORIGIN, { ...BERLIN, keyId: "q1w2e3r4t5y6" }, members, at, DELETES_AT).KEY_ID,
+    "q1w2e3r4t5y6",
+  );
+  assertEquals(
+    eventFilling(ORIGIN, { ...BERLIN, keyId: '"><x' }, members, at, DELETES_AT).KEY_ID,
+    "&quot;&gt;&lt;x",
+  );
+  assertEquals(eventFilling(ORIGIN, BERLIN, members, at, DELETES_AT).KEY_ID, "");
+  assertEquals(
+    eventFilling(ORIGIN, { ...BERLIN, keyId: null }, members, at, DELETES_AT).KEY_ID,
+    "",
+  );
+  assertEquals(invalidFilling(ORIGIN).KEY_ID, "");
+  assertEquals(pendingFilling(ORIGIN).KEY_ID, "");
+});
+
 Deno.test("fill replaces every occurrence of every token", () => {
   const template = TOKENS.map((t) => `%%${t}%%|%%${t}%%`).join("\n");
   const out = fill(template, invalidFilling(ORIGIN));

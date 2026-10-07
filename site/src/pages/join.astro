@@ -21,7 +21,7 @@ import PlayOffer from "../components/PlayOffer.astro";
 ---
 
 <Layout title="%%TITLE%%" ogTitle="%%OG_TITLE%%" description="%%DESCRIPTION%%" ogUrl="%%URL%%">
-  <div class="join" id="join" data-view="%%VIEW%%">
+  <div class="join" id="join" data-view="%%VIEW%%" data-key-id="%%KEY_ID%%">
     <div id="app">
       <div class="pillrow">%%PILL%%</div>
       <h1 id="title">%%HEADING%%</h1>
@@ -190,7 +190,8 @@ import PlayOffer from "../components/PlayOffer.astro";
 <script>
   import { zipSync } from "fflate";
   import { decodeInvite, eventIdFromPath, inviteFor, playHrefFor } from "../lib/invite";
-  import { withDownloadUrls, zipEntries } from "../lib/zip-names";
+  import { zipEntries, type ZipEntry } from "../lib/zip-names";
+  import { encryptionOf, lapsed, relinked } from "../lib/photo-links";
   import { decryptFile, fileAssociatedData, keyFromFragment, opens } from "../lib/event-key";
 
   (function () {
@@ -227,51 +228,53 @@ import PlayOffer from "../components/PlayOffer.astro";
       const play = document.querySelector<HTMLAnchorElement>("#app a[data-play-store]");
       if (play) play.href = playHrefFor(play.dataset.playStore!, inviteFor(eventId));
 
-      // The name, dates and members are the server's; the island adds only the photo list — same-origin, an
-      // un-attested read on the canonical versioned prefix.
+      // The name, dates, members and whether the photos are encrypted are the server's; the island adds only the
+      // photo list, read from the page's own route (decision record `changes/separate-event-page-from-device-api`).
       const name = $("title").textContent?.trim() || undefined;
       // An ENCRYPTED event's photos open only with the key its whole invite carries in `#k=` (the encrypted file
-      // format, `docs/architecture.md`) — read here, never sent anywhere, checked against the key id the event names
-      // before a single photo is fetched.
+      // format, `docs/architecture.md`) — read here, never sent anywhere, checked against the key id the server
+      // rendered into the page before a single photo is fetched. A value the server could not have written is
+      // never read as "plain": the page would zip ciphertext as photos.
+      const encryption = encryptionOf($("join").dataset.keyId);
+      if (encryption.kind === "unknown") {
+        setStatus("Couldn't load this event. Check your connection and reload.");
+        return;
+      }
       let key: Uint8Array | null = null;
-      try {
-        const metaRes = await fetch("/api/v1/events/" + eventId);
-        if (metaRes.ok) {
-          const keyId = (await metaRes.json()).keyId;
-          if (typeof keyId === "string") {
-            key = keyFromFragment(location.hash);
-            if (key === null || !(await opens(key, keyId))) {
-              setStatus(
-                "This event's photos are encrypted. Open the whole invite link, or scan the event's QR code, to download them.",
-              );
-              return;
-            }
-          }
+      if (encryption.kind === "encrypted") {
+        key = keyFromFragment(location.hash);
+        if (key === null || !(await opens(key, encryption.keyId))) {
+          setStatus(
+            "This event's photos are encrypted. Open the whole invite link, or scan the event's QR code, to download them.",
+          );
+          return;
         }
+      }
+
+      // The photo list, each file carrying a link that lives an hour (`null` once the event is gone).
+      const readList = async (): Promise<ReturnType<typeof zipEntries> | null> => {
+        const res = await fetch("/web/events/" + eventId + "/photos");
+        if (res.status === 404) return null;
+        if (!res.ok) throw new Error("photos " + res.status);
+        return zipEntries(await res.json());
+      };
+
+      let list: ReturnType<typeof zipEntries> | null;
+      try {
+        list = await readList();
       } catch (_e) {
         setStatus("Couldn't load this event. Check your connection and reload.");
         return;
       }
-
-      let union: any[];
-      try {
-        // Without urls: each file is addressed at its download route, which redirects to the bytes
-        // (decision record `changes/incremental-union`, D8).
-        const unionRes = await fetch("/api/v1/events/" + eventId + "/files?urls=false");
-        if (unionRes.status === 404) {
-          setView("invalid");
-          return;
-        }
-        if (!unionRes.ok) throw new Error("union " + unionRes.status);
-        union = withDownloadUrls("/api/v1", eventId, await unionRes.json());
-      } catch (_e) {
-        setStatus("Couldn't load this event. Check your connection and reload.");
+      if (list === null) {
+        setView("invalid");
         return;
       }
 
       // Every photo's original, and a Live Photo's video beside its still under the same name
       // (capability `event-site`; the naming rule is `zip-names.ts`).
-      const { entries: items, photos } = zipEntries(union);
+      let items: ZipEntry[] = list.entries;
+      const photos = list.photos;
       if (items.length === 0) {
         setStatus("No photos have been shared to this event yet.");
         return;
@@ -287,11 +290,21 @@ import PlayOffer from "../components/PlayOffer.astro";
         btn.classList.add("busy");
         setP(0);
         const files: Record<string, Uint8Array> = {};
+        let relisted = false;
         try {
           for (let i = 0; i < items.length; i++) {
             btn.textContent = "Downloading file " + (i + 1) + " of " + items.length + "…";
             setP(i / items.length);
-            const res = await fetch(items[i].url);
+            let res = await fetch(items[i].url);
+            // A zip that outlasts the links' hour: read the list once more and carry on with fresh links.
+            if (lapsed(res.status) && !relisted) {
+              relisted = true;
+              const fresh = await readList();
+              const next = fresh && relinked(items, i, fresh.entries);
+              if (!next) throw new Error("photo withdrawn while downloading");
+              items = next;
+              res = await fetch(items[i].url);
+            }
             if (!res.ok) throw new Error("photo " + res.status);
             const bytes = new Uint8Array(await res.arrayBuffer());
             const item = items[i];

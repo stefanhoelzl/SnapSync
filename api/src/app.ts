@@ -163,7 +163,7 @@
 // There is NO download route: the listing's `url` is a presigned S3 GET the device fetches directly from
 // bunny's S3 endpoint (the short-read integrity check moves to the client).
 
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { AwsClient } from "aws4fetch";
 import { APP_VERSION_HEADER, compareVersions, splitVersion } from "./version.ts";
 import { BUILD_SHA, type Config } from "./config.ts";
@@ -174,6 +174,7 @@ import type { Db } from "./db.ts";
 import { attestRoutes } from "./routes/attest.ts";
 import { sharedRoutes } from "./routes/shared.ts";
 import { siteRoutes } from "./routes/site.ts";
+import { WEB_PHOTOS_PATH, webRoutes } from "./routes/web.ts";
 import { NO_CACHE, type RouteDeps } from "./routes/support.ts";
 import { v1Routes } from "./routes/v1.ts";
 import { v2Routes } from "./routes/v2.ts";
@@ -306,11 +307,15 @@ export function createApp(
   if (config.maintenance) {
     // `next` is deliberately never called: this middleware SHORT-CIRCUITS, so no handler runs and no
     // upstream request is made. `async` because Hono's middleware signature returns a promise.
-    app.use("/api/*", async (c) => {
+    const refuse = async (c: Context) => {
       c.header("Cache-Control", NO_CACHE);
       c.header("Retry-After", String(MAINTENANCE_RETRY_AFTER_SECONDS));
       return await Promise.resolve(c.text("maintenance", 503));
-    });
+    };
+    app.use("/api/*", refuse);
+    // The event page's read (`routes/web.ts`) reads the store like a device route does, so a migration
+    // window refuses it too — by its prefix, for the same reason as `/api/*`.
+    app.use("/web/*", refuse);
   }
   // ── THE VERSION GATE (capability `app-update-required`) ─────────────────────────────────────────────
   //
@@ -406,7 +411,12 @@ export function createApp(
     // `/join/<eventId>` is the event's own page (capability `event-site`): the same audience as `/join`, and it
     // reads only what the two public event reads below already serve to anyone holding the identifier. One
     // segment exactly, so it is never a prefix into anything else.
+    // `/web/events/<id>/photos` is the event page's own read (capability `event-site`, `routes/web.ts`): a
+    // browser surface at the root, authorized by event-id possession because a browser cannot attest
+    // (decision record `changes/separate-event-page-from-device-api`, D1). Exact shape, GET/HEAD only, never
+    // a prefix — any other method on it, and any deeper path, stays gated.
     const publicGet = path === "/" || path === "/join" || /^\/join\/[^/]+$/.test(path) ||
+      WEB_PHOTOS_PATH.test(path) ||
       path === "/health" ||
       path === "/.well-known/apple-app-site-association" ||
       path === "/.well-known/assetlinks.json" ||
@@ -454,6 +464,8 @@ export function createApp(
 
   // The ROOT routes — the site, the link-association documents, the boot probe (`routes/site.ts`).
   app.route("/", siteRoutes(deps, buildSha));
+  // The event page's read (`routes/web.ts`): root-level, versionless, never under `/api/vN`.
+  app.route("/", webRoutes(deps));
 
   // ── THE DEVICE API (`docs/deployment.md`) ────────────────────────────────────────────
   //
