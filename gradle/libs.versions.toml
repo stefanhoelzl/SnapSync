@@ -49,6 +49,9 @@ android-jvmTarget = "17"
 androidx-activity = "1.13.0"
 androidx-work = "2.12.0"
 firebase-messaging = "26.0.0"
+# A FLOOR, never a direct dependency: Firebase's play-services-base still pulls fragment 1.1.0, which Google Play flags
+# as deprecated by its own developer (SDK Index) — `:app:android` constrains the resolved graph to this.
+androidx-fragment = "1.9.1"
 installreferrer = "2.2"
 androidx-lifecycle = "2.11.0"
 androidx-test-runner = "1.7.0"
@@ -99,6 +102,7 @@ androidx-activity-compose = { module = "androidx.activity:activity-compose", ver
 androidx-work-runtime = { module = "androidx.work:work-runtime", version.ref = "androidx-work" }
 androidx-work-testing = { module = "androidx.work:work-testing", version.ref = "androidx-work" }
 firebase-messaging = { module = "com.google.firebase:firebase-messaging", version.ref = "firebase-messaging" }
+androidx-fragment = { module = "androidx.fragment:fragment", version.ref = "androidx-fragment" }
 installreferrer = { module = "com.android.installreferrer:installreferrer", version.ref = "installreferrer" }
 # The instrumentation runner the Android device tests (`src/androidDeviceTest` on the emulator) run under.
 androidx-test-runner = { module = "androidx.test:runner", version.ref = "androidx-test-runner" }
