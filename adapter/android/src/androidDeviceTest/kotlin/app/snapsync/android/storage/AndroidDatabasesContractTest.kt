@@ -21,7 +21,12 @@ class AndroidDatabasesContractTest {
     private val binding = object : Binding<DatabasesState, Databases> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
-        override val reaches = setOf(DatabasesState.ABSENT, DatabasesState.CURRENT, DatabasesState.OLD, DatabasesState.UNOPENABLE)
+        override val reaches = setOf(
+            DatabasesState.ABSENT,
+            DatabasesState.CURRENT,
+            DatabasesState.OLD,
+            DatabasesState.UNOPENABLE,
+        )
 
         override fun create(state: DatabasesState, clauseId: String): Entered<Databases> {
             val dir = newTempDirectory()

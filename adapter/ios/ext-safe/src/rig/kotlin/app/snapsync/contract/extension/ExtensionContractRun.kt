@@ -2,19 +2,19 @@ package app.snapsync.contract.extension
 
 import app.snapsync.contracts.CONTRACT_REFUSED
 import app.snapsync.contracts.CONTRACT_TIMEOUT
-import app.snapsync.contracts.UploadContract
 import app.snapsync.contracts.Host
-import app.snapsync.contracts.Recording
 import app.snapsync.contracts.InAppContract
+import app.snapsync.contracts.Recording
+import app.snapsync.contracts.UploadContract
+import app.snapsync.contracts.runEntry
 import app.snapsync.gallery.currentPhotoPermission
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.RegistrationOutcome
 import app.snapsync.model.RegistrationState
 import app.snapsync.model.registrationOutcome
 import app.snapsync.ports.ExtensionRegistry
-import app.snapsync.contracts.runEntry
-import platform.Foundation.NSThread
 import platform.Foundation.NSProcessInfo
+import platform.Foundation.NSThread
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.TimeSource

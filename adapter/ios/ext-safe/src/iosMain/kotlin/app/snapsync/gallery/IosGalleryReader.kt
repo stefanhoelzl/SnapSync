@@ -4,8 +4,9 @@ package app.snapsync.gallery
 
 import app.snapsync.ios.qos.photoKitReadLane
 import app.snapsync.ios.qos.qosLabel
-import app.snapsync.model.AlbumKind
+import app.snapsync.logging.invocation
 import app.snapsync.model.AlbumId
+import app.snapsync.model.AlbumKind
 import app.snapsync.model.AlbumRecord
 import app.snapsync.model.AssetFacts
 import app.snapsync.model.AssetId
@@ -18,7 +19,6 @@ import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.WriteOutcome
 import app.snapsync.model.grantsPhotoAccess
-import app.snapsync.logging.invocation
 import app.snapsync.objc.ObjCFailure
 import app.snapsync.objc.checkedObjC
 import app.snapsync.objc.objcBoundary
@@ -30,15 +30,15 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.withContext
 import platform.Foundation.NSError
 import platform.Foundation.NSFileManager
-import platform.Foundation.NSURL
-import platform.Photos.PHAssetResourceManager
 import platform.Foundation.NSPredicate
+import platform.Foundation.NSURL
 import platform.Photos.PHAsset
 import platform.Photos.PHAssetCollection
 import platform.Photos.PHAssetCollectionChangeRequest
 import platform.Photos.PHAssetCollectionSubtypeAlbumRegular
 import platform.Photos.PHAssetCollectionTypeAlbum
 import platform.Photos.PHAssetResource
+import platform.Photos.PHAssetResourceManager
 import platform.Photos.PHFetchOptions
 import platform.Photos.PHFetchResult
 import platform.Photos.PHPhotoLibrary
@@ -88,7 +88,9 @@ class IosGalleryReader(private val log: Logger = Logger.withTag("gallery")) : Ga
         ) {
             readable {
                 readQos = qosLabel()
-                val options = predicateFor(policy)?.let { predicate -> PHFetchOptions().apply { this.predicate = predicate } }
+                val options = predicateFor(
+                    policy,
+                )?.let { predicate -> PHFetchOptions().apply { this.predicate = predicate } }
                 photoKitFacts(PHAsset.fetchAssetsWithOptions(options))
             }
         }
@@ -122,7 +124,13 @@ class IosGalleryReader(private val log: Logger = Logger.withTag("gallery")) : Ga
     }
 
     override suspend fun albumsById(ids: Set<AlbumId>): GalleryRead<List<AlbumRecord>> = readable {
-        if (ids.isEmpty()) emptyList() else records(PHAssetCollection.fetchAssetCollectionsWithLocalIdentifiers(ids.toList(), null))
+        if (ids.isEmpty()) {
+            emptyList()
+        } else {
+            records(
+                PHAssetCollection.fetchAssetCollectionsWithLocalIdentifiers(ids.toList(), null),
+            )
+        }
     }
 
     /**
@@ -162,7 +170,10 @@ class IosGalleryReader(private val log: Logger = Logger.withTag("gallery")) : Ga
             )
         }.fold(
             onSuccess = { placeholderId },
-            onFailure = { log.w(it) { "createAlbum failed" }; null },
+            onFailure = {
+                log.w(it) { "createAlbum failed" }
+                null
+            },
         )
     }
 
@@ -177,7 +188,11 @@ class IosGalleryReader(private val log: Logger = Logger.withTag("gallery")) : Ga
         val file = NSURL.fileURLWithPath(to)
         checkedObjC("removeItemAtURL") { NSFileManager.defaultManager.removeItemAtURL(file, error = it) }
         val error: NSError? = objcCallback(log, "export.completion") { done ->
-            PHAssetResourceManager.defaultManager().writeDataForAssetResource(handle, toFile = file, options = null) { err ->
+            PHAssetResourceManager.defaultManager().writeDataForAssetResource(
+                handle,
+                toFile = file,
+                options = null,
+            ) { err ->
                 objcBoundary(done) { err }
             }
         }
@@ -218,7 +233,13 @@ class IosGalleryReader(private val log: Logger = Logger.withTag("gallery")) : Ga
 
     /** The read, on [photoKitReadLane], or [GalleryRead.NotReadable] with no PhotoKit call when no grant allows one. */
     private suspend fun <T> readable(read: () -> T): GalleryRead<T> =
-        if (!access().grantsPhotoAccess) GalleryRead.NotReadable else GalleryRead.Read(withContext(photoKitReadLane) { read() })
+        if (!access().grantsPhotoAccess) {
+            GalleryRead.NotReadable
+        } else {
+            GalleryRead.Read(
+                withContext(photoKitReadLane) { read() },
+            )
+        }
 
     private fun fetchById(ids: Set<AssetId>): PHFetchResult =
         PHAsset.fetchAssetsWithLocalIdentifiers(ids.map(PhotoKitAssetIds::localIdentifierOf), null)

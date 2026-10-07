@@ -1,12 +1,12 @@
 package app.snapsync.rig
 
+import app.snapsync.ios.registry.SimulatorExtensionRecord
 import app.snapsync.ios.upload.CreatedUploadJob
 import app.snapsync.ios.upload.FinishedUploadJob
-import app.snapsync.model.UploadJobState
 import app.snapsync.ios.upload.SimulatorJobAction
-import app.snapsync.ios.registry.SimulatorExtensionRecord
 import app.snapsync.ios.upload.SimulatorUploadJobs
 import app.snapsync.model.UploadError
+import app.snapsync.model.UploadJobState
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -27,7 +27,10 @@ import kotlinx.serialization.json.Json
  * terms.
  */
 
-private val json = Json { ignoreUnknownKeys = false; prettyPrint = true }
+private val json = Json {
+    ignoreUnknownKeys = false
+    prettyPrint = true
+}
 
 /**
  * One job the OS has finished with, as the caller states it.

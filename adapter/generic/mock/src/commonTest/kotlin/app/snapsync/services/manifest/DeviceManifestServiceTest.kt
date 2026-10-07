@@ -2,7 +2,6 @@ package app.snapsync.services.manifest
 
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.model.FileArea
-
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

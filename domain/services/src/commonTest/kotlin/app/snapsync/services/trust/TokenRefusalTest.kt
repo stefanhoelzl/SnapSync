@@ -14,7 +14,11 @@ class TokenRefusalTest {
     @Test
     fun a_stale_challenge_is_one_fresh_challenge_under_both_api_versions() {
         assertEquals(TokenOutcome.ChallengeStale, tokenRefusal(409, "stale challenge"))
-        assertEquals(TokenOutcome.ChallengeStale, tokenRefusal(401, " stale challenge\n"), "the frozen v1 says it with a 401")
+        assertEquals(
+            TokenOutcome.ChallengeStale,
+            tokenRefusal(401, " stale challenge\n"),
+            "the frozen v1 says it with a 401",
+        )
     }
 
     @Test
@@ -30,8 +34,14 @@ class TokenRefusalTest {
 
     @Test
     fun a_refused_attestation_carries_the_reason_v2_names() {
-        assertEquals(TokenOutcome.Refused(DeviceRefusal.DEVICE_MODIFIED), tokenRefusal(401, "attestation rejected: device-modified"))
-        assertEquals(TokenOutcome.Refused(DeviceRefusal.APP_NOT_GENUINE), tokenRefusal(401, "attestation rejected: app-not-genuine\n"))
+        assertEquals(
+            TokenOutcome.Refused(DeviceRefusal.DEVICE_MODIFIED),
+            tokenRefusal(401, "attestation rejected: device-modified"),
+        )
+        assertEquals(
+            TokenOutcome.Refused(DeviceRefusal.APP_NOT_GENUINE),
+            tokenRefusal(401, "attestation rejected: app-not-genuine\n"),
+        )
         assertEquals(
             TokenOutcome.Refused(DeviceRefusal.DEVICE_UNVERIFIABLE),
             tokenRefusal(401, "attestation rejected: device-unverifiable"),
@@ -44,14 +54,28 @@ class TokenRefusalTest {
             TokenOutcome.Refused(DeviceRefusal.DEVICE_UNVERIFIABLE, detail = "certificate"),
             tokenRefusal(401, "attestation rejected: device-unverifiable (certificate)"),
         )
-        assertEquals(TokenOutcome.Refused(DeviceRefusal.DEVICE_MODIFIED), tokenRefusal(401, "attestation rejected: device-modified"))
-        assertEquals(TokenOutcome.Refused(DeviceRefusal.DEVICE_UNVERIFIABLE), tokenRefusal(401, "attestation rejected"), "v1: none")
+        assertEquals(
+            TokenOutcome.Refused(DeviceRefusal.DEVICE_MODIFIED),
+            tokenRefusal(401, "attestation rejected: device-modified"),
+        )
+        assertEquals(
+            TokenOutcome.Refused(DeviceRefusal.DEVICE_UNVERIFIABLE),
+            tokenRefusal(401, "attestation rejected"),
+            "v1: none",
+        )
     }
 
     @Test
     fun a_refusal_naming_no_reason_or_an_unknown_one_is_the_default_that_accuses_no_one() {
-        assertEquals(TokenOutcome.Refused(DeviceRefusal.DEVICE_UNVERIFIABLE), tokenRefusal(401, "attestation rejected"), "the frozen v1")
-        assertEquals(TokenOutcome.Refused(DeviceRefusal.DEVICE_UNVERIFIABLE), tokenRefusal(401, "attestation rejected: tpm-missing"))
+        assertEquals(
+            TokenOutcome.Refused(DeviceRefusal.DEVICE_UNVERIFIABLE),
+            tokenRefusal(401, "attestation rejected"),
+            "the frozen v1",
+        )
+        assertEquals(
+            TokenOutcome.Refused(DeviceRefusal.DEVICE_UNVERIFIABLE),
+            tokenRefusal(401, "attestation rejected: tpm-missing"),
+        )
         assertEquals(TokenOutcome.Refused(DeviceRefusal.DEVICE_UNVERIFIABLE), tokenRefusal(401, "assertion rejected"))
     }
 }

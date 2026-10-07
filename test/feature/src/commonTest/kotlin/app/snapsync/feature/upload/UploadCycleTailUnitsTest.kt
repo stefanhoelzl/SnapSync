@@ -3,22 +3,22 @@ package app.snapsync.feature.upload
 import app.snapsync.feature.support.TestLedger
 import app.snapsync.model.AssetId
 import app.snapsync.model.Candidate
+import app.snapsync.model.CycleResult
 import app.snapsync.model.LedgerState
+import app.snapsync.model.PauseReason
+import app.snapsync.model.PlatformUploadJob
 import app.snapsync.model.RESOURCE_META_CREATION_DATE
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
+import app.snapsync.model.UploadCreateOutcome
 import app.snapsync.model.UploadRequest
 import app.snapsync.model.UploadRequestProvider
 import app.snapsync.model.candidatesFromResources
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.selectionRulesFor
-import app.snapsync.services.upload.BackgroundTransfer
-import app.snapsync.model.UploadCreateOutcome
-import app.snapsync.model.CycleResult
-import app.snapsync.model.PauseReason
 import app.snapsync.services.gallery.Discovery
-import app.snapsync.model.PlatformUploadJob
 import app.snapsync.services.gallery.UploadDiscovery
+import app.snapsync.services.upload.BackgroundTransfer
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -92,15 +92,21 @@ class UploadCycleTailUnitsTest {
                 ledger = ledger,
                 platform = library,
                 library = library,
-                onDiscovery = { _, _, _ -> publishes++; true },
+                onDiscovery = { _, _, _ ->
+                    publishes++
+                    true
+                },
                 placeInAlbum = { _, _ -> },
             )
         }
     }
 
     private fun resource(name: String) = Resource(
-        filename = name, assetId = AssetId(name), contentType = "image/jpeg",
-        metadata = mapOf(RESOURCE_META_CREATION_DATE to "2026-06-01T10:00:00Z"), data = Unit,
+        filename = name,
+        assetId = AssetId(name),
+        contentType = "image/jpeg",
+        metadata = mapOf(RESOURCE_META_CREATION_DATE to "2026-06-01T10:00:00Z"),
+        data = Unit,
     )
 
     private val never: () -> Boolean = { false }

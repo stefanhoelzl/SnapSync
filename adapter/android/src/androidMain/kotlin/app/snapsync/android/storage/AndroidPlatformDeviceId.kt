@@ -25,7 +25,9 @@ class AndroidPlatformDeviceId(private val androidId: () -> String?) : PlatformDe
 
     /** Production: the platform's value for this app (a secondary constructor, not a default). */
     @SuppressLint("HardwareIds") // the identity this is for: see the class comment
-    constructor(context: Context) : this({ Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) })
+    constructor(
+        context: Context,
+    ) : this({ Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) })
 
     override fun stableId(): String? = androidId()?.trim()?.takeIf { it.isNotEmpty() }?.let { deviceIdFor(it) }
 
@@ -39,7 +41,11 @@ class AndroidPlatformDeviceId(private val androidId: () -> String?) : PlatformDe
         /** The RFC 9562 version-5 UUID of [androidId] in [NAMESPACE], upper-case. */
         fun deviceIdFor(androidId: String): String {
             val digest = MessageDigest.getInstance("SHA-1").apply {
-                update(ByteBuffer.allocate(16).putLong(NAMESPACE.mostSignificantBits).putLong(NAMESPACE.leastSignificantBits).array())
+                update(
+                    ByteBuffer.allocate(
+                        16,
+                    ).putLong(NAMESPACE.mostSignificantBits).putLong(NAMESPACE.leastSignificantBits).array(),
+                )
                 update(androidId.encodeToByteArray())
             }.digest()
             digest[6] = ((digest[6].toInt() and 0x0f) or 0x50).toByte()

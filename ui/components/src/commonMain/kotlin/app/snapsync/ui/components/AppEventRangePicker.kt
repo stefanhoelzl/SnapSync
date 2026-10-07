@@ -1,14 +1,9 @@
 package app.snapsync.ui.components
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.relocation.BringIntoViewRequester
-import androidx.compose.foundation.relocation.bringIntoViewRequester
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.semantics.Role
-import kotlinx.coroutines.delay
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,27 +11,25 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import kotlin.time.Clock
-import kotlinx.datetime.DateTimeUnit
-import kotlinx.datetime.LocalDate
-import kotlinx.datetime.LocalDateTime
-import kotlinx.datetime.TimeZone
-import kotlinx.datetime.plus
-import kotlinx.datetime.todayIn
 import app.snapsync.ui.components.resources.Res
 import app.snapsync.ui.components.resources.range_end_pick_time
 import app.snapsync.ui.components.resources.range_ends
@@ -45,7 +38,15 @@ import app.snapsync.ui.components.resources.wheel_end_hour
 import app.snapsync.ui.components.resources.wheel_end_minute
 import app.snapsync.ui.components.resources.wheel_start_hour
 import app.snapsync.ui.components.resources.wheel_start_minute
+import kotlinx.coroutines.delay
+import kotlinx.datetime.DateTimeUnit
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.plus
+import kotlinx.datetime.todayIn
 import org.jetbrains.compose.resources.stringResource
+import kotlin.time.Clock
 
 /**
  * The event's date range, picked inline on the create screen (capability `create-event`): a summary of both
@@ -236,9 +237,11 @@ private fun RangeTimes(
 private fun rememberUntilHighlight(requests: Int, reveal: suspend () -> Unit): Float {
     val reduceMotion = LocalReduceMotion.current
     val alpha = remember { Animatable(0f) }
+    // The effect restarts only on a new request, so it reads the latest [reveal] rather than the one it began with.
+    val currentReveal by rememberUpdatedState(reveal)
     LaunchedEffect(requests) {
         if (requests == 0) return@LaunchedEffect
-        reveal()
+        currentReveal()
         if (reduceMotion) {
             alpha.snapTo(1f)
             delay(HIGHLIGHT_HOLD_MS + HIGHLIGHT_FADE_MS)

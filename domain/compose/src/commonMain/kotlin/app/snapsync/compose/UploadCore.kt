@@ -1,42 +1,42 @@
 package app.snapsync.compose
 
-import app.snapsync.services.crypto.EventKeys
-import app.snapsync.services.crypto.FileCipher
-import app.snapsync.services.crypto.UploadSealing
-import app.snapsync.model.runCatchingCancellable
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.membership.DeviceManifestProducer
 import app.snapsync.feature.upload.CycleGate
 import app.snapsync.feature.upload.JoinedMembership
 import app.snapsync.feature.upload.LedgerWriter
-import app.snapsync.feature.upload.SyncEngine
 import app.snapsync.feature.upload.SelectionScopedDiscovery
+import app.snapsync.feature.upload.SyncEngine
 import app.snapsync.feature.upload.UploadAdmission
 import app.snapsync.feature.upload.UploadCycle
 import app.snapsync.feature.upload.cycleGate
-import app.snapsync.feature.upload.suppressionGate
-import app.snapsync.model.SelectionScope
-import app.snapsync.model.selectionPolicyFor
-import app.snapsync.model.EdgeUploadRequestProvider
-import app.snapsync.services.settings.MobileDataSetting
-import app.snapsync.services.gallery.GalleryAlbums
-import app.snapsync.services.identity.PersistedDeviceIdentity
-import app.snapsync.ports.PhotoGrantRead
 import app.snapsync.feature.upload.extensionAdmission
-import app.snapsync.ports.GalleryReader
-import app.snapsync.ports.Upload
-import app.snapsync.services.upload.UploadTransferService
-import app.snapsync.services.gallery.UploadDiscovery
+import app.snapsync.feature.upload.suppressionGate
 import app.snapsync.model.ConfigRead
+import app.snapsync.model.DeviceIdentityAbsent
+import app.snapsync.model.EdgeUploadRequestProvider
+import app.snapsync.model.SecureStoreUnavailable
+import app.snapsync.model.SelectionScope
 import app.snapsync.model.hasEnded
 import app.snapsync.model.instantToCutoff
-import app.snapsync.services.config.ConfigService
-import app.snapsync.model.DeviceIdentityAbsent
-import app.snapsync.services.manifest.DeviceManifestService
+import app.snapsync.model.runCatchingCancellable
+import app.snapsync.model.selectionPolicyFor
+import app.snapsync.ports.GalleryReader
+import app.snapsync.ports.PhotoGrantRead
+import app.snapsync.ports.Upload
 import app.snapsync.services.backend.ManifestPublisher
-import app.snapsync.model.SecureStoreUnavailable
-import app.snapsync.services.ledger.LedgerService
+import app.snapsync.services.config.ConfigService
+import app.snapsync.services.crypto.EventKeys
+import app.snapsync.services.crypto.FileCipher
+import app.snapsync.services.crypto.UploadSealing
 import app.snapsync.services.downloads.SuppressionSource
+import app.snapsync.services.gallery.GalleryAlbums
+import app.snapsync.services.gallery.UploadDiscovery
+import app.snapsync.services.identity.PersistedDeviceIdentity
+import app.snapsync.services.ledger.LedgerService
+import app.snapsync.services.manifest.DeviceManifestService
+import app.snapsync.services.settings.MobileDataSetting
+import app.snapsync.services.upload.UploadTransferService
 import co.touchlab.kermit.Logger
 
 /**
@@ -181,7 +181,10 @@ internal fun uploadCycle(process: ProcessServices, ports: UploadServices): Uploa
         files = process.files,
         network = ports.mobileData::transferNetwork,
         sealing = UploadSealing(
-            ports.eventKeys, FileCipher(process.crypto, process.files), ports.config, ports.deviceIdentity,
+            ports.eventKeys,
+            FileCipher(process.crypto, process.files),
+            ports.config,
+            ports.deviceIdentity,
         ),
         log = ports.log,
         entryContext = process.entryContext,
@@ -295,7 +298,10 @@ private suspend fun readEntryGate(ports: UploadServices): CycleGate {
                         suppressedAssetIds = { ports.suppression.suppressedLocalIds() },
                         albumExcludedAssetIds = { cutoff ->
                             denylistedAlbumMembers(
-                                ports.albumManager, cutoff, ports.process.grant.current(), ports.albumLookupFailure,
+                                ports.albumManager,
+                                cutoff,
+                                ports.process.grant.current(),
+                                ports.albumLookupFailure,
                                 ports.log,
                             )
                         },

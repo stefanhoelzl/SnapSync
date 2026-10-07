@@ -26,7 +26,12 @@ class StagingServiceStageTest {
         val adoptions = mutableListOf<Triple<String, FileArea, String>>()
         override fun read(area: FileArea, path: String): FileResult<ByteArray> = FileResult.NotFound
         override fun readTail(area: FileArea, path: String, maxBytes: Int): FileResult<FileTail> = FileResult.NotFound
-        override fun readRange(area: FileArea, path: String, offset: Long, maxBytes: Int): FileResult<ByteArray> = FileResult.NotFound
+        override fun readRange(
+            area: FileArea,
+            path: String,
+            offset: Long,
+            maxBytes: Int,
+        ): FileResult<ByteArray> = FileResult.NotFound
         override fun append(area: FileArea, path: String, bytes: ByteArray): FileResult<Unit> = FileResult.Ok(Unit)
         override fun write(area: FileArea, path: String, bytes: ByteArray): FileResult<Unit> = FileResult.Ok(Unit)
         override fun delete(area: FileArea, path: String): FileResult<Unit> = FileResult.NotFound
@@ -48,7 +53,10 @@ class StagingServiceStageTest {
     fun `a finished body is taken over into the shared area under its relative path`() {
         val files = Adopting(FileResult.Ok(Unit))
         assertTrue(StagingService(files).stage("/tmp/CFNetworkDownload_x.tmp", "$DOWNLOAD_STAGING_DIR/D/k"))
-        assertEquals(listOf(Triple("/tmp/CFNetworkDownload_x.tmp", FileArea.SHARED, "$DOWNLOAD_STAGING_DIR/D/k")), files.adoptions)
+        assertEquals(
+            listOf(Triple("/tmp/CFNetworkDownload_x.tmp", FileArea.SHARED, "$DOWNLOAD_STAGING_DIR/D/k")),
+            files.adoptions,
+        )
     }
 
     @Test

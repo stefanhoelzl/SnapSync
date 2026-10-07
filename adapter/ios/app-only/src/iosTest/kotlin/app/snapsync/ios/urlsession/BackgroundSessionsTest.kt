@@ -20,7 +20,9 @@ class BackgroundSessionsTest {
     fun `each session's events reach the handlers of the session the operating system named`() {
         val handedTo = mutableListOf<String>()
         val upload = IosUrlSessionUploadPlatform(Logger.withTag("test"), "app.snapsync.test.upload")
-        upload.listen(UploadHandlers(onFinished = {}, onBackgroundEvents = { handedTo += "upload" }, onEventsDrained = {}))
+        upload.listen(
+            UploadHandlers(onFinished = {}, onBackgroundEvents = { handedTo += "upload" }, onEventsDrained = {}),
+        )
         val download = IosDownload(Logger.withTag("test"))
         download.listen(
             DownloadHandlers(

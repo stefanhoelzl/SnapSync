@@ -4,13 +4,14 @@ import android.app.Application
 import app.snapsync.android.attest.AndroidDeviceIntegrity
 import app.snapsync.android.backend.androidHttpClient
 import app.snapsync.android.buildinfo.AndroidBuildInfo
+import app.snapsync.android.crypto.AndroidCrypto
+import app.snapsync.android.device.AndroidDeviceConditions
 import app.snapsync.android.download.AndroidDownload
 import app.snapsync.android.gallery.AndroidGallery
 import app.snapsync.android.link.AndroidLinks
 import app.snapsync.android.logging.FileLogSink
 import app.snapsync.android.logging.LogcatSink
 import app.snapsync.android.network.AndroidNetworkMonitor
-import app.snapsync.android.device.AndroidDeviceConditions
 import app.snapsync.android.network.awaitUnrestrictedNetwork
 import app.snapsync.android.permission.AndroidPhotoPermission
 import app.snapsync.android.process.AndroidProcessInfo
@@ -44,7 +45,6 @@ import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.sentry.SentryCrashReporter
 import app.snapsync.time.SystemClock
-import app.snapsync.android.crypto.AndroidCrypto
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope

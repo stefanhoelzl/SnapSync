@@ -11,13 +11,13 @@ import app.snapsync.model.GalleryAccess
 import app.snapsync.model.invocation
 import app.snapsync.ports.PhotoAccessStatusSource
 import co.touchlab.kermit.Logger
-import java.util.concurrent.atomic.AtomicInteger
-import kotlin.coroutines.resume
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import java.util.concurrent.atomic.AtomicInteger
+import kotlin.coroutines.resume
 
 /**
  * The Android photo-permission adapter (capability `photo-access`): the status source, and — for the gallery — the
@@ -72,11 +72,17 @@ class AndroidPhotoPermission(
         if (current() != GalleryAccess.LIMITED) state.value else ask("widenSelection")
 
     private fun refresh() {
-        log.invocation(EntryScope.None, "photoPermission.onResumed", result = { access: GalleryAccess -> "$access" }) { current() }
+        log.invocation(
+            EntryScope.None,
+            "photoPermission.onResumed",
+            result = { access: GalleryAccess -> "$access" },
+        ) { current() }
     }
 
     private suspend fun ask(name: String): GalleryAccess = withContext(Dispatchers.Main) {
-        val activity = foreground.current ?: return@withContext current().also { log.i { "$name: no activity in front — asked nothing" } }
+        val activity = foreground.current ?: return@withContext current().also {
+            log.i { "$name: no activity in front — asked nothing" }
+        }
         suspendCancellableCoroutine { cont ->
             val key = "snapsync.photoPermission.${requests.incrementAndGet()}"
             var launcher: androidx.activity.result.ActivityResultLauncher<Array<String>>? = null

@@ -33,7 +33,11 @@ data class FootprintSample(
     val headroomBytes: Long? = null,
 ) {
     constructor(at: Instant, moment: String, footprint: MemoryFootprint) : this(
-        at.toEpochMilliseconds(), moment, footprint.footprintBytes, footprint.peakBytes, footprint.headroomBytes,
+        at.toEpochMilliseconds(),
+        moment,
+        footprint.footprintBytes,
+        footprint.peakBytes,
+        footprint.headroomBytes,
     )
 
     /**

@@ -1,7 +1,7 @@
 package app.snapsync.services.gallery
 
-import app.snapsync.model.AlbumKind
 import app.snapsync.model.AlbumId
+import app.snapsync.model.AlbumKind
 import app.snapsync.model.AlbumRecord
 import app.snapsync.model.AssetFacts
 import app.snapsync.model.AssetId
@@ -109,7 +109,10 @@ class GalleryServicesTest {
 
     @Test
     fun `an unreadable gallery is not readable never a counted zero`() = runTest {
-        assertEquals(CandidateRead.NotReadable, GalleryCandidateSource(ScriptedGallery(readable = false)).candidates(policy))
+        assertEquals(
+            CandidateRead.NotReadable,
+            GalleryCandidateSource(ScriptedGallery(readable = false)).candidates(policy),
+        )
     }
 
     @Test
@@ -213,7 +216,10 @@ class GalleryServicesTest {
         albums.add("album-1", listOf(AssetId("A"), AssetId("B"), AssetId("A")))
         gallery.addOutcome = WriteOutcome.Failed("gone")
         albums.add("album-1", listOf(AssetId("C"))) // a failed add is logged, never thrown
-        assertEquals(listOf("album-1" to setOf(AssetId("A"), AssetId("B")), "album-1" to setOf(AssetId("C"))), gallery.adds)
+        assertEquals(
+            listOf("album-1" to setOf(AssetId("A"), AssetId("B")), "album-1" to setOf(AssetId("C"))),
+            gallery.adds,
+        )
     }
 
     @Test
@@ -226,16 +232,27 @@ class GalleryServicesTest {
             ),
             members = mapOf("wa" to setOf(AssetId("A")), "tg" to setOf(AssetId("B")), "trip" to setOf(AssetId("C"))),
         )
-        val denied = GalleryAlbums(gallery).assetIdsInAlbums(SELECTION_CALIBRATION, captureCutoff("2026-01-01T00:00:00Z"))
+        val denied = GalleryAlbums(
+            gallery,
+        ).assetIdsInAlbums(SELECTION_CALIBRATION, captureCutoff("2026-01-01T00:00:00Z"))
         assertEquals(setOf(AssetId("A"), AssetId("B")), denied)
-        assertEquals(listOf("albums", "albumMembers(wa)", "albumMembers(tg)"), gallery.calls, "O(albums), never O(assets)")
+        assertEquals(
+            listOf("albums", "albumMembers(wa)", "albumMembers(tg)"),
+            gallery.calls,
+            "O(albums), never O(assets)",
+        )
     }
 
     @Test
     fun `an unreadable gallery denies nothing`() = runTest {
         val cutoff = captureCutoff("2026-01-01T00:00:00Z")
-        assertEquals(emptySet(), GalleryAlbums(ScriptedGallery(readable = false)).assetIdsInAlbums(SELECTION_CALIBRATION, cutoff))
-        val membersUnreadable = object : GalleryReader by ScriptedGallery(albums = listOf(AlbumRecord("wa", "WhatsApp"))) {
+        assertEquals(
+            emptySet(),
+            GalleryAlbums(ScriptedGallery(readable = false)).assetIdsInAlbums(SELECTION_CALIBRATION, cutoff),
+        )
+        val membersUnreadable = object : GalleryReader by ScriptedGallery(
+            albums = listOf(AlbumRecord("wa", "WhatsApp")),
+        ) {
             override suspend fun albumMembers(album: AlbumId, since: CaptureCutoff?): GalleryRead<Set<AssetId>> =
                 GalleryRead.NotReadable
         }

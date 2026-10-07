@@ -64,7 +64,10 @@ class RigServerLifecycleTest {
     }
 
     /** Keeps what the test reads and still shows it in the test's own output. */
-    private class TeeStream(private val kept: ByteArrayOutputStream, private val shown: PrintStream) : java.io.OutputStream() {
+    private class TeeStream(
+        private val kept: ByteArrayOutputStream,
+        private val shown: PrintStream,
+    ) : java.io.OutputStream() {
         override fun write(b: Int) {
             synchronized(kept) { kept.write(b) }
             shown.write(b)

@@ -1,13 +1,14 @@
 package app.snapsync.presentation
 
-import app.snapsync.model.deletesAt
-
 import app.snapsync.model.CaptureDate
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
 import app.snapsync.model.RangeChoice
+import app.snapsync.model.RangeForm
+import app.snapsync.model.ShareCount
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
+import app.snapsync.model.deletesAt
 import app.snapsync.model.eventEnd
 import app.snapsync.model.eventStart
 import kotlinx.datetime.LocalDateTime
@@ -16,8 +17,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import app.snapsync.model.RangeForm
-import app.snapsync.model.ShareCount
 
 /**
  * The capture-range resolution rules, tested **directly** (capability `photo-sharing`).
@@ -178,8 +177,22 @@ class RangeResolutionTest {
     @Test
     fun `resolve carries the count through untouched including absent`() {
         val form = RangeForm()
-        val counted = form.resolve(windowStart, windowEnd, nowInside, true, ::stubCutoff, shareCount = ShareCount.Ready(0))
-        val absent = form.resolve(windowStart, windowEnd, nowInside, true, ::stubCutoff, shareCount = ShareCount.Unavailable)
+        val counted = form.resolve(
+            windowStart,
+            windowEnd,
+            nowInside,
+            true,
+            ::stubCutoff,
+            shareCount = ShareCount.Ready(0),
+        )
+        val absent = form.resolve(
+            windowStart,
+            windowEnd,
+            nowInside,
+            true,
+            ::stubCutoff,
+            shareCount = ShareCount.Unavailable,
+        )
         // Absent and zero are different answers and stay distinguishable (capability `join-event`).
         assertEquals(ShareCount.Ready(0), counted.shareCount)
         assertEquals(ShareCount.Unavailable, absent.shareCount)

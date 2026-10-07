@@ -1,12 +1,12 @@
 package app.snapsync.services.backend
 
-import app.snapsync.model.PushEndpoint
 import app.snapsync.model.CreateEventRequest
 import app.snapsync.model.DeviceFile
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.EventCreated
 import app.snapsync.model.EventMeta
 import app.snapsync.model.EventRenamed
+import app.snapsync.model.PushEndpoint
 import app.snapsync.model.Reply
 import app.snapsync.model.UnionPage
 import app.snapsync.model.UnionTrigger
@@ -95,7 +95,9 @@ class CredentialedBackend(
     private val log: Logger = Logger.withTag("AuthenticatedBackend"),
 ) : AuthenticatedBackend {
 
-    override suspend fun createEvent(req: CreateEventRequest) = gated(obtainFirst = true) { backend.createEvent(it, req) }
+    override suspend fun createEvent(req: CreateEventRequest) = gated(
+        obtainFirst = true,
+    ) { backend.createEvent(it, req) }
 
     override suspend fun getEvent(eventId: String) = gated { backend.getEvent(it, eventId) }
 

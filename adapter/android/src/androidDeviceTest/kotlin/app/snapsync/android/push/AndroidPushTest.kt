@@ -34,7 +34,14 @@ class AndroidPushTest {
     private val failures = Collections.synchronizedList(mutableListOf<PlatformError?>())
     private val messages = Collections.synchronizedList(mutableListOf<Pair<String?, Completion>>())
 
-    private fun adapter(config: FirebaseConfig = FirebaseConfig("", "", "", "")) = AndroidPushNotifications(context, config).apply {
+    private fun adapter(
+        config: FirebaseConfig = FirebaseConfig(
+            "",
+            "",
+            "",
+            "",
+        ),
+    ) = AndroidPushNotifications(context, config).apply {
         listen(
             PushHandlers(
                 onToken = { tokens += it },
@@ -52,7 +59,9 @@ class AndroidPushTest {
         override fun create(state: ProcessInfoState, clauseId: String): Entered<ProcessInfo> = when (state) {
             ProcessInfoState.UNLOCKED -> Entered.Ready(AndroidProcessInfo(context))
             ProcessInfoState.MEMORY_ACCOUNTED ->
-                Entered.Unreachable("Android accounts no footprint to the process: no process-metric provider reads one")
+                Entered.Unreachable(
+                    "Android accounts no footprint to the process: no process-metric provider reads one",
+                )
         }
     }
 
@@ -91,7 +100,10 @@ class AndroidPushTest {
         SnapSyncMessagingService().onMessageReceived(message)
         released.join()
         assertEquals("E1", messages.single().first, "the payload is handed over whole; model's codec reads the event")
-        assertTrue(started.elapsedNow().inWholeMilliseconds < AndroidPushNotifications.MESSAGE_BUDGET_MILLIS, "released, not timed out")
+        assertTrue(
+            started.elapsedNow().inWholeMilliseconds < AndroidPushNotifications.MESSAGE_BUDGET_MILLIS,
+            "released, not timed out",
+        )
     }
 
     @Test
@@ -101,7 +113,10 @@ class AndroidPushTest {
         val started = TimeSource.Monotonic.markNow()
         SnapSyncMessagingService().onMessageReceived(message)
         val waited = started.elapsedNow().inWholeMilliseconds
-        assertTrue(waited in AndroidPushNotifications.MESSAGE_BUDGET_MILLIS until FCM_BUDGET_MILLIS, "returned after $waited ms")
+        assertTrue(
+            waited in AndroidPushNotifications.MESSAGE_BUDGET_MILLIS until FCM_BUDGET_MILLIS,
+            "returned after $waited ms",
+        )
     }
 
     private companion object {

@@ -91,7 +91,11 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
         val owner = ClauseDownloadHandlers(readTemp)
         val download = open()
         download.listen(owner.handlers)
-        assertEquals(StartResult.Started, download.start(base + path(clauseId, answer), "d-$clauseId", TransferNetwork.ANY), "a fetchable URL starts")
+        assertEquals(
+            StartResult.Started,
+            download.start(base + path(clauseId, answer), "d-$clauseId", TransferNetwork.ANY),
+            "a fetchable URL starts",
+        )
         awaitWithin { owner.events.any { it is DownloadEvent.Completed } }
         return owner.events
     }
@@ -133,7 +137,10 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
             val events = subject.transfer(id, FixtureAnswer.Respond(404, length = 16))
             val finished = events.filterIsInstance<DownloadEvent.Finished>()
             if (finished.isEmpty()) {
-                assertNotNull(events.filterIsInstance<DownloadEvent.Completed>().single().error, "an error answer fails")
+                assertNotNull(
+                    events.filterIsInstance<DownloadEvent.Completed>().single().error,
+                    "an error answer fails",
+                )
             } else {
                 assertEquals(404, finished.single().facts.statusCode)
             }
@@ -149,7 +156,10 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
             val events = subject.transfer(id, FixtureAnswer.Respond(200, length = 32, declaresLength = false))
             val finished = events.filterIsInstance<DownloadEvent.Finished>()
             if (finished.isEmpty()) {
-                assertNotNull(events.filterIsInstance<DownloadEvent.Completed>().single().error, "an unsized body fails")
+                assertNotNull(
+                    events.filterIsInstance<DownloadEvent.Completed>().single().error,
+                    "an unsized body fails",
+                )
             } else {
                 val facts = finished.single().facts
                 assertTrue(facts.expectedBytes < 0, "an undeclared length is 'unknown', not zero: $facts")
@@ -176,10 +186,16 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
             val owner = ClauseDownloadHandlers(subject.readTemp)
             val download = subject.open()
             download.listen(owner.handlers)
-            assertEquals(StartResult.Started, download.start(subject.base + path(id, FixtureAnswer.Hold), "d-$id", TransferNetwork.ANY))
+            assertEquals(
+                StartResult.Started,
+                download.start(subject.base + path(id, FixtureAnswer.Hold), "d-$id", TransferNetwork.ANY),
+            )
             download.cancelAll()
             awaitWithin { owner.events.any { it is DownloadEvent.Completed } }
-            assertNotNull(owner.events.filterIsInstance<DownloadEvent.Completed>().single().error, "cancelled: an error")
+            assertNotNull(
+                owner.events.filterIsInstance<DownloadEvent.Completed>().single().error,
+                "cancelled: an error",
+            )
             assertTrue(owner.events.none { it is DownloadEvent.Finished }, "and nothing finished")
         }
 
@@ -190,9 +206,20 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
             download.listen(owner.handlers)
             download.cancelAll()
             val tag = "d-$id"
-            assertEquals(StartResult.Started, download.start(subject.base + path(id, FixtureAnswer.Respond(200, length = 8)), tag, TransferNetwork.ANY))
+            assertEquals(
+                StartResult.Started,
+                download.start(
+                    subject.base + path(id, FixtureAnswer.Respond(200, length = 8)),
+                    tag,
+                    TransferNetwork.ANY,
+                ),
+            )
             awaitWithin { owner.events.any { it is DownloadEvent.Completed } }
-            assertEquals(DownloadEvent.Completed(tag, null), owner.events.last(), "a transfer after the cancel is untouched")
+            assertEquals(
+                DownloadEvent.Completed(tag, null),
+                owner.events.last(),
+                "a transfer after the cancel is untouched",
+            )
         }
 
         clause("A_TRANSFER_HELD_TO_UNRESTRICTED_NETWORKS_WAITS_FOR_ONE", DownloadState.RESTRICTED_NETWORK) { subject ->
@@ -205,7 +232,11 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
             val route = subject.base + path(id, FixtureAnswer.Respond(200, length = 8))
             assertEquals(StartResult.Started, download.start(route, tag, TransferNetwork.UNRESTRICTED_ONLY))
             heldSettle()
-            assertEquals(emptyList(), owner.events, "a transfer held to unrestricted networks does not run on a restricted one")
+            assertEquals(
+                emptyList(),
+                owner.events,
+                "a transfer held to unrestricted networks does not run on a restricted one",
+            )
             lift()
             awaitWithin { owner.events.any { it is DownloadEvent.Completed } }
             assertEquals(DownloadEvent.Completed(tag, null), owner.events.last(), "it runs once the network allows it")

@@ -1,14 +1,11 @@
 package app.snapsync.feature.upload
 
+import app.snapsync.model.EntryScope
+import app.snapsync.model.MembershipRead
+import app.snapsync.model.invocation
+import app.snapsync.services.config.ConfigService
 import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.services.upload.ExtensionRegistration
-
-import app.snapsync.services.config.ConfigService
-import app.snapsync.model.MembershipRead
-import app.snapsync.model.GalleryAccess
-import app.snapsync.model.grantsPhotoAccess
-import app.snapsync.model.EntryScope
-import app.snapsync.model.invocation
 import co.touchlab.kermit.Logger
 
 /**

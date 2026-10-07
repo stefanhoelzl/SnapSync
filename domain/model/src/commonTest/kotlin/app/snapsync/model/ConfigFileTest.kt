@@ -1,15 +1,8 @@
 package app.snapsync.model
 
-import app.snapsync.model.captureCeiling
-import app.snapsync.model.captureCutoff
-import app.snapsync.model.deletesAt
-import app.snapsync.model.eventEnd
-import app.snapsync.model.eventStart
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertIs
-import kotlin.test.assertTrue
 
 /**
  * The versioned config-file envelope (capability `join-event`, migration step 11a). The stakes: the
@@ -75,7 +68,9 @@ class ConfigFileTest {
         assertIs<ConfigFileDecode.Foreign>(decodeConfigFile("not json at all"))
         assertIs<ConfigFileDecode.Foreign>(decodeConfigFile(""))
         // A bare EventConfig (no envelope) is also Foreign: it lacks `v`, which has no default.
-        assertIs<ConfigFileDecode.Foreign>(decodeConfigFile(encodeConfigFile(config).substringAfter("\"payload\":").dropLast(1)))
+        assertIs<ConfigFileDecode.Foreign>(
+            decodeConfigFile(encodeConfigFile(config).substringAfter("\"payload\":").dropLast(1)),
+        )
     }
 
     @Test

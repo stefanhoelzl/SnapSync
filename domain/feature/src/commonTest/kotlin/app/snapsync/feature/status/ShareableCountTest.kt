@@ -10,10 +10,10 @@ import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
 import app.snapsync.services.gallery.CandidateSource
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
-import kotlinx.coroutines.test.runTest
 
 /** Every candidate carries a cutoff (capability `photo-sharing`). */
 private val CUTOFF = captureCutoff("2026-07-06T00:00:00Z")

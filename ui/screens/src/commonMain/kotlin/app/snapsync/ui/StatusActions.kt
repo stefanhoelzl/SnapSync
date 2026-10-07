@@ -163,4 +163,3 @@ class SurfaceActions(
     /** "Report this" beside a refusal (capability `privacy-security`): the same sheet, its description written. */
     val onReportRefusal: (ScreenMessage) -> Unit,
 )
-

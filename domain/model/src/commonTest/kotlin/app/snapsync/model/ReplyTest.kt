@@ -26,7 +26,11 @@ class ReplyTest {
         assertTrue("join" in refused && "409" in refused && "full" in refused, refused)
         val malformed = Reply.Malformed("no id").toResult("list").exceptionOrNull()?.message.orEmpty()
         assertTrue("list" in malformed && "no id" in malformed, malformed)
-        assertSame(offline, Reply.Unreachable(offline).toResult("leave").exceptionOrNull(), "a transport failure is its own cause")
+        assertSame(
+            offline,
+            Reply.Unreachable(offline).toResult("leave").exceptionOrNull(),
+            "a transport failure is its own cause",
+        )
     }
 
     @Test

@@ -2,28 +2,26 @@
 
 package app.snapsync.feature.membership
 
-import app.snapsync.model.deletesAt
-
-import app.snapsync.model.eventEnd
-
+import app.snapsync.feature.membership.readmodel.RenameFailureReason
+import app.snapsync.feature.membership.readmodel.RenameStatus
+import app.snapsync.feature.support.ConfigWrites
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
+import app.snapsync.model.RenameOutcome
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
+import app.snapsync.model.deletesAt
+import app.snapsync.model.eventEnd
 import app.snapsync.model.eventStart
-import app.snapsync.feature.support.ConfigWrites
 import app.snapsync.services.backend.EventRename
-import app.snapsync.model.RenameOutcome
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import kotlinx.coroutines.test.TestScope
-import kotlinx.coroutines.test.runCurrent
-import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.flow.MutableStateFlow
-import app.snapsync.feature.membership.readmodel.RenameFailureReason
-import app.snapsync.feature.membership.readmodel.RenameStatus
 
 private val FIXTURE_CEILING = captureCeiling("2099-01-01T00:00:00Z")
 
@@ -92,7 +90,13 @@ class RenameEventTest {
         // drift from the marker by exactly the whitespace the backend removed.
         val store = ConfigWrites()
         val client = FakeRename(RenameOutcome.Renamed("Ana's 30th"))
-        drive(Membership(current()), store, client, MutableStateFlow<RenameStatus>(RenameStatus.Idle), name = "  Ana's 30th  ")
+        drive(
+            Membership(current()),
+            store,
+            client,
+            MutableStateFlow<RenameStatus>(RenameStatus.Idle),
+            name = "  Ana's 30th  ",
+        )
 
         assertEquals("  Ana's 30th  ".trim(), client.sentName) // the client is sent a trimmed value…
         assertEquals("Ana's 30th", store.saved!!.name) // …but what lands is the echo
@@ -130,7 +134,12 @@ class RenameEventTest {
     @Test
     fun `a rename with no membership persists nothing`() = runTest {
         val store = ConfigWrites()
-        drive(Membership(null), store, FakeRename(RenameOutcome.Renamed("Ana's 30th")), MutableStateFlow<RenameStatus>(RenameStatus.Idle))
+        drive(
+            Membership(null),
+            store,
+            FakeRename(RenameOutcome.Renamed("Ana's 30th")),
+            MutableStateFlow<RenameStatus>(RenameStatus.Idle),
+        )
         assertNull(store.saved)
     }
 
@@ -197,7 +206,13 @@ class RenameEventTest {
     @Test
     fun `the trimmed name and the event id are what reach the client`() = runTest {
         val client = FakeRename(RenameOutcome.Renamed("Ana's 30th"))
-        drive(Membership(current()), ConfigWrites(), client, MutableStateFlow<RenameStatus>(RenameStatus.Idle), name = "  Ana's 30th ")
+        drive(
+            Membership(current()),
+            ConfigWrites(),
+            client,
+            MutableStateFlow<RenameStatus>(RenameStatus.Idle),
+            name = "  Ana's 30th ",
+        )
 
         assertEquals("E1", client.sentEventId)
         assertEquals("Ana's 30th", client.sentName)

@@ -1,30 +1,30 @@
 package app.snapsync.host
 
-import app.snapsync.model.redactEventKeys
-import app.snapsync.presentation.DeviceVerification
-import app.snapsync.presentation.onIntent
 import app.snapsync.compose.AppCore
 import app.snapsync.compose.AppPorts
 import app.snapsync.compose.ProcessServices
-import app.snapsync.compose.snapSyncApp
-import app.snapsync.presentation.CutoffFormatter
-import app.snapsync.presentation.StatusContainerHost
-import app.snapsync.presentation.StatusDiagnostics
-import app.snapsync.presentation.StatusSources
-import kotlinx.coroutines.flow.MutableStateFlow
 import app.snapsync.compose.devHandlers
 import app.snapsync.compose.installNetworkReturns
 import app.snapsync.compose.lifecycleHandlers
 import app.snapsync.compose.pushHandlers
+import app.snapsync.compose.snapSyncApp
 import app.snapsync.model.EventLinkDelivery
 import app.snapsync.model.LinkDelivery
 import app.snapsync.model.forwardEventLink
+import app.snapsync.model.invocation
+import app.snapsync.model.redactEventKeys
 import app.snapsync.model.userActivityParams
 import app.snapsync.ports.LinkHandlers
 import app.snapsync.ports.UiHandlers
-import app.snapsync.model.invocation
+import app.snapsync.presentation.CutoffFormatter
+import app.snapsync.presentation.DeviceVerification
+import app.snapsync.presentation.StatusContainerHost
+import app.snapsync.presentation.StatusDiagnostics
+import app.snapsync.presentation.StatusSources
+import app.snapsync.presentation.onIntent
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
 /**
@@ -85,7 +85,11 @@ fun snapSyncHost(
     // The process first — inside `snapSyncApp`, before anything else in the graph can fail. A minted event routes into
     // the host's join gate, so create and a scanned QR take one gate; the host is assembled by the time one is minted.
     lateinit var composed: ComposedApp
-    val core = snapSyncApp(scope, ports, onEventMinted = { eventId, linkKey -> composed.host.onEventCreated(eventId, linkKey) })
+    val core = snapSyncApp(
+        scope,
+        ports,
+        onEventMinted = { eventId, linkKey -> composed.host.onEventCreated(eventId, linkKey) },
+    )
     val process = core.process
     val log = process.logger("app")
     // The event ports' ONE registration each, on composition — a background wake's import needs its handlers as much

@@ -55,7 +55,11 @@ class SimulatorUploadJobQueueContractTest {
         )
 
         override fun create(state: UploadState, clauseId: String): Entered<UploadUnderTest> {
-            if (state == UploadState.RESTRICTED_NETWORK) return Entered.Unreachable("a restricted network needs a phone off unrestricted Wi-Fi; a simulator shares its Mac's network (capability `mobile-data`)")
+            if (state == UploadState.RESTRICTED_NETWORK) {
+                return Entered.Unreachable(
+                    "a restricted network needs a phone off unrestricted Wi-Fi; a simulator shares its Mac's network (capability `mobile-data`)",
+                )
+            }
             val jobs = SimulatorJobSets()
             val queue = SimulatorUploadJobQueue(Logger.withTag("contract"), jobs, payloadType = StandInPhoto::class)
             val os = PlayedOs(queue, jobs)
@@ -64,7 +68,11 @@ class SimulatorUploadJobQueueContractTest {
                     jobs.beginCycle(emptyList(), jobLimit = CAP)
                     repeat(CAP) { n ->
                         val url = BASE + UploadContract.path(clauseId, FixtureAnswer.Hold, n = n + 1)
-                        val created = os.create(UploadSource.Resource(StandInPhoto), UploadTarget(url, emptyMap(), TransferNetwork.ANY), UploadContract.key(clauseId, n + 1))
+                        val created = os.create(
+                            UploadSource.Resource(StandInPhoto),
+                            UploadTarget(url, emptyMap(), TransferNetwork.ANY),
+                            UploadContract.key(clauseId, n + 1),
+                        )
                         check(created == UploadCreateOutcome.CREATED)
                     }
                 }
@@ -85,10 +93,18 @@ class SimulatorUploadJobQueueContractTest {
 
     /** Enters a presented state as the OS leaves it: the clause's transfer already settled. */
     private suspend fun presentPrepared(state: UploadState, clauseId: String, jobs: SimulatorJobSets, os: PlayedOs) {
-        val target = UploadTarget(BASE + UploadContract.preparedRoute(clauseId, state), mapOf("Content-Type" to UploadContract.CONTENT_TYPE), TransferNetwork.ANY)
-        check(os.create(UploadSource.Resource(StandInPhoto), target, UploadContract.key(clauseId)) == UploadCreateOutcome.CREATED)
+        val target = UploadTarget(
+            BASE + UploadContract.preparedRoute(clauseId, state),
+            mapOf("Content-Type" to UploadContract.CONTENT_TYPE),
+            TransferNetwork.ANY,
+        )
+        check(
+            os.create(UploadSource.Resource(StandInPhoto), target, UploadContract.key(clauseId)) == UploadCreateOutcome.CREATED,
+        )
         if (state == UploadState.PRESENTED_RETRY_SPENT) {
-            val offered = os.jobs(UploadJobSet.RETRY_OFFERED).first { it.destinationPath == destinationPathOf(target.url) }
+            val offered = os.jobs(
+                UploadJobSet.RETRY_OFFERED,
+            ).first { it.destinationPath == destinationPathOf(target.url) }
             os.retry(offered, target)
         }
         check(jobs.createdThisCycle().isNotEmpty())
@@ -107,13 +123,25 @@ class SimulatorUploadJobQueueContractTest {
 
         override suspend fun create(source: UploadSource, target: UploadTarget, tag: String): UploadCreateOutcome =
             queue.create(source, target, tag).also {
-                if (it == UploadCreateOutcome.CREATED) settle(target, (source as? UploadSource.Resource)?.handle, retried = false)
+                if (it == UploadCreateOutcome.CREATED) {
+                    settle(
+                        target,
+                        (source as? UploadSource.Resource)?.handle,
+                        retried = false,
+                    )
+                }
             }
 
         override suspend fun retry(job: UploadJob, target: UploadTarget): ChangeOutcome {
             val before = jobs.createdThisCycle().size
             return queue.retry(job, target).also {
-                if (jobs.createdThisCycle().size > before) settle(target, (job.source as? UploadSource.Resource)?.handle, retried = true)
+                if (jobs.createdThisCycle().size > before) {
+                    settle(
+                        target,
+                        (job.source as? UploadSource.Resource)?.handle,
+                        retried = true,
+                    )
+                }
             }
         }
 
@@ -125,12 +153,39 @@ class SimulatorUploadJobQueueContractTest {
                 is FixtureAnswer.Redirect, FixtureAnswer.Hold, null -> Unit
                 is FixtureAnswer.Respond -> if (answer.status in HTTP_SUCCESS) {
                     landed[path] = Landed(contentType)
-                    jobs.present(FinishedUploadJob(target.url, SimulatorJobAction.ACKNOWLEDGE, UploadJobState.SUCCEEDED, null, null, contentType))
+                    jobs.present(
+                        FinishedUploadJob(
+                            target.url,
+                            SimulatorJobAction.ACKNOWLEDGE,
+                            UploadJobState.SUCCEEDED,
+                            null,
+                            null,
+                            contentType,
+                        ),
+                    )
                 } else {
                     if (!retried) {
-                        jobs.present(FinishedUploadJob(target.url, SimulatorJobAction.RETRY, UploadJobState.FAILED, null, resource, contentType))
+                        jobs.present(
+                            FinishedUploadJob(
+                                target.url,
+                                SimulatorJobAction.RETRY,
+                                UploadJobState.FAILED,
+                                null,
+                                resource,
+                                contentType,
+                            ),
+                        )
                     }
-                    jobs.present(FinishedUploadJob(target.url, SimulatorJobAction.ACKNOWLEDGE, UploadJobState.FAILED, null, resource, contentType))
+                    jobs.present(
+                        FinishedUploadJob(
+                            target.url,
+                            SimulatorJobAction.ACKNOWLEDGE,
+                            UploadJobState.FAILED,
+                            null,
+                            resource,
+                            contentType,
+                        ),
+                    )
                 }
             }
         }

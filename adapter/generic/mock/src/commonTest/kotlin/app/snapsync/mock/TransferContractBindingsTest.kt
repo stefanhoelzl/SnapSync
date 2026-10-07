@@ -66,8 +66,11 @@ class TransferContractBindingsTest {
         private suspend fun answer(tag: String, path: String) {
             when (val answer = TransferFixture.answerOf(path)) {
                 is FixtureAnswer.Respond ->
-                    if (answer.status in 200..299) mock.operator.completeJob(tag)
-                    else mock.operator.failJob(tag, UploadError.Http(answer.status))
+                    if (answer.status in 200..299) {
+                        mock.operator.completeJob(tag)
+                    } else {
+                        mock.operator.failJob(tag, UploadError.Http(answer.status))
+                    }
                 // No upload clause redirects.
                 is FixtureAnswer.Redirect, FixtureAnswer.Hold, null -> Unit
             }
@@ -116,7 +119,9 @@ class TransferContractBindingsTest {
                     repeat(CAP) { n ->
                         val key = UploadContract.key(clauseId, n = n + 1)
                         val url = base + UploadContract.path(clauseId, FixtureAnswer.Hold, n = n + 1)
-                        check(networked.create(UploadSource.Resource(Unit), UploadTarget(url, emptyMap(), TransferNetwork.ANY), key) == UploadCreateOutcome.CREATED)
+                        check(
+                            networked.create(UploadSource.Resource(Unit), UploadTarget(url, emptyMap(), TransferNetwork.ANY), key) == UploadCreateOutcome.CREATED,
+                        )
                     }
                 }
             }

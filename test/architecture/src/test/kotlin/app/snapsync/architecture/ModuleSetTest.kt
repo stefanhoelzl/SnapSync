@@ -2,7 +2,6 @@ package app.snapsync.architecture
 
 import java.io.File
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.test.fail
 
@@ -105,7 +104,9 @@ class ModuleSetTest {
                     appendLine("  enumerated in a group but not included by the build: $missingFromBuild")
                 }
                 appendLine()
-                appendLine("Place the module in exactly one group (WITHHOLDING/CONTAINED/SUPPORT below). Every module joins")
+                appendLine(
+                    "Place the module in exactly one group (WITHHOLDING/CONTAINED/SUPPORT below). Every module joins",
+                )
                 appendLine("exactly one group, and the group is the argument for its existence:")
                 appendLine("  · Withholding — it withholds a third-party/platform dependency by compile error.")
                 appendLine("                  Anything finer than that is a package with a derived text gate.")

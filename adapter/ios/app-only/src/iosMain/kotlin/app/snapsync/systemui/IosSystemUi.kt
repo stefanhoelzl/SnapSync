@@ -41,7 +41,10 @@ class IosSystemUi internal constructor(private val urls: UrlOpenerApi) : SystemU
      * The presenter walk (following `presentedViewController` to the top of the presentation stack) is technology
      * mechanics: UIKit rejects presentation from a covered controller.
      */
-    override suspend fun share(text: String, title: String): Handoff = objcCallback(shareLog, "share.completion") { done ->
+    override suspend fun share(
+        text: String,
+        title: String,
+    ): Handoff = objcCallback(shareLog, "share.completion") { done ->
         onQueue(dispatch_get_main_queue(), shareLog, "share") {
             val activity = UIActivityViewController(
                 activityItems = listOf(InviteActivityItem(text, title)),

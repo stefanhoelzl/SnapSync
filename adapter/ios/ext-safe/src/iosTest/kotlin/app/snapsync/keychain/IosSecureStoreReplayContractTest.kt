@@ -39,7 +39,12 @@ class IosSecureStoreReplayContractTest {
         override fun create(state: SecureStoreState, clauseId: String): Entered<SecureStore> {
             if (state !in reaches) return Entered.Unreachable(DEVICE_UNREACHABLE_INACCESSIBLE)
             return replayerFor(RECORDINGS, RECORDING, clauseId) { replayer ->
-                keychainInState(ReplayingKeychainApi(replayer), state, clauseId, afterDispose = replayer::assertExhausted)
+                keychainInState(
+                    ReplayingKeychainApi(replayer),
+                    state,
+                    clauseId,
+                    afterDispose = replayer::assertExhausted,
+                )
             }
         }
     }

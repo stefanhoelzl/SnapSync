@@ -13,18 +13,16 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipe
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertNull
-import kotlinx.datetime.LocalDate
-import kotlinx.datetime.LocalDateTime
-import kotlinx.datetime.LocalTime
-import org.junit.Rule
 import app.snapsync.ui.components.resources.Res
 import app.snapsync.ui.components.resources.picker_save
 import app.snapsync.ui.components.resources.share_range_title
 import app.snapsync.ui.components.resources.wheel_end_hour
 import app.snapsync.ui.components.resources.wheel_start_hour
+import kotlinx.datetime.LocalDateTime
+import org.junit.Rule
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 /**
  * The range picker as the join and settings surfaces open it ([RangePickerDialog]): the create screen's
@@ -52,7 +50,9 @@ class RangePickerDialogTest {
     @Test
     fun `the title is a heading and both ends' wheels show the chosen range`() {
         setDialog()
-        rule.onNodeWithText(str(Res.string.share_range_title)).assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
+        rule.onNodeWithText(
+            str(Res.string.share_range_title),
+        ).assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
         rule.onNodeWithContentDescription(str(Res.string.wheel_start_hour), useUnmergedTree = true)
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "18"))
         rule.onNodeWithContentDescription(str(Res.string.wheel_end_hour), useUnmergedTree = true)

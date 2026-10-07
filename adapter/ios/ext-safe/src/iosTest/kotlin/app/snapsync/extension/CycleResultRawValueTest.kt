@@ -1,9 +1,9 @@
 package app.snapsync.extension
 
-import kotlin.test.Test
-import kotlin.test.assertEquals
 import app.snapsync.model.CycleResult
 import app.snapsync.model.PauseReason
+import kotlin.test.Test
+import kotlin.test.assertEquals
 
 /**
  * The `PHBackgroundResourceUploadProcessingResult` raw values (capability `background-upload`;

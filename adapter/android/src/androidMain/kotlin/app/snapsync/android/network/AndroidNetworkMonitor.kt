@@ -114,7 +114,13 @@ internal class DefaultNetworkReading {
 
     /** No network at registration — unless the callback has already told a newer truth. */
     @Synchronized
-    fun absent(): NetworkAccess? = if (published || network != null) null else NetworkAccess.Offline.also { published = true }
+    fun absent(): NetworkAccess? = if (published || network != null) {
+        null
+    } else {
+        NetworkAccess.Offline.also {
+            published = true
+        }
+    }
 }
 
 /** Metered as the platform's own transfer scheduling reads it: neither permanently nor temporarily unmetered. */

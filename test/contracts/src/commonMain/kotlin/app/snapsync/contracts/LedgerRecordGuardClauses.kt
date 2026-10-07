@@ -2,24 +2,20 @@
 
 package app.snapsync.contracts
 
+import app.snapsync.feature.upload.LedgerWriter
 import app.snapsync.model.AssetId
-import app.snapsync.model.toLedgerRow
-import app.snapsync.model.ResourceRole
-import app.snapsync.model.Resource
-import app.snapsync.model.RESOURCE_META_ORIGINAL_FILENAME
-import app.snapsync.model.RESOURCE_META_MIME
-import app.snapsync.model.RESOURCE_META_CREATION_DATE
-import app.snapsync.model.LedgerAggregates
-import app.snapsync.services.ledger.LedgerService
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
-import app.snapsync.feature.upload.LedgerWriter
-import app.snapsync.model.PendingResource
-
+import app.snapsync.model.RESOURCE_META_CREATION_DATE
+import app.snapsync.model.RESOURCE_META_MIME
+import app.snapsync.model.RESOURCE_META_ORIGINAL_FILENAME
+import app.snapsync.model.Resource
+import app.snapsync.model.ResourceRole
+import app.snapsync.services.ledger.LedgerService
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import kotlin.test.assertFalse
 
 /** One canonical capture date for every row the ledger contracts build. */
 internal const val CREATION_DATE = "2026-06-27T10:00:00Z"
@@ -76,7 +72,8 @@ internal fun ClauseList<LedgerStoreState, LedgerService>.recordGuardClauses() {
         backend.resetTo(LEDGER_CONTRACT_EVENT, listOf(entry(key = "a", state = LedgerState.REQUESTED)))
 
         assertEquals(
-            entry(key = "a", state = LedgerState.REQUESTED), backend.get("a"),
+            entry(key = "a", state = LedgerState.REQUESTED),
+            backend.get("a"),
             "the reset family applies no precedence",
         )
     }
@@ -92,7 +89,10 @@ internal fun ClauseList<LedgerStoreState, LedgerService>.recordGuardClauses() {
         assertEquals(settled, backend.get("k"))
     }
 
-    clause("deleteKeys deletes exactly the named rows and leaves an asset's siblings", LedgerStoreState.EMPTY) { backend ->
+    clause(
+        "deleteKeys deletes exactly the named rows and leaves an asset's siblings",
+        LedgerStoreState.EMPTY,
+    ) { backend ->
         val primary = entry(key = "X-primary.heic", assetId = "X", state = LedgerState.COMPLETED)
         backend.recordUnlessSettled(primary)
         backend.recordUnlessSettled(entry(key = "X-live.mov", assetId = "X", state = LedgerState.DISCOVERED))
@@ -118,7 +118,12 @@ internal fun ClauseList<LedgerStoreState, LedgerService>.recordGuardClauses() {
 
     clause("deleteKeys handles more keys than one statement binds", LedgerStoreState.EMPTY) { backend ->
         val keys = (0 until 1_200).map { "asset-$it-photo.jpg" }
-        backend.resetTo(LEDGER_CONTRACT_EVENT, keys.map { entry(key = it, state = LedgerState.COMPLETED) } + entry(key = "kept"))
+        backend.resetTo(
+            LEDGER_CONTRACT_EVENT,
+            keys.map {
+                entry(key = it, state = LedgerState.COMPLETED)
+            } + entry(key = "kept"),
+        )
 
         backend.deleteKeys(keys)
 
@@ -158,7 +163,9 @@ internal fun entry(
     state: LedgerState = LedgerState.REQUESTED,
     destinationPath: String? = null,
 ) = LedgerEntry(
-    key, AssetId(assetId), state,
+    key,
+    AssetId(assetId),
+    state,
     creationDate = CREATION_DATE,
     role = ResourceRole.PRIMARY,
     contentType = "image/heic",

@@ -2,91 +2,76 @@
 
 package app.snapsync.ui
 
-import app.snapsync.model.SyncHealth
-import kotlinx.coroutines.flow.emptyFlow
-import kotlinx.coroutines.flow.Flow
-import app.snapsync.feature.status.readmodel.NetworkStatusSource
-import app.snapsync.model.NetworkAccess
-import app.snapsync.presentation.onIntent
-import app.snapsync.presentation.StatusDiagnostics
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.test.isSelectable
-import androidx.compose.ui.test.hasText
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.doubleClick
-import androidx.compose.ui.test.hasSetTextAction
-import androidx.compose.ui.test.onNodeWithContentDescription
-import androidx.compose.ui.test.hasAnyAncestor
-import androidx.compose.ui.test.isDialog
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.click
-import androidx.compose.ui.geometry.Offset
-import app.snapsync.ui.resources.stop_sharing_confirm
+import androidx.compose.ui.test.doubleClick
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isDialog
+import androidx.compose.ui.test.isSelectable
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.test.v2.runComposeUiTest
+import app.snapsync.feature.status.readmodel.NetworkStatusSource
 import app.snapsync.feature.status.readmodel.SyncStatusSource
-import app.snapsync.model.CaptureCeiling
-import app.snapsync.model.StoreKind
-import app.snapsync.model.StoreLink
-import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.EventConfig
 import app.snapsync.model.EventLinkPayload
-import app.snapsync.model.RangeChoice
+import app.snapsync.model.GalleryAccess
 import app.snapsync.model.JoinCommit
 import app.snapsync.model.JoinLoad
-import app.snapsync.model.GalleryAccess
+import app.snapsync.model.JoinPhase
+import app.snapsync.model.JoinedSurface
+import app.snapsync.model.Layer
+import app.snapsync.model.NetworkAccess
+import app.snapsync.model.RangeChoice
+import app.snapsync.model.ReconfigureOutcome
+import app.snapsync.model.ScreenMessage
+import app.snapsync.model.StoreKind
+import app.snapsync.model.StoreLink
+import app.snapsync.model.SyncHealth
 import app.snapsync.model.SyncStatus
+import app.snapsync.model.UiState
+import app.snapsync.model.UserCommands
+import app.snapsync.model.UserQueries
+import app.snapsync.model.VersionRefusal
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.deletesAt
 import app.snapsync.model.encodeEventUrl
 import app.snapsync.model.eventEnd
 import app.snapsync.model.eventStart
-import app.snapsync.model.UserCommands
-import app.snapsync.model.ReconfigureOutcome
-import app.snapsync.model.UserQueries
 import app.snapsync.presentation.CutoffFormatter
-import app.snapsync.model.JoinPhase
-import app.snapsync.model.JoinedSurface
-import app.snapsync.model.Layer
-import kotlin.test.assertTrue
-import app.snapsync.model.ScreenMessage
 import app.snapsync.presentation.StatusContainerHost
+import app.snapsync.presentation.StatusDiagnostics
 import app.snapsync.presentation.StatusSources
-import app.snapsync.model.UiState
+import app.snapsync.presentation.onIntent
 import app.snapsync.ui.components.LocalReduceMotion
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.time.Instant
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.update
-import kotlinx.datetime.TimeZone
-import app.snapsync.model.VersionRefusal
-import app.snapsync.ui.resources.Res
-import app.snapsync.ui.components.resources.Res as ComponentRes
 import app.snapsync.ui.components.resources.menu
 import app.snapsync.ui.components.resources.network_blocked
 import app.snapsync.ui.components.resources.share_range_change
 import app.snapsync.ui.components.resources.status_allow_access
 import app.snapsync.ui.components.resources.status_allow_access_settings
+import app.snapsync.ui.resources.Res
 import app.snapsync.ui.resources.album_toggle
 import app.snapsync.ui.resources.allow_full_access
 import app.snapsync.ui.resources.cancel
 import app.snapsync.ui.resources.choose_more_photos
 import app.snapsync.ui.resources.create_button
+import app.snapsync.ui.resources.create_join_hint
 import app.snapsync.ui.resources.footer_settings
+import app.snapsync.ui.resources.invite_caption
 import app.snapsync.ui.resources.join_access_dismiss
 import app.snapsync.ui.resources.join_access_info
 import app.snapsync.ui.resources.join_button
@@ -96,6 +81,9 @@ import app.snapsync.ui.resources.leave_confirm
 import app.snapsync.ui.resources.leave_event
 import app.snapsync.ui.resources.menu_privacy
 import app.snapsync.ui.resources.menu_website
+import app.snapsync.ui.resources.message_app_not_genuine
+import app.snapsync.ui.resources.message_device_unverifiable
+import app.snapsync.ui.resources.message_report_this
 import app.snapsync.ui.resources.mobile_data_toggle
 import app.snapsync.ui.resources.range_from_now
 import app.snapsync.ui.resources.range_whole_event
@@ -103,22 +91,32 @@ import app.snapsync.ui.resources.receive_toggle
 import app.snapsync.ui.resources.rename_event
 import app.snapsync.ui.resources.report_placeholder
 import app.snapsync.ui.resources.report_problem
-import app.snapsync.ui.resources.report_send
-import app.snapsync.ui.resources.create_join_hint
-import app.snapsync.ui.resources.message_app_not_genuine
 import app.snapsync.ui.resources.report_seed_device_unverifiable
-import app.snapsync.ui.resources.message_report_this
-import app.snapsync.ui.resources.message_device_unverifiable
+import app.snapsync.ui.resources.report_send
 import app.snapsync.ui.resources.report_sent
 import app.snapsync.ui.resources.retry
 import app.snapsync.ui.resources.save
 import app.snapsync.ui.resources.share_invite
 import app.snapsync.ui.resources.share_toggle
+import app.snapsync.ui.resources.show_qr
+import app.snapsync.ui.resources.stop_sharing_confirm
 import app.snapsync.ui.resources.store_app_store
 import app.snapsync.ui.resources.switch_confirm
-import androidx.compose.ui.test.swipeDown
-import app.snapsync.ui.resources.show_qr
-import app.snapsync.ui.resources.invite_caption
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.datetime.TimeZone
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+import kotlin.time.Instant
+import app.snapsync.ui.components.resources.Res as ComponentRes
 
 /** The event the joined tests are members of. */
 private const val JOINED_ID = "11111111-1111-4111-8111-111111111111"
@@ -215,7 +213,12 @@ class HostStatusActionsTest {
                 openSettings = { record("openSettings") },
                 openLink = { record("openLink:$it") },
                 choosePhotos = { record("choosePhotos") },
-                reconfigure = { eventId, direction, _, _, _ -> record("reconfigure:$eventId:$direction"); ReconfigureOutcome.Saved },
+                reconfigure = { eventId, direction, _, _, _ ->
+                    record(
+                        "reconfigure:$eventId:$direction",
+                    )
+                    ReconfigureOutcome.Saved
+                },
                 rename = { eventId, name -> record("rename:$eventId:$name") },
                 resetRename = { record("resetRename") },
                 sendDiagnostics = { note, context ->
@@ -223,7 +226,10 @@ class HostStatusActionsTest {
                     record("sendDiagnostics:$note" + if (context.verification) " [verification]" else "")
                     app.snapsync.model.ReportOutcome.SENT
                 },
-                setMobileData = { on -> record("setMobileData:$on"); true },
+                setMobileData = { on ->
+                    record("setMobileData:$on")
+                    true
+                },
             ),
             queries = UserQueries(loadJoinDetails = { id, _ -> details(id) }, shareableCount = { _, _ -> null }),
             diagnostics = StatusDiagnostics(log = {}, onIntentError = {}),

@@ -61,7 +61,9 @@ class JvmRootBootsColdTest {
         memberStatements(code, indent).mapNotNull { (line, stmt) ->
             val head = stmt.trimStart()
             val isInit = head.startsWith("init ") || head.startsWith("init{")
-            val isProperty = Regex("""^(?:(?:private|internal|public|override|protected)\s+)*(?:val|var)\s""").containsMatchIn(head)
+            val isProperty = Regex(
+                """^(?:(?:private|internal|public|override|protected)\s+)*(?:val|var)\s""",
+            ).containsMatchIn(head)
             val deferred = Regex("""\bby\s+lazy\b""").containsMatchIn(stmt) || Regex("""\bget\(\)""").containsMatchIn(stmt)
             when {
                 // An init block runs its statements now; a lambda inside it still runs later.
@@ -78,7 +80,10 @@ class JvmRootBootsColdTest {
     fun `constructing a launch forces no member of the composed core`() {
         assertTrue(rootFile.isFile, "JVM root boots-cold gate: JvmApp.kt moved — re-point the scan")
         val code = ZoneGates.stripComments(rootFile.readText())
-        assertTrue(Regex("""\bval core: AppCore\b""").containsMatchIn(code), "JvmApp.kt no longer declares `core` — the gate is stale")
+        assertTrue(
+            Regex("""\bval core: AppCore\b""").containsMatchIn(code),
+            "JvmApp.kt no longer declares `core` — the gate is stale",
+        )
         val eager = eagerCoreAccesses(code)
         assertTrue(
             eager.isEmpty(),

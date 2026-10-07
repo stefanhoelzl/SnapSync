@@ -2,10 +2,10 @@
 
 package app.snapsync.model
 
-import kotlin.io.encoding.Base64
-import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 
 /**
  * The `https://<domain>/join#v=3&d=<base64url(json)>` wire format (spec: join-event): the runtime config
@@ -49,7 +49,10 @@ private val UUID_REGEX =
     Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 
 /** Strict by default: unknown or missing keys are a parse failure, never a silent partial. */
-private val json = Json { ignoreUnknownKeys = false; isLenient = false }
+private val json = Json {
+    ignoreUnknownKeys = false
+    isLenient = false
+}
 
 /** Base64url without padding for output; decoding accepts padding or not. */
 private val encoder = Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT)
@@ -170,7 +173,9 @@ private fun decodePathForm(rest: String): ConfigDecodeResult {
     val key = hints[KEY_PARAM]
     if (key != null && decodeEventKey(key) == null) return fail("k is not a 32-byte base64url key")
     val autoJoin = hints["autoJoin"]?.let { it.toBooleanStrictOrNull() ?: return fail("autoJoin is not a boolean") }
-    val saveToAlbum = hints["saveToAlbum"]?.let { it.toBooleanStrictOrNull() ?: return fail("saveToAlbum is not a boolean") }
+    val saveToAlbum = hints["saveToAlbum"]?.let {
+        it.toBooleanStrictOrNull() ?: return fail("saveToAlbum is not a boolean")
+    }
     val dir = hints["direction"]
     if (dir != null && Direction.fromWire(dir) == null) return fail("unknown direction: $dir")
     return ConfigDecodeResult.Success(

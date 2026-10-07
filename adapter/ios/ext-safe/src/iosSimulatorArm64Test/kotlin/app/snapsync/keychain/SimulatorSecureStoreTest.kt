@@ -48,7 +48,10 @@ class SimulatorSecureStoreTest {
     fun `the device id goes to the file store`() {
         assertEquals(WriteOutcome.Ok, store.write(SecureSlots.DEVICE_ID, "an-id"))
 
-        assertEquals(SecureStoreRead.Found("an-id", StoredProtection.BACKGROUND_READABLE), store.read(SecureSlots.DEVICE_ID))
+        assertEquals(
+            SecureStoreRead.Found("an-id", StoredProtection.BACKGROUND_READABLE),
+            store.read(SecureSlots.DEVICE_ID),
+        )
         assertEquals(WriteOutcome.Ok, store.delete(SecureSlots.DEVICE_ID))
         assertEquals(listOf(SecureSlots.DEVICE_ID), files.touched.distinct())
         assertTrue(keychain.touched.isEmpty(), "the device id never reaches the simulator's Keychain")

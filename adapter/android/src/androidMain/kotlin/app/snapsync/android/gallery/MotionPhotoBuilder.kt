@@ -52,7 +52,9 @@ internal class MotionPhotoBuilder(private val scratchDir: File, private val log:
             stream.write(withXmp)
             videoFile.inputStream().use { it.copyTo(stream) }
         }
-        log.i { "$assetId: built a motion photo (${if (isJpeg) "JPEG kept" else "re-encoded to JPEG"}, video ${videoFile.length()} B)" }
+        log.i {
+            "$assetId: built a motion photo (${if (isJpeg) "JPEG kept" else "re-encoded to JPEG"}, video ${videoFile.length()} B)"
+        }
         // The sender's name, its extension following the bytes; the import adds SnapSync's mark (`ReceivedPhotoName`).
         // An unknown name stays unknown, and the key's extension follows instead, so the mark names it `snapsync-….jpg`.
         val name = still.originalFilename
@@ -74,7 +76,9 @@ internal class MotionPhotoBuilder(private val scratchDir: File, private val log:
             decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
         }
         try {
-            out.outputStream().use { check(bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, it)) { "the JPEG encoder refused" } }
+            out.outputStream().use {
+                check(bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, it)) { "the JPEG encoder refused" }
+            }
         } finally {
             bitmap.recycle()
         }

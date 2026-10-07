@@ -29,6 +29,7 @@ class WakeMock(
 ) {
     internal val pending = MutableStateFlow<Map<WakeId, WakeTrigger>>(emptyMap())
     internal val handlers = HandlerSlot<WakeHandlers>("Wake", BeforeListen.Thrown)
+
     @Volatile internal var scheduled = 0
 
     fun port(): Wake = object : Wake {
@@ -39,7 +40,10 @@ class WakeMock(
         }
 
         override suspend fun schedule(id: WakeId, trigger: WakeTrigger): ScheduleResult =
-            queue.schedule(id, trigger).also { if (id == WakeId.Heartbeat && it == ScheduleResult.Scheduled) scheduled++ }
+            queue.schedule(
+                id,
+                trigger,
+            ).also { if (id == WakeId.Heartbeat && it == ScheduleResult.Scheduled) scheduled++ }
 
         override fun cancel(id: WakeId) {
             queue.cancel(id)

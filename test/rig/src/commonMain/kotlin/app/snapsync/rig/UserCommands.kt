@@ -1,9 +1,9 @@
 package app.snapsync.rig
 
-import app.snapsync.model.ScreenMessage
 import app.snapsync.model.Direction
-import app.snapsync.model.RangeChoice
 import app.snapsync.model.Layer
+import app.snapsync.model.RangeChoice
+import app.snapsync.model.ScreenMessage
 import app.snapsync.model.UiIntent
 import app.snapsync.model.UiState
 import kotlinx.datetime.LocalDateTime
@@ -215,11 +215,14 @@ fun excludedUserCommands(): Map<String, String> = mapOf(
  * "now" would join at a scope the caller did not ask for, and on the upload direction that is the whole
  * camera roll. A malformed value raises, the request answers 500, and the caller sees which one.
  */
-private fun localDateTime(raw: String?): LocalDateTime = LocalDateTime.parse(requireNotNull(raw) {
-    "startsAt/endsAt are required, as ISO local date-times — there is no safe default for an event window"
-})
+private fun localDateTime(raw: String?): LocalDateTime = LocalDateTime.parse(
+    requireNotNull(raw) {
+        "startsAt/endsAt are required, as ISO local date-times — there is no safe default for an event window"
+    },
+)
 
-
-private fun direction(raw: String?): Direction = requireNotNull(Direction.entries.firstOrNull {
-    it.name.equals(raw, ignoreCase = true) || it.wire.equals(raw, ignoreCase = true)
-}) { "direction must be one of ${Direction.entries.joinToString("|") { it.wire }}, was '$raw'" }
+private fun direction(raw: String?): Direction = requireNotNull(
+    Direction.entries.firstOrNull {
+        it.name.equals(raw, ignoreCase = true) || it.wire.equals(raw, ignoreCase = true)
+    },
+) { "direction must be one of ${Direction.entries.joinToString("|") { it.wire }}, was '$raw'" }

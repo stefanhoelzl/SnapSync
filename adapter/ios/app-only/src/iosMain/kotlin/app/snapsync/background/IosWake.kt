@@ -13,15 +13,15 @@ import app.snapsync.ports.Completion
 import app.snapsync.ports.Wake
 import app.snapsync.ports.WakeHandlers
 import co.touchlab.kermit.Logger
-import kotlin.concurrent.atomics.AtomicBoolean
-import kotlin.concurrent.atomics.AtomicReference
-import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.BackgroundTasks.BGAppRefreshTaskRequest
 import platform.BackgroundTasks.BGProcessingTaskRequest
 import platform.BackgroundTasks.BGTask
 import platform.Foundation.NSDate
 import platform.Foundation.dateWithTimeIntervalSinceNow
+import kotlin.concurrent.atomics.AtomicBoolean
+import kotlin.concurrent.atomics.AtomicReference
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
 /**
  * The iOS [Wake]: `BGTaskScheduler`. The heartbeat is one-shot and rides one of two task kinds by its cadence

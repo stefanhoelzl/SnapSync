@@ -59,7 +59,8 @@ object LibraryAssets {
 
     /** A GIF as a messenger saves one (480×270) — excluded by the resolution floor, not by its type. */
     fun gif(assetId: String, creationDate: String = DEFAULT_DATE): RawAsset = photo(
-        assetId, creationDate,
+        assetId,
+        creationDate,
         resources = listOf(primaryResource(filename = "giphy.gif", contentType = "image/gif")),
         pixelWidth = 480,
         pixelHeight = 270,
@@ -67,14 +68,25 @@ object LibraryAssets {
 
     /** A Live Photo: a primary still and its paired motion, two resources that upload separately. */
     fun livePhoto(assetId: String, creationDate: String = DEFAULT_DATE): RawAsset = photo(
-        assetId, creationDate,
+        assetId,
+        creationDate,
         resources = listOf(
             primaryResource(),
-            RawResource(role = ResourceRole.LIVE, mimeContentType = "video/quicktime", originalFilename = "IMG.MOV", handle = Unit),
+            RawResource(
+                role = ResourceRole.LIVE,
+                mimeContentType = "video/quicktime",
+                originalFilename = "IMG.MOV",
+                handle = Unit,
+            ),
         ),
     )
 
     /** A single primary resource, carrying this platform's handle (`Unit`). */
     fun primaryResource(filename: String = "IMG.JPG", contentType: String = "image/jpeg"): RawResource =
-        RawResource(role = ResourceRole.PRIMARY, mimeContentType = contentType, originalFilename = filename, handle = Unit)
+        RawResource(
+            role = ResourceRole.PRIMARY,
+            mimeContentType = contentType,
+            originalFilename = filename,
+            handle = Unit,
+        )
 }

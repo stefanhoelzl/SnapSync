@@ -1,7 +1,7 @@
 package app.snapsync.mock
 
-import app.snapsync.model.AlbumKind
 import app.snapsync.model.AlbumId
+import app.snapsync.model.AlbumKind
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.GalleryAccess
@@ -140,7 +140,9 @@ class PhotoLibraryOperator internal constructor(private val state: LibraryState)
         AlbumKind.COLLECTION -> assetsIn(albumId)
         AlbumKind.FOLDER -> {
             val held = state.library.value.mapTo(mutableSetOf()) { it.assetId }
-            state.locked { state.folderOf.filter { (asset, folder) -> folder == albumId && asset in held }.keys.sortedBy { it.value } }
+            state.locked {
+                state.folderOf.filter { (asset, folder) -> folder == albumId && asset in held }.keys.sortedBy { it.value }
+            }
         }
     }
 
@@ -236,6 +238,7 @@ internal class LibraryState(
     val imports = ImportScript()
     val selection = MutableStateFlow<List<RawAsset>?>(null)
     val answers: LibraryChangeAnswers = answers ?: imports.answers
+
     @Volatile var listener: Listener? = null
 
     val attempts = mutableMapOf<AssetRef, Int>()
@@ -246,8 +249,11 @@ internal class LibraryState(
     val deletedAlbums = mutableSetOf<String>()
     val adds = OperatorHold()
     val enumeration = OperatorHold()
+
     @Volatile var failNextEnumeration = false
+
     @Volatile var byIdReadable = true
+
     @Volatile var albumKind = AlbumKind.COLLECTION
 
     /** Under [AlbumKind.FOLDER], the app's album folder each photo in one lives in; a photo in none is in the camera folder. */

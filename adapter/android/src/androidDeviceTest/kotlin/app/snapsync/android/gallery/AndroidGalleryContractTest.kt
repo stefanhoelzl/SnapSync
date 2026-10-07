@@ -31,12 +31,12 @@ import app.snapsync.model.ResourceRole
 import app.snapsync.model.StagedResource
 import app.snapsync.ports.GalleryHandlers
 import app.snapsync.ports.GalleryReader
-import java.io.File
-import kotlin.test.Test
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import java.io.File
+import kotlin.test.Test
 
 /**
  * The photo-library contracts against the real MediaStore adapters, under the full grant this APK gives itself.
@@ -69,7 +69,9 @@ class AndroidGalleryContractTest {
                 GalleryReaderState.NO_GRANT ->
                     return Entered.Unreachable("the grant is the process's, and revoking it kills the process")
                 GalleryReaderState.GRANTED_SEEDED_COLLECTION_ALBUMS ->
-                    return Entered.Unreachable("an Android album is the folder a photo lives in, not a collection: FolderAlbumContract")
+                    return Entered.Unreachable(
+                        "an Android album is the folder a photo lives in, not a collection: FolderAlbumContract",
+                    )
                 GalleryReaderState.GRANTED_EMPTY_WINDOW -> emptySet()
                 GalleryReaderState.GRANTED_SEEDED -> MediaStoreSeeder.seed(MediaStoreSeeder.CAMERA, date)
                 GalleryReaderState.GRANTED_SEEDED_IN_A_FOLDER ->
@@ -123,17 +125,31 @@ class AndroidGalleryContractTest {
                     ),
                 )
             }
-            val seeded = MediaStoreSeeder.seed(MediaStoreSeeder.CAMERA, PhotoLibrary.window(FolderAlbumContract.name, clauseId).seedDate)
+            val seeded = MediaStoreSeeder.seed(
+                MediaStoreSeeder.CAMERA,
+                PhotoLibrary.window(FolderAlbumContract.name, clauseId).seedDate,
+            )
             val staging = File(context.filesDir, "folder-album-staging").apply { mkdirs() }
             val stage = {
                 val file = File(staging, "${System.nanoTime()}.jpg").apply { writeBytes(PhotoLibrary.jpeg) }
-                listOf(StagedResource("key-$clauseId", ResourceRole.PRIMARY.wire, "image/jpeg", "IMG_0001.JPG", file.absolutePath))
+                listOf(
+                    StagedResource(
+                        "key-$clauseId",
+                        ResourceRole.PRIMARY.wire,
+                        "image/jpeg",
+                        "IMG_0001.JPG",
+                        file.absolutePath,
+                    ),
+                )
             }
             return Entered.Ready(FolderAlbums(gallery, seeded, stage)) {
                 MediaStoreSeeder.delete(seeded)
                 imported.forEach { id ->
                     context.contentResolver.delete(
-                        ContentUris.withAppendedId(MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), id.value.toLong()),
+                        ContentUris.withAppendedId(
+                            MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY),
+                            id.value.toLong(),
+                        ),
                         null,
                         null,
                     )
@@ -169,7 +185,10 @@ class AndroidGalleryContractTest {
     fun `MediaStore satisfies the Gallery contract`() = verify(GalleryContract, gallery)
 
     @Test
-    fun `MediaStore’s event-album folders satisfy the FolderAlbum contract`() = verify(FolderAlbumContract, folderAlbums)
+    fun `MediaStore’s event-album folders satisfy the FolderAlbum contract`() = verify(
+        FolderAlbumContract,
+        folderAlbums,
+    )
 
     @Test
     fun `the Android permission adapter satisfies the PhotoAccess contract`() = verify(PhotoAccessContract, photoAccess)

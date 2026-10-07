@@ -3,16 +3,15 @@ package app.snapsync.contracts
 import app.snapsync.model.AdoptedAsset
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
-import app.snapsync.services.downloads.DownloadService
 import app.snapsync.model.PlannedAsset
 import app.snapsync.model.PlannedResource
-
+import app.snapsync.services.downloads.DownloadService
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /** The download-store contract's state vocabulary. Every clause starts from an empty store. */
-enum class DownloadStoreState { EMPTY }
+enum class DownloadStoreState { EMPTY, }
 
 /**
  * Shared contract for every [DownloadService] impl — bound on the in-memory fake (JVM + simulator) and the
@@ -117,7 +116,13 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadService>("Do
                 ref,
                 "2026-06-30T10:00:00Z",
                 listOf(
-                    PlannedResource("ASSET-Q-primary.heic", "https://e/primary?sig=NEW", "primary", "image/heic", "IMG.HEIC"),
+                    PlannedResource(
+                        "ASSET-Q-primary.heic",
+                        "https://e/primary?sig=NEW",
+                        "primary",
+                        "image/heic",
+                        "IMG.HEIC",
+                    ),
                     PlannedResource("ASSET-Q-live.mov", "https://e/live?sig=NEW", "live", "video/quicktime", "IMG.MOV"),
                 ),
             )
@@ -149,7 +154,10 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadService>("Do
          * asset exists that the row does not know about. Every property below is what stops that asset being
          * imported a second time and then uploaded back into the event.
          */
-        clause("an unconfirmed row is adjudicated not imported and never loses its marker", DownloadStoreState.EMPTY) { s ->
+        clause(
+            "an unconfirmed row is adjudicated not imported and never loses its marker",
+            DownloadStoreState.EMPTY,
+        ) { s ->
             s.plan(ref, "2026-06-30T10:00:00Z", resources())
             s.markStaged(ref, "ASSET-Q-primary.heic", "/stage/primary.heic")
             s.markStaged(ref, "ASSET-Q-live.mov", "/stage/live.mov")
@@ -160,7 +168,10 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadService>("Do
             // Out of the ordinary import queue: importing it again is the duplicate.
             assertTrue(s.importableAssets().isEmpty(), "a row carrying a marker is not ordinary import work")
             // ...and into the adjudication queue instead.
-            assertEquals(listOf(ref to AssetId("LOCAL-CREATED")), s.unconfirmedImports().map { it.ref to it.createdLocalId })
+            assertEquals(
+                listOf(ref to AssetId("LOCAL-CREATED")),
+                s.unconfirmedImports().map { it.ref to it.createdLocalId },
+            )
             // Suppressed from the moment the marker exists — the asset is observable before it is confirmed.
             assertEquals(setOf(AssetId("LOCAL-CREATED")), s.suppressedLocalIds())
             assertFalse(s.isSettled(ref), "still unconfirmed")
@@ -210,7 +221,10 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadService>("Do
             s.clearCreatedLocalId(ref, AssetId("FIRST"))
             s.recordCreatedLocalId(ref, AssetId("SECOND"))
 
-            assertFalse(s.clearCreatedLocalId(ref, AssetId("FIRST")), "the abandoned transaction's clear applies to nothing")
+            assertFalse(
+                s.clearCreatedLocalId(ref, AssetId("FIRST")),
+                "the abandoned transaction's clear applies to nothing",
+            )
             assertEquals(
                 listOf(ref to AssetId("SECOND")),
                 s.unconfirmedImports().map { it.ref to it.createdLocalId },
@@ -233,7 +247,10 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadService>("Do
             )
 
             s.plan(ref, "2026-06-30T10:00:00Z", resources())
-            assertTrue(s.recordCreatedLocalId(ref, AssetId("LOCAL-CREATED")), "an ordinary write reports that it landed")
+            assertTrue(
+                s.recordCreatedLocalId(ref, AssetId("LOCAL-CREATED")),
+                "an ordinary write reports that it landed",
+            )
         }
 
         /** Staged bytes are released only once a row is settled — releasing earlier loses the photo. */
@@ -306,7 +323,11 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadService>("Do
 
         clause("prune drops non terminal keeps imported", DownloadStoreState.EMPTY) { s ->
             val imported = AssetRef("DEVICE-A", AssetId("DONE"))
-            s.plan(imported, "2026-01-01T00:00:00Z", listOf(PlannedResource("DONE-primary.heic", "u", "primary", "image/heic", "D.HEIC")))
+            s.plan(
+                imported,
+                "2026-01-01T00:00:00Z",
+                listOf(PlannedResource("DONE-primary.heic", "u", "primary", "image/heic", "D.HEIC")),
+            )
             s.markStaged(imported, "DONE-primary.heic", "/d")
             s.markImported(imported, AssetId("LOCAL-DONE"))
             s.plan(ref, "2026-06-30T10:00:00Z", resources()) // a fresh, non-terminal asset
@@ -355,7 +376,10 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadService>("Do
             assertTrue(stranded.isEmpty(), "a protected row's files are not stranded")
             assertEquals(2, s.stagedResources(ref).size, "and its bytes are still there for the import to read")
             // The whole point: the change block that runs next still finds a row to write its marker onto.
-            assertTrue(s.recordCreatedLocalId(ref, AssetId("LOCAL-CREATED")), "the marker write lands on a row that exists")
+            assertTrue(
+                s.recordCreatedLocalId(ref, AssetId("LOCAL-CREATED")),
+                "the marker write lands on a row that exists",
+            )
             assertEquals(setOf(AssetId("LOCAL-CREATED")), s.suppressedLocalIds())
         }
 
@@ -365,7 +389,11 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadService>("Do
             s.plan(ref, "2026-06-30T10:00:00Z", resources())
             s.markStaged(ref, "ASSET-Q-primary.heic", "/stage/primary.heic")
             s.markStaged(ref, "ASSET-Q-live.mov", "/stage/live.mov")
-            s.plan(other, "2026-06-30T11:00:00Z", listOf(PlannedResource("ASSET-R-primary.heic", "u", "primary", "image/heic", "R.HEIC")))
+            s.plan(
+                other,
+                "2026-06-30T11:00:00Z",
+                listOf(PlannedResource("ASSET-R-primary.heic", "u", "primary", "image/heic", "R.HEIC")),
+            )
             s.markStaged(other, "ASSET-R-primary.heic", "/stage/r.heic")
 
             val stranded = s.pruneNonTerminal(protecting = setOf(ref))
@@ -407,14 +435,23 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadService>("Do
          */
         clause("event-scoped counts see only that event's union", DownloadStoreState.EMPTY) { s ->
             val earlier = AssetRef("DEVICE-B", AssetId("ASSET-OLD"))
-            val earlierResources = listOf(PlannedResource("ASSET-OLD-primary.heic", "https://e/old", "primary", "image/heic", "OLD.HEIC"))
-            s.planAll(listOf(PlannedAsset(earlier, "2026-06-01T10:00:00Z", earlierResources)), eventId = "EVENT-1", members = listOf(earlier))
+            val earlierResources =
+                listOf(PlannedResource("ASSET-OLD-primary.heic", "https://e/old", "primary", "image/heic", "OLD.HEIC"))
+            s.planAll(
+                listOf(PlannedAsset(earlier, "2026-06-01T10:00:00Z", earlierResources)),
+                eventId = "EVENT-1",
+                members = listOf(earlier),
+            )
             s.markStaged(earlier, "ASSET-OLD-primary.heic", "/stage/old")
             s.markImported(earlier, AssetId("LOCAL-OLD"))
             assertEquals(1, s.counts("EVENT-1").imported)
 
             // The next event's union holds none of it.
-            s.planAll(listOf(PlannedAsset(ref, "2026-06-30T10:00:00Z", resources())), eventId = "EVENT-2", members = listOf(ref))
+            s.planAll(
+                listOf(PlannedAsset(ref, "2026-06-30T10:00:00Z", resources())),
+                eventId = "EVENT-2",
+                members = listOf(ref),
+            )
             val next = s.counts("EVENT-2")
             assertEquals(0, next.imported, "the earlier event's photo is not received for this one")
             assertEquals(1, next.stillArriving, "only this event's photo is there to receive")
@@ -478,7 +515,10 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadService>("Do
             assertTrue(s.importedLocalIdsOf("EVENT-1").isEmpty())
         }
 
-        clause("imported local ids of an event omit another event's and an untagged ref", DownloadStoreState.EMPTY) { s ->
+        clause(
+            "imported local ids of an event omit another event's and an untagged ref",
+            DownloadStoreState.EMPTY,
+        ) { s ->
             val other = AssetRef("DEVICE-B", AssetId("ASSET-R"))
             val untagged = AssetRef("DEVICE-C", AssetId("ASSET-S"))
             s.planAll(listOf(planned(ref)), "EVENT-1", members = listOf(ref))
@@ -494,13 +534,20 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadService>("Do
             s.planAll(listOf(planned(ref)), "EVENT-1", members = listOf(ref))
             s.markImported(ref, AssetId("LOCAL-1"))
             s.planAll(emptyList(), "EVENT-2", members = listOf(ref))
-            assertEquals(setOf(AssetId("LOCAL-1")), s.importedLocalIdsOf("EVENT-2"), "the settled ref is the later event's too")
+            assertEquals(
+                setOf(AssetId("LOCAL-1")),
+                s.importedLocalIdsOf("EVENT-2"),
+                "the settled ref is the later event's too",
+            )
             assertEquals(setOf(AssetId("LOCAL-1")), s.importedLocalIdsOf("EVENT-1"), "and still the earlier one's")
             assertEquals(1, s.counts("EVENT-1").imported)
             assertEquals(1, s.counts("EVENT-2").imported)
         }
 
-        clause("the join's purge forgets other events' refs and keeps every photo's record", DownloadStoreState.EMPTY) { s ->
+        clause(
+            "the join's purge forgets other events' refs and keeps every photo's record",
+            DownloadStoreState.EMPTY,
+        ) { s ->
             s.planAll(listOf(planned(ref)), "EVENT-1", members = listOf(ref))
             s.markImported(ref, AssetId("LOCAL-1"))
             s.planAll(emptyList(), "EVENT-2", members = listOf(ref))
@@ -524,14 +571,19 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadService>("Do
 
         // --- the batch members a reconcile plans through (one read, one transaction each) ---
 
-        clause("settled among answers the asked refs that are imported or unimportable", DownloadStoreState.EMPTY) { s ->
+        clause(
+            "settled among answers the asked refs that are imported or unimportable",
+            DownloadStoreState.EMPTY,
+        ) { s ->
             val imported = AssetRef("DEVICE-A", AssetId("IMPORTED"))
             val unimportable = AssetRef("DEVICE-A", AssetId("UNIMPORTABLE"))
             val pending = AssetRef("DEVICE-A", AssetId("PENDING"))
             val unconfirmed = AssetRef("DEVICE-A", AssetId("UNCONFIRMED"))
             val notAsked = AssetRef("DEVICE-B", AssetId("IMPORTED-NOT-ASKED"))
             val unknown = AssetRef("DEVICE-Z", AssetId("NEVER-PLANNED"))
-            listOf(imported, unimportable, pending, unconfirmed, notAsked).forEach { s.plan(it, "2026-06-30T10:00:00Z", resources()) }
+            listOf(imported, unimportable, pending, unconfirmed, notAsked).forEach {
+                s.plan(it, "2026-06-30T10:00:00Z", resources())
+            }
             s.markImported(imported, AssetId("LOCAL-1"))
             s.markImported(notAsked, AssetId("LOCAL-2"))
             s.settleUnimportable(unimportable)
@@ -553,7 +605,9 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadService>("Do
                     PlannedAsset(
                         other,
                         "2026-06-30T11:00:00Z",
-                        listOf(PlannedResource("ASSET-R-primary.heic", "https://e/r", "primary", "image/heic", "R.HEIC")),
+                        listOf(
+                            PlannedResource("ASSET-R-primary.heic", "https://e/r", "primary", "image/heic", "R.HEIC"),
+                        ),
                     ),
                 ),
             )
@@ -575,21 +629,47 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadService>("Do
             s.markImported(done, AssetId("LOCAL-DONE"))
 
             val rotated = listOf(
-                PlannedResource("ASSET-Q-primary.heic", "https://e/primary?sig=NEW", "primary", "image/heic", "IMG.HEIC"),
+                PlannedResource(
+                    "ASSET-Q-primary.heic",
+                    "https://e/primary?sig=NEW",
+                    "primary",
+                    "image/heic",
+                    "IMG.HEIC",
+                ),
                 PlannedResource("ASSET-Q-live.mov", "https://e/live?sig=NEW", "live", "video/quicktime", "IMG.MOV"),
             )
-            s.planAll(listOf(PlannedAsset(ref, "2026-06-30T10:00:00Z", rotated), PlannedAsset(done, "2026-06-30T10:00:00Z", rotated)))
+            s.planAll(
+                listOf(
+                    PlannedAsset(ref, "2026-06-30T10:00:00Z", rotated),
+                    PlannedAsset(done, "2026-06-30T10:00:00Z", rotated),
+                ),
+            )
 
             val pending = s.pendingDownloads()
-            assertEquals(listOf(ref to "https://e/live?sig=NEW"), pending.map { it.ref to it.resource.url }, "only the unstaged resource is refreshed")
-            assertEquals("/stage/primary.heic", s.stagedResources(ref).single().stagedPath, "a staged resource keeps its staging")
+            assertEquals(
+                listOf(ref to "https://e/live?sig=NEW"),
+                pending.map {
+                    it.ref to it.resource.url
+                },
+                "only the unstaged resource is refreshed",
+            )
+            assertEquals(
+                "/stage/primary.heic",
+                s.stagedResources(ref).single().stagedPath,
+                "a staged resource keeps its staging",
+            )
             assertTrue(s.isSettled(done), "and a terminal row is never downgraded")
             assertEquals(setOf(AssetId("LOCAL-DONE")), s.suppressedLocalIds())
         }
 
         clause("mark all enqueued puts every marked asset in flight", DownloadStoreState.EMPTY) { s ->
             val other = AssetRef("DEVICE-B", AssetId("ASSET-R"))
-            s.planAll(listOf(PlannedAsset(ref, "2026-06-30T10:00:00Z", resources()), PlannedAsset(other, "2026-06-30T11:00:00Z", resources())))
+            s.planAll(
+                listOf(
+                    PlannedAsset(ref, "2026-06-30T10:00:00Z", resources()),
+                    PlannedAsset(other, "2026-06-30T11:00:00Z", resources()),
+                ),
+            )
             assertEquals(0, s.counts().inFlight)
             s.markAllEnqueued(emptyList())
             assertEquals(0, s.counts().inFlight, "an empty batch marks nothing")
@@ -605,13 +685,18 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadService>("Do
         // --- adoption of marked photos at join (capability `receiving-photos`) ---
 
         clause("an adopted photo is settled suppressed and counted for its event", DownloadStoreState.EMPTY) { s ->
-            val adopted = s.adoptAll(listOf(AdoptedAsset(ref, AssetId("LOCAL-KEPT"), "2026-06-30T10:00:00Z")), "EVENT-1")
+            val adopted = s.adoptAll(
+                listOf(AdoptedAsset(ref, AssetId("LOCAL-KEPT"), "2026-06-30T10:00:00Z")),
+                "EVENT-1",
+            )
             assertEquals(setOf(ref), adopted)
             assertTrue(s.isSettled(ref), "an adopted ref is never planned or downloaded again")
             assertEquals(setOf(AssetId("LOCAL-KEPT")), s.suppressedLocalIds(), "and its asset is never uploaded back")
             assertEquals(setOf(AssetId("LOCAL-KEPT")), s.importedLocalIdsOf("EVENT-1"))
             assertEquals(1, s.counts("EVENT-1").imported, "it counts as received for the event it was adopted for")
-            assertTrue(s.pendingDownloads().isEmpty() && s.importableAssets().isEmpty() && s.unconfirmedImports().isEmpty())
+            assertTrue(
+                s.pendingDownloads().isEmpty() && s.importableAssets().isEmpty() && s.unconfirmedImports().isEmpty(),
+            )
 
             s.plan(ref, "2026-06-30T10:00:00Z", resources())
             assertTrue(s.pendingDownloads().isEmpty(), "a later plan cannot downgrade it")
@@ -644,7 +729,11 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadService>("Do
                 s.suppressedLocalIds(),
                 "each row keeps the handle of the asset it records",
             )
-            assertEquals(listOf("/stage/primary.heic"), s.stagedPathsOfImportedAssets(), "its staged bytes are released")
+            assertEquals(
+                listOf("/stage/primary.heic"),
+                s.stagedPathsOfImportedAssets(),
+                "its staged bytes are released",
+            )
             assertEquals(1, s.counts("EVENT-1").imported, "it counts as received for the event it was adopted for")
         }
 
@@ -664,7 +753,10 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadService>("Do
             assertEquals(9, s.union.cursor("EVENT-1"), "a read that served nothing new still moves it")
         }
 
-        clause("a leave's prune forgets every position, so every next read is a full one", DownloadStoreState.EMPTY) { s ->
+        clause(
+            "a leave's prune forgets every position, so every next read is a full one",
+            DownloadStoreState.EMPTY,
+        ) { s ->
             s.planAll(emptyList(), "EVENT-1", cursor = 3)
             s.planAll(emptyList(), "EVENT-2", cursor = 4)
             s.pruneNonTerminal(protecting = emptySet())
@@ -687,7 +779,10 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadService>("Do
             assertEquals(2, s.pendingDownloads().size)
         }
 
-        clause("a withdrawal prune keeps what is listed, received, judged, claimed or another event's", DownloadStoreState.EMPTY) { s ->
+        clause(
+            "a withdrawal prune keeps what is listed, received, judged, claimed or another event's",
+            DownloadStoreState.EMPTY,
+        ) { s ->
             fun r(id: String) = AssetRef("DEVICE-A", AssetId(id))
             val listed = r("LISTED")
             val imported = r("IMPORTED")
@@ -711,7 +806,10 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadService>("Do
                 "listed, claimed and marker-carrying rows keep their work",
             )
             s.union.pruneWithdrawn("EVENT-1", listed = emptySet(), protecting = emptySet())
-            assertTrue(otherEvent in s.pendingDownloads().map { it.ref }, "another event's row is not this read's to judge")
+            assertTrue(
+                otherEvent in s.pendingDownloads().map { it.ref },
+                "another event's row is not this read's to judge",
+            )
         }
     }
 
@@ -721,27 +819,6 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadService>("Do
         PlannedResource("ASSET-Q-live.mov", "https://e/live", "live", "video/quicktime", "IMG.MOV"),
     )
     private fun planned(ref: AssetRef) = PlannedAsset(ref, "2026-06-30T10:00:00Z", resources())
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     // --- imported local identifiers by ref (capability `receiving-photos`; read by the event album's gather) ---
 }

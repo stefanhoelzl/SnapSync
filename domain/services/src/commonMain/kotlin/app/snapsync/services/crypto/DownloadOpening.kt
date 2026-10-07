@@ -6,8 +6,8 @@ import app.snapsync.model.EncryptedFileFormat
 import app.snapsync.model.FileArea
 import app.snapsync.model.SecureStoreUnavailable
 import app.snapsync.model.roleFromUploadKey
-import app.snapsync.services.config.ConfigService
 import app.snapsync.ports.Files
+import app.snapsync.services.config.ConfigService
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update

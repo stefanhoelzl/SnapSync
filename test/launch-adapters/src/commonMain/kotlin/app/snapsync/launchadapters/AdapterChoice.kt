@@ -33,7 +33,13 @@ class AdapterChoice(mocked: Set<MockedSystem>) {
     override fun hashCode(): Int = mocked.hashCode()
 
     override fun toString(): String =
-        if (mocked.isEmpty()) "all real" else "mocked: " + MockedSystem.entries.filter { it in mocked }.joinToString(",") { it.key }
+        if (mocked.isEmpty()) {
+            "all real"
+        } else {
+            "mocked: " + MockedSystem.entries.filter {
+                it in mocked
+            }.joinToString(",") { it.key }
+        }
 
     companion object {
         const val MOCK: String = "mock"
@@ -112,39 +118,54 @@ private fun mocked(system: MockedSystem, vararg then: MockedSystem, why: String)
  */
 private val RULES: List<Rule> = listOf(
     mocked(
-        MockedSystem.BACKEND, MockedSystem.UPLOAD_QUEUE, MockedSystem.UPLOAD_SESSION,
+        MockedSystem.BACKEND,
+        MockedSystem.UPLOAD_QUEUE,
+        MockedSystem.UPLOAD_SESSION,
         why = "a real background transfer performs a real HTTP request, and the backend mock lives in the app's memory",
     ),
     mocked(
-        MockedSystem.BACKEND, MockedSystem.DOWNLOADS,
+        MockedSystem.BACKEND,
+        MockedSystem.DOWNLOADS,
         why = "the backend mock serves its union at synthetic URLs no real download session can fetch",
     ),
     mocked(
-        MockedSystem.BACKEND, MockedSystem.PUSH,
+        MockedSystem.BACKEND,
+        MockedSystem.PUSH,
         why = "a real push service only carries the real backend's pushes; the backend mock records the pushes it " +
             "would send, and only the push service's mock delivers them",
     ),
     mocked(
-        MockedSystem.BACKEND, MockedSystem.INTEGRITY,
+        MockedSystem.BACKEND,
+        MockedSystem.INTEGRITY,
         why = "the backend mock mints only for the in-memory Secure Enclave's proofs, never for a real App Attest key",
     ),
     mocked(
-        MockedSystem.INTEGRITY, MockedSystem.BACKEND,
+        MockedSystem.INTEGRITY,
+        MockedSystem.BACKEND,
         why = "the real backend verifies a genuine App Attest attestation, which the mocked Secure Enclave cannot make",
     ),
     mocked(
-        MockedSystem.UPLOAD_QUEUE, MockedSystem.BACKEND,
+        MockedSystem.UPLOAD_QUEUE,
+        MockedSystem.BACKEND,
         why = "a mocked upload job carries placeholder bytes, which must never reach the real backend",
     ),
     mocked(
-        MockedSystem.LIBRARY, MockedSystem.UPLOAD_QUEUE, MockedSystem.UPLOAD_SESSION,
+        MockedSystem.LIBRARY,
+        MockedSystem.UPLOAD_QUEUE,
+        MockedSystem.UPLOAD_SESSION,
         why = "a mocked photo holds no bytes and no platform resource, so a real transfer has nothing to send",
     ),
     Rule(
-        MockedSystem.EXTENSION_REGISTRY, whenMocked = false,
+        MockedSystem.EXTENSION_REGISTRY,
+        whenMocked = false,
         then = listOf(
-            MockedSystem.BACKEND, MockedSystem.LIBRARY, MockedSystem.UPLOAD_QUEUE, MockedSystem.FILES,
-            MockedSystem.DATABASES, MockedSystem.PREFERENCES, MockedSystem.KEYCHAIN,
+            MockedSystem.BACKEND,
+            MockedSystem.LIBRARY,
+            MockedSystem.UPLOAD_QUEUE,
+            MockedSystem.FILES,
+            MockedSystem.DATABASES,
+            MockedSystem.PREFERENCES,
+            MockedSystem.KEYCHAIN,
         ),
         thenMocked = false,
         why = "a real registration is invoked by the operating system in the extension's OWN process, and a mocked " +

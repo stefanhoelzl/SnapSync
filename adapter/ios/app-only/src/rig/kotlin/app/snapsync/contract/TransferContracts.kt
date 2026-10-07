@@ -4,7 +4,6 @@ package app.snapsync.contract
 
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
-import app.snapsync.contracts.DownloadContract
 import app.snapsync.contracts.DownloadState
 import app.snapsync.contracts.DownloadUnderTest
 import app.snapsync.contracts.Entered
@@ -87,7 +86,12 @@ private class FixtureAddress : RunParameters {
 private fun scratch(contract: String, clauseId: String): String {
     val dir = NSTemporaryDirectory() + "contracts/$contract/$clauseId"
     NSFileManager.defaultManager.removeItemAtPath(dir, error = null)
-    NSFileManager.defaultManager.createDirectoryAtPath(dir, withIntermediateDirectories = true, attributes = null, error = null)
+    NSFileManager.defaultManager.createDirectoryAtPath(
+        dir,
+        withIntermediateDirectories = true,
+        attributes = null,
+        error = null,
+    )
     return dir
 }
 
@@ -102,7 +106,9 @@ private fun ByteArray.toNSData(): NSData = usePinned { NSData.create(bytes = it.
  * empty 404 for nothing and `{"contentType": …}` for an object.
  */
 private fun fixtureObjects(base: String) = FixtureObjects { path ->
-    val data = NSURL.URLWithString("$base/_landed$path")?.let { NSData.dataWithContentsOfURL(it) } ?: return@FixtureObjects null
+    val data = NSURL.URLWithString("$base/_landed$path")?.let {
+        NSData.dataWithContentsOfURL(it)
+    } ?: return@FixtureObjects null
     if (data.length == 0UL) return@FixtureObjects null
     val json = NSString.create(data = data, encoding = NSUTF8StringEncoding)?.toString() ?: return@FixtureObjects null
     Landed(CONTENT_TYPE.find(json)?.groupValues?.get(1))
@@ -152,13 +158,20 @@ class SimAppUploadBinding : Binding<UploadState, UploadUnderTest>, RunParameters
             cap = CAP,
         )
         val ended = mutableListOf<UploadJob>()
-        platform.listen(UploadHandlers(onFinished = { ended += it }, onBackgroundEvents = { it.complete() }, onEventsDrained = {}))
+        platform.listen(
+            UploadHandlers(onFinished = {
+                ended += it
+            }, onBackgroundEvents = { it.complete() }, onEventsDrained = {}),
+        )
         val files = scratch("$contract-files", clauseId)
         // The file uploader sends a file: the seeded photo, exported by the photo library as the upload service does.
         val usable: suspend (String) -> UploadSource = { key ->
             val resource = seedOne(contract, clauseId)
             val path = "$files/$key"
-            val exported = IosGalleryReader().export(Resource(key, assetIdFromUploadKey(key), "image/jpeg", emptyMap(), resource), path)
+            val exported = IosGalleryReader().export(
+                Resource(key, assetIdFromUploadKey(key), "image/jpeg", emptyMap(), resource),
+                path,
+            )
             check(exported == WriteOutcome.Ok) { "exporting the seeded photo for $key failed: $exported" }
             UploadSource.File(path)
         }
@@ -167,7 +180,11 @@ class SimAppUploadBinding : Binding<UploadState, UploadUnderTest>, RunParameters
                 repeat(CAP) { n ->
                     val key = UploadContract.key(clauseId, n = n + 1)
                     val url = base + UploadContract.path(clauseId, FixtureAnswer.Hold, n = n + 1)
-                    val created = platform.create(usable(key), UploadTarget(url, mapOf("Content-Type" to "image/jpeg"), TransferNetwork.ANY), key)
+                    val created = platform.create(
+                        usable(key),
+                        UploadTarget(url, mapOf("Content-Type" to "image/jpeg"), TransferNetwork.ANY),
+                        key,
+                    )
                     check(created == UploadCreateOutcome.CREATED) { "filling the cap: transfer ${n + 1} was $created" }
                 }
             }
@@ -203,13 +220,17 @@ class SimAppDownloadBinding : Binding<DownloadState, DownloadUnderTest>, RunPara
     override fun accept(params: Map<String, String>): String? = fixture.accept(params)
 
     override fun create(state: DownloadState, clauseId: String): Entered<DownloadUnderTest> =
-        if (state == DownloadState.RESTRICTED_NETWORK) Entered.Unreachable(SIMULATOR_NETWORK_IS_THE_MACS) else Entered.Ready(
-        DownloadUnderTest(
-            open = { IosDownload(Logger.withTag("contract")) },
-            base = fixture.require(),
-            readTemp = { path -> NSData.dataWithContentsOfFile(path)?.toByteArray() },
-        ),
-    )
+        if (state == DownloadState.RESTRICTED_NETWORK) {
+            Entered.Unreachable(SIMULATOR_NETWORK_IS_THE_MACS)
+        } else {
+            Entered.Ready(
+                DownloadUnderTest(
+                    open = { IosDownload(Logger.withTag("contract")) },
+                    base = fixture.require(),
+                    readTemp = { path -> NSData.dataWithContentsOfFile(path)?.toByteArray() },
+                ),
+            )
+        }
 }
 
 /** Why the URLSession uploader never reaches [UploadContract.PRESENTED]. */

@@ -1,30 +1,29 @@
 package app.snapsync.feature.download
 
-import app.snapsync.services.crypto.openingFilesOf
-import app.snapsync.model.runCatchingCancellable
-import app.snapsync.services.backend.EventUnionSource
+import app.snapsync.model.AdoptedAsset
 import app.snapsync.model.AlbumId
+import app.snapsync.model.AssetPresence
+import app.snapsync.model.AssetRef
+import app.snapsync.model.EntryScope
 import app.snapsync.model.ImportRequest
 import app.snapsync.model.ImportResult
-import app.snapsync.services.downloads.DownloadJobs
-import app.snapsync.services.gallery.ImportedAssetPresence
-import app.snapsync.services.gallery.GalleryImporter
-
-import app.snapsync.model.AssetPresence
-import app.snapsync.model.AdoptedAsset
-import app.snapsync.model.AssetRef
-import app.snapsync.services.downloads.DownloadService
 import app.snapsync.model.PlannedAsset
 import app.snapsync.model.PlannedResource
-import app.snapsync.model.EntryScope
-import app.snapsync.services.staging.StagingService
-import app.snapsync.services.wake.EventCheck
-import app.snapsync.services.wake.EventChecks
 import app.snapsync.model.StagedResource
 import app.snapsync.model.UnconfirmedImport
 import app.snapsync.model.UnionPage
 import app.snapsync.model.UnionTrigger
 import app.snapsync.model.invocation
+import app.snapsync.model.runCatchingCancellable
+import app.snapsync.services.backend.EventUnionSource
+import app.snapsync.services.crypto.openingFilesOf
+import app.snapsync.services.downloads.DownloadJobs
+import app.snapsync.services.downloads.DownloadService
+import app.snapsync.services.gallery.GalleryImporter
+import app.snapsync.services.gallery.ImportedAssetPresence
+import app.snapsync.services.staging.StagingService
+import app.snapsync.services.wake.EventCheck
+import app.snapsync.services.wake.EventChecks
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -281,9 +280,13 @@ class DownloadController(
         val plans = foreign.mapNotNull { asset ->
             val ref = AssetRef(asset.deviceId, asset.assetId)
             if (ref in settled) return@mapNotNull null
-            PlannedAsset(ref, asset.creationDate, asset.resources.map {
-                PlannedResource(it.key, it.url, it.role, it.contentType, it.originalFilename)
-            })
+            PlannedAsset(
+                ref,
+                asset.creationDate,
+                asset.resources.map {
+                    PlannedResource(it.key, it.url, it.role, it.contentType, it.originalFilename)
+                },
+            )
         }
         // Tag the whole foreign union with this event, settled refs included: an imported photo of THIS event
         // counts as received on the joined screen, and one imported for an earlier event stops counting. The

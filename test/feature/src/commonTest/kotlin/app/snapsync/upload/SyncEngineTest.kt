@@ -1,30 +1,27 @@
 package app.snapsync.upload
 
-import app.snapsync.model.AssetId
-import app.snapsync.model.toLedgerRow
 import app.snapsync.feature.support.TestLedger
-
-import app.snapsync.model.LedgerEntry
-import app.snapsync.model.LedgerState
-import app.snapsync.model.destinationPathOf
 import app.snapsync.feature.upload.LedgerWriter
+import app.snapsync.feature.upload.SyncEngine
+import app.snapsync.model.AssetId
+import app.snapsync.model.LedgerState
 import app.snapsync.model.Resource
 import app.snapsync.model.SyncDecision
-import app.snapsync.feature.upload.SyncEngine
 import app.snapsync.model.SyncEvent
 import app.snapsync.model.UploadError
 import app.snapsync.model.UploadRequest
-
+import app.snapsync.model.destinationPathOf
+import app.snapsync.model.toLedgerRow
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotSame
 import kotlin.test.assertNull
 import kotlin.test.assertSame
+import kotlin.test.assertTrue
 
 class SyncEngineTest {
 

@@ -2,6 +2,9 @@
 
 package app.snapsync.contract
 
+import app.snapsync.background.BackgroundTaskApi
+import app.snapsync.background.IosWake
+import app.snapsync.background.SystemBackgroundTaskApi
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.CONTRACT_REFUSED
@@ -14,9 +17,6 @@ import app.snapsync.contracts.WakeContract
 import app.snapsync.contracts.WakeState
 import app.snapsync.contracts.render
 import app.snapsync.contracts.run
-import app.snapsync.background.BackgroundTaskApi
-import app.snapsync.background.IosWake
-import app.snapsync.background.SystemBackgroundTaskApi
 import app.snapsync.logging.deviceDiagnosticEnvironment
 import app.snapsync.objc.ObjCFailure
 import co.touchlab.kermit.Logger
@@ -86,7 +86,10 @@ private fun List<String>.renderIds() = sorted().joinToString(",", "[", "]")
 private fun String.parseIds() = removePrefix("[").removeSuffix("]").split(',').filter { it.isNotEmpty() }
 
 /** Passes every call to [real] and records it, with the answer, in the clause block [recorder] has open. */
-internal class RecordingBackgroundTaskApi(private val real: BackgroundTaskApi, private val recorder: Recorder) : BackgroundTaskApi {
+internal class RecordingBackgroundTaskApi(
+    private val real: BackgroundTaskApi,
+    private val recorder: Recorder,
+) : BackgroundTaskApi {
     // No clause registers (a second registration in one process raises), so a recording holds none.
     override fun register(identifier: String, launch: (BGTask) -> Unit): Boolean =
         error("a contract clause registers no launch handler — the app's composition already did")

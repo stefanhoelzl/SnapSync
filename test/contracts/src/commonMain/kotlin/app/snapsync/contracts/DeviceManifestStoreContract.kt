@@ -23,7 +23,9 @@ enum class DeviceManifestStoreState {
  * raises into the upload cycle. The dangerous direction is a STALE non-null, which suppressed the rewrite
  * forever, so a clear must actually make the next load `null`.
  */
-object DeviceManifestStoreContract : Contract<DeviceManifestStoreState, DeviceManifestService>("DeviceManifestService") {
+object DeviceManifestStoreContract : Contract<DeviceManifestStoreState, DeviceManifestService>(
+    "DeviceManifestService",
+) {
 
     /** The record a [DeviceManifestStoreState.HOLDING] store holds for [clauseId]. Bindings seed exactly this. */
     fun seedJson(clauseId: String) = """{"seed":"$clauseId"}"""

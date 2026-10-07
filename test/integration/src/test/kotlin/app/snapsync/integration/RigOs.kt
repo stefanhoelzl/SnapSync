@@ -41,7 +41,9 @@ class OsRecord(private val json: JsonObject) {
         get() = (json["pendingWake"] as? JsonObject)?.getValue("earliestSeconds")?.jsonPrimitive?.content?.toLong()
 
     /** The background-time holds outstanding, by the name the app began each under. */
-    val backgroundTimeHolds: List<String> get() = json.getValue("backgroundTimeHolds").jsonArray.map { it.jsonPrimitive.content }
+    val backgroundTimeHolds: List<String> get() = json.getValue(
+        "backgroundTimeHolds",
+    ).jsonArray.map { it.jsonPrimitive.content }
     val pushRegistrations: Int get() = json.int("pushRegistrations")
     val downloadSessionUp: Boolean get() = downloads.getValue("up").jsonPrimitive.boolean
     val downloadsStarted: Int get() = downloads.int("started")
@@ -49,7 +51,9 @@ class OsRecord(private val json: JsonObject) {
     val uploadSessionHandbacks: Int get() = json.int("uploadSessionHandbacks")
 
     /** Every database any process on the device opened, by name, in order. */
-    val databasesOpened: List<String> get() = json.getValue("databasesOpened").jsonArray.map { it.jsonPrimitive.content }
+    val databasesOpened: List<String> get() = json.getValue(
+        "databasesOpened",
+    ).jsonArray.map { it.jsonPrimitive.content }
 
     /** The files in the download staging directory. */
     val stagedFiles: Int get() = json.int("stagedFiles")
@@ -66,7 +70,9 @@ class OsRecord(private val json: JsonObject) {
 suspend fun Rig.osRecord(): OsRecord = OsRecord(deviceJson("os-record"))
 
 /** A receipted entry's answer: what the operating system had recorded at the instant the app released its handler. */
-fun osAtRelease(answer: String): OsRecord = OsRecord(Json.parseToJsonElement(answer).jsonObject.getValue("osAtRelease").jsonObject)
+fun osAtRelease(answer: String): OsRecord = OsRecord(
+    Json.parseToJsonElement(answer).jsonObject.getValue("osAtRelease").jsonObject,
+)
 
 /**
  * The person brings the app to the foreground, and the foreground's work finishes: its own work — the membership

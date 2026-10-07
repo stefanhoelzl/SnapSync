@@ -2,7 +2,6 @@ package app.snapsync.logging
 
 import platform.Foundation.NSBundle
 
-
 /**
  * The current process's short-version(build) — e.g. `0.1.0(214)` — for the boot banner each
  * composition root emits (capability `privacy-security`, D5). Consolidated here beside the

@@ -83,7 +83,11 @@ class ZoneFlowLifetimeTest {
             ?: error("flow fan-out gate: FanOut.kt is gone — the one sanctioned fan-out moved; re-point this gate")
         val offenders = (files - helper).flatMap { file ->
             ZoneGates.stripComments(file.readText()).lines().withIndex()
-                .filter { (_, line) -> Regex("""(?<![\w.])(launch|async)\s*[{(]|\bcoroutineScope\s*\{""").containsMatchIn(line) }
+                .filter { (_, line) ->
+                    Regex(
+                        """(?<![\w.])(launch|async)\s*[{(]|\bcoroutineScope\s*\{""",
+                    ).containsMatchIn(line)
+                }
                 .map { (i, line) -> "${file.name}:${i + 1} fans out outside `fanOut` (`${line.trim()}`)" }
         }
         assertTrue(

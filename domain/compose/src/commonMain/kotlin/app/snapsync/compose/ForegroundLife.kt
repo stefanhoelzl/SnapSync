@@ -2,11 +2,11 @@ package app.snapsync.compose
 
 import app.snapsync.feature.creation.readmodel.ForegroundReturn
 import app.snapsync.ports.Clock
-import kotlin.time.Instant
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.update
+import kotlin.time.Instant
 
 /**
  * The app's comings and goings from the foreground, over the process [clock] (capability `create-event`): each

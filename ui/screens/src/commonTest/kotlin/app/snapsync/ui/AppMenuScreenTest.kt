@@ -2,23 +2,23 @@
 
 package app.snapsync.ui
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.click
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.size
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.v2.runComposeUiTest
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
+import androidx.compose.ui.unit.dp
 import app.snapsync.model.AppLink
 import app.snapsync.model.BuildLabel
 import app.snapsync.model.EventDetails
@@ -33,16 +33,9 @@ import app.snapsync.model.eventEnd
 import app.snapsync.model.eventStart
 import app.snapsync.model.joinPhase
 import app.snapsync.presentation.CutoffFormatter
-import kotlinx.datetime.TimeZone
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
-import kotlin.time.Instant
-import app.snapsync.ui.resources.Res
-import app.snapsync.ui.components.resources.Res as ComponentRes
 import app.snapsync.ui.components.resources.menu
 import app.snapsync.ui.components.resources.menu_close
+import app.snapsync.ui.resources.Res
 import app.snapsync.ui.resources.menu_privacy
 import app.snapsync.ui.resources.menu_version
 import app.snapsync.ui.resources.menu_website
@@ -50,10 +43,17 @@ import app.snapsync.ui.resources.mobile_data_not_saved
 import app.snapsync.ui.resources.mobile_data_off_note
 import app.snapsync.ui.resources.mobile_data_on_note
 import app.snapsync.ui.resources.mobile_data_toggle
-import app.snapsync.ui.resources.report_problem
-import app.snapsync.ui.resources.report_sent
-import app.snapsync.ui.resources.report_saved
 import app.snapsync.ui.resources.report_not_sent
+import app.snapsync.ui.resources.report_problem
+import app.snapsync.ui.resources.report_saved
+import app.snapsync.ui.resources.report_sent
+import kotlinx.datetime.TimeZone
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+import kotlin.time.Instant
+import app.snapsync.ui.components.resources.Res as ComponentRes
 
 /**
  * The app menu and the word on a sent report, as drawn (capabilities `sync-status`, `privacy-security`): the button
@@ -75,7 +75,11 @@ class AppMenuScreenTest {
     fun `the menu button asks for the menu`() = runComposeUiTest {
         var opened = 0
         setContent {
-            TestStatusScreen(UiState(Layer.CreateEvent()), cutoff, testActions(menu = testMenuActions(onMenuOpen = { opened++ })))
+            TestStatusScreen(
+                UiState(Layer.CreateEvent()),
+                cutoff,
+                testActions(menu = testMenuActions(onMenuOpen = { opened++ })),
+            )
         }
         onNodeWithText(str(Res.string.report_problem)).assertDoesNotExist()
         onNodeWithContentDescription(str(ComponentRes.string.menu)).performClick()
@@ -146,7 +150,10 @@ class AppMenuScreenTest {
     @Test
     fun `with mobile data off the menu says photos travel only on Wi-Fi`() = runComposeUiTest {
         setContent {
-            TestStatusScreen(UiState(Layer.CreateEvent(), Overlays(menuOpen = true), mobileData = MobileDataState(on = false)), cutoff)
+            TestStatusScreen(
+                UiState(Layer.CreateEvent(), Overlays(menuOpen = true), mobileData = MobileDataState(on = false)),
+                cutoff,
+            )
         }
         waitForIdle()
         onNodeWithText(str(Res.string.mobile_data_off_note)).assertExists()
@@ -156,7 +163,11 @@ class AppMenuScreenTest {
     fun `a flip that could not be saved is said in the menu`() = runComposeUiTest {
         setContent {
             TestStatusScreen(
-                UiState(Layer.CreateEvent(), Overlays(menuOpen = true), mobileData = MobileDataState(on = true, notSaved = true)),
+                UiState(
+                    Layer.CreateEvent(),
+                    Overlays(menuOpen = true),
+                    mobileData = MobileDataState(on = true, notSaved = true),
+                ),
                 cutoff,
             )
         }
@@ -204,7 +215,11 @@ class AppMenuScreenTest {
         var state by androidx.compose.runtime.mutableStateOf(UiState(Layer.CreateEvent()))
         var dismissed = 0
         setContent {
-            TestStatusScreen(state, cutoff, testActions(menu = testMenuActions(onReportNoticeDismiss = { dismissed++ })))
+            TestStatusScreen(
+                state,
+                cutoff,
+                testActions(menu = testMenuActions(onReportNoticeDismiss = { dismissed++ })),
+            )
         }
         for (outcome in ReportOutcome.entries) {
             state = UiState(Layer.CreateEvent(), Overlays(reportNotice = outcome))

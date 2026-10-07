@@ -14,7 +14,11 @@ import app.snapsync.services.config.ConfigService
 /** The JVM host's world: every mock of its device, of which the app runs over all — the backend's unless it is `api/`. */
 internal fun jvmWorld(rig: JvmRig, os: PlayedOs): MockWorld = MockWorld(
     device = rig.mocks,
-    mocked = MockedSystem.entries.toSet() - setOfNotNull(MockedSystem.BACKEND.takeIf { rig.backend.operator(rig.mocks) == null }),
+    mocked = MockedSystem.entries.toSet() - setOfNotNull(
+        MockedSystem.BACKEND.takeIf {
+            rig.backend.operator(rig.mocks) == null
+        },
+    ),
     reach = rig.reach,
     reachRefusal = "",
     operatorRefusal = { lever -> rig.backend.unavailable(lever) },
@@ -76,7 +80,9 @@ internal fun joinedEventId(rig: JvmRig): String? {
 }
 
 /** What the JVM host refuses of the shared vocabulary, each with its reason. */
-internal fun jvmRefusals(rig: JvmRig): Map<String, String> = rig.world.leverRefusals() + RigVocabulary.adapterRefusals + buildMap {
+internal fun jvmRefusals(
+    rig: JvmRig,
+): Map<String, String> = rig.world.leverRefusals() + RigVocabulary.adapterRefusals + buildMap {
     put(
         "device/gallery/wipe",
         "a mocked photo library is fresh for every host, so there is nothing to wipe; the wipe's answer is PhotoKit's " +

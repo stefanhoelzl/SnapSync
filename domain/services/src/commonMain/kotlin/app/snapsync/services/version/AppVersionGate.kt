@@ -42,7 +42,9 @@ class AppVersionGate(
      */
     fun observe(reply: Reply<*>) {
         when {
-            reply is Reply.Refused && reply.status == HttpStatus.UPGRADE_REQUIRED -> refused(minAppVersionFromRefusal(reply.body))
+            reply is Reply.Refused && reply.status == HttpStatus.UPGRADE_REQUIRED -> refused(
+                minAppVersionFromRefusal(reply.body),
+            )
             reply is Reply.Ok -> served()
         }
     }

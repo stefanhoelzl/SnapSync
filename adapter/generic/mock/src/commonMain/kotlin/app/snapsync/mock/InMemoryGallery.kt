@@ -6,20 +6,20 @@ import app.snapsync.model.AlbumRecord
 import app.snapsync.model.AssetFacts
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
-import app.snapsync.model.ReceivedPhotoName
-import app.snapsync.model.ImportRequest
-import app.snapsync.model.ImportResult
-import app.snapsync.model.RawResource
-import app.snapsync.model.Resource
-import app.snapsync.model.ResourceRole
-import app.snapsync.model.StagedResource
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.GalleryRead
+import app.snapsync.model.ImportRequest
+import app.snapsync.model.ImportResult
 import app.snapsync.model.RawAsset
+import app.snapsync.model.RawResource
+import app.snapsync.model.ReceivedPhotoName
+import app.snapsync.model.Resource
+import app.snapsync.model.ResourceRole
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.SelectionRule
 import app.snapsync.model.SelectionSnapshot
+import app.snapsync.model.StagedResource
 import app.snapsync.model.WriteOutcome
 import app.snapsync.model.grantsPhotoAccess
 import app.snapsync.model.toFacts
@@ -97,7 +97,11 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
         state.locked {
             state.library.update { it + created }
             state.ownImports += createdLocalId
-            if (state.albumKind == AlbumKind.FOLDER) request.album?.takeIf { it in state.created }?.let { state.folderOf[createdLocalId] = it }
+            if (state.albumKind == AlbumKind.FOLDER) {
+                request.album?.takeIf {
+                    it in state.created
+                }?.let { state.folderOf[createdLocalId] = it }
+            }
         }
         state.answers.afterCommit(ref)?.let { return settle(ImportResult.Failed(it, placeholder = createdLocalId)) }
         return settle(ImportResult.Imported(createdLocalId))
@@ -150,8 +154,12 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
     }
 
     override suspend fun assetsById(ids: Set<AssetId>): GalleryRead<List<AssetFacts>> =
-        if (!state.byIdReadable) GalleryRead.NotReadable else readable {
-            state.library.value.map { it.toFacts() }.filter { it.assetId in ids }
+        if (!state.byIdReadable) {
+            GalleryRead.NotReadable
+        } else {
+            readable {
+                state.library.value.map { it.toFacts() }.filter { it.assetId in ids }
+            }
         }
 
     override suspend fun resources(ids: Set<AssetId>): GalleryRead<List<RawAsset>> = readable {

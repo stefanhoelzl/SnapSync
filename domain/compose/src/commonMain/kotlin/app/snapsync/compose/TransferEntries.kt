@@ -1,12 +1,12 @@
 package app.snapsync.compose
 
 import app.snapsync.feature.upload.TailTrigger
+import app.snapsync.model.invocation
+import app.snapsync.ports.DownloadHandlers
+import app.snapsync.ports.UploadHandlers
 import app.snapsync.ports.WakeHandlers
 import app.snapsync.services.gallery.GalleryDiscovery
 import app.snapsync.services.upload.UploadTransferService
-import app.snapsync.ports.DownloadHandlers
-import app.snapsync.ports.UploadHandlers
-import app.snapsync.model.invocation
 import app.snapsync.services.wake.OsCompletions
 import kotlinx.coroutines.launch
 

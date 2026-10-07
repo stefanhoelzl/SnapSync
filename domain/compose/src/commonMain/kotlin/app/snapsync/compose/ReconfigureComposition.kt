@@ -1,7 +1,7 @@
 package app.snapsync.compose
 
-import app.snapsync.model.UnionTrigger
 import app.snapsync.feature.membership.ReconfigureEvent
+import app.snapsync.model.UnionTrigger
 import app.snapsync.model.grantsPhotoAccess
 import kotlinx.coroutines.launch
 

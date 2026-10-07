@@ -49,7 +49,11 @@ class UploadJobDecisionsTest {
     @Test
     fun `every non-succeeded terminal state records FAILED`() {
         for (state in UploadJobState.entries.filter { it != UploadJobState.SUCCEEDED }) {
-            assertEquals(TerminalOutcome.FAILED, terminalDisposition(state, resourceIsLive = true).outcome, "state=$state")
+            assertEquals(
+                TerminalOutcome.FAILED,
+                terminalDisposition(state, resourceIsLive = true).outcome,
+                "state=$state",
+            )
         }
     }
 

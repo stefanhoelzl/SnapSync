@@ -14,6 +14,8 @@ coroutines = "1.11.0"
 sqldelight = "2.4.1"
 kermit = "2.2.0"
 detekt = "1.23.8"
+# The Compose rules detekt runs (`config/detekt/_base.yml`): 0.4.x is the last line built against detekt 1.x.
+compose-rules = "0.4.28"
 dependencyAnalysis = "3.19.2"
 kover = "0.9.11"
 kotlinx-datetime = "0.8.0"
@@ -73,6 +75,9 @@ compose-components-resources = { module = "org.jetbrains.compose.components:comp
 # The custom rules the detekt tiers load (`:tools:detekt-rules`): written against the version the plugin runs.
 detekt-api = { module = "io.gitlab.arturbosch.detekt:detekt-api", version.ref = "detekt" }
 detekt-test = { module = "io.gitlab.arturbosch.detekt:detekt-test", version.ref = "detekt" }
+# The third-party rule sets every detekt task loads beside the project's own: ktlint's formatting, and Compose's rules.
+detekt-formatting = { module = "io.gitlab.arturbosch.detekt:detekt-formatting", version.ref = "detekt" }
+compose-rules-detekt = { module = "io.nlopez.compose.rules:detekt", version.ref = "compose-rules" }
 orbit-core = { module = "org.orbit-mvi:orbit-core", version.ref = "orbit" }
 orbit-test = { module = "org.orbit-mvi:orbit-test", version.ref = "orbit" }
 coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }

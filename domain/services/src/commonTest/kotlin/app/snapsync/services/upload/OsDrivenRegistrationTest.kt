@@ -1,6 +1,5 @@
 package app.snapsync.services.upload
 
-
 import app.snapsync.model.RegistrationAnswer
 import app.snapsync.model.RegistrationState
 import app.snapsync.ports.ExtensionRegistry

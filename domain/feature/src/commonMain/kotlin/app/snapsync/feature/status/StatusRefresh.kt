@@ -1,9 +1,9 @@
 package app.snapsync.feature.status
 
-import app.snapsync.model.runCatchingCancellable
-import app.snapsync.services.config.ConfigService
 import app.snapsync.model.EventConfig
 import app.snapsync.model.SelectionPolicy
+import app.snapsync.model.runCatchingCancellable
+import app.snapsync.services.config.ConfigService
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CancellationException
 

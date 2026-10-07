@@ -1,10 +1,10 @@
 package app.snapsync.engine
 
-import app.snapsync.contracts.LEDGER_CONTRACT_EVENT
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
+import app.snapsync.contracts.LEDGER_CONTRACT_EVENT
 import app.snapsync.contracts.LedgerStoreContract
 import app.snapsync.contracts.LedgerStoreState
 import app.snapsync.contracts.verify

@@ -20,13 +20,13 @@ import kotlinx.serialization.json.jsonPrimitive
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
-import java.nio.file.Files as Nio
 import java.security.MessageDigest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import java.nio.file.Files as Nio
 
 /**
  * The encrypted file format's Kotlin half — [EncryptedFileFormat] framed by [FileCipher] over the real [JcaCrypto] and
@@ -78,7 +78,13 @@ class EncryptedFileFormatTest {
         val hmac = Hmac(JcaCrypto()::hmacSha256)
         assertEquals(
             "3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf34007208d5b887185865",
-            Hkdf.derive(hmac, ByteArray(22) { 0x0b }, "000102030405060708090a0b0c".hex(), "f0f1f2f3f4f5f6f7f8f9".hex(), 42).hex(),
+            Hkdf.derive(
+                hmac,
+                ByteArray(22) { 0x0b },
+                "000102030405060708090a0b0c".hex(),
+                "f0f1f2f3f4f5f6f7f8f9".hex(),
+                42,
+            ).hex(),
             "test case 1",
         )
         assertEquals(
@@ -125,7 +131,12 @@ class EncryptedFileFormatTest {
     fun `the reference file is written to its exact bytes`() {
         val v = vectors.getValue("file").jsonArray.first().jsonObject
         val eventKey = v.str("eventKey").hex()
-        val ad = EncryptedFileFormat.associatedData(v.str("eventId"), v.str("deviceId"), v.str("assetId"), v.str("role"))
+        val ad = EncryptedFileFormat.associatedData(
+            v.str("eventId"),
+            v.str("deviceId"),
+            v.str("assetId"),
+            v.str("role"),
+        )
         val plain = pattern(v.num("plaintextLength")) { it * 13 + 1 }
         val cipher = FileCipher(drawing(v.str("salt").hex(), v.str("noncePrefix").hex()), files)
         cipher.encrypt(eventKey, ad, area, write("plain", plain), "sealed")
@@ -144,10 +155,18 @@ class EncryptedFileFormatTest {
             val plain = pattern(n) { it * 31 + n }
             cipher.encrypt(eventKey, ad, area, write("p$n", plain), "s$n")
             val ours = read("s$n")
-            val opened = tink.newDecryptingStream(ByteArrayInputStream(ours, EncryptedFileFormat.PREFIX_LENGTH, ours.size), ad).readAllBytes()
+            val opened = tink.newDecryptingStream(
+                ByteArrayInputStream(ours, EncryptedFileFormat.PREFIX_LENGTH, ours.size),
+                ad,
+            ).readAllBytes()
             assertContentEquals(plain, opened, "Tink opens $n bytes")
 
-            val tinkWritten = ByteArrayOutputStream().also { out -> tink.newEncryptingStream(out, ad).use { it.write(plain) } }.toByteArray()
+            val tinkWritten = ByteArrayOutputStream().also { out ->
+                tink.newEncryptingStream(
+                    out,
+                    ad,
+                ).use { it.write(plain) }
+            }.toByteArray()
             write("t$n", byteArrayOf(EncryptedFileFormat.VERSION) + cipher.keyIdOf(eventKey) + tinkWritten)
             assertEquals(Opened.Ok, cipher.decrypt(eventKey, ad, area, "t$n", "o$n"), "Tink's $n bytes open")
             assertContentEquals(plain, read("o$n"))
@@ -165,12 +184,22 @@ class EncryptedFileFormatTest {
             write("case", bytes)
             File(dir, "out").delete()
             return cipher.decrypt(key, boundTo, area, "case", "out").also {
-                if (it != Opened.Ok) assertTrue(!File(dir, "out").exists() && !File(dir, "out.part").exists(), "nothing written for $it")
+                if (it != Opened.Ok) {
+                    assertTrue(
+                        !File(dir, "out").exists() && !File(dir, "out.part").exists(),
+                        "nothing written for $it",
+                    )
+                }
             }
         }
-        assertIs<Opened.Damaged>(opens(sealed.copyOf().also { it[sealed.size - 100] = (it[sealed.size - 100] + 1).toByte() }))
+        assertIs<Opened.Damaged>(
+            opens(sealed.copyOf().also { it[sealed.size - 100] = (it[sealed.size - 100] + 1).toByte() }),
+        )
         val boundary = EncryptedFileFormat.HEAD_LENGTH + EncryptedFileFormat.ciphertextSegmentLength(0)
-        assertIs<Opened.Damaged>(opens(sealed.copyOf(boundary)), "cut at a segment boundary: the new last was sealed as not-last")
+        assertIs<Opened.Damaged>(
+            opens(sealed.copyOf(boundary)),
+            "cut at a segment boundary: the new last was sealed as not-last",
+        )
         assertIs<Opened.Damaged>(opens(sealed + byteArrayOf(0)))
         assertIs<Opened.Damaged>(opens(sealed, boundTo = EncryptedFileFormat.associatedData("e", "d", "a", "live")))
         assertEquals(Opened.OtherKey, opens(sealed, key = ByteArray(32)))
@@ -188,9 +217,14 @@ class EncryptedFileFormatTest {
         val seal = cipher.sealedElsewhere(eventKey, ad)
         val head = assertIs<HeadRead.Read>(EncryptedFileFormat.decodeHead(seal.head)).head
         assertContentEquals(cipher.keyIdOf(eventKey), head.keyId)
-        assertContentEquals(EncryptedFileFormat.fileKeyOf(eventKey, head.salt, ad, Hmac(JcaCrypto()::hmacSha256)), seal.fileKey)
+        assertContentEquals(
+            EncryptedFileFormat.fileKeyOf(eventKey, head.salt, ad, Hmac(JcaCrypto()::hmacSha256)),
+            seal.fileKey,
+        )
         assertTrue(!seal.fileKey.contentEquals(eventKey))
-        val again = assertIs<HeadRead.Read>(EncryptedFileFormat.decodeHead(cipher.sealedElsewhere(eventKey, ad).head)).head
+        val again = assertIs<HeadRead.Read>(
+            EncryptedFileFormat.decodeHead(cipher.sealedElsewhere(eventKey, ad).head),
+        ).head
         assertTrue(!again.salt.contentEquals(head.salt), "a fresh salt per file")
     }
 }

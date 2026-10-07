@@ -1,11 +1,11 @@
 package app.snapsync.ui.components
 
 import androidx.compose.runtime.Composable
-import kotlinx.datetime.LocalDateTime
-import kotlinx.datetime.LocalTime
 import app.snapsync.ui.components.resources.Res
 import app.snapsync.ui.components.resources.date_span
 import app.snapsync.ui.components.resources.date_time_span
+import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.LocalTime
 import org.jetbrains.compose.resources.stringResource
 
 /**

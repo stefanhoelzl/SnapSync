@@ -3,12 +3,12 @@ package app.snapsync.ios.upload
 import app.snapsync.compose.DevicePorts
 import app.snapsync.contract.extension.ContractRunningExtensionHost
 import app.snapsync.extension.IosExtensionHost
-import app.snapsync.logging.appMarketingVersion
-import app.snapsync.launchadapters.LaunchAdapters
 import app.snapsync.launchadapters.AdapterFacts
 import app.snapsync.launchadapters.AdapterProcess
+import app.snapsync.launchadapters.LaunchAdapters
 import app.snapsync.launchadapters.chosenExtensionHost
 import app.snapsync.launchadapters.randomDeviceId
+import app.snapsync.logging.appMarketingVersion
 import app.snapsync.ports.ExtensionHost
 
 // A rig extension's adapter set, compiled into `:app:ios:extension` in place of its `src/entries` only under
@@ -31,4 +31,8 @@ internal fun extensionPorts(real: DevicePorts): DevicePorts = launch(real).ports
 private fun launch(real: DevicePorts): LaunchAdapters =
     LaunchAdapters.load(real.files, AdapterProcess.EXTENSION, extensionFacts)
 
-private val extensionFacts = AdapterFacts(osDrivenUpload = true, appVersion = appMarketingVersion(), freshDeviceId = ::randomDeviceId)
+private val extensionFacts = AdapterFacts(
+    osDrivenUpload = true,
+    appVersion = appMarketingVersion(),
+    freshDeviceId = ::randomDeviceId,
+)

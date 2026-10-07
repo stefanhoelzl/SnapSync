@@ -84,7 +84,9 @@ class ChosenEntryDriver(
 
     override fun continueLink(url: String) = by(MockedSystem.LINKS).continueLink(url)
 
-    override fun backgroundTask(identifier: String, done: () -> Unit) = by(MockedSystem.WAKE).backgroundTask(identifier, done)
+    override fun backgroundTask(identifier: String, done: () -> Unit) = by(
+        MockedSystem.WAKE,
+    ).backgroundTask(identifier, done)
 
     override fun backgroundTransfers(identifier: String, done: () -> Unit) =
         by(if (identifier == UPLOAD_TRANSFER_CHANNEL) MockedSystem.UPLOAD_SESSION else MockedSystem.DOWNLOADS)

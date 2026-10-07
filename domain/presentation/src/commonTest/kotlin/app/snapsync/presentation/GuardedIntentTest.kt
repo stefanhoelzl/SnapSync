@@ -4,10 +4,12 @@ import app.snapsync.feature.membership.readmodel.RenameStatus
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.model.EventConfig
 import app.snapsync.model.EventLinkPayload
-import app.snapsync.model.JoinLoad
 import app.snapsync.model.GalleryAccess
+import app.snapsync.model.JoinLoad
+import app.snapsync.model.Layer
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
+import app.snapsync.model.UiState
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.deletesAt
@@ -30,8 +32,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
-import app.snapsync.model.Layer
-import app.snapsync.model.UiState
 
 private const val JOINED = "11111111-1111-4111-8111-111111111111"
 private const val OTHER = "22222222-2222-4222-8222-222222222222"
@@ -101,7 +101,10 @@ class GuardedIntentTest {
                                 rename.value = RenameStatus.Idle
                             },
                         ),
-                        cutoffFormatter = CutoffFormatter(now = { Instant.parse("2026-07-09T12:00:00Z") }, zone = TimeZone.UTC),
+                        cutoffFormatter = CutoffFormatter(
+                            now = { Instant.parse("2026-07-09T12:00:00Z") },
+                            zone = TimeZone.UTC,
+                        ),
                         diagnostics = testDiagnostics(),
                     ),
                 )

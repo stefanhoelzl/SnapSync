@@ -106,7 +106,9 @@ class PlayedOs(private val device: MockDevice, private val mocked: (MockedSystem
         }
         // By the name the app began each under, as `beginBackgroundTask(withName:)` names them to the system.
         if (mocked(MockedSystem.BACKGROUND_TIME)) {
-            putJsonArray("backgroundTimeHolds") { device.backgroundTime.operator.holds.value.forEach { add(JsonPrimitive(it.label)) } }
+            putJsonArray(
+                "backgroundTimeHolds",
+            ) { device.backgroundTime.operator.holds.value.forEach { add(JsonPrimitive(it.label)) } }
         }
         if (mocked(MockedSystem.PUSH)) put("pushRegistrations", device.pushService.operator.registrations)
         if (mocked(MockedSystem.DOWNLOADS)) {
@@ -124,7 +126,10 @@ class PlayedOs(private val device: MockDevice, private val mocked: (MockedSystem
         // Counted over the operator's copy, never the live area: the app writes the disk from its own thread while this
         // request runs on the server's, and iterating the live map died half-way on a concurrent stage or release.
         if (mocked(MockedSystem.FILES)) {
-            put("stagedFiles", device.disk.operator.paths(FileArea.SHARED).count { it.startsWith("$DOWNLOAD_STAGING_DIR/") })
+            put(
+                "stagedFiles",
+                device.disk.operator.paths(FileArea.SHARED).count { it.startsWith("$DOWNLOAD_STAGING_DIR/") },
+            )
         }
     }.toString()
 

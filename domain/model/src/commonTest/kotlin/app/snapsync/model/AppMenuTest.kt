@@ -40,7 +40,11 @@ class AppMenuTest {
             endsAt = eventEnd("2099-12-31T00:00:00Z"),
             deletesAt = deletesAt("2099-12-31T00:00:00Z"),
         )
-        val joined = Layer.Joined(membership = membership, inviteUrl = "$LINK_ORIGIN/join#v=3&d=x", health = SyncHealth.InSync)
+        val joined = Layer.Joined(
+            membership = membership,
+            inviteUrl = "$LINK_ORIGIN/join#v=3&d=x",
+            health = SyncHealth.InSync,
+        )
         val range = ResolvedRange(
             windowStart = LocalDateTime(2026, 7, 6, 0, 0),
             windowEnd = LocalDateTime(2026, 7, 13, 0, 0),
@@ -56,6 +60,11 @@ class AppMenuTest {
         for (layer in offered + joined + joined.copy(closed = true)) assertTrue(layer.offersMenu, "$layer")
         assertFalse(joined.copy(surface = JoinedSurface.Reconfigure(RangeForm(), range)).offersMenu)
         assertFalse(Layer.CreatingEvent.offersMenu)
-        assertFalse(Layer.JoiningEvent(eventId = "E", phase = joinPhase(JoinPhase.Detailed.Step.Committing, details)).offersMenu)
+        assertFalse(
+            Layer.JoiningEvent(
+                eventId = "E",
+                phase = joinPhase(JoinPhase.Detailed.Step.Committing, details),
+            ).offersMenu,
+        )
     }
 }

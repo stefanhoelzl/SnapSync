@@ -3,9 +3,9 @@ package app.snapsync.services.secure
 import app.snapsync.model.SecureSlot
 import app.snapsync.model.SecureStoreRead
 import app.snapsync.model.SecureStoreResolution
+import app.snapsync.model.SecureStoreUnavailable
 import app.snapsync.model.WriteOutcome
 import app.snapsync.ports.SecureStore
-import app.snapsync.model.SecureStoreUnavailable
 
 /**
  * The mint-once-then-read core, shared by every [SecureStore]-backed store and tested in `commonTest`

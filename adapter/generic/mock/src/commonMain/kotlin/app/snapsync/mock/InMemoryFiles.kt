@@ -35,14 +35,22 @@ internal class InMemoryFiles(
         at(area, path) { files ->
             val bytes = files[path] ?: return@at FileResult.NotFound
             val start = minOf(maxOf(offset, 0), bytes.size.toLong()).toInt()
-            FileResult.Ok(bytes.copyOfRange(start, minOf(bytes.size.toLong(), start.toLong() + maxOf(maxBytes, 0)).toInt()))
+            FileResult.Ok(
+                bytes.copyOfRange(start, minOf(bytes.size.toLong(), start.toLong() + maxOf(maxBytes, 0)).toInt()),
+            )
         }
 
     override fun append(area: FileArea, path: String, bytes: ByteArray): FileResult<Unit> =
-        at(area, path) { files -> files[path] = (files[path] ?: ByteArray(0)) + bytes; FileResult.Ok(Unit) }
+        at(area, path) { files ->
+            files[path] = (files[path] ?: ByteArray(0)) + bytes
+            FileResult.Ok(Unit)
+        }
 
     override fun write(area: FileArea, path: String, bytes: ByteArray): FileResult<Unit> =
-        at(area, path) { files -> files[path] = bytes.copyOf(); FileResult.Ok(Unit) }
+        at(area, path) { files ->
+            files[path] = bytes.copyOf()
+            FileResult.Ok(Unit)
+        }
 
     override fun delete(area: FileArea, path: String): FileResult<Unit> =
         at(area, path) { files -> if (files.remove(path) != null) FileResult.Ok(Unit) else FileResult.NotFound }

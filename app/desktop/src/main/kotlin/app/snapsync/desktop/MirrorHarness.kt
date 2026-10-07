@@ -19,29 +19,29 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.snapsync.control.RigClient
+import app.snapsync.model.Layer
 import app.snapsync.model.RangeChoice
+import app.snapsync.model.RangeForm
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.presentation.CutoffFormatter
-import app.snapsync.model.Layer
-import app.snapsync.model.RangeForm
 import app.snapsync.rig.DeviceAdvertisement
 import app.snapsync.rig.RigState
 import app.snapsync.ui.AccessActions
 import app.snapsync.ui.JoinGateActions
 import app.snapsync.ui.JoinedActions
-import app.snapsync.ui.WithdrawalActions
 import app.snapsync.ui.MenuActions
 import app.snapsync.ui.ParticipationActions
 import app.snapsync.ui.StatusActions
 import app.snapsync.ui.StatusScreen
 import app.snapsync.ui.SurfaceActions
 import app.snapsync.ui.SwitchActions
+import app.snapsync.ui.WithdrawalActions
 import app.snapsync.ui.components.RangeChoiceActions
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toInstant
@@ -75,7 +75,9 @@ fun MirrorHarnessRoot(url: String) {
         withContext(Dispatchers.IO) {
             advertisement = runCatchingCancellable { client.device() }.onFailure { note("GET /device failed: $it") }.getOrNull()
             while (true) {
-                state = runCatchingCancellable { client.state() }.onFailure { note("GET /device/state failed: $it") }.getOrNull() ?: state
+                state = runCatchingCancellable {
+                    client.state()
+                }.onFailure { note("GET /device/state failed: $it") }.getOrNull() ?: state
                 delay(POLL_MS)
             }
         }
@@ -92,9 +94,13 @@ fun MirrorHarnessRoot(url: String) {
                     state?.let { StatusScreen(state = it.ui, cutoff = cutoff, actions = actions) }
                         ?: Text("waiting for $url …")
                 }
-                Column(modifier = Modifier.padding(start = 16.dp).fillMaxHeight().verticalScroll(rememberScrollState())) {
+                Column(
+                    modifier = Modifier.padding(start = 16.dp).fillMaxHeight().verticalScroll(rememberScrollState()),
+                ) {
                     Text("Host: ${advertisement?.host ?: "?"} — $url", style = MaterialTheme.typography.titleMedium)
-                    Text("Honoured: ${advertisement?.honoured?.size ?: 0}, refused: ${advertisement?.refused?.size ?: 0}")
+                    Text(
+                        "Honoured: ${advertisement?.honoured?.size ?: 0}, refused: ${advertisement?.refused?.size ?: 0}",
+                    )
                     Text("Log", style = MaterialTheme.typography.titleSmall)
                     log.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
                     Text("State", style = MaterialTheme.typography.titleSmall)
@@ -116,7 +122,9 @@ private fun mirrorActions(
     note: (String) -> Unit,
 ): StatusActions {
     fun post(name: String, vararg params: Pair<String, String>): () -> Unit = {
-        scope.launch(Dispatchers.IO) { note("/user/$name → ${runCatchingCancellable { client.user(name, mapOf(*params)) }.getOrElse { it }}") }
+        scope.launch(Dispatchers.IO) {
+            note("/user/$name → ${runCatchingCancellable { client.user(name, mapOf(*params)) }.getOrElse { it }}")
+        }
     }
     fun inert(what: String): () -> Unit = { note("$what: no /user intent — the surface lives in the host's container") }
     val form: () -> RangeForm? = { (latest()?.ui?.layer as? Layer.JoiningEvent)?.form }
@@ -128,7 +136,9 @@ private fun mirrorActions(
         else -> null
     }
     fun setDirection(share: Boolean, receive: Boolean) {
-        direction(share, receive)?.let { post("setRange", "direction" to it)() } ?: note("neither direction: nothing to join as")
+        direction(share, receive)?.let {
+            post("setRange", "direction" to it)()
+        } ?: note("neither direction: nothing to join as")
     }
     return StatusActions(
         join = JoinGateActions(
@@ -142,7 +152,10 @@ private fun mirrorActions(
             onShareInvite = inert("share invite"),
             onQrOpen = inert("show QR code"),
             onQrDismiss = inert("dismiss QR code"),
-            withdrawal = WithdrawalActions(onStopSharing = inert("stop sharing"), onKeepSharing = inert("keep sharing")),
+            withdrawal = WithdrawalActions(
+                onStopSharing = inert("stop sharing"),
+                onKeepSharing = inert("keep sharing"),
+            ),
             onRenameEvent = { event, name -> post("rename", "event" to event, "name" to name)() },
             onRenameStatusConsumed = post("renameStatusConsumed"),
         ),

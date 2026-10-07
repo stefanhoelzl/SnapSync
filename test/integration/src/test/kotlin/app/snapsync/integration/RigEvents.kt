@@ -1,30 +1,10 @@
 package app.snapsync.integration
 
-import app.snapsync.control.Reply
-import app.snapsync.control.RigClient
-import app.snapsync.control.done
 import app.snapsync.model.EventLinkPayload
-import app.snapsync.model.encodeEventUrl
 import app.snapsync.model.JoinPhase
 import app.snapsync.model.Layer
-import app.snapsync.model.SyncHealth
+import app.snapsync.model.encodeEventUrl
 import app.snapsync.rig.AssetView
-import app.snapsync.rig.GalleryView
-import app.snapsync.rig.JvmRigHost
-import app.snapsync.rig.RigState
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonNull
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
-import kotlin.test.assertTrue
-import kotlin.test.fail
-import kotlin.time.Duration
-import kotlin.time.Duration.Companion.milliseconds
-import kotlin.time.Duration.Companion.seconds
 
 // The protocol calls that make up a person's events and photos — joining, creating, leaving, the library.
 
@@ -69,7 +49,11 @@ suspend fun Rig.createAndJoin(
 }
 
 /** An event that exists on the backend and that this device has not joined: created, then the gate abandoned. */
-suspend fun Rig.registerEvent(name: String = Rig.EVENT_NAME, startsAt: String = Rig.WINDOW_START, endsAt: String = Rig.WINDOW_END): String {
+suspend fun Rig.registerEvent(
+    name: String = Rig.EVENT_NAME,
+    startsAt: String = Rig.WINDOW_START,
+    endsAt: String = Rig.WINDOW_END,
+): String {
     val event = create(name, startsAt, endsAt)
     user("cancelJoin")
     awaitState { it.ui.layer is Layer.CreateEvent }
@@ -88,7 +72,9 @@ fun Rig.inviteLink(
     minPhotoDate: String? = null,
     direction: String? = null,
     saveToAlbum: Boolean? = null,
-): String = encodeEventUrl(EventLinkPayload(eventId, autoJoin, minPhotoDate, direction = direction, saveToAlbum = saveToAlbum))
+): String = encodeEventUrl(
+    EventLinkPayload(eventId, autoJoin, minPhotoDate, direction = direction, saveToAlbum = saveToAlbum),
+)
 
 suspend fun Rig.leave() {
     user("leave")

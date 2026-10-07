@@ -2,26 +2,27 @@
 
 package app.snapsync.feature.status
 
+import app.snapsync.feature.support.galleryAccess
 import app.snapsync.model.AssetId
+import app.snapsync.model.GalleryAccess
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
-
-import app.snapsync.feature.support.galleryAccess
-import app.snapsync.model.GalleryAccess
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.test.runCurrent
-import kotlinx.coroutines.test.runTest
 
 class LedgerBackedSyncStatusSourceTest {
 
     private val ledgerCounts = MutableLedgerCountsSource()
+
     // The photo-permission port's cell, read through the real grant service.
     private val grant = MutableStateFlow(GalleryAccess.GRANTED)
     private val permission = galleryAccess(grant)
+
     // The own-device admitted set the gallery counted (`OwnDeviceGalleryStatusSource.admitted`) — the test owns it.
     private val galleryCell = MutableStateFlow<Set<AssetId>?>(emptySet())
 
@@ -125,7 +126,10 @@ class LedgerBackedSyncStatusSourceTest {
     fun `first Ready reflects completed and pending clamped to remaining`() = runTest {
         // Every remaining admitted photo in flight, plus 1000 not-done rows the membership does not admit:
         // completed 2 of 5 → remaining 3, and only the admitted 3 count as pending.
-        ledgerCounts.set(done = setOf(AssetId("a1"), AssetId("a2")), pending = setOf(AssetId("a3"), AssetId("a4"), AssetId("a5")) + ids("x", 1000))
+        ledgerCounts.set(
+            done = setOf(AssetId("a1"), AssetId("a2")),
+            pending = setOf(AssetId("a3"), AssetId("a4"), AssetId("a5")) + ids("x", 1000),
+        )
         galleryCell.value = ids("a", 5)
 
         val source = source(backgroundScope)

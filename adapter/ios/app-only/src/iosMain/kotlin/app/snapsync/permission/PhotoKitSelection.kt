@@ -1,12 +1,12 @@
 package app.snapsync.permission
 
-import app.snapsync.model.ConfinedTo
 import app.snapsync.gallery.photoKitRawAssets
 import app.snapsync.ios.qos.photoKitReadLane
-import kotlinx.coroutines.withContext
+import app.snapsync.model.ConfinedTo
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.SelectionSnapshot
 import app.snapsync.selection.SelectionPlatform
+import kotlinx.coroutines.withContext
 import platform.Foundation.NSSortDescriptor
 import platform.Photos.PHAsset
 import platform.Photos.PHChange

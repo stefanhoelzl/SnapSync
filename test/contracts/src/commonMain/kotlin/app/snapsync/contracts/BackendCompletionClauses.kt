@@ -17,7 +17,6 @@ import kotlin.test.assertTrue
  * for size only. The backend's sweep — completing an event — has no route, so no clause here reaches it.
  */
 internal fun ClauseList<BackendState, EdgeSubject<Backend>>.completionClauses() {
-
     clause("DETAILS_AN_OPEN_EVENT_IS_NEITHER_CLOSED_NOR_COMPLETED", BackendState.MEMBER) { s ->
         val meta = assertOk(s.port.getEvent(null, s.seeded.eventId))
         assertNull(meta.closedAt)
@@ -33,8 +32,14 @@ internal fun ClauseList<BackendState, EdgeSubject<Backend>>.completionClauses() 
         assertEquals(MemberCounts(active = 1, settled = 1), meta.members)
     }
 
-    clause("LEAVE_THE_LAST_UNSETTLED_MEMBER_LEAVING_CLOSES_THE_EVENT", BackendState.ENDED_BESIDE_A_SETTLED_MEMBER) { s ->
-        assertNull(assertOk(s.port.getEvent(null, s.seeded.eventId)).closedAt, "the event waits for the unsettled member")
+    clause(
+        "LEAVE_THE_LAST_UNSETTLED_MEMBER_LEAVING_CLOSES_THE_EVENT",
+        BackendState.ENDED_BESIDE_A_SETTLED_MEMBER,
+    ) { s ->
+        assertNull(
+            assertOk(s.port.getEvent(null, s.seeded.eventId)).closedAt,
+            "the event waits for the unsettled member",
+        )
         assertOk(s.port.leaveEvent(s.token, s.seeded.eventId, s.seeded.deviceId, received = false))
         val meta = assertOk(s.port.getEvent(null, s.seeded.eventId))
         assertNotNull(meta.closedAt, "every member still in the event has settled")
@@ -65,20 +70,37 @@ internal fun ClauseList<BackendState, EdgeSubject<Backend>>.completionClauses() 
     clause("MANIFEST_A_CHANGED_SET_TO_A_CLOSED_EVENT_IS_REFUSED_AS_CLOSED", BackendState.ENDED_MEMBER) { s ->
         settle(s)
         val refused = assertIs<Reply.Refused>(
-            s.port.publishManifest(s.token, s.seeded.eventId, s.seeded.deviceId, manifest(s.seeded.deviceId).withFinal(true)),
+            s.port.publishManifest(
+                s.token,
+                s.seeded.eventId,
+                s.seeded.deviceId,
+                manifest(s.seeded.deviceId).withFinal(true),
+            ),
         )
         assertEquals(CONFLICT, refused.status)
         assertTrue("\"closed\"" in refused.body, "the refusal names the close: ${refused.body}")
         // The set it already declared is answered, and changes nothing.
         assertOk(
-            s.port.publishManifest(s.token, s.seeded.eventId, s.seeded.deviceId, DeviceManifest(s.seeded.deviceId, emptyList(), version = 0).withFinal(true)),
+            s.port.publishManifest(
+                s.token,
+                s.seeded.eventId,
+                s.seeded.deviceId,
+                DeviceManifest(s.seeded.deviceId, emptyList(), version = 0).withFinal(true),
+            ),
         )
     }
 }
 
 /** The seeded member declares an EMPTY share settled — the one member, so it closes the ended event. */
 private suspend fun settle(s: EdgeSubject<Backend>) {
-    assertOk(s.port.publishManifest(s.token, s.seeded.eventId, s.seeded.deviceId, DeviceManifest(s.seeded.deviceId, emptyList(), version = 0).withFinal(true)))
+    assertOk(
+        s.port.publishManifest(
+            s.token,
+            s.seeded.eventId,
+            s.seeded.deviceId,
+            DeviceManifest(s.seeded.deviceId, emptyList(), version = 0).withFinal(true),
+        ),
+    )
 }
 
 internal const val GONE = 410

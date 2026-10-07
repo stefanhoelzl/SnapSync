@@ -4,7 +4,6 @@ import app.snapsync.model.AssetId
 import app.snapsync.model.AssetPresence
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.Resource
-import app.snapsync.services.gallery.ImportedAssetPresence
 import kotlinx.coroutines.flow.StateFlow
 
 /**

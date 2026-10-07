@@ -4,7 +4,6 @@ import app.snapsync.model.utcLogStamp
 import app.snapsync.objc.checkedObjC
 import app.snapsync.ports.LogSink
 import co.touchlab.kermit.Severity
-import kotlin.time.Clock
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.alloc
@@ -21,6 +20,7 @@ import platform.posix.fstat
 import platform.posix.open
 import platform.posix.stat
 import platform.posix.write
+import kotlin.time.Clock
 
 /**
  * The device-log FILE [LogSink]: appends every line to the file at [path] — the reliable, verbatim

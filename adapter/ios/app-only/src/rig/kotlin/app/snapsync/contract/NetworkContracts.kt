@@ -79,7 +79,10 @@ private fun String.parseReading(): PathReading {
  * FIRST path the monitor reported — the one a clause reads — and the cancel. Later paths reach the adapter but are not
  * recorded: no clause reads past the first, and a path that changes mid-clause is not a state a clause is entered in.
  */
-internal class RecordingNetworkPathApi(private val real: NetworkPathApi, private val recorder: Recorder) : NetworkPathApi {
+internal class RecordingNetworkPathApi(
+    private val real: NetworkPathApi,
+    private val recorder: Recorder,
+) : NetworkPathApi {
     override fun start(onPath: (PathReading) -> Unit): () -> Unit {
         var first = true
         val stop = real.start { reading ->
@@ -161,8 +164,17 @@ internal class DeviceNetworkOfflineBinding(private val recorder: Recorder) : Bin
  * The recording monitor for a clause in [state], when it is the [held] condition the phone was put in; any other state
  * is unreachable in this run, and opens no block.
  */
-private fun recordingIn(state: NetworkState, held: NetworkState, recorder: Recorder, clauseId: String): Entered<NetworkMonitor> {
-    if (state != held) return Entered.Unreachable("this run records the phone $held; $state is another run's, or no host's")
+private fun recordingIn(
+    state: NetworkState,
+    held: NetworkState,
+    recorder: Recorder,
+    clauseId: String,
+): Entered<NetworkMonitor> {
+    if (state != held) {
+        return Entered.Unreachable(
+            "this run records the phone $held; $state is another run's, or no host's",
+        )
+    }
     recorder.open(clauseId)
     return Entered.Ready(IosNetworkMonitor(RecordingNetworkPathApi(SystemNetworkPathApi, recorder)))
 }
@@ -177,7 +189,8 @@ internal fun recordNetwork(params: Map<String, String>): String = when (params["
     "online" -> recordAppOnDevice(NetworkMonitorContract, null, "ONLINE") { DeviceNetworkOnlineBinding(it) }
     "offline" -> recordAppOnDevice(NetworkMonitorContract, null, "OFFLINE") { DeviceNetworkOfflineBinding(it) }
     "restricted" -> recordAppOnDevice(NetworkMonitorContract, null, "RESTRICTED") { DeviceNetworkRestrictedBinding(it) }
-    else -> CONTRACT_REFUSED +
-        "state the phone's condition: ?network=online (Wi-Fi joined), ?network=restricted (a personal hotspot, or Low " +
-        "Data Mode on its Wi-Fi) or ?network=offline (airplane mode, Wi-Fi off).\n"
+    else ->
+        CONTRACT_REFUSED +
+            "state the phone's condition: ?network=online (Wi-Fi joined), ?network=restricted (a personal hotspot, or Low " +
+            "Data Mode on its Wi-Fi) or ?network=offline (airplane mode, Wi-Fi off).\n"
 }

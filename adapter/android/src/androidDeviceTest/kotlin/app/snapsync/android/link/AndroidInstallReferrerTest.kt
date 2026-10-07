@@ -22,7 +22,9 @@ import kotlin.test.assertTrue
 class AndroidInstallReferrerTest {
     private val invite = encodeEventUrl(EventLinkPayload(eventId = "11111111-1111-4111-8111-111111111111"))
     private val delivered = mutableListOf<LinkDelivery>()
-    private val links = AndroidLinks(Logger.withTag("test")).apply { listen(LinkHandlers(onLink = { delivered += it })) }
+    private val links = AndroidLinks(
+        Logger.withTag("test"),
+    ).apply { listen(LinkHandlers(onLink = { delivered += it })) }
     private lateinit var record: SharedPreferences
 
     @BeforeTest
@@ -38,7 +40,10 @@ class AndroidInstallReferrerTest {
 
     /** A fresh reader — one process start — over the same record, answering [answer] and counting the asks. */
     private fun start(answer: ReferrerAnswer, asks: MutableList<Unit> = mutableListOf()) =
-        AndroidInstallReferrer(record, { asks += Unit; it(answer) }, links, Logger.withTag("test")).deliverOnce()
+        AndroidInstallReferrer(record, {
+            asks += Unit
+            it(answer)
+        }, links, Logger.withTag("test")).deliverOnce()
 
     @Test
     fun `an invite is delivered as its event link once`() {
@@ -48,7 +53,11 @@ class AndroidInstallReferrerTest {
 
         val asks = mutableListOf<Unit>()
         start(ReferrerAnswer.Referrer(invite.substringAfter('#')), asks)
-        assertEquals(1, delivered.size, "Play answers the same referrer for 90 days — the second start delivers nothing")
+        assertEquals(
+            1,
+            delivered.size,
+            "Play answers the same referrer for 90 days — the second start delivers nothing",
+        )
         assertTrue(asks.isEmpty(), "a handled installation does not even ask")
     }
 

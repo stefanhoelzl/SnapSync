@@ -1,7 +1,6 @@
 package app.snapsync.engine
 
-import app.snapsync.model.AssetId
-import app.snapsync.services.ledger.LedgerService
+import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.Entered
@@ -10,20 +9,20 @@ import app.snapsync.contracts.LEDGER_CONTRACT_EVENT
 import app.snapsync.contracts.LedgerStoreContract
 import app.snapsync.contracts.LedgerStoreState
 import app.snapsync.contracts.verify
+import app.snapsync.databases.freshJdbcDatabases
+import app.snapsync.databases.opened
+import app.snapsync.model.AssetId
 import app.snapsync.model.LedgerAggregates
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
 import app.snapsync.model.TerminalOutcome
-
-import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
-import app.snapsync.databases.freshJdbcDatabases
-import app.snapsync.databases.opened
+import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.ledger.db.LedgerDatabase
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import kotlinx.coroutines.test.runTest
 
 class LedgerServiceTest {
 

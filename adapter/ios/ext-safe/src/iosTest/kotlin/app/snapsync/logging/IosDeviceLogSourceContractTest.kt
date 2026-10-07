@@ -42,7 +42,10 @@ class IosDeviceLogSourceContractTest {
                 when (state) {
                     DeviceLogSourceState.NO_LOG -> Unit
                     DeviceLogSourceState.EMPTY_LOG -> writeTextFile(path, "")
-                    DeviceLogSourceState.HOLDING -> writeTextFile(path, DeviceLogSourceContract.seedLog(process, clauseId))
+                    DeviceLogSourceState.HOLDING -> writeTextFile(
+                        path,
+                        DeviceLogSourceContract.seedLog(process, clauseId),
+                    )
                     DeviceLogSourceState.ROLLED_ONLY ->
                         writeTextFile("$path.1", DeviceLogSourceContract.seedLog(process, clauseId))
                 }

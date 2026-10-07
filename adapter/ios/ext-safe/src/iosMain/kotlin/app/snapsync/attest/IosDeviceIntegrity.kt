@@ -2,11 +2,11 @@
 
 package app.snapsync.attest
 
+import app.snapsync.model.Proof
+import app.snapsync.model.ProofFormat
 import app.snapsync.objc.ObjCFailure
 import app.snapsync.objc.objcBoundary
 import app.snapsync.objc.objcCallback
-import app.snapsync.model.Proof
-import app.snapsync.model.ProofFormat
 import app.snapsync.ports.DeviceIntegrity
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -20,7 +20,6 @@ import platform.Foundation.NSData
 import platform.Foundation.NSError
 import platform.Foundation.create
 import platform.posix.memcpy
-
 
 /**
  * The real [DeviceIntegrity], over Apple's `DCAppAttestService`: a fresh proof is `generateKey` then `attestKey`

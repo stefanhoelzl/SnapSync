@@ -32,9 +32,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.unit.Dp
 import app.snapsync.ui.components.resources.Res
 import app.snapsync.ui.components.resources.menu
 import org.jetbrains.compose.resources.stringResource

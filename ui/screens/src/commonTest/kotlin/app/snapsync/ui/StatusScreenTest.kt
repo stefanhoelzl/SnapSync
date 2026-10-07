@@ -2,100 +2,94 @@
 
 package app.snapsync.ui
 
-import androidx.compose.ui.semantics.SemanticsActions
-import app.snapsync.model.ScreenMessage
-import app.snapsync.model.NetworkNotice
-import app.snapsync.model.AlbumKind
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.Modifier
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Box
-import androidx.compose.ui.test.assertHasNoClickAction
-import androidx.compose.ui.test.assertIsNotDisplayed
-import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertIsFocused
-import androidx.compose.ui.test.assertHasClickAction
-import app.snapsync.model.CreateDraftSession
-import app.snapsync.model.eventEnd
-import app.snapsync.model.StoreKind
-import app.snapsync.model.StoreLink
-import app.snapsync.model.deletesAt
-import app.snapsync.model.captureCutoff
-import app.snapsync.model.captureCeiling
-import app.snapsync.model.CaptureCutoff
-import app.snapsync.model.CaptureCeiling
-import app.snapsync.model.eventStart
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.ui.test.hasContentDescription
-import androidx.compose.ui.test.hasAnyAncestor
-import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.ComposeUiTest
+import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.semantics.SemanticsProperties
-import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.PixelMap
 import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
-import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.test.assert
-import androidx.compose.ui.test.captureToImage
-import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.assertHasNoClickAction
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
-import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.click
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasSetTextAction
-import androidx.compose.ui.test.onNodeWithContentDescription
-import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isDialog
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performFirstLinkClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
-import app.snapsync.model.GalleryAccess
-import app.snapsync.model.Direction
-import app.snapsync.model.EventConfig
-import app.snapsync.ui.components.LocalReduceMotion
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.v2.runComposeUiTest
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.unit.dp
+import app.snapsync.model.AlbumKind
 import app.snapsync.model.Arrow
-import app.snapsync.model.RangeForm
-import app.snapsync.model.ResolvedRange
+import app.snapsync.model.CaptureCeiling
+import app.snapsync.model.CaptureCutoff
+import app.snapsync.model.CreateDraftSession
+import app.snapsync.model.DeletesAt
+import app.snapsync.model.Direction
+import app.snapsync.model.DirectionCount
+import app.snapsync.model.EventConfig
+import app.snapsync.model.EventDetails
+import app.snapsync.model.EventEnd
+import app.snapsync.model.EventStart
+import app.snapsync.model.EventTiming
+import app.snapsync.model.GalleryAccess
+import app.snapsync.model.JoinPhase
 import app.snapsync.model.JoinedSurface
-import app.snapsync.model.RangeChoice
-import app.snapsync.model.Overlays
-import app.snapsync.model.RenameState
 import app.snapsync.model.Layer
 import app.snapsync.model.MemberCounts
-import app.snapsync.model.DirectionCount
-import app.snapsync.model.EventTiming
-import app.snapsync.model.SyncCounts
-import app.snapsync.model.TimeLeft
-import app.snapsync.presentation.CutoffFormatter
-import app.snapsync.model.EventDetails
-import app.snapsync.model.EventStart
-import app.snapsync.model.EventEnd
-import app.snapsync.model.DeletesAt
-import app.snapsync.model.JoinPhase
+import app.snapsync.model.NetworkNotice
+import app.snapsync.model.Overlays
 import app.snapsync.model.PendingSwitch
-import app.snapsync.feature.membership.readmodel.RenameFailureReason
-import app.snapsync.feature.membership.readmodel.RenameStatus
+import app.snapsync.model.RangeChoice
+import app.snapsync.model.RangeForm
+import app.snapsync.model.RenameState
+import app.snapsync.model.ResolvedRange
+import app.snapsync.model.ScreenMessage
+import app.snapsync.model.StoreKind
+import app.snapsync.model.StoreLink
+import app.snapsync.model.SyncCounts
 import app.snapsync.model.SyncHealth
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
+import app.snapsync.model.TimeLeft
 import app.snapsync.model.UiState
-import kotlin.time.Clock
-import kotlin.time.Instant
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlinx.datetime.LocalDateTime
-import kotlinx.datetime.TimeZone
-import app.snapsync.ui.JoinedActions
-import app.snapsync.ui.AccessActions
-import app.snapsync.ui.resources.Res
-import app.snapsync.ui.resources.duration_minutes_short
-import app.snapsync.ui.components.resources.Res as ComponentRes
+import app.snapsync.model.captureCeiling
+import app.snapsync.model.captureCutoff
+import app.snapsync.model.deletesAt
+import app.snapsync.model.eventEnd
+import app.snapsync.model.eventStart
+import app.snapsync.presentation.CutoffFormatter
+import app.snapsync.ui.components.LocalReduceMotion
 import app.snapsync.ui.components.resources.calendar_next_month
+import app.snapsync.ui.components.resources.cannot_verify_detail
+import app.snapsync.ui.components.resources.cannot_verify_title
+import app.snapsync.ui.components.resources.cannot_verify_title_modified
+import app.snapsync.ui.components.resources.cannot_verify_title_not_genuine
+import app.snapsync.ui.components.resources.cannot_verify_title_unverifiable
 import app.snapsync.ui.components.resources.date_range_today
 import app.snapsync.ui.components.resources.network_blocked
 import app.snapsync.ui.components.resources.network_offline
@@ -106,11 +100,6 @@ import app.snapsync.ui.components.resources.status_allow_access_settings
 import app.snapsync.ui.components.resources.status_in_sync
 import app.snapsync.ui.components.resources.status_inactive
 import app.snapsync.ui.components.resources.status_not_started
-import app.snapsync.ui.components.resources.cannot_verify_detail
-import app.snapsync.ui.components.resources.cannot_verify_title_not_genuine
-import app.snapsync.ui.components.resources.cannot_verify_title_unverifiable
-import app.snapsync.ui.components.resources.cannot_verify_title_modified
-import app.snapsync.ui.components.resources.cannot_verify_title
 import app.snapsync.ui.components.resources.status_sync_ongoing
 import app.snapsync.ui.components.resources.status_sync_pending
 import app.snapsync.ui.components.resources.status_waiting_wifi
@@ -118,6 +107,8 @@ import app.snapsync.ui.components.resources.wheel_end_hour
 import app.snapsync.ui.components.resources.wheel_end_minute
 import app.snapsync.ui.components.resources.wheel_start_hour
 import app.snapsync.ui.components.resources.wheel_start_minute
+import app.snapsync.ui.resources.Res
+import app.snapsync.ui.resources.album_toggle
 import app.snapsync.ui.resources.allow_full_access
 import app.snapsync.ui.resources.cancel
 import app.snapsync.ui.resources.choose_more_photos
@@ -138,6 +129,26 @@ import app.snapsync.ui.resources.create_title
 import app.snapsync.ui.resources.creating
 import app.snapsync.ui.resources.duration_days
 import app.snapsync.ui.resources.duration_hours
+import app.snapsync.ui.resources.duration_minutes_short
+import app.snapsync.ui.resources.explain_access_link
+import app.snapsync.ui.resources.explain_hint_caption
+import app.snapsync.ui.resources.explain_hint_title
+import app.snapsync.ui.resources.explain_receive_album
+import app.snapsync.ui.resources.explain_receive_blocked_caption
+import app.snapsync.ui.resources.explain_receive_blocked_title
+import app.snapsync.ui.resources.explain_receive_no_album
+import app.snapsync.ui.resources.explain_receive_off_caption
+import app.snapsync.ui.resources.explain_receive_off_title
+import app.snapsync.ui.resources.explain_receive_title
+import app.snapsync.ui.resources.explain_settings_link
+import app.snapsync.ui.resources.explain_share_blocked_caption
+import app.snapsync.ui.resources.explain_share_blocked_title
+import app.snapsync.ui.resources.explain_share_caption
+import app.snapsync.ui.resources.explain_share_limited_caption
+import app.snapsync.ui.resources.explain_share_limited_title
+import app.snapsync.ui.resources.explain_share_off_caption
+import app.snapsync.ui.resources.explain_share_off_title
+import app.snapsync.ui.resources.explain_share_title
 import app.snapsync.ui.resources.footer_settings
 import app.snapsync.ui.resources.invite_caption
 import app.snapsync.ui.resources.joined_statement
@@ -149,25 +160,21 @@ import app.snapsync.ui.resources.message_create_failed
 import app.snapsync.ui.resources.message_invalid_link
 import app.snapsync.ui.resources.message_rename_failed
 import app.snapsync.ui.resources.message_rename_name_refused
+import app.snapsync.ui.resources.mobile_data_toggle
+import app.snapsync.ui.resources.qr_sheet_title
 import app.snapsync.ui.resources.range_custom
 import app.snapsync.ui.resources.range_whole_event
+import app.snapsync.ui.resources.receive_toggle
 import app.snapsync.ui.resources.rename_event
 import app.snapsync.ui.resources.save
 import app.snapsync.ui.resources.settings_save_failed
-import app.snapsync.ui.resources.qr_sheet_title
 import app.snapsync.ui.resources.share_invite
-import app.snapsync.ui.resources.show_qr
 import app.snapsync.ui.resources.share_toggle
-import androidx.compose.ui.test.performTouchInput
-import androidx.compose.ui.test.click
-import androidx.compose.ui.geometry.Offset
-import app.snapsync.ui.resources.receive_toggle
-import app.snapsync.ui.resources.album_toggle
-import app.snapsync.ui.resources.mobile_data_toggle
-import app.snapsync.ui.resources.stop_sharing_title
-import app.snapsync.ui.resources.stop_sharing_keep
-import app.snapsync.ui.resources.stop_sharing_confirm
+import app.snapsync.ui.resources.show_qr
 import app.snapsync.ui.resources.stop_sharing_body
+import app.snapsync.ui.resources.stop_sharing_confirm
+import app.snapsync.ui.resources.stop_sharing_keep
+import app.snapsync.ui.resources.stop_sharing_title
 import app.snapsync.ui.resources.store_app_store
 import app.snapsync.ui.resources.store_google_play
 import app.snapsync.ui.resources.timing_ended
@@ -177,29 +184,16 @@ import app.snapsync.ui.resources.update_detail
 import app.snapsync.ui.resources.update_detail_version
 import app.snapsync.ui.resources.update_eyebrow
 import app.snapsync.ui.resources.waiting_members
-import androidx.compose.ui.test.performFirstLinkClick
-import androidx.compose.ui.test.getUnclippedBoundsInRoot
-import androidx.compose.foundation.layout.requiredSize
+import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.TimeZone
 import org.jetbrains.compose.resources.StringResource
-import app.snapsync.ui.resources.explain_share_title
-import app.snapsync.ui.resources.explain_share_caption
-import app.snapsync.ui.resources.explain_receive_title
-import app.snapsync.ui.resources.explain_receive_album
-import app.snapsync.ui.resources.explain_hint_title
-import app.snapsync.ui.resources.explain_hint_caption
-import app.snapsync.ui.resources.explain_receive_no_album
-import app.snapsync.ui.resources.explain_share_off_title
-import app.snapsync.ui.resources.explain_share_off_caption
-import app.snapsync.ui.resources.explain_settings_link
-import app.snapsync.ui.resources.explain_receive_off_title
-import app.snapsync.ui.resources.explain_receive_off_caption
-import app.snapsync.ui.resources.explain_share_blocked_title
-import app.snapsync.ui.resources.explain_receive_blocked_title
-import app.snapsync.ui.resources.explain_share_blocked_caption
-import app.snapsync.ui.resources.explain_access_link
-import app.snapsync.ui.resources.explain_receive_blocked_caption
-import app.snapsync.ui.resources.explain_share_limited_title
-import app.snapsync.ui.resources.explain_share_limited_caption
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+import kotlin.time.Clock
+import kotlin.time.Instant
+import app.snapsync.ui.components.resources.Res as ComponentRes
 
 // A representative invite link — any string renders a QR; the encoding is pinned in capability:config.
 private const val SAMPLE_INVITE = "https://snapsync.stho.net/join#v=3&d=eyJldmVudElkIjoiMSJ9"
@@ -243,7 +237,12 @@ private fun reconfiguring(
         membership = membership,
         inviteUrl = SAMPLE_INVITE,
         health = SyncHealth.InSync,
-        surface = JoinedSurface.Reconfigure(form, reconfigureResolved(membership, form), saveFailed, askingToStopSharing),
+        surface = JoinedSurface.Reconfigure(
+            form,
+            reconfigureResolved(membership, form),
+            saveFailed,
+            askingToStopSharing,
+        ),
     ),
 )
 
@@ -326,8 +325,14 @@ private fun fixedCutoff() = CutoffFormatter(
 
 /** The status screen on a create layer, with the wheels snapping instantly so the scene can idle. */
 @Composable
-private fun CreateScreen(state: UiState, cutoff: CutoffFormatter = fixedCutoff(), actions: StatusActions = testActions()) =
-    CompositionLocalProvider(LocalReduceMotion provides true) { TestStatusScreen(state, cutoff = cutoff, actions = actions) }
+private fun CreateScreen(
+    state: UiState,
+    cutoff: CutoffFormatter = fixedCutoff(),
+    actions: StatusActions = testActions(),
+) =
+    CompositionLocalProvider(
+        LocalReduceMotion provides true,
+    ) { TestStatusScreen(state, cutoff = cutoff, actions = actions) }
 
 /**
  * Set the end time to [row]:00 — the Until hour by tapping a row next to its reading line (the start's hour,
@@ -338,9 +343,15 @@ internal fun ComposeUiTest.setUntilHour(row: String) {
     // The wheels sit below the calendar, under the fold of a test window: scroll the FORM (the wheel's own
     // closest scroll parent) so the wheel is in view, then tap the row.
     onNodeWithContentDescription(str(ComponentRes.string.wheel_end_hour), useUnmergedTree = true).performScrollTo()
-    onNode(hasText(row) and hasAnyAncestor(hasContentDescription(str(ComponentRes.string.wheel_end_hour))), useUnmergedTree = true).performClick()
+    onNode(
+        hasText(row) and hasAnyAncestor(hasContentDescription(str(ComponentRes.string.wheel_end_hour))),
+        useUnmergedTree = true,
+    ).performClick()
     waitForIdle()
-    onNode(hasText("--") and hasAnyAncestor(hasContentDescription(str(ComponentRes.string.wheel_end_minute))), useUnmergedTree = true).performClick()
+    onNode(
+        hasText("--") and hasAnyAncestor(hasContentDescription(str(ComponentRes.string.wheel_end_minute))),
+        useUnmergedTree = true,
+    ).performClick()
     waitForIdle()
 }
 
@@ -362,7 +373,9 @@ class StatusScreenTest {
         var opened: String? = null
         setContent {
             TestStatusScreen(
-                UiState(Layer.UpdateRequired(minimumVersion = "0.4", store = StoreLink(STORE_URL, StoreKind.APP_STORE))),
+                UiState(
+                    Layer.UpdateRequired(minimumVersion = "0.4", store = StoreLink(STORE_URL, StoreKind.APP_STORE)),
+                ),
                 cutoff = fixedCutoff(),
                 actions = testActions(onOpenLink = { opened = it }),
             )
@@ -394,7 +407,9 @@ class StatusScreenTest {
         var opened: String? = null
         setContent {
             TestStatusScreen(
-                UiState(Layer.UpdateRequired(minimumVersion = "0.4", store = StoreLink(PLAY_URL, StoreKind.GOOGLE_PLAY))),
+                UiState(
+                    Layer.UpdateRequired(minimumVersion = "0.4", store = StoreLink(PLAY_URL, StoreKind.GOOGLE_PLAY)),
+                ),
                 cutoff = fixedCutoff(),
                 actions = testActions(onOpenLink = { opened = it }),
             )
@@ -432,7 +447,9 @@ class StatusScreenTest {
             )
         }
         // Time is said once, on the dates line; the status line no longer restates the start.
-        onNodeWithText("Mon 6 Jul – Fri 10 Jul" + " · " + str(Res.string.timing_starts_in, plural(Res.plurals.duration_days, 2, 2))).assertExists()
+        onNodeWithText(
+            "Mon 6 Jul – Fri 10 Jul" + " · " + str(Res.string.timing_starts_in, plural(Res.plurals.duration_days, 2, 2)),
+        ).assertExists()
         onNodeWithText(str(ComponentRes.string.status_not_started)).assertExists()
         onNodeWithText(str(ComponentRes.string.range_starts), substring = true).assertDoesNotExist()
         // It is information, not an action: no arrows, no "Up to date", and no counts.
@@ -512,7 +529,10 @@ class StatusScreenTest {
     fun `tapping create submits the typed name AND the chosen range`() = runComposeUiTest {
         var created: Triple<String, LocalDateTime, LocalDateTime>? = null
         setContent {
-            CreateScreen(UiState(Layer.CreateEvent()), actions = testActions(onCreateEvent = { n, f, u -> created = Triple(n, f, u) }))
+            CreateScreen(
+                UiState(Layer.CreateEvent()),
+                actions = testActions(onCreateEvent = { n, f, u -> created = Triple(n, f, u) }),
+            )
         }
         completeForm("My Party")
         onNodeWithText(str(Res.string.create_button)).performClick()
@@ -578,7 +598,10 @@ class StatusScreenTest {
         waitForIdle()
 
         onNodeWithText("6 Jul 2026, 12:07").assertExists()
-        assertEquals("My Party", onNode(hasSetTextAction()).fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
+        assertEquals(
+            "My Party",
+            onNode(hasSetTextAction()).fetchSemanticsNode().config[SemanticsProperties.EditableText].text,
+        )
     }
 
     @Test
@@ -617,11 +640,17 @@ class StatusScreenTest {
         // A phone-sized viewport, so the wheels start below the fold as they do on a Samsung A-series.
         setContent { Box(Modifier.size(390.dp, 640.dp)) { CreateScreen(UiState(Layer.CreateEvent())) } }
         onNode(hasSetTextAction()).performTextInput("My Party")
-        onNodeWithContentDescription(str(ComponentRes.string.wheel_end_hour), useUnmergedTree = true).assertIsNotDisplayed()
+        onNodeWithContentDescription(
+            str(ComponentRes.string.wheel_end_hour),
+            useUnmergedTree = true,
+        ).assertIsNotDisplayed()
 
         onNodeWithText(str(Res.string.create_step_end_time)).assertHasClickAction().performClick()
         waitForIdle()
-        onNodeWithContentDescription(str(ComponentRes.string.wheel_end_hour), useUnmergedTree = true).assertIsDisplayed()
+        onNodeWithContentDescription(
+            str(ComponentRes.string.wheel_end_hour),
+            useUnmergedTree = true,
+        ).assertIsDisplayed()
         onNodeWithText(str(ComponentRes.string.range_end_pick_time, "6 Jul 2026")).assertExists()
         onNodeWithText(str(Res.string.create_button)).assertIsNotEnabled()
     }
@@ -630,7 +659,9 @@ class StatusScreenTest {
     fun `once the end time is set the line above Create is not a button`() = runComposeUiTest {
         setContent { CreateScreen(UiState(Layer.CreateEvent())) }
         completeForm("My Party")
-        onNodeWithText(str(Res.string.create_lasts, plural(Res.plurals.duration_days, 2, 2))).assert(SemanticsMatcher.keyNotDefined(SemanticsActions.OnClick))
+        onNodeWithText(
+            str(Res.string.create_lasts, plural(Res.plurals.duration_days, 2, 2)),
+        ).assert(SemanticsMatcher.keyNotDefined(SemanticsActions.OnClick))
     }
 
     @Test
@@ -707,7 +738,10 @@ class StatusScreenTest {
         waitForIdle()
 
         onNodeWithText(str(Res.string.message_create_failed)).assertExists()
-        assertEquals("My Party", onNode(hasSetTextAction()).fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
+        assertEquals(
+            "My Party",
+            onNode(hasSetTextAction()).fetchSemanticsNode().config[SemanticsProperties.EditableText].text,
+        )
         onNodeWithText("6 Jul 2026, 12:00").assertExists()
         onNodeWithText("8 Jul 2026, 13:00").assertExists()
         onNodeWithText(str(Res.string.create_button)).assertIsEnabled().performClick()
@@ -745,7 +779,10 @@ class StatusScreenTest {
     fun `a same-day event needs only the end time`() = runComposeUiTest {
         var created: Triple<String, LocalDateTime, LocalDateTime>? = null
         setContent {
-            CreateScreen(UiState(Layer.CreateEvent()), actions = testActions(onCreateEvent = { n, f, u -> created = Triple(n, f, u) }))
+            CreateScreen(
+                UiState(Layer.CreateEvent()),
+                actions = testActions(onCreateEvent = { n, f, u -> created = Triple(n, f, u) }),
+            )
         }
         onNode(hasSetTextAction()).performTextInput("Dinner")
         setUntilHour("13")
@@ -759,7 +796,7 @@ class StatusScreenTest {
         // Capability `create-event`, "A range longer than 30 days cannot be chosen".
         setContent { CreateScreen(UiState(Layer.CreateEvent())) }
         onNodeWithContentDescription(str(ComponentRes.string.calendar_next_month)).performClick()
-        onNodeWithContentDescription("Wednesday, 5 August 2026").assertIsEnabled()  // 30 days on
+        onNodeWithContentDescription("Wednesday, 5 August 2026").assertIsEnabled() // 30 days on
         onNodeWithContentDescription("Thursday, 6 August 2026").assertIsNotEnabled() // 31 days on
     }
 
@@ -818,7 +855,9 @@ class StatusScreenTest {
     fun `reduce motion leaves the pulsing arrow un-animated`() = runComposeUiTest {
         mainClock.autoAdvance = false
         setContent {
-            CompositionLocalProvider(LocalReduceMotion provides true) { TestStatusScreen(syncing, cutoff = fixedCutoff()) }
+            CompositionLocalProvider(
+                LocalReduceMotion provides true,
+            ) { TestStatusScreen(syncing, cutoff = fixedCutoff()) }
         }
         onNodeWithText(str(ComponentRes.string.status_sync_ongoing)).assertExists()
 
@@ -834,7 +873,9 @@ class StatusScreenTest {
     fun `without reduce motion the pulsing arrow animates`() = runComposeUiTest {
         mainClock.autoAdvance = false
         setContent {
-            CompositionLocalProvider(LocalReduceMotion provides false) { TestStatusScreen(syncing, cutoff = fixedCutoff()) }
+            CompositionLocalProvider(
+                LocalReduceMotion provides false,
+            ) { TestStatusScreen(syncing, cutoff = fixedCutoff()) }
         }
         onNodeWithText(str(ComponentRes.string.status_sync_ongoing)).assertExists()
 
@@ -849,7 +890,9 @@ class StatusScreenTest {
     @Test
     fun `reduce motion keeps the ongoing-vs-pending distinction`() = runComposeUiTest {
         setContent {
-            CompositionLocalProvider(LocalReduceMotion provides true) { TestStatusScreen(syncPending, cutoff = fixedCutoff()) }
+            CompositionLocalProvider(
+                LocalReduceMotion provides true,
+            ) { TestStatusScreen(syncPending, cutoff = fixedCutoff()) }
         }
 
         onNodeWithText(str(ComponentRes.string.status_sync_pending)).assertExists()
@@ -867,7 +910,8 @@ class StatusScreenTest {
                         onRequestPermission = { requests++ },
                     ),
                 ),
-             cutoff = fixedCutoff())
+                cutoff = fixedCutoff(),
+            )
         }
 
         onNodeWithText(str(ComponentRes.string.status_allow_access)).assertExists()
@@ -886,7 +930,8 @@ class StatusScreenTest {
                         onOpenSettings = { settingsOpens++ },
                     ),
                 ),
-             cutoff = fixedCutoff())
+                cutoff = fixedCutoff(),
+            )
         }
 
         onNodeWithText(str(ComponentRes.string.status_allow_access_settings)).assertExists()
@@ -920,14 +965,20 @@ class StatusScreenTest {
                 cutoff = fixedCutoff(),
             )
         }
-        onNodeWithText(str(ComponentRes.string.network_offline)).assertExists().assert(SemanticsMatcher.keyNotDefined(SemanticsActions.OnClick))
+        onNodeWithText(
+            str(ComponentRes.string.network_offline),
+        ).assertExists().assert(SemanticsMatcher.keyNotDefined(SemanticsActions.OnClick))
         onNodeWithText(str(ComponentRes.string.network_offline)).performClick()
         assertEquals(0, settingsOpens)
     }
 
     @Test
     fun `offline Create cannot be tapped and the line below it says so`() = runComposeUiTest {
-        setContent { CreateScreen(UiState(Layer.CreateEvent(error = ScreenMessage.CREATE_FAILED, network = NetworkNotice.OFFLINE))) }
+        setContent {
+            CreateScreen(
+                UiState(Layer.CreateEvent(error = ScreenMessage.CREATE_FAILED, network = NetworkNotice.OFFLINE)),
+            )
+        }
         completeForm("Party")
         onNodeWithText(str(ComponentRes.string.network_offline)).assertExists()
         onNodeWithText(str(Res.string.message_create_failed)).assertDoesNotExist()
@@ -986,7 +1037,7 @@ class StatusScreenTest {
                         onChoosePhotos = { pickerOpens++ },
                         onRequestPermission = { requests++ },
                     ),
-                )
+                ),
             )
         }
 
@@ -1009,7 +1060,7 @@ class StatusScreenTest {
                         onOpenSettings = { settingsOpens++ },
                         onChoosePhotos = { pickerOpens++ },
                     ),
-                )
+                ),
             )
         }
 
@@ -1046,7 +1097,8 @@ class StatusScreenTest {
         setContent {
             TestStatusScreen(
                 joined(SyncHealth.NeedsAccess(GalleryAccess.DENIED)),
-             cutoff = fixedCutoff())
+                cutoff = fixedCutoff(),
+            )
         }
         onNodeWithText(str(Res.string.leave_event)).assertExists()
         onNodeWithText(str(Res.string.share_invite)).assertExists()
@@ -1144,7 +1196,13 @@ class StatusScreenTest {
     @Test
     fun `activating share invokes the callback`() = runComposeUiTest {
         var shares = 0
-        setContent { TestStatusScreen(inSync, cutoff = fixedCutoff(), actions = testActions(joined = testJoinedActions(onShareInvite = { shares++ }))) }
+        setContent {
+            TestStatusScreen(
+                inSync,
+                cutoff = fixedCutoff(),
+                actions = testActions(joined = testJoinedActions(onShareInvite = { shares++ })),
+            )
+        }
         onNodeWithText(str(Res.string.share_invite)).performClick()
         assertEquals(1, shares)
     }
@@ -1193,7 +1251,8 @@ class StatusScreenTest {
                     SyncHealth.InSync,
                     PendingSwitch(
                         "22222222-2222-4222-8222-222222222222",
-                        phaseAt(JoinPhase.Detailed.Step.Ready, 
+                        phaseAt(
+                            JoinPhase.Detailed.Step.Ready,
                             "New Event",
                             eventStart("2026-07-06T00:00:00Z"),
                             eventEnd("2026-07-16T00:00:00Z"),
@@ -1268,10 +1327,10 @@ class StatusScreenTest {
                     joined = testJoinedActions(
                         onRenameEvent = { id, name -> submitted += id to name },
                     ),
-                )
+                ),
             )
         }
-                onNode(hasSetTextAction()).performTextClearance()
+        onNode(hasSetTextAction()).performTextClearance()
         onNode(hasSetTextAction()).performTextInput("  Ana's 30th  ")
         onNodeWithText(str(Res.string.save)).performClick()
         // The id rides along so a switch landing mid-edit makes the use-case a no-op.
@@ -1286,7 +1345,7 @@ class StatusScreenTest {
                 cutoff = fixedCutoff(),
             )
         }
-                // The sheet stays open — the failure is reported beside the field, never ON it: a server saying
+        // The sheet stays open — the failure is reported beside the field, never ON it: a server saying
         // no must not read as a complaint about the host's typing.
         onNodeWithText(str(Res.string.save)).assertExists()
         onNodeWithText(str(Res.string.message_rename_name_refused)).assertExists()
@@ -1302,7 +1361,7 @@ class StatusScreenTest {
                 cutoff = fixedCutoff(),
             )
         }
-                onNodeWithText(str(Res.string.message_rename_failed)).assertExists()
+        onNodeWithText(str(Res.string.message_rename_failed)).assertExists()
     }
 
     @Test
@@ -1317,7 +1376,7 @@ class StatusScreenTest {
                 actions = testActions(
                     joined = testJoinedActions(onRenameStatusConsumed = { consumed++ }),
                     surfaces = testSurfaceActions(onRenameDismiss = { dismissed++ }),
-                )
+                ),
             )
         }
         onNodeWithText(str(Res.string.save)).assertExists()
@@ -1342,7 +1401,7 @@ class StatusScreenTest {
                 actions = testActions(
                     joined = testJoinedActions(onRenameEvent = { _, _ -> submits++ }),
                     surfaces = testSurfaceActions(onRenameDismiss = { dismissed++ }),
-                )
+                ),
             )
         }
         onNode(hasSetTextAction()).performTextInput("x")
@@ -1381,7 +1440,8 @@ class StatusScreenTest {
                     SyncHealth.InSync,
                     PendingSwitch(
                         "22222222-2222-4222-8222-222222222222",
-                        phaseAt(JoinPhase.Detailed.Step.Ready, 
+                        phaseAt(
+                            JoinPhase.Detailed.Step.Ready,
                             "New Event",
                             eventStart("2026-07-06T00:00:00Z"),
                             eventEnd("2026-07-16T00:00:00Z"),
@@ -1410,7 +1470,8 @@ class StatusScreenTest {
                     SyncHealth.InSync,
                     PendingSwitch(
                         MEMBERSHIP.eventId,
-                        phaseAt(JoinPhase.Detailed.Step.Committing, 
+                        phaseAt(
+                            JoinPhase.Detailed.Step.Committing,
                             "Anna's Birthday",
                             eventStart("2026-07-06T00:00:00Z"),
                             eventEnd("2026-07-16T00:00:00Z"),
@@ -1528,7 +1589,9 @@ class StatusScreenTest {
             TestStatusScreen(
                 state.value,
                 cutoff = fixedCutoff(),
-                actions = testActions(joined = testJoinedActions(onStopSharing = { stopped++ }, onKeepSharing = { kept++ })),
+                actions = testActions(
+                    joined = testJoinedActions(onStopSharing = { stopped++ }, onKeepSharing = { kept++ }),
+                ),
             )
         }
         onNodeWithText(str(Res.string.stop_sharing_title)).assertExists()
@@ -1566,18 +1629,26 @@ class StatusScreenTest {
         setContent { TestStatusScreen(inSync, cutoff = fixedCutoff()) }
         onNodeWithText("Anna's Birthday").assertExists()
         onNodeWithText(str(Res.string.joined_statement)).assertExists()
-        onNodeWithText("Mon 6 Jul – Fri 10 Jul" + " · " + str(Res.string.timing_ends_in, plural(Res.plurals.duration_days, 4, 4))).assertExists()
+        onNodeWithText(
+            "Mon 6 Jul – Fri 10 Jul" + " · " + str(Res.string.timing_ends_in, plural(Res.plurals.duration_days, 4, 4)),
+        ).assertExists()
     }
 
     @Test
     fun `the last day counts down in hours and then minutes`() = runComposeUiTest {
         val state = mutableStateOf(joined(SyncHealth.InSync, timing = EventTiming.Running(TimeLeft.Hours(5))))
         setContent { TestStatusScreen(state.value, cutoff = fixedCutoff()) }
-        onNodeWithText("Mon 6 Jul – Fri 10 Jul" + " · " + str(Res.string.timing_ends_in, plural(Res.plurals.duration_hours, 5, 5))).assertExists()
+        onNodeWithText(
+            "Mon 6 Jul – Fri 10 Jul" + " · " + str(Res.string.timing_ends_in, plural(Res.plurals.duration_hours, 5, 5)),
+        ).assertExists()
         state.value = joined(SyncHealth.InSync, timing = EventTiming.Running(TimeLeft.Minutes(40)))
-        onNodeWithText("Mon 6 Jul – Fri 10 Jul" + " · " + str(Res.string.timing_ends_in, plural(Res.plurals.duration_minutes_short, 40, 40))).assertExists()
+        onNodeWithText(
+            "Mon 6 Jul – Fri 10 Jul" + " · " + str(Res.string.timing_ends_in, plural(Res.plurals.duration_minutes_short, 40, 40)),
+        ).assertExists()
         state.value = joined(SyncHealth.InSync, timing = EventTiming.Running(TimeLeft.Hours(1)))
-        onNodeWithText("Mon 6 Jul – Fri 10 Jul" + " · " + str(Res.string.timing_ends_in, plural(Res.plurals.duration_hours, 1, 1))).assertExists()
+        onNodeWithText(
+            "Mon 6 Jul – Fri 10 Jul" + " · " + str(Res.string.timing_ends_in, plural(Res.plurals.duration_hours, 1, 1)),
+        ).assertExists()
     }
 
     @Test
@@ -1592,7 +1663,9 @@ class StatusScreenTest {
                 cutoff = fixedCutoff(),
             )
         }
-        onNodeWithText(str(ComponentRes.string.date_range_today, "18:00", "23:00") + " · " + str(Res.string.timing_starts_in, plural(Res.plurals.duration_hours, 6, 6))).assertExists()
+        onNodeWithText(
+            str(ComponentRes.string.date_range_today, "18:00", "23:00") + " · " + str(Res.string.timing_starts_in, plural(Res.plurals.duration_hours, 6, 6)),
+        ).assertExists()
     }
 
     @Test
@@ -1614,12 +1687,21 @@ class StatusScreenTest {
     fun `the counts show both directions while work remains`() = runComposeUiTest {
         setContent {
             TestStatusScreen(
-                joined(SyncHealth.Syncing(Arrow.PULSING, Arrow.STATIC), counts = SyncCounts(progress(12, 15), progress(40, 52))),
+                joined(
+                    SyncHealth.Syncing(Arrow.PULSING, Arrow.STATIC),
+                    counts = SyncCounts(progress(12, 15), progress(40, 52)),
+                ),
                 cutoff = fixedCutoff(),
             )
         }
         onNodeWithText(str(ComponentRes.string.status_sync_ongoing)).assertExists()
-        onNodeWithText(str(Res.string.counts_line, str(Res.string.counts_shared_progress, 12, 15), str(Res.string.counts_received_progress, 40, 52))).assertExists()
+        onNodeWithText(
+            str(
+                Res.string.counts_line,
+                str(Res.string.counts_shared_progress, 12, 15),
+                str(Res.string.counts_received_progress, 40, 52),
+            ),
+        ).assertExists()
     }
 
     @Test
@@ -1631,18 +1713,31 @@ class StatusScreenTest {
             )
         }
         onNodeWithText(str(ComponentRes.string.status_in_sync)).assertExists()
-        onNodeWithText(str(Res.string.counts_line, str(Res.string.counts_shared, 15), str(Res.string.counts_received, 52))).assertExists()
+        onNodeWithText(
+            str(Res.string.counts_line, str(Res.string.counts_shared, 15), str(Res.string.counts_received, 52)),
+        ).assertExists()
     }
 
     @Test
     fun `a switched-off direction says so`() = runComposeUiTest {
         val state = mutableStateOf(
-            joined(SyncHealth.Syncing(Arrow.HIDDEN, Arrow.STATIC), counts = SyncCounts(DirectionCount.Off, progress(40, 52))),
+            joined(
+                SyncHealth.Syncing(Arrow.HIDDEN, Arrow.STATIC),
+                counts = SyncCounts(DirectionCount.Off, progress(40, 52)),
+            ),
         )
         setContent { TestStatusScreen(state.value, cutoff = fixedCutoff()) }
-        onNodeWithText(str(Res.string.counts_line, str(Res.string.counts_not_sharing), str(Res.string.counts_received_progress, 40, 52))).assertExists()
+        onNodeWithText(
+            str(
+                Res.string.counts_line,
+                str(Res.string.counts_not_sharing),
+                str(Res.string.counts_received_progress, 40, 52),
+            ),
+        ).assertExists()
         state.value = joined(SyncHealth.InSync, counts = SyncCounts(progress(15, 15), DirectionCount.Off))
-        onNodeWithText(str(Res.string.counts_line, str(Res.string.counts_shared, 15), str(Res.string.counts_not_receiving))).assertExists()
+        onNodeWithText(
+            str(Res.string.counts_line, str(Res.string.counts_shared, 15), str(Res.string.counts_not_receiving)),
+        ).assertExists()
     }
 
     @Test
@@ -1655,11 +1750,17 @@ class StatusScreenTest {
     fun `limited access shows its counts beside the two access offers`() = runComposeUiTest {
         setContent {
             TestStatusScreen(
-                joined(SyncHealth.InSync, canChoosePhotos = true, counts = SyncCounts(progress(6, 6), progress(52, 52))),
+                joined(
+                    SyncHealth.InSync,
+                    canChoosePhotos = true,
+                    counts = SyncCounts(progress(6, 6), progress(52, 52)),
+                ),
                 cutoff = fixedCutoff(),
             )
         }
-        onNodeWithText(str(Res.string.counts_line, str(Res.string.counts_shared, 6), str(Res.string.counts_received, 52))).assertExists()
+        onNodeWithText(
+            str(Res.string.counts_line, str(Res.string.counts_shared, 6), str(Res.string.counts_received, 52)),
+        ).assertExists()
         onNodeWithText(str(Res.string.choose_more_photos)).assertExists()
         onNodeWithText(str(Res.string.allow_full_access)).assertExists()
     }
@@ -1671,13 +1772,17 @@ class StatusScreenTest {
         setContent {
             TestStatusScreen(
                 joined(
-                    SyncHealth.InSync, timing = EventTiming.Ended, waiting = MemberCounts(5, 3),
+                    SyncHealth.InSync,
+                    timing = EventTiming.Ended,
+                    waiting = MemberCounts(5, 3),
                     counts = SyncCounts(progress(34, 34), progress(110, 110)),
                 ),
                 cutoff = fixedCutoff(),
             )
         }
-        onNodeWithText(str(Res.string.counts_line, str(Res.string.counts_shared, 34), str(Res.string.counts_received, 110))).assertExists()
+        onNodeWithText(
+            str(Res.string.counts_line, str(Res.string.counts_shared, 34), str(Res.string.counts_received, 110)),
+        ).assertExists()
         onNodeWithText(str(Res.string.waiting_members, 2, 5)).assertExists()
         onNodeWithText(str(ComponentRes.string.status_in_sync)).assertExists()
     }
@@ -1685,7 +1790,10 @@ class StatusScreenTest {
     @Test
     fun `a closed event offers only Leave`() = runComposeUiTest {
         setContent {
-            TestStatusScreen(joined(SyncHealth.InSync, timing = EventTiming.Ended, closed = true), cutoff = fixedCutoff())
+            TestStatusScreen(
+                joined(SyncHealth.InSync, timing = EventTiming.Ended, closed = true),
+                cutoff = fixedCutoff(),
+            )
         }
         onNodeWithText(str(Res.string.share_invite)).assertDoesNotExist()
         onNodeWithText(str(Res.string.footer_settings)).assertDoesNotExist()
@@ -1698,14 +1806,17 @@ class StatusScreenTest {
         onNodeWithText("Mon 6 Jul – Fri 10 Jul" + " · " + str(Res.string.timing_ended)).assertExists()
     }
 
-
-
     // ---- how it works (capability `sync-status`) ----
 
     @Test
     fun `a sharing and receiving member is told what happens to both sides and what to do when photos stall`() =
         runComposeUiTest {
-            setContent { TestStatusScreen(joined(SyncHealth.InSync, membership = MEMBERSHIP.copy(saveToAlbum = true)), cutoff = fixedCutoff()) }
+            setContent {
+                TestStatusScreen(
+                    joined(SyncHealth.InSync, membership = MEMBERSHIP.copy(saveToAlbum = true)),
+                    cutoff = fixedCutoff(),
+                )
+            }
             onNodeWithText(str(Res.string.explain_share_title)).assertExists()
             onNodeWithText(str(Res.string.explain_share_caption, RANGE)).assertExists()
             onNodeWithText(str(Res.string.explain_receive_title)).assertExists()
@@ -1740,7 +1851,9 @@ class StatusScreenTest {
         onNodeWithText(str(Res.string.explain_share_off_title)).assertExists()
         onNodeWithText(str(Res.string.explain_share_title)).assertDoesNotExist()
         onNodeWithText(str(Res.string.explain_receive_title)).assertExists()
-        onNodeWithText(caption(Res.string.explain_share_off_caption, Res.string.explain_settings_link, RANGE)).performFirstLinkClick()
+        onNodeWithText(
+            caption(Res.string.explain_share_off_caption, Res.string.explain_settings_link, RANGE),
+        ).performFirstLinkClick()
         assertEquals(1, opened)
     }
 
@@ -1755,7 +1868,9 @@ class StatusScreenTest {
             )
         }
         onNodeWithText(str(Res.string.explain_receive_off_title)).assertExists()
-        onNodeWithText(caption(Res.string.explain_receive_off_caption, Res.string.explain_settings_link)).performFirstLinkClick()
+        onNodeWithText(
+            caption(Res.string.explain_receive_off_caption, Res.string.explain_settings_link),
+        ).performFirstLinkClick()
         assertEquals(1, opened)
     }
 
@@ -1768,13 +1883,19 @@ class StatusScreenTest {
                 TestStatusScreen(
                     joined(SyncHealth.NeedsAccess(GalleryAccess.NOT_DETERMINED)),
                     cutoff = fixedCutoff(),
-                    actions = testActions(access = testAccessActions(onRequestPermission = { asked++ }, onOpenSettings = { settings++ })),
+                    actions = testActions(
+                        access = testAccessActions(onRequestPermission = { asked++ }, onOpenSettings = { settings++ }),
+                    ),
                 )
             }
             onNodeWithText(str(Res.string.explain_share_blocked_title)).assertExists()
             onNodeWithText(str(Res.string.explain_receive_blocked_title)).assertExists()
-            onNodeWithText(caption(Res.string.explain_share_blocked_caption, Res.string.explain_access_link, RANGE)).performFirstLinkClick()
-            onNodeWithText(caption(Res.string.explain_receive_blocked_caption, Res.string.explain_access_link)).performFirstLinkClick()
+            onNodeWithText(
+                caption(Res.string.explain_share_blocked_caption, Res.string.explain_access_link, RANGE),
+            ).performFirstLinkClick()
+            onNodeWithText(
+                caption(Res.string.explain_receive_blocked_caption, Res.string.explain_access_link),
+            ).performFirstLinkClick()
             assertEquals(2, asked)
             assertEquals(0, settings)
         }
@@ -1789,7 +1910,9 @@ class StatusScreenTest {
                 actions = testActions(access = testAccessActions(onOpenSettings = { settings++ })),
             )
         }
-        onNodeWithText(caption(Res.string.explain_receive_blocked_caption, Res.string.explain_access_link)).performFirstLinkClick()
+        onNodeWithText(
+            caption(Res.string.explain_receive_blocked_caption, Res.string.explain_access_link),
+        ).performFirstLinkClick()
         assertEquals(1, settings)
     }
 
@@ -1811,7 +1934,12 @@ class StatusScreenTest {
 
     @Test
     fun `a closed event explains only receiving and the hint`() = runComposeUiTest {
-        setContent { TestStatusScreen(joined(SyncHealth.InSync, timing = EventTiming.Ended, closed = true), cutoff = fixedCutoff()) }
+        setContent {
+            TestStatusScreen(
+                joined(SyncHealth.InSync, timing = EventTiming.Ended, closed = true),
+                cutoff = fixedCutoff(),
+            )
+        }
         onNodeWithText(str(Res.string.explain_share_title)).assertDoesNotExist()
         onNodeWithText(str(Res.string.explain_receive_title)).assertExists()
         onNodeWithText(str(Res.string.explain_hint_title)).assertExists()
@@ -1822,10 +1950,18 @@ class StatusScreenTest {
         // An SE2's screen in points, with the tallest joined screen: the no-access rows and a notice-free status.
         setContent {
             Box(Modifier.requiredSize(SE2_WIDTH, SE2_HEIGHT)) {
-                TestStatusScreen(joined(SyncHealth.NeedsAccess(GalleryAccess.DENIED), canChoosePhotos = false), cutoff = fixedCutoff())
+                TestStatusScreen(
+                    joined(SyncHealth.NeedsAccess(GalleryAccess.DENIED), canChoosePhotos = false),
+                    cutoff = fixedCutoff(),
+                )
             }
         }
-        for (label in listOf(Res.string.share_invite, Res.string.show_qr, Res.string.footer_settings, Res.string.leave_event)) {
+        for (label in listOf(
+            Res.string.share_invite,
+            Res.string.show_qr,
+            Res.string.footer_settings,
+            Res.string.leave_event,
+        )) {
             val bottom = onNodeWithText(str(label)).getUnclippedBoundsInRoot().bottom
             assertTrue(bottom <= SE2_HEIGHT, "${str(label)} ends at $bottom, below the screen")
         }
@@ -1834,13 +1970,14 @@ class StatusScreenTest {
 
     /** A node showing a count ("12/15 shared", "40 received") — the explanation's words are not counts. */
     private fun countsText(): SemanticsMatcher = SemanticsMatcher("shows a count") { node ->
-        node.config.getOrElseNullable(SemanticsProperties.Text) { null }.orEmpty().any { COUNT.containsMatchIn(it.toString()) }
+        node.config.getOrElseNullable(
+            SemanticsProperties.Text,
+        ) { null }.orEmpty().any { COUNT.containsMatchIn(it.toString()) }
     }
 
     private fun hasAnyProgressIndication(): SemanticsMatcher =
         SemanticsMatcher.keyIsDefined(SemanticsProperties.ProgressBarRangeInfo)
 }
-
 
 private fun samePixels(a: PixelMap, b: PixelMap): Boolean {
     if (a.width != b.width || a.height != b.height) return false

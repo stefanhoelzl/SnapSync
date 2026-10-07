@@ -116,7 +116,11 @@ class FileLogSinkTest {
         val file = logFile()
         val sink = FileLogSink(file)
         val threads = (0 until THREADS).map { t ->
-            thread { repeat(LINES_PER_THREAD) { sink.write(Severity.Info, "t", "thread $t line $it ".padEnd(WIDE_LINE, '#')) } }
+            thread {
+                repeat(
+                    LINES_PER_THREAD,
+                ) { sink.write(Severity.Info, "t", "thread $t line $it ".padEnd(WIDE_LINE, '#')) }
+            }
         }
         threads.forEach { it.join() }
 
@@ -136,7 +140,10 @@ class FileLogSinkTest {
         val tail = LogTailService(AndroidFiles(sharedRoot = shared, privateRoot = private))
             .tail(LogTailService.Process.APP, WHOLE_BUDGET)
         assertTrue(tail.orEmpty().contains("[Warn/CreateEvent] create failed"), "the dump would miss it: $tail")
-        assertEquals(null, LogTailService(AndroidFiles(shared, private)).tail(LogTailService.Process.EXTENSION, WHOLE_BUDGET))
+        assertEquals(
+            null,
+            LogTailService(AndroidFiles(shared, private)).tail(LogTailService.Process.EXTENSION, WHOLE_BUDGET),
+        )
     }
 
     private companion object {

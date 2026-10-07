@@ -1,57 +1,57 @@
 package app.snapsync.ios
 
+import app.snapsync.attest.IosDeviceIntegrity
+import app.snapsync.background.IosBackgroundTime
+import app.snapsync.background.IosWake
 import app.snapsync.compose.AppCore
 import app.snapsync.compose.AppPorts
 import app.snapsync.compose.DevicePorts
-import app.snapsync.host.ComposedApp
-import app.snapsync.host.snapSyncHost
+import app.snapsync.compose.ProcessPorts
+import app.snapsync.compose.ProcessServices
+import app.snapsync.config.IosBuildInfo
+import app.snapsync.config.bakedUploadBase
+import app.snapsync.config.iosBootLines
+import app.snapsync.crypto.IosCrypto
+import app.snapsync.databases.IosDatabases
+import app.snapsync.device.IosDeviceConditions
+import app.snapsync.download.IosDownload
 import app.snapsync.files.IosFiles
-import app.snapsync.attest.IosDeviceIntegrity
-import app.snapsync.http.HttpBackend
-import app.snapsync.logging.appMarketingVersion
 import app.snapsync.gallery.IosGallery
 import app.snapsync.gallery.IosGalleryReader
-import app.snapsync.ports.ExtensionRegistry
-import app.snapsync.ios.registry.extensionRegistry as platformExtensionRegistry
-import app.snapsync.permission.PhotoLibraryPermission
-import app.snapsync.presentation.CutoffFormatter
-import app.snapsync.presentation.StatusContainerHost
-import app.snapsync.scene.IosLifecycle
-import app.snapsync.scene.IosUi
-import app.snapsync.scene.SceneRecord
-import app.snapsync.link.IosLinks
-import app.snapsync.push.IosPushNotifications
-import app.snapsync.time.SystemClock
-import app.snapsync.crypto.IosCrypto
-import app.snapsync.metrics.MetricKitProcessMetrics
-import app.snapsync.membership.darwinHttpClient
-import app.snapsync.download.IosDownload
+import app.snapsync.host.ComposedApp
+import app.snapsync.host.snapSyncHost
+import app.snapsync.http.HttpBackend
+import app.snapsync.identity.NoPlatformDeviceId
+import app.snapsync.ios.qos.newUserInitiatedLane
 import app.snapsync.ios.urlsession.BackgroundSessions
 import app.snapsync.ios.urlsession.IosUrlSessionUploadPlatform
 import app.snapsync.ios.urlsession.UPLOAD_SESSION_ID
-import app.snapsync.preferences.IosPreferences
-import app.snapsync.systemui.IosSystemUi
-import app.snapsync.protection.IosProcessInfo
-import app.snapsync.network.IosNetworkMonitor
-import app.snapsync.device.IosDeviceConditions
-import app.snapsync.databases.IosDatabases
-import app.snapsync.background.IosBackgroundTime
-import app.snapsync.background.IosWake
-import app.snapsync.config.IosBuildInfo
-import app.snapsync.config.iosBootLines
-import app.snapsync.config.bakedUploadBase
-import app.snapsync.model.PlatformEntry
+import app.snapsync.keychain.platformSecureStore
+import app.snapsync.link.IosLinks
 import app.snapsync.logging.FileLogSink
-import app.snapsync.logging.appLogDestination
-import app.snapsync.sentry.SentryCrashReporter
-import app.snapsync.compose.ProcessPorts
-import app.snapsync.compose.ProcessServices
 import app.snapsync.logging.IosEntryContext
 import app.snapsync.logging.PublicNSLogSink
-import app.snapsync.logging.neverBlockOnStdio
-import app.snapsync.identity.NoPlatformDeviceId
-import app.snapsync.keychain.platformSecureStore
+import app.snapsync.logging.appLogDestination
+import app.snapsync.logging.appMarketingVersion
 import app.snapsync.logging.invocation
+import app.snapsync.logging.neverBlockOnStdio
+import app.snapsync.membership.darwinHttpClient
+import app.snapsync.metrics.MetricKitProcessMetrics
+import app.snapsync.model.PlatformEntry
+import app.snapsync.network.IosNetworkMonitor
+import app.snapsync.permission.PhotoLibraryPermission
+import app.snapsync.ports.ExtensionRegistry
+import app.snapsync.preferences.IosPreferences
+import app.snapsync.presentation.CutoffFormatter
+import app.snapsync.presentation.StatusContainerHost
+import app.snapsync.protection.IosProcessInfo
+import app.snapsync.push.IosPushNotifications
+import app.snapsync.scene.IosLifecycle
+import app.snapsync.scene.IosUi
+import app.snapsync.scene.SceneRecord
+import app.snapsync.sentry.SentryCrashReporter
+import app.snapsync.systemui.IosSystemUi
+import app.snapsync.time.SystemClock
 import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -59,11 +59,11 @@ import kotlinx.cinterop.cValue
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import app.snapsync.ios.qos.newUserInitiatedLane
 import kotlinx.coroutines.SupervisorJob
-import platform.Foundation.NSUserActivity
 import platform.Foundation.NSOperatingSystemVersion
 import platform.Foundation.NSProcessInfo
+import platform.Foundation.NSUserActivity
+import app.snapsync.ios.registry.extensionRegistry as platformExtensionRegistry
 
 /**
  * The iOS composition root (D7): a single app-lifetime singleton that assembles the real live
@@ -199,7 +199,12 @@ object SnapSyncRoot {
     private val gallery: IosGallery by lazy { IosGallery(IosGalleryReader(), permission, scope) }
 
     /** The app's uploader transport — one per process, since it owns the upload session's delegate. */
-    private val uploadAdapter: IosUrlSessionUploadPlatform by lazy { IosUrlSessionUploadPlatform(log, UPLOAD_SESSION_ID) }
+    private val uploadAdapter: IosUrlSessionUploadPlatform by lazy {
+        IosUrlSessionUploadPlatform(
+            log,
+            UPLOAD_SESSION_ID,
+        )
+    }
 
     /** The platform's background downloads — one per process, since it owns the download session's delegate. */
     private val downloadAdapter: IosDownload by lazy { IosDownload() }
@@ -275,7 +280,6 @@ object SnapSyncRoot {
      * files the app actually runs over — an adapter choice's, where it mocks them. Not exported to the ObjC header.
      */
     internal val ports: DevicePorts get() = adapters.ports
-
 
     /**
      * This process's per-process ports: its crash reporter, its log sinks and boot banner, its process metrics, its
@@ -608,7 +612,6 @@ object SnapSyncRoot {
                 patchVersion = 0
             },
         )
-
 }
 
 /**

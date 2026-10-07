@@ -26,7 +26,10 @@ class SinkLogWriterTest {
     fun every_sink_gets_the_same_line_prefixed_with_the_entry_point_that_triggered_it() {
         val file = Recording()
         val unified = Recording()
-        SinkLogWriter(listOf(file, unified), Entry("onSilentPush")).log(Severity.Warn, "reconcile failed", "download", null)
+        SinkLogWriter(
+            listOf(file, unified),
+            Entry("onSilentPush"),
+        ).log(Severity.Warn, "reconcile failed", "download", null)
         val expected = Triple(Severity.Warn, "download", "[onSilentPush] [Warn/download] reconcile failed")
         assertEquals(listOf(expected), file.lines)
         assertEquals(listOf(expected), unified.lines)

@@ -75,7 +75,11 @@ object FilesContract : Contract<FilesState, Files>("Files") {
                 assertEquals(FileResult.NotFound, files.readRange(it, p, 0, SMALL), "$it")
                 assertEquals(FileResult.Ok(Unit), files.append(it, p, "one,".encodeToByteArray()), "$it")
                 assertEquals(FileResult.Ok(Unit), files.append(it, p, "two".encodeToByteArray()), "$it")
-                assertEquals("one,two", assertIs<FileResult.Ok<ByteArray>>(files.read(it, p)).value.decodeToString(), "$it")
+                assertEquals(
+                    "one,two",
+                    assertIs<FileResult.Ok<ByteArray>>(files.read(it, p)).value.decodeToString(),
+                    "$it",
+                )
             }
         }
 
@@ -83,7 +87,9 @@ object FilesContract : Contract<FilesState, Files>("Files") {
             val p = path("EMPTY_AN_EMPTY_FILE_IS_NOT_ABSENT")
             files.write(FileArea.SHARED, p, ByteArray(0))
             assertEquals(0, assertIs<FileResult.Ok<ByteArray>>(files.read(FileArea.SHARED, p)).value.size)
-            val tail = assertIs<FileResult.Ok<app.snapsync.model.FileTail>>(files.readTail(FileArea.SHARED, p, SMALL)).value
+            val tail = assertIs<FileResult.Ok<app.snapsync.model.FileTail>>(
+                files.readTail(FileArea.SHARED, p, SMALL),
+            ).value
             assertEquals(0, tail.bytes.size)
             assertTrue(!tail.cut)
         }
@@ -109,10 +115,14 @@ object FilesContract : Contract<FilesState, Files>("Files") {
         clause("HOLDING_READ_TAIL_TAKES_THE_END", FilesState.HOLDING) { files ->
             val id = "HOLDING_READ_TAIL_TAKES_THE_END"
             val bytes = seed(id)
-            val small = assertIs<FileResult.Ok<app.snapsync.model.FileTail>>(files.readTail(FileArea.SHARED, path(id), SMALL)).value
+            val small = assertIs<FileResult.Ok<app.snapsync.model.FileTail>>(
+                files.readTail(FileArea.SHARED, path(id), SMALL),
+            ).value
             assertContentEquals(bytes.copyOfRange(bytes.size - SMALL, bytes.size), small.bytes)
             assertTrue(small.cut, "a tail that began after the first byte says so")
-            val whole = assertIs<FileResult.Ok<app.snapsync.model.FileTail>>(files.readTail(FileArea.SHARED, path(id), bytes.size * 2)).value
+            val whole = assertIs<FileResult.Ok<app.snapsync.model.FileTail>>(
+                files.readTail(FileArea.SHARED, path(id), bytes.size * 2),
+            ).value
             assertContentEquals(bytes, whole.bytes)
             assertTrue(!whole.cut)
         }
@@ -120,13 +130,24 @@ object FilesContract : Contract<FilesState, Files>("Files") {
         clause("HOLDING_A_RANGE_IS_THE_BYTES_AT_ITS_OFFSET", FilesState.HOLDING) { files ->
             val id = "HOLDING_A_RANGE_IS_THE_BYTES_AT_ITS_OFFSET"
             val bytes = seed(id)
-            fun range(offset: Long, max: Int) = assertIs<FileResult.Ok<ByteArray>>(files.readRange(FileArea.SHARED, path(id), offset, max)).value
+            fun range(
+                offset: Long,
+                max: Int,
+            ) = assertIs<FileResult.Ok<ByteArray>>(files.readRange(FileArea.SHARED, path(id), offset, max)).value
             assertContentEquals(bytes.copyOfRange(0, SMALL), range(0, SMALL), "from the start")
             assertContentEquals(bytes.copyOfRange(SMALL, 2 * SMALL), range(SMALL.toLong(), SMALL), "from an offset")
-            assertContentEquals(bytes.copyOfRange(bytes.size - 3, bytes.size), range(bytes.size - 3L, SMALL), "short only at the end")
+            assertContentEquals(
+                bytes.copyOfRange(bytes.size - 3, bytes.size),
+                range(bytes.size - 3L, SMALL),
+                "short only at the end",
+            )
             assertEquals(0, range(bytes.size.toLong(), SMALL).size, "at the end: nothing")
             assertEquals(0, range(bytes.size + 100L, SMALL).size, "past the end: nothing")
-            assertEquals(FileResult.NotFound, files.readRange(FileArea.PRIVATE, path(id), 0, SMALL), "the private area is another place")
+            assertEquals(
+                FileResult.NotFound,
+                files.readRange(FileArea.PRIVATE, path(id), 0, SMALL),
+                "the private area is another place",
+            )
         }
 
         clause("HOLDING_APPEND_EXTENDS_THE_FILE", FilesState.HOLDING) { files ->
@@ -141,7 +162,10 @@ object FilesContract : Contract<FilesState, Files>("Files") {
         clause("HOLDING_WRITE_REPLACES", FilesState.HOLDING) { files ->
             val p = path("HOLDING_WRITE_REPLACES")
             files.write(FileArea.SHARED, p, "short".encodeToByteArray())
-            assertEquals("short", assertIs<FileResult.Ok<ByteArray>>(files.read(FileArea.SHARED, p)).value.decodeToString())
+            assertEquals(
+                "short",
+                assertIs<FileResult.Ok<ByteArray>>(files.read(FileArea.SHARED, p)).value.decodeToString(),
+            )
         }
 
         clause("HOLDING_DELETE_REMOVES_IT", FilesState.HOLDING) { files ->
@@ -182,9 +206,17 @@ object FilesContract : Contract<FilesState, Files>("Files") {
             FileArea.entries.forEach {
                 inside.forEach { path -> files.write(it, path, ByteArray(1)) }
                 files.write(it, "$dir-beside/d.bin", ByteArray(1))
-                assertEquals(FileResult.Ok(inside), files.list(it, dir), "$it: sorted, relative to the area, directories not listed")
+                assertEquals(
+                    FileResult.Ok(inside),
+                    files.list(it, dir),
+                    "$it: sorted, relative to the area, directories not listed",
+                )
                 files.delete(it, "$dir/deeper/b.bin")
-                assertEquals(FileResult.Ok(inside - "$dir/deeper/b.bin"), files.list(it, dir), "$it: a deleted file is gone")
+                assertEquals(
+                    FileResult.Ok(inside - "$dir/deeper/b.bin"),
+                    files.list(it, dir),
+                    "$it: a deleted file is gone",
+                )
             }
         }
 
@@ -206,7 +238,11 @@ object FilesContract : Contract<FilesState, Files>("Files") {
                 files.write(it, to, ByteArray(1))
                 files.write(it, from, seed(id))
                 assertEquals(FileResult.Ok(Unit), files.move(it, from, to), "$it")
-                assertContentEquals(seed(id), assertIs<FileResult.Ok<ByteArray>>(files.read(it, to)).value, "$it: replaced")
+                assertContentEquals(
+                    seed(id),
+                    assertIs<FileResult.Ok<ByteArray>>(files.read(it, to)).value,
+                    "$it: replaced",
+                )
                 assertEquals(FileResult.Ok(false), files.exists(it, from), "$it: the source is gone")
             }
         }

@@ -55,7 +55,9 @@ class AndroidDatabases(private val context: Context, private val directory: File
             .use { it.version.toLong() }
         return when {
             version < schema.version -> DbOpen.OldSchema
-            version > schema.version -> DbOpen.Failed("schema version $version is newer than this build's ${schema.version}")
+            version > schema.version -> DbOpen.Failed(
+                "schema version $version is newer than this build's ${schema.version}",
+            )
             else -> DbOpen.Opened(driver(file, schema).also(::userVersion))
         }
     }

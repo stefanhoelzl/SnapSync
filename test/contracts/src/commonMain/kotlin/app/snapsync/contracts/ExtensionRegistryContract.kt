@@ -47,7 +47,10 @@ object ExtensionRegistryContract :
     override val clauses = clauses {
 
         clause("ENABLE_CREATES_A_RECORD", ExtensionRegistryState.RECORD_ABSENT) { registry ->
-            assertEquals(RegistrationOutcome.Applied(enabling = true), registrationOutcome(true, registry.setEnabled(true)))
+            assertEquals(
+                RegistrationOutcome.Applied(enabling = true),
+                registrationOutcome(true, registry.setEnabled(true)),
+            )
             assertEquals(
                 RegistrationState.REGISTERED,
                 registry.isEnabled(),
@@ -80,7 +83,10 @@ object ExtensionRegistryContract :
         }
 
         clause("DISABLE_IS_REFUSED_UNDER_A_PARTIAL_GRANT", ExtensionRegistryState.UNDER_PARTIAL_GRANT) { registry ->
-            assertEquals(RegistrationOutcome.DisableRefusedByGrant, registrationOutcome(false, registry.setEnabled(false)))
+            assertEquals(
+                RegistrationOutcome.DisableRefusedByGrant,
+                registrationOutcome(false, registry.setEnabled(false)),
+            )
         }
     }
 }

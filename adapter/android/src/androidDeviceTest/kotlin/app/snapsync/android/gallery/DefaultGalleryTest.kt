@@ -47,7 +47,14 @@ class DefaultGalleryTest {
     @Test
     fun `the candidates are every DCIM folder but the event albums`() {
         assertEquals(
-            setOf("DCIM/Camera/", "DCIM/100ANDRO/", "DCIM/OpenCamera/2026/", "DCIM/", "dcim/camera/", "DCIM/SnapSyncX/"),
+            setOf(
+                "DCIM/Camera/",
+                "DCIM/100ANDRO/",
+                "DCIM/OpenCamera/2026/",
+                "DCIM/",
+                "dcim/camera/",
+                "DCIM/SnapSyncX/",
+            ),
             matching(DefaultGallery.CANDIDATE_SQL),
             "an event album is never a candidate, matched ignoring case; a lookalike of the album root still is",
         )

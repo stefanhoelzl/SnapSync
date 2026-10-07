@@ -3,8 +3,8 @@
 package app.snapsync.sentry
 
 import kotlinx.cinterop.ByteVar
-import kotlinx.cinterop.IntVar
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.IntVar
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.alloc
 import kotlinx.cinterop.convert
@@ -15,7 +15,6 @@ import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.sizeOf
 import kotlinx.cinterop.usePinned
 import kotlinx.cinterop.value
-import kotlin.concurrent.Volatile
 import kotlinx.serialization.json.JsonObject
 import platform.Foundation.NSData
 import platform.Foundation.NSDataCompressionAlgorithmZlib
@@ -24,6 +23,7 @@ import platform.Foundation.NSThread
 import platform.Foundation.create
 import platform.Foundation.decompressedDataUsingAlgorithm
 import platform.posix.AF_INET
+import platform.posix.SHUT_RDWR
 import platform.posix.SOCK_STREAM
 import platform.posix.SOL_SOCKET
 import platform.posix.SO_REUSEADDR
@@ -36,10 +36,10 @@ import platform.posix.recv
 import platform.posix.send
 import platform.posix.setsockopt
 import platform.posix.shutdown
-import platform.posix.SHUT_RDWR
 import platform.posix.sockaddr_in
 import platform.posix.socket
 import platform.posix.socklen_tVar
+import kotlin.concurrent.Volatile
 
 /**
  * A receiving endpoint for the reporting SDK, inside the test executable (`docs/architecture.md`, "Hosts
@@ -124,7 +124,11 @@ internal class LoopbackIngest {
         val request = readRequest(client) ?: return
         val body = gunzipIfNeeded(request)
         // The worst-case clause's real total, printed so the whole-event sum's slack is a measurement, not a claim.
-        if (body.size > REPORTED_SIZE_FLOOR) println("LoopbackIngest: decoded envelope ${body.size} B of $MAX_EVENT_SIZE")
+        if (body.size > REPORTED_SIZE_FLOOR) {
+            println(
+                "LoopbackIngest: decoded envelope ${body.size} B of $MAX_EVENT_SIZE",
+            )
+        }
         val status = if (body.size > MAX_EVENT_SIZE) {
             413
         } else {

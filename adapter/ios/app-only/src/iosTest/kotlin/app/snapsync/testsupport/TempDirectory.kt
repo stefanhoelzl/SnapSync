@@ -33,7 +33,12 @@ internal fun withTempDirectory(block: (String) -> Unit) {
 /** A fresh, empty directory; the caller removes it with [removeDirectory] (a contract binding's dispose). */
 internal fun newTempDirectory(): String {
     val path = NSTemporaryDirectory().trimEnd('/') + "/snapsync-test-" + NSUUID().UUIDString()
-    NSFileManager.defaultManager.createDirectoryAtPath(path, withIntermediateDirectories = true, attributes = null, error = null)
+    NSFileManager.defaultManager.createDirectoryAtPath(
+        path,
+        withIntermediateDirectories = true,
+        attributes = null,
+        error = null,
+    )
     return path
 }
 

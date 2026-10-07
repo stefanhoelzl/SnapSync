@@ -12,7 +12,6 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import platform.Foundation.NSData
 import platform.Foundation.NSError
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSHTTPURLResponse
@@ -21,7 +20,6 @@ import platform.Foundation.NSTemporaryDirectory
 import platform.Foundation.NSURL
 import platform.Foundation.NSURLSession
 import platform.Foundation.NSURLSessionConfiguration
-import platform.Foundation.dataTaskWithRequest
 import platform.Foundation.setHTTPMethod
 import platform.Foundation.setValue
 import platform.Foundation.uploadTaskWithRequest
@@ -47,7 +45,10 @@ import kotlin.coroutines.resume
  * without having to break the backend to get one.
  */
 
-private val json = Json { ignoreUnknownKeys = false; prettyPrint = true }
+private val json = Json {
+    ignoreUnknownKeys = false
+    prettyPrint = true
+}
 
 @Serializable
 private class PerformRequest(

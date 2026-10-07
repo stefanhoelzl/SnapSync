@@ -1,17 +1,15 @@
 package app.snapsync.feature.membership
 
-import app.snapsync.model.deletesAt
-
-import app.snapsync.model.eventEnd
-
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.CaptureDate
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
+import app.snapsync.model.deletesAt
+import app.snapsync.model.eventEnd
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlinx.coroutines.test.runTest
 
 /** Entering a new membership (capabilities `join-event`, `photo-sharing`): the order is the rule. */
 class MembershipEntryTest {

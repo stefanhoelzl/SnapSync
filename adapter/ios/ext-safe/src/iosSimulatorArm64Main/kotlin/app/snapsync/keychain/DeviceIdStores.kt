@@ -94,7 +94,13 @@ internal class AppGroupFileSecureStore(private val directory: String?) : SecureS
             options = NSDataWritingAtomic or NSDataWritingFileProtectionCompleteUntilFirstUserAuthentication,
             error = errorVar.ptr,
         )
-        if (ok) WriteOutcome.Ok else WriteOutcome.Failed("secure file write failed: ${errorVar.value?.localizedDescription}")
+        if (ok) {
+            WriteOutcome.Ok
+        } else {
+            WriteOutcome.Failed(
+                "secure file write failed: ${errorVar.value?.localizedDescription}",
+            )
+        }
     }
 
     override fun delete(slot: SecureSlot): WriteOutcome = memScoped {
@@ -102,7 +108,13 @@ internal class AppGroupFileSecureStore(private val directory: String?) : SecureS
         if (!NSFileManager.defaultManager.fileExistsAtPath(path)) return WriteOutcome.Ok
         val errorVar = alloc<ObjCObjectVar<NSError?>>()
         val ok = NSFileManager.defaultManager.removeItemAtPath(path, error = errorVar.ptr)
-        if (ok) WriteOutcome.Ok else WriteOutcome.Failed("secure file delete failed: ${errorVar.value?.localizedDescription}")
+        if (ok) {
+            WriteOutcome.Ok
+        } else {
+            WriteOutcome.Failed(
+                "secure file delete failed: ${errorVar.value?.localizedDescription}",
+            )
+        }
     }
 
     private companion object {

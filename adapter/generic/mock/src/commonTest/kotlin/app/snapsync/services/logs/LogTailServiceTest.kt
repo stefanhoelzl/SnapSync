@@ -2,7 +2,6 @@ package app.snapsync.services.logs
 
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.model.FileArea
-
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -118,7 +117,9 @@ class LogTailServiceTest {
     fun `a denied log reads as null`() = runTest {
         shared.put("ext-debug.log", "\ncontent\n")
 
-        assertNull(service(denied = setOf(FileArea.SHARED to "ext-debug.log")).tail(LogTailService.Process.EXTENSION, 4096))
+        assertNull(
+            service(denied = setOf(FileArea.SHARED to "ext-debug.log")).tail(LogTailService.Process.EXTENSION, 4096),
+        )
     }
 
     @Test

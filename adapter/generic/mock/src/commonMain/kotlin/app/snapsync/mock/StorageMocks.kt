@@ -1,7 +1,6 @@
 package app.snapsync.mock
 
 import app.snapsync.model.FileArea
-import app.snapsync.model.FileResult
 import app.snapsync.model.SecureSlot
 import app.snapsync.model.SecureStoreRead
 import app.snapsync.model.StoredProtection
@@ -54,7 +53,9 @@ class FileSystemOperator internal constructor(private val disk: FileSystemMock) 
 
     /** Append [text] to a file — how a process's log grows. */
     fun append(area: FileArea, path: String, text: String) {
-        held(area).edit { files -> files + (path to (files[path]?.decodeToString().orEmpty() + text).encodeToByteArray()) }
+        held(
+            area,
+        ).edit { files -> files + (path to (files[path]?.decodeToString().orEmpty() + text).encodeToByteArray()) }
     }
 
     fun remove(area: FileArea, path: String) {

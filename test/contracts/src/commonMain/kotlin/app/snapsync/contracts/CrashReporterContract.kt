@@ -265,7 +265,10 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
                 CrashHandlers(
                     // Both fields: a captured message's text reaches the handler as the SDK's rendering, `formatted`.
                     onEvent = { e ->
-                        e.copy(message = e.message?.let { "$it (shaped)" }, formatted = e.formatted?.let { "$it (shaped)" })
+                        e.copy(
+                            message = e.message?.let { "$it (shaped)" },
+                            formatted = e.formatted?.let { "$it (shaped)" },
+                        )
                     },
                     onBreadcrumb = { c -> c.copy(message = c.message?.let { "shaped: $it" }) },
                 ),
@@ -274,7 +277,11 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
             s.reporter.capture(CrashEvent(message = "WIRE_HANDLERS_SHAPE_WHAT_LEAVES"))
             val event = s.observe.delivered { e -> e.any { it.message?.startsWith("WIRE_HANDLERS") == true } }
                 .first { it.message?.startsWith("WIRE_HANDLERS") == true }
-            assertEquals("WIRE_HANDLERS_SHAPE_WHAT_LEAVES (shaped)", event.message, "the event leaves as the handler shaped it")
+            assertEquals(
+                "WIRE_HANDLERS_SHAPE_WHAT_LEAVES (shaped)",
+                event.message,
+                "the event leaves as the handler shaped it",
+            )
             assertTrue(
                 event.breadcrumbs.any { it.startsWith("shaped: WIRE_HANDLERS_SHAPE_WHAT_LEAVES crumb") },
                 "and so does its breadcrumb: ${event.breadcrumbs}",
@@ -284,7 +291,10 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
         clause("WIRE_A_DROPPED_EVENT_LEAVES_NOTHING", CrashReporterState.ON_THE_WIRE) { s ->
             val dropped = "WIRE_A_DROPPED_EVENT_LEAVES_NOTHING drop me"
             s.startListening(
-                CrashHandlers(onEvent = { e -> e.takeIf { (it.formatted ?: it.message) != dropped } }, onBreadcrumb = { it }),
+                CrashHandlers(
+                    onEvent = { e -> e.takeIf { (it.formatted ?: it.message) != dropped } },
+                    onBreadcrumb = { it },
+                ),
             )
             s.reporter.capture(CrashEvent(message = dropped))
             assertTrue(
@@ -385,7 +395,10 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
                 .filter { it.contexts.containsKey("note") }
             assertEquals(1, delivered.size, "one dump sent, one delivered")
             val message = assertNotNull(delivered.single().message)
-            assertTrue(dump.note in message, "the operator's note — and the id it quotes — arrives unredacted: '$message'")
+            assertTrue(
+                dump.note in message,
+                "the operator's note — and the id it quotes — arrives unredacted: '$message'",
+            )
             assertEquals(dump.state, delivered.single().contexts["state"], "and its sections ride as contexts")
         }
 
@@ -393,7 +406,9 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
             s.startListening(PRODUCTION)
             // A full set of breadcrumbs, each far over the cap: the breadcrumb row of the whole-event sum at its worst.
             repeat(MAX_BREADCRUMBS) { i ->
-                s.reporter.breadcrumb(Crumb(CrashLevel.WARNING, "WIRE_WORST_CASE_DUMP_ARRIVES crumb $i " + "\"q\\".repeat(2_000)))
+                s.reporter.breadcrumb(
+                    Crumb(CrashLevel.WARNING, "WIRE_WORST_CASE_DUMP_ARRIVES crumb $i " + "\"q\\".repeat(2_000)),
+                )
             }
             s.reporter.sendDump(diagnosticDumpEvent(worstCaseDumpFor("WIRE_WORST_CASE_DUMP_ARRIVES")))
             // The sentinel is sent after the dump. An ingest refusal would leave the dump at the head of the queue, so

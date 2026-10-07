@@ -1,12 +1,12 @@
 package app.snapsync.services.version
 
+import app.snapsync.model.Reply
+import app.snapsync.model.VersionRefusal
 import app.snapsync.services.CapturingLogWriter
 import co.touchlab.kermit.Severity
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
-import app.snapsync.model.Reply
-import app.snapsync.model.VersionRefusal
 
 /**
  * The read-model that owns "the backend is refusing this build" (capability `app-update-required`).
@@ -58,7 +58,13 @@ class AppVersionGateTest {
         gate.refused("0.4")
         gate.refused("0.4")
 
-        assertEquals(1, recorder.severities.count { it >= Severity.Error }, "one report per transition, not one per refused request")
+        assertEquals(
+            1,
+            recorder.severities.count {
+                it >= Severity.Error
+            },
+            "one report per transition, not one per refused request",
+        )
     }
 
     @Test

@@ -73,6 +73,13 @@ class LedgerEntryEqualityTest {
         originalFilename: String = this.originalFilename,
         destinationPath: String? = this.destinationPath,
     ) = LedgerEntry(
-        key, assetId, state, creationDate, role, contentType, originalFilename, destinationPath,
+        key,
+        assetId,
+        state,
+        creationDate,
+        role,
+        contentType,
+        originalFilename,
+        destinationPath,
     )
 }

@@ -48,4 +48,7 @@ private fun mediaStoreCensus(context: Context): CensusView {
     )
 }
 
-private val json = Json { encodeDefaults = true; prettyPrint = true }
+private val json = Json {
+    encodeDefaults = true
+    prettyPrint = true
+}

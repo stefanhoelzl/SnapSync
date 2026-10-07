@@ -107,7 +107,11 @@ class RigClient(
      * `GET /device/gallery` — the photo library as the app's own candidate seam and selection policy read it:
      * every asset, its policy facts and verdict, and (with [resources]) its resources and capture names.
      */
-    suspend fun gallery(cutoff: String? = null, resources: Boolean = false, downloadOnly: Boolean = false): GalleryView =
+    suspend fun gallery(
+        cutoff: String? = null,
+        resources: Boolean = false,
+        downloadOnly: Boolean = false,
+    ): GalleryView =
         json.decodeFromString(
             GalleryView.serializer(),
             http.get("$base/device/gallery") {

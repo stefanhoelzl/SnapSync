@@ -1,20 +1,20 @@
 package app.snapsync.services.crash
 
-import app.snapsync.compose.NoProcessMetrics
 import app.snapsync.compose.NoEntryContext
+import app.snapsync.compose.NoProcessMetrics
 import app.snapsync.compose.ProcessPorts
 import app.snapsync.compose.snapSyncProcess
-import app.snapsync.mock.inMemoryCrashReporter
-import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.BuildInfoMock
 import app.snapsync.mock.fakeCrypto
 import app.snapsync.mock.fixedClock
+import app.snapsync.mock.inMemoryCrashReporter
+import app.snapsync.mock.inMemoryFiles
 import app.snapsync.model.CrashEvent
 import app.snapsync.model.DiagnosticDump
 import app.snapsync.model.DumpResult
 import app.snapsync.model.NON_REDACTED_TAG
-import app.snapsync.model.SAVED_DIAGNOSTIC_REPORT_PATH
 import app.snapsync.model.ProcessMetricReport
+import app.snapsync.model.SAVED_DIAGNOSTIC_REPORT_PATH
 import app.snapsync.ports.EntryContext
 import app.snapsync.ports.MetricHandlers
 import app.snapsync.ports.ProcessMetrics
@@ -78,7 +78,11 @@ class ProcessCompositionTest {
         val process = process(dsn = null)
         assertFalse(started.value, "no destination, no channel — and no connection ever opened")
         assertFalse(process.crash.isConfigured)
-        assertEquals(1, process.logWriters.size, "only the sinks' writer: a build that reports nowhere never constructs the crash one")
+        assertEquals(
+            1,
+            process.logWriters.size,
+            "only the sinks' writer: a build that reports nowhere never constructs the crash one",
+        )
     }
 
     @Test
@@ -95,7 +99,12 @@ class ProcessCompositionTest {
 
     @Test
     fun a_report_that_cannot_be_saved_says_so() = runTest {
-        val crash = CrashReporting(inMemoryCrashReporter(), BuildInfoMock().port(), NoEntryContext, inMemoryFiles(private = null))
+        val crash = CrashReporting(
+            inMemoryCrashReporter(),
+            BuildInfoMock().port(),
+            NoEntryContext,
+            inMemoryFiles(private = null),
+        )
         assertIs<DumpResult.NotSent>(crash.sendDump(dump()))
     }
 
@@ -158,10 +167,20 @@ class ProcessCompositionTest {
     @Test
     fun the_log_writer_hands_every_line_to_the_channel_and_an_error_as_an_event_tagged_with_its_entry_point() {
         val reporter = Recording()
-        val writer = assertNotNull(CrashReporting(reporter, BuildInfoMock(dsn = "https://key@ingest/1").port(), Entry("process"), inMemoryFiles()).logWriter)
+        val writer = assertNotNull(
+            CrashReporting(
+                reporter,
+                BuildInfoMock(dsn = "https://key@ingest/1").port(),
+                Entry("process"),
+                inMemoryFiles(),
+            ).logWriter,
+        )
         writer.log(co.touchlab.kermit.Severity.Info, "enumerated 3", "gallery", null)
         writer.log(co.touchlab.kermit.Severity.Error, "reconcile($id) failed", "engine", null)
-        assertEquals(listOf("[process] enumerated 3", "[process] reconcile(‹uuid›) failed"), reporter.crumbs.map { it.message })
+        assertEquals(
+            listOf("[process] enumerated 3", "[process] reconcile(‹uuid›) failed"),
+            reporter.crumbs.map { it.message },
+        )
         val event = reporter.events.single()
         assertEquals("reconcile(‹uuid›) failed", event.message)
         assertEquals("process", event.tags["entry_point"])
@@ -202,10 +221,15 @@ class ProcessCompositionTest {
         // The report arrives in a LATER process, which reads what the earlier one kept.
         val later = snapSyncProcess(ports(reporter, NoProcessMetrics, "https://key@ingest/1"))
         later.processAccount.handle(
-            ProcessMetricReport(mapOf("applicationExitMetrics.backgroundExitData.cumulativeMemoryPressureExitCount" to "1")),
+            ProcessMetricReport(
+                mapOf("applicationExitMetrics.backgroundExitData.cumulativeMemoryPressureExitCount" to "1"),
+            ),
         )
         val context = assertNotNull(reporter.contexts[app.snapsync.model.PROCESS_METRIC_CONTEXT])
-        val newest = assertNotNull(context["${app.snapsync.model.FOOTPRINT_FIELD_PREFIX}.0"], "the reading rides: $context")
+        val newest = assertNotNull(
+            context["${app.snapsync.model.FOOTPRINT_FIELD_PREFIX}.0"],
+            "the reading rides: $context",
+        )
         assertTrue("entering background: footprint 83574 kB" in newest, newest)
         assertEquals("1", context["applicationExitMetrics.backgroundExitData.cumulativeMemoryPressureExitCount"])
     }
@@ -220,12 +244,19 @@ class ProcessCompositionTest {
 
     @Test
     fun describing_the_process_starts_a_reporting_channel_itself() {
-        val crash = CrashReporting(inMemoryCrashReporter(started, dumps), BuildInfoMock(dsn = "https://key@ingest/1").port(), NoEntryContext, inMemoryFiles())
+        val crash = CrashReporting(
+            inMemoryCrashReporter(started, dumps),
+            BuildInfoMock(dsn = "https://key@ingest/1").port(),
+            NoEntryContext,
+            inMemoryFiles(),
+        )
         assertFalse(started.value)
         crash.describeProcess(ProcessMetricReport(emptyMap()))
         assertTrue(started.value, "an account that outran the composition must not reach an unstarted channel")
         assertNotNull(crash.logWriter)
-        assertNull(CrashReporting(inMemoryCrashReporter(), BuildInfoMock().port(), NoEntryContext, inMemoryFiles()).logWriter)
+        assertNull(
+            CrashReporting(inMemoryCrashReporter(), BuildInfoMock().port(), NoEntryContext, inMemoryFiles()).logWriter,
+        )
     }
 
     private fun startedWith(build: BuildInfoMock): app.snapsync.model.CrashOptions {
@@ -278,7 +309,11 @@ class ProcessCompositionTest {
     @Test
     fun a_process_with_no_identifier_carries_no_process_tag_and_a_blank_version_no_release() {
         val options = startedWith(
-            BuildInfoMock(dsn = "https://key@ingest/1", declaredVersion = app.snapsync.mock.DeclaredVersion(""), processId = null),
+            BuildInfoMock(
+                dsn = "https://key@ingest/1",
+                declaredVersion = app.snapsync.mock.DeclaredVersion(""),
+                processId = null,
+            ),
         )
         assertNull(options.release)
         assertEquals(mapOf("platform" to "ios"), options.tags)

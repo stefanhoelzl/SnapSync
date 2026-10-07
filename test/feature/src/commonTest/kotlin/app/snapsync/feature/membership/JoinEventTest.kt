@@ -1,33 +1,31 @@
 package app.snapsync.feature.membership
 
-import app.snapsync.model.EventLookup
-import app.snapsync.model.JoinLoad
-import app.snapsync.model.SecureSlots
-import app.snapsync.model.SecureStoreRead
-import app.snapsync.mock.fakeCrypto
-import app.snapsync.mock.inMemorySecureStore
-import app.snapsync.services.crypto.EventKeys
-import kotlin.test.assertIs
-import app.snapsync.services.backend.EventDirectory
-import app.snapsync.model.JoinResult
-
 import app.snapsync.feature.support.configService
 import app.snapsync.feature.support.testIdentity
+import app.snapsync.mock.fakeCrypto
+import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.CaptureDate
+import app.snapsync.model.Direction
+import app.snapsync.model.EventConfig
+import app.snapsync.model.EventLookup
+import app.snapsync.model.JoinChoice
+import app.snapsync.model.JoinCommit
+import app.snapsync.model.JoinLoad
+import app.snapsync.model.JoinResult
+import app.snapsync.model.SecureSlots
+import app.snapsync.model.SecureStoreRead
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.deletesAt
 import app.snapsync.model.eventEnd
 import app.snapsync.model.eventStart
-import app.snapsync.model.Direction
-import app.snapsync.model.JoinChoice
-import app.snapsync.model.EventConfig
+import app.snapsync.services.backend.EventDirectory
+import app.snapsync.services.crypto.EventKeys
 import kotlinx.coroutines.test.runTest
-import app.snapsync.model.JoinCommit
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 private const val EVENT_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
@@ -57,7 +55,6 @@ private val CEILING = captureCeiling("2026-07-08T09:00:00Z")
 /** The event's server-derived retention deadline (capability `event-lifetime`), carried on every details
  *  load and persisted onto the membership as the self-leave's offline witness. */
 private val DELETES_AT = deletesAt("2026-07-31T09:00:00Z")
-
 
 /** Every membership carries a concrete capture-date ceiling (capability `join-event`). */
 private val FIXTURE_CEILING = captureCeiling("2099-01-01T00:00:00Z")
@@ -107,115 +104,156 @@ class JoinEventTest {
         assertEquals(JoinCommit.Unverified, JoinOutcome.Unverified.toCommit(), "never the generic failure")
     }
 
-
     @Test
     fun `join enrolls then provisions on success`() = runTest {
-    val provisioned = mutableListOf<EventConfig>()
-    val enroller = FakeEnroller(result = JoinResult.JOINED)
-    val outcome = joinEvent(config = null, enroller = enroller, provisioned = provisioned)
-        .join(JoinChoice(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false))
+        val provisioned = mutableListOf<EventConfig>()
+        val enroller = FakeEnroller(result = JoinResult.JOINED)
+        val outcome = joinEvent(config = null, enroller = enroller, provisioned = provisioned)
+            .join(
+                JoinChoice(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false),
+            )
 
-    assertEquals(JoinOutcome.Committed, outcome)
-    assertEquals(listOf(EVENT_A to DEVICE), enroller.calls)
-    assertEquals(
-        listOf(EventConfig(EVENT_A, "Anna's Wedding", CUTOFF, STARTS_AT, ENDS_AT, CEILING, DELETES_AT)),
-        provisioned,
-    )
-}
+        assertEquals(JoinOutcome.Committed, outcome)
+        assertEquals(listOf(EVENT_A to DEVICE), enroller.calls)
+        assertEquals(
+            listOf(EventConfig(EVENT_A, "Anna's Wedding", CUTOFF, STARTS_AT, ENDS_AT, CEILING, DELETES_AT)),
+            provisioned,
+        )
+    }
 
-@Test
-fun `a failed enrollment commits nothing`() = runTest {
-    val provisioned = mutableListOf<EventConfig>()
-    val outcome = joinEvent(config = null, enrollResult = JoinResult.FAILED, provisioned = provisioned)
-        .join(JoinChoice(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false))
+    @Test
+    fun `a failed enrollment commits nothing`() = runTest {
+        val provisioned = mutableListOf<EventConfig>()
+        val outcome = joinEvent(config = null, enrollResult = JoinResult.FAILED, provisioned = provisioned)
+            .join(
+                JoinChoice(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false),
+            )
 
-    assertEquals(JoinOutcome.EnrollFailed, outcome)
-    assertTrue(provisioned.isEmpty(), "no config should be provisioned on a failed enrollment")
-}
+        assertEquals(JoinOutcome.EnrollFailed, outcome)
+        assertTrue(provisioned.isEmpty(), "no config should be provisioned on a failed enrollment")
+    }
 
-@Test
-fun `an enrollment refused for this phone's credential is unverified and commits nothing`() = runTest {
-    val provisioned = mutableListOf<EventConfig>()
-    val outcome = joinEvent(config = null, enrollResult = JoinResult.UNVERIFIED, provisioned = provisioned)
-        .join(JoinChoice(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false))
+    @Test
+    fun `an enrollment refused for this phone's credential is unverified and commits nothing`() = runTest {
+        val provisioned = mutableListOf<EventConfig>()
+        val outcome = joinEvent(config = null, enrollResult = JoinResult.UNVERIFIED, provisioned = provisioned)
+            .join(
+                JoinChoice(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false),
+            )
 
-    assertEquals(JoinOutcome.Unverified, outcome)
-    assertTrue(provisioned.isEmpty())
-}
+        assertEquals(JoinOutcome.Unverified, outcome)
+        assertTrue(provisioned.isEmpty())
+    }
 
-@Test
-fun `re-joining the current event is a no-op that skips enrollment`() = runTest {
-    val provisioned = mutableListOf<EventConfig>()
-    val enroller = FakeEnroller(result = JoinResult.JOINED)
-    val outcome = joinEvent(config = EventConfig(
-        EVENT_A,
-        "Anna's Wedding",
-        CUTOFF,
-        maxPhotoDate = FIXTURE_CEILING,
-        endsAt = eventEnd("2099-12-31T00:00:00Z"),
-        deletesAt = deletesAt("2099-12-31T00:00:00Z"),
-    ), enroller = enroller, provisioned = provisioned)
-        .join(JoinChoice(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false))
+    @Test
+    fun `re-joining the current event is a no-op that skips enrollment`() = runTest {
+        val provisioned = mutableListOf<EventConfig>()
+        val enroller = FakeEnroller(result = JoinResult.JOINED)
+        val outcome = joinEvent(
+            config = EventConfig(
+                EVENT_A,
+                "Anna's Wedding",
+                CUTOFF,
+                maxPhotoDate = FIXTURE_CEILING,
+                endsAt = eventEnd("2099-12-31T00:00:00Z"),
+                deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+            ),
+            enroller = enroller,
+            provisioned = provisioned,
+        )
+            .join(
+                JoinChoice(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false),
+            )
 
-    assertEquals(JoinOutcome.AlreadyJoined, outcome)
-    assertTrue(enroller.calls.isEmpty(), "the already-joined event must not be re-enrolled")
-    assertTrue(provisioned.isEmpty())
-}
+        assertEquals(JoinOutcome.AlreadyJoined, outcome)
+        assertTrue(enroller.calls.isEmpty(), "the already-joined event must not be re-enrolled")
+        assertTrue(provisioned.isEmpty())
+    }
 
-@Test
-fun `switching to a different event enrolls`() = runTest {
-    val enroller = FakeEnroller(result = JoinResult.JOINED)
-    val outcome = joinEvent(config = EventConfig(EVENT_A, "Old", CUTOFF, maxPhotoDate = FIXTURE_CEILING, endsAt = eventEnd("2099-12-31T00:00:00Z"), deletesAt = deletesAt("2099-12-31T00:00:00Z")), enroller = enroller)
-        .join(JoinChoice(EVENT_B, "New", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false))
+    @Test
+    fun `switching to a different event enrolls`() = runTest {
+        val enroller = FakeEnroller(result = JoinResult.JOINED)
+        val outcome = joinEvent(
+            config = EventConfig(
+                EVENT_A,
+                "Old",
+                CUTOFF,
+                maxPhotoDate = FIXTURE_CEILING,
+                endsAt = eventEnd("2099-12-31T00:00:00Z"),
+                deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+            ),
+            enroller = enroller,
+        )
+            .join(JoinChoice(EVENT_B, "New", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false))
 
-    assertEquals(JoinOutcome.Committed, outcome)
-    assertEquals(listOf(EVENT_B to DEVICE), enroller.calls)
-}
+        assertEquals(JoinOutcome.Committed, outcome)
+        assertEquals(listOf(EVENT_B to DEVICE), enroller.calls)
+    }
 
-@Test
-fun `loadDetails surfaces found not-found and failed distinctly`() = runTest {
-    assertEquals(
-        EventLookup.Found("N", STARTS_AT, ENDS_AT, DELETES_AT),
-        joinEvent(config = null, details = EventLookup.Found("N", STARTS_AT, ENDS_AT, DELETES_AT)).loadDetails(EVENT_A),
-    )
-    assertEquals(EventLookup.NotFound, joinEvent(config = null, details = EventLookup.NotFound).loadDetails(EVENT_A))
-    assertEquals(EventLookup.Failed, joinEvent(config = null, details = EventLookup.Failed).loadDetails(EVENT_A))
-}
+    @Test
+    fun `loadDetails surfaces found not-found and failed distinctly`() = runTest {
+        assertEquals(
+            EventLookup.Found("N", STARTS_AT, ENDS_AT, DELETES_AT),
+            joinEvent(
+                config = null,
+                details = EventLookup.Found("N", STARTS_AT, ENDS_AT, DELETES_AT),
+            ).loadDetails(EVENT_A),
+        )
+        assertEquals(
+            EventLookup.NotFound,
+            joinEvent(config = null, details = EventLookup.NotFound).loadDetails(EVENT_A),
+        )
+        assertEquals(EventLookup.Failed, joinEvent(config = null, details = EventLookup.Failed).loadDetails(EVENT_A))
+    }
 
     @Test
     fun `join commits the loaded name`() = runTest {
         val provisioned = mutableListOf<EventConfig>()
-        joinEvent(config = null, provisioned = provisioned).join(JoinChoice(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false))
+        joinEvent(
+            config = null,
+            provisioned = provisioned,
+        ).join(
+            JoinChoice(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false),
+        )
         assertEquals("Anna's Wedding", provisioned.single().name)
     }
 
-@Test
-fun `a closed event is reported apart from a full one and provisions nothing`() = runTest {
-    val provisioned = mutableListOf<EventConfig>()
-    val outcome = joinEvent(config = null, enrollResult = JoinResult.EVENT_CLOSED, provisioned = provisioned)
-        .join(JoinChoice(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false))
+    @Test
+    fun `a closed event is reported apart from a full one and provisions nothing`() = runTest {
+        val provisioned = mutableListOf<EventConfig>()
+        val outcome = joinEvent(config = null, enrollResult = JoinResult.EVENT_CLOSED, provisioned = provisioned)
+            .join(
+                JoinChoice(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false),
+            )
 
-    assertEquals(JoinOutcome.EventClosed, outcome)
-    assertTrue(provisioned.isEmpty())
-}
+        assertEquals(JoinOutcome.EventClosed, outcome)
+        assertTrue(provisioned.isEmpty())
+    }
 
-@Test
-fun `a full event is reported apart from a failure`() = runTest {
-    // Capacity is a refusal the user can act on — "this event is full" — while a transport failure is
-    // not. The previous seam answered both as `false`, so the join surface could only say that something
-    // went wrong (capability `join-event`).
-    val provisioned = mutableListOf<EventConfig>()
-    val outcome = joinEvent(config = null, enrollResult = JoinResult.EVENT_FULL, provisioned = provisioned)
-        .join(JoinChoice(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false))
+    @Test
+    fun `a full event is reported apart from a failure`() = runTest {
+        // Capacity is a refusal the user can act on — "this event is full" — while a transport failure is
+        // not. The previous seam answered both as `false`, so the join surface could only say that something
+        // went wrong (capability `join-event`).
+        val provisioned = mutableListOf<EventConfig>()
+        val outcome = joinEvent(config = null, enrollResult = JoinResult.EVENT_FULL, provisioned = provisioned)
+            .join(
+                JoinChoice(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false),
+            )
 
-    assertEquals(JoinOutcome.EventFull, outcome)
-    assertTrue(provisioned.isEmpty(), "no config should be provisioned when the event is full")
-}
+        assertEquals(JoinOutcome.EventFull, outcome)
+        assertTrue(provisioned.isEmpty(), "no config should be provisioned when the event is full")
+    }
 
     @Test
     fun `join persists the chosen saveToAlbum`() = runTest {
         val provisioned = mutableListOf<EventConfig>()
-        joinEvent(config = null, provisioned = provisioned).join(JoinChoice(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, true))
+        joinEvent(
+            config = null,
+            provisioned = provisioned,
+        ).join(
+            JoinChoice(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, true),
+        )
         assertEquals(true, provisioned.single().saveToAlbum)
     }
 
@@ -223,7 +261,15 @@ fun `a full event is reported apart from a failure`() = runTest {
     fun `join persists the chosen capture-date cutoff`() = runTest {
         val provisioned = mutableListOf<EventConfig>()
         joinEvent(config = null, provisioned = provisioned)
-            .join(JoinChoice(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, captureCutoff("2026-07-04T18:00:00Z"), CEILING, Direction.Both, false))
+            .join(
+                JoinChoice(
+                    EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT,
+                    captureCutoff(
+                        "2026-07-04T18:00:00Z",
+                    ),
+                    CEILING, Direction.Both, false,
+                ),
+            )
         assertEquals(captureCutoff("2026-07-04T18:00:00Z"), provisioned.single().minPhotoDate)
     }
 
@@ -232,7 +278,9 @@ fun `a full event is reported apart from a failure`() = runTest {
         for (direction in Direction.entries) {
             val provisioned = mutableListOf<EventConfig>()
             joinEvent(config = null, provisioned = provisioned)
-                .join(JoinChoice(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, direction, false))
+                .join(
+                    JoinChoice(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, direction, false),
+                )
             assertEquals(direction, provisioned.single().direction)
         }
     }
@@ -243,7 +291,15 @@ fun `a full event is reported apart from a failure`() = runTest {
     fun `a cutoff below the event start is clamped up to it`() = runTest {
         val provisioned = mutableListOf<EventConfig>()
         joinEvent(config = null, provisioned = provisioned)
-            .join(JoinChoice(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, captureCutoff("2026-06-01T00:00:00Z"), CEILING, Direction.Both, false))
+            .join(
+                JoinChoice(
+                    EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT,
+                    captureCutoff(
+                        "2026-06-01T00:00:00Z",
+                    ),
+                    CEILING, Direction.Both, false,
+                ),
+            )
 
         // The member asked for June 1st; the event began July 1st. Their photos from June are NOT the
         // event's, and never become uploadable.
@@ -255,7 +311,9 @@ fun `a full event is reported apart from a failure`() = runTest {
     fun `a cutoff above the event start is persisted unchanged`() = runTest {
         val provisioned = mutableListOf<EventConfig>()
         joinEvent(config = null, provisioned = provisioned)
-            .join(JoinChoice(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false))
+            .join(
+                JoinChoice(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false),
+            )
 
         // The floor NARROWS; it never widens. A member who joins late keeps their own, later cutoff.
         assertEquals(CUTOFF, provisioned.single().minPhotoDate)
@@ -269,7 +327,15 @@ fun `a full event is reported apart from a failure`() = runTest {
         // WITHOUT A TAP. The clamp lives in the use-case precisely so the autoJoin path cannot skip it.
         val provisioned = mutableListOf<EventConfig>()
         joinEvent(config = null, provisioned = provisioned)
-            .join(JoinChoice(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, captureCutoff("2001-01-01T00:00:00Z"), CEILING, Direction.Both, false))
+            .join(
+                JoinChoice(
+                    EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT,
+                    captureCutoff(
+                        "2001-01-01T00:00:00Z",
+                    ),
+                    CEILING, Direction.Both, false,
+                ),
+            )
 
         assertEquals(CaptureCutoff(STARTS_AT.at), provisioned.single().minPhotoDate, "the 2001 cutoff must not survive")
     }
@@ -281,7 +347,15 @@ fun `a full event is reported apart from a failure`() = runTest {
         val future = eventStart("2099-12-31T23:59:59Z")
         val provisioned = mutableListOf<EventConfig>()
         joinEvent(config = null, provisioned = provisioned)
-            .join(JoinChoice(EVENT_A, "NYE", future, eventEnd("2100-01-07T23:59:59Z"), DELETES_AT, CUTOFF, captureCeiling("2100-01-07T23:59:59Z"), Direction.Both, false))
+            .join(
+                JoinChoice(
+                    EVENT_A, "NYE", future,
+                    eventEnd(
+                        "2100-01-07T23:59:59Z",
+                    ),
+                    DELETES_AT, CUTOFF, captureCeiling("2100-01-07T23:59:59Z"), Direction.Both, false,
+                ),
+            )
 
         assertEquals(CaptureCutoff(future.at), provisioned.single().minPhotoDate)
         assertTrue(
@@ -293,10 +367,17 @@ fun `a full event is reported apart from a failure`() = runTest {
     @Test
     fun `every provisioned config satisfies minPhotoDate greater or equal startsAt`() = runTest {
         // The floor invariant, stated as such: it holds for EVERY join, whatever was chosen.
-        for (chosen in listOf(captureCutoff("2001-01-01T00:00:00Z"), CaptureCutoff(STARTS_AT.at), CUTOFF, captureCutoff("2099-01-01T00:00:00Z"))) {
+        for (chosen in listOf(
+            captureCutoff("2001-01-01T00:00:00Z"),
+            CaptureCutoff(STARTS_AT.at),
+            CUTOFF,
+            captureCutoff("2099-01-01T00:00:00Z"),
+        )) {
             val provisioned = mutableListOf<EventConfig>()
             joinEvent(config = null, provisioned = provisioned)
-                .join(JoinChoice(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, chosen, CEILING, Direction.Both, false))
+                .join(
+                    JoinChoice(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, chosen, CEILING, Direction.Both, false),
+                )
             val saved = provisioned.single()
             assertTrue(saved.minPhotoDate.at >= saved.startsAt.at, "floor violated for chosen=$chosen")
         }
@@ -307,7 +388,9 @@ fun `a full event is reported apart from a failure`() = runTest {
         val provisioned = mutableListOf<EventConfig>()
         val enroller = FakeEnroller(result = JoinResult.JOINED)
         val outcome = joinEvent(config = null, enroller = enroller, provisioned = provisioned)
-            .join(JoinChoice(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.DownloadOnly, false))
+            .join(
+                JoinChoice(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.DownloadOnly, false),
+            )
 
         assertEquals(JoinOutcome.Committed, outcome)
         assertEquals(listOf(EVENT_A to DEVICE), enroller.calls, "download-only must still enroll (empty manifest)")
@@ -380,6 +463,9 @@ fun `a full event is reported apart from a failure`() = runTest {
         assertEquals(JoinLoad.WrongLink, joinEvent(null, details = encrypted, keys = keys).loadJoin(EVENT_A, null))
         assertEquals(JoinLoad.WrongLink, joinEvent(null, keys = keys).loadJoin(EVENT_A, minted.linkKey))
         assertIs<JoinLoad.Found>(joinEvent(null, keys = keys).loadJoin(EVENT_A, null))
-        assertEquals(JoinLoad.NotFound, joinEvent(null, details = EventLookup.NotFound, keys = keys).loadJoin(EVENT_A, null))
+        assertEquals(
+            JoinLoad.NotFound,
+            joinEvent(null, details = EventLookup.NotFound, keys = keys).loadJoin(EVENT_A, null),
+        )
     }
 }

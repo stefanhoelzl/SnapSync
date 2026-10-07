@@ -49,7 +49,8 @@ class LostUploadAckIntegrationTest {
         // Nothing is left outstanding: the screen settles over the photo it uploaded.
         awaitInSync()
         assertEquals(
-            1, jobs().created,
+            1,
+            jobs().created,
             "and its bytes are NEVER sent again — this is the whole defect: a lost acknowledgement used to read " +
                 "as a lost upload, and the photo was re-uploaded on every relaunch",
         )

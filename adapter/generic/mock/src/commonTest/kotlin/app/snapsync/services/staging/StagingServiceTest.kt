@@ -2,7 +2,6 @@ package app.snapsync.services.staging
 
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.model.FileArea
-
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -42,7 +41,9 @@ class StagingServiceTest {
      */
     @Test
     fun `an unavailable shared area raises rather than inventing a path`() {
-        assertFailsWith<IllegalStateException> { StagingService(inMemoryFiles(shared = null)).locate("download-staging/a.heic") }
+        assertFailsWith<IllegalStateException> {
+            StagingService(inMemoryFiles(shared = null)).locate("download-staging/a.heic")
+        }
     }
 
     // ---- release ------------------------------------------------------------------------------
@@ -66,7 +67,9 @@ class StagingServiceTest {
     fun `an absent path does not stop the rest of the batch`() = runTest {
         stage("download-staging/first.heic", "download-staging/last.heic")
 
-        staging.release(listOf("download-staging/first.heic", "download-staging/missing.heic", "download-staging/last.heic"))
+        staging.release(
+            listOf("download-staging/first.heic", "download-staging/missing.heic", "download-staging/last.heic"),
+        )
 
         assertEquals(emptySet(), shared.keys, "the path after the missing one must still be released")
     }
@@ -74,7 +77,10 @@ class StagingServiceTest {
     @Test
     fun `a file that cannot be released does not stop the rest of the batch`() = runTest {
         stage("download-staging/locked.heic", "download-staging/last.heic")
-        val locked = StagingService(inMemoryFiles(shared = shared, denied = setOf(FileArea.SHARED to "download-staging/locked.heic")))
+        val locked =
+            StagingService(
+                inMemoryFiles(shared = shared, denied = setOf(FileArea.SHARED to "download-staging/locked.heic")),
+            )
 
         locked.release(listOf("download-staging/locked.heic", "download-staging/last.heic"))
 
@@ -97,7 +103,10 @@ class StagingServiceTest {
 
         staging.release(emptyList())
 
-        assertTrue("download-staging/photo-1.heic" in shared, "an empty batch must not be read as a request to clear staging")
+        assertTrue(
+            "download-staging/photo-1.heic" in shared,
+            "an empty batch must not be read as a request to clear staging",
+        )
     }
 
     // ---- allPresent ---------------------------------------------------------------------------
@@ -137,7 +146,8 @@ class StagingServiceTest {
         stage("download-staging/a.heic")
         stage("download-staging/b.mov")
         // A protected file is still there: existence is not content.
-        val denied = StagingService(inMemoryFiles(shared = shared, denied = setOf(FileArea.SHARED to "download-staging/b.mov")))
+        val denied =
+            StagingService(inMemoryFiles(shared = shared, denied = setOf(FileArea.SHARED to "download-staging/b.mov")))
         val unavailable = StagingService(inMemoryFiles(shared = null))
 
         assertTrue(denied.allPresent(listOf("download-staging/a.heic", "download-staging/b.mov")))

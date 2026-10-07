@@ -7,11 +7,11 @@ import app.snapsync.contracts.AttestStoreState
 import app.snapsync.contracts.DeviceIntegrityState
 import app.snapsync.contracts.Entered
 import app.snapsync.keychain.IosSecureStore
-import app.snapsync.model.SecureSlot
-import app.snapsync.services.identity.AttestState
 import app.snapsync.keychain.KeychainApi
-import app.snapsync.ports.DeviceIntegrity
+import app.snapsync.model.SecureSlot
 import app.snapsync.ports.AttestStore
+import app.snapsync.ports.DeviceIntegrity
+import app.snapsync.services.identity.AttestState
 
 /*
  * The states the entitled app can put App Attest and the attestation store in, per clause. Shared by the device
@@ -28,7 +28,12 @@ internal const val DEVICE_UNREACHABLE_INACCESSIBLE_STORE =
     "the entitled app runs unlocked: its Keychain is accessible (the kexe host covers INACCESSIBLE)"
 
 /** An [IosDeviceIntegrity] over [api], for the one state the entitled app presents. */
-internal fun integrityInState(api: AppAttestApi, state: DeviceIntegrityState, afterDispose: () -> Unit = {}): Entered<DeviceIntegrity> =
+internal fun integrityInState(
+    api: AppAttestApi,
+    state: DeviceIntegrityState,
+    afterDispose: () -> Unit = {
+    },
+): Entered<DeviceIntegrity> =
     if (state == DeviceIntegrityState.UNAVAILABLE) {
         Entered.Unreachable(DEVICE_UNREACHABLE_UNAVAILABLE)
     } else {

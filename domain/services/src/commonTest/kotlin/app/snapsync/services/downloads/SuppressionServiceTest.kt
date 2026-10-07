@@ -6,11 +6,11 @@ import app.snapsync.model.SuppressionReadiness
 import app.snapsync.ports.Databases
 import app.snapsync.ports.DbOpen
 import app.snapsync.services.databases.DatabaseUnavailable
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
-import kotlinx.coroutines.test.runTest
 
 /**
  * The extension's read-only suppression view over each answer a read-only open can give (capability

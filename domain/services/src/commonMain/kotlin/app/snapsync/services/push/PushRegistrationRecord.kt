@@ -31,7 +31,11 @@ class PushRegistrationRecord(
     /** Record [value] as the registration the backend accepted; a write that fails leaves the next entry to publish. */
     fun saveLastRegistered(value: String) {
         val written = files.write(FileArea.SHARED, LAST_REGISTERED, value.encodeToByteArray())
-        if (written !is FileResult.Ok) log.w { "the registration record was not written ($written) — the next entry publishes again" }
+        if (written !is FileResult.Ok) {
+            log.w {
+                "the registration record was not written ($written) — the next entry publishes again"
+            }
+        }
     }
 
     private companion object {

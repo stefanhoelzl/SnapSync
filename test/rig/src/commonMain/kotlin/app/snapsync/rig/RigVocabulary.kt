@@ -20,8 +20,14 @@ object RigVocabulary {
      *  entry ports (`Lifecycle`, `Links`, `PushNotifications`, `Wake`, the transfer sessions) with the same argument
      *  shapes. */
     val appEntries: List<String> = listOf(
-        "onForeground", "onBackground", "onPushToken", "onPushTokenFailure", "onSceneContinueActivity",
-        "onSilentPush", "onBackgroundTask", "onBackgroundTransfers",
+        "onForeground",
+        "onBackground",
+        "onPushToken",
+        "onPushTokenFailure",
+        "onSceneContinueActivity",
+        "onSilentPush",
+        "onBackgroundTask",
+        "onBackgroundTransfers",
     ).map { "os/app/$it" }
 
     /**
@@ -43,7 +49,10 @@ object RigVocabulary {
 
     /** Device writes that name an operating-system facility only the app host has. */
     val appHostCommands: List<String> = listOf(
-        "device/uploaders", "device/process-metrics", "device/upload-jobs/perform", "device/upload-extension/record",
+        "device/uploaders",
+        "device/process-metrics",
+        "device/upload-jobs/perform",
+        "device/upload-extension/record",
         "device/disk",
     )
 
@@ -145,10 +154,11 @@ object RigVocabulary {
     const val CONTRACT: String = "contract"
 
     val entries: Set<String> =
-        (appEntries + playedOsEntries + extensionEntries + reads + sharedCommands + appHostCommands + worldLevers + deviceFacts +
-            adapterCommands + CONTRACT)
+        (
+            appEntries + playedOsEntries + extensionEntries + reads + sharedCommands + appHostCommands + worldLevers + deviceFacts +
+                adapterCommands + CONTRACT
+            )
             .toSet()
-
 }
 
 /** `GET /device`'s body: what this host honours and refuses, and anything it failed to classify. */

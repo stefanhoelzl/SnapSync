@@ -21,7 +21,9 @@ private fun <K : Enum<K>, T> runOne(clause: Clause<K, T>, binding: Binding<K, T>
     return when (entered) {
         is Entered.Unreachable ->
             if (declared) {
-                Outcome.Failed("the binding declares ${clause.state} reachable but answered Unreachable: ${entered.reason}")
+                Outcome.Failed(
+                    "the binding declares ${clause.state} reachable but answered Unreachable: ${entered.reason}",
+                )
             } else {
                 Outcome.NotRunHere(entered.reason)
             }
@@ -90,8 +92,12 @@ const val CONTRACT_TIMEOUT: String = "timeout: "
  */
 fun <K : Enum<K>, T> verify(contract: Contract<K, T>, binding: Binding<K, T>) {
     val results = run(contract, binding)
-    val bad = results.count { it.outcome is Outcome.Failed || it.outcome is Outcome.Diverged || it.outcome is Outcome.NotWithin }
+    val bad = results.count {
+        it.outcome is Outcome.Failed || it.outcome is Outcome.Diverged || it.outcome is Outcome.NotWithin
+    }
     if (bad > 0) {
-        fail("${contract.name} on ${binding.host} (${binding.kind}): $bad of ${results.size} clauses failed\n${results.table()}")
+        fail(
+            "${contract.name} on ${binding.host} (${binding.kind}): $bad of ${results.size} clauses failed\n${results.table()}",
+        )
     }
 }

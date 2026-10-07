@@ -1,17 +1,16 @@
 package app.snapsync.feature.status
 
+import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.model.AssetId
-import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
-
 import app.snapsync.model.grantsPhotoAccess
+import app.snapsync.services.gallery.GalleryAccessState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
-import app.snapsync.feature.status.readmodel.SyncStatusSource
 
 /**
  * The real [SyncStatusSource]. Own-device completeness **and** in-flight activity are read from the

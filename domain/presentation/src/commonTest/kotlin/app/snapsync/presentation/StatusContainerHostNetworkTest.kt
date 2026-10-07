@@ -6,8 +6,8 @@ import app.snapsync.feature.creation.readmodel.CreationFailureReason
 import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.feature.status.readmodel.NetworkStatusSource
 import app.snapsync.feature.status.readmodel.SyncStatusSource
-import app.snapsync.model.ScreenMessage
 import app.snapsync.model.Arrow
+import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
 import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.EventStart
@@ -17,6 +17,7 @@ import app.snapsync.model.JoinPhase
 import app.snapsync.model.Layer
 import app.snapsync.model.NetworkAccess
 import app.snapsync.model.NetworkNotice
+import app.snapsync.model.ScreenMessage
 import app.snapsync.model.SyncHealth
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
@@ -26,10 +27,6 @@ import app.snapsync.model.deletesAt
 import app.snapsync.model.encodeEventUrl
 import app.snapsync.model.eventEnd
 import app.snapsync.model.eventStart
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertIs
-import kotlin.time.Instant
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -37,11 +34,14 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
-import app.snapsync.model.Direction
-import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.TimeZone
 import org.orbitmvi.orbit.test.testWithInternalState
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertIs
+import kotlin.test.assertTrue
+import kotlin.time.Instant
 
 /**
  * The network notice in the reduction (capabilities `sync-status`, `create-event`, `join-event`; decision record
@@ -108,7 +108,10 @@ class StatusContainerHostNetworkTest {
 
     @Test
     fun `a missing network is the status line with its cause`() = runTest {
-        for ((access, notice) in listOf(NetworkAccess.Offline to NetworkNotice.OFFLINE, NetworkAccess.Blocked to NetworkNotice.BLOCKED)) {
+        for ((access, notice) in listOf(
+            NetworkAccess.Offline to NetworkNotice.OFFLINE,
+            NetworkAccess.Blocked to NetworkNotice.BLOCKED,
+        )) {
             assertEquals(SyncHealth.NoNetwork(notice), host(FakeNetwork(access)).health())
         }
     }
@@ -121,15 +124,25 @@ class StatusContainerHostNetworkTest {
 
     @Test
     fun `a missing network outranks a future start and an in-sync device`() = runTest {
-        assertEquals(SyncHealth.NoNetwork(NetworkNotice.OFFLINE), host(FakeNetwork(NetworkAccess.Offline), config = NOT_STARTED).health())
+        assertEquals(
+            SyncHealth.NoNetwork(NetworkNotice.OFFLINE),
+            host(FakeNetwork(NetworkAccess.Offline), config = NOT_STARTED).health(),
+        )
         val inSync = host(FakeNetwork())
         assertEquals(SyncHealth.InSync, inSync.health(), "online, the same device is in sync")
     }
 
     @Test
     fun `offline with an expired verification says offline and not cannot-verify`() = runTest {
-        assertEquals(SyncHealth.NoNetwork(NetworkNotice.OFFLINE), host(FakeNetwork(NetworkAccess.Offline), attested = false).health())
-        assertEquals(SyncHealth.Unattested(), host(FakeNetwork(), attested = false).health(), "online, the server is to blame")
+        assertEquals(
+            SyncHealth.NoNetwork(NetworkNotice.OFFLINE),
+            host(FakeNetwork(NetworkAccess.Offline), attested = false).health(),
+        )
+        assertEquals(
+            SyncHealth.Unattested(),
+            host(FakeNetwork(), attested = false).health(),
+            "online, the server is to blame",
+        )
     }
 
     @Test
@@ -150,16 +163,27 @@ class StatusContainerHostNetworkTest {
         val neither = STARTED.copy(direction = Direction.Neither)
         assertEquals(SyncHealth.Inactive, host(FakeNetwork(), config = neither).health())
         // Access, the network, the start and verification all concern photos that no longer move.
-        assertEquals(SyncHealth.Inactive, host(FakeNetwork(), config = neither, permission = GalleryAccess.DENIED).health())
+        assertEquals(
+            SyncHealth.Inactive,
+            host(FakeNetwork(), config = neither, permission = GalleryAccess.DENIED).health(),
+        )
         assertEquals(SyncHealth.Inactive, host(FakeNetwork(NetworkAccess.Offline), config = neither).health())
-        assertEquals(SyncHealth.Inactive, host(FakeNetwork(), config = NOT_STARTED.copy(direction = Direction.Neither)).health())
+        assertEquals(
+            SyncHealth.Inactive,
+            host(FakeNetwork(), config = NOT_STARTED.copy(direction = Direction.Neither)).health(),
+        )
         assertEquals(SyncHealth.Inactive, host(FakeNetwork(), config = neither, attested = false).health())
     }
 
     @Test
     fun `work still draining after both directions are off is shown and not masked`() = runTest {
-        val draining = SyncProgress(pending = 1, completed = 0, total = 1, failed = 0, active = true, estimatedRemaining = null)
-        val health = host(FakeNetwork(), config = STARTED.copy(direction = Direction.Neither), progress = draining).health()
+        val draining =
+            SyncProgress(pending = 1, completed = 0, total = 1, failed = 0, active = true, estimatedRemaining = null)
+        val health = host(
+            FakeNetwork(),
+            config = STARTED.copy(direction = Direction.Neither),
+            progress = draining,
+        ).health()
         assertTrue(health is SyncHealth.Syncing, "an upload still under way is progress, not \"not sharing\": $health")
         // …and with nothing left, the line says the member moves nothing — with no counts beneath it.
         val settled = host(FakeNetwork(), config = STARTED.copy(direction = Direction.Neither))
@@ -169,12 +193,14 @@ class StatusContainerHostNetworkTest {
     // ── photos kept off mobile data (capability `mobile-data`) ────────────────────────────────
 
     /** One upload handed to the platform and not yet done: shown, and in flight. */
-    private val oneUploading = SyncProgress(pending = 1, completed = 0, total = 1, failed = 0, active = true, estimatedRemaining = null)
+    private val oneUploading =
+        SyncProgress(pending = 1, completed = 0, total = 1, failed = 0, active = true, estimatedRemaining = null)
 
     @Test
     fun `photos kept off mobile data on a restricted network wait for Wi-Fi with still arrows`() = runTest {
         // The device's choice, not the membership's (decision record `changes/archive/2026-10-07-mobile-data-per-device`).
-        val host = host(FakeNetwork(NetworkAccess.Online(restricted = true)), progress = oneUploading, mobileData = false)
+        val host =
+            host(FakeNetwork(NetworkAccess.Online(restricted = true)), progress = oneUploading, mobileData = false)
         assertEquals(SyncHealth.Syncing(Arrow.STATIC, Arrow.HIDDEN, waitingForWifi = true), host.health())
     }
 
@@ -190,7 +216,10 @@ class StatusContainerHostNetworkTest {
 
     @Test
     fun `offline the create layer carries the notice`() = runTest {
-        assertEquals(Layer.CreateEvent(network = NetworkNotice.OFFLINE), host(FakeNetwork(NetworkAccess.Offline), config = null).container.stateFlow.value.layer)
+        assertEquals(
+            Layer.CreateEvent(network = NetworkNotice.OFFLINE),
+            host(FakeNetwork(NetworkAccess.Offline), config = null).container.stateFlow.value.layer,
+        )
     }
 
     @Test
@@ -210,7 +239,14 @@ class StatusContainerHostNetworkTest {
 
     @Test
     fun `a create in flight is not interrupted`() = runTest {
-        assertEquals(Layer.CreatingEvent, host(FakeNetwork(NetworkAccess.Offline), config = null, creation = CreationStatus.InFlight).container.stateFlow.value.layer)
+        assertEquals(
+            Layer.CreatingEvent,
+            host(
+                FakeNetwork(NetworkAccess.Offline),
+                config = null,
+                creation = CreationStatus.InFlight,
+            ).container.stateFlow.value.layer,
+        )
     }
 
     // ── the join layer ───────────────────────────────────────────────────────────────────────
@@ -240,7 +276,10 @@ class StatusContainerHostNetworkTest {
     fun `a load that failed while online waits for Retry`() = runTest {
         val network = FakeNetwork()
         var loads = 0
-        val host = host(network, config = null, load = { loads++; JoinLoad.Failed })
+        val host = host(network, config = null, load = {
+            loads++
+            JoinLoad.Failed
+        })
         driving(host) {
             host.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT)))
             runCurrent()
@@ -278,11 +317,19 @@ class StatusContainerHostNetworkTest {
             deletesAt = deletesAt("2099-12-31T00:00:00Z"),
         )
         val NOT_STARTED = EventConfig(
-            EVENT, "Party", captureCutoff("2026-07-10T00:00:00Z"),
-            startsAt = EventStart(captureCutoff("2026-07-10T00:00:00Z").at), maxPhotoDate = captureCeiling("2026-07-13T00:00:00Z"),
+            EVENT,
+            "Party",
+            captureCutoff("2026-07-10T00:00:00Z"),
+            startsAt = EventStart(captureCutoff("2026-07-10T00:00:00Z").at),
+            maxPhotoDate = captureCeiling("2026-07-13T00:00:00Z"),
             endsAt = eventEnd("2099-12-31T00:00:00Z"),
             deletesAt = deletesAt("2099-12-31T00:00:00Z"),
         )
-        val FOUND = JoinLoad.Found("Party", eventStart("2026-07-06T00:00:00Z"), eventEnd("2026-07-13T00:00:00Z"), deletesAt("2026-08-05T00:00:00Z"))
+        val FOUND = JoinLoad.Found(
+            "Party",
+            eventStart("2026-07-06T00:00:00Z"),
+            eventEnd("2026-07-13T00:00:00Z"),
+            deletesAt("2026-08-05T00:00:00Z"),
+        )
     }
 }

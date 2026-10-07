@@ -46,7 +46,10 @@ class AppGroupFileSecureStoreContractTest {
             if (state == SecureStoreState.HOLDING_BACKGROUND_READABLE) {
                 // Seeded as a raw file, not through the store under test: one file per slot, named for it.
                 val slot = SecureStoreContract.slot(clauseId)
-                writeTextFile("$dir/${slot.service}.${slot.account}.simulator.json", SecureStoreContract.seedValue(clauseId))
+                writeTextFile(
+                    "$dir/${slot.service}.${slot.account}.simulator.json",
+                    SecureStoreContract.seedValue(clauseId),
+                )
             }
             return Entered.Ready(AppGroupFileSecureStore(dir)) { removeDirectory(dir) }
         }

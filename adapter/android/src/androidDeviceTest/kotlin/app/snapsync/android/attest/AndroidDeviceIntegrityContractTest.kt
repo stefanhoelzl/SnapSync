@@ -69,12 +69,14 @@ class AndroidDeviceIntegrityContractTest {
     companion object {
         /** The tag the recording is logged under. */
         const val RECORDING_TAG = "snapsync-recording"
+
         /**
          * `mintChallenge(CONFIG, RECORDED_AT)` with `api/test/support/harness.ts`'s CONFIG, RECORDED_AT = 2026-09-29T12:00Z:
          * deterministic, and minted inside the recorded chain's validity (its intermediate lives ~2 weeks). A re-recording
          * moves RECORDED_AT to its own day, here and in the fixture.
          */
         const val RECORDED_CHALLENGE = "1790683500.j0wI27UuMG300pHe0sHkDIm3llkluFrUUqWI56G3eow="
+
         /** `mintChallenge(CONFIG, RECORDED_AT + 1000)`: a second challenge, so the renewal signs what the attestation did not. */
         const val RECORDED_RENEWAL = "1790683501.8L0y1d92llo2DEEyPE4DaHVWKQ+KAcXUzuFrY7yW59o="
     }

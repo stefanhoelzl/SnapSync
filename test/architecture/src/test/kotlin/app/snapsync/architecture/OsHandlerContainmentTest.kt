@@ -161,7 +161,9 @@ class OsHandlerContainmentTest {
         fail(
             buildString {
                 appendLine("A stored OS completion handler must live in $OWNER and nowhere else.")
-                appendLine("It releases every outstanding handler after its own work or at the OS's expiry; a bare field")
+                appendLine(
+                    "It releases every outstanding handler after its own work or at the OS's expiry; a bare field",
+                )
                 appendLine("does neither,")
                 appendLine("and an unanswered handler costs the app its future background wakes.")
                 offenders.forEach { (path, decl) -> appendLine("  $path :: $decl") }

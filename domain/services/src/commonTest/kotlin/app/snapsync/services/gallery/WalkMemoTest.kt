@@ -1,8 +1,5 @@
 package app.snapsync.services.gallery
 
-
-
-import app.snapsync.services.CapturingLogWriter
 import app.snapsync.model.AssetId
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.Resource
@@ -13,7 +10,9 @@ import app.snapsync.model.selectionRulesFor
 import app.snapsync.ports.LibraryChangeToken
 import app.snapsync.ports.LibraryChangeTokenRead
 import app.snapsync.ports.PhotoGrantRead
+import app.snapsync.services.CapturingLogWriter
 import co.touchlab.kermit.Severity
+import kotlinx.coroutines.test.runTest
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -21,7 +20,6 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
-import kotlinx.coroutines.test.runTest
 
 /**
  * The app process's walk memo (capability `photo-sharing`, "An unchanged library is answered from the walk memo";
@@ -55,7 +53,10 @@ class WalkMemoTest {
             walks++
             duringWalk?.also { duringWalk = null }?.invoke()
             if (!readable) return Discovery(emptyList(), fullEnumeration = false)
-            return Discovery(candidatesFromResources(assets.map(::resource)), fullEnumeration = grant == GalleryAccess.GRANTED)
+            return Discovery(
+                candidatesFromResources(assets.map(::resource)),
+                fullEnumeration = grant == GalleryAccess.GRANTED,
+            )
         }
 
         override suspend fun resourcesFor(keys: Set<String>): List<Resource> =
@@ -247,7 +248,13 @@ class WalkMemoTest {
 
     private companion object {
         fun resource(assetId: String) =
-            Resource(filename = "$assetId-primary.jpg", assetId = AssetId(assetId), contentType = "image/jpeg", metadata = emptyMap(), data = Unit)
+            Resource(
+                filename = "$assetId-primary.jpg",
+                assetId = AssetId(assetId),
+                contentType = "image/jpeg",
+                metadata = emptyMap(),
+                data = Unit,
+            )
 
         suspend fun policy(cutoff: String) = SelectionPolicy(
             selectionRulesFor(

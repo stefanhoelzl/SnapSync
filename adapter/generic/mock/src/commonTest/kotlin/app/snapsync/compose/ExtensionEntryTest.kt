@@ -1,15 +1,11 @@
 package app.snapsync.compose
 
-import app.snapsync.model.deletesAt
-
-import app.snapsync.model.eventEnd
-
 import app.snapsync.mock.BackendMock
+import app.snapsync.mock.BuildInfoMock
 import app.snapsync.mock.ExtensionHostMock
 import app.snapsync.mock.PhotoLibraryMock
 import app.snapsync.mock.UploadNetwork
 import app.snapsync.mock.UploadQueueMock
-import app.snapsync.mock.BuildInfoMock
 import app.snapsync.mock.fakeCrypto
 import app.snapsync.mock.fixedClock
 import app.snapsync.mock.inMemoryCrashReporter
@@ -23,6 +19,8 @@ import app.snapsync.model.EventConfig
 import app.snapsync.model.Reply
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
+import app.snapsync.model.deletesAt
+import app.snapsync.model.eventEnd
 import app.snapsync.ports.Backend
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.downloads.DownloadService
@@ -52,13 +50,21 @@ class ExtensionEntryTest {
         joinedWithAToken("token-before")
 
         host.operator.process()
-        assertEquals(listOf<String?>("token-before"), publishedWith, "the first invocation sends the token the app stored")
+        assertEquals(
+            listOf<String?>("token-before"),
+            publishedWith,
+            "the first invocation sends the token the app stored",
+        )
 
         // The app renews into the shared item, and a new manifest is due (the app's enrolment invalidates the record).
         attest.setToken("token-after")
         DeviceManifestService(files).clearLastUploaded()
         host.operator.process()
-        assertEquals(listOf<String?>("token-before", "token-after"), publishedWith, "the copy is re-read — never cached across invocations")
+        assertEquals(
+            listOf<String?>("token-before", "token-after"),
+            publishedWith,
+            "the copy is re-read — never cached across invocations",
+        )
     }
 
     private val files = inMemoryFiles()
@@ -119,7 +125,10 @@ class ExtensionEntryTest {
         secureStore = secureStore,
         platformDeviceId = { null },
         gallery = library.port(),
-        upload = UploadQueueMock(UploadNetwork { _, _, _ -> error("no upload is expected") }, restricted = { false }).port(),
+        upload = UploadQueueMock(
+            UploadNetwork { _, _, _ -> error("no upload is expected") },
+            restricted = { false },
+        ).port(),
         backend = backend,
         host = host.port(),
     )

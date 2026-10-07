@@ -68,10 +68,18 @@ class PortGridTest {
         val portText = port.joinToString("\n") { it.first.text }
         val looked = cells.associateWith { looksCovered(it, portText) }
         val byPort = cells.groupBy { it.port }.toSortedMap()
-        val summary = byPort.map { (p, cs) -> "%-24s %4d cells  %4d ~".format(p, cs.size, cs.count { looked.getValue(it) }) }
+        val summary = byPort.map { (p, cs) ->
+            "%-24s %4d cells  %4d ~".format(
+                p,
+                cs.size,
+                cs.count { looked.getValue(it) },
+            )
+        }
         File(out, "port-grid-estimate.txt").writeText(
             buildString {
-                appendLine("# ${cells.size} cells over ${byPort.size} ports; ${looked.values.count { it }} mentioned by a port contract's source (~).")
+                appendLine(
+                    "# ${cells.size} cells over ${byPort.size} ports; ${looked.values.count { it }} mentioned by a port contract's source (~).",
+                )
                 appendLine("# An ESTIMATE of the gap, not coverage: a mention is not a clause asserting the cell.")
                 summary.forEach { appendLine("# $it") }
                 appendLine()
@@ -89,7 +97,10 @@ class PortGridTest {
 
     @Test
     fun `the grid finds the ports`() {
-        assertTrue(ports.size >= 30, "port grid: only ${ports.size} ports found — the reflection over :domain:ports broke")
+        assertTrue(
+            ports.size >= 30,
+            "port grid: only ${ports.size} ports found — the reflection over :domain:ports broke",
+        )
     }
 
     @Test
@@ -139,14 +150,22 @@ class PortGridTest {
 
     private fun memberCells(port: String, owner: String, member: KCallable<*>, handles: MutableSet<KClass<*>>): List<Cell> {
         noteHandle(member.returnType, handles)
-        val returns = variants(member.returnType, plain = RETURNS).map { Cell(port, "$owner.${member.name} → $it", member.name, listOf(it)) }
+        val returns = variants(member.returnType, plain = RETURNS).map {
+            Cell(port, "$owner.${member.name} → $it", member.name, listOf(it))
+        }
         val callbacks = member.parameters.filter { it.kind == KParameter.Kind.VALUE && isFunction(it.type) }
             .flatMap { callbackCells(port, "$owner.${member.name}.${it.name}", member.name, it.type, handles) }
         return returns + callbacks
     }
 
     /** One cell per crossing of the variants of every argument the adapter passes a callback of [type]. */
-    private fun callbackCells(port: String, prefix: String, member: String, type: KType, handles: MutableSet<KClass<*>>): List<Cell> {
+    private fun callbackCells(
+        port: String,
+        prefix: String,
+        member: String,
+        type: KType,
+        handles: MutableSet<KClass<*>>,
+    ): List<Cell> {
         val args = type.arguments.dropLast(1).mapNotNull { it.type }
             .filterNot { (it.classifier as? KClass<*>) == Continuation::class }
         args.forEach { noteHandle(it, handles) }
@@ -186,7 +205,9 @@ class PortGridTest {
     }
 
     private fun handlerBundle(port: KClass<*>): KClass<*>? =
-        port.allSupertypes.firstOrNull { it.classifier == Listenable::class }?.arguments?.single()?.type?.classifier as? KClass<*>
+        port.allSupertypes.firstOrNull {
+            it.classifier == Listenable::class
+        }?.arguments?.single()?.type?.classifier as? KClass<*>
 
     // ---- estimate -------------------------------------------------------------------------------------------
 
@@ -214,7 +235,9 @@ class PortGridTest {
         val dir = File(SourceScan.repoRoot, "domain/ports/src/commonMain/kotlin/app/snapsync/ports")
         assertTrue(dir.isDirectory, "port grid: $dir is gone — re-point the scan")
         return dir.walk().filter { it.extension == "kt" }.flatMap { file ->
-            Regex("""^(?:sealed |fun )?interface\s+(\w+)""", RegexOption.MULTILINE).findAll(file.readText()).map { it.groupValues[1] }
+            Regex("""^(?:sealed |fun )?interface\s+(\w+)""", RegexOption.MULTILINE).findAll(file.readText()).map {
+                it.groupValues[1]
+            }
         }.toSet()
     }
 

@@ -1,92 +1,91 @@
 package app.snapsync.presentation
 
-import app.snapsync.model.DeviceRefusal
-import app.snapsync.model.CreateDraftSession
-import app.snapsync.model.NetworkNotice
-import app.snapsync.model.NetworkAccess
-import app.snapsync.model.AlbumKind
-import app.snapsync.model.runCatchingCancellable
-import app.snapsync.model.ReportDestination
-import app.snapsync.model.captureCeiling
-import app.snapsync.model.captureCutoff
-import app.snapsync.model.CaptureDate
-import app.snapsync.model.EventStart
-import app.snapsync.model.EventEnd
-import app.snapsync.model.CaptureCutoff
-import app.snapsync.model.CaptureCeiling
-import app.snapsync.model.Arrow
-import app.snapsync.model.ConfigDecodeResult
-import app.snapsync.model.Direction
-import app.snapsync.model.EventConfig
-import app.snapsync.model.JoinChoice
-import app.snapsync.model.JoinCommit
-import app.snapsync.model.RangeChoice
-import app.snapsync.model.EventLinkPayload
-import app.snapsync.model.InviteLinkHints
-import app.snapsync.model.JoinLoad
-import app.snapsync.model.UserCommands
-import app.snapsync.model.UserQueries
-import app.snapsync.model.ReconfigureOutcome
-import app.snapsync.model.decodeEventUrl
-import app.snapsync.model.encodeEventUrl
 import app.snapsync.feature.creation.readmodel.CreationFailureReason
 import app.snapsync.feature.creation.readmodel.CreationStatus
+import app.snapsync.feature.download.readmodel.DownloadProgress
 import app.snapsync.feature.membership.readmodel.RenameFailureReason
 import app.snapsync.feature.membership.readmodel.RenameStatus
-import app.snapsync.model.GalleryAccess
-import app.snapsync.model.grantsPhotoAccess
-import app.snapsync.feature.download.readmodel.DownloadProgress
-import app.snapsync.model.SyncStatus
-import app.snapsync.model.SyncProgress
-import app.snapsync.model.SyncCounts
+import app.snapsync.model.AlbumKind
+import app.snapsync.model.AppLink
+import app.snapsync.model.Arrow
+import app.snapsync.model.BuildLabel
+import app.snapsync.model.CaptureCeiling
+import app.snapsync.model.CaptureCutoff
+import app.snapsync.model.CaptureDate
+import app.snapsync.model.ConfigDecodeResult
+import app.snapsync.model.CreateDraftSession
+import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.DiagnosticKeys
-import app.snapsync.model.ReportContext
+import app.snapsync.model.Direction
 import app.snapsync.model.DirectionCount
+import app.snapsync.model.EventConfig
+import app.snapsync.model.EventDetails
+import app.snapsync.model.EventEnd
+import app.snapsync.model.EventLinkPayload
+import app.snapsync.model.EventStart
 import app.snapsync.model.EventTiming
+import app.snapsync.model.GalleryAccess
+import app.snapsync.model.InviteLinkHints
+import app.snapsync.model.JoinChoice
+import app.snapsync.model.JoinCommit
+import app.snapsync.model.JoinLoad
+import app.snapsync.model.JoinPhase
+import app.snapsync.model.JoinedSurface
+import app.snapsync.model.Layer
+import app.snapsync.model.MobileDataState
+import app.snapsync.model.NetworkAccess
+import app.snapsync.model.NetworkNotice
+import app.snapsync.model.Overlays
+import app.snapsync.model.PendingSwitch
+import app.snapsync.model.RangeChoice
+import app.snapsync.model.RangeForm
+import app.snapsync.model.ReconfigureOutcome
+import app.snapsync.model.RenameState
+import app.snapsync.model.ReportContext
+import app.snapsync.model.ReportDestination
+import app.snapsync.model.ReportOutcome
+import app.snapsync.model.ResolvedRange
+import app.snapsync.model.ScreenMessage
+import app.snapsync.model.ShareCount
+import app.snapsync.model.SyncCounts
+import app.snapsync.model.SyncHealth
+import app.snapsync.model.SyncProgress
+import app.snapsync.model.SyncStatus
+import app.snapsync.model.UiState
+import app.snapsync.model.UserCommands
+import app.snapsync.model.UserQueries
+import app.snapsync.model.VersionRefusal
+import app.snapsync.model.captureCeiling
+import app.snapsync.model.captureCutoff
+import app.snapsync.model.decodeEventUrl
+import app.snapsync.model.details
+import app.snapsync.model.encodeEventUrl
 import app.snapsync.model.eventTiming
+import app.snapsync.model.grantsPhotoAccess
+import app.snapsync.model.step
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import kotlinx.datetime.LocalDateTime
 import org.orbitmvi.orbit.OrbitContainer
 import org.orbitmvi.orbit.OrbitContainerHost
 import org.orbitmvi.orbit.orbitContainer
-import app.snapsync.model.EventDetails
-import app.snapsync.model.JoinPhase
-import app.snapsync.model.JoinedSurface
-import app.snapsync.model.Layer
-import app.snapsync.model.ScreenMessage
-import app.snapsync.model.Overlays
-import app.snapsync.model.PendingSwitch
-import app.snapsync.model.RangeForm
-import app.snapsync.model.RenameState
-import app.snapsync.model.ResolvedRange
-import app.snapsync.model.ShareCount
-import app.snapsync.model.SyncHealth
-import app.snapsync.model.UiState
-import app.snapsync.model.details
-import app.snapsync.model.step
-import app.snapsync.model.VersionRefusal
-import app.snapsync.model.AppLink
-import app.snapsync.model.BuildLabel
-import app.snapsync.model.MobileDataState
-import app.snapsync.model.ReportOutcome
 
 class StatusContainerHost(
     // Every read-model this container reduces over (see [StatusSources]). Bundled because they are one
@@ -187,7 +186,6 @@ class StatusContainerHost(
         }
     }
 
-
     /** An untouched surface's choices on this phone: all on, the album included. */
     private val freshForm: RangeForm get() = RangeForm(albumKind = albumKind)
 
@@ -220,7 +218,6 @@ class StatusContainerHost(
             shareCount = local.value.shareCount,
         )
     }
-
 
     /**
      * "Now", re-emitted every minute **only** while the joined event has not ended (capability
@@ -270,8 +267,14 @@ class StatusContainerHost(
             // render derives from real values — never a guess or a placeholder.
             initialState = render(
                 Membership(
-                    config.value, permission.value, syncSource.status.value, downloadSource.value, attested.value,
-                    network.access.value, mobileData.value, refusal.value,
+                    config.value,
+                    permission.value,
+                    syncSource.status.value,
+                    downloadSource.value,
+                    attested.value,
+                    network.access.value,
+                    mobileData.value,
+                    refusal.value,
                 ),
                 Interaction(pending.value, creationStatus.value, renameFlow.value, versionRefusal.value),
                 local.value,
@@ -372,11 +375,13 @@ class StatusContainerHost(
             ?.let { Layer.UpdateRequired(minimumVersion = it.minimumVersion, store = store) }
             ?: reduceFrom(membership, interaction, local, now, ::resolveRange)
         return UiState(
-            layer, local.overlays.maskedFor(layer), reportDestination, build,
+            layer,
+            local.overlays.maskedFor(layer),
+            reportDestination,
+            build,
             MobileDataState(on = membership.mobileData, notSaved = local.mobileDataNotSaved),
         )
     }
-
 
     /**
      * Flash the transient invalid-link error (capability `join-event`): a link arrived that the decoder
@@ -462,7 +467,9 @@ class StatusContainerHost(
      */
     // The invite URL is read off the state the reduction already derived, so the shared link is
     // byte-identical to the QR being rendered rather than a second derivation that could drift.
-    fun onShareInvite() = intent { (state.layer as? Layer.Joined)?.let { commands.share(it.inviteUrl, it.membership.name) } }
+    fun onShareInvite() = intent {
+        (state.layer as? Layer.Joined)?.let { commands.share(it.inviteUrl, it.membership.name) }
+    }
 
     /**
      * Open the App Store page from the update-required screen (capability `app-update-required`).
@@ -507,22 +514,34 @@ class StatusContainerHost(
         fun onQrDismiss() = intent { local.editOverlays { it.copy(showingQr = false) } }
 
         fun onReportBugOpen() = intent {
-            local.update { it.copy(overlays = it.overlays.copy(reportingBug = true, reportSeed = null), verifiedReport = false) }
+            local.update {
+                it.copy(
+                    overlays = it.overlays.copy(reportingBug = true, reportSeed = null),
+                    verifiedReport = false,
+                )
+            }
         }
 
         /** "Report this" beside a refusal: the same sheet, its description written for [message] (capability `privacy-security`). */
         fun onReportRefusal(message: ScreenMessage) = intent {
             local.update {
-                it.copy(overlays = it.overlays.copy(menuOpen = false, reportingBug = true, reportSeed = message), verifiedReport = true)
+                it.copy(
+                    overlays = it.overlays.copy(menuOpen = false, reportingBug = true, reportSeed = message),
+                    verifiedReport = true,
+                )
             }
         }
 
         fun onReportBugDismiss() = intent { local.editOverlays { it.copy(reportingBug = false, reportSeed = null) } }
 
         /** The app menu (capability `sync-status`). Where the layer does not offer it, an open flag is masked. */
-        fun onMenuOpen() = intent { local.update { it.copy(overlays = it.overlays.copy(menuOpen = true), mobileDataNotSaved = false) } }
+        fun onMenuOpen() = intent {
+            local.update { it.copy(overlays = it.overlays.copy(menuOpen = true), mobileDataNotSaved = false) }
+        }
 
-        fun onMenuDismiss() = intent { local.update { it.copy(overlays = it.overlays.copy(menuOpen = false), mobileDataNotSaved = false) } }
+        fun onMenuDismiss() = intent {
+            local.update { it.copy(overlays = it.overlays.copy(menuOpen = false), mobileDataNotSaved = false) }
+        }
 
         /**
          * The menu's mobile-data switch (capability `mobile-data`): applied as it is flipped, the menu staying open. The
@@ -537,7 +556,10 @@ class StatusContainerHost(
         /** The menu's "Report a problem": the menu gives way to the sheet in one edit, so the two never stack. */
         fun onMenuReportBug() = intent {
             local.update {
-                it.copy(overlays = it.overlays.copy(menuOpen = false, reportingBug = true, reportSeed = null), verifiedReport = false)
+                it.copy(
+                    overlays = it.overlays.copy(menuOpen = false, reportingBug = true, reportSeed = null),
+                    verifiedReport = false,
+                )
             }
         }
 
@@ -580,7 +602,12 @@ class StatusContainerHost(
          * about withdrawing photos is answered "keep sharing".
          */
         fun onCancelReconfigure() = settings.enqueue {
-            local.update { it.copy(settings = Owned(null, SettingsSurface.Closed), pendingWithdrawal = Owned(null, null)) }
+            local.update {
+                it.copy(
+                    settings = Owned(null, SettingsSurface.Closed),
+                    pendingWithdrawal = Owned(null, null),
+                )
+            }
         }
     }
 
@@ -680,15 +707,27 @@ class StatusContainerHost(
             local.update { it.copy(pendingWithdrawal = Owned(null, null)) }
             val outcome = commands.reconfigure(config.eventId, next.direction, next.from, next.until, next.saveToAlbum)
             if (outcome == ReconfigureOutcome.NotCurrent) {
-                local.update { it.copy(settings = Owned(null, SettingsSurface.Closed), lastApplied = Owned(null, null)) }
+                local.update {
+                    it.copy(
+                        settings = Owned(null, SettingsSurface.Closed),
+                        lastApplied = Owned(null, null),
+                    )
+                }
                 return
             }
             val saved = outcome != ReconfigureOutcome.SaveFailed
             val inEffect = if (saved) next else before
-            val reseeded = reconfigureForm(inEffect.appliedTo(config), cutoffFormatter::toLocal).copy(albumKind = albumKind)
+            val reseeded = reconfigureForm(
+                inEffect.appliedTo(config),
+                cutoffFormatter::toLocal,
+            ).copy(albumKind = albumKind)
             val surface = if (saved) SettingsSurface.Open else SettingsSurface.SaveFailed
             local.update {
-                it.copy(form = reseeded, settings = Owned(config.eventId, surface), lastApplied = Owned(config.eventId, inEffect))
+                it.copy(
+                    form = reseeded,
+                    settings = Owned(config.eventId, surface),
+                    lastApplied = Owned(config.eventId, inEffect),
+                )
             }
         }
 
@@ -744,14 +783,26 @@ class StatusContainerHost(
         }
 
         fun onSaveToAlbum(on: Boolean) = formIntent {
-            if (settings.isOpen()) settings.change { now, _ -> now.copy(saveToAlbum = on) } else local.editForm { it.copy(saveToAlbum = on) }
+            if (settings.isOpen()) {
+                settings.change { now, _ -> now.copy(saveToAlbum = on) }
+            } else {
+                local.editForm {
+                    it.copy(saveToAlbum = on)
+                }
+            }
         }
 
         fun onRangePreset(preset: RangeChoice) = formIntent { editRange { it.copy(preset = preset) } }
 
         /** A custom range from the calendar; a `null` bound keeps the one already picked. */
         fun onRangeCustom(from: LocalDateTime?, until: LocalDateTime?) = formIntent {
-            editRange { f -> f.copy(preset = RangeChoice.CUSTOM, customFrom = from ?: f.customFrom, customUntil = until ?: f.customUntil) }
+            editRange { f ->
+                f.copy(
+                    preset = RangeChoice.CUSTOM,
+                    customFrom = from ?: f.customFrom,
+                    customUntil = until ?: f.customUntil,
+                )
+            }
         }
 
         /**
@@ -1209,7 +1260,11 @@ private fun unjoinedLayer(
     return when (val creation = create.status) {
         CreationStatus.InFlight -> Layer.CreatingEvent
         is CreationStatus.Failed ->
-            Layer.CreateEvent(error = transient ?: creation.reason.message(refused), draft = create.draft, network = network)
+            Layer.CreateEvent(
+                error = transient ?: creation.reason.message(refused),
+                draft = create.draft,
+                network = network,
+            )
         CreationStatus.Idle -> Layer.CreateEvent(error = transient ?: refused, draft = create.draft, network = network)
     }
 }
@@ -1268,7 +1323,12 @@ private fun reduceFrom(
  * order, over what the snapshot says on its own. Its own function because the ladder is one question, apart from which
  * layer [reduceFrom] builds.
  */
-private fun joinedHealth(membership: Membership, config: EventConfig, network: NetworkNotice?, nowCutoff: CaptureDate): SyncHealth {
+private fun joinedHealth(
+    membership: Membership,
+    config: EventConfig,
+    network: NetworkNotice?,
+    nowCutoff: CaptureDate,
+): SyncHealth {
     val (_, permission, snapshot, download, attested, access) = membership
     // What the snapshot says on its own: not read yet, settled, or work remaining. The bottom of the ladder below,
     // and what decides whether a membership that neither shares nor receives may say so.
@@ -1287,7 +1347,11 @@ private fun joinedHealth(membership: Membership, config: EventConfig, network: N
         // from the device's CURRENT choice, so after turning mobile data back on the few transfers still holding the old
         // rule read as pending, not waiting (decision record `changes/archive/2026-10-04-mobile-data-for-photos`, D7).
         snapshot is SyncStatus.Ready ->
-            syncHealth(snapshot.progress, download, heldForWifi = !membership.mobileData && access == NetworkAccess.Online(restricted = true))
+            syncHealth(
+                snapshot.progress,
+                download,
+                heldForWifi = !membership.mobileData && access == NetworkAccess.Online(restricted = true),
+            )
         else -> SyncHealth.Loading
     }
     return when {
@@ -1401,7 +1465,8 @@ private fun joinedLayer(
 private fun syncHealth(progress: SyncProgress, download: DownloadProgress, heldForWifi: Boolean): SyncHealth {
     // A held transfer is handed to the platform and so counts as in flight, but it is not RUNNING: no arrow pulses.
     val upload = arrowOf(shown = progress.synced < progress.total, pulsing = progress.pending > 0 && !heldForWifi)
-    val downloadArrow = arrowOf(shown = download.downloaded < download.total, pulsing = download.inFlight > 0 && !heldForWifi)
+    val downloadArrow =
+        arrowOf(shown = download.downloaded < download.total, pulsing = download.inFlight > 0 && !heldForWifi)
     return if (upload == Arrow.HIDDEN && downloadArrow == Arrow.HIDDEN) {
         SyncHealth.InSync
     } else {
@@ -1437,7 +1502,10 @@ private fun syncCounts(progress: SyncProgress, download: DownloadProgress, direc
  */
 internal fun shownCounts(state: UiState): Map<String, String> {
     val counts = (state.layer as? Layer.Joined)?.counts ?: return emptyMap()
-    return mapOf(DiagnosticKeys.SHOWN_SHARED to counts.shared.shown(), DiagnosticKeys.SHOWN_RECEIVED to counts.received.shown())
+    return mapOf(
+        DiagnosticKeys.SHOWN_SHARED to counts.shared.shown(),
+        DiagnosticKeys.SHOWN_RECEIVED to counts.received.shown(),
+    )
 }
 
 private fun DirectionCount.shown(): String = when (this) {
@@ -1526,7 +1594,10 @@ internal data class SettingChange(
 
     /** [config] carrying these settings — what the controls are seeded from. */
     fun appliedTo(config: EventConfig): EventConfig = config.copy(
-        direction = direction, minPhotoDate = from, maxPhotoDate = until, saveToAlbum = saveToAlbum,
+        direction = direction,
+        minPhotoDate = from,
+        maxPhotoDate = until,
+        saveToAlbum = saveToAlbum,
     )
 
     companion object {
@@ -1653,8 +1724,19 @@ private data class Local(
  */
 @Suppress("UNCHECKED_CAST", "LongParameterList")
 private fun <A, B, C, D, E, F, G, H, I, J, K, L, M, R> combineFlat(
-    a: Flow<A>, b: Flow<B>, c: Flow<C>, d: Flow<D>, e: Flow<E>, f: Flow<F>, g: Flow<G>,
-    h: Flow<H>, i: Flow<I>, j: Flow<J>, k: Flow<K>, l: Flow<L>, m: Flow<M>,
+    a: Flow<A>,
+    b: Flow<B>,
+    c: Flow<C>,
+    d: Flow<D>,
+    e: Flow<E>,
+    f: Flow<F>,
+    g: Flow<G>,
+    h: Flow<H>,
+    i: Flow<I>,
+    j: Flow<J>,
+    k: Flow<K>,
+    l: Flow<L>,
+    m: Flow<M>,
     transform: (A, B, C, D, E, F, G, H, I, J, K, L, M) -> R,
 ): Flow<R> = combine(listOf(a, b, c, d, e, f, g, h, i, j, k, l, m)) { v ->
     transform(
@@ -1663,7 +1745,9 @@ private fun <A, B, C, D, E, F, G, H, I, J, K, L, M, R> combineFlat(
     )
 }
 
-private fun MutableStateFlow<Local>.editOverlays(edit: (Overlays) -> Overlays) = update { it.copy(overlays = edit(it.overlays)) }
+private fun MutableStateFlow<Local>.editOverlays(edit: (Overlays) -> Overlays) = update {
+    it.copy(overlays = edit(it.overlays))
+}
 
 private fun MutableStateFlow<Local>.editForm(edit: (RangeForm) -> RangeForm) = update { it.copy(form = edit(it.form)) }
 

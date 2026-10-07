@@ -144,7 +144,12 @@ class SwiftShellGuardTest {
             val relative = file.toRelativeString(repoRoot)
             val lines = file.readText().lines()
             lines.forEachIndexed { index, line ->
-                if (!Regex("""^\s{4}(?:required |private |public )?func\s+\w+""").containsMatchIn(line)) return@forEachIndexed
+                if (!Regex(
+                        """^\s{4}(?:required |private |public )?func\s+\w+""",
+                    ).containsMatchIn(line)
+                ) {
+                    return@forEachIndexed
+                }
                 val body = lines.drop(index).take(BODY_SCAN_LINES).joinToString("\n")
                 // Match exemptions against the whole SIGNATURE: several of these are named
                 // `application(...)` and are told apart only by a later argument label, and the
@@ -179,7 +184,11 @@ class SwiftShellGuardTest {
         // Code only: the file's comments explain `.id(…)` and name the entry point in prose.
         val text = File(repoRoot, "iosApp/iosApp/ContentView.swift").readLines()
             .joinToString("\n") { it.substringBefore("//") }
-        assertEquals(1, Regex("""MainViewControllerKt\.MainViewController\(\)""").findAll(text).count(), "one pull site")
+        assertEquals(
+            1,
+            Regex("""MainViewControllerKt\.MainViewController\(\)""").findAll(text).count(),
+            "one pull site",
+        )
         assertEquals(1, Regex("""\.id\(""").findAll(text).count(), "one bound identity")
         assertTrue("""\.id\(generation\)""".toRegex().containsMatchIn(text), "bound to the generation")
         assertTrue(

@@ -4,12 +4,12 @@ import app.snapsync.model.BuildLabel
 import app.snapsync.model.ReportDestination
 import app.snapsync.ports.BuildInfo
 import app.snapsync.ports.Clock
-import app.snapsync.ports.Crypto
 import app.snapsync.ports.CrashHandlers
 import app.snapsync.ports.CrashReporter
+import app.snapsync.ports.Crypto
+import app.snapsync.ports.EntryContext
 import app.snapsync.ports.Files
 import app.snapsync.ports.LogSink
-import app.snapsync.ports.EntryContext
 import app.snapsync.ports.MetricHandlers
 import app.snapsync.ports.ProcessMetrics
 import app.snapsync.services.crash.CrashReporting

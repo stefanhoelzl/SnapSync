@@ -56,7 +56,8 @@ complexity:
     # Default. A test that builds a world is legitimately long, and 41 would be a length claim
     # about tests that nobody has made.
     active: true
-    threshold: 60
+    # RAISED by the ktlint reformat (detekt-formatting's adoption): layout only, no decision added; 60 -> 80.
+    threshold: 80
   LongParameterList:
     active: true
     functionThreshold: 12
@@ -87,7 +88,8 @@ complexity:
     thresholdInEnums: 19
   LargeClass:
     active: true
-    threshold: 1300
+    # RAISED by the ktlint reformat (detekt-formatting's adoption): layout only, no decision added; 1300 -> 1720.
+    threshold: 1720
 style:
   ReturnCount:
     active: true

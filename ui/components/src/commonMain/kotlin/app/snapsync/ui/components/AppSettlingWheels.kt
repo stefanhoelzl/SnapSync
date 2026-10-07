@@ -1,10 +1,8 @@
 package app.snapsync.ui.components
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import kotlin.math.roundToInt
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.runtime.derivedStateOf
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.foundation.gestures.ScrollableDefaults
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.interaction.DragInteraction
@@ -23,12 +21,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,6 +38,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -47,13 +46,14 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
-import kotlin.math.abs
+import app.snapsync.ui.components.resources.Res
+import app.snapsync.ui.components.resources.wheel_not_set
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import kotlinx.datetime.LocalTime
-import app.snapsync.ui.components.resources.Res
-import app.snapsync.ui.components.resources.wheel_not_set
 import org.jetbrains.compose.resources.stringResource
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 // The range picker's time wheels (capabilities `create-event`, `join-event`). They are CONTROLLED: the value
 // lives with the caller, a wheel reports only where the HOST made it come to rest, and it follows the value
@@ -166,7 +166,10 @@ internal fun RowScope.SettlingTimeWheels(
                 Text(text = ":", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
                 SettlingWheel(
                     wheel = WheelSpec(
-                        MINUTES_PER_HOUR, minute ?: anchor.minute, blank = minute == null, caption.minute,
+                        MINUTES_PER_HOUR,
+                        minute ?: anchor.minute,
+                        blank = minute == null,
+                        caption.minute,
                     ),
                     allowed = { m -> allowed(LocalTime(shownHour, m)) },
                     onSettle = onMinute,
@@ -232,8 +235,14 @@ private fun SettlingWheel(
         snapshotFlow { listState.isScrollInProgress }.filter { !it }.collect {
             val rest = centeredIndex(listState, wheel.count)
             when {
-                rest != current.value || (dragged && current.blank) -> { moveTo(rest); cameToRest(rest) }
-                dragged -> { dragged = false; moveTo(rest) }
+                rest != current.value || (dragged && current.blank) -> {
+                    moveTo(rest)
+                    cameToRest(rest)
+                }
+                dragged -> {
+                    dragged = false
+                    moveTo(rest)
+                }
             }
         }
     }
@@ -242,7 +251,10 @@ private fun SettlingWheel(
     }
 
     WheelList(listState, wheel, showBlank = wheel.blank && !dragged, center, allowed, reduceMotion) { index ->
-        scope.launch { moveTo(index); cameToRest(index) }
+        scope.launch {
+            moveTo(index)
+            cameToRest(index)
+        }
     }
 }
 

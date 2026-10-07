@@ -19,7 +19,9 @@ enum class CryptoState {
  */
 object CryptoContract : Contract<CryptoState, Crypto>("Crypto") {
 
-    private fun hex(s: String): ByteArray = ByteArray(s.length / 2) { s.substring(2 * it, 2 * it + 2).toInt(16).toByte() }
+    private fun hex(s: String): ByteArray = ByteArray(
+        s.length / 2,
+    ) { s.substring(2 * it, 2 * it + 2).toInt(16).toByte() }
 
     private val GCM_KEY = hex("feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308")
     private val GCM_NONCE = hex("cafebabefacedbaddecaf888")
@@ -70,7 +72,10 @@ object CryptoContract : Contract<CryptoState, Crypto>("Crypto") {
             )
             assertContentEquals(GCM_SEALED, crypto.aesGcmSeal(GCM_KEY, GCM_NONCE, GCM_PLAIN), "test case 15")
             assertContentEquals(GCM_PLAIN, crypto.aesGcmOpen(GCM_KEY, GCM_NONCE, GCM_SEALED), "and it opens")
-            assertContentEquals(ByteArray(0), crypto.aesGcmOpen(ByteArray(32), ByteArray(12), hex("530f8afbc74536b9a963b4f1c4cb738b")))
+            assertContentEquals(
+                ByteArray(0),
+                crypto.aesGcmOpen(ByteArray(32), ByteArray(12), hex("530f8afbc74536b9a963b4f1c4cb738b")),
+            )
         }
 
         clause("A_CHANGED_SEAL_NEVER_OPENS", CryptoState.READY) { crypto ->

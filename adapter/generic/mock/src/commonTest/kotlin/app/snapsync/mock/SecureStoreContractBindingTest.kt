@@ -7,9 +7,9 @@ import app.snapsync.contracts.SecureStoreContract
 import app.snapsync.contracts.SecureStoreState
 import app.snapsync.contracts.currentHost
 import app.snapsync.contracts.verify
-import app.snapsync.ports.SecureStore
 import app.snapsync.model.SecureStoreRead
 import app.snapsync.model.StoredProtection
+import app.snapsync.ports.SecureStore
 import kotlin.test.Test
 
 /**
@@ -31,15 +31,23 @@ class SecureStoreContractBindingTest {
         override fun create(state: SecureStoreState, clauseId: String): Entered<SecureStore> {
             val slot = SecureStoreContract.slot(clauseId)
             val seed = SecureStoreContract.seedValue(clauseId)
-            if (state == SecureStoreState.HOLDING_UNDER_A_LOST_KEY) return Entered.Unreachable("the in-memory store seals nothing under a key")
+            if (state == SecureStoreState.HOLDING_UNDER_A_LOST_KEY) {
+                return Entered.Unreachable(
+                    "the in-memory store seals nothing under a key",
+                )
+            }
             return Entered.Ready(
                 when (state) {
                     SecureStoreState.INACCESSIBLE -> inMemorySecureStore(unavailable = true)
                     SecureStoreState.EMPTY -> inMemorySecureStore()
                     SecureStoreState.HOLDING_BACKGROUND_READABLE ->
-                        inMemorySecureStore(mutableMapOf(slot to SecureStoreRead.Found(seed, StoredProtection.BACKGROUND_READABLE)))
+                        inMemorySecureStore(
+                            mutableMapOf(slot to SecureStoreRead.Found(seed, StoredProtection.BACKGROUND_READABLE)),
+                        )
                     SecureStoreState.HOLDING_RESTRICTED ->
-                        inMemorySecureStore(mutableMapOf(slot to SecureStoreRead.Found(seed, StoredProtection.RESTRICTED)))
+                        inMemorySecureStore(
+                            mutableMapOf(slot to SecureStoreRead.Found(seed, StoredProtection.RESTRICTED)),
+                        )
                     SecureStoreState.HOLDING_UNDER_A_LOST_KEY -> error("answered above")
                 },
             )

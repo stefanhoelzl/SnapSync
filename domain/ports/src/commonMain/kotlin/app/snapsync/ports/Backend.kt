@@ -1,6 +1,5 @@
 package app.snapsync.ports
 
-import app.snapsync.model.PushEndpoint
 import app.snapsync.model.CreateEventRequest
 import app.snapsync.model.DeviceFile
 import app.snapsync.model.DeviceManifest
@@ -8,6 +7,7 @@ import app.snapsync.model.EventCreated
 import app.snapsync.model.EventMeta
 import app.snapsync.model.EventRenamed
 import app.snapsync.model.MintRequest
+import app.snapsync.model.PushEndpoint
 import app.snapsync.model.RenewRequest
 import app.snapsync.model.Reply
 import app.snapsync.model.UnionPage
@@ -63,7 +63,12 @@ interface Backend : Port {
     suspend fun joinEvent(token: String?, eventId: String, deviceId: String): Reply<Unit>
 
     /** `PUT /events/<eventId>/devices/<deviceId>/manifest` — replace what a member shares. */
-    suspend fun publishManifest(token: String?, eventId: String, deviceId: String, manifest: DeviceManifest): Reply<Unit>
+    suspend fun publishManifest(
+        token: String?,
+        eventId: String,
+        deviceId: String,
+        manifest: DeviceManifest,
+    ): Reply<Unit>
 
     /**
      * `DELETE /events/<eventId>/devices/<deviceId>?received=<received>` — end a membership. [received] is the

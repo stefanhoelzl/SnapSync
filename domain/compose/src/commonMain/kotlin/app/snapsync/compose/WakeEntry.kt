@@ -1,9 +1,9 @@
 package app.snapsync.compose
 
 import app.snapsync.model.WakeId
+import app.snapsync.model.invocation
 import app.snapsync.ports.Completion
 import app.snapsync.ports.WakeHandlers
-import app.snapsync.model.invocation
 import app.snapsync.services.wake.OsCompletions
 import kotlinx.coroutines.launch
 

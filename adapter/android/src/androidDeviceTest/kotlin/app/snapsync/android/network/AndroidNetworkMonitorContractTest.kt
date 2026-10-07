@@ -37,7 +37,12 @@ class AndroidNetworkMonitorContractTest {
     private val binding = object : Binding<NetworkState, NetworkMonitor> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
-        override val reaches = setOf(NetworkState.ONLINE, NetworkState.RESTRICTED, NetworkState.OFFLINE, NetworkState.BLOCKED)
+        override val reaches = setOf(
+            NetworkState.ONLINE,
+            NetworkState.RESTRICTED,
+            NetworkState.OFFLINE,
+            NetworkState.BLOCKED,
+        )
 
         override fun create(state: NetworkState, clauseId: String): Entered<NetworkMonitor> {
             enter(state)
@@ -125,7 +130,9 @@ class AndroidNetworkMonitorContractTest {
         fun awaitDefaultNetwork(present: Boolean, entering: String) {
             val deadline = System.currentTimeMillis() + SETTLE_MILLIS
             while ((connectivity.activeNetwork != null) != present) {
-                check(System.currentTimeMillis() < deadline) { "the emulator did not reach $entering within ${SETTLE_MILLIS}ms" }
+                check(
+                    System.currentTimeMillis() < deadline,
+                ) { "the emulator did not reach $entering within ${SETTLE_MILLIS}ms" }
                 Thread.sleep(POLL_MILLIS)
             }
         }
@@ -141,7 +148,9 @@ class AndroidNetworkMonitorContractTest {
         fun awaitNoNetwork() {
             val deadline = System.currentTimeMillis() + SETTLE_MILLIS
             while (connectivity.activeNetworkInfo != null || connectivity.allNetworks.any(::carriesInternet)) {
-                check(System.currentTimeMillis() < deadline) { "the emulator did not reach airplane mode within ${SETTLE_MILLIS}ms" }
+                check(
+                    System.currentTimeMillis() < deadline,
+                ) { "the emulator did not reach airplane mode within ${SETTLE_MILLIS}ms" }
                 Thread.sleep(POLL_MILLIS)
             }
         }

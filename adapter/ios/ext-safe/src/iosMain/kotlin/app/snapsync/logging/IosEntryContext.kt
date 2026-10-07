@@ -1,7 +1,7 @@
 package app.snapsync.logging
 
-import app.snapsync.ports.EntryContext
 import app.snapsync.model.invocation
+import app.snapsync.ports.EntryContext
 import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
 

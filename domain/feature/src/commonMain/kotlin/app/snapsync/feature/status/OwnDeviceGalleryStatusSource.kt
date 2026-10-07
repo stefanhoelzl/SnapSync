@@ -1,16 +1,16 @@
 package app.snapsync.feature.status
 
 import app.snapsync.model.AssetId
-import app.snapsync.model.runCatchingCancellable
-import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.EventPhotoSet
+import app.snapsync.model.SelectionPolicy
+import app.snapsync.model.runCatchingCancellable
 import app.snapsync.services.gallery.CandidateSource
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CancellationException
-import kotlin.time.TimeSource
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlin.time.TimeSource
 
 /**
  * The own-device upload **total** `N` (capability `sync-status`): the count of this device's OWN

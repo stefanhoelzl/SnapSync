@@ -3,8 +3,8 @@ package app.snapsync.contracts
 import app.snapsync.model.AssetId
 import app.snapsync.model.ImportRequest
 import app.snapsync.model.ImportResult
-import app.snapsync.ports.GalleryImport
 import app.snapsync.model.StagedResource
+import app.snapsync.ports.GalleryImport
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 
@@ -46,19 +46,29 @@ object LivePhotoImportContract : Contract<LivePhotoImportState, StagedLiveImport
 
     override val clauses = clauses {
 
-        clause("A_MOTION_PHOTO_IMPORTS_AS_ONE_LIVE_PHOTO", LivePhotoImportState.GRANTED_MOTION_PHOTO_STAGED) { subject ->
+        clause(
+            "A_MOTION_PHOTO_IMPORTS_AS_ONE_LIVE_PHOTO",
+            LivePhotoImportState.GRANTED_MOTION_PHOTO_STAGED,
+        ) { subject ->
             val clauseId = "A_MOTION_PHOTO_IMPORTS_AS_ONE_LIVE_PHOTO"
             val ref = GalleryImportContract.ref(clauseId)
             val window = PhotoLibrary.window(name, clauseId)
             val result = subject.importer.import(ImportRequest(ref, subject.stage(), window.seedDate, album = null))
             val id = assertIs<ImportResult.Imported>(result, "a motion photo imports").createdLocalId
             assertEquals(true, subject.library.isLivePhoto(id), "the library made a Live Photo of it")
-            assertEquals(listOf("photo", "pairedVideo"), subject.library.resourceKinds(id), "one asset: its still and its video")
+            assertEquals(
+                listOf("photo", "pairedVideo"),
+                subject.library.resourceKinds(id),
+                "one asset: its still and its video",
+            )
             assertEquals(window.seedDate, subject.library.captureDate(id), "at its capture date")
             assertEquals(MarkerState.CONFIRMED, subject.library.marker(ref))
         }
 
-        clause("A_FILE_THAT_ONLY_LOOKS_LIKE_A_MOTION_PHOTO_IMPORTS_AS_ITS_STILL", LivePhotoImportState.GRANTED_BROKEN_MOTION_PHOTO_STAGED) { subject ->
+        clause(
+            "A_FILE_THAT_ONLY_LOOKS_LIKE_A_MOTION_PHOTO_IMPORTS_AS_ITS_STILL",
+            LivePhotoImportState.GRANTED_BROKEN_MOTION_PHOTO_STAGED,
+        ) { subject ->
             val clauseId = "A_FILE_THAT_ONLY_LOOKS_LIKE_A_MOTION_PHOTO_IMPORTS_AS_ITS_STILL"
             val ref = GalleryImportContract.ref(clauseId)
             val window = PhotoLibrary.window(name, clauseId)

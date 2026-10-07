@@ -2,15 +2,15 @@ package app.snapsync.services.identity
 
 import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.DeviceIdResult
+import app.snapsync.model.DeviceIdentityAbsent
 import app.snapsync.model.DeviceIdentityRole
 import app.snapsync.model.SecureSlot
 import app.snapsync.model.SecureSlots
 import app.snapsync.model.SecureStoreRead
+import app.snapsync.model.SecureStoreUnavailable
 import app.snapsync.model.StoredProtection
-import app.snapsync.model.DeviceIdentityAbsent
 import app.snapsync.ports.PlatformDeviceId
 import app.snapsync.ports.SecureStore
-import app.snapsync.model.SecureStoreUnavailable
 import app.snapsync.services.secure.RecordingSecureStore
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -66,7 +66,10 @@ class PersistedDeviceIdentityTest {
     @Test
     fun `the extension refuses to mint when the shared slot is absent`() {
         var asked = false
-        val identity = identity(DeviceIdentityRole.READ_ONLY, platform = { asked = true; "minted-id" })
+        val identity = identity(DeviceIdentityRole.READ_ONLY, platform = {
+            asked = true
+            "minted-id"
+        })
 
         assertEquals(DeviceIdResult.AbsentNotMintable, identity.resolve())
         assertFailsWith<DeviceIdentityAbsent> { identity.deviceId() }
@@ -103,7 +106,10 @@ class PersistedDeviceIdentityTest {
     fun `an unreadable shared slot blocks the app's mint rather than being treated as absence`() {
         store.answers[SHARED] = SecureStoreRead.Unavailable(LOCKED)
         var minted = false
-        val identity = identity(DeviceIdentityRole.MINTING, platform = { minted = true; "minted-id" })
+        val identity = identity(DeviceIdentityRole.MINTING, platform = {
+            minted = true
+            "minted-id"
+        })
 
         assertEquals(DeviceIdResult.Unavailable(LOCKED), identity.resolve())
         assertFailsWith<SecureStoreUnavailable> { identity.deviceId() }
@@ -162,7 +168,10 @@ class PersistedDeviceIdentityTest {
     fun `a refused persisting write is unavailable and the next resolve succeeds once writes are accepted`() {
         store.refuseWrites = true
         var mints = 0
-        val identity = identity(DeviceIdentityRole.MINTING, platform = { mints++; "minted-$mints" })
+        val identity = identity(DeviceIdentityRole.MINTING, platform = {
+            mints++
+            "minted-$mints"
+        })
 
         assertIs<DeviceIdResult.Unavailable>(identity.resolve(), "an unsaved id must never be used")
         assertFailsWith<SecureStoreUnavailable> { identity.deviceId() }
@@ -185,7 +194,10 @@ class PersistedDeviceIdentityTest {
     @Test
     fun `the identity is resolved once and then cached`() {
         var mints = 0
-        val identity = identity(DeviceIdentityRole.MINTING, platform = { mints++; "minted-$mints" })
+        val identity = identity(DeviceIdentityRole.MINTING, platform = {
+            mints++
+            "minted-$mints"
+        })
 
         assertEquals("minted-1", identity.deviceId())
         assertEquals("minted-1", identity.deviceId())
@@ -201,7 +213,10 @@ class PersistedDeviceIdentityTest {
 
         store.answers[SHARED] = SecureStoreRead.Unavailable(LOCKED)
         var mints = 0
-        val identity = identity(DeviceIdentityRole.MINTING, platform = { mints++; "minted-id" })
+        val identity = identity(DeviceIdentityRole.MINTING, platform = {
+            mints++
+            "minted-id"
+        })
 
         assertIs<DeviceIdResult.Unavailable>(identity.resolve())
         assertEquals(0, mints, "an unreadable store never mints")
@@ -242,7 +257,10 @@ class PersistedDeviceIdentityTest {
     fun `current answers the stored id without writing`() {
         store.answers[SHARED] = found("device-42", StoredProtection.RESTRICTED)
 
-        assertEquals(DeviceIdResult.Id("device-42", DeviceIdResult.Via.READ), identity(DeviceIdentityRole.MINTING).current())
+        assertEquals(
+            DeviceIdResult.Id("device-42", DeviceIdResult.Via.READ),
+            identity(DeviceIdentityRole.MINTING).current(),
+        )
         assertTrue(store.untouched(), "a report's read writes nothing")
     }
 

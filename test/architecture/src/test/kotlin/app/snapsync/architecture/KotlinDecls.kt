@@ -30,7 +30,10 @@ internal object KotlinDecls {
         // Secondary constructors: `constructor(` inside a class body, owned by the nearest preceding class.
         Regex("""(?<![\w.])constructor\s*\(""").findAll(code).forEach { m ->
             val before = code.substring(0, m.range.first)
-            if (Regex("""\bclass\s+\w+\s*(?:<[^>{(]*>)?\s*(?:(?:private|internal|public|protected)\s+)?$""").containsMatchIn(before)) {
+            if (Regex(
+                    """\bclass\s+\w+\s*(?:<[^>{(]*>)?\s*(?:(?:private|internal|public|protected)\s+)?$""",
+                ).containsMatchIn(before)
+            ) {
                 return@forEach // a primary constructor, already reported
             }
             val owner = Regex("""\bclass\s+(\w+)""").findAll(before).lastOrNull()?.groupValues?.get(1) ?: "?"
@@ -89,11 +92,17 @@ internal object KotlinDecls {
         var depth = 0
         var i = from
         while (i < code.length) {
-            if (code.startsWith("->", i)) { i += 2; continue }
+            if (code.startsWith("->", i)) {
+                i += 2
+                continue
+            }
             val c = code[i]
             when {
                 c in "(<[" -> depth++
-                c in ")>]" -> { if (depth == 0) return i; depth-- }
+                c in ")>]" -> {
+                    if (depth == 0) return i
+                    depth--
+                }
                 depth == 0 && (c == '=' || c == '{' || c == '\n' || c == ',') -> return i
                 depth == 0 && code.startsWith(" by ", i) -> return i
             }
@@ -112,9 +121,15 @@ internal object KotlinDecls {
         var i = open
         while (i < code.length) {
             when (code[i]) {
-                '"', '\'' -> { i = literalEnd(code, i); continue }
+                '"', '\'' -> {
+                    i = literalEnd(code, i)
+                    continue
+                }
                 '(', '{', '[' -> depth++
-                ')', '}', ']' -> { depth--; if (depth == 0) return i }
+                ')', '}', ']' -> {
+                    depth--
+                    if (depth == 0) return i
+                }
             }
             i++
         }
@@ -165,8 +180,15 @@ internal object KotlinDecls {
         while (i < text.length) {
             val c = text[i]
             when {
-                text.startsWith("->", i) -> { if (depth == 0 && stop == null) onTop(i); i += 2; continue }
-                c == '"' -> { i++; while (i < text.length && text[i] != '"') i++ }
+                text.startsWith("->", i) -> {
+                    if (depth == 0 && stop == null) onTop(i)
+                    i += 2
+                    continue
+                }
+                c == '"' -> {
+                    i++
+                    while (i < text.length && text[i] != '"') i++
+                }
                 c in "(<{[" -> depth++
                 c in ")>}]" -> depth--
                 depth == 0 && stop != null && c == stop -> onTop(i)

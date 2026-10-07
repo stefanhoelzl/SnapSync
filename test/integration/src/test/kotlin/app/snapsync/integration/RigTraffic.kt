@@ -1,30 +1,10 @@
 package app.snapsync.integration
 
-import app.snapsync.control.Reply
-import app.snapsync.control.RigClient
-import app.snapsync.control.done
-import app.snapsync.model.EventLinkPayload
-import app.snapsync.model.encodeEventUrl
-import app.snapsync.model.JoinPhase
-import app.snapsync.model.Layer
-import app.snapsync.model.SyncHealth
-import app.snapsync.rig.AssetView
-import app.snapsync.rig.GalleryView
-import app.snapsync.rig.JvmRigHost
-import app.snapsync.rig.RigState
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
-import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import kotlin.test.assertTrue
-import kotlin.test.fail
-import kotlin.time.Duration
-import kotlin.time.Duration.Companion.milliseconds
-import kotlin.time.Duration.Companion.seconds
 
 // The protocol calls that move photos — uploads, the backend's reads, other members and downloads.
 
@@ -82,7 +62,12 @@ suspend fun Rig.manifest(event: String? = null, device: String? = null): Map<Str
 }
 
 /** A fellow member of [event] (the joined one by default) whose [assets] are complete on the backend. */
-suspend fun Rig.foreignDevice(device: String, vararg assets: String, event: String? = null, filename: String? = null): String {
+suspend fun Rig.foreignDevice(
+    device: String,
+    vararg assets: String,
+    event: String? = null,
+    filename: String? = null,
+): String {
     val params = listOfNotNull(
         "device" to device,
         "assets" to assets.joinToString(","),
@@ -105,7 +90,10 @@ suspend fun Rig.reconcile() = foreground()
  * directory and the library — unchanged across a few reads.
  */
 suspend fun Rig.stage(wait: Boolean = true, status: Int? = null) {
-    val params = listOfNotNull(status?.let { "status" to it.toString() }, status?.let { "received" to "137" }).toTypedArray()
+    val params = listOfNotNull(
+        status?.let { "status" to it.toString() },
+        status?.let { "received" to "137" },
+    ).toTypedArray()
     device("downloads/stage", *params)
     if (wait) settleDownloads()
 }
@@ -174,5 +162,9 @@ suspend fun Rig.deviceConfig(): Pair<String, String>? {
 suspend fun Rig.pushesSent(): List<Triple<String, String, String>> =
     deviceJson("backend/pushes").getValue("pushes").jsonArray.map { p ->
         val o = p.jsonObject
-        Triple(o.getValue("event").jsonPrimitive.content, o.getValue("device").jsonPrimitive.content, o.getValue("token").jsonPrimitive.content)
+        Triple(
+            o.getValue("event").jsonPrimitive.content,
+            o.getValue("device").jsonPrimitive.content,
+            o.getValue("token").jsonPrimitive.content,
+        )
     }

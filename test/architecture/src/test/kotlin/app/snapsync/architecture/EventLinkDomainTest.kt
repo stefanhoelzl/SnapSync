@@ -2,7 +2,6 @@ package app.snapsync.architecture
 
 import java.io.File
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.test.fail
 

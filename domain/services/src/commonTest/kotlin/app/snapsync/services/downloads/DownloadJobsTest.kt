@@ -15,13 +15,6 @@ import app.snapsync.ports.DownloadHandlers
 import app.snapsync.ports.Files
 import app.snapsync.services.staging.DOWNLOAD_STAGING_DIR
 import app.snapsync.services.staging.StagingService
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertNotNull
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
-import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -39,6 +32,13 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * The download client's orchestration, exercised without an iOS runtime (capability `receiving-photos`):
@@ -496,7 +496,13 @@ class DownloadJobsTest {
         advanceUntilIdle()
 
         assertEquals(
-            listOf(Triple(AssetRef("DEVICE-A", AssetId("A")), "a-primary.heic", "$DOWNLOAD_STAGING_DIR/$EVENT/DEVICE-A/a-primary.heic")),
+            listOf(
+                Triple(
+                    AssetRef("DEVICE-A", AssetId("A")),
+                    "a-primary.heic",
+                    "$DOWNLOAD_STAGING_DIR/$EVENT/DEVICE-A/a-primary.heic",
+                ),
+            ),
             h.staged,
         )
     }
@@ -550,7 +556,10 @@ class DownloadJobsTest {
         var released = false
         val neverStages = kotlinx.coroutines.CompletableDeferred<Unit>()
         var stagingFinished = false
-        h.deliver = { _, _, _ -> neverStages.await(); stagingFinished = true }
+        h.deliver = { _, _, _ ->
+            neverStages.await()
+            stagingFinished = true
+        }
         val handover = h.jobs.adoptBackgroundEvents(bareCompletion { released = true })
 
         h.transport.finish(encodeTag(AssetRef("DEVICE-A", AssetId("A")), "a-primary.heic", EVENT))
@@ -573,7 +582,13 @@ class DownloadJobsTest {
         advanceUntilIdle()
 
         assertEquals(
-            listOf(Triple(AssetRef("DEVICE-A", AssetId("A")), "a-primary.heic", "$DOWNLOAD_STAGING_DIR/$EVENT/DEVICE-A/a-primary.heic")),
+            listOf(
+                Triple(
+                    AssetRef("DEVICE-A", AssetId("A")),
+                    "a-primary.heic",
+                    "$DOWNLOAD_STAGING_DIR/$EVENT/DEVICE-A/a-primary.heic",
+                ),
+            ),
             h.staged,
             "a completion from a previous process must still find its staging path",
         )
@@ -635,7 +650,13 @@ class DownloadJobsTest {
         advanceUntilIdle()
 
         assertEquals(2, h.transport.sessions, "the port runs on a fresh session after a system invalidation")
-        assertEquals(listOf(AssetId("A"), AssetId("B")), h.transport.started.map { decodeTag(it.description)?.ref?.sourceAssetId }, "B starts")
+        assertEquals(
+            listOf(AssetId("A"), AssetId("B")),
+            h.transport.started.map {
+                decodeTag(it.description)?.ref?.sourceAssetId
+            },
+            "B starts",
+        )
     }
 
     /**
@@ -647,7 +668,12 @@ class DownloadJobsTest {
     private object AcceptingFiles : Files {
         override fun read(area: FileArea, path: String): FileResult<ByteArray> = FileResult.NotFound
         override fun readTail(area: FileArea, path: String, maxBytes: Int): FileResult<FileTail> = FileResult.NotFound
-        override fun readRange(area: FileArea, path: String, offset: Long, maxBytes: Int): FileResult<ByteArray> = FileResult.NotFound
+        override fun readRange(
+            area: FileArea,
+            path: String,
+            offset: Long,
+            maxBytes: Int,
+        ): FileResult<ByteArray> = FileResult.NotFound
         override fun append(area: FileArea, path: String, bytes: ByteArray): FileResult<Unit> = FileResult.Ok(Unit)
         override fun write(area: FileArea, path: String, bytes: ByteArray): FileResult<Unit> = FileResult.Ok(Unit)
         override fun delete(area: FileArea, path: String): FileResult<Unit> = FileResult.NotFound
@@ -667,7 +693,11 @@ class DownloadJobsTest {
 
         h.transport.finish(description)
         runCurrent()
-        assertEquals("$DOWNLOAD_STAGING_DIR/$EVENT/DEVICE-A/a-primary.heic", h.staged.single().third, "no platform path reaches the store")
+        assertEquals(
+            "$DOWNLOAD_STAGING_DIR/$EVENT/DEVICE-A/a-primary.heic",
+            h.staged.single().third,
+            "no platform path reaches the store",
+        )
     }
 }
 

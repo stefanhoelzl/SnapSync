@@ -50,7 +50,11 @@ class AlbumIntegrationTest {
         foreignDevice("DEV-F", "FQ")
         downloadAll()
 
-        assertEquals(listOf(RECEIVED), albums().single().assets, "the received photo is in the album; the own one is not")
+        assertEquals(
+            listOf(RECEIVED),
+            albums().single().assets,
+            "the received photo is in the album; the own one is not",
+        )
         val candidates = gallery().policy!!.assets.map { it.assetId }
         assertTrue(RECEIVED !in candidates, "a photo in the album is never a candidate to share: $candidates")
     }
@@ -91,7 +95,9 @@ class AlbumIntegrationTest {
         user("reconfigure", "saveToAlbum" to "true")
         awaitState { it.joined?.membership?.saveToAlbum == true }
 
-        eventually<List<String>?>(read = { albums().firstOrNull { it.id != first.id }?.assets }) { it == listOf("imported-DEV-F-FR") }
+        eventually<List<String>?>(read = {
+            albums().firstOrNull { it.id != first.id }?.assets
+        }) { it == listOf("imported-DEV-F-FR") }
     }
 
     @Test

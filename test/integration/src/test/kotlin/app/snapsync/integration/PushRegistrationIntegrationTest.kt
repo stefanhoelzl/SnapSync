@@ -1,7 +1,5 @@
 package app.snapsync.integration
 
-import kotlinx.serialization.json.JsonNull
-import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue

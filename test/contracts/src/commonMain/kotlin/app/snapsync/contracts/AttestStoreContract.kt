@@ -1,7 +1,7 @@
 package app.snapsync.contracts
 
-import app.snapsync.ports.AttestStore
 import app.snapsync.model.SecureStoreUnavailable
+import app.snapsync.ports.AttestStore
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull

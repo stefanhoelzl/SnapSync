@@ -111,7 +111,9 @@ class AndroidFiles(private val sharedRoot: File, private val privateRoot: File) 
         e.toResult()
     }
 
-    override fun locate(area: FileArea, path: String): FileResult<String> = FileResult.Ok(resolve(area, path).toString())
+    override fun locate(area: FileArea, path: String): FileResult<String> = FileResult.Ok(
+        resolve(area, path).toString(),
+    )
 
     override fun move(area: FileArea, from: String, to: String): FileResult<Unit> =
         moveReplacing(resolve(area, from), resolve(area, to))

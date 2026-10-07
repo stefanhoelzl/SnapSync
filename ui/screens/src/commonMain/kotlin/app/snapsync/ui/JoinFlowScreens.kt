@@ -1,57 +1,53 @@
 package app.snapsync.ui
 
-import androidx.compose.foundation.layout.padding
-import app.snapsync.ui.components.AppNetworkNotice
-import app.snapsync.model.ScreenMessage
-import app.snapsync.model.NetworkNotice
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.snapsync.model.EventDetails
-import app.snapsync.model.Layer
 import app.snapsync.model.JoinPhase
+import app.snapsync.model.Layer
+import app.snapsync.model.NetworkNotice
+import app.snapsync.model.ScreenMessage
 import app.snapsync.ui.components.AppErrorBanner
+import app.snapsync.ui.components.AppEventHeaderCompact
 import app.snapsync.ui.components.AppInvitationHeaderLoading
 import app.snapsync.ui.components.AppJoinProgress
+import app.snapsync.ui.components.AppNetworkNotice
 import app.snapsync.ui.components.AppNoticeCard
 import app.snapsync.ui.components.JoinNoticeFailed
 import app.snapsync.ui.components.JoinNoticeInvalid
 import app.snapsync.ui.components.JoinNoticeOffline
-import app.snapsync.ui.components.AppEventHeaderCompact
-import app.snapsync.ui.components.appRangeLabel
 import app.snapsync.ui.components.PrimaryButton
 import app.snapsync.ui.components.SecondaryButton
-import app.snapsync.ui.resources.message_report_this
+import app.snapsync.ui.components.appRangeLabel
 import app.snapsync.ui.resources.Res
+import app.snapsync.ui.resources.cancel
 import app.snapsync.ui.resources.event_full_body
 import app.snapsync.ui.resources.event_full_title
-import app.snapsync.ui.resources.event_not_found_body
-import app.snapsync.ui.resources.event_not_found_title
-import app.snapsync.ui.resources.hero_subtitle
 import app.snapsync.ui.resources.join_failed_body
 import app.snapsync.ui.resources.join_failed_title
 import app.snapsync.ui.resources.joining
 import app.snapsync.ui.resources.load_failed_body
 import app.snapsync.ui.resources.load_failed_title
 import app.snapsync.ui.resources.loading_event
+import app.snapsync.ui.resources.message_report_this
 import app.snapsync.ui.resources.retry
 import app.snapsync.ui.resources.waiting_network_body
 import app.snapsync.ui.resources.waiting_network_title
 import org.jetbrains.compose.resources.stringResource
-import app.snapsync.ui.resources.cancel
 
 // The join gate (capability `join-event`): the full-screen surface a scanned link opens, and the
 // status-plus-actions phases it dispatches over. The Ready decision surface lives in
 // `JoinReadySurface.kt`, the phase-window accessors with the derivation that reads them in
 // `JoinSelection.kt`.
-
 
 /**
  * The full-screen "Join event" surface (capability `join-event`): the event summary is the hero, the

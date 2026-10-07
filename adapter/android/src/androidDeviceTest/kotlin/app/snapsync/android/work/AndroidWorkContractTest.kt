@@ -40,6 +40,12 @@ import app.snapsync.model.WakeTrigger
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.UploadHandlers
 import app.snapsync.ports.WakeHandlers
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.Collections
@@ -50,12 +56,6 @@ import kotlin.test.assertTrue
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.seconds
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * The WorkManager adapters against their port contracts on the emulator, and the Android facts no shared contract
@@ -116,11 +116,20 @@ class AndroidWorkContractTest {
                 journalName = "contract.$clauseId",
                 unrestricted = awaitUnrestrictedNetwork(context),
             )
-            adapter.listen(UploadHandlers(onFinished = { ended += it }, onBackgroundEvents = { it.complete() }, onEventsDrained = {}))
+            adapter.listen(
+                UploadHandlers(onFinished = {
+                    ended += it
+                }, onBackgroundEvents = { it.complete() }, onEventsDrained = {}),
+            )
             val usable: suspend (String) -> UploadSource = { _ ->
                 val id = MediaStoreSeeder.seed(MediaStoreSeeder.CAMERA, "2001-01-01T12:00:00Z", count = 1).single()
                 seeded += id
-                UploadSource.Resource(ContentUris.withAppendedId(MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), id.value.toLong()))
+                UploadSource.Resource(
+                    ContentUris.withAppendedId(
+                        MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY),
+                        id.value.toLong(),
+                    ),
+                )
             }
             if (state == UploadState.AT_CAP) {
                 runEntry {
@@ -129,7 +138,9 @@ class AndroidWorkContractTest {
                         val url = base + UploadContract.path(clauseId, FixtureAnswer.Hold, n = n + 1)
                         val target = UploadTarget(url, mapOf("Content-Type" to "image/jpeg"), TransferNetwork.ANY)
                         val created = adapter.create(usable(key), target, key)
-                        check(created == UploadCreateOutcome.CREATED) { "filling the cap: transfer ${n + 1} was $created" }
+                        check(
+                            created == UploadCreateOutcome.CREATED,
+                        ) { "filling the cap: transfer ${n + 1} was $created" }
                     }
                 }
             }
@@ -164,8 +175,18 @@ class AndroidWorkContractTest {
     fun `a library change wakes the app`() {
         val woken = CompletableDeferred<WakeId>()
         val adapter = AndroidWake(context)
-        adapter.listen(WakeHandlers { id, completion -> woken.complete(id); completion.complete() })
-        val watched = runBlocking { adapter.schedule(WakeId.LibraryChanged, WakeTrigger.LibraryChange(maxDelay = 1.seconds)) }
+        adapter.listen(
+            WakeHandlers { id, completion ->
+                woken.complete(id)
+                completion.complete()
+            },
+        )
+        val watched = runBlocking {
+            adapter.schedule(
+                WakeId.LibraryChanged,
+                WakeTrigger.LibraryChange(maxDelay = 1.seconds),
+            )
+        }
         assertEquals(ScheduleResult.Scheduled, watched)
         val seeded = MediaStoreSeeder.seed(MediaStoreSeeder.CAMERA, "2001-01-02T12:00:00Z", count = 1)
         try {
@@ -194,7 +215,12 @@ class AndroidWorkContractTest {
         )
         MeteredWifi.enter()
         try {
-            runBlocking { adapter.schedule(WakeId.Heartbeat, WakeTrigger.After(Duration.ZERO, network = WakeNetwork.UNRESTRICTED)) }
+            runBlocking {
+                adapter.schedule(
+                    WakeId.Heartbeat,
+                    WakeTrigger.After(Duration.ZERO, network = WakeNetwork.UNRESTRICTED),
+                )
+            }
             val early = runBlocking { withTimeoutOrNull(HELD_MILLIS) { ran.await() } }
             assertEquals(null, early, "the wake ran on a metered network")
             MeteredWifi.lift()
@@ -239,21 +265,46 @@ class AndroidWorkContractTest {
     fun `a transfer a dead process left is reported failed at the next start`() {
         val base = fixture()
         val journal = "contract.relaunch"
-        val first = AndroidUpload(context, AndroidBackgroundTime(context), journalName = journal, unrestricted = awaitUnrestrictedNetwork(context))
+        val first = AndroidUpload(
+            context,
+            AndroidBackgroundTime(context),
+            journalName = journal,
+            unrestricted = awaitUnrestrictedNetwork(context),
+        )
         first.listen(UploadHandlers(onFinished = {}, onBackgroundEvents = { it.complete() }, onEventsDrained = {}))
         val seeded = MediaStoreSeeder.seed(MediaStoreSeeder.CAMERA, "2001-01-03T12:00:00Z", count = 1)
         val key = UploadContract.key("RELAUNCH")
         try {
             runBlocking {
-                val uri = ContentUris.withAppendedId(MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), seeded.single().value.toLong())
+                val uri = ContentUris.withAppendedId(
+                    MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY),
+                    seeded.single().value.toLong(),
+                )
                 val url = base + UploadContract.path("RELAUNCH", FixtureAnswer.Hold)
-                assertEquals(UploadCreateOutcome.CREATED, first.create(UploadSource.Resource(uri), UploadTarget(url, emptyMap(), TransferNetwork.ANY), key))
+                assertEquals(
+                    UploadCreateOutcome.CREATED,
+                    first.create(UploadSource.Resource(uri), UploadTarget(url, emptyMap(), TransferNetwork.ANY), key),
+                )
             }
             // The next process: a fresh adapter over the same journal, knowing nothing live.
             val reported = mutableListOf<UploadJob>()
-            AndroidUpload(context, AndroidBackgroundTime(context), journalName = journal, unrestricted = awaitUnrestrictedNetwork(context))
-                .listen(UploadHandlers(onFinished = { reported += it }, onBackgroundEvents = { it.complete() }, onEventsDrained = {}))
-            val job = assertNotNull(reported.singleOrNull { it.tag == key }, "the orphaned transfer is reported: $reported")
+            AndroidUpload(
+                context,
+                AndroidBackgroundTime(context),
+                journalName = journal,
+                unrestricted = awaitUnrestrictedNetwork(context),
+            )
+                .listen(
+                    UploadHandlers(
+                        onFinished = { reported += it },
+                        onBackgroundEvents = { it.complete() },
+                        onEventsDrained = {},
+                    ),
+                )
+            val job = assertNotNull(
+                reported.singleOrNull { it.tag == key },
+                "the orphaned transfer is reported: $reported",
+            )
             assertTrue(job.state == UploadJobState.FAILED, "as a failure, so its row is retried")
         } finally {
             runBlocking { first.jobs(UploadJobSet.IN_FLIGHT).forEach { first.cancel(it) } }

@@ -54,11 +54,18 @@ internal object SystemBackgroundTaskApi : BackgroundTaskApi {
         }
 
     override fun submit(request: BGTaskRequest): Result<Unit> =
-        checkedObjC("submitTaskRequest(${request.identifier})") { BGTaskScheduler.sharedScheduler.submitTaskRequest(request, it) }
+        checkedObjC(
+            "submitTaskRequest(${request.identifier})",
+        ) { BGTaskScheduler.sharedScheduler.submitTaskRequest(request, it) }
 
-    override fun cancel(identifier: String) = BGTaskScheduler.sharedScheduler.cancelTaskRequestWithIdentifier(identifier)
+    override fun cancel(identifier: String) = BGTaskScheduler.sharedScheduler.cancelTaskRequestWithIdentifier(
+        identifier,
+    )
 
-    override suspend fun pendingIdentifiers(): List<String> = objcCallback(log, "pendingTaskRequests.completion") { done ->
+    override suspend fun pendingIdentifiers(): List<String> = objcCallback(
+        log,
+        "pendingTaskRequests.completion",
+    ) { done ->
         BGTaskScheduler.sharedScheduler.getPendingTaskRequestsWithCompletionHandler { requests ->
             objcBoundary(done) { requests.orEmpty().mapNotNull { (it as? BGTaskRequest)?.identifier } }
         }

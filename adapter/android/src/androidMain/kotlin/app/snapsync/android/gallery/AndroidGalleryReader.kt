@@ -2,10 +2,10 @@ package app.snapsync.android.gallery
 
 import android.content.ContentResolver
 import android.content.ContentUris
+import android.content.ContentValues
 import android.content.Context
 import android.database.Cursor
 import android.net.Uri
-import android.content.ContentValues
 import android.os.Environment
 import android.provider.MediaStore
 import app.snapsync.model.AlbumId
@@ -27,15 +27,15 @@ import app.snapsync.model.SelectionRule
 import app.snapsync.model.WriteOutcome
 import app.snapsync.model.grantsPhotoAccess
 import app.snapsync.model.invocation
-import app.snapsync.ports.GalleryReader
 import app.snapsync.model.runCatchingCancellable
+import app.snapsync.ports.GalleryReader
 import co.touchlab.kermit.Logger
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.time.Instant
 import java.time.format.DateTimeParseException
 import java.time.temporal.ChronoUnit
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 /**
  * The Android [GalleryReader] over MediaStore (capability `photo-sharing`): photos and videos of the member's
@@ -77,7 +77,11 @@ open class AndroidGalleryReader(
 
     /** Narrowed by the capture range and the deny-everything rule — the rest falls to the caller's admission. */
     override suspend fun assets(policy: SelectionPolicy): GalleryRead<List<AssetFacts>> =
-        log.invocation(EntryScope.None, "gallery.assets", result = { "${(it as? GalleryRead.Read)?.value?.size ?: "not readable"}" }) {
+        log.invocation(
+            EntryScope.None,
+            "gallery.assets",
+            result = { "${(it as? GalleryRead.Read)?.value?.size ?: "not readable"}" },
+        ) {
             readable {
                 val narrowing = narrowingFor(policy) ?: return@readable emptyList()
                 items(narrowing, candidates = true).map { it.facts() }
@@ -86,7 +90,11 @@ open class AndroidGalleryReader(
 
     // The whole default gallery, the event albums' folders included: received photos filed into an album are there.
     override suspend fun libraryAssets(policy: SelectionPolicy): GalleryRead<List<AssetFacts>> =
-        log.invocation(EntryScope.None, "gallery.libraryAssets", result = { "${(it as? GalleryRead.Read)?.value?.size ?: "not readable"}" }) {
+        log.invocation(
+            EntryScope.None,
+            "gallery.libraryAssets",
+            result = { "${(it as? GalleryRead.Read)?.value?.size ?: "not readable"}" },
+        ) {
             readable {
                 val narrowing = narrowingFor(policy) ?: return@readable emptyList()
                 items(narrowing, candidates = false).map { it.facts() }
@@ -105,7 +113,13 @@ open class AndroidGalleryReader(
     override suspend fun albumsById(ids: Set<AlbumId>): GalleryRead<List<AlbumRecord>> = readable {
         val (folders, others) = ids.partition { DefaultGallery.isAlbumFolder(it) }
         val wanted = others.mapNotNull { it.toLongOrNull() }
-        val buckets = if (wanted.isEmpty()) emptyList() else buckets(Query("bucket_id IN (${wanted.joinToString(",")})"))
+        val buckets = if (wanted.isEmpty()) {
+            emptyList()
+        } else {
+            buckets(
+                Query("bucket_id IN (${wanted.joinToString(",")})"),
+            )
+        }
         buckets + folders.filter { folder -> items(inFolder(folder)).isNotEmpty() }.map { AlbumRecord(it, folderName(it)) }
     }
 
@@ -117,13 +131,20 @@ open class AndroidGalleryReader(
             val bucket = album.toLongOrNull() ?: return@readable emptySet()
             Query("bucket_id = ?", listOf(bucket.toString()))
         }
-        items(where.and(floor?.let { Query("datetaken >= ?", listOf(it.toString())) })).mapTo(mutableSetOf()) { it.assetId }
+        items(
+            where.and(floor?.let { Query("datetaken >= ?", listOf(it.toString())) }),
+        ).mapTo(mutableSetOf()) { it.assetId }
     }
 
     override val albumKind: AlbumKind = AlbumKind.FOLDER
 
     override suspend fun createAlbum(title: String): AlbumId? = withContext(Dispatchers.IO) {
-        log.invocation(EntryScope.None, "gallery.createAlbum", params = "title=$title", result = { "$it" }) { newAlbum(title) }
+        log.invocation(
+            EntryScope.None,
+            "gallery.createAlbum",
+            params = "title=$title",
+            result = { "$it" },
+        ) { newAlbum(title) }
     }
 
     private fun newAlbum(title: String): AlbumId {
@@ -132,16 +153,31 @@ open class AndroidGalleryReader(
             .map { n -> "${DefaultGallery.ALBUM_ROOT}${if (n == 1) name else "$name ($n)"}/" }
             .first { path -> !directoryOf(path).exists() && itemsAnywhere(path).isEmpty() }
         // The directory is what takes the name while the album is still empty (measured: it holds, API 30 and 36).
-        if (!directoryOf(path).mkdirs()) log.w { "createAlbum: the directory $path was not created; its name is not reserved" }
+        if (!directoryOf(
+                path,
+            ).mkdirs()
+        ) {
+            log.w { "createAlbum: the directory $path was not created; its name is not reserved" }
+        }
         return path
     }
 
     override suspend fun addToAlbum(album: AlbumId, assets: Set<AssetId>): WriteOutcome = withContext(Dispatchers.IO) {
-        if (!DefaultGallery.isAlbumFolder(album)) return@withContext WriteOutcome.Failed("$album is not an event album's folder")
+        if (!DefaultGallery.isAlbumFolder(
+                album,
+            )
+        ) {
+            return@withContext WriteOutcome.Failed("$album is not an event album's folder")
+        }
         var skipped = 0
         itemsById(assets).filter { it.relativePath != album }.forEach { item ->
             val moved = runCatchingCancellable {
-                resolver.update(item.uri, ContentValues().apply { put(MediaStore.MediaColumns.RELATIVE_PATH, album) }, null, null)
+                resolver.update(
+                    item.uri,
+                    ContentValues().apply { put(MediaStore.MediaColumns.RELATIVE_PATH, album) },
+                    null,
+                    null,
+                )
             }.onFailure { log.i { "addToAlbum: ${item.assetId} is not this app's to move (${it::class.simpleName})" } }
             if (moved.getOrNull() != 1) skipped++
         }
@@ -170,7 +206,13 @@ open class AndroidGalleryReader(
 
     /** The read on [Dispatchers.IO], or [GalleryRead.NotReadable] with no query when no grant allows one. */
     protected suspend fun <T> readable(read: () -> T): GalleryRead<T> =
-        if (!access().grantsPhotoAccess) GalleryRead.NotReadable else GalleryRead.Read(withContext(Dispatchers.IO) { read() })
+        if (!access().grantsPhotoAccess) {
+            GalleryRead.NotReadable
+        } else {
+            GalleryRead.Read(
+                withContext(Dispatchers.IO) { read() },
+            )
+        }
 
     /**
      * Every default-gallery item matching [narrowing], images and videos alike — only the [candidates] to share when
@@ -206,7 +248,10 @@ open class AndroidGalleryReader(
         }
 
     private fun buckets(narrowing: Query, candidates: Boolean = false): List<AlbumRecord> =
-        items(narrowing, candidates).mapNotNull { item -> item.bucketId?.let { AlbumRecord(it.toString(), item.bucketName.orEmpty()) } }
+        items(
+            narrowing,
+            candidates,
+        ).mapNotNull { item -> item.bucketId?.let { AlbumRecord(it.toString(), item.bucketName.orEmpty()) } }
             .distinctBy { it.id }
 
     private fun query(collection: Uri, narrowing: Query, candidates: Boolean): List<MediaItem> {
@@ -235,7 +280,8 @@ open class AndroidGalleryReader(
             // Not properties MediaStore holds (Android marks no screenshot, no edit) or id sets applied in memory.
             SelectionRule.ExcludeScreenshots, SelectionRule.ExcludeScreenRecordings,
             is SelectionRule.MinImageArea, is SelectionRule.MinVideoArea,
-            is SelectionRule.NotEcho, is SelectionRule.NotInDenylistedAlbum -> Unit
+            is SelectionRule.NotEcho, is SelectionRule.NotInDenylistedAlbum,
+            -> Unit
         }
         return narrowing
     }
@@ -251,7 +297,9 @@ open class AndroidGalleryReader(
          * spaces and dots some filesystems drop, and capped; an event whose name leaves nothing is "Event".
          */
         fun folderNameFor(title: String): String =
-            title.filterNot { it.isISOControl() || it in "/\\:*?\"<>|" }.trim().trim('.').trim().take(MAX_FOLDER_NAME).trim()
+            title.filterNot { it.isISOControl() || it in "/\\:*?\"<>|" }.trim().trim(
+                '.',
+            ).trim().take(MAX_FOLDER_NAME).trim()
                 .ifEmpty { "Event" }
 
         /** The folder's own name — what a gallery app titles the album with. */
@@ -283,7 +331,13 @@ open class AndroidGalleryReader(
 
         /** `DATE_TAKEN` as the capture date every platform reports — second precision, UTC — or no date. */
         fun captureDateOf(dateTaken: Long?): String =
-            if (dateTaken == null || dateTaken == 0L) "" else Instant.ofEpochMilli(dateTaken).truncatedTo(ChronoUnit.SECONDS).toString()
+            if (dateTaken == null || dateTaken == 0L) {
+                ""
+            } else {
+                Instant.ofEpochMilli(
+                    dateTaken,
+                ).truncatedTo(ChronoUnit.SECONDS).toString()
+            }
     }
 }
 

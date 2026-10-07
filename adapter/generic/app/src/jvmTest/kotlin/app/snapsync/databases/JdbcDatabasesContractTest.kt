@@ -18,7 +18,12 @@ class JdbcDatabasesContractTest {
     private val binding = object : Binding<DatabasesState, Databases> {
         override val host = Host.JVM
         override val kind = BindingKind.Live
-        override val reaches = setOf(DatabasesState.ABSENT, DatabasesState.CURRENT, DatabasesState.OLD, DatabasesState.UNOPENABLE)
+        override val reaches = setOf(
+            DatabasesState.ABSENT,
+            DatabasesState.CURRENT,
+            DatabasesState.OLD,
+            DatabasesState.UNOPENABLE,
+        )
         override fun create(state: DatabasesState, clauseId: String): Entered<Databases> {
             val dir = Files.createTempDirectory("databases-contract").toFile()
             val databases = JdbcDatabases(dir)
@@ -26,7 +31,10 @@ class JdbcDatabasesContractTest {
                 DatabasesState.ABSENT -> Unit
                 DatabasesState.CURRENT -> DatabasesContract.enterCurrent(databases)
                 DatabasesState.OLD -> DatabasesContract.enterOld(databases)
-                DatabasesState.UNOPENABLE -> File(dir, DatabasesContract.NAME).writeText("this is not a database, and it is long enough to have a header\n".repeat(8))
+                DatabasesState.UNOPENABLE -> File(
+                    dir,
+                    DatabasesContract.NAME,
+                ).writeText("this is not a database, and it is long enough to have a header\n".repeat(8))
             }
             return Entered.Ready(databases) { dir.deleteRecursively() }
         }

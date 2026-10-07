@@ -3,11 +3,10 @@ package app.snapsync.logging
 import app.snapsync.model.logLineBody
 import app.snapsync.model.utcLogStamp
 import app.snapsync.testsupport.fileExists
-import app.snapsync.testsupport.removeDirectory
 import app.snapsync.testsupport.readTextFile
+import app.snapsync.testsupport.removeDirectory
 import app.snapsync.testsupport.withTempDirectory
 import app.snapsync.testsupport.writeTextFile
-
 import co.touchlab.kermit.Severity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.joinAll

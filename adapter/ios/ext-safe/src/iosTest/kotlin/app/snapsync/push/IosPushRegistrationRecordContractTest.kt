@@ -29,10 +29,18 @@ class IosPushRegistrationRecordContractTest {
         )
 
         override fun create(state: PushRegistrationRecordState, clauseId: String): Entered<PushRegistrationRecord> {
-            if (state == PushRegistrationRecordState.UNAVAILABLE) return Entered.Ready(PushRegistrationRecord(IosFiles()))
+            if (state == PushRegistrationRecordState.UNAVAILABLE) {
+                return Entered.Ready(
+                    PushRegistrationRecord(IosFiles()),
+                )
+            }
             val dir = newTempDirectory()
             val record = PushRegistrationRecord(IosFiles(dir, null))
-            if (state == PushRegistrationRecordState.HOLDING) record.saveLastRegistered(PushRegistrationRecordContract.seed(clauseId))
+            if (state == PushRegistrationRecordState.HOLDING) {
+                record.saveLastRegistered(
+                    PushRegistrationRecordContract.seed(clauseId),
+                )
+            }
             return Entered.Ready(record) { removeDirectory(dir) }
         }
     }

@@ -197,6 +197,9 @@ class RegistrationOutcomeTest {
             RegistrationOutcome.NothingToDisable,
             registrationOutcome(enabling = false, RegistrationAnswer.Answered(false, "PHPhotosErrorDomain", 3201)),
         )
-        assertEquals(RegistrationOutcome.Applied(true), registrationOutcome(true, RegistrationAnswer.Answered(true, null, null)))
+        assertEquals(
+            RegistrationOutcome.Applied(true),
+            registrationOutcome(true, RegistrationAnswer.Answered(true, null, null)),
+        )
     }
 }

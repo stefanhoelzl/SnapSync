@@ -1,36 +1,30 @@
 package app.snapsync.ui
 
-import app.snapsync.model.AlbumKind
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
-import app.snapsync.model.JoinedSurface
-import app.snapsync.ui.components.appRangeLabel
-import app.snapsync.model.Layer
+import app.snapsync.model.AlbumKind
 import app.snapsync.model.JoinPhase
+import app.snapsync.model.JoinedSurface
+import app.snapsync.model.Layer
 import app.snapsync.model.PendingSwitch
 import app.snapsync.model.UiState
 import app.snapsync.ui.components.AppConfirmDialog
-import app.snapsync.ui.components.AppPageSheet
 import app.snapsync.ui.components.AppDestructiveConfirmDialog
-import app.snapsync.ui.components.StatusHint
+import app.snapsync.ui.components.AppPageSheet
 import app.snapsync.ui.components.DialogCopy
+import app.snapsync.ui.components.StatusHint
+import app.snapsync.ui.components.appRangeLabel
 import app.snapsync.ui.resources.Res
 import app.snapsync.ui.resources.album_existing
 import app.snapsync.ui.resources.album_folder_receive_existing
 import app.snapsync.ui.resources.album_none
 import app.snapsync.ui.resources.cancel
-import app.snapsync.ui.resources.event_closed_body
-import app.snapsync.ui.resources.event_closed_title
-import app.snapsync.ui.resources.event_not_found_body
-import app.snapsync.ui.resources.event_not_found_title
-import app.snapsync.ui.resources.join_both_off
 import app.snapsync.ui.resources.load_failed_body
 import app.snapsync.ui.resources.load_failed_title
 import app.snapsync.ui.resources.ok
 import app.snapsync.ui.resources.retry
-import app.snapsync.ui.resources.save
 import app.snapsync.ui.resources.settings_save_failed
 import app.snapsync.ui.resources.stop_sharing_body
 import app.snapsync.ui.resources.stop_sharing_confirm
@@ -122,9 +116,10 @@ internal fun screenLabel(state: UiState): String {
     if (layer is Layer.Joined && layer.surface is JoinedSurface.Reconfigure) return "Reconfigure"
     return when (layer) {
         is Layer.JoiningEvent -> "JoiningEvent:${layer.phase::class.simpleName}"
-        is Layer.Joined -> layer.pendingSwitch
-            ?.let { "Switch:${it.phase::class.simpleName}" }
-            ?: "Joined"
+        is Layer.Joined ->
+            layer.pendingSwitch
+                ?.let { "Switch:${it.phase::class.simpleName}" }
+                ?: "Joined"
         is Layer.CreateEvent -> "CreateEvent"
         Layer.CreatingEvent -> "CreatingEvent"
         is Layer.UpdateRequired -> "UpdateRequired"
@@ -221,4 +216,3 @@ private fun reconfigureAlbumNote(saveToAlbum: Boolean, kind: AlbumKind): String 
         else -> Res.string.album_existing
     },
 )
-

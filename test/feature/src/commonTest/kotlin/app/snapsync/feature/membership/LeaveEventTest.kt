@@ -2,30 +2,27 @@
 
 package app.snapsync.feature.membership
 
-import app.snapsync.model.deletesAt
-
-import app.snapsync.mock.inMemorySecureStore
-import app.snapsync.mock.fakeCrypto
-import app.snapsync.services.crypto.EventKeys
-import app.snapsync.feature.support.inertPendingLeaves
-
 import app.snapsync.feature.support.RecordingFiles
 import app.snapsync.feature.support.configCleared
 import app.snapsync.feature.support.configService
+import app.snapsync.feature.support.inertPendingLeaves
 import app.snapsync.feature.support.persistedConfig
+import app.snapsync.mock.fakeCrypto
+import app.snapsync.mock.inMemorySecureStore
+import app.snapsync.model.EventConfig
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
+import app.snapsync.model.deletesAt
 import app.snapsync.model.eventEnd
-import app.snapsync.model.EventConfig
+import app.snapsync.services.crypto.EventKeys
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertTrue
-import kotlinx.coroutines.CompletableDeferred
 import kotlin.test.assertNull
-import kotlinx.coroutines.test.runCurrent
-import kotlinx.coroutines.test.runTest
-
+import kotlin.test.assertTrue
 
 /** Every membership carries a concrete capture-date ceiling (capability `join-event`). */
 private val FIXTURE_CEILING = captureCeiling("2099-01-01T00:00:00Z")
@@ -39,14 +36,16 @@ class LeaveEventTest {
 
     // A membership always carries a cutoff (capability `photo-sharing`); leave ignores it.
     private fun joined(eventId: String?) =
-        eventId?.let { EventConfig(
-            it,
-            name = "Anna's Birthday",
-            minPhotoDate = captureCutoff("2026-07-06T14:32:11Z"),
-            maxPhotoDate = FIXTURE_CEILING,
-            endsAt = eventEnd("2099-12-31T00:00:00Z"),
-            deletesAt = deletesAt("2099-12-31T00:00:00Z"),
-        ) }
+        eventId?.let {
+            EventConfig(
+                it,
+                name = "Anna's Birthday",
+                minPhotoDate = captureCutoff("2026-07-06T14:32:11Z"),
+                maxPhotoDate = FIXTURE_CEILING,
+                endsAt = eventEnd("2099-12-31T00:00:00Z"),
+                deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+            )
+        }
 
     @Test
     fun `leave stops the producer clears config then notifies with the snapshotted eventId`() = runTest {
@@ -58,7 +57,10 @@ class LeaveEventTest {
             keys = EventKeys(fakeCrypto(), inMemorySecureStore()),
             config = configService(joined("E1"), files),
             stopUploads = { order += "disable" },
-            notifyLeave = { id, _ -> order += "notify"; notifiedWith = id },
+            notifyLeave = { id, _ ->
+                order += "notify"
+                notifiedWith = id
+            },
             scope = backgroundScope,
             everythingReceived = { false },
             pendingLeaves = inertPendingLeaves(),
@@ -84,7 +86,10 @@ class LeaveEventTest {
             keys = EventKeys(fakeCrypto(), inMemorySecureStore()),
             config = configService(joined("E7"), files),
             stopUploads = {},
-            notifyLeave = { id, _ -> notifyStartedWith = id; neverCompletes.await() /* hangs */ },
+            notifyLeave = { id, _ ->
+                notifyStartedWith = id
+                neverCompletes.await() // hangs
+            },
             scope = backgroundScope,
             everythingReceived = { false },
             pendingLeaves = inertPendingLeaves(),
@@ -202,7 +207,10 @@ class LeaveEventTest {
             stopUploads = {},
             notifyLeave = { _, received -> sent = received },
             scope = backgroundScope,
-            everythingReceived = { cfg -> asked = cfg; everythingReceived(cfg) },
+            everythingReceived = { cfg ->
+                asked = cfg
+                everythingReceived(cfg)
+            },
             pendingLeaves = inertPendingLeaves(),
         ).leave()
         runCurrent()

@@ -21,7 +21,8 @@ enum class Direction(val wire: String) {
      * `manage-membership`). Reached only by switching both off in the event's settings — a join always carries a
      * direction, so [fromWire] refuses its token and no link can set it.
      */
-    Neither("none");
+    Neither("none"),
+    ;
 
     /** The device contributes its own photos (producer enabled) — [Both] and [UploadOnly]. */
     val includesUpload: Boolean

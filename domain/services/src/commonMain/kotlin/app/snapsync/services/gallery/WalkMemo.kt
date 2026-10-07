@@ -3,11 +3,9 @@ package app.snapsync.services.gallery
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
-import app.snapsync.services.gallery.Discovery
 import app.snapsync.ports.LibraryChangeToken
 import app.snapsync.ports.LibraryChangeTokenRead
 import app.snapsync.ports.PhotoGrantRead
-import app.snapsync.services.gallery.UploadDiscovery
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock

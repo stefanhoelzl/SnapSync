@@ -12,15 +12,15 @@ import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
+import app.snapsync.adapter.android.R
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.BackgroundTimeHold
 import co.touchlab.kermit.Logger
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CompletableDeferred
-import app.snapsync.adapter.android.R
 
 /**
  * The Android [BackgroundTime] (capability `background-upload`): "keep this process running while I finish, and tell
@@ -33,7 +33,10 @@ import app.snapsync.adapter.android.R
  *
  * Holds live in this process's memory; a hold worker a previous process left behind finds no hold and ends at once.
  */
-class AndroidBackgroundTime(context: Context, private val log: Logger = Logger.withTag("backgroundTime")) : BackgroundTime {
+class AndroidBackgroundTime(
+    context: Context,
+    private val log: Logger = Logger.withTag("backgroundTime"),
+) : BackgroundTime {
 
     private val appContext = context.applicationContext
     private val work = WorkManager.getInstance(appContext)

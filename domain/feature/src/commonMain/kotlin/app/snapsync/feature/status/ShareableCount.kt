@@ -3,9 +3,9 @@ package app.snapsync.feature.status
 import app.snapsync.model.AssetId
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
+import app.snapsync.model.EventPhotoSet
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.selectionPolicyFor
-import app.snapsync.model.EventPhotoSet
 import app.snapsync.services.gallery.CandidateSource
 
 /**
@@ -72,11 +72,11 @@ class ShareableCountSource(
         // non-contributing membership invokes neither reader — so the album fetch is still not paid to
         // learn that this preview counts nothing.
         val policy = selectionPolicyFor(
-                includesUpload = includesUpload,
-                cutoff = cutoff,
-                ceiling = ceiling,
-                suppressedAssetIds = suppressedLocalIds,
-                albumExcludedAssetIds = albumExcludedAssetIds,
+            includesUpload = includesUpload,
+            cutoff = cutoff,
+            ceiling = ceiling,
+            suppressedAssetIds = suppressedLocalIds,
+            albumExcludedAssetIds = albumExcludedAssetIds,
         )
         // Cheap AND exact: every rule decides on facts, so the count that skips the per-asset resource
         // read is the admitted-set size rather than an approximation of it (capability

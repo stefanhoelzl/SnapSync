@@ -18,10 +18,8 @@ import androidx.compose.ui.graphics.Matrix
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 import kotlin.math.cos
 import kotlin.math.sin
-
 
 /**
  * The badge's emerald gradient stops — the app icon's own colorway, mirroring `scripts/appicon.py`'s
@@ -31,8 +29,6 @@ import kotlin.math.sin
  */
 private val BadgeGradientTop = Color(0xFF34DDA2)
 private val BadgeGradientBottom = Color(0xFF0B8A5E)
-
-
 
 /**
  * The mark is authored on a **100-unit square grid** — the same one `scripts/appicon.py` draws it on —
@@ -69,7 +65,6 @@ private const val HALF_TURN_DEGREES = 180.0
 /** The badge's squircle corner and the glyph's inset within it, as fractions of the badge size. */
 private const val BADGE_CORNER_FRACTION = 0.3f
 private const val BADGE_GLYPH_FRACTION = 0.82f
-
 
 /**
  * The SnapSync mark, drawn — the same geometry as the app icon (`scripts/appicon.py`, the source of

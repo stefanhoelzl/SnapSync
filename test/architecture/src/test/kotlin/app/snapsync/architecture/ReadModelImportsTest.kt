@@ -58,7 +58,9 @@ class ReadModelImportsTest {
             .filterNot { (_, _, ref) -> "readmodel" in ref.split('.') }
             .map { (file, line, ref) ->
                 ZoneGates.violation(
-                    file, line, ref,
+                    file,
+                    line,
+                    ref,
                     "outside feature/, only a feature's readmodel package may be named — move the type there if " +
                         "it is a read-model, or reach it through the command bundle if it is a command",
                 )

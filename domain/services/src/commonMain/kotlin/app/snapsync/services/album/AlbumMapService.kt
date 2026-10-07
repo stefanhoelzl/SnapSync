@@ -46,7 +46,9 @@ class AlbumMapService(
      * event's album — so the album is then not remembered this pass.
      */
     fun put(eventId: String, albumLocalId: String) {
-        val current = readMap() ?: return log.w { "album=$albumLocalId for event=$eventId not remembered: the map is unreadable" }
+        val current = readMap() ?: return log.w {
+            "album=$albumLocalId for event=$eventId not remembered: the map is unreadable"
+        }
         write(json.encodeToString(serializer, current + (eventId to albumLocalId)))
         val filled = readFilled() ?: return
         if (eventId in filled) writeFilled(filled - eventId)
@@ -67,7 +69,12 @@ class AlbumMapService(
 
     /** The filled marks: empty when there are none (or they do not decode), `null` when they cannot be read now. */
     private fun readFilled(): Set<String>? = when (val read = preferences.get(ALBUM_FILLED_KEY)) {
-        is PrefRead.Value -> runCatchingCancellable { json.decodeFromString(filledSerializer, read.value) }.getOrDefault(emptySet())
+        is PrefRead.Value -> runCatchingCancellable {
+            json.decodeFromString(
+                filledSerializer,
+                read.value,
+            )
+        }.getOrDefault(emptySet())
         PrefRead.Absent -> emptySet()
         is PrefRead.Unavailable -> null
     }
@@ -81,8 +88,9 @@ class AlbumMapService(
     private fun readMap(): Map<String, String>? = when (val read = preferences.get(ALBUM_MAP_KEY)) {
         is PrefRead.Value -> decode(read.value)
         PrefRead.Absent -> emptyMap()
-        is PrefRead.Unavailable -> null
-            .also { log.w { "event-album map unreadable (${read.detail}) — no album placement this pass" } }
+        is PrefRead.Unavailable ->
+            null
+                .also { log.w { "event-album map unreadable (${read.detail}) — no album placement this pass" } }
     }
 
     private fun decode(raw: String): Map<String, String> =

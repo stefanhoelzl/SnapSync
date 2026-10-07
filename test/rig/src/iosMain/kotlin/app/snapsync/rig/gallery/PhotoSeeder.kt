@@ -5,8 +5,8 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import platform.CoreGraphics.CGRectMake
 import platform.CoreGraphics.CGSizeMake
 import platform.Foundation.NSDate
-import platform.Foundation.timeIntervalSince1970
 import platform.Foundation.dateWithTimeIntervalSince1970
+import platform.Foundation.timeIntervalSince1970
 import platform.Photos.PHAssetCreationRequest
 import platform.Photos.PHPhotoLibrary
 import platform.UIKit.UIColor
@@ -59,7 +59,6 @@ private const val SEED_CHUNK_NOISE = 2
 private const val SEED_NOISE_WIDTH = 4096.0
 private const val SEED_NOISE_HEIGHT = 3072.0
 private const val SEED_NOISE_TILE = 4.0
-
 
 /**
  * Seed [count] synthetic assets into this device's photo library.

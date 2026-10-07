@@ -60,12 +60,19 @@ class GatedPathPinTest {
             """/^\/join\/[^/]+$/.test(path)""" in gate,
             "the backend's event-page match (`/join/<eventId>`) changed — update `isGatedRequest` and this pin",
         )
-        assertEquals(2, Regex("""\.test\(path\)""").findAll(gate).count(), "a new regex-shaped public GET — pin it here")
+        assertEquals(
+            2,
+            Regex("""\.test\(path\)""").findAll(gate).count(),
+            "a new regex-shaped public GET — pin it here",
+        )
         assertFalse(isGatedRequest("GET", "/join/3f2c0000-0000-4000-8000-00000000e91a"))
         assertTrue(isGatedRequest("POST", "/join/3f2c0000-0000-4000-8000-00000000e91a"))
         assertTrue(isGatedRequest("GET", "/join/a/b"))
         // The event page's read: exactly `/web/events/<id>/photos`, read-only (`routes/web.ts`).
-        assertTrue("WEB_PHOTOS_PATH.test(path)" in gate, "the backend no longer admits the event page's read — update `isGatedRequest` and this pin")
+        assertTrue(
+            "WEB_PHOTOS_PATH.test(path)" in gate,
+            "the backend no longer admits the event page's read — update `isGatedRequest` and this pin",
+        )
         val web = File(SourceScan.repoRoot, "api/src/routes/web.ts").readText()
         assertTrue(
             """WEB_PHOTOS_PATH = /^\/web\/events\/[^/]+\/photos$/""" in web,
@@ -84,16 +91,28 @@ class GatedPathPinTest {
     /** `isPublicEventRead`, the gate's event reads, from its declaration to its closing brace. */
     private fun eventReads(): String {
         val fn = app.readText().substringAfter("function isPublicEventRead(", "")
-        assertTrue(fn.isNotEmpty() && "isPublicEventRead(method, path)" in gate(), "the gate's event reads moved — re-point this pin")
+        assertTrue(
+            fn.isNotEmpty() && "isPublicEventRead(method, path)" in gate(),
+            "the gate's event reads moved — re-point this pin",
+        )
         return fn.substringBefore("\n}")
     }
 
     @Test
     fun `the two public event reads are ungated only as reads`() {
         val gate = eventReads()
-        val reads = Regex("""/\^(\\/events\\/\[\^/]\+(?:\\/files)?)\$/""").findAll(gate).map { it.groupValues[1] }.toList()
-        assertEquals(2, reads.size, "the backend's public event reads changed shape — update `isGatedRequest` and this pin: $reads")
-        assertTrue(Regex("""\(method === "GET" \|\| method === "HEAD"\) &&\s*\(/\^""").containsMatchIn(gate), "the event reads are no longer GET/HEAD-only")
+        val reads = Regex(
+            """/\^(\\/events\\/\[\^/]\+(?:\\/files)?)\$/""",
+        ).findAll(gate).map { it.groupValues[1] }.toList()
+        assertEquals(
+            2,
+            reads.size,
+            "the backend's public event reads changed shape — update `isGatedRequest` and this pin: $reads",
+        )
+        assertTrue(
+            Regex("""\(method === "GET" \|\| method === "HEAD"\) &&\s*\(/\^""").containsMatchIn(gate),
+            "the event reads are no longer GET/HEAD-only",
+        )
         assertFalse(isGatedRequest("GET", "/api/v2/events/E1"))
         assertFalse(isGatedRequest("HEAD", "/api/v2/events/E1/files"))
         // The same path shape, mutated, stays gated — the rename, the manifest, the leave.
@@ -115,7 +134,10 @@ class GatedPathPinTest {
                 .containsMatchIn(fn.substringBefore("\n}")),
             "the backend's download-redirect shape changed — update `isGatedRequest` and this pin",
         )
-        assertTrue(Regex("""isDownloadRedirect\(method, path\)""").containsMatchIn(eventReads()), "the token gate no longer exempts it")
+        assertTrue(
+            Regex("""isDownloadRedirect\(method, path\)""").containsMatchIn(eventReads()),
+            "the token gate no longer exempts it",
+        )
         assertFalse(isGatedRequest("GET", "/api/v2/events/E1/files/devices/D1/A/primary"))
         assertTrue(isGatedRequest("PUT", "/api/v2/events/E1/files/devices/D1/A/primary"))
     }
@@ -126,10 +148,16 @@ class GatedPathPinTest {
         // records `changes/incremental-union` D5, `changes/separate-event-page-from-device-api` D7).
         val shared = File(SourceScan.repoRoot, "api/src/routes/shared.ts").readText()
         val reader = shared.substringAfter("const optionalReader = ", "").substringBefore("};")
-        assertTrue(reader.contains("verifyToken(") && reader.contains("refuse(401, \"unattested\")"), "the optional reader no longer verifies a sent token")
+        assertTrue(
+            reader.contains("verifyToken(") && reader.contains("refuse(401, \"unattested\")"),
+            "the optional reader no longer verifies a sent token",
+        )
         for (route in listOf("\"/events/:eventId\"", "\"/events/:eventId/files\"")) {
             val body = shared.substringAfter("deviceApi.get($route", "").substringBefore("deviceApi.")
-            assertTrue("await optionalReader(c.req.header(\"authorization\"))" in body, "$route no longer verifies a sent token")
+            assertTrue(
+                "await optionalReader(c.req.header(\"authorization\"))" in body,
+                "$route no longer verifies a sent token",
+            )
         }
         assertTrue(verifiesToken("GET", "/api/v2/events/E1/files?cursor=3"))
         assertTrue(verifiesToken("GET", "/api/v2/events/E1"))

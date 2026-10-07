@@ -45,7 +45,9 @@ class StorageMockContractBindingsTest {
             when (state) {
                 PreferencesState.EMPTY -> inMemoryPreferences()
                 PreferencesState.HOLDING ->
-                    inMemoryPreferences(mutableMapOf(PreferencesContract.key(clauseId) to PreferencesContract.seed(clauseId)))
+                    inMemoryPreferences(
+                        mutableMapOf(PreferencesContract.key(clauseId) to PreferencesContract.seed(clauseId)),
+                    )
             },
         )
     }

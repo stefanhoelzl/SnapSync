@@ -26,7 +26,11 @@ class AndroidFilesContractTest {
         override val reaches = setOf(FilesState.EMPTY, FilesState.HOLDING, FilesState.DENIED)
 
         override fun create(state: FilesState, clauseId: String): Entered<Files> {
-            if (state == FilesState.UNAVAILABLE) return Entered.Unreachable("both areas are app-private directories, always reachable")
+            if (state == FilesState.UNAVAILABLE) {
+                return Entered.Unreachable(
+                    "both areas are app-private directories, always reachable",
+                )
+            }
             val shared = newTempDirectory()
             val private = newTempDirectory()
             val files = AndroidFiles(sharedRoot = shared, privateRoot = private)

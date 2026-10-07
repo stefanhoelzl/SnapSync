@@ -127,19 +127,30 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
             val read = assertIs<GalleryRead.Read<List<AssetFacts>>>(
                 seeded.port.assets(policy("A_NON_CONTRIBUTING_POLICY_READS_NOTHING", contributes = false)),
             )
-            assertTrue(read.value.isEmpty(), "a deny-everything policy must narrow to nothing; ${read.value.size} came back")
+            assertTrue(
+                read.value.isEmpty(),
+                "a deny-everything policy must narrow to nothing; ${read.value.size} came back",
+            )
         }
 
         clause("ASSETS_BY_ID_RETURN_EXACTLY_THE_ONES_STILL_THERE", GalleryReaderState.GRANTED_SEEDED) { seeded ->
             val asked = seeded.ids + absentAssetId("ASSETS_BY_ID_RETURN_EXACTLY_THE_ONES_STILL_THERE")
             val read = assertIs<GalleryRead.Read<List<AssetFacts>>>(seeded.port.assetsById(asked))
-            assertEquals(seeded.ids, read.value.mapTo(mutableSetOf()) { it.assetId }, "a missing id is simply not returned")
+            assertEquals(
+                seeded.ids,
+                read.value.mapTo(mutableSetOf()) { it.assetId },
+                "a missing id is simply not returned",
+            )
         }
 
         clause("RESOURCES_BY_ID_CARRY_EACH_ORIGINAL", GalleryReaderState.GRANTED_SEEDED) { seeded ->
             val asked = seeded.ids + absentAssetId("RESOURCES_BY_ID_CARRY_EACH_ORIGINAL")
             val read = assertIs<GalleryRead.Read<List<RawAsset>>>(seeded.port.resources(asked))
-            assertEquals(seeded.ids, read.value.mapTo(mutableSetOf()) { it.facts.assetId }, "a missing id is not returned")
+            assertEquals(
+                seeded.ids,
+                read.value.mapTo(mutableSetOf()) { it.facts.assetId },
+                "a missing id is not returned",
+            )
             for (asset in read.value) {
                 assertTrue(
                     asset.rawResources.any { it.role == ResourceRole.PRIMARY },
@@ -159,7 +170,10 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
             assertEquals(GalleryRead.Read(emptyList()), seeded.port.resources(emptySet()))
         }
 
-        clause("A_CREATED_ALBUM_RESOLVES_AND_IS_LISTED", GalleryReaderState.GRANTED_SEEDED_COLLECTION_ALBUMS) { seeded ->
+        clause(
+            "A_CREATED_ALBUM_RESOLVES_AND_IS_LISTED",
+            GalleryReaderState.GRANTED_SEEDED_COLLECTION_ALBUMS,
+        ) { seeded ->
             val title = title("A_CREATED_ALBUM_RESOLVES_AND_IS_LISTED")
             val id = assertNotNull(seeded.port.createAlbum(title))
             val byId = assertIs<GalleryRead.Read<List<AlbumRecord>>>(seeded.port.albumsById(setOf(id)))
@@ -186,7 +200,10 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
             )
         }
 
-        clause("MEMBERS_CAPTURED_BEFORE_SINCE_ARE_NOT_RETURNED", GalleryReaderState.GRANTED_SEEDED_COLLECTION_ALBUMS) { seeded ->
+        clause(
+            "MEMBERS_CAPTURED_BEFORE_SINCE_ARE_NOT_RETURNED",
+            GalleryReaderState.GRANTED_SEEDED_COLLECTION_ALBUMS,
+        ) { seeded ->
             val clauseId = "MEMBERS_CAPTURED_BEFORE_SINCE_ARE_NOT_RETURNED"
             val album = assertNotNull(seeded.port.createAlbum(title(clauseId)))
             seeded.port.addToAlbum(album, seeded.ids)
@@ -197,7 +214,10 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
             )
         }
 
-        clause("ADD_TO_A_MISSING_ALBUM_FAILS_AND_CREATES_NOTHING", GalleryReaderState.GRANTED_SEEDED_COLLECTION_ALBUMS) { seeded ->
+        clause(
+            "ADD_TO_A_MISSING_ALBUM_FAILS_AND_CREATES_NOTHING",
+            GalleryReaderState.GRANTED_SEEDED_COLLECTION_ALBUMS,
+        ) { seeded ->
             val album = absentAlbumId("ADD_TO_A_MISSING_ALBUM_FAILS_AND_CREATES_NOTHING")
             assertIs<WriteOutcome.Failed>(seeded.port.addToAlbum(album, seeded.ids))
             assertEquals(GalleryRead.Read(emptyList()), seeded.port.albumsById(setOf(album)), "adding never creates")
@@ -229,7 +249,10 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
             )
         }
 
-        clause("ASSETS_OUTSIDE_THE_DEFAULT_GALLERY_ARE_NOT_READ", GalleryReaderState.GRANTED_SEEDED_OUTSIDE_THE_DEFAULT_GALLERY) { seeded ->
+        clause(
+            "ASSETS_OUTSIDE_THE_DEFAULT_GALLERY_ARE_NOT_READ",
+            GalleryReaderState.GRANTED_SEEDED_OUTSIDE_THE_DEFAULT_GALLERY,
+        ) { seeded ->
             val clauseId = "ASSETS_OUTSIDE_THE_DEFAULT_GALLERY_ARE_NOT_READ"
             assertEquals(SEED_COUNT, seeded.ids.size, "the binding seeded what the state promises")
             val read = assertIs<GalleryRead.Read<List<AssetFacts>>>(seeded.port.assets(policy(clauseId)))

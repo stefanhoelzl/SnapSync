@@ -4,6 +4,7 @@ import app.snapsync.feature.upload.TailTrigger
 import app.snapsync.model.PlatformError
 import app.snapsync.model.PushMessage
 import app.snapsync.model.PushToken
+import app.snapsync.model.invocation
 import app.snapsync.model.pushEventId
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.Completion
@@ -11,7 +12,6 @@ import app.snapsync.ports.DevHandlers
 import app.snapsync.ports.EntryContext
 import app.snapsync.ports.LifecycleHandlers
 import app.snapsync.ports.PushHandlers
-import app.snapsync.model.invocation
 import app.snapsync.services.wake.OsCompletions
 import kotlinx.coroutines.launch
 

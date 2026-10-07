@@ -9,9 +9,9 @@ import androidx.compose.ui.platform.LocalContext
 import app.snapsync.model.BeforeListen
 import app.snapsync.model.EntryScope
 import app.snapsync.model.HandlerSlot
-import app.snapsync.model.invocation
 import app.snapsync.model.PlatformEntry
 import app.snapsync.model.UiState
+import app.snapsync.model.invocation
 import app.snapsync.ports.Ui
 import app.snapsync.ports.UiHandlers
 import app.snapsync.presentation.CutoffFormatter

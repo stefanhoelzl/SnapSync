@@ -7,15 +7,15 @@ import app.snapsync.feature.support.unreadableIdentity
 import app.snapsync.model.AssetId
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
+import app.snapsync.model.StoredResource
 import app.snapsync.services.backend.DeviceFilesSource
 import app.snapsync.services.backend.DeviceListingShapeException
-import app.snapsync.model.StoredResource
 import co.touchlab.kermit.Severity
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
-import kotlinx.coroutines.awaitCancellation
-import kotlinx.coroutines.test.runTest
 
 /**
  * The join-time load (capability `photo-sharing`): the joined event's rows become exactly the device's stored
@@ -58,7 +58,9 @@ class ShareSetLoadTest {
     @Test
     fun `a confirmed listing becomes exactly the joined event's rows and purges every other event`() = runTest {
         val files = FakeFiles(
-            Result.success(listOf(StoredResource("A-primary.heic", AssetId("A")), StoredResource("A-live.mov", AssetId("A")))),
+            Result.success(
+                listOf(StoredResource("A-primary.heic", AssetId("A")), StoredResource("A-live.mov", AssetId("A"))),
+            ),
         )
         val ledger = leftovers()
 
@@ -105,7 +107,12 @@ class ShareSetLoadTest {
         val recorder = CapturingLogWriter()
         val ledger = leftovers()
 
-        ShareSetLoad(FakeFiles(Result.failure(Exception("offline"))), ledger.service, testIdentity(deviceId), recorder.logger("ShareSetLoadTest")).load(eventId)
+        ShareSetLoad(
+            FakeFiles(Result.failure(Exception("offline"))),
+            ledger.service,
+            testIdentity(deviceId),
+            recorder.logger("ShareSetLoadTest"),
+        ).load(eventId)
 
         assertKeptOnlyTheJoinedEvent(ledger)
         assertEquals(listOf(Severity.Warn), recorder.severities)
@@ -128,7 +135,10 @@ class ShareSetLoadTest {
         val recorder = CapturingLogWriter()
         val ledger = leftovers()
         val hanging = object : DeviceFilesSource {
-            override suspend fun list(eventId: String, deviceId: String): Result<List<StoredResource>> = awaitCancellation()
+            override suspend fun list(
+                eventId: String,
+                deviceId: String,
+            ): Result<List<StoredResource>> = awaitCancellation()
         }
 
         ShareSetLoad(hanging, ledger.service, testIdentity(deviceId), recorder.logger("ShareSetLoadTest")).load(eventId)

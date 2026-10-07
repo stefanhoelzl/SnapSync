@@ -6,10 +6,10 @@ import app.snapsync.model.CaptureDate
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
 import app.snapsync.model.RangeChoice
-import kotlinx.datetime.LocalDateTime
 import app.snapsync.model.RangeForm
 import app.snapsync.model.ResolvedRange
 import app.snapsync.model.ShareCount
+import kotlinx.datetime.LocalDateTime
 
 /**
  * Resolve [form] against the event window `[windowStart, windowEnd]`.

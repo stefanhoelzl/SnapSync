@@ -1,21 +1,19 @@
 package app.snapsync.feature.membership
 
-import app.snapsync.model.deletesAt
-
-import app.snapsync.model.ReconfigureOutcome
-import app.snapsync.model.Direction
 import app.snapsync.model.CaptureCutoff
+import app.snapsync.model.Direction
+import app.snapsync.model.EventConfig
+import app.snapsync.model.ReconfigureOutcome
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
+import app.snapsync.model.deletesAt
 import app.snapsync.model.eventEnd
 import app.snapsync.model.eventStart
-import app.snapsync.model.EventConfig
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import kotlinx.coroutines.test.runTest
-
 
 /** Every membership carries a concrete capture-date ceiling (capability `join-event`). */
 private val FIXTURE_CEILING = captureCeiling("2099-01-01T00:00:00Z")
@@ -26,7 +24,9 @@ class ReconfigureEventTest {
     private class Membership(val config: EventConfig?)
 
     /** The membership file's writes; [fails] makes every save fail at the port, as a full disk does. */
-    private fun ConfigWrites(fails: Boolean = false) = app.snapsync.feature.support.ConfigWrites().also { it.files.failWrites = fails }
+    private fun ConfigWrites(fails: Boolean = false) = app.snapsync.feature.support.ConfigWrites().also {
+        it.files.failWrites = fails
+    }
 
     // A joined membership on event E1, started 2026-07-06T12:00:00Z, cutoff already at the floor.
     private fun current(
@@ -195,7 +195,10 @@ class ReconfigureEventTest {
     @Test
     fun `no config is a no-op`() = runTest {
         val store = ConfigWrites()
-        make(Membership(null), store).reconfigure("E1", Direction.Both, captureCutoff("2026-07-06T18:00:00Z"), FIXTURE_CEILING, false)
+        make(
+            Membership(null),
+            store,
+        ).reconfigure("E1", Direction.Both, captureCutoff("2026-07-06T18:00:00Z"), FIXTURE_CEILING, false)
         assertNull(store.saved)
     }
 
@@ -273,7 +276,9 @@ class ReconfigureEventTest {
     fun `a failing gather does not abort the remaining effects`() = runTest {
         val order = mutableListOf<String>()
         make(
-            Membership(current(direction = Direction.UploadOnly)), ConfigWrites(), order,
+            Membership(current(direction = Direction.UploadOnly)),
+            ConfigWrites(),
+            order,
             gatherAlbum = { error("boom") },
         ).reconfigure("E1", Direction.Both, captureCutoff("2026-07-06T12:00:00Z"), FIXTURE_CEILING, true)
         assertTrue("reconcile:E1" in order, "the download effect after the gather still ran")

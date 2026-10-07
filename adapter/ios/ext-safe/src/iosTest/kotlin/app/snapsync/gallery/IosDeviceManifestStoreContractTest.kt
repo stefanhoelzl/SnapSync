@@ -34,7 +34,9 @@ class IosDeviceManifestStoreContractTest {
             if (state == DeviceManifestStoreState.UNAVAILABLE) return Entered.Ready(DeviceManifestService(IosFiles()))
             val dir = newTempDirectory()
             if (state == DeviceManifestStoreState.HOLDING) {
-                DeviceManifestService(IosFiles(dir, null)).saveLastUploaded(DeviceManifestStoreContract.seedJson(clauseId))
+                DeviceManifestService(
+                    IosFiles(dir, null),
+                ).saveLastUploaded(DeviceManifestStoreContract.seedJson(clauseId))
             }
             return Entered.Ready(DeviceManifestService(IosFiles(dir, null))) { removeDirectory(dir) }
         }

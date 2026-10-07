@@ -119,7 +119,10 @@ class MotionPhotoTest {
     @Test
     fun the_presentation_timestamp_is_read_and_minus_one_means_none() {
         assertNull(motionPresentationTimestampUs(MotionPhoto.packet(5)))
-        assertEquals(1_500_000, motionPresentationTimestampUs("""Camera:MotionPhotoPresentationTimestampUs="1500000""""))
+        assertEquals(
+            1_500_000,
+            motionPresentationTimestampUs("""Camera:MotionPhotoPresentationTimestampUs="1500000""""),
+        )
         assertEquals(42, motionPresentationTimestampUs("""GCamera:MicroVideoPresentationTimestampUs="42""""))
     }
 
@@ -137,7 +140,10 @@ class MotionPhotoTest {
         return byteArrayOf(0xFF.toByte(), marker.toByte(), (length shr 8).toByte(), length.toByte()) + payload
     }
 
-    private fun jfif() = segment(0xE0, "JFIF\u0000\u0001\u0001\u0000\u0000\u0001\u0000\u0001\u0000\u0000".encodeToByteArray())
+    private fun jfif() = segment(
+        0xE0,
+        "JFIF\u0000\u0001\u0001\u0000\u0000\u0001\u0000\u0001\u0000\u0000".encodeToByteArray(),
+    )
     private fun exif() = segment(0xE1, "Exif\u0000\u0000MM\u0000*".encodeToByteArray())
     private val quantTable = segment(0xDB, ByteArray(65) { it.toByte() })
     private val scan = segment(0xDA, ByteArray(10)) + ByteArray(50) { (it * 7).toByte() } +

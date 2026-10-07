@@ -30,7 +30,13 @@ fun seedMediaStore(context: Context, log: Logger, count: Int, kind: SeedKind): S
     for (index in 0 until count) {
         val above = kind == SeedKind.NOISE || (kind == SeedKind.POLICY && index % 2 == 0)
         val taken = base.plusSeconds(index * 60L)
-        if (!insert(context, jpeg(index, above, noise = kind == SeedKind.NOISE, taken), taken, "seed-${taken.epochSecond}-$index.jpg")) {
+        if (!insert(
+                context,
+                jpeg(index, above, noise = kind == SeedKind.NOISE, taken),
+                taken,
+                "seed-${taken.epochSecond}-$index.jpg",
+            )
+        ) {
             log.e { "seeding failed at photo $index (after $created)" }
             return SeedOutcome(requested = count, created = created, kind = kind, failedAtChunk = index)
         }

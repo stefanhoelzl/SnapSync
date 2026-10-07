@@ -1,20 +1,20 @@
 package app.snapsync.compose
 
+import app.snapsync.model.AlbumId
 import app.snapsync.model.AlbumKind
+import app.snapsync.model.AlbumRecord
+import app.snapsync.model.AssetFacts
 import app.snapsync.model.AssetId
 import app.snapsync.model.CaptureCutoff
-import app.snapsync.model.SELECTION_CALIBRATION
-import app.snapsync.model.AssetFacts
+import app.snapsync.model.GalleryAccess
+import app.snapsync.model.GalleryRead
 import app.snapsync.model.RawAsset
 import app.snapsync.model.Resource
+import app.snapsync.model.SELECTION_CALIBRATION
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.WriteOutcome
-import app.snapsync.model.AlbumId
-import app.snapsync.model.AlbumRecord
-import app.snapsync.model.GalleryRead
-import app.snapsync.ports.GalleryReader
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.captureCutoff
+import app.snapsync.ports.GalleryReader
 import app.snapsync.services.gallery.GalleryAlbums
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.test.runTest
@@ -56,7 +56,12 @@ class AlbumExclusionsTest {
         override suspend fun albums(): GalleryRead<List<AlbumRecord>> {
             lookups++
             failure?.let { throw it }
-            return GalleryRead.Read(listOf(AlbumRecord(DENYLISTED, SELECTION_CALIBRATION.denylistTitles.first()), AlbumRecord(OWN, "Holiday")))
+            return GalleryRead.Read(
+                listOf(
+                    AlbumRecord(DENYLISTED, SELECTION_CALIBRATION.denylistTitles.first()),
+                    AlbumRecord(OWN, "Holiday"),
+                ),
+            )
         }
         override suspend fun albumMembers(album: AlbumId, since: CaptureCutoff?): GalleryRead<Set<AssetId>> =
             GalleryRead.Read(if (album == DENYLISTED) members else setOf(AssetId("own-1")))
@@ -108,13 +113,21 @@ class AlbumExclusionsTest {
         assertEquals(
             emptySet(),
             denylistedAlbumMembers(
-                library(failure = boom), cutoff, GalleryAccess.GRANTED, AlbumLookupFailure.AdmitOnDoubt, log,
+                library(failure = boom),
+                cutoff,
+                GalleryAccess.GRANTED,
+                AlbumLookupFailure.AdmitOnDoubt,
+                log,
             ),
             "the app tier admits on doubt",
         )
         assertFailsWith<IllegalStateException> {
             denylistedAlbumMembers(
-                library(failure = boom), cutoff, GalleryAccess.GRANTED, AlbumLookupFailure.FailCycle, log,
+                library(failure = boom),
+                cutoff,
+                GalleryAccess.GRANTED,
+                AlbumLookupFailure.FailCycle,
+                log,
             )
         }
     }

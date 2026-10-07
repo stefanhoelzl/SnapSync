@@ -2,19 +2,19 @@
 
 package app.snapsync.mock
 
-import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.AssetFacts
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.Availability
-import app.snapsync.model.NetworkAccess
 import app.snapsync.model.CaptureDate
 import app.snapsync.model.CrashEvent
 import app.snapsync.model.CrashLevel
 import app.snapsync.model.Crumb
 import app.snapsync.model.DeviceFile
+import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.FileArea
 import app.snapsync.model.GalleryAccess
+import app.snapsync.model.NetworkAccess
 import app.snapsync.model.PushEndpoint
 import app.snapsync.model.RawAsset
 import app.snapsync.model.RawResource
@@ -33,14 +33,14 @@ import app.snapsync.model.WakeNetwork
 import app.snapsync.model.WakeTrigger
 import app.snapsync.model.deviceManifestFromJson
 import app.snapsync.model.encodeToJson
-import kotlin.io.encoding.Base64
-import kotlin.io.encoding.ExperimentalEncodingApi
-import kotlin.time.Duration.Companion.milliseconds
-import kotlin.time.Instant
 import kotlinx.datetime.TimeZone
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Instant
 
 /**
  * **What a mocked system keeps, as text** (`docs/testing.md`, "Launch-time adapters") — the durable state each mock
@@ -63,7 +63,10 @@ object MockState {
     }
 }
 
-private val json = Json { encodeDefaults = true; ignoreUnknownKeys = true }
+private val json = Json {
+    encodeDefaults = true
+    ignoreUnknownKeys = true
+}
 
 /** One system's text: how its durable state is written, and how it is put back. */
 private class Codec(val encode: (MockDevice) -> String?, val restore: (MockDevice, String) -> Unit)
@@ -94,7 +97,9 @@ private val CODECS: Map<MockedSystem, Codec> = mapOf(
         { d, dto -> d.library.state.locked { dto.into(d.library.state) } },
     ),
     MockedSystem.FILES to codec(FilesDto.serializer(), { FilesDto.of(it.disk) }, { d, dto -> dto.into(d.disk) }),
-    MockedSystem.PREFERENCES to scalars({ it.preferences.values.snapshot() }, { device, values -> device.preferences.values.putAll(values) }),
+    MockedSystem.PREFERENCES to scalars({
+        it.preferences.values.snapshot()
+    }, { device, values -> device.preferences.values.putAll(values) }),
     MockedSystem.KEYCHAIN to codec(
         KeychainDto.serializer(),
         { KeychainDto.of(it.keychain.items.snapshot()) },
@@ -171,7 +176,9 @@ private val CODECS: Map<MockedSystem, Codec> = mapOf(
     ),
     MockedSystem.SYSTEM_UI to codec(
         SystemUiDto.serializer(),
-        { SystemUiDto(it.systemUi.shared.value, it.systemUi.opened.value, it.systemUi.settings.value, it.systemUi.sharedTitles.value) },
+        {
+            SystemUiDto(it.systemUi.shared.value, it.systemUi.opened.value, it.systemUi.settings.value, it.systemUi.sharedTitles.value)
+        },
         { device, ui ->
             device.systemUi.shared.value = ui.shared
             device.systemUi.sharedTitles.value = ui.sharedTitles
@@ -192,7 +199,11 @@ private const val REGISTRATIONS = "registrations"
 private class StringsDto(val values: Map<String, String>)
 
 @Serializable
-private class FilesDto(val shared: Map<String, String>, val private: Map<String, String>, val denied: List<Pair<String, String>>) {
+private class FilesDto(
+    val shared: Map<String, String>,
+    val private: Map<String, String>,
+    val denied: List<Pair<String, String>>,
+) {
     fun into(disk: FileSystemMock) {
         disk.shared.putAll(shared.mapValues { Base64.decode(it.value) })
         disk.private.putAll(private.mapValues { Base64.decode(it.value) })
@@ -209,7 +220,13 @@ private class FilesDto(val shared: Map<String, String>, val private: Map<String,
 }
 
 @Serializable
-private class SlotDto(val service: String, val account: String, val shared: Boolean, val value: String, val protection: String)
+private class SlotDto(
+    val service: String,
+    val account: String,
+    val shared: Boolean,
+    val value: String,
+    val protection: String,
+)
 
 @Serializable
 private class KeychainDto(val slots: List<SlotDto>) {
@@ -226,11 +243,21 @@ private class KeychainDto(val slots: List<SlotDto>) {
 
     companion object {
         private val KNOWN_SLOTS = listOf(
-            SecureSlots.DEVICE_ID, SecureSlots.ATTEST_TOKEN, SecureSlots.ATTEST_KEY_ID,
+            SecureSlots.DEVICE_ID,
+            SecureSlots.ATTEST_TOKEN,
+            SecureSlots.ATTEST_KEY_ID,
         )
 
         fun of(items: Map<SecureSlot, SecureStoreRead.Found>) = KeychainDto(
-            items.map { (slot, found) -> SlotDto(slot.service, slot.account, slot.shared, found.value, found.protection.name) },
+            items.map { (slot, found) ->
+                SlotDto(
+                    slot.service,
+                    slot.account,
+                    slot.shared,
+                    found.value,
+                    found.protection.name,
+                )
+            },
         )
     }
 }
@@ -289,9 +316,17 @@ private class TriggerDto(
 
         fun of(id: WakeId, trigger: WakeTrigger): TriggerDto = when (trigger) {
             is WakeTrigger.After -> TriggerDto(
-                id.name, AFTER, trigger.earliest.inWholeMilliseconds, cadence = trigger.cadence.name, network = trigger.network.name,
+                id.name,
+                AFTER,
+                trigger.earliest.inWholeMilliseconds,
+                cadence = trigger.cadence.name,
+                network = trigger.network.name,
             )
-            is WakeTrigger.LibraryChange -> TriggerDto(id.name, LIBRARY_CHANGE, maxDelayMillis = trigger.maxDelay.inWholeMilliseconds)
+            is WakeTrigger.LibraryChange -> TriggerDto(
+                id.name,
+                LIBRARY_CHANGE,
+                maxDelayMillis = trigger.maxDelay.inWholeMilliseconds,
+            )
         }
     }
 }
@@ -337,9 +372,13 @@ private class CrashDto(
 
     companion object {
         fun of(event: CrashEvent) = CrashDto(
-            event.message, event.formatted, event.params, event.exceptionValues,
+            event.message,
+            event.formatted,
+            event.params,
+            event.exceptionValues,
             event.breadcrumbs.map { CrumbDto(it.level.name, it.message, it.category, it.data) },
-            event.tags, event.contexts,
+            event.tags,
+            event.contexts,
         )
     }
 }
@@ -412,8 +451,14 @@ private class QueueDto(
         fun of(queue: UploadQueueMock) = QueueDto(
             jobs = queue.jobs.map {
                 JobDto(
-                    it.key, it.contentType, it.target.url, it.target.headers, it.state.name, it.error?.let(ErrorDto::of),
-                    it.retriedOnce, it.target.network.name,
+                    it.key,
+                    it.contentType,
+                    it.target.url,
+                    it.target.headers,
+                    it.state.name,
+                    it.error?.let(ErrorDto::of),
+                    it.retriedOnce,
+                    it.target.network.name,
                 )
             },
             created = queue.created.map { it.filename to it.contentType },
@@ -555,7 +600,15 @@ private class BackendDto(
             publishes = state.publishes.map { CountDto(it.key.first, it.key.second, it.value) },
             pushes = state.pushes.map { Triple(it.eventId, it.deviceId, it.token) },
             pushSeqs = state.pushes.map { it.seq },
-            unionLog = state.changes.map { UnionChangeDto(it.seq, it.eventId, it.deviceId, it.assetId.value, it.gained) },
+            unionLog = state.changes.map {
+                UnionChangeDto(
+                    it.seq,
+                    it.eventId,
+                    it.deviceId,
+                    it.assetId.value,
+                    it.gained,
+                )
+            },
             nextSeq = state.nextSeq,
             fetches = state.fetches.mapValues { (_, list) ->
                 list.map { UnionFetchDto(it.deviceId, it.trigger, it.from, it.to, it.served) }
@@ -577,7 +630,13 @@ private class BackendDto(
 }
 
 @Serializable
-private class UnionChangeDto(val seq: Long, val event: String, val device: String, val asset: String, val gained: Boolean)
+private class UnionChangeDto(
+    val seq: Long,
+    val event: String,
+    val device: String,
+    val asset: String,
+    val gained: Boolean,
+)
 
 @Serializable
 private class UnionFetchDto(val device: String?, val trigger: String?, val from: Long?, val to: Long, val served: Int)
@@ -602,9 +661,22 @@ private class AssetDto(
         assetId = AssetId(id),
         creationDate = creationDate,
         rawResources = resources.map { r ->
-            RawResource(r.role?.let { w -> ResourceRole.entries.first { it.wire == w } }, r.contentType, r.filename, Unit)
+            RawResource(
+                r.role?.let { w -> ResourceRole.entries.first { it.wire == w } },
+                r.contentType,
+                r.filename,
+                Unit,
+            )
         },
-        facts = AssetFacts(AssetId(id), CaptureDate(captureDate), isScreenshot, isScreenRecording, isVideo, isEdited, pixelArea),
+        facts = AssetFacts(
+            AssetId(id),
+            CaptureDate(captureDate),
+            isScreenshot,
+            isScreenRecording,
+            isVideo,
+            isEdited,
+            pixelArea,
+        ),
     )
 
     companion object {

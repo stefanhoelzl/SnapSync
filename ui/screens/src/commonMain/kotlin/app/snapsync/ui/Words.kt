@@ -11,18 +11,18 @@ import app.snapsync.ui.resources.duration_minutes
 import app.snapsync.ui.resources.duration_minutes_short
 import app.snapsync.ui.resources.duration_under_a_minute
 import app.snapsync.ui.resources.duration_weeks
+import app.snapsync.ui.resources.message_app_not_genuine
 import app.snapsync.ui.resources.message_create_dates_refused
 import app.snapsync.ui.resources.message_create_failed
 import app.snapsync.ui.resources.message_create_name_refused
-import app.snapsync.ui.resources.message_invalid_link
-import app.snapsync.ui.resources.message_rename_failed
 import app.snapsync.ui.resources.message_device_modified
 import app.snapsync.ui.resources.message_device_unverifiable
-import app.snapsync.ui.resources.message_app_not_genuine
-import app.snapsync.ui.resources.report_seed_device_unverifiable
+import app.snapsync.ui.resources.message_invalid_link
+import app.snapsync.ui.resources.message_rename_failed
 import app.snapsync.ui.resources.message_rename_name_refused
-import org.jetbrains.compose.resources.stringResource
+import app.snapsync.ui.resources.report_seed_device_unverifiable
 import org.jetbrains.compose.resources.pluralStringResource
+import org.jetbrains.compose.resources.stringResource
 
 // The facts the state carries, in words (`docs/architecture.md`, "Localization"): the domain names WHAT is true,
 // and only here does it become a sentence — so a translation is a strings file, never a code change.

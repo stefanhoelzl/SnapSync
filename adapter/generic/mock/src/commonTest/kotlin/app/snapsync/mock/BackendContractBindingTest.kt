@@ -11,8 +11,8 @@ import app.snapsync.contracts.currentHost
 import app.snapsync.contracts.verify
 import app.snapsync.model.DeviceFile
 import app.snapsync.ports.Backend
-import kotlin.test.Test
 import kotlinx.coroutines.runBlocking
+import kotlin.test.Test
 
 /**
  * The in-memory backend held to the `Backend` contract the real `api/` satisfies (`docs/testing.md`). Each clause

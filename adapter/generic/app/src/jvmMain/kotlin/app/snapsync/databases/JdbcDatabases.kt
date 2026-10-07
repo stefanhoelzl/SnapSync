@@ -39,7 +39,9 @@ class JdbcDatabases(private val directory: File) : Databases {
         val version = userVersion(driver)
         return when {
             version < schema.version -> DbOpen.OldSchema.also { driver.close() }
-            version > schema.version -> DbOpen.Failed("schema version $version is newer than this build's ${schema.version}")
+            version > schema.version -> DbOpen.Failed(
+                "schema version $version is newer than this build's ${schema.version}",
+            )
                 .also { driver.close() }
             else -> DbOpen.Opened(driver)
         }

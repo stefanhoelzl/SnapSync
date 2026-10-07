@@ -4,16 +4,16 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.unit.dp
+import org.junit.Rule
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
-import org.junit.Rule
 
 /**
  * The screen heading: a long name stops at two lines with an ellipsis and keeps its edit control on screen,
@@ -32,18 +32,20 @@ class ScreenHeadingTest {
     fun `a long name is cut after two lines and the edit control stays`() {
         rule.setContent {
             // A phone's width, so the name has to wrap as it would on the device.
-            AppTheme { Box(Modifier.width(PHONE_WIDTH)) {
-                ScreenLayout(
-                    title = "SnapSync",
-                    heading = ScreenHeading(longName, onEdit = {}, editDescription = "Rename event") {
-                        Text("You've joined this event")
-                    },
-                    bottomActions = null,
-                    contentPinsActionCluster = false,
-                    onTitleDoubleTap = null,
-                    onMenu = null,
-                ) {}
-            } }
+            AppTheme {
+                Box(Modifier.width(PHONE_WIDTH)) {
+                    ScreenLayout(
+                        title = "SnapSync",
+                        heading = ScreenHeading(longName, onEdit = {}, editDescription = "Rename event") {
+                            Text("You've joined this event")
+                        },
+                        bottomActions = null,
+                        contentPinsActionCluster = false,
+                        onTitleDoubleTap = null,
+                        onMenu = null,
+                    ) {}
+                }
+            }
         }
         val layouts = mutableListOf<TextLayoutResult>()
         rule.onNodeWithText(longName).fetchSemanticsNode()

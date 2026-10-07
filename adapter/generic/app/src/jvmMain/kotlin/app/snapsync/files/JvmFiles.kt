@@ -70,7 +70,10 @@ class JvmFiles(private val shared: File?, private val private: File?) : Files {
     }
 
     override fun delete(area: FileArea, path: String): FileResult<Unit> =
-        io(area, path) { Nio.delete(it.toPath()); FileResult.Ok(Unit) }
+        io(area, path) {
+            Nio.delete(it.toPath())
+            FileResult.Ok(Unit)
+        }
 
     override fun exists(area: FileArea, path: String): FileResult<Boolean> =
         io(area, path) { FileResult.Ok(it.exists()) }
@@ -93,7 +96,13 @@ class JvmFiles(private val shared: File?, private val private: File?) : Files {
         return io(area, directory) { dir ->
             if (!dir.exists()) return@io FileResult.Ok(emptyList())
             if (!dir.canRead()) return@io FileResult.Denied("$directory is not readable")
-            FileResult.Ok(dir.walkTopDown().filter { it.isFile }.map { it.relativeTo(root).invariantSeparatorsPath }.sorted().toList())
+            FileResult.Ok(
+                dir.walkTopDown().filter { it.isFile }.map {
+                    it.relativeTo(
+                        root,
+                    ).invariantSeparatorsPath
+                }.sorted().toList(),
+            )
         }
     }
 
@@ -109,8 +118,16 @@ class JvmFiles(private val shared: File?, private val private: File?) : Files {
         return runCatchingCancellable { op(file) }.getOrElse { failure ->
             when (failure) {
                 is NoSuchFileException, is java.io.FileNotFoundException ->
-                    if (file.exists()) FileResult.Denied("${failure::class.simpleName}: ${failure.message}") else FileResult.NotFound
-                is AccessDeniedException, is SecurityException -> FileResult.Denied("${failure::class.simpleName}: ${failure.message}")
+                    if (file.exists()) {
+                        FileResult.Denied(
+                            "${failure::class.simpleName}: ${failure.message}",
+                        )
+                    } else {
+                        FileResult.NotFound
+                    }
+                is AccessDeniedException, is SecurityException -> FileResult.Denied(
+                    "${failure::class.simpleName}: ${failure.message}",
+                )
                 else -> FileResult.Failed("${failure::class.simpleName}: ${failure.message}")
             }
         }

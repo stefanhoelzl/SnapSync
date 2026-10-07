@@ -1,9 +1,9 @@
 package app.snapsync.feature.upload
 
-import app.snapsync.model.SelectionPolicy
-import app.snapsync.model.candidatesFromResources
 import app.snapsync.model.Resource
+import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.SelectionScope
+import app.snapsync.model.candidatesFromResources
 import app.snapsync.services.gallery.Discovery
 import app.snapsync.services.gallery.UploadDiscovery
 

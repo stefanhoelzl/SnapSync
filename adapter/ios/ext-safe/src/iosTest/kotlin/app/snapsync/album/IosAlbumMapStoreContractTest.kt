@@ -7,8 +7,8 @@ import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.verify
-import app.snapsync.services.album.AlbumMapService
 import app.snapsync.preferences.IosPreferences
+import app.snapsync.services.album.AlbumMapService
 import platform.Foundation.NSUserDefaults
 import kotlin.test.Test
 

@@ -6,8 +6,6 @@ import app.snapsync.model.UploadJobState
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSError
 import platform.Foundation.NSURLRequest
-// Kotlin/Native exposes this ObjC member as an extension, so it needs an explicit import (the same
-// shape as `platform.Foundation.setValue` in uploadUrlRequest).
 import platform.Foundation.allHTTPHeaderFields
 import platform.Photos.PHAssetResourceUploadJobState
 import platform.Photos.PHAssetResourceUploadJobStateCancelled
@@ -67,6 +65,8 @@ fun photoKitDestinationPath(destination: NSURLRequest?): String? = destination?.
  */
 @OptIn(ExperimentalForeignApi::class)
 fun NSURLRequest?.contentTypeHeader(): String? {
+    // Kotlin/Native exposes this ObjC member as an extension, so it needs an explicit import (the same
+    // shape as `platform.Foundation.setValue` in uploadUrlRequest).
     val headers = this?.allHTTPHeaderFields ?: return null
     val value = headers.entries
         .firstOrNull { (it.key as? String)?.equals("Content-Type", ignoreCase = true) == true }

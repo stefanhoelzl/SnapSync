@@ -13,8 +13,8 @@ import app.snapsync.contracts.currentHost
 import app.snapsync.contracts.verify
 import app.snapsync.model.CrashEvent
 import app.snapsync.model.CrashOptions
-import kotlin.test.Test
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlin.test.Test
 
 /**
  * The honest [app.snapsync.ports.CrashReporter], held to the contract the real reporting adapter satisfies — up to

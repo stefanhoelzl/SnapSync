@@ -2,11 +2,10 @@ package app.snapsync.keychain
 
 import app.snapsync.model.SecureSlot
 import app.snapsync.model.SecureStoreRead
-import app.snapsync.model.WriteOutcome
 import app.snapsync.model.SecureStoreUnavailable
+import app.snapsync.model.WriteOutcome
 import app.snapsync.services.secure.readExisting
 import app.snapsync.services.secure.resolveOrMint
-
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith

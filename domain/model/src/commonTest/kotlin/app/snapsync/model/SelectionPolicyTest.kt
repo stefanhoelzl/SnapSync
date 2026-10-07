@@ -1,7 +1,7 @@
 package app.snapsync.model
 
-import kotlin.test.Test
 import kotlinx.coroutines.test.runTest
+import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
@@ -46,7 +46,15 @@ class SelectionPolicyTest {
      * rules from the range, exactly as it did when they were a separate function.
      */
     private suspend fun excluded(resources: List<Resource>): Set<String> {
-        val policy = SelectionPolicy(selectionRulesFor(includesUpload = true, cutoff = captureCutoff(""), ceiling = null, suppressedAssetIds = { emptySet() }, albumExcludedAssetIds = { emptySet() }))
+        val policy = SelectionPolicy(
+            selectionRulesFor(
+                includesUpload = true,
+                cutoff = captureCutoff(""),
+                ceiling = null,
+                suppressedAssetIds = { emptySet() },
+                albumExcludedAssetIds = { emptySet() },
+            ),
+        )
         val admitted = EventPhotoSet(policy) { candidatesFromResources(resources) }
             .assets().mapTo(mutableSetOf()) { it.facts.assetId }
         return (resources.mapTo(mutableSetOf()) { it.assetId } - admitted).mapTo(mutableSetOf()) { it.value }

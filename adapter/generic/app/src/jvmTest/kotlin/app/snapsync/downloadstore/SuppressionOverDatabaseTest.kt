@@ -1,8 +1,6 @@
 package app.snapsync.downloadstore
 
-import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
-import app.cash.sqldelight.db.SqlSchema
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import app.snapsync.databases.JdbcDatabases
 import app.snapsync.model.AssetId
@@ -12,11 +10,11 @@ import app.snapsync.model.SuppressionReadiness
 import app.snapsync.services.downloads.DOWNLOADS_DB_NAME
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.downloads.SuppressionService
+import kotlinx.coroutines.test.runTest
 import java.io.File
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlinx.coroutines.test.runTest
 
 /**
  * The extension's read-only suppression view over a REAL download store (capability `receiving-photos`): what the
@@ -27,7 +25,8 @@ class SuppressionOverDatabaseTest {
 
     private val dir = Files.createTempDirectory("suppression").toFile().also(File::deleteOnExit)
     private val ref = AssetRef(sourceDeviceId = "device-b", sourceAssetId = AssetId("asset-9"))
-    private val resource = PlannedResource("photo-9.heic", "https://example.invalid/9", "photo", "image/heic", "photo-9.heic")
+    private val resource =
+        PlannedResource("photo-9.heic", "https://example.invalid/9", "photo", "image/heic", "photo-9.heic")
 
     @Test
     fun `the extension suppresses what the app imported`() = runTest {

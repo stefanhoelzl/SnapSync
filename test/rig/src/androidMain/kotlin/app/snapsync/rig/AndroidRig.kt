@@ -24,15 +24,15 @@ import app.snapsync.rig.gallery.androidGalleryReader
 import app.snapsync.rig.gallery.seedMediaStore
 import app.snapsync.services.logs.LogTailService
 import co.touchlab.kermit.Logger
-import java.io.File
-import kotlin.system.exitProcess
-import kotlin.time.Clock
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
+import java.io.File
+import kotlin.system.exitProcess
+import kotlin.time.Clock
 
 /**
  * **The Android rig build's launch** (`docs/testing.md`, "Launch-time adapters"): the app composed over the adapter choice
@@ -72,7 +72,6 @@ class AndroidRigLaunch internal constructor(
 
     /** The line this launch adds to the app's boot banner. */
     val bootLines: List<String> = listOf("[boot] adapters = $description")
-
 }
 
 /** Build the launch over the root's [real] adapters; [uploadBase] is the real backend's, the build's resolved one. */
@@ -87,7 +86,9 @@ fun androidRigLaunch(real: DevicePorts, uploadBase: String): AndroidRigLaunch {
     )
     val launch = when (val read = LaunchAdapters.load(real.files, AdapterProcess.APP, facts)) {
         is LaunchAdapters.Chosen -> read
-        is LaunchAdapters.Refused -> error("the adapter choice was refused, so nothing is composed: " + read.reasons.joinToString("; "))
+        is LaunchAdapters.Refused -> error(
+            "the adapter choice was refused, so nothing is composed: " + read.reasons.joinToString("; "),
+        )
         LaunchAdapters.AllReal -> error("an Android launch always has a choice: no adapters file is $ANDROID_DEFAULT")
     }
     if (real.files.exists(FileArea.SHARED, AdapterFiles.CHOICE) == FileResult.Ok(true)) keepSaving(launch)
@@ -111,7 +112,9 @@ private fun adapterCommands(launch: AndroidRigLaunch): Map<String, RigCommand> =
         world = launch.world,
         launchLine = launch.description,
         current = {
-            putJsonArray("realAdapters") { ANDROID_REAL_ADAPTERS.sortedBy { it.ordinal }.forEach { add(JsonPrimitive(it.key)) } }
+            putJsonArray(
+                "realAdapters",
+            ) { ANDROID_REAL_ADAPTERS.sortedBy { it.ordinal }.forEach { add(JsonPrimitive(it.key)) } }
         },
         refusal = { choice ->
             val broken = choice.incoherence(ANDROID_ABSENT_SYSTEMS) +
@@ -124,7 +127,9 @@ private fun adapterCommands(launch: AndroidRigLaunch): Map<String, RigCommand> =
         clear = {
             when (val deleted = launch.files.delete(FileArea.SHARED, AdapterFiles.CHOICE)) {
                 is FileResult.Ok, FileResult.NotFound -> Cleared.Done(AdapterFiles.CHOICE)
-                else -> Cleared.Failed(CommandResult(status = 500, body = """{"error":${jsonString("not cleared: $deleted")}}"""))
+                else -> Cleared.Failed(
+                    CommandResult(status = 500, body = """{"error":${jsonString("not cleared: $deleted")}}"""),
+                )
             }
         },
         exit = { exitProcess(0) },
@@ -179,9 +184,20 @@ private fun AndroidRigLaunch.hooks(
             if (world.isMocked(MockedSystem.LIBRARY)) world.seedMockLibrary(n, kind) else seedMediaStore(context, log, n, kind)
         },
     ),
-    readGallery = if (world.isMocked(MockedSystem.LIBRARY)) world.mockGalleryReader() else androidGalleryReader(core, context),
+    readGallery = if (world.isMocked(
+            MockedSystem.LIBRARY,
+        )
+    ) {
+        world.mockGalleryReader()
+    } else {
+        androidGalleryReader(core, context)
+    },
     osExtensionEnabled = { null },
-    publishBoundPort = { bound -> rigPortFilePath(context.filesDir.path)?.let { File(it).writeText(bound.toString()) } },
+    publishBoundPort = { bound ->
+        rigPortFilePath(
+            context.filesDir.path,
+        )?.let { File(it).writeText(bound.toString()) }
+    },
     contracts = emptyList(),
     refusals = androidRefusals(world),
     osExtensionNotApplicable = "Android has no upload extension: its uploader runs in the app's own process",
@@ -195,7 +211,10 @@ private fun AndroidRigLaunch.hooks(
  * activity is handed. Every other system has no Android adapter yet, so [ChosenEntryDriver] hands its deliveries to
  * the mock and never here.
  */
-private class AndroidEntryDriver(private val lifecycle: AndroidLifecycle, private val links: AndroidLinks) : EntryDriver {
+private class AndroidEntryDriver(
+    private val lifecycle: AndroidLifecycle,
+    private val links: AndroidLinks,
+) : EntryDriver {
     override fun foreground() = lifecycle.deliverForeground()
 
     override fun background() = lifecycle.deliverBackground()
@@ -215,7 +234,9 @@ private class AndroidEntryDriver(private val lifecycle: AndroidLifecycle, privat
     override fun backgroundTransfers(identifier: String, done: () -> Unit) = mocked("the transfer sessions")
 
     private fun mocked(system: String): Nothing =
-        error("$system is mocked on the Android rig build, so its delivery is the mock's — this driver was routed wrongly")
+        error(
+            "$system is mocked on the Android rig build, so its delivery is the mock's — this driver was routed wrongly",
+        )
 }
 
 /** What the Android host refuses of the shared vocabulary, each with its reason. */
@@ -275,10 +296,15 @@ private val ANDROID_REAL_ADAPTERS: Set<MockedSystem> = setOf(
  * The systems Android does not have: the PhotoKit upload-job queue and the upload extension's registration. Nothing on
  * this root composes over their mocks (no upload cycle, no extension), so the rules they trigger do not apply here.
  */
-private val ANDROID_ABSENT_SYSTEMS: Set<MockedSystem> = setOf(MockedSystem.UPLOAD_QUEUE, MockedSystem.EXTENSION_REGISTRY)
+private val ANDROID_ABSENT_SYSTEMS: Set<MockedSystem> = setOf(
+    MockedSystem.UPLOAD_QUEUE,
+    MockedSystem.EXTENSION_REGISTRY,
+)
 
 /** What a launch with no adapters file composes: every system mocked but the screen and its foreground life. */
-private val ANDROID_DEFAULT = AdapterChoice(MockedSystem.entries.toSet() - setOf(MockedSystem.SCREEN, MockedSystem.LIFECYCLE))
+private val ANDROID_DEFAULT = AdapterChoice(
+    MockedSystem.entries.toSet() - setOf(MockedSystem.SCREEN, MockedSystem.LIFECYCLE),
+)
 
 /** Why a mock lever over a real backend is refused. */
 private const val REAL_BACKEND = "the backend is real on this launch; its state is the real api's, not a mock's"

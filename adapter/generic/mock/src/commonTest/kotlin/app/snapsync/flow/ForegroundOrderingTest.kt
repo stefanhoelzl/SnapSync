@@ -1,38 +1,36 @@
 package app.snapsync.flow
 
-import app.snapsync.mock.inMemorySecureStore
-import app.snapsync.mock.fakeCrypto
-import app.snapsync.services.crypto.EventKeys
-import kotlinx.coroutines.test.TestScope
-import app.snapsync.model.UnionTrigger
-import app.snapsync.model.UnionPage
-import app.snapsync.services.network.NetworkReadings
-import app.snapsync.feature.status.ForegroundWatches
-import kotlin.time.Duration.Companion.seconds
-import kotlin.test.assertEquals
-import kotlinx.coroutines.test.advanceTimeBy
-import app.snapsync.model.NetworkAccess
-import app.snapsync.mock.NetworkMock
-import app.snapsync.feature.status.NetworkWatch
-import app.snapsync.mock.inMemoryFiles
-import app.snapsync.services.leave.PendingLeaves
-
-import kotlinx.coroutines.async
 import app.snapsync.feature.membership.LeaveEvent
 import app.snapsync.feature.membership.MembershipRefresh
-import app.snapsync.feature.status.StatusCountsPoller
+import app.snapsync.feature.status.ForegroundWatches
 import app.snapsync.feature.status.MutableLedgerCountsSource
+import app.snapsync.feature.status.NetworkWatch
+import app.snapsync.feature.status.StatusCountsPoller
+import app.snapsync.mock.NetworkMock
+import app.snapsync.mock.fakeCrypto
+import app.snapsync.mock.inMemoryFiles
+import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.JoinLoad
+import app.snapsync.model.NetworkAccess
+import app.snapsync.model.UnionPage
+import app.snapsync.model.UnionTrigger
 import app.snapsync.services.backend.EventUnionSource
+import app.snapsync.services.crypto.EventKeys
+import app.snapsync.services.leave.PendingLeaves
+import app.snapsync.services.network.NetworkReadings
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * **The foreground status refresh is not sequenced behind anything slow** (capability `sync-status`, "Foreground
@@ -103,8 +101,14 @@ class ForegroundOrderingTest {
             statusPoller = poller,
             // Throws only once its siblings have started, so a cancellation — not a head start — is what the
             // assertion below would catch.
-            settleStoredUploads = { gate.await(); throw IllegalStateException("the listing threw") },
-            refreshStatus = { gate.await(); refreshed = true },
+            settleStoredUploads = {
+                gate.await()
+                throw IllegalStateException("the listing threw")
+            },
+            refreshStatus = {
+                gate.await()
+                refreshed = true
+            },
         )
 
         val run = async { flow.run() }
@@ -150,10 +154,17 @@ class ForegroundOrderingTest {
                     return Result.success(UnionPage(emptyList(), 0))
                 }
             },
-            fetchEventDetails = { id -> fetched += id; JoinLoad.Failed },
+            fetchEventDetails = { id ->
+                fetched += id
+                JoinLoad.Failed
+            },
         ).run()
 
-        assertEquals(listOf("EVT" to UnionTrigger.FOREGROUND), unionReads, "the reconcile read the active event's union")
+        assertEquals(
+            listOf("EVT" to UnionTrigger.FOREGROUND),
+            unionReads,
+            "the reconcile read the active event's union",
+        )
         assertEquals(listOf("EVT"), fetched, "the membership refresh fetched the active event's details")
         poller.stop()
     }
@@ -185,7 +196,10 @@ class ForegroundOrderingTest {
                 ),
             ),
             // A network watch on the test's background scope unless a test watches one: it stops with the test.
-            watches = ForegroundWatches(statusPoller, networkWatch ?: NetworkWatch(backgroundScope, NetworkReadings(NetworkMock().port()))),
+            watches = ForegroundWatches(
+                statusPoller,
+                networkWatch ?: NetworkWatch(backgroundScope, NetworkReadings(NetworkMock().port())),
+            ),
             reloadConfig = {},
             uploadOwnWork = settleStoredUploads,
             refreshStatus = refreshStatus,

@@ -120,7 +120,9 @@ class AndroidSecureStore(
         try {
             Nio.deleteIfExists(file.toPath())
         } catch (e: IOException) {
-            return SecureStoreRead.Unavailable("${slot.describe()} is undecryptable ($why) and could not be removed: ${e.describe()}")
+            return SecureStoreRead.Unavailable(
+                "${slot.describe()} is undecryptable ($why) and could not be removed: ${e.describe()}",
+            )
         }
         return SecureStoreRead.Absent
     }
@@ -131,13 +133,20 @@ class AndroidSecureStore(
         cipher.updateAAD(addressOf(slot))
         val iv = cipher.iv
         val body = cipher.doFinal(value.encodeToByteArray())
-        return ByteBuffer.allocate(1 + 1 + iv.size + body.size).put(FORMAT).put(iv.size.toByte()).put(iv).put(body).array()
+        return ByteBuffer.allocate(
+            1 + 1 + iv.size + body.size,
+        ).put(FORMAT).put(iv.size.toByte()).put(iv).put(body).array()
     }
 
     private fun open(key: SecretKey, sealed: ByteArray, slot: SecureSlot): String {
         val buffer = ByteBuffer.wrap(sealed)
         require(sealed.size > 2 && buffer.get() == FORMAT) { "unknown item format" }
-        val iv = ByteArray(buffer.get().toInt()).also { require(it.size in 1..buffer.remaining()) { "truncated item" }; buffer.get(it) }
+        val iv = ByteArray(
+            buffer.get().toInt(),
+        ).also {
+            require(it.size in 1..buffer.remaining()) { "truncated item" }
+            buffer.get(it)
+        }
         val body = ByteArray(buffer.remaining()).also { buffer.get(it) }
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(TAG_BITS, iv))
@@ -166,7 +175,10 @@ class AndroidSecureStore(
         "${if (slot.shared) "shared" else "unshared"}\u0000${slot.service}\u0000${slot.account}".encodeToByteArray()
 
     private fun fileOf(slot: SecureSlot): File =
-        File(directory, MessageDigest.getInstance("SHA-256").digest(addressOf(slot)).joinToString("") { "%02x".format(it) })
+        File(
+            directory,
+            MessageDigest.getInstance("SHA-256").digest(addressOf(slot)).joinToString("") { "%02x".format(it) },
+        )
 
     private fun SecureSlot.describe() = "$service/$account${if (shared) " (shared)" else ""}"
 

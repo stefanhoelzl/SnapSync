@@ -1,8 +1,7 @@
 package app.snapsync.control
 
-import kotlin.time.Duration.Companion.seconds
-import app.snapsync.model.NetworkNotice
 import app.snapsync.model.Layer
+import app.snapsync.model.NetworkNotice
 import app.snapsync.rig.JvmRigHost
 import app.snapsync.rig.RigVocabulary
 import kotlinx.coroutines.runBlocking
@@ -10,6 +9,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * The control protocol's JVM host, driven the way any caller drives either host: through [RigClient] and nothing
@@ -29,8 +29,20 @@ class JvmHostProtocolTest {
         assertEquals(emptyList(), ad.unclassified, "every vocabulary entry is honoured or refused")
         assertEquals(emptyList(), ad.outsideVocabulary, "every wired verb is in the vocabulary")
         assertEquals(RigVocabulary.entries, (ad.honoured + ad.refused.keys).toSet())
-        assertEquals(emptyList(), RigVocabulary.worldLevers.filterNot { it in ad.honoured }, "the JVM host honours every world lever")
-        assertEquals(emptyList(), RigVocabulary.deviceFacts.filterNot { it in ad.honoured }, "the JVM host reads every device fact")
+        assertEquals(
+            emptyList(),
+            RigVocabulary.worldLevers.filterNot {
+                it in ad.honoured
+            },
+            "the JVM host honours every world lever",
+        )
+        assertEquals(
+            emptyList(),
+            RigVocabulary.deviceFacts.filterNot {
+                it in ad.honoured
+            },
+            "the JVM host reads every device fact",
+        )
     }
 
     /**
@@ -41,7 +53,10 @@ class JvmHostProtocolTest {
     fun a_refused_build_reaches_the_update_required_screen() = onHost { client ->
         client.deviceVerb("backend/min-app-version", mapOf("minimum" to "100.0")).done()
         // Any backend call carries the version; a create is the first a person makes.
-        client.user("create", mapOf("name" to "Old", "startsAt" to "2026-05-25T00:00:00", "endsAt" to "2026-06-20T00:00:00"))
+        client.user(
+            "create",
+            mapOf("name" to "Old", "startsAt" to "2026-05-25T00:00:00", "endsAt" to "2026-06-20T00:00:00"),
+        )
         val refused = client.awaitState { it.ui.layer is Layer.UpdateRequired }
         assertEquals("100.0", (refused.ui.layer as Layer.UpdateRequired).minimumVersion)
     }

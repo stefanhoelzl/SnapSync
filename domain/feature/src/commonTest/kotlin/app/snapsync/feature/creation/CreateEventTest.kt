@@ -1,21 +1,18 @@
 package app.snapsync.feature.creation
 
+import app.snapsync.feature.creation.readmodel.CreationFailureReason
+import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.model.CreateOutcome
 import app.snapsync.services.backend.EventCreation
-
-import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
-import kotlinx.coroutines.test.UnconfinedTestDispatcher
-import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.test.runCurrent
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.CompletableDeferred
-import app.snapsync.feature.creation.readmodel.CreationFailureReason
-import app.snapsync.feature.creation.readmodel.CreationStatus
-import kotlinx.coroutines.flow.MutableStateFlow
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class CreateEventTest {
@@ -63,13 +60,24 @@ class CreateEventTest {
         val gate = CompletableDeferred<Unit>()
         var calls = 0
         val client = object : EventCreation {
-            override suspend fun create(name: String, startsAt: String, endsAt: String?, keyId: String?): CreateOutcome {
+            override suspend fun create(
+                name: String,
+                startsAt: String,
+                endsAt: String?,
+                keyId: String?,
+            ): CreateOutcome {
                 calls++
                 gate.await()
                 return CreateOutcome.Created(eventId)
             }
         }
-        val useCase = CreateEvent(client, MutableStateFlow<CreationStatus>(CreationStatus.Idle), onMinted = { _, _ -> }, minting = null)
+        val useCase =
+            CreateEvent(
+                client,
+                MutableStateFlow<CreationStatus>(CreationStatus.Idle),
+                onMinted = { _, _ -> },
+                minting = null,
+            )
 
         val first = launch { useCase.create("Party", startsAt, endsAt) }
         runCurrent()
@@ -85,7 +93,10 @@ class CreateEventTest {
         val status = MutableStateFlow<CreationStatus>(CreationStatus.Idle)
         var provisioned: String? = null
         val useCase = CreateEvent(
-            FakeClient(CreateOutcome.InvalidName), status, onMinted = { eventId, _ -> provisioned = eventId }, minting = null,
+            FakeClient(CreateOutcome.InvalidName),
+            status,
+            onMinted = { eventId, _ -> provisioned = eventId },
+            minting = null,
         )
 
         useCase.create("x", startsAt, endsAt)
@@ -99,7 +110,10 @@ class CreateEventTest {
         val status = MutableStateFlow<CreationStatus>(CreationStatus.Idle)
         var provisioned: String? = null
         val useCase = CreateEvent(
-            FakeClient(CreateOutcome.InvalidWindow), status, onMinted = { eventId, _ -> provisioned = eventId }, minting = null,
+            FakeClient(CreateOutcome.InvalidWindow),
+            status,
+            onMinted = { eventId, _ -> provisioned = eventId },
+            minting = null,
         )
 
         useCase.create("x", startsAt, endsAt)
@@ -113,7 +127,10 @@ class CreateEventTest {
         val status = MutableStateFlow<CreationStatus>(CreationStatus.Idle)
         var provisioned: String? = null
         val useCase = CreateEvent(
-            FakeClient(CreateOutcome.Transient), status, onMinted = { eventId, _ -> provisioned = eventId }, minting = null,
+            FakeClient(CreateOutcome.Transient),
+            status,
+            onMinted = { eventId, _ -> provisioned = eventId },
+            minting = null,
         )
 
         useCase.create("x", startsAt, endsAt)
@@ -127,7 +144,10 @@ class CreateEventTest {
         val status = MutableStateFlow<CreationStatus>(CreationStatus.Idle)
         var provisioned: String? = null
         val useCase = CreateEvent(
-            FakeClient(CreateOutcome.Unverified), status, onMinted = { eventId, _ -> provisioned = eventId }, minting = null,
+            FakeClient(CreateOutcome.Unverified),
+            status,
+            onMinted = { eventId, _ -> provisioned = eventId },
+            minting = null,
         )
 
         useCase.create("x", startsAt, endsAt)

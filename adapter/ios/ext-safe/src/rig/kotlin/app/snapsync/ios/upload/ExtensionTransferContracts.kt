@@ -93,14 +93,19 @@ internal fun prepareCall(state: UploadState, clauseId: String, call: Int, api: U
     val upload = IosPhotoKitUploadPlatform(Logger.withTag("contract"), api)
     val target = preparedTarget(clauseId, state)
     when (call) {
-        1 -> check(upload.create(UploadSource.Resource(photo), target, UploadContract.key(clauseId)) == UploadCreateOutcome.CREATED) {
+        1 -> check(
+            upload.create(UploadSource.Resource(photo), target, UploadContract.key(clauseId)) == UploadCreateOutcome.CREATED,
+        ) {
             "preparing $clauseId: the transfer was not created"
         }
         else -> {
             val destination = destinationPathOf(target.url)
-            val offered = checkNotNull(upload.jobs(UploadJobSet.RETRY_OFFERED).firstOrNull { it.destinationPath == destination }) {
-                "preparing $clauseId: the refused transfer was not offered for its free retry"
-            }
+            val offered =
+                checkNotNull(
+                    upload.jobs(UploadJobSet.RETRY_OFFERED).firstOrNull { it.destinationPath == destination },
+                ) {
+                    "preparing $clauseId: the refused transfer was not offered for its free retry"
+                }
             upload.retry(offered, target)
         }
     }
@@ -131,7 +136,9 @@ internal fun photoKitUploadInState(
 
 /** The newest photo in the library, as the resource an upload job sends — reused, so a run seeds nothing. */
 internal fun newestPhotoResource(): PHAssetResource {
-    val options = PHFetchOptions().apply { sortDescriptors = listOf(NSSortDescriptor(key = "creationDate", ascending = false)) }
+    val options = PHFetchOptions().apply {
+        sortDescriptors = listOf(NSSortDescriptor(key = "creationDate", ascending = false))
+    }
     val asset = PHAsset.fetchAssetsWithMediaType(PHAssetMediaTypeImage, options).firstObject() as? PHAsset
         ?: error("the library holds no photo to upload — add one and re-run")
     return PHAssetResource.assetResourcesForAsset(asset).firstOrNull() as? PHAssetResource
@@ -145,14 +152,17 @@ internal fun newestPhotoResource(): PHAssetResource {
 internal class ExtensionPhotoKitUploadBinding(private val recorder: Recorder) : Binding<UploadState, UploadUnderTest> {
     override val host = Host.IOS_DEVICE_PHOTOKIT_EXT
     override val kind = BindingKind.Live
-    override val reaches = setOf(UploadState.PRESENTED_SUCCEEDED, UploadState.PRESENTED_REFUSED_ONCE, UploadState.PRESENTED_RETRY_SPENT)
+    override val reaches =
+        setOf(UploadState.PRESENTED_SUCCEEDED, UploadState.PRESENTED_REFUSED_ONCE, UploadState.PRESENTED_RETRY_SPENT)
 
     override fun create(state: UploadState, clauseId: String): Entered<UploadUnderTest> {
         recorder.resume(clauseId)
         return photoKitUploadInState(
             state = state,
             api = RecordingUploadJobApi(SystemUploadJobApi(Logger.withTag("contract")), recorder),
-            objects = recordingFixtureObjects(recorder) { route -> landedAt(route)?.let { Landed(it.ifEmpty { null }) } },
+            objects = recordingFixtureObjects(
+                recorder,
+            ) { route -> landedAt(route)?.let { Landed(it.ifEmpty { null }) } },
             photo = newestPhotoResource(),
         )
     }

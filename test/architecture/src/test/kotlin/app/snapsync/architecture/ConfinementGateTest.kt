@@ -46,7 +46,9 @@ class ConfinementGateTest {
     )
 
     private val mutableCollection =
-        Regex("""=\s*(?:mutableListOf|mutableMapOf|mutableSetOf|ArrayDeque|LinkedHashMap|HashMap|HashSet|ArrayList)\b""")
+        Regex(
+            """=\s*(?:mutableListOf|mutableMapOf|mutableSetOf|ArrayDeque|LinkedHashMap|HashMap|HashSet|ArrayList)\b""",
+        )
 
     /** The unconfined mutable fields of class [name] in [raw], or `null` when the class is not declared there. */
     internal fun unconfined(raw: String, name: String): List<String>? {
@@ -61,9 +63,13 @@ class ConfinementGateTest {
             val lead = line.length - line.trimStart().length
             val text = line.trim()
             val isField = lead == indent &&
-                (Regex("""^(?:(?:private|internal|protected|override|public|lateinit)\s+)*var\s""").containsMatchIn(text) ||
-                    (Regex("""^(?:(?:private|internal|protected|override|public)\s+)*val\s""").containsMatchIn(text) &&
-                        mutableCollection.containsMatchIn(text)))
+                (
+                    Regex("""^(?:(?:private|internal|protected|override|public|lateinit)\s+)*var\s""").containsMatchIn(text) ||
+                        (
+                            Regex("""^(?:(?:private|internal|protected|override|public)\s+)*val\s""").containsMatchIn(text) &&
+                                mutableCollection.containsMatchIn(text)
+                            )
+                    )
             val annotations = lines.subList(0, i).takeLastWhile { it.trim().startsWith("@") }.joinToString(" ")
             val marked = "@ConfinedTo(" in annotations || "@Volatile" in annotations || "@ConfinedTo(" in text
             if (isField && !marked) "$name: ${text.take(90)}" else null
@@ -132,7 +138,10 @@ class ConfinementGateTest {
             }
         """.trimIndent()
         assertEquals(
-            listOf("Receiver: private var transport: Transport? = null", "Receiver: private val queued = ArrayDeque<String>()"),
+            listOf(
+                "Receiver: private var transport: Transport? = null",
+                "Receiver: private val queued = ArrayDeque<String>()",
+            ),
             unconfined(sample, "Receiver"),
         )
     }

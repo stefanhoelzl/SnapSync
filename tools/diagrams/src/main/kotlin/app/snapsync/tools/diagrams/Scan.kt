@@ -85,32 +85,82 @@ fun stripComments(text: String): String {
         when {
             inLine -> {
                 if (c == '\n') inLine = false
-                blank(c); i++
+                blank(c)
+                i++
             }
             blockDepth > 0 -> when {
-                c == '/' && n == '*' -> { blockDepth++; blank(c); blank(n); i += 2 }
-                c == '*' && n == '/' -> { blockDepth--; blank(c); blank(n); i += 2 }
-                else -> { blank(c); i++ }
+                c == '/' && n == '*' -> {
+                    blockDepth++
+                    blank(c)
+                    blank(n)
+                    i += 2
+                }
+                c == '*' && n == '/' -> {
+                    blockDepth--
+                    blank(c)
+                    blank(n)
+                    i += 2
+                }
+                else -> {
+                    blank(c)
+                    i++
+                }
             }
             quote != null -> when {
                 triple && c == '"' && n == '"' && i + 2 < text.length && text[i + 2] == '"' -> {
-                    out.append("\"\"\""); quote = null; triple = false; i += 3
+                    out.append("\"\"\"")
+                    quote = null
+                    triple = false
+                    i += 3
                 }
-                !triple && c == '\\' && i + 1 < text.length -> { keep(c); keep(n); i += 2 }
-                !triple && c == quote -> { keep(c); quote = null; i++ }
-                else -> { keep(c); i++ }
+                !triple && c == '\\' && i + 1 < text.length -> {
+                    keep(c)
+                    keep(n)
+                    i += 2
+                }
+                !triple && c == quote -> {
+                    keep(c)
+                    quote = null
+                    i++
+                }
+                else -> {
+                    keep(c)
+                    i++
+                }
             }
-            c == '/' && n == '/' -> { inLine = true; blank(c); blank(n); i += 2 }
-            c == '/' && n == '*' -> { blockDepth = 1; blank(c); blank(n); i += 2 }
+            c == '/' && n == '/' -> {
+                inLine = true
+                blank(c)
+                blank(n)
+                i += 2
+            }
+            c == '/' && n == '*' -> {
+                blockDepth = 1
+                blank(c)
+                blank(n)
+                i += 2
+            }
             c == '"' -> {
                 if (n == '"' && i + 2 < text.length && text[i + 2] == '"') {
-                    triple = true; quote = '"'; out.append("\"\"\""); i += 3
+                    triple = true
+                    quote = '"'
+                    out.append("\"\"\"")
+                    i += 3
                 } else {
-                    quote = '"'; keep(c); i++
+                    quote = '"'
+                    keep(c)
+                    i++
                 }
             }
-            c == '\'' -> { quote = '\''; keep(c); i++ }
-            else -> { keep(c); i++ }
+            c == '\'' -> {
+                quote = '\''
+                keep(c)
+                i++
+            }
+            else -> {
+                keep(c)
+                i++
+            }
         }
     }
     return out.toString()
@@ -215,7 +265,10 @@ private fun supertypesIn(header: String): List<String> {
             ')' -> depth--
             '<' -> if (depth == 0) angle++
             '>' -> if (depth == 0) angle--
-            ':' -> if (depth == 0 && angle == 0) { colon = i; break }
+            ':' -> if (depth == 0 && angle == 0) {
+                colon = i
+                break
+            }
         }
     }
     if (colon < 0) return emptyList()
@@ -227,7 +280,11 @@ private fun supertypesIn(header: String): List<String> {
         when (c) {
             '(', '<' -> depth++
             ')', '>' -> depth--
-            ',' -> if (depth == 0) { entries += current.toString(); current.clear(); continue }
+            ',' -> if (depth == 0) {
+                entries += current.toString()
+                current.clear()
+                continue
+            }
         }
         current.append(c)
     }

@@ -8,6 +8,8 @@ import app.snapsync.contracts.FolderAlbumState
 import app.snapsync.contracts.FolderAlbums
 import app.snapsync.contracts.GalleryChange
 import app.snapsync.contracts.GalleryContract
+import app.snapsync.contracts.GalleryImportContract
+import app.snapsync.contracts.GalleryImportState
 import app.snapsync.contracts.GalleryReaderContract
 import app.snapsync.contracts.GalleryReaderState
 import app.snapsync.contracts.GalleryState
@@ -17,8 +19,6 @@ import app.snapsync.contracts.PhotoAccess
 import app.snapsync.contracts.PhotoAccessContract
 import app.snapsync.contracts.PhotoAccessState
 import app.snapsync.contracts.PhotoLibrary
-import app.snapsync.contracts.GalleryImportContract
-import app.snapsync.contracts.GalleryImportState
 import app.snapsync.contracts.SEED_COUNT
 import app.snapsync.contracts.SeededLibrary
 import app.snapsync.contracts.StagedImport
@@ -28,15 +28,15 @@ import app.snapsync.model.AlbumKind
 import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.GalleryAccess
+import app.snapsync.model.ImportResult
 import app.snapsync.model.RawAsset
 import app.snapsync.model.RawResource
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.StagedResource
 import app.snapsync.ports.GalleryHandlers
 import app.snapsync.ports.GalleryReader
-import app.snapsync.model.ImportResult
-import kotlin.test.Test
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlin.test.Test
 
 /**
  * The honest photo-library fakes, held to the contracts the PhotoKit adapters satisfy (`docs/architecture.md`).
@@ -121,10 +121,10 @@ class PhotoContractBindingsTest {
             val staged = {
                 listOf(
                     StagedResource(
-                    resourceKey = "contract-$clauseId-primary.jpg",
-                    role = ResourceRole.PRIMARY.wire,
-                    contentType = "image/jpeg",
-                    originalFilename = "IMG_0001.JPG",
+                        resourceKey = "contract-$clauseId-primary.jpg",
+                        role = ResourceRole.PRIMARY.wire,
+                        contentType = "image/jpeg",
+                        originalFilename = "IMG_0001.JPG",
                         stagedPath = "staged:/contract-$clauseId-primary.jpg",
                     ),
                 )
@@ -188,7 +188,9 @@ class PhotoContractBindingsTest {
                 creationDate = PhotoLibrary.window(GalleryContract.name, clauseId).seedDate,
                 rawResources = listOf(RawResource(ResourceRole.PRIMARY, "image/jpeg", "IMG_0009.JPG", Unit)),
             )
-            return Entered.Ready(GalleryChange(inMemoryGallery(library, access(granted = true))) { library.value += added })
+            return Entered.Ready(
+                GalleryChange(inMemoryGallery(library, access(granted = true))) { library.value += added },
+            )
         }
     }
 

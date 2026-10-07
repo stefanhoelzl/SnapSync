@@ -2,49 +2,49 @@
 
 package app.snapsync.ios
 
-import app.snapsync.config.bakedUploadBase
-import app.snapsync.ios.urlsession.transferSessionBinding
-import app.snapsync.files.IosFiles
-import app.snapsync.services.logs.LogTailService
-import app.snapsync.logging.documentsDirectory
-import app.snapsync.rig.RigHooks
-import app.snapsync.rig.RigServer
-import app.snapsync.ios.upload.UploadExtensionRoot
-import app.snapsync.rig.rigCompletion
-import app.snapsync.rig.RigLaunch
-import app.snapsync.rig.rigLaunch
-import app.snapsync.rig.startWhenReady
-import app.snapsync.rig.appTriggerGroup
-import app.snapsync.rig.osRecord
 import app.snapsync.compose.DevicePorts
-import app.snapsync.contracts.EntryDriver
-import app.snapsync.rig.extensionTriggerGroup
-import app.snapsync.rig.deviceCommands
-import app.snapsync.contract.extension.extensionContractEntries
-import app.snapsync.rig.noMembershipRefusal
-import app.snapsync.keychain.contract.deviceContracts
+import app.snapsync.config.bakedUploadBase
 import app.snapsync.contract.appDeviceContracts
-import app.snapsync.contract.simulatorAppContracts
+import app.snapsync.contract.extension.extensionContractEntries
 import app.snapsync.contract.extension.recordLanded
-import app.snapsync.rig.galleryReader
+import app.snapsync.contract.simulatorAppContracts
+import app.snapsync.contracts.EntryDriver
+import app.snapsync.files.IosFiles
+import app.snapsync.ios.upload.UploadExtensionRoot
+import app.snapsync.ios.urlsession.transferSessionBinding
+import app.snapsync.keychain.contract.deviceContracts
+import app.snapsync.logging.documentsDirectory
 import app.snapsync.model.uploadersCarried
-import app.snapsync.rig.osExtensionEnabled
-import app.snapsync.rig.rigPort
-import app.snapsync.rig.userCommands
+import app.snapsync.rig.RigHooks
+import app.snapsync.rig.RigLaunch
+import app.snapsync.rig.RigServer
+import app.snapsync.rig.appTriggerGroup
+import app.snapsync.rig.deviceCommands
 import app.snapsync.rig.excludedUserCommands
-import app.snapsync.rig.rigPortFilePath
+import app.snapsync.rig.extensionTriggerGroup
+import app.snapsync.rig.galleryReader
 import app.snapsync.rig.iosRefusals
+import app.snapsync.rig.noMembershipRefusal
+import app.snapsync.rig.osExtensionEnabled
+import app.snapsync.rig.osRecord
+import app.snapsync.rig.rigCompletion
+import app.snapsync.rig.rigLaunch
+import app.snapsync.rig.rigPort
+import app.snapsync.rig.rigPortFilePath
+import app.snapsync.rig.startWhenReady
+import app.snapsync.rig.userCommands
+import app.snapsync.services.logs.LogTailService
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.Dispatchers
 import platform.Foundation.NSDate
 import platform.Foundation.NSProcessInfo
 import platform.Foundation.NSString
-import platform.Foundation.NSUTF8StringEncoding
 import platform.Foundation.NSURL
-import platform.Foundation.create
-import platform.Foundation.writeToFile
+import platform.Foundation.NSUTF8StringEncoding
 import platform.Foundation.NSUserActivity
 import platform.Foundation.NSUserActivityTypeBrowsingWeb
+import platform.Foundation.create
+import platform.Foundation.writeToFile
 
 /**
  * A rig build's **adapter set** — the control channel's entire footprint inside `:app:ios`, and it lives in
@@ -135,7 +135,10 @@ private fun iosHooks(launch: RigLaunch) = RigHooks(
     // The `/user` maps and the `/device` verbs are built in `:test:rig`, not here. Same reason every
     // default and cast already lives there: this file is compiled INTO `:app:ios` and is scanned by the
     // shell gate, which permits no decisions — and a command map's bodies are full of them.
-    userCommands = userCommands(dispatch = launch.ui::dispatch, state = { SnapSyncRoot.host.container.stateFlow.value }),
+    userCommands = userCommands(
+        dispatch = launch.ui::dispatch,
+        state = { SnapSyncRoot.host.container.stateFlow.value },
+    ),
     excludedUserCommands = excludedUserCommands(),
     deviceCommands = deviceCommands(
         launch = launch,
@@ -173,7 +176,9 @@ private fun iosHooks(launch: RigLaunch) = RigHooks(
  * that finds no port file is already in exactly the state this file exists to make visible.
  */
 private fun writeTextFile(path: String?, text: String) {
-    NSString.create(string = text).writeToFile(path.orEmpty(), atomically = true, encoding = NSUTF8StringEncoding, error = null)
+    NSString.create(
+        string = text,
+    ).writeToFile(path.orEmpty(), atomically = true, encoding = NSUTF8StringEncoding, error = null)
 }
 
 /**

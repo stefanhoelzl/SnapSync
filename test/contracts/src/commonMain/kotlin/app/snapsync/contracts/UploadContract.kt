@@ -144,7 +144,10 @@ object UploadContract : Contract<UploadState, UploadUnderTest>("Upload") {
         clause("CREATE_LANDS_AND_ENDS_SUCCEEDED", UploadState.IDLE) { subject ->
             val id = "CREATE_LANDS_AND_ENDS_SUCCEEDED"
             val route = path(id, ACCEPT)
-            assertEquals(UploadCreateOutcome.CREATED, subject.upload.create(subject.usable(key(id)), subject.target(route), key(id)))
+            assertEquals(
+                UploadCreateOutcome.CREATED,
+                subject.upload.create(subject.usable(key(id)), subject.target(route), key(id)),
+            )
             awaitWithin {
                 subject.objects.landed(route) != null &&
                     subject.jobsAt(route).any { it.state == UploadJobState.SUCCEEDED }
@@ -161,24 +164,40 @@ object UploadContract : Contract<UploadState, UploadUnderTest>("Upload") {
             val route = path(id, ACCEPT)
             assertEquals(
                 UploadCreateOutcome.CREATED,
-                subject.upload.create(subject.usable(key(id)), subject.target(route, TransferNetwork.UNRESTRICTED_ONLY), key(id)),
+                subject.upload.create(
+                    subject.usable(key(id)),
+                    subject.target(route, TransferNetwork.UNRESTRICTED_ONLY),
+                    key(id),
+                ),
                 "a held transfer is still a job: the platform keeps it until the network allows it",
             )
             heldSettle()
-            assertNull(subject.objects.landed(route), "a transfer held to unrestricted networks sends nothing on a restricted one")
-            assertTrue(subject.jobsAt(route).none { it.state == UploadJobState.SUCCEEDED || it.state == UploadJobState.FAILED })
+            assertNull(
+                subject.objects.landed(route),
+                "a transfer held to unrestricted networks sends nothing on a restricted one",
+            )
+            assertTrue(
+                subject.jobsAt(
+                    route,
+                ).none { it.state == UploadJobState.SUCCEEDED || it.state == UploadJobState.FAILED },
+            )
             lift()
             awaitWithin {
                 subject.objects.landed(route) != null &&
                     subject.jobsAt(route).any { it.state == UploadJobState.SUCCEEDED }
             }
-            subject.jobsAt(route).filter { it.state == UploadJobState.SUCCEEDED }.forEach { subject.upload.acknowledge(it) }
+            subject.jobsAt(
+                route,
+            ).filter { it.state == UploadJobState.SUCCEEDED }.forEach { subject.upload.acknowledge(it) }
         }
 
         clause("CREATE_KEEPS_CONTENT_TYPE", UploadState.IDLE) { subject ->
             val id = "CREATE_KEEPS_CONTENT_TYPE"
             val route = path(id, ACCEPT)
-            assertEquals(UploadCreateOutcome.CREATED, subject.upload.create(subject.usable(key(id)), subject.target(route), key(id)))
+            assertEquals(
+                UploadCreateOutcome.CREATED,
+                subject.upload.create(subject.usable(key(id)), subject.target(route), key(id)),
+            )
             awaitWithin { subject.objects.landed(route) != null }
             assertEquals(
                 CONTENT_TYPE,
@@ -190,7 +209,10 @@ object UploadContract : Contract<UploadState, UploadUnderTest>("Upload") {
         clause("REFUSED_NEVER_ENDS_SUCCEEDED", UploadState.IDLE) { subject ->
             val id = "REFUSED_NEVER_ENDS_SUCCEEDED"
             val route = path(id, REJECT)
-            assertEquals(UploadCreateOutcome.CREATED, subject.upload.create(subject.usable(key(id)), subject.target(route), key(id)))
+            assertEquals(
+                UploadCreateOutcome.CREATED,
+                subject.upload.create(subject.usable(key(id)), subject.target(route), key(id)),
+            )
             awaitWithin { subject.jobsAt(route).isNotEmpty() }
             transferSettle()
             assertTrue(
@@ -219,7 +241,8 @@ object UploadContract : Contract<UploadState, UploadUnderTest>("Upload") {
         clause("PRESENTED_SUCCESS_IS_PRESENTED_UNTIL_ACKNOWLEDGED", UploadState.PRESENTED_SUCCEEDED) { subject ->
             val id = "PRESENTED_SUCCESS_IS_PRESENTED_UNTIL_ACKNOWLEDGED"
             val route = preparedRoute(id, UploadState.PRESENTED_SUCCEEDED)
-            val presented = assertNotNull(subject.presented(UploadJobSet.TERMINAL, route), "a settled success is presented")
+            val presented =
+                assertNotNull(subject.presented(UploadJobSet.TERMINAL, route), "a settled success is presented")
             assertEquals(UploadJobState.SUCCEEDED, presented.state)
             assertEquals(CONTENT_TYPE, presented.contentType, "under the type it was created with")
             assertEquals(ChangeOutcome.Applied, subject.upload.acknowledge(presented))

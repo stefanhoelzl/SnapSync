@@ -2,11 +2,11 @@
 
 package app.snapsync.feature.status
 
-import app.snapsync.model.EventConfig
-import app.snapsync.services.config.ConfigService
 import app.snapsync.feature.support.configService
-import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.CandidateRead
+import app.snapsync.model.EventConfig
+import app.snapsync.model.SelectionPolicy
+import app.snapsync.services.config.ConfigService
 import app.snapsync.services.gallery.CandidateSource
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -101,7 +101,8 @@ class StatusCountsPollerTest {
 
     @Test
     fun `stop before any start is a no-op`() = runTest {
-        val poller = StatusCountsPoller(backgroundScope, { /* never ticks: stop precedes any start */ }, cadence = 2.seconds)
+        val poller =
+            StatusCountsPoller(backgroundScope, { /* never ticks: stop precedes any start */ }, cadence = 2.seconds)
         poller.stop() // backgrounding before the first foreground entry must not throw
     }
 

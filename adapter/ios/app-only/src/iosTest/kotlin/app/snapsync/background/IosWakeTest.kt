@@ -3,7 +3,6 @@
 package app.snapsync.background
 
 import app.snapsync.model.ScheduleResult
-import kotlinx.coroutines.runBlocking
 import app.snapsync.model.WakeCadence
 import app.snapsync.model.WakeId
 import app.snapsync.model.WakeNetwork
@@ -14,6 +13,7 @@ import co.touchlab.kermit.LogWriter
 import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
 import co.touchlab.kermit.StaticConfig
+import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -134,7 +134,9 @@ class IosWakeTest {
             listOf("cancel ${IosWake.HEARTBEAT_TASK_IDENTIFIER}", "refresh ${IosWake.IDLE_TASK_IDENTIFIER}"),
             tasks.calls,
         )
-        assertTrue(captured.lines.any { (severity, message) -> severity == Severity.Warn && "BGTask submit failed" in message })
+        assertTrue(
+            captured.lines.any { (severity, message) -> severity == Severity.Warn && "BGTask submit failed" in message },
+        )
     }
 
     @Test
@@ -151,7 +153,10 @@ class IosWakeTest {
     fun `both task kinds are registered and both wake the heartbeat`() {
         val tasks = FakeTasks()
         var woken = 0
-        IosWake(Logger.withTag("test"), tasks).also { it.listen(WakeHandlers(onWake = { _, _ -> woken++ })) }.let { adapter ->
+        IosWake(
+            Logger.withTag("test"),
+            tasks,
+        ).also { it.listen(WakeHandlers(onWake = { _, _ -> woken++ })) }.let { adapter ->
             assertEquals(IosWake.TASK_IDENTIFIERS, tasks.registered, "each identifier needs its launch handler")
             adapter.onTaskLaunched(IosWake.IDLE_TASK_IDENTIFIER, Released())
             assertEquals(1, woken, "the idle identifier is routed to the heartbeat wake too")
@@ -180,7 +185,9 @@ class IosWakeTest {
             val refresh = request is platform.BackgroundTasks.BGAppRefreshTaskRequest
             calls += "${if (refresh) "refresh" else "processing"} ${request.identifier}"
             return if (refresh && refuseRefresh) {
-                Result.failure(app.snapsync.objc.ObjCFailure("submitTaskRequest", "BGTaskSchedulerErrorDomain", 1, null))
+                Result.failure(
+                    app.snapsync.objc.ObjCFailure("submitTaskRequest", "BGTaskSchedulerErrorDomain", 1, null),
+                )
             } else {
                 Result.success(Unit)
             }

@@ -1,9 +1,5 @@
 package app.snapsync.presentation
 
-import app.snapsync.model.deletesAt
-
-import app.snapsync.model.eventEnd
-
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.CaptureDate
@@ -14,6 +10,8 @@ import app.snapsync.model.Layer
 import app.snapsync.model.SyncCounts
 import app.snapsync.model.SyncHealth
 import app.snapsync.model.UiState
+import app.snapsync.model.deletesAt
+import app.snapsync.model.eventEnd
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -22,7 +20,9 @@ class ShownCountsTest {
 
     @Test
     fun `a counts line is carried as done over total — and a direction switched off as off`() {
-        val state = joinedState(counts = SyncCounts(shared = DirectionCount.Progress(3, 10), received = DirectionCount.Off))
+        val state = joinedState(
+            counts = SyncCounts(shared = DirectionCount.Progress(3, 10), received = DirectionCount.Off),
+        )
 
         assertEquals(
             mapOf(DiagnosticKeys.SHOWN_SHARED to "3/10", DiagnosticKeys.SHOWN_RECEIVED to "off"),

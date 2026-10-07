@@ -1,17 +1,17 @@
 package app.snapsync.attest
 
-import app.snapsync.contracts.DeviceIntegrityContract
-import app.snapsync.contracts.DeviceIntegrityState
 import app.snapsync.contracts.AttestStoreContract
 import app.snapsync.contracts.AttestStoreState
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.DeviceIntegrityContract
+import app.snapsync.contracts.DeviceIntegrityState
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.verify
 import app.snapsync.keychain.IosSecureStore
-import app.snapsync.ports.DeviceIntegrity
 import app.snapsync.ports.AttestStore
+import app.snapsync.ports.DeviceIntegrity
 import app.snapsync.services.identity.AttestState
 import kotlin.test.Test
 

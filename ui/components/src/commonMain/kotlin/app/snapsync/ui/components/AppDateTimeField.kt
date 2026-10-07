@@ -19,8 +19,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
@@ -29,21 +31,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
-import kotlin.time.Clock
-import kotlinx.datetime.DateTimeUnit
-import kotlinx.datetime.LocalDate
-import kotlinx.datetime.LocalDateTime
-import kotlinx.datetime.LocalTime
-import kotlinx.datetime.TimeZone
-import kotlinx.datetime.plus
-
-import kotlinx.datetime.todayIn
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
-import androidx.compose.foundation.layout.RowScope
 import app.snapsync.ui.components.resources.Res
 import app.snapsync.ui.components.resources.picker_cancel
 import app.snapsync.ui.components.resources.picker_save
+import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.plus
 import org.jetbrains.compose.resources.stringResource
 
 /**

@@ -19,7 +19,11 @@ class InertDevControlsTest {
         InertDevControls.listen(DevHandlers(onReset = { resets++ }))
         assertNull(InertDevControls.uploaderPin(), "no uploader is pinned on a production build")
         assertEquals(InviteLinkHints.Ignored, InertDevControls.inviteLinkHints(), "no link authorizes its own join")
-        assertEquals(false, InertDevControls.encryptsNewEvents(), "a shipped build creates plain events until encryption is enabled")
+        assertEquals(
+            false,
+            InertDevControls.encryptsNewEvents(),
+            "a shipped build creates plain events until encryption is enabled",
+        )
         assertEquals(0, resets, "registering runs nothing, and nothing ever delivers")
     }
 }

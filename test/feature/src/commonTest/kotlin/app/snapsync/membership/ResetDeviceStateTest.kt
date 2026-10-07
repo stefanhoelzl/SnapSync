@@ -1,29 +1,29 @@
 package app.snapsync.membership
 
+import app.snapsync.feature.membership.ResetDeviceState
 import app.snapsync.feature.support.LEDGER_EVENT
-import app.snapsync.mock.fakeCrypto
-import app.snapsync.mock.inMemorySecureStore
-import app.snapsync.services.crypto.EventKeys
-import app.snapsync.mock.inMemoryDatabases
-import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.feature.support.RecordingFiles
 import app.snapsync.feature.support.configCleared
 import app.snapsync.feature.support.configService
-import app.snapsync.services.downloads.DownloadService
-import app.snapsync.services.ledger.LedgerService
-import app.snapsync.feature.membership.ResetDeviceState
+import app.snapsync.mock.fakeCrypto
+import app.snapsync.mock.inMemoryDatabases
+import app.snapsync.mock.inMemoryPreferences
+import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.AssetId
+import app.snapsync.model.AssetRef
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
-import app.snapsync.model.AssetRef
-import app.snapsync.services.config.ConfigService
 import app.snapsync.model.PlannedResource
 import app.snapsync.model.TransferNetwork
+import app.snapsync.services.config.ConfigService
+import app.snapsync.services.crypto.EventKeys
+import app.snapsync.services.downloads.DownloadService
+import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.settings.MobileDataSetting
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
-import kotlinx.coroutines.test.runTest
 
 /**
  * The device reset (capability `sync-status`), driven against the **honest** in-memory
@@ -54,7 +54,10 @@ class ResetDeviceStateTest {
             ledger = ledger,
             downloads = downloads,
             mobileData = mobileData,
-            resetDownloads = { downloadsReset = true; downloads.pruneNonTerminal(protecting = emptySet()) },
+            resetDownloads = {
+                downloadsReset = true
+                downloads.pruneNonTerminal(protecting = emptySet())
+            },
         )
     }
 

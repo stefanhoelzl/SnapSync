@@ -2,9 +2,8 @@ package app.snapsync.rig
 
 import app.snapsync.mock.DeclaredVersion
 import app.snapsync.mock.MockDevice
-import app.snapsync.mock.UploadNetwork
 import app.snapsync.mock.MockedSystem
-import app.snapsync.model.UnionTrigger
+import app.snapsync.mock.UploadNetwork
 import app.snapsync.model.APP_VERSION_HEADER
 import app.snapsync.model.AssetId
 import app.snapsync.model.CreateEventRequest
@@ -13,6 +12,7 @@ import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.ManifestResource
 import app.snapsync.model.Reply
 import app.snapsync.model.UnionAsset
+import app.snapsync.model.UnionTrigger
 import app.snapsync.model.uploadKey
 import app.snapsync.ports.Backend
 
@@ -77,7 +77,9 @@ class BackendReach(
 ) {
     /** The object keys the backend lists for [deviceId] in [eventId] — each event holds its own. */
     suspend fun objectsOf(eventId: String, deviceId: String): Set<String> =
-        read("the listing", port.deviceFiles(null, eventId, deviceId)).mapTo(mutableSetOf()) { uploadKey(it.assetId, it.role, it.filename) }
+        read("the listing", port.deviceFiles(null, eventId, deviceId)).mapTo(mutableSetOf()) {
+            uploadKey(it.assetId, it.role, it.filename)
+        }
 
     /**
      * The union the backend serves for [eventId] — read through the port with no token, so the backend logs it as an
@@ -89,7 +91,13 @@ class BackendReach(
     /** The event's name, or `null` for an event the backend does not hold (a `404`). */
     suspend fun eventOf(eventId: String): Pair<Boolean, String?> = when (val reply = port.getEvent(null, eventId)) {
         is Reply.Ok -> true to reply.value.name
-        is Reply.Refused -> if (reply.status == NOT_FOUND) false to null else error("the event details route answered $reply")
+        is Reply.Refused -> if (reply.status == NOT_FOUND) {
+            false to null
+        } else {
+            error(
+                "the event details route answered $reply",
+            )
+        }
         else -> error("the event details route answered $reply for $eventId")
     }
 
@@ -102,7 +110,10 @@ class BackendReach(
     }
 
     suspend fun publish(eventId: String, manifest: DeviceManifest) {
-        read("publish ${manifest.deviceId}'s manifest", port.publishManifest(null, eventId, manifest.deviceId, manifest))
+        read(
+            "publish ${manifest.deviceId}'s manifest",
+            port.publishManifest(null, eventId, manifest.deviceId, manifest),
+        )
     }
 
     /**
@@ -119,8 +130,14 @@ class BackendReach(
     ) {
         val scope = eventId?.let { "/events/$it" }.orEmpty()
         val url = "$base$scope/files/devices/$deviceId/$assetId/${resource.role.wire}?filename=${resource.filename}"
-        val status = network.put(url, mapOf(APP_VERSION_HEADER to declared.value.orEmpty(), CONTENT_TYPE to JPEG), bytes)
-        check(status != null && status in SUCCESS) { "upload ${resource.key} for $deviceId was answered $status by the $name backend" }
+        val status = network.put(
+            url,
+            mapOf(APP_VERSION_HEADER to declared.value.orEmpty(), CONTENT_TYPE to JPEG),
+            bytes,
+        )
+        check(status != null && status in SUCCESS) {
+            "upload ${resource.key} for $deviceId was answered $status by the $name backend"
+        }
     }
 
     private fun <T> read(step: String, reply: Reply<T>): T =

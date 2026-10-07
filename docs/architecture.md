@@ -408,6 +408,20 @@ The coverage floors' end state is not a ratchet: a module at zero is held there 
 
 Decision record: `changes/archive/2026-08-27-add-repo-wide-complexity-gates`.
 
+### Format, Compose and platform lint
+
+- The same tier tasks also run ktlint's formatting rules (`detekt-formatting`) and Compose's rules
+  (`compose-rules`, the 0.4 line, the last built for detekt 1.x). Their readings sit in `_base.yml`.
+  A formatting finding is fixed by the tool: `./gradlew <tier task> -Psnapsync.detektAutoCorrect`.
+  A source-scanning guard must tolerate the wrapped shape ktlint writes (one argument per line, a
+  trailing comma), or it silently stops seeing what it scans.
+- Android Lint gates `build` through `:app:android:check` → `lintRelease`: the store variant and every
+  module it links (`checkDependencies`), any warning failing, no baseline. It is the nearest local
+  equivalent of Google Play's release recommendations, which have no API — it does not reproduce them
+  (Play's SDK Index judges transitive dependencies; lint only the declared ones).
+- Xcode treats warnings as errors in both iOS targets (`Config.xcconfig`), enforced where Xcode builds:
+  CI's `ios-build`.
+
 ### Coverage (toward zero missed)
 
 The target is **zero**: every JVM-measurable module that holds decisions or wiring misses no instruction and no

@@ -89,7 +89,9 @@ internal fun JsonObject.toDelivered(): DeliveredEvent {
 }
 
 /** The protocol allows a list either bare or as `{ "values": [...] }`. */
-private fun values(raw: kotlinx.serialization.json.JsonElement?): List<kotlinx.serialization.json.JsonElement> = when (raw) {
+private fun values(
+    raw: kotlinx.serialization.json.JsonElement?,
+): List<kotlinx.serialization.json.JsonElement> = when (raw) {
     is JsonArray -> raw
     is JsonObject -> raw["values"] as? JsonArray
     else -> null

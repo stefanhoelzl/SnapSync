@@ -1,17 +1,16 @@
 package app.snapsync.feature.album
 
-import app.snapsync.model.AssetId
 import app.snapsync.mock.inMemoryGallery
 import app.snapsync.mock.inMemoryPreferences
-import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.AlbumId
 import app.snapsync.model.AlbumRecord
+import app.snapsync.model.AssetId
 import app.snapsync.model.GalleryRead
 import app.snapsync.model.WriteOutcome
 import app.snapsync.ports.GalleryReader
-import kotlinx.coroutines.flow.MutableStateFlow
-import app.snapsync.services.gallery.GalleryAlbums
 import app.snapsync.services.album.AlbumMapService
+import app.snapsync.services.gallery.GalleryAlbums
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

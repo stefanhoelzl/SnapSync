@@ -1,30 +1,28 @@
 package app.snapsync.feature.status
 
-import app.snapsync.model.deletesAt
-
-import app.snapsync.model.eventEnd
-
-import app.snapsync.model.AssetId
-import app.snapsync.services.config.ConfigService
 import app.snapsync.feature.support.configService
+import app.snapsync.model.AssetFacts
+import app.snapsync.model.AssetId
 import app.snapsync.model.Candidate
 import app.snapsync.model.CandidateRead
 import app.snapsync.model.CaptureDate
-import app.snapsync.model.AssetFacts
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
+import app.snapsync.model.deletesAt
+import app.snapsync.model.eventEnd
 import app.snapsync.model.selectionRulesFor
+import app.snapsync.services.config.ConfigService
 import app.snapsync.services.gallery.CandidateSource
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.test.runTest
 
 /**
  * The status-refresh **order**, asserted for the first time (capability `sync-status`, "Foreground
@@ -93,7 +91,10 @@ class StatusRefreshTest {
             gallery = gallery,
             refreshDownloadLine = { steps += "downloads" },
             configSource = membership(activeConfig),
-            policyFor = { cfg -> steps += "policy"; policyFor(cfg) },
+            policyFor = { cfg ->
+                steps += "policy"
+                policyFor(cfg)
+            },
         )
         return steps to refresh
     }
@@ -113,7 +114,10 @@ class StatusRefreshTest {
         // The ordering assertions above would all pass against a method that walked and threw the
         // answer away, so pin that the sequence actually produces `N`.
         val gallery = OwnDeviceGalleryStatusSource(OneAsset())
-        val counts = ReadingLedgerCountsSource { LedgerCounts(done = setOf(AssetId("d1"), AssetId("d2"), AssetId("d3")), pending = setOf(AssetId("p1"))) }
+        val counts =
+            ReadingLedgerCountsSource {
+                LedgerCounts(done = setOf(AssetId("d1"), AssetId("d2"), AssetId("d3")), pending = setOf(AssetId("p1")))
+            }
         StatusRefresh(
             ledgerCounts = counts,
             gallery = gallery,
@@ -122,7 +126,11 @@ class StatusRefreshTest {
             policyFor = { policy() },
         ).run()
         assertEquals(setOf(AssetId("A")), gallery.admitted.value, "N is the admitted own-asset count")
-        assertEquals(LedgerCounts(done = setOf(AssetId("d1"), AssetId("d2"), AssetId("d3")), pending = setOf(AssetId("p1"))), counts.counts.value, "and the counts are read")
+        assertEquals(
+            LedgerCounts(done = setOf(AssetId("d1"), AssetId("d2"), AssetId("d3")), pending = setOf(AssetId("p1"))),
+            counts.counts.value,
+            "and the counts are read",
+        )
     }
 
     @Test
@@ -172,7 +180,10 @@ class StatusRefreshTest {
             gallery = gallery,
             refreshDownloadLine = { steps += "downloads" },
             configSource = membership(config),
-            policyFor = { steps += "policy"; policy() },
+            policyFor = {
+                steps += "policy"
+                policy()
+            },
         ).run() // must NOT throw
 
         assertEquals(listOf("ledger", "downloads", "policy"), steps, "the sibling and the walk still ran")

@@ -81,7 +81,13 @@ class CrashScrubTest {
 
     @Test
     fun the_dump_declares_itself_exempt_and_carries_its_sections_as_contexts() {
-        val dump = DiagnosticDump("stuck on $id", mapOf("screen" to "Joined"), mapOf("pending" to "1"), "app\n", "ext\n")
+        val dump = DiagnosticDump(
+            "stuck on $id",
+            mapOf("screen" to "Joined"),
+            mapOf("pending" to "1"),
+            "app\n",
+            "ext\n",
+        )
         val event = diagnosticDumpEvent(dump)
         assertEquals("1", event.tags[NON_REDACTED_TAG], "without the tag every report is redacted, silently")
         assertEquals("$DIAGNOSTIC_DUMP_MESSAGE_PREFIX stuck on $id", event.message)
@@ -99,7 +105,9 @@ class CrashScrubTest {
 
     @Test
     fun the_scrub_leaves_an_exempt_event_whole() {
-        val dump = diagnosticDumpEvent(DiagnosticDump("stuck on $id " + "e".repeat(20_000), emptyMap(), emptyMap(), "", ""))
+        val dump = diagnosticDumpEvent(
+            DiagnosticDump("stuck on $id " + "e".repeat(20_000), emptyMap(), emptyMap(), "", ""),
+        )
         val scrubbed = scrubbedEvent(dump.copy(breadcrumbs = listOf(Crumb(CrashLevel.INFO, "x".repeat(5_000)))))
         assertEquals(dump.message, scrubbed.message, "the operator's note — and the id it quotes — arrives whole")
         assertEquals("x".repeat(5_000), scrubbed.breadcrumbs.single().message)

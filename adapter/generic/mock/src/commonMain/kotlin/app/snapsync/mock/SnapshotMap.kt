@@ -30,13 +30,19 @@ internal class SnapshotMap<K, V> : AbstractMutableMap<K, V>() {
 
     override fun put(key: K, value: V): V? {
         var previous: V? = null
-        cell.update { previous = it[key]; it + (key to value) }
+        cell.update {
+            previous = it[key]
+            it + (key to value)
+        }
         return previous
     }
 
     override fun remove(key: K): V? {
         var previous: V? = null
-        cell.update { previous = it[key]; it - key }
+        cell.update {
+            previous = it[key]
+            it - key
+        }
         return previous
     }
 
@@ -57,7 +63,9 @@ internal class SnapshotMap<K, V> : AbstractMutableMap<K, V>() {
                 return object : MutableIterator<MutableMap.MutableEntry<K, V>> {
                     private var last: K? = null
                     override fun hasNext() = walked.hasNext()
-                    override fun next(): MutableMap.MutableEntry<K, V> = walked.next().let { Entry(it.key, it.value) }.also { last = it.key }
+                    override fun next(): MutableMap.MutableEntry<K, V> = walked.next().let {
+                        Entry(it.key, it.value)
+                    }.also { last = it.key }
 
                     @Suppress("UNCHECKED_CAST")
                     override fun remove() {
@@ -68,7 +76,10 @@ internal class SnapshotMap<K, V> : AbstractMutableMap<K, V>() {
         }
 
     private inner class Entry(override val key: K, override var value: V) : MutableMap.MutableEntry<K, V> {
-        override fun setValue(newValue: V): V = value.also { put(key, newValue); value = newValue }
+        override fun setValue(newValue: V): V = value.also {
+            put(key, newValue)
+            value = newValue
+        }
         override fun equals(other: Any?) = other is Map.Entry<*, *> && other.key == key && other.value == value
         override fun hashCode() = (key?.hashCode() ?: 0) xor (value?.hashCode() ?: 0)
     }

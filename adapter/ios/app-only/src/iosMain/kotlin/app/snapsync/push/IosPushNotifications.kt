@@ -4,11 +4,11 @@ package app.snapsync.push
 
 import app.snapsync.model.BeforeListen
 import app.snapsync.model.HandlerSlot
+import app.snapsync.model.PUSH_KIND_APNS
 import app.snapsync.model.PlatformEntry
 import app.snapsync.model.PlatformError
 import app.snapsync.model.PushMessage
 import app.snapsync.model.PushToken
-import app.snapsync.model.PUSH_KIND_APNS
 import app.snapsync.ports.Completion
 import app.snapsync.ports.PushHandlers
 import app.snapsync.ports.PushNotifications

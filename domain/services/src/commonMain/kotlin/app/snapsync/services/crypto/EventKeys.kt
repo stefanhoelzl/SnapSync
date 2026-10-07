@@ -1,23 +1,23 @@
 package app.snapsync.services.crypto
 
 import app.snapsync.model.EncryptedFileFormat
+import app.snapsync.model.EventConfig
 import app.snapsync.model.Hmac
 import app.snapsync.model.SecureSlots
+import app.snapsync.model.SecureStoreUnavailable
 import app.snapsync.model.decodeEventKey
 import app.snapsync.model.encodeEventKey
-import app.snapsync.model.EventConfig
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.Crypto
+import app.snapsync.ports.DevControls
+import app.snapsync.ports.SecureStore
+import app.snapsync.services.secure.persist
+import app.snapsync.services.secure.readExisting
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
-import app.snapsync.ports.DevControls
-import app.snapsync.ports.SecureStore
-import app.snapsync.model.SecureStoreUnavailable
-import app.snapsync.services.secure.persist
-import app.snapsync.services.secure.readExisting
 
 /**
  * **An encrypted event's key, on this device** (the encrypted file format, `docs/architecture.md`): minted by the

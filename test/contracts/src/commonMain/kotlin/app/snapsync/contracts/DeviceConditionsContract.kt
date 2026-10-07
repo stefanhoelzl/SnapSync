@@ -31,7 +31,10 @@ object DeviceConditionsContract : Contract<DeviceConditionsState, DeviceConditio
             assertKnown(reading.powerSaving, "power saving")
             assertKnown(reading.backgroundRefresh, "background refresh")
             assertKnown(reading.thermal, "thermal state")
-            assertIs<Fact.Unsupported>(reading.standbyBucket, "an iPhone has no standby bucket: ${reading.standbyBucket}")
+            assertIs<Fact.Unsupported>(
+                reading.standbyBucket,
+                "an iPhone has no standby bucket: ${reading.standbyBucket}",
+            )
             assertIs<Fact.Unsupported>(
                 reading.batteryOptimizationExempt,
                 "an iPhone has no battery-optimisation exemption: ${reading.batteryOptimizationExempt}",
@@ -62,6 +65,9 @@ object DeviceConditionsContract : Contract<DeviceConditionsState, DeviceConditio
             assertTrue(it.value in 0..100, "a battery level is a percentage: ${it.value}")
         }
         assertTrue(reading.charging !is Fact.Unsupported, "every platform has a charging state: ${reading.charging}")
-        assertTrue(reading.batteryPercent !is Fact.Unsupported, "every platform has a battery level: ${reading.batteryPercent}")
+        assertTrue(
+            reading.batteryPercent !is Fact.Unsupported,
+            "every platform has a battery level: ${reading.batteryPercent}",
+        )
     }
 }

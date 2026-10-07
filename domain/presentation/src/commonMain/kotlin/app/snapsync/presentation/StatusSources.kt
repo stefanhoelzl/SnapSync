@@ -1,21 +1,21 @@
 package app.snapsync.presentation
 
-import kotlinx.coroutines.flow.emptyFlow
-import kotlinx.coroutines.flow.Flow
-import app.snapsync.model.DeviceRefusal
-import app.snapsync.model.NetworkAccess
-import app.snapsync.feature.status.readmodel.NetworkStatusSource
 import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.feature.creation.readmodel.ForegroundReturn
 import app.snapsync.feature.download.readmodel.DownloadProgress
 import app.snapsync.feature.membership.readmodel.RenameStatus
+import app.snapsync.feature.status.readmodel.NetworkStatusSource
 import app.snapsync.feature.status.readmodel.SyncStatusSource
+import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
+import app.snapsync.model.NetworkAccess
 import app.snapsync.model.StoreLink
+import app.snapsync.model.VersionRefusal
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import app.snapsync.model.VersionRefusal
+import kotlinx.coroutines.flow.emptyFlow
 
 /**
  * Every read-model [StatusContainerHost] reduces over, in one bundle.

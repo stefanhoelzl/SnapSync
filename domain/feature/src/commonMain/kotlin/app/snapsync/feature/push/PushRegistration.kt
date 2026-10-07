@@ -2,11 +2,10 @@ package app.snapsync.feature.push
 
 import app.snapsync.model.PushEndpoint
 import app.snapsync.model.runCatchingCancellable
+import app.snapsync.services.backend.PushTokenPublisher
 import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.services.push.PushRegistrationRecord
-import app.snapsync.services.backend.PushTokenPublisher
 import app.snapsync.services.push.PushTokenSource
-
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow

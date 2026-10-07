@@ -22,8 +22,8 @@ import app.snapsync.services.gallery.GalleryImporter
 import app.snapsync.services.gallery.ImportedAssetPresence
 import app.snapsync.services.staging.StagingService
 import app.snapsync.services.wake.EventChecks
-import kotlin.time.Instant
 import kotlinx.coroutines.CoroutineScope
+import kotlin.time.Instant
 
 // The flows' collaborators, as the composition builds them: the REAL download controller and its services, over ports
 // that do nothing — these tests are about a flow's ordering, and none of them downloads or imports.
@@ -37,7 +37,9 @@ private object InertDownload : Download {
 
 /** A photo library no flow test imports into. */
 private object NoImports : GalleryImport {
-    override suspend fun import(request: ImportRequest): ImportResult = ImportResult.Failed("the flow tests never import")
+    override suspend fun import(
+        request: ImportRequest,
+    ): ImportResult = ImportResult.Failed("the flow tests never import")
 }
 
 /** A library that can tell nothing about an imported asset — no flow test adjudicates one. */
@@ -66,4 +68,7 @@ internal fun CoroutineScope.flowDownloadController(union: EventUnionSource): Dow
 }
 
 /** The real membership service over an empty in-memory shared area — no membership. */
-internal fun noMembership(): ConfigService = ConfigService(inMemoryFiles(), fixedClock(Instant.parse("2026-07-09T12:00:00Z")))
+internal fun noMembership(): ConfigService = ConfigService(
+    inMemoryFiles(),
+    fixedClock(Instant.parse("2026-07-09T12:00:00Z")),
+)

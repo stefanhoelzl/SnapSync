@@ -2,11 +2,11 @@ package app.snapsync.feature.upload
 
 import app.snapsync.model.LedgerState
 import app.snapsync.model.Resource
-import app.snapsync.model.destinationPathOf
 import app.snapsync.model.SyncDecision
 import app.snapsync.model.SyncEvent
 import app.snapsync.model.UploadRequest
 import app.snapsync.model.UploadRequestProvider
+import app.snapsync.model.destinationPathOf
 import co.touchlab.kermit.Logger
 
 /**

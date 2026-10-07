@@ -1,32 +1,30 @@
 package app.snapsync.feature.membership
 
-import app.snapsync.mock.inMemorySecureStore
-import app.snapsync.mock.fakeCrypto
-import app.snapsync.services.crypto.EventKeys
+import app.snapsync.feature.support.ConfigWrites
 import app.snapsync.feature.support.inertPendingLeaves
-
-import kotlin.time.Instant
-import app.snapsync.model.CaptureCeiling
+import app.snapsync.mock.fakeCrypto
+import app.snapsync.mock.fixedClock
+import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.CaptureDate
+import app.snapsync.model.EventCompletionState
+import app.snapsync.model.EventConfig
 import app.snapsync.model.EventEnd
+import app.snapsync.model.JoinLoad
+import app.snapsync.model.MemberCounts
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.deletesAt
 import app.snapsync.model.eventEnd
 import app.snapsync.model.eventStart
-import app.snapsync.model.EventConfig
-import app.snapsync.model.JoinLoad
-import app.snapsync.model.EventCompletionState
-import app.snapsync.model.MemberCounts
-import app.snapsync.mock.fixedClock
-import app.snapsync.feature.support.ConfigWrites
 import app.snapsync.services.config.ConfigService
+import app.snapsync.services.crypto.EventKeys
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.time.Instant
 
 /**
  * The membership over the REAL config service: the file seeded with [initial], and the service built once, at the
@@ -195,7 +193,13 @@ class MembershipRefreshTest {
     @Test
     fun `a COMPLETED event ends the membership before its deadline`() = runTest {
         val config = Membership(joined)
-        val completed = JoinLoad.Found(joined.name, STARTS, ENDS, DELETES, EventCompletionState(closed = true, completed = true))
+        val completed = JoinLoad.Found(
+            joined.name,
+            STARTS,
+            ENDS,
+            DELETES,
+            EventCompletionState(closed = true, completed = true),
+        )
         assertEquals(RefreshOutcome.COMPLETED, refresh(config).refresh("E", completed))
         assertNull(config.config.value)
     }
@@ -204,7 +208,10 @@ class MembershipRefreshTest {
     fun `a CLOSED event is recorded with its member counts`() = runTest {
         val config = Membership(joined)
         val closed = JoinLoad.Found(
-            joined.name, STARTS, ENDS, DELETES,
+            joined.name,
+            STARTS,
+            ENDS,
+            DELETES,
             EventCompletionState(closed = true, completed = false, members = MemberCounts(active = 4, settled = 4)),
         )
         assertEquals(RefreshOutcome.REFRESHED, refresh(config).refresh("E", closed))

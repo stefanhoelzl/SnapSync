@@ -1,8 +1,8 @@
 package app.snapsync.ui.components
 
+import kotlinx.datetime.LocalDateTime
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlinx.datetime.LocalDateTime
 
 /**
  * The range the create/join surfaces render (capability `photo-sharing`): compact-adaptive, and it formats two

@@ -4,26 +4,25 @@ import app.snapsync.model.GalleryAccess
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.suspendCancellableCoroutine
-import platform.Foundation.NSThread
-import kotlin.coroutines.resume
-import platform.Foundation.NSError
 import platform.Foundation.NSFastEnumerationProtocol
 import platform.Foundation.NSMutableArray
+import platform.Foundation.NSThread
 import platform.Photos.PHAsset
-import platform.Photos.PHAssetEditOperationDelete
-import platform.Photos.PHAssetSourceTypeCloudShared
-import platform.Photos.PHAssetSourceTypeUserLibrary
-import platform.Photos.PHAssetSourceTypeiTunesSynced
 import platform.Photos.PHAssetChangeRequest
 import platform.Photos.PHAssetCollection
 import platform.Photos.PHAssetCollectionChangeRequest
 import platform.Photos.PHAssetCollectionSubtypeAlbumRegular
 import platform.Photos.PHAssetCollectionTypeAlbum
+import platform.Photos.PHAssetEditOperationDelete
+import platform.Photos.PHAssetSourceTypeCloudShared
+import platform.Photos.PHAssetSourceTypeUserLibrary
+import platform.Photos.PHAssetSourceTypeiTunesSynced
 import platform.Photos.PHCollectionList
 import platform.Photos.PHCollectionListChangeRequest
 import platform.Photos.PHCollectionListSubtypeAny
 import platform.Photos.PHCollectionListTypeFolder
 import platform.Photos.PHPhotoLibrary
+import kotlin.coroutines.resume
 
 /**
  * What a wipe may delete.

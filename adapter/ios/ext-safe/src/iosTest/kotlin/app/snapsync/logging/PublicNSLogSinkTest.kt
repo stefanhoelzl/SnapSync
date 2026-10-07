@@ -41,6 +41,9 @@ class PublicNSLogSinkTest {
 
     @Test
     fun `a line without a percent passes through unchanged`() {
-        assertEquals("[Info/gallery] enumerated 3 resources", publicNSLogFormatString("[Info/gallery] enumerated 3 resources"))
+        assertEquals(
+            "[Info/gallery] enumerated 3 resources",
+            publicNSLogFormatString("[Info/gallery] enumerated 3 resources"),
+        )
     }
 }

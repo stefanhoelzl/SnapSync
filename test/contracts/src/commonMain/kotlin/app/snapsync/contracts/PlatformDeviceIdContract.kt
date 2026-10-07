@@ -37,7 +37,10 @@ object PlatformDeviceIdContract : Contract<PlatformDeviceIdState, PlatformDevice
 
         clause("ANSWERING_IS_A_CANONICAL_UUID", PlatformDeviceIdState.ANSWERING) { platform ->
             val id = assertNotNull(platform.stableId())
-            assertTrue(CANONICAL.matches(id), "'$id' is not an upper-case canonical UUID — the backend refuses any other device id")
+            assertTrue(
+                CANONICAL.matches(id),
+                "'$id' is not an upper-case canonical UUID — the backend refuses any other device id",
+            )
         }
 
         clause("SILENT_IS_NULL", PlatformDeviceIdState.SILENT) { platform ->

@@ -36,7 +36,9 @@ internal object MediaStoreSeeder {
         } else {
             listOf(Manifest.permission.READ_EXTERNAL_STORAGE)
         }
-        (permissions + Manifest.permission.ACCESS_MEDIA_LOCATION).forEach { automation.grantRuntimePermission(context.packageName, it) }
+        (permissions + Manifest.permission.ACCESS_MEDIA_LOCATION).forEach {
+            automation.grantRuntimePermission(context.packageName, it)
+        }
     }
 
     /** [count] photos captured at [isoDate], in [folder] (a `RELATIVE_PATH`, ending in `/`). */

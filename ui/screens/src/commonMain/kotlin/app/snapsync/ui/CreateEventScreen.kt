@@ -1,46 +1,42 @@
 package app.snapsync.ui
 
-import androidx.compose.foundation.layout.Box
-import app.snapsync.ui.components.AppNetworkNotice
-import app.snapsync.model.ScreenMessage
-import app.snapsync.model.NetworkNotice
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.dp
 import app.snapsync.model.EVENT_NAME_MAX_LENGTH
-import app.snapsync.model.StoreKind
 import app.snapsync.model.EVENT_WINDOW_MAX_SECONDS
-import kotlin.time.Duration.Companion.seconds
 import app.snapsync.model.Layer
+import app.snapsync.model.NetworkNotice
+import app.snapsync.model.ScreenMessage
+import app.snapsync.model.StoreKind
 import app.snapsync.presentation.CutoffFormatter
-import app.snapsync.model.UiState
 import app.snapsync.ui.components.AppEventHeaderHost
-import app.snapsync.ui.components.AppIdentityHeader
 import app.snapsync.ui.components.AppEventRangePicker
-import app.snapsync.ui.components.EndTimeGuide
-import app.snapsync.ui.components.RangeBounds
-import kotlinx.datetime.LocalDateTime
+import app.snapsync.ui.components.AppIdentityHeader
+import app.snapsync.ui.components.AppNetworkNotice
 import app.snapsync.ui.components.AppQuestionHeading
 import app.snapsync.ui.components.AppTextField
+import app.snapsync.ui.components.EndTimeGuide
 import app.snapsync.ui.components.PrimaryButton
+import app.snapsync.ui.components.RangeBounds
 import app.snapsync.ui.components.StatusHero
 import app.snapsync.ui.components.StatusHint
 import app.snapsync.ui.components.StatusIndicator
-import app.snapsync.ui.resources.message_report_this
 import app.snapsync.ui.resources.Res
 import app.snapsync.ui.resources.create_button
 import app.snapsync.ui.resources.create_join_hint
@@ -54,6 +50,7 @@ import app.snapsync.ui.resources.create_when_question
 import app.snapsync.ui.resources.create_window_note
 import app.snapsync.ui.resources.creating
 import app.snapsync.ui.resources.hero_subtitle
+import app.snapsync.ui.resources.message_report_this
 import app.snapsync.ui.resources.store_app_store
 import app.snapsync.ui.resources.store_google_play
 import app.snapsync.ui.resources.update_detail
@@ -62,7 +59,9 @@ import app.snapsync.ui.resources.update_eyebrow
 import app.snapsync.ui.resources.update_headline
 import app.snapsync.ui.resources.update_subtitle
 import app.snapsync.ui.resources.update_title
+import kotlinx.datetime.LocalDateTime
 import org.jetbrains.compose.resources.stringResource
+import kotlin.time.Duration.Companion.seconds
 
 // Event creation (capability `create-event`): the name/date form and its in-flight state.
 
@@ -206,8 +205,11 @@ private fun CreateActions(
             // constant height (capability `create-event`, "The front screen tells a refused phone before it tries").
             val reportable = state.error?.takeIf { it.offersReport }
             StatusHint(
-                text = if (reportable != null) "$error ${stringResource(Res.string.message_report_this)}" else
-                    error ?: stringResource(Res.string.create_join_hint),
+                text = if (reportable != null) {
+                    "$error ${stringResource(Res.string.message_report_this)}"
+                } else {
+                    error ?: stringResource(Res.string.create_join_hint)
+                },
                 isError = error != null,
                 onClick = reportable?.let { { callbacks.onReportRefusal(it) } },
             )
@@ -256,8 +258,6 @@ internal fun CreatingEventScreen() {
         }
     }
 }
-
-
 
 /**
  * The backend refuses this build as too old (capability `app-update-required`).

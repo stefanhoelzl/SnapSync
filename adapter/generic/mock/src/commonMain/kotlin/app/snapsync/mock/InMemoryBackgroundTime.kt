@@ -41,7 +41,13 @@ internal class InMemoryBackgroundTime(private val held: MutableStateFlow<List<He
         private val ended = AtomicBoolean(false)
 
         override fun end() {
-            if (ended.compareAndSet(expectedValue = false, newValue = true)) held.update { table -> table.filterNot { it === entry } }
+            if (ended.compareAndSet(
+                    expectedValue = false,
+                    newValue = true,
+                )
+            ) {
+                held.update { table -> table.filterNot { it === entry } }
+            }
         }
     }
 }

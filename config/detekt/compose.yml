@@ -120,7 +120,8 @@ complexity:
     constructorThreshold: 47
   LargeClass:
     active: true
-    threshold: 330
+    # RAISED by the ktlint reformat (detekt-formatting's adoption): layout only, no decision added; 330 -> 340.
+    threshold: 340
 style:
   ReturnCount:
     active: true

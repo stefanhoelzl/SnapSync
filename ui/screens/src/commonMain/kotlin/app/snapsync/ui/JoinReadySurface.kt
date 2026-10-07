@@ -1,10 +1,9 @@
 package app.snapsync.ui
 
-import app.snapsync.model.AlbumKind
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -13,17 +12,18 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import app.snapsync.model.AlbumKind
 import app.snapsync.model.ResolvedRange
 import app.snapsync.ui.components.AppAccessNotice
 import app.snapsync.ui.components.AppAccessPoint
 import app.snapsync.ui.components.AppEventHeaderCompact
+import app.snapsync.ui.components.AppFooterTextActions
+import app.snapsync.ui.components.AppSectionDivider
+import app.snapsync.ui.components.CancelTextAction
 import app.snapsync.ui.components.JoinAccessChoose
 import app.snapsync.ui.components.JoinAccessCutoff
 import app.snapsync.ui.components.JoinAccessLibrary
 import app.snapsync.ui.components.JoinAccessShare
-import app.snapsync.ui.components.AppFooterTextActions
-import app.snapsync.ui.components.AppSectionDivider
-import app.snapsync.ui.components.CancelTextAction
 import app.snapsync.ui.components.JoinTextAction
 import app.snapsync.ui.components.StatusHint
 import app.snapsync.ui.resources.Res

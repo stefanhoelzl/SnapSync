@@ -42,7 +42,14 @@ class UiStateSerializationTest {
 
     @Test
     fun the_update_required_layer_round_trips() {
-        roundTrip(UiState(Layer.UpdateRequired(minimumVersion = "0.4", store = StoreLink("https://apps.apple.com/de/app/id1", StoreKind.APP_STORE))))
+        roundTrip(
+            UiState(
+                Layer.UpdateRequired(
+                    minimumVersion = "0.4",
+                    store = StoreLink("https://apps.apple.com/de/app/id1", StoreKind.APP_STORE),
+                ),
+            ),
+        )
         // And with both absences, which are the states the screen renders differently.
         roundTrip(UiState(Layer.UpdateRequired(minimumVersion = null, store = null)))
     }
@@ -78,10 +85,16 @@ class UiStateSerializationTest {
         for (phase in listOf(JoinPhase.Loading, JoinPhase.NotFound, JoinPhase.LoadFailed)) {
             roundTrip(UiState(Layer.JoiningEvent(eventId = "E", phase = phase)))
         }
-        roundTrip(UiState(Layer.JoiningEvent(eventId = "E", phase = JoinPhase.Loading, notice = ScreenMessage.INVALID_LINK)))
+        roundTrip(
+            UiState(Layer.JoiningEvent(eventId = "E", phase = JoinPhase.Loading, notice = ScreenMessage.INVALID_LINK)),
+        )
         roundTrip(UiState(Layer.JoiningEvent(eventId = "E", phase = JoinPhase.Loading, asksAccessOnJoin = true)))
-        roundTrip(UiState(Layer.JoiningEvent(eventId = "E", phase = JoinPhase.LoadFailed, network = NetworkNotice.OFFLINE)))
-        roundTrip(UiState(Layer.JoiningEvent(eventId = "E", phase = JoinPhase.Loading, network = NetworkNotice.BLOCKED)))
+        roundTrip(
+            UiState(Layer.JoiningEvent(eventId = "E", phase = JoinPhase.LoadFailed, network = NetworkNotice.OFFLINE)),
+        )
+        roundTrip(
+            UiState(Layer.JoiningEvent(eventId = "E", phase = JoinPhase.Loading, network = NetworkNotice.BLOCKED)),
+        )
     }
 
     @Test
@@ -225,7 +238,13 @@ class UiStateSerializationTest {
             roundTrip(UiState(Layer.CreateEvent(), overlay))
         }
         // The build constants the menu's footer and the report sheet read.
-        roundTrip(UiState(Layer.CreateEvent(), reportDestination = ReportDestination.THIS_DEVICE, build = BuildLabel("0.12", "2140")))
+        roundTrip(
+            UiState(
+                Layer.CreateEvent(),
+                reportDestination = ReportDestination.THIS_DEVICE,
+                build = BuildLabel("0.12", "2140"),
+            ),
+        )
         // The range's defaulted count, at its default.
         roundTrip(
             UiState(

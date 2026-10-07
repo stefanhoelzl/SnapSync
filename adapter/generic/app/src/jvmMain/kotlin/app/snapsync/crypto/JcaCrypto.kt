@@ -37,7 +37,9 @@ class JcaCrypto : Crypto {
 
     private fun gcm(mode: Int, key: ByteArray, nonce: ByteArray): Cipher {
         require(key.size == KEY_LENGTH) { "AES-256 key length ${key.size}" }
-        return Cipher.getInstance("AES/GCM/NoPadding").apply { init(mode, SecretKeySpec(key, "AES"), GCMParameterSpec(TAG_BITS, nonce)) }
+        return Cipher.getInstance(
+            "AES/GCM/NoPadding",
+        ).apply { init(mode, SecretKeySpec(key, "AES"), GCMParameterSpec(TAG_BITS, nonce)) }
     }
 
     private companion object {

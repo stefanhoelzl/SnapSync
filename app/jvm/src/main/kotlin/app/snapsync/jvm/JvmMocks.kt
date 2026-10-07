@@ -5,9 +5,6 @@ import app.snapsync.mock.BuildInfoMock
 import app.snapsync.mock.DeclaredVersion
 import app.snapsync.mock.MockDevice
 import app.snapsync.mock.UploadNetwork
-import app.snapsync.model.UnionTrigger
-import app.snapsync.model.UnionPage
-import app.snapsync.model.PushEndpoint
 import app.snapsync.model.CreateEventRequest
 import app.snapsync.model.DeviceFile
 import app.snapsync.model.DeviceManifest
@@ -16,8 +13,11 @@ import app.snapsync.model.EventMeta
 import app.snapsync.model.EventRenamed
 import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.MintRequest
+import app.snapsync.model.PushEndpoint
 import app.snapsync.model.RenewRequest
 import app.snapsync.model.Reply
+import app.snapsync.model.UnionPage
+import app.snapsync.model.UnionTrigger
 import app.snapsync.ports.Backend
 import app.snapsync.ports.LogSink
 import io.ktor.client.HttpClient
@@ -103,7 +103,10 @@ class VersionedHttpBackend(
     override suspend fun challenge(): Reply<String> = http().challenge()
     override suspend fun mintToken(req: MintRequest): Reply<String> = http().mintToken(req)
     override suspend fun renewToken(req: RenewRequest): Reply<String> = http().renewToken(req)
-    override suspend fun createEvent(token: String?, req: CreateEventRequest): Reply<EventCreated> = http().createEvent(token, req)
+    override suspend fun createEvent(token: String?, req: CreateEventRequest): Reply<EventCreated> = http().createEvent(
+        token,
+        req,
+    )
     override suspend fun getEvent(token: String?, eventId: String): Reply<EventMeta> = http().getEvent(token, eventId)
     override suspend fun renameEvent(token: String?, eventId: String, name: String): Reply<EventRenamed> =
         http().renameEvent(token, eventId, name)
@@ -117,7 +120,12 @@ class VersionedHttpBackend(
     ): Reply<Unit> = http().publishManifest(token, eventId, deviceId, manifest)
     override suspend fun leaveEvent(token: String?, eventId: String, deviceId: String, received: Boolean): Reply<Unit> =
         http().leaveEvent(token, eventId, deviceId, received)
-    override suspend fun eventFiles(token: String?, eventId: String, cursor: Long?, trigger: UnionTrigger): Reply<UnionPage> =
+    override suspend fun eventFiles(
+        token: String?,
+        eventId: String,
+        cursor: Long?,
+        trigger: UnionTrigger,
+    ): Reply<UnionPage> =
         http().eventFiles(token, eventId, cursor, trigger)
     override suspend fun deviceFiles(token: String?, eventId: String, deviceId: String): Reply<List<DeviceFile>> =
         http().deviceFiles(token, eventId, deviceId)

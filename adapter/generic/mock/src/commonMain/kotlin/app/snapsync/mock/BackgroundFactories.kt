@@ -24,7 +24,11 @@ fun inMemoryWake(
  * [held] is the caller's own cell: the holds the system has granted and not yet seen ended, each with the expiry
  * the caller may fire as the operating system would.
  */
-fun inMemoryBackgroundTime(held: MutableStateFlow<List<HeldBackgroundTime>> = MutableStateFlow(emptyList())): BackgroundTime =
+fun inMemoryBackgroundTime(
+    held: MutableStateFlow<List<HeldBackgroundTime>> = MutableStateFlow(
+        emptyList(),
+    ),
+): BackgroundTime =
     InMemoryBackgroundTime(held)
 
 /**

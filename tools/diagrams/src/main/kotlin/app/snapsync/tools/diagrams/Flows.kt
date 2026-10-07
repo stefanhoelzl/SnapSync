@@ -61,6 +61,7 @@ private data class Call(
 private data class Guard(val desc: String) : Step
 private data class Guarded(val desc: String, val steps: List<Step>) : Step
 private data class Launch(val steps: List<Step>) : Step
+
 /** `coroutineScope { … }` — its branches run concurrently and the flow AWAITS all of them. */
 private data class Awaited(val steps: List<Step>) : Step
 private data class Alt(val subject: String, val branches: List<Pair<String, List<Step>>>) : Step
@@ -120,7 +121,12 @@ private fun functions(src: KtSource): List<FlowFunction> {
             i = skipWs(text, i)
         }
         if (i >= text.length || text[i] != '{') {
-            violation(src, m.range.first, "non-block function body (`fun ${m.groupValues[1]}`)", "expression-bodied flow function")
+            violation(
+                src,
+                m.range.first,
+                "non-block function body (`fun ${m.groupValues[1]}`)",
+                "expression-bodied flow function",
+            )
         }
         out += FlowFunction(m.groupValues[1], Body(i + 1, skipBalanced(text, i, '{', '}') - 1))
     }
@@ -178,15 +184,21 @@ private fun statements(src: KtSource, body: Body): List<Stmt> {
 
 // ---- the grammar ----------------------------------------------------------------------------
 
-private val CALL = Regex("""^(?:return@\w+\s+)?([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\((.*)\)$""", RegexOption.DOT_MATCHES_ALL)
+private val CALL =
+    Regex(
+        """^(?:return@\w+\s+)?([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\((.*)\)$""",
+        RegexOption.DOT_MATCHES_ALL,
+    )
 private val LAUNCH = Regex("""^launch \{ (.*) \}$""", RegexOption.DOT_MATCHES_ALL)
 private val AWAITED = Regex("""^coroutineScope \{ (.*) \}$""", RegexOption.DOT_MATCHES_ALL)
 
 /** `fanOut("Flow") { child("name") { … } … }` — the ISOLATED awaited fan-out; a child is a concurrent branch. */
 private val ISOLATED = Regex("""^fanOut\("\w+"\) \{ (.*) \}$""", RegexOption.DOT_MATCHES_ALL)
 private val CHILD = Regex("""^child\("\w+"\) \{ (.*) \}$""", RegexOption.DOT_MATCHES_ALL)
-private val BEST_EFFORT = Regex("""^runCatching(?:Cancellable)? \{ (.*?) \}\s*\.onFailure \{ log\..*\}$""", RegexOption.DOT_MATCHES_ALL)
-private val GUARDED = Regex("""^([A-Za-z_][\w.]*\([^)]*\))\?\.let \{ (?:([A-Za-z_]\w*) -> )?(.*) \}$""", RegexOption.DOT_MATCHES_ALL)
+private val BEST_EFFORT =
+    Regex("""^runCatching(?:Cancellable)? \{ (.*?) \}\s*\.onFailure \{ log\..*\}$""", RegexOption.DOT_MATCHES_ALL)
+private val GUARDED =
+    Regex("""^([A-Za-z_][\w.]*\([^)]*\))\?\.let \{ (?:([A-Za-z_]\w*) -> )?(.*) \}$""", RegexOption.DOT_MATCHES_ALL)
 private val FAN_OUT = Regex("""^for \(([A-Za-z_]\w*) in ([A-Za-z_]\w*)\) \{ (.*) \}$""", RegexOption.DOT_MATCHES_ALL)
 private val WHEN_SUBJECT = Regex("""^when \((?:val ([A-Za-z_]\w*) = )?(.*)\) \{(.*)\}$""", RegexOption.DOT_MATCHES_ALL)
 private val NULL_GUARD_VAL = Regex("""^val ([A-Za-z_]\w*) = ([A-Za-z_][\w.]*)\((.*)\)$""")
@@ -283,7 +295,14 @@ private val BRANCH_FORMS = setOf(Form.LAUNCH)
  */
 private fun matchForm(src: KtSource, stmt: Stmt, text: String, forms: Set<Form>): Step? {
     if (Form.GUARD in forms) {
-        GUARDED.find(text)?.let { return Guarded("only when ${it.groupValues[1]} resolves", transcribeFragment(src, stmt, it.groupValues[3])) }
+        GUARDED.find(
+            text,
+        )?.let {
+            return Guarded(
+                "only when ${it.groupValues[1]} resolves",
+                transcribeFragment(src, stmt, it.groupValues[3]),
+            )
+        }
     }
     if (Form.BEST_EFFORT in forms) {
         BEST_EFFORT.find(text)?.let {
@@ -299,13 +318,22 @@ private fun matchForm(src: KtSource, stmt: Stmt, text: String, forms: Set<Form>)
 private fun transcribeFragment(src: KtSource, stmt: Stmt, fragment: String): List<Step> {
     val trimmed = fragment.trim()
     // A fragment is a mini-body: try the composed forms first, then a plain call.
-    return listOf(matchForm(src, stmt, trimmed, FRAGMENT_FORMS) ?: callStep(trimmed) ?: violation(src, stmt.start, classify(trimmed), trimmed))
+    return listOf(
+        matchForm(src, stmt, trimmed, FRAGMENT_FORMS) ?: callStep(trimmed) ?: violation(src, stmt.start, classify(trimmed), trimmed),
+    )
 }
 
 private fun transcribeWhen(src: KtSource, stmt: Stmt): Alt {
     val m = WHEN_SUBJECT.find(stmt.text)!!
     val subject = m.groupValues[2].trim()
-    if (CALL.find(subject) == null) violation(src, stmt.start, "a `when` over a non-call subject (the sealed result must come from a feature call)", stmt.text)
+    if (CALL.find(subject) == null) {
+        violation(
+            src,
+            stmt.start,
+            "a `when` over a non-call subject (the sealed result must come from a feature call)",
+            stmt.text,
+        )
+    }
     val branchesText = m.groupValues[3].trim()
     val branches = mutableListOf<Pair<String, List<Step>>>()
     // Branches: `is X -> …` / `X -> …` / `else -> …`, each a single call / launch / `Unit`.
@@ -398,8 +426,11 @@ private fun declareParticipants(
         val display = call.receiver.ifEmpty { if (call.method in helpers) flow else "effects" }
         if (declared.add(display)) {
             val id = participantId(call.receiver, flow)
-            if (id == display) sb.append("  participant ").append(display).append("\n")
-            else sb.append("  participant ").append(id).append(" as ").append(display).append("\n")
+            if (id == display) {
+                sb.append("  participant ").append(display).append("\n")
+            } else {
+                sb.append("  participant ").append(id).append(" as ").append(display).append("\n")
+            }
         }
     }
 }
@@ -416,14 +447,19 @@ private fun renderSteps(
         when (step) {
             is Call -> {
                 val arrow = if (async || step.launch) "--)" else "->>"
-                val target = if (step.receiver.isEmpty() && step.method in helpers) flow
-                else participantId(step.receiver, flow)
+                val target = if (step.receiver.isEmpty() && step.method in helpers) {
+                    flow
+                } else {
+                    participantId(step.receiver, flow)
+                }
                 sb.append(indent).append(flow).append(arrow).append(target).append(": ")
                     .append(step.method).append(if (step.hasArgs) "(…)" else "()")
                 if (step.bestEffort) sb.append(" [best-effort]")
                 sb.append("\n")
             }
-            is Guard -> sb.append(indent).append("Note over ").append(flow).append(": guard — ").append(step.desc).append("\n")
+            is Guard -> sb.append(
+                indent,
+            ).append("Note over ").append(flow).append(": guard — ").append(step.desc).append("\n")
             is Guarded -> {
                 sb.append(indent).append("opt ").append(step.desc).append("\n")
                 renderSteps(step.steps, flow, helpers, sb, "$indent  ", async)
@@ -438,7 +474,11 @@ private fun renderSteps(
             is Alt -> {
                 for ((i, branch) in step.branches.withIndex()) {
                     val (label, branchSteps) = branch
-                    sb.append(indent).append(if (i == 0) "alt " else "else ").append(step.subject).append(" = ").append(label).append("\n")
+                    sb.append(
+                        indent,
+                    ).append(
+                        if (i == 0) "alt " else "else ",
+                    ).append(step.subject).append(" = ").append(label).append("\n")
                     if (branchSteps.isEmpty()) {
                         sb.append(indent).append("  Note over ").append(flow).append(": nothing\n")
                     } else {

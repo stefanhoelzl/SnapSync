@@ -1,21 +1,18 @@
 package app.snapsync.services.config
 
-import app.snapsync.model.deletesAt
-
-import app.snapsync.model.eventEnd
-
-import app.snapsync.model.captureCeiling
-import app.snapsync.model.captureCutoff
+import app.snapsync.model.ConfigRead
 import app.snapsync.model.EventConfig
 import app.snapsync.model.FileResult
+import app.snapsync.model.captureCeiling
+import app.snapsync.model.captureCutoff
+import app.snapsync.model.deletesAt
 import app.snapsync.model.encodeConfigFile
-
+import app.snapsync.model.eventEnd
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
-import app.snapsync.model.ConfigRead
 
 /**
  * The file-backed three-state read (capability `join-event`; migration step 11a made the App-Group

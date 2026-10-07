@@ -109,7 +109,14 @@ internal class ReplayingAppAttestApi(private val replayer: Replayer) : AppAttest
 
     override fun generateKey(completion: (String?, NSError?) -> Unit) {
         val answer = replayer.answer("generateKey()")
-        if (answer.startsWith("keyId=")) completion(keys.mint(answer.removePrefix("keyId=")), null) else completion(null, parseError(answer))
+        if (answer.startsWith(
+                "keyId=",
+            )
+        ) {
+            completion(keys.mint(answer.removePrefix("keyId=")), null)
+        } else {
+            completion(null, parseError(answer))
+        }
     }
 
     override fun attestKey(keyId: String, clientDataHash: NSData, completion: (NSData?, NSError?) -> Unit) =
@@ -119,5 +126,12 @@ internal class ReplayingAppAttestApi(private val replayer: Replayer) : AppAttest
         answerData(replayer.answer(attestCall("generateAssertion", keyId, clientDataHash, keys)), completion)
 
     private fun answerData(answer: String, completion: (NSData?, NSError?) -> Unit) =
-        if (answer.startsWith("data=")) completion(maskedBytes.toNSData(), null) else completion(null, parseError(answer))
+        if (answer.startsWith(
+                "data=",
+            )
+        ) {
+            completion(maskedBytes.toNSData(), null)
+        } else {
+            completion(null, parseError(answer))
+        }
 }

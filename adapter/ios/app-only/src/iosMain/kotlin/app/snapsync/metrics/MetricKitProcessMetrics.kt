@@ -4,10 +4,10 @@ import app.snapsync.logging.IosThreadEntryContext
 import app.snapsync.model.PlatformEntry
 import app.snapsync.model.ProcessMetricReport
 import app.snapsync.model.flattenToDottedKeys
+import app.snapsync.model.invocation
 import app.snapsync.objc.objcBoundary
 import app.snapsync.ports.MetricHandlers
 import app.snapsync.ports.ProcessMetrics
-import app.snapsync.model.invocation
 import co.touchlab.kermit.Logger
 import platform.MetricKit.MXDiagnosticPayload
 import platform.MetricKit.MXMetricManager

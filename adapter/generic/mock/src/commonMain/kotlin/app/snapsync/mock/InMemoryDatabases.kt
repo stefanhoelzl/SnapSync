@@ -49,7 +49,9 @@ internal class InMemoryDatabases(
         val version = userVersion(driver)
         return when {
             version < schema.version -> DbOpen.OldSchema
-            version > schema.version -> DbOpen.Failed("schema version $version is newer than this build's ${schema.version}")
+            version > schema.version -> DbOpen.Failed(
+                "schema version $version is newer than this build's ${schema.version}",
+            )
             else -> DbOpen.Opened(driver)
         }
     }
@@ -74,7 +76,9 @@ internal class InMemoryDatabases(
      * own uninstall deletes.
      */
     fun deleteAll() {
-        check(directory == null) { "deleting file-backed databases is not modelled; the app host's uninstall deletes them" }
+        check(
+            directory == null,
+        ) { "deleting file-backed databases is not modelled; the app host's uninstall deletes them" }
         lock.locked { held.clear() }
     }
 

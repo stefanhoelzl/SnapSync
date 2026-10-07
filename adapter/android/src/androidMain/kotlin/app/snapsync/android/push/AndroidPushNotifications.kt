@@ -20,9 +20,9 @@ import com.google.firebase.FirebaseOptions
 import com.google.firebase.messaging.FirebaseMessaging
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
+import kotlinx.coroutines.flow.MutableStateFlow
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
-import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
  * The Firebase project a build's pushes come from — the resolved deployment's public Firebase values
@@ -151,7 +151,10 @@ class SnapSyncMessagingService : FirebaseMessagingService() {
     // Deprecated with `getToken()` (see `AndroidPushNotifications.register`), and kept with it.
     @Suppress("OVERRIDE_DEPRECATION")
     override fun onNewToken(token: String) {
-        log.invocation(EntryScope.None, "onNewToken") { AndroidPushNotifications.registration.value?.deliverToken(token) }
+        log.invocation(
+            EntryScope.None,
+            "onNewToken",
+        ) { AndroidPushNotifications.registration.value?.deliverToken(token) }
     }
 
     override fun onMessageReceived(message: RemoteMessage) {

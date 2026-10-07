@@ -42,8 +42,14 @@ class EncryptedFileFormatTest {
         assertEquals(3, hmac.calls.size, "40 bytes take two blocks")
         assertContentEquals(t1.toByteArray(), out.copyOf(32))
         val salted = Recording().also { Hkdf.derive(it, byteArrayOf(1), byteArrayOf(7), ByteArray(0), 0) }
-        assertEquals(listOf<Byte>(7) to listOf<Byte>(1), salted.calls.single(), "a salt is the extract key; 0 bytes expand nothing")
-        assertFailsWith<IllegalArgumentException> { Hkdf.derive(Recording(), ByteArray(1), ByteArray(0), ByteArray(0), 255 * 32 + 1) }
+        assertEquals(
+            listOf<Byte>(7) to listOf<Byte>(1),
+            salted.calls.single(),
+            "a salt is the extract key; 0 bytes expand nothing",
+        )
+        assertFailsWith<IllegalArgumentException> {
+            Hkdf.derive(Recording(), ByteArray(1), ByteArray(0), ByteArray(0), 255 * 32 + 1)
+        }
     }
 
     @Test
@@ -69,7 +75,10 @@ class EncryptedFileFormatTest {
         assertContentEquals(head.salt, bytes.copyOfRange(10, 42))
         assertContentEquals(head.noncePrefix, bytes.copyOfRange(42, 49))
         assertEquals(head, assertIs<HeadRead.Read>(EncryptedFileFormat.decodeHead(bytes + byteArrayOf(1, 2))).head)
-        assertEquals(head.hashCode(), FileHead(head.keyId.copyOf(), head.salt.copyOf(), head.noncePrefix.copyOf()).hashCode())
+        assertEquals(
+            head.hashCode(),
+            FileHead(head.keyId.copyOf(), head.salt.copyOf(), head.noncePrefix.copyOf()).hashCode(),
+        )
         assertNotEquals<Any>(head, "a head")
     }
 
@@ -81,7 +90,10 @@ class EncryptedFileFormatTest {
             HeadRead.Refused("unknown format version 2"),
             EncryptedFileFormat.decodeHead(bytes.copyOf().also { it[0] = 2 }),
         )
-        assertEquals(HeadRead.Refused("header length 41"), EncryptedFileFormat.decodeHead(bytes.copyOf().also { it[9] = 41 }))
+        assertEquals(
+            HeadRead.Refused("header length 41"),
+            EncryptedFileFormat.decodeHead(bytes.copyOf().also { it[9] = 41 }),
+        )
         assertFailsWith<IllegalArgumentException> { FileHead(ByteArray(7), head.salt, head.noncePrefix) }
         assertFailsWith<IllegalArgumentException> { FileHead(head.keyId, ByteArray(31), head.noncePrefix) }
         assertFailsWith<IllegalArgumentException> { FileHead(head.keyId, head.salt, ByteArray(8)) }

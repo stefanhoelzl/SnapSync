@@ -9,13 +9,6 @@ import app.snapsync.model.WakeTrigger
 import app.snapsync.ports.Wake
 import app.snapsync.ports.WakeHandlers
 import app.snapsync.services.wake.Heartbeat
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
-import kotlin.test.assertFalse
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
-import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
@@ -23,6 +16,13 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * The tail runner's rules (capability `sync-status`, "Each OS wake does its own work, then hands the rest to one
@@ -40,6 +40,7 @@ class TailRunnerTest {
     private class Scheduler(private val watchesLibrary: Boolean = false) {
         /** When set, a heartbeat request waits on it — a platform slow to say it holds the request. */
         var armGate: CompletableDeferred<Unit>? = null
+
         /** The cadence of every heartbeat the re-arm requested, in order. */
         val cadences = mutableListOf<WakeCadence>()
         val scheduled: Int get() = cadences.size
@@ -242,8 +243,15 @@ class TailRunnerTest {
     @Test
     fun `a joiner applies its own re-arm to the tail’s outcome`() = runTest {
         // After the event's end a caught-up device idles; work left keeps it busy.
-        for ((result, expected) in listOf(CycleResult.PROCESSING to WakeCadence.BUSY, CycleResult.COMPLETED to WakeCadence.IDLE)) {
-            val units = Units().apply { topUpGate = CompletableDeferred(); topUp = { result }; facts = JOINED.copy(ended = true) }
+        for ((result, expected) in listOf(
+            CycleResult.PROCESSING to WakeCadence.BUSY,
+            CycleResult.COMPLETED to WakeCadence.IDLE,
+        )) {
+            val units = Units().apply {
+                topUpGate = CompletableDeferred()
+                topUp = { result }
+                facts = JOINED.copy(ended = true)
+            }
             val scheduler = Scheduler()
             val tail = runner(units, scheduler)
             val completion = async { tail.request(TailTrigger.UPLOAD_COMPLETED) }
@@ -254,13 +262,20 @@ class TailRunnerTest {
             units.topUpGate = null
             completion.await()
             relaunch.await()
-            assertEquals(listOf(expected), scheduler.cadences, "the relaunch re-arms once, the completion not at all ($result)")
+            assertEquals(
+                listOf(expected),
+                scheduler.cadences,
+                "the relaunch re-arms once, the completion not at all ($result)",
+            )
         }
     }
 
     @Test
     fun `a joiner against a declining membership keeps the idle heartbeat`() = runTest {
-        val units = Units().apply { topUpGate = CompletableDeferred(); topUp = { CycleResult.SKIPPED } }
+        val units = Units().apply {
+            topUpGate = CompletableDeferred()
+            topUp = { CycleResult.SKIPPED }
+        }
         units.walk = { WalkOutcome.Walked(CycleResult.SKIPPED, addedRows = false) }
         val scheduler = Scheduler()
         val tail = runner(units, scheduler)
@@ -273,7 +288,8 @@ class TailRunnerTest {
         assertEquals(CycleResult.SKIPPED, heartbeat.await()?.result)
         arm.await()
         assertEquals(
-            listOf(WakeCadence.IDLE), scheduler.cadences,
+            listOf(WakeCadence.IDLE),
+            scheduler.cadences,
             "a joined membership that contributes nothing still looks in — for others' photos and the close — once",
         )
     }
@@ -287,7 +303,9 @@ class TailRunnerTest {
         val tail = runner(units, scheduler)
         val first = async { tail.request(TailTrigger.UPLOAD_COMPLETED) }
         runCurrent()
-        val joiners = List(50) { async { tail.request(if (it % 2 == 0) TailTrigger.SILENT_PUSH else TailTrigger.HEARTBEAT) } }
+        val joiners = List(
+            50,
+        ) { async { tail.request(if (it % 2 == 0) TailTrigger.SILENT_PUSH else TailTrigger.HEARTBEAT) } }
         runCurrent()
         units.topUpGate!!.complete(Unit)
         units.topUpGate = null
@@ -405,7 +423,10 @@ class TailRunnerTest {
 
     @Test
     fun `a stop during the import lets the photo in flight finish and runs nothing else`() = runTest {
-        val units = Units().apply { staged = 3; importGate = CompletableDeferred() }
+        val units = Units().apply {
+            staged = 3
+            importGate = CompletableDeferred()
+        }
         val tail = runner(units)
         val push = async { tail.request(TailTrigger.SILENT_PUSH) }
         runCurrent()
@@ -440,7 +461,10 @@ class TailRunnerTest {
 
     @Test
     fun `a stop keeps a decline that was reached before it`() = runTest {
-        val units = Units().apply { topUp = { CycleResult.SKIPPED }; walkGate = CompletableDeferred() }
+        val units = Units().apply {
+            topUp = { CycleResult.SKIPPED }
+            walkGate = CompletableDeferred()
+        }
         val scheduler = Scheduler()
         val tail = runner(units, scheduler)
         val heartbeat = async { tail.request(TailTrigger.HEARTBEAT) }
@@ -561,7 +585,8 @@ class TailRunnerTest {
                 runner(units, scheduler).request(trigger)
                 val expected = if (result == CycleResult.SKIPPED || trigger.scope == TailScope.IMPORT) 0 else 1
                 assertEquals(
-                    expected, scheduler.watched,
+                    expected,
+                    scheduler.watched,
                     "$trigger after $result: a caught-up device must still notice the next photo; a membership " +
                         "that contributes nothing, or a tail that only imported, renews nothing",
                 )
@@ -587,7 +612,9 @@ class TailRunnerTest {
             cadenceFacts = { JOINED },
             leftover = { "" },
         )
-        val failure = withTimeout(5.seconds) { assertFailsWith<IllegalStateException> { tail.request(TailTrigger.HEARTBEAT) } }
+        val failure = withTimeout(
+            5.seconds,
+        ) { assertFailsWith<IllegalStateException> { tail.request(TailTrigger.HEARTBEAT) } }
         assertTrue("wait on itself" in failure.message.orEmpty())
         // And the runner is usable afterwards: the failed tail cleared itself.
         withTimeout(5.seconds) { tail.request(TailTrigger.UPLOAD_COMPLETED) }
@@ -610,8 +637,14 @@ class TailRunnerTest {
         val scheduler = Scheduler()
         val tail = TailRunner(
             importStaged = { units.ran += "import" },
-            topUp = { units.ran += "topUp"; CycleResult.PROCESSING },
-            walkAndPublish = { units.ran += "walk"; WalkOutcome.Walked(CycleResult.COMPLETED, addedRows = false) },
+            topUp = {
+                units.ran += "topUp"
+                CycleResult.PROCESSING
+            },
+            walkAndPublish = {
+                units.ran += "walk"
+                WalkOutcome.Walked(CycleResult.COMPLETED, addedRows = false)
+            },
             walkPermitted = { true },
             mayCreate = { true },
             foregrounded = { true },
@@ -671,7 +704,10 @@ class TailRunnerTest {
 
     @Test
     fun `an import-only last pass keeps the upload outcome a joiner re-arms on`() = runTest {
-        val units = Units().apply { topUp = { CycleResult.PROCESSING }; walkGate = CompletableDeferred() }
+        val units = Units().apply {
+            topUp = { CycleResult.PROCESSING }
+            walkGate = CompletableDeferred()
+        }
         val scheduler = Scheduler()
         val tail = runner(units, scheduler)
         val relaunch = async { tail.request(TailTrigger.UPLOAD_SESSION_EVENTS) }
@@ -691,14 +727,22 @@ class TailRunnerTest {
     fun `an expiry during the walk is logged with the signal and the abandoned walk and what was left`() = runTest {
         val lines = mutableListOf<String>()
         val recorder = object : co.touchlab.kermit.LogWriter() {
-            override fun log(severity: co.touchlab.kermit.Severity, message: String, tag: String, throwable: Throwable?) {
+            override fun log(
+                severity: co.touchlab.kermit.Severity,
+                message: String,
+                tag: String,
+                throwable: Throwable?,
+            ) {
                 lines += message
             }
         }
         val units = Units().apply { walkGate = CompletableDeferred() }
         val tail = TailRunner(
             importStaged = { units.ran += "import" },
-            topUp = { units.ran += "topUp"; CycleResult.COMPLETED },
+            topUp = {
+                units.ran += "topUp"
+                CycleResult.COMPLETED
+            },
             walkAndPublish = { stop ->
                 units.walkGate!!.await()
                 if (stop()) WalkOutcome.Abandoned else WalkOutcome.Walked(CycleResult.COMPLETED, addedRows = true)
@@ -737,8 +781,14 @@ class TailRunnerTest {
                 // First pass: an import that never reports; later passes find it claimed and import nothing.
                 if (units.imported++ == 0 && !signal.awaitUnlessInterrupted(never)) units.ran += "gave up waiting"
             },
-            topUp = { units.ran += "topUp"; CycleResult.COMPLETED },
-            walkAndPublish = { units.ran += "walk"; WalkOutcome.Walked(CycleResult.COMPLETED, addedRows = false) },
+            topUp = {
+                units.ran += "topUp"
+                CycleResult.COMPLETED
+            },
+            walkAndPublish = {
+                units.ran += "walk"
+                WalkOutcome.Walked(CycleResult.COMPLETED, addedRows = false)
+            },
             walkPermitted = { true },
             mayCreate = { true },
             foregrounded = { false },
@@ -779,7 +829,12 @@ class TailRunnerTest {
     fun `an unreadable leftover still ends the expiry line`() = runTest {
         val lines = mutableListOf<String>()
         val recorder = object : co.touchlab.kermit.LogWriter() {
-            override fun log(severity: co.touchlab.kermit.Severity, message: String, tag: String, throwable: Throwable?) {
+            override fun log(
+                severity: co.touchlab.kermit.Severity,
+                message: String,
+                tag: String,
+                throwable: Throwable?,
+            ) {
                 lines += message
             }
         }
@@ -830,7 +885,13 @@ class TailRunnerTest {
 
     private companion object {
         /** A joined full-grant member of an open event whose OS uploader is not confirmed — iOS below 26.1, say. */
-        val JOINED = CadenceFacts(joined = true, ended = false, shares = true, fullGrant = true, osUploaderConfirmed = false)
+        val JOINED = CadenceFacts(
+            joined = true,
+            ended = false,
+            shares = true,
+            fullGrant = true,
+            osUploaderConfirmed = false,
+        )
         val NOT_JOINED = JOINED.copy(joined = false)
     }
 }

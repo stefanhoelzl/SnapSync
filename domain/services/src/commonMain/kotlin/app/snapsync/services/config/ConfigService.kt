@@ -1,21 +1,21 @@
 package app.snapsync.services.config
 
 import app.snapsync.model.ConfigRead
+import app.snapsync.model.DeletesAt
 import app.snapsync.model.EventConfig
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
 import app.snapsync.model.MembershipRead
-import app.snapsync.model.encodeConfigFile
-import app.snapsync.model.DeletesAt
 import app.snapsync.model.confirmedGone
+import app.snapsync.model.encodeConfigFile
 import app.snapsync.model.hasEnded
 import app.snapsync.model.instantToCutoff
 import app.snapsync.ports.Clock
 import app.snapsync.ports.Files
 import co.touchlab.kermit.Logger
-import kotlin.concurrent.Volatile
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlin.concurrent.Volatile
 
 /**
  * The config file in the shared area's root (a runtime-identity pin, `docs/architecture.md`): the **storage of
@@ -53,6 +53,7 @@ class ConfigService(
 
     private val initial = read()
     private val state = MutableStateFlow(initial.joinedOrNull())
+
     /**
      * The active membership as a level-triggered holder whose current value is always available synchronously — the
      * persisted [EventConfig], or `null` when none is provisioned **as far as this process can tell**. That is fine
@@ -63,6 +64,7 @@ class ConfigService(
     /** Written wherever [state] is, so the two never disagree; `Unreadable` only until a conclusive read. */
     @Volatile
     private var membershipState: MembershipRead = membershipAfterReload(initial, MembershipRead.Unreadable)
+
     /**
      * The membership as three answers (capability `background-upload`; decision record `harden-seam-bug-classes`,
      * D11): [config]'s `null` merges "not joined" with "could not read it yet", and a reader that ACTS on absence —

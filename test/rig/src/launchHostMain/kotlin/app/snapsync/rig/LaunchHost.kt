@@ -16,7 +16,6 @@ import app.snapsync.model.SecureStoreRead
 import app.snapsync.ports.Files
 import app.snapsync.services.config.ConfigService
 import co.touchlab.kermit.Logger
-import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -28,6 +27,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
+import kotlin.time.Duration.Companion.milliseconds
 
 /*
  * What the two APP hosts — iOS and Android — share of a launch over the launch-time adapters (`docs/testing.md`,
@@ -77,7 +77,11 @@ internal fun keepSaving(chosen: LaunchAdapters.Chosen) {
     CoroutineScope(SupervisorJob() + Dispatchers.Default).launch {
         while (isActive) {
             delay(SAVE_INTERVAL)
-            runCatching { chosen.save() }.onFailure { log.w(it) { "the mocked systems' state was not saved this time" } }
+            runCatching { chosen.save() }.onFailure {
+                log.w(
+                    it,
+                ) { "the mocked systems' state was not saved this time" }
+            }
         }
     }
 }
@@ -167,7 +171,12 @@ internal fun launchAdapterCommands(verbs: AdapterVerbs): Map<String, RigCommand>
 private fun writeAndExit(verbs: AdapterVerbs, choice: AdapterChoice): CommandResult {
     verbs.save()
     val written = verbs.files.write(FileArea.SHARED, AdapterFiles.CHOICE, choice.render().encodeToByteArray())
-    if (written !is FileResult.Ok) return CommandResult(status = 500, body = """{"error":${jsonString("not written: $written")}}""")
+    if (written !is FileResult.Ok) {
+        return CommandResult(
+            status = 500,
+            body = """{"error":${jsonString("not written: $written")}}""",
+        )
+    }
     exitSoon(verbs.exit)
     return CommandResult.ok(
         buildJsonObject {

@@ -1,13 +1,12 @@
 package app.snapsync.feature.creation
 
-import app.snapsync.model.CreateOutcome
-import app.snapsync.services.backend.EventCreation
-import app.snapsync.services.crypto.EventKeyMinting
-
-import co.touchlab.kermit.Logger
-import app.snapsync.model.EventCreator
 import app.snapsync.feature.creation.readmodel.CreationFailureReason
 import app.snapsync.feature.creation.readmodel.CreationStatus
+import app.snapsync.model.CreateOutcome
+import app.snapsync.model.EventCreator
+import app.snapsync.services.backend.EventCreation
+import app.snapsync.services.crypto.EventKeyMinting
+import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.MutableStateFlow
 
 /**

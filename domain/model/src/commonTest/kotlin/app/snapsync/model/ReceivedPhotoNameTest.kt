@@ -62,8 +62,16 @@ class ReceivedPhotoNameTest {
 
     @Test
     fun both_resources_of_a_live_photo_carry_one_token() {
-        val still = ReceivedPhotoName.mark("IMG_4471.HEIC", uploadKey(ref.sourceAssetId, ResourceRole.PRIMARY, "IMG_4471.HEIC"), ref)
-        val paired = ReceivedPhotoName.mark("IMG_4471.MOV", uploadKey(ref.sourceAssetId, ResourceRole.LIVE, "IMG_4471.MOV"), ref)
+        val still = ReceivedPhotoName.mark(
+            "IMG_4471.HEIC",
+            uploadKey(ref.sourceAssetId, ResourceRole.PRIMARY, "IMG_4471.HEIC"),
+            ref,
+        )
+        val paired = ReceivedPhotoName.mark(
+            "IMG_4471.MOV",
+            uploadKey(ref.sourceAssetId, ResourceRole.LIVE, "IMG_4471.MOV"),
+            ref,
+        )
         assertEquals("IMG_4471.snapsync-zfevt6zysw.HEIC", still)
         assertEquals("IMG_4471.snapsync-zfevt6zysw.MOV", paired)
         assertEquals(ReceivedPhotoName.tokenOf(still), ReceivedPhotoName.tokenOf(paired))

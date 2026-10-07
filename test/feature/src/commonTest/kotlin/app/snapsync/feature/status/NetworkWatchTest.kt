@@ -24,10 +24,16 @@ class NetworkWatchTest {
     private val network = NetworkMock()
 
     private fun TestScope.watching(): NetworkWatch =
-        NetworkWatch(backgroundScope, NetworkReadings(network.port())).also { it.start(); runCurrent() }
+        NetworkWatch(backgroundScope, NetworkReadings(network.port())).also {
+            it.start()
+            runCurrent()
+        }
 
     private fun TestScope.returnsOf(watch: NetworkWatch): List<Unit> =
-        mutableListOf<Unit>().also { seen -> backgroundScope.launch { watch.returned.collect { seen += it } }; runCurrent() }
+        mutableListOf<Unit>().also { seen ->
+            backgroundScope.launch { watch.returned.collect { seen += it } }
+            runCurrent()
+        }
 
     @Test
     fun a_two_second_drop_publishes_nothing() = runTest {
@@ -77,7 +83,11 @@ class NetworkWatchTest {
     fun opening_offline_waits_the_same_grace() = runTest {
         network.operator.access = NetworkAccess.Blocked
         val watch = watching()
-        assertEquals(NetworkAccess.Online(restricted = false), watch.access.value, "the first reading is held like any other")
+        assertEquals(
+            NetworkAccess.Online(restricted = false),
+            watch.access.value,
+            "the first reading is held like any other",
+        )
         advanceTimeBy(6.seconds)
         assertEquals(NetworkAccess.Blocked, watch.access.value)
     }

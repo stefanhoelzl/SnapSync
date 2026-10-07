@@ -20,7 +20,6 @@ import app.snapsync.model.MemberCounts
 import app.snapsync.model.NetworkNotice
 import app.snapsync.model.SyncCounts
 import app.snapsync.model.SyncHealth
-import app.snapsync.model.TimeLeft
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.ui.components.AccessPrompt
 import app.snapsync.ui.components.AppDatesLine

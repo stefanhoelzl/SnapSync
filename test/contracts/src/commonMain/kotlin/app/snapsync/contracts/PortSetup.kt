@@ -1,12 +1,12 @@
 package app.snapsync.contracts
 
-import app.snapsync.model.UnionTrigger
 import app.snapsync.model.AssetId
 import app.snapsync.model.CreateEventRequest
 import app.snapsync.model.DeviceFile
 import app.snapsync.model.DeviceManifest
-import app.snapsync.model.ResourceRole
 import app.snapsync.model.Reply
+import app.snapsync.model.ResourceRole
+import app.snapsync.model.UnionTrigger
 import app.snapsync.ports.Backend
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid

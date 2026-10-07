@@ -1,12 +1,12 @@
 package app.snapsync.feature.download
 
+import app.snapsync.feature.download.readmodel.DownloadProgress
+import app.snapsync.feature.download.readmodel.DownloadStatusSource
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.services.downloads.DownloadService
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import app.snapsync.feature.download.readmodel.DownloadProgress
-import app.snapsync.feature.download.readmodel.DownloadStatusSource
 
 /**
  * The real [DownloadStatusSource] over the [DownloadService]: `downloaded` = imported foreign assets,

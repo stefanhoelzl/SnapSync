@@ -1,7 +1,7 @@
 package app.snapsync.mock
 
-import app.snapsync.model.CertificateFacts
 import app.snapsync.model.AttestationChain
+import app.snapsync.model.CertificateFacts
 import app.snapsync.model.Proof
 import app.snapsync.model.ProofFormat
 import app.snapsync.ports.DeviceIntegrity
@@ -83,7 +83,13 @@ val MOCK_CHAIN: AttestationChain = AttestationChain(
             notAfter = "2036-01-01T00:00:00Z",
             key = "EC 256",
         ),
-        CertificateFacts(MOCK_ROOT, MOCK_ROOT, notBefore = "2026-01-01T00:00:00Z", notAfter = "2046-01-01T00:00:00Z", key = "EC 384"),
+        CertificateFacts(
+            MOCK_ROOT,
+            MOCK_ROOT,
+            notBefore = "2026-01-01T00:00:00Z",
+            notAfter = "2046-01-01T00:00:00Z",
+            key = "EC 384",
+        ),
     ),
     rootKeySha256 = "0000000000000000000000000000000000000000000000000000000000000000",
 )

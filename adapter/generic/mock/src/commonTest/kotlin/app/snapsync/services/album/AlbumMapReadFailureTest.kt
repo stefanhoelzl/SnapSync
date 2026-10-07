@@ -25,7 +25,11 @@ class AlbumMapReadFailureTest {
 
     @Test
     fun `marking an album filled while the marks are unreadable keeps the other events' marks`() {
-        service().apply { put("A", "album-a"); put("B", "album-b"); markFilled("A") }
+        service().apply {
+            put("A", "album-a")
+            put("B", "album-b")
+            markFilled("A")
+        }
 
         prefs.failReads = true
         service().markFilled("B")

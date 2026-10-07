@@ -1,14 +1,14 @@
 package app.snapsync.feature.upload
 
-import app.snapsync.model.PauseReason
 import app.snapsync.model.GalleryAccess
+import app.snapsync.model.PauseReason
 import app.snapsync.model.SelectionPolicy
+import app.snapsync.model.SelectionRule
 import app.snapsync.model.SelectionScope
 import app.snapsync.model.SuppressionReadiness
 import app.snapsync.model.UploaderPin
-import app.snapsync.model.selectionRulesFor
-import app.snapsync.model.SelectionRule
 import app.snapsync.model.captureCutoff
+import app.snapsync.model.selectionRulesFor
 import app.snapsync.model.selectionScope
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
@@ -31,6 +31,7 @@ class CycleGateTest {
     private val host = "https://edge.example"
     private val eventId = "event-1"
     private val cutoff = captureCutoff("2026-07-01T00:00:00Z")
+
     // The membership carries a SUPPLIER, not a built policy: the one derivation reads two ports and this
     // gate's translation must stay port-pure (capability `background-upload`). These fixtures never invoke
     // it — the gate decides without consulting the policy, which is the point.
@@ -192,15 +193,25 @@ class CycleGateTest {
     @Test
     fun `a withheld decline does not invoke the policy supplier`() {
         val forbidden: suspend () -> SelectionPolicy = { error("the gate must not build the policy") }
-        val gate = gate(configReadable = true, membership = joined(policy = forbidden), host = host, admission = UploadAdmission.Withheld)
+        val gate = gate(
+            configReadable = true,
+            membership = joined(policy = forbidden),
+            host = host,
+            admission = UploadAdmission.Withheld,
+        )
         assertIs<CycleGate.Withheld>(gate)
     }
 
     @Test
     fun `unreadable and absent outrank admission`() {
         for (admission in UploadAdmission.entries) {
-            assertIs<CycleGate.Skip>(gate(configReadable = false, membership = joined(), host = host, admission = admission))
-            assertEquals(CycleGate.NotJoined, gate(configReadable = true, membership = null, host = host, admission = admission))
+            assertIs<CycleGate.Skip>(
+                gate(configReadable = false, membership = joined(), host = host, admission = admission),
+            )
+            assertEquals(
+                CycleGate.NotJoined,
+                gate(configReadable = true, membership = null, host = host, admission = admission),
+            )
         }
     }
 
@@ -211,7 +222,11 @@ class CycleGateTest {
             val expected = if (usable) UploadAdmission.Admit else UploadAdmission.Withheld
             val read = selectionScope(permission, emptyList())
             assertEquals(expected, appAdmission(permission, read), "under $permission")
-            assertEquals(UploadAdmission.Withheld, appAdmission(permission, read, UploaderPin(app = false)), "switched off")
+            assertEquals(
+                UploadAdmission.Withheld,
+                appAdmission(permission, read, UploaderPin(app = false)),
+                "switched off",
+            )
             assertEquals(expected, appAdmission(permission, read, UploaderPin(extension = false)), "the other switch")
         }
     }

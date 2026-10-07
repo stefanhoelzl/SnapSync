@@ -1,8 +1,8 @@
 package app.snapsync.ports
 
+import app.snapsync.model.JoinResult
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import app.snapsync.model.JoinResult
 
 /**
  * The vocabulary the join split introduced.

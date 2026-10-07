@@ -44,7 +44,10 @@ class NetworkWatch(
 ) : NetworkStatusSource {
 
     private val state = MutableStateFlow<NetworkAccess>(NetworkAccess.Online(restricted = false))
-    private val returns = MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    private val returns = MutableSharedFlow<Unit>(
+        extraBufferCapacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
     private var job: Job? = null
 
     override val access: StateFlow<NetworkAccess> = state.asStateFlow()

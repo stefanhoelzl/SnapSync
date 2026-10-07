@@ -4,25 +4,20 @@ import app.snapsync.mock.inMemoryFiles
 import app.snapsync.model.AssetId
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
-import app.snapsync.model.encodeToJson
-import app.snapsync.model.ManifestResource
-import app.snapsync.model.RESOURCE_META_CREATION_DATE
-import app.snapsync.model.RESOURCE_META_MIME
-import app.snapsync.model.RESOURCE_META_ORIGINAL_FILENAME
-import app.snapsync.model.ResourceRole
+import app.snapsync.model.JoinResult
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
-import app.snapsync.model.deviceManifestFromJson
+import app.snapsync.model.ManifestResource
+import app.snapsync.model.ResourceRole
 import app.snapsync.model.SelectionPolicy
-import app.snapsync.model.selectionRulesFor
 import app.snapsync.model.captureCutoff
+import app.snapsync.model.deviceManifestFromJson
+import app.snapsync.model.encodeToJson
 import app.snapsync.model.projectDeviceManifest
-import app.snapsync.services.manifest.DeviceManifestService
+import app.snapsync.model.selectionRulesFor
 import app.snapsync.services.backend.EventJoin
-import app.snapsync.model.JoinResult
 import app.snapsync.services.backend.ManifestPublisher
-
-import app.snapsync.model.Resource
+import app.snapsync.services.manifest.DeviceManifestService
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
@@ -34,7 +29,19 @@ import kotlin.test.assertTrue
 
 /** An admitting policy bounded below by [cutoff] and unbounded above — the projection's date filter. */
 private suspend fun policyFrom(cutoff: String): SelectionPolicy =
-    SelectionPolicy(selectionRulesFor(includesUpload = true, cutoff = captureCutoff(cutoff), ceiling = null, suppressedAssetIds = { emptySet() }, albumExcludedAssetIds = { emptySet() }))
+    SelectionPolicy(
+        selectionRulesFor(
+            includesUpload = true,
+            cutoff = captureCutoff(
+                cutoff,
+            ),
+            ceiling = null,
+            suppressedAssetIds = {
+                emptySet()
+            },
+            albumExcludedAssetIds = { emptySet() },
+        ),
+    )
 
 class DeviceManifestProducerTest {
 
@@ -200,7 +207,11 @@ class DeviceManifestProducerTest {
     fun puts_the_projected_snapshot_and_records_it_on_success() = runTest {
         val store = manifestRecord()
         val up = FakeUploader(ok = true)
-        DeviceManifestProducer(store, up, "dev").produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")), manifestVersion = 1L)
+        DeviceManifestProducer(
+            store,
+            up,
+            "dev",
+        ).produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")), manifestVersion = 1L)
         assertEquals(1, up.puts.size)
         assertEquals("E", up.puts.single().first)
         assertTrue(store.lastUploaded!!.endsWith(up.puts.single().third)) // marker records the json
@@ -214,7 +225,12 @@ class DeviceManifestProducerTest {
         val up = FakeUploader()
         val producer = DeviceManifestProducer(store, up, "dev")
         producer.produce("EVENT-A", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")), manifestVersion = 1L)
-        producer.produce("EVENT-B", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")), manifestVersion = 1L) // same content, new event
+        producer.produce(
+            "EVENT-B",
+            policyFrom("0001-01-01T00:00:00Z"),
+            listOf(row("A")),
+            manifestVersion = 1L,
+        ) // same content, new event
         assertEquals(2, up.puts.size) // both events written, despite identical content
         assertEquals(listOf("EVENT-A", "EVENT-B"), up.puts.map { it.first })
     }
@@ -295,7 +311,11 @@ class DeviceManifestProducerTest {
     fun a_failed_put_does_not_record_last_uploaded() = runTest {
         val store = manifestRecord()
         val up = FakeUploader(ok = false)
-        DeviceManifestProducer(store, up, "dev").produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")), manifestVersion = 1L)
+        DeviceManifestProducer(
+            store,
+            up,
+            "dev",
+        ).produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")), manifestVersion = 1L)
         assertEquals(1, up.puts.size)
         assertEquals(null, store.lastUploaded) // not recorded → retried next cycle
         assertFalse(up.puts.isEmpty())

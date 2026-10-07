@@ -272,8 +272,12 @@ class ProcessMetricsTest {
         // leave exactly this quiet.
         val emissions = processMetricEmissions(
             report(
-                *hangBucket(0, 1, "269 ms"), *hangBucket(1, 1, "279 ms"), *hangBucket(2, 1, "299 ms"),
-                *hangBucket(3, 1, "519 ms"), *hangBucket(4, 1, "699 ms"), *hangBucket(5, 1, "749 ms"),
+                *hangBucket(0, 1, "269 ms"),
+                *hangBucket(1, 1, "279 ms"),
+                *hangBucket(2, 1, "299 ms"),
+                *hangBucket(3, 1, "519 ms"),
+                *hangBucket(4, 1, "699 ms"),
+                *hangBucket(5, 1, "749 ms"),
             ),
         )
         assertEquals(1, emissions.size)

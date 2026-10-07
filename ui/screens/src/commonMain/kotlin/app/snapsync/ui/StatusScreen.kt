@@ -1,36 +1,28 @@
 package app.snapsync.ui
 
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import app.snapsync.model.ScreenMessage
-import app.snapsync.model.EVENT_NAME_MAX_LENGTH
-import app.snapsync.model.EventConfig
-import app.snapsync.model.ReportDestination
-import app.snapsync.model.JoinedSurface
-import app.snapsync.model.Layer
-import app.snapsync.presentation.CutoffFormatter
-import app.snapsync.model.RenameState
-import app.snapsync.model.UiState
-import app.snapsync.ui.components.AppTextPromptSheet
-import app.snapsync.ui.components.AppDestructiveConfirmDialog
-import app.snapsync.ui.components.AppTheme
-import app.snapsync.ui.components.AppFooterTextActions
-import app.snapsync.ui.components.QrTextAction
-import app.snapsync.ui.components.ShareTextAction
-import app.snapsync.ui.components.AppQrSheet
-import app.snapsync.ui.components.LeaveTextAction
-import app.snapsync.ui.components.ScreenLayout
-import app.snapsync.ui.components.SettingsTextAction
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import app.snapsync.model.AppLink
 import app.snapsync.model.BuildLabel
+import app.snapsync.model.EVENT_NAME_MAX_LENGTH
+import app.snapsync.model.EventConfig
+import app.snapsync.model.JoinedSurface
+import app.snapsync.model.Layer
 import app.snapsync.model.MobileDataState
+import app.snapsync.model.RenameState
+import app.snapsync.model.ReportDestination
 import app.snapsync.model.ReportOutcome
+import app.snapsync.model.ScreenMessage
+import app.snapsync.model.UiState
 import app.snapsync.model.offersMenu
+import app.snapsync.presentation.CutoffFormatter
+import app.snapsync.ui.components.AppDestructiveConfirmDialog
+import app.snapsync.ui.components.AppFooterTextActions
 import app.snapsync.ui.components.AppMenuDivider
 import app.snapsync.ui.components.AppMenuDrawer
 import app.snapsync.ui.components.AppMenuFooter
@@ -39,26 +31,36 @@ import app.snapsync.ui.components.AppMenuIcon
 import app.snapsync.ui.components.AppMenuItem
 import app.snapsync.ui.components.AppMenuSwitch
 import app.snapsync.ui.components.AppNotice
+import app.snapsync.ui.components.AppQrSheet
+import app.snapsync.ui.components.AppTextPromptSheet
+import app.snapsync.ui.components.AppTheme
 import app.snapsync.ui.components.DialogCopy
-import app.snapsync.ui.components.ScreenHeading
+import app.snapsync.ui.components.LeaveTextAction
 import app.snapsync.ui.components.PromptField
+import app.snapsync.ui.components.QrTextAction
+import app.snapsync.ui.components.ScreenHeading
+import app.snapsync.ui.components.ScreenLayout
+import app.snapsync.ui.components.SettingsTextAction
+import app.snapsync.ui.components.ShareTextAction
 import app.snapsync.ui.resources.Res
 import app.snapsync.ui.resources.app_name
 import app.snapsync.ui.resources.cancel
 import app.snapsync.ui.resources.event_name_placeholder
 import app.snapsync.ui.resources.footer_settings
+import app.snapsync.ui.resources.invite_caption
 import app.snapsync.ui.resources.leave_body
 import app.snapsync.ui.resources.leave_cancel
 import app.snapsync.ui.resources.leave_confirm
 import app.snapsync.ui.resources.leave_event
 import app.snapsync.ui.resources.leave_title
 import app.snapsync.ui.resources.menu_privacy
+import app.snapsync.ui.resources.menu_version
+import app.snapsync.ui.resources.menu_website
 import app.snapsync.ui.resources.mobile_data_not_saved
 import app.snapsync.ui.resources.mobile_data_off_note
 import app.snapsync.ui.resources.mobile_data_on_note
 import app.snapsync.ui.resources.mobile_data_toggle
-import app.snapsync.ui.resources.menu_version
-import app.snapsync.ui.resources.menu_website
+import app.snapsync.ui.resources.qr_sheet_title
 import app.snapsync.ui.resources.rename_body
 import app.snapsync.ui.resources.rename_event
 import app.snapsync.ui.resources.report_body_developer
@@ -70,12 +72,9 @@ import app.snapsync.ui.resources.report_saved
 import app.snapsync.ui.resources.report_send
 import app.snapsync.ui.resources.report_sent
 import app.snapsync.ui.resources.save
-import app.snapsync.ui.resources.invite_caption
-import app.snapsync.ui.resources.qr_sheet_title
 import app.snapsync.ui.resources.share_invite
 import app.snapsync.ui.resources.show_qr
 import org.jetbrains.compose.resources.stringResource
-
 
 /**
  * How far past the event's start "no ceiling" is rendered as. The picker needs a concrete upper bound
@@ -87,7 +86,6 @@ import org.jetbrains.compose.resources.stringResource
 // another of those files reaches is widened to module scope and no further — `:ui:screens` contains
 // nothing but these screens, so `internal` here is the same audience `private` had before the split.
 internal const val NO_CEILING_YEARS = 100
-
 
 /**
  * The status screen's own visibility flags.
@@ -130,7 +128,6 @@ fun StatusScreen(
             null
         }
 
-
         // The app menu (capability `sync-status`) is drawn over the whole screen; where the layer withholds it, the
         // title row draws no button and the reduction keeps the drawer shut.
         AppMenuDrawer(
@@ -149,13 +146,13 @@ fun StatusScreen(
                     // Beneath it, that this device has joined and the event's dates (capability `sync-status`).
                     heading = (state.layer as? Layer.Joined)
                         ?.takeIf { chrome.showsJoinedChrome }?.let { joined ->
-                        ScreenHeading(
-                            text = joined.membership.name,
-                            onEdit = if (chrome.canRename) actions.surfaces.onRenameOpen else null,
-                            editDescription = stringResource(Res.string.rename_event),
-                            details = { JoinedHeadingDetails(joined, cutoff) },
-                        )
-                    },
+                            ScreenHeading(
+                                text = joined.membership.name,
+                                onEdit = if (chrome.canRename) actions.surfaces.onRenameOpen else null,
+                                editDescription = stringResource(Res.string.rename_event),
+                                details = { JoinedHeadingDetails(joined, cutoff) },
+                            )
+                        },
                     bottomActions = bottomActions,
                     contentPinsActionCluster = chrome.pinsActionCluster,
                     // The hidden second way to the report sheet; the menu's "Report a problem" is the visible one.
@@ -257,7 +254,6 @@ private fun statusChrome(state: UiState): StatusChrome {
     )
 }
 
-
 /**
  * Everything that renders ON TOP of the current screen: the leave confirmation, the rename sheet, the
  * bug-report sheet, and the switch confirmation.
@@ -297,7 +293,11 @@ private fun StatusOverlays(state: UiState, actions: StatusActions) {
     }
     if (overlays.reportingBug) {
         BugReportSheet(
-            actions, actions.menu.onSendDiagnostics, screenLabel(state), state.reportDestination, overlays.reportSeed,
+            actions,
+            actions.menu.onSendDiagnostics,
+            screenLabel(state),
+            state.reportDestination,
+            overlays.reportSeed,
         )
     }
     // A switch confirmation over the joined screen (scanning a different event while joined).
@@ -491,7 +491,11 @@ private fun ColumnScope.CurrentLayer(
         // through the in-flight screen (capability `create-event`) — see [CreateFlow].
         is Layer.CreateEvent, Layer.CreatingEvent ->
             CreateFlow(
-                layer, actions.onCreateEvent, actions.access.onOpenSettings, cutoff, actions.surfaces.onReportRefusal,
+                layer,
+                actions.onCreateEvent,
+                actions.access.onOpenSettings,
+                cutoff,
+                actions.surfaces.onReportRefusal,
             )
         is Layer.JoiningEvent ->
             JoiningEventScreen(

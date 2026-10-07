@@ -27,7 +27,11 @@ internal fun interface UrlOpenerApi {
 internal object SystemUrlOpenerApi : UrlOpenerApi {
     override fun open(url: NSURL, completion: (Boolean) -> Unit) {
         onQueue(dispatch_get_main_queue(), Logger.withTag("linkOpener"), "openLink") {
-            UIApplication.sharedApplication.openURL(url, options = emptyMap<Any?, Any>(), completionHandler = completion)
+            UIApplication.sharedApplication.openURL(
+                url,
+                options = emptyMap<Any?, Any>(),
+                completionHandler = completion,
+            )
         }
     }
 }

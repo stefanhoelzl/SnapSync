@@ -1,10 +1,10 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.model.EventLookup
 import app.snapsync.model.JoinLoad
 import app.snapsync.model.deletesAt
 import app.snapsync.model.eventEnd
 import app.snapsync.model.eventStart
-import app.snapsync.model.EventLookup
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

@@ -57,9 +57,17 @@ class Heartbeat(
      * Ensure a library-change wake is requested, and answer whether one now stands — `false` where the platform has
      * none (iOS) or refused it. One-shot like the heartbeat, and idempotent.
      */
-    suspend fun watchLibrary(): Boolean = request(WakeId.LibraryChanged, WakeTrigger.LibraryChange(maxDelay = LIBRARY_CHANGE_DELAY))
+    suspend fun watchLibrary(): Boolean = request(
+        WakeId.LibraryChanged,
+        WakeTrigger.LibraryChange(maxDelay = LIBRARY_CHANGE_DELAY),
+    )
 
-    private suspend fun request(id: WakeId, trigger: WakeTrigger): Boolean = when (val answer = wake.schedule(id, trigger)) {
+    private suspend fun request(id: WakeId, trigger: WakeTrigger): Boolean = when (
+        val answer = wake.schedule(
+            id,
+            trigger,
+        )
+    ) {
         ScheduleResult.Scheduled -> true
         ScheduleResult.Unsupported -> false
         // Not silent (`docs/architecture.md`, "Absence is never silent"): a refused heartbeat is a device that
@@ -93,13 +101,20 @@ class Heartbeat(
          * external power, so the operating system grants windows often enough to drain a first whole-library upload.
          * A busy one for photos held to unrestricted networks ([transfers]) waits for such a network.
          */
-        fun triggerAt(cadence: WakeCadence, transfers: TransferNetwork = TransferNetwork.ANY): WakeTrigger.After = when (cadence) {
+        fun triggerAt(
+            cadence: WakeCadence,
+            transfers: TransferNetwork = TransferNetwork.ANY,
+        ): WakeTrigger.After = when (cadence) {
             WakeCadence.BUSY -> WakeTrigger.After(
                 earliest = BUSY_EARLIEST,
                 network = if (transfers == TransferNetwork.UNRESTRICTED_ONLY) WakeNetwork.UNRESTRICTED else WakeNetwork.ANY,
                 cadence = cadence,
             )
-            WakeCadence.IDLE -> WakeTrigger.After(earliest = IDLE_EARLIEST, network = WakeNetwork.ANY, cadence = cadence)
+            WakeCadence.IDLE -> WakeTrigger.After(
+                earliest = IDLE_EARLIEST,
+                network = WakeNetwork.ANY,
+                cadence = cadence,
+            )
         }
     }
 }

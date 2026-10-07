@@ -13,36 +13,36 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.PauseCircle
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.outlined.PauseCircle
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.Arrow
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.graphics.vector.ImageVector
+import app.snapsync.model.DeviceRefusal
 import app.snapsync.ui.components.resources.Res
 import app.snapsync.ui.components.resources.cannot_verify_detail
 import app.snapsync.ui.components.resources.cannot_verify_title
-import app.snapsync.ui.components.resources.cannot_verify_title_not_genuine
 import app.snapsync.ui.components.resources.cannot_verify_title_modified
+import app.snapsync.ui.components.resources.cannot_verify_title_not_genuine
 import app.snapsync.ui.components.resources.cannot_verify_title_unverifiable
 import app.snapsync.ui.components.resources.network_blocked
 import app.snapsync.ui.components.resources.network_offline
@@ -59,10 +59,8 @@ import app.snapsync.ui.components.resources.status_syncing
 import app.snapsync.ui.components.resources.status_waiting_wifi
 import org.jetbrains.compose.resources.stringResource
 
-
 /** One half-cycle of the in-flight arrow's pulse, in milliseconds. */
 private const val PULSE_MILLIS = 700
-
 
 /**
  * The joined-layer sync health, rendered as the single status line. A sealed semantic value (runtime

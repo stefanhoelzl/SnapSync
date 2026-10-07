@@ -53,10 +53,16 @@ class MarkedPhotoLookup(
     }
 
     private fun fromSnapshot(resources: List<Resource>, window: SelectionPolicy, known: Set<AssetId>): Map<String, AssetId> {
-        val inWindow = factsFromResources(resources).filter { it.assetId !in known && window.admits(it) }.mapTo(mutableSetOf()) { it.assetId }
+        val inWindow = factsFromResources(
+            resources,
+        ).filter { it.assetId !in known && window.admits(it) }.mapTo(mutableSetOf()) { it.assetId }
         return resources
             .filter { it.assetId in inWindow && it.isPrimary() }
-            .mapNotNull { r -> r.metadata[RESOURCE_META_ORIGINAL_FILENAME]?.let(ReceivedPhotoName::tokenOf)?.let { it to r.assetId } }
+            .mapNotNull { r ->
+                r.metadata[RESOURCE_META_ORIGINAL_FILENAME]?.let(
+                    ReceivedPhotoName::tokenOf,
+                )?.let { it to r.assetId }
+            }
             .toMap()
     }
 

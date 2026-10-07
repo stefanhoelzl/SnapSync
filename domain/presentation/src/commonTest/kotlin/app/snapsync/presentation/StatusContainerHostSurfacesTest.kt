@@ -1,59 +1,57 @@
 package app.snapsync.presentation
 
-import app.snapsync.model.DiagnosticKeys
-import app.snapsync.model.ReportContext
+import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.model.AlbumKind
-import app.snapsync.model.ReportDestination
-import app.snapsync.model.ReconfigureOutcome
-import app.snapsync.model.ReportOutcome
-import app.snapsync.model.UserQueries
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
+import app.snapsync.model.DiagnosticKeys
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
-import app.snapsync.model.RangeChoice
+import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.GalleryAccess
+import app.snapsync.model.JoinLoad
+import app.snapsync.model.JoinPhase
+import app.snapsync.model.JoinedSurface
+import app.snapsync.model.Layer
+import app.snapsync.model.Overlays
+import app.snapsync.model.RangeChoice
+import app.snapsync.model.RangeForm
+import app.snapsync.model.ReconfigureOutcome
+import app.snapsync.model.ReportContext
+import app.snapsync.model.ReportDestination
+import app.snapsync.model.ReportOutcome
+import app.snapsync.model.ShareCount
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
-import app.snapsync.model.UserCommands
+import app.snapsync.model.UiState
+import app.snapsync.model.UserQueries
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
-import app.snapsync.model.eventEnd
-import app.snapsync.model.eventStart
 import app.snapsync.model.deletesAt
 import app.snapsync.model.encodeEventUrl
-import app.snapsync.model.EventLinkPayload
-import app.snapsync.model.JoinLoad
-import app.snapsync.feature.status.readmodel.SyncStatusSource
+import app.snapsync.model.eventEnd
+import app.snapsync.model.eventStart
+import app.snapsync.model.step
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeout
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
-import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
-import app.snapsync.model.JoinPhase
-import app.snapsync.model.JoinedSurface
-import app.snapsync.model.Layer
-import app.snapsync.model.Overlays
-import app.snapsync.model.RangeForm
-import app.snapsync.model.ShareCount
-import app.snapsync.model.UiState
-import app.snapsync.model.step
 
 private const val EVENT_ID = "11111111-1111-4111-8111-111111111111"
 
@@ -86,6 +84,7 @@ private class Spy {
     var renameResets = 0
     val reconfigures = mutableListOf<Reconfigure>()
     var reconfigureOutcome = ReconfigureOutcome.Saved
+
     /** Whether a landed save is seen in the membership read at once — false plays a read that lags the write. */
     var configFollows = true
     val diagnostics = mutableListOf<Pair<String, ReportContext>>()
@@ -205,7 +204,9 @@ class StatusContainerHostSurfacesTest {
             host.stateWhere("the settings surface") { it.onSettings() }
 
             config.value = CONFIG.copy(eventId = "22222222-2222-4222-8222-222222222222", name = "Trip")
-            val next = host.stateWhere("the next membership") { (it.layer as? Layer.Joined)?.membership?.name == "Trip" }
+            val next = host.stateWhere(
+                "the next membership",
+            ) { (it.layer as? Layer.Joined)?.membership?.name == "Trip" }
             assertTrue(!next.onSettings(), "the new membership opens on the status screen")
         }
     }
@@ -245,7 +246,12 @@ class StatusContainerHostSurfacesTest {
         // and the screen renders what comes back. The whole event reaches back to 5 photos; From now shares 1.
         val eventStart = CONFIG.startsAt.at
         val asked = mutableListOf<CaptureCutoff>()
-        return onHost(queries = counting { from, _ -> asked += from; if (from.at == eventStart) 5 else 1 }) { host ->
+        return onHost(
+            queries = counting { from, _ ->
+                asked += from
+                if (from.at == eventStart) 5 else 1
+            },
+        ) { host ->
             host.surfaces.onOpenReconfigure()
             host.stateWhere("the event-start count") { it.reconfigureCount() == ShareCount.Ready(5) }
 
@@ -275,7 +281,13 @@ class StatusContainerHostSurfacesTest {
     fun `no count is asked for while sharing is off`() {
         var asked = 0
         val spy = Spy()
-        return onHost(spy, queries = counting { _, _ -> asked++; 3 }) { host ->
+        return onHost(
+            spy,
+            queries = counting { _, _ ->
+                asked++
+                3
+            },
+        ) { host ->
             host.surfaces.onOpenReconfigure()
             host.stateWhere("the count") { it.reconfigureCount() == ShareCount.Ready(3) }
             host.form.onShareOn(false)
@@ -432,7 +444,9 @@ class StatusContainerHostSurfacesTest {
             awaitReconfigures(spy, 1)
             val sent = spy.reconfigures.single()
             assertEquals(Reconfigure(EVENT_ID, Direction.Both, CONFIG.minPhotoDate, CONFIG.maxPhotoDate, true), sent)
-            val open = host.stateWhere("the album shown on, settings still open") { it.settings()?.form?.saveToAlbum == true }
+            val open = host.stateWhere(
+                "the album shown on, settings still open",
+            ) { it.settings()?.form?.saveToAlbum == true }
             assertEquals(false, open.settings()?.saveFailed)
         }
     }
@@ -448,7 +462,10 @@ class StatusContainerHostSurfacesTest {
             host.form.onReceiveOn(true)
             host.form.onReceiveOn(false)
             awaitReconfigures(spy, 3)
-            assertEquals(listOf(Direction.UploadOnly, Direction.Both, Direction.UploadOnly), spy.reconfigures.map { it.direction })
+            assertEquals(
+                listOf(Direction.UploadOnly, Direction.Both, Direction.UploadOnly),
+                spy.reconfigures.map { it.direction },
+            )
             assertEquals(Direction.UploadOnly, config.value?.direction)
         }
     }
@@ -595,7 +612,11 @@ class StatusContainerHostSurfacesTest {
         // Capability `event-album`: an Android membership joined before Android had the album was saved with it off.
         // Settings show that choice, carry the phone's album kind for the note, and apply the album once turned on.
         val spy = Spy()
-        return onHost(spy, config = MutableStateFlow(CONFIG.copy(saveToAlbum = false)), albumKind = AlbumKind.FOLDER) { host ->
+        return onHost(
+            spy,
+            config = MutableStateFlow(CONFIG.copy(saveToAlbum = false)),
+            albumKind = AlbumKind.FOLDER,
+        ) { host ->
             host.surfaces.onOpenReconfigure()
             val form = host.reconfigureForm()
             assertEquals(AlbumKind.FOLDER, form.albumKind, "the settings know the album is a folder")
@@ -604,7 +625,11 @@ class StatusContainerHostSurfacesTest {
             awaitReconfigures(spy, 1)
             assertEquals(true, spy.reconfigures.single().saveToAlbum)
             val after = host.stateWhere("the album on") { it.settings()?.form?.saveToAlbum == true }
-            assertEquals(AlbumKind.FOLDER, after.settings()?.form?.albumKind, "the reseeded controls keep the album kind")
+            assertEquals(
+                AlbumKind.FOLDER,
+                after.settings()?.form?.albumKind,
+                "the reseeded controls keep the album kind",
+            )
         }
     }
 
@@ -633,7 +658,9 @@ class StatusContainerHostSurfacesTest {
         host.form.onRangeCustom(from, until)
         host.stateWhere("the question") { it.settings()?.askingToStopSharing == true }
         host.settings.onConfirmStopSharing()
-        val shown = host.stateWhere("the custom range") { it.settings()?.form?.let { f -> f.customFrom == from && f.customUntil == until } == true }
+        val shown = host.stateWhere(
+            "the custom range",
+        ) { it.settings()?.form?.let { f -> f.customFrom == from && f.customUntil == until } == true }
         assertEquals(RangeChoice.CUSTOM, shown.settings()?.form?.preset)
     }
 
@@ -664,7 +691,10 @@ class StatusContainerHostSurfacesTest {
             assertEquals(RangeChoice.CUSTOM, host.reconfigureForm().preset)
             host.form.onRangePreset(RangeChoice.WHOLE_EVENT)
             awaitReconfigures(spy, 1)
-            assertEquals(CONFIG.minPhotoDate to CONFIG.maxPhotoDate, spy.reconfigures.single().let { it.from to it.until })
+            assertEquals(
+                CONFIG.minPhotoDate to CONFIG.maxPhotoDate,
+                spy.reconfigures.single().let { it.from to it.until },
+            )
             host.stateWhere("the whole event shown") { it.settings()?.form?.preset == RangeChoice.WHOLE_EVENT }
         }
     }
@@ -712,7 +742,13 @@ class StatusContainerHostSurfacesTest {
     @Test
     fun `a build with a channel forwards the note and the surface it was sent from`() {
         val spy = Spy()
-        return onHost(spy, sendDiagnostics = { note, screen -> spy.diagnostics += note to screen; ReportOutcome.SENT }) { host ->
+        return onHost(
+            spy,
+            sendDiagnostics = { note, screen ->
+                spy.diagnostics += note to screen
+                ReportOutcome.SENT
+            },
+        ) { host ->
             host.onSendDiagnostics("photos are not arriving", "joined")
             withTimeout(5.seconds) {
                 while (spy.diagnostics.isEmpty()) kotlinx.coroutines.yield()

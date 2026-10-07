@@ -113,8 +113,14 @@ class AppGroupFileSecureStoreTest {
             val store = AppGroupFileSecureStore(dir)
             var minted = 0
 
-            val first = resolveOrMint(store, SecureSlots.DEVICE_ID) { minted++; "minted-$minted" }
-            val second = resolveOrMint(store, SecureSlots.DEVICE_ID) { minted++; "minted-$minted" }
+            val first = resolveOrMint(store, SecureSlots.DEVICE_ID) {
+                minted++
+                "minted-$minted"
+            }
+            val second = resolveOrMint(store, SecureSlots.DEVICE_ID) {
+                minted++
+                "minted-$minted"
+            }
 
             assertEquals("minted-1", first)
             assertEquals(first, second)

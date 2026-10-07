@@ -35,7 +35,11 @@ class AndroidSecureStoreContractTest {
         )
 
         override fun create(state: SecureStoreState, clauseId: String): Entered<SecureStore> {
-            if (state == SecureStoreState.HOLDING_RESTRICTED) return Entered.Unreachable("every item is written background-readable")
+            if (state == SecureStoreState.HOLDING_RESTRICTED) {
+                return Entered.Unreachable(
+                    "every item is written background-readable",
+                )
+            }
             deleteKey()
             val dir = newTempDirectory()
             val store = AndroidSecureStore(dir, TEST_ALIAS)

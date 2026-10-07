@@ -1,23 +1,22 @@
 package app.snapsync.services.ledger
 
-import app.snapsync.services.upload.TransferRecord
-import app.snapsync.model.AssetId
-import app.snapsync.model.LedgerAggregates
-import app.snapsync.model.LedgerEntry
-import app.snapsync.model.ResourceRole
-import app.snapsync.model.DONE_STATES
-import app.snapsync.model.NEEDS_JOB_STATES
-import app.snapsync.model.LedgerState
-import app.snapsync.model.PendingResource
-import app.snapsync.model.TerminalOutcome
-
 import app.cash.sqldelight.EnumColumnAdapter
 import app.cash.sqldelight.db.SqlDriver
+import app.snapsync.model.AssetId
+import app.snapsync.model.DONE_STATES
+import app.snapsync.model.LedgerAggregates
+import app.snapsync.model.LedgerEntry
+import app.snapsync.model.LedgerState
+import app.snapsync.model.NEEDS_JOB_STATES
+import app.snapsync.model.PendingResource
+import app.snapsync.model.ResourceRole
+import app.snapsync.model.TerminalOutcome
 import app.snapsync.ports.Databases
 import app.snapsync.services.databases.AssetIdColumnAdapter
 import app.snapsync.services.databases.openOwned
 import app.snapsync.services.ledger.db.LedgerDatabase
 import app.snapsync.services.ledger.db.LedgerRow
+import app.snapsync.services.upload.TransferRecord
 
 /** The upload ledger's database file — runtime identity (`docs/architecture.md`, section 9): a device holds it. */
 const val LEDGER_DB_NAME: String = "ledger.db"
@@ -47,7 +46,11 @@ class LedgerService(
     private val joinedEvent: () -> String?,
 ) : TransferRecord {
 
-    private val queries by lazy { LedgerDatabase(databases.openOwned(LEDGER_DB_NAME, LedgerDatabase.Schema)).ledgerQueries }
+    private val queries by lazy {
+        LedgerDatabase(
+            databases.openOwned(LEDGER_DB_NAME, LedgerDatabase.Schema),
+        ).ledgerQueries
+    }
 
     // The event whose parked rows this process has adopted. A second adoption is a no-op write, so a race between
     // two callers costs one statement, never a row.
@@ -98,7 +101,9 @@ class LedgerService(
         filename: String,
         destinationPath: String?,
     ) = LedgerEntry(
-        key, assetId, state,
+        key,
+        assetId,
+        state,
         creationDate = creationDate,
         role = roleOrNull(role),
         contentType = contentType,
@@ -165,7 +170,9 @@ class LedgerService(
     suspend fun manifestRows(): List<LedgerEntry> =
         // `state` is read from the row rather than asserted. Only the event is bound: the query is not
         // state-scoped, because the manifest declares intent (capability `photo-sharing`).
-        queries.selectManifestRows(event() ?: return emptyList()) { key, assetId, state, creationDate, role, contentType, filename ->
+        queries.selectManifestRows(
+            event() ?: return emptyList(),
+        ) { key, assetId, state, creationDate, role, contentType, filename ->
             LedgerEntry(
                 key = key,
                 assetId = assetId,
@@ -230,7 +237,10 @@ class LedgerService(
      * store, and *which* states are settled is decided once, in `model/`, not per query.
      */
     suspend fun pendingResources(): List<PendingResource> =
-        queries.selectPending(event() ?: return emptyList(), DONE_STATES) { assetId, key -> PendingResource(assetId, key) }
+        queries.selectPending(
+            event() ?: return emptyList(),
+            DONE_STATES,
+        ) { assetId, key -> PendingResource(assetId, key) }
             .executeAsList()
 
     /**
@@ -351,7 +361,6 @@ class LedgerService(
     /** `""` is the not-yet-enriched sentinel; every other value is a wire token the enum knows. */
     private fun roleOrNull(wire: String): ResourceRole? =
         ResourceRole.entries.firstOrNull { it.wire == wire }
-
 }
 
 /** Keys per `deleteKeys` statement — well under every driver's bind-variable limit. */

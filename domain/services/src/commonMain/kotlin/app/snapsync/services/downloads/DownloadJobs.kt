@@ -1,29 +1,28 @@
 package app.snapsync.services.downloads
 
-import app.snapsync.model.TransferNetwork
 import app.snapsync.model.AssetId
-import app.snapsync.model.ConfinedTo
-import app.snapsync.model.isCanonicalAssetId
-import app.snapsync.ports.Completion
-import app.snapsync.services.wake.OsCompletions
-import app.snapsync.model.StartResult
-import app.snapsync.ports.Download
-import app.snapsync.services.staging.StagingService
-import app.snapsync.model.TransferOutcome
-
 import app.snapsync.model.AssetRef
+import app.snapsync.model.ConfinedTo
 import app.snapsync.model.EntryScope
 import app.snapsync.model.PendingDownload
+import app.snapsync.model.StartResult
+import app.snapsync.model.TransferNetwork
+import app.snapsync.model.TransferOutcome
 import app.snapsync.model.invocation
+import app.snapsync.model.isCanonicalAssetId
+import app.snapsync.ports.Completion
+import app.snapsync.ports.Download
+import app.snapsync.services.crypto.DownloadOpening
+import app.snapsync.services.crypto.SEALED_SUFFIX
+import app.snapsync.services.staging.StagingService
+import app.snapsync.services.wake.OsCompletions
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
-import app.snapsync.services.crypto.DownloadOpening
-import app.snapsync.services.crypto.SEALED_SUFFIX
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -280,7 +279,9 @@ class DownloadJobs(
     }
 
     /** The relative staged path of the resource [tag] names — the one place it is derived. */
-    private fun relativePath(tag: TaskTag): String = stagingPath(staging.stagingRoot(), tag.eventId, tag.ref, tag.resourceKey)
+    private fun relativePath(
+        tag: TaskTag,
+    ): String = stagingPath(staging.stagingRoot(), tag.eventId, tag.ref, tag.resourceKey)
 
     /** Enqueue downloads for the given not-yet-staged resources (idempotent; already-running keys are skipped). */
 

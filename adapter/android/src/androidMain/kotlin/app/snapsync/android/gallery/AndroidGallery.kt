@@ -9,15 +9,15 @@ import android.provider.MediaStore
 import app.snapsync.android.permission.AndroidPhotoPermission
 import app.snapsync.model.BeforeListen
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.HandlerSlot
 import app.snapsync.model.GalleryRead
+import app.snapsync.model.HandlerSlot
 import app.snapsync.model.ImportRequest
 import app.snapsync.model.ImportResult
 import app.snapsync.model.SelectionSnapshot
+import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryHandlers
 import app.snapsync.ports.LibraryChangeToken
-import app.snapsync.model.runCatchingCancellable
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -58,7 +58,10 @@ class AndroidGallery(
                 if (observer == null) return@collect
                 val snapshot = readable { items(Query(), candidates = true).map { it.rawAsset() } }
                 if (snapshot is GalleryRead.Read) {
-                    handlers.orNull("a selection snapshot", BeforeListen.Dropped)?.onChanged(SelectionSnapshot(snapshot.value))
+                    handlers.orNull(
+                        "a selection snapshot",
+                        BeforeListen.Dropped,
+                    )?.onChanged(SelectionSnapshot(snapshot.value))
                 }
             }
         }

@@ -1,7 +1,5 @@
 package app.snapsync.presentation
 
-import app.snapsync.model.deletesAt
-
 import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.model.AppLink
@@ -18,6 +16,7 @@ import app.snapsync.model.UiIntent
 import app.snapsync.model.UiState
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
+import app.snapsync.model.deletesAt
 import app.snapsync.model.eventEnd
 import app.snapsync.model.eventStart
 import kotlinx.coroutines.CoroutineScope
@@ -69,6 +68,7 @@ class StatusContainerHostMenuTest {
         val links = mutableListOf<String>()
         val reports = mutableListOf<String>()
         var outcome: suspend () -> ReportOutcome = { ReportOutcome.SENT }
+
         /** The device's mobile-data choice, as the setting service holds it; [saves] plays a write that lands or not. */
         val mobileData = MutableStateFlow(true)
         var saves = true
@@ -80,16 +80,25 @@ class StatusContainerHostMenuTest {
             try {
                 val host = StatusContainerHost(
                     StatusSources(
-                        MenuTestSync(), MutableStateFlow(GalleryAccess.GRANTED), world.config,
-                        creation = world.creation, mobileData = world.mobileData,
+                        MenuTestSync(),
+                        MutableStateFlow(GalleryAccess.GRANTED),
+                        world.config,
+                        creation = world.creation,
+                        mobileData = world.mobileData,
                     ),
                     scope,
                     commands = testMenuCommands(
                         openLink = { world.links += it },
-                        sendDiagnostics = { note, _ -> world.reports += note; world.outcome() },
+                        sendDiagnostics = { note, _ ->
+                            world.reports += note
+                            world.outcome()
+                        },
                         setMobileData = { on -> world.saves.also { if (it) world.mobileData.value = on } },
                     ),
-                    cutoffFormatter = CutoffFormatter(now = { Instant.parse("2026-07-09T12:00:00Z") }, zone = TimeZone.UTC),
+                    cutoffFormatter = CutoffFormatter(
+                        now = { Instant.parse("2026-07-09T12:00:00Z") },
+                        zone = TimeZone.UTC,
+                    ),
                     queries = noQueries,
                     diagnostics = testDiagnostics(),
                     build = BuildLabel("0.12", "2140"),
@@ -129,7 +138,9 @@ class StatusContainerHostMenuTest {
         host.onIntent(UiIntent.MenuOpen)
         host.stateWhere("menu open, mobile data on") { it.overlays.menuOpen && it.mobileData.on }
         host.onIntent(UiIntent.MobileData(false))
-        host.stateWhere("switched off, menu still open") { it.overlays.menuOpen && !it.mobileData.on && !it.mobileData.notSaved }
+        host.stateWhere(
+            "switched off, menu still open",
+        ) { it.overlays.menuOpen && !it.mobileData.on && !it.mobileData.notSaved }
         assertFalse(world.mobileData.value, "the device's choice was saved")
     }
 
@@ -139,7 +150,9 @@ class StatusContainerHostMenuTest {
         onHost(world) { host, _ ->
             host.onIntent(UiIntent.MenuOpen)
             host.onIntent(UiIntent.MobileData(false))
-            host.stateWhere("not saved, switch still on") { it.overlays.menuOpen && it.mobileData.on && it.mobileData.notSaved }
+            host.stateWhere(
+                "not saved, switch still on",
+            ) { it.overlays.menuOpen && it.mobileData.on && it.mobileData.notSaved }
             host.onIntent(UiIntent.MenuDismiss)
             host.stateWhere("closed, the word gone") { !it.overlays.menuOpen && !it.mobileData.notSaved }
         }
@@ -147,7 +160,10 @@ class StatusContainerHostMenuTest {
 
     @Test
     fun `the mobile-data choice is shown with no event`() {
-        val world = World().apply { config.value = null; mobileData.value = false }
+        val world = World().apply {
+            config.value = null
+            mobileData.value = false
+        }
         onHost(world) { host, _ ->
             host.onIntent(UiIntent.MenuOpen)
             host.stateWhere("the create layer's menu shows it off") {
@@ -173,7 +189,9 @@ class StatusContainerHostMenuTest {
             host.onIntent(UiIntent.MenuOpen)
             host.stateWhere("menu open on the create layer") { it.layer is Layer.CreateEvent && it.overlays.menuOpen }
             world.creation.value = CreationStatus.InFlight
-            host.stateWhere("create in flight, menu masked") { it.layer == Layer.CreatingEvent && !it.overlays.menuOpen }
+            host.stateWhere(
+                "create in flight, menu masked",
+            ) { it.layer == Layer.CreatingEvent && !it.overlays.menuOpen }
         }
     }
 

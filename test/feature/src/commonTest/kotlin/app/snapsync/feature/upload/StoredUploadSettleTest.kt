@@ -1,17 +1,17 @@
 package app.snapsync.feature.upload
 
-import app.snapsync.feature.support.LEDGER_EVENT
 import app.snapsync.feature.support.CapturingLogWriter
+import app.snapsync.feature.support.LEDGER_EVENT
 import app.snapsync.feature.support.TestLedger
 import app.snapsync.feature.support.testIdentity
 import app.snapsync.feature.support.unreadableIdentity
 import app.snapsync.model.AssetId
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
+import app.snapsync.model.StoredResource
 import app.snapsync.model.TerminalOutcome
 import app.snapsync.services.backend.DeviceFilesSource
 import app.snapsync.services.backend.DeviceListingShapeException
-import app.snapsync.model.StoredResource
 import co.touchlab.kermit.Severity
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.test.runTest
@@ -93,7 +93,12 @@ class StoredUploadSettleTest {
         val recorder = CapturingLogWriter()
         val ledger = ledgerHolding("A-primary.heic" to LedgerState.REQUESTED)
 
-        StoredUploadSettle(FakeFiles(Result.failure(RuntimeException("offline"))), ledger, identity, recorder.logger("StoredUploadSettleTest"))
+        StoredUploadSettle(
+            FakeFiles(Result.failure(RuntimeException("offline"))),
+            ledger,
+            identity,
+            recorder.logger("StoredUploadSettleTest"),
+        )
             .settle(eventId)
 
         assertEquals(LedgerState.REQUESTED, ledger.get("A-primary.heic")?.state)
@@ -117,7 +122,10 @@ class StoredUploadSettleTest {
         val recorder = CapturingLogWriter()
         val ledger = ledgerHolding("A-primary.heic" to LedgerState.REQUESTED)
         val hanging = object : DeviceFilesSource {
-            override suspend fun list(eventId: String, deviceId: String): Result<List<StoredResource>> = awaitCancellation()
+            override suspend fun list(
+                eventId: String,
+                deviceId: String,
+            ): Result<List<StoredResource>> = awaitCancellation()
         }
 
         StoredUploadSettle(hanging, ledger, identity, recorder.logger("StoredUploadSettleTest")).settle(eventId)
@@ -130,7 +138,11 @@ class StoredUploadSettleTest {
     fun `a device-id read that throws is a failed fetch`() = runTest {
         val ledger = ledgerHolding("A-primary.heic" to LedgerState.REQUESTED)
 
-        StoredUploadSettle(listing("A-primary.heic"), ledger, unreadableIdentity() /* keychain locked */).settle(eventId)
+        StoredUploadSettle(
+            listing("A-primary.heic"),
+            ledger,
+            unreadableIdentity(), // keychain locked
+        ).settle(eventId)
 
         assertEquals(LedgerState.REQUESTED, ledger.get("A-primary.heic")?.state)
     }

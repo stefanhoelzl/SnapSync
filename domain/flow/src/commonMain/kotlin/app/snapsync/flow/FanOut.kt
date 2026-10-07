@@ -1,9 +1,9 @@
 package app.snapsync.flow
 
+import app.snapsync.model.runCatchingCancellable
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
-import app.snapsync.model.runCatchingCancellable
 
 /**
  * Run a flow's independent [children] concurrently, **isolated** from one another, and return once every one of

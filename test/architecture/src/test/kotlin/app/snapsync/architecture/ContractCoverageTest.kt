@@ -72,8 +72,13 @@ class ContractCoverageTest {
             val parsed = tokens?.takeIf { t -> t.isNotEmpty() && t.all { STATE_REF.matches(it) && it.startsWith("$enum.") } }
                 ?.map { it.substringAfter('.') }?.toSet()
             BindingDecl(
-                src.path, m.groupValues[1].takeIf { it.isNotEmpty() }, m.groupValues[2], KIND.find(body)?.groupValues?.get(1),
-                HOST.find(body)?.groupValues?.get(1), parsed, raw,
+                src.path,
+                m.groupValues[1].takeIf { it.isNotEmpty() },
+                m.groupValues[2],
+                KIND.find(body)?.groupValues?.get(1),
+                HOST.find(body)?.groupValues?.get(1),
+                parsed,
+                raw,
                 GRANT.find(body)?.groupValues?.get(1) ?: PRECONDITION.find(body)?.groupValues?.get(1),
             )
         }
@@ -90,7 +95,11 @@ class ContractCoverageTest {
 
     private val recordings: Map<String, Set<String>> = recordingsDir().listFiles { f -> f.extension == "rec" }
         .orEmpty()
-        .associate { f -> f.nameWithoutExtension to f.readLines().mapNotNull { BLOCK.matchEntire(it)?.groupValues?.get(1) }.toSet() }
+        .associate { f ->
+            f.nameWithoutExtension to f.readLines().mapNotNull {
+                BLOCK.matchEntire(it)?.groupValues?.get(1)
+            }.toSet()
+        }
 
     @Test
     fun `every clause is reached by a real implementation on some host`() {
@@ -147,7 +156,13 @@ class ContractCoverageTest {
         val declared = HOST_ENUM.find(read(HOST_FILE))?.groupValues?.get(1)
             ?.lines()?.mapNotNull { HOST_ENTRY.matchEntire(it)?.groupValues?.get(1) }.orEmpty()
         assertTrue(declared.isNotEmpty(), "found no entries in the Host enum at $HOST_FILE")
-        val literal = bindings.mapNotNull { it.host?.takeIf { h -> h.startsWith("Host.") }?.removePrefix("Host.") }.toSet()
+        val literal = bindings.mapNotNull {
+            it.host?.takeIf { h ->
+                h.startsWith(
+                    "Host.",
+                )
+            }?.removePrefix("Host.")
+        }.toSet()
         // A shared binding (`override val host = currentHost`, the fakes' in `commonTest`) names every host a
         // `currentHost` actual answers, though CI runs those fakes on the JVM only.
         val shared = if (bindings.any { it.host == "currentHost" }) currentHostActuals() else emptySet()
@@ -159,7 +174,10 @@ class ContractCoverageTest {
     fun `every recording names a contract and a host that exist`() {
         val names = contracts.map { it.name }.toSet()
         val bad = recordings.keys.filter { key -> key.substringBefore('@') !in names || '@' !in key }
-        assertTrue(bad.isEmpty(), "recordings named for no contract (expected <Contract>@<HOST>[.<GRANT>|.<PRECONDITION>].rec): $bad")
+        assertTrue(
+            bad.isEmpty(),
+            "recordings named for no contract (expected <Contract>@<HOST>[.<GRANT>|.<PRECONDITION>].rec): $bad",
+        )
     }
 
     @Test
@@ -180,7 +198,10 @@ class ContractCoverageTest {
     @Test
     fun `the scan finds contracts and their clauses`() {
         assertTrue(contracts.isNotEmpty(), "no contract object found — the declaration form moved")
-        assertTrue(contracts.all { it.clauses.isNotEmpty() }, "a contract with no parsed clause: ${contracts.filter { it.clauses.isEmpty() }.map { it.name }}")
+        assertTrue(
+            contracts.all { it.clauses.isNotEmpty() },
+            "a contract with no parsed clause: ${contracts.filter { it.clauses.isEmpty() }.map { it.name }}",
+        )
     }
 
     @Test
@@ -221,8 +242,11 @@ class ContractCoverageTest {
 
     private companion object {
         const val HOST_FILE = "test/contracts/src/commonMain/kotlin/app/snapsync/contracts/Host.kt"
-        val CONTRACT = Regex("""object\s+\w+\s*:\s*Contract<(\w+),\s*[\w.<>, ]+>\("([^"]+)"\)""")
-        val CLAUSE = Regex("""clause\("((?:[^"\\]|\\.)*)",\s*(\w+)\.(\w+)\)""")
+
+        // Whitespace-tolerant inside the parentheses: ktlint wraps a long argument list one argument per line and ends
+        // it with a trailing comma, and a pattern that assumed one line would silently stop seeing those declarations.
+        val CONTRACT = Regex("""object\s+\w+\s*:\s*Contract<(\w+),\s*[\w.<>, ]+>\(\s*"([^"]+)",?\s*\)""")
+        val CLAUSE = Regex("""clause\(\s*"((?:[^"\\]|\\.)*)",\s*(\w+)\.(\w+),?\s*\)""")
         val BINDING = Regex("""(?:object|class\s+(\w+)\s*(?:\([^)]*\))?)\s*:\s*Binding<(\w+),""")
         val REGISTERED = Regex("""simulatorAppContract\(\s*\w+\s*,\s*(\w+)\(""")
 

@@ -7,7 +7,6 @@ import app.snapsync.model.SecureStoreRead
 import app.snapsync.model.StoredProtection
 import app.snapsync.model.WriteOutcome
 import app.snapsync.ports.SecureStore
-
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf

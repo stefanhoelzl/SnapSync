@@ -68,7 +68,10 @@ class CatchGateTest {
     @Test
     fun `production catch sites keep cancellation`() {
         val files = SourceScan.kotlinFiles().filter { isProduction(it.path) }
-        assertTrue(files.size >= 200, "the catch gate scanned only ${files.size} production files — the scope is broken")
+        assertTrue(
+            files.size >= 200,
+            "the catch gate scanned only ${files.size} production files — the scope is broken",
+        )
         val found = files
             .filterNot { f -> allowed.keys.any { f.path.endsWith(it) } }
             .flatMap { f -> offenders(ZoneGates.stripComments(f.text)).map { "  ${f.path} $it" } }
